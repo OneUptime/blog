@@ -33,7 +33,7 @@ A healthy table shows an even distribution of color across the Y-axis. A problem
 
 ## Accessing Key Visualizer
 
-Key Visualizer is available for any Bigtable table that has had at least 30 GB of data for 24 hours.
+Key Visualizer is available for Bigtable tables that contain at least 1 GB of data per cluster. After a table reaches that size, scans can take up to an hour to become available; for a newly created table, initial scan data can take a few days to appear.
 
 ```bash
 # List your Bigtable instances
@@ -41,11 +41,12 @@ Key Visualizer is available for any Bigtable table that has had at least 30 GB o
 gcloud bigtable instances list
 
 # Open Key Visualizer in the browser
-# Navigate to: Console > Bigtable > Instances > Your Instance > Tables > Your Table > Key Visualizer
+# Navigate to: Console > Bigtable > Instances > Your Instance > Key Visualizer
+# Then choose the table and cluster to visualize.
 ```
 
-Alternatively, access it directly at:
-`https://console.cloud.google.com/bigtable/instances/INSTANCE_ID/tables/TABLE_NAME/key-visualizer`
+Alternatively, open the Bigtable instance list directly at:
+`https://console.cloud.google.com/bigtable/instances`
 
 ## Identifying Common Problems
 
@@ -85,6 +86,7 @@ A single row key gets a disproportionate number of reads or writes.
 
 ```python
 import random
+from google.cloud.bigtable.row_set import RowRange
 
 # BAD: Single counter row - becomes a hot row
 # table.mutate_rows([direct_mutation("counter#page-views", ...)])
@@ -95,13 +97,13 @@ NUM_SHARDS = 100
 def increment_counter(table, counter_name, amount=1):
     """Increment a sharded counter in Bigtable."""
     shard = random.randint(0, NUM_SHARDS - 1)
-    row_key = f"{counter_name}#shard-{shard:04d}"
+    row_key = f"{counter_name}#shard-{shard:04d}".encode()
 
-    row = table.direct_row(row_key)
+    row = table.row(row_key, append=True)
     # Use ReadModifyWrite for atomic increment
     row.increment_cell_value(
         column_family_id="counts",
-        column="value",
+        column=b"value",
         int_value=amount,
     )
     row.commit()
@@ -115,7 +117,7 @@ def read_counter(table, counter_name):
 
     total = 0
     for row in rows:
-        cells = row.cells["counts"]["value"]
+        cells = row.cells["counts"][b"value"]
         if cells:
             # Bigtable stores integers as 8-byte big-endian
             total += int.from_bytes(cells[0].value, byteorder='big', signed=True)
@@ -167,13 +169,12 @@ Here is a reference guide for what different patterns mean:
 
 ## Optimizing Based on Key Visualizer Findings
 
-### Step 1: Export Key Visualizer Data for Analysis
+### Step 1: Review Table Metadata Alongside Key Visualizer
 
-You can export Key Visualizer data to BigQuery for more detailed analysis.
+Key Visualizer scans are viewed in the Google Cloud console. For additional context, use the Bigtable Admin API or `gcloud` to inspect table metadata alongside what you see in the heatmap.
 
 ```bash
-# Key Visualizer data can be accessed via the API
-# Use the Bigtable Admin API to fetch scan data
+# Use the Bigtable Admin API to inspect table metadata
 gcloud bigtable instances tables describe TABLE_NAME \
   --instance=INSTANCE_ID
 ```
@@ -185,6 +186,7 @@ Before changing your production key design, test with a new table.
 ```python
 # Create a test table with the new key design
 from google.cloud import bigtable
+from google.cloud.bigtable import column_family
 
 client = bigtable.Client(project="MY_PROJECT", admin=True)
 instance = client.instance("my-instance")
@@ -193,8 +195,8 @@ instance = client.instance("my-instance")
 table = instance.table("events-test-v2")
 
 # Define column families
-cf = table.column_family("data", max_versions=1)
-table.create(column_families={"data": cf})
+max_versions_rule = column_family.MaxVersionsGCRule(1)
+table.create(column_families={"data": max_versions_rule})
 
 # Write test data with the new key design
 import hashlib
@@ -211,8 +213,8 @@ def generate_test_data(table, num_rows=100000):
         hash_prefix = hashlib.sha256(event_id.encode()).hexdigest()[:4]
         row_key = f"{hash_prefix}#{timestamp}#{event_id}"
 
-        row = table.direct_row(row_key)
-        row.set_cell("data", "payload", f"test-data-{i}")
+        row = table.direct_row(row_key.encode())
+        row.set_cell("data", b"payload", f"test-data-{i}".encode())
         rows.append(row)
 
         # Batch write every 1000 rows
@@ -226,7 +228,7 @@ def generate_test_data(table, num_rows=100000):
 generate_test_data(table)
 ```
 
-Wait 24 hours and check Key Visualizer on the test table to verify even distribution.
+After scan data is available, check Key Visualizer on the test table to verify even distribution.
 
 ### Step 3: Monitor Latency Percentiles
 
