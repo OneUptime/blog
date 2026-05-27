@@ -20,7 +20,7 @@ A job trigger is a Cloud DLP resource that contains:
 - A schedule (how often to run)
 - Optional conditions (like minimum time between scans)
 
-When the trigger fires, it creates a DLP job that runs just like a manually created one. Results go wherever you configure them - BigQuery, Pub/Sub, or Cloud Security Command Center.
+When the trigger fires, it creates a DLP job that runs just like a manually created one. Detailed findings go wherever you configure them, such as BigQuery, while Pub/Sub can receive job-completion notifications and Cloud Security Command Center can receive finding summaries.
 
 ## Step 1: Create a Basic Job Trigger
 
@@ -77,9 +77,9 @@ def create_daily_scan_trigger(project_id, dataset_id, table_id):
             }
         },
         {
-            # Also publish to Pub/Sub for real-time alerting
+            # Also publish a job-completion notification to Pub/Sub for alerting
             "pub_sub": {
-                "topic": f"projects/{project_id}/topics/dlp-findings"
+                "topic": f"projects/{project_id}/topics/dlp-job-notifications"
             }
         },
     ]
@@ -140,14 +140,16 @@ def create_gcs_scan_trigger(project_id, bucket_name, prefix):
         "min_likelihood": dlp_v2.Likelihood.POSSIBLE,
     }
 
+    object_path = f"{prefix.rstrip('/')}/*" if prefix else "*"
+
     # Configure Cloud Storage source
     storage_config = {
         "cloud_storage_options": {
             "file_set": {
-                "url": f"gs://{bucket_name}/{prefix}"
+                "url": f"gs://{bucket_name}/{object_path}"
             },
             # Only scan certain file types
-            "file_types": ["TEXT_FILE", "CSV", "JSON"],
+            "file_types": ["TEXT_FILE", "CSV"],
             # Limit per-file scanning to 5MB
             "bytes_limit_per_file": 5242880,
         },
@@ -170,7 +172,7 @@ def create_gcs_scan_trigger(project_id, bucket_name, prefix):
             }
         },
         {
-            # Send findings to Security Command Center
+            # Send a findings summary to Security Command Center
             "publish_summary_to_cscc": {}
         },
     ]
@@ -276,24 +278,17 @@ You can also manage triggers from the command line:
 ```bash
 # List all job triggers in a project
 
-gcloud dlp job-triggers list --project=PROJECT_ID
+gcloud alpha dlp job-triggers list --project=PROJECT_ID
 
 # Describe a specific trigger
-gcloud dlp job-triggers describe \
+gcloud alpha dlp job-triggers describe \
   projects/PROJECT_ID/locations/global/jobTriggers/daily-scan-analytics-user-events
 
-# Pause a trigger (stop scheduled runs)
-gcloud dlp job-triggers update \
-  projects/PROJECT_ID/locations/global/jobTriggers/daily-scan-analytics-user-events \
-  --status=PAUSED
-
-# Resume a paused trigger
-gcloud dlp job-triggers update \
-  projects/PROJECT_ID/locations/global/jobTriggers/daily-scan-analytics-user-events \
-  --status=HEALTHY
+# Pause or resume a trigger with the API or client libraries by updating
+# the job trigger status to PAUSED or HEALTHY.
 
 # Delete a trigger
-gcloud dlp job-triggers delete \
+gcloud alpha dlp job-triggers delete \
   projects/PROJECT_ID/locations/global/jobTriggers/old-trigger
 ```
 
@@ -393,9 +388,9 @@ check_trigger_health("my-project")
 
 **Set appropriate scan intervals.** Daily scans make sense for tables that receive new data daily. Weekly or monthly is fine for archival storage. Match the scan frequency to how often the data changes.
 
-**Use incremental scanning.** The `timespan_config` option for Cloud Storage triggers only scans newly modified files. This dramatically reduces costs and scan time. For BigQuery, consider using identifying fields or timestamp columns to focus on new rows.
+**Use incremental scanning.** The `timespan_config` option can automatically limit Cloud Storage and BigQuery trigger runs to data added or modified since the previous run. This dramatically reduces costs and scan time. For BigQuery, identifying fields help you map findings back to source rows.
 
-**Send findings to multiple destinations.** Save detailed findings to BigQuery for analysis, push to Pub/Sub for real-time alerts, and publish to Security Command Center for your SOC team. Each audience needs information in a different format.
+**Send findings to multiple destinations.** Save detailed findings to BigQuery for analysis, push job-completion notifications to Pub/Sub for alerts, and publish summaries to Security Command Center for your SOC team. Each audience needs information in a different format.
 
 **Set up alerts on trigger failures.** If a trigger fails (permissions changed, table was deleted), you want to know about it. Use Cloud Monitoring to alert on DLP job failures.
 
