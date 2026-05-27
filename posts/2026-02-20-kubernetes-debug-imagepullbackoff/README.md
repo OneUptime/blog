@@ -86,7 +86,7 @@ spec:
     spec:
       containers:
       - name: my-app
-        # Full image reference has three parts:
+        # Full image references commonly use:
         # registry/repository:tag
         image: registry.example.com/my-team/my-app:v1.2.3
         # Avoid using :latest in production
@@ -101,7 +101,7 @@ docker pull registry.example.com/my-team/my-app:v1.2.3
 
 # List available tags for the image
 # For Docker Hub
-curl -s "https://hub.docker.com/v2/repositories/library/nginx/tags/?page_size=10" | jq '.results[].name'
+curl -s "https://hub.docker.com/v2/namespaces/library/repositories/nginx/tags?page_size=10" | jq '.results[].name'
 
 # For a private registry
 curl -s -u user:pass "https://registry.example.com/v2/my-team/my-app/tags/list" | jq
@@ -145,7 +145,7 @@ spec:
         image: registry.example.com/my-team/my-app:v1.2.3
 ```
 
-You can also attach the secret to a service account so every pod in the namespace uses it automatically:
+You can also attach the secret to a service account so pods that use that service account get it automatically:
 
 ```bash
 # Patch the default service account to include the pull secret
@@ -203,7 +203,7 @@ If your cluster uses a proxy, containerd needs to know about it.
 sudo mkdir -p /etc/systemd/system/containerd.service.d
 
 # Create a proxy configuration file
-sudo cat > /etc/systemd/system/containerd.service.d/proxy.conf << EOF
+sudo tee /etc/systemd/system/containerd.service.d/proxy.conf > /dev/null << EOF
 [Service]
 Environment="HTTP_PROXY=http://proxy.example.com:3128"
 Environment="HTTPS_PROXY=http://proxy.example.com:3128"
@@ -220,19 +220,28 @@ sudo systemctl restart containerd
 For registries with self-signed certificates:
 
 ```bash
+# Make sure containerd uses the registry hosts configuration directory
+# In /etc/containerd/config.toml, set:
+# [plugins."io.containerd.grpc.v1.cri".registry]
+#   config_path = "/etc/containerd/certs.d"
+
+# Create the containerd registry configuration directory
+sudo mkdir -p /etc/containerd/certs.d/registry.example.com
+
 # Copy the CA certificate to the node
 sudo cp ca.crt /etc/containerd/certs.d/registry.example.com/ca.crt
 
 # Or configure containerd to skip TLS verification (not recommended for production)
-# Edit /etc/containerd/config.toml
+# Edit /etc/containerd/certs.d/registry.example.com/hosts.toml
 ```
 
 ```toml
-# /etc/containerd/config.toml
-# Add the registry mirror configuration
-[plugins."io.containerd.grpc.v1.cri".registry.configs]
-  [plugins."io.containerd.grpc.v1.cri".registry.configs."registry.example.com".tls]
-    ca_file = "/etc/containerd/certs.d/registry.example.com/ca.crt"
+# /etc/containerd/certs.d/registry.example.com/hosts.toml
+server = "https://registry.example.com"
+
+[host."https://registry.example.com"]
+  capabilities = ["pull", "resolve"]
+  ca = "/etc/containerd/certs.d/registry.example.com/ca.crt"
 ```
 
 ## Step 6: Handle Rate Limiting
@@ -241,7 +250,9 @@ Docker Hub and other registries enforce rate limits.
 
 ```bash
 # Check if you are being rate limited (Docker Hub)
-curl -s -I "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/nginx:pull" \
+TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/nginx:pull" | jq -r .token)
+curl -s -I -H "Authorization: Bearer $TOKEN" \
+  https://registry-1.docker.io/v2/library/nginx/manifests/latest \
   | grep -i ratelimit
 ```
 
@@ -275,6 +286,6 @@ kubectl get events -n your-namespace --field-selector reason=Failed --sort-by='.
 
 ## Conclusion
 
-ImagePullBackOff errors always come down to one of four issues: wrong image reference, missing authentication, network problems, or TLS certificate issues. By checking each of these systematically, you can resolve the error quickly.
+ImagePullBackOff errors usually come down to one of these issues: wrong image reference, missing authentication, network problems, TLS certificate issues, or registry rate limiting. By checking each of these systematically, you can resolve the error quickly.
 
 To monitor your Kubernetes clusters for image pull failures and other pod issues in real time, try [OneUptime](https://oneuptime.com). OneUptime provides automated alerting and incident management so you can detect and respond to deployment failures before they affect your users.
