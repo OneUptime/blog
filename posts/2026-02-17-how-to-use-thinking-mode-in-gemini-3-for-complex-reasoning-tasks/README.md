@@ -8,44 +8,46 @@ Description: Learn how to use thinking mode in Gemini 3 on Vertex AI for complex
 
 ---
 
-Some problems are too complex for a model to solve in a single pass. Multi-step math, code debugging, strategic planning, and logical puzzles all benefit from the model taking time to think through the problem before giving an answer. Gemini 3 introduces a thinking mode that makes this explicit - the model shows its reasoning process before arriving at a conclusion.
+Some problems are too complex for a model to solve in a single pass. Multi-step math, code debugging, strategic planning, and logical puzzles all benefit from the model taking time to think through the problem before giving an answer. Gemini 3 includes thinking capabilities that let the model spend extra internal reasoning effort before arriving at a conclusion.
 
-This is not just chain-of-thought prompting. Thinking mode is a native capability where the model uses dedicated thinking tokens to work through problems. The result is more accurate answers on complex tasks, with the added benefit of transparency into how the model reached its conclusion.
+This is not just chain-of-thought prompting. Thinking mode is a native capability where the model uses dedicated thinking tokens to work through problems. The result is more accurate answers on complex tasks, with optional thought summaries that can help you understand how the model approached the prompt.
 
 ## What Is Thinking Mode?
 
-In thinking mode, Gemini generates two types of output: thinking tokens and response tokens. Thinking tokens represent the model's internal reasoning process - breaking down the problem, considering different approaches, checking its work. Response tokens are the final answer delivered to the user.
+In thinking mode, Gemini generates thinking tokens and response tokens. Thinking tokens are used for the model's internal reasoning process - breaking down the problem, considering different approaches, checking its work. Response tokens are the final answer delivered to the user.
 
-The thinking tokens are visible to you as the developer, which is useful for debugging and understanding model behavior. You can also control how many thinking tokens the model is allowed to use, trading off between reasoning depth and latency.
+Thought summaries can be requested in the API, which is useful for debugging and understanding model behavior. You can also control the amount of thinking with a thinking level, trading off between reasoning depth and latency.
 
 ## Enabling Thinking Mode
 
 Thinking mode is enabled through the generation configuration. Here is the basic setup:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+from google import genai
+from google.genai import types
 
-# Initialize Vertex AI
-
-vertexai.init(project="your-project-id", location="us-central1")
-
-# Enable thinking mode through generation config
-thinking_config = GenerationConfig(
-    thinking_config={
-        "thinking_budget": 8192  # Max thinking tokens to use
-    }
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="global",
 )
 
-# Create a model with thinking enabled
-model = GenerativeModel("gemini-3.0-flash")
+# Enable high thinking through generation config
+thinking_config = types.GenerateContentConfig(
+    thinking_config=types.ThinkingConfig(
+        thinking_level=types.ThinkingLevel.HIGH
+    )
+)
 
 # Ask a complex reasoning question
-response = model.generate_content(
-    "A farmer has 100 meters of fencing. What dimensions should they use "
-    "to create a rectangular enclosure with the maximum area, and what is "
-    "that maximum area?",
-    generation_config=thinking_config
+response = client.models.generate_content(
+    model="gemini-3-flash-preview",
+    contents=(
+        "A farmer has 100 meters of fencing. What dimensions should they use "
+        "to create a rectangular enclosure with the maximum area, and what is "
+        "that maximum area?"
+    ),
+    config=thinking_config,
 )
 
 print(response.text)
@@ -53,15 +55,23 @@ print(response.text)
 
 ## Accessing the Thinking Process
 
-The response includes both the thinking process and the final answer. You can access them separately.
+The response can include thought summaries and the final answer. You can access them separately when you set `include_thoughts=True`. Thought summaries are best effort, so they might not be present in every response.
 
 ```python
 # Generate a response with thinking
-response = model.generate_content(
-    "Determine whether this syllogism is valid: "
-    "All cats are animals. Some animals are pets. "
-    "Therefore, some cats are pets.",
-    generation_config=thinking_config
+response = client.models.generate_content(
+    model="gemini-3-flash-preview",
+    contents=(
+        "Determine whether this syllogism is valid: "
+        "All cats are animals. Some animals are pets. "
+        "Therefore, some cats are pets."
+    ),
+    config=types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(
+            include_thoughts=True,
+            thinking_level=types.ThinkingLevel.HIGH,
+        )
+    ),
 )
 
 # Access different parts of the response
@@ -75,27 +85,33 @@ for part in response.candidates[0].content.parts:
         print(part.text)
 ```
 
-## Configuring Thinking Budget
+## Configuring Thinking Level
 
-The thinking budget controls how many tokens the model can use for reasoning. A higher budget allows deeper thinking but increases latency and cost. A lower budget forces the model to reason more quickly.
+For Gemini 3 models, the thinking level controls how much reasoning the model performs. A higher level allows deeper thinking but increases latency and cost. A lower level keeps the model faster for simpler tasks.
 
 ```python
-# Low budget for simpler reasoning tasks
-quick_config = GenerationConfig(
-    thinking_config={"thinking_budget": 1024}
+# Low level for simpler reasoning tasks
+quick_config = types.GenerateContentConfig(
+    thinking_config=types.ThinkingConfig(
+        thinking_level=types.ThinkingLevel.LOW
+    )
 )
 
-# Medium budget for moderate complexity
-moderate_config = GenerationConfig(
-    thinking_config={"thinking_budget": 4096}
+# Medium level for moderate complexity
+moderate_config = types.GenerateContentConfig(
+    thinking_config=types.ThinkingConfig(
+        thinking_level=types.ThinkingLevel.MEDIUM
+    )
 )
 
-# High budget for very complex problems
-deep_config = GenerationConfig(
-    thinking_config={"thinking_budget": 16384}
+# High level for very complex problems
+deep_config = types.GenerateContentConfig(
+    thinking_config=types.ThinkingConfig(
+        thinking_level=types.ThinkingLevel.HIGH
+    )
 )
 
-# Compare results with different budgets
+# Compare results with different thinking levels
 problem = (
     "A company has 3 factories. Factory A produces 40% of products with "
     "a 2% defect rate. Factory B produces 35% with a 3% defect rate. "
@@ -104,7 +120,11 @@ problem = (
 )
 
 for label, config in [("Quick", quick_config), ("Moderate", moderate_config), ("Deep", deep_config)]:
-    response = model.generate_content(problem, generation_config=config)
+    response = client.models.generate_content(
+        model="gemini-3-flash-preview",
+        contents=problem,
+        config=config,
+    )
     print(f"\n{label} thinking:")
     print(response.text[:300])
 ```
@@ -144,9 +164,10 @@ test1 = merge_sorted_lists([1, 3, 5], [2, 4, 6])
 # Actual: [1, 2, 3, 4, 5]
 '''
 
-response = model.generate_content(
-    f"Find and fix the bug in this code. Explain your reasoning step by step.\n\n{buggy_code}",
-    generation_config=deep_config
+response = client.models.generate_content(
+    model="gemini-3-flash-preview",
+    contents=f"Find and fix the bug in this code. Explain your reasoning step by step.\n\n{buggy_code}",
+    config=deep_config,
 )
 
 print(response.text)
@@ -154,7 +175,7 @@ print(response.text)
 
 ## Mathematical Problem Solving
 
-For math problems that require multiple steps, thinking mode provides transparency into each step of the solution.
+For math problems that require multiple steps, thinking mode helps the model spend more reasoning effort before returning the solution.
 
 ```python
 math_problem = """
@@ -172,11 +193,14 @@ Find the number of each product to manufacture to maximize profit.
 Use the simplex method or graphical method, showing all work.
 """
 
-response = model.generate_content(
-    math_problem,
-    generation_config=GenerationConfig(
-        thinking_config={"thinking_budget": 8192}
-    )
+response = client.models.generate_content(
+    model="gemini-3-flash-preview",
+    contents=math_problem,
+    config=types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(
+            thinking_level=types.ThinkingLevel.HIGH
+        )
+    ),
 )
 
 print(response.text)
@@ -207,11 +231,14 @@ Analyze each option against our requirements and recommend the best choice
 with a clear justification.
 """
 
-response = model.generate_content(
-    strategy_prompt,
-    generation_config=GenerationConfig(
-        thinking_config={"thinking_budget": 8192}
-    )
+response = client.models.generate_content(
+    model="gemini-3-flash-preview",
+    contents=strategy_prompt,
+    config=types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(
+            thinking_level=types.ThinkingLevel.HIGH
+        )
+    ),
 )
 
 print(response.text)
@@ -219,10 +246,10 @@ print(response.text)
 
 ## Using Thinking Mode in Chat
 
-Thinking mode works in multi-turn conversations. The model can build on its previous reasoning across turns.
+Thinking mode works in multi-turn conversations. The Google Gen AI SDK handles chat history and thought signatures for standard chat sessions.
 
 ```python
-chat = model.start_chat()
+chat = client.chats.create(model="gemini-3-flash-preview")
 
 # Turn 1: Present the problem
 response = chat.send_message(
@@ -230,7 +257,7 @@ response = chat.send_message(
     "which calls service C. Lately we are seeing intermittent timeouts "
     "in service A, but services B and C seem healthy according to their "
     "own metrics. Help me debug this.",
-    generation_config=thinking_config
+    config=thinking_config,
 )
 print(response.text)
 
@@ -240,7 +267,7 @@ response = chat.send_message(
     "B has a 3-second timeout for calls to C. "
     "C's p99 latency is 2.8 seconds. "
     "B's processing adds about 500ms.",
-    generation_config=thinking_config
+    config=thinking_config,
 )
 print(response.text)
 
@@ -248,7 +275,7 @@ print(response.text)
 response = chat.send_message(
     "That makes sense. How would you restructure the timeout chain "
     "to prevent this cascading timeout issue?",
-    generation_config=thinking_config
+    config=thinking_config,
 )
 print(response.text)
 ```
@@ -290,10 +317,12 @@ To validate whether thinking mode improves your specific use case, compare outpu
 ```python
 def compare_thinking_modes(prompt, num_runs=3):
     """Compare responses with and without thinking mode."""
-    standard_config = GenerationConfig(temperature=0.1)
-    thinking_config_local = GenerationConfig(
+    standard_config = types.GenerateContentConfig(temperature=0.1)
+    thinking_config_local = types.GenerateContentConfig(
         temperature=0.1,
-        thinking_config={"thinking_budget": 8192}
+        thinking_config=types.ThinkingConfig(
+            thinking_level=types.ThinkingLevel.HIGH
+        ),
     )
 
     print(f"Prompt: {prompt[:80]}...\n")
@@ -301,7 +330,11 @@ def compare_thinking_modes(prompt, num_runs=3):
     for mode, config in [("Standard", standard_config), ("Thinking", thinking_config_local)]:
         responses = []
         for _ in range(num_runs):
-            response = model.generate_content(prompt, generation_config=config)
+            response = client.models.generate_content(
+                model="gemini-3-flash-preview",
+                contents=prompt,
+                config=config,
+            )
             responses.append(response.text)
 
         print(f"\n{mode} mode responses:")
@@ -315,4 +348,4 @@ compare_thinking_modes(
 
 ## Wrapping Up
 
-Thinking mode in Gemini 3 gives you a tool for problems where accuracy matters more than speed. It makes the model's reasoning transparent and verifiable, which is especially important for complex analysis, debugging, and mathematical tasks. Use it selectively - not every query needs deep reasoning - and adjust the thinking budget based on problem complexity. Monitor the latency impact with tools like OneUptime to find the right balance for your application between reasoning depth and response time.
+Thinking mode in Gemini 3 gives you a tool for problems where accuracy matters more than speed. Optional thought summaries can help you inspect how the model approached complex analysis, debugging, and mathematical tasks. Use it selectively - not every query needs deep reasoning - and adjust the thinking level based on problem complexity. Monitor the latency impact with tools like OneUptime to find the right balance for your application between reasoning depth and response time.
