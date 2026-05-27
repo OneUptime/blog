@@ -83,14 +83,7 @@ ansible_python_interpreter=/usr/bin/python3
       loop:
         - { regexp: '^MAKEOPTS=', line: 'MAKEOPTS="{{ make_opts }}"' }
         - { regexp: '^ACCEPT_LICENSE=', line: 'ACCEPT_LICENSE="*"' }
-
-    - name: Configure USE flags
-      ansible.builtin.copy:
-        content: |
-          # Global USE flags
-          USE="ssl threads nls -X -gtk -kde"
-        dest: /etc/portage/make.conf.d/use-flags.conf
-        mode: '0644'
+        - { regexp: '^USE=', line: 'USE="ssl threads nls -X -gtk -kde"' }
 
     - name: Set timezone
       ansible.builtin.copy:
@@ -173,7 +166,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -192,8 +185,8 @@ Here are several practical scenarios where this module proves essential in real-
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
     - name: Configure firewall rules
@@ -317,4 +310,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
