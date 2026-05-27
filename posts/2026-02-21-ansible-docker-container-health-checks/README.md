@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Docker, Health Check, Monitoring, DevOps
 
-Description: Configure Docker container health checks through Ansible to ensure services are running correctly with automated recovery.
+Description: Configure Docker container health checks through Ansible to ensure services are running correctly with consistent health visibility.
 
 ---
 
@@ -21,10 +21,10 @@ stateDiagram-v2
     Healthy --> Unhealthy: Health check fails (retries exhausted)
     Unhealthy --> Healthy: Health check passes again
     Healthy --> Healthy: Health check passes
-    Starting --> Unhealthy: Start period expires without passing
+    Starting --> Unhealthy: Health check fails after start period (retries exhausted)
 ```
 
-A container goes through three health states: `starting` (during the start period), `healthy` (checks are passing), and `unhealthy` (checks have failed beyond the retry threshold).
+A container goes through three health states: `starting` (initially, until a check passes or enough counted failures occur), `healthy` (checks are passing), and `unhealthy` (checks have failed beyond the retry threshold).
 
 ## Basic Health Check Configuration
 
@@ -285,11 +285,17 @@ When deploying dependent services, you need to wait for one container to become 
   become: true
 
   tasks:
+    - name: Create application network
+      community.docker.docker_network:
+        name: app_net
+
     - name: Start database
       community.docker.docker_container:
         name: postgres
         image: postgres:16
         state: started
+        networks:
+          - name: app_net
         env:
           POSTGRES_PASSWORD: "{{ vault_db_password }}"
         healthcheck:
@@ -312,6 +318,8 @@ When deploying dependent services, you need to wait for one container to become 
         name: webapp
         image: myapp:latest
         state: started
+        networks:
+          - name: app_net
         env:
           DATABASE_URL: "postgres://postgres:{{ vault_db_password }}@postgres:5432/postgres"
         healthcheck:
@@ -353,7 +361,7 @@ Or override with a completely different check:
 
 ## Automatic Recovery with Restart Policies
 
-Health checks work hand-in-hand with restart policies. When a container becomes unhealthy and Docker Swarm is managing it, the orchestrator can replace it. For standalone containers, you need to handle recovery yourself, but health checks still give you visibility:
+Health checks complement restart policies. When a container becomes unhealthy and Docker Swarm is managing it as a service, the orchestrator can replace it. For standalone containers, you need to handle recovery yourself, but health checks still give you visibility:
 
 ```yaml
     - name: Container with health check and restart policy
