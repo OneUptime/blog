@@ -15,7 +15,7 @@ Ansible Galaxy is the default repository for sharing Ansible roles and collectio
 Out of the box, Ansible Galaxy uses:
 
 ```text
-https://galaxy.ansible.com/api/
+https://galaxy.ansible.com
 ```
 
 This is the public, community-maintained server. When you run `ansible-galaxy collection install community.general`, it downloads from this URL.
@@ -44,7 +44,7 @@ For the public Red Hat Automation Hub (which hosts certified, supported collecti
 server_list = automation_hub
 
 [galaxy_server.automation_hub]
-url = https://console.redhat.com/api/automation-hub/
+url = https://console.redhat.com/api/automation-hub/content/published/
 auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
 token = your-automation-hub-token
 ```
@@ -53,7 +53,7 @@ token = your-automation-hub-token
 
 ```bash
 # Set the Galaxy server URL via environment variable
-export ANSIBLE_GALAXY_SERVER_URL=https://galaxy.example.com/api/
+export ANSIBLE_GALAXY_SERVER=https://galaxy.example.com/api/
 ansible-galaxy collection install community.general
 ```
 
@@ -82,12 +82,12 @@ url = https://galaxy.internal.example.com/api/
 token = my-private-hub-token
 
 [galaxy_server.automation_hub]
-url = https://console.redhat.com/api/automation-hub/
+url = https://console.redhat.com/api/automation-hub/content/published/
 auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
 token = my-rh-token
 
 [galaxy_server.public_galaxy]
-url = https://galaxy.ansible.com/api/
+url = https://galaxy.ansible.com
 ```
 
 When you install a collection, Ansible tries each server in order. If the collection is not found on the first server, it tries the next one.
@@ -130,7 +130,7 @@ Red Hat Automation Hub uses OAuth2 with a separate auth URL:
 
 ```ini
 [galaxy_server.automation_hub]
-url = https://console.redhat.com/api/automation-hub/
+url = https://console.redhat.com/api/automation-hub/content/published/
 auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
 token = your-offline-token
 ```
@@ -151,7 +151,7 @@ collections:
   # This comes from Red Hat Automation Hub
   - name: redhat.rhel_system_roles
     version: ">=1.20.0"
-    source: https://console.redhat.com/api/automation-hub/
+    source: https://console.redhat.com/api/automation-hub/content/published/
 
   # This comes from the default configured server (public Galaxy)
   - name: community.general
@@ -184,7 +184,7 @@ Galaxy NG is the open-source upstream of Automation Hub, built on the Pulp conte
 # Deploy Galaxy NG using Docker Compose
 git clone https://github.com/ansible/galaxy_ng.git
 cd galaxy_ng
-docker compose up -d
+docker compose -f dev/compose/standalone.yaml up -d
 ```
 
 Once running, configure it in your ansible.cfg:
@@ -195,21 +195,15 @@ url = http://localhost:5001/api/
 token = your-generated-token
 ```
 
-### Artifactory or Nexus
+### Artifactory
 
-JFrog Artifactory and Sonatype Nexus both support hosting Ansible collections. Configure them as Galaxy servers:
+JFrog Artifactory supports hosting Ansible collections. Configure it as a Galaxy server:
 
 ```ini
 # Artifactory
 [galaxy_server.artifactory]
-url = https://artifactory.example.com/api/ansible/collections/
+url = https://artifactory.example.com/artifactory/api/ansible/ansible-virtual
 token = your-artifactory-token
-
-# Nexus
-[galaxy_server.nexus]
-url = https://nexus.example.com/repository/ansible-proxy/
-username = ansible
-password = secretpassword
 ```
 
 ## Air-Gapped Environments
@@ -246,11 +240,14 @@ cd ~/collections
 python3 -m http.server 8080
 ```
 
-Configure the local server in ansible.cfg on other air-gapped machines:
+Reference the local tarball URLs in a requirements file on other air-gapped machines:
 
-```ini
-[galaxy_server.local_mirror]
-url = http://10.0.0.5:8080/
+```yaml
+collections:
+  - name: http://10.0.0.5:8080/community-general-8.3.0.tar.gz
+    type: url
+  - name: http://10.0.0.5:8080/amazon-aws-7.2.0.tar.gz
+    type: url
 ```
 
 ## Caching Galaxy Downloads
@@ -292,14 +289,14 @@ ansible-galaxy collection install community.general -vvv
 
 **"ERROR! Unexpected token in response"**
 
-The URL might be wrong. Make sure you include `/api/` at the end of the URL:
+The URL might be wrong. Make sure you use the Galaxy API base URL expected by your server:
 
 ```ini
-# Correct
-url = https://galaxy.example.com/api/
+# Public Galaxy
+url = https://galaxy.ansible.com
 
-# Wrong (missing /api/)
-url = https://galaxy.example.com/
+# Private Automation Hub
+url = https://automation.example.com/api/galaxy/
 ```
 
 **"Authentication error"**
