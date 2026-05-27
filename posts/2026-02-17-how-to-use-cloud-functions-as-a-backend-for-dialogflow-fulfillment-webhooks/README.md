@@ -50,7 +50,8 @@ functions.http('dialogflowFulfillment', async (req, res) => {
   // Extract key fields from the Dialogflow request
   const intentName = body.queryResult?.intent?.displayName;
   const parameters = body.queryResult?.parameters || {};
-  const sessionId = body.session?.split('/').pop();
+  const sessionPath = body.session;
+  const sessionId = sessionPath?.split('/').pop();
   const queryText = body.queryResult?.queryText;
 
   console.log(`Intent: ${intentName}, Session: ${sessionId}`);
@@ -62,7 +63,7 @@ functions.http('dialogflowFulfillment', async (req, res) => {
     let response;
     switch (intentName) {
       case 'check.order.status':
-        response = await handleOrderStatus(parameters, sessionId);
+        response = await handleOrderStatus(parameters, sessionPath);
         break;
       case 'get.product.info':
         response = await handleProductInfo(parameters);
@@ -71,7 +72,7 @@ functions.http('dialogflowFulfillment', async (req, res) => {
         response = await handleStoreHours(parameters);
         break;
       case 'create.support.ticket':
-        response = await handleCreateTicket(parameters, sessionId);
+        response = await handleCreateTicket(parameters, sessionPath, sessionId);
         break;
       case 'get.account.balance':
         response = await handleAccountBalance(parameters, sessionId);
@@ -90,7 +91,7 @@ functions.http('dialogflowFulfillment', async (req, res) => {
 });
 
 // Intent handler: Check order status
-async function handleOrderStatus(parameters, sessionId) {
+async function handleOrderStatus(parameters, sessionPath) {
   const orderId = parameters.orderId || parameters['order-number'];
 
   if (!orderId) {
@@ -119,7 +120,7 @@ async function handleOrderStatus(parameters, sessionId) {
 
   return buildResponse(
     `Here is the update for order ${orderId}: ${statusMessage}`,
-    { outputContexts: buildContext(sessionId, 'order-context', { orderId, status: order.status }) }
+    { outputContexts: buildContext(sessionPath, 'order-context', { orderId, status: order.status }) }
   );
 }
 
@@ -202,7 +203,7 @@ async function handleStoreHours(parameters) {
 }
 
 // Intent handler: Create support ticket
-async function handleCreateTicket(parameters, sessionId) {
+async function handleCreateTicket(parameters, sessionPath, sessionId) {
   const issue = parameters.issue || parameters['issue-description'];
   const email = parameters.email;
 
@@ -213,7 +214,7 @@ async function handleCreateTicket(parameters, sessionId) {
   if (!email) {
     return buildResponse(
       'I would like to create a support ticket for you. What email address should I use?',
-      { outputContexts: buildContext(sessionId, 'ticket-context', { issue }) }
+      { outputContexts: buildContext(sessionPath, 'ticket-context', { issue }) }
     );
   }
 
@@ -273,9 +274,9 @@ function buildResponse(text, options = {}) {
 }
 
 // Helper: Build output context for multi-turn conversations
-function buildContext(sessionId, contextName, parameters, lifespanCount = 5) {
+function buildContext(sessionPath, contextName, parameters, lifespanCount = 5) {
   return [{
-    name: `${sessionId}/contexts/${contextName}`,
+    name: `${sessionPath}/contexts/${contextName}`,
     lifespanCount: lifespanCount,
     parameters: parameters
   }];
@@ -289,7 +290,7 @@ function buildContext(sessionId, contextName, parameters, lifespanCount = 5) {
 
 gcloud functions deploy dialogflow-fulfillment \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --source=. \
   --entry-point=dialogflowFulfillment \
@@ -300,7 +301,7 @@ gcloud functions deploy dialogflow-fulfillment \
   --min-instances=1
 ```
 
-Note: `--allow-unauthenticated` is used here because Dialogflow sends webhook requests directly. For added security, you can use IAM authentication and configure Dialogflow with the appropriate service account.
+Note: `--allow-unauthenticated` is used here because Dialogflow sends webhook requests directly. For added security, remove `--allow-unauthenticated` and grant the Dialogflow Service Agent the Cloud Run Invoker or Cloud Functions Invoker role for your function.
 
 Setting `--min-instances=1` keeps a warm instance ready so the chatbot responds quickly without cold start delays.
 
