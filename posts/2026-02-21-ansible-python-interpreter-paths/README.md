@@ -42,7 +42,6 @@ ansible_python_interpreter=/usr/bin/python3
     app_name: myapp
     app_dir: /opt/{{ app_name }}
     app_user: www-data
-    python_version: "3.11"
 
   tasks:
     - name: Install system dependencies
@@ -68,10 +67,15 @@ ansible_python_interpreter=/usr/bin/python3
     - name: Create virtual environment
       ansible.builtin.pip:
         virtualenv: "{{ app_dir }}/venv"
-        virtualenv_command: python3 -m venv
+        virtualenv_command: "{{ ansible_python_interpreter }} -m venv"
         name: pip
         state: latest
       become_user: "{{ app_user }}"
+
+    - name: Check for application requirements file
+      ansible.builtin.stat:
+        path: "{{ app_dir }}/requirements.txt"
+      register: requirements_file
 
     - name: Install application dependencies
       ansible.builtin.pip:
@@ -213,7 +217,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -357,4 +361,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
