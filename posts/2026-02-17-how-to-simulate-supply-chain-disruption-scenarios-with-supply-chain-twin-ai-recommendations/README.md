@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Supply Chain Twin, AI, Simulation, Supply Chain Risk Management
 
-Description: Use Google Cloud Supply Chain Twin to simulate supply chain disruption scenarios and get AI-powered recommendations for mitigation strategies.
+Description: Use a Google Cloud Supply Chain Twin-style data foundation to simulate supply chain disruption scenarios and generate mitigation recommendations.
 
 ---
 
-Supply chain disruptions are inevitable. Whether it is a port closure, a supplier going offline, a natural disaster, or a sudden demand spike, the question is not if disruptions will happen but how prepared you are when they do. Google Cloud Supply Chain Twin includes simulation capabilities that let you model what-if scenarios before they happen, and AI-powered recommendations that suggest the best response strategies.
+Supply chain disruptions are inevitable. Whether it is a port closure, a supplier going offline, a natural disaster, or a sudden demand spike, the question is not if disruptions will happen but how prepared you are when they do. Google Cloud has described Supply Chain Twin and Supply Chain Pulse as a way to unify supply chain data, run advanced analytics, simulate hypothetical situations, and trigger algorithmic recommendations for tactical responses.
 
-This guide walks through setting up disruption simulations, configuring different scenarios, and interpreting the AI recommendations that come out.
+This guide walks through setting up a custom BigQuery-backed disruption simulation, configuring different scenarios, and interpreting the mitigation recommendations that come out.
 
 ## Why Simulate Before Disruptions Happen
 
 Traditional supply chain planning relies on historical patterns and manual scenario analysis. Someone in the planning team creates a spreadsheet, adjusts some numbers, and eyeballs the impact. This does not scale when you have thousands of SKUs, hundreds of suppliers, and dozens of facilities.
 
-Supply Chain Twin simulations model the full network effect of a disruption. Block a port, and the system calculates the cascade: which shipments are delayed, which warehouses run out of stock, which customers are affected, and what alternative routes could mitigate the impact.
+A Supply Chain Twin-style simulation can model the full network effect of a disruption. Block a port, and the custom simulation logic calculates the cascade: which shipments are delayed, which warehouses run out of stock, which customers are affected, and what alternative routes could mitigate the impact.
 
 ```mermaid
 graph TD
@@ -33,7 +33,7 @@ graph TD
 
 ## Defining Disruption Scenarios
 
-Scenarios are defined as modifications to the supply chain model. Each scenario changes one or more parameters and the simulation engine calculates the downstream effects.
+Scenarios are defined as modifications to the supply chain model. Each scenario changes one or more parameters, and the custom simulation code calculates the downstream effects.
 
 ```python
 # scenarios.py - Define supply chain disruption scenarios
@@ -108,14 +108,14 @@ demand_spike_scenario = DisruptionScenario(
 
 ## Running Simulations
 
-Submit scenarios to the simulation engine and analyze results.
+Submit scenarios to the custom simulation functions and analyze results.
 
 ```python
 # run_simulation.py - Execute disruption simulations
 from google.cloud import bigquery
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 client = bigquery.Client()
@@ -143,7 +143,7 @@ def run_disruption_simulation(scenario):
         "cascading_impact": cascading_impact,
         "financial_impact": financial_impact,
         "mitigations": mitigations,
-        "simulation_timestamp": datetime.utcnow().isoformat(),
+        "simulation_timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -368,4 +368,4 @@ gcloud scheduler jobs create http weekly-risk-simulations \
 
 ## Wrapping Up
 
-Supply chain disruption simulation with Supply Chain Twin turns reactive crisis management into proactive planning. By defining scenarios as code, running them regularly against current data, and storing results for comparison, you build organizational muscle memory for disruption response. The AI recommendations provide a starting point for action plans that can be refined by your supply chain team. The most valuable part is not any single simulation but the practice of regularly stress-testing your supply chain before real disruptions force you to.
+Supply chain disruption simulation with a Supply Chain Twin-style data foundation turns reactive crisis management into proactive planning. By defining scenarios as code, running them regularly against current data, and storing results for comparison, you build organizational muscle memory for disruption response. The recommendations provide a starting point for action plans that can be refined by your supply chain team. The most valuable part is not any single simulation but the practice of regularly stress-testing your supply chain before real disruptions force you to.
