@@ -43,7 +43,7 @@ The idea is simple:
       debug:
         msg: >
           Starting batch {{ ansible_play_batch }}:
-          {{ ansible_play_hosts | join(', ') }}
+          {{ ansible_play_batch | join(', ') }}
       run_once: true
 
   tasks:
@@ -105,14 +105,25 @@ Add automatic rollback when health checks fail:
   max_fail_percentage: 0
 
   vars:
-    previous_version: "{{ lookup('file', '/opt/app/current-version.txt') | default('unknown') }}"
     new_version: "{{ deploy_version }}"
+
+  pre_tasks:
+    - name: Read current version
+      slurp:
+        src: /opt/app/current-version.txt
+      register: current_version_file
+      changed_when: false
+      failed_when: false
+
+    - name: Set previous version
+      set_fact:
+        previous_version: "{{ (current_version_file.content | b64decode | trim) if current_version_file.content is defined else 'unknown' }}"
 
   tasks:
     - name: Deploy with rollback capability
       block:
-        # Save current version for rollback
-        - name: Record current version
+        # Record version being deployed
+        - name: Record deploying version
           copy:
             content: "{{ new_version }}"
             dest: /opt/app/deploying-version.txt
@@ -278,11 +289,11 @@ Add manual approval between critical phases:
     - name: Pause for manual approval
       pause:
         prompt: >
-          Batch {{ ansible_play_batch }} complete on {{ ansible_play_hosts | join(', ') }}.
+          Batch {{ ansible_play_batch }} complete on {{ ansible_play_batch | join(', ') }}.
           Check dashboards before continuing.
           Press Enter to proceed or Ctrl+C to abort.
       run_once: true
-      when: ansible_play_batch | int < 3  # Only pause for first 2 batches
+      when: ansible_play_batch | length in [1, 5]  # Only pause for canary and small batches
 ```
 
 ## Monitoring During Rollout
@@ -307,8 +318,8 @@ Track metrics during the rollout:
         method: POST
         body_format: json
         body:
-          metric: ansible_rollout_progress
-          value: "{{ (ansible_play_batch | int + 1) * 100 / 5 }}"
+          metric: ansible_rollout_batch_percent
+          value: "{{ (ansible_play_batch | length) * 100 / (ansible_play_hosts_all | length) }}"
           tags:
             playbook: "{{ ansible_play_name }}"
             version: "{{ deploy_version }}"
