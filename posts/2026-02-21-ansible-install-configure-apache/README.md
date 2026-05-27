@@ -15,6 +15,7 @@ This guide covers installing and configuring Apache using Ansible on Ubuntu/Debi
 ## Prerequisites
 
 - Ansible 2.9+
+- The `community.general` collection for `community.general.apache2_module`
 - Target servers running Ubuntu 20.04+ or RHEL 8+
 - Root/sudo access on target hosts
 
@@ -97,6 +98,16 @@ Apache has a rich module ecosystem. Here is how to enable the most commonly need
       - deflate     # Compression
       - expires     # Cache headers
       - socache_shmcb  # SSL session cache
+    rhel_apache_modules:
+      - rewrite_module
+      - ssl_module
+      - headers_module
+      - proxy_module
+      - proxy_http_module
+      - proxy_wstunnel_module
+      - deflate_module
+      - expires_module
+      - socache_shmcb_module
 
   tasks:
     - name: Enable each required module (Debian/Ubuntu)
@@ -112,6 +123,14 @@ Apache has a rich module ecosystem. Here is how to enable the most commonly need
         cmd: httpd -M
       register: loaded_modules
       changed_when: false
+      when: ansible_os_family == "RedHat"
+
+    - name: Verify required modules are loaded (RHEL)
+      ansible.builtin.assert:
+        that:
+          - "loaded_modules.stdout is search(item)"
+        fail_msg: "Required Apache module {{ item }} is not loaded"
+      loop: "{{ rhel_apache_modules }}"
       when: ansible_os_family == "RedHat"
 
   handlers:
@@ -146,11 +165,14 @@ Deploy the main Apache configuration with security and performance settings.
     apache_mpm_max_request_workers: 150
 
   tasks:
-    - name: Enable the event MPM (disable prefork first)
+    - name: Disable other MPMs before enabling event
       community.general.apache2_module:
-        name: mpm_prefork
+        name: "{{ item }}"
         state: absent
         ignore_configcheck: true
+      loop:
+        - mpm_prefork
+        - mpm_worker
       when: ansible_os_family == "Debian"
       notify: Restart Apache
 
@@ -208,6 +230,7 @@ Deploy the main Apache configuration with security and performance settings.
       register: security_conf
       changed_when: "'Enabling' in security_conf.stdout"
       when: ansible_os_family == "Debian"
+      notify: Restart Apache
 
   handlers:
     - name: Restart Apache
@@ -309,6 +332,7 @@ IncludeOptional sites-enabled/*.conf
 
           Header always set Strict-Transport-Security "max-age=63072000"
         mode: "0644"
+      when: ansible_os_family == "Debian"
       notify: Restart Apache
 
     - name: Enable SSL configuration
@@ -317,6 +341,7 @@ IncludeOptional sites-enabled/*.conf
       register: ssl_conf
       changed_when: "'Enabling' in ssl_conf.stdout"
       when: ansible_os_family == "Debian"
+      notify: Restart Apache
 
   handlers:
     - name: Restart Apache
@@ -350,6 +375,8 @@ IncludeOptional sites-enabled/*.conf
       loop: "{{ proxy_sites }}"
       loop_control:
         label: "{{ item.domain }}"
+      when: ansible_os_family == "Debian"
+      notify: Reload Apache
 
     - name: Enable the virtual host
       ansible.builtin.command:
@@ -360,12 +387,14 @@ IncludeOptional sites-enabled/*.conf
       register: site_enable
       changed_when: "'Enabling' in site_enable.stdout"
       notify: Reload Apache
+      when: ansible_os_family == "Debian"
 
     - name: Test Apache configuration
       ansible.builtin.command:
         cmd: apache2ctl configtest
       register: config_test
       changed_when: false
+      when: ansible_os_family == "Debian"
 
   handlers:
     - name: Reload Apache
@@ -400,16 +429,12 @@ IncludeOptional sites-enabled/*.conf
     ProxyPreserveHost On
     ProxyRequests Off
 
-    <Location />
-        ProxyPass {{ item.backend }}/
-        ProxyPassReverse {{ item.backend }}/
-    </Location>
-
     # WebSocket support
-    RewriteEngine On
-    RewriteCond %{HTTP:Upgrade} websocket [NC]
-    RewriteCond %{HTTP:Connection} upgrade [NC]
-    RewriteRule ^/?(.*) "ws://{{ item.backend | regex_replace('^http://', '') }}/$1" [P,L]
+    ProxyPass /ws/ ws://{{ item.backend | regex_replace('^https?://', '') }}/ws/
+    ProxyPassReverse /ws/ ws://{{ item.backend | regex_replace('^https?://', '') }}/ws/
+
+    ProxyPass / {{ item.backend }}/
+    ProxyPassReverse / {{ item.backend }}/
 
     # Security headers
     Header always set X-Frame-Options "SAMEORIGIN"
@@ -441,6 +466,9 @@ flowchart TD
 - name: Verify Apache installation
   hosts: apache_servers
   become: true
+  vars:
+    apache_control_cmd: "{{ 'apache2ctl' if ansible_os_family == 'Debian' else 'httpd' }}"
+    apache_configtest_arg: "{{ 'configtest' if ansible_os_family == 'Debian' else '-t' }}"
 
   tasks:
     - name: Check Apache service status
@@ -450,19 +478,19 @@ flowchart TD
 
     - name: Get Apache version
       ansible.builtin.command:
-        cmd: apache2ctl -v
+        cmd: "{{ apache_control_cmd }} -v"
       register: apache_version
       changed_when: false
 
     - name: List enabled modules
       ansible.builtin.command:
-        cmd: apache2ctl -M
+        cmd: "{{ apache_control_cmd }} -M"
       register: apache_modules
       changed_when: false
 
     - name: Test configuration syntax
       ansible.builtin.command:
-        cmd: apache2ctl configtest
+        cmd: "{{ apache_control_cmd }} {{ apache_configtest_arg }}"
       register: config_test
       changed_when: false
 
