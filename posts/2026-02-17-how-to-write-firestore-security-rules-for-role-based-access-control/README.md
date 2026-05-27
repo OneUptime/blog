@@ -62,7 +62,7 @@ service cloud.firestore {
 }
 ```
 
-The `getUserRole()` function does a document read every time it is called. Firestore allows up to 10 document access calls per rule evaluation, so be mindful of how often you use this pattern.
+The `getUserRole()` function can perform a document read when it is called. Firestore allows up to 10 document access calls for single-document and query requests, and up to 20 for multi-document reads, transactions, and batched writes. The 10-call limit still applies to each operation inside a transaction or batch, so be mindful of how often you use this pattern.
 
 ## Writing Rules for Each Role
 
@@ -205,8 +205,13 @@ Firestore provides an emulator and a rules testing library. You should absolutel
 
 ```javascript
 // Test file using the Firebase Rules testing library
-const { initializeTestEnvironment, assertSucceeds, assertFails } =
-  require('@firebase/rules-unit-testing');
+import fs from 'node:fs';
+import {
+  initializeTestEnvironment,
+  assertSucceeds,
+  assertFails
+} from '@firebase/rules-unit-testing';
+import { deleteDoc, doc, setDoc } from 'firebase/firestore';
 
 const testEnv = await initializeTestEnvironment({
   projectId: 'my-project',
@@ -215,24 +220,32 @@ const testEnv = await initializeTestEnvironment({
   },
 });
 
+// Seed role documents without triggering security rules
+await testEnv.withSecurityRulesDisabled(async (context) => {
+  const db = context.firestore();
+  await setDoc(doc(db, 'users/viewer-uid'), { role: 'viewer' });
+  await setDoc(doc(db, 'users/admin-uid'), { role: 'admin' });
+  await setDoc(doc(db, 'posts/post-1'), { title: 'Hello' });
+});
+
 // Test that a viewer cannot delete a post
 const viewerContext = testEnv.authenticatedContext('viewer-uid');
 const viewerDb = viewerContext.firestore();
 await assertFails(
-  viewerDb.collection('posts').doc('post-1').delete()
+  deleteDoc(doc(viewerDb, 'posts/post-1'))
 );
 
 // Test that an admin can delete a post
 const adminContext = testEnv.authenticatedContext('admin-uid');
 const adminDb = adminContext.firestore();
 await assertSucceeds(
-  adminDb.collection('posts').doc('post-1').delete()
+  deleteDoc(doc(adminDb, 'posts/post-1'))
 );
 ```
 
 ## Common Pitfalls
 
-There are a few things that trip people up regularly. First, remember that `get()` calls count toward your document access limit of 10 per rule evaluation. If you call `getUserRole()` in multiple nested match blocks, each call is a separate read.
+There are a few things that trip people up regularly. First, remember that `get()` calls count toward your document access limits. Some calls to the same document may be cached and not counted again, but you should still design rules so they stay comfortably under the access-call limits.
 
 Second, Firestore rules do not cascade. A rule on a parent collection does not automatically apply to subcollections. You need explicit rules for every path you want to protect.
 
