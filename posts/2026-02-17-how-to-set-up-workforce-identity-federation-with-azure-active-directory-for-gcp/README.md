@@ -52,7 +52,7 @@ After registration:
 Configure the token to include group claims:
 1. Go to Token configuration
 2. Click Add groups claim
-3. Select Security groups and check the "Emit groups as role claims" option for ID tokens
+3. Select Security groups for ID tokens and leave the groups in the default `groups` claim
 
 ## Step 2: Create the Workforce Identity Pool
 
@@ -82,9 +82,8 @@ gcloud iam workforce-pools providers create-oidc azure-ad-provider \
   --client-id="YOUR_APPLICATION_CLIENT_ID" \
   --client-secret-value="YOUR_CLIENT_SECRET_VALUE" \
   --web-sso-response-type="code" \
-  --web-sso-assertion-claims-behavior="MERGE_USER_INFO_OVER_ID_TOKEN_CLAIMS" \
-  --web-sso-additional-scopes="email,profile" \
-  --attribute-mapping="google.subject=assertion.sub,google.display_name=assertion.name,google.groups=assertion.groups" \
+  --web-sso-assertion-claims-behavior="merge-user-info-over-id-token-claims" \
+  --attribute-mapping="google.subject=assertion.oid,google.display_name=assertion.preferred_username,google.groups=assertion.groups" \
   --attribute-condition="assertion.iss=='https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0'"
 ```
 
@@ -94,7 +93,7 @@ The attribute condition ensures only tokens from your specific Azure AD tenant a
 
 ## Step 4: Map Azure AD Groups to IAM Roles
 
-The real power of this integration is using Azure AD groups to manage Google Cloud access. When a user is added to or removed from an Azure AD group, their Google Cloud access changes automatically.
+The real power of this integration is using Azure AD groups to manage Google Cloud access. When a user is added to or removed from an Azure AD group, their Google Cloud access changes on their next token exchange or sign-in.
 
 ```bash
 # Grant the Azure AD "GCP-Project-Admins" group the Editor role
@@ -121,7 +120,7 @@ Generate the URL your users will use to access Google Cloud Console.
 
 ```bash
 # The console access URL for Azure AD workforce users
-echo "https://console.cloud.google/workforce?provider=locations/global/workforcePools/azure-ad-pool/providers/azure-ad-provider"
+echo "https://auth.cloud.google/signin/locations/global/workforcePools/azure-ad-pool/providers/azure-ad-provider?continueUrl=https://console.cloud.google/"
 ```
 
 You can add this URL to your Azure AD enterprise application portal so users can launch Google Cloud Console directly from their My Apps page.
@@ -167,8 +166,8 @@ resource "google_iam_workforce_pool_provider" "azure_ad_oidc" {
   display_name      = "Azure AD OIDC"
 
   attribute_mapping = {
-    "google.subject"      = "assertion.sub"
-    "google.display_name" = "assertion.name"
+    "google.subject"      = "assertion.oid"
+    "google.display_name" = "assertion.preferred_username"
     "google.groups"       = "assertion.groups"
   }
 
@@ -180,13 +179,14 @@ resource "google_iam_workforce_pool_provider" "azure_ad_oidc" {
     client_id  = var.azure_client_id
 
     client_secret {
-      value = var.azure_client_secret
+      value {
+        plain_text = var.azure_client_secret
+      }
     }
 
     web_sso_config {
       response_type             = "CODE"
       assertion_claims_behavior = "MERGE_USER_INFO_OVER_ID_TOKEN_CLAIMS"
-      additional_scopes         = ["email", "profile"]
     }
   }
 }
@@ -211,8 +211,13 @@ resource "google_project_iam_member" "viewer_group" {
 Workforce users can also use the gcloud CLI and call Google Cloud APIs. They need to configure credential generation.
 
 ```bash
+# Create a browser-based sign-in configuration for gcloud
+gcloud iam workforce-pools create-login-config \
+  locations/global/workforcePools/azure-ad-pool/providers/azure-ad-provider \
+  --output-file=login-config.json
+
 # Configure gcloud to use workforce identity federation
-gcloud auth login --workforce-pool-provider=locations/global/workforcePools/azure-ad-pool/providers/azure-ad-provider
+gcloud auth login --login-config=login-config.json
 
 # After browser-based authentication, verify the identity
 gcloud auth list
@@ -221,11 +226,12 @@ gcloud auth list
 For programmatic API access, applications can use the workforce credential configuration file.
 
 ```bash
-# Generate a credential configuration file for applications
+# Generate a credential configuration file for applications that can supply an OIDC ID token
 gcloud iam workforce-pools create-cred-config \
   locations/global/workforcePools/azure-ad-pool/providers/azure-ad-provider \
   --output-file=workforce-cred-config.json \
-  --workforce-pool-user-project=my-project
+  --workforce-pool-user-project=123456789012 \
+  --credential-source-file=/path/to/oidc-token.txt
 ```
 
 ## Handling Azure AD Conditional Access
@@ -243,10 +249,10 @@ Track workforce authentication activity through Cloud Audit Logs.
 
 ```bash
 # View recent workforce authentication attempts
-gcloud logging read 'protoPayload.serviceName="sts.googleapis.com" AND protoPayload.methodName="google.identity.sts.v1.SecurityTokenService.ExchangeToken"' \
+gcloud logging read 'protoPayload.serviceName="sts.googleapis.com" AND (protoPayload.methodName="google.identity.sts.SecurityTokenService.WebSignIn" OR protoPayload.methodName="google.identity.sts.v1.SecurityTokenService.ExchangeToken" OR protoPayload.methodName="google.identity.sts.v1.SecurityTokenService.ExchangeOauthToken")' \
   --project=my-admin-project \
   --limit=20 \
-  --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.status.code)"
+  --format="table(timestamp, protoPayload.authenticationInfo.principalSubject, protoPayload.methodName, protoPayload.status.code)"
 ```
 
 For a more detailed report, query the logs in BigQuery.
@@ -255,12 +261,13 @@ For a more detailed report, query the logs in BigQuery.
 -- Weekly report of workforce authentication activity
 SELECT
   DATE(timestamp) AS auth_date,
-  protopayload_auditlog.authenticationInfo.principalEmail AS user,
+  protopayload_auditlog.authenticationInfo.principalSubject AS user,
   COUNT(*) AS login_count,
   COUNTIF(protopayload_auditlog.status.code = 0) AS successful,
   COUNTIF(protopayload_auditlog.status.code != 0) AS failed
 FROM `audit-project.audit_logs.cloudaudit_googleapis_com_data_access`
 WHERE protopayload_auditlog.serviceName = 'sts.googleapis.com'
+  AND REGEXP_CONTAINS(protopayload_auditlog.methodName, r'(WebSignIn|ExchangeToken|ExchangeOauthToken)$')
   AND timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
 GROUP BY auth_date, user
 ORDER BY auth_date DESC, login_count DESC;
