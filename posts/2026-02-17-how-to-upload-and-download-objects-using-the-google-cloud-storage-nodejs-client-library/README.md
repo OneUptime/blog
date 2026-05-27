@@ -144,30 +144,21 @@ For large files or data coming from another stream (like an HTTP request):
 
 ```javascript
 const fs = require('fs');
+const { pipeline } = require('stream/promises');
 
 async function streamUpload(bucketName, localFilePath, destination) {
   const bucket = storage.bucket(bucketName);
   const file = bucket.file(destination);
 
-  return new Promise((resolve, reject) => {
-    // Create a write stream to GCS
-    const writeStream = file.createWriteStream({
-      resumable: true,
-      contentType: 'application/octet-stream',
-    });
-
-    // Pipe the local file into the GCS write stream
-    fs.createReadStream(localFilePath)
-      .pipe(writeStream)
-      .on('error', (err) => {
-        console.error('Upload failed:', err);
-        reject(err);
-      })
-      .on('finish', () => {
-        console.log(`Stream upload complete: ${destination}`);
-        resolve();
-      });
+  // Create a write stream to GCS
+  const writeStream = file.createWriteStream({
+    resumable: true,
+    contentType: 'application/octet-stream',
   });
+
+  // Pipe the local file into the GCS write stream
+  await pipeline(fs.createReadStream(localFilePath), writeStream);
+  console.log(`Stream upload complete: ${destination}`);
 }
 
 streamUpload('my-bucket', '/tmp/large-file.zip', 'uploads/large-file.zip');
