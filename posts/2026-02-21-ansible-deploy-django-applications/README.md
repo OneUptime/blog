@@ -28,7 +28,7 @@ ansible_python_interpreter=/usr/bin/python3
 
 ## System Preparation
 
-First, install the required system packages:
+On Debian or Ubuntu servers, install the required system packages:
 
 ```yaml
 ---
@@ -38,9 +38,12 @@ First, install the required system packages:
 
   vars:
     app_name: myapp
+    django_project: myapp
     app_dir: /opt/{{ app_name }}
     app_user: www-data
     app_port: 8000
+    app_workers: 3
+    static_dir: "{{ app_dir }}/staticfiles"
 
   tasks:
     - name: Install system dependencies
@@ -50,6 +53,7 @@ First, install the required system packages:
           - python3-pip
           - python3-venv
           - python3-dev
+          - git
           - gcc
           - libpq-dev
           - libssl-dev
@@ -73,6 +77,7 @@ First, install the required system packages:
         - "{{ app_dir }}"
         - "{{ app_dir }}/logs"
         - "{{ app_dir }}/data"
+        - "{{ static_dir }}"
 ```
 
 ## Application Deployment
@@ -99,6 +104,13 @@ First, install the required system packages:
         requirements: "{{ app_dir }}/src/requirements.txt"
       notify: restart application
 
+    - name: Install Gunicorn
+      ansible.builtin.pip:
+        virtualenv: "{{ app_dir }}/venv"
+        name: gunicorn
+        state: present
+      notify: restart application
+
     - name: Deploy environment configuration
       ansible.builtin.template:
         src: dotenv.j2
@@ -106,6 +118,22 @@ First, install the required system packages:
         owner: "{{ app_user }}"
         mode: '0600'
       notify: restart application
+
+    - name: Run database migrations
+      ansible.builtin.command: "{{ app_dir }}/venv/bin/python manage.py migrate --noinput"
+      args:
+        chdir: "{{ app_dir }}/src"
+      become_user: "{{ app_user }}"
+      register: migrate_result
+      changed_when: "'No migrations to apply' not in migrate_result.stdout"
+
+    - name: Collect static files
+      ansible.builtin.command: "{{ app_dir }}/venv/bin/python manage.py collectstatic --noinput"
+      args:
+        chdir: "{{ app_dir }}/src"
+      become_user: "{{ app_user }}"
+      register: collectstatic_result
+      changed_when: "'0 static files copied' not in collectstatic_result.stdout"
 ```
 
 ## Service Configuration
@@ -124,7 +152,7 @@ First, install the required system packages:
           Group={{ app_user }}
           WorkingDirectory={{ app_dir }}/src
           EnvironmentFile={{ app_dir }}/.env
-          ExecStart={{ app_dir }}/venv/bin/python -m {{ app_name }}.main
+          ExecStart={{ app_dir }}/venv/bin/gunicorn --workers {{ app_workers }} --bind 127.0.0.1:{{ app_port }} {{ django_project }}.wsgi:application
           Restart=always
           RestartSec=5
 
@@ -139,6 +167,7 @@ First, install the required system packages:
     - name: Enable and start application
       ansible.builtin.systemd:
         name: "{{ app_name }}"
+        daemon_reload: true
         enabled: true
         state: started
 ```
@@ -157,6 +186,10 @@ First, install the required system packages:
           server {
               listen 80;
               server_name {{ inventory_hostname }};
+
+              location /static/ {
+                  alias {{ static_dir }}/;
+              }
 
               location / {
                   proxy_pass http://127.0.0.1:{{ app_port }};
@@ -181,6 +214,9 @@ First, install the required system packages:
 ## Health Check and Verification
 
 ```yaml
+    - name: Apply service changes before verification
+      ansible.builtin.meta: flush_handlers
+
     - name: Wait for application to be healthy
       ansible.builtin.uri:
         url: "http://localhost:{{ app_port }}/health"
@@ -229,16 +265,16 @@ ansible-playbook -i inventory/hosts deploy.yml --limit app01
 
 ## Summary
 
-This playbook provides a complete deployment pipeline: system preparation, code deployment, virtual environment management, service configuration, and reverse proxy setup. Each task is idempotent and can be run repeatedly. Extend it with additional steps like database migrations, cache warming, or load balancer integration based on your specific application requirements.
+This playbook provides a complete deployment pipeline: system preparation, code deployment, virtual environment management, database migrations, static file collection, service configuration, and reverse proxy setup. Each task is idempotent and can be run repeatedly. Extend it with additional steps like cache warming, TLS certificate management, or load balancer integration based on your specific application requirements.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these Ansible patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -311,7 +347,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -352,7 +388,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -389,6 +425,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -414,4 +456,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
