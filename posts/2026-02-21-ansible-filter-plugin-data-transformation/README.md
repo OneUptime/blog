@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Plugin, Filter, Jinja2, Data Transformation
 
-Description: Build Ansible filter plugins that transform data structures in your playbooks, from network calculations to config file generation.
+Description: Build Ansible filter plugins that transform data structures in your playbooks, from size conversions to config file generation.
 
 ---
 
 Filter plugins are the workhorses of Ansible data manipulation. Every time you pipe a value through something like `| to_json` or `| regex_replace`, you are using a filter plugin. When the built-in filters do not cover your use case, writing a custom filter is one of the fastest ways to simplify your playbooks.
 
-This guide builds several practical filter plugins covering real-world data transformation needs: network calculations, configuration generation, and structured data manipulation.
+This guide builds several practical filter plugins covering real-world data transformation needs: size conversions, configuration generation, and structured data manipulation.
 
 ## Filter Plugin Basics
 
@@ -332,7 +332,7 @@ Write unit tests for each filter:
 ```python
 # test_data_transforms.py
 import pytest
-from data_transforms import FilterModule
+from filter_plugins.data_transforms import FilterModule
 
 f = FilterModule()
 
