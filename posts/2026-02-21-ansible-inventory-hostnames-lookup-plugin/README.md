@@ -203,7 +203,7 @@ Generate firewall rules that allow traffic between specific groups.
     - name: Allow web-to-app traffic
       ansible.builtin.iptables:
         chain: INPUT
-        source: "{{ item }}"
+        source: "{{ hostvars[item].ansible_host | default(item) }}"
         protocol: tcp
         destination_port: "8080"
         jump: ACCEPT
@@ -215,7 +215,7 @@ Generate firewall rules that allow traffic between specific groups.
     - name: Allow app-to-db traffic
       ansible.builtin.iptables:
         chain: INPUT
-        source: "{{ item }}"
+        source: "{{ hostvars[item].ansible_host | default(item) }}"
         protocol: tcp
         destination_port: "5432"
         jump: ACCEPT
