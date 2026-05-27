@@ -21,10 +21,10 @@ Before diving into networking, make sure the instance itself is healthy:
 
 gcloud redis instances describe my-redis-instance \
   --region=us-central1 \
-  --format="yaml(host,port,currentLocationId,state,authorizedNetwork)"
+  --format="yaml(host,port,currentLocationId,state,authorizedNetwork,connectMode)"
 ```
 
-The `state` field should say `READY`. If it says `CREATING` or `UPDATING`, wait for the operation to finish. The `host` field gives you the private IP address, and `authorizedNetwork` tells you which VPC the instance is attached to.
+The `state` field should say `READY`. If it says `CREATING` or `UPDATING`, wait for the operation to finish. The `host` field gives you the private IP address, `authorizedNetwork` tells you which VPC the instance is attached to, and `connectMode` tells you whether the instance uses direct peering or Private Services Access.
 
 ## Problem 1 - Client Is in a Different VPC
 
@@ -52,13 +52,13 @@ If the networks do not match, you have a few options:
 
 1. Recreate the Memorystore instance in the correct VPC
 2. Move your application to the correct VPC
-3. Set up VPC Network Peering between the two networks
+3. Use a supported Shared VPC or centralized networking design with Private Services Access
 
-Option 3 works but adds complexity. If you are early in your setup, just make sure everything is in the same VPC from the start.
+Option 3 works but adds complexity. Do not rely on plain VPC Network Peering between the application VPC and the Redis VPC as a shortcut, because VPC peering is not transitive through the Google-managed Memorystore peering. If you are early in your setup, just make sure everything is in the same VPC from the start.
 
 ## Problem 2 - Firewall Rules Blocking Port 6379
 
-Memorystore uses port 6379 by default. While Memorystore itself does not use VPC firewall rules (the connection is managed through private services access), other firewall rules in your network might interfere.
+Memorystore uses port 6379 by default. You do not create an ingress firewall rule on the Memorystore instance itself, but egress firewall rules or firewall policies in your client network can still block traffic to the instance's private IP address.
 
 Check if there are any deny rules that could block the traffic:
 
@@ -82,13 +82,22 @@ gcloud compute firewall-rules create allow-redis-egress \
   --priority=1000
 ```
 
-Replace the destination range with the actual IP range of your Memorystore instance.
+Replace the destination range with the actual Memorystore IP address or reserved IP range.
 
 ## Problem 3 - Private Services Access Not Configured
 
-Memorystore uses Private Services Access to allocate IP addresses in your VPC. If this is not set up, instance creation might succeed but connectivity will fail.
+Memorystore supports two connection modes: `DIRECT_PEERING` and `PRIVATE_SERVICE_ACCESS`. Direct peering is created automatically during instance creation. Private Services Access is required when you create a Redis instance with `--connect-mode=PRIVATE_SERVICE_ACCESS`, when you use Shared VPC, or when you need centralized IP range management. If Private Services Access is not set up for those cases, instance creation fails or the instance is created in the wrong networking mode.
 
-Verify that private services access is configured:
+First check which connection mode your instance uses:
+
+```bash
+# Check the connection mode
+gcloud redis instances describe my-redis-instance \
+  --region=us-central1 \
+  --format="value(connectMode)"
+```
+
+If the instance uses Private Services Access, verify that the connection is configured:
 
 ```bash
 # Check private services access connections
@@ -97,7 +106,7 @@ gcloud services vpc-peerings list \
   --service=servicenetworking.googleapis.com
 ```
 
-If no peering connection exists, set one up:
+If no peering connection exists and you need Private Services Access, set one up:
 
 ```bash
 # Allocate an IP range for Google-managed services
@@ -118,7 +127,7 @@ gcloud services vpc-peerings connect \
 
 GKE adds another layer of networking complexity. Your pods need to be able to reach the Memorystore IP. If you are using a VPC-native cluster (which is the default for new clusters), pods get IP addresses from the VPC and can reach Memorystore directly.
 
-However, if you are using a routes-based cluster, you need to verify that the pod IP ranges can reach the Memorystore IP through the VPC peering.
+However, if you are using a routes-based cluster with a direct peering Redis instance, you need the documented workaround for routing pod traffic to the reserved Redis IP range. For Redis instances that use Private Services Access, use a VPC-native cluster with IP aliasing enabled.
 
 Test connectivity from inside a pod:
 
@@ -137,13 +146,13 @@ gcloud container clusters describe my-cluster \
   --format="yaml(ipAllocationPolicy)"
 ```
 
-For VPC-native clusters, make sure the pod and service CIDR ranges are included in the VPC peering routes.
+For VPC-native clusters, verify that IP aliasing is enabled and that the cluster uses the same authorized network as the Redis instance.
 
 ## Problem 5 - Connecting from Cloud Run or Cloud Functions
 
-Serverless services like Cloud Run and Cloud Functions require a Serverless VPC Access connector to reach resources in a VPC. Without this connector, they cannot reach Memorystore.
+Serverless services like Cloud Run and Cloud Run functions need VPC egress configured to reach resources in a VPC. Direct VPC egress is the recommended option for Cloud Run services, jobs, and Cloud Run functions. Serverless VPC Access connectors are still supported, and you need one if you are not using Direct VPC egress.
 
-Create a VPC connector if you do not have one:
+Create a VPC connector if you are using the connector-based approach:
 
 ```bash
 # Create a Serverless VPC Access connector
@@ -165,7 +174,7 @@ gcloud run deploy my-service \
 
 ## Problem 6 - AUTH Password Mismatch
 
-If you enabled AUTH on your Memorystore instance, clients need to provide the correct password. A wrong password results in a connection that appears to succeed (TCP handshake completes) but then immediately gets a `NOAUTH` error.
+If you enabled AUTH on your Memorystore instance, clients need to provide the correct password. A missing password results in a connection that appears to succeed (TCP handshake completes) but then gets a `NOAUTH` error when the client sends a command. A wrong password returns an authentication error such as `WRONGPASS`.
 
 Check if AUTH is enabled:
 
@@ -210,7 +219,7 @@ When you hit a connection issue, run through this checklist:
 3. Are there any deny egress firewall rules?
 4. Is Private Services Access configured?
 5. For GKE: Is the cluster VPC-native?
-6. For Cloud Run/Functions: Is a VPC connector attached?
+6. For Cloud Run/Functions: Is Direct VPC egress or a VPC connector configured?
 7. Is AUTH enabled and configured correctly in the client?
 8. For Shared VPC: Is the network path correct?
 
