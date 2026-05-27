@@ -1,20 +1,20 @@
-# Set Up App Engine with Cloud SQL Using the Built-In Unix Socket Connection
+# Set Up App Engine Flexible with Cloud SQL Using the Built-In Unix Socket Connection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, App Engine, Cloud SQL, Database, Unix Socket
 
-Description: Learn how to connect your App Engine application to Cloud SQL using the built-in Unix socket proxy for secure, low-latency database access without extra configuration.
+Description: Learn how to connect your App Engine flexible application to Cloud SQL using the built-in Unix socket proxy for secure, low-latency database access without extra configuration.
 
 ---
 
-App Engine has built-in support for connecting to Cloud SQL instances through a Unix socket. This is the recommended way to connect because it does not require setting up the Cloud SQL Auth Proxy yourself, does not need IP allowlisting, and the connection is encrypted automatically. The Unix socket is managed by Google's infrastructure, so there is nothing to install or maintain.
+App Engine flexible has built-in support for connecting to Cloud SQL instances through a Unix socket. This is the recommended way to connect because it does not require setting up the Cloud SQL Auth Proxy yourself, does not need IP allowlisting, and the connection is encrypted automatically. The Unix socket is managed by Google's infrastructure, so there is nothing to install or maintain.
 
 In this guide, I will show you how to set up the connection for both MySQL and PostgreSQL, configure your application code, and handle connection pooling properly.
 
 ## How the Unix Socket Connection Works
 
-When you deploy to App Engine, Google's infrastructure automatically creates a Unix socket for each Cloud SQL instance you reference in your `app.yaml`. The socket path follows this pattern:
+When you deploy to App Engine flexible, Google's infrastructure automatically creates a Unix socket for each Cloud SQL instance you reference in your `app.yaml`. The socket path follows this pattern:
 
 ```text
 /cloudsql/PROJECT_ID:REGION:INSTANCE_NAME
@@ -33,6 +33,7 @@ gcloud sql instances create my-db-instance \
   --database-version=POSTGRES_15 \
   --tier=db-f1-micro \
   --region=us-central1 \
+  --server-ca-mode=GOOGLE_MANAGED_INTERNAL_CA \
   --project=your-project-id
 
 # Create a database
@@ -55,6 +56,7 @@ gcloud sql instances create my-mysql-instance \
   --database-version=MYSQL_8_0 \
   --tier=db-f1-micro \
   --region=us-central1 \
+  --server-ca-mode=GOOGLE_MANAGED_INTERNAL_CA \
   --project=your-project-id
 ```
 
@@ -64,15 +66,21 @@ Add the Cloud SQL instance connection name to your `app.yaml`:
 
 ```yaml
 # app.yaml - Connect to Cloud SQL via Unix socket
-runtime: python312
+runtime: python
+env: flex
+entrypoint: gunicorn -b :$PORT main:app
+
+runtime_config:
+  operating_system: ubuntu24
+  runtime_version: "3.12"
 
 env_variables:
   DB_USER: "postgres"
   DB_NAME: "myapp"
-  DB_PASS_SECRET: "db-password"  # Secret Manager reference for the password
+  DB_PASS: "your-secure-password"
   CLOUD_SQL_CONNECTION_NAME: "your-project-id:us-central1:my-db-instance"
 
-# Grant App Engine permission to connect to Cloud SQL
+# Enable the App Engine flexible Unix socket for Cloud SQL
 beta_settings:
   cloud_sql_instances: "your-project-id:us-central1:my-db-instance"
 ```
@@ -87,6 +95,7 @@ Install the required dependencies:
 # requirements.txt
 SQLAlchemy==2.0.25
 pg8000==1.31.0        # Pure Python PostgreSQL driver (works with Unix sockets)
+PyMySQL==1.1.0        # MySQL driver (works with Unix sockets)
 cloud-sql-python-connector==1.6.0  # Optional but recommended
 google-cloud-secret-manager==2.18.0
 ```
@@ -132,6 +141,7 @@ For MySQL, the connection string is slightly different:
 
 ```python
 # database.py - MySQL connection via Unix socket
+import os
 import sqlalchemy
 
 def get_mysql_engine():
@@ -200,7 +210,7 @@ def get_engine():
     return engine
 ```
 
-The connector handles the Unix socket connection internally and adds support for IAM database authentication, which eliminates the need for passwords entirely.
+The connector handles secure Cloud SQL connection setup internally. It can also support IAM database authentication when you configure IAM database users and pass `enable_iam_auth=True`, which can eliminate the need for database passwords.
 
 ## Step 5: Connect from Node.js
 
@@ -266,13 +276,10 @@ Connection pooling is critical on App Engine because instances scale up and down
 Total connections = number_of_instances * pool_size_per_instance
 ```
 
-If you have 10 instances with a pool size of 10, that is 100 database connections. Cloud SQL has connection limits based on instance size:
+If you have 10 instances with a pool size of 10, that is 100 database connections. Cloud SQL connection limits vary by database engine, machine type, and database configuration. Check the actual limit for your instance before choosing pool sizes:
 
-```text
-db-f1-micro: 25 connections
-db-g1-small: 50 connections
-db-n1-standard-1: 100 connections
-db-n1-standard-2: 200 connections
+```sql
+SHOW max_connections;
 ```
 
 Size your pools accordingly:
@@ -296,10 +303,7 @@ If your app needs multiple databases:
 ```yaml
 # app.yaml - Multiple Cloud SQL instances
 beta_settings:
-  cloud_sql_instances: >-
-    project:region:main-db,
-    project:region:analytics-db,
-    project:region:auth-db
+  cloud_sql_instances: "project:region:main-db,project:region:analytics-db,project:region:auth-db"
 
 env_variables:
   MAIN_DB_CONNECTION: "project:region:main-db"
@@ -319,8 +323,9 @@ cloud-sql-proxy your-project-id:us-central1:my-db-instance \
   --port=5432
 
 # Or use Docker
-docker run -p 5432:5432 \
+docker run -p 127.0.0.1:5432:5432 \
   gcr.io/cloud-sql-connectors/cloud-sql-proxy:latest \
+  --address 0.0.0.0 --port 5432 \
   your-project-id:us-central1:my-db-instance
 ```
 
@@ -343,7 +348,7 @@ If you get connection errors after deploying, check these items:
 
 1. Verify the instance connection name is correct in `beta_settings`
 2. Make sure the App Engine service account has the `Cloud SQL Client` role
-3. Check that the Cloud SQL instance is in the same region as your App Engine app
+3. Prefer a Cloud SQL instance in the same or nearby region for lower latency, and verify VPC settings if you use private IP
 4. Verify the database name and user credentials are correct
 
 ```bash
@@ -355,4 +360,4 @@ gcloud projects add-iam-policy-binding your-project-id \
 
 ## Summary
 
-The built-in Unix socket connection between App Engine and Cloud SQL is the simplest and most secure way to connect your application to a database. Add the instance to `beta_settings` in `app.yaml`, construct the connection string using the socket path, configure connection pooling to stay within Cloud SQL limits, and you are set. The connection is encrypted and authenticated automatically, and there is no proxy process to manage. For local development, use the Cloud SQL Auth Proxy to get a similar experience.
+The built-in Unix socket connection between App Engine flexible and Cloud SQL is the simplest and most secure way to connect your application to a database. Add the instance to `beta_settings` in `app.yaml`, construct the connection string using the socket path, configure connection pooling to stay within Cloud SQL limits, and you are set. The connection is encrypted and authenticated automatically, and there is no proxy process to manage. For local development, use the Cloud SQL Auth Proxy to get a similar experience.
