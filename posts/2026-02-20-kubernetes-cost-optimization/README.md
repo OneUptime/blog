@@ -158,24 +158,28 @@ kind: Deployment
 metadata:
   name: cluster-autoscaler
   namespace: kube-system
+  labels:
+    app: cluster-autoscaler
 spec:
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
   template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
     spec:
       containers:
         - name: cluster-autoscaler
           image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.29.0
           command:
             - ./cluster-autoscaler
-            # Scale down nodes that are underutilized
-            - --scale-down-enabled=true
             # Wait 10 minutes before scaling down a node
             - --scale-down-delay-after-add=10m
             # Scale down if utilization is below 50%
             - --scale-down-utilization-threshold=0.5
-            # Do not scale below 2 nodes for reliability
-            - --min-nodes=2
-            # Cap at 20 nodes to control costs
-            - --max-nodes=20
+            # Keep this node group between 2 and 20 nodes
+            - --nodes=2:20:default-node-pool
             # Check for scale-down every 30 seconds
             - --scan-interval=30s
             # Expander determines which node group to scale up
@@ -187,8 +191,8 @@ spec:
 Spot instances (or preemptible VMs) cost 60-90% less than on-demand instances. The trade-off is they can be reclaimed with short notice. Use them for fault-tolerant workloads.
 
 ```yaml
-# spot-node-pool.yaml
-# A node pool using spot instances for cost savings
+# spot-workload.yaml
+# Notes for a spot-capable node pool and a workload that can use it
 apiVersion: v1
 kind: ConfigMap
 metadata:
