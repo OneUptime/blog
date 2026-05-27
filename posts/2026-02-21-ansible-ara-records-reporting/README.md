@@ -22,6 +22,12 @@ ARA (ARA Records Ansible) is a tool that records Ansible playbook runs and provi
       - "ara[server]"
     state: present
 
+- name: Create ARA data directory
+  ansible.builtin.file:
+    path: /var/lib/ara
+    state: directory
+    mode: '0755'
+
 - name: Configure ARA callback
   ansible.builtin.blockinfile:
     path: /etc/ansible/ansible.cfg
@@ -31,6 +37,12 @@ ARA (ARA Records Ansible) is a tool that records Ansible playbook runs and provi
       [ara]
       api_client = http
       api_server = http://{{ ara_server_host }}:{{ ara_server_port }}
+
+- name: Run ARA database migrations
+  ansible.builtin.command: /usr/local/bin/ara-manage migrate --noinput
+  environment:
+    ARA_DATABASE_NAME: /var/lib/ara/ansible.sqlite
+  changed_when: false
 
 - name: Create ARA systemd service
   ansible.builtin.copy:
@@ -116,7 +128,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -260,4 +272,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
