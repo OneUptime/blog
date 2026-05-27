@@ -59,7 +59,7 @@ This playbook optimizes kernel networking parameters for web servers:
         - { key: "net.ipv4.tcp_window_scaling", value: "1" }
         # Reduce TIME_WAIT connections by reusing sockets
         - { key: "net.ipv4.tcp_tw_reuse", value: "1" }
-        # Faster TIME_WAIT timeout
+        # Shorten FIN-WAIT-2 timeout after local close
         - { key: "net.ipv4.tcp_fin_timeout", value: "15" }
         # Increase local port range for outgoing connections
         - { key: "net.ipv4.ip_local_port_range", value: "1024 65535" }
@@ -173,8 +173,7 @@ This playbook tunes memory management for database servers:
         - { key: "vm.max_map_count", value: "262144" }
         # Overcommit memory strategy (0=heuristic, 1=always, 2=never)
         - { key: "vm.overcommit_memory", value: "0" }
-        # Enable transparent huge pages (can help or hurt depending on workload)
-        # Disable for database servers
+        # Do not reserve persistent HugeTLB pages
         - { key: "vm.nr_hugepages", value: "0" }
       loop_control:
         label: "{{ item.key }}"
@@ -203,7 +202,7 @@ This playbook tunes memory management for database servers:
           WantedBy=basic.target
 
     - name: Enable THP disable service
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: disable-thp
         enabled: true
         daemon_reload: true
@@ -256,7 +255,7 @@ A generic playbook that applies whatever profile is defined:
         state: present
         reload: true
         sysctl_file: "/etc/sysctl.d/80-role-{{ group_names[0] | default('default') }}.conf"
-      loop: "{{ sysctl_params | dict2items }}"
+      loop: "{{ sysctl_params | default({}) | dict2items }}"
       loop_control:
         label: "{{ item.key }}"
       when: sysctl_params is defined
@@ -280,7 +279,7 @@ This playbook validates that sysctl settings match your configuration:
         cmd: "sysctl {{ item.key }}"
       register: sysctl_check
       changed_when: false
-      loop: "{{ sysctl_params | dict2items }}"
+      loop: "{{ sysctl_params | default({}) | dict2items }}"
       loop_control:
         label: "{{ item.key }}"
       when: sysctl_params is defined
@@ -293,7 +292,7 @@ This playbook validates that sysctl settings match your configuration:
           Mismatch: {{ item.item.key }}
           Expected: {{ sysctl_params[item.item.key] }}
           Got: {{ item.stdout.split('=')[1] | trim }}
-      loop: "{{ sysctl_check.results }}"
+      loop: "{{ sysctl_check.results | default([]) }}"
       loop_control:
         label: "{{ item.item.key }}"
       when: sysctl_params is defined
