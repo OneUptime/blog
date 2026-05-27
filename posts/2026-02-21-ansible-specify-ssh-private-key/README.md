@@ -23,7 +23,7 @@ ansible-playbook -i inventory.ini site.yml --private-key ~/.ssh/deploy_key
 ansible-playbook -i inventory.ini site.yml --key-file /path/to/mykey.pem
 ```
 
-This overrides all other key settings for this particular invocation.
+This overrides `ansible.cfg` for this particular invocation, but inventory or playbook variables can still take precedence.
 
 ## In ansible.cfg
 
@@ -139,14 +139,15 @@ When the SSH key is specified in multiple places, Ansible follows this precedenc
 
 ```mermaid
 flowchart TD
-    A["--private-key CLI flag (HIGHEST)"] --> B["Play vars ansible_ssh_private_key_file"]
+    A["Extra vars ansible_ssh_private_key_file (HIGHEST)"] --> B["Play vars ansible_ssh_private_key_file"]
     B --> C["Host vars in inventory"]
     C --> D["Group vars in inventory"]
-    D --> E["ansible.cfg private_key_file"]
-    E --> F["SSH agent / default keys (LOWEST)"]
+    D --> E["--private-key / --key-file CLI option"]
+    E --> F["ansible.cfg private_key_file"]
+    F --> G["SSH agent / default keys (LOWEST)"]
 
     style A fill:#f96,stroke:#333,color:#000
-    style F fill:#9f9,stroke:#333,color:#000
+    style G fill:#9f9,stroke:#333,color:#000
 ```
 
 ## Managing Multiple Keys for Multiple Environments
@@ -235,7 +236,11 @@ For maximum security, you can store SSH private keys encrypted with Ansible Vaul
 ansible-vault encrypt ~/.ssh/deploy_key --output files/deploy_key.vault
 ```
 
-Then decrypt it at runtime in your playbook.
+Then provide the vault password when you run the playbook so Ansible can decrypt it at runtime.
+
+```bash
+ansible-playbook -i inventory.ini vault-key.yml --ask-vault-pass
+```
 
 ```yaml
 # vault-key.yml - uses a vault-encrypted SSH key
