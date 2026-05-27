@@ -18,7 +18,7 @@ Time synchronization is one of those things that nobody thinks about until it br
 
 ## Choosing Between chrony and ntpd
 
-Modern Linux distributions have largely moved from the classic ntpd to chrony. chrony handles intermittent network connections better, synchronizes faster after boot, and works well in virtualized environments where the system clock can drift significantly. RHEL 8+, CentOS 8+, Ubuntu 18.04+, and Fedora all default to chrony.
+Modern Linux distributions have largely moved from the classic ntpd to chrony. chrony handles intermittent network connections better, synchronizes faster after boot, and works well in virtualized environments where the system clock can drift significantly. RHEL 8+, CentOS Stream 8+, and Fedora default to chrony; Ubuntu used systemd-timesyncd by default through Ubuntu 25.04 and switched to chrony by default in Ubuntu 25.10.
 
 If you are running older systems, ntpd is still perfectly functional. This post covers both.
 
@@ -40,6 +40,8 @@ Here is a playbook that installs and configures chrony:
       - 2.pool.ntp.org
       - 3.pool.ntp.org
     ntp_timezone: UTC
+    chrony_config_path: "{{ '/etc/chrony/chrony.conf' if ansible_os_family == 'Debian' else '/etc/chrony.conf' }}"
+    chrony_service_name: "{{ 'chrony' if ansible_os_family == 'Debian' else 'chronyd' }}"
   tasks:
     - name: Install chrony
       ansible.builtin.package:
@@ -53,7 +55,7 @@ Here is a playbook that installs and configures chrony:
     - name: Deploy chrony configuration
       ansible.builtin.template:
         src: templates/chrony.conf.j2
-        dest: /etc/chrony.conf
+        dest: "{{ chrony_config_path }}"
         owner: root
         group: root
         mode: '0644'
@@ -62,14 +64,14 @@ Here is a playbook that installs and configures chrony:
 
     - name: Enable and start chrony
       ansible.builtin.service:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         state: started
         enabled: true
 
   handlers:
     - name: Restart chrony
       ansible.builtin.service:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         state: restarted
 ```
 
@@ -118,11 +120,18 @@ In enterprise environments, you typically run internal NTP servers that sync wit
     internal_ntp_servers:
       - ntp1.internal.example.com
       - ntp2.internal.example.com
+    chrony_config_path: "{{ '/etc/chrony/chrony.conf' if ansible_os_family == 'Debian' else '/etc/chrony.conf' }}"
+    chrony_service_name: "{{ 'chrony' if ansible_os_family == 'Debian' else 'chronyd' }}"
   tasks:
+    - name: Install chrony
+      ansible.builtin.package:
+        name: chrony
+        state: present
+
     - name: Deploy chrony config for internal NTP
       ansible.builtin.template:
         src: templates/chrony-internal.conf.j2
-        dest: /etc/chrony.conf
+        dest: "{{ chrony_config_path }}"
         owner: root
         group: root
         mode: '0644'
@@ -130,14 +139,14 @@ In enterprise environments, you typically run internal NTP servers that sync wit
 
     - name: Ensure chrony is running
       ansible.builtin.service:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         state: started
         enabled: true
 
   handlers:
     - name: Restart chrony
       ansible.builtin.service:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         state: restarted
 ```
 
@@ -179,6 +188,8 @@ Some servers need to act as NTP servers for the rest of your infrastructure:
     allowed_ntp_clients:
       - 10.0.0.0/8
       - 172.16.0.0/12
+    chrony_config_path: "{{ '/etc/chrony/chrony.conf' if ansible_os_family == 'Debian' else '/etc/chrony.conf' }}"
+    chrony_service_name: "{{ 'chrony' if ansible_os_family == 'Debian' else 'chronyd' }}"
   tasks:
     - name: Install chrony
       ansible.builtin.package:
@@ -188,7 +199,7 @@ Some servers need to act as NTP servers for the rest of your infrastructure:
     - name: Deploy NTP server configuration
       ansible.builtin.template:
         src: templates/chrony-server.conf.j2
-        dest: /etc/chrony.conf
+        dest: "{{ chrony_config_path }}"
         owner: root
         group: root
         mode: '0644'
@@ -204,14 +215,14 @@ Some servers need to act as NTP servers for the rest of your infrastructure:
 
     - name: Enable and start chrony
       ansible.builtin.service:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         state: started
         enabled: true
 
   handlers:
     - name: Restart chrony
       ansible.builtin.service:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         state: restarted
 ```
 
@@ -353,14 +364,14 @@ After configuring NTP, verify it is working:
       failed_when: >
         offset_check.stdout is search('System time\s+:\s+(\d+\.\d+)') and
         (offset_check.stdout | regex_search('System time\s+:\s+(\d+\.\d+)', '\\1') | first | float) > 0.1
-      ignore_errors: true
+      when: chrony_tracking is not failed
 ```
 
 ## NTP Hierarchy
 
 ```mermaid
 graph TD
-    A[Stratum 0 - GPS/Atomic Clock] --> B[Stratum 1 - pool.ntp.org]
+    A[Stratum 0 - GPS/Atomic Clock] --> B[Public NTP Servers]
     B --> C[Internal NTP Server 1]
     B --> D[Internal NTP Server 2]
     C --> E[Web Servers]
