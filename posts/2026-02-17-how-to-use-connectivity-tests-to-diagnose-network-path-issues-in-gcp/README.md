@@ -8,7 +8,7 @@ Description: Learn how to use GCP Connectivity Tests to diagnose network path is
 
 ---
 
-When a VM cannot reach another VM, a database, or an external service, the debugging process can be painful. Is it a firewall rule? A missing route? A misconfigured subnet? GCP Connectivity Tests is a diagnostic tool that analyzes the network path between two endpoints and tells you exactly where and why traffic is being dropped - without actually sending any packets.
+When a VM cannot reach another VM, a database, or an external service, the debugging process can be painful. Is it a firewall rule? A missing route? A misconfigured subnet? GCP Connectivity Tests is a diagnostic tool that analyzes the network path between two endpoints and tells you exactly where and why traffic is being dropped. For supported scenarios, it can also run live data plane analysis by sending probes to validate connectivity.
 
 In this post, I will show you how to create and interpret connectivity tests, cover common scenarios, and share patterns for using them as part of your troubleshooting workflow.
 
@@ -23,7 +23,7 @@ Connectivity Tests perform a configuration-based analysis of the network path be
 - NAT configurations
 - Network interfaces
 
-It traces the path a packet would take and identifies any step where the packet would be dropped. Importantly, it does not send actual traffic - it analyzes your network configuration to determine what would happen.
+It traces the path a packet would take and identifies any step where the packet would be dropped. The configuration analysis is based on your network configuration, and for supported scenarios, live data plane analysis supplements that result by sending probe packets.
 
 ## Creating a Basic Connectivity Test
 
@@ -51,11 +51,12 @@ gcloud network-management connectivity-tests describe test-vm-to-vm \
   --format=yaml
 ```
 
-The result contains a `reachabilityDetails` section with one of these states:
+The result contains a `reachabilityDetails` section with one of these results:
 
 - **REACHABLE**: Traffic can flow from source to destination
 - **UNREACHABLE**: Traffic is blocked somewhere along the path
-- **AMBIGUOUS**: The analysis could not determine reachability (complex configurations)
+- **AMBIGUOUS**: The endpoints are not unique and different traces have different outcomes
+- **UNDETERMINED**: The analysis could not determine reachability because of an error, unsupported input, or missing permissions
 
 For unreachable results, the `traces` section shows where the packet gets dropped:
 
@@ -67,7 +68,7 @@ gcloud network-management connectivity-tests describe test-vm-to-vm \
 
 Each trace step includes:
 - The resource type (instance, firewall, route, etc.)
-- The action taken (APPLY, DROP, FORWARD)
+- The state, such as a configuration check, forward, drop, abort, or deliver state
 - Details about why a packet was dropped (if applicable)
 
 ## Common Test Scenarios
@@ -113,7 +114,7 @@ gcloud network-management connectivity-tests create test-cross-project \
 # Test if a VM can reach Cloud Storage API
 gcloud network-management connectivity-tests create test-vm-to-gcs \
   --source-instance=projects/my-project/zones/us-central1-a/instances/private-vm \
-  --destination-ip-address=142.250.80.128 \
+  --destination-ip-address=199.36.153.8 \
   --protocol=TCP \
   --destination-port=443
 ```
@@ -166,8 +167,8 @@ When there is no route to the destination:
 ```bash
 # The output shows:
 # step: ROUTE
-# state: ABORT
-# abortInfo:
+# state: DROP
+# dropInfo:
 #   cause: NO_ROUTE
 ```
 
@@ -209,12 +210,21 @@ TESTS=(
 for test_def in "${TESTS[@]}"; do
   IFS=':' read -r name source dest protocol port <<< "$test_def"
 
+  args=(
+    "$name"
+    --source-instance="projects/my-project/zones/us-central1-a/instances/$source"
+    --protocol="$protocol"
+    --destination-port="$port"
+  )
+
+  if [[ "$dest" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    args+=(--destination-ip-address="$dest")
+  else
+    args+=(--destination-instance="projects/my-project/zones/us-central1-a/instances/$dest")
+  fi
+
   # Create the test
-  gcloud network-management connectivity-tests create "$name" \
-    --source-instance="projects/my-project/zones/us-central1-a/instances/$source" \
-    --destination-instance="projects/my-project/zones/us-central1-a/instances/$dest" \
-    --protocol="$protocol" \
-    --destination-port="$port" 2>/dev/null
+  gcloud network-management connectivity-tests create "${args[@]}" 2>/dev/null
 
   # Check the result
   result=$(gcloud network-management connectivity-tests describe "$name" \
