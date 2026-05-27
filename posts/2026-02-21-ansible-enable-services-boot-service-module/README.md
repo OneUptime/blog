@@ -176,17 +176,17 @@ You can verify which services are enabled at boot.
     var: enabled_services.stdout_lines
 ```
 
-## Runlevel-Specific Enabling (SysV Init)
+## Runlevel-Specific Enabling (OpenRC)
 
-On older systems using SysV init (before systemd), the `service` module handles runlevel configuration automatically. However, if you need explicit control, you can use the `runlevel` parameter.
+On systems using OpenRC, the `service` module can control which runlevel a service belongs to with the `runlevel` parameter.
 
 ```yaml
-# Enable a service for specific runlevels (SysV init systems)
-- name: Enable service for runlevels 3 and 5
+# Enable a service for a specific OpenRC runlevel
+- name: Enable service for the default runlevel
   ansible.builtin.service:
-    name: httpd
+    name: nginx
     enabled: true
-    runlevel: 5
+    runlevel: default
 ```
 
 On systemd systems, this parameter is ignored because systemd uses targets instead of runlevels.
@@ -258,7 +258,7 @@ After provisioning a server, run a verification check to make sure everything is
 - name: Verify critical services are enabled
   ansible.builtin.assert:
     that:
-      - "ansible_facts.services['{{ item }}.service'].status == 'enabled'"
+      - "ansible_facts.services[item + '.service'].status == 'enabled'"
     fail_msg: "Service {{ item }} is NOT enabled at boot"
     success_msg: "Service {{ item }} is enabled at boot"
   loop:
