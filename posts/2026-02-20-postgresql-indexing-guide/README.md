@@ -38,24 +38,23 @@ The default index type. Best for equality and range queries.
 ```sql
 -- B-tree index on a single column
 -- Good for: WHERE email = 'user@example.com'
--- Good for: WHERE created_at > '2026-01-01'
--- Good for: ORDER BY created_at DESC
+-- Good for: ORDER BY email
 CREATE INDEX idx_users_email ON users (email);
 
 -- Composite index on multiple columns
 -- Good for: WHERE status = 'active' AND created_at > '2026-01-01'
--- Column order matters: put high-selectivity columns first
+-- Column order matters: put leading equality columns before range/sort columns
 CREATE INDEX idx_orders_status_created
     ON orders (status, created_at);
 
--- Index with DESC ordering for queries that sort descending
+-- Index with explicit DESC ordering for queries that sort descending
 CREATE INDEX idx_orders_created_desc
     ON orders (created_at DESC);
 ```
 
 ### Hash Index
 
-Faster than B-tree for simple equality lookups only. Does not support range queries.
+Useful for simple equality lookups only. Does not support range queries, and B-tree is still the usual default unless benchmarks show a hash index helps your workload.
 
 ```sql
 -- Hash index for exact equality lookups
@@ -89,7 +88,7 @@ Best for geometric data, range types, and full-text search.
 
 ```sql
 -- GiST index for range queries
--- Good for: WHERE tsrange @> '2026-02-20 14:00:00'::timestamp
+-- Good for: WHERE tsrange(start_time, end_time) @> '2026-02-20 14:00:00'::timestamp
 CREATE INDEX idx_reservations_period
     ON reservations USING gist (tsrange(start_time, end_time));
 
@@ -109,10 +108,11 @@ CREATE INDEX idx_users_active_email
     ON users (email)
     WHERE deleted_at IS NULL AND status = 'active';
 
--- Only index recent orders (last 90 days)
+-- Only index orders after a fixed cutoff date
+-- For a rolling window, recreate or replace this periodically with a new cutoff
 CREATE INDEX idx_orders_recent
     ON orders (created_at, user_id)
-    WHERE created_at > now() - interval '90 days';
+    WHERE created_at >= DATE '2026-01-01';
 
 -- Index only unprocessed jobs
 CREATE INDEX idx_jobs_pending
@@ -132,18 +132,18 @@ graph LR
 
 ## Covering Indexes (INCLUDE)
 
-Include additional columns in the index so PostgreSQL can satisfy the query entirely from the index, without reading the table (an index-only scan).
+Include additional columns in the index so PostgreSQL can sometimes satisfy the query from the index, without reading the table (an index-only scan). This is most effective when the table's visibility map shows the relevant heap pages are all-visible.
 
 ```sql
 -- Without INCLUDE: PostgreSQL reads the index, then fetches name from the table
 CREATE INDEX idx_users_email ON users (email);
 
--- With INCLUDE: PostgreSQL reads everything from the index (index-only scan)
+-- With INCLUDE: PostgreSQL can read the requested columns from the index
 CREATE INDEX idx_users_email_covering
     ON users (email)
     INCLUDE (name, created_at);
 
--- This query can now be satisfied entirely from the index:
+-- This query can now use an index-only scan when visibility checks allow it:
 -- SELECT name, created_at FROM users WHERE email = 'user@example.com';
 ```
 
@@ -152,7 +152,7 @@ CREATE INDEX idx_users_email_covering
 Enforce uniqueness at the database level.
 
 ```sql
--- Unique index (also acts as a constraint)
+-- Unique index (enforces uniqueness like a unique constraint)
 CREATE UNIQUE INDEX idx_users_unique_email ON users (email);
 
 -- Unique partial index (unique only among non-deleted records)
@@ -223,12 +223,15 @@ ORDER BY pg_relation_size(indexrelid) DESC;
 ```sql
 -- List all indexes with their sizes
 SELECT
+    schemaname,
     tablename,
     indexname,
-    pg_size_pretty(pg_relation_size(quote_ident(indexname)::text)) AS index_size
+    pg_size_pretty(
+        pg_relation_size((quote_ident(schemaname) || '.' || quote_ident(indexname))::regclass)
+    ) AS index_size
 FROM pg_indexes
 WHERE schemaname = 'public'
-ORDER BY pg_relation_size(quote_ident(indexname)::text) DESC
+ORDER BY pg_relation_size((quote_ident(schemaname) || '.' || quote_ident(indexname))::regclass) DESC
 LIMIT 20;
 
 -- Total index size vs table size
@@ -273,7 +276,7 @@ REINDEX INDEX CONCURRENTLY idx_users_email;
 -- Reindex all indexes on a table
 REINDEX TABLE CONCURRENTLY users;
 
--- Check index bloat (wasted space from deleted rows)
+-- Check index sizes as a starting point for bloat investigation
 SELECT
     indexrelname,
     pg_size_pretty(pg_relation_size(indexrelid)) AS size
