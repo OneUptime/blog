@@ -49,58 +49,69 @@ A contact point is a notification destination. Grafana supports many integration
 
 ### Slack Contact Point
 
-Navigate to Alerting > Contact Points > New Contact Point.
+Navigate to Alerts & IRM > Alerting > Notification configuration > Contact points > New contact point.
 
 ```yaml
-# Contact Point Configuration (shown as YAML for clarity)
+# Contact point provisioning configuration
 
-name: "backend-slack"
-type: slack
-settings:
-  # Slack incoming webhook URL
-  url: "https://hooks.slack.com/services/T00/B00/XXXX"
-  # Channel to post to
-  recipient: "#backend-alerts"
-  # Message title using Go template syntax
-  title: |
-    [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}
-  # Message body
-  text: |
-    *Summary:* {{ .CommonAnnotations.summary }}
-    *Namespace:* {{ .CommonLabels.namespace }}
-    *Severity:* {{ .CommonLabels.severity }}
-    {{ if gt (len .Alerts.Firing) 0 }}
-    *Firing:*
-    {{ range .Alerts.Firing }}
-    - {{ .Labels.alertname }}: {{ .Annotations.description }}
-    {{ end }}
-    {{ end }}
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: "backend-slack"
+    receivers:
+      - uid: "backend-slack"
+        type: slack
+        settings:
+          # Channel to post to
+          recipient: "#backend-alerts"
+          # Message title using Go template syntax
+          title: |
+            [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}
+          # Message body
+          text: |
+            *Summary:* {{ .CommonAnnotations.summary }}
+            *Namespace:* {{ .CommonLabels.namespace }}
+            *Severity:* {{ .CommonLabels.severity }}
+            {{ if gt (len .Alerts.Firing) 0 }}
+            *Firing:*
+            {{ range .Alerts.Firing }}
+            - {{ .Labels.alertname }}: {{ .Annotations.description }}
+            {{ end }}
+            {{ end }}
+          # Slack incoming webhook URL
+          url: "https://hooks.slack.com/services/T00/B00/XXXX"
 ```
 
 ### PagerDuty Contact Point
 
 ```yaml
-name: "critical-pagerduty"
-type: pagerduty
-settings:
-  # PagerDuty integration key
-  integrationKey: "your-integration-key-here"
-  severity: "critical"
-  # Custom details included in the incident
-  details:
-    namespace: "{{ .CommonLabels.namespace }}"
-    service: "{{ .CommonLabels.service }}"
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: "critical-pagerduty"
+    receivers:
+      - uid: "critical-pagerduty"
+        type: pagerduty
+        settings:
+          autoResolve: true
+          # PagerDuty integration key
+          integrationKey: "your-integration-key-here"
 ```
 
 ### Email Contact Point
 
 ```yaml
-name: "team-email"
-type: email
-settings:
-  addresses: "team@example.com;oncall@example.com"
-  singleEmail: true
-  subject: "[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}"
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: "team-email"
+    receivers:
+      - uid: "team-email"
+        type: email
+        settings:
+          addresses: "team@example.com;oncall@example.com"
+          singleEmail: true
+          subject: "[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}"
 ```
 
 ## Notification Policies
@@ -124,7 +135,7 @@ The root policy catches all alerts that do not match a child policy:
 
 ```yaml
 # Root notification policy
-contact_point: "default-slack"
+receiver: "default-slack"
 group_by:
   - alertname
   - namespace
@@ -137,11 +148,11 @@ repeat_interval: 4h
 
 ```yaml
 # Child policies for specific routing
-policies:
+routes:
   # Critical alerts go to PagerDuty
   - matchers:
       - severity = critical
-    contact_point: "critical-pagerduty"
+    receiver: "critical-pagerduty"
     group_wait: 10s
     repeat_interval: 1h
     # Do not continue to other policies
@@ -150,7 +161,7 @@ policies:
   # Database team alerts
   - matchers:
       - team = database
-    contact_point: "db-team-slack"
+    receiver: "db-team-slack"
     group_by:
       - alertname
       - database
@@ -158,13 +169,13 @@ policies:
   # Staging environment - lower urgency
   - matchers:
       - environment = staging
-    contact_point: "staging-email"
+    receiver: "staging-email"
     repeat_interval: 12h
 
   # Frontend team
   - matchers:
       - team = frontend
-    contact_point: "frontend-slack"
+    receiver: "frontend-slack"
 ```
 
 ## Creating Alert Rules
@@ -234,7 +245,7 @@ annotations:
   summary: "High CPU usage on {{ $labels.pod }}"
   description: >
     Pod {{ $labels.pod }} in namespace {{ $labels.namespace }}
-    is using {{ $values.C }}% of its CPU request.
+    is using {{ $values.C.Value }}% of its CPU request.
 ```
 
 ### Error Rate Alert Rule
@@ -285,7 +296,7 @@ labels:
 annotations:
   summary: "High error rate on {{ $labels.service }}"
   description: >
-    Service {{ $labels.service }} has a {{ $values.C }}% error rate.
+    Service {{ $labels.service }} has a {{ $values.C.Value }}% error rate.
 ```
 
 ## Alert Evaluation Flow
@@ -324,7 +335,7 @@ sequenceDiagram
 
 Silences temporarily suppress notifications for matching alerts:
 
-Navigate to Alerting > Silences > New Silence.
+Navigate to Alerts & IRM > Alerting > Silences > Create silence.
 
 ```yaml
 # Silence configuration
@@ -342,18 +353,22 @@ created_by: "admin"
 Mute timings define recurring windows when notifications are suppressed:
 
 ```yaml
-# Mute timing for weekends
-name: "weekends"
-time_intervals:
-  - weekdays: ["saturday", "sunday"]
+apiVersion: 1
+muteTimes:
+  # Mute timing for weekends
+  - orgId: 1
+    name: "weekends"
+    time_intervals:
+      - weekdays: ["saturday", "sunday"]
 
-# Mute timing for maintenance window
-name: "maintenance-window"
-time_intervals:
-  - weekdays: ["wednesday"]
-    times:
-      - start_time: "02:00"
-        end_time: "04:00"
+  # Mute timing for maintenance window
+  - orgId: 1
+    name: "maintenance-window"
+    time_intervals:
+      - weekdays: ["wednesday"]
+        times:
+          - start_time: "02:00"
+            end_time: "04:00"
 ```
 
 Apply mute timings to notification policies to suppress alerts during these windows.
