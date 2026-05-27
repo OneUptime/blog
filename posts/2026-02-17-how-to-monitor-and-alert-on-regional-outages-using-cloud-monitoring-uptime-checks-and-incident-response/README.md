@@ -20,44 +20,58 @@ Uptime checks are the foundation of outage detection. They probe your endpoints 
 # Create an HTTPS uptime check that runs from all available checker regions
 
 gcloud monitoring uptime create \
-  --display-name="Production API - Primary Region" \
-  --uri="https://api.example.com/health" \
-  --http-method=GET \
-  --period=60 \
+  "Production API - Primary Region" \
+  --resource-type=uptime-url \
+  --resource-labels=host=api.example.com,project_id=my-project \
+  --protocol=https \
+  --path=/health \
+  --request-method=get \
+  --period=1 \
   --timeout=10 \
-  --regions=USA,EUROPE,SOUTH_AMERICA,ASIA_PACIFIC \
   --matcher-content="healthy" \
-  --matcher-type=CONTAINS_STRING \
+  --matcher-type=contains-string \
   --project=my-project
 ```
 
-But a single uptime check only tells you if the public endpoint is reachable. To detect specifically which region is having issues, create region-specific checks:
+But a single uptime check only tells you if the public endpoint is reachable. To detect specifically which region is having issues, create checks for public region-specific URLs:
 
 ```bash
-# Check each regional deployment directly using internal or region-specific URLs
+# Check each regional deployment directly using region-specific URLs
 gcloud monitoring uptime create \
-  --display-name="API - us-central1" \
-  --uri="https://us-central1-api.example.com/health" \
-  --http-method=GET \
-  --period=60 \
+  "API - us-central1" \
+  --resource-type=uptime-url \
+  --resource-labels=host=us-central1-api.example.com,project_id=my-project \
+  --protocol=https \
+  --path=/health \
+  --request-method=get \
+  --period=1 \
   --timeout=10 \
-  --regions=USA,EUROPE,ASIA_PACIFIC
+  --regions=usa-iowa,europe,asia-pacific \
+  --project=my-project
 
 gcloud monitoring uptime create \
-  --display-name="API - europe-west1" \
-  --uri="https://europe-west1-api.example.com/health" \
-  --http-method=GET \
-  --period=60 \
+  "API - europe-west1" \
+  --resource-type=uptime-url \
+  --resource-labels=host=europe-west1-api.example.com,project_id=my-project \
+  --protocol=https \
+  --path=/health \
+  --request-method=get \
+  --period=1 \
   --timeout=10 \
-  --regions=USA,EUROPE,ASIA_PACIFIC
+  --regions=usa-iowa,europe,asia-pacific \
+  --project=my-project
 
 gcloud monitoring uptime create \
-  --display-name="API - asia-east1" \
-  --uri="https://asia-east1-api.example.com/health" \
-  --http-method=GET \
-  --period=60 \
+  "API - asia-east1" \
+  --resource-type=uptime-url \
+  --resource-labels=host=asia-east1-api.example.com,project_id=my-project \
+  --protocol=https \
+  --path=/health \
+  --request-method=get \
+  --period=1 \
   --timeout=10 \
-  --regions=USA,EUROPE,ASIA_PACIFIC
+  --regions=usa-iowa,europe,asia-pacific \
+  --project=my-project
 ```
 
 ## Creating Alerting Policies for Outage Detection
@@ -70,10 +84,10 @@ Uptime checks generate metrics that you can build alerting policies around. The 
 gcloud alpha monitoring policies create \
   --display-name="Regional Outage - us-central1" \
   --condition-display-name="us-central1 health check failing" \
-  --condition-filter='resource.type="uptime_url" AND metric.type="monitoring.googleapis.com/uptime_check/check_passed" AND metric.labels.check_id="us-central1-check"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-comparison=COMPARISON_LT \
-  --condition-threshold-duration=120s \
+  --condition-filter='resource.type="uptime_url" AND metric.type="monitoring.googleapis.com/uptime_check/check_passed" AND metric.labels.check_id="CHECK_ID"' \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_NEXT_OLDER","crossSeriesReducer":"REDUCE_COUNT_FALSE","groupByFields":["metric.label.check_id"]}' \
+  --if="> 1" \
+  --duration=120s \
   --combiner=OR \
   --notification-channels=projects/my-project/notificationChannels/pagerduty-channel,projects/my-project/notificationChannels/slack-oncall
 ```
@@ -251,6 +265,7 @@ exports.handleAlert = async (message, context) => {
     projectId: process.env.PROJECT_ID,
     triggerId: process.env.FAILOVER_TRIGGER_ID,
     source: {
+      branchName: 'main',
       substitutions: {
         _AFFECTED_REGION: affectedRegion
       }
@@ -265,8 +280,13 @@ exports.handleAlert = async (message, context) => {
 
 function extractRegionFromPolicy(policyName) {
   // Extract region name from the alert policy name
-  const regionMatch = policyName.match(/(us-\w+-\d|europe-\w+-\d|asia-\w+-\d)/);
+  const regionMatch = policyName.match(/(us-[a-z]+[0-9]|europe-[a-z]+[0-9]|asia-[a-z]+[0-9])/);
   return regionMatch ? regionMatch[1] : 'unknown';
+}
+
+async function createIncidentTicket(affectedRegion, alertData) {
+  // Replace this with your incident management system's API call.
+  console.log(`Create incident ticket for ${affectedRegion}`, alertData.incident.url);
 }
 ```
 
@@ -292,7 +312,8 @@ Create a custom Cloud Monitoring dashboard that gives your on-call team everythi
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_FRACTION_TRUE",
-                    "groupByFields": ["metric.labels.checker_location"]
+                    "crossSeriesReducer": "REDUCE_FRACTION_TRUE",
+                    "groupByFields": ["metric.label.checker_location"]
                   }
                 }
               }
@@ -313,7 +334,8 @@ Create a custom Cloud Monitoring dashboard that gives your on-call team everythi
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_PERCENTILE_99",
-                    "groupByFields": ["resource.labels.location"]
+                    "crossSeriesReducer": "REDUCE_PERCENTILE_99",
+                    "groupByFields": ["resource.label.location"]
                   }
                 }
               }
@@ -334,7 +356,8 @@ Create a custom Cloud Monitoring dashboard that gives your on-call team everythi
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_RATE",
-                    "groupByFields": ["resource.labels.location"]
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "groupByFields": ["resource.label.location"]
                   }
                 }
               }
