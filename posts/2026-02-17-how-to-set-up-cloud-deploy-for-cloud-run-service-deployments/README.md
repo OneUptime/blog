@@ -157,18 +157,15 @@ profiles:
 - name: dev
   manifests:
     rawYaml:
-    - cloudrun/service.yaml
-    - cloudrun/overlays/dev.yaml
+    - cloudrun/dev/service.yaml
 - name: staging
   manifests:
     rawYaml:
-    - cloudrun/service.yaml
-    - cloudrun/overlays/staging.yaml
+    - cloudrun/staging/service.yaml
 - name: prod
   manifests:
     rawYaml:
-    - cloudrun/service.yaml
-    - cloudrun/overlays/prod.yaml
+    - cloudrun/prod/service.yaml
 deploy:
   cloudrun: {}
 ```
@@ -177,10 +174,10 @@ Notice the `deploy.cloudrun: {}` section. This tells Skaffold to use the Cloud R
 
 ## Environment-Specific Overlays
 
-Use overlay files to customize the service for each environment.
+Use complete service definition files to customize the service for each environment. Raw YAML entries in Skaffold are rendered as separate manifests, not merged as patches, so each profile should point to the full Cloud Run service definition for that environment.
 
 ```yaml
-# cloudrun/overlays/dev.yaml - Development-specific overrides
+# cloudrun/dev/service.yaml - Development-specific service definition
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
@@ -205,7 +202,7 @@ spec:
 ```
 
 ```yaml
-# cloudrun/overlays/prod.yaml - Production-specific overrides
+# cloudrun/prod/service.yaml - Production-specific service definition
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
@@ -284,7 +281,7 @@ verify:
 - name: smoke-test
   container:
     name: smoke-test
-    image: curlimages/curl:latest
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
     command: ["sh"]
     args:
     - "-c"
@@ -293,9 +290,8 @@ verify:
       SERVICE_URL=$(gcloud run services describe my-service \
         --region=us-central1 --format='value(status.url)')
       echo "Testing $SERVICE_URL"
-      HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$SERVICE_URL/health")
-      if [ "$HTTP_CODE" != "200" ]; then
-        echo "Health check failed with $HTTP_CODE"
+      if ! wget -q -O /dev/null "$SERVICE_URL/health"; then
+        echo "Health check failed"
         exit 1
       fi
       echo "Health check passed"
@@ -316,6 +312,12 @@ gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:deploy-sa@my-project.iam.gserviceaccount.com" \
   --role="roles/run.developer"
 
+# Grant read access to the deployed image
+gcloud artifacts repositories add-iam-policy-binding my-repo \
+  --location=us-central1 \
+  --member="serviceAccount:deploy-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.reader"
+
 # Grant act-as permission for the Cloud Run runtime service account
 gcloud iam service-accounts add-iam-policy-binding \
   PROJECT_NUMBER-compute@developer.gserviceaccount.com \
@@ -326,6 +328,17 @@ gcloud iam service-accounts add-iam-policy-binding \
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:deploy-sa@my-project.iam.gserviceaccount.com" \
   --role="roles/clouddeploy.jobRunner"
+```
+
+Then configure each Cloud Deploy target to use that execution service account.
+
+```yaml
+executionConfigs:
+- usages:
+  - RENDER
+  - DEPLOY
+  - VERIFY
+  serviceAccount: deploy-sa@my-project.iam.gserviceaccount.com
 ```
 
 ## Promoting Through the Pipeline
