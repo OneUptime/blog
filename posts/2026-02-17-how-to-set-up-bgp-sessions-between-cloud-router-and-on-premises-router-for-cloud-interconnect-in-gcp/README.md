@@ -32,9 +32,9 @@ graph LR
 
 Cloud Router supports ASN values in these ranges:
 
-- **16550**: Default Cloud Router ASN. Fine for simple setups.
-- **64512-65534**: Private 16-bit ASN range. Use these for most deployments.
-- **4200000000-4294967294**: Private 32-bit ASN range. Available if you need more ASNs.
+- **16550**: Required for Partner Interconnect, and also accepted for Dedicated Interconnect.
+- **64512-65534**: Private 16-bit ASN range. Use these for most Dedicated Interconnect deployments.
+- **4200000000-4294967294**: Private 32-bit ASN range. Available for Dedicated Interconnect if you need more ASNs.
 
 Your on-premises router needs a different ASN. If your organization already has a public ASN, use that. Otherwise, pick a private ASN that does not conflict with anything in your network.
 
@@ -57,7 +57,7 @@ gcloud compute interconnects attachments dedicated create my-attachment \
     --interconnect=my-interconnect \
     --router=ic-router \
     --region=us-east4 \
-    --bandwidth=BPS_1G \
+    --bandwidth=1g \
     --vlan=100
 
 # Check the assigned BGP peering IPs
@@ -258,30 +258,30 @@ router bgp 65001
 
 ## BGP Timer Tuning
 
-The default BGP timers (60-second keepalive, 180-second hold) can mean a 3-minute delay before failover. For Cloud Interconnect, consider using more aggressive timers:
+Cloud Router's default BGP keepalive interval is 20 seconds, and its hold timer is three times the keepalive interval. For Cloud Interconnect, consider enabling BFD for faster failure detection:
 
 ```bash
-# Set faster BGP timers on Cloud Router
+# Enable BFD on Cloud Router
 gcloud compute routers update-bgp-peer ic-router \
     --peer-name=onprem-peer \
     --region=us-east4 \
     --bfd-session-initialization-mode=ACTIVE \
-    --bfd-min-receive-interval=300 \
-    --bfd-min-transmit-interval=300 \
-    --bfd-multiplier=3
+    --bfd-min-receive-interval=1000 \
+    --bfd-min-transmit-interval=1000 \
+    --bfd-multiplier=5
 ```
 
-BFD (Bidirectional Forwarding Detection) is even better than fast BGP timers. It runs at the data plane level and can detect failures in under a second.
+BFD (Bidirectional Forwarding Detection) is better than relying on BGP hold timers alone. Cloud Router can use BFD to detect failures in as little as five seconds, and BFD is supported only for VLAN attachments that use Cloud Interconnect Dataplane v2.
 
 Make sure your on-premises router also has BFD enabled:
 
 ```text
 ! Cisco - Enable BFD for BGP
 router bgp 65001
-  neighbor 169.254.60.1 fall-over bfd
+  neighbor 169.254.60.1 fall-over bfd single-hop
 
 interface TenGigabitEthernet0/0.100
-  bfd interval 300 min_rx 300 multiplier 3
+  bfd interval 1000 min_rx 1000 multiplier 5
 ```
 
 ## Troubleshooting BGP Issues
