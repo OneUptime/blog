@@ -158,7 +158,7 @@ The `--api-target` flag restricts the key to only work with your specific API. W
 Get the key value.
 
 ```bash
-# List API keys and their values
+# List API keys and get the key ID
 gcloud services api-keys list --project=consumer-project-id
 
 # Get the key string for a specific key
@@ -182,7 +182,7 @@ gcloud services api-keys update KEY_ID \
 
 # Restrict the key to specific HTTP referrers (for browser-based apps)
 gcloud services api-keys update KEY_ID \
-  --allowed-referrers="*.example.com/*,example.com/*" \
+  --allowed-referrers="https://*.example.com/*,https://example.com/*" \
   --project=consumer-project-id
 
 # Restrict the key to specific Android apps
@@ -250,20 +250,21 @@ paths:
           description: "User-specific data"
 ```
 
-When both are in the same security entry (same array element), both must be present. When they are in separate entries, either one is sufficient.
+When both are in the same security entry (same array element), both must be present. ESP and ESPv2 support alternative security entries for OAuth2 authentication schemes, but they do not support an API key as one side of an alternative (logical OR) requirement.
 
 ## Monitoring API Key Usage
 
-Cloud Endpoints tracks usage by API key automatically.
+Cloud Endpoints tracks usage for the consumer project associated with an API key. If you create keys in separate consumer projects, you can use this to distinguish callers.
 
 ```bash
 # View the API usage dashboard in the Cloud Console
 # Navigate to: APIs & Services > Endpoints > your service > Overview
 
 # The dashboard shows:
-# - Requests per API key
-# - Error rates per key
-# - Latency by key
+# - Requests
+# - Error rates
+# - Latency
+# You can filter by consumer project number.
 ```
 
 You can also query usage through Cloud Monitoring.
@@ -272,24 +273,25 @@ You can also query usage through Cloud Monitoring.
 # Create a dashboard showing usage by consumer
 gcloud monitoring dashboards create --config='
 {
-  "displayName": "API Usage by Consumer",
+  "displayName": "Endpoint API Usage",
   "mosaicLayout": {
     "tiles": [
       {
         "width": 12,
         "height": 4,
         "widget": {
-          "title": "Requests by API Key",
+          "title": "Requests by Response Class",
           "xyChart": {
             "dataSets": [
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/producer/request_count\" AND resource.type=\"api\"",
+                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/request_count\" AND resource.type=\"api\"",
                     "aggregation": {
                       "alignmentPeriod": "300s",
                       "perSeriesAligner": "ALIGN_RATE",
-                      "groupByFields": ["metric.labels.credential_id"]
+                      "crossSeriesReducer": "REDUCE_SUM",
+                      "groupByFields": ["metric.labels.response_code_class"]
                     }
                   }
                 },
@@ -309,16 +311,14 @@ gcloud monitoring dashboards create --config='
 When a key is compromised or a consumer should no longer have access.
 
 ```bash
-# Delete an API key (immediately revokes access)
+# Delete an API key (revokes access after propagation)
 gcloud services api-keys delete KEY_ID --project=consumer-project-id
 
-# Or disable it temporarily
-gcloud services api-keys update KEY_ID \
-  --clear-restrictions \
-  --project=consumer-project-id
+# If you deleted it by mistake, you can restore it within 30 days
+gcloud services api-keys undelete KEY_ID --project=consumer-project-id
 ```
 
-After revoking a key, requests using that key will receive a 401 error. There may be a brief propagation delay (usually under a minute).
+After revoking a key, requests using that key will be rejected after the deletion propagates.
 
 ## Best Practices
 
