@@ -8,9 +8,9 @@ Description: A step-by-step guide to configuring GCP Cloud VPN when your on-prem
 
 ---
 
-Not every on-premises VPN device has a public IP address directly assigned to it. In many real-world setups, the VPN appliance sits behind a NAT device - a firewall, a router doing port address translation, or even a carrier-grade NAT. This creates a problem because standard IPsec uses the ESP protocol (IP protocol 50), which does not have port numbers and therefore cannot be NATed properly.
+Not every on-premises VPN device has a public IP address directly assigned to it. In many real-world setups, the VPN appliance sits behind a one-to-one NAT device - a firewall or a router doing static NAT. This creates a problem because standard IPsec uses the ESP protocol (IP protocol 50), which does not have port numbers and therefore cannot be NATed properly.
 
-The solution is NAT Traversal (NAT-T), which wraps ESP packets inside UDP port 4500. GCP Cloud VPN supports this out of the box, but there are some configuration details you need to get right. Let me walk through the setup.
+The solution is NAT Traversal (NAT-T), which wraps ESP packets inside UDP port 4500. GCP Cloud VPN supports this for one-to-one NAT, but there are some configuration details you need to get right. Let me walk through the setup.
 
 ## How NAT-T Works
 
@@ -40,6 +40,7 @@ Before you start, make sure:
 - Your NAT device can forward UDP ports 500 and 4500 to the internal VPN appliance
 - Your VPN appliance supports IKEv2 with NAT-T (most modern devices do)
 - You know the public IP address of your NAT device
+- Your NAT is one-to-one NAT. Cloud VPN does not support one-to-many NAT, port address translation, or multiple peer VPN gateways sharing one public IP.
 - The NAT device does not rewrite IKE packets (some aggressive firewalls do this)
 
 ## Step 1: Configure the NAT Device
@@ -71,11 +72,11 @@ iptables -A FORWARD -p udp -d 192.168.1.1 --dport 500 -j ACCEPT
 iptables -A FORWARD -p udp -d 192.168.1.1 --dport 4500 -j ACCEPT
 ```
 
-Important: Do NOT forward ESP (protocol 50). With NAT-T, all traffic flows over UDP 4500, so ESP forwarding is not needed and would actually cause problems.
+Important: Do NOT forward ESP (protocol 50) for this NAT-T setup. With NAT-T, IPsec data traffic flows over UDP 4500, so ESP forwarding is not needed.
 
 ## Step 2: Create the GCP VPN Gateway
 
-For this scenario, I recommend using HA VPN if possible. HA VPN handles NAT-T better than Classic VPN because it always uses IKEv2.
+For this scenario, I recommend using HA VPN if possible. Google recommends HA VPN with BGP for higher availability, and the tunnel command below explicitly uses IKEv2.
 
 ```bash
 # Create an HA VPN gateway
@@ -126,9 +127,10 @@ gcloud compute forwarding-rules create fr-udp4500 \
 For HA VPN, you need to define the peer. Use the public IP of the NAT device, not the internal VPN device:
 
 ```bash
-# Create an external VPN gateway with the NAT device's public IP
+# Create an external VPN gateway with the NAT device's real public IP.
+# Replace NAT_PUBLIC_IP with that internet-routable address.
 gcloud compute external-vpn-gateways create onprem-vpn-gw \
-    --interfaces=0=203.0.113.5
+    --interfaces=0=NAT_PUBLIC_IP
 ```
 
 ## Step 4: Create Cloud Router and VPN Tunnels
@@ -174,7 +176,7 @@ gcloud compute routers add-bgp-peer vpn-router \
 
 ## Step 6: Configure the On-Premises VPN Device
 
-On your VPN appliance behind the NAT, the configuration needs to account for NAT-T. Here is an example using strongSwan on Linux:
+On your VPN appliance behind the NAT, the configuration needs to account for NAT-T. Here is an example using the legacy strongSwan `ipsec.conf` format on Linux:
 
 ```bash
 # /etc/ipsec.conf - strongSwan configuration behind NAT
@@ -182,10 +184,10 @@ conn gcp-tunnel
     # Use the internal IP as the local address
     left=192.168.1.1
     # The NAT device's public IP (for IKE identity)
-    leftid=203.0.113.5
+    leftid=NAT_PUBLIC_IP
     leftsubnet=10.0.0.0/24
-    # GCP VPN gateway IP
-    right=35.242.100.50
+    # GCP HA VPN gateway interface IP
+    right=GCP_HA_VPN_INTERFACE_IP
     rightsubnet=10.1.0.0/24
     # IKEv2 with NAT-T support
     keyexchange=ikev2
@@ -218,21 +220,20 @@ NAT devices track UDP sessions by source/destination IP and port. If the NAT ses
 Solutions:
 - Lower the DPD interval to keep the NAT session alive (10 seconds works well)
 - Configure NAT session timeouts to be longer than the IKE/IPsec rekey interval
-- Some VPN devices support sending keepalive packets - enable this feature
+- Some VPN devices support sending NAT-T keepalive packets - enable this feature
 
 ### Source IP Changes After NAT
 
 GCP Cloud VPN sees the public IP of the NAT device, not the internal VPN device. Make sure:
 
-- The `--peer-address` in GCP points to the NAT device's public IP
+- The HA VPN external VPN gateway interface, or the Classic VPN `--peer-address`, points to the NAT device's public IP
 - The IKE identity on the on-premises device matches what GCP expects
 
 ### Multiple VPN Devices Behind the Same NAT
 
-This is tricky. If you have more than one VPN device behind the same NAT public IP, standard port forwarding only works for one of them. Options include:
+Cloud VPN does not support multiple peer VPN gateways behind the same NAT public IP. Options include:
 
 - Assign different public IPs for each VPN device
-- Use different source ports (some devices support this)
 - Consolidate to a single VPN device that handles all tunnels
 
 ## Verifying NAT-T is Active
@@ -257,4 +258,4 @@ You should see `NAT-T: enabled` or similar in the output.
 
 ## Wrapping Up
 
-Running Cloud VPN behind a NAT device is fully supported thanks to NAT-T and UDP encapsulation. The main things to remember are: forward UDP 500 and 4500 (not ESP), use the NAT device's public IP as the peer address in GCP, force UDP encapsulation on the on-premises device, and keep NAT sessions alive with short DPD intervals. Once you have these pieces in place, the tunnel works just like any other Cloud VPN connection.
+Running Cloud VPN behind a one-to-one NAT device is supported thanks to NAT-T and UDP encapsulation. The main things to remember are: forward UDP 500 and 4500 (not ESP), use the NAT device's public IP as the peer address in GCP, force UDP encapsulation on the on-premises device when needed, and keep NAT sessions alive with DPD or NAT-T keepalives. Once you have these pieces in place, the tunnel works just like any other Cloud VPN connection.
