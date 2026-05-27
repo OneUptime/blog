@@ -16,10 +16,11 @@ This guide walks through creating different types of Kubernetes Services using A
 
 Before diving in, make sure you have:
 
-- Ansible 2.12 or newer
+- ansible-core 2.16 or newer
 - The `kubernetes.core` collection installed
 - A working kubeconfig pointing to your cluster
-- Python `kubernetes` library installed on the control node
+- Python 3.9 or newer on the control node
+- Python `kubernetes`, `PyYAML`, and `jsonpatch` libraries installed on the control node
 
 Install the required collection if you have not already:
 
@@ -28,8 +29,8 @@ Install the required collection if you have not already:
 
 ansible-galaxy collection install kubernetes.core
 
-# Install the Python client library
-pip install kubernetes
+# Install the Python dependencies used by the collection
+python3 -m pip install "kubernetes>=24.2.0" PyYAML jsonpatch
 ```
 
 ## Understanding Kubernetes Service Types
@@ -169,7 +170,7 @@ For production workloads on cloud providers like AWS, GCP, or Azure, LoadBalance
               - "203.0.113.0/24"
 ```
 
-The `loadBalancerSourceRanges` field restricts which IP ranges can reach your load balancer. This is a quick way to add IP whitelisting without needing a separate security group or firewall rule.
+The `loadBalancerSourceRanges` field restricts which IP ranges can reach your load balancer if your cloud provider supports it. This is a quick way to keep IP whitelisting in the Service definition instead of managing it separately.
 
 ## Creating an ExternalName Service
 
@@ -281,7 +282,7 @@ Sometimes you need direct pod-to-pod communication without load balancing. Headl
             targetPort: 5432
 ```
 
-With this in place, each pod gets a DNS entry like `postgres-0.postgres-headless.databases.svc.cluster.local`. Applications can connect to specific replicas when needed.
+With this in place and a matching StatefulSet using `serviceName: postgres-headless`, each pod gets a DNS entry like `postgres-0.postgres-headless.databases.svc.cluster.local`. Applications can connect to specific replicas when needed.
 
 ## Verifying Service Creation
 
