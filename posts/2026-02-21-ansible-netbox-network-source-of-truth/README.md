@@ -22,13 +22,13 @@ validate_certs: true
 
 group_by:
   - device_roles
-  - regions
+  - region
   - sites
   - tenants
 
-query_filters:
+device_query_filters:
   - status: active
-  - has_primary_ip: true
+  - has_primary_ip: 'true'
 
 compose:
   ansible_host: primary_ip4.address | split('/') | first
@@ -40,18 +40,16 @@ compose:
 # tasks/netbox-data.yml
 ---
 - name: Get device information from Netbox
-  netbox.netbox.netbox_device_info:
-    netbox_url: "{{ netbox_url }}"
-    netbox_token: "{{ netbox_token }}"
-    name: "{{ inventory_hostname }}"
-  register: device_info
+  ansible.builtin.set_fact:
+    device_info: "{{ query('netbox.netbox.nb_lookup', 'devices', api_endpoint=netbox_url, token=netbox_token, api_filter='name=' ~ inventory_hostname) }}"
+
+- name: Get site information from Netbox
+  ansible.builtin.set_fact:
+    site_info: "{{ query('netbox.netbox.nb_lookup', 'sites', api_endpoint=netbox_url, token=netbox_token, api_filter='name=' ~ site_name) }}"
 
 - name: Get IP prefixes for site
-  netbox.netbox.netbox_prefix_info:
-    netbox_url: "{{ netbox_url }}"
-    netbox_token: "{{ netbox_token }}"
-    site: "{{ site_name }}"
-  register: site_prefixes
+  ansible.builtin.set_fact:
+    site_prefixes: "{{ query('netbox.netbox.nb_lookup', 'prefixes', api_endpoint=netbox_url, token=netbox_token, api_filter='scope_type=dcim.site scope_id=' ~ site_info[0].key) }}"
 ```
 
 ## Updating Netbox from Ansible
@@ -115,7 +113,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -259,4 +257,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
