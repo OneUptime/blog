@@ -233,6 +233,12 @@ This was shown above in the unattended-upgrades configuration. The system reboot
   register: reboot_required
   when: ansible_os_family == "Debian"
 
+- name: Install reboot check helper (RHEL)
+  ansible.builtin.package:
+    name: yum-utils
+    state: present
+  when: ansible_os_family == "RedHat"
+
 - name: Check if reboot is required (RHEL)
   ansible.builtin.command:
     cmd: needs-restarting -r
@@ -253,13 +259,18 @@ This was shown above in the unattended-upgrades configuration. The system reboot
 
 ```yaml
 # Perform rolling reboots across a cluster (one at a time)
-- name: Reboot hosts that need it
-  ansible.builtin.reboot:
-    reboot_timeout: 600
-    msg: "Rebooting for security updates"
-  when: reboot_required.stat.exists | default(false)
+- hosts: app_cluster
+  become: true
   serial: 1
-  throttle: 1
+
+  tasks:
+    - name: Reboot hosts that need it
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+        msg: "Rebooting for security updates"
+      when: >
+        (ansible_os_family == "Debian" and reboot_required.stat.exists | default(false)) or
+        (ansible_os_family == "RedHat" and reboot_required_rhel.rc | default(0) == 1)
 ```
 
 ## Verifying Auto-Update Configuration
@@ -304,9 +315,9 @@ There are packages you might not want to update automatically. Database servers,
 - name: Configure package exclusions for dnf-automatic
   ansible.builtin.lineinfile:
     path: /etc/dnf/automatic.conf
-    regexp: '^exclude'
-    line: "exclude = postgresql* mysql* redis*"
-    insertafter: '^\[commands\]'
+    regexp: '^excludepkgs'
+    line: "excludepkgs = postgresql*,mysql*,redis*"
+    insertafter: '^\[base\]'
 ```
 
 For Ubuntu, this is handled through the `Package-Blacklist` section in the unattended-upgrades configuration shown earlier.
