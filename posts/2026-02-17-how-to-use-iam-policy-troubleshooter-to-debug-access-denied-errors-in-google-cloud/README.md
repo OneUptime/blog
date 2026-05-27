@@ -12,7 +12,7 @@ You are trying to do something in Google Cloud and get hit with "Permission deni
 
 ## What the IAM Policy Troubleshooter Does
 
-The troubleshooter evaluates whether a specific principal (user, service account, or group) has a specific permission on a specific resource. It walks the entire resource hierarchy, checks all IAM policies, evaluates conditional role bindings, and tells you exactly which policy grants or denies the access.
+The troubleshooter evaluates whether a specific principal (user or service account) has a specific permission on a specific resource. It walks the entire resource hierarchy, checks IAM allow and deny policies, evaluates conditional role bindings, and tells you which policies affect the access decision.
 
 This saves you from the tedious process of running `get-iam-policy` on every level of the hierarchy and manually checking each binding.
 
@@ -50,12 +50,12 @@ For programmatic access, use the Policy Troubleshooter API:
 ```bash
 # Use the REST API to troubleshoot access
 curl -X POST \
-    "https://policytroubleshooter.googleapis.com/v1/iam:troubleshoot" \
+    "https://policytroubleshooter.googleapis.com/v3/iam:troubleshoot" \
     -H "Authorization: Bearer $(gcloud auth print-access-token)" \
     -H "Content-Type: application/json" \
     -d '{
         "accessTuple": {
-            "principal": "serviceAccount:your-sa@your-project.iam.gserviceaccount.com",
+            "principal": "your-sa@your-project.iam.gserviceaccount.com",
             "fullResourceName": "//cloudresourcemanager.googleapis.com/projects/your-project-id",
             "permission": "compute.instances.create"
         }
@@ -68,18 +68,20 @@ The API response includes detailed information about each policy in the hierarch
 
 The troubleshooter output contains several key fields. Here is how to interpret them:
 
-The `access` field at the top level tells you the final verdict - `GRANTED` or `NOT_GRANTED`.
+The `overallAccessState` field at the top level tells you the final verdict - for example, `CAN_ACCESS` or `CANNOT_ACCESS`.
 
-The `explainedPolicies` array lists every IAM policy that was evaluated. For each policy, you see:
-- `access`: Whether this specific policy grants the permission
+The `allowPolicyExplanation.explainedPolicies` array lists the IAM allow policies that were evaluated. For each policy, you see:
+- `allowAccessState`: Whether this specific allow policy grants the permission
 - `fullResourceName`: Which resource the policy is attached to
 - `bindingExplanations`: Details about each role binding in the policy
 
 For each binding explanation:
-- `access`: Whether this binding grants the permission
+- `allowAccessState`: Whether this binding grants the permission
 - `role`: The IAM role in the binding
 - `rolePermission`: Whether the role includes the requested permission
 - `memberships`: Whether the principal is a member of this binding
+
+The `denyPolicyExplanation` section shows whether any IAM deny policies were evaluated and whether they block the requested permission.
 
 ## Common Scenarios and How to Debug Them
 
@@ -129,7 +131,7 @@ for binding in data.get('bindings', []):
 "
 ```
 
-The troubleshooter evaluates conditions at the time you run it, so check if the condition might be time-based or depend on request attributes.
+The troubleshooter can evaluate time-based conditions at the time you run it, and you can provide additional request context for conditions that depend on attributes such as resource details, destination IP, destination port, and request time.
 
 ### Scenario 4: Deny Policies Blocking Access
 
@@ -162,9 +164,9 @@ You can script the troubleshooter to regularly audit access for critical permiss
 
 ```python
 # Python script to batch-check permissions for a service account
-from google.cloud import policytroubleshooter_v1
+from google.cloud import policytroubleshooter_iam_v3
 
-client = policytroubleshooter_v1.IamCheckerClient()
+client = policytroubleshooter_iam_v3.PolicyTroubleshooterClient()
 
 # Define the permissions to check
 permissions_to_check = [
@@ -173,12 +175,12 @@ permissions_to_check = [
     "bigquery.datasets.get",
 ]
 
-principal = "serviceAccount:your-sa@your-project.iam.gserviceaccount.com"
+principal = "your-sa@your-project.iam.gserviceaccount.com"
 resource = "//cloudresourcemanager.googleapis.com/projects/your-project-id"
 
 for permission in permissions_to_check:
     # Build the request for each permission
-    request = policytroubleshooter_v1.TroubleshootIamPolicyRequest(
+    request = policytroubleshooter_iam_v3.TroubleshootIamPolicyRequest(
         access_tuple={
             "principal": principal,
             "full_resource_name": resource,
@@ -186,7 +188,7 @@ for permission in permissions_to_check:
         }
     )
     response = client.troubleshoot_iam_policy(request=request)
-    access = response.access
+    access = response.overall_access_state
     print(f"{permission}: {access.name}")
 ```
 
