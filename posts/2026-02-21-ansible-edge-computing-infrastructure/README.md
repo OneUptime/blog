@@ -61,7 +61,7 @@ all:
         edge_eu:
           hosts:
             edge-eu-001:
-              ansible_host: 10.300.1.10
+              ansible_host: 10.30.1.10
               edge_site: london
               edge_role: compute
               hardware_profile: x86-mini
@@ -94,6 +94,7 @@ Bootstrap new edge nodes with the base configuration:
       ansible.builtin.apt:
         name:
           - docker.io
+          - ansible
           - python3
           - python3-pip
           - curl
@@ -143,7 +144,7 @@ Bootstrap new edge nodes with the base configuration:
         name: "Edge ansible-pull"
         minute: "*/15"
         job: >
-          /usr/local/bin/ansible-pull
+          /usr/bin/ansible-pull
           -U {{ edge_config_repo }}
           -C {{ edge_config_branch }}
           -d /opt/edge/ansible
