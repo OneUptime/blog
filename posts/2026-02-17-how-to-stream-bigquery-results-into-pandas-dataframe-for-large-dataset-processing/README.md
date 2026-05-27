@@ -39,7 +39,7 @@ The BigQuery Storage API (also called the Read API) is the fastest way to read l
 
 ```bash
 # Install the required packages
-pip install google-cloud-bigquery google-cloud-bigquery-storage pyarrow pandas
+pip install google-cloud-bigquery google-cloud-bigquery-storage google-cloud-storage pyarrow pandas tqdm gcsfs
 ```
 
 ```python
@@ -98,13 +98,12 @@ aggregated_results = []
 
 for page in result.pages:
     # Convert this page to a DataFrame
-    page_df = page.to_dataframe()
+    page_df = pd.DataFrame([dict(row.items()) for row in page])
     total_rows += len(page_df)
 
     # Process the chunk - aggregate, filter, or write to disk
     page_summary = page_df.groupby("page_path").agg(
         views=("view_id", "count"),
-        unique_users=("user_id", "nunique"),
     ).reset_index()
 
     aggregated_results.append(page_summary)
@@ -138,10 +137,9 @@ query = """
 
 query_job = client.query(query)
 
-# to_dataframe_iterable yields DataFrames in chunks
-# Each chunk has max_results rows
+# to_dataframe_iterable yields DataFrames as a stream
 chunk_iterator = query_job.result().to_dataframe_iterable(
-    max_results=50000  # 50,000 rows per chunk
+    max_stream_count=4  # Limit parallel download streams to control memory usage
 )
 
 # Process each chunk and write results to a Parquet file
@@ -154,7 +152,7 @@ for i, chunk_df in enumerate(chunk_iterator):
     # Calculate per-user metrics for this chunk
     user_metrics = filtered.groupby("user_id").agg(
         total_sessions=("session_id", "count"),
-        avg_duration=("duration_seconds", "mean"),
+        total_duration=("duration_seconds", "sum"),
         total_pages=("page_path", "count"),
     ).reset_index()
 
@@ -164,9 +162,10 @@ for i, chunk_df in enumerate(chunk_iterator):
 # Combine all chunks into a final result
 final_metrics = pd.concat(output_chunks).groupby("user_id").agg(
     total_sessions=("total_sessions", "sum"),
-    avg_duration=("avg_duration", "mean"),
+    total_duration=("total_duration", "sum"),
     total_pages=("total_pages", "sum"),
 ).reset_index()
+final_metrics["avg_duration"] = final_metrics["total_duration"] / final_metrics["total_sessions"]
 
 print(f"Final user metrics: {len(final_metrics)} users")
 ```
@@ -196,7 +195,7 @@ writer = None
 total_rows = 0
 
 for page in query_job.result(page_size=50000).pages:
-    chunk_df = page.to_dataframe()
+    chunk_df = pd.DataFrame([dict(row.items()) for row in page])
     total_rows += len(chunk_df)
 
     # Convert the DataFrame chunk to an Arrow table
@@ -238,16 +237,15 @@ bucket = gcs_client.bucket("my-output-bucket")
 chunk_number = 0
 
 for page in query_job.result(page_size=100000).pages:
-    chunk_df = page.to_dataframe()
+    chunk_df = pd.DataFrame([dict(row.items()) for row in page])
 
     # Write each chunk as a separate CSV file in GCS
-    csv_buffer = io.BytesIO()
+    csv_buffer = io.StringIO()
     chunk_df.to_csv(csv_buffer, index=False)
-    csv_buffer.seek(0)
 
     blob_name = f"exports/large_table/chunk_{chunk_number:04d}.csv"
     blob = bucket.blob(blob_name)
-    blob.upload_from_file(csv_buffer, content_type="text/csv")
+    blob.upload_from_string(csv_buffer.getvalue(), content_type="text/csv")
 
     print(f"Uploaded {blob_name} ({len(chunk_df)} rows)")
     chunk_number += 1
@@ -284,7 +282,7 @@ print(f"Query results saved to staging table: {query_job.total_bytes_processed} 
 # Export the table to GCS as Parquet files
 # BigQuery will automatically shard into multiple files
 destination_uri = "gs://my-export-bucket/exports/huge_table/*.parquet"
-table_ref = client.dataset("temp").table("export_staging")
+table_ref = bigquery.TableReference.from_string("my-project.temp.export_staging")
 
 extract_job = client.extract_table(
     table_ref,
