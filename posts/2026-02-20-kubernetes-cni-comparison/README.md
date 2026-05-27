@@ -30,19 +30,21 @@ We will compare four popular CNI plugins:
 - **Calico** - BGP-based networking with strong policy support
 - **Cilium** - eBPF-based networking with advanced observability
 - **Flannel** - Simple overlay networking
-- **Weave** - Mesh networking with encryption support
+- **Weave** - Legacy mesh networking with encryption support
 
 ## Calico
 
-Calico uses BGP (Border Gateway Protocol) to distribute routes across nodes. It operates at Layer 3 and avoids overlay encapsulation when possible, which reduces latency.
+Calico supports BGP (Border Gateway Protocol) to distribute routes across nodes. It can operate at Layer 3 and avoid overlay encapsulation when configured for direct routing, which reduces latency.
 
 ```bash
-# Install Calico using the operator
+# Install Calico custom resource definitions and the operator
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
 
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
-# Install Calico custom resources
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
+# Download, review, and install Calico custom resources
+curl -O https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/custom-resources.yaml
+kubectl create -f custom-resources.yaml
 
 # Verify Calico pods are running
 kubectl get pods -n calico-system
@@ -58,14 +60,18 @@ Key features:
 
 ## Cilium
 
-Cilium uses eBPF (extended Berkeley Packet Filter) to implement networking directly in the Linux kernel. This bypasses iptables and provides better performance at scale.
+Cilium uses eBPF (extended Berkeley Packet Filter) to implement networking directly in the Linux kernel. This can avoid much of the traditional iptables data path and provides better performance at scale.
 
 ```bash
 # Install Cilium CLI
-curl -L --remote-name-all \
-  https://github.com/cilium/cilium-cli/releases/latest/download/cilium-linux-amd64.tar.gz
-tar xzvf cilium-linux-amd64.tar.gz
-sudo mv cilium /usr/local/bin/
+CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+CLI_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
+curl -L --fail --remote-name-all \
+  https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 
 # Install Cilium into the cluster
 cilium install
@@ -76,7 +82,7 @@ cilium status
 
 Key features:
 
-- eBPF-based data plane - no iptables overhead
+- eBPF-based data plane with optional kube-proxy replacement
 - Kubernetes Network Policy support plus CiliumNetworkPolicy CRDs
 - Layer 7 (HTTP, gRPC, Kafka) policy enforcement
 - Hubble for network observability and flow visualization
@@ -105,7 +111,7 @@ Key features:
 
 ## Weave Net
 
-Weave creates a mesh overlay network between nodes. It can automatically encrypt traffic and handles network partitions gracefully.
+Weave creates a mesh overlay network between nodes. It can encrypt traffic and uses peer discovery and distributed IP address allocation to handle node changes. The original Weave Net repository is archived, so it is mainly relevant to existing or legacy clusters.
 
 ```bash
 # Install Weave Net
@@ -121,7 +127,7 @@ Key features:
 - Built-in encryption using NaCl
 - Kubernetes Network Policy support
 - Automatic mesh topology discovery
-- Handles network partitions with CRDT-based data synchronization
+- Handles node changes through peer discovery and distributed IP address allocation
 
 ## Feature Comparison
 
@@ -162,7 +168,7 @@ graph TD
 
 Performance depends on your workload. Here are general guidelines:
 
-- **Cilium** excels at high throughput because eBPF bypasses the iptables chain entirely. At thousands of services, the difference becomes significant.
+- **Cilium** excels at high throughput because eBPF can bypass much of the iptables-based service and policy path. At thousands of services, the difference becomes significant.
 - **Calico** in pure L3 mode (no overlay) performs very well. With VXLAN overlay, performance is slightly lower due to encapsulation.
 - **Flannel** and **Weave** both use overlay networks, which add encapsulation overhead. They are adequate for most workloads but not ideal for latency-sensitive applications.
 
@@ -181,7 +187,7 @@ Performance depends on your workload. Here are general guidelines:
 - You want deep network observability with Hubble
 - Performance at scale is critical
 - You want a service mesh without sidecars
-- You are running eBPF-compatible kernels (5.10+)
+- You are running eBPF-compatible kernels (5.10+ or a distribution-equivalent kernel)
 
 ### Use Flannel When
 
@@ -192,10 +198,10 @@ Performance depends on your workload. Here are general guidelines:
 
 ### Use Weave When
 
-- You need built-in encryption without extra configuration
+- You are maintaining an existing Weave Net deployment
+- You need built-in encryption in a legacy Weave cluster
 - You want automatic mesh topology
-- You need to handle network partitions gracefully
-- You are running smaller clusters with simple requirements
+- You are running smaller legacy clusters with simple requirements
 
 ## Verifying Your CNI Plugin
 
