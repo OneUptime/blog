@@ -10,7 +10,7 @@ Description: Configure Apache Tomcat for Java web applications using Ansible wit
 
 Apache Tomcat is the most popular servlet container for running Java web applications. It handles WAR file deployment, JSP compilation, and provides the Servlet/JSP API implementation that Java web apps depend on. Configuring Tomcat for production involves JVM tuning, connector optimization, security hardening, and proper log management. Ansible makes it possible to standardize these configurations across all your Tomcat instances.
 
-This guide covers installing and configuring Tomcat with Ansible, including JVM settings, WAR deployment, SSL configuration, and manager app setup.
+This guide covers installing and configuring Tomcat with Ansible, including JVM settings, WAR deployment, HTTP connector configuration, and manager app setup.
 
 ## Prerequisites
 
@@ -50,12 +50,14 @@ tomcat-setup/
 ```yaml
 # group_vars/all.yml
 
-tomcat_version: "10.1.18"
+tomcat_version: "10.1.55"
 tomcat_major_version: "10"
 tomcat_user: tomcat
 tomcat_group: tomcat
 tomcat_install_dir: /opt/tomcat
 tomcat_home: "/opt/tomcat/apache-tomcat-{{ tomcat_version }}"
+tomcat_download_url: "https://dlcdn.apache.org/tomcat/tomcat-{{ tomcat_major_version }}/v{{ tomcat_version }}/bin/apache-tomcat-{{ tomcat_version }}.tar.gz"
+tomcat_checksum_url: "{{ tomcat_download_url }}.sha512"
 java_version: "17"
 
 # JVM configuration
@@ -68,7 +70,6 @@ jvm_gc: "-XX:+UseG1GC -XX:MaxGCPauseMillis=200"
 tomcat_http_port: 8080
 tomcat_https_port: 8443
 tomcat_shutdown_port: 8005
-tomcat_ajp_port: 8009
 tomcat_max_threads: 200
 tomcat_min_spare_threads: 25
 tomcat_connection_timeout: 20000
@@ -76,9 +77,12 @@ tomcat_connection_timeout: 20000
 # Application deployment
 war_file_source: "../build/myapp.war"
 app_context_path: "/"
+app_war_name: "{{ 'ROOT' if app_context_path == '/' else app_context_path | regex_replace('^/', '') | replace('/', '#') }}"
 
 # Manager app credentials
 tomcat_admin_user: admin
+tomcat_admin_password: "{{ vault_tomcat_admin_password | default('change-me-use-ansible-vault') }}"
+tomcat_manager_allowed_ips: "127\\.0\\.0\\.1|::1"
 ```
 
 ## Installation Tasks
@@ -116,8 +120,9 @@ tomcat_admin_user: admin
 
 - name: Download Apache Tomcat
   get_url:
-    url: "https://dlcdn.apache.org/tomcat/tomcat-{{ tomcat_major_version }}/v{{ tomcat_version }}/bin/apache-tomcat-{{ tomcat_version }}.tar.gz"
+    url: "{{ tomcat_download_url }}"
     dest: "/tmp/apache-tomcat-{{ tomcat_version }}.tar.gz"
+    checksum: "sha512:{{ tomcat_checksum_url }}"
     mode: '0644'
 
 - name: Extract Tomcat archive
@@ -183,6 +188,7 @@ tomcat_admin_user: admin
     owner: "{{ tomcat_user }}"
     group: "{{ tomcat_group }}"
     mode: '0600'
+  no_log: true
   notify: restart tomcat
 
 - name: Deploy context configuration for manager app
@@ -217,6 +223,7 @@ tomcat_admin_user: admin
     - ROOT
     - docs
     - examples
+    - host-manager
   when: remove_default_apps | default(true)
 ```
 
@@ -235,7 +242,7 @@ tomcat_admin_user: admin
 - name: Deploy WAR file to Tomcat
   copy:
     src: "{{ war_file_source }}"
-    dest: "{{ tomcat_home }}/webapps/{{ app_context_path | replace('/', 'ROOT') if app_context_path == '/' else app_context_path | replace('/', '') }}.war"
+    dest: "{{ tomcat_home }}/webapps/{{ app_war_name }}.war"
     owner: "{{ tomcat_user }}"
     group: "{{ tomcat_group }}"
     mode: '0644'
@@ -252,6 +259,8 @@ tomcat_admin_user: admin
   uri:
     url: "http://localhost:{{ tomcat_http_port }}{{ app_context_path }}"
     status_code: [200, 302]
+  register: app_check
+  until: app_check.status in [200, 302]
   retries: 5
   delay: 10
 ```
@@ -261,9 +270,12 @@ tomcat_admin_user: admin
 ```yaml
 # roles/tomcat/tasks/main.yml
 ---
-- include_tasks: install.yml
-- include_tasks: configure.yml
-- include_tasks: deploy.yml
+- import_tasks: install.yml
+  tags: install
+- import_tasks: configure.yml
+  tags: configure
+- import_tasks: deploy.yml
+  tags: deploy
 ```
 
 ## JVM Environment Script
@@ -282,11 +294,11 @@ CATALINA_OPTS="$CATALINA_OPTS -XX:MaxMetaspaceSize={{ jvm_metaspace }}"
 # Garbage collection
 CATALINA_OPTS="$CATALINA_OPTS {{ jvm_gc }}"
 
-# Enable JMX monitoring
+# Optional local-only JMX monitoring
 CATALINA_OPTS="$CATALINA_OPTS -Dcom.sun.management.jmxremote"
 CATALINA_OPTS="$CATALINA_OPTS -Dcom.sun.management.jmxremote.port=9090"
-CATALINA_OPTS="$CATALINA_OPTS -Dcom.sun.management.jmxremote.ssl=false"
-CATALINA_OPTS="$CATALINA_OPTS -Dcom.sun.management.jmxremote.authenticate=false"
+CATALINA_OPTS="$CATALINA_OPTS -Dcom.sun.management.jmxremote.host=127.0.0.1"
+CATALINA_OPTS="$CATALINA_OPTS -Dcom.sun.management.jmxremote.local.only=true"
 
 # Headless mode for server environments
 CATALINA_OPTS="$CATALINA_OPTS -Djava.awt.headless=true"
@@ -339,6 +351,30 @@ export CATALINA_OPTS
     </Engine>
   </Service>
 </Server>
+```
+
+```xml
+<!-- roles/tomcat/templates/tomcat-users.xml.j2 -->
+<?xml version="1.0" encoding="UTF-8"?>
+<tomcat-users xmlns="http://tomcat.apache.org/xml"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://tomcat.apache.org/xml tomcat-users.xsd"
+              version="1.0">
+  <role rolename="manager-gui"/>
+  <role rolename="manager-script"/>
+  <user username="{{ tomcat_admin_user }}"
+        password="{{ tomcat_admin_password }}"
+        roles="manager-gui,manager-script"/>
+</tomcat-users>
+```
+
+```xml
+<!-- roles/tomcat/templates/context.xml.j2 -->
+<?xml version="1.0" encoding="UTF-8"?>
+<Context antiResourceLocking="false" privileged="true">
+  <Valve className="org.apache.catalina.valves.RemoteAddrValve"
+         allow="{{ tomcat_manager_allowed_ips }}" />
+</Context>
 ```
 
 ## Systemd Service
@@ -395,4 +431,4 @@ ansible-playbook -i inventory/hosts.yml playbook.yml --tags deploy
 
 ## Wrapping Up
 
-This Ansible playbook provides a production-ready Tomcat installation with JVM tuning, security hardening, and automated WAR deployment. The template-driven configuration lets you easily adjust memory settings, thread pools, and connector options per environment. By removing default webapps and restricting the manager application, you reduce the attack surface. The systemd integration ensures Tomcat starts on boot and restarts on failure. This is a solid foundation for running Java web applications in production.
+This Ansible playbook provides a production-ready Tomcat installation with JVM tuning, security hardening, and automated WAR deployment. The template-driven configuration lets you easily adjust memory settings, thread pools, and connector options per environment. By removing default webapps and restricting the manager application to trusted addresses, you reduce the attack surface. The systemd integration ensures Tomcat starts on boot and restarts on failure. This is a solid foundation for running Java web applications in production.
