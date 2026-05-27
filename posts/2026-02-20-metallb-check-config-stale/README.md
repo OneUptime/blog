@@ -12,12 +12,13 @@ After changing MetalLB configuration - adding IP pools, modifying advertisements
 
 ## What Is Stale Configuration?
 
-MetalLB configuration becomes stale when the controller or speakers fail to load new configuration. This can happen due to:
+MetalLB configuration becomes stale when the controller or speakers reject a new configuration after it has been stored and keep using the last valid configuration. This can happen due to:
 
-- YAML syntax errors in CRDs
 - Invalid IP ranges in address pools
 - References to non-existent resources
-- Webhook validation failures
+- Inconsistent configuration across multiple MetalLB resources
+
+YAML syntax errors and webhook validation failures are normally rejected before the configuration is stored, so `kubectl apply` fails instead of creating a stale MetalLB configuration.
 
 ```mermaid
 flowchart TD
@@ -33,7 +34,7 @@ flowchart TD
 
 ## Step 1: Check CRD Validation
 
-MetalLB uses validating webhooks to catch obvious errors before they reach etcd. Check if the webhook is running:
+MetalLB uses validating webhooks to catch many obvious errors before they reach etcd. Check if the webhook is running:
 
 ```bash
 # Verify the MetalLB webhook service is available
@@ -87,8 +88,8 @@ Healthy output looks like:
 Problematic output looks like:
 
 ```text
-{"level":"error","msg":"failed to parse config","error":"invalid CIDR"}
-{"level":"warn","msg":"configuration is stale"}
+{"level":"error","msg":"failed to parse the configuration","error":"invalid CIDR"}
+{"level":"error","msg":"new configuration rejected","error":"service has no configuration under new config"}
 ```
 
 ## Step 3: Verify IP Address Pools
@@ -156,25 +157,36 @@ echo "Referenced in L2: $L2_REFS"
 
 ## Step 5: Check the Stale Configuration Metric
 
-MetalLB exposes a Prometheus metric that indicates stale configuration:
+MetalLB exposes a Prometheus metric on each component that indicates stale configuration:
 
 ```bash
+# Check controller metrics
+kubectl port-forward -n metallb-system deployment/controller 7472:7472 &
+PF_PID=$!
+
+# 0 means config is current, 1 means config is stale
+curl -s http://localhost:7472/metrics | grep metallb_k8s_client_config_stale_bool
+
+kill "$PF_PID"
+
 # Port-forward to a speaker pod to access metrics
+SPEAKER_POD=$(kubectl get pod -n metallb-system -l component=speaker -o jsonpath='{.items[0].metadata.name}')
 kubectl port-forward -n metallb-system \
-  $(kubectl get pod -n metallb-system -l component=speaker -o name | head -1) \
+  "pod/${SPEAKER_POD}" \
   7472:7472 &
+PF_PID=$!
 
 # Check the stale config metric
 # 0 means config is current, 1 means config is stale
 curl -s http://localhost:7472/metrics | grep metallb_k8s_client_config_stale_bool
 
 # Clean up the port-forward
-kill %1
+kill "$PF_PID"
 ```
 
 ## Step 6: Force a Config Reload
 
-If configuration is stale, you can force a reload by restarting the MetalLB components:
+After fixing the invalid configuration, you can force a reload by restarting the MetalLB components:
 
 ```bash
 # Restart the controller to force config reload
@@ -245,7 +257,7 @@ kubectl get svc -A -o json | jq -r '
 
 ### Overlapping Pools
 
-Two pools with overlapping address ranges can cause unpredictable behavior:
+Two pools with overlapping address ranges make the MetalLB configuration invalid:
 
 ```yaml
 # WRONG: These pools overlap at 192.168.1.200
@@ -259,7 +271,7 @@ Two pools with overlapping address ranges can cause unpredictable behavior:
 
 ### Missing Namespace
 
-All MetalLB CRDs must be in the `metallb-system` namespace:
+MetalLB configuration resources must be in the same namespace where MetalLB is deployed. The default manifest uses `metallb-system`:
 
 ```bash
 # Check if any MetalLB resources are in the wrong namespace
