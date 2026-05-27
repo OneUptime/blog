@@ -8,9 +8,9 @@ Description: Learn how to set up gRPC communication between microservices runnin
 
 ---
 
-REST APIs work fine for many use cases, but when you need high-performance communication between microservices, gRPC is a better fit. gRPC uses Protocol Buffers for serialization (which is significantly faster and smaller than JSON), supports streaming, and generates client and server code from service definitions. This means your service contracts are defined once and shared across services, eliminating the drift that happens with REST APIs.
+REST APIs work fine for many use cases, but when you need high-performance communication between microservices, gRPC is a better fit. gRPC uses Protocol Buffers for serialization (which can be significantly faster and smaller than JSON), supports streaming, and generates client and server code from service definitions. This means your service contracts are defined once and shared across services, reducing the drift that happens with REST APIs.
 
-Cloud Run has native support for gRPC, including unary calls, server streaming, and bidirectional streaming. Setting it up requires a few specific configurations, but the performance benefits for internal service-to-service communication are substantial.
+Cloud Run has native support for all gRPC types, including unary calls, server streaming, and bidirectional streaming. Setting it up requires a few specific configurations, but the performance benefits for internal service-to-service communication can be substantial.
 
 ## Defining the Service with Protocol Buffers
 
@@ -264,7 +264,7 @@ gcloud run deploy user-grpc-service \
     --no-allow-unauthenticated
 ```
 
-The `--use-http2` flag is critical. gRPC requires HTTP/2, and by default Cloud Run uses HTTP/1.1. Without this flag, gRPC calls will fail.
+The `--use-http2` flag is important for gRPC on Cloud Run. Cloud Run can handle native gRPC traffic, but Google recommends enabling HTTP/2 for gRPC services, and streaming gRPC features require HTTP/2. When HTTP/2 is enabled, Cloud Run forwards requests to your container as HTTP/2 cleartext (`h2c`) after terminating TLS at Google's frontend.
 
 ## Implementing the gRPC Client
 
@@ -299,7 +299,14 @@ func main() {
     }
 
     // Set up the gRPC connection
-    conn, err := createGRPCConnection(userServiceURL)
+    userServiceAudience := os.Getenv("USER_SERVICE_AUDIENCE")
+    var conn *grpc.ClientConn
+    var err error
+    if userServiceAudience != "" {
+        conn, err = createAuthenticatedConnection(userServiceURL, userServiceAudience)
+    } else {
+        conn, err = createGRPCConnection(userServiceURL)
+    }
     if err != nil {
         log.Fatalf("Failed to connect: %v", err)
     }
@@ -425,7 +432,7 @@ gcloud run deploy api-gateway \
     --region=us-central1 \
     --platform=managed \
     --allow-unauthenticated \
-    --set-env-vars="USER_SERVICE_URL=user-grpc-service-xxxxx-uc.a.run.app:443" \
+    --set-env-vars="USER_SERVICE_URL=user-grpc-service-xxxxx-uc.a.run.app:443,USER_SERVICE_AUDIENCE=https://user-grpc-service-xxxxx-uc.a.run.app/" \
     --memory=256Mi
 ```
 
@@ -437,22 +444,23 @@ You can test the gRPC service directly using grpcurl.
 # Get the service URL
 SERVICE_URL=$(gcloud run services describe user-grpc-service \
     --region=us-central1 \
-    --format='value(status.url)' | sed 's|https://||')
+    --format='value(status.url)')
+SERVICE_HOST=$(echo "$SERVICE_URL" | sed 's|https://||')
 
-# Get an auth token
-TOKEN=$(gcloud auth print-identity-token)
+# Get an auth token for the Cloud Run service audience
+TOKEN=$(gcloud auth print-identity-token --audiences="$SERVICE_URL")
 
 # Call the ListUsers method
 grpcurl \
     -H "Authorization: Bearer $TOKEN" \
-    $SERVICE_URL:443 \
+    $SERVICE_HOST:443 \
     userservice.UserService/ListUsers
 
 # Call GetUser with a parameter
 grpcurl \
     -H "Authorization: Bearer $TOKEN" \
     -d '{"id": "user-123"}' \
-    $SERVICE_URL:443 \
+    $SERVICE_HOST:443 \
     userservice.UserService/GetUser
 ```
 
@@ -460,8 +468,8 @@ grpcurl \
 
 gRPC versus REST for the same service:
 
-- **Serialization**: Protocol Buffers are 3-10x smaller than JSON
-- **Latency**: gRPC calls are typically 2-3x faster due to HTTP/2 multiplexing and binary serialization
+- **Serialization**: Protocol Buffers are often smaller than equivalent JSON payloads
+- **Latency**: gRPC calls can reduce latency due to HTTP/2 multiplexing and binary serialization
 - **Code generation**: Type-safe clients and servers from a single proto file
 - **Streaming**: Native support for server-side, client-side, and bidirectional streaming
 
@@ -498,4 +506,4 @@ steps:
 
 ## Wrapping Up
 
-gRPC on Cloud Run gives you high-performance, type-safe communication between microservices. The setup requires HTTP/2 to be enabled on Cloud Run and TLS for service-to-service calls, but once configured, you get faster serialization, code-generated clients, and streaming support that REST cannot match. For internal service-to-service communication where performance matters, gRPC is worth the initial setup investment.
+gRPC on Cloud Run gives you high-performance, type-safe communication between microservices. The setup requires HTTP/2 to be enabled on Cloud Run for streaming gRPC and TLS for service-to-service calls, but once configured, you get efficient serialization, code-generated clients, and streaming support that REST cannot match. For internal service-to-service communication where performance matters, gRPC is worth the initial setup investment.
