@@ -115,7 +115,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
@@ -124,10 +124,10 @@ jobs:
         uses: anchore/sbom-action/download-syft@v0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -135,7 +135,7 @@ jobs:
 
       - name: Build and push image
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
@@ -155,13 +155,13 @@ jobs:
           # Attach SBOM to the image as a cosign attestation
           cosign attest --yes \
             --predicate sbom.spdx.json \
-            --type spdxjson \
+            --type https://spdx.dev/Document \
             ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
 
       - name: Verify the signature
         run: |
           cosign verify \
-            --certificate-identity-regexp=".*" \
+            --certificate-identity-regexp="^https://github\\.com/${{ github.repository }}/\\.github/workflows/.*@refs/tags/v.*$" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
             ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
 ```
@@ -196,7 +196,6 @@ metadata:
       Ensures all container images are signed with Cosign
       before they can be deployed to the cluster.
 spec:
-  validationFailureAction: Enforce  # Block non-compliant resources
   background: false
   rules:
     - name: verify-cosign-signature
@@ -211,12 +210,13 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/myorg/*"       # Only verify org images
+          failureAction: Enforce      # Block non-compliant resources
           attestors:
             - count: 1
               entries:
                 - keyless:
-                    subject: "https://github.com/myorg/*"
-                    issuer: "https://token.actions.githubusercontent.com"
+                    subjectRegExp: "^https://github\\.com/myorg/.+/.github/workflows/.+@refs/tags/v.+$"
+                    issuerRegExp: "^https://token\\.actions\\.githubusercontent\\.com$"
                     rekor:
                       url: https://rekor.sigstore.dev
 ```
@@ -230,7 +230,6 @@ kind: ClusterPolicy
 metadata:
   name: require-sbom-attestation
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-sbom
       match:
@@ -243,19 +242,20 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/myorg/*"
+          failureAction: Enforce
           attestations:
-            - type: https://spdx.dev/Document  # SPDX SBOM type
+            - predicateType: https://spdx.dev/Document  # SPDX SBOM type
               attestors:
                 - entries:
                     - keyless:
-                        subject: "https://github.com/myorg/*"
-                        issuer: "https://token.actions.githubusercontent.com"
+                        subjectRegExp: "^https://github\\.com/myorg/.+/.github/workflows/.+@refs/tags/v.+$"
+                        issuerRegExp: "^https://token\\.actions\\.githubusercontent\\.com$"
               conditions:
                 - all:
                     # Ensure SBOM contains package information
-                    - key: "{{ len(packages) }}"
+                    - key: "{{ packages | length(@) }}"
                       operator: GreaterThan
-                      value: "0"
+                      value: 0
 ```
 
 ## End-to-End Supply Chain Security
@@ -320,7 +320,7 @@ def verify_image_signature(image: str, issuer: str, identity: str) -> bool:
 # Verify before deploying
 image = "ghcr.io/myorg/myapp:v1.2.3"
 issuer = "https://token.actions.githubusercontent.com"
-identity = "https://github.com/myorg/.*"
+identity = "^https://github\\.com/myorg/myapp/\\.github/workflows/.+@refs/tags/v.+$"
 
 if not verify_image_signature(image, issuer, identity):
     print("Deployment blocked: image signature verification failed")
@@ -331,7 +331,7 @@ if not verify_image_signature(image, issuer, identity):
 
 ```dockerfile
 # Pin all dependencies by hash for reproducible, secure builds
-FROM python:3.12.1-slim@sha256:abc123def456...
+FROM python:3.12.1-slim@sha256:a64ac5be6928c6a94f00b16e09cdf3ba3edd44452d10ffa4516a58004873573e
 
 WORKDIR /app
 
@@ -343,7 +343,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --require-hashes -r requirements.txt
 
 COPY . .
-USER nonroot
+USER 65532:65532
 ENTRYPOINT ["python", "main.py"]
 ```
 
