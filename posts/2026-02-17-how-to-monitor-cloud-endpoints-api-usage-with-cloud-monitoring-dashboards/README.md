@@ -16,15 +16,15 @@ This guide covers building effective Cloud Monitoring dashboards for Cloud Endpo
 
 ESPv2 reports these metrics to Cloud Monitoring automatically:
 
-- **Request count**: Total requests, broken down by response code, method, and consumer
+- **Request count**: Total requests, broken down by response code, method, and consumer project when using the producer resource
 - **Request latency**: End-to-end latency including proxy overhead
 - **Backend latency**: Time spent in your backend (excluding proxy overhead)
 - **Request size**: Size of incoming requests
 - **Response size**: Size of outgoing responses
-- **Error count**: Requests that resulted in 4xx or 5xx responses
+- **Error count**: Derived from request counts that resulted in 4xx or 5xx responses
 - **Quota usage**: Per-consumer quota consumption
 
-These metrics use the `serviceruntime.googleapis.com` prefix and are associated with the `consumed_api` resource type.
+These metrics use the `serviceruntime.googleapis.com` prefix. For Cloud Endpoints APIs, they are associated with the `api` resource type; per-consumer producer views use the `produced_api` resource type.
 
 ## Step 1: Build an Overview Dashboard
 
@@ -48,7 +48,7 @@ gcloud monitoring dashboards create --config='
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/producer/request_count\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\"",
+                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/request_count\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\"",
                     "aggregation": {
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_RATE"
@@ -73,7 +73,7 @@ gcloud monitoring dashboards create --config='
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/producer/request_count\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\" AND metric.labels.response_code_class=\"4xx\"",
+                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/request_count\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\" AND metric.labels.response_code_class=\"4xx\"",
                     "aggregation": {
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_RATE"
@@ -86,7 +86,7 @@ gcloud monitoring dashboards create --config='
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/producer/request_count\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\" AND metric.labels.response_code_class=\"5xx\"",
+                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/request_count\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\" AND metric.labels.response_code_class=\"5xx\"",
                     "aggregation": {
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_RATE"
@@ -111,7 +111,7 @@ gcloud monitoring dashboards create --config='
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/producer/total_latencies\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\"",
+                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/request_latencies\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\"",
                     "aggregation": {
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_PERCENTILE_50"
@@ -124,7 +124,7 @@ gcloud monitoring dashboards create --config='
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/producer/total_latencies\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\"",
+                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/request_latencies\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\"",
                     "aggregation": {
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_PERCENTILE_95"
@@ -137,7 +137,7 @@ gcloud monitoring dashboards create --config='
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/producer/total_latencies\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\"",
+                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/request_latencies\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\"",
                     "aggregation": {
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_PERCENTILE_99"
@@ -163,16 +163,17 @@ gcloud monitoring dashboards create --config='
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/producer/request_count\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\"",
+                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/request_count\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\"",
                     "aggregation": {
                       "alignmentPeriod": "300s",
                       "perSeriesAligner": "ALIGN_RATE",
-                      "groupByFields": ["metric.labels.method"]
+                      "crossSeriesReducer": "REDUCE_SUM",
+                      "groupByFields": ["resource.labels.method"]
                     }
                   }
                 },
                 "plotType": "STACKED_BAR",
-                "legendTemplate": "${metric.labels.method}"
+                "legendTemplate": "${resource.labels.method}"
               }
             ]
           }
@@ -204,16 +205,17 @@ gcloud monitoring dashboards create --config='
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/producer/request_count\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\"",
+                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/request_count\" AND resource.type=\"produced_api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\"",
                     "aggregation": {
                       "alignmentPeriod": "300s",
                       "perSeriesAligner": "ALIGN_RATE",
-                      "groupByFields": ["metric.labels.credential_id"]
+                      "crossSeriesReducer": "REDUCE_SUM",
+                      "groupByFields": ["resource.labels.consumer_id"]
                     }
                   }
                 },
                 "plotType": "STACKED_AREA",
-                "legendTemplate": "${metric.labels.credential_id}"
+                "legendTemplate": "${resource.labels.consumer_id}"
               }
             ]
           }
@@ -230,16 +232,17 @@ gcloud monitoring dashboards create --config='
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/producer/request_count\" AND resource.type=\"api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\" AND metric.labels.response_code_class!=\"2xx\"",
+                    "filter": "metric.type=\"serviceruntime.googleapis.com/api/request_count\" AND resource.type=\"produced_api\" AND resource.labels.service=\"my-api.endpoints.my-project-id.cloud.goog\" AND metric.labels.response_code_class!=\"2xx\"",
                     "aggregation": {
                       "alignmentPeriod": "300s",
                       "perSeriesAligner": "ALIGN_RATE",
-                      "groupByFields": ["metric.labels.credential_id"]
+                      "crossSeriesReducer": "REDUCE_SUM",
+                      "groupByFields": ["resource.labels.consumer_id"]
                     }
                   }
                 },
                 "plotType": "LINE",
-                "legendTemplate": "${metric.labels.credential_id}"
+                "legendTemplate": "${resource.labels.consumer_id}"
               }
             ]
           }
@@ -257,14 +260,14 @@ Create alerts for the most important failure modes.
 ### Alert: High Error Rate
 
 ```bash
-# Alert when 5xx error rate exceeds 5% of total requests
-gcloud monitoring alerting policies create \
+# Alert when 5xx error rate exceeds 5 requests/sec
+gcloud monitoring policies create \
   --display-name="API High Error Rate" \
-  --condition-display-name="5xx error rate above 5%" \
-  --condition-filter='metric.type="serviceruntime.googleapis.com/api/producer/request_count" AND resource.type="api" AND resource.labels.service="my-api.endpoints.my-project-id.cloud.goog" AND metric.labels.response_code_class="5xx"' \
-  --condition-threshold-value=5 \
-  --condition-threshold-duration=300s \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --condition-display-name="5xx error rate above 5 requests/sec" \
+  --condition-filter='metric.type="serviceruntime.googleapis.com/api/request_count" AND resource.type="api" AND resource.labels.service="my-api.endpoints.my-project-id.cloud.goog" AND metric.labels.response_code_class="5xx"' \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_RATE"}' \
+  --duration=300s \
+  --if='> 5' \
   --notification-channels=CHANNEL_ID \
   --project=my-project-id
 ```
@@ -273,12 +276,13 @@ gcloud monitoring alerting policies create \
 
 ```bash
 # Alert when p95 latency exceeds 2 seconds
-gcloud monitoring alerting policies create \
+gcloud monitoring policies create \
   --display-name="API High Latency" \
   --condition-display-name="p95 latency above 2s" \
-  --condition-filter='metric.type="serviceruntime.googleapis.com/api/producer/total_latencies" AND resource.type="api" AND resource.labels.service="my-api.endpoints.my-project-id.cloud.goog"' \
-  --condition-threshold-value=2000 \
-  --condition-threshold-duration=300s \
+  --condition-filter='metric.type="serviceruntime.googleapis.com/api/request_latencies" AND resource.type="api" AND resource.labels.service="my-api.endpoints.my-project-id.cloud.goog"' \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_PERCENTILE_95"}' \
+  --duration=300s \
+  --if='> 2' \
   --notification-channels=CHANNEL_ID \
   --project=my-project-id
 ```
@@ -288,14 +292,14 @@ gcloud monitoring alerting policies create \
 A sudden drop in traffic can indicate that something is broken and clients cannot reach your API.
 
 ```bash
-# Alert when request rate drops below 50% of its normal level
-gcloud monitoring alerting policies create \
+# Alert when request rate drops below 10 requests/sec
+gcloud monitoring policies create \
   --display-name="API Traffic Drop" \
   --condition-display-name="Request rate dropped significantly" \
-  --condition-filter='metric.type="serviceruntime.googleapis.com/api/producer/request_count" AND resource.type="api" AND resource.labels.service="my-api.endpoints.my-project-id.cloud.goog"' \
-  --condition-threshold-value=10 \
-  --condition-threshold-duration=600s \
-  --condition-threshold-comparison=COMPARISON_LT \
+  --condition-filter='metric.type="serviceruntime.googleapis.com/api/request_count" AND resource.type="api" AND resource.labels.service="my-api.endpoints.my-project-id.cloud.goog"' \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_RATE"}' \
+  --duration=600s \
+  --if='< 10' \
   --notification-channels=CHANNEL_ID \
   --project=my-project-id
 ```
@@ -334,15 +338,23 @@ Define Service Level Objectives based on your API metrics.
 
 ```bash
 # Create an SLO for API availability (99.9% of requests return non-5xx)
-gcloud monitoring slos create \
-  --service=my-api-service \
-  --display-name="API Availability SLO" \
-  --goal=0.999 \
-  --rolling-period=30d \
-  --request-based-sli=good-total-ratio \
-  --good-service-filter='metric.type="serviceruntime.googleapis.com/api/producer/request_count" AND resource.type="api" AND metric.labels.response_code_class!="5xx"' \
-  --total-service-filter='metric.type="serviceruntime.googleapis.com/api/producer/request_count" AND resource.type="api"' \
-  --project=my-project-id
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://monitoring.googleapis.com/v3/projects/my-project-id/services/my-api-service/serviceLevelObjectives" \
+  -d '{
+    "displayName": "API Availability SLO",
+    "goal": 0.999,
+    "rollingPeriod": "2592000s",
+    "serviceLevelIndicator": {
+      "requestBased": {
+        "goodTotalRatio": {
+          "goodServiceFilter": "metric.type=\"serviceruntime.googleapis.com/api/request_count\" AND resource.type=\"api\" AND metric.labels.response_code_class!=\"5xx\"",
+          "totalServiceFilter": "metric.type=\"serviceruntime.googleapis.com/api/request_count\" AND resource.type=\"api\""
+        }
+      }
+    }
+  }'
 ```
 
 ## Using the Endpoints Console
@@ -360,16 +372,7 @@ This built-in view is a good starting point, but custom dashboards give you more
 
 ## Exporting Metrics for External Tools
 
-If you use external monitoring tools like Grafana or Datadog, export the metrics.
-
-```bash
-# Create a monitoring export sink for Pub/Sub
-gcloud monitoring channels create \
-  --type=pubsub \
-  --display-name="API Metrics Export" \
-  --channel-labels=topic=projects/my-project-id/topics/api-metrics \
-  --project=my-project-id
-```
+If you use external monitoring tools like Grafana or Datadog, query Cloud Monitoring directly through the tool's Google Cloud integration. Cloud Monitoring notification channels can send alert notifications to Pub/Sub, but they do not export time-series metrics.
 
 For Grafana, use the Google Cloud Monitoring data source plugin to query metrics directly.
 
