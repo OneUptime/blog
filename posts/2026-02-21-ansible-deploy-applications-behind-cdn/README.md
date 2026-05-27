@@ -37,6 +37,8 @@ cdn-deploy/
     origin_server/
       tasks/
         main.yml
+      handlers/
+        main.yml
       templates/
         nginx-origin.conf.j2
     cdn_config/
@@ -111,6 +113,15 @@ The origin server needs to send proper cache-control headers so the CDN knows ho
     path: /etc/nginx/sites-enabled/default
     state: absent
   notify: reload nginx
+```
+
+```yaml
+# roles/origin_server/handlers/main.yml
+---
+- name: reload nginx
+  service:
+    name: nginx
+    state: reloaded
 ```
 
 ## Nginx Origin Configuration
@@ -206,6 +217,7 @@ These tasks handle CDN-specific operations like cache invalidation.
   apt:
     name: awscli
     state: present
+  become: yes
   when: cdn_provider == "cloudfront"
 
 - name: Upload static assets to S3
@@ -327,6 +339,12 @@ The full deployment playbook coordinates code deployment, static asset uploading
       retries: 5
       delay: 10
 
+  handlers:
+    - name: restart application
+      service:
+        name: "{{ app_name }}"
+        state: restarted
+
 - name: Configure Origin Server
   hosts: app_servers
   become: yes
@@ -337,7 +355,8 @@ The full deployment playbook coordinates code deployment, static asset uploading
   hosts: localhost
   connection: local
   roles:
-    - cdn_config
+    - role: cdn_config
+      tags: cdn
 ```
 
 ## Selective Cache Invalidation
