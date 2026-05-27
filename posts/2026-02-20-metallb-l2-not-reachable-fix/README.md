@@ -8,19 +8,20 @@ Description: Troubleshooting guide for when MetalLB Layer 2 services get an exte
 
 ---
 
-You deployed a Kubernetes service of type LoadBalancer, MetalLB assigned it an external IP, but nothing outside the cluster can reach it. You try to curl or ping the IP and get nothing back. This is one of the most common issues with MetalLB in Layer 2 mode, and it almost always comes down to ARP, firewalls, or network misconfiguration.
+You deployed a Kubernetes service of type LoadBalancer, MetalLB assigned it an external IP, but nothing outside the cluster can reach it. You try to curl the service IP and get nothing back. This is one of the most common issues with MetalLB in Layer 2 mode, and it almost always comes down to ARP, firewalls, or network misconfiguration.
 
 This guide walks through a systematic debugging flow to find and fix the root cause.
 
 ## How MetalLB Layer 2 Mode Works
 
-Before debugging, it helps to understand how MetalLB Layer 2 mode actually delivers traffic. Unlike BGP mode, Layer 2 does not use routing protocols. Instead, a single MetalLB speaker pod claims the external IP by responding to ARP (IPv4) or NDP (IPv6) requests on the local network.
+Before debugging, it helps to understand how MetalLB Layer 2 mode actually delivers traffic. Unlike BGP mode, Layer 2 does not use routing protocols. Instead, one node's MetalLB speaker claims the external IP by responding to ARP (IPv4) or NDP (IPv6) requests on the local network.
 
 ```mermaid
 sequenceDiagram
     participant Client as External Client
     participant Switch as Network Switch
     participant Speaker as MetalLB Speaker Pod
+    participant Node as Announcing Node
     participant Service as Kubernetes Service
     participant Pod as Application Pod
 
@@ -28,8 +29,8 @@ sequenceDiagram
     Switch->>Speaker: Forwards ARP request to all ports
     Speaker->>Switch: ARP Reply: 192.168.1.240 is at MAC aa:bb:cc:dd:ee:ff
     Switch->>Client: Forwards ARP reply
-    Client->>Speaker: TCP SYN to 192.168.1.240:80
-    Speaker->>Service: kube-proxy forwards to Service ClusterIP
+    Client->>Node: TCP SYN to 192.168.1.240:80
+    Node->>Service: kube-proxy forwards to Service backend
     Service->>Pod: Routes to backend pod
     Pod->>Client: Response travels back
 ```
@@ -77,15 +78,21 @@ The speaker pods are responsible for responding to ARP requests. Check their log
 ```bash
 # Get logs from all MetalLB speaker pods
 # Look for messages about IP announcements and ARP responses
-# The speaker that owns the IP should log "announcing" messages
-kubectl logs -n metallb-system -l app=metallb-speaker --tail=100
+kubectl logs -n metallb-system -l app=metallb,component=speaker --tail=100
 ```
 
-Healthy logs contain `"event":"serviceAnnounced"` with your IP. If you see interface errors or no announcement messages, the speaker cannot reach the network interface. Check which node owns the IP:
+MetalLB also attaches events to the Service. Check for an event such as `announcing from node "node-name" with protocol "layer2"`:
+
+```bash
+# Check the Service events to see which node is announcing the IP
+kubectl describe svc my-service
+```
+
+If you see interface errors, no announcement event, or no announcement logs, the speaker may not be advertising the IP. Check which speaker pods are running on which nodes:
 
 ```bash
 # In Layer 2 mode, only ONE speaker pod handles each IP
-kubectl get pods -n metallb-system -l app=metallb-speaker -o wide
+kubectl get pods -n metallb-system -l app=metallb,component=speaker -o wide
 ```
 
 ```mermaid
@@ -99,12 +106,12 @@ flowchart TD
     E -->|No errors| H[Check firewall/anti-spoofing]
     C -->|Yes| I[Check firewall rules]
     I --> J[Check kube-proxy mode]
-    J --> K[Check Service endpoints]
+    J --> K[Check Service EndpointSlices]
 ```
 
-### Step 4: Check Firewall Rules Blocking ARP or Traffic
+### Step 4: Check Firewall Rules Blocking Traffic
 
-Firewalls on the node can silently drop ARP packets or block incoming traffic on the assigned port.
+Firewalls on the node can silently block incoming traffic on the assigned port. ARP filtering is usually handled outside normal iptables service-port rules, such as by nftables bridge rules, arptables, switch security, or hypervisor anti-spoofing.
 
 ```bash
 # Check iptables for DROP rules affecting the external IP or port
@@ -132,7 +139,7 @@ If another device on the network already uses the same IP, ARP will behave unpre
 ```bash
 # Scan for duplicate IPs on the network (run from same subnet)
 # Two different MACs for the same IP means a conflict
-arping -D -I eth0 192.168.1.240 -c 3
+arping -I eth0 192.168.1.240 -c 5
 
 # Also check the neighbor table on your gateway
 ip neigh show | grep 192.168.1.240
@@ -142,7 +149,7 @@ If there is a conflict, change the MetalLB IP pool to use unused addresses or re
 
 ### Step 6: Verify the Subnet and VLAN Configuration
 
-MetalLB Layer 2 mode requires the external IP to be on the same Layer 2 broadcast domain as the client trying to reach it. ARP is a broadcast protocol and does not cross VLAN boundaries or routed subnets.
+MetalLB Layer 2 mode requires the external IP to be reachable on the same Layer 2 broadcast domain as the announcing node and the device that must resolve the IP with ARP, such as the client on a flat network or the gateway for routed clients. ARP is a broadcast protocol and does not cross VLAN boundaries or routed subnets.
 
 ```mermaid
 flowchart LR
@@ -163,19 +170,19 @@ Common mistakes:
 - The client is on a different VLAN and there is no proxy ARP or routing configured
 - The MetalLB IP is a public IP but the nodes are on a private network
 
-Make sure the MetalLB IP pool falls within the same subnet as your node IPs:
+For the common flat-network setup, make sure the MetalLB IP pool falls within the same subnet as your node IPs:
 
 ```bash
-# Compare node IPs with the MetalLB IP pool - they must be in the same subnet
+# Compare node IPs with the MetalLB IP pool in a flat-network setup
 kubectl get nodes -o wide | awk '{print $1, $6}'
 kubectl get ipaddresspools -n metallb-system -o jsonpath='{.items[*].spec.addresses}'
 ```
 
 ### Step 7: Disable Anti-Spoofing on Hypervisors
 
-If your Kubernetes nodes run as virtual machines on hypervisors like VMware ESXi, Proxmox, or Hyper-V, the hypervisor may block ARP replies from MetalLB because the MAC address does not match the VM NIC.
+If your Kubernetes nodes run as virtual machines on hypervisors like VMware ESXi, Proxmox, or Hyper-V, the hypervisor may block ARP replies from MetalLB because the VM is announcing an IP address that the hypervisor did not assign to that VM.
 
-This is called **anti-spoofing** or **forged transmits protection**. MetalLB Layer 2 mode sends ARP replies using the node MAC for an IP the hypervisor did not assign, which triggers the protection.
+This is called **anti-spoofing** or **forged transmits protection**. MetalLB Layer 2 mode replies for a service IP the hypervisor did not assign, which can trigger that protection.
 
 **VMware ESXi:**
 
@@ -244,8 +251,8 @@ kubectl rollout restart daemonset kube-proxy -n kube-system
 Even if ARP and networking are correct, the service will appear unreachable if there are no healthy backend pods.
 
 ```bash
-# Check endpoints - if <none>, no pods match the service selector
-kubectl get endpoints my-service
+# Check EndpointSlices - if none are listed, no pods match the service selector
+kubectl get endpointslices -l kubernetes.io/service-name=my-service
 kubectl describe svc my-service | grep Selector
 kubectl get pods -l app=my-application
 ```
@@ -288,12 +295,12 @@ Here is a summary of everything to check:
 | IP assigned | `kubectl get svc` | EXTERNAL-IP is not pending |
 | Speaker running | `kubectl get pods -n metallb-system` | All speaker pods are Running |
 | ARP replies | `arping -I eth0 <IP>` | Getting unicast replies |
-| Speaker logs | `kubectl logs -n metallb-system -l app=metallb-speaker` | Service announced messages |
-| IP conflicts | `arping -D -I eth0 <IP>` | No duplicate replies |
+| Speaker logs | `kubectl logs -n metallb-system -l app=metallb,component=speaker` | Service announced messages |
+| IP conflicts | `arping -I eth0 <IP>` | No multiple MACs for the same IP |
 | Firewall | `iptables -L -n` | No DROP rules on service port |
 | Strict ARP | `kubectl get cm kube-proxy -n kube-system -o yaml` | strictARP: true (IPVS only) |
-| Endpoints | `kubectl get endpoints <svc>` | Pod IPs listed |
-| Subnet match | `kubectl get nodes -o wide` | MetalLB IPs in same subnet |
+| EndpointSlices | `kubectl get endpointslices -l kubernetes.io/service-name=<svc>` | Pod IPs listed |
+| Subnet match | `kubectl get nodes -o wide` | MetalLB IPs on the expected L2 network |
 
 ### Monitoring MetalLB with OneUptime
 
