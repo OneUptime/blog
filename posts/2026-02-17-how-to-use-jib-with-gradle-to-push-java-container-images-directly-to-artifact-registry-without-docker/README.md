@@ -106,9 +106,9 @@ With everything configured, building and pushing is a single Gradle command.
 ./gradlew jib
 ```
 
-That is it. Gradle compiles your Java code, Jib creates the layered container image, and pushes it directly to Artifact Registry. No Docker running, no Dockerfile, no intermediate build artifacts.
+That is it. Gradle compiles your Java code, Jib creates the layered container image, and pushes it directly to Artifact Registry. No Docker running, no Dockerfile, no intermediate Docker image required.
 
-If you want to see what Jib is doing without actually pushing, use the dry run.
+If you want to build the image without pushing it to Artifact Registry, use one of the local build targets.
 
 ```bash
 # Build the image to local Docker daemon (requires Docker running)
@@ -313,11 +313,10 @@ steps:
     args:
       - 'jib'
       - '-Djib.to.image=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-java-app:$SHORT_SHA'
-      - '-Djib.to.credHelper=gcloud'
-    # Cloud Build provides gcloud credentials automatically
+    # Cloud Build exposes Application Default Credentials to build steps
 ```
 
-No Docker builder step needed. Gradle handles the compilation and Jib handles the containerization and push.
+No Docker builder step needed. Gradle handles the compilation and Jib handles the containerization and push. Make sure the Cloud Build service account has permission to write to the Artifact Registry repository.
 
 ## Wrapping Up
 
