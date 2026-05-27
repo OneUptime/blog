@@ -248,14 +248,18 @@ Check which features contribute most to the predictions.
 ```sql
 -- Get the model weights (coefficients)
 SELECT
-  processed_input AS feature,
-  weight,
-  category
-FROM ML.WEIGHTS(MODEL `my_project.my_dataset.house_price_model`)
+  weights.processed_input AS feature,
+  category_weight.category,
+  COALESCE(category_weight.weight, weights.weight) AS weight
+FROM ML.WEIGHTS(
+  MODEL `my_project.my_dataset.house_price_model`,
+  STRUCT(TRUE AS standardize)
+) AS weights
+LEFT JOIN UNNEST(weights.category_weights) AS category_weight
 ORDER BY ABS(weight) DESC;
 ```
 
-This shows you the coefficient for each feature. Larger absolute weights mean the feature has more influence on the prediction.
+This shows you the coefficient for each feature. Using standardized weights makes the absolute magnitudes easier to compare across features.
 
 ## Feature Engineering
 
