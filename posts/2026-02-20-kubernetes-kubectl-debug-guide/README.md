@@ -44,7 +44,7 @@ kubectl debug -it my-pod --image=nicolaka/netshoot --target=my-container
 kubectl debug -it my-pod --image=busybox --container=debugger --target=my-container
 ```
 
-The `--target` flag enables process namespace sharing with the specified container, allowing you to see its processes.
+The `--target` flag targets the process namespace of the specified container, allowing you to see its processes when the container runtime supports this feature.
 
 ### What You Can Do Inside an Ephemeral Container
 
@@ -80,12 +80,12 @@ mount | grep -v "proc\|sys\|cgroup"
 When a pod keeps crashing, you cannot exec into it or attach ephemeral containers reliably. Instead, create a copy of the pod with a different command that keeps it alive.
 
 ```bash
-# Create a copy of a crashing pod with the command overridden to sleep
+# Create a copy of a crashing pod with the command overridden to a shell
 kubectl debug my-crashing-pod -it --copy-to=debug-pod --container=my-container -- /bin/sh
 
 # If the container does not have a shell, use a different image
 kubectl debug my-crashing-pod -it --copy-to=debug-pod \
-  --set-image=my-container=ubuntu:22.04 -- /bin/bash
+  --container=my-container --set-image=my-container=ubuntu:22.04 -- /bin/bash
 ```
 
 ```mermaid
@@ -139,11 +139,11 @@ kubectl debug my-pod -it --copy-to=debug-pod \
 Debug node-level issues by creating a pod that runs directly in the node host namespaces.
 
 ```bash
-# Create a debug pod on a specific node
-kubectl debug node/my-node -it --image=ubuntu:22.04
+# Create a privileged debug pod on a specific node
+kubectl debug node/my-node -it --image=ubuntu:22.04 --profile=sysadmin
 ```
 
-This creates a privileged pod with the node root filesystem mounted at `/host`.
+The `--profile=sysadmin` flag creates a privileged debug pod. The node root filesystem is mounted at `/host`.
 
 ```bash
 # Once inside the node debug pod:
