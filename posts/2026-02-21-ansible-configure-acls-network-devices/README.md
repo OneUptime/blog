@@ -16,8 +16,8 @@ This post covers how to create, apply, and manage ACLs on network devices using 
 
 Before diving into Ansible, let me quickly review the two main types of ACLs on Cisco IOS:
 
-- **Standard ACLs** (numbered 1-99, named) filter traffic based on source IP address only.
-- **Extended ACLs** (numbered 100-199, named) filter based on source IP, destination IP, protocol, and port numbers.
+- **Standard ACLs** (numbered 1-99 or 1300-1999, named) filter traffic based on source IP address only.
+- **Extended ACLs** (numbered 100-199 or 2000-2699, named) filter based on source IP, destination IP, protocol, and port numbers.
 
 Named ACLs are preferred over numbered ACLs because they are easier to read, modify, and manage.
 
@@ -53,10 +53,10 @@ The `ios_acls` resource module provides declarative ACL management. You define t
                     destination:
                       address: 10.20.0.0
                       wildcard_bits: 0.0.255.255
-                    protocol_options:
-                      tcp:
+                      port_protocol:
                         eq: 443
-                    remark: "Allow HTTPS to servers"
+                    remarks:
+                      - "Allow HTTPS to servers"
 
                   - sequence: 20
                     grant: permit
@@ -67,10 +67,10 @@ The `ios_acls` resource module provides declarative ACL management. You define t
                     destination:
                       address: 10.20.0.0
                       wildcard_bits: 0.0.255.255
-                    protocol_options:
-                      tcp:
+                      port_protocol:
                         eq: 80
-                    remark: "Allow HTTP to servers"
+                    remarks:
+                      - "Allow HTTP to servers"
 
                   # Allow DNS
                   - sequence: 30
@@ -81,10 +81,10 @@ The `ios_acls` resource module provides declarative ACL management. You define t
                       wildcard_bits: 0.0.255.255
                     destination:
                       any: true
-                    protocol_options:
-                      udp:
+                      port_protocol:
                         eq: 53
-                    remark: "Allow DNS lookups"
+                    remarks:
+                      - "Allow DNS lookups"
 
                   # Allow ICMP for troubleshooting
                   - sequence: 40
@@ -95,7 +95,8 @@ The `ios_acls` resource module provides declarative ACL management. You define t
                       wildcard_bits: 0.0.255.255
                     destination:
                       any: true
-                    remark: "Allow ICMP"
+                    remarks:
+                      - "Allow ICMP"
 
                   # Deny everything else
                   - sequence: 1000
@@ -105,8 +106,10 @@ The `ios_acls` resource module provides declarative ACL management. You define t
                       any: true
                     destination:
                       any: true
-                    log: true
-                    remark: "Deny all other traffic"
+                    log:
+                      set: true
+                    remarks:
+                      - "Deny all other traffic"
         state: merged
 ```
 
@@ -127,14 +130,14 @@ For complex ACLs or when you need finer control over the ordering, `ios_config` 
     - name: Configure management access ACL
       cisco.ios.ios_config:
         lines:
-          - remark Allow SSH from management network
-          - permit tcp 10.10.0.0 0.0.255.255 any eq 22
-          - remark Allow SNMP from monitoring server
-          - permit udp host 10.10.1.50 any eq 161
-          - remark Allow ICMP from management
-          - permit icmp 10.10.0.0 0.0.255.255 any
-          - remark Deny everything else
-          - deny ip any any log
+          - 10 remark Allow SSH from management network
+          - 10 permit tcp 10.10.0.0 0.0.255.255 any eq 22
+          - 20 remark Allow SNMP from monitoring server
+          - 20 permit udp host 10.10.1.50 any eq 161
+          - 30 remark Allow ICMP from management
+          - 30 permit icmp 10.10.0.0 0.0.255.255 any
+          - 1000 remark Deny everything else
+          - 1000 deny ip any any log
         parents: ip access-list extended MGMT_ACCESS
         before: no ip access-list extended MGMT_ACCESS
         match: exact
@@ -143,9 +146,9 @@ For complex ACLs or when you need finer control over the ordering, `ios_config` 
     - name: Configure VTY access ACL
       cisco.ios.ios_config:
         lines:
-          - permit 10.10.0.0 0.0.255.255
-          - permit host 10.20.1.100
-          - deny any log
+          - 10 permit 10.10.0.0 0.0.255.255
+          - 20 permit host 10.20.1.100
+          - 1000 deny any log
         parents: ip access-list standard VTY_ACCESS
 ```
 
@@ -268,18 +271,12 @@ security_acls:
   tasks:
     - name: Build and apply management ACL
       cisco.ios.ios_config:
-        lines: >-
-          {%- set lines = [] -%}
-          {%- for entry in security_acls.management.entries -%}
-            {%- set _ = lines.append(entry.seq ~ ' remark ' ~ entry.remark) -%}
-            {%- if entry.port is defined -%}
-              {%- set _ = lines.append(entry.seq ~ ' ' ~ entry.action ~ ' ' ~ entry.protocol ~ ' ' ~ entry.src ~ ' ' ~ entry.dst ~ ' eq ' ~ entry.port) -%}
-            {%- else -%}
-              {%- set _ = lines.append(entry.seq ~ ' ' ~ entry.action ~ ' ' ~ entry.protocol ~ ' ' ~ entry.src ~ ' ' ~ entry.dst) -%}
-            {%- endif -%}
-          {%- endfor -%}
-          {{ lines }}
+        lines:
+          - "{{ item.seq }} remark {{ item.remark }}"
+          - >-
+            {{ item.seq }} {{ item.action }} {{ item.protocol }} {{ item.src }} {{ item.dst }}{% if item.port is defined %} eq {{ item.port }}{% endif %}{% if item.log | default(false) %} log{% endif %}
         parents: "ip access-list {{ security_acls.management.type }} {{ security_acls.management.name }}"
+      loop: "{{ security_acls.management.entries }}"
 ```
 
 ## ACL Audit and Compliance
@@ -305,7 +302,7 @@ Regularly auditing ACLs helps you identify stale rules, overly permissive entrie
     - name: Find permit-any-any rules
       ansible.builtin.debug:
         msg: "WARNING: ACL '{{ item.0.name }}' has permit ip any any at sequence {{ item.1.sequence }}"
-      loop: "{{ current_acls.gathered | subelements('acls') | subelements('aces', skip_missing=True) }}"
+      loop: "{{ current_acls.gathered | map(attribute='acls') | flatten | subelements('aces', skip_missing=True) }}"
       when:
         - item.1.grant == 'permit'
         - item.1.source.any is defined
@@ -339,6 +336,13 @@ The `deleted` state lets you remove specific ACL entries or entire ACLs.
   connection: network_cli
 
   tasks:
+    # Remove ACL from an interface before deleting it
+    - name: Remove ACL from interface first
+      cisco.ios.ios_config:
+        lines:
+          - no ip access-group LEGACY_ACL in
+        parents: interface GigabitEthernet0/2
+
     # Remove a specific ACL entirely
     - name: Delete the old LEGACY_ACL
       cisco.ios.ios_acls:
@@ -347,13 +351,6 @@ The `deleted` state lets you remove specific ACL entries or entire ACLs.
             acls:
               - name: LEGACY_ACL
         state: deleted
-
-    # Remove ACL from an interface before deleting it
-    - name: Remove ACL from interface first
-      cisco.ios.ios_config:
-        lines:
-          - no ip access-group LEGACY_ACL in
-        parents: interface GigabitEthernet0/2
 ```
 
 ## ACL Testing with Check Mode
@@ -387,10 +384,10 @@ Always test ACL changes in check mode first, especially in production. A bad ACL
                     destination:
                       address: 10.20.0.0
                       wildcard_bits: 0.0.255.255
-                    protocol_options:
-                      tcp:
+                      port_protocol:
                         eq: 8443
-                    remark: "Allow alt HTTPS"
+                    remarks:
+                      - "Allow alt HTTPS"
         state: merged
       register: preview
 
