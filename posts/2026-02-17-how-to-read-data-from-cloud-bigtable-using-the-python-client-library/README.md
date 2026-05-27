@@ -99,7 +99,8 @@ rows = table.read_rows(
 )
 
 # Consume the rows - this triggers the actual RPC call
-for row_key, row in rows.rows.items():
+for row in rows:
+    row_key = row.row_key
     username = row.cells["profile"][b"username"][0].value.decode("utf-8")
     print(f"Key: {row_key.decode('utf-8')}, Username: {username}")
 ```
@@ -149,14 +150,11 @@ There is also a helper for prefix scans:
 
 ```python
 # Use the row_set helper for prefix-based reads
-from google.cloud.bigtable.row_set import RowSet, RowRange
+from google.cloud.bigtable.row_set import RowSet
 
 row_set = RowSet()
 # Add a row range that covers all keys starting with the prefix
-row_set.add_row_range(RowRange(
-    start_key=b"user#12345#",
-    end_key=b"user#12345$"  # '$' is the character after '#' in ASCII
-))
+row_set.add_row_range_with_prefix("user#12345#")
 
 rows = table.read_rows(row_set=row_set)
 for row in rows:
@@ -215,10 +213,11 @@ import datetime
 now = datetime.datetime.now(datetime.timezone.utc)
 yesterday = now - datetime.timedelta(hours=24)
 
-timestamp_filter = row_filters.TimestampRangeFilter(
+timestamp_range = row_filters.TimestampRange(
     start=yesterday,
     end=now
 )
+timestamp_filter = row_filters.TimestampRangeFilter(timestamp_range)
 
 rows = table.read_rows(
     start_key=b"user#10000",
