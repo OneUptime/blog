@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Run, WebSocket, Node.js, Real-Time, Google Cloud
 
-Description: Learn how to implement WebSocket connections in Node.js on Cloud Run using session affinity to maintain persistent connections across multiple instances.
+Description: Learn how to implement WebSocket connections in Node.js on Cloud Run using session affinity to improve reconnection behavior across multiple instances.
 
 ---
 
-WebSocket support on Cloud Run has been available since 2021, but making it work reliably with multiple instances requires understanding session affinity. When you have multiple Cloud Run instances running, a WebSocket connection needs to stay pinned to the same instance for its entire lifetime. Without session affinity, the load balancer might route subsequent requests to a different instance, breaking the connection.
+WebSocket support on Cloud Run has been available since 2021, but making it work reliably with multiple instances requires understanding session affinity. An established WebSocket connection stays connected to the same Cloud Run instance for its lifetime. Without session affinity, reconnects and other subsequent requests from the same client might be routed to a different instance, so any in-memory connection or room state might not be available.
 
 In this guide, I will walk through building a WebSocket server with Node.js on Cloud Run, enabling session affinity, and handling the common pitfalls that come with WebSockets on serverless platforms.
 
 ## Understanding Session Affinity on Cloud Run
 
-Cloud Run can route requests to any available instance. For regular HTTP request-response cycles, this is fine. But WebSocket connections are long-lived - once the initial HTTP upgrade handshake completes, the connection persists as a bidirectional channel. Session affinity tells Cloud Run's load balancer to route subsequent connections from the same client to the same instance.
+Cloud Run can route requests to any available instance. For regular HTTP request-response cycles, this is fine. But WebSocket connections are long-lived - once the initial HTTP upgrade handshake completes, the connection persists as a bidirectional channel to the selected instance. Session affinity tells Cloud Run's load balancer to route subsequent requests and reconnects from the same client to the same instance when possible.
 
 Cloud Run uses a cookie-based affinity mechanism. When a client first connects, Cloud Run sets a cookie that identifies the instance. The client sends this cookie with subsequent requests, and the load balancer routes to the correct instance.
 
@@ -40,15 +40,7 @@ const app = express();
 const server = http.createServer(app);
 
 // Create a WebSocket server attached to the HTTP server
-const wss = new WebSocket.Server({
-  server,
-  // Verify the upgrade request before accepting
-  verifyClient: (info, callback) => {
-    // Add authentication logic here if needed
-    // info.req contains the HTTP upgrade request
-    callback(true);
-  },
-});
+const wss = new WebSocket.Server({ server });
 
 // Track connected clients
 const clients = new Map();
@@ -64,7 +56,7 @@ wss.on('connection', (ws, req) => {
   ws.send(JSON.stringify({
     type: 'connected',
     clientId,
-    instanceId: process.env.K_REVISION || 'local',
+    revision: process.env.K_REVISION || 'local',
   }));
 
   // Handle incoming messages
@@ -114,7 +106,7 @@ app.get('/', (req, res) => {
   res.json({
     status: 'healthy',
     connectedClients: clients.size,
-    instance: process.env.K_REVISION || 'local',
+    revision: process.env.K_REVISION || 'local',
   });
 });
 
@@ -319,7 +311,7 @@ gcloud run deploy websocket-service \
 
 The critical flags are:
 
-- `--session-affinity`: Routes subsequent requests from the same client to the same instance
+- `--session-affinity`: Routes subsequent requests and reconnects from the same client to the same instance when possible
 - `--timeout 3600`: Allows connections to stay open for up to 1 hour
 - `--min-instances 1`: Keeps at least one instance warm to avoid cold start delays
 
@@ -330,7 +322,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY . .
 
@@ -348,7 +340,7 @@ There are a few things to know about WebSockets on Cloud Run:
 - Maximum connection duration is limited by the request timeout (up to 60 minutes)
 - When Cloud Run scales down, active connections will be terminated
 - Session affinity is best-effort - during scaling events, affinity may break
-- Each Cloud Run instance has a maximum number of concurrent connections (based on the concurrency setting)
+- Each WebSocket connection counts toward request concurrency; Cloud Run concurrency can be configured up to 1000 per container
 - There is no cross-instance communication built in - if you need to broadcast across instances, use Pub/Sub or Redis
 
 ## Graceful Shutdown
