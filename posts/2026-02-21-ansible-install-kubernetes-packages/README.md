@@ -66,7 +66,7 @@ Before installing Kubernetes packages, several system-level configurations need 
 
 ## Installing Kubernetes Packages on Ubuntu
 
-The Kubernetes project moved to a new package repository structure (pkgs.k8s.io) starting with version 1.28. Here is how to set it up.
+The Kubernetes project moved to a new package repository structure (pkgs.k8s.io) for packages starting with version 1.24, and the legacy repositories were frozen in September 2023. Here is how to set it up.
 
 ```yaml
 ---
@@ -76,8 +76,8 @@ The Kubernetes project moved to a new package repository structure (pkgs.k8s.io)
   become: true
 
   vars:
-    k8s_version: "1.29"
-    k8s_package_version: "1.29.2-1.1"
+    k8s_version: "1.36"
+    k8s_package_version: "1.36.1-1.1"
 
   tasks:
     - name: Install prerequisite packages
@@ -150,8 +150,8 @@ The RHEL installation follows a similar pattern but uses YUM/DNF.
   become: true
 
   vars:
-    k8s_version: "1.29"
-    k8s_package_version: "1.29.2"
+    k8s_version: "1.36"
+    k8s_package_version: "1.36.1"
 
   tasks:
     - name: Set SELinux to permissive mode
@@ -256,7 +256,7 @@ After installing packages on all nodes, you can initialize the control plane.
   vars:
     pod_network_cidr: "10.244.0.0/16"
     service_cidr: "10.96.0.0/12"
-    k8s_version: "1.29.2"
+    k8s_version: "v1.36.1"
 
   tasks:
     - name: Check if cluster is already initialized
@@ -308,6 +308,14 @@ After installing packages on all nodes, you can initialize the control plane.
   become: true
 
   tasks:
+    - name: Generate join command on the control plane
+      ansible.builtin.command:
+        cmd: kubeadm token create --print-join-command
+      delegate_to: "{{ groups['k8s_masters'][0] }}"
+      run_once: true
+      register: join_command
+      changed_when: false
+
     - name: Check if node is already joined
       ansible.builtin.stat:
         path: /etc/kubernetes/kubelet.conf
@@ -315,7 +323,7 @@ After installing packages on all nodes, you can initialize the control plane.
 
     - name: Join the Kubernetes cluster
       ansible.builtin.command:
-        cmd: "{{ hostvars[groups['k8s_masters'][0]].k8s_join_command }}"
+        cmd: "{{ join_command.stdout }}"
       when: not kubelet_conf.stat.exists
 ```
 
@@ -325,18 +333,14 @@ Upgrading Kubernetes requires careful sequencing. Here is the pattern for upgrad
 
 ```yaml
 # Upgrade Kubernetes packages on Ubuntu (one version at a time)
-- name: Unhold Kubernetes packages for upgrade
+- name: Unhold kubeadm for upgrade
   ansible.builtin.dpkg_selections:
-    name: "{{ item }}"
+    name: kubeadm
     selection: install
-  loop:
-    - kubeadm
-    - kubelet
-    - kubectl
 
 - name: Upgrade kubeadm
   ansible.builtin.apt:
-    name: "kubeadm={{ target_k8s_version }}"
+    name: "kubeadm={{ target_k8s_package_version }}"
     state: present
     update_cache: true
 
@@ -346,11 +350,23 @@ Upgrading Kubernetes requires careful sequencing. Here is the pattern for upgrad
   register: kubeadm_ver
   changed_when: false
 
+- name: Upgrade the control plane
+  ansible.builtin.command:
+    cmd: "kubeadm upgrade apply v{{ target_k8s_version }} -y"
+
+- name: Unhold kubelet and kubectl for upgrade
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: install
+  loop:
+    - kubelet
+    - kubectl
+
 - name: Upgrade kubelet and kubectl
   ansible.builtin.apt:
     name:
-      - "kubelet={{ target_k8s_version }}"
-      - "kubectl={{ target_k8s_version }}"
+      - "kubelet={{ target_k8s_package_version }}"
+      - "kubectl={{ target_k8s_package_version }}"
     state: present
 
 - name: Hold Kubernetes packages again
