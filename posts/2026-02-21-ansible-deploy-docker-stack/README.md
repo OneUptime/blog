@@ -24,11 +24,12 @@ The key difference from regular `docker-compose up` is that stacks run on Swarm,
 
 ## Prerequisites
 
-You need a running Docker Swarm cluster and the `community.docker` collection:
+You need a running Docker Swarm cluster, the Docker CLI, the Docker SDK for Python, `jsondiff`, `PyYAML`, and the `community.docker` collection:
 
 ```bash
-# Install the community.docker collection
+# Install Python dependencies and the community.docker collection
 
+pip install docker jsondiff pyyaml
 ansible-galaxy collection install community.docker
 ```
 
@@ -273,21 +274,22 @@ After deployment, verify everything is running as expected:
     - name: Parse and validate service replicas
       ansible.builtin.assert:
         that:
-          - "'0/' not in item"
-        fail_msg: "Service has zero running replicas: {{ item }}"
+          - "(item.split()[1].split('/')[0] | int) == (item.split()[1].split('/')[1] | int)"
+          - "(item.split()[1].split('/')[1] | int) > 0"
+        fail_msg: "Service does not have all desired replicas running: {{ item }}"
         success_msg: "{{ item }} - OK"
       loop: "{{ stack_services.stdout_lines }}"
 
-    - name: Check for failed tasks
+    - name: Check for shutdown tasks
       ansible.builtin.command:
-        cmd: "docker stack ps {{ stack_name }} --filter desired-state=shutdown --format {% raw %}'{{.Name}} {{.Error}}'{% endraw %}"
-      register: failed_tasks
+        cmd: "docker stack ps {{ stack_name }} --filter desired-state=shutdown --format {% raw %}'{{.Name}} {{.CurrentState}} {{.Error}}'{% endraw %}"
+      register: shutdown_tasks
       changed_when: false
 
-    - name: Report failed tasks
+    - name: Report shutdown tasks
       ansible.builtin.debug:
-        msg: "Failed tasks: {{ failed_tasks.stdout_lines }}"
-      when: failed_tasks.stdout_lines | length > 0
+        msg: "Shutdown tasks: {{ shutdown_tasks.stdout_lines }}"
+      when: shutdown_tasks.stdout_lines | length > 0
 ```
 
 ## Environment-Specific Stack Configuration
