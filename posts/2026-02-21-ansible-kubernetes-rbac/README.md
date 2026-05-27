@@ -139,14 +139,20 @@ ClusterRoles work across all namespaces. Here is a read-only role for monitoring
           metadata:
             name: cluster-viewer
           rules:
-            # Read access to most resources
-            - apiGroups: ["", "apps", "batch", "networking.k8s.io"]
-              resources: ["*"]
-              verbs: ["get", "list", "watch"]
-            # Explicitly deny secrets access at the cluster level
+            # Read access to common non-secret resources
+            # Kubernetes RBAC is additive, so omit secrets instead of trying to deny them
             - apiGroups: [""]
-              resources: ["secrets"]
-              verbs: []
+              resources: ["pods", "pods/log", "services", "configmaps", "endpoints", "persistentvolumeclaims", "events"]
+              verbs: ["get", "list", "watch"]
+            - apiGroups: ["apps"]
+              resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+              verbs: ["get", "list", "watch"]
+            - apiGroups: ["batch"]
+              resources: ["jobs", "cronjobs"]
+              verbs: ["get", "list", "watch"]
+            - apiGroups: ["networking.k8s.io"]
+              resources: ["ingresses", "networkpolicies"]
+              verbs: ["get", "list", "watch"]
 
     - name: Bind cluster-viewer to the oncall group
       kubernetes.core.k8s:
