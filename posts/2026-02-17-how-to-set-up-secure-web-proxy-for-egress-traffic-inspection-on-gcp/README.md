@@ -33,6 +33,7 @@ Unlike a network firewall that operates at the IP/port level, Secure Web Proxy u
 # Enable required APIs
 
 gcloud services enable networksecurity.googleapis.com
+gcloud services enable networkservices.googleapis.com
 gcloud services enable certificatemanager.googleapis.com
 gcloud services enable compute.googleapis.com
 
@@ -46,9 +47,11 @@ The gateway security policy defines the rules for what traffic is allowed and wh
 
 ```bash
 # Create a gateway security policy
-gcloud network-security gateway-security-policies create egress-policy \
-    --location=us-central1 \
-    --description="Egress filtering policy for production workloads"
+gcloud network-security gateway-security-policies import egress-policy \
+    --location=us-central1 <<'EOF'
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy
+description: Egress filtering policy for production workloads
+EOF
 ```
 
 ## Step 2 - Add Policy Rules
@@ -57,49 +60,64 @@ Rules are evaluated in priority order. Lower priority numbers are evaluated firs
 
 ```bash
 # Rule 1: Allow access to Google APIs
-gcloud network-security gateway-security-policies rules create allow-google-apis \
+gcloud network-security gateway-security-policies rules import allow-google-apis \
     --gateway-security-policy=egress-policy \
-    --location=us-central1 \
-    --priority=100 \
-    --basic-profile=ALLOW \
-    --session-matcher='host().endsWith("googleapis.com")' \
-    --description="Allow access to Google APIs"
+    --location=us-central1 <<'EOF'
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy/rules/allow-google-apis
+description: Allow access to Google APIs
+enabled: true
+priority: 100
+basicProfile: ALLOW
+sessionMatcher: host() == "googleapis.com" || host().endsWith(".googleapis.com")
+EOF
 
 # Rule 2: Allow access to package repositories
-gcloud network-security gateway-security-policies rules create allow-package-repos \
+gcloud network-security gateway-security-policies rules import allow-package-repos \
     --gateway-security-policy=egress-policy \
-    --location=us-central1 \
-    --priority=200 \
-    --basic-profile=ALLOW \
-    --session-matcher='host() == "pypi.org" || host() == "files.pythonhosted.org" || host() == "registry.npmjs.org" || host().endsWith("debian.org")' \
-    --description="Allow access to package repositories"
+    --location=us-central1 <<'EOF'
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy/rules/allow-package-repos
+description: Allow access to package repositories
+enabled: true
+priority: 200
+basicProfile: ALLOW
+sessionMatcher: host() == "pypi.org" || host() == "files.pythonhosted.org" || host() == "registry.npmjs.org" || host() == "debian.org" || host().endsWith(".debian.org")
+EOF
 
 # Rule 3: Allow access to monitoring and logging services
-gcloud network-security gateway-security-policies rules create allow-monitoring \
+gcloud network-security gateway-security-policies rules import allow-monitoring \
     --gateway-security-policy=egress-policy \
-    --location=us-central1 \
-    --priority=300 \
-    --basic-profile=ALLOW \
-    --session-matcher='host().endsWith("datadoghq.com") || host().endsWith("pagerduty.com") || host().endsWith("oneuptime.com")' \
-    --description="Allow access to monitoring services"
+    --location=us-central1 <<'EOF'
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy/rules/allow-monitoring
+description: Allow access to monitoring services
+enabled: true
+priority: 300
+basicProfile: ALLOW
+sessionMatcher: host() == "datadoghq.com" || host().endsWith(".datadoghq.com") || host() == "pagerduty.com" || host().endsWith(".pagerduty.com") || host() == "oneuptime.com" || host().endsWith(".oneuptime.com")
+EOF
 
 # Rule 4: Allow access to container registries
-gcloud network-security gateway-security-policies rules create allow-container-registries \
+gcloud network-security gateway-security-policies rules import allow-container-registries \
     --gateway-security-policy=egress-policy \
-    --location=us-central1 \
-    --priority=400 \
-    --basic-profile=ALLOW \
-    --session-matcher='host().endsWith("gcr.io") || host().endsWith("docker.io") || host() == "registry-1.docker.io" || host().endsWith("ghcr.io")' \
-    --description="Allow access to container registries"
+    --location=us-central1 <<'EOF'
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy/rules/allow-container-registries
+description: Allow access to container registries
+enabled: true
+priority: 400
+basicProfile: ALLOW
+sessionMatcher: host() == "gcr.io" || host().endsWith(".gcr.io") || host() == "docker.io" || host().endsWith(".docker.io") || host() == "registry-1.docker.io" || host() == "ghcr.io" || host().endsWith(".ghcr.io")
+EOF
 
 # Rule 5: Block everything else
-gcloud network-security gateway-security-policies rules create deny-all \
+gcloud network-security gateway-security-policies rules import deny-all \
     --gateway-security-policy=egress-policy \
-    --location=us-central1 \
-    --priority=65534 \
-    --basic-profile=DENY \
-    --session-matcher='true' \
-    --description="Deny all other egress traffic"
+    --location=us-central1 <<'EOF'
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy/rules/deny-all
+description: Deny all other egress traffic
+enabled: true
+priority: 65534
+basicProfile: DENY
+sessionMatcher: "true"
+EOF
 ```
 
 ## Step 3 - Create the Secure Web Proxy Instance
@@ -114,32 +132,27 @@ gcloud compute networks subnets create swp-subnet \
     --range=10.0.50.0/24 \
     --purpose=PRIVATE
 
-# Reserve addresses for the proxy
-gcloud compute addresses create swp-address \
-    --region=us-central1 \
-    --subnet=swp-subnet \
-    --addresses=10.0.50.10
-
 # Create the Secure Web Proxy instance
-gcloud network-security gateways create egress-proxy \
-    --location=us-central1 \
-    --network=projects/my-project/global/networks/my-vpc \
-    --subnetwork=projects/my-project/regions/us-central1/subnetworks/swp-subnet \
-    --addresses=10.0.50.10 \
-    --gateway-security-policy=egress-policy \
-    --type=SECURE_WEB_GATEWAY \
-    --ports=443,80 \
-    --scope=scp-egress \
-    --description="Egress proxy for production workloads"
+gcloud network-services gateways import egress-proxy \
+    --location=us-central1 <<'EOF'
+name: projects/my-project/locations/us-central1/gateways/egress-proxy
+type: SECURE_WEB_GATEWAY
+addresses: ["10.0.50.10"]
+ports: [80, 443]
+gatewaySecurityPolicy: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy
+network: projects/my-project/global/networks/my-vpc
+subnetwork: projects/my-project/regions/us-central1/subnetworks/swp-subnet
+routingMode: EXPLICIT_ROUTING_MODE
+EOF
 
 # Verify the proxy is running
-gcloud network-security gateways describe egress-proxy \
+gcloud network-services gateways describe egress-proxy \
     --location=us-central1
 ```
 
 ## Step 4 - Configure Workloads to Use the Proxy
 
-Your VMs need to route HTTP/HTTPS traffic through the proxy. There are two approaches: explicit proxy configuration or transparent proxy with routing.
+Your VMs need to route HTTP/HTTPS traffic through the proxy. There are two approaches: explicit proxy configuration or next hop proxy routing.
 
 ### Explicit Proxy Configuration
 
@@ -181,16 +194,16 @@ spec:
               value: "metadata.google.internal,169.254.169.254,10.0.0.0/8"
 ```
 
-### Transparent Proxy with Routes
+### Next Hop Proxy with Routes
 
-For transparent proxying, create routes that direct internet-bound traffic through the proxy.
+For route-based proxying, create the gateway with `routingMode: NEXT_HOP_ROUTING_MODE`, and then create routes that direct internet-bound traffic through the proxy.
 
 ```bash
 # Create a route that sends internet traffic through the proxy
 gcloud compute routes create egress-via-proxy \
     --network=my-vpc \
     --destination-range=0.0.0.0/0 \
-    --next-hop-address=10.0.50.10 \
+    --next-hop-ilb=10.0.50.10 \
     --priority=800 \
     --tags=use-egress-proxy
 ```
@@ -209,33 +222,43 @@ gcloud compute instances add-tags my-vm \
 Secure Web Proxy supports sophisticated matching with CEL (Common Expression Language) expressions.
 
 ```bash
-# Allow specific URL paths
-gcloud network-security gateway-security-policies rules create allow-specific-paths \
+# Allow specific URL paths (requires TLS inspection for HTTPS)
+gcloud network-security gateway-security-policies rules import allow-specific-paths \
     --gateway-security-policy=egress-policy \
-    --location=us-central1 \
-    --priority=150 \
-    --basic-profile=ALLOW \
-    --session-matcher='host() == "api.github.com"' \
-    --application-matcher='request.path().startsWith("/repos/my-org/")' \
-    --description="Allow GitHub API access only to our org repos"
+    --location=us-central1 <<'EOF'
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy/rules/allow-specific-paths
+description: Allow GitHub API access only to our org repos
+enabled: true
+priority: 150
+basicProfile: ALLOW
+sessionMatcher: host() == "api.github.com"
+tlsInspectionEnabled: true
+applicationMatcher: request.path().startsWith("/repos/my-org/")
+EOF
 
-# Allow based on source IP (specific VMs)
-gcloud network-security gateway-security-policies rules create allow-from-build-servers \
+# Allow based on source service account
+gcloud network-security gateway-security-policies rules import allow-from-build-servers \
     --gateway-security-policy=egress-policy \
-    --location=us-central1 \
-    --priority=50 \
-    --basic-profile=ALLOW \
-    --session-matcher='source.matchServiceAccount("build-sa@my-project.iam.gserviceaccount.com")' \
-    --description="Allow build servers broader internet access"
+    --location=us-central1 <<'EOF'
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy/rules/allow-from-build-servers
+description: Allow build servers broader internet access
+enabled: true
+priority: 50
+basicProfile: ALLOW
+sessionMatcher: source.matchServiceAccount("build-sa@my-project.iam.gserviceaccount.com")
+EOF
 
-# Time-based rules using session matcher
-gcloud network-security gateway-security-policies rules create allow-updates-window \
+# Allow OS package update destinations
+gcloud network-security gateway-security-policies rules import allow-updates-window \
     --gateway-security-policy=egress-policy \
-    --location=us-central1 \
-    --priority=250 \
-    --basic-profile=ALLOW \
-    --session-matcher='host().endsWith("ubuntu.com") || host().endsWith("debian.org")' \
-    --description="Allow OS package updates"
+    --location=us-central1 <<'EOF'
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy/rules/allow-updates-window
+description: Allow OS package updates
+enabled: true
+priority: 250
+basicProfile: ALLOW
+sessionMatcher: host() == "ubuntu.com" || host().endsWith(".ubuntu.com") || host() == "debian.org" || host().endsWith(".debian.org")
+EOF
 ```
 
 ## Step 6 - Monitor Proxy Traffic
@@ -245,14 +268,14 @@ All proxy decisions are logged to Cloud Logging.
 ```bash
 # View recent proxy decisions
 gcloud logging read \
-    'resource.type="networksecurity.googleapis.com/Gateway"' \
-    --format="table(timestamp, jsonPayload.httpRequest.requestUrl, jsonPayload.decision)" \
+    'logName="projects/my-project/logs/networkservices.googleapis.com%2Fgateway_requests" AND resource.type="networkservices.googleapis.com/Gateway"' \
+    --format="table(timestamp, httpRequest.requestUrl, jsonPayload.enforcedGatewaySecurityPolicy.matchedRules.action)" \
     --limit=50
 
 # Find blocked requests
 gcloud logging read \
-    'resource.type="networksecurity.googleapis.com/Gateway" AND jsonPayload.decision="DENY"' \
-    --format="table(timestamp, jsonPayload.source.ip, jsonPayload.httpRequest.requestUrl)" \
+    'logName="projects/my-project/logs/networkservices.googleapis.com%2Fgateway_requests" AND resource.type="networkservices.googleapis.com/Gateway" AND jsonPayload.enforcedGatewaySecurityPolicy.matchedRules.action="DENIED"' \
+    --format="table(timestamp, httpRequest.remoteIp, httpRequest.requestUrl, jsonPayload.enforcedGatewaySecurityPolicy.hostname)" \
     --limit=50
 ```
 
@@ -261,13 +284,20 @@ Export to BigQuery for analysis:
 ```sql
 -- Find the most commonly blocked destinations
 SELECT
-    REGEXP_EXTRACT(jsonPayload.httpRequest.requestUrl, r'https?://([^/]+)') AS domain,
+    COALESCE(
+        REGEXP_EXTRACT(httpRequest.requestUrl, r'https?://([^/]+)'),
+        jsonPayload.enforcedGatewaySecurityPolicy.hostname
+    ) AS domain,
     COUNT(*) AS block_count,
-    COUNT(DISTINCT jsonPayload.source.ip) AS unique_sources
+    COUNT(DISTINCT httpRequest.remoteIp) AS unique_sources
 FROM
-    `my_project.swp_logs.networksecurity_*`
+    `my_project.swp_logs.networkservices_*`
 WHERE
-    jsonPayload.decision = "DENY"
+    EXISTS (
+        SELECT 1
+        FROM UNNEST(jsonPayload.enforcedGatewaySecurityPolicy.matchedRules) AS rule
+        WHERE rule.action = "DENIED"
+    )
     AND _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))
 GROUP BY domain
 ORDER BY block_count DESC
@@ -281,18 +311,21 @@ When a legitimate request is blocked, you need a process for adding exceptions.
 ```bash
 # Check what rule blocked a specific request
 gcloud logging read \
-    'resource.type="networksecurity.googleapis.com/Gateway" AND jsonPayload.httpRequest.requestUrl:"blocked-domain.com"' \
+    'resource.type="networkservices.googleapis.com/Gateway" AND (httpRequest.requestUrl:"blocked-domain.com" OR jsonPayload.enforcedGatewaySecurityPolicy.hostname:"blocked-domain.com")' \
     --format=json \
     --limit=5
 
 # Add an exception rule with higher priority
-gcloud network-security gateway-security-policies rules create allow-exception-domain \
+gcloud network-security gateway-security-policies rules import allow-exception-domain \
     --gateway-security-policy=egress-policy \
-    --location=us-central1 \
-    --priority=175 \
-    --basic-profile=ALLOW \
-    --session-matcher='host() == "blocked-domain.com"' \
-    --description="Exception: Allow access to blocked-domain.com per ticket JIRA-1234"
+    --location=us-central1 <<'EOF'
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy/rules/allow-exception-domain
+description: "Exception: Allow access to blocked-domain.com per ticket JIRA-1234"
+enabled: true
+priority: 175
+basicProfile: ALLOW
+sessionMatcher: host() == "blocked-domain.com"
+EOF
 ```
 
 Always document exceptions with a ticket reference. This creates an audit trail for why each domain was allowed.
