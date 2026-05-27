@@ -34,7 +34,8 @@ func main() {
 	cfg := profiler.Config{
 		Service:        "my-go-service",
 		ServiceVersion: os.Getenv("APP_VERSION"),
-		// Enable all profile types
+		// Enable mutex contention profiling. CPU, heap, allocated heap,
+		// and goroutine profiling are enabled by default.
 		MutexProfiling: true,
 	}
 
@@ -47,25 +48,29 @@ func main() {
 	http.HandleFunc("/api/data", handleData)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
+
+func handleData(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
 ```
 
 Cloud Profiler for Go collects these profile types:
 - **CPU**: Where CPU time is spent
 - **Heap**: Current heap allocations (live objects)
-- **Heap allocation**: Total allocations over time (including freed objects)
+- **Allocated heap**: Total allocations over time (including freed objects)
 - **Goroutine**: Number and state of goroutines
 - **Mutex contention**: Time spent waiting on mutexes (if enabled)
-- **Threads**: OS thread count
+- **Threads**: Go goroutines, shown as threads in the Profiler UI
 
-For memory leak detection, you need the **Heap** and **Heap allocation** profiles.
+For memory leak detection, the **Heap** profile is the primary signal. The **Allocated heap** profile is also useful for finding allocation-heavy paths that create garbage collector pressure.
 
-## Understanding Heap vs. Heap Allocation Profiles
+## Understanding Heap vs. Allocated Heap Profiles
 
 These two profile types answer different questions:
 
 **Heap profile** shows currently live objects on the heap at the time of sampling. This tells you what is consuming memory right now. If this grows over time, you have a leak.
 
-**Heap allocation profile** shows all allocations made during the profiling window, including objects that were already garbage collected. This tells you which code paths allocate the most memory, regardless of whether it is freed.
+**Allocated heap profile** shows all allocations made during the profiling window, including objects that were already garbage collected. This tells you which code paths allocate the most memory, regardless of whether it is freed.
 
 For leak detection, compare **heap profiles** across time periods. A function that shows increasing heap usage over time is likely leaking.
 
@@ -217,9 +222,9 @@ In Cloud Profiler:
 
 ### Step 3: Identify Growing Functions
 
-Look for functions whose heap allocation is significantly larger in the recent period compared to the baseline. These are your leak suspects.
+Look for functions whose heap usage is significantly larger in the recent period compared to the baseline. These are your leak suspects.
 
-The flame graph diff will highlight growing allocations in red/orange. Focus on:
+The flame graph diff will highlight growing heap usage in red/orange. Focus on:
 - Functions that were small at startup but are now large
 - Functions you would not expect to hold heap data (like request handlers)
 - Library functions that indicate growing buffers or caches
@@ -252,12 +257,13 @@ Set up Cloud Monitoring alerts for memory growth to catch leaks early.
 
 gcloud monitoring policies create \
   --display-name="Memory Leak Detection" \
-  --condition-display-name="Memory usage growing" \
-  --condition-filter='resource.type="k8s_container" AND metric.type="kubernetes.io/container/memory/used_bytes"' \
-  --condition-threshold-value=858993459 \
-  --condition-threshold-duration=1800s \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-aggregation='{"alignmentPeriod":"300s","perSeriesAligner":"ALIGN_MEAN"}'
+  --condition-display-name="Container memory usage above 80% of limit" \
+  --condition-filter='resource.type="k8s_container" AND metric.type="kubernetes.io/container/memory/limit_utilization" AND metric.labels.memory_type="non-evictable"' \
+  --aggregation='{"alignmentPeriod":"300s","perSeriesAligner":"ALIGN_MEAN"}' \
+  --duration="1800s" \
+  --if="> 0.8" \
+  --trigger-count=1 \
+  --combiner="OR"
 ```
 
 ## Dockerfile for Go with Profiler
