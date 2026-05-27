@@ -44,8 +44,7 @@ Let me show the complete DAG first, then break down each section:
 # dags/daily_sales_pipeline.py
 
 from airflow import DAG
-from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceAsyncSensor
-from airflow.providers.google.cloud.operators.gcs import GCSListObjectsOperator
+from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceSensor
 from airflow.providers.google.cloud.operators.dataflow import DataflowStartFlexTemplateOperator
 from airflow.providers.google.cloud.operators.bigquery import (
     BigQueryInsertJobOperator,
@@ -53,7 +52,7 @@ from airflow.providers.google.cloud.operators.bigquery import (
 )
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import GCSToBigQueryOperator
 from airflow.providers.google.cloud.transfers.bigquery_to_gcs import BigQueryToGCSOperator
-from airflow.operators.python import PythonOperator, BranchPythonOperator
+from airflow.operators.python import PythonOperator
 from airflow.operators.email import EmailOperator
 from airflow.utils.trigger_rule import TriggerRule
 from datetime import datetime, timedelta
@@ -85,12 +84,13 @@ with DAG(
 ) as dag:
 
     # Step 1: Wait for the daily sales file to arrive
-    wait_for_file = GCSObjectExistenceAsyncSensor(
+    wait_for_file = GCSObjectExistenceSensor(
         task_id='wait_for_sales_file',
         bucket=RAW_BUCKET,
         object='daily/{{ ds }}/sales.csv',
         poke_interval=120,
         timeout=14400,  # 4-hour timeout
+        deferrable=True,
     )
 
     # Step 2: Validate the file before processing
@@ -174,6 +174,14 @@ with DAG(
         configuration={
             'query': {
                 'query': """
+                    CREATE TABLE IF NOT EXISTS `{{ params.project }}.{{ params.dataset }}.daily_store_summary` (
+                        store_id STRING,
+                        sales_date DATE,
+                        transaction_count INT64,
+                        total_revenue FLOAT64,
+                        avg_transaction_value FLOAT64
+                    );
+
                     -- Aggregate daily sales by store
                     MERGE INTO `{{ params.project }}.{{ params.dataset }}.daily_store_summary` T
                     USING (
@@ -217,10 +225,31 @@ with DAG(
         use_legacy_sql=False,
     )
 
-    # Step 7: Export summary report to GCS
+    # Step 7: Create a date-filtered report table
+    create_report_table = BigQueryInsertJobOperator(
+        task_id='create_daily_report_table',
+        configuration={
+            'query': {
+                'query': """
+                    CREATE OR REPLACE TABLE
+                    `{{ params.project }}.{{ params.dataset }}.daily_store_report_{{ ds_nodash }}` AS
+                    SELECT *
+                    FROM `{{ params.project }}.{{ params.dataset }}.daily_store_summary`
+                    WHERE sales_date = '{{ ds }}'
+                """,
+                'useLegacySql': False,
+            }
+        },
+        params={
+            'project': PROJECT_ID,
+            'dataset': BQ_DATASET,
+        },
+    )
+
+    # Step 8: Export summary report to GCS
     export_report = BigQueryToGCSOperator(
         task_id='export_summary_report',
-        source_project_dataset_table=f'{PROJECT_ID}.{BQ_DATASET}.daily_store_summary',
+        source_project_dataset_table=f'{PROJECT_ID}.{BQ_DATASET}.daily_store_report_{{{{ ds_nodash }}}}',
         destination_cloud_storage_uris=[
             f'gs://{REPORTS_BUCKET}/daily/{{{{ ds }}}}/store-summary.csv'
         ],
@@ -228,7 +257,7 @@ with DAG(
         print_header=True,
     )
 
-    # Step 8: Send completion notification
+    # Step 9: Send completion notification
     notify_success = EmailOperator(
         task_id='notify_success',
         to='data-team@company.com',
@@ -251,10 +280,10 @@ with DAG(
 
     # Define the pipeline flow
     wait_for_file >> validate >> transform_data >> load_to_bq
-    load_to_bq >> run_aggregations >> quality_check >> export_report >> notify_success
+    load_to_bq >> run_aggregations >> quality_check >> create_report_table >> export_report >> notify_success
 
     # Failure notification can trigger from any task failure
-    [validate, transform_data, load_to_bq, run_aggregations] >> notify_failure
+    [wait_for_file, validate, transform_data, load_to_bq, run_aggregations, quality_check, create_report_table, export_report] >> notify_failure
 ```
 
 ## Error Handling and Retries
