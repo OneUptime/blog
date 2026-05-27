@@ -14,15 +14,15 @@ Description: Learn why .0 and .255 IP addresses can cause problems with some net
 
 ## The Problem
 
-In classful networking (the old Class A/B/C system), `.0` was always the network address and `.255` was always the broadcast address for a /24 subnet. Modern CIDR eliminated these rules, but some equipment and software still enforces them:
+In an IPv4 /24 subnet, `.0` is the network address and `.255` is the broadcast address. With CIDR, those endings can be valid host addresses when they are not the all-zeros or all-ones host portion of the actual prefix. For example, `10.0.1.0` is a valid host address inside `10.0.0.0/23`, but some equipment and software still treats it like a network address:
 
 ```mermaid
 graph TD
     subgraph "What CIDR Says"
-        A[10.0.1.0/28] --> B["Valid hosts:\n10.0.1.0 through 10.0.1.15\nAll 16 addresses usable"]
+        A[10.0.0.0/23] --> B["Valid hosts include:\n10.0.0.1 through 10.0.1.254\n10.0.1.0 is usable"]
     end
     subgraph "What Legacy Gear Thinks"
-        C[10.0.1.0/28] --> D["10.0.1.0 = network address\nDropped by some firewalls"]
+        C[10.0.1.0] --> D["10.0.1.0 = network address\nDropped by some firewalls"]
     end
 ```
 
@@ -47,9 +47,28 @@ These symptoms make the problem extremely hard to diagnose because the IP works 
 
 ---
 
-## Solution 1: Use Range Notation to Skip .0 and .255
+## Solution 1: Use MetalLB's avoidBuggyIPs Option
 
-The simplest fix is to use explicit range notation that avoids .0 and .255:
+The simplest MetalLB-specific fix is to keep CIDR notation and enable `avoidBuggyIPs` on the pool:
+
+```yaml
+# pool-avoid-buggy-ips.yaml
+
+# Pool that avoids .0 and .255 addresses
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: safe-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 10.0.50.0/24
+  avoidBuggyIPs: true
+```
+
+## Solution 2: Use Range Notation to Skip .0 and .255
+
+Another fix is to use explicit range notation that avoids .0 and .255:
 
 ```yaml
 # pool-safe-range.yaml
@@ -84,7 +103,7 @@ spec:
 
 ---
 
-## Solution 2: Split CIDR Into Safe Ranges
+## Solution 3: Split CIDR Into Safe Ranges
 
 If you prefer CIDR notation for most of the range, split it to exclude the edges:
 
@@ -106,7 +125,7 @@ spec:
 
 ---
 
-## Solution 3: Also Avoid .1 (Gateway Conflicts)
+## Solution 4: Also Avoid .1 (Gateway Conflicts)
 
 In many networks, .1 is the default gateway. To be extra cautious:
 
@@ -129,7 +148,7 @@ spec:
 
 ## Which Addresses to Avoid by Subnet Size
 
-The risk varies by subnet size. For small subnets (/28, /29, /30), .0 and .255 may not even be in your range:
+The risk varies by subnet size. For small subnets (/28, /29, /30), the first address is still the network address and the last address is still the broadcast address, but `.0` and `.255` are only present when the subnet is aligned at those octets:
 
 ```mermaid
 graph TD
@@ -138,11 +157,12 @@ graph TD
         B --> C["10.0.50.255 - AVOID"]
     end
     subgraph "/28 Subnet (16 IPs)"
-        D["10.0.50.0 - AVOID"] --> E["10.0.50.1 through 10.0.50.14 - SAFE"]
-        E --> F["10.0.50.15 - SAFE"]
+        D["10.0.50.0 - network address"] --> E["10.0.50.1 through 10.0.50.14 - usable"]
+        E --> F["10.0.50.15 - broadcast address"]
     end
     subgraph "/30 Subnet (4 IPs)"
-        G["10.0.50.0 - technically ok"] --> H["10.0.50.1 through 10.0.50.3 - SAFE"]
+        G["10.0.50.0 - network address"] --> H["10.0.50.1 through 10.0.50.2 - usable"]
+        H --> I["10.0.50.3 - broadcast address"]
     end
 ```
 
@@ -150,8 +170,8 @@ graph TD
 |-------------|-------------|---------------|---------------|
 | /24 | Yes | Yes | Exclude both |
 | /25 | Depends on base | Depends on base | Check your base address |
-| /28 | Depends on base | No | Check your base address |
-| /30 | Depends on base | No | Usually safe |
+| /28 | Depends on base | Depends on base | Check your base address |
+| /30 | Depends on base | Depends on base | Check your base address |
 
 ---
 
@@ -190,7 +210,7 @@ spec:
 kubectl apply -f safe-pool-v2.yaml
 
 # Step 3: Check if any service is using .0 or .255
-kubectl get svc -A -o wide | grep -E '\.0 |\.255 '
+kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}/{.metadata.name}: {.status.loadBalancer.ingress[0].ip}{"\n"}{end}' | grep -E '\.(0|255)$'
 
 # Step 4: If no services use the buggy IPs, delete the old pool
 kubectl delete ipaddresspool risky-pool -n metallb-system
@@ -205,7 +225,7 @@ If a service is already using a .0 or .255 IP, you will need to recycle that ser
 IPv6 does not have the same .0/.255 problem because:
 
 - There is no broadcast address in IPv6.
-- Network addresses (all-zeros host part) are reserved but handled differently.
+- IPv6 has subnet-router anycast, but it does not have IPv4's `.0`/`.255` host-number convention.
 - Legacy classful routing does not apply.
 
 You can safely use full CIDR blocks for IPv6 pools:
@@ -220,7 +240,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    # Full /120 block is safe for IPv6
+    # Full /120 block has no IPv4-style .0/.255 concern
     - fd00:1::0/120
 ```
 
@@ -228,6 +248,6 @@ spec:
 
 ## Wrapping Up
 
-Avoiding .0 and .255 addresses in MetalLB pools is a defensive networking practice that prevents hard-to-debug connectivity issues with legacy equipment. Use range notation instead of CIDR when you need to exclude specific addresses, and audit existing pools if you are experiencing intermittent reachability problems.
+Avoiding .0 and .255 addresses in MetalLB pools is a defensive networking practice that prevents hard-to-debug connectivity issues with legacy equipment. Use MetalLB's `avoidBuggyIPs` option or range notation when you need to exclude those addresses, and audit existing pools if you are experiencing intermittent reachability problems.
 
 For proactive monitoring of service reachability and instant alerts when a MetalLB-managed endpoint goes dark, check out **[OneUptime](https://oneuptime.com)**.
