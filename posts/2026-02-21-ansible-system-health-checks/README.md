@@ -47,6 +47,8 @@ health-checks/
         network.yml
         ports.yml
       defaults/main.yml
+      templates/
+        health-report.j2
   health-check.yml
   report.yml
 ```
@@ -94,7 +96,6 @@ health_required_ports: []
 
 # Slack notification webhook
 health_slack_webhook: "{{ vault_slack_webhook | default('') }}"
-health_slack_channel: "#infra-health"
 
 # Report output directory
 health_report_dir: /tmp/health-reports
@@ -113,8 +114,11 @@ health_report_dir: /tmp/health-reports
 
 - name: Get current CPU usage
   ansible.builtin.shell:
-    cmd: "top -bn1 | grep 'Cpu(s)' | awk '{print $2}'"
-  register: cpu_usage_raw
+    cmd: |
+      awk '/^cpu / { idle=$5; total=0; for (i=2; i<=NF; i++) total += $i; print idle, total }' /proc/stat
+      sleep 1
+      awk '/^cpu / { idle=$5; total=0; for (i=2; i<=NF; i++) total += $i; print idle, total }' /proc/stat
+  register: cpu_samples
   changed_when: false
 
 - name: Get load average
@@ -123,11 +127,17 @@ health_report_dir: /tmp/health-reports
   register: load_avg
   changed_when: false
 
+- name: Calculate CPU usage
+  ansible.builtin.set_fact:
+    cpu_idle_delta: "{{ cpu_samples.stdout_lines[1].split()[0] | float - cpu_samples.stdout_lines[0].split()[0] | float }}"
+    cpu_total_delta: "{{ cpu_samples.stdout_lines[1].split()[1] | float - cpu_samples.stdout_lines[0].split()[1] | float }}"
+
 - name: Set CPU facts
   ansible.builtin.set_fact:
-    cpu_usage: "{{ cpu_usage_raw.stdout | float }}"
+    cpu_usage: "{{ (100 * (1 - (cpu_idle_delta | float / cpu_total_delta | float))) | round(1) }}"
     cpu_count: "{{ cpu_cores.stdout | int }}"
     load_average: "{{ load_avg.stdout | float }}"
+    load_per_core: "{{ (load_avg.stdout | float / cpu_cores.stdout | int) | round(2) }}"
 
 - name: Evaluate CPU status
   ansible.builtin.set_fact:
@@ -139,8 +149,8 @@ health_report_dir: /tmp/health-reports
 - name: Evaluate load average status
   ansible.builtin.set_fact:
     load_status: >-
-      {% if (load_average | float / cpu_count | int) > health_load_critical %}CRITICAL
-      {% elif (load_average | float / cpu_count | int) > health_load_warning %}WARNING
+      {% if load_per_core | float > health_load_critical %}CRITICAL
+      {% elif load_per_core | float > health_load_warning %}WARNING
       {% else %}OK{% endif %}
 
 - name: Record CPU health result
@@ -160,8 +170,8 @@ health_report_dir: /tmp/health-reports
 - name: Calculate memory usage percentage
   ansible.builtin.set_fact:
     memory_total: "{{ ansible_memory_mb.real.total }}"
-    memory_used: "{{ ansible_memory_mb.real.total - ansible_memory_mb.real.free - (ansible_memory_mb.nocache.free - ansible_memory_mb.real.free) | abs }}"
-    memory_pct: "{{ ((ansible_memory_mb.real.used / ansible_memory_mb.real.total) * 100) | round(1) }}"
+    memory_used: "{{ ansible_memory_mb.nocache.used }}"
+    memory_pct: "{{ ((ansible_memory_mb.nocache.used / ansible_memory_mb.real.total) * 100) | round(1) }}"
 
 - name: Get swap usage
   ansible.builtin.shell:
@@ -220,7 +230,7 @@ health_report_dir: /tmp/health-reports
 # roles/health-check/tasks/services.yml
 ---
 - name: Check required services
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ item }}"
   register: service_states
   loop: "{{ health_required_services }}"
@@ -261,6 +271,31 @@ health_report_dir: /tmp/health-reports
   loop: "{{ network_checks.results }}"
 ```
 
+## Listening Port Check
+
+```yaml
+# roles/health-check/tasks/ports.yml
+---
+- name: Check required local ports
+  ansible.builtin.wait_for:
+    host: "127.0.0.1"
+    port: "{{ item }}"
+    timeout: 3
+    state: started
+  register: port_checks
+  loop: "{{ health_required_ports }}"
+  ignore_errors: yes
+
+- name: Record port health results
+  ansible.builtin.set_fact:
+    health_results: "{{ health_results | default([]) + [{
+      'check': 'Port ' ~ item.item,
+      'value': '127.0.0.1:' ~ item.item,
+      'status': 'OK' if not item.failed else 'CRITICAL'
+    }] }}"
+  loop: "{{ port_checks.results }}"
+```
+
 ## Main Health Check Task
 
 ```yaml
@@ -284,6 +319,9 @@ health_report_dir: /tmp/health-reports
 
 - name: Run network checks
   ansible.builtin.include_tasks: network.yml
+
+- name: Run listening port checks
+  ansible.builtin.include_tasks: ports.yml
 
 - name: Display health results
   ansible.builtin.debug:
@@ -315,7 +353,9 @@ health_report_dir: /tmp/health-reports
 
 - name: Generate health report
   hosts: localhost
-  gather_facts: no
+  gather_facts: yes
+  vars_files:
+    - group_vars/all.yml
   tasks:
     - name: Create report directory
       ansible.builtin.file:
@@ -325,10 +365,15 @@ health_report_dir: /tmp/health-reports
 
     - name: Generate health report file
       ansible.builtin.template:
-        src: health-report.j2
+        src: roles/health-check/templates/health-report.j2
         dest: "{{ health_report_dir }}/health-report-{{ ansible_date_time.date }}.txt"
       vars:
         all_results: "{{ hostvars }}"
+
+    - name: Check if any issues were found
+      ansible.builtin.set_fact:
+        health_issues_found: >-
+          {{ groups['all'] | map('extract', hostvars, 'host_health_status') | map('trim') | reject('equalto', 'OK') | list | length > 0 }}
 
     - name: Send Slack notification if issues found
       ansible.builtin.uri:
@@ -336,13 +381,29 @@ health_report_dir: /tmp/health-reports
         method: POST
         body_format: json
         body:
-          channel: "{{ health_slack_channel }}"
           text: >-
             Infrastructure Health Check Summary:
             {% for host in groups['all'] %}
             {{ host }}: {{ hostvars[host].host_health_status | default('UNKNOWN') | trim }}
             {% endfor %}
-      when: health_slack_webhook | length > 0
+      when:
+        - health_slack_webhook | length > 0
+        - health_issues_found | bool
+```
+
+```jinja
+# roles/health-check/templates/health-report.j2
+Infrastructure Health Check Summary
+Generated: {{ ansible_date_time.iso8601 }}
+
+{% for host in groups['all'] %}
+Host: {{ host }}
+Status: {{ hostvars[host].host_health_status | default('UNKNOWN') | trim }}
+{% for result in hostvars[host].health_results | default([]) %}
+- [{{ result.status }}] {{ result.check }}: {{ result.value }}
+{% endfor %}
+
+{% endfor %}
 ```
 
 ## Running Health Checks
