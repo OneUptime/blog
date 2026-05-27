@@ -12,39 +12,41 @@ The `profile_tasks` callback plugin adds timing information to every task in you
 
 ## Enabling profile_tasks
 
-Add it to your callback whitelist:
+Add it to your enabled callbacks. In current Ansible versions, `profile_tasks` is part of the `ansible.posix` collection, so use the fully qualified callback name:
+
+If you installed only `ansible-core`, install the collection first with `ansible-galaxy collection install ansible.posix`.
 
 ```ini
 # ansible.cfg - Enable task profiling
 
 [defaults]
-callback_whitelist = profile_tasks
+callbacks_enabled = ansible.posix.profile_tasks
 ```
 
 Or for a single run:
 
 ```bash
 # Profile tasks for this run only
-ANSIBLE_CALLBACK_WHITELIST=profile_tasks ansible-playbook site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook site.yml
 ```
 
 ## What the Output Shows
 
-With profile_tasks enabled, each task line includes the elapsed time. At the end of the run, you get a sorted summary:
+With profile_tasks enabled, each task starts with a timestamp line that shows when it started, how long the previous task took, and total elapsed playbook time. At the end of the run, you get a sorted summary of task durations:
 
 ```text
 TASK [Gathering Facts] *******************************************************
-Thursday 21 February 2026  10:00:00 +0000 (0:00:00.012)       0:00:00.012 ****
+Saturday 21 February 2026  10:00:00 +0000 (0:00:00.012)       0:00:00.012 ****
 ok: [web-01]
 ok: [web-02]
 
 TASK [Install packages] ******************************************************
-Thursday 21 February 2026  10:00:12 +0000 (0:00:12.345)       0:00:12.357 ****
+Saturday 21 February 2026  10:00:12 +0000 (0:00:12.345)       0:00:12.357 ****
 ok: [web-01]
 changed: [web-02]
 
 TASK [Deploy config] *********************************************************
-Thursday 21 February 2026  10:02:15 +0000 (0:02:03.123)       0:02:15.480 ****
+Saturday 21 February 2026  10:00:24 +0000 (0:00:12.345)       0:00:24.702 ****
 changed: [web-01]
 changed: [web-02]
 
@@ -52,32 +54,32 @@ PLAY RECAP *******************************************************************
 web-01  : ok=3  changed=1  unreachable=0  failed=0
 web-02  : ok=3  changed=2  unreachable=0  failed=0
 
-Thursday 21 February 2026  10:02:20 +0000 (0:00:04.567)       0:02:20.047 ****
+Saturday 21 February 2026  10:02:27 +0000 (0:02:03.123)       0:02:27.825 ****
 ===============================================================================
 Deploy config -------------------------------------------------------- 123.12s
 Install packages ----------------------------------------------------- 12.35s
 Gathering Facts ------------------------------------------------------ 12.35s
 ```
 
-Each task line shows two timestamps:
-- The first is the elapsed time for that specific task
+Each timestamp line shows two elapsed values:
+- The first is the elapsed time for the previous task
 - The second is the cumulative elapsed time from the start
 
-The summary at the bottom sorts tasks from slowest to fastest.
+The summary at the bottom shows each task's own duration and sorts tasks from slowest to fastest by default.
 
 ## Reading the Timing Data
 
 The two columns on each task line mean:
 
 ```text
-Thursday 21 February 2026  10:02:15 +0000 (0:02:03.123)       0:02:15.480 ****
-                                           ^task duration^     ^total elapsed^
+Saturday 21 February 2026  10:02:15 +0000 (0:02:03.123)       0:02:15.480 ****
+                                        ^previous duration^    ^total elapsed^
 ```
 
-- `(0:02:03.123)` - this task took 2 minutes and 3.123 seconds
+- `(0:02:03.123)` - the previous task took 2 minutes and 3.123 seconds
 - `0:02:15.480` - 2 minutes 15 seconds have elapsed since the playbook started
 
-This tells you both how long each task takes and where you are in the overall timeline.
+This tells you how long the previous task took and where you are in the overall timeline. Use the summary at the end for each task's own duration.
 
 ## Finding Bottlenecks
 
@@ -103,19 +105,19 @@ Use profile_tasks to measure, optimize, then measure again:
 
 ```bash
 # Step 1: Get baseline timing
-ANSIBLE_CALLBACK_WHITELIST=profile_tasks ansible-playbook deploy.yml 2>&1 | tee baseline.log
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook deploy.yml 2>&1 | tee baseline.log
 
 # Step 2: Make optimizations (e.g., enable pipelining, increase forks, use async)
 
 # Step 3: Measure again
-ANSIBLE_CALLBACK_WHITELIST=profile_tasks ansible-playbook deploy.yml 2>&1 | tee optimized.log
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook deploy.yml 2>&1 | tee optimized.log
 
 # Step 4: Compare
 echo "=== Baseline ==="
-grep "^=\|^[A-Z].*---" baseline.log | tail -20
+sed -n '/^====/,$ p' baseline.log | tail -20
 echo ""
 echo "=== Optimized ==="
-grep "^=\|^[A-Z].*---" optimized.log | tail -20
+sed -n '/^====/,$ p' optimized.log | tail -20
 ```
 
 ## Configuration Options
@@ -125,7 +127,7 @@ profile_tasks has a few settings:
 ```ini
 # ansible.cfg - Configure profile_tasks
 [defaults]
-callback_whitelist = profile_tasks
+callbacks_enabled = ansible.posix.profile_tasks
 
 [callback_profile_tasks]
 # Sort order: descending (slowest first) or ascending
@@ -149,7 +151,7 @@ For a complete performance picture, use both profile_tasks and profile_roles:
 ```ini
 # ansible.cfg - Full performance profiling
 [defaults]
-callback_whitelist = profile_tasks, profile_roles, timer
+callbacks_enabled = ansible.posix.profile_tasks, ansible.posix.profile_roles, ansible.posix.timer
 ```
 
 This gives you task-level timing, role-level timing, and total time.
@@ -161,7 +163,7 @@ Track task performance over time in your CI pipeline:
 ```bash
 #!/bin/bash
 # ci-profile.sh - Extract timing data for metrics
-export ANSIBLE_CALLBACK_WHITELIST=profile_tasks
+export ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks
 
 ansible-playbook deploy.yml 2>&1 | tee /tmp/ansible-output.log
 
