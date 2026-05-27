@@ -65,30 +65,34 @@ gcloud workstations configs create java-intellij-config \
   --cluster=java-dev-cluster \
   --region=us-central1 \
   --machine-type=e2-standard-8 \
+  --container-predefined-image=intellij-ultimate \
   --boot-disk-size=100 \
   --pd-disk-size=200 \
   --pd-disk-type=pd-ssd \
   --idle-timeout=3600s \
-  --running-timeout=43200s \
-  --disable-public-ip-addresses=false
+  --running-timeout=43200s
 ```
 
 I recommend `e2-standard-8` (8 vCPUs, 32 GB RAM) as the minimum for Java work. IntelliJ's indexer and the Java compiler are both memory-hungry. If you are working on a large codebase with many modules, step up to `e2-standard-16`.
 
-## Step 4: Use a Custom Container Image with Java Tooling
+## Step 4: Use a Custom JetBrains Container Image with Java Tooling
 
-The default Cloud Workstation image is minimal. For a proper Java development setup, create a custom image with the JDK, Maven, Gradle, and other tools pre-installed.
+The default Cloud Workstation image is Code OSS. For a proper IntelliJ-based Java development setup, create a custom image from the IntelliJ IDEA Ultimate Cloud Workstations image with the JDK, Maven, Gradle, and other tools pre-installed.
 
 Create a Dockerfile for your custom image:
 
 ```dockerfile
-# Start from the base Cloud Workstations image
-FROM us-central1-docker.pkg.dev/cloud-workstations-images/predefined/base:latest
+# Start from the IntelliJ IDEA Ultimate Cloud Workstations image
+FROM us-central1-docker.pkg.dev/cloud-workstations-images/predefined/intellij-ultimate:latest
 
-# Install JDK 21 (LTS release)
+# Install JDK 17 (LTS release), Maven, and tools needed by later steps
 RUN apt-get update && apt-get install -y \
-    openjdk-21-jdk \
+    openjdk-17-jdk \
     maven \
+    unzip \
+    git \
+    curl \
+    jq \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Gradle
@@ -100,20 +104,8 @@ RUN curl -fsSL https://services.gradle.org/distributions/gradle-${GRADLE_VERSION
     && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/local/bin/gradle
 
 # Set JAVA_HOME
-ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 ENV PATH=$JAVA_HOME/bin:$PATH
-
-# Install useful development tools
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    jq \
-    docker.io \
-    && rm -rf /var/lib/apt/lists/*
-
-# Pre-configure Maven settings for Artifact Registry
-RUN mkdir -p /home/user/.m2
-COPY settings.xml /home/user/.m2/settings.xml
 ```
 
 Build and push this image to Artifact Registry:
@@ -158,9 +150,9 @@ Now comes the part where you connect IntelliJ to your workstation.
 3. Sign in with your Google account and select your project.
 4. You should see your workstation listed. Click "Connect".
 5. Select "IntelliJ IDEA" as the IDE and choose the version.
-6. Gateway will install the IntelliJ backend on the workstation and establish the connection.
+6. Gateway will start the IntelliJ backend on the workstation and establish the connection.
 
-The first connection takes a few minutes while the IDE backend downloads and initializes. Subsequent connections are much faster because the backend persists on the workstation's disk.
+The first connection takes a few minutes while the IDE backend initializes. Subsequent connections are much faster because the backend configuration persists on the workstation's disk.
 
 ## Step 7: Configure the Project
 
@@ -201,19 +193,18 @@ Set your team's code style and inspection profiles so they are consistent across
 
 ### Set Up Run Configurations
 
-Create run and debug configurations for your application. Since everything runs on the workstation, port forwarding is handled automatically by Gateway - you can access your running application at `localhost` on your local machine.
+Create run and debug configurations for your application. Since everything runs on the workstation, JetBrains Gateway can forward remote ports to your local machine automatically in some cases, and you can also add explicit port forwarding rules under Tools > Port Forwarding.
 
 ## Working with Google Cloud Services
 
 One of the biggest advantages of developing on a Cloud Workstation is the proximity to GCP services. Your workstation runs with a service account that can be configured to access Cloud SQL, Pub/Sub, BigQuery, and other services without managing local credentials.
 
 ```bash
-# Access Cloud SQL directly from the workstation - no proxy needed
+# Access Cloud SQL from the workstation
 gcloud sql connect my-database --user=root
 
-# Use Application Default Credentials automatically
-# Your Java code picks them up through the client libraries
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+# Configure Application Default Credentials for client libraries
+gcloud auth application-default login
 ```
 
 ## Persistent Storage
