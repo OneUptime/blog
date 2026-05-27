@@ -24,8 +24,10 @@ Create the `build.gradle` file:
 // build.gradle - Gradle build configuration for Micronaut Groovy app
 plugins {
     id 'groovy'
-    id 'io.micronaut.application' version '4.2.1'
-    id 'com.github.johnrengelman.shadow' version '8.1.1'
+    id 'io.micronaut.application' version '5.0.0'
+    // https://github.com/GradleUp/shadow/issues/908
+    // moved to gradleup organization
+    id 'com.gradleup.shadow' version '9.4.1'
 }
 
 version = '0.1'
@@ -58,6 +60,8 @@ application {
 micronaut {
     runtime 'netty'
     testRuntime 'spock'
+    // https://micronaut-projects.github.io/micronaut-gradle-plugin/latest/#_selecting_the_micronaut_platform_version
+    version.set("5.0.0")
 }
 
 // Configure the shadow jar (fat jar)
@@ -66,6 +70,7 @@ shadowJar {
     archiveClassifier.set('')
     archiveVersion.set('')
 }
+
 ```
 
 Create the main application class:
@@ -144,14 +149,16 @@ micronaut:
 
 ## Basic Dockerfile
 
+First, make sure to create the gradle directory with the command: `mkdir gradle/` .
+
 ```dockerfile
 # Basic Groovy/Gradle Dockerfile
-FROM gradle:8.5-jdk21 AS builder
+FROM gradle:9.5.1-jdk26 AS builder
 
 WORKDIR /app
 
 # Copy build files first for dependency caching
-COPY build.gradle settings.gradle ./
+COPY build.gradle ./
 COPY gradle/ gradle/
 RUN gradle dependencies --no-daemon
 
@@ -160,7 +167,7 @@ COPY src/ src/
 RUN gradle shadowJar --no-daemon
 
 # Runtime stage
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:26-jre-alpine
 
 WORKDIR /app
 
@@ -178,12 +185,12 @@ CMD ["java", "-jar", "/app/app.jar"]
 
 ```dockerfile
 # Stage 1: Build the fat jar with Gradle
-FROM gradle:8.5-jdk21 AS builder
+FROM gradle:9.5.1-jdk26 AS builder
 
 WORKDIR /app
 
 # Copy only dependency-related files first
-COPY build.gradle settings.gradle ./
+COPY build.gradle ./
 COPY gradle/ gradle/
 
 # Download dependencies (cached layer)
@@ -194,7 +201,7 @@ COPY src/ src/
 RUN gradle shadowJar --no-daemon --quiet
 
 # Stage 2: Minimal JRE runtime
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:26-jre-alpine
 
 WORKDIR /app
 
@@ -223,17 +230,17 @@ Micronaut supports GraalVM native image compilation, which eliminates JVM startu
 
 ```dockerfile
 # Stage 1: Build native image
-FROM ghcr.io/graalvm/native-image:ol9-java21 AS builder
+FROM ghcr.io/graalvm/native-image:ol9-java26 AS builder
 
 WORKDIR /app
 
 # Install Gradle
-RUN curl -L https://services.gradle.org/distributions/gradle-8.5-bin.zip -o gradle.zip && \
+RUN curl -L https://services.gradle.org/distributions/gradle-9.5.1-bin.zip -o gradle.zip && \
     unzip -q gradle.zip && \
-    ln -s /app/gradle-8.5/bin/gradle /usr/local/bin/gradle && \
+    ln -s /app/gradle-9.5.1/bin/gradle /usr/local/bin/gradle && \
     rm gradle.zip
 
-COPY build.gradle settings.gradle ./
+COPY build.gradle ./
 COPY gradle/ gradle/
 RUN gradle dependencies --no-daemon
 
@@ -274,11 +281,11 @@ Gradle builds can be slow. Use BuildKit cache mounts for the Gradle cache:
 
 ```dockerfile
 # Optimized Gradle caching
-FROM gradle:8.5-jdk21 AS builder
+FROM gradle:9.5.1-jdk26 AS builder
 
 WORKDIR /app
 
-COPY build.gradle settings.gradle ./
+COPY build.gradle ./
 COPY gradle/ gradle/
 
 # Cache the Gradle wrapper and dependency downloads
@@ -292,7 +299,7 @@ RUN --mount=type=cache,target=/home/gradle/.gradle/caches \
     --mount=type=cache,target=/home/gradle/.gradle/wrapper \
     gradle shadowJar --no-daemon
 
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:26-jre-alpine
 COPY --from=builder /app/build/libs/app.jar /app/app.jar
 EXPOSE 8080
 CMD ["java", "-jar", "/app/app.jar"]
@@ -335,11 +342,11 @@ Development Dockerfile with continuous compilation:
 
 ```dockerfile
 # Dockerfile.dev - development image with Gradle continuous build
-FROM gradle:8.5-jdk21
+FROM gradle:9.5.1-jdk26
 
 WORKDIR /app
 
-COPY build.gradle settings.gradle ./
+COPY build.gradle ./
 COPY gradle/ gradle/
 RUN gradle dependencies --no-daemon
 
@@ -357,7 +364,7 @@ For simpler Groovy scripts that don't need a full build, you can run them direct
 
 ```dockerfile
 # Dockerfile for standalone Groovy scripts
-FROM groovy:4.0-jdk21-alpine
+FROM groovy:9.5.1-jdk26-alpine
 
 WORKDIR /app
 COPY script.groovy /app/
