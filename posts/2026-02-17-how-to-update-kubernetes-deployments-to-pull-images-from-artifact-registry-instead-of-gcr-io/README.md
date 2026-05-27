@@ -8,7 +8,7 @@ Description: Step-by-step instructions for updating your Kubernetes deployments,
 
 ---
 
-When you migrate from Google Container Registry to Artifact Registry, your running Kubernetes deployments need to be updated to reference the new image paths. If you skip this step, your deployments will keep pulling from the old gcr.io paths, which will eventually stop working when Container Registry is fully shut down. Even if you have gcr.io redirection enabled as a stopgap, you should update your manifests to use the native Artifact Registry paths.
+When you migrate from Google Container Registry to Artifact Registry, your running Kubernetes deployments need to be updated to reference the new image paths. If you skip this step, your deployments will keep pulling from the old gcr.io paths. Container Registry is already shut down for writes, and gcr.io URLs only continue to work when they are backed by Artifact Registry gcr.io repositories or redirection. Even if you have gcr.io redirection enabled, you should update your manifests to use the native Artifact Registry paths.
 
 This guide covers updating raw manifests, Helm charts, Kustomize overlays, and handling the rollout without downtime.
 
@@ -45,7 +45,7 @@ gcloud artifacts repositories add-iam-policy-binding docker-images \
   --project=my-project-id
 ```
 
-For clusters using Workload Identity with custom service accounts:
+For clusters using a custom GKE node service account:
 
 ```bash
 # Grant the GKE node service account read access
@@ -89,6 +89,9 @@ spec:
     matchLabels:
       app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
@@ -112,6 +115,9 @@ spec:
     matchLabels:
       app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
@@ -284,10 +290,10 @@ spec:
       image: us-central1-docker.pkg.dev/my-project-id/docker-images/my-app:v1.0.0
     - name: cloud-sql-proxy
       # Third-party images hosted on GCR should also be checked
-      image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+      image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.20.0
 ```
 
-Note that some Google-provided images like the Cloud SQL proxy are still hosted on gcr.io. Check the official documentation for updated paths.
+Note that some Google-provided images like the Cloud SQL Auth Proxy still use gcr.io URLs, but are served from Artifact Registry-backed repositories. Check the official documentation for updated paths.
 
 ## Bulk Find and Replace
 
@@ -298,7 +304,7 @@ For large clusters with many manifests, use a script to find and update all refe
 find ./k8s-manifests -type f \( -name "*.yaml" -o -name "*.yml" \) \
   -exec grep -l "gcr.io/my-project-id" {} \;
 
-# Preview the changes with sed
+# Preview the matching lines with grep
 find ./k8s-manifests -type f \( -name "*.yaml" -o -name "*.yml" \) \
   -exec grep -n "gcr.io/my-project-id" {} \;
 
@@ -320,7 +326,7 @@ kubectl get pods -n production -o jsonpath='{range .items[*]}{.metadata.name}{"\
 
 # Verify no pods are still using gcr.io images
 kubectl get pods --all-namespaces \
-  -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' \
+  -o jsonpath='{range .items[*]}{range .spec.initContainers[*]}{.image}{"\n"}{end}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' \
   | grep gcr.io | sort -u
 ```
 
