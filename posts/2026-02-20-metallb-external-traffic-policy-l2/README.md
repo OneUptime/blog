@@ -65,7 +65,7 @@ spec:
     - name: http
       protocol: TCP
       port: 80
-      targetPort: 8080
+      targetPort: 80
 ```
 
 ### Pros of Cluster Policy
@@ -109,7 +109,7 @@ spec:
     - name: http
       protocol: TCP
       port: 80
-      targetPort: 8080
+      targetPort: 80
 ```
 
 ### Pros of Local Policy
@@ -117,13 +117,13 @@ spec:
 - Client source IP is preserved
 - No extra network hops for traffic
 - Enables client-based rate limiting, geo-location, and access control
-- Lower latency since traffic stays on the same node
+- Lower latency for traffic served by local pods
 
 ### Cons of Local Policy
 
 - Uneven traffic distribution if pods are not evenly spread
-- Risk of downtime if the leader node has no local pods
-- Requires careful pod scheduling
+- Only pods on the current announcing node receive traffic in L2 mode
+- Requires careful pod scheduling for failover capacity
 
 ## L2 Mode and the Leader Election Problem
 
@@ -153,16 +153,16 @@ flowchart TD
     Leader -.->|"Local: NOT forwarded"| Pod3A
 ```
 
-With `Local` policy, only pods on the leader node receive traffic. If the leader node has no pods for the service, clients get connection failures.
+With `Local` policy, only pods on the leader node receive traffic. MetalLB takes the traffic policy and active endpoints into account when selecting the node that announces the VIP, so speakers without local endpoints are not eligible to announce that service. Pods on other nodes do not receive traffic unless leadership moves to their node.
 
 ## Handling the Leader Node Problem
 
-To avoid the problem of no pods on the leader node, use pod anti-affinity or topology spread constraints:
+To make more nodes eligible for failover and avoid concentrating all replicas on one node, use pod anti-affinity or topology spread constraints:
 
 ```yaml
 # deployment-with-spread.yaml
-# Ensure pods are spread across nodes so the MetalLB leader
-# node always has at least one pod.
+# Spread pods across nodes so multiple nodes can be eligible
+# to announce the service during failover.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -190,7 +190,7 @@ spec:
         - name: nginx
           image: nginx:1.27
           ports:
-            - containerPort: 8080
+            - containerPort: 80
 ```
 
 ## Checking Which Node Is the Leader
@@ -205,8 +205,8 @@ kubectl logs -n metallb-system -l component=speaker --tail=50 | grep "leader"
 # Run this from a machine on the same network
 arping -c 3 192.168.1.200
 
-# Check endpoints to see which nodes have pods
-kubectl get endpoints web-local -o yaml
+# Check EndpointSlices to see which nodes have pods
+kubectl get endpointslices -l kubernetes.io/service-name=web-local -o wide
 ```
 
 ## Verifying Source IP Preservation
@@ -252,7 +252,7 @@ kubectl expose deployment echo-server --type=LoadBalancer --port=80
 kubectl patch svc echo-server -p '{"spec":{"externalTrafficPolicy":"Local"}}'
 
 # Test from an external client
-curl http://192.168.1.200 | jq '.request.headers["x-forwarded-for"]'
+curl http://192.168.1.200 | jq '.host.ip'
 ```
 
 ## Choosing the Right Policy for L2 Mode
