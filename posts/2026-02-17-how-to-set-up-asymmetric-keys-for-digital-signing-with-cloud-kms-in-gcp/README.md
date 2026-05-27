@@ -87,20 +87,17 @@ The public key is safe to share. It can only verify signatures, not create them.
 
 ## Step 4: Sign Data
 
-To sign data, you first create a digest (hash) of the data, then send it to Cloud KMS for signing.
+To sign data with the `gcloud` CLI, pass the data file and let `gcloud` create the digest before sending it to Cloud KMS for signing.
 
 ```bash
-# Create a SHA-256 digest of the file you want to sign
-openssl dgst -sha256 -binary data.txt > data.txt.sha256
-
-# Sign the digest using Cloud KMS
+# Sign the file using Cloud KMS
 gcloud kms asymmetric-sign \
     --location=us-central1 \
     --keyring=signing-keyring \
     --key=my-signing-key \
     --version=1 \
     --digest-algorithm=sha256 \
-    --input-file=data.txt.sha256 \
+    --input-file=data.txt \
     --signature-file=data.txt.sig \
     --project=my-project-id
 ```
@@ -160,7 +157,7 @@ def sign_data(data: bytes) -> bytes:
 def verify_signature(data: bytes, signature: bytes) -> bool:
     """Verify a signature using the public key from Cloud KMS."""
     from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec, utils
+    from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.exceptions import InvalidSignature
 
     # Fetch the public key from Cloud KMS
@@ -178,7 +175,7 @@ def verify_signature(data: bytes, signature: bytes) -> bool:
         public_key.verify(
             signature,
             data,
-            ec.ECDSA(utils.Prehashed(hashes.SHA256()))
+            ec.ECDSA(hashes.SHA256())
         )
         return True
     except InvalidSignature:
@@ -201,10 +198,16 @@ import json
 import base64
 from google.cloud import kms
 import hashlib
+from cryptography.hazmat.primitives.asymmetric import utils
 
 def base64url_encode(data: bytes) -> str:
     """URL-safe base64 encoding without padding."""
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("utf-8")
+
+def der_to_jose_signature(signature: bytes) -> bytes:
+    """Convert a DER-encoded ECDSA signature to the 64-byte JOSE format."""
+    r, s = utils.decode_dss_signature(signature)
+    return r.to_bytes(32, "big") + s.to_bytes(32, "big")
 
 def create_signed_jwt(payload: dict, key_version_name: str) -> str:
     """Create a JWT signed with a Cloud KMS key."""
@@ -231,8 +234,8 @@ def create_signed_jwt(payload: dict, key_version_name: str) -> str:
         }
     )
 
-    # Encode the signature
-    sig_b64 = base64url_encode(response.signature)
+    # Convert the DER-encoded ECDSA signature to JOSE format and encode it
+    sig_b64 = base64url_encode(der_to_jose_signature(response.signature))
 
     return f"{header_b64}.{payload_b64}.{sig_b64}"
 ```
