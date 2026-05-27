@@ -53,7 +53,7 @@ Common scenarios where this community is helpful:
 
 ## Prerequisites
 
-- Kubernetes cluster with MetalLB installed in FRR mode
+- Kubernetes cluster with MetalLB installed in BGP mode. The FRR verification command shown later applies to MetalLB's direct FRR mode; for the default FRR-K8s mode, inspect the FRR-K8s pods or FRRNodeState resources instead.
 - At least one BGPPeer configured and session established
 - An IPAddressPool for your service IPs
 - Basic understanding of BGP peering
@@ -87,9 +87,9 @@ kubectl apply -f ipaddresspool.yaml
 kubectl get ipaddresspool -n metallb-system
 ```
 
-## Step 2: Create a BGPPeer with the Community
+## Step 2: Create a BGPPeer
 
-Configure the BGPPeer and reference a community that includes `no-advertise`.
+Configure the BGPPeer that MetalLB will use to connect to your router.
 
 ```yaml
 # BGPPeer establishes a session to the ToR router
@@ -166,7 +166,7 @@ spec:
   # Attach the no-advertise community to every route from this pool
   communities:
     - no-advertise
-  # Optional: aggregate routes to reduce the number of announcements
+  # Keep the default per-service /32 announcements for IPv4
   aggregationLength: 32
 ```
 
@@ -200,7 +200,7 @@ flowchart TD
 
 ## Step 5: Verify the Community Is Attached
 
-Check the FRR logs inside the MetalLB speaker pods to confirm the community is being sent.
+If you run MetalLB's direct FRR mode, check the FRR container inside the MetalLB speaker pods to confirm the community is being sent. Replace `10.200.0.10/32` with the allocated LoadBalancer service IP you want to inspect.
 
 ```bash
 # List the MetalLB speaker pods
@@ -208,16 +208,18 @@ kubectl get pods -n metallb-system -l app=metallb,component=speaker
 
 # Exec into a speaker pod and check FRR's BGP output
 kubectl exec -n metallb-system <speaker-pod> -c frr -- \
-  vtysh -c "show bgp ipv4 unicast 10.200.0.0/24"
+  vtysh -c "show bgp ipv4 unicast 10.200.0.10/32"
 ```
 
 You should see output similar to:
 
 ```text
-BGP routing table entry for 10.200.0.0/24
+BGP routing table entry for 10.200.0.10/32
   Community: no-advertise
   Last update: ...
 ```
+
+Some platforms display the same well-known community as `NO_ADVERTISE` or `65535:65282`.
 
 ## Step 6: Verify on the Router Side
 
@@ -226,10 +228,10 @@ On your ToR router, check that the route is received with the community and is n
 ```bash
 # On the ToR router (Cisco IOS example)
 # Confirm the route is received with the community
-show ip bgp 10.200.0.0/24
+show ip bgp 10.200.0.10/32
 
 # Check that the route is NOT in the outbound table to upstream peers
-show ip bgp neighbors <upstream-peer-ip> advertised-routes | include 10.200.0
+show ip bgp neighbors <upstream-peer-ip> advertised-routes | include 10.200.0.10
 ```
 
 If the `no-advertise` community is working correctly, the route should appear in the local BGP table but not in the advertised-routes output toward upstream peers.
@@ -281,7 +283,7 @@ spec:
 | Putting the community on BGPPeer instead of BGPAdvertisement | Community is ignored | Move the `communities` field to the BGPAdvertisement resource |
 | Using the wrong numeric value | Router ignores or misinterprets the tag | Use `65535:65282` for no-advertise |
 | Forgetting the Community CR | BGPAdvertisement references a name that does not exist | Create the Community resource first |
-| Not using FRR mode | Community support requires FRR mode | Set MetalLB to FRR mode during installation |
+| Checking the direct FRR command while using native BGP or FRR-K8s mode | The `frr` container is not in the MetalLB speaker pod | Use MetalLB speaker logs for native mode, or inspect the FRR-K8s pods and FRRNodeState resources for FRR-K8s mode |
 
 ## Summary
 
