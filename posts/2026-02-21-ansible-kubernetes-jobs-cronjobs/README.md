@@ -14,13 +14,13 @@ This guide covers creating one-off Jobs, scheduled CronJobs, parallel batch proc
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- ansible-core 2.16+ with the current `kubernetes.core` collection
 - A running Kubernetes cluster
 - A valid kubeconfig
 
 ```bash
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes
+python3 -m pip install kubernetes PyYAML jsonpatch
 ```
 
 ## Creating a Simple Job
@@ -183,6 +183,8 @@ For batch processing where you need to process multiple items concurrently, Jobs
             completions: 10
             # How many pods can run at the same time
             parallelism: 3
+            # Give each pod a stable completion index
+            completionMode: Indexed
             backoffLimit: 5
             template:
               spec:
@@ -196,10 +198,9 @@ For batch processing where you need to process multiple items concurrently, Jobs
                           fieldRef:
                             fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
                     command:
-                      - python
-                      - process_batch.py
-                      - --batch-index
-                      - "$(JOB_COMPLETION_INDEX)"
+                      - /bin/sh
+                      - -c
+                      - python process_batch.py --batch-index "$JOB_COMPLETION_INDEX"
                     resources:
                       requests:
                         cpu: 500m
