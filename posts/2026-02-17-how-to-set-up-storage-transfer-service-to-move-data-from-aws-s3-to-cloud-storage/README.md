@@ -10,11 +10,11 @@ Description: A practical guide to using GCP Storage Transfer Service to move dat
 
 Moving data between cloud providers is one of the most common migration tasks. Whether you are migrating away from AWS, setting up a multi-cloud architecture, or just need to get data into GCP for processing, Storage Transfer Service (STS) is the purpose-built tool for moving data from S3 to Cloud Storage.
 
-STS handles the complexities you would rather not deal with: parallel transfers, retry logic, bandwidth throttling, checksum verification, and scheduling. You point it at a source bucket, tell it where to put the data, and it takes care of the rest. In this post, I will cover setting up both one-time and recurring transfers from S3 to Cloud Storage.
+STS handles the complexities you would rather not deal with: parallel transfers, retry logic, checksum verification, and scheduling. You point it at a source bucket, tell it where to put the data, and it takes care of the rest. In this post, I will cover setting up both one-time and recurring transfers from S3 to Cloud Storage.
 
 ## How Storage Transfer Service Works
 
-STS runs as a managed service on GCP's infrastructure. It pulls data from the source (S3) and writes it to the destination (Cloud Storage). The transfer happens over Google's network backbone, which is typically faster than transferring through a client machine.
+STS runs as a managed service on GCP's infrastructure. It pulls data from the source (S3) and writes it to the destination (Cloud Storage), so the transfer does not need to pass through your client machine.
 
 ```mermaid
 flowchart LR
@@ -30,9 +30,9 @@ Key features:
 - Parallel transfer for high throughput
 - Automatic retries for failed objects
 - Checksum verification to ensure data integrity
-- Filtering by prefix, modification time, or file size
+- Filtering by prefix or modification time
 - Scheduling for recurring transfers
-- Bandwidth limiting to avoid impacting production traffic
+- Egress options such as default agentless transfer, CloudFront, managed private network, customer-managed private network, and agent-driven transfer
 
 ## Prerequisites
 
@@ -40,6 +40,7 @@ Key features:
 - An AWS IAM user or role with read access to the S3 bucket
 - A Cloud Storage destination bucket
 - Storage Transfer Admin role on the GCP project
+- The Storage Transfer Service service agent granted access to write to the destination bucket
 
 ```bash
 # Enable the Storage Transfer API
@@ -137,17 +138,17 @@ gcloud transfer jobs create \
   --project=PROJECT_ID \
   --name="daily-s3-sync" \
   --description="Daily sync from S3 to GCS" \
-  --schedule-starts="2026-02-17T02:00:00Z" \
-  --schedule-repeats-every=P1D \
-  --overwrite-when=DIFFERENT \
-  --delete-from=DESTINATION_IF_UNIQUE
+  --schedule-starts="2026-02-17T02:00:00+00:00" \
+  --schedule-repeats-every=1d \
+  --overwrite-when=different \
+  --delete-from=destination-if-unique
 ```
 
 Key scheduling options:
 
-- `--schedule-repeats-every=P1D`: Run daily (P1D = period of 1 day)
-- `--overwrite-when=DIFFERENT`: Only overwrite if the object has changed
-- `--delete-from=DESTINATION_IF_UNIQUE`: Delete objects in the destination that no longer exist in the source (mirror mode)
+- `--schedule-repeats-every=1d`: Run daily
+- `--overwrite-when=different`: Only overwrite if the object has changed
+- `--delete-from=destination-if-unique`: Delete objects in the destination that no longer exist in the source (mirror mode)
 
 ## Step 6: Using the Python API for Complex Transfers
 
@@ -186,7 +187,7 @@ def create_s3_transfer_job(project_id, source_bucket, dest_bucket,
             transfer_options=storage_transfer_v1.TransferOptions(
                 overwrite_objects_already_existing_in_sink=False,
                 delete_objects_from_source_after_transfer=False,
-                overwrite_when="DIFFERENT",
+                overwrite_when=storage_transfer_v1.TransferOptions.OverwriteWhen.DIFFERENT,
             ),
             # Object conditions - only transfer objects matching criteria
             object_conditions=storage_transfer_v1.ObjectConditions(
@@ -289,40 +290,27 @@ gsutil stat gs://my-destination-bucket/path/to/object.dat
 
 Data transfer costs are an important consideration:
 
-- **S3 egress charges**: AWS charges for data leaving S3. This is typically the largest cost component. As of this writing, it is around $0.09/GB for the first 10 TB.
-- **Cloud Storage ingress**: GCP does not charge for data coming into Cloud Storage.
-- **STS service**: The Storage Transfer Service itself is free.
+- **S3 egress charges**: AWS charges for data leaving S3. This is typically the largest cost component. As of this writing, it is around $0.09/GB for the first 10 TB after any applicable free tier, depending on region and transfer path.
+- **Cloud Storage ingress**: GCP does not charge a network ingress fee for data coming into Cloud Storage, but Cloud Storage operation and storage charges still apply.
+- **STS service**: Default agentless transfers do not have a Storage Transfer Service fee. Some other transfer options, such as managed private network transfers, have their own per-GiB charges.
 
-For very large transfers (petabytes), consider using Transfer Appliance instead, which is a physical device you load with data and ship to Google.
+For very large transfers (petabytes), review the available egress options. If you can stage the data onto physical hardware, Transfer Appliance is another option for offline imports into Cloud Storage.
 
 To estimate costs:
 
 ```python
-# Quick cost estimate for S3 egress
+# Quick cost estimate for S3 egress after any applicable free tier
 data_size_gb = 1000  # 1 TB
-s3_egress_per_gb = 0.09  # First 10 TB tier
+s3_egress_per_gb = 0.09  # Example first 10 TB tier; verify current regional pricing
 estimated_cost = data_size_gb * s3_egress_per_gb
 print(f"Estimated S3 egress cost: ${estimated_cost:.2f}")
 ```
 
-## Bandwidth Throttling
+## Bandwidth Planning
 
-If the S3 bucket serves production traffic, throttle the transfer to avoid impacting your users:
+Default agentless S3 transfers do not expose a per-job bandwidth throttle in the transfer job configuration. If the S3 bucket serves production traffic, schedule transfers during off-peak hours or use one of the supported egress options to control the network path.
 
-```python
-# Set bandwidth limit on the transfer
-transfer_spec = storage_transfer_v1.TransferSpec(
-    # ... source and destination config ...
-    transfer_options=storage_transfer_v1.TransferOptions(
-        # Limit bandwidth to 50 MB/s
-        metadata_options=storage_transfer_v1.MetadataOptions(
-            # Available in newer API versions
-        ),
-    ),
-)
-```
-
-You can also schedule transfers during off-peak hours using the scheduling configuration.
+For agent-driven transfers, bandwidth limits are configured on the agent pool and shared across the agents in that pool.
 
 ## Tips for Large Migrations
 
