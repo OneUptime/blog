@@ -22,7 +22,7 @@ The process is straightforward:
 4. DLP generates a new image with colored rectangles covering the sensitive regions
 5. You get the redacted image back
 
-Supported image formats include PNG, JPEG, BMP, and SVG.
+Supported image formats for content redaction include PNG, JPEG, and BMP.
 
 ## Step 1: Basic Image Redaction with Python
 
@@ -30,7 +30,6 @@ Here is a simple example that redacts all detected PII from an image:
 
 ```python
 from google.cloud import dlp_v2
-import base64
 
 def redact_image(project_id, input_path, output_path):
     """Redact sensitive data from an image file."""
@@ -59,7 +58,7 @@ def redact_image(project_id, input_path, output_path):
 
     # Configure the image to redact
     byte_item = {
-        "type_": "IMAGE_PNG",  # or IMAGE_JPEG, IMAGE_BMP, IMAGE_SVG
+        "type_": "IMAGE_PNG",  # or IMAGE_JPEG, IMAGE_BMP
         "data": image_data,
     }
 
@@ -85,6 +84,7 @@ def redact_image(project_id, input_path, output_path):
             "inspect_config": inspect_config,
             "byte_item": byte_item,
             "image_redaction_configs": image_redaction_configs,
+            "include_findings": True,
         }
     )
 
@@ -361,17 +361,18 @@ def redact_uploaded_image(cloud_event):
                 'jpeg': 'IMAGE_JPEG', 'bmp': 'IMAGE_BMP'}
 
     # Redact the image
+    info_types = [
+        {"name": "US_SOCIAL_SECURITY_NUMBER"},
+        {"name": "CREDIT_CARD_NUMBER"},
+        {"name": "PHONE_NUMBER"},
+        {"name": "EMAIL_ADDRESS"},
+    ]
     parent = f"projects/{project_id}/locations/global"
     response = dlp_client.redact_image(
         request={
             "parent": parent,
             "inspect_config": {
-                "info_types": [
-                    {"name": "US_SOCIAL_SECURITY_NUMBER"},
-                    {"name": "CREDIT_CARD_NUMBER"},
-                    {"name": "PHONE_NUMBER"},
-                    {"name": "EMAIL_ADDRESS"},
-                ],
+                "info_types": info_types,
                 "min_likelihood": dlp_v2.Likelihood.POSSIBLE,
             },
             "byte_item": {
@@ -379,7 +380,11 @@ def redact_uploaded_image(cloud_event):
                 "data": image_data,
             },
             "image_redaction_configs": [
-                {"redact_all_text": False},
+                {
+                    "info_type": info_type,
+                    "redaction_color": {"red": 0.0, "green": 0.0, "blue": 0.0},
+                }
+                for info_type in info_types
             ],
         }
     )
