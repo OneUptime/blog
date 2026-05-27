@@ -198,12 +198,18 @@ kind: Deployment
 metadata:
   name: payment-service
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       containers:
         - name: payment
           resources:
-            # Set proper resource limits to prevent OOM kills
+            # Set requests and limits to reserve capacity and bound memory usage
             requests:
               memory: "256Mi"
               cpu: "100m"
@@ -231,7 +237,6 @@ Replace manual processes with self-service tools.
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import subprocess
 
 app = FastAPI(title="Access Provisioner")
 
@@ -247,9 +252,9 @@ class AccessRequest(BaseModel):
 @app.post("/provision")
 async def provision_access(request: AccessRequest):
     """
-    Provision temporary database access.
-    Creates a time-limited database role automatically.
-    Previously, this required an SRE to SSH in and run SQL manually.
+    Validate a temporary database access request.
+    A production version would execute the grant through an approved
+    database automation workflow instead of requiring an SRE to SSH in.
     """
     # Validate the access level
     if request.access_level not in ("readonly", "readwrite"):
@@ -259,7 +264,7 @@ async def provision_access(request: AccessRequest):
     if request.duration_hours > 24:
         raise HTTPException(400, "Maximum duration is 24 hours")
 
-    # Generate the SQL for the temporary role
+    # Generate metadata for the temporary role
     role_name = f"temp_{request.username}_{request.database}"
 
     if request.access_level == "readonly":
@@ -272,8 +277,9 @@ async def provision_access(request: AccessRequest):
     print(f"Database: {request.database}, Duration: {request.duration_hours}h")
 
     return {
-        "status": "provisioned",
+        "status": "accepted",
         "role": role_name,
+        "grant": grants,
         "expires_in_hours": request.duration_hours,
     }
 ```
@@ -298,24 +304,30 @@ flowchart TD
 ### 4. Standardize With Templates
 
 ```bash
-# project-template.sh
+#!/bin/bash
 # Generate a new microservice from a standard template.
 # Eliminates the toil of setting up boilerplate for each new service.
 
-#!/bin/bash
 set -euo pipefail
 
+if [ "$#" -ne 1 ]; then
+    echo "Usage: TEMPLATE_REPO=<git-url> $0 <service-name>" >&2
+    exit 1
+fi
+
+: "${TEMPLATE_REPO:?Set TEMPLATE_REPO to the service template Git URL}"
 SERVICE_NAME=$1
+export SERVICE_NAME
 
 echo "Creating service: $SERVICE_NAME"
 
 # Clone the service template repository
-git clone https://github.com/example/service-template.git "$SERVICE_NAME"
+git clone "$TEMPLATE_REPO" "$SERVICE_NAME"
 cd "$SERVICE_NAME"
 
 # Replace template placeholders with the actual service name
-find . -type f -name "*.yaml" -exec sed -i '' "s/SERVICE_NAME/$SERVICE_NAME/g" {} +
-find . -type f -name "*.py" -exec sed -i '' "s/SERVICE_NAME/$SERVICE_NAME/g" {} +
+find . -type f -name "*.yaml" -exec perl -pi -e 's/SERVICE_NAME/$ENV{SERVICE_NAME}/g' {} +
+find . -type f -name "*.py" -exec perl -pi -e 's/SERVICE_NAME/$ENV{SERVICE_NAME}/g' {} +
 
 # Initialize a fresh Git repository
 rm -rf .git
