@@ -79,16 +79,18 @@ Here is the tracing configuration for a Node.js API gateway. The key is the auto
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { TraceExporter } = require('@google-cloud/opentelemetry-cloud-trace-exporter');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ParentBasedSampler, TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-base');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'api-gateway',
     'service.version': process.env.VERSION || '1.0.0',
     'deployment.environment': process.env.ENV || 'production',
   }),
-  traceExporter: new TraceExporter(),
+  traceExporter: new TraceExporter({
+    resourceFilter: /^(service\.|deployment\.)/,
+  }),
   sampler: new ParentBasedSampler({
     root: new TraceIdRatioBasedSampler(0.1), // 10% sampling for new traces
   }),
@@ -221,20 +223,69 @@ The inventory service is in Go. Same pattern - initialize OpenTelemetry, and the
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
+	texporter "github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-var tracer = otel.Tracer("inventory-service")
+func initTracing(ctx context.Context) (*sdktrace.TracerProvider, error) {
+	exporter, err := texporter.New()
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(
+			"",
+			attribute.String("service.name", "inventory-service"),
+			attribute.String("service.version", os.Getenv("VERSION")),
+			attribute.String("deployment.environment", getenv("ENV", "production")),
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(0.1))),
+		sdktrace.WithBatcher(exporter),
+	)
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(
+		propagation.NewCompositeTextMapPropagator(
+			propagation.TraceContext{},
+			propagation.Baggage{},
+		),
+	)
+
+	return tp, nil
+}
+
+func getenv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
 
 func checkInventory(w http.ResponseWriter, r *http.Request) {
 	// The otelhttp middleware already extracted the trace context
 	// This span becomes a child of the order-service span
+	tracer := otel.Tracer("inventory-service")
 	ctx, span := tracer.Start(r.Context(), "checkInventory")
 	defer span.End()
 
@@ -249,13 +300,37 @@ func checkInventory(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	tp, err := initTracing(ctx)
+	if err != nil {
+		log.Fatalf("unable to set up tracing: %v", err)
+	}
+	defer func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			log.Printf("error shutting down tracer provider: %v", err)
+		}
+	}()
+
 	// Wrap the handler with OpenTelemetry HTTP middleware
 	handler := otelhttp.NewHandler(
 		http.HandlerFunc(checkInventory),
 		"HTTP POST /check",
 	)
 	http.Handle("/check", handler)
-	log.Fatal(http.ListenAndServe(":3002", nil))
+
+	server := &http.Server{Addr: ":3002"}
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen and serve: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	if err := server.Shutdown(context.Background()); err != nil {
+		log.Printf("error shutting down server: %v", err)
+	}
 }
 ```
 
@@ -325,9 +400,9 @@ If spans from different services show up as separate traces instead of one unifi
 
 1. **Check context propagation**: Make sure the `traceparent` header (W3C Trace Context) is being forwarded between services. You can add logging to inspect incoming headers.
 
-2. **Verify the sampling decision**: If Service A samples at 10% and Service B samples at 50%, and B does not use ParentBased sampling, B might create new traces instead of continuing existing ones. Always use ParentBased sampling on downstream services.
+2. **Verify the sampling decision**: If Service A samples at 10% and Service B samples at 50%, and B does not use ParentBased sampling, B might record or drop spans inconsistently instead of respecting the upstream sampling decision. Always use ParentBased sampling on downstream services.
 
-3. **Check timestamps**: Spans with timestamps outside the parent span's range may not be associated correctly. Make sure all your services have synchronized clocks (NTP is configured by default on GKE nodes).
+3. **Check timestamps**: Spans with timestamps outside the parent span's range can make the waterfall view confusing. Make sure all your services have synchronized clocks (NTP is configured by default on GKE nodes).
 
 ## Wrapping Up
 
