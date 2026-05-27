@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Error Handling, Playbook, Deployment Safety
 
-Description: Learn how to use any_errors_fatal in Ansible to stop playbook execution immediately when any host fails, preventing partial deployments.
+Description: Learn how to use any_errors_fatal in Ansible to stop later playbook execution when any host fails, reducing the risk of unsafe partial deployments.
 
 ---
 
 By default, when a task fails on one host in Ansible, execution continues on the other hosts. The failed host gets removed from the active list, but the rest of the playbook keeps running. This is fine for many scenarios, but it can be dangerous during deployments where partial rollouts leave your infrastructure in an inconsistent state.
 
-The `any_errors_fatal` option changes this behavior. When set to `true`, if any single host fails on any task, the entire playbook stops for all hosts. It is a kill switch that prevents partial deployments.
+The `any_errors_fatal` option changes this behavior. When set to `true`, if any single host fails on a task, Ansible lets the current batch finish that task and then stops the play for all hosts. Subsequent tasks and plays are not executed, which helps reduce the risk of unsafe partial deployments.
 
 ## The Problem Without any_errors_fatal
 
@@ -44,7 +44,7 @@ If `db02` fails the migration but `db01` and `db03` succeed, you now have two da
 
 ## Adding any_errors_fatal
 
-Adding `any_errors_fatal: true` at the play level fixes this.
+Adding `any_errors_fatal: true` at the play level prevents later tasks from running after a failure.
 
 ```yaml
 # safe-migration.yml - with any_errors_fatal enabled
@@ -70,7 +70,7 @@ Adding `any_errors_fatal: true` at the play level fixes this.
         state: started
 ```
 
-Now if the migration fails on any single host, the entire play stops on all hosts. No host will proceed to the "Start application connections" task. This gives you a chance to investigate and fix the issue before proceeding.
+Now if the migration fails on any single host, Ansible lets the current batch finish the migration task and then stops the play on all hosts. No host will proceed to the "Start application connections" task. This gives you a chance to investigate and fix the issue before proceeding.
 
 ## How any_errors_fatal Works
 
@@ -87,9 +87,9 @@ flowchart TD
 
     subgraph With["With any_errors_fatal: true"]
         A2[Task runs on db01, db02, db03] --> B2{db02 fails}
-        B2 --> C2[ALL hosts stop immediately]
-        C2 --> D2[Rescue block runs if defined]
-        D2 --> E2[Playbook ends for all hosts]
+        B2 --> C2[Current batch finishes the failed task]
+        C2 --> D2[Rescue block runs for failed hosts if defined]
+        D2 --> E2[Later tasks and plays are skipped]
     end
 ```
 
@@ -100,7 +100,7 @@ flowchart TD
 When upgrading a clustered service, all nodes need to be on the same version.
 
 ```yaml
-# cluster-upgrade.yml - upgrades all nodes or none
+# cluster-upgrade.yml - stops the rollout when a node fails
 ---
 - name: Upgrade Elasticsearch cluster
   hosts: elasticsearch
@@ -154,7 +154,7 @@ When upgrading a clustered service, all nodes need to be on the same version.
       run_once: true
 ```
 
-If any node fails to upgrade or rejoin the cluster, the entire operation stops. You do not want to continue upgrading more nodes when one is already in trouble.
+If any node fails to upgrade or rejoin the cluster, Ansible stops before moving to later batches. Nodes that completed earlier batches are not rolled back automatically, but you do not continue upgrading more nodes when one is already in trouble.
 
 ### Pre-deployment Validation
 
@@ -205,7 +205,7 @@ Use `any_errors_fatal` for validation plays that must pass on all hosts before d
 
 ## Combining with Rescue Blocks
 
-When `any_errors_fatal` triggers, you can still run cleanup tasks using a `rescue` block.
+You can combine `any_errors_fatal` with a `rescue` block to run cleanup tasks when a block task fails. If the rescue tasks succeed, Ansible treats the rescued task as successful for the run, so it does not trigger `any_errors_fatal`.
 
 ```yaml
 # safe-deploy-with-rescue.yml - handles failures gracefully
@@ -255,7 +255,7 @@ When `any_errors_fatal` triggers, you can still run cleanup tasks using a `rescu
 
 These two options serve different purposes:
 
-- `any_errors_fatal: true` stops everything the moment any host fails (zero tolerance)
+- `any_errors_fatal: true` stops later tasks and plays after any host fails (zero tolerance)
 - `max_fail_percentage` lets you set a threshold (e.g., stop if more than 20% of hosts fail)
 
 ```yaml
@@ -307,7 +307,7 @@ You can also set `any_errors_fatal` on a block instead of the entire play.
         autoremove: yes
 ```
 
-In this example, if the monitoring agent update fails on some hosts, execution continues. But if the security agent update or verification fails on any host, everything stops.
+In this example, if the monitoring agent update fails on some hosts, execution continues. But if the security agent update or verification fails on any host, Ansible lets the current batch finish the failed task and then stops later tasks and plays.
 
 ## Best Practices
 
@@ -316,4 +316,4 @@ In this example, if the monitoring agent update fails on some hosts, execution c
 - Pair with pre-validation plays to catch issues before making changes
 - Do not use it everywhere; for routine maintenance tasks, the default behavior (continue on other hosts) is usually fine
 
-The `any_errors_fatal` option is about protecting your infrastructure from the risk of partial changes. When consistency matters more than throughput, it is the right tool for the job.
+The `any_errors_fatal` option is about protecting your infrastructure from the risk of continuing after partial changes. When consistency matters more than throughput, it is the right tool for the job.
