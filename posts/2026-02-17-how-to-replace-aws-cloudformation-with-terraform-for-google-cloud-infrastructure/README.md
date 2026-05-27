@@ -8,7 +8,7 @@ Description: Transition from AWS CloudFormation to Terraform for managing Google
 
 ---
 
-If your team has been using CloudFormation for AWS infrastructure, moving to Google Cloud means you need a new IaC tool. While GCP has its own Deployment Manager, the industry has largely standardized on Terraform for multi-cloud and GCP-focused infrastructure. Terraform's HCL syntax is more readable than CloudFormation's JSON/YAML, and the planning phase gives you a preview of changes before they are applied.
+If your team has been using CloudFormation for AWS infrastructure, moving to Google Cloud means you need a new IaC tool. While Google Cloud previously offered Deployment Manager, support for it was discontinued on March 31, 2026, and Google Cloud now supports Terraform-based workflows directly through Infrastructure Manager. Terraform's HCL syntax is more readable than CloudFormation's JSON/YAML, and the planning phase gives you a preview of changes before they are applied.
 
 In this post, I will walk through translating common CloudFormation patterns to Terraform for GCP, setting up the project structure, and handling the transition for teams familiar with CloudFormation.
 
@@ -74,7 +74,7 @@ Set up the backend for state management:
 ```hcl
 # backend.tf
 
-# Remote state storage in GCS (equivalent to S3 backend for CF state)
+# Remote state storage in GCS
 
 terraform {
   backend "gcs" {
@@ -85,7 +85,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 7.0"
     }
   }
 }
@@ -202,7 +202,7 @@ Terraform GCE equivalent:
 # Terraform - GCP Compute Engine instance
 resource "google_compute_instance" "web_server" {
   name         = "web-server"
-  machine_type = "e2-medium"  # Equivalent to t3.medium
+  machine_type = "e2-medium"  # Rough sizing match for t3.medium
   zone         = "${var.region}-a"
   project      = var.project_id
 
@@ -314,6 +314,12 @@ resource "google_sql_database_instance" "main" {
 
     # HA only in production
     availability_type = local.is_production ? "REGIONAL" : "ZONAL"
+
+    # Required for PostgreSQL high availability
+    backup_configuration {
+      enabled                        = local.is_production
+      point_in_time_recovery_enabled = local.is_production
+    }
   }
 }
 ```
@@ -359,7 +365,7 @@ CloudFormation manages state automatically. With Terraform, you manage it explic
 
 ```hcl
 # Import existing GCP resources into Terraform state
-# (equivalent to CloudFormation drift detection + import)
+# Terraform plan detects drift after resources are managed.
 
 # Import an existing GCS bucket
 terraform import google_storage_bucket.existing my-existing-bucket
@@ -395,7 +401,7 @@ Replace your CloudFormation deployment pipeline with a Terraform pipeline in Clo
 # cloudbuild.yaml
 # Terraform CI/CD pipeline (equivalent to CF deployment pipeline)
 steps:
-  - name: 'hashicorp/terraform:1.7'
+  - name: 'hashicorp/terraform:1.15.4'
     entrypoint: 'sh'
     args:
       - '-c'
@@ -404,7 +410,7 @@ steps:
         terraform init
         terraform validate
 
-  - name: 'hashicorp/terraform:1.7'
+  - name: 'hashicorp/terraform:1.15.4'
     entrypoint: 'sh'
     args:
       - '-c'
@@ -412,9 +418,9 @@ steps:
         cd environments/${_ENVIRONMENT}
         terraform plan -out=tfplan
 
-  # Manual approval step would go here for production
+  # For production, configure the Cloud Build trigger to require approval.
 
-  - name: 'hashicorp/terraform:1.7'
+  - name: 'hashicorp/terraform:1.15.4'
     entrypoint: 'sh'
     args:
       - '-c'
