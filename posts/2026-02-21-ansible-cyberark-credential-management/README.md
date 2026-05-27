@@ -8,23 +8,23 @@ Description: Integrate Ansible with CyberArk Privilege Access Management to retr
 
 ---
 
-CyberArk is an enterprise privileged access management platform. Ansible can retrieve credentials from CyberArk vaults using lookup plugins, eliminating the need to store sensitive credentials in playbooks or variable files.
+CyberArk is an enterprise privileged access management platform. Ansible can retrieve credentials from CyberArk vaults using CyberArk modules or the Central Credential Provider API, eliminating the need to store sensitive credentials in playbooks or variable files.
 
 ## Integration Architecture
 
 ```mermaid
 graph LR
-    A[Ansible Playbook] --> B[CyberArk Lookup]
+    A[Ansible Playbook] --> B[CyberArk Credential Module]
     B --> C[CyberArk Vault]
     C --> D[Return Credential]
     D --> A
 ```
 
-## Installing the CyberArk Collection
+## Installing the Required Collections
 
 ```bash
-ansible-galaxy collection install cyberark.conjur
 ansible-galaxy collection install cyberark.pas
+ansible-galaxy collection install community.general
 ```
 
 ## Retrieving Credentials
@@ -36,17 +36,33 @@ ansible-galaxy collection install cyberark.pas
 - name: Deploy with CyberArk credentials
   hosts: app_servers
   become: true
-  vars:
-    db_password: "{{ lookup('cyberark.pas.cyberark_credential', 'Database-Production-Admin', query='Content') }}"
-
   tasks:
+    - name: Retrieve database credential from CyberArk
+      cyberark.pas.cyberark_credential:
+        api_base_url: "https://{{ cyberark_ccp_host }}"
+        app_id: "{{ app_id }}"
+        query: "Safe={{ safe_name }};Object=Database-Production-Admin"
+        validate_certs: true
+        client_cert: "{{ cyberark_client_cert | default(omit) }}"
+        client_key: "{{ cyberark_client_key | default(omit) }}"
+      register: db_credential
+      no_log: true
+
     - name: Deploy database configuration
       ansible.builtin.template:
         src: database.yml.j2
         dest: "{{ app_config_dir }}/database.yml"
         mode: '0640'
+      vars:
+        db_password: "{{ db_credential.result.Content }}"
       no_log: true
       notify: restart application
+
+  handlers:
+    - name: restart application
+      ansible.builtin.service:
+        name: "{{ app_service_name }}"
+        state: restarted
 ```
 
 ## CyberArk Central Credential Provider
@@ -72,7 +88,7 @@ ansible-galaxy collection install cyberark.pas
 
 ## Key Takeaways
 
-CyberArk integration with Ansible keeps privileged credentials out of your playbooks and variable files. Use the lookup plugin for inline credential retrieval or the CCP API for programmatic access. Always use no_log on tasks handling credentials to prevent them from appearing in output.
+CyberArk integration with Ansible keeps privileged credentials out of your playbooks and variable files. Use the CyberArk PAS credential module for credential retrieval or the CCP API for programmatic access. Always use no_log on tasks handling credentials to prevent them from appearing in output.
 
 ## Common Use Cases
 
@@ -113,7 +129,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -257,4 +273,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
