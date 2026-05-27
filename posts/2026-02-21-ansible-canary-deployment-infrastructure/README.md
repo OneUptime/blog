@@ -74,6 +74,9 @@ canary_metrics_endpoint: "http://prometheus:9090/api/v1/query"
     canary_current_weight: "{{ canary_promotion_steps[0].weight }}"
   notify: reload nginx
 
+- name: Apply initial canary traffic weight
+  ansible.builtin.meta: flush_handlers
+
 - name: Gradually increase canary traffic
   include_tasks: promote_step.yml
   loop: "{{ canary_promotion_steps }}"
@@ -98,6 +101,9 @@ canary_metrics_endpoint: "http://prometheus:9090/api/v1/query"
     canary_current_weight: "{{ item.weight }}"
   notify: reload nginx
 
+- name: "Apply canary weight {{ item.weight }}%"
+  ansible.builtin.meta: flush_handlers
+
 - name: "Wait {{ item.duration }} seconds at {{ item.weight }}% traffic"
   pause:
     seconds: "{{ item.duration }}"
@@ -109,26 +115,39 @@ canary_metrics_endpoint: "http://prometheus:9090/api/v1/query"
     method: POST
     body_format: form-urlencoded
     body:
-      query: 'rate(http_requests_total{status=~"5..",group="canary"}[5m]) / rate(http_requests_total{group="canary"}[5m]) * 100'
+      query: 'sum(rate(http_requests_total{status=~"5..",group="canary"}[5m])) / sum(rate(http_requests_total{group="canary"}[5m])) * 100'
   register: error_rate
   delegate_to: localhost
 
 - name: Rollback if error rate exceeds threshold
   include_tasks: rollback.yml
-  when: (error_rate.json.data.result[0].value[1] | float) > canary_error_threshold
+  when:
+    - error_rate.json.status == 'success'
+    - error_rate.json.data.result | length > 0
+    - (error_rate.json.data.result[0].value[1] | float) > canary_error_threshold
 ```
 
 ## Nginx Upstream Template
 
 ```nginx
 # roles/canary/templates/nginx_upstream.conf.j2
+{% set production_count = groups['production'] | length %}
+{% set canary_count = groups['canary'] | length %}
+{% set production_pool_weight = 100 - (canary_current_weight | int) %}
+{% set canary_pool_weight = canary_current_weight | int %}
 upstream app {
+{% if production_pool_weight > 0 and production_count > 0 %}
+{% set production_server_weight = [((production_pool_weight / production_count) | round(0, 'floor') | int), 1] | max %}
 {% for server in groups['production'] %}
-    server {{ server }}:8080 weight={{ 100 - canary_current_weight | int }};
+    server {{ server }}:8080 weight={{ production_server_weight }};
 {% endfor %}
+{% endif %}
+{% if canary_pool_weight > 0 and canary_count > 0 %}
+{% set canary_server_weight = [((canary_pool_weight / canary_count) | round(0, 'floor') | int), 1] | max %}
 {% for server in groups['canary'] %}
-    server {{ server }}:8080 weight={{ canary_current_weight | int }};
+    server {{ server }}:8080 weight={{ canary_server_weight }};
 {% endfor %}
+{% endif %}
 }
 ```
 
@@ -139,7 +158,7 @@ upstream app {
 ansible-playbook -i inventory/hosts.ini canary-deploy.yml -e "app_version=2.0.0"
 
 # Force immediate promotion to 100%
-ansible-playbook -i inventory/hosts.ini canary-deploy.yml -e "canary_weight=100"
+ansible-playbook -i inventory/hosts.ini canary-deploy.yml -e '{"canary_promotion_steps":[{"weight":100,"duration":0}]}'
 
 # Rollback canary
 ansible-playbook -i inventory/hosts.ini canary-rollback.yml
@@ -188,7 +207,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -332,4 +351,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
