@@ -8,13 +8,13 @@ Description: Automate syslog forwarding configuration across your Linux fleet us
 
 ---
 
-Syslog forwarding is the backbone of centralized logging on Linux systems. Every Linux distribution ships with some variant of syslog, and getting all your servers to forward their logs to a central location is one of the first things you should automate. Doing it manually across dozens or hundreds of servers is error-prone and time-consuming. Ansible makes this a solved problem.
+Syslog forwarding is the backbone of centralized logging on many Linux systems. Most Linux distributions ship with rsyslog, syslog-ng, or systemd-journald integration that can feed a syslog daemon, and getting all your servers to forward their logs to a central location is one of the first things you should automate. Doing it manually across dozens or hundreds of servers is error-prone and time-consuming. Ansible makes this a solved problem.
 
 In this guide, I will cover how to configure syslog forwarding using both rsyslog (the default on most modern distros) and syslog-ng (common in enterprise environments). You will have playbooks that work across mixed fleets with minimal modification.
 
 ## Why Syslog Forwarding Matters
 
-When an incident happens at 3 AM, you do not want to SSH into each server to read logs. With syslog forwarding, every log message lands in one place. This also helps with compliance requirements like PCI DSS and HIPAA, which mandate centralized log retention. And if a server dies, you still have its logs because they were forwarded before the failure.
+When an incident happens at 3 AM, you do not want to SSH into each server to read logs. With syslog forwarding, every log message lands in one place. This also helps with compliance programs like PCI DSS and HIPAA, where centralized logging can make audit review, retention, and access control easier to prove. And if a server dies, you still have its logs because they were forwarded before the failure.
 
 ## Architecture
 
@@ -134,34 +134,47 @@ This role configures rsyslog to forward all messages to the central server.
     enabled: yes
 ```
 
-The forwarding template supports both TCP and UDP and includes disk-assisted queuing so logs are not lost during network outages.
+The forwarding template supports both TCP and UDP and includes disk-assisted queuing to reduce the chance of losing logs during network outages.
 
 ```jinja2
 # roles/rsyslog-client/templates/forwarding.conf.j2
 # Syslog forwarding - Managed by Ansible
 # Target: {{ syslog_server_ip }}:{{ syslog_server_port }}
 
+# Forward selected facility.severity combinations
+{% if syslog_protocol == "tcp" or syslog_protocol == "both" %}
+{{ syslog_facility_filter }} action(
+    type="omfwd"
+    target="{{ syslog_server_ip }}"
+    port="{{ syslog_server_port }}"
+    protocol="tcp"
 {% if syslog_tls_enabled %}
-# TLS configuration
-$DefaultNetstreamDriverCAFile /etc/rsyslog.d/ca.pem
-$DefaultNetstreamDriver gtls
-$ActionSendStreamDriverMode 1
-$ActionSendStreamDriverAuthMode anon
+    streamDriver="gtls"
+    streamDriverMode="1"
+    streamDriverAuthMode="anon"
+    streamDriver.CAFile="/etc/rsyslog.d/ca.pem"
 {% endif %}
-
-# Disk-assisted queue for reliability during outages
-$ActionQueueType LinkedList
-$ActionQueueFileName syslog_fwd
-$ActionResumeRetryCount -1
-$ActionQueueSaveOnShutdown on
-$ActionQueueMaxDiskSpace {{ syslog_disk_queue_max }}
-$ActionQueueSize {{ syslog_queue_size }}
-
-# Forward all facility.severity combinations
-{% if syslog_protocol == "tcp" %}
-{{ syslog_facility_filter }} @@{{ syslog_server_ip }}:{{ syslog_server_port }}
-{% else %}
-{{ syslog_facility_filter }} @{{ syslog_server_ip }}:{{ syslog_server_port }}
+    queue.type="linkedList"
+    queue.filename="syslog_fwd"
+    queue.maxDiskSpace="{{ syslog_disk_queue_max }}"
+    queue.size="{{ syslog_queue_size }}"
+    queue.saveOnShutdown="on"
+    action.resumeRetryCount="-1"
+)
+{% endif %}
+{% if syslog_protocol == "udp" or syslog_protocol == "both" %}
+{{ syslog_facility_filter }} action(
+    type="omfwd"
+    target="{{ syslog_server_ip }}"
+    port="{{ syslog_server_port }}"
+    protocol="udp"
+    queue.type="linkedList"
+    queue.filename="syslog_fwd"
+    queue.maxDiskSpace="{{ syslog_disk_queue_max }}"
+    queue.size="{{ syslog_queue_size }}"
+    queue.saveOnShutdown="on"
+    action.resumeRetryCount="-1"
+)
 {% endif %}
 ```
 
@@ -205,13 +218,23 @@ The receiving end needs to listen for incoming syslog connections and store them
     mode: '0644'
   notify: Restart rsyslog server
 
-- name: Open firewall port for syslog
+- name: Open TCP firewall port for syslog
   ansible.builtin.iptables:
     chain: INPUT
     protocol: tcp
     destination_port: "{{ syslog_server_port }}"
     jump: ACCEPT
     state: present
+  when: syslog_protocol in ['tcp', 'both']
+
+- name: Open UDP firewall port for syslog
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: udp
+    destination_port: "{{ syslog_server_port }}"
+    jump: ACCEPT
+    state: present
+  when: syslog_protocol in ['udp', 'both']
 
 - name: Ensure rsyslog is running
   ansible.builtin.service:
@@ -226,9 +249,11 @@ The server template configures listening and log organization.
 # roles/rsyslog-server/templates/server.conf.j2
 # Syslog server configuration - Managed by Ansible
 
+{% if syslog_protocol == "tcp" or syslog_protocol == "both" %}
 # Load TCP input module
 module(load="imtcp")
 input(type="imtcp" port="{{ syslog_server_port }}")
+{% endif %}
 
 {% if syslog_protocol == "udp" or syslog_protocol == "both" %}
 # Load UDP input module
@@ -237,13 +262,28 @@ input(type="imudp" port="{{ syslog_server_port }}")
 {% endif %}
 
 # Store remote logs organized by hostname and program
-$template RemoteLogs,"/var/log/remote/%HOSTNAME%/%PROGRAMNAME%.log"
+template(name="RemoteLogs" type="list") {
+    constant(value="/var/log/remote/")
+    property(name="hostname" securepath="replace")
+    constant(value="/")
+    property(name="programname" securepath="replace")
+    constant(value=".log")
+}
 
 # Apply template to all incoming remote logs
 if $fromhost-ip != '127.0.0.1' then {
-    *.* ?RemoteLogs
+    action(type="omfile" dynaFile="RemoteLogs")
     & stop
 }
+```
+
+```yaml
+# roles/rsyslog-server/handlers/main.yml
+---
+- name: Restart rsyslog server
+  ansible.builtin.service:
+    name: rsyslog
+    state: restarted
 ```
 
 ## syslog-ng Client Role
@@ -282,16 +322,21 @@ The syslog-ng template uses its own configuration language.
 
 destination d_central {
 {% if syslog_protocol == "tcp" %}
-    tcp("{{ syslog_server_ip }}" port({{ syslog_server_port }})
+    network("{{ syslog_server_ip }}"
+        transport("tcp")
+        port({{ syslog_server_port }})
         disk-buffer(
-            mem-buf-size(10M)
-            disk-buf-size(2G)
+            flow-control-window-bytes(10000000)
+            capacity-bytes(2000000000)
             reliable(yes)
             dir("/var/spool/syslog-ng")
         )
     );
 {% else %}
-    udp("{{ syslog_server_ip }}" port({{ syslog_server_port }}));
+    network("{{ syslog_server_ip }}"
+        transport("udp")
+        port({{ syslog_server_port }})
+    );
 {% endif %}
 };
 
@@ -354,7 +399,7 @@ Do not forget to set up log rotation for the remote logs, otherwise the disk wil
           create 0640 syslog adm
           sharedscripts
           postrotate
-              /usr/lib/rsyslog/rsyslog-rotate
+              systemctl kill -s HUP rsyslog.service >/dev/null 2>&1 || true
           endscript
       }
     owner: root
@@ -387,7 +432,7 @@ Run this verification playbook after deployment to confirm everything works.
 
     - name: Check for test message in remote logs
       ansible.builtin.shell:
-        cmd: "grep 'ansible-verify' /var/log/remote/*/syslog 2>/dev/null || grep 'ansible-verify' /var/log/remote/*/logger.log 2>/dev/null"
+        cmd: "grep 'ansible-verify' /var/log/remote/*/ansible-verify.log 2>/dev/null"
       register: verify_result
 
     - name: Show result
@@ -437,9 +482,10 @@ You can check rsyslog internals with this debug playbook.
       register: config_check
 
     - name: Show listening ports
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: ss -tlnp | grep rsyslog
       register: ports
+      changed_when: false
 
     - name: Display results
       ansible.builtin.debug:
