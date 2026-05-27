@@ -68,7 +68,7 @@ kubectl create namespace clickhouse
 
 # Install the ClickHouse Operator
 # This deploys the operator CRDs and controller
-kubectl apply -f https://raw.githubusercontent.com/Altinity/clickhouse-operator/master/deploy/operator/clickhouse-operator-install-bundle.yaml
+kubectl apply -f https://raw.githubusercontent.com/Altinity/clickhouse-operator/0.27.0/deploy/operator/clickhouse-operator-install-bundle.yaml
 
 # Verify the operator is running
 kubectl get pods -n kube-system | grep clickhouse-operator
@@ -81,65 +81,17 @@ ClickHouse Keeper is a lightweight alternative to ZooKeeper for coordinating rep
 ```yaml
 # clickhouse-keeper.yaml
 # Deploys a 3-node ClickHouse Keeper ensemble for coordination
-apiVersion: apps/v1
-kind: StatefulSet
+apiVersion: "clickhouse-keeper.altinity.com/v1"
+kind: "ClickHouseKeeperInstallation"
 metadata:
-  name: clickhouse-keeper
+  name: analytics-keeper
   namespace: clickhouse
 spec:
-  serviceName: clickhouse-keeper
-  replicas: 3                              # 3 nodes for quorum
-  selector:
-    matchLabels:
-      app: clickhouse-keeper
-  template:
-    metadata:
-      labels:
-        app: clickhouse-keeper
-    spec:
-      containers:
-        - name: clickhouse-keeper
-          image: clickhouse/clickhouse-keeper:latest
-          ports:
-            - containerPort: 9181           # Keeper client port
-              name: client
-            - containerPort: 9234           # Keeper raft port
-              name: raft
-          volumeMounts:
-            - name: keeper-data
-              mountPath: /var/lib/clickhouse-keeper
-          resources:
-            requests:
-              memory: "512Mi"              # Minimum memory for Keeper
-              cpu: "250m"
-            limits:
-              memory: "1Gi"
-              cpu: "500m"
-  volumeClaimTemplates:
-    - metadata:
-        name: keeper-data
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        storageClassName: standard          # Use your StorageClass
-        resources:
-          requests:
-            storage: 10Gi                   # Storage for coordination logs
----
-# Headless service for Keeper pod discovery
-apiVersion: v1
-kind: Service
-metadata:
-  name: clickhouse-keeper
-  namespace: clickhouse
-spec:
-  clusterIP: None                           # Headless for StatefulSet DNS
-  ports:
-    - port: 9181
-      name: client
-    - port: 9234
-      name: raft
-  selector:
-    app: clickhouse-keeper
+  configuration:
+    clusters:
+      - name: keeper
+        layout:
+          replicasCount: 3                  # 3 nodes for quorum
 ```
 
 ```bash
@@ -147,7 +99,7 @@ spec:
 kubectl apply -f clickhouse-keeper.yaml
 
 # Wait for all Keeper pods to be ready
-kubectl rollout status statefulset/clickhouse-keeper -n clickhouse
+kubectl get chk analytics-keeper -n clickhouse
 ```
 
 ## Deploying the ClickHouse Cluster
@@ -163,24 +115,16 @@ metadata:
 spec:
   configuration:
     zookeeper:
-      nodes:
-        - host: clickhouse-keeper-0.clickhouse-keeper.clickhouse.svc.cluster.local
-          port: 9181
-        - host: clickhouse-keeper-1.clickhouse-keeper.clickhouse.svc.cluster.local
-          port: 9181
-        - host: clickhouse-keeper-2.clickhouse-keeper.clickhouse.svc.cluster.local
-          port: 9181
+      keeper:
+        name: analytics-keeper
     clusters:
       - name: analytics
         layout:
           shardsCount: 2                    # 2 shards for horizontal scaling
           replicasCount: 2                  # 2 replicas per shard for HA
-    settings:
-      max_memory_usage: "4000000000"        # 4 GB max memory per query
-      max_threads: "4"                      # Max threads per query
-      max_execution_time: "60"              # Max query execution time in seconds
     profiles:
       default/max_memory_usage: "4000000000"
+      default/max_threads: "4"
       default/max_execution_time: "60"
     users:
       analytics/password: "secure-password" # Create an analytics user
@@ -196,7 +140,7 @@ spec:
         spec:
           containers:
             - name: clickhouse
-              image: clickhouse/clickhouse-server:latest
+              image: clickhouse/clickhouse-server:26.3
               resources:
                 requests:
                   memory: "4Gi"             # Minimum memory per pod
@@ -235,7 +179,7 @@ graph LR
     B --> D[Shard 1 Replica 2]
     B --> E[Shard 2 Replica 1]
     B --> F[Shard 2 Replica 2]
-    G[Monitoring] --> H[Metrics Service :8001]
+    G[Monitoring] --> H[Metrics Service :8888/9999]
 ```
 
 The operator automatically creates services for accessing the cluster:
@@ -257,6 +201,9 @@ kubectl exec -it chi-analytics-cluster-analytics-0-0-0 -n clickhouse -- \
 ## Creating a Distributed Table
 
 ```sql
+-- Create the database on every node before creating tables in it
+CREATE DATABASE IF NOT EXISTS analytics ON CLUSTER analytics;
+
 -- Create a local table on each shard
 -- This table stores data physically on each node
 CREATE TABLE analytics.events_local ON CLUSTER analytics
@@ -299,7 +246,11 @@ kubectl exec -it chi-analytics-cluster-analytics-0-0-0 -n clickhouse -- \
     SELECT
         hostname() AS host,
         uptime() AS uptime_seconds,
-        formatReadableSize(totalBytesOfMergeTreeTables()) AS total_data
+        (
+            SELECT formatReadableSize(sum(bytes_on_disk))
+            FROM system.parts
+            WHERE active
+        ) AS total_data
   "
 
 # Check replication status across the cluster
