@@ -47,7 +47,7 @@ Start by granting CONNECT access to the databases each user needs.
   tasks:
     - name: Grant CONNECT on production database to app user
       community.postgresql.postgresql_privs:
-        database: myapp_production
+        login_db: myapp_production
         type: database
         roles: myapp_user
         privs: CONNECT
@@ -55,7 +55,7 @@ Start by granting CONNECT access to the databases each user needs.
 
     - name: Grant CONNECT and CREATE on production database to admin
       community.postgresql.postgresql_privs:
-        database: myapp_production
+        login_db: myapp_production
         type: database
         roles: myapp_admin
         privs: CONNECT,CREATE,TEMP
@@ -63,7 +63,7 @@ Start by granting CONNECT access to the databases each user needs.
 
     - name: Grant CONNECT on production database to readonly user
       community.postgresql.postgresql_privs:
-        database: myapp_production
+        login_db: myapp_production
         type: database
         roles: myapp_readonly
         privs: CONNECT
@@ -72,13 +72,13 @@ Start by granting CONNECT access to the databases each user needs.
 
 ## Schema-Level Permissions
 
-Schema permissions control who can see and create objects within a schema.
+Schema permissions control who can use and create objects within a schema.
 
 ```yaml
 # Grant schema-level permissions
 - name: Grant USAGE on public schema to app user
   community.postgresql.postgresql_privs:
-    database: myapp_production
+    login_db: myapp_production
     type: schema
     objs: public
     roles: myapp_user
@@ -87,7 +87,7 @@ Schema permissions control who can see and create objects within a schema.
 
 - name: Grant USAGE and CREATE on public schema to admin
   community.postgresql.postgresql_privs:
-    database: myapp_production
+    login_db: myapp_production
     type: schema
     objs: public
     roles: myapp_admin
@@ -96,7 +96,7 @@ Schema permissions control who can see and create objects within a schema.
 
 - name: Grant USAGE on public schema to readonly user
   community.postgresql.postgresql_privs:
-    database: myapp_production
+    login_db: myapp_production
     type: schema
     objs: public
     roles: myapp_readonly
@@ -112,7 +112,7 @@ This is where you define who can read, write, update, and delete data.
 # Grant table-level permissions for different user types
 - name: Grant full table access to app user
   community.postgresql.postgresql_privs:
-    database: myapp_production
+    login_db: myapp_production
     schema: public
     type: table
     objs: ALL_IN_SCHEMA
@@ -122,7 +122,7 @@ This is where you define who can read, write, update, and delete data.
 
 - name: Grant read-only access to reporting user
   community.postgresql.postgresql_privs:
-    database: myapp_production
+    login_db: myapp_production
     schema: public
     type: table
     objs: ALL_IN_SCHEMA
@@ -132,7 +132,7 @@ This is where you define who can read, write, update, and delete data.
 
 - name: Grant all privileges to admin user
   community.postgresql.postgresql_privs:
-    database: myapp_production
+    login_db: myapp_production
     schema: public
     type: table
     objs: ALL_IN_SCHEMA
@@ -146,10 +146,10 @@ This is where you define who can read, write, update, and delete data.
 If your tables use sequences (auto-increment), the application user needs access to those too.
 
 ```yaml
-# Grant sequence permissions so INSERT with serial/identity columns works
+# Grant sequence permissions so INSERT with serial columns or explicit sequence defaults works
 - name: Grant sequence usage to app user
   community.postgresql.postgresql_privs:
-    database: myapp_production
+    login_db: myapp_production
     schema: public
     type: sequence
     objs: ALL_IN_SCHEMA
@@ -159,7 +159,7 @@ If your tables use sequences (auto-increment), the application user needs access
 
 - name: Grant sequence read to readonly user
   community.postgresql.postgresql_privs:
-    database: myapp_production
+    login_db: myapp_production
     schema: public
     type: sequence
     objs: ALL_IN_SCHEMA
@@ -176,7 +176,7 @@ When new tables are created, they do not automatically inherit the permissions y
 # Set default privileges so future tables get correct permissions
 - name: Set default SELECT on future tables for readonly user
   community.postgresql.postgresql_privs:
-    database: myapp_production
+    login_db: myapp_production
     schema: public
     type: default_privs
     objs: TABLES
@@ -187,7 +187,7 @@ When new tables are created, they do not automatically inherit the permissions y
 
 - name: Set default CRUD on future tables for app user
   community.postgresql.postgresql_privs:
-    database: myapp_production
+    login_db: myapp_production
     schema: public
     type: default_privs
     objs: TABLES
@@ -198,7 +198,7 @@ When new tables are created, they do not automatically inherit the permissions y
 
 - name: Set default sequence usage for app user
   community.postgresql.postgresql_privs:
-    database: myapp_production
+    login_db: myapp_production
     schema: public
     type: default_privs
     objs: SEQUENCES
@@ -242,7 +242,7 @@ postgresql_permission_sets:
 ---
 - name: Grant database-level privileges
   community.postgresql.postgresql_privs:
-    database: "{{ item.0.database }}"
+    login_db: "{{ item.0.database }}"
     type: database
     roles: "{{ item.1.role }}"
     privs: "{{ item.1.database_privs }}"
@@ -253,7 +253,7 @@ postgresql_permission_sets:
 
 - name: Grant schema-level privileges
   community.postgresql.postgresql_privs:
-    database: "{{ item.0.database }}"
+    login_db: "{{ item.0.database }}"
     type: schema
     objs: public
     roles: "{{ item.1.role }}"
@@ -265,7 +265,7 @@ postgresql_permission_sets:
 
 - name: Grant table-level privileges
   community.postgresql.postgresql_privs:
-    database: "{{ item.0.database }}"
+    login_db: "{{ item.0.database }}"
     schema: public
     type: table
     objs: ALL_IN_SCHEMA
@@ -278,7 +278,7 @@ postgresql_permission_sets:
 
 - name: Grant sequence-level privileges
   community.postgresql.postgresql_privs:
-    database: "{{ item.0.database }}"
+    login_db: "{{ item.0.database }}"
     schema: public
     type: sequence
     objs: ALL_IN_SCHEMA
@@ -298,7 +298,7 @@ To revoke permissions, use `state: absent`.
 # Revoke write access from a user
 - name: Revoke write privileges from decommissioned user
   community.postgresql.postgresql_privs:
-    database: myapp_production
+    login_db: myapp_production
     schema: public
     type: table
     objs: ALL_IN_SCHEMA
@@ -317,7 +317,7 @@ Verify that permissions are set correctly by querying the system catalogs.
 # Audit current table permissions
 - name: Check table permissions for a user
   community.postgresql.postgresql_query:
-    db: myapp_production
+    login_db: myapp_production
     query: |
       SELECT grantee, table_schema, table_name, privilege_type
       FROM information_schema.table_privileges
@@ -340,7 +340,7 @@ Sometimes you need to grant access to specific tables rather than all tables in 
 # Grant access to specific tables only
 - name: Grant SELECT on specific tables to analytics user
   community.postgresql.postgresql_privs:
-    database: myapp_production
+    login_db: myapp_production
     schema: public
     type: table
     objs: orders,products,customers
