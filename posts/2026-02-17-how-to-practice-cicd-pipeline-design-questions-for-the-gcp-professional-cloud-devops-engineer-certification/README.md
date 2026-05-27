@@ -41,12 +41,18 @@ metadata:
   name: api-service
 spec:
   replicas: 6
+  selector:
+    matchLabels:
+      app: api-service
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 2        # Add up to 2 extra pods during rollout
       maxUnavailable: 1   # Allow 1 pod to be unavailable
   template:
+    metadata:
+      labels:
+        app: api-service
     spec:
       containers:
         - name: api
@@ -66,7 +72,7 @@ spec:
 Run two identical environments (blue and green). Deploy to the inactive one, test it, then switch traffic. Instant rollback by switching back.
 
 ```yaml
-# Cloud Deploy delivery pipeline with blue-green strategy
+# Cloud Deploy delivery pipeline with deployment verification
 apiVersion: deploy.cloud.google.com/v1
 kind: DeliveryPipeline
 metadata:
@@ -94,12 +100,13 @@ For Cloud Run, blue-green is straightforward with traffic splitting:
 gcloud run deploy api-service \
   --image=us-central1-docker.pkg.dev/my-project/apps/api:v2 \
   --region=us-central1 \
+  --tag=green \
   --no-traffic
 
 # After testing, shift all traffic to the new revision
 gcloud run services update-traffic api-service \
   --region=us-central1 \
-  --to-latest
+  --to-tags=green=100
 ```
 
 **When to use**: When you need instant rollback capability and can afford running two full environments.
@@ -146,6 +153,20 @@ spec:
             host: api-service
             subset: v2
           weight: 10
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: api-service
+spec:
+  host: api-service
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
 ```
 
 **When to use**: For high-risk changes where you want to validate with real traffic before full rollout.
@@ -189,16 +210,21 @@ steps:
     id: 'test'
     args: ['run', '${_IMAGE}', 'npm', 'test']
 
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push'
+    args: ['push', '${_IMAGE}']
+
   # Create an attestation only if tests pass
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'attest'
     args:
+      - 'beta'
       - 'container'
       - 'binauthz'
       - 'attestations'
       - 'sign-and-create'
-      - '--artifact-url=${_IMAGE}@${_DIGEST}'
-      - '--attestor=build-attestor'
+      - '--artifact-url=${_IMAGE_DIGEST}'
+      - '--attestor=projects/my-project/attestors/build-attestor'
       - '--keyversion=projects/my-project/locations/global/keyRings/attestors/cryptoKeys/signing-key/cryptoKeyVersions/1'
 ```
 
@@ -208,7 +234,7 @@ steps:
 # Enable on-push scanning for Artifact Registry
 gcloud artifacts repositories update my-repo \
   --location=us-central1 \
-  --enable-vulnerability-scanning
+  --allow-vulnerability-scanning
 
 # Block images with critical vulnerabilities using Binary Authorization
 # Configure the policy to require a vulnerability scan attestation
@@ -287,19 +313,19 @@ availableSecrets:
 
 "Your team deploys to production twice a week. Occasionally a deployment causes issues that are not caught in staging. How do you reduce the blast radius?"
 
-Answer: Implement canary deployments. Deploy to 5% of traffic first, monitor error rates and latency for 30 minutes, then gradually increase. Use Cloud Deploy with verify steps to automate the monitoring check.
+Answer: Implement canary deployments. Deploy to 5% of traffic first, monitor error rates and latency for 30 minutes, then gradually increase. Use Cloud Deploy canary phases with verify jobs or a monitoring gate to automate the check.
 
 ### Scenario 2: Compliance Requirement
 
 "Your organization requires that every container deployed to production has passed security scanning and been approved by the security team."
 
-Answer: Set up Binary Authorization with attestation. Cloud Build creates a vulnerability scan attestation after scanning. The security team creates a manual approval attestation. The Binary Authorization policy requires both attestations before allowing deployment.
+Answer: Set up Binary Authorization with attestation. Cloud Build creates an attestation after the vulnerability scan meets your policy. The security team creates a manual approval attestation. The Binary Authorization policy requires both attestations before allowing deployment.
 
 ### Scenario 3: Rollback Strategy
 
 "A deployment to GKE caused a 10% increase in error rate. What is the fastest way to roll back?"
 
-Answer: `kubectl rollout undo deployment/my-service`. For Cloud Run, route traffic back to the previous revision. For Cloud Deploy, use the rollback command. The key is that rolling back should be a single command, not a full pipeline run.
+Answer: `kubectl rollout undo deployment/my-service`. For Cloud Run, route traffic back to the previous revision. For Cloud Deploy, use `gcloud deploy targets rollback`. The key is that rolling back should be a single command, not a full pipeline run.
 
 ### Scenario 4: Database Migration with Deployment
 
