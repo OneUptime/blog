@@ -187,6 +187,12 @@ def get_coverage_analysis(headers):
     return json.dumps({"type": "FeatureCollection", "features": features}), 200, headers
 ```
 
+Add the BigQuery client library to `requirements.txt`:
+
+```text
+google-cloud-bigquery
+```
+
 Deploy the Cloud Function:
 
 ```bash
@@ -256,7 +262,7 @@ This HTML file creates an interactive map with multiple layers:
 
         let map;
         let layers = {};
-        let heatmapLayer;
+        let heatmapOverlay;
 
         function initMap() {
             // Initialize the map centered on the Bay Area
@@ -337,39 +343,45 @@ This HTML file creates an interactive map with multiple layers:
         }
 
         async function loadCustomerHeatmap() {
-            if (heatmapLayer) return;
+            if (heatmapOverlay) return;
 
             const response = await fetch(`${API_BASE}?type=customers`);
             const data = await response.json();
 
-            // Convert points to LatLng objects with weights
-            const heatmapData = data.points.map(p => ({
-                location: new google.maps.LatLng(p.lat, p.lng),
-                weight: p.weight
-            }));
-
-            heatmapLayer = new google.maps.visualization.HeatmapLayer({
-                data: heatmapData,
-                radius: 30,
+            // Use deck.gl because the Maps JavaScript API Heatmap Layer is deprecated.
+            const heatmapLayer = new deck.HeatmapLayer({
+                id: 'customer-density',
+                data: data.points,
+                getPosition: p => [p.lng, p.lat],
+                getWeight: p => p.weight,
+                radiusPixels: 30,
                 opacity: 0.7,
-                gradient: [
-                    'rgba(0, 255, 255, 0)',
-                    'rgba(0, 255, 255, 1)',
-                    'rgba(0, 191, 255, 1)',
-                    'rgba(0, 127, 255, 1)',
-                    'rgba(0, 63, 255, 1)',
-                    'rgba(0, 0, 255, 1)',
-                    'rgba(0, 0, 223, 1)',
-                    'rgba(0, 0, 191, 1)',
-                    'rgba(0, 0, 159, 1)',
-                    'rgba(63, 0, 91, 1)',
-                    'rgba(127, 0, 63, 1)',
-                    'rgba(191, 0, 31, 1)',
-                    'rgba(255, 0, 0, 1)'
-                ]
+                aggregation: 'SUM'
             });
 
-            heatmapLayer.setMap(null); // Hidden by default
+            heatmapOverlay = new deck.GoogleMapsOverlay({
+                layers: [heatmapLayer]
+            });
+        }
+
+        async function loadCoverageAreas() {
+            if (layers.coverage) return;
+
+            const response = await fetch(`${API_BASE}?type=coverage`);
+            const geojson = await response.json();
+
+            layers.coverage = new google.maps.Data();
+            layers.coverage.addGeoJson(geojson);
+
+            layers.coverage.setStyle({
+                fillColor: '#673ab7',
+                fillOpacity: 0.15,
+                strokeColor: '#673ab7',
+                strokeWeight: 2,
+                strokeOpacity: 0.7
+            });
+
+            layers.coverage.setMap(null); // Hidden by default
         }
 
         function toggleLayer(layerName) {
@@ -377,8 +389,8 @@ This HTML file creates an interactive map with multiple layers:
 
             if (layerName === 'heatmap') {
                 loadCustomerHeatmap().then(() => {
-                    const isVisible = heatmapLayer.getMap() !== null;
-                    heatmapLayer.setMap(isVisible ? null : map);
+                    const isVisible = btn.classList.contains('active');
+                    heatmapOverlay.setMap(isVisible ? null : map);
                     btn.classList.toggle('active');
                 });
                 return;
@@ -393,6 +405,15 @@ This HTML file creates an interactive map with multiple layers:
                 return;
             }
 
+            if (layerName === 'coverage') {
+                loadCoverageAreas().then(() => {
+                    const isVisible = layers.coverage.getMap() !== null;
+                    layers.coverage.setMap(isVisible ? null : map);
+                    btn.classList.toggle('active');
+                });
+                return;
+            }
+
             if (layers[layerName]) {
                 const isVisible = layers[layerName].getMap() !== null;
                 layers[layerName].setMap(isVisible ? null : map);
@@ -400,7 +421,9 @@ This HTML file creates an interactive map with multiple layers:
             }
         }
     </script>
-    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=visualization&callback=initMap" async defer></script>
+    <script src="https://unpkg.com/deck.gl@^9.0.0/dist.min.js"></script>
+    <script src="https://unpkg.com/@deck.gl/google-maps@^9.0.0/dist.min.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap" async defer></script>
 </body>
 </html>
 ```
@@ -413,7 +436,7 @@ This JavaScript function creates a choropleth based on customer count per zone:
 
 ```javascript
 // Apply choropleth styling based on data values
-function applyChoropethStyle(dataLayer, property, breakpoints) {
+function applyChoroplethStyle(dataLayer, property, breakpoints) {
     dataLayer.setStyle((feature) => {
         const value = feature.getProperty(property);
 
@@ -444,17 +467,20 @@ const customerBreakpoints = [
     { min: 5000, color: '#08306b' },
 ];
 
-applyChoropethStyle(layers.zones, 'customer_count', customerBreakpoints);
+applyChoroplethStyle(layers.zones, 'customer_count', customerBreakpoints);
 ```
 
-## Step 4: Add Interactive Info Windows with Charts
+## Step 4: Add Interactive Info Windows with Details
 
 Enhance the info windows to show detailed analytics for each feature:
 
 ```javascript
-// Rich info window with mini chart
+// Rich info window with feature details
 function showDetailedInfoWindow(feature, latLng) {
-    const props = feature.getProperties();
+    const props = {};
+    feature.forEachProperty((value, name) => {
+        props[name] = value;
+    });
 
     const content = `
         <div style="min-width: 200px; padding: 5px;">
@@ -486,4 +512,4 @@ function showDetailedInfoWindow(feature, latLng) {
 
 ## Summary
 
-Visualizing BigQuery GIS data on Google Maps creates an intuitive way to explore spatial patterns that raw query results cannot convey. The key architectural pattern is a Cloud Function API layer that converts BigQuery GEOGRAPHY results to GeoJSON using ST_ASGEOJSON, which the Maps JavaScript API can render directly. Use the Data layer for points and polygons with click interaction, the HeatmapLayer for density visualization, and data-driven styling for choropleths. Keep queries cached or pre-aggregated on the backend to avoid slow map interactions, and limit the number of features rendered to keep the frontend responsive.
+Visualizing BigQuery GIS data on Google Maps creates an intuitive way to explore spatial patterns that raw query results cannot convey. The key architectural pattern is a Cloud Function API layer that converts BigQuery GEOGRAPHY results to GeoJSON using ST_ASGEOJSON, which the Maps JavaScript API can render directly. Use the Data layer for points and polygons with click interaction, deck.gl's HeatmapLayer for density visualization, and data-driven styling for choropleths. Keep queries cached or pre-aggregated on the backend to avoid slow map interactions, and limit the number of features rendered to keep the frontend responsive.
