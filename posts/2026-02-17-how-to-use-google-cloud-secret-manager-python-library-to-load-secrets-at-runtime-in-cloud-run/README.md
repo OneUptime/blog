@@ -36,6 +36,7 @@ gcloud secrets create database-password --replication-policy="automatic"
 echo -n "super-secret-db-password" | gcloud secrets versions add database-password --data-file=-
 
 # Create another secret for an API key
+gcloud secrets create api-key --replication-policy="automatic"
 echo -n "sk-abc123def456" | gcloud secrets versions add api-key --data-file=-
 ```
 
@@ -189,6 +190,7 @@ A common pattern is loading the database connection string from Secret Manager a
 
 ```python
 import sqlalchemy
+from sqlalchemy.engine import URL
 from google.cloud import secretmanager
 import os
 
@@ -207,7 +209,13 @@ def get_database_url():
     db_name = os.environ.get("DB_NAME", "myapp")
     db_user = os.environ.get("DB_USER", "appuser")
 
-    return f"postgresql://{db_user}:{db_password}@{db_host}/{db_name}"
+    return URL.create(
+        "postgresql",
+        username=db_user,
+        password=db_password,
+        host=db_host,
+        database=db_name,
+    )
 
 # Create the SQLAlchemy engine with the secret-based URL
 engine = sqlalchemy.create_engine(get_database_url())
