@@ -230,6 +230,18 @@ resource "google_container_node_pool" "primary_nodes" {
 }
 ```
 
+If the root module will expose the cluster endpoint later, the GKE module also needs to expose it as an output:
+
+```hcl
+# modules/gke/outputs.tf
+
+output "cluster_endpoint" {
+  description = "The GKE cluster endpoint"
+  value       = google_container_cluster.primary.endpoint
+  sensitive   = true
+}
+```
+
 ## Wiring Everything Together in the Root Module
 
 The root module is where you connect the dots. You instantiate both modules and pass the outputs from one as inputs to another:
@@ -321,13 +333,15 @@ variable "firewall_rules" {
 Some outputs contain sensitive information. Terraform lets you mark them as sensitive:
 
 ```hcl
-# Mark sensitive outputs to prevent them from showing in plan output
+# Mark sensitive outputs to prevent them from showing in normal CLI output
 output "cluster_ca_certificate" {
   description = "The cluster CA certificate"
   value       = google_container_cluster.primary.master_auth[0].cluster_ca_certificate
   sensitive   = true
 }
 ```
+
+Sensitive output values are still stored in Terraform state, and `terraform output -json` can display them in plain text.
 
 ## Tips From Real Projects
 
