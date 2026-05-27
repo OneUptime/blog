@@ -21,7 +21,7 @@ The tradeoffs are worth understanding:
 - Ansible does not maintain a state file, so it relies on idempotent modules to determine current state
 - Ansible excels at configuration management after resources exist
 - Ansible can provision cloud resources through provider-specific modules
-- Ansible uses a procedural approach (step by step) rather than declarative
+- Ansible playbooks run tasks in order, but those tasks usually declare the desired state of each resource
 
 For many teams, using Ansible for IaC makes sense because they already use it for configuration management, and keeping everything in one tool reduces complexity.
 
@@ -178,6 +178,9 @@ public_subnets:
 
 instance_type: t3.medium
 instance_count: 3
+ami_id: ami-0123456789abcdef0
+ssh_key_name: myapp-production
+ssh_key_path: ~/.ssh/myapp-production.pem
 db_instance_class: db.r5.large
 ```
 
@@ -203,7 +206,7 @@ db_instance_class: db.r5.large
   loop: "{{ range(0, instance_count) | list }}"
   register: ec2_instances
 
-# Add new instances to in-memory inventory for configuration
+# Add new instances to in-memory inventory for a later play in the same run
 - name: Add instances to webservers group
   add_host:
     name: "{{ item.instances[0].public_ip_address }}"
@@ -215,7 +218,7 @@ db_instance_class: db.r5.large
 
 ## Configuration Management After Provisioning
 
-After provisioning, configure the instances. This is where Ansible really shines compared to pure provisioning tools:
+After provisioning, configure the instances. If you run configuration in a separate playbook invocation, use a static inventory or a dynamic inventory plugin such as `amazon.aws.aws_ec2`; the `add_host` task above only adds hosts to the in-memory inventory for the current playbook run. This is where Ansible really shines compared to pure provisioning tools:
 
 ```yaml
 # playbooks/configure.yml - Configure provisioned infrastructure
@@ -303,27 +306,71 @@ Every IaC project needs a teardown playbook for cleaning up environments:
   connection: local
   gather_facts: false
 
+  vars_files:
+    - "../inventory/{{ env }}/group_vars/all.yml"
+
   tasks:
+    - name: Find VPC
+      amazon.aws.ec2_vpc_net_info:
+        filters:
+          "tag:Name": "{{ project_name }}-{{ env }}-vpc"
+        region: "{{ aws_region }}"
+      register: vpc_info
+
+    - name: Set VPC ID
+      set_fact:
+        vpc_id: "{{ vpc_info.vpcs[0].id }}"
+      when: vpc_info.vpcs | length > 0
+
     - name: Terminate EC2 instances
       amazon.aws.ec2_instance:
         state: absent
+        wait: true
         filters:
           "tag:Environment": "{{ env }}"
           "tag:ManagedBy": ansible
         region: "{{ aws_region }}"
 
+    - name: Delete public subnets
+      amazon.aws.ec2_vpc_subnet:
+        state: absent
+        vpc_id: "{{ vpc_id }}"
+        cidr: "{{ item.cidr }}"
+        region: "{{ aws_region }}"
+      loop: "{{ public_subnets }}"
+      when: vpc_id is defined
+
+    - name: Delete public route table
+      amazon.aws.ec2_vpc_route_table:
+        vpc_id: "{{ vpc_id }}"
+        tags:
+          Name: "{{ project_name }}-{{ env }}-public-rt"
+        lookup: tag
+        state: absent
+        region: "{{ aws_region }}"
+      when: vpc_id is defined
+
+    - name: Delete internet gateway
+      amazon.aws.ec2_vpc_igw:
+        vpc_id: "{{ vpc_id }}"
+        state: absent
+        region: "{{ aws_region }}"
+      when: vpc_id is defined
+
     - name: Delete security groups
       amazon.aws.ec2_security_group:
         name: "{{ project_name }}-{{ env }}-web-sg"
+        vpc_id: "{{ vpc_id }}"
         state: absent
         region: "{{ aws_region }}"
+      when: vpc_id is defined
 
-    - name: Delete VPC (removes subnets, IGW, route tables)
+    - name: Delete VPC after dependent resources have been removed
       amazon.aws.ec2_vpc_net:
-        name: "{{ project_name }}-{{ env }}-vpc"
-        cidr_block: "{{ vpc_cidr }}"
+        vpc_id: "{{ vpc_id }}"
         state: absent
         region: "{{ aws_region }}"
+      when: vpc_id is defined
 ```
 
 ## Version Control Practices
