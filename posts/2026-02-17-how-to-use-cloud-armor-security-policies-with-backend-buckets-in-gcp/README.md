@@ -73,12 +73,12 @@ gcloud compute security-policies rules update 2147483647 \
 Limit content distribution to specific regions:
 
 ```bash
-# Allow traffic from US and EU only
+# Allow traffic from the US, Germany, France, and the UK
 gcloud compute security-policies rules create 1000 \
   --security-policy=bucket-edge-policy \
   --expression="origin.region_code == 'US' || origin.region_code == 'DE' || origin.region_code == 'FR' || origin.region_code == 'GB'" \
   --action=allow \
-  --description="Allow traffic from US and key EU countries"
+  --description="Allow traffic from selected countries"
 
 # Deny all other regions
 gcloud compute security-policies rules update 2147483647 \
@@ -207,7 +207,7 @@ gcloud logging read \
   'resource.type="http_load_balancer" AND jsonPayload.enforcedEdgeSecurityPolicy.name="bucket-edge-policy"' \
   --project=your-project-id \
   --limit=25 \
-  --format="table(timestamp, jsonPayload.enforcedEdgeSecurityPolicy.configuredAction, jsonPayload.remoteIp, jsonPayload.requestUrl)"
+  --format="table(timestamp, jsonPayload.enforcedEdgeSecurityPolicy.configuredAction, httpRequest.remoteIp, httpRequest.requestUrl)"
 ```
 
 Create a log-based metric to track blocked requests over time:
