@@ -46,20 +46,21 @@ from fastapi.responses import JSONResponse
 import redis
 import uuid
 import json
-import hashlib
 import time
+from pwdlib import PasswordHash
 
 app = FastAPI()
 
 # Use Redis as the session store for shared access across servers
 session_store = redis.Redis(host="redis.internal", port=6379, db=0)
+password_hash = PasswordHash.recommended()
 
 # Session duration: 24 hours
 SESSION_TTL = 86400
 
-def hash_password(password, salt):
-    """Hash a password with a salt using SHA-256."""
-    return hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+def verify_password(password, stored_hash):
+    """Verify a password against a stored password hash."""
+    return password_hash.verify(password, stored_hash)
 
 
 @app.post("/login")
@@ -71,7 +72,7 @@ async def login(request: Request, response: Response):
 
     # Validate credentials (simplified for example)
     user = lookup_user(email)
-    if not user or hash_password(password, user["salt"]) != user["password_hash"]:
+    if not user or not verify_password(password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     # Create a new session
@@ -96,7 +97,7 @@ async def login(request: Request, response: Response):
         value=session_id,
         httponly=True,      # Not accessible via JavaScript
         secure=True,        # Only sent over HTTPS
-        samesite="lax",     # CSRF protection
+        samesite="lax",     # Helps mitigate CSRF; still validate CSRF tokens for state-changing requests
         max_age=SESSION_TTL
     )
     return response
@@ -153,9 +154,8 @@ sequenceDiagram
 # JWT-based authentication implementation
 
 import jwt
-import time
 from fastapi import FastAPI, Request, HTTPException
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 app = FastAPI()
 
@@ -170,7 +170,7 @@ REFRESH_TOKEN_TTL = 604800   # 7 days
 
 def create_access_token(user_id, email, roles):
     """Create a short-lived access token."""
-    now = time.time()
+    now = datetime.now(timezone.utc)
     payload = {
         # Subject: the user identifier
         "sub": str(user_id),
@@ -181,7 +181,7 @@ def create_access_token(user_id, email, roles):
         # Issued at timestamp
         "iat": now,
         # Expiration timestamp
-        "exp": now + ACCESS_TOKEN_TTL,
+        "exp": now + timedelta(seconds=ACCESS_TOKEN_TTL),
         # Token type
         "type": "access"
     }
@@ -190,11 +190,11 @@ def create_access_token(user_id, email, roles):
 
 def create_refresh_token(user_id):
     """Create a long-lived refresh token."""
-    now = time.time()
+    now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user_id),
         "iat": now,
-        "exp": now + REFRESH_TOKEN_TTL,
+        "exp": now + timedelta(seconds=REFRESH_TOKEN_TTL),
         "type": "refresh"
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -264,9 +264,9 @@ async def refresh(request: Request):
 | Revocation | Immediate (delete session) | Difficult without a blocklist |
 | Token size | Small cookie (~32 bytes) | Larger (~800+ bytes) |
 | Server lookup | Required on every request | Not required (verify signature) |
-| CSRF risk | Vulnerable (needs protection) | Not vulnerable (not in cookies) |
-| XSS risk | Cookie is httpOnly | Token in localStorage is exposed |
-| Cross-domain | Difficult with cookies | Easy with Authorization header |
+| CSRF risk | Vulnerable unless protected with CSRF tokens and SameSite cookies | Low when sent in an Authorization header; cookie-based JWTs still need CSRF protection |
+| XSS risk | httpOnly cookies reduce token theft, but XSS can still trigger authenticated actions | Tokens in localStorage or sessionStorage are exposed to XSS |
+| Cross-domain | Possible with cookie attributes and CORS, but more complex | Straightforward with Authorization header |
 
 ## When to Use Sessions
 
@@ -296,7 +296,6 @@ JWTs work best for APIs consumed by multiple clients, microservices that need to
 # Security measures that apply to both approaches
 
 import secrets
-import hashlib
 import hmac
 
 def generate_csrf_token():
