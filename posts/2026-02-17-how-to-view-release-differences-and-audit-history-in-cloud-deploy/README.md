@@ -32,12 +32,14 @@ Start by listing all releases in a pipeline to get an overview of your deploymen
 
 gcloud deploy releases list \
   --delivery-pipeline=my-app-pipeline \
-  --region=us-central1
+  --region=us-central1 \
+  --sort-by=~createTime
 
 # Limit to the last 10 releases
 gcloud deploy releases list \
   --delivery-pipeline=my-app-pipeline \
   --region=us-central1 \
+  --sort-by=~createTime \
   --limit=10
 ```
 
@@ -65,14 +67,27 @@ The output includes:
 
 ## Viewing Rendered Manifests
 
-One of the most useful features for debugging is seeing exactly what was deployed. Cloud Deploy stores the rendered manifests for each target.
+One of the most useful features for debugging is seeing exactly what was deployed. Cloud Deploy stores the rendered manifests for each target in Cloud Storage, and the release points to the artifact location.
 
 ```bash
-# View the rendered manifests for a specific release and target
+# Find the rendered manifest location for a specific release and target
 gcloud deploy releases describe rel-v2.1 \
   --delivery-pipeline=my-app-pipeline \
   --region=us-central1 \
-  --format="yaml(targetRenders)"
+  --format="yaml(targetArtifacts.prod)"
+
+# Print the rendered manifest
+ARTIFACT_URI=$(gcloud deploy releases describe rel-v2.1 \
+  --delivery-pipeline=my-app-pipeline \
+  --region=us-central1 \
+  --format="value(targetArtifacts.prod.artifactUri)")
+
+MANIFEST_PATH=$(gcloud deploy releases describe rel-v2.1 \
+  --delivery-pipeline=my-app-pipeline \
+  --region=us-central1 \
+  --format="value(targetArtifacts.prod.manifestPath)")
+
+gcloud storage cat "${ARTIFACT_URI}/${MANIFEST_PATH}"
 ```
 
 This shows you the exact Kubernetes YAML that was applied to the cluster. No guessing about what image tag was used or what environment variables were set.
@@ -83,15 +98,29 @@ To understand what changed between two releases, you need to compare their manif
 
 ```bash
 # Save the rendered manifests from two releases to files
-gcloud deploy releases describe rel-v2.0 \
+ARTIFACT_URI=$(gcloud deploy releases describe rel-v2.0 \
   --delivery-pipeline=my-app-pipeline \
   --region=us-central1 \
-  --format="yaml(targetRenders.prod)" > /tmp/release-v2.0.yaml
+  --format="value(targetArtifacts.prod.artifactUri)")
 
-gcloud deploy releases describe rel-v2.1 \
+MANIFEST_PATH=$(gcloud deploy releases describe rel-v2.0 \
   --delivery-pipeline=my-app-pipeline \
   --region=us-central1 \
-  --format="yaml(targetRenders.prod)" > /tmp/release-v2.1.yaml
+  --format="value(targetArtifacts.prod.manifestPath)")
+
+gcloud storage cat "${ARTIFACT_URI}/${MANIFEST_PATH}" > /tmp/release-v2.0.yaml
+
+ARTIFACT_URI=$(gcloud deploy releases describe rel-v2.1 \
+  --delivery-pipeline=my-app-pipeline \
+  --region=us-central1 \
+  --format="value(targetArtifacts.prod.artifactUri)")
+
+MANIFEST_PATH=$(gcloud deploy releases describe rel-v2.1 \
+  --delivery-pipeline=my-app-pipeline \
+  --region=us-central1 \
+  --format="value(targetArtifacts.prod.manifestPath)")
+
+gcloud storage cat "${ARTIFACT_URI}/${MANIFEST_PATH}" > /tmp/release-v2.1.yaml
 
 # Diff the two rendered manifests
 diff /tmp/release-v2.0.yaml /tmp/release-v2.1.yaml
@@ -101,7 +130,7 @@ This shows you exactly what changed in the Kubernetes manifests between the two 
 
 ## Viewing Rollout History
 
-Rollouts are the deployment actions within a release. Each promotion creates a new rollout. You can list all rollouts for a release or for the entire pipeline.
+Rollouts are the deployment actions within a release. Each promotion creates a new rollout. You can list all rollouts for a release, or list recent releases and then inspect the rollouts for each one.
 
 ```bash
 # List all rollouts for a specific release
@@ -110,11 +139,15 @@ gcloud deploy rollouts list \
   --release=rel-v2.1 \
   --region=us-central1
 
-# List all rollouts across all releases (shows recent deployment activity)
-gcloud deploy rollouts list \
+# List rollouts for recent releases
+for release in $(gcloud deploy releases list \
   --delivery-pipeline=my-app-pipeline \
   --region=us-central1 \
-  --limit=20
+  --sort-by=~createTime \
+  --limit=20 \
+  --format="value(name)"); do
+  gcloud deploy rollouts list --release="${release}"
+done
 ```
 
 ## Inspecting Rollout Details
@@ -134,20 +167,28 @@ The rollout description shows:
 - Current state (SUCCEEDED, FAILED, IN_PROGRESS, PENDING_APPROVAL, etc.)
 - Phase details with individual job statuses
 - Creation and completion timestamps
-- The approver (if approval was required)
+- Approval state and approval time (if approval was required)
 - Failure reason (if it failed)
 
 ## Tracking Who Approved What
 
-For compliance, you often need to know who approved a production deployment. This information is stored in the rollout.
+For compliance, you often need to know who approved a production deployment. The rollout stores the approval state and approval time, and Cloud Audit Logs show the principal who performed the approval.
 
 ```bash
-# Check who approved a specific rollout
+# Check whether and when a specific rollout was approved
 gcloud deploy rollouts describe rel-v2.1-to-prod-0001 \
   --delivery-pipeline=my-app-pipeline \
   --release=rel-v2.1 \
   --region=us-central1 \
   --format="yaml(approvalState,approveTime)"
+
+# Check who approved the rollout
+gcloud logging read \
+  'protoPayload.serviceName="clouddeploy.googleapis.com" AND
+   protoPayload.methodName="google.cloud.deploy.v1.CloudDeploy.ApproveRollout" AND
+   protoPayload.resourceName:"releases/rel-v2.1/rollouts/rel-v2.1-to-prod-0001"' \
+  --limit=20 \
+  --format="table(timestamp,protoPayload.authenticationInfo.principalEmail)"
 ```
 
 ## Using Cloud Audit Logs
@@ -158,7 +199,7 @@ Cloud Deploy writes to Cloud Audit Logs, which gives you a complete record of ev
 # Query audit logs for Cloud Deploy operations
 gcloud logging read \
   'resource.type="clouddeploy.googleapis.com/DeliveryPipeline" AND
-   protoPayload.methodName:"clouddeploy.projects.locations"' \
+   protoPayload.serviceName="clouddeploy.googleapis.com"' \
   --limit=50 \
   --format="table(timestamp,protoPayload.methodName,protoPayload.authenticationInfo.principalEmail)"
 ```
@@ -169,14 +210,14 @@ You can filter for specific operations.
 # Find all approval events
 gcloud logging read \
   'resource.type="clouddeploy.googleapis.com/DeliveryPipeline" AND
-   protoPayload.methodName:"ApproveRollout"' \
+   protoPayload.methodName="google.cloud.deploy.v1.CloudDeploy.ApproveRollout"' \
   --limit=20 \
   --format="json"
 
 # Find all release creation events
 gcloud logging read \
   'resource.type="clouddeploy.googleapis.com/DeliveryPipeline" AND
-   protoPayload.methodName:"CreateRelease"' \
+   protoPayload.methodName="google.cloud.deploy.v1.CloudDeploy.CreateRelease"' \
   --limit=20 \
   --format="json"
 ```
@@ -248,18 +289,25 @@ Once in BigQuery, you can run SQL queries against your deployment history, build
 
 ## Pub/Sub Notifications for Real-Time Tracking
 
-Cloud Deploy publishes events to Pub/Sub that you can use for real-time tracking.
+Cloud Deploy publishes events to Pub/Sub topics that you can use for real-time tracking. Create the topics you want to receive, then subscribe to them.
 
 ```bash
-# Subscribe to Cloud Deploy events
+# Create and subscribe to Cloud Deploy event topics
+gcloud pubsub topics create clouddeploy-resources
+gcloud pubsub topics create clouddeploy-operations
+gcloud pubsub topics create clouddeploy-approvals
+
 gcloud pubsub subscriptions create deploy-events \
   --topic=clouddeploy-operations
+
+gcloud pubsub subscriptions create deploy-approvals \
+  --topic=clouddeploy-approvals
 
 # Pull recent events
 gcloud pubsub subscriptions pull deploy-events --auto-ack --limit=10
 ```
 
-These events include release creations, rollout state changes, approval actions, and more. You can feed these into a monitoring system or Slack channel for real-time visibility.
+These topics include resource changes, rollout operation events, and approval events. You can feed these into a monitoring system or Slack channel for real-time visibility.
 
 ## Summary
 
