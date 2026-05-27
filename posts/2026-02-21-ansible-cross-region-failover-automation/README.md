@@ -75,8 +75,9 @@ graph LR
 
     - name: Wait for promotion to complete
       community.postgresql.postgresql_query:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         query: "SELECT pg_is_in_recovery();"
+      become_user: postgres
       register: recovery_status
       retries: 30
       delay: 5
@@ -84,8 +85,9 @@ graph LR
 
     - name: Verify database is accepting writes
       community.postgresql.postgresql_query:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         query: "CREATE TABLE IF NOT EXISTS failover_test (id serial); DROP TABLE failover_test;"
+      become_user: postgres
 
 - name: Activate secondary application servers
   hosts: secondary_app_servers
@@ -132,6 +134,7 @@ graph LR
         port: 443
         type: HTTPS
         resource_path: /health
+        disabled: false
         state: present
 
     - name: Notify failover complete
@@ -164,9 +167,11 @@ After the primary region recovers:
         status_code: 200
 
     - name: Verify primary database can be rebuilt
-      ansible.builtin.uri:
-        url: "https://{{ primary_db_endpoint }}:5432/"
+      ansible.builtin.wait_for:
+        host: "{{ primary_db_endpoint }}"
+        port: 5432
         timeout: 5
+      delegate_to: localhost
       ignore_errors: true
 
 - name: Rebuild primary database from new primary
@@ -199,7 +204,7 @@ After the primary region recovers:
 
     - name: Wait for replication to catch up
       community.postgresql.postgresql_query:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         login_host: "{{ secondary_db_host }}"
         query: |
           SELECT client_addr, state, sent_lsn, replay_lsn,
@@ -210,15 +215,29 @@ After the primary region recovers:
       delay: 10
       until: repl_status.query_result[0].lag | default(1) | int == 0
 
+- name: Promote primary database
+  hosts: db_primary_region
+  become: true
+  tasks:
+    - name: Promote rebuilt primary database
+      ansible.builtin.command:
+        cmd: pg_ctlcluster 15 main promote
+      changed_when: true
+
+    - name: Wait for promotion to complete
+      community.postgresql.postgresql_query:
+        login_db: "{{ db_name }}"
+        query: "SELECT pg_is_in_recovery();"
+      become_user: postgres
+      register: primary_recovery_status
+      retries: 30
+      delay: 5
+      until: not primary_recovery_status.query_result[0].pg_is_in_recovery
+
 - name: Switch traffic back to primary
   hosts: localhost
   connection: local
   tasks:
-    - name: Promote primary database
-      ansible.builtin.include_tasks: tasks/promote-database.yml
-      vars:
-        target_host: db_primary_region
-
     - name: Update DNS back to primary
       amazon.aws.route53:
         zone: "{{ domain_zone }}"
@@ -245,6 +264,7 @@ Regularly test your failover procedure:
     - name: Record pre-drill state
       ansible.builtin.set_fact:
         drill_start: "{{ ansible_date_time.iso8601 }}"
+        drill_start_epoch: "{{ ansible_date_time.epoch | int }}"
 
     - name: Simulate primary failure (stop health checks)
       ansible.builtin.debug:
@@ -260,13 +280,19 @@ Regularly test your failover procedure:
       register: drill_result
       changed_when: false
 
+    - name: Ensure drill report directory exists
+      ansible.builtin.file:
+        path: ./drill-reports
+        state: directory
+        mode: '0755'
+
     - name: Document drill results
       ansible.builtin.copy:
         content: |
           Failover Drill Report
           Date: {{ drill_start }}
           Result: {{ 'PASS' if drill_result.rc == 0 else 'FAIL' }}
-          Duration: {{ ansible_date_time.epoch | int - (drill_start | to_datetime).epoch | default(0) }}s
+          Duration: {{ (ansible_date_time.epoch | int) - (drill_start_epoch | int) }}s
         dest: "./drill-reports/{{ drill_start }}.txt"
         mode: '0644'
 ```
