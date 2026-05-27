@@ -108,13 +108,13 @@ Here is a simple event-sourced aggregate in Python:
 ```python
 from dataclasses import dataclass, field
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 
 @dataclass
 class Event:
     """Base class for all domain events."""
     event_id: str
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 @dataclass
 class OrderPlaced(Event):
@@ -211,7 +211,7 @@ In an event-driven system, data across services is eventually consistent. A cons
 ```python
 class IdempotentEventHandler:
     """
-    Ensures each event is processed exactly once
+    Helps avoid processing the same event more than once
     by tracking processed event IDs.
     """
     def __init__(self, redis_client):
@@ -247,8 +247,8 @@ class IdempotentEventHandler:
 |--------|----------|----------|-----------|
 | Apache Kafka | High throughput, log-based | Per partition | Configurable |
 | RabbitMQ | Flexible routing, low latency | Per queue | Until consumed |
-| Amazon SNS/SQS | AWS-native, serverless | FIFO queues | 14 days max |
-| NATS | Lightweight, cloud-native | Per subject | Configurable |
+| Amazon SNS/SQS | AWS-native, serverless | FIFO message groups | SQS queues: 14 days max |
+| NATS JetStream | Lightweight, cloud-native streams | Per publisher or stream subject | Configurable |
 
 ## Common Pitfalls
 
