@@ -239,11 +239,11 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 ## Workload Identity on Azure (AKS)
 
-AKS uses Azure AD Workload Identity for pod-level authentication.
+AKS uses Microsoft Entra Workload ID for pod-level authentication.
 
 ```yaml
 # sa-azure-workload-identity.yaml
-# This service account uses Azure AD workload identity.
+# This service account uses Microsoft Entra Workload ID.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -251,8 +251,21 @@ metadata:
   namespace: production
   annotations:
     azure.workload.identity/client-id: "00000000-0000-0000-0000-000000000000"
+---
+# pod-azure-workload-identity.yaml
+# Pods using this service account must include the workload identity label.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: blob-client
+  namespace: production
   labels:
     azure.workload.identity/use: "true"
+spec:
+  serviceAccountName: blob-reader
+  containers:
+    - name: client
+      image: blob-client:1.0.0
 ```
 
 ## Security Best Practices
