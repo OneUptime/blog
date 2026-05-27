@@ -26,9 +26,9 @@ sequenceDiagram
 
     Pod->>Metadata: Request access token
     Metadata->>STS: Exchange KSA token for federated token
-    STS->>IAM: Generate access token for GSA
-    IAM-->>STS: Access token
     STS-->>Metadata: Federated token
+    Metadata->>IAM: Generate access token for GSA
+    IAM-->>Metadata: Access token
     Metadata-->>Pod: GCP access token
     Pod->>GCP: API call with access token
 ```
@@ -185,7 +185,7 @@ curl -H "Metadata-Flavor: Google" \
   http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token
 ```
 
-If the email endpoint returns the GCP service account email, the binding is correct. If it returns the node's service account, Workload Identity is not active for this pod.
+If the email endpoint returns a Kubernetes service account identifier such as `your-ksa.svc.id.goog`, or the GCP service account email when `iam.gke.io/return-principal-id-as-email: "true"` is set, Workload Identity is active for the pod. If it returns the node's service account, Workload Identity is not active for this pod.
 
 If the token endpoint returns an error, check the specific error message. Common errors:
 
@@ -222,13 +222,13 @@ spec:
   egress:
   - to:
     - ipBlock:
-        cidr: 169.254.169.254/32
+        cidr: 169.254.169.252/32
     ports:
-    - protocol: TCP
-      port: 80
     - protocol: TCP
       port: 988
 ```
+
+For clusters that use GKE Dataplane V2, allow egress to `169.254.169.254/32` on TCP port `80` instead.
 
 2. **The node pool is not using GKE_METADATA mode** (checked in Step 1)
 
