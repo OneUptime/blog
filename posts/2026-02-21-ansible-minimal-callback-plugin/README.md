@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback Plugins, Output, Minimal
 
-Description: Use the Ansible minimal callback plugin to reduce playbook output to only essential information like failures and changes.
+Description: Use the Ansible minimal callback plugin to reduce playbook output to compact per-host results.
 
 ---
 
@@ -66,15 +66,36 @@ web-03  : ok=3  changed=1  unreachable=0  failed=0
 The same playbook with the minimal callback:
 
 ```text
-web-01 | SUCCESS => {"changed": false, "ansible_facts": {...}}
-web-02 | SUCCESS => {"changed": false, "ansible_facts": {...}}
-web-03 | SUCCESS => {"changed": false, "ansible_facts": {...}}
-web-01 | SUCCESS => {"changed": false}
-web-02 | CHANGED => {"changed": true}
-web-03 | CHANGED => {"changed": true}
-web-01 | SUCCESS => {"changed": false}
-web-02 | SUCCESS => {"changed": false}
-web-03 | SUCCESS => {"changed": false}
+web-01 | SUCCESS => {
+    "ansible_facts": {...},
+    "changed": false
+}
+web-02 | SUCCESS => {
+    "ansible_facts": {...},
+    "changed": false
+}
+web-03 | SUCCESS => {
+    "ansible_facts": {...},
+    "changed": false
+}
+web-01 | SUCCESS => {
+    "changed": false
+}
+web-02 | CHANGED => {
+    "changed": true
+}
+web-03 | CHANGED => {
+    "changed": true
+}
+web-01 | SUCCESS => {
+    "changed": false
+}
+web-02 | SUCCESS => {
+    "changed": false
+}
+web-03 | SUCCESS => {
+    "changed": false
+}
 ```
 
 Notice what is missing: task names, play names, the decorative asterisk lines, and the play recap. You get just host, status, and the result dictionary.
@@ -83,7 +104,7 @@ Notice what is missing: task names, play names, the decorative asterisk lines, a
 
 The minimal callback is a good fit for several scenarios.
 
-Running quick ad-hoc commands where the task name is obvious:
+Running quick ad-hoc commands where the task name is obvious. The `ansible` ad-hoc command already uses the minimal callback by default, but setting it explicitly keeps the output choice visible:
 
 ```bash
 # Ad-hoc command with minimal output
@@ -93,12 +114,21 @@ ANSIBLE_STDOUT_CALLBACK=minimal ansible all -m ping
 Output:
 
 ```text
-web-01 | SUCCESS => {"changed": false, "ping": "pong"}
-web-02 | SUCCESS => {"changed": false, "ping": "pong"}
-db-01 | SUCCESS => {"changed": false, "ping": "pong"}
+web-01 | SUCCESS => {
+    "changed": false,
+    "ping": "pong"
+}
+web-02 | SUCCESS => {
+    "changed": false,
+    "ping": "pong"
+}
+db-01 | SUCCESS => {
+    "changed": false,
+    "ping": "pong"
+}
 ```
 
-Running playbooks in scripts where you are going to parse the output:
+Running playbooks in scripts where you are going to filter the output:
 
 ```bash
 # Capture minimal output for processing
@@ -114,7 +144,7 @@ ANSIBLE_STDOUT_CALLBACK=minimal ansible-playbook deploy.yml 2>&1 | grep -E "FAIL
 
 ## Minimal vs Default in Large Inventories
 
-The difference becomes pronounced with large inventories. If you run a playbook with 10 tasks against 200 hosts, the default callback produces thousands of lines. The minimal callback produces the same number of result lines but without the task headers, play headers, and recap section.
+The difference becomes pronounced with large inventories. If you run a playbook with 10 tasks against 200 hosts, the default callback produces thousands of lines. The minimal callback produces the same host results but without the task headers, play headers, and recap section.
 
 Here is a practical comparison. A health check playbook against 5 hosts with the default callback:
 
@@ -150,7 +180,7 @@ host-04 : ok=3  changed=0  unreachable=0  failed=0
 host-05 : ok=3  changed=0  unreachable=0  failed=0
 ```
 
-With minimal, you lose the context of which task produced which result. Each line is a host result, but you cannot tell at a glance which task it came from without counting lines.
+With minimal, you lose the context of which task produced which result. Each block is a host result, but you cannot tell at a glance which task it came from without counting results.
 
 ## Combining Minimal with Verbosity
 
@@ -161,7 +191,7 @@ Even with the minimal callback, verbosity flags still work:
 ANSIBLE_STDOUT_CALLBACK=minimal ansible-playbook site.yml -v
 ```
 
-At `-v`, the minimal callback includes the full result dictionary. At `-vv`, you get module arguments. The output is still compact compared to the default callback at the same verbosity level, but it gains useful detail.
+The minimal callback already prints the task result data it receives. Higher verbosity can add details that Ansible normally hides, such as invocation data and diff details at `-vvv` and above. The output is still stripped of play and task banners, but the result payload can become much larger.
 
 ## Using Minimal in CI Pipelines
 
@@ -178,7 +208,7 @@ deploy:
     - main
 ```
 
-For CI pipelines, you often want compact output during normal runs but detailed output when something fails. You can combine the minimal callback with the `--verbose` flag that only triggers on failure:
+For CI pipelines, you often want compact output during normal runs but detailed output when something fails. One simple pattern is to rerun with a more verbose callback after a failure:
 
 ```bash
 #!/bin/bash
@@ -240,12 +270,12 @@ callback_plugins = ./callback_plugins
 
 ## Minimal vs Other Compact Callbacks
 
-Ansible includes several compact output callbacks:
+Ansible has several compact output callbacks available, depending on your installed collections:
 
 - `minimal` - just host and result, no structure
-- `oneline` - similar to minimal but everything on one line
-- `dense` - compact but includes task context
+- `oneline` - the built-in callback used by the `-o`/`--one-line` command line option
+- `community.general.dense` - compact but includes task context, provided by the `community.general` collection
 
-If you find `minimal` too stripped down but `default` too verbose, try `dense` or `oneline` before writing a custom callback. The minimal callback is best when you genuinely just want to see raw results with no formatting overhead.
+If you find `minimal` too stripped down but `default` too verbose, try `community.general.dense` or `oneline` before writing a custom callback. The minimal callback is best when you genuinely just want to see raw results with little formatting overhead.
 
 The minimal callback is a tool, not a lifestyle. Keep it in your back pocket for large-scale runs, ad-hoc commands, and scripted pipelines. For everyday development and debugging, the default callback or one with task profiling gives you more useful information.
