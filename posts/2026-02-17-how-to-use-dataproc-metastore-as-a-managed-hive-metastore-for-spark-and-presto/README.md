@@ -64,7 +64,7 @@ When creating a Dataproc cluster, point it to your metastore instance:
 # Create a Dataproc cluster that uses the managed metastore
 gcloud dataproc clusters create my-spark-cluster \
   --region=us-central1 \
-  --image-version=2.1-debian11 \
+  --image-version=2.2-debian12 \
   --master-machine-type=n1-standard-4 \
   --worker-machine-type=n1-standard-4 \
   --num-workers=4 \
@@ -91,7 +91,7 @@ spark = SparkSession.builder \
 spark.sql("CREATE DATABASE IF NOT EXISTS analytics")
 spark.sql("USE analytics")
 
-# Create a managed table - Spark handles the data storage
+# Create a table stored in a Cloud Storage location
 spark.sql("""
     CREATE TABLE IF NOT EXISTS user_events (
         event_id STRING,
@@ -167,7 +167,7 @@ Create a Dataproc cluster with Presto that shares the same metastore:
 # Create a Presto cluster connected to the same metastore
 gcloud dataproc clusters create presto-cluster \
   --region=us-central1 \
-  --image-version=2.1-debian11 \
+  --image-version=2.2-debian12 \
   --optional-components=PRESTO \
   --master-machine-type=n1-standard-8 \
   --worker-machine-type=n1-standard-8 \
@@ -180,7 +180,7 @@ Query the same tables from Presto:
 ```bash
 # Connect to Presto and query the shared table
 # Presto sees the same tables as Spark through the shared metastore
-presto --server localhost:8080 --catalog hive --schema analytics
+presto --server localhost:8060 --catalog hive --schema analytics
 
 # Run the query in Presto
 SELECT
@@ -222,7 +222,7 @@ datanucleus.autoCreateSchema=false"
 
 ## Setting Up Access Control
 
-Control who can access the metastore and which tables they can see:
+Control who can access and manage Dataproc Metastore resources:
 
 ```bash
 # Grant a service account access to the metastore
@@ -235,7 +235,7 @@ gcloud metastore services add-iam-policy-binding my-metastore \
 gcloud metastore services add-iam-policy-binding my-metastore \
   --location=us-central1 \
   --member="group:analysts@example.com" \
-  --role="roles/metastore.viewer"
+  --role="roles/metastore.user"
 ```
 
 ## Backing Up and Restoring
@@ -254,7 +254,7 @@ gcloud metastore services backups list \
   --service=my-metastore \
   --location=us-central1
 
-# Restore from a backup (creates a new metastore instance)
+# Restore metadata from a backup into the metastore service
 gcloud metastore services restore my-metastore \
   --location=us-central1 \
   --backup=my-backup
