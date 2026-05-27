@@ -14,6 +14,8 @@ Kubernetes clusters are default-allow by nature. Every pod can reach every other
 
 A zero-trust network model flips this: deny everything by default, then explicitly allow only what is needed.
 
+NetworkPolicies are enforced by the cluster's network plugin, so make sure your cluster uses a CNI that supports NetworkPolicy before relying on these rules.
+
 ```mermaid
 graph LR
     subgraph "Default Allow (Dangerous)"
@@ -37,32 +39,31 @@ graph LR
 
 ## Deny All Ingress Traffic
 
-The simplest default deny policy blocks all incoming traffic to pods in a namespace.
+The simplest default deny policy blocks incoming pod traffic to selected pods in a namespace.
 
 ```yaml
 # deny-all-ingress.yaml
 
-# Block all incoming traffic to every pod in this namespace
+# Block incoming pod traffic to every pod in this namespace
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: deny-all-ingress
-  namespace: production
 spec:
   # Empty selector matches ALL pods in the namespace
   podSelector: {}
   policyTypes:
     - Ingress
-  # No ingress rules means no traffic is allowed in
+  # No ingress rules means no pod traffic is allowed in
 ```
 
 Apply it:
 
 ```bash
 # Apply default deny ingress to the production namespace
-kubectl apply -f deny-all-ingress.yaml
+kubectl apply -f deny-all-ingress.yaml -n production
 
-# Verify no pods can receive traffic
+# Verify the policy exists
 kubectl get networkpolicy -n production
 ```
 
@@ -77,7 +78,6 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: deny-all-egress
-  namespace: production
 spec:
   # Empty selector matches ALL pods
   podSelector: {}
@@ -97,13 +97,12 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: deny-all-traffic
-  namespace: production
 spec:
   podSelector: {}
   policyTypes:
     - Ingress
     - Egress
-  # No rules at all - everything is blocked
+  # No rules at all - pod ingress and egress are blocked
 ```
 
 ## Allow DNS After Default Deny
@@ -117,7 +116,6 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-dns
-  namespace: production
 spec:
   podSelector: {}
   policyTypes:
@@ -125,7 +123,12 @@ spec:
   egress:
     # Allow DNS queries to kube-dns / CoreDNS
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
@@ -155,7 +158,6 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-frontend-to-api
-  namespace: production
 spec:
   podSelector:
     matchLabels:
@@ -171,13 +173,33 @@ spec:
         - protocol: TCP
           port: 8080
 ---
+# allow-frontend-egress-to-api.yaml
+# Allow frontend pods to send traffic to the API
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-egress-to-api
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: api
+      ports:
+        - protocol: TCP
+          port: 8080
+---
 # allow-api-to-database.yaml
 # Allow the API pods to reach the database on port 5432
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-api-to-database
-  namespace: production
 spec:
   podSelector:
     matchLabels:
@@ -199,7 +221,6 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-api-egress-to-db
-  namespace: production
 spec:
   podSelector:
     matchLabels:
@@ -227,7 +248,6 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-ingress-controller
-  namespace: production
 spec:
   podSelector:
     matchLabels:
@@ -249,13 +269,14 @@ spec:
 
 ## Namespace-Level Automation with Kustomize
 
-Apply default deny to every namespace automatically using Kustomize:
+Apply the same default deny set to a target namespace using Kustomize:
 
 ```yaml
 # kustomization.yaml
-# Apply default deny policies to all target namespaces
+# Apply default deny policies to the target namespace
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: production
 resources:
   - deny-all-traffic.yaml
   - allow-dns.yaml
