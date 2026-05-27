@@ -40,7 +40,7 @@ The package manager pulls in all required dependencies. No extra work needed on 
 
 ## Installing Build Dependencies
 
-When compiling software from source, you need build dependencies that are separate from runtime dependencies. On Debian-based systems, `build-dep` installs everything needed to compile a package.
+When compiling software from source, you need build dependencies that are separate from runtime dependencies. On Debian-based systems, the `apt` module can use `state: build-dep` to install everything needed to compile a source package. For upstream versions that are not provided as source packages by your distribution, install the known build dependencies explicitly.
 
 ```yaml
 # Install build dependencies for a package (Debian/Ubuntu)
@@ -116,10 +116,9 @@ A more complex example involves checking whether a dependency exists and handlin
   ignore_errors: true
 
 - name: Fix broken dependencies if installation failed
-  ansible.builtin.command:
-    cmd: apt-get install -f -y
+  ansible.builtin.apt:
+    state: fixed
   when: install_result is failed
-  changed_when: true
 
 - name: Retry installation after fixing dependencies
   ansible.builtin.apt:
@@ -154,11 +153,11 @@ You can use APT pinning to prefer packages from specific sources.
     dest: /etc/apt/preferences.d/pgdg
     content: |
       Package: postgresql*
-      Pin: origin apt.postgresql.org
+      Pin: release o=apt.postgresql.org
       Pin-Priority: 900
 
       Package: *
-      Pin: origin apt.postgresql.org
+      Pin: release o=apt.postgresql.org
       Pin-Priority: 100
     mode: '0644'
 ```
@@ -248,8 +247,8 @@ Some packages provide virtual packages that satisfy dependencies. For example, b
 
 # Check which package provides a virtual package
 - name: Check mail transport agent provider
-  ansible.builtin.command:
-    cmd: dpkg -l | grep mail-transport-agent
+  ansible.builtin.shell:
+    cmd: dpkg-query -W -f='${binary:Package} ${Provides}\n' | grep -w mail-transport-agent
   register: mta_check
   changed_when: false
   failed_when: false
