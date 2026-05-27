@@ -12,27 +12,28 @@ Cross-region read replicas serve two critical purposes: they bring your data clo
 
 ## Why Cross-Region Replicas with Private IP
 
-The default behavior when you create a cross-region replica is to use public IP. This works, but it means replication traffic flows over the internet (encrypted, but still public). With private IP:
+If your primary instance uses private IP, the replica inherits that private IP configuration. If your primary also has public IP enabled, make sure the replica is created without public IP so client connections stay private. With private IP:
 
 - Replication traffic stays on Google's backbone network
 - Lower and more consistent latency
 - No exposure to public internet
 - Better compliance posture
 
-The trade-off is more network setup work. You need VPC peering or Shared VPC across regions to make private IP work.
+The trade-off is more network setup work. You need Private Service Access on the VPC network, or a Shared VPC setup, with enough allocated address space for the regions where Cloud SQL will create instances.
 
 ## Prerequisites
 
 Before starting, you need:
 
 - A primary Cloud SQL instance with backups and PITR enabled
-- Private Service Access configured in both regions
-- VPC network spanning both regions (or Shared VPC)
+- Private Service Access configured for the VPC network
+- Enough allocated IP range capacity for Cloud SQL in the destination region
+- The same VPC network as the primary instance, or a Shared VPC
 - The Cloud SQL Admin API and Service Networking API enabled
 
-## Step 1: Configure Private Service Access in Both Regions
+## Step 1: Configure Private Service Access Capacity
 
-If you already have Private Service Access for your primary region, you may need to extend the allocated IP range to accommodate cross-region replicas.
+If you already have Private Service Access for your VPC, you may need to extend the allocated IP range to accommodate cross-region replicas. You do not create a separate private service connection for the replica; Cloud SQL replicas inherit the private IP connection from the primary instance.
 
 Check your existing allocation:
 
@@ -45,7 +46,7 @@ gcloud compute addresses list --global --filter="purpose=VPC_PEERING"
 If you need to allocate additional ranges:
 
 ```bash
-# Allocate an IP range in the destination region's VPC
+# Allocate an additional IP range for Cloud SQL private IP
 # This range should not overlap with existing subnets or other allocations
 gcloud compute addresses create google-services-range-eu \
     --global \
@@ -86,7 +87,7 @@ Create the replica in a different region with private IP:
 
 ```bash
 # Create a cross-region replica with private IP
-gcloud sql instances create replica-europe \
+gcloud beta sql instances create replica-europe \
     --master-instance-name=primary-instance \
     --region=europe-west1 \
     --tier=db-custom-4-16384 \
@@ -103,7 +104,7 @@ Key flags:
 
 - `--region=europe-west1` places the replica in a different region
 - `--no-assign-ip` disables public IP
-- `--network` specifies the VPC for private IP
+- `--network` specifies the same VPC as the primary instance
 - `--allocated-ip-range-name` specifies which IP range to use
 
 The replica creation takes longer for cross-region setups (15-30 minutes) because the initial data must be copied across regions.
@@ -125,7 +126,7 @@ Check replication status:
 ```bash
 # Verify replication is running
 gcloud sql instances describe replica-europe \
-    --format="json(replicaConfiguration.mysqlReplicaConfiguration, state)"
+    --format="json(replicaConfiguration, state)"
 ```
 
 ## Network Architecture
@@ -147,7 +148,7 @@ graph TB
     B -->|Cross-Region Replication via Google Backbone| E
 ```
 
-The replication traffic between primary and replica goes through Google's internal backbone, not through your VPC directly. The Private Service Access peering in each region allows Cloud SQL to communicate with your VPC for client connections.
+The replication traffic between primary and replica goes through Google's internal backbone, not through your VPC directly. The Private Service Access connection for the VPC allows Cloud SQL to communicate with your VPC for client connections.
 
 ## Step 5: Connect Applications to the Replica
 
@@ -195,8 +196,8 @@ From within the database:
 SELECT
     now() - pg_last_xact_replay_timestamp() AS replication_lag;
 
--- For MySQL: Check seconds behind master
-SHOW SLAVE STATUS\G
+-- For MySQL 8.0.22 and later: Check seconds behind source
+SHOW REPLICA STATUS\G
 ```
 
 Set up alerts for cross-region replication lag:
@@ -207,8 +208,8 @@ gcloud monitoring policies create \
     --display-name="Cross-Region Replica Lag" \
     --condition-display-name="Lag > 60s" \
     --condition-filter='resource.type="cloudsql_database" AND metric.type="cloudsql.googleapis.com/database/replication/replica_lag" AND resource.labels.database_id="my-project:replica-europe"' \
-    --condition-threshold-value=60 \
-    --condition-threshold-duration=300s \
+    --if='> 60' \
+    --duration=300s \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -220,7 +221,7 @@ If your primary region goes down, you can promote the cross-region replica:
 
 ```bash
 # Promote the cross-region replica to a standalone primary
-# WARNING: This is irreversible - replication cannot be re-established
+# WARNING: This promotion cannot be undone; the original replication link is not kept
 gcloud sql instances promote-replica replica-europe
 ```
 
@@ -268,7 +269,7 @@ Cross-region replicas with private IP have several cost components:
 
 - **Instance cost**: Same as a regular instance in the destination region
 - **Storage cost**: Full copy of the data in the destination region
-- **Cross-region replication traffic**: Google does not charge for replication traffic within Google's network, but check current pricing
+- **Cross-region replication traffic**: Cross-region replicas incur data transfer charges for replication logs sent from the primary to the replica, so check current pricing
 - **Private Service Access**: No additional cost for the VPC peering itself
 
 For a `db-custom-4-16384` cross-region replica with 100 GB SSD, expect roughly $200-300/month depending on the regions.
@@ -300,4 +301,4 @@ Remember that each replica adds load to the primary (replication traffic), so mo
 
 ## Summary
 
-Cross-region read replicas with private IP give you both geographic read distribution and disaster recovery without exposing database traffic to the public internet. The setup requires Private Service Access in both regions and careful IP range planning. Monitor replication lag closely since cross-region lag is inherently higher than same-region. Test your disaster recovery promotion process regularly - a plan you have never tested is not really a plan.
+Cross-region read replicas with private IP give you both geographic read distribution and disaster recovery without exposing database traffic to the public internet. The setup requires Private Service Access and careful IP range planning. Monitor replication lag closely since cross-region lag is inherently higher than same-region. Test your disaster recovery promotion process regularly - a plan you have never tested is not really a plan.
