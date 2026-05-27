@@ -147,6 +147,11 @@ Here is a real-world example of provisioning a cluster of application nodes.
         state: started
         enabled: true
       loop: "{{ lookup('sequence', 'start=1 end=' + cluster_size | string, wantlist=True) }}"
+
+  handlers:
+    - name: reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
 ```
 
 The node config template:
@@ -187,7 +192,7 @@ The sequence lookup is great for creating test scenarios.
       community.mysql.mysql_db:
         name: "testdb_{{ item }}"
         state: present
-      loop: "{{ lookup('sequence', 'start=1 end=5', wantlist=True) }}"
+      loop: "{{ lookup('sequence', 'start=1 end=5 format=%03d', wantlist=True) }}"
 
     - name: Grant test users access to their databases
       community.mysql.mysql_user:
@@ -289,12 +294,12 @@ You can combine `sequence` with other lookups for more sophisticated patterns.
 
 This creates `worker-1`, `worker-2`, `worker-3` inside each environment directory.
 
-## Comparison with range Filter
+## Comparison with range Function
 
-Ansible also has a `range` filter that does something similar. Here is how they compare:
+Jinja also has a `range` function that does something similar. Here is how they compare:
 
 ```yaml
-# playbook.yml - sequence lookup vs range filter
+# playbook.yml - sequence lookup vs range function
 ---
 - name: Compare sequence and range
   hosts: localhost
@@ -305,8 +310,8 @@ Ansible also has a `range` filter that does something similar. Here is how they 
         msg: "{{ item }}"
       loop: "{{ lookup('sequence', 'start=1 end=5', wantlist=True) }}"
 
-    # Using range filter (Ansible 2.9+)
-    - name: With range filter
+    # Using range function
+    - name: With range function
       ansible.builtin.debug:
         msg: "{{ item }}"
       loop: "{{ range(1, 6) | list }}"
