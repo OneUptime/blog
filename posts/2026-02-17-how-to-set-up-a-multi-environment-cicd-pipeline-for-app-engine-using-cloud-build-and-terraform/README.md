@@ -47,15 +47,21 @@ variable "environment" {
 }
 
 variable "region" {
-  description = "GCP region for App Engine"
+  description = "GCP region for regional resources"
+  type        = string
+  default     = "us-central1"
+}
+
+variable "app_engine_location" {
+  description = "App Engine application location ID"
   type        = string
   default     = "us-central"
 }
 
-variable "app_version" {
-  description = "Application version to deploy"
+variable "production_allowed_source_range" {
+  description = "CIDR range allowed to reach production through the App Engine firewall"
   type        = string
-  default     = "latest"
+  default     = "203.0.113.0/24"
 }
 
 # Scaling configuration per environment
@@ -87,6 +93,10 @@ variable "scaling_config" {
 
 ```hcl
 # terraform/main.tf
+terraform {
+  backend "gcs" {}
+}
+
 provider "google" {
   project = var.project_id
   region  = var.region
@@ -101,19 +111,43 @@ resource "google_project_service" "cloudbuild" {
   service = "cloudbuild.googleapis.com"
 }
 
+resource "google_project_service" "sqladmin" {
+  service = "sqladmin.googleapis.com"
+}
+
+resource "google_project_service" "secretmanager" {
+  service = "secretmanager.googleapis.com"
+}
+
+resource "google_project_service" "vpcaccess" {
+  service = "vpcaccess.googleapis.com"
+}
+
 # App Engine application
 resource "google_app_engine_application" "app" {
   project     = var.project_id
-  location_id = var.region
+  location_id = var.app_engine_location
 
   depends_on = [google_project_service.appengine]
+}
+
+# Serverless VPC Access connector used by app.yaml
+resource "google_vpc_access_connector" "app_connector" {
+  name          = "app-connector"
+  region        = var.region
+  network       = "default"
+  ip_cidr_range = "10.8.0.0/28"
+  min_instances = 2
+  max_instances = 3
+
+  depends_on = [google_project_service.vpcaccess]
 }
 
 # Cloud SQL instance for the application
 resource "google_sql_database_instance" "main" {
   name             = "app-db-${var.environment}"
   database_version = "POSTGRES_15"
-  region           = "${var.region}1"
+  region           = var.region
 
   settings {
     tier = var.environment == "production" ? "db-custom-2-8192" : "db-f1-micro"
@@ -127,6 +161,8 @@ resource "google_sql_database_instance" "main" {
       ipv4_enabled = false
     }
   }
+
+  depends_on = [google_project_service.sqladmin]
 }
 
 resource "google_sql_database" "app_db" {
@@ -141,6 +177,8 @@ resource "google_secret_manager_secret" "db_password" {
   replication {
     auto {}
   }
+
+  depends_on = [google_project_service.secretmanager]
 }
 
 # Firewall and security rules
@@ -149,7 +187,7 @@ resource "google_app_engine_firewall_rule" "default" {
   # In dev/staging, allow all for easier testing
   priority     = 1000
   action       = "ALLOW"
-  source_range = var.environment == "production" ? "0.0.0.0/0" : "*"
+  source_range = var.environment == "production" ? var.production_allowed_source_range : "*"
 }
 ```
 
@@ -157,19 +195,23 @@ Create environment-specific variable files:
 
 ```hcl
 # terraform/environments/dev.tfvars
-project_id  = "my-app-dev"
-environment = "dev"
-region      = "us-central"
+project_id          = "my-app-dev"
+environment         = "dev"
+region              = "us-central1"
+app_engine_location = "us-central"
 
 # terraform/environments/staging.tfvars
-project_id  = "my-app-staging"
-environment = "staging"
-region      = "us-central"
+project_id          = "my-app-staging"
+environment         = "staging"
+region              = "us-central1"
+app_engine_location = "us-central"
 
 # terraform/environments/production.tfvars
-project_id  = "my-app-production"
-environment = "production"
-region      = "us-central"
+project_id                      = "my-app-production"
+environment                     = "production"
+region                          = "us-central1"
+app_engine_location             = "us-central"
+production_allowed_source_range = "203.0.113.0/24"
 ```
 
 ## Step 2: Create the App Engine Configuration
@@ -201,13 +243,6 @@ handlers:
   - url: /.*
     script: auto
     secure: always
-
-readiness_check:
-  path: "/health"
-  check_interval_sec: 5
-  timeout_sec: 4
-  failure_threshold: 2
-  success_threshold: 2
 ```
 
 Create a script that generates environment-specific app.yaml:
@@ -323,7 +358,7 @@ steps:
     args:
       - '-c'
       - |
-        VERSION_URL="https://${SHORT_SHA}-dot-${_TARGET_PROJECT}.appspot.com"
+        VERSION_URL="https://${SHORT_SHA}-dot-default-dot-${_TARGET_PROJECT}.${_APP_ENGINE_REGION_ID}.r.appspot.com"
         echo "Testing: $VERSION_URL"
 
         pip install requests
@@ -357,6 +392,7 @@ substitutions:
   _ENVIRONMENT: dev
   _TARGET_PROJECT: my-app-dev
   _TF_STATE_BUCKET: my-terraform-state
+  _APP_ENGINE_REGION_ID: uc
 ```
 
 ## Step 4: Create Triggers for Each Environment
@@ -369,7 +405,7 @@ gcloud builds triggers create github \
   --repo-owner=my-org \
   --branch-pattern="^main$" \
   --build-config=cloudbuild.yaml \
-  --substitutions="_ENVIRONMENT=dev,_TARGET_PROJECT=my-app-dev"
+  --substitutions="_ENVIRONMENT=dev,_TARGET_PROJECT=my-app-dev,_APP_ENGINE_REGION_ID=uc"
 
 # Staging trigger - manual or tag-based
 gcloud builds triggers create github \
@@ -378,7 +414,7 @@ gcloud builds triggers create github \
   --repo-owner=my-org \
   --tag-pattern="^v[0-9]+\.[0-9]+\.[0-9]+-rc.*$" \
   --build-config=cloudbuild.yaml \
-  --substitutions="_ENVIRONMENT=staging,_TARGET_PROJECT=my-app-staging"
+  --substitutions="_ENVIRONMENT=staging,_TARGET_PROJECT=my-app-staging,_APP_ENGINE_REGION_ID=uc"
 
 # Production trigger - manual approval required
 gcloud builds triggers create github \
@@ -387,7 +423,7 @@ gcloud builds triggers create github \
   --repo-owner=my-org \
   --tag-pattern="^v[0-9]+\.[0-9]+\.[0-9]+$" \
   --build-config=cloudbuild.yaml \
-  --substitutions="_ENVIRONMENT=production,_TARGET_PROJECT=my-app-production" \
+  --substitutions="_ENVIRONMENT=production,_TARGET_PROJECT=my-app-production,_APP_ENGINE_REGION_ID=uc" \
   --require-approval
 ```
 
@@ -403,10 +439,6 @@ gcloud app versions list --project=my-app-production --limit=5
 gcloud app services set-traffic default \
   --splits=PREVIOUS_VERSION=1 \
   --project=my-app-production
-
-# Or use Cloud Build for automated rollback
-gcloud builds triggers run deploy-production \
-  --substitutions="_ENVIRONMENT=production,_TARGET_PROJECT=my-app-production,SHORT_SHA=PREVIOUS_VERSION"
 ```
 
 ## Wrapping Up
