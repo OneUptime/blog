@@ -40,7 +40,9 @@ migration_services:
   - redis
 migration_dns_record: app.example.com
 migration_cutover_window: 300
-migration_rsync_opts: "-avz --delete --progress"
+migration_rsync_opts:
+  - "--delete"
+  - "--progress"
 ```
 
 ## Phase 1: Provision Target
@@ -51,7 +53,8 @@ migration_rsync_opts: "-avz --delete --progress"
 - name: Apply baseline configuration to new server
   include_role:
     name: baseline
-  delegate_to: "{{ migration_target_host }}"
+    apply:
+      delegate_to: "{{ migration_target_host }}"
 
 - name: Install same packages as source
   apt:
@@ -78,7 +81,7 @@ migration_rsync_opts: "-avz --delete --progress"
 - name: Initial data sync (can run while source is live)
   synchronize:
     src: "{{ item }}"
-    dest: "{{ item }}"
+    dest: "{{ migration_target_host }}:{{ item }}"
     mode: push
     rsync_opts: "{{ migration_rsync_opts }}"
   loop: "{{ migration_sync_dirs }}"
@@ -87,7 +90,7 @@ migration_rsync_opts: "-avz --delete --progress"
 - name: Sync configuration files
   synchronize:
     src: "/etc/{{ item }}/"
-    dest: "/etc/{{ item }}/"
+    dest: "{{ migration_target_host }}:/etc/{{ item }}/"
     mode: push
   loop:
     - nginx
@@ -110,7 +113,7 @@ migration_rsync_opts: "-avz --delete --progress"
 - name: Final data sync (delta only)
   synchronize:
     src: "{{ item }}"
-    dest: "{{ item }}"
+    dest: "{{ migration_target_host }}:{{ item }}"
     mode: push
     rsync_opts: "{{ migration_rsync_opts }}"
   loop: "{{ migration_sync_dirs }}"
@@ -195,7 +198,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -290,6 +293,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -314,6 +318,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create script directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -339,4 +349,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
