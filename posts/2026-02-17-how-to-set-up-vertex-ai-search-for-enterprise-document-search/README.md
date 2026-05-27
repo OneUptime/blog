@@ -26,14 +26,14 @@ Vertex AI Search (formerly Enterprise Search) gives you:
 ## Prerequisites
 
 - Google Cloud project with billing enabled
-- Vertex AI Search API enabled (previously Discovery Engine API)
+- Vertex AI Search (Discovery Engine) API and Cloud Storage API enabled
 - Documents to index (PDFs, HTML, or structured data)
 
 ```bash
 # Enable the required APIs
 
 gcloud services enable discoveryengine.googleapis.com --project=your-project-id
-gcloud services enable aiplatform.googleapis.com --project=your-project-id
+gcloud services enable storage.googleapis.com --project=your-project-id
 ```
 
 ## Step 1: Create a Data Store
@@ -259,7 +259,7 @@ def search_with_answers(
                 summary_result_count=5,
                 include_citations=True,
                 model_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec.ModelSpec(
-                    version="gemini-1.5-flash-001/answer_gen/v1",
+                    version="stable",
                 ),
             ),
         ),
