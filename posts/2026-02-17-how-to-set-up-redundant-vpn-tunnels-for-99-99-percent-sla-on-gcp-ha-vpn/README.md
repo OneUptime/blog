@@ -8,7 +8,7 @@ Description: Learn how to configure redundant VPN tunnels on GCP HA VPN to achie
 
 ---
 
-GCP offers a 99.99% availability SLA for HA VPN, but only if you configure it correctly. A single tunnel will not cut it. You need redundant tunnels across multiple interfaces and, ideally, multiple HA VPN gateways. In this post, I will show you exactly what configuration qualifies for the full SLA and how to set it up.
+GCP offers a 99.99% availability SLA for HA VPN, but only if you configure it correctly. A single tunnel will not cut it. You need redundant tunnels across both HA VPN gateway interfaces. In this post, I will show you exactly what configuration qualifies for the full SLA and how to set it up.
 
 ## What the SLA Actually Requires
 
@@ -16,7 +16,7 @@ Google's 99.99% SLA for HA VPN is not automatic. You must meet specific configur
 
 - Each HA VPN gateway has two interfaces (interface 0 and interface 1)
 - You must configure tunnels on both interfaces
-- Both tunnels must be active and passing traffic
+- Both tunnels must be established
 - You must use dynamic routing with Cloud Router (BGP)
 
 The SLA covers the GCP side of the connection. If your on-premises device fails, that is outside the SLA scope.
@@ -112,9 +112,9 @@ gcloud compute routers create ha-vpn-router \
     --asn=65001
 ```
 
-### Create Four VPN Tunnels
+### Create Two VPN Tunnels
 
-For full redundancy with two on-premises devices, create four tunnels - one from each GCP interface to each on-premises device:
+For full redundancy with two on-premises devices, create two tunnels - one from each GCP interface to the corresponding on-premises device. A full mesh is not required for the 99.99% SLA on the Google Cloud side:
 
 ```bash
 # Tunnel 1: GCP interface 0 to on-prem device 0
@@ -128,29 +128,7 @@ gcloud compute vpn-tunnels create tunnel-0-to-onprem-0 \
     --vpn-gateway=ha-vpn-gw \
     --interface=0
 
-# Tunnel 2: GCP interface 0 to on-prem device 1
-gcloud compute vpn-tunnels create tunnel-0-to-onprem-1 \
-    --peer-external-gateway=onprem-vpn-gw \
-    --peer-external-gateway-interface=1 \
-    --region=us-central1 \
-    --ike-version=2 \
-    --shared-secret=secret-tunnel-0-1 \
-    --router=ha-vpn-router \
-    --vpn-gateway=ha-vpn-gw \
-    --interface=0
-
-# Tunnel 3: GCP interface 1 to on-prem device 0
-gcloud compute vpn-tunnels create tunnel-1-to-onprem-0 \
-    --peer-external-gateway=onprem-vpn-gw \
-    --peer-external-gateway-interface=0 \
-    --region=us-central1 \
-    --ike-version=2 \
-    --shared-secret=secret-tunnel-1-0 \
-    --router=ha-vpn-router \
-    --vpn-gateway=ha-vpn-gw \
-    --interface=1
-
-# Tunnel 4: GCP interface 1 to on-prem device 1
+# Tunnel 2: GCP interface 1 to on-prem device 1
 gcloud compute vpn-tunnels create tunnel-1-to-onprem-1 \
     --peer-external-gateway=onprem-vpn-gw \
     --peer-external-gateway-interface=1 \
@@ -164,7 +142,7 @@ gcloud compute vpn-tunnels create tunnel-1-to-onprem-1 \
 
 ### Configure BGP Sessions
 
-Each tunnel needs its own BGP session. Here are the four BGP configurations:
+Each tunnel needs its own BGP session. Here are the two BGP configurations:
 
 ```bash
 # BGP for tunnel 0 to on-prem device 0
@@ -182,40 +160,10 @@ gcloud compute routers add-bgp-peer ha-vpn-router \
     --peer-asn=65002 \
     --region=us-central1
 
-# BGP for tunnel 0 to on-prem device 1
-gcloud compute routers add-interface ha-vpn-router \
-    --interface-name=if-tunnel-0-1 \
-    --ip-address=169.254.1.1 \
-    --mask-length=30 \
-    --vpn-tunnel=tunnel-0-to-onprem-1 \
-    --region=us-central1
-
-gcloud compute routers add-bgp-peer ha-vpn-router \
-    --peer-name=peer-tunnel-0-1 \
-    --interface=if-tunnel-0-1 \
-    --peer-ip-address=169.254.1.2 \
-    --peer-asn=65003 \
-    --region=us-central1
-
-# BGP for tunnel 1 to on-prem device 0
-gcloud compute routers add-interface ha-vpn-router \
-    --interface-name=if-tunnel-1-0 \
-    --ip-address=169.254.2.1 \
-    --mask-length=30 \
-    --vpn-tunnel=tunnel-1-to-onprem-0 \
-    --region=us-central1
-
-gcloud compute routers add-bgp-peer ha-vpn-router \
-    --peer-name=peer-tunnel-1-0 \
-    --interface=if-tunnel-1-0 \
-    --peer-ip-address=169.254.2.2 \
-    --peer-asn=65002 \
-    --region=us-central1
-
 # BGP for tunnel 1 to on-prem device 1
 gcloud compute routers add-interface ha-vpn-router \
     --interface-name=if-tunnel-1-1 \
-    --ip-address=169.254.3.1 \
+    --ip-address=169.254.1.1 \
     --mask-length=30 \
     --vpn-tunnel=tunnel-1-to-onprem-1 \
     --region=us-central1
@@ -223,7 +171,7 @@ gcloud compute routers add-interface ha-vpn-router \
 gcloud compute routers add-bgp-peer ha-vpn-router \
     --peer-name=peer-tunnel-1-1 \
     --interface=if-tunnel-1-1 \
-    --peer-ip-address=169.254.3.2 \
+    --peer-ip-address=169.254.1.2 \
     --peer-asn=65003 \
     --region=us-central1
 ```
@@ -257,13 +205,12 @@ gcloud compute vpn-gateways get-status ha-vpn-gw \
     --format="yaml(result.vpnConnections)"
 ```
 
-Look for `highAvailability.state` in the output. It should show `CONNECTION_REDUNDANCY_MET` for the full SLA.
+Look for `HighAvailabilityRedundancyRequirementState.state` in the output. It should show `CONNECTION_REDUNDANCY_MET` for the full SLA.
 
 Possible values:
 
 - **CONNECTION_REDUNDANCY_MET**: Full 99.99% SLA coverage
-- **CONNECTION_REDUNDANCY_NOT_MET**: Some tunnels are missing or down - no SLA
-- **CONNECTION_REDUNDANCY_DEGRADED**: Partial redundancy - reduced SLA
+- **CONNECTION_REDUNDANCY_NOT_MET**: Some tunnels are missing or not configured with adequate redundancy for the 99.99% SLA
 
 ## Traffic Distribution Across Tunnels
 
@@ -285,7 +232,7 @@ Set up alerts to know immediately if you lose redundancy:
 gcloud alpha monitoring policies create \
     --display-name="VPN Redundancy Alert" \
     --condition-display-name="VPN tunnel down" \
-    --condition-filter='metric.type="compute.googleapis.com/vpn/tunnel_established" AND resource.type="vpn_gateway"' \
+    --condition-filter='metric.type="vpn.googleapis.com/tunnel_established" AND resource.type="vpn_gateway"' \
     --condition-comparison=COMPARISON_LT \
     --condition-threshold-value=1 \
     --condition-duration=60s \
@@ -296,4 +243,4 @@ This triggers when any tunnel drops, giving you time to fix it before losing mor
 
 ## Wrapping Up
 
-Getting the 99.99% SLA on HA VPN comes down to one principle: redundancy at every layer. Both gateway interfaces must have active tunnels, BGP sessions must be healthy on all tunnels, and your on-premises side should ideally have redundant devices too. The four-tunnel configuration with two on-premises devices gives you the best resilience. Use the `get-status` command to verify your SLA coverage, and set up monitoring alerts so you know the moment a tunnel drops.
+Getting the 99.99% SLA on HA VPN comes down to one principle: redundancy at every layer. Both gateway interfaces must have active tunnels, BGP sessions must be healthy on all tunnels, and your on-premises side should ideally have redundant devices too. The two-tunnel configuration with two on-premises devices meets the 99.99% SLA requirements on the Google Cloud side. Use the `get-status` command to verify your SLA coverage, and set up monitoring alerts so you know the moment a tunnel drops.
