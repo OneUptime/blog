@@ -275,7 +275,7 @@ docker compose logs -f api
 docker compose logs -f --tail=100 api
 
 # Run a one-off command in a service
-docker compose exec api npm run migrate
+docker compose run --rm api npm run migrate
 
 # Open a shell in a running container
 docker compose exec postgres psql -U app -d myapp
