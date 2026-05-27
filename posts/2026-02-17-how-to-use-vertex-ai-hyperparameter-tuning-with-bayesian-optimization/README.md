@@ -143,7 +143,7 @@ custom_job = aiplatform.CustomJob(
             },
             "replica_count": 1,
             "python_package_spec": {
-                "executor_image_uri": "us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-13:latest",
+                "executor_image_uri": "us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-16.py310:latest",
                 "package_uris": ["gs://your-bucket/packages/trainer-0.1.tar.gz"],
                 "python_module": "trainer.train"
             }
@@ -190,7 +190,7 @@ hp_job = aiplatform.HyperparameterTuningJob(
     },
     max_trial_count=50,  # Total trials to run
     parallel_trial_count=5,  # Trials running at the same time
-    search_algorithm="default"  # Bayesian optimization
+    # Omit search_algorithm to use the default Bayesian optimization algorithm
 )
 
 # Submit the tuning job
@@ -216,17 +216,28 @@ from google.cloud import aiplatform
 aiplatform.init(project="your-project-id", location="us-central1")
 
 # Get the completed HP tuning job
-hp_job = aiplatform.HyperparameterTuningJob(
-    "projects/your-project-id/locations/us-central1/hyperparameterTuningJobs/JOB_ID"
+hp_job = aiplatform.HyperparameterTuningJob.get(
+    resource_name="projects/your-project-id/locations/us-central1/hyperparameterTuningJobs/JOB_ID"
 )
 
 # Get all trial results
 trials = hp_job.trials
 
 # Sort by the optimization metric
+def get_metric_value(trial, metric_id):
+    for metric in trial.final_measurement.metrics:
+        if metric.metric_id == metric_id:
+            return metric.value
+    raise ValueError(f"Metric {metric_id} not found for trial {trial.id}")
+
+completed_trials = [
+    trial for trial in trials
+    if trial.final_measurement and trial.final_measurement.metrics
+]
+
 sorted_trials = sorted(
-    trials,
-    key=lambda t: t.final_measurement.metrics[0].value,
+    completed_trials,
+    key=lambda t: get_metric_value(t, "val_auc"),
     reverse=True
 )
 
@@ -235,7 +246,7 @@ print("Top 10 hyperparameter configurations:")
 print("-" * 80)
 
 for i, trial in enumerate(sorted_trials[:10]):
-    metric_value = trial.final_measurement.metrics[0].value
+    metric_value = get_metric_value(trial, "val_auc")
     params = {p.parameter_id: p.value for p in trial.parameters}
 
     print(f"\n#{i+1} - val_auc: {metric_value:.4f}")
@@ -243,12 +254,12 @@ for i, trial in enumerate(sorted_trials[:10]):
         print(f"  {param_name}: {param_value}")
 ```
 
-## Warm-Starting from Previous Tuning Jobs
+## Refining from Previous Tuning Jobs
 
-If you have already run a tuning job and want to continue exploring from where you left off, you can warm-start a new job using the results from the previous one.
+If you have already run a tuning job and want to continue exploring near the best configurations, create a new job with a narrower search space based on the results from the previous one.
 
 ```python
-# Create a new HP tuning job that builds on previous results
+# Create a new HP tuning job with a narrower search space from previous results
 hp_job_v2 = aiplatform.HyperparameterTuningJob(
     display_name="fraud-model-hp-tuning-v2",
     custom_job=custom_job,
@@ -306,25 +317,24 @@ hp_job = aiplatform.HyperparameterTuningJob(
 
 With multiple objectives, the result is a Pareto frontier of non-dominated solutions. You pick the point on the frontier that best matches your requirements.
 
-## Early Stopping
+## Intermediate Measurements
 
-Vertex AI supports automated early stopping that terminates unpromising trials before they finish, saving compute cost.
+Vertex AI HyperparameterTuningJob does not support automated median or decay early stopping. You can still report metrics at regular intervals and choose whether Vertex AI uses the best or last reported value as a trial's final measurement.
 
 ```python
 hp_job = aiplatform.HyperparameterTuningJob(
-    display_name="tuning-with-early-stop",
+    display_name="tuning-with-intermediate-measurements",
     custom_job=custom_job,
     metric_spec={"val_auc": "maximize"},
     parameter_spec={...},
     max_trial_count=50,
     parallel_trial_count=5,
-    # Enable median stopping rule
-    # Stops trials performing below the median of completed trials
-    search_algorithm="default"
+    # Use the best intermediate value as the trial's final measurement
+    measurement_selection="best"
 )
 ```
 
-In your training script, report the metric at regular intervals (not just at the end). This gives the early stopping algorithm enough information to decide whether a trial is worth continuing.
+In your training script, report the metric at regular intervals (not just at the end). This gives Vertex AI multiple measurements to choose from when it evaluates the trial.
 
 ```python
 # In your training loop
@@ -332,7 +342,7 @@ for epoch in range(args.epochs):
     train_one_epoch()
     val_auc = evaluate()
 
-    # Report at each epoch for early stopping decisions
+    # Report at each epoch for measurement selection
     hpt.report_hyperparameter_tuning_metric(
         hyperparameter_metric_tag="val_auc",
         metric_value=val_auc,
@@ -340,4 +350,4 @@ for epoch in range(args.epochs):
     )
 ```
 
-Bayesian optimization through Vertex AI hyperparameter tuning typically finds configurations within 5-10% of the global optimum in 30-50 trials, compared to hundreds or thousands of trials needed for grid or random search. The managed infrastructure means you focus on defining the right search space rather than managing compute resources.
+Bayesian optimization through Vertex AI hyperparameter tuning can often find strong configurations in far fewer trials than exhaustive grid search. The managed infrastructure means you focus on defining the right search space rather than managing compute resources.
