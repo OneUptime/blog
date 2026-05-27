@@ -40,8 +40,9 @@ bind_forwarders:
 # DNS zones to manage
 bind_zones:
   - name: example.internal
-    type: master
+    type: primary
     file: db.example.internal
+    allow_transfer: []
     records:
       - { name: "@", type: "A", value: "10.0.1.10" }
       - { name: "@", type: "MX", value: "10 mail.example.internal." }
@@ -54,8 +55,9 @@ bind_zones:
       - { name: "app", type: "A", value: "10.0.1.50" }
 
   - name: 1.0.10.in-addr.arpa
-    type: master
+    type: primary
     file: db.10.0.1
+    allow_transfer: []
     records:
       - { name: "10", type: "PTR", value: "ns1.example.internal." }
       - { name: "11", type: "PTR", value: "ns2.example.internal." }
@@ -98,18 +100,6 @@ bind_zones:
     mode: '0644'
   notify: restart bind
 
-- name: Deploy zone files
-  template:
-    src: zone.db.j2
-    dest: "/etc/bind/zones/{{ item.file }}"
-    owner: root
-    group: bind
-    mode: '0644'
-  loop: "{{ bind_zones }}"
-  loop_control:
-    label: "{{ item.name }}"
-  notify: reload bind
-
 - name: Create zones directory
   file:
     path: /etc/bind/zones
@@ -118,9 +108,31 @@ bind_zones:
     group: bind
     mode: '0755'
 
+- name: Create BIND log directory
+  file:
+    path: /var/log/named
+    state: directory
+    owner: bind
+    group: bind
+    mode: '0755'
+
+- name: Deploy zone files
+  template:
+    src: zone.db.j2
+    dest: "/etc/bind/zones/{{ item.file }}"
+    owner: root
+    group: bind
+    mode: '0644'
+  loop: "{{ bind_zones }}"
+  when: item.type == 'primary'
+  loop_control:
+    label: "{{ item.name }}"
+  notify: reload bind
+
 - name: Validate zone files
   command: "named-checkzone {{ item.name }} /etc/bind/zones/{{ item.file }}"
   loop: "{{ bind_zones }}"
+  when: item.type == 'primary'
   loop_control:
     label: "{{ item.name }}"
   changed_when: false
@@ -203,8 +215,15 @@ logging {
 {% for zone in bind_zones %}
 zone "{{ zone.name }}" {
     type {{ zone.type }};
+{% if zone.type == 'secondary' %}
+    file "/var/cache/bind/{{ zone.file }}";
+{% else %}
     file "/etc/bind/zones/{{ zone.file }}";
-{% if zone.type == 'slave' %}
+{% endif %}
+{% if zone.type == 'primary' and zone.allow_transfer | default([]) | length > 0 %}
+    allow-transfer { {{ zone.allow_transfer | join('; ') }}; };
+{% endif %}
+{% if zone.type == 'secondary' %}
     masters { {{ zone.masters | join('; ') }}; };
 {% endif %}
 };
@@ -272,13 +291,31 @@ dig @10.0.1.10 -x 10.0.1.30
 
 ## Adding a Secondary DNS Server
 
-For redundancy, add a slave zone configuration:
+For redundancy, allow zone transfers from the primary to the secondary and add a secondary zone configuration:
 
 ```yaml
-# Additional inventory for secondary DNS
+# Primary DNS inventory
 bind_zones:
   - name: example.internal
-    type: slave
+    type: primary
+    file: db.example.internal
+    allow_transfer:
+      - 10.0.1.11
+    records:
+      - { name: "@", type: "A", value: "10.0.1.10" }
+      - { name: "@", type: "MX", value: "10 mail.example.internal." }
+      - { name: "ns1", type: "A", value: "10.0.1.10" }
+      - { name: "ns2", type: "A", value: "10.0.1.11" }
+      - { name: "mail", type: "A", value: "10.0.1.20" }
+      - { name: "www", type: "CNAME", value: "web.example.internal." }
+      - { name: "web", type: "A", value: "10.0.1.30" }
+      - { name: "db", type: "A", value: "10.0.1.40" }
+      - { name: "app", type: "A", value: "10.0.1.50" }
+
+# Secondary DNS inventory
+bind_zones:
+  - name: example.internal
+    type: secondary
     file: db.example.internal
     masters:
       - 10.0.1.10
