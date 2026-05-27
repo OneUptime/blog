@@ -12,7 +12,7 @@ Python virtual environments isolate dependencies so different projects can use d
 
 ## Installing Ansible in a Virtual Environment
 
-The recommended way to install Ansible on your control node is inside a virtual environment. This prevents conflicts with system Python packages.
+A common way to install Ansible on your control node is inside a virtual environment. This prevents conflicts with system Python packages.
 
 ```bash
 # Create a virtual environment for Ansible
@@ -23,7 +23,7 @@ python3 -m venv ~/ansible-venv
 source ~/ansible-venv/bin/activate
 
 # Install Ansible
-pip install ansible ansible-lint molecule
+python -m pip install ansible ansible-lint molecule
 
 # Verify
 ansible --version
@@ -128,8 +128,13 @@ If your Ansible modules need specific Python packages on the remote host, point 
     ansible_python_interpreter: /opt/myapp/venv/bin/python
 
   tasks:
-    - name: This task uses the venv Python
-      ansible.builtin.command: python -c "import django; print(django.VERSION)"
+    - name: This command uses the venv Python
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_python_interpreter }}"
+          - -c
+          - "import django; print(django.VERSION)"
+      changed_when: false
 ```
 
 ## Upgrading Virtual Environments
@@ -168,16 +173,16 @@ If your Ansible modules need specific Python packages on the remote host, point 
 
 ## Summary
 
-Virtual environments are essential for isolating Python dependencies. Install Ansible itself in a venv on your control node to avoid system package conflicts. On remote hosts, use the `ansible.builtin.pip` module with the `virtualenv` parameter to create and manage venvs. Point `ansible_python_interpreter` to a venv's Python when you need Ansible modules to use specific packages. Always use the venv Python path in systemd services and cron jobs.
+Virtual environments are essential for isolating Python dependencies. Install Ansible itself in a venv on your control node to avoid system package conflicts. On remote hosts, use the `ansible.builtin.pip` module with the `virtualenv` parameter to create and manage venvs. Point `ansible_python_interpreter` to a venv's Python when you need Ansible modules to use specific packages. Always use the venv executable or Python path in systemd services and cron jobs.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where Ansible proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete infrastructure workflow
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -291,7 +296,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with Ansible
 - name: Robust task execution
   hosts: all
   tasks:
@@ -353,4 +358,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
