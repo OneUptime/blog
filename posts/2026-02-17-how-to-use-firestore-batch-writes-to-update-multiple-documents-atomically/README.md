@@ -16,7 +16,7 @@ Firestore batch writes give you exactly this guarantee. A batch is an atomic uni
 
 A batch write is a group of write operations (set, update, delete) that execute as a single atomic commit. Unlike transactions, batch writes do not include reads. You already know what you want to write, and you just need all the writes to happen together.
 
-The key constraints are: up to 500 operations per batch, and the total size of all documents in the batch cannot exceed 10 MB. Each document in the batch can only be written once - you cannot set and then update the same document in the same batch.
+The key constraint is the request size: the total size of the commit request cannot exceed 10 MiB. Very large batches can also require many index updates, so for bulk imports and migrations you should usually chunk the work or use a server-side bulk writer instead of putting everything into one batch.
 
 ## Basic Batch Write
 
@@ -94,13 +94,13 @@ async function processOrder(orderId, items) {
 }
 ```
 
-## Handling the 500-Operation Limit
+## Handling Large Batch Writes
 
-If you need to write more than 500 documents, you have to split the work across multiple batches. Here is a helper function that handles this automatically.
+If you need to write a lot of documents, it is often better to split the work across multiple batches so you stay well under the request-size limit and avoid oversized commits. Here is a helper function that does that automatically.
 
 ```javascript
 // Helper function that automatically splits large writes into multiple batches
-// Each batch contains up to 500 operations (Firestore's limit)
+// Each batch contains up to 500 operations as a conservative chunk size
 import { writeBatch, doc } from 'firebase/firestore';
 
 async function batchWrite(db, operations) {
@@ -146,11 +146,11 @@ const operations = userIds.map(uid => ({
 await batchWrite(db, operations);
 ```
 
-Note that when you split across multiple batches, each batch is independent. If batch 2 fails, batch 1's writes are already committed. If you need everything to be atomic across more than 500 operations, you are out of luck with batch writes and need a different approach (like breaking the problem into smaller atomic units).
+Note that when you split across multiple batches, each batch is independent. If batch 2 fails, batch 1's writes are already committed. If you need everything to be atomic but the operation is too large for a single commit request, you need a different approach (like breaking the problem into smaller atomic units).
 
 ## Server-Side Batch Writes with the Admin SDK
 
-The Admin SDK has the same batch write API but with some nice additions like server timestamps that are evaluated at commit time.
+The Admin SDK has the same batch write concepts and supports server timestamps that are evaluated at commit time.
 
 ```javascript
 // Server-side batch write using the Firebase Admin SDK
@@ -303,4 +303,4 @@ async function safeBatchWrite(updates) {
 
 ## Wrapping Up
 
-Firestore batch writes are a clean, simple way to perform multiple document operations atomically. They are ideal for data migrations, bulk updates, cleanup tasks, and any scenario where you need multiple writes to succeed or fail together. Keep the 500-operation limit in mind, choose the right write method (set, merge, or update) for each operation, and remember that batch writes are for write-only operations - if you need reads too, reach for transactions instead.
+Firestore batch writes are a clean, simple way to perform multiple document operations atomically. They are ideal for data migrations, bulk updates, cleanup tasks, and any scenario where you need multiple writes to succeed or fail together. Keep request-size limits in mind, choose the right write method (set, merge, or update) for each operation, and remember that batch writes are for write-only operations - if you need reads too, reach for transactions instead.
