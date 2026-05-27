@@ -10,7 +10,7 @@ Description: Use Google Cloud Buildpacks to automatically containerize a Go appl
 
 Writing Dockerfiles is a skill, and getting them right for production takes effort. You need to choose the right base image, handle multi-stage builds for smaller output, manage dependencies, set up non-root users, and keep security patches current. For many applications, this is boilerplate that does not add business value.
 
-Cloud Native Buildpacks, and specifically Google Cloud's buildpacks, automate all of this. You point them at your source code, and they produce an optimized, secure container image - no Dockerfile required. The resulting images follow best practices out of the box: minimal base images, non-root users, and proper layer caching.
+Cloud Native Buildpacks, and specifically Google Cloud's buildpacks, automate all of this. You point them at your source code, and they produce an optimized, secure container image - no Dockerfile required. The resulting images follow best practices out of the box: Google-managed base images, non-root users, and proper layer caching.
 
 Let me show you how this works with a Go application deployed to Cloud Run.
 
@@ -24,7 +24,7 @@ Google maintains a set of buildpacks optimized for GCP:
 graph LR
     Source["Go Source Code<br/>(go.mod, main.go)"] --> Detect["Detect Phase<br/>(identifies Go project)"]
     Detect --> Build["Build Phase<br/>(go build)"]
-    Build --> Image["Container Image<br/>(based on distroless)"]
+    Build --> Image["Container Image<br/>(Google-managed run image)"]
     Image --> CloudRun["Cloud Run<br/>Deployment"]
 ```
 
@@ -120,7 +120,7 @@ And the Go module file:
 // go.mod
 module example.com/my-app
 
-go 1.22
+go 1.25
 ```
 
 That is it. No Dockerfile. No docker-compose. Just the Go source code.
@@ -136,15 +136,15 @@ The `pack` CLI is the standard tool for building with buildpacks locally:
 brew install buildpacks/tap/pack
 
 # On Linux
-(curl -sSL "https://github.com/buildpacks/pack/releases/download/v0.33.0/pack-v0.33.0-linux.tgz" | sudo tar -C /usr/local/bin/ --no-same-owner -xzf - pack)
+(curl -sSL "https://github.com/buildpacks/pack/releases/download/v0.40.4/pack-v0.40.4-linux.tgz" | sudo tar -C /usr/local/bin/ --no-same-owner -xzv pack)
 
 # Build the image using Google Cloud buildpacks
 pack build my-go-app \
   --builder gcr.io/buildpacks/builder:google-22 \
-  --env GOOGLE_RUNTIME_VERSION=1.22 \
+  --env GOOGLE_GO_VERSION=1.25.x \
   --path .
 
-# Check the image - it will be small and based on distroless
+# Check the image
 docker images my-go-app
 ```
 
@@ -159,11 +159,16 @@ For CI/CD, use Cloud Build which has native buildpack support:
 steps:
   # Build using Google Cloud buildpacks
   - name: 'gcr.io/k8s-skaffold/pack'
+    entrypoint: 'pack'
     args:
       - 'build'
       - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$SHORT_SHA'
-      - '--builder=gcr.io/buildpacks/builder:google-22'
-      - '--env=GOOGLE_RUNTIME_VERSION=1.22'
+      - '--builder'
+      - 'gcr.io/buildpacks/builder:google-22'
+      - '--env'
+      - 'GOOGLE_GO_VERSION=1.25.x'
+      - '--network'
+      - 'cloudbuild'
       - '--publish'
 
   # Deploy to Cloud Run
@@ -181,6 +186,9 @@ substitutions:
   _REGION: us-central1
   _REPO: apps
   _IMAGE: my-go-app
+
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$SHORT_SHA'
 ```
 
 ## The Simplest Approach: gcloud run deploy
@@ -210,25 +218,6 @@ You can customize how buildpacks build your application using environment variab
 ```toml
 # project.toml - Buildpack configuration
 
-[project]
-name = "my-go-app"
-
-# Set build environment variables
-[[build.env]]
-name = "GOOGLE_RUNTIME_VERSION"
-value = "1.22"
-
-# Set flags for the Go compiler
-[[build.env]]
-name = "GOOGLE_BUILDABLE"
-value = "./cmd/server"
-
-# Enable build caching
-[[build.env]]
-name = "GOOGLE_CLEAR_SOURCE"
-value = "true"
-
-# Exclude files from the build context
 [build]
 exclude = [
   "README.md",
@@ -237,16 +226,31 @@ exclude = [
   ".github/",
   ".git/",
 ]
+
+# Set build environment variables
+[[build.env]]
+name = "GOOGLE_GO_VERSION"
+value = "1.25.x"
+
+# Set flags for the Go compiler
+[[build.env]]
+name = "GOOGLE_BUILDABLE"
+value = "./cmd/server"
+
+# Remove source code from the application image
+[[build.env]]
+name = "GOOGLE_CLEAR_SOURCE"
+value = "true"
 ```
 
 Common environment variables for Go buildpacks:
 
 | Variable | Description | Example |
 |----------|------------|---------|
-| `GOOGLE_RUNTIME_VERSION` | Go version | `1.22` |
+| `GOOGLE_GO_VERSION` | Go version | `1.25.x` |
 | `GOOGLE_BUILDABLE` | Main package path | `./cmd/server` |
 | `GOOGLE_CLEAR_SOURCE` | Remove source after build | `true` |
-| `GOOGLE_BUILD_ARGS` | Additional go build flags | `-ldflags="-s -w"` |
+| `GOOGLE_GOLDFLAGS` | Additional linker flags passed to `go build` | `-s -w` |
 
 ## Multi-Module Go Projects
 
@@ -283,7 +287,7 @@ If the default start command does not work for your app, use a Procfile:
 
 ```text
 # Procfile - Custom start command
-web: ./cmd/server --config=/etc/app/config.yaml
+web: ./main --config=/etc/app/config.yaml
 ```
 
 ## How the Output Image Differs from a Manual Dockerfile
@@ -298,14 +302,14 @@ docker inspect my-go-app | jq '.[0].Config'
 # - User is "cnb" (non-root) instead of root
 # - The binary is in /workspace, not /app
 # - Labels include buildpack metadata
-# - Base image is gcr.io/buildpacks/google-22/run (similar to distroless)
+# - Run image metadata corresponds to the Google 22 stack
 ```
 
 The image is already optimized:
 
 - Non-root user by default
-- Minimal base image with no shell or package manager
-- Compiled Go binary with no source code included
+- Google-managed Ubuntu 22 run image
+- Compiled Go binary, with source code omitted when `GOOGLE_CLEAR_SOURCE=true`
 - Proper OCI labels for traceability
 
 ## Comparing Build Approaches
@@ -314,15 +318,15 @@ Here is how the different approaches compare for our Go application:
 
 | Approach | Image Size | Build Time | Maintenance |
 |----------|-----------|------------|-------------|
-| `FROM golang:1.22` (naive) | ~1.2 GB | Fast | High (update Dockerfile) |
+| `FROM golang:1.25` (naive) | ~1.2 GB | Fast | High (update Dockerfile) |
 | Multi-stage + distroless | ~15-25 MB | Medium | Medium (manage Dockerfile) |
-| Google Cloud Buildpacks | ~20-30 MB | Medium | Low (auto-updated base) |
+| Google Cloud Buildpacks | ~20-30 MB | Medium | Low (managed base) |
 
-Buildpack images are slightly larger than a perfectly optimized manual Dockerfile because they include the buildpack launcher, but the difference is small enough to not matter for most applications. The maintenance advantage is the real win - Google updates the base images with security patches automatically.
+Buildpack images are slightly larger than a perfectly optimized manual Dockerfile because they include the buildpack launcher, but the difference is small enough to not matter for most applications. The maintenance advantage is the real win - Google maintains patched base images, and you can pick them up by rebuilding, redeploying from source, or rebasing.
 
 ## Reproducible Builds
 
-Buildpacks support reproducible builds, meaning the same source code produces the same image digest:
+Buildpacks support reproducible builds, meaning the same source code, builder image, and buildpack set can produce the same image digest:
 
 ```bash
 # Build twice and compare digests
@@ -331,7 +335,7 @@ pack build my-go-app:v2 --builder gcr.io/buildpacks/builder:google-22
 
 docker inspect my-go-app:v1 --format='{{.Id}}'
 docker inspect my-go-app:v2 --format='{{.Id}}'
-# Same digest if source code has not changed
+# Same digest if the source code, builder image, and buildpacks have not changed
 ```
 
 ## Rebasing for Security Updates
@@ -405,7 +409,7 @@ Use buildpacks when:
 - Your application is a standard web service in a supported language
 - You want minimal maintenance overhead
 - You do not need fine-grained control over every layer
-- You want automatic security patch rebasing
+- You want straightforward security patch rebasing
 
 Use Dockerfiles when:
 - You need system-level packages not provided by buildpacks
