@@ -32,7 +32,7 @@ graph TD
 
 ## Logical Backups with pg_dump
 
-`pg_dump` exports a database as SQL statements or a custom archive format. It is the simplest backup method and works across PostgreSQL versions.
+`pg_dump` exports a database as SQL statements or a custom archive format. It is the simplest backup method and is commonly used for moving data to newer PostgreSQL versions when you use a pg_dump version that is at least as new as the source server.
 
 ### Basic pg_dump Usage
 
@@ -123,7 +123,7 @@ pg_dumpall -h localhost -U postgres \
 
 ## Physical Backups with pg_basebackup
 
-`pg_basebackup` copies the entire database cluster at the file level. It is faster than pg_dump for large databases and is required for point-in-time recovery.
+`pg_basebackup` copies the entire database cluster at the file level. It is faster than pg_dump for large databases and is commonly used as the base backup for point-in-time recovery.
 
 ```bash
 # Take a base backup with WAL files included
@@ -191,7 +191,7 @@ archive_mode = on
 # Command to archive each WAL segment
 # %p = path to the WAL file
 # %f = filename of the WAL file
-archive_command = 'cp %p /var/lib/postgresql/wal_archive/%f && sync'
+archive_command = 'test ! -f "/var/lib/postgresql/wal_archive/%f" && cp "%p" "/var/lib/postgresql/wal_archive/%f" || cmp -s "%p" "/var/lib/postgresql/wal_archive/%f"'
 
 # For remote archiving (to another server or S3):
 # archive_command = 'aws s3 cp %p s3://my-bucket/wal-archive/%f'
@@ -224,8 +224,8 @@ sudo rm -rf /var/lib/postgresql/16/main/*
 sudo tar xzf /backups/base_20260220/base.tar.gz \
     -C /var/lib/postgresql/16/main/
 
-# Step 4: Create recovery configuration
-cat << 'EOF' | sudo tee /var/lib/postgresql/16/main/postgresql.auto.conf
+# Step 4: Append recovery configuration
+cat << 'EOF' | sudo tee -a /var/lib/postgresql/16/main/postgresql.auto.conf
 # Restore WAL archives
 restore_command = 'cp /var/lib/postgresql/wal_archive/%f %p'
 
@@ -282,8 +282,7 @@ pg_dump -h "${DB_HOST}" -U "${DB_USER}" -d "${DB_NAME}" \
 
 # Verify the backup is valid
 echo "[$(date)] Verifying backup..."
-pg_restore --list "${BACKUP_FILE}" > /dev/null 2>&1
-if [ $? -eq 0 ]; then
+if pg_restore --list "${BACKUP_FILE}" > /dev/null 2>&1; then
     echo "[$(date)] Backup verified successfully: ${BACKUP_FILE}"
     echo "[$(date)] Size: $(du -h "${BACKUP_FILE}" | cut -f1)"
 else
@@ -303,7 +302,7 @@ echo "[$(date)] Backup completed successfully."
 chmod +x /usr/local/bin/pg_backup.sh
 
 # Schedule with cron (daily at 2 AM)
-echo "0 2 * * * /usr/local/bin/pg_backup.sh >> /var/log/pg_backup.log 2>&1" | crontab -
+(crontab -l 2>/dev/null; echo "0 2 * * * /usr/local/bin/pg_backup.sh >> /var/log/pg_backup.log 2>&1") | crontab -
 ```
 
 ## Backup Verification
