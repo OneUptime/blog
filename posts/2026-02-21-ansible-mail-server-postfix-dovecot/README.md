@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Postfix, Dovecot, Email, Linux
 
-Description: Automate the deployment of a complete mail server with Postfix for SMTP and Dovecot for IMAP using Ansible including TLS and spam filtering.
+Description: Automate the deployment of a complete mail server with Postfix for SMTP and Dovecot for IMAP using Ansible including TLS and DKIM signing.
 
 ---
 
@@ -14,7 +14,7 @@ This guide walks through setting up a complete mail server with Postfix (SMTP) a
 
 ## Prerequisites
 
-You need a server with a public IP, a domain name with proper MX records, and the ability to use port 25 (some cloud providers block this by default). Make sure your reverse DNS (PTR record) matches your mail server hostname.
+You need a server with a public IP, a domain name with proper MX records, and the ability to use port 25 (some cloud providers block this by default). You also need inbound HTTP port 80 temporarily available for the standalone Certbot challenge used below. Make sure your reverse DNS (PTR record) matches your mail server hostname.
 
 ## DNS Records Required
 
@@ -51,9 +51,6 @@ mail_users:
   - email: info@example.com
     password: "{{ vault_mail_info_password }}"
 
-# Spam filtering
-mail_enable_spamassassin: true
-mail_spam_threshold: 5.0
 ```
 
 ## Main Tasks
@@ -62,6 +59,9 @@ mail_spam_threshold: 5.0
 # roles/mailserver/tasks/main.yml - Install and configure mail server components
 ---
 - name: Install mail server packages
+  # Prevent Postfix from launching its config dialog during install
+  environment:
+    DEBIAN_FRONTEND: noninteractive
   apt:
     name:
       - postfix
@@ -69,17 +69,11 @@ mail_spam_threshold: 5.0
       - dovecot-core
       - dovecot-imapd
       - dovecot-lmtpd
-      - dovecot-sieve
       - certbot
       - opendkim
       - opendkim-tools
-      - spamassassin
-      - spamc
     state: present
     update_cache: yes
-    # Prevent Postfix from launching its config dialog during install
-    env:
-      DEBIAN_FRONTEND: noninteractive
 
 - name: Create vmail group
   group:
@@ -243,7 +237,7 @@ message_size_limit = 26214400
 
 ```text
 # roles/mailserver/templates/dovecot.conf.j2 - Dovecot main config
-protocols = imap lmtp sieve
+protocols = imap lmtp
 
 # SSL configuration
 ssl = required
