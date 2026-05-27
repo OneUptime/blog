@@ -19,8 +19,9 @@ In this guide, I will walk through setting up custom scans specifically for App 
 Before getting started, you need:
 
 - A GCP project with an App Engine application deployed
+- Security Command Center enabled with Web Security Scanner enabled
 - The Web Security Scanner API enabled
-- The `roles/websecurityscanner.editor` role on your account
+- The `roles/cloudsecurityscanner.editor` role on your account
 - The `gcloud` CLI installed and configured
 
 First, enable the API if you have not already:
@@ -38,9 +39,9 @@ A scan config tells the scanner what URL to start from, how the app handles auth
 
 ```bash
 # Create a basic scan config pointing at your App Engine app
-gcloud beta web-security-scanner scan-configs create \
+gcloud alpha web-security-scanner scan-configs create \
   --display-name="my-app-engine-scan" \
-  --starting-urls="https://my-project-id.appspot.com" \
+  --starting-urls="https://my-project-id.region-id.r.appspot.com" \
   --project=my-project-id
 ```
 
@@ -48,7 +49,7 @@ If your app uses a custom domain, point to that instead:
 
 ```bash
 # Create a scan config for a custom domain
-gcloud beta web-security-scanner scan-configs create \
+gcloud alpha web-security-scanner scan-configs create \
   --display-name="my-app-custom-domain-scan" \
   --starting-urls="https://myapp.example.com" \
   --project=my-project-id
@@ -56,18 +57,18 @@ gcloud beta web-security-scanner scan-configs create \
 
 ## Step 2: Configure Authentication
 
-Many App Engine apps require login. The scanner supports Google account authentication and custom account authentication.
+Many App Engine apps require login. The scanner supports custom account authentication, Identity-Aware Proxy authentication, and deprecated Google account authentication.
 
-For apps that use Google Sign-In:
+For apps that use Google account authentication:
 
 ```bash
 # Create a scan config with Google account authentication
-gcloud beta web-security-scanner scan-configs create \
+gcloud alpha web-security-scanner scan-configs create \
   --display-name="authenticated-scan" \
-  --starting-urls="https://my-project-id.appspot.com" \
-  --auth-type=GOOGLE_ACCOUNT \
-  --auth-user="scanner-test@my-project-id.iam.gserviceaccount.com" \
-  --auth-password="not-used-for-google-auth" \
+  --starting-urls="https://my-project-id.region-id.r.appspot.com" \
+  --auth-type=google \
+  --auth-user="scanner-test@example.com" \
+  --auth-password="test-account-password" \
   --project=my-project-id
 ```
 
@@ -75,13 +76,13 @@ For apps with a custom login form:
 
 ```bash
 # Create a scan config with custom authentication
-gcloud beta web-security-scanner scan-configs create \
+gcloud alpha web-security-scanner scan-configs create \
   --display-name="custom-auth-scan" \
-  --starting-urls="https://my-project-id.appspot.com" \
-  --auth-type=CUSTOM_ACCOUNT \
+  --starting-urls="https://my-project-id.region-id.r.appspot.com" \
+  --auth-type=custom \
   --auth-user="testuser@example.com" \
   --auth-password="test-password" \
-  --auth-login-url="https://my-project-id.appspot.com/login" \
+  --auth-url="https://my-project-id.region-id.r.appspot.com/login" \
   --project=my-project-id
 ```
 
@@ -96,7 +97,7 @@ The scan config supports URL exclusions via the API. Here is how to do it with a
 ```bash
 # Update a scan config to exclude certain URL patterns
 # First, get the scan config ID
-gcloud beta web-security-scanner scan-configs list --project=my-project-id
+gcloud alpha web-security-scanner scan-configs list --project=my-project-id
 
 # Use the API to set exclusions
 curl -X PATCH \
@@ -104,9 +105,9 @@ curl -X PATCH \
   -H "Content-Type: application/json" \
   -d '{
     "blacklistPatterns": [
-      "https://my-project-id.appspot.com/admin/*",
-      "https://my-project-id.appspot.com/api/delete/*",
-      "https://my-project-id.appspot.com/payment/*"
+      "https://my-project-id.region-id.r.appspot.com/admin/*",
+      "https://my-project-id.region-id.r.appspot.com/api/delete/*",
+      "https://my-project-id.region-id.r.appspot.com/payment/*"
     ]
   }' \
   "https://websecurityscanner.googleapis.com/v1/projects/my-project-id/scanConfigs/SCAN_CONFIG_ID?updateMask=blacklistPatterns"
@@ -118,12 +119,12 @@ By default the scanner uses its own user agent string. If your App Engine app ha
 
 ```bash
 # Set user agent to Chrome
-gcloud beta web-security-scanner scan-configs update SCAN_CONFIG_ID \
-  --user-agent=CHROME_LINUX \
+gcloud alpha web-security-scanner scan-configs update SCAN_CONFIG_ID \
+  --user-agent=chrome-linux \
   --project=my-project-id
 ```
 
-Available user agent options include `CHROME_LINUX`, `CHROME_ANDROID`, and `SAFARI_IPHONE`.
+Available `gcloud` user agent options include `chrome-linux`, `chrome-android`, and `safari-iphone`.
 
 ## Step 5: Run the Scan
 
@@ -131,7 +132,7 @@ Now let us actually kick off a scan.
 
 ```bash
 # Start a scan run
-gcloud beta web-security-scanner scan-runs start SCAN_CONFIG_ID \
+gcloud alpha web-security-scanner scan-runs start SCAN_CONFIG_ID \
   --project=my-project-id
 ```
 
@@ -143,7 +144,7 @@ You can check the status of your running scan.
 
 ```bash
 # List scan runs for a config
-gcloud beta web-security-scanner scan-runs list \
+gcloud alpha web-security-scanner scan-runs list \
   --scan-config=SCAN_CONFIG_ID \
   --project=my-project-id
 ```
@@ -156,9 +157,8 @@ Once the scan finishes, pull the findings.
 
 ```bash
 # List findings from a specific scan run
-gcloud beta web-security-scanner scan-runs findings list \
+gcloud alpha web-security-scanner scan-runs findings list SCAN_RUN_ID \
   --scan-config=SCAN_CONFIG_ID \
-  --scan-run=SCAN_RUN_ID \
   --project=my-project-id
 ```
 
@@ -188,12 +188,12 @@ Rather than running scans manually, schedule them to run automatically.
 
 ```bash
 # Update scan config to run weekly
-gcloud beta web-security-scanner scan-configs update SCAN_CONFIG_ID \
+gcloud alpha web-security-scanner scan-configs update SCAN_CONFIG_ID \
   --schedule-interval-days=7 \
   --project=my-project-id
 ```
 
-You can set the interval from 1 to 365 days. For most teams, weekly scans are a good balance between coverage and noise.
+You can set the interval in days. For most teams, weekly scans are a good balance between coverage and noise.
 
 ## Using the Console for a Visual Overview
 
@@ -225,7 +225,7 @@ If you need to remove a scan config:
 
 ```bash
 # Delete a scan config and all its run history
-gcloud beta web-security-scanner scan-configs delete SCAN_CONFIG_ID \
+gcloud alpha web-security-scanner scan-configs delete SCAN_CONFIG_ID \
   --project=my-project-id
 ```
 
