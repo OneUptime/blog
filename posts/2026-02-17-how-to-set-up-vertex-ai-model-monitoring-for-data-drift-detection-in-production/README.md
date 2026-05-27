@@ -10,7 +10,7 @@ Description: Learn how to set up Vertex AI Model Monitoring to detect data drift
 
 You have trained a machine learning model, deployed it to production, and it is serving predictions. Congratulations. But here is the thing nobody tells you when you are learning ML - your model starts degrading the moment you deploy it. The world changes, user behavior shifts, and the data your model sees in production drifts away from what it was trained on. This is called data drift, and if you do not detect it, your model will silently become less accurate over time.
 
-Vertex AI Model Monitoring solves this problem by continuously analyzing the prediction requests your model receives and comparing them against a baseline (your training data). When the distributions diverge beyond a threshold you set, it alerts you. Let me show you how to set this up.
+Vertex AI Model Monitoring solves this problem by continuously analyzing the prediction requests your model receives. For training-serving skew, it compares production feature distributions against your training data. For prediction drift, it compares recent production traffic against earlier production traffic. When the distributions diverge beyond a threshold you set, it alerts you. Let me show you how to set this up.
 
 ## Understanding Data Drift vs Feature Skew
 
@@ -22,9 +22,9 @@ Before configuring monitoring, let me clarify two related but different concepts
 
 Vertex AI Model Monitoring can detect both.
 
-## Step 1: Deploy Your Model with Monitoring Enabled
+## Step 1: Deploy Your Model to an Endpoint
 
-First, you need a model deployed to a Vertex AI Endpoint. Here is how to deploy a model and configure monitoring at the same time.
+First, you need a model deployed to a Vertex AI Endpoint. The monitoring job is created after deployment and attached to this endpoint.
 
 ```python
 # deploy_with_monitoring.py
@@ -37,14 +37,14 @@ aiplatform.init(project="my-project", location="us-central1")
 # Reference your trained model
 model = aiplatform.Model("projects/my-project/locations/us-central1/models/MODEL_ID")
 
-# Deploy the model to an endpoint with monitoring configuration
+# Create the endpoint
 endpoint = aiplatform.Endpoint.create(
     display_name="my-model-endpoint",
     description="Production endpoint with drift monitoring"
 )
 
 # Deploy the model to the endpoint
-deployed_model = endpoint.deploy(
+endpoint.deploy(
     model=model,
     deployed_model_display_name="my-model-v1",
     machine_type="n1-standard-4",
@@ -53,7 +53,12 @@ deployed_model = endpoint.deploy(
     traffic_percentage=100,
 )
 
+# Get the deployed model ID for the monitoring job
+endpoint = aiplatform.Endpoint(endpoint.resource_name)
+deployed_model_id = endpoint.gca_resource.deployed_models[-1].id
+
 print(f"Model deployed to endpoint: {endpoint.resource_name}")
+print(f"Deployed model ID: {deployed_model_id}")
 ```
 
 ## Step 2: Create the Monitoring Job
@@ -65,26 +70,25 @@ Now create a model monitoring job that watches for drift. You need to specify th
 from google.cloud import aiplatform
 from google.cloud.aiplatform import model_monitoring
 
-# Define the training dataset for baseline comparison
-# This is used to detect training-serving skew
-training_dataset = model_monitoring.RandomSampleConfig(
-    sample_rate=0.8
+aiplatform.init(project="my-project", location="us-central1")
+
+endpoint = aiplatform.Endpoint(
+    "projects/my-project/locations/us-central1/endpoints/ENDPOINT_ID"
 )
+deployed_model_id = "DEPLOYED_MODEL_ID"
 
 # Configure skew detection for specific features
 # Set thresholds that trigger alerts when exceeded
 skew_config = model_monitoring.SkewDetectionConfig(
-    data_source="bq://my-project.ml_dataset.training_data",
+    data_source="bq://my-project.ml_dataset.training_baseline",
+    target_field="predicted_class",
     skew_thresholds={
         # Feature name: threshold value
         # Lower thresholds mean more sensitive detection
-        "age": model_monitoring.ThresholdConfig(value=0.3),
-        "income": model_monitoring.ThresholdConfig(value=0.3),
-        "purchase_frequency": model_monitoring.ThresholdConfig(value=0.2),
-    },
-    # Use Jensen-Shannon divergence as the distance metric
-    attribute_skew_thresholds={
-        "category": model_monitoring.ThresholdConfig(value=0.3),
+        "age": 0.3,
+        "income": 0.3,
+        "purchase_frequency": 0.2,
+        "category": 0.3,
     }
 )
 
@@ -92,25 +96,23 @@ skew_config = model_monitoring.SkewDetectionConfig(
 # against earlier predictions
 drift_config = model_monitoring.DriftDetectionConfig(
     drift_thresholds={
-        "age": model_monitoring.ThresholdConfig(value=0.3),
-        "income": model_monitoring.ThresholdConfig(value=0.3),
-        "purchase_frequency": model_monitoring.ThresholdConfig(value=0.2),
-    },
-    attribute_drift_thresholds={
-        "category": model_monitoring.ThresholdConfig(value=0.3),
+        "age": 0.3,
+        "income": 0.3,
+        "purchase_frequency": 0.2,
+        "category": 0.3,
     }
 )
 
 # Configure where to send alerts
 email_config = model_monitoring.EmailAlertConfig(
-    user_emails=["ml-team@company.com"]
+    user_emails=["ml-team@company.com"],
+    enable_logging=True
 )
 
 # Set up the objective config combining skew and drift detection
 objective_config = model_monitoring.ObjectiveConfig(
-    training_dataset=training_dataset,
-    training_prediction_skew_detection_config=skew_config,
-    prediction_drift_detection_config=drift_config,
+    skew_detection_config=skew_config,
+    drift_detection_config=drift_config,
 )
 
 # Create the monitoring job
@@ -121,13 +123,13 @@ monitoring_job = aiplatform.ModelDeploymentMonitoringJob.create(
         sample_rate=0.5  # Sample 50% of predictions for monitoring
     ),
     schedule_config=model_monitoring.ScheduleConfig(
-        monitor_interval=3600  # Check every hour
+        monitor_interval=1  # Check every hour
     ),
     alert_config=email_config,
     objective_configs={
-        deployed_model.id: objective_config
+        deployed_model_id: objective_config
     },
-    # Store monitoring data in BigQuery for analysis
+    # Store statistics and anomaly artifacts in Cloud Storage
     stats_anomalies_base_directory="gs://my-bucket/monitoring-output/",
 )
 
@@ -153,7 +155,7 @@ SELECT
     income,
     purchase_frequency,
     category,
-    -- Include the prediction target for output drift detection
+    -- Include the prediction target so Vertex AI can exclude it from skew analysis
     predicted_class
 FROM
     `ml_dataset.training_data`
@@ -192,6 +194,24 @@ created_channel = client.create_notification_channel(
     notification_channel=channel
 )
 print(f"Notification channel created: {created_channel.name}")
+
+# Add the notification channel to the existing monitoring job
+from google.cloud import aiplatform
+from google.cloud.aiplatform import model_monitoring
+
+aiplatform.init(project="my-project", location="us-central1")
+
+monitoring_job = aiplatform.ModelDeploymentMonitoringJob(
+    "projects/my-project/locations/us-central1/modelDeploymentMonitoringJobs/JOB_ID"
+)
+
+monitoring_job.update(
+    alert_config=model_monitoring.AlertConfig(
+        user_emails=["ml-team@company.com"],
+        enable_logging=True,
+        notification_channels=[created_channel.name],
+    )
+)
 ```
 
 ## Step 5: Analyze Drift Results
@@ -200,49 +220,39 @@ When drift is detected, you need to investigate which features drifted and by ho
 
 ```python
 # analyze_drift.py
-from google.cloud import aiplatform
+from google.cloud import logging_v2
 
-aiplatform.init(project="my-project", location="us-central1")
+client = logging_v2.Client(project="my-project")
 
-# Get the monitoring job
-monitoring_job = aiplatform.ModelDeploymentMonitoringJob(
-    "projects/my-project/locations/us-central1/modelDeploymentMonitoringJobs/JOB_ID"
-)
+filter_ = """
+resource.type="aiplatform.googleapis.com/ModelDeploymentMonitoringJob"
+logName="projects/my-project/logs/aiplatform.googleapis.com%2Fmodel_monitoring_anomaly"
+jsonPayload.modelDeploymentMonitoringJob="projects/my-project/locations/us-central1/modelDeploymentMonitoringJobs/JOB_ID"
+"""
 
-# List recent anomalies detected by the monitoring job
-anomalies = monitoring_job.list_anomalies()
+# Read recent anomaly logs emitted by the monitoring job
+entries = client.list_entries(filter_=filter_, order_by=logging_v2.DESCENDING)
 
-for anomaly in anomalies:
-    print(f"Feature: {anomaly.feature_display_name}")
-    print(f"  Anomaly type: {anomaly.anomaly_type}")
-    print(f"  Threshold: {anomaly.threshold}")
-    print(f"  Observed value: {anomaly.observed_value}")
-    print(f"  Detection time: {anomaly.detection_time}")
+for entry in entries:
+    payload = entry.payload
+    print(f"Monitoring job: {payload.get('modelDeploymentMonitoringJob')}")
+    print(f"Deployed model: {payload.get('deployedModelId')}")
+    print(f"Anomaly objective: {payload.get('anomalyObjective')}")
+    for anomaly in payload.get("featureAnomalies", []):
+        print(f"  Feature: {anomaly.get('featureDisplayName')}")
+        print(f"  Deviation: {anomaly.get('deviation')}")
+        print(f"  Threshold: {anomaly.get('threshold')}")
     print("---")
 ```
 
 ## Step 6: Visualize Drift Trends Over Time
 
-You can export monitoring data to BigQuery and build dashboards to track drift trends.
+Vertex AI writes sampled prediction requests to a generated BigQuery table named like `PROJECT_ID.model_deployment_monitoring_ENDPOINT_ID.serving_predict`. To visualize drift results, use the feature histograms in the Vertex AI console, or export anomaly logs to Cloud Monitoring metrics or BigQuery for dashboards. Start with this Logs Explorer filter:
 
-```sql
--- Query monitoring results stored in BigQuery
--- This shows drift scores over time for each feature
-SELECT
-    monitoring_time,
-    feature_name,
-    drift_score,
-    threshold,
-    CASE
-        WHEN drift_score > threshold THEN 'ANOMALY'
-        ELSE 'NORMAL'
-    END AS status
-FROM
-    `ml_dataset.monitoring_results`
-WHERE
-    monitoring_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-ORDER BY
-    monitoring_time DESC, drift_score DESC;
+```text
+resource.type="aiplatform.googleapis.com/ModelDeploymentMonitoringJob"
+logName="projects/my-project/logs/aiplatform.googleapis.com%2Fmodel_monitoring_anomaly"
+jsonPayload.totalAnomaliesCount>0
 ```
 
 ## Choosing the Right Thresholds
@@ -258,16 +268,22 @@ A threshold that is too low will generate too many false alarms. A threshold tha
 
 ## Monitoring Output Drift
 
-In addition to monitoring input features, you should monitor the distribution of your model's predictions. If the model suddenly starts predicting one class much more frequently, that is a sign something has changed.
+In addition to monitoring input features, you should monitor the distribution of your model's predictions. Vertex AI Model Monitoring for online endpoints monitors input feature skew and drift; for output drift, enable endpoint request-response logging where it is supported or log predictions from your application, then query those logs separately. If the model suddenly starts predicting one class much more frequently, that is a sign something has changed.
 
-```python
-# Configure output drift monitoring
-output_drift_config = model_monitoring.DriftDetectionConfig(
-    drift_thresholds={
-        # Monitor the prediction output distribution
-        "prediction": model_monitoring.ThresholdConfig(value=0.2),
-    }
-)
+```sql
+-- Example output drift check against your own prediction log table
+SELECT
+    TIMESTAMP_TRUNC(prediction_time, HOUR) AS prediction_hour,
+    predicted_class,
+    COUNT(*) AS prediction_count
+FROM
+    `my-project.ml_dataset.prediction_logs`
+WHERE
+    prediction_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
+GROUP BY
+    prediction_hour, predicted_class
+ORDER BY
+    prediction_hour DESC, prediction_count DESC;
 ```
 
 ## Wrapping Up
