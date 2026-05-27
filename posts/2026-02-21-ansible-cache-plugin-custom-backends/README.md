@@ -8,7 +8,7 @@ Description: Build Ansible cache plugins for custom storage backends like Dynamo
 
 ---
 
-Ansible's fact caching dramatically speeds up playbook runs by storing gathered facts between executions. The built-in cache plugins support memory, JSON files, Redis, and memcached. But when your infrastructure relies on a different storage system, or you need features like cross-region replication or encryption at rest, building a custom cache plugin is the way forward.
+Ansible's fact caching dramatically speeds up playbook runs by storing gathered facts between executions. Ansible cache plugins support memory, JSON files, Redis, and memcached. But when your infrastructure relies on a different storage system, or you need features like cross-region replication or encryption at rest, building a custom cache plugin is the way forward.
 
 This guide builds cache plugins for two popular backends: Amazon DynamoDB and HashiCorp Consul.
 
@@ -29,6 +29,9 @@ aws dynamodb create-table \
   --key-schema AttributeName=cache_key,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST \
   --tags Key=Purpose,Value=ansible-caching
+
+aws dynamodb wait table-exists \
+  --table-name ansible-fact-cache
 
 # Enable TTL on the table
 aws dynamodb update-time-to-live \
@@ -89,6 +92,7 @@ import decimal
 from ansible.plugins.cache import BaseCacheModule
 from ansible.errors import AnsibleError
 from ansible.module_utils.common.text.converters import to_text
+from ansible.parsing.ajson import AnsibleJSONDecoder, AnsibleJSONEncoder
 
 try:
     import boto3
@@ -98,7 +102,7 @@ except ImportError:
     HAS_BOTO3 = False
 
 
-class DecimalEncoder(json.JSONEncoder):
+class DecimalEncoder(AnsibleJSONEncoder):
     """Handle Decimal types from DynamoDB."""
     def default(self, obj):
         if isinstance(obj, decimal.Decimal):
@@ -146,7 +150,7 @@ class CacheModule(BaseCacheModule):
                 self.delete(key)
                 raise KeyError(key)
 
-        return json.loads(item['cache_value'])
+        return json.loads(item['cache_value'], cls=AnsibleJSONDecoder)
 
     def set(self, key, value):
         """Store a value in DynamoDB."""
@@ -296,6 +300,12 @@ from ansible.plugins.cache import BaseCacheModule
 from ansible.errors import AnsibleError
 from ansible.module_utils.urls import open_url
 from ansible.module_utils.common.text.converters import to_text
+from ansible.parsing.ajson import AnsibleJSONDecoder, AnsibleJSONEncoder
+
+try:
+    from urllib.parse import quote
+except ImportError:
+    from urllib import quote
 
 
 class CacheModule(BaseCacheModule):
@@ -310,7 +320,11 @@ class CacheModule(BaseCacheModule):
 
     def _consul_request(self, method, path, data=None):
         """Make a request to the Consul HTTP API."""
-        url = '%s/v1/kv/%s/%s' % (self._consul_url, self._prefix, path)
+        url = '%s/v1/kv/%s/%s' % (
+            self._consul_url,
+            quote(self._prefix, safe='/'),
+            quote(path, safe=''),
+        )
         headers = {'Content-Type': 'application/json'}
         if self._token:
             headers['X-Consul-Token'] = self._token
@@ -318,7 +332,7 @@ class CacheModule(BaseCacheModule):
         try:
             response = open_url(
                 url,
-                data=data,
+                data=data.encode('utf-8') if data is not None else None,
                 headers=headers,
                 method=method,
                 timeout=10,
@@ -334,12 +348,13 @@ class CacheModule(BaseCacheModule):
         if response is None:
             raise KeyError(key)
 
-        entries = json.loads(response.read())
+        entries = json.loads(response.read(), cls=AnsibleJSONDecoder)
         if not entries:
             raise KeyError(key)
 
         value_data = json.loads(
-            base64.b64decode(entries[0]['Value']).decode('utf-8')
+            base64.b64decode(entries[0]['Value']).decode('utf-8'),
+            cls=AnsibleJSONDecoder,
         )
 
         # Check expiration
@@ -355,20 +370,24 @@ class CacheModule(BaseCacheModule):
         payload = json.dumps({
             'data': value,
             '_stored_at': time.time(),
-        })
+        }, cls=AnsibleJSONEncoder)
         self._consul_request('PUT', to_text(key), data=payload)
 
     def keys(self):
-        url = '%s/v1/kv/%s/?keys' % (self._consul_url, self._prefix)
+        url = '%s/v1/kv/%s/?keys' % (
+            self._consul_url,
+            quote(self._prefix, safe='/'),
+        )
         headers = {}
         if self._token:
             headers['X-Consul-Token'] = self._token
 
         try:
             response = open_url(url, headers=headers, method='GET', timeout=10)
-            all_keys = json.loads(response.read())
-            prefix_len = len('%s/' % self._prefix) + 1
-            return [k[prefix_len:] for k in all_keys if k.startswith(self._prefix)]
+            all_keys = json.loads(response.read(), cls=AnsibleJSONDecoder)
+            prefix = '%s/' % self._prefix
+            prefix_len = len(prefix)
+            return [k[prefix_len:] for k in all_keys if k.startswith(prefix)]
         except Exception:
             return []
 
@@ -392,10 +411,10 @@ class CacheModule(BaseCacheModule):
 | Backend | Best For | Pros | Cons |
 |---------|----------|------|------|
 | DynamoDB | AWS environments | Serverless, auto-scaling, TTL | AWS lock-in |
-| Consul | Multi-cloud | Cross-DC replication, KV native | Needs cluster |
+| Consul | Multi-cloud | Service discovery, KV native | Needs cluster |
 | Redis | High performance | Fast, pub/sub capable | Volatile memory |
 | S3 | Long-term storage | Cheap, durable | High latency |
 
 ## Summary
 
-Custom cache plugins let you store Ansible facts wherever makes sense for your infrastructure. DynamoDB works well in AWS with its serverless model and built-in TTL. Consul fits multi-cloud setups with its built-in replication. The cache plugin interface is simple: implement `get`, `set`, `delete`, `keys`, `contains`, and `flush`. Pick the backend that matches your existing infrastructure and scale requirements.
+Custom cache plugins let you store Ansible facts wherever makes sense for your infrastructure. DynamoDB works well in AWS with its serverless model and built-in TTL. Consul fits multi-cloud setups that already use Consul's service discovery and KV store. The cache plugin interface is simple: implement `get`, `set`, `delete`, `keys`, `contains`, and `flush`. Pick the backend that matches your existing infrastructure and scale requirements.
