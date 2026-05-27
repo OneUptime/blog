@@ -10,13 +10,13 @@ Description: Learn how to set up automated Firestore backups using scheduled exp
 
 Losing data in Firestore is one of those things that nobody thinks about until it happens. Maybe someone runs a bad migration script, a bug in production deletes documents it should not have, or a disgruntled employee wipes a collection. Whatever the cause, having reliable backups is not optional - it is essential.
 
-Firestore gives you two mechanisms for data protection: managed exports (for full or collection-level backups) and point-in-time recovery (PITR) for rolling back to any point in the last seven days. In this guide, I will show you how to set up both, automate them with Cloud Scheduler, and make sure you can actually restore when you need to.
+Firestore gives you two mechanisms for data protection: managed exports (for full or collection-level backups) and point-in-time recovery (PITR) for recovering data from the last seven days. In this guide, I will show you how to set up both, automate them with Cloud Scheduler, and make sure you can actually restore when you need to.
 
 ## Understanding Your Backup Options
 
-**Managed Exports** create a snapshot of your Firestore data in a Cloud Storage bucket. You can export the entire database or specific collections. These exports can be imported back into any Firestore database, making them useful for disaster recovery, creating staging environments, or migrating data between projects.
+**Managed Exports** copy your Firestore data into a Cloud Storage bucket. You can export the entire database or specific collection groups. These exports can be imported back into any Firestore database, making them useful for disaster recovery, creating staging environments, or migrating data between projects.
 
-**Point-in-Time Recovery (PITR)** lets you recover your database to any second within the last seven days. It does not require you to set up anything in advance - Firestore continuously tracks changes. But PITR only works for the same database in the same project, and the retention window is fixed at seven days.
+**Point-in-Time Recovery (PITR)** lets you recover data from timestamps within the last seven days after you enable it. Whole-database clone and export operations use minute-granularity timestamps, while surgical reads can be used to recover smaller portions of data. The PITR retention window is fixed at seven days.
 
 The best approach is to use both: PITR for quick recoveries from recent incidents, and scheduled exports for long-term archival and cross-project recovery.
 
@@ -33,18 +33,18 @@ gcloud firestore databases update \
   --project=my-project
 ```
 
-Once enabled, you can recover to any point within the seven-day window:
+Once enabled, you can clone the database from a whole-minute timestamp within the seven-day window:
 
 ```bash
-# Restore to a specific point in time (ISO 8601 format)
-gcloud firestore databases restore \
-  --source-database='(default)' \
+# Clone from a specific point in time (RFC 3339 format)
+gcloud firestore databases clone \
+  --source-database='projects/my-project/databases/(default)' \
   --destination-database='restored-db' \
-  --snapshot-time='2026-02-15T14:30:00Z' \
+  --snapshot-time='2026-02-15T14:30:00.00Z' \
   --project=my-project
 ```
 
-Note that PITR restores create a new database - they do not overwrite the existing one. This is actually a good safety feature because it lets you inspect the restored data before replacing anything.
+Note that PITR clones create a new database - they do not overwrite the existing one. This is actually a good safety feature because it lets you inspect the restored data before replacing anything.
 
 ## Setting Up Automated Exports
 
@@ -130,7 +130,7 @@ The requirements file for this function:
 ```text
 # requirements.txt
 functions-framework==3.*
-google-cloud-firestore-admin==1.*
+google-cloud-firestore==2.*
 ```
 
 Deploy the function:
@@ -138,6 +138,7 @@ Deploy the function:
 ```bash
 # Deploy the export function
 gcloud functions deploy firestore-export \
+  --gen2 \
   --runtime python312 \
   --trigger-http \
   --entry-point export_firestore \
@@ -151,7 +152,7 @@ gcloud functions deploy firestore-export \
 
 ### Set Up the Service Account
 
-The service account needs permissions to export Firestore data and write to Cloud Storage:
+The service account needs permissions to export Firestore data, access the Cloud Storage bucket, and invoke the secured function from Cloud Scheduler:
 
 ```bash
 # Create a dedicated service account for backups
@@ -164,10 +165,18 @@ gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:firestore-backup@my-project.iam.gserviceaccount.com" \
   --role="roles/datastore.importExportAdmin"
 
-# Grant Cloud Storage write permission
+# Grant Cloud Storage permission for the export destination
 gsutil iam ch \
-  serviceAccount:firestore-backup@my-project.iam.gserviceaccount.com:objectCreator \
+  serviceAccount:firestore-backup@my-project.iam.gserviceaccount.com:roles/storage.admin \
   gs://my-firestore-backups
+
+# Allow Cloud Scheduler to invoke the secured 2nd gen function
+gcloud functions add-iam-policy-binding firestore-export \
+  --region=us-central1 \
+  --gen2 \
+  --member="serviceAccount:firestore-backup@my-project.iam.gserviceaccount.com" \
+  --role="roles/run.invoker" \
+  --project=my-project
 ```
 
 ### Schedule the Export
@@ -181,7 +190,7 @@ gcloud scheduler jobs create http firestore-daily-export \
   --schedule="0 2 * * *" \
   --uri="https://us-central1-my-project.cloudfunctions.net/firestore-export" \
   --http-method=POST \
-  --body='{"collection_ids": []}' \
+  --message-body='{"collection_ids": []}' \
   --headers="Content-Type=application/json" \
   --oidc-service-account-email=firestore-backup@my-project.iam.gserviceaccount.com \
   --project=my-project
@@ -196,7 +205,7 @@ gcloud scheduler jobs create http firestore-hourly-critical \
   --schedule="0 * * * *" \
   --uri="https://us-central1-my-project.cloudfunctions.net/firestore-export" \
   --http-method=POST \
-  --body='{"collection_ids": ["users", "orders", "payments"]}' \
+  --message-body='{"collection_ids": ["users", "orders", "payments"]}' \
   --headers="Content-Type=application/json" \
   --oidc-service-account-email=firestore-backup@my-project.iam.gserviceaccount.com \
   --project=my-project
@@ -210,7 +219,7 @@ When you need to restore data, you import from the Cloud Storage export:
 # List available exports
 gsutil ls gs://my-firestore-backups/exports/
 
-# Import a specific export into a new database
+# Import a specific export into the default database
 gcloud firestore import gs://my-firestore-backups/exports/2026-02-15_02-00-00 \
   --project=my-project
 ```
@@ -239,7 +248,7 @@ Your backup system is only as good as your monitoring. Here is a Cloud Function 
 # monitor_backups.py - Verify that backups are running on schedule
 import functions_framework
 from google.cloud import storage
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 
 @functions_framework.http
@@ -252,14 +261,14 @@ def check_backup_health(request):
     bucket = client.bucket(bucket_name)
 
     # List recent exports
-    cutoff = datetime.utcnow() - timedelta(hours=max_age_hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
     blobs = list(bucket.list_blobs(prefix='exports/'))
 
     # Find the most recent export
     latest = None
     for blob in blobs:
-        if blob.time_created.replace(tzinfo=None) > (latest or cutoff):
-            latest = blob.time_created.replace(tzinfo=None)
+        if blob.time_created > (latest or cutoff):
+            latest = blob.time_created
 
     if latest and latest > cutoff:
         return json.dumps({
@@ -273,6 +282,8 @@ def check_backup_health(request):
             'message': f'No backup found within the last {max_age_hours} hours',
         }), 500
 ```
+
+If you deploy this monitoring function separately, include `google-cloud-storage==2.*` in its `requirements.txt`.
 
 ## Building a Complete Backup Strategy
 
