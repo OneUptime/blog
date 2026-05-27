@@ -8,7 +8,7 @@ Description: Learn how to use preemptible VMs with GPUs on GCP for cost-effectiv
 
 ---
 
-GPU instances are expensive. An A100 GPU on GCP costs several dollars per hour on demand. If you are running training jobs that take hours or days, the costs add up fast. Preemptible (Spot) VMs with GPUs offer the same hardware at 60-91% less, making them a game-changer for ML training workloads - if you design your training pipeline to handle interruptions.
+GPU instances are expensive. An A100 GPU on GCP costs several dollars per hour on demand. If you are running training jobs that take hours or days, the costs add up fast. Spot VMs (the current version of preemptible VMs) with GPUs offer the same hardware at up to 91% less, making them a game-changer for ML training workloads - if you design your training pipeline to handle interruptions.
 
 In this post, I will show you how to set up preemptible GPU instances, implement checkpointing so you do not lose progress when a VM is preempted, and build a fault-tolerant training loop that automatically resumes after interruption.
 
@@ -23,7 +23,7 @@ The savings are substantial. Here is a comparison for common GPU types (approxim
 | NVIDIA A100 40GB | $3.67 | $1.10 | 70% |
 | NVIDIA A100 80GB | $5.07 | $1.52 | 70% |
 
-These are just the GPU costs - you also save on the underlying VM instance. For a training job that runs for 100 GPU-hours, you could save thousands of dollars.
+These are just the GPU costs - you also save on the underlying VM instance. For a training job that runs for 100 GPU-hours, you could save hundreds of dollars; larger multi-GPU jobs can save much more.
 
 ## Creating a Preemptible GPU Instance
 
@@ -34,7 +34,7 @@ gcloud compute instances create ml-trainer \
     --zone=us-central1-a \
     --machine-type=n1-standard-8 \
     --accelerator=type=nvidia-tesla-t4,count=1 \
-    --image-family=pytorch-latest-gpu-debian-11 \
+    --image-family=pytorch-latest-gpu \
     --image-project=deeplearning-platform-release \
     --boot-disk-size=200GB \
     --boot-disk-type=pd-ssd \
@@ -60,7 +60,7 @@ For repeatable setups, create an instance template:
 gcloud compute instance-templates create ml-training-preemptible \
     --machine-type=n1-standard-8 \
     --accelerator=type=nvidia-tesla-t4,count=1 \
-    --image-family=pytorch-latest-gpu-debian-11 \
+    --image-family=pytorch-latest-gpu \
     --image-project=deeplearning-platform-release \
     --boot-disk-size=200GB \
     --boot-disk-type=pd-ssd \
@@ -145,10 +145,12 @@ class CheckpointManager:
 
 def train(model, optimizer, dataloader, checkpoint_mgr, start_epoch, start_step, num_epochs):
     """Training loop with periodic checkpointing."""
+    global current_epoch, current_step, current_loss
     criterion = nn.CrossEntropyLoss()
     global_step = start_step
 
     for epoch in range(start_epoch, num_epochs):
+        current_epoch = epoch
         model.train()
 
         for batch_idx, (data, target) in enumerate(dataloader):
@@ -165,6 +167,8 @@ def train(model, optimizer, dataloader, checkpoint_mgr, start_epoch, start_step,
             optimizer.step()
 
             global_step += 1
+            current_step = global_step
+            current_loss = loss.item()
 
             if global_step % 100 == 0:
                 print(f"Epoch {epoch}, Step {global_step}, Loss: {loss.item():.4f}")
@@ -185,13 +189,14 @@ model = None
 optimizer = None
 current_epoch = 0
 current_step = 0
+current_loss = 0.0
 
 
 def handle_shutdown(signum, frame):
     """Save a checkpoint when the VM is being preempted."""
     print(f"Received signal {signum}, saving emergency checkpoint...")
     if checkpoint_mgr and model and optimizer:
-        checkpoint_mgr.save(model, optimizer, current_epoch, current_step, 0.0)
+        checkpoint_mgr.save(model, optimizer, current_epoch, current_step, current_loss)
     sys.exit(0)
 
 
@@ -211,7 +216,7 @@ if __name__ == "__main__":
 
     # Create data loader
     dataset = MyDataset()
-    dataloader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=4)
+    dataloader = DataLoader(dataset, batch_size=64, shuffle=False, num_workers=4)
 
     # Train
     train(model, optimizer, dataloader, checkpoint_mgr, start_epoch, start_step, num_epochs=100)
@@ -299,7 +304,7 @@ while true; do
         --zone="$ZONE" \
         --format="value(status)" 2>/dev/null)
 
-    if [ "$STATUS" = "TERMINATED" ] || [ "$STATUS" = "STOPPED" ]; then
+    if [ "$STATUS" = "TERMINATED" ]; then
         echo "$(date): Instance is $STATUS, attempting restart..."
         gcloud compute instances start "$INSTANCE_NAME" --zone="$ZONE" 2>/dev/null
 
@@ -350,7 +355,7 @@ resource "google_compute_instance" "ml_trainer" {
 
   boot_disk {
     initialize_params {
-      image = "deeplearning-platform-release/pytorch-latest-gpu-debian-11"
+      image = "deeplearning-platform-release/pytorch-latest-gpu"
       size  = 200
       type  = "pd-ssd"
     }
@@ -384,7 +389,7 @@ gcloud compute instances create ml-multi-gpu \
     --zone=us-central1-a \
     --machine-type=n1-standard-32 \
     --accelerator=type=nvidia-tesla-t4,count=4 \
-    --image-family=pytorch-latest-gpu-debian-11 \
+    --image-family=pytorch-latest-gpu \
     --image-project=deeplearning-platform-release \
     --boot-disk-size=500GB \
     --boot-disk-type=pd-ssd \
@@ -414,7 +419,7 @@ Elastic training handles nodes joining and leaving the training job gracefully -
 2. **Use off-peak hours**: Preemption rates tend to be lower during nights and weekends.
 3. **Try different GPU types**: If T4 capacity is tight, V100 or A100 might be available (and vice versa).
 4. **Checkpoint frequently**: The more often you save, the less work you lose. Every 5-10 minutes is a good target.
-5. **Use local SSD for data staging**: Loading training data from local SSD is faster and reduces the impact of preemption on data pipelines.
+5. **Use persistent disk or Cloud Storage for data staging**: Loading staged training data locally is faster, but Local SSD data is lost when the VM stops.
 6. **Monitor your costs**: Set up budget alerts so preemptible instances do not run longer than intended.
 
 ## Best Practices
