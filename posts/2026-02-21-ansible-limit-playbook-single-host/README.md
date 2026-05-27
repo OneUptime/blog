@@ -12,7 +12,7 @@ You wrote a playbook that targets all your web servers, but right now you only w
 
 ## Basic Usage of --limit
 
-The `--limit` flag restricts execution to the hosts you specify, regardless of what the playbook's `hosts` directive says.
+The `--limit` flag restricts execution to the hosts you specify, after Ansible has applied the playbook's `hosts` directive.
 
 ```bash
 # Run the playbook only on web01
@@ -107,7 +107,7 @@ EOF
 ansible-playbook -i inventory.ini site.yml --limit @limit-hosts.txt
 ```
 
-This is especially useful after a failed run. Ansible automatically creates a `.retry` file listing the hosts that failed, and you can use it to rerun only on those hosts.
+This is especially useful after a failed run. If `retry_files_enabled` is set to `True`, Ansible creates a `.retry` file listing the hosts that failed, and you can use it to rerun only on those hosts.
 
 ```bash
 # After a partial failure, rerun on only the failed hosts
@@ -135,20 +135,23 @@ If you limit to a host that is not in the playbook's target group, nothing will 
 ansible-playbook -i inventory.ini site.yml --limit db01
 ```
 
-You will see this warning:
+You will see that the play has no hosts to run on:
 
 ```text
-[WARNING]: Could not match supplied host pattern, ignoring: db01
+PLAY [Configure web servers] ***************************************************
+skipping: no hosts matched
 ```
 
 ## Limiting to a Single Host by IP
 
-You can also limit by IP address if that is how your inventory is defined.
+You can also limit by IP address if the IP address is the inventory hostname.
 
 ```bash
 # Limit by IP address
 ansible-playbook -i inventory.ini site.yml --limit 192.168.1.10
 ```
+
+If your inventory defines an alias such as `web01 ansible_host=192.168.1.10`, use the alias (`web01`) in the limit pattern instead of the `ansible_host` value.
 
 ## Real-World Scenarios
 
@@ -185,17 +188,9 @@ If a host is in maintenance mode, exclude it from the run.
 ansible-playbook -i production.ini deploy.yml --limit "webservers:!web02"
 ```
 
-## Setting Limit in ansible.cfg
+## Avoid Setting Limit in ansible.cfg
 
-If you frequently limit to a specific subset during development, you can set a default limit in your configuration.
-
-```ini
-# ansible.cfg - sets a default limit (rarely used in production)
-[defaults]
-limit = web01
-```
-
-However, this is generally a bad idea for production because you might forget it is there and wonder why your playbook is only running on one host. It is better to always pass `--limit` explicitly on the command line.
+Ansible does not provide a documented `ansible.cfg` setting that is equivalent to the `--limit` flag. It is better to always pass `--limit` explicitly on the command line, especially in production.
 
 ## Combining --limit with --list-hosts
 
