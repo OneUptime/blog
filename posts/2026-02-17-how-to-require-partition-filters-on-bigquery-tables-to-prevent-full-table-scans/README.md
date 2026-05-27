@@ -121,7 +121,7 @@ CREATE TABLE `my_project.my_dataset.raw_events`
 (
   data STRING
 )
-PARTITION BY DATE(_PARTITIONTIME)
+PARTITION BY _PARTITIONDATE
 OPTIONS (
   require_partition_filter = true
 );
@@ -145,7 +145,7 @@ bq update \
 
 # Disable it if needed
 bq update \
-  --norequire_partition_filter \
+  --require_partition_filter=false \
   my_project:my_dataset.events
 ```
 
@@ -230,10 +230,24 @@ SELECT
     '` SET OPTIONS (require_partition_filter = true);'
   ) AS alter_statement
 FROM `my_project.my_dataset.INFORMATION_SCHEMA.TABLES`
+  AS t
 WHERE table_type = 'BASE TABLE'
-  AND CONCAT(table_catalog, '.', table_schema, '.', table_name) IN (
-    SELECT DISTINCT table_catalog || '.' || table_schema || '.' || table_name
-    FROM `my_project.my_dataset.INFORMATION_SCHEMA.PARTITIONS`
+  AND EXISTS (
+    SELECT 1
+    FROM `my_project.my_dataset.INFORMATION_SCHEMA.PARTITIONS` p
+    WHERE p.table_catalog = t.table_catalog
+      AND p.table_schema = t.table_schema
+      AND p.table_name = t.table_name
+      AND p.partition_id IS NOT NULL
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM `my_project.my_dataset.INFORMATION_SCHEMA.TABLE_OPTIONS` o
+    WHERE o.table_catalog = t.table_catalog
+      AND o.table_schema = t.table_schema
+      AND o.table_name = t.table_name
+      AND o.option_name = 'require_partition_filter'
+      AND SAFE_CAST(o.option_value AS BOOL) = true
   );
 ```
 
