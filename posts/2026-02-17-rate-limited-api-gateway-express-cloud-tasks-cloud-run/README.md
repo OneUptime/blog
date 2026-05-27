@@ -125,6 +125,7 @@ The more powerful pattern uses Cloud Tasks to control the processing rate. Inste
 ```javascript
 // queue-gateway.js - Accept requests and queue for controlled processing
 const express = require('express');
+const { randomUUID } = require('crypto');
 const { CloudTasksClient } = require('@google-cloud/tasks');
 
 const app = express();
@@ -162,6 +163,7 @@ app.post('/api/process', async (req, res) => {
   const queue = QUEUES[tier];
 
   const queuePath = tasksClient.queuePath(PROJECT_ID, LOCATION, queue.name);
+  const requestId = `req-${randomUUID()}`;
 
   try {
     // Create a task that will be processed at the controlled rate
@@ -173,7 +175,7 @@ app.post('/api/process', async (req, res) => {
           'Content-Type': 'application/json',
         },
         body: Buffer.from(JSON.stringify({
-          requestId: `req-${Date.now()}`,
+          requestId,
           apiKey,
           payload: req.body,
           receivedAt: new Date().toISOString(),
@@ -181,14 +183,14 @@ app.post('/api/process', async (req, res) => {
       },
     };
 
-    const [response] = await tasksClient.createTask({
+    await tasksClient.createTask({
       parent: queuePath,
       task,
     });
 
     // Respond immediately with a job ID
     res.status(202).json({
-      jobId: response.name.split('/').pop(),
+      jobId: requestId,
       status: 'queued',
       tier,
       estimatedProcessingRate: `${queue.maxDispatchesPerSecond} requests/second`,
