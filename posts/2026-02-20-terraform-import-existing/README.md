@@ -117,7 +117,7 @@ resource "aws_s3_bucket" "assets" {
 resource "aws_db_instance" "main" {
   identifier     = "production-main-db"
   instance_class = "db.t3.medium"
-  engine         = "postgresql"
+  engine         = "postgres"
   engine_version = "15"
 }
 ```
@@ -150,7 +150,7 @@ import {
 terraform plan -generate-config-out=generated.tf
 ```
 
-This creates a `generated.tf` file with the full resource configuration based on the current state. Review and clean it up before committing.
+This creates a `generated.tf` file with generated HCL based on the current state. Review and clean it up before committing.
 
 ## Importing Multiple Resources
 
@@ -194,12 +194,12 @@ import {
 
 import {
   to = aws_subnet.private_a
-  id = "subnet-0ggg555hhh666iii"
+  id = "subnet-0aaa555bbb666ccc"
 }
 
 import {
   to = aws_internet_gateway.main
-  id = "igw-0jjj777kkk888lll"
+  id = "igw-0ddd777eee888fff"
 }
 ```
 
@@ -302,7 +302,7 @@ terraform plan
 | 5 | Run terraform plan to preview |
 | 6 | Fix configuration diffs |
 | 7 | Run terraform apply to complete import |
-| 8 | Remove import blocks after successful import |
+| 8 | Remove import blocks after successful import, or keep them as a historical record |
 | 9 | Commit all changes to version control |
 
 ## Post-Import: Lifecycle Rules
@@ -314,7 +314,7 @@ After importing, protect critical resources from accidental deletion.
 resource "aws_db_instance" "main" {
   identifier     = "production-main-db"
   instance_class = "db.t3.medium"
-  engine         = "postgresql"
+  engine         = "postgres"
 
   # Safety net: prevent accidental destruction
   lifecycle {
