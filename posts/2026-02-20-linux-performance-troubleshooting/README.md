@@ -8,7 +8,7 @@ Description: A practical guide to troubleshooting Linux performance issues using
 
 ---
 
-When a Linux server slows down, you need a systematic approach to find the bottleneck. Is it CPU, memory, disk I/O, or network? This guide walks through a practical troubleshooting methodology using tools that are available on every Linux system.
+When a Linux server slows down, you need a systematic approach to find the bottleneck. Is it CPU, memory, disk I/O, or network? This guide walks through a practical troubleshooting methodology using common Linux tools, some of which may need to be installed from your distribution's packages.
 
 ## The USE Method
 
@@ -31,7 +31,7 @@ graph TD
     D --> D3[Errors: dmesg OOM]
 
     E --> E1[Utilization: iostat]
-    E --> E2[Saturation: iostat avgqu-sz]
+    E --> E2[Saturation: iostat aqu-sz]
     E --> E3[Errors: dmesg, smartctl]
 
     F --> F1[Utilization: sar -n DEV]
@@ -84,8 +84,8 @@ htop
 # Watch for high %iowait (waiting on disk) or %steal (VM contention)
 mpstat -P ALL 2 5
 
-# Identify which processes are using the most CPU
-# Sort by cumulative CPU time
+# Identify which processes have high CPU utilization
+# Sort by %CPU (CPU time divided by process lifetime)
 ps aux --sort=-%cpu | head -20
 
 # Check the run queue length with vmstat
@@ -156,8 +156,9 @@ sudo yum install sysstat   # RHEL/CentOS
 
 # Disk I/O statistics per device
 # Key columns:
-#   %util  = how busy the device is (100% = fully saturated)
-#   await  = average I/O wait time in ms (should be < 10ms for SSDs)
+#   %util  = time with I/O issued; near 100% can indicate saturation on serial devices
+#   await  = average I/O request time in ms (compare against your storage baseline)
+#   aqu-sz = average queue length (called avgqu-sz in older sysstat versions)
 #   r/s, w/s = reads and writes per second
 iostat -xz 2 10
 
@@ -171,8 +172,8 @@ ps aux | awk '$8 ~ /D/'
 # Check disk health with SMART data
 sudo smartctl -a /dev/sda
 
-# Check filesystem-level I/O with strace on a specific process
-strace -e trace=read,write,open -c -p <PID>
+# Check file-related syscalls and I/O with strace on a specific process
+strace -e trace=%file,read,write -c -p <PID>
 ```
 
 ## Step 5: Network Troubleshooting
@@ -209,14 +210,14 @@ dig oneuptime.com | grep "Query time"
 The `sar` tool collects and reports historical system activity.
 
 ```bash
-# Enable sar data collection (usually in /etc/default/sysstat)
+# Enable sar data collection on Debian/Ubuntu (usually in /etc/default/sysstat)
 sudo sed -i 's/ENABLED="false"/ENABLED="true"/' /etc/default/sysstat
 sudo systemctl restart sysstat
 
 # View CPU usage from today
 sar -u
 
-# View CPU usage from a specific date
+# View CPU usage from a specific day file on Debian/Ubuntu
 sar -u -f /var/log/sysstat/sa20
 
 # View memory usage history
