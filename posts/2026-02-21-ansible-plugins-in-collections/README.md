@@ -239,7 +239,7 @@ Once installed, reference plugins using the FQCN:
           - "'192.168.1.1' is myorg.myutils.valid_ipv4"
 ```
 
-You can also set the `collections` keyword to avoid repeating the FQCN, but the explicit FQCN approach is preferred for clarity.
+The `collections` keyword can shorten module and action plugin names, but lookups, filters, tests, and other non-action plugins still require the FQCN. The explicit FQCN approach is preferred for clarity.
 
 ## Building and Installing
 
@@ -292,11 +292,11 @@ tests/
           main.yml
 ```
 
-Run unit tests with pytest:
+Run unit tests with `ansible-test`:
 
 ```bash
 cd collections/ansible_collections/myorg/myutils
-python -m pytest tests/unit/ -v
+ansible-test units --docker default -v
 ```
 
 For integration tests, use `ansible-test`:
