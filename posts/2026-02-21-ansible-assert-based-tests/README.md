@@ -51,7 +51,7 @@ Install the required testing tools:
 ```bash
 # Install testing tools
 
-pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest testinfra
+pip install ansible molecule "molecule-plugins[docker]" ansible-lint yamllint pytest pytest-testinfra
 ```
 
 ## Writing Tests
@@ -112,8 +112,8 @@ verifier:
     - name: Assert service is active
       ansible.builtin.assert:
         that:
-          - "'my_service' in ansible_facts.services"
-          - "ansible_facts.services['my_service'].state == 'running'"
+          - "'my_service.service' in ansible_facts.services"
+          - "ansible_facts.services['my_service.service'].state == 'running'"
         fail_msg: "Service my_service is not running"
 
     - name: Check configuration file exists
@@ -178,16 +178,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        distro: [ubuntu2404, rocky9, debian12]
+        distro: [ubuntu2404, rocky9]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install ansible molecule molecule-docker
-      - run: molecule test
-        env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
+      - run: pip install ansible molecule "molecule-plugins[docker]"
+      - run: molecule test -- --limit ${{ matrix.distro }}
 ```
 
 ### GitLab CI
@@ -211,9 +209,12 @@ molecule:
   image: docker:latest
   services:
     - docker:dind
+  before_script:
+    - apk add --no-cache python3 py3-pip py3-virtualenv
+    - python3 -m venv /tmp/molecule-venv
   script:
-    - pip install ansible molecule molecule-docker
-    - molecule test
+    - /tmp/molecule-venv/bin/pip install ansible molecule "molecule-plugins[docker]"
+    - /tmp/molecule-venv/bin/molecule test
 ```
 
 ## Advanced Testing Patterns
@@ -303,7 +304,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -322,9 +323,15 @@ Here are several practical scenarios where this module proves essential in real-
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
+
+    - name: Install UFW on Debian systems
+      ansible.builtin.package:
+        name: ufw
+        state: present
+      when: ansible_os_family == 'Debian'
 
     - name: Configure firewall rules
       community.general.ufw:
@@ -335,16 +342,18 @@ Here are several practical scenarios where this module proves essential in real-
         - "22"
         - "80"
         - "443"
+      when: ansible_os_family == 'Debian'
 
     - name: Enable firewall
       community.general.ufw:
         state: enabled
         policy: deny
+      when: ansible_os_family == 'Debian'
 
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -398,6 +407,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -422,6 +432,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -447,4 +463,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
