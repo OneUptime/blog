@@ -21,13 +21,11 @@ flowchart TD
     A --> D[ARP Cache Staleness]
     A --> E[Conntrack Collisions]
     A --> F[MTU Mismatches]
-    A --> G[Network Policy Races]
     B --> B1[Leader election flapping]
     C --> C1[Pods restarting or scaling]
     D --> D1[Upstream router cache timeout]
     E --> E1[High connection rate SNAT conflicts]
     F --> F1[Jumbo frames on partial path]
-    G --> G1[Policy applied before pod ready]
 ```
 
 ## Issue 1: Speaker Failover Causing Traffic Gaps
@@ -65,7 +63,7 @@ The fix depends on why failover is happening:
 
 ```bash
 # Check if nodes are becoming NotReady temporarily
-# This forces speaker pods to restart on those nodes
+# This can make speakers unavailable and trigger ownership changes
 kubectl get events -A \
   --field-selector reason=NodeNotReady \
   --sort-by=.metadata.creationTimestamp
@@ -84,7 +82,9 @@ When backend pods restart, scale, or get rescheduled, there is a window where ku
 ```bash
 # Watch endpoint changes in real-time
 # Frequent changes indicate pod instability
-kubectl get endpoints my-service --watch
+kubectl get endpointslice \
+  -l kubernetes.io/service-name=my-service \
+  --watch
 
 # Check pod readiness status and recent restarts
 kubectl get pods -l app=my-app \
@@ -159,18 +159,18 @@ sudo tcpdump -i eth0 'arp' -nn -e \
   | grep -i "reply\|is-at"
 ```
 
-If your network equipment has long ARP cache timeouts, you can reduce them or configure MetalLB to send additional gratuitous ARPs:
+If your network equipment has long ARP cache timeouts, reduce them on the relevant devices if they support it. On Linux clients or nodes, these neighbor-cache settings control how long entries remain reachable or stale:
 
 ```bash
-# Reduce the ARP cache timeout on all nodes
-# This helps upstream devices learn the new MAC faster after failover
+# Reduce neighbor cache timers on Linux hosts
+# This affects the local host's neighbor cache, not upstream device caches
 sudo sysctl -w net.ipv4.neigh.eth0.gc_stale_time=30
 sudo sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=15000
 ```
 
 ## Issue 4: Conntrack Table Collisions
 
-When using `externalTrafficPolicy: Cluster`, kube-proxy performs SNAT. Under high connection rates, conntrack entries can collide, causing dropped packets.
+When using `externalTrafficPolicy: Cluster`, kube-proxy can SNAT external traffic that is forwarded to endpoints on other nodes. Under high connection rates, conntrack pressure or insert failures can cause dropped packets.
 
 ```bash
 # Check the conntrack table size and usage
@@ -178,8 +178,8 @@ cat /proc/sys/net/netfilter/nf_conntrack_count
 cat /proc/sys/net/netfilter/nf_conntrack_max
 
 # Check for conntrack insert failures
-# These indicate table full or hash collisions
-grep "insert_failed\|drop\|early_drop" /proc/net/stat/nf_conntrack
+# These indicate table pressure or failed conntrack inserts
+sudo conntrack -S | grep -E "insert_failed|drop|early_drop"
 
 # Check conntrack entries for the LoadBalancer IP
 sudo conntrack -L -d 192.168.1.240 | wc -l
@@ -197,15 +197,15 @@ echo "net.netfilter.nf_conntrack_max=524288" | sudo tee -a /etc/sysctl.conf
 ```
 
 ```yaml
-# Switch to Local traffic policy to avoid SNAT entirely
-# This preserves client IPs and avoids conntrack SNAT collisions
+# Switch to Local traffic policy to avoid cross-node SNAT for external traffic
+# This preserves client IPs but only sends traffic to node-local endpoints
 apiVersion: v1
 kind: Service
 metadata:
   name: my-service
 spec:
   type: LoadBalancer
-  externalTrafficPolicy: Local  # No SNAT, no conntrack collisions
+  externalTrafficPolicy: Local  # Preserves source IP for external traffic
   selector:
     app: my-app
   ports:
@@ -244,8 +244,8 @@ flowchart LR
 
 ## Conclusion
 
-Intermittent MetalLB traffic issues almost always come from one of these six categories: speaker failover, endpoint churn, ARP cache staleness, conntrack collisions, MTU mismatches, or network policy races. The key to diagnosis is collecting data during the failure window - timestamps, logs, and packet captures that coincide with the intermittent failures.
+Intermittent MetalLB traffic issues often come from one of these five categories: speaker failover, endpoint churn, ARP cache staleness, conntrack pressure, or MTU mismatches. The key to diagnosis is collecting data during the failure window - timestamps, logs, and packet captures that coincide with the intermittent failures.
 
-Run the monitoring script above to establish a timeline of failures, then correlate those timestamps with MetalLB speaker logs, endpoint changes, and node events to find the root cause.
+Run the commands above to establish a timeline of failures, then correlate those timestamps with MetalLB speaker logs, EndpointSlice changes, and node events to find the root cause.
 
 For production-grade monitoring of MetalLB services, [OneUptime](https://oneuptime.com) provides continuous external health checks with detailed response time tracking. OneUptime can detect intermittent failures, measure their frequency and duration, and alert your team with full context, making it far easier to correlate failures with infrastructure events and resolve intermittent issues quickly.
