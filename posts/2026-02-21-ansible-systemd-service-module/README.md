@@ -202,6 +202,8 @@ Here is a complete example of creating a custom systemd service for a Go applica
           Documentation=https://docs.company.com/{{ app_name }}
           After=network-online.target
           Wants=network-online.target
+          StartLimitIntervalSec=60
+          StartLimitBurst=3
 
           [Service]
           Type=simple
@@ -212,8 +214,6 @@ Here is a complete example of creating a custom systemd service for a Go applica
           ExecReload=/bin/kill -HUP $MAINPID
           Restart=on-failure
           RestartSec=5
-          StartLimitIntervalSec=60
-          StartLimitBurst=3
 
           # Security hardening
           NoNewPrivileges=true
@@ -320,7 +320,7 @@ systemd timers are the modern replacement for cron jobs. You can manage them wit
 
 ## Gathering Service Facts
 
-The `systemd_service` module can also gather facts about services.
+Use the `service_facts` module to gather facts about services.
 
 ```yaml
 # Gather systemd service facts
