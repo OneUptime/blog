@@ -8,7 +8,7 @@ Description: Learn how to build real-time data processing pipelines using Apache
 
 ---
 
-Batch processing was the standard for years. Collect data, wait, process, wait, deliver results. But modern systems need answers in seconds, not hours. Apache Kafka handles the ingestion side with durable, ordered message streams. Apache Flink processes those streams with exactly-once semantics and low latency.
+Batch processing was the standard for years. Collect data, wait, process, wait, deliver results. But modern systems need answers in seconds, not hours. Apache Kafka handles the ingestion side with durable, partition-ordered message streams. Apache Flink can process those streams with exactly-once semantics and low latency.
 
 This guide covers how to wire these two together into a production-ready real-time data pipeline.
 
@@ -80,6 +80,8 @@ config = {
     "acks": "all",
     # Retry transient failures up to 5 times
     "retries": 5,
+    # Preserve ordering and avoid duplicates across retries
+    "enable.idempotence": True,
     # Batch messages for throughput
     "batch.size": 16384,
     # Wait up to 10ms to fill a batch
@@ -136,17 +138,17 @@ This Flink job reads from Kafka, enriches events, filters noise, and writes resu
 // EventProcessingJob.java
 // Flink job that consumes raw events from Kafka,
 // enriches them with geo data, filters bot traffic,
-// and produces processed events and alerts
+// and produces processed events
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.windowing.time.Time;
 
 public class EventProcessingJob {
 
@@ -155,7 +157,7 @@ public class EventProcessingJob {
         StreamExecutionEnvironment env =
             StreamExecutionEnvironment.getExecutionEnvironment();
 
-        // Enable checkpointing every 30 seconds for exactly-once guarantees
+        // Enable checkpointing every 30 seconds for exactly-once state consistency
         env.enableCheckpointing(30000);
 
         // Configure Kafka source to read raw events
@@ -194,6 +196,8 @@ public class EventProcessingJob {
                     .setValueSerializationSchema(new SimpleStringSchema())
                     .build()
             )
+            .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
+            .setTransactionalIdPrefix("event-processor")
             .build();
 
         processed.sinkTo(processedSink);
@@ -211,11 +215,13 @@ public class EventProcessingJob {
 // Detects anomalies by counting error events in tumbling windows
 // Fires an alert if error count exceeds a threshold within a window
 
+import java.time.Duration;
+
 DataStream<Alert> alerts = processedEvents
     // Key by the service that generated the event
     .keyBy(event -> event.getServiceName())
     // Tumble every 60 seconds
-    .window(TumblingEventTimeWindows.of(Time.seconds(60)))
+    .window(TumblingEventTimeWindows.of(Duration.ofSeconds(60)))
     // Count error events in each window
     .process(new ProcessWindowFunction<Event, Alert, String, TimeWindow>() {
         @Override
@@ -322,9 +328,9 @@ Track these metrics to ensure pipeline health:
 
 ## Key Takeaways
 
-- Use Kafka for durable, ordered event ingestion and Flink for stateful stream processing.
+- Use Kafka for durable, partition-ordered event ingestion and Flink for stateful stream processing.
 - Partition Kafka topics by a key that matches your processing needs, such as user ID or service name.
-- Enable Flink checkpointing for exactly-once semantics across the entire pipeline.
+- Enable Flink checkpointing and exactly-once-capable sinks for exactly-once semantics across the entire pipeline.
 - Use tumbling or sliding windows in Flink to aggregate events for anomaly detection.
 - Monitor consumer lag, checkpoint duration, and backpressure to catch pipeline issues early.
 
