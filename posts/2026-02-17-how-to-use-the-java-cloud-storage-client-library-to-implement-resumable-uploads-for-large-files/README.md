@@ -29,7 +29,7 @@ If the upload is interrupted, you can query the session URI to find out how much
 <dependency>
     <groupId>com.google.cloud</groupId>
     <artifactId>google-cloud-storage</artifactId>
-    <version>2.32.0</version>
+    <version>2.68.0</version>
 </dependency>
 ```
 
@@ -38,6 +38,17 @@ If the upload is interrupted, you can query the session URI to find out how much
 The simplest way to do a resumable upload is with the `WriteChannel` API. The library handles chunking and resumption automatically.
 
 ```java
+import com.google.cloud.storage.BlobId;
+import com.google.cloud.storage.BlobInfo;
+import com.google.cloud.storage.Storage;
+import com.google.cloud.storage.StorageOptions;
+import com.google.cloud.WriteChannel;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 public class StorageUploader {
 
     private final Storage storage;
@@ -45,6 +56,10 @@ public class StorageUploader {
     public StorageUploader() {
         // Create the client with default credentials
         this.storage = StorageOptions.getDefaultInstance().getService();
+    }
+
+    public StorageUploader(Storage storage) {
+        this.storage = storage;
     }
 
     // Upload a file using a WriteChannel - automatically uses resumable upload
@@ -58,10 +73,10 @@ public class StorageUploader {
 
         // Open a WriteChannel - this initiates a resumable upload session
         try (WriteChannel writer = storage.writer(blobInfo)) {
-            // Set the chunk size (default is 15MB)
-            writer.setChunkSize(8 * 1024 * 1024); // 8MB chunks
+            // Set the buffer size (default is 15 MiB)
+            writer.setChunkSize(8 * 1024 * 1024); // 8 MiB buffer
 
-            // Read the file and write it in chunks
+            // Read the file and write it in buffered chunks
             byte[] buffer = new byte[8 * 1024 * 1024];
             try (InputStream inputStream = Files.newInputStream(filePath)) {
                 int bytesRead;
@@ -149,14 +164,39 @@ uploader.uploadWithProgress("my-bucket", "large-file.zip", filePath,
                         percent, formatBytes(uploaded), formatBytes(total)));
 ```
 
-## Manual Resumable Upload with Retry
+## Resumable Upload with Retry Settings
 
-For full control over resumption, you can manage the upload session manually:
+The Java client library already retries transient failures, such as connection errors, `408`, `429`, and `5xx` responses. For production use, configure the client retry settings instead of retrying by skipping bytes in the local file:
 
 ```java
-// Manual resumable upload with explicit retry handling
+import com.google.api.gax.retrying.RetrySettings;
+import com.google.cloud.storage.StorageOptions;
+import java.time.Duration;
+
+public static StorageUploader createUploaderWithRetries() {
+    RetrySettings retrySettings = StorageOptions.getDefaultRetrySettings().toBuilder()
+            .setMaxAttempts(6)
+            .setInitialRetryDelayDuration(Duration.ofSeconds(1))
+            .setRetryDelayMultiplier(2.0)
+            .setMaxRetryDelayDuration(Duration.ofSeconds(32))
+            .setTotalTimeoutDuration(Duration.ofMinutes(10))
+            .build();
+
+    Storage storage = StorageOptions.newBuilder()
+            .setRetrySettings(retrySettings)
+            .build()
+            .getService();
+
+    return new StorageUploader(storage);
+}
+```
+
+Then use the same `WriteChannel` upload code:
+
+```java
+// Resumable upload using the configured retry policy
 public void uploadWithRetry(String bucketName, String objectName, Path filePath,
-                             int maxRetries) throws IOException {
+                            ProgressCallback callback) throws IOException {
 
     long fileSize = Files.size(filePath);
     BlobId blobId = BlobId.of(bucketName, objectName);
@@ -164,59 +204,23 @@ public void uploadWithRetry(String bucketName, String objectName, Path filePath,
             .setContentType(detectContentType(filePath))
             .build();
 
-    int attempt = 0;
-    long bytesUploaded = 0;
-    WriteChannel writer = null;
+    try (WriteChannel writer = storage.writer(blobInfo);
+         InputStream inputStream = Files.newInputStream(filePath)) {
+        writer.setChunkSize(8 * 1024 * 1024);
 
-    while (attempt <= maxRetries) {
-        try {
-            if (writer == null) {
-                // Start a new upload session
-                writer = storage.writer(blobInfo);
-                writer.setChunkSize(8 * 1024 * 1024);
-                bytesUploaded = 0;
-            }
+        byte[] buffer = new byte[8 * 1024 * 1024];
+        long totalBytesWritten = 0;
+        int bytesRead;
 
-            // Read from where we left off
-            try (InputStream inputStream = Files.newInputStream(filePath)) {
-                // Skip already uploaded bytes
-                long skipped = inputStream.skip(bytesUploaded);
-                if (skipped != bytesUploaded) {
-                    throw new IOException("Could not skip to position: " + bytesUploaded);
-                }
+        while ((bytesRead = inputStream.read(buffer)) != -1) {
+            writer.write(ByteBuffer.wrap(buffer, 0, bytesRead));
+            totalBytesWritten += bytesRead;
 
-                byte[] buffer = new byte[8 * 1024 * 1024];
-                int bytesRead;
-
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    writer.write(ByteBuffer.wrap(buffer, 0, bytesRead));
-                    bytesUploaded += bytesRead;
-                }
-            }
-
-            // Close the writer to finalize the upload
-            writer.close();
-            System.out.println("Upload complete after " + (attempt + 1) + " attempt(s)");
-            return;
-
-        } catch (IOException e) {
-            attempt++;
-            System.err.println("Upload failed on attempt " + attempt + ": " + e.getMessage());
-
-            if (attempt > maxRetries) {
-                throw new IOException("Upload failed after " + maxRetries + " retries", e);
-            }
-
-            // Wait before retrying with exponential backoff
-            try {
-                long waitMs = (long) Math.pow(2, attempt) * 1000;
-                System.out.println("Retrying in " + waitMs + "ms...");
-                Thread.sleep(waitMs);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                throw new IOException("Upload interrupted", ie);
-            }
+            double progress = (double) totalBytesWritten / fileSize * 100;
+            callback.onProgress(totalBytesWritten, fileSize, progress);
         }
+
+        callback.onComplete(totalBytesWritten);
     }
 }
 ```
@@ -317,10 +321,10 @@ public class FileUploadController {
 
 ## Chunk Size Considerations
 
-The chunk size affects both memory usage and upload efficiency. Smaller chunks use less memory but make more HTTP requests. Larger chunks are more efficient but use more memory.
+The buffer size affects both memory usage and upload efficiency. Smaller buffers use less memory but make more HTTP requests. Larger buffers are more efficient but use more memory.
 
-For most cases, 8MB chunks work well. If you are on a fast network, increase to 16MB or 32MB. If memory is tight (like in a Cloud Function), reduce to 2MB or 4MB.
+For most cases, 8 MiB buffers work well. If you are on a fast network, increase to 16 MiB or 32 MiB. If memory is tight (like in a Cloud Function), reduce to 2 MiB or 4 MiB. The buffer size has a minimum of 256 KiB, and the client rounds it to a multiple of 256 KiB.
 
 ## Wrapping Up
 
-Resumable uploads are essential when working with large files on Cloud Storage. The Java client library's `WriteChannel` API handles the resumable upload protocol for you, including chunking and the session management. For production use, add progress tracking and retry logic with exponential backoff. The key is choosing the right chunk size for your environment and making sure your upload logic can handle network interruptions gracefully.
+Resumable uploads are essential when working with large files on Cloud Storage. The Java client library's `WriteChannel` API handles the resumable upload protocol for you, including buffering and session management. For production use, add progress tracking and configure retry settings with exponential backoff. The key is choosing the right buffer size for your environment and making sure your upload logic can handle network interruptions gracefully.
