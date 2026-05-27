@@ -173,14 +173,14 @@ jobs:
       # Authenticate to GCP using Workload Identity Federation
       - name: Authenticate to Google Cloud
         id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: 'projects/123456789/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
           service_account: 'github-actions-sa@my-project.iam.gserviceaccount.com'
 
       # Set up gcloud CLI
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       # Build and push the Docker image
       - name: Build and push container image
@@ -202,7 +202,7 @@ jobs:
 The critical parts:
 
 1. `permissions.id-token: write` - Allows the workflow to request an OIDC token
-2. `google-github-actions/auth@v2` - Handles the token exchange
+2. `google-github-actions/auth@v3` - Handles the token exchange
 3. No secrets needed - the authentication is based on the workflow's identity
 
 ## Restricting by Branch or Environment
@@ -225,8 +225,7 @@ Or use the service account binding to restrict by branch:
 gcloud iam service-accounts add-iam-policy-binding \
   github-actions-sa@my-project.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/attribute.repository/my-github-org/my-repo" \
-  --condition="expression=assertion.ref=='refs/heads/main',title=main-branch-only" \
+  --member="principal://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/subject/repo:my-github-org/my-repo:ref:refs/heads/main" \
   --project=my-project
 ```
 
