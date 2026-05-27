@@ -37,7 +37,7 @@ Before diving in, make sure you have:
 The most straightforward way to get started is through the Cloud Console.
 
 1. Navigate to **Monitoring** > **Alerting** > **Create Policy**
-2. Click **Select a metric** and switch to the **PromQL** tab
+2. Under **Policy configuration mode**, select **Code editor (MQL or PromQL)**
 3. Write your PromQL query
 4. Configure the alert duration and notification channels
 
@@ -73,10 +73,7 @@ The following JSON defines a complete alerting policy with a PromQL condition:
       }
     }
   ],
-  "notificationChannels": [],
-  "alertStrategy": {
-    "autoClose": "604800s"
-  }
+  "notificationChannels": []
 }
 ```
 
@@ -84,7 +81,7 @@ Apply this policy with the following command:
 
 ```bash
 # Create the alerting policy from a JSON file
-gcloud alpha monitoring policies create --policy-from-file=cpu-alert-policy.json
+gcloud monitoring policies create --policy-from-file=cpu-alert-policy.json
 ```
 
 Note the `conditionPrometheusQueryLanguage` field - this is what tells Cloud Monitoring to treat the query as PromQL rather than MQL or a metric filter.
@@ -95,12 +92,11 @@ Let me share some real-world queries I have used in production environments.
 
 ### Alerting on Memory Usage
 
-This query calculates available memory as a percentage and fires when it drops below 20 percent:
+This query uses Ops Agent or Monitoring agent metrics to calculate free memory as a percentage and fires when it drops below 20 percent:
 
 ```promql
 # Alert when available memory drops below 20% of total
-(compute_googleapis_com:instance_memory_available
-  / compute_googleapis_com:instance_memory_total) < 0.20
+agent_googleapis_com:memory_percent_used{state="free"} < 20
 ```
 
 ### Alerting on HTTP Error Rates
@@ -128,7 +124,7 @@ This one watches for disks filling up:
 
 ```promql
 # Alert when disk utilization exceeds 90%
-compute_googleapis_com:instance_disk_utilization > 0.90
+agent_googleapis_com:disk_percent_used{state="used"} > 90
 ```
 
 ## Using Aggregation Functions
@@ -145,9 +141,9 @@ avg by (zone)(
 You can also use the `without` clause to aggregate across everything except certain labels:
 
 ```promql
-# Sum request counts across all dimensions except instance name
+# Sum received network bytes across all dimensions except instance name
 sum without (instance_name)(
-  compute_googleapis_com:instance_network_received_bytes_count
+  rate(compute_googleapis_com:instance_network_received_bytes_count[5m])
 )
 ```
 
@@ -201,10 +197,10 @@ You can also use the Cloud Monitoring API to evaluate a query programmatically:
 
 ```bash
 # Test a PromQL query using the API
-curl -X POST \
+curl -G \
   "https://monitoring.googleapis.com/v1/projects/YOUR_PROJECT_ID/location/global/prometheus/api/v1/query" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -d "query=compute_googleapis_com:instance_cpu_utilization"
+  --data-urlencode "query=compute_googleapis_com:instance_cpu_utilization"
 ```
 
 ## Best Practices
