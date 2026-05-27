@@ -119,10 +119,15 @@ Create the userlist file that PgBouncer uses to authenticate connections:
 ```bash
 # Generate an MD5 password hash
 # Replace 'myuser' and 'mypassword' with actual credentials
-echo '"myuser" "md5$(echo -n "mypasswordmyuser" | md5sum | cut -d ' ' -f 1)"' | sudo tee /etc/pgbouncer/userlist.txt
+HASH=$(printf '%s' 'mypasswordmyuser' | md5sum | cut -d ' ' -f 1)
+echo "\"myuser\" \"md5${HASH}\"" | sudo tee /etc/pgbouncer/userlist.txt
 
 # Or for plain text passwords (simpler but less secure)
 echo '"myuser" "mypassword"' | sudo tee /etc/pgbouncer/userlist.txt
+
+# Add any PgBouncer admin or stats users you configured
+echo '"pgbouncer_admin" "admin_password"' | sudo tee -a /etc/pgbouncer/userlist.txt
+echo '"pgbouncer_stats" "stats_password"' | sudo tee -a /etc/pgbouncer/userlist.txt
 
 # Set proper permissions
 sudo chown pgbouncer:pgbouncer /etc/pgbouncer/userlist.txt
@@ -211,7 +216,7 @@ With the sidecar approach, each pod gets its own PgBouncer instance. If you have
 
 ## PgBouncer with Cloud SQL Auth Proxy
 
-For the most secure setup, combine PgBouncer with the Cloud SQL Auth Proxy. The proxy handles SSL and IAM authentication, while PgBouncer handles connection pooling:
+For the most secure setup, combine PgBouncer with the Cloud SQL Auth Proxy. The proxy handles encrypted connectivity and IAM authorization, while PgBouncer handles connection pooling:
 
 ```yaml
 # Three-container pod: app -> pgbouncer -> cloud-sql-proxy -> Cloud SQL
@@ -238,6 +243,7 @@ spec:
       image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:latest
       args:
         - "--structured-logs"
+        - "--port=5432"
         - "my-project:us-central1:my-instance"
       securityContext:
         runAsNonRoot: true
@@ -259,8 +265,8 @@ For most web applications, transaction mode is the right choice:
 ; Transaction mode is the best balance of efficiency and compatibility
 pool_mode = transaction
 
-; If using transaction mode, disable features that break it
-; Tell PgBouncer to reset the connection state between transactions
+; The default reset query is used for session pooling.
+; PgBouncer does not run server_reset_query in transaction pooling mode by default.
 server_reset_query = DISCARD ALL
 ```
 
@@ -268,10 +274,12 @@ server_reset_query = DISCARD ALL
 
 PgBouncer has a built-in admin console:
 
-```sql
--- Connect to the PgBouncer admin database
+```bash
+# Connect to the PgBouncer admin database
 psql -h localhost -p 6432 -U pgbouncer_admin -d pgbouncer
+```
 
+```sql
 -- Show pool statistics
 SHOW POOLS;
 
