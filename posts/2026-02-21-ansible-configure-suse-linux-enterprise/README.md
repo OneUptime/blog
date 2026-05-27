@@ -8,7 +8,7 @@ Description: Automate SUSE Linux Enterprise Server configuration with Ansible co
 
 ---
 
-SUSE Linux Enterprise Server (SLES) is a leading enterprise Linux distribution, especially popular in SAP environments and European enterprises. Configuring SLES with Ansible requires understanding the zypper package manager, SUSEConnect registration, and SUSE-specific service management. This guide covers a complete configuration playbook for SLES 15 SP5+.
+SUSE Linux Enterprise Server (SLES) is a leading enterprise Linux distribution, especially popular in SAP environments and European enterprises. Configuring SLES with Ansible requires understanding the zypper package manager, SUSEConnect registration, and SUSE-specific service management. This guide covers a complete configuration playbook for SLES 15 SP5.
 
 ## SLES-Specific Details
 
@@ -76,7 +76,6 @@ ansible_python_interpreter=/usr/bin/python3
     - name: Refresh repositories
       community.general.zypper_repository:
         repo: '*'
-        auto_import_keys: true
         runrefresh: true
       failed_when: false
 ```
@@ -242,12 +241,12 @@ SLES configuration with Ansible uses zypper for packages, SUSEConnect for regist
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this playbook proves essential in real-world automation.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this playbook
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -279,7 +278,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -302,20 +301,22 @@ Here are several practical scenarios where this module proves essential in real-
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
-    - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
-      loop:
-        - "22"
-        - "80"
-        - "443"
+    - name: Ensure firewalld is running
+      ansible.builtin.systemd:
+        name: firewalld
+        enabled: true
+        state: started
 
-    - name: Enable firewall
-      community.general.ufw:
+    - name: Configure firewall rules
+      ansible.posix.firewalld:
+        service: "{{ item }}"
+        permanent: true
         state: enabled
-        policy: deny
+        immediate: true
+      loop:
+        - ssh
+        - http
+        - https
 
   handlers:
     - name: restart sshd
@@ -361,7 +362,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this playbook
 - name: Robust task execution
   hosts: all
   tasks:
@@ -423,4 +424,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
