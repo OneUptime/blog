@@ -14,7 +14,7 @@ This guide covers setting up a WireGuard VPN server with Ansible, including key 
 
 ## Prerequisites
 
-You need Ansible 2.12+ on your control machine and a target server with a public IP address running Ubuntu 22.04. The server needs to be accessible on the WireGuard port (default 51820/UDP) through any cloud provider firewalls.
+You need Ansible 2.12+ on your control machine and a target server with a public IP address running Ubuntu 22.04. If you are using `ansible-core` instead of the full `ansible` package, install the `ansible.posix` and `community.general` collections for the `sysctl` and `ufw` modules. The server needs to be accessible on the WireGuard port (default 51820/UDP) through any cloud provider firewalls.
 
 ## Project Structure
 
@@ -74,6 +74,7 @@ wireguard_peers:
       - wireguard
       - wireguard-tools
       - qrencode
+      - ufw
     state: present
     update_cache: yes
 
@@ -298,7 +299,7 @@ PersistentKeepalive = 25
 ansible-playbook -i inventory/hosts.ini playbook.yml
 
 # Fetch client configs to your local machine
-ansible -i inventory/hosts.ini registry -m fetch \
+ansible -i inventory/hosts.ini all -m fetch \
   -a "src=/opt/wireguard-clients/laptop.conf dest=./clients/ flat=yes"
 ```
 
