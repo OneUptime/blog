@@ -8,22 +8,22 @@ Description: Manage Flatcar Container Linux with Ansible for container-optimized
 
 ---
 
-Flatcar Container Linux (the successor to CoreOS Container Linux) is an immutable, container-optimized OS. It has a read-only root filesystem, automatic atomic updates, and ships with Docker/containerd. Managing Flatcar with Ansible is different from traditional distributions because you cannot install packages with apt or dnf. Instead, you manage systemd units, container workloads, and configuration files.
+Flatcar Container Linux (the successor to CoreOS Container Linux) is an immutable, container-optimized OS. It has a read-only OS partition, automatic atomic updates, and ships with Docker/containerd. Managing Flatcar with Ansible is different from traditional distributions because you cannot install packages with apt or dnf. Instead, you manage systemd units, container workloads, and configuration files.
 
 ## Key Differences
 
 Flatcar is fundamentally different from traditional Linux:
 
-- Read-only root filesystem (no package manager)
-- All software runs in containers
+- Read-only OS partition (no package manager)
+- User applications generally run in containers or system extensions
 - Automatic atomic OS updates via Nebraska/update_engine
 - Python is NOT installed (needs special handling for Ansible)
 - systemd is the primary configuration tool
-- Uses Ignition/cloud-init for initial provisioning
+- Uses Ignition, usually generated from Butane, for initial provisioning
 
-## Bootstrap: Python in a Container
+## Bootstrap: Python as a System Extension
 
-Since Flatcar has no package manager, run Python in a container for Ansible:
+Since Flatcar has no package manager, enable the official Python system extension for Ansible on Flatcar releases that provide it:
 
 ```yaml
 ---
@@ -31,20 +31,23 @@ Since Flatcar has no package manager, run Python in a container for Ansible:
   hosts: flatcar
   gather_facts: false
   tasks:
-    - name: Install PyPy in a known location
+    - name: Enable Python system extension
       ansible.builtin.raw: |
-        docker run --rm -v /opt/bin:/target alpine sh -c \
-        'apk add --no-cache python3 && cp /usr/bin/python3 /target/python3 && \
-         cp -r /usr/lib/python3.* /target/'
-      changed_when: true
+        set -e
+        sudo mkdir -p /etc/flatcar
+        grep -qxF python /etc/flatcar/enabled-sysext.conf 2>/dev/null || \
+          echo python | sudo tee -a /etc/flatcar/enabled-sysext.conf
+        sudo systemctl restart systemd-sysext
+        test -x /usr/bin/python3
+      changed_when: false
 ```
 
-Alternatively, use the `ansible_python_interpreter` to point to a toolbox:
+Then use the `ansible_python_interpreter` to point to the Python binary provided by the extension:
 
 ```ini
 [flatcar:vars]
 ansible_user=core
-ansible_python_interpreter=/opt/bin/python3
+ansible_python_interpreter=/usr/bin/python3
 ```
 
 ## Configuration Playbook
@@ -67,10 +70,16 @@ ansible_python_interpreter=/opt/bin/python3
         content: |
           GROUP=stable
           REBOOT_STRATEGY=reboot
-          LOCKSMITHD_REBOOT_WINDOW_START=02:00
+          LOCKSMITHD_REBOOT_WINDOW_START="Thu 02:00"
           LOCKSMITHD_REBOOT_WINDOW_LENGTH=1h
         dest: /etc/flatcar/update.conf
         mode: '0644'
+
+    - name: Ensure Docker configuration directory exists
+      ansible.builtin.file:
+        path: /etc/docker
+        state: directory
+        mode: '0755'
 
     - name: Configure Docker daemon
       ansible.builtin.copy:
@@ -180,16 +189,16 @@ ansible_python_interpreter=/opt/bin/python3
 
 ## Summary
 
-Flatcar Container Linux management with Ansible focuses on systemd units, Docker configuration, and config files rather than packages. Since the filesystem is read-only and there is no package manager, all application deployment happens through containers. Bootstrap Python first (via a container or static binary), then use Ansible to manage systemd services, Docker daemon settings, update policies, and sysctl tuning. This is a fundamentally different approach from traditional distribution management.
+Flatcar Container Linux management with Ansible focuses on systemd units, Docker configuration, and config files rather than packages. Since the OS partition is read-only and there is no package manager, application deployment usually happens through containers or system extensions. Bootstrap Python first, then use Ansible to manage systemd services, Docker daemon settings, update policies, and sysctl tuning. This is a fundamentally different approach from traditional distribution management.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios for Flatcar-focused playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow for a Flatcar host
 
 - name: Infrastructure provisioning
   hosts: all
@@ -210,16 +219,10 @@ Here are several practical scenarios where this module proves essential in real-
           {{ ansible_processor_vcpus }} vCPUs,
           running {{ ansible_distribution }} {{ ansible_distribution_version }}
 
-    - name: Install required packages
-      ansible.builtin.package:
-        name:
-          - curl
-          - wget
-          - git
-          - vim
-          - htop
-          - jq
-        state: present
+    - name: Verify container runtime tools
+      ansible.builtin.command: docker --version
+      register: docker_version
+      changed_when: false
 
     - name: Configure system timezone
       ansible.builtin.timezone:
@@ -245,22 +248,35 @@ Here are several practical scenarios where this module proves essential in real-
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
-    - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
-      loop:
-        - "22"
-        - "80"
-        - "443"
+    - name: Configure application firewall policy
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/myapp-firewall.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Example host firewall policy
+          After=network-online.target
 
-    - name: Enable firewall
-      community.general.ufw:
-        state: enabled
-        policy: deny
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/sh -c '/usr/sbin/iptables -C INPUT -p tcp -m multiport --dports 22,80,443 -j ACCEPT || /usr/sbin/iptables -A INPUT -p tcp -m multiport --dports 22,80,443 -j ACCEPT'
+          RemainAfterExit=yes
+
+          [Install]
+          WantedBy=multi-user.target
+      notify: reload systemd
+
+    - name: Enable firewall service
+      ansible.builtin.systemd:
+        name: myapp-firewall
+        enabled: true
+        state: started
 
   handlers:
+    - name: reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
     - name: restart sshd
       ansible.builtin.service:
         name: sshd
@@ -336,11 +352,17 @@ Here are several practical scenarios where this module proves essential in real-
 ### Scheduling and Automation
 
 ```yaml
-# Set up scheduled compliance scans using cron
+# Set up scheduled compliance scans using a systemd timer
 - name: Configure automated scans
   hosts: all
   become: true
   tasks:
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -357,13 +379,38 @@ Here are several practical scenarios where this module proves essential in real-
           fi
           exit $EXIT_CODE
 
-    - name: Schedule weekly compliance scan
-      ansible.builtin.cron:
-        name: "Weekly compliance scan"
-        minute: "0"
-        hour: "3"
-        weekday: "1"
-        job: "/opt/scripts/compliance_scan.sh"
-        user: ansible
-```
+    - name: Create compliance scan service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/compliance-scan.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Compliance scan
 
+          [Service]
+          Type=oneshot
+          User=ansible
+          ExecStart=/opt/scripts/compliance_scan.sh
+
+    - name: Create weekly compliance scan timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/compliance-scan.timer
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Weekly compliance scan
+
+          [Timer]
+          OnCalendar=Mon *-*-* 03:00:00
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable weekly compliance scan timer
+      ansible.builtin.systemd:
+        name: compliance-scan.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+```
