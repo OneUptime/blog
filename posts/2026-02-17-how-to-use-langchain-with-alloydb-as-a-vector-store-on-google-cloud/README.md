@@ -27,7 +27,7 @@ Before writing code, you need an AlloyDB instance with the pgvector extension en
 
 # Then connect and enable pgvector
 
-from google.cloud.alloydb.connector import Connector
+from google.cloud.alloydbconnector import Connector
 import sqlalchemy
 
 # Create a connection using the AlloyDB connector
@@ -61,18 +61,20 @@ print("pgvector extension enabled")
 
 ## Initializing the LangChain AlloyDB Vector Store
 
-LangChain provides a dedicated AlloyDB vector store class that handles table creation, embedding storage, and similarity search.
+LangChain provides a dedicated AlloyDB vector store class that handles embedding storage and similarity search. First initialize the table schema with the AlloyDB engine helper, then create the vector store.
 
 ```python
-import vertexai
-from langchain_google_vertexai import VertexAIEmbeddings
-from langchain_google_alloydb_pg import AlloyDBVectorStore, AlloyDBEngine
-
-# Initialize Vertex AI for embeddings
-vertexai.init(project="your-project-id", location="us-central1")
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_google_alloydb_pg import AlloyDBVectorStore, AlloyDBEngine, Column
 
 # Create the embedding model
-embeddings = VertexAIEmbeddings(model_name="text-embedding-005")
+embeddings = GoogleGenerativeAIEmbeddings(
+    model="gemini-embedding-001",
+    project="your-project-id",
+    location="us-central1",
+    vertexai=True,
+    output_dimensionality=768
+)
 
 # Initialize the AlloyDB engine
 alloydb_engine = AlloyDBEngine.from_instance(
@@ -85,7 +87,18 @@ alloydb_engine = AlloyDBEngine.from_instance(
     password="your-password"
 )
 
-# Initialize the vector store with automatic table creation
+# Initialize the table schema
+alloydb_engine.init_vectorstore_table(
+    table_name="document_embeddings",
+    vector_size=768,
+    metadata_columns=[
+        Column("source", "TEXT"),
+        Column("title", "TEXT"),
+        Column("chunk_index", "INTEGER"),
+    ]
+)
+
+# Initialize the vector store
 vector_store = AlloyDBVectorStore.create_sync(
     engine=alloydb_engine,
     table_name="document_embeddings",
@@ -101,8 +114,8 @@ print("Vector store initialized")
 Load and store documents with their embeddings.
 
 ```python
-from langchain.schema import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Load your documents
 raw_documents = [
@@ -189,7 +202,7 @@ AlloyDB vector store supports metadata filtering, so you can narrow search resul
 filtered_results = vector_store.similarity_search(
     query="vector search capabilities",
     k=3,
-    filter={"source": "alloydb-docs"}
+    filter="source = 'alloydb-docs'"
 )
 
 print("Filtered results (alloydb-docs only):")
@@ -202,12 +215,16 @@ for doc in filtered_results:
 Connect the vector store to a Gemini model for a full RAG application.
 
 ```python
-from langchain_google_vertexai import VertexAI
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import PromptTemplate
 
 # Initialize the LLM
-llm = VertexAI(model_name="gemini-2.0-flash", temperature=0.2)
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
+    project="your-project-id",
+    location="us-central1",
+    temperature=0.2
+)
 
 # Create a retriever from the vector store
 retriever = vector_store.as_retriever(
@@ -230,21 +247,18 @@ Answer:""",
     input_variables=["context", "question"]
 )
 
-# Create the RAG chain
-rag_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",
-    retriever=retriever,
-    return_source_documents=True,
-    chain_type_kwargs={"prompt": prompt_template}
+# Query the RAG pipeline
+question = "What are the advantages of using AlloyDB for vector search?"
+source_documents = retriever.invoke(question)
+context = "\n\n".join(
+    f"Source: {doc.metadata.get('title', 'untitled')}\n{doc.page_content}"
+    for doc in source_documents
 )
+answer = llm.invoke(prompt_template.format(context=context, question=question))
 
-# Query the RAG chain
-result = rag_chain.invoke({"query": "What are the advantages of using AlloyDB for vector search?"})
-
-print(f"Answer: {result['result']}")
-print(f"\nSource documents used: {len(result['source_documents'])}")
-for doc in result["source_documents"]:
+print(f"Answer: {answer.text}")
+print(f"\nSource documents used: {len(source_documents)}")
+for doc in source_documents:
     print(f"  - {doc.metadata.get('title', 'untitled')}")
 ```
 
@@ -357,9 +371,9 @@ def get_collection_stats():
 
         # Count by source
         result = conn.execute(sqlalchemy.text("""
-            SELECT metadata->>'source' as source, COUNT(*) as count
+            SELECT source, COUNT(*) as count
             FROM document_embeddings
-            GROUP BY metadata->>'source'
+            GROUP BY source
             ORDER BY count DESC
         """))
         by_source = [(row[0], row[1]) for row in result]
@@ -375,26 +389,10 @@ def get_collection_stats():
 Add conversation history for multi-turn RAG interactions.
 
 ```python
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationalRetrievalChain
-
-# Set up conversation memory
-memory = ConversationBufferMemory(
-    memory_key="chat_history",
-    return_messages=True,
-    output_key="answer"
-)
-
-# Create a conversational RAG chain
-conv_chain = ConversationalRetrievalChain.from_llm(
-    llm=llm,
-    retriever=retriever,
-    memory=memory,
-    return_source_documents=True,
-    combine_docs_chain_kwargs={"prompt": prompt_template}
-)
+from langchain_core.messages import AIMessage, HumanMessage
 
 # Multi-turn conversation
+chat_history = []
 questions = [
     "What is AlloyDB?",
     "Does it support vector search?",
@@ -402,9 +400,28 @@ questions = [
 ]
 
 for question in questions:
-    result = conv_chain.invoke({"question": question})
+    search_query = question
+    if chat_history:
+        previous_turns = "\n".join(message.content for message in chat_history)
+        search_query = f"{previous_turns}\nFollow-up question: {question}"
+
+    source_documents = retriever.invoke(search_query)
+    context = "\n\n".join(
+        f"Source: {doc.metadata.get('title', 'untitled')}\n{doc.page_content}"
+        for doc in source_documents
+    )
+    response = llm.invoke(
+        chat_history + [
+            HumanMessage(content=prompt_template.format(context=context, question=question))
+        ]
+    )
+    chat_history.extend([
+        HumanMessage(content=question),
+        AIMessage(content=response.text),
+    ])
+
     print(f"Q: {question}")
-    print(f"A: {result['answer']}")
+    print(f"A: {response.text}")
     print()
 ```
 
