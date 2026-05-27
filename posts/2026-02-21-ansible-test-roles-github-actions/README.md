@@ -8,7 +8,7 @@ Description: Set up GitHub Actions workflows to automatically test Ansible roles
 
 ---
 
-GitHub Actions provides free CI/CD for testing Ansible roles before changes reach production. This guide covers practical approaches with working code examples.
+GitHub Actions provides CI/CD for testing Ansible roles before changes reach production, with free usage for public repositories and plan-based quotas for private repositories. This guide covers practical approaches with working code examples.
 
 ## Why Testing Ansible Code Matters
 
@@ -51,7 +51,7 @@ Install the required testing tools:
 ```bash
 # Install testing tools
 
-pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest testinfra
+pip install ansible molecule "molecule-plugins[docker]" ansible-lint yamllint pytest pytest-testinfra
 ```
 
 ## Writing Tests
@@ -66,16 +66,23 @@ driver:
   name: docker
 platforms:
   - name: ubuntu2404
-    image: ubuntu:24.04
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
     pre_build_image: true
-    command: /bin/systemd
+    command: /lib/systemd/systemd
     privileged: true
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
   - name: rocky9
-    image: rockylinux:9
+    image: geerlingguy/docker-rockylinux9-ansible:latest
     pre_build_image: true
-    command: /usr/sbin/init
+    command: /lib/systemd/systemd
+    privileged: true
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+  - name: debian12
+    image: geerlingguy/docker-debian12-ansible:latest
+    pre_build_image: true
+    command: /lib/systemd/systemd
     privileged: true
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -112,8 +119,8 @@ verifier:
     - name: Assert service is active
       ansible.builtin.assert:
         that:
-          - "'my_service' in ansible_facts.services"
-          - "ansible_facts.services['my_service'].state == 'running'"
+          - "'my_service.service' in ansible_facts.services"
+          - "ansible_facts.services['my_service.service'].state == 'running'"
         fail_msg: "Service my_service is not running"
 
     - name: Check configuration file exists
@@ -184,10 +191,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install ansible molecule molecule-docker
-      - run: molecule test
-        env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
+      - run: pip install ansible molecule "molecule-plugins[docker]"
+      - run: molecule test -- --limit ${{ matrix.distro }}
 ```
 
 ### GitLab CI
@@ -208,11 +213,14 @@ lint:
 
 molecule:
   stage: test
-  image: docker:latest
+  image: python:3.11
   services:
-    - docker:dind
+    - docker:24.0.5-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
-    - pip install ansible molecule molecule-docker
+    - pip install ansible molecule "molecule-plugins[docker]"
     - molecule test
 ```
 
@@ -303,7 +311,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -398,6 +406,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -447,4 +456,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
