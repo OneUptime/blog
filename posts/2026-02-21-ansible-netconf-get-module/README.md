@@ -19,17 +19,19 @@ NETCONF defines two types of data:
 - **Configuration data** - What you have configured on the device (interfaces, routing, ACLs, etc.)
 - **Operational state data** - Runtime state information (interface counters, routing table entries, CPU usage, etc.)
 
-The `netconf_get` module supports both through its `source` parameter.
+The `netconf_get` module supports configuration datastore retrieval through its `source` parameter. When `source` is omitted, it uses the NETCONF `<get>` operation and can return running configuration plus state data.
 
 ```mermaid
 graph TD
     A[netconf_get] --> B{source parameter}
     B -->|running| C[Running Configuration]
     B -->|candidate| D[Candidate Configuration]
-    B -->|not specified| E[Both Config + State Data]
+    B -->|startup| E[Startup Configuration]
+    B -->|not specified| H[Running Config + State Data]
     C --> F[XML Response]
     D --> F
     E --> F
+    H --> F
     F --> G[Ansible Variable]
 ```
 
@@ -128,7 +130,7 @@ To get runtime state (not just configuration), omit the `source` parameter or us
 # get_operational_state.yml - Retrieve runtime operational data
 ---
 - name: Get operational state data
-  hosts: junos_routers
+  hosts: netconf_devices
   gather_facts: false
   connection: ansible.netcommon.netconf
 
@@ -137,31 +139,33 @@ To get runtime state (not just configuration), omit the `source` parameter or us
     - name: Get interface operational state
       ansible.netcommon.netconf_get:
         filter: |
-          <interface-information xmlns="http://xml.juniper.net/junos/*/junos-interface">
-            <physical-interface>
+          <interfaces-state xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+            <interface>
               <name>ge-0/0/0</name>
-            </physical-interface>
-          </interface-information>
+            </interface>
+          </interfaces-state>
       register: intf_state
 
     - name: Display interface state
       ansible.builtin.debug:
         var: intf_state.output
 
-    # Get routing table entries
-    - name: Get routing table
+    # Get NETCONF server schema information
+    - name: Get NETCONF schema list
       ansible.netcommon.netconf_get:
         filter: |
-          <route-information xmlns="http://xml.juniper.net/junos/*/junos-routing">
-          </route-information>
-      register: routes
+          <netconf-state xmlns="urn:ietf:params:xml:ns:yang:ietf-netconf-monitoring">
+            <schemas>
+              <schema/>
+            </schemas>
+          </netconf-state>
+      register: schemas
 
-    # Get system information
-    - name: Get system info
+    # Get system state information if the device implements ietf-system
+    - name: Get system state
       ansible.netcommon.netconf_get:
         filter: |
-          <system-information xmlns="http://xml.juniper.net/junos/*/junos">
-          </system-information>
+          <system-state xmlns="urn:ietf:params:xml:ns:yang:ietf-system"/>
       register: sysinfo
 
     - name: Display system info
@@ -171,7 +175,7 @@ To get runtime state (not just configuration), omit the `source` parameter or us
 
 ## Cisco IOS-XE NETCONF Queries
 
-For Cisco IOS-XE devices, the filter uses Cisco-specific YANG namespaces.
+For Cisco IOS-XE devices, the filter uses Cisco-specific and standard YANG namespaces.
 
 ```yaml
 # iosxe_netconf_get.yml - Query IOS-XE devices via NETCONF
@@ -247,22 +251,20 @@ NETCONF returns XML, which is not the easiest format to work with in Ansible. Co
       ansible.builtin.debug:
         var: interfaces_json.output
 
-    # Access specific values from the parsed data
-    - name: Get interface config as XML
+    # Get native dictionary output using xmltodict
+    - name: Get interface config as native data
       ansible.netcommon.netconf_get:
         source: running
         filter: |
           <configuration>
             <interfaces/>
           </configuration>
-        display: xml
-      register: interfaces_xml
+        display: native
+      register: interfaces_native
 
-    # Convert XML to dict using xmltodict
-    - name: Convert XML to dictionary
-      ansible.builtin.set_fact:
-        intf_data: "{{ interfaces_xml.output | ansible.netcommon.parse_xml('templates/interfaces_spec.yml') }}"
-      ignore_errors: true
+    - name: Display native data
+      ansible.builtin.debug:
+        var: interfaces_native.output
 ```
 
 ## Building a NETCONF-Based Inventory
