@@ -42,9 +42,9 @@ k8s/
         deployment-patch.yaml
     production/
       kustomization.yaml
+      hpa.yaml
       patches/
         deployment-patch.yaml
-        hpa.yaml
 ```
 
 ## Base Kustomization
@@ -58,9 +58,11 @@ resources:
   - deployment.yaml
   - service.yaml
   - configmap.yaml
-commonLabels:
-  app: myapp
-  managed-by: ansible
+labels:
+  - pairs:
+      app: myapp
+      managed-by: ansible
+    includeSelectors: true
 ```
 
 ```yaml
@@ -97,11 +99,11 @@ spec:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: production
-bases:
+resources:
   - ../../base
+  - hpa.yaml
 patches:
   - path: patches/deployment-patch.yaml
-  - path: patches/hpa.yaml
 images:
   - name: myapp
     newName: registry.example.com/myapp
@@ -242,7 +244,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -386,4 +388,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
