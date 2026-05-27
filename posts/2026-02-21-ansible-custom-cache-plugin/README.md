@@ -8,7 +8,7 @@ Description: Build a custom Ansible cache plugin to store facts and data in your
 
 ---
 
-Ansible cache plugins control where gathered facts and other cached data get stored between playbook runs. The built-in options include memory, JSON files, Redis, and memcached. But when your infrastructure uses a different storage backend, or you need custom cache behavior like encryption or TTL policies, building a custom cache plugin is the way to go.
+Ansible cache plugins control where gathered facts and other cached data get stored between playbook runs. The available options include memory, JSON files, and collection-provided plugins for Redis and memcached. But when your infrastructure uses a different storage backend, or you need custom cache behavior like encryption or TTL policies, building a custom cache plugin is the way to go.
 
 This guide covers creating a cache plugin from scratch using a SQLite backend as our example. The same patterns apply whether you are writing a cache plugin for DynamoDB, Consul, etcd, or any other storage system.
 
@@ -24,6 +24,7 @@ Cache plugins extend the `BaseCacheModule` class from `ansible.plugins.cache`. T
 - `keys()` - List all cached keys
 - `contains(key)` - Check if a key exists
 - `flush()` - Clear all cached data
+- `copy()` - Return a copy of cached data
 
 ## Project Structure
 
@@ -37,7 +38,7 @@ my_project/
   inventory/
     hosts
   playbooks/
-    gather_facts.yml
+    test_cache.yml
 ```
 
 ## Building the SQLite Cache Plugin
@@ -73,6 +74,14 @@ DOCUMENTATION = """
         ini:
           - key: fact_caching_timeout
             section: defaults
+      _prefix:
+        description: Prefix to use for cache keys.
+        default: ansible_facts
+        env:
+          - name: ANSIBLE_CACHE_PLUGIN_PREFIX
+        ini:
+          - key: fact_caching_prefix
+            section: defaults
 """
 
 import json
@@ -82,6 +91,7 @@ import os
 
 from ansible.plugins.cache import BaseCacheModule
 from ansible.module_utils.common.text.converters import to_text
+from ansible.module_utils.common.json import AnsibleJSONEncoder, AnsibleJSONDecoder
 from ansible.errors import AnsibleError
 
 
@@ -91,6 +101,7 @@ class CacheModule(BaseCacheModule):
     def __init__(self, *args, **kwargs):
         super(CacheModule, self).__init__(*args, **kwargs)
         self._timeout = int(self.get_option('_timeout'))
+        self._prefix = to_text(self.get_option('_prefix') or '')
         self._db_path = os.path.expanduser(self.get_option('_uri'))
         self._db_dir = os.path.dirname(self._db_path)
 
@@ -119,6 +130,27 @@ class CacheModule(BaseCacheModule):
         """Open a new SQLite connection."""
         return sqlite3.connect(self._db_path)
 
+    def _cache_key(self, key):
+        """Apply Ansible's configured cache prefix to the key."""
+        return "%s%s" % (self._prefix, to_text(key))
+
+    def _unprefix_key(self, key):
+        """Remove the configured cache prefix from a stored key."""
+        if self._prefix and key.startswith(self._prefix):
+            return key[len(self._prefix):]
+        return key
+
+    def _uses_prefix(self, key):
+        """Check whether a stored key belongs to this cache prefix."""
+        return not self._prefix or key.startswith(self._prefix)
+
+    def _decode_value(self, value):
+        """Decode stored JSON and Ansible's persistent-cache payload wrapper."""
+        decoded = json.loads(value, cls=AnsibleJSONDecoder)
+        if isinstance(decoded, dict) and '__payload__' in decoded:
+            return json.loads(decoded['__payload__'], cls=AnsibleJSONDecoder)
+        return decoded
+
     def _is_expired(self, created_at):
         """Check if a cache entry has expired."""
         if self._timeout <= 0:
@@ -131,18 +163,14 @@ class CacheModule(BaseCacheModule):
         try:
             cursor = conn.execute(
                 "SELECT cache_value, created_at FROM ansible_cache WHERE cache_key = ?",
-                (to_text(key),)
+                (self._cache_key(key),)
             )
             row = cursor.fetchone()
             if row is None:
                 raise KeyError(key)
 
-            value, created_at = row
-            if self._is_expired(created_at):
-                self.delete(key)
-                raise KeyError(key)
-
-            return json.loads(value)
+            value, _created_at = row
+            return json.loads(value, cls=AnsibleJSONDecoder)
         finally:
             conn.close()
 
@@ -150,12 +178,12 @@ class CacheModule(BaseCacheModule):
         """Store a value in the cache."""
         conn = self._get_connection()
         try:
-            serialized = json.dumps(value)
+            serialized = json.dumps(value, cls=AnsibleJSONEncoder)
             conn.execute(
                 """INSERT OR REPLACE INTO ansible_cache
                    (cache_key, cache_value, created_at)
                    VALUES (?, ?, ?)""",
-                (to_text(key), serialized, time.time())
+                (self._cache_key(key), serialized, time.time())
             )
             conn.commit()
         finally:
@@ -172,10 +200,12 @@ class CacheModule(BaseCacheModule):
             expired_keys = []
             for row in cursor:
                 key, created_at = row
+                if not self._uses_prefix(key):
+                    continue
                 if self._is_expired(created_at):
                     expired_keys.append(key)
                 else:
-                    result.append(key)
+                    result.append(self._unprefix_key(key))
 
             # Clean up expired entries
             for ek in expired_keys:
@@ -191,11 +221,21 @@ class CacheModule(BaseCacheModule):
 
     def contains(self, key):
         """Check if a key exists and has not expired."""
+        conn = self._get_connection()
         try:
-            self.get(key)
+            cursor = conn.execute(
+                "SELECT created_at FROM ansible_cache WHERE cache_key = ?",
+                (self._cache_key(key),)
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return False
+            if self._is_expired(row[0]):
+                self.delete(key)
+                return False
             return True
-        except KeyError:
-            return False
+        finally:
+            conn.close()
 
     def delete(self, key):
         """Remove a key from the cache."""
@@ -203,7 +243,7 @@ class CacheModule(BaseCacheModule):
         try:
             conn.execute(
                 "DELETE FROM ansible_cache WHERE cache_key = ?",
-                (to_text(key),)
+                (self._cache_key(key),)
             )
             conn.commit()
         finally:
@@ -228,8 +268,14 @@ class CacheModule(BaseCacheModule):
             result = {}
             for row in cursor:
                 key, value, created_at = row
-                if not self._is_expired(created_at):
-                    result[key] = json.loads(value)
+                if not self._uses_prefix(key) or self._is_expired(created_at):
+                    continue
+                cache_key = self._unprefix_key(key)
+                if cache_key.startswith('s') and '_' in cache_key:
+                    schema_id, original_key = cache_key.split('_', 1)
+                    if schema_id[1:].isdigit():
+                        cache_key = original_key
+                result[cache_key] = self._decode_value(value)
             return result
         finally:
             conn.close()
@@ -250,6 +296,10 @@ Update your `ansible.cfg` to enable the custom cache plugin:
 fact_caching = sqlite_cache
 fact_caching_connection = /tmp/ansible_cache.db
 fact_caching_timeout = 3600
+fact_caching_prefix = ansible_facts
+
+# Use the cache for fact gathering instead of gathering facts every play
+gathering = smart
 
 # Make sure Ansible can find the plugin
 cache_plugins = ./cache_plugins
@@ -275,17 +325,17 @@ Create a simple playbook that gathers facts and verifies caching works:
           Memory: {{ ansible_memtotal_mb }} MB
 ```
 
-Run it twice and notice the second run is faster because facts are pulled from the SQLite cache:
+Run it twice and notice the second run is faster because, with `gathering = smart`, facts are pulled from the SQLite cache:
 
 ```bash
 # First run gathers facts and stores them
 ansible-playbook -i inventory/hosts playbooks/test_cache.yml
 
-# Second run reads from cache (no SSH fact gathering)
+# Second run reads from cache instead of running the setup task again
 ansible-playbook -i inventory/hosts playbooks/test_cache.yml
 ```
 
-You can verify the cached data directly:
+For local debugging, you can verify that data was written to the cache:
 
 ```bash
 # Inspect the SQLite database
@@ -315,7 +365,7 @@ def _get_cipher(self):
 
 def set(self, key, value):
     """Store an optionally encrypted value."""
-    serialized = json.dumps(value)
+    serialized = json.dumps(value, cls=AnsibleJSONEncoder)
     cipher = self._get_cipher()
     if cipher:
         serialized = cipher.encrypt(serialized.encode()).decode()
@@ -325,7 +375,7 @@ def set(self, key, value):
             """INSERT OR REPLACE INTO ansible_cache
                (cache_key, cache_value, created_at)
                VALUES (?, ?, ?)""",
-            (to_text(key), serialized, time.time())
+            (self._cache_key(key), serialized, time.time())
         )
         conn.commit()
     finally:
@@ -337,19 +387,16 @@ def get(self, key):
     try:
         cursor = conn.execute(
             "SELECT cache_value, created_at FROM ansible_cache WHERE cache_key = ?",
-            (to_text(key),)
+            (self._cache_key(key),)
         )
         row = cursor.fetchone()
         if row is None:
             raise KeyError(key)
-        value, created_at = row
-        if self._is_expired(created_at):
-            self.delete(key)
-            raise KeyError(key)
+        value, _created_at = row
         cipher = self._get_cipher()
         if cipher:
             value = cipher.decrypt(value.encode()).decode()
-        return json.loads(value)
+        return json.loads(value, cls=AnsibleJSONDecoder)
     finally:
         conn.close()
 ```
@@ -366,7 +413,7 @@ def _get_connection(self):
     return conn
 ```
 
-Another thing to watch: always serialize your values to JSON before storing them. Ansible facts can contain nested dictionaries, lists, and various Python types. JSON serialization keeps things portable and debuggable.
+Another thing to watch: always serialize your values to JSON before storing them. Ansible facts can contain nested dictionaries, lists, and various Python types, so use Ansible's JSON encoder and decoder rather than the default JSON encoder. JSON serialization keeps things portable and debuggable.
 
 ## Summary
 
