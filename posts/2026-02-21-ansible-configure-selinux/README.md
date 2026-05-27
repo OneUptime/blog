@@ -42,17 +42,17 @@ selinux_booleans:
   # Allow HTTP daemon to connect to network (needed for reverse proxy)
   - name: httpd_can_network_connect
     state: true
-    persistent: yes
+    persistent: true
 
   # Allow HTTP daemon to connect to databases
   - name: httpd_can_network_connect_db
     state: true
-    persistent: yes
+    persistent: true
 
   # Allow HTTP daemon to send mail
   - name: httpd_can_sendmail
     state: true
-    persistent: yes
+    persistent: true
 
 # Custom file contexts
 selinux_fcontexts:
@@ -74,22 +74,22 @@ selinux_fcontexts:
 
 # Custom port labels
 selinux_ports:
-  - port: 8080
+  - port: "8080"
     proto: tcp
     setype: http_port_t
     state: present
 
-  - port: 8443
+  - port: "8443"
     proto: tcp
     setype: http_port_t
     state: present
 
-  - port: 9090
+  - port: "9090"
     proto: tcp
     setype: http_port_t
     state: present
 
-  - port: 3100
+  - port: "3100"
     proto: tcp
     setype: http_port_t
     state: present
@@ -102,13 +102,13 @@ Web server specific SELinux settings.
 selinux_booleans_role:
   - name: httpd_can_network_relay
     state: true
-    persistent: yes
+    persistent: true
   - name: httpd_graceful_shutdown
     state: true
-    persistent: yes
+    persistent: true
   - name: httpd_enable_homedirs
     state: false
-    persistent: yes
+    persistent: true
 ```
 
 ## SELinux Role
@@ -123,7 +123,10 @@ selinux_booleans_role:
       - policycoreutils-python-utils
       - selinux-policy
       - selinux-policy-targeted
-      - libselinux-python3
+      - python3-libselinux
+      - python3-libsemanage
+      - audit
+      - checkpolicy
       - setroubleshoot-server
     state: present
   when: ansible_os_family == "RedHat"
@@ -143,7 +146,7 @@ selinux_booleans_role:
   ansible.posix.seboolean:
     name: "{{ item.name }}"
     state: "{{ item.state }}"
-    persistent: "{{ item.persistent | default('yes') }}"
+    persistent: "{{ item.persistent | default(true) }}"
   loop: "{{ selinux_booleans + (selinux_booleans_role | default([])) }}"
 
 - name: Set custom file contexts
@@ -214,24 +217,24 @@ When you need to allow something that the default policy blocks, create custom p
   when: item.changed
 ```
 
-Example custom module template that allows a Node.js app to bind to port 8080 and connect to Redis.
+Example custom module template that allows a confined application domain to bind to ports labeled `http_port_t` and connect to Redis ports. Replace `selinux_app_domain` with the SELinux domain your service actually runs under.
 
 ```jinja2
 # roles/selinux/templates/myapp.te.j2
 module myapp 1.0;
 
 require {
-    type node_t;
+    type {{ selinux_app_domain }};
     type redis_port_t;
     type http_port_t;
     class tcp_socket { name_bind name_connect };
 }
 
 # Allow the application to bind to HTTP ports
-allow node_t http_port_t:tcp_socket name_bind;
+allow {{ selinux_app_domain }} http_port_t:tcp_socket name_bind;
 
 # Allow the application to connect to Redis
-allow node_t redis_port_t:tcp_socket name_connect;
+allow {{ selinux_app_domain }} redis_port_t:tcp_socket name_connect;
 ```
 
 ## Generating Policy from Audit Logs
@@ -256,7 +259,7 @@ When an application is being blocked, you can generate a policy module from the 
 - name: Generate policy module from audit log
   ansible.builtin.shell:
     cmd: |
-      ausearch -m avc --start recent | audit2allow -M custom_app_policy
+      ausearch -m AVC -ts recent | audit2allow -M custom_app_policy
       semodule -i custom_app_policy.pp
     chdir: /etc/selinux/custom-modules
   when: selinux_generate_policy | default(false) | bool
@@ -303,7 +306,7 @@ When SELinux blocks something, this playbook helps diagnose the issue.
 
     - name: Get recent SELinux denials
       ansible.builtin.command:
-        cmd: ausearch -m avc --start recent -i
+        cmd: ausearch -m AVC -ts recent -i
       register: denials
       changed_when: false
       ignore_errors: yes
@@ -314,7 +317,7 @@ When SELinux blocks something, this playbook helps diagnose the issue.
 
     - name: Get suggested fixes
       ansible.builtin.shell:
-        cmd: "ausearch -m avc --start recent | audit2why"
+        cmd: "ausearch -m AVC -ts recent | audit2why"
       register: suggestions
       changed_when: false
       ignore_errors: yes
@@ -323,13 +326,13 @@ When SELinux blocks something, this playbook helps diagnose the issue.
       ansible.builtin.debug:
         msg: "{{ suggestions.stdout_lines | default(['No suggestions available']) }}"
 
-    - name: List all active booleans
+    - name: List all booleans
       ansible.builtin.command:
         cmd: getsebool -a
       register: booleans
       changed_when: false
 
-    - name: Display non-default booleans
+    - name: Display enabled booleans
       ansible.builtin.debug:
         msg: "{{ booleans.stdout_lines | select('search', ' on$') | list }}"
 ```
