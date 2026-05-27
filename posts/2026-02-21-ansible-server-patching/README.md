@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Patching, Security, Linux, Automation
 
-Description: Automate server patching with Ansible using rolling updates, pre-patch snapshots, reboot management, and post-patch validation across your fleet.
+Description: Automate server patching with Ansible using rolling updates, pre-patch checks, reboot management, and post-patch validation across your fleet.
 
 ---
 
@@ -19,7 +19,6 @@ patching_reboot_enabled: true
 patching_reboot_timeout: 600
 patching_pre_check_enabled: true
 patching_post_check_enabled: true
-patching_exclude_packages: []
 patching_security_only: false
 patching_serial: "25%"
 patching_max_fail_percentage: 0
@@ -81,7 +80,7 @@ patching_health_delay: 10
   reboot:
     msg: "Ansible patching: rebooting for kernel/package updates"
     reboot_timeout: "{{ patching_reboot_timeout }}"
-    pre_reboot_delay: 5
+    pre_reboot_delay: 60
     post_reboot_delay: 30
   when: patching_reboot_enabled and reboot_required.stat.exists
 
@@ -195,7 +194,7 @@ ansible-playbook -i inventory/hosts.ini patch.yml \
   --limit web_servers \
   -e "patching_security_only=true"
 
-# Dry run to see what would be updated
+# Dry run supported tasks before applying updates
 ansible-playbook -i inventory/hosts.ini patch.yml --check
 ```
 
@@ -247,7 +246,7 @@ The most effective approach is creating a dedicated compliance role with tasks o
 
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
   register: cert_dates
   changed_when: false
   failed_when: false
@@ -285,7 +284,7 @@ The most effective approach is creating a dedicated compliance role with tasks o
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
+      - (listening_ports.stdout | regex_search(':' ~ item ~ '\s')) is none
     fail_msg: "Unauthorized port {{ item }} is listening"
   loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 ```
@@ -356,7 +355,7 @@ The real power of compliance automation is combining detection with remediation:
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 
     - name: restart auditd
@@ -421,4 +420,3 @@ The real power of compliance automation is combining detection with remediation:
           ========================================
           Score: {{ (checks_passed | length * 100 / (checks_passed | length + checks_failed | length)) | round(1) }}%
 ```
-
