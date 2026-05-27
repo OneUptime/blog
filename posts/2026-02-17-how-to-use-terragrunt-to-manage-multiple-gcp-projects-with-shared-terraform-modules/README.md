@@ -31,7 +31,7 @@ Here is the directory layout I recommend for managing multiple GCP projects with
 
 ```text
 infrastructure/
-  terragrunt.hcl              # Root config - provider, backend defaults
+  root.hcl                    # Root config - provider, backend defaults
   modules/                     # Shared Terraform modules
     vpc/
       main.tf
@@ -47,27 +47,31 @@ infrastructure/
       outputs.tf
   environments/
     dev/
-      terragrunt.hcl           # Dev-specific overrides
+      env.hcl                  # Dev-specific values
       project-a/
+        project.hcl            # Project-specific values
         vpc/
           terragrunt.hcl
         gke/
           terragrunt.hcl
       project-b/
+        project.hcl
         vpc/
           terragrunt.hcl
         cloud-sql/
           terragrunt.hcl
     staging/
-      terragrunt.hcl
+      env.hcl
       project-a/
+        project.hcl
         vpc/
           terragrunt.hcl
         gke/
           terragrunt.hcl
     prod/
-      terragrunt.hcl
+      env.hcl
       project-a/
+        project.hcl
         vpc/
           terragrunt.hcl
         gke/
@@ -76,14 +80,13 @@ infrastructure/
 
 ## Setting Up the Root Configuration
 
-The root `terragrunt.hcl` file defines settings shared across all environments and projects. This is where you configure the GCS backend for state storage and the Google provider.
+The root `root.hcl` file defines settings shared across all environments and projects. This is where you configure the GCS backend for state storage and the Google provider.
 
 Here is a root configuration that automatically generates backend config based on the directory path:
 
 ```hcl
-# Root terragrunt.hcl - defines remote state and provider configuration
-
-# that all child modules inherit automatically
+# root.hcl - defines remote state and provider configuration
+# that all child modules include
 
 # Automatically configure the GCS backend based on directory structure
 remote_state {
@@ -106,7 +109,7 @@ generate "provider" {
   if_exists = "overwrite_terragrunt"
   contents  = <<EOF
 provider "google" {
-  # Project will be set by each environment's terragrunt.hcl
+  # Project is set by each module's inputs/resources
 }
 
 provider "google-beta" {
@@ -120,27 +123,15 @@ The `path_relative_to_include()` function is what makes this work. It uses the d
 
 ## Environment-Level Configuration
 
-Each environment directory has its own `terragrunt.hcl` that sets environment-specific values. Here is what the dev environment config looks like:
+Each environment directory has its own `env.hcl` that sets environment-specific values. Terragrunt currently supports only a single level of `include` blocks, so child modules include the root config directly and read the environment file separately. Here is what the dev environment config looks like:
 
 ```hcl
-# environments/dev/terragrunt.hcl
-# Inherits from root and sets dev-specific defaults
+# environments/dev/env.hcl
+# Sets dev-specific defaults
 
-# Include the root configuration
-include "root" {
-  path = find_in_parent_folders()
-}
-
-# Define inputs that all modules in this environment inherit
 locals {
   environment = "dev"
   region      = "us-central1"
-}
-
-# These inputs are passed to every module in the dev environment
-inputs = {
-  environment = local.environment
-  region      = local.region
 }
 ```
 
@@ -209,7 +200,7 @@ Each module usage in a project gets a small `terragrunt.hcl` that points to the 
 
 # Include root for backend and provider configuration
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 # Point to the shared VPC module
@@ -217,14 +208,20 @@ terraform {
   source = "../../../../modules/vpc"
 }
 
-# Project-specific inputs that override or extend environment defaults
+locals {
+  env_vars = read_terragrunt_config(find_in_parent_folders("env.hcl"))
+}
+
+# Project-specific inputs that extend environment defaults
 inputs = {
-  project_id  = "my-org-dev-project-a"
-  subnet_cidr = "10.0.0.0/20"
+  project_id   = "my-org-dev-project-a"
+  environment  = local.env_vars.locals.environment
+  region       = local.env_vars.locals.region
+  subnet_cidr  = "10.0.0.0/20"
 }
 ```
 
-Notice how small this file is. The environment, region, backend, and provider are all inherited. You only specify what is unique to this particular deployment.
+Notice how small this file is. The backend and provider are inherited, and the environment and region are loaded from `env.hcl`. You only specify what is unique to this particular deployment.
 
 ## Handling Dependencies Between Modules
 
@@ -235,11 +232,15 @@ When one module depends on another - say GKE needs the VPC ID - Terragrunt handl
 # Deploys GKE cluster that depends on the VPC module
 
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
   source = "../../../../modules/gke"
+}
+
+locals {
+  env_vars = read_terragrunt_config(find_in_parent_folders("env.hcl"))
 }
 
 # Declare dependency on the VPC module in the same project
@@ -248,30 +249,32 @@ dependency "vpc" {
 }
 
 inputs = {
-  project_id = "my-org-dev-project-a"
-  vpc_id     = dependency.vpc.outputs.vpc_id
-  subnet_id  = dependency.vpc.outputs.subnet_id
+  project_id   = "my-org-dev-project-a"
+  environment  = local.env_vars.locals.environment
+  region       = local.env_vars.locals.region
+  vpc_id       = dependency.vpc.outputs.vpc_id
+  subnet_id    = dependency.vpc.outputs.subnet_id
 }
 ```
 
-When you run `terragrunt apply` on the GKE module, Terragrunt automatically checks that the VPC module has been applied first and pulls its outputs.
+When you run `terragrunt apply` on the GKE module, Terragrunt reads the VPC module outputs from its state. If the VPC has not been applied yet, this will fail unless you configure mock outputs. When you run across multiple modules with `terragrunt run --all`, Terragrunt uses the dependency graph to run the VPC before GKE.
 
 ## Running Terragrunt Across All Projects
 
-One of the biggest wins with Terragrunt is `run-all`. From any directory in the hierarchy, you can apply everything beneath it:
+One of the biggest wins with Terragrunt is `run --all`. From any directory in the hierarchy, you can apply everything beneath it:
 
 ```bash
 # Apply all modules in all projects for the dev environment
 cd infrastructure/environments/dev
-terragrunt run-all apply
+terragrunt run --all apply
 
 # Plan changes across all prod projects
 cd infrastructure/environments/prod
-terragrunt run-all plan
+terragrunt run --all plan
 
 # Destroy a specific project's infrastructure
 cd infrastructure/environments/dev/project-b
-terragrunt run-all destroy
+terragrunt run --all destroy
 ```
 
 Terragrunt figures out the dependency graph and runs things in the right order, parallelizing where it can.
@@ -310,7 +313,7 @@ After running this setup across dozens of GCP projects, here are a few things I 
 
 **Use separate state buckets per environment.** While the example above uses one bucket, in production you want the state bucket for prod to be in a different project with tighter access controls.
 
-**Set up a CI/CD pipeline.** Terragrunt works well with GitHub Actions or Cloud Build. Run `terragrunt run-all plan` on pull requests and `terragrunt run-all apply` on merge to main.
+**Set up a CI/CD pipeline.** Terragrunt works well with GitHub Actions or Cloud Build. Run `terragrunt run --all plan` on pull requests and `terragrunt run --all apply` on merge to main.
 
 **Use `prevent_destroy` lifecycle rules** on critical resources like databases and storage buckets. Terragrunt respects these Terraform lifecycle rules and will refuse to destroy protected resources.
 
