@@ -158,12 +158,12 @@ spec:
 
 ## Graceful Shutdown with Lifecycle Hooks
 
-When Kubernetes terminates a pod, it sends a SIGTERM signal. Your application needs time to finish in-flight requests. Use `preStop` hooks and `terminationGracePeriodSeconds` to handle this.
+When Kubernetes terminates a pod, it starts the pod's termination grace period, runs any `preStop` hook, and then sends the container's stop signal. Your application needs time to finish in-flight requests after that signal. Use `preStop` hooks and `terminationGracePeriodSeconds` to handle this.
 
 ```yaml
 # graceful-shutdown.yaml
 # Configure a preStop hook so the pod has time to
-# drain connections before it is removed.
+# let endpoint changes propagate before it stops.
 spec:
   template:
     spec:
@@ -176,7 +176,7 @@ spec:
             preStop:
               exec:
                 # Sleep briefly to allow the endpoints controller
-                # to remove this pod from the service before shutdown begins
+                # to mark this pod as not ready before shutdown begins
                 command: ["/bin/sh", "-c", "sleep 10"]
 ```
 
@@ -241,7 +241,7 @@ flowchart TD
 1. Always set `maxUnavailable: 0` for production workloads that require zero downtime.
 2. Use readiness probes so Kubernetes knows when a pod can accept traffic.
 3. Configure `terminationGracePeriodSeconds` to give your application time to finish in-flight requests.
-4. Use `preStop` lifecycle hooks to add a brief sleep, allowing endpoints to update before shutdown.
+4. Use `preStop` lifecycle hooks to add a brief sleep, allowing endpoint changes to propagate before shutdown.
 5. Keep `revisionHistoryLimit` at a reasonable number (5-10) so you can roll back when needed.
 6. Test rollouts in staging before pushing to production.
 
