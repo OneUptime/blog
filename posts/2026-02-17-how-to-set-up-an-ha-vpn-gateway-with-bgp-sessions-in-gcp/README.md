@@ -16,7 +16,7 @@ This guide walks through the complete setup of an HA VPN gateway with BGP sessio
 
 An HA VPN gateway has two interfaces, each with its own external IP address. You create VPN tunnels from each interface to your peer gateway, giving you redundancy. If one tunnel fails, traffic automatically shifts to the other.
 
-BGP (Border Gateway Protocol) handles route exchange. Cloud Router on the GCP side advertises your VPC routes to the peer, and the peer advertises its routes back. When a tunnel goes down, BGP detects it and updates routes accordingly.
+BGP (Border Gateway Protocol) handles route exchange. Cloud Router on the GCP side advertises your VPC subnet routes to the peer, and the peer advertises its routes back. When a tunnel goes down, BGP detects it and updates routes accordingly.
 
 ```mermaid
 flowchart LR
@@ -281,9 +281,9 @@ Replace `192.168.1.1` with an actual on-premises IP address that should be reach
 Set up monitoring for your VPN tunnels:
 
 ```bash
-# Check tunnel bytes in/out
+# List VPN tunnel byte metrics
 gcloud monitoring metrics list \
-  --filter='metric.type="compute.googleapis.com/vpn_tunnel/sent_bytes_count"' \
+  --filter='metric.type=starts_with("vpn.googleapis.com/network/") AND metric.type=has_substring("bytes_count")' \
   --project=your-project-id
 ```
 
