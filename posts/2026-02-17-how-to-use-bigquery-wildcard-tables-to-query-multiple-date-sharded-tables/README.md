@@ -73,7 +73,7 @@ WHERE
 -- Query all data from February 2026
 SELECT *
 FROM `my-project-id.analytics.events_*`
-WHERE _TABLE_SUFFIX LIKE '202602%';
+WHERE _TABLE_SUFFIX BETWEEN '20260201' AND '20260228';
 ```
 
 ### Specific Dates
@@ -148,6 +148,7 @@ FROM
     `my-project-id.analytics_12345678.events_*`
 WHERE
     _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))
+    AND _TABLE_SUFFIX <= FORMAT_DATE('%Y%m%d', CURRENT_DATE())
 GROUP BY
     event_name
 ORDER BY
@@ -298,7 +299,7 @@ GROUP BY event_type;
 
 **"Not found: Table" error**: Make sure at least one table matches the wildcard pattern. If the dataset has no tables starting with the prefix, the query fails.
 
-**Unexpected columns or schema mismatches**: All tables matched by the wildcard should have compatible schemas. If table A has a column that table B does not, queries selecting that column will fail on table B's rows.
+**Unexpected columns or schema mismatches**: All tables matched by the wildcard should have compatible schemas. If a matched table is missing a selected column or has the same column with a different type, the query fails.
 
 **Scanning too much data**: Always check the bytes processed estimate. Add `_TABLE_SUFFIX` filters to narrow the scope.
 
