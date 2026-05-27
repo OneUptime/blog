@@ -16,13 +16,13 @@ In this guide, I will show you how to set up a comprehensive monitoring dashboar
 
 Before building a dashboard, you need to know which metrics are important. Here are the ones I always watch:
 
-**CPU utilization**: This is your primary capacity indicator. Bigtable recommends keeping CPU below 70% for production workloads. Above that, you should add nodes.
+**CPU utilization**: This is your primary capacity indicator. Bigtable recommends keeping CPU below 60% when you are optimizing for latency, and below 90% when you are optimizing for throughput. Above your target, you should enable autoscaling or add nodes.
 
 **Request latency**: The P50, P95, and P99 latencies for read and write operations. Latency spikes usually indicate hotspots or insufficient capacity.
 
-**Throughput**: Rows read and written per second. Helps you understand traffic patterns and plan capacity.
+**Throughput**: Requests, rows, or bytes read and written per second. Helps you understand traffic patterns and plan capacity.
 
-**Storage utilization**: Total data stored across the instance. Important for cost management and capacity planning.
+**Storage utilization**: Storage used as a fraction of cluster capacity, or bytes stored by cluster or table. Important for cost management and capacity planning.
 
 **Error rate**: The count and rate of server errors. Should be near zero in normal operation.
 
@@ -54,7 +54,7 @@ Here is a comprehensive dashboard definition:
             "dataSets": [{
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "metric.type=\"bigtable.googleapis.com/cluster/cpu_load\" resource.type=\"bigtable_cluster\"",
+                  "filter": "metric.type=\"bigtable.googleapis.com/cluster/cpu_load\" AND resource.type=\"bigtable_cluster\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_MEAN"
@@ -62,7 +62,7 @@ Here is a comprehensive dashboard definition:
                 }
               }
             }],
-            "yAxis": { "label": "CPU %", "scale": "LINEAR" }
+            "yAxis": { "label": "CPU utilization", "scale": "LINEAR" }
           }
         }
       },
@@ -76,7 +76,7 @@ Here is a comprehensive dashboard definition:
             "dataSets": [{
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "metric.type=\"bigtable.googleapis.com/server/latencies\" resource.type=\"bigtable_table\"",
+                  "filter": "metric.type=\"bigtable.googleapis.com/server/latencies\" AND resource.type=\"bigtable_table\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_PERCENTILE_99"
@@ -113,7 +113,7 @@ Here are the specific charts I recommend for every Bigtable dashboard.
 Metric: bigtable.googleapis.com/cluster/cpu_load
 Resource: bigtable_cluster
 Aggregation: Mean, 1-minute alignment
-Threshold line: 70% (warning)
+Threshold line: 60% for latency-optimized workloads or 90% for throughput-optimized workloads
 ```
 
 **Request Latency chart**: Shows P50 and P99 latency broken down by method type.
@@ -125,7 +125,7 @@ Aggregation: P50 and P99 percentiles
 Group by: method (to separate reads from writes)
 ```
 
-**Throughput chart**: Shows rows read and written per second.
+**Throughput chart**: Shows server requests per second.
 
 ```text
 Metric: bigtable.googleapis.com/server/request_count
@@ -134,13 +134,17 @@ Aggregation: Rate, 1-minute alignment
 Group by: method
 ```
 
-**Storage utilization chart**: Shows total bytes stored.
+If you want rows per second instead of requests per second, use `bigtable.googleapis.com/server/returned_rows_count` for returned rows and `bigtable.googleapis.com/server/modified_rows_count` for modified rows.
+
+**Storage utilization chart**: Shows storage used as a fraction of cluster capacity.
 
 ```text
 Metric: bigtable.googleapis.com/cluster/storage_utilization
 Resource: bigtable_cluster
 Aggregation: Mean
 ```
+
+For bytes stored, use `bigtable.googleapis.com/disk/bytes_used` at the cluster level or `bigtable.googleapis.com/table/bytes_used` at the table level.
 
 **Error rate chart**: Shows server-side errors.
 
@@ -155,20 +159,16 @@ Aggregation: Sum, 1-minute alignment
 For ad-hoc analysis, the Metrics Explorer is more flexible than a fixed dashboard.
 
 ```bash
-# Query Bigtable metrics using the gcloud CLI
+# Query Bigtable metrics using the Cloud Monitoring API
 # This is useful for scripting and automation
 
-# Get current CPU utilization
-gcloud monitoring metrics list \
-  --filter='metric.type = starts_with("bigtable.googleapis.com/cluster/cpu")' \
-  --project=your-project-id
+# List Bigtable metric descriptors
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://monitoring.googleapis.com/v3/projects/your-project-id/metricDescriptors?filter=metric.type%20%3D%20starts_with(%22bigtable.googleapis.com%2Fcluster%2Fcpu%22)"
 
 # Query specific time series data
-gcloud monitoring time-series list \
-  --filter='metric.type="bigtable.googleapis.com/cluster/cpu_load"' \
-  --interval-start-time="2026-02-17T00:00:00Z" \
-  --interval-end-time="2026-02-17T12:00:00Z" \
-  --project=your-project-id
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://monitoring.googleapis.com/v3/projects/your-project-id/timeSeries?filter=metric.type%3D%22bigtable.googleapis.com%2Fcluster%2Fcpu_load%22&interval.startTime=2026-02-17T00:00:00Z&interval.endTime=2026-02-17T12:00:00Z"
 ```
 
 ## Setting Up Alerts
@@ -181,9 +181,9 @@ gcloud monitoring policies create \
   --display-name="Bigtable High CPU" \
   --condition-display-name="CPU above 70% for 5 minutes" \
   --condition-filter='metric.type="bigtable.googleapis.com/cluster/cpu_load" AND resource.type="bigtable_cluster"' \
-  --condition-threshold-value=0.7 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --if='> 0.7' \
+  --duration=300s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_MEAN"}' \
   --notification-channels=projects/your-project-id/notificationChannels/your-channel-id \
   --project=your-project-id
 ```
@@ -241,7 +241,7 @@ latency_alert = monitoring_v3.AlertPolicy({
 
 # Alert 3: Error rate above threshold
 error_alert = monitoring_v3.AlertPolicy({
-    "display_name": "Bigtable Error Rate > 1%",
+    "display_name": "Bigtable Error Rate > 10 errors/sec",
     "conditions": [{
         "display_name": "High error rate",
         "condition_threshold": {
@@ -280,7 +280,7 @@ Access it from the Bigtable instance page in the Cloud Console. It shows a heatm
 
 A well-distributed workload looks like a uniform gradient. A hotspot shows up as a bright horizontal band, indicating that a narrow key range is getting disproportionate traffic.
 
-Key Visualizer requires at least 24 hours of data before it starts showing results, and the instance must be a production instance (not development).
+Key Visualizer is available for tables that contain at least 1 GB of data per cluster. After a table reaches that size, scans can take up to an hour to become available. For a new table, the initial background data population typically takes a few days and can take up to a week.
 
 ## Building Custom Metrics
 
