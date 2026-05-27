@@ -64,9 +64,6 @@ management:
     tags:
       application: order-service
       environment: production
-    export:
-      prometheus:
-        enabled: true
     distribution:
       # Record histogram buckets for latency metrics
       percentiles-histogram:
@@ -74,6 +71,10 @@ management:
       # Define custom SLO buckets in milliseconds
       slo:
         http.server.requests: 50ms, 100ms, 200ms, 500ms, 1s, 5s
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 ```
 
 ## Key JVM Metrics
@@ -137,8 +138,8 @@ public class MetricsConfig {
         return Gauge.builder("business.cache.size", cacheManager, cm -> {
                 // Get the number of entries in the primary cache
                 Cache cache = cm.getCache("products");
-                if (cache != null) {
-                    return ((ConcurrentMapCache) cache).getNativeCache().size();
+                if (cache instanceof ConcurrentMapCache mapCache) {
+                    return mapCache.getNativeCache().size();
                 }
                 return 0;
             })
@@ -172,7 +173,7 @@ public class OrderService {
             try {
                 Order order = createOrder(request);
 
-                // Increment the counter with status tag
+                // Increment the processed orders counter
                 orderCounter.increment();
 
                 // Record order value as a distribution summary
@@ -226,10 +227,11 @@ scrape_configs:
         action: keep
         regex: true
       # Use the port from the annotation
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
-        regex: (.+)
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
 ```
 
 ## Essential Prometheus Queries
@@ -238,7 +240,8 @@ Use these PromQL queries to monitor JVM health.
 
 ```promql
 # Heap memory usage percentage
-jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} * 100
+sum by (instance) (jvm_memory_used_bytes{area="heap"})
+  / sum by (instance) (jvm_memory_max_bytes{area="heap"}) * 100
 
 # GC pause time rate (seconds per second)
 rate(jvm_gc_pause_seconds_sum[5m])
@@ -253,7 +256,7 @@ jvm_threads_live_threads
 rate(http_server_requests_seconds_count[5m])
 
 # HTTP request latency (95th percentile)
-histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket[5m])))
 
 # Error rate percentage
 rate(http_server_requests_seconds_count{status=~"5.."}[5m])
@@ -272,8 +275,8 @@ groups:
       # Alert when heap usage exceeds 85%
       - alert: HighHeapUsage
         expr: >
-          jvm_memory_used_bytes{area="heap"}
-          / jvm_memory_max_bytes{area="heap"} > 0.85
+          sum by (instance) (jvm_memory_used_bytes{area="heap"})
+          / sum by (instance) (jvm_memory_max_bytes{area="heap"}) > 0.85
         for: 5m
         labels:
           severity: warning
