@@ -165,7 +165,7 @@ gcloud compute instances create web-server \
     --metadata=startup-script-url=gs://my-project-scripts/startup.sh
 ```
 
-The `--scopes=storage-ro` flag gives the VM read access to Cloud Storage so it can fetch the script.
+The `--scopes=storage-ro` flag gives the VM the OAuth scope it needs to read from Cloud Storage. The VM's service account also needs permission to read the bucket or object, such as the Storage Object Viewer role.
 
 ## Handling Idempotency
 
@@ -209,9 +209,25 @@ fi
 # Create the application directory
 mkdir -p /opt/myapp
 
+# Write the Nginx configuration
+cat > /opt/myapp/nginx.conf << 'NGINX'
+server {
+    listen 80;
+    resolver 127.0.0.11 ipv6=off;
+
+    location / {
+        set $app_upstream http://app:8080;
+        proxy_pass $app_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+NGINX
+
 # Write the Docker Compose file
 cat > /opt/myapp/docker-compose.yml << 'COMPOSE'
-version: "3.8"
 services:
   web:
     image: nginx:alpine
@@ -237,7 +253,7 @@ services:
       - pgdata:/var/lib/postgresql/data
     environment:
       - POSTGRES_DB=myapp
-      - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
+      - POSTGRES_PASSWORD=change-me
     restart: unless-stopped
 
 volumes:
