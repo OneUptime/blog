@@ -35,10 +35,10 @@ The Cloud Run service rejects all traffic that does not come through the load ba
 Deploy your Cloud Run service and set the ingress to `internal-and-cloud-load-balancing`. This blocks direct access from the internet while allowing traffic from the load balancer.
 
 ```bash
-# Deploy a Cloud Run service with internal-only ingress
+# Deploy a Cloud Run service with internal and load balancer ingress
 
 gcloud run deploy my-internal-app \
-    --image=gcr.io/my-project-id/my-app:latest \
+    --image=us-central1-docker.pkg.dev/my-project-id/my-repo/my-app:latest \
     --region=us-central1 \
     --ingress=internal-and-cloud-load-balancing \
     --no-allow-unauthenticated \
@@ -111,6 +111,8 @@ gcloud compute addresses create my-app-ip \
 # Create the forwarding rule
 gcloud compute forwarding-rules create my-app-https-rule \
     --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
+    --network-tier=PREMIUM \
     --address=my-app-ip \
     --target-https-proxy=my-app-https-proxy \
     --ports=443 \
@@ -151,9 +153,14 @@ gcloud iap web add-iam-policy-binding \
 
 ## Step 7: Handle Cloud Run Authentication
 
-Since we set `--no-allow-unauthenticated`, the load balancer's service account needs permission to invoke the Cloud Run service. The load balancer uses the Compute Engine default service account or the service account you configure.
+Since we set `--no-allow-unauthenticated`, IAP needs permission to invoke the Cloud Run service. IAP authenticates to Cloud Run by using the IAP service agent, so create the service agent if it does not already exist and grant it the Cloud Run Invoker role.
 
-However, when IAP is in front of Cloud Run, IAP handles the authentication. You need to allow IAP to invoke the Cloud Run service.
+```bash
+# Create the IAP service agent if it does not already exist
+gcloud beta services identity create \
+    --service=iap.googleapis.com \
+    --project=my-project-id
+```
 
 ```bash
 # Allow IAP's service agent to invoke the Cloud Run service
@@ -238,17 +245,25 @@ resource "google_cloud_run_v2_service" "app" {
 
   template {
     containers {
-      image = "gcr.io/my-project-id/my-app:latest"
+      image = "us-central1-docker.pkg.dev/my-project-id/my-repo/my-app:latest"
     }
   }
 }
 
-# Allow IAP to invoke Cloud Run
-resource "google_cloud_run_service_iam_member" "iap_invoker" {
-  service  = google_cloud_run_v2_service.app.name
-  location = "us-central1"
+# Create the IAP service agent
+resource "google_project_service_identity" "iap" {
+  provider = google-beta
+  project  = var.project_id
+  service  = "iap.googleapis.com"
+}
+
+# Allow IAP's service agent to invoke Cloud Run
+resource "google_cloud_run_v2_service_iam_member" "iap_invoker" {
+  project  = var.project_id
+  name     = google_cloud_run_v2_service.app.name
+  location = google_cloud_run_v2_service.app.location
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = google_project_service_identity.iap.member
 }
 
 # Serverless NEG
@@ -272,8 +287,7 @@ resource "google_compute_backend_service" "app" {
   }
 
   iap {
-    oauth2_client_id     = google_iap_client.app.client_id
-    oauth2_client_secret = google_iap_client.app.secret
+    enabled = true
   }
 }
 
@@ -305,10 +319,11 @@ resource "google_compute_global_address" "app" {
 
 # Forwarding rule
 resource "google_compute_global_forwarding_rule" "app" {
-  name       = "my-app-https-rule"
-  target     = google_compute_target_https_proxy.app.id
-  ip_address = google_compute_global_address.app.address
-  port_range = "443"
+  name                  = "my-app-https-rule"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  target                = google_compute_target_https_proxy.app.id
+  ip_address            = google_compute_global_address.app.address
+  port_range            = "443"
 }
 
 # IAP access
@@ -331,7 +346,7 @@ resource "google_iap_web_backend_service_iam_member" "access" {
 ```bash
 gcloud run services describe my-internal-app \
     --region=us-central1 \
-    --format="value(spec.template.metadata.annotations['run.googleapis.com/ingress'])" \
+    --format="value(metadata.annotations['run.googleapis.com/ingress'])" \
     --project=my-project-id
 ```
 
