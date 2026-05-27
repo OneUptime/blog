@@ -64,7 +64,7 @@ Create a simple inventory table:
 
 ## Step 2: Avoid DHCP Overlap
 
-The most critical rule is to never let your MetalLB range overlap with DHCP. MetalLB uses ARP (in L2 mode) or BGP to announce IPs. If a DHCP server also hands out those IPs, you get conflicts.
+The most critical rule is to never let your MetalLB range overlap with DHCP. MetalLB uses ARP/NDP (in L2 mode) or BGP to announce IPs. If a DHCP server also hands out those IPs, you get conflicts.
 
 ```mermaid
 flowchart LR
@@ -171,44 +171,35 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    # Full /24 gives 254 usable IPs
-    # Reserve .1 for gateway and .255 for broadcast
+    # Reserve .0 for the network address, .1 for the gateway, and .255 for broadcast.
+    # This leaves 253 addresses for MetalLB in this example.
     - 10.0.100.2-10.0.100.254
 ```
 
 Make sure routing is configured on your network so traffic can reach this subnet:
 
 ```bash
-# On your router or gateway, add a static route
-# pointing the MetalLB subnet to one of the Kubernetes nodes
-# (for L2 mode, the subnet must be on the same L2 segment)
-ip route add 10.0.100.0/24 via 192.168.1.31
+# In BGP mode, configure your routers to accept the routes MetalLB advertises.
+# In L2 mode, use addresses on the same L2 segment as the Kubernetes nodes
+# rather than routing a separate subnet through a single node.
 ```
 
 ## Step 6: Plan for IPv6
 
-If your network supports IPv6, plan dual-stack pools:
+If your network supports IPv6, plan a pool that contains both IPv4 and IPv6 ranges for dual-stack services:
 
 ```yaml
 # dual-stack-pools.yaml
-# Separate pools for IPv4 and IPv6 addresses.
+# A single pool with both IPv4 and IPv6 ranges for dual-stack services.
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
-  name: v4-pool
+  name: dual-stack-pool
   namespace: metallb-system
 spec:
   addresses:
     - 192.168.1.200-192.168.1.230
----
-apiVersion: metallb.io/v1beta1
-kind: IPAddressPool
-metadata:
-  name: v6-pool
-  namespace: metallb-system
-spec:
-  addresses:
-    # Use a /112 from your allocated prefix
+    # Use a range from your allocated IPv6 prefix
     - fd00:1::200-fd00:1::230
 ```
 
@@ -263,7 +254,7 @@ Before going to production, verify each item:
 - [ ] MetalLB range does not overlap with DHCP
 - [ ] MetalLB range does not overlap with static assignments
 - [ ] Pool is sized for current services plus 50% growth
-- [ ] Network routing is configured for the MetalLB subnet
+- [ ] Network routing or L2 reachability is configured for the MetalLB IPs
 - [ ] Firewall rules allow traffic to MetalLB IPs
 - [ ] IP ranges are documented in your infrastructure runbook
 - [ ] Validation script confirms no conflicts
