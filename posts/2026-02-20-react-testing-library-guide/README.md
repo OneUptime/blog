@@ -32,9 +32,10 @@ Install the required packages:
 # Install React Testing Library and related tools
 
 npm install --save-dev @testing-library/react @testing-library/jest-dom @testing-library/user-event jest @types/jest
+npm install --save-dev @testing-library/dom jest-environment-jsdom identity-obj-proxy
 
-# If using TypeScript, add ts-jest
-npm install --save-dev ts-jest
+# If using TypeScript, add TypeScript tooling
+npm install --save-dev typescript ts-jest
 ```
 
 Configure Jest in your project:
@@ -43,7 +44,7 @@ Configure Jest in your project:
 // jest.config.js
 module.exports = {
   testEnvironment: 'jsdom',
-  setupFilesAfterSetup: ['<rootDir>/src/setupTests.ts'],
+  setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
   moduleNameMapper: {
     // Handle CSS imports in tests
     '\\.(css|less|scss)$': 'identity-obj-proxy',
@@ -336,7 +337,7 @@ global.fetch = jest.fn();
 
 describe('UserProfile', () => {
   afterEach(() => {
-    jest.restoreAllMocks();
+    jest.resetAllMocks();
   });
 
   it('shows loading state, then displays user data', async () => {
@@ -477,9 +478,13 @@ describe('Modal accessibility', () => {
     await user.tab();
     expect(screen.getByRole('button', { name: /action/i })).toHaveFocus();
 
-    // Tab should cycle back to the first element
+    // Tab should move to the close button
     await user.tab();
     expect(screen.getByRole('button', { name: /close/i })).toHaveFocus();
+
+    // The next Tab should cycle back to the first element
+    await user.tab();
+    expect(firstInput).toHaveFocus();
   });
 
   it('closes when Escape is pressed', async () => {
