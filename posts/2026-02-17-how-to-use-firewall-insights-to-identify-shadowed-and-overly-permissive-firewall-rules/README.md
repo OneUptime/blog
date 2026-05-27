@@ -10,17 +10,18 @@ Description: Learn how to use GCP Firewall Insights to find shadowed firewall ru
 
 Firewall rules tend to accumulate over time. Someone adds a rule to fix a connectivity issue, another gets created during a migration, and before you know it, you have dozens of rules with overlapping scopes, some of which are never hit by any traffic. These shadowed and overly permissive rules create security blind spots that are hard to find manually.
 
-GCP Firewall Insights automates the process of finding these problems. It analyzes your firewall rules against actual traffic patterns and flags rules that are shadowed by higher-priority rules, rules that are too broad, and rules that have not been hit in weeks or months.
+GCP Firewall Insights automates the process of finding these problems. It analyzes your firewall rule configuration and, for log-based insights, actual traffic patterns. It flags rules that are shadowed by higher-priority rules, rules that are too broad, and rules that have not been hit in weeks or months.
 
 ## Enabling Firewall Insights
 
-Firewall Insights is part of Network Intelligence Center and requires Firewall Rules Logging to be enabled. Without logging, the tool cannot compare rules against actual traffic.
+Firewall Insights is part of Network Intelligence Center. Shadowed rule insights are configuration-based, while overly permissive and deny-rule insights require Firewall Rules Logging because they compare rules against actual traffic.
 
-First, enable the required API:
+First, enable the required APIs:
 
 ```bash
-# Enable the Recommender API which powers Firewall Insights
+# Enable the Firewall Insights and Recommender APIs
 
+gcloud services enable firewallinsights.googleapis.com --project=my-project
 gcloud services enable recommender.googleapis.com --project=my-project
 ```
 
@@ -38,7 +39,7 @@ for rule in $(gcloud compute firewall-rules list \
 done
 ```
 
-Give it a few days to collect enough traffic data before the insights become meaningful.
+Finally, enable shadowed rule insights and overly permissive rule insights on the Firewall Insights page in the Google Cloud console. After you enable either feature, it can take up to 48 hours to see generated insights. Log-based insights become more useful after they have enough Firewall Rules Logging data for your configured observation period.
 
 ## Understanding Shadowed Rules
 
@@ -92,9 +93,10 @@ gcloud recommender insights list \
   --insight-type=google.compute.firewall.Insight \
   --location=global \
   --project=my-project \
-  --filter="insightSubtype=OVERLY_PERMISSIVE" \
-  --format="table(name,description)"
+  --format="table(name,insightSubtype,description)"
 ```
+
+Review the `insightSubtype` column for the overly permissive insight categories, such as allow rules with no hits, unused attributes, or overly broad IP address or port ranges.
 
 ## Identifying Unused Rules
 
@@ -106,37 +108,25 @@ gcloud recommender insights list \
   --insight-type=google.compute.firewall.Insight \
   --location=global \
   --project=my-project \
-  --filter="insightSubtype=UNUSED_ATTRIBUTE" \
-  --format="table(name,description,content.operationGroups)"
+  --format="table(name,insightSubtype,description)"
 ```
 
 Before deleting an unused rule, check whether it might be for a periodic workload (like a monthly batch job) or a disaster recovery scenario. Not all unused rules are unnecessary.
 
-## Acting on Recommendations
+## Acting on Insight Details
 
-Firewall Insights does not just identify problems - it also provides recommendations. These are actionable suggestions to fix the issues found.
-
-```bash
-# List firewall recommendations
-gcloud recommender recommendations list \
-  --recommender=google.compute.firewall.Recommender \
-  --location=global \
-  --project=my-project \
-  --format="table(name,priority,description)"
-```
-
-To apply a recommendation:
+Firewall Insights does not just identify problems - the insight details can also include suggested changes, such as reducing allowed ports or removing unused attributes.
 
 ```bash
-# View the details of a specific recommendation
-gcloud recommender recommendations describe RECOMMENDATION_ID \
-  --recommender=google.compute.firewall.Recommender \
+# View the details of a specific firewall insight
+gcloud recommender insights describe INSIGHT_ID \
+  --insight-type=google.compute.firewall.Insight \
   --location=global \
   --project=my-project \
   --format=yaml
 ```
 
-The recommendation will include the specific changes needed - like reducing allowed ports or removing the rule entirely. You can then apply those changes manually or mark the recommendation as applied.
+The insight details can include the specific changes to review - like reducing allowed ports, narrowing IP ranges, or removing an unused attribute. You can then apply those changes manually.
 
 ## A Practical Cleanup Workflow
 
@@ -152,20 +142,15 @@ gcloud compute firewall-rules list \
   > firewall-rules-export.csv
 ```
 
-Step 2 - Get all insights and recommendations:
+Step 2 - Get all insights:
 
 ```bash
-# Get all firewall insights grouped by type
-for subtype in SHADOWED_RULE OVERLY_PERMISSIVE UNUSED_ATTRIBUTE; do
-  echo "=== $subtype ==="
-  gcloud recommender insights list \
-    --insight-type=google.compute.firewall.Insight \
-    --location=global \
-    --project=my-project \
-    --filter="insightSubtype=$subtype" \
-    --format="table(description)"
-  echo ""
-done
+# Get all firewall insights with their subtypes
+gcloud recommender insights list \
+  --insight-type=google.compute.firewall.Insight \
+  --location=global \
+  --project=my-project \
+  --format="table(insightSubtype,description,stateInfo.state)"
 ```
 
 Step 3 - Handle shadowed rules first since they indicate logic errors:
@@ -214,12 +199,12 @@ fi
 
 ## Limits and Considerations
 
-Firewall Insights requires firewall rules logging, which does incur additional costs. The logging data is used to determine traffic patterns, so the accuracy improves with more data over time.
+Firewall Rules Logging can incur additional costs. Logging data is used for overly permissive and deny-rule insights, so the accuracy of those insights improves with more data over time.
 
-Insights for shadowed rules are generated within a few hours of rule creation. Traffic-based insights like overly permissive and unused rules need at least a few weeks of logging data to be reliable.
+Shadowed rule insights do not use an observation period because they do not evaluate historical data; the analysis runs against your existing firewall rule configuration every 24 hours. Traffic-based insights like overly permissive and unused rules are based on your configured observation period, which defaults to six weeks and can be configured from seven days to one year.
 
-The tool currently analyzes VPC firewall rules. If you are using hierarchical firewall policies or Cloud Armor, those require separate analysis tools.
+The tool analyzes VPC firewall rules and can also show insights for hierarchical firewall policies and global network firewall policies. If you are using Cloud Armor, that requires separate analysis.
 
 ## Summary
 
-Firewall Insights takes the guesswork out of firewall rule management. Instead of manually auditing rules and hoping you catch the problems, you get automated analysis that highlights shadowed rules, overly permissive configurations, and unused rules. Make it part of your regular security review process - run through the insights quarterly at minimum, and act on the recommendations to keep your network security posture tight.
+Firewall Insights takes the guesswork out of firewall rule management. Instead of manually auditing rules and hoping you catch the problems, you get automated analysis that highlights shadowed rules, overly permissive configurations, and unused rules. Make it part of your regular security review process - run through the insights quarterly at minimum, and act on the insight details to keep your network security posture tight.
