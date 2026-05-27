@@ -20,7 +20,7 @@ They support:
 - Standard SQL queries, including DML (INSERT, UPDATE, DELETE, MERGE)
 - DDL statements (CREATE TABLE, etc.)
 - Parameterized date references using `@run_time` and `@run_date`
-- Email notifications on success or failure
+- Email notifications on failure, and Pub/Sub notifications when runs finish
 
 ## Creating a Scheduled Query via the Console
 
@@ -111,7 +111,7 @@ every 15 minutes             -- Every 15 minutes
 every 6 hours from 00:00     -- Every 6 hours starting at midnight
 ```
 
-You can also specify a time zone when creating the scheduled query so the schedule follows local time instead of UTC.
+When you create a schedule in the console, BigQuery converts the selected local time to UTC. When you use the bq CLI, Terraform, or the API, the schedule times you provide are in UTC.
 
 ## Using Run-Time Parameters
 
@@ -135,7 +135,7 @@ These parameters let you build incremental processing pipelines where each run p
 
 ## Write Disposition Options
 
-You have three options for how results are written to the destination table.
+You have two options for how results are written to the destination table.
 
 **WRITE_TRUNCATE**: Replaces the entire destination table with the query results. Good for tables that should always reflect the latest state.
 
@@ -151,8 +151,6 @@ GROUP BY region;
 ```
 
 **WRITE_APPEND**: Appends results to the existing table. Good for accumulating historical data.
-
-**WRITE_EMPTY**: Only writes if the destination table is empty. Rarely used for scheduled queries.
 
 ## DML-Based Scheduled Queries
 
@@ -187,14 +185,18 @@ For DML queries, you do not specify a destination table - the target table is de
 
 ## Setting Up Notifications
 
-You can configure email notifications for when scheduled queries succeed or fail. This is configured in the BigQuery console under the scheduled query's settings, or via the API.
+You can configure email notifications for scheduled query failures. You can also publish run-completion notifications to a Pub/Sub topic. This is configured in the BigQuery console under the scheduled query's settings, through Terraform, or via the API.
 
-```bash
-# Update a scheduled query to send notifications on failure
-bq update --transfer_config \
-  --transfer_config_id=projects/my_project/locations/us/transferConfigs/abc123 \
-  --notification_pubsub_topic=projects/my_project/topics/scheduled-query-alerts
+```hcl
+# Add these to the google_bigquery_data_transfer_config resource
+email_preferences {
+  enable_failure_email = true
+}
+
+notification_pubsub_topic = "projects/my_project/topics/scheduled-query-alerts"
 ```
+
+The bq CLI can create and update scheduled queries, but it cannot configure notifications.
 
 For more sophisticated alerting, publish notifications to a Pub/Sub topic and process them with Cloud Functions.
 
@@ -215,9 +217,9 @@ You can also query the transfer run history programmatically.
 ```sql
 -- Check for failed scheduled query runs in the last 7 days
 SELECT
-  run_time,
+  creation_time,
   state,
-  error_status
+  error_result.message AS error_message
 FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE job_type = 'QUERY'
   AND creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
