@@ -10,77 +10,64 @@ Description: Set up an automated pipeline that creates PagerDuty incidents when 
 
 Google Cloud Error Reporting automatically groups and surfaces application errors from your services running on App Engine, Cloud Functions, Cloud Run, GKE, and Compute Engine. But detection without action is just a dashboard nobody checks. The real value comes when new or spiking errors automatically create incidents in PagerDuty so your team can respond before users start filing support tickets.
 
-This guide shows you how to connect Error Reporting to PagerDuty through Cloud Monitoring alerting policies, and how to build a more advanced pipeline using Cloud Functions for richer incident context.
+This guide shows you how to connect Error Reporting to PagerDuty through Cloud Monitoring notification channels, and how to build a more advanced pipeline using Cloud Functions for richer incident context.
 
-## The Simple Approach: Cloud Monitoring Alerts
+## The Simple Approach: Error Reporting Notifications
 
-Error Reporting surfaces errors as metrics in Cloud Monitoring. You can create alerting policies on these metrics and route them to PagerDuty through a notification channel.
+Error Reporting can send notifications when it sees a new error group or when an error event occurs in a group that has been marked Resolved. You can route those notifications to PagerDuty through a Cloud Monitoring notification channel.
 
 ### Set Up the PagerDuty Notification Channel
 
 ```bash
 # Create a PagerDuty notification channel in Cloud Monitoring
 
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --type=pagerduty \
   --display-name="PagerDuty - Application Errors" \
   --channel-labels=service_key=YOUR_PAGERDUTY_INTEGRATION_KEY \
   --project=my-project
 ```
 
-Note the channel ID from the output. You will need it for the alerting policy.
+After creating the channel, open Error Reporting, click **Configure notifications**, and select the PagerDuty notification channel. Error Reporting notifications are for new and reopened error groups, not every repeated occurrence in an already-open group.
 
 ### Create an Alert for New Error Groups
 
-Error Reporting creates a new error group when it sees an error it has not seen before. You can alert on the count of new error groups.
-
-```bash
-# Alert when new error groups appear (indicates new bugs in production)
-gcloud alpha monitoring policies create \
-  --display-name="New Error Group Detected" \
-  --condition-display-name="New errors in production" \
-  --condition-filter='resource.type="consumed_api" AND metric.type="logging.googleapis.com/log_entry_count" AND metric.labels.severity="ERROR"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=60s \
-  --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
-  --documentation-content='New error detected in Error Reporting. Check https://console.cloud.google.com/errors for details.' \
-  --project=my-project
-```
+Error Reporting creates a new error group when it sees an error it has not seen before. The notification setting above is the supported path for these new-error-group notifications.
 
 ### Create an Alert for Error Rate Spikes
 
-A sudden increase in error rate is often more urgent than a single new error. Use a rate-of-change condition to catch spikes.
+A sudden increase in error rate is often more urgent than a single new error. Use a Cloud Monitoring alerting policy on the relevant request-count metric to catch spikes. This Cloud Run example alerts on sustained 5xx responses; use the matching request metric for App Engine, GKE, or another runtime if your service runs elsewhere.
 
 ```bash
-# Alert when error count spikes significantly compared to the previous period
-gcloud alpha monitoring policies create \
+# Alert when Cloud Run 5xx responses stay above the threshold
+gcloud monitoring policies create \
   --display-name="Error Rate Spike" \
   --condition-display-name="Error count spike" \
-  --condition-filter='metric.type="serviceruntime.googleapis.com/api/request_count" AND metric.labels.response_code_class="5xx"' \
-  --condition-threshold-value=50 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --condition-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="5xx"' \
+  --aggregation='{"alignmentPeriod":"300s","perSeriesAligner":"ALIGN_RATE"}' \
+  --if='> 1' \
+  --duration=300s \
   --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
-  --documentation-content='Error rate has spiked above threshold. Check Error Reporting for stack traces and affected services.' \
+  --documentation='5xx response rate is above threshold. Check Error Reporting for stack traces and affected services.' \
   --project=my-project
 ```
 
 ## The Advanced Approach: Cloud Functions Pipeline
 
-The simple approach works but creates incidents with limited context. A Cloud Function can watch Error Reporting, extract rich details like stack traces and affected versions, and create much more useful PagerDuty incidents.
+The simple approach works but creates incidents with limited context. A Cloud Function can receive Error Reporting or Cloud Monitoring notifications, extract rich details like stack traces and affected versions, and create much more useful PagerDuty incidents.
 
 ### Architecture
 
-The flow works as follows: Error Reporting detects a new error group or a spike in an existing group. A Cloud Monitoring alert triggers a Cloud Function. The function queries the Error Reporting API for details, then creates a PagerDuty incident with full context.
+The flow works as follows: Error Reporting detects a new or reopened error group, or Cloud Monitoring detects a spike in an error metric. A Pub/Sub notification channel publishes the notification, which triggers a Cloud Function. The function queries the Error Reporting API for details, then creates a PagerDuty incident with full context.
 
 ### The Cloud Function
 
 ```python
 # main.py
-# Cloud Function that creates rich PagerDuty incidents from Error Reporting alerts
+# Cloud Function that creates rich PagerDuty incidents from Error Reporting notifications
 import json
 import os
+import base64
 import requests
 from google.cloud import errorreporting_v1beta1
 from datetime import datetime, timedelta
@@ -95,11 +82,12 @@ def handle_error_alert(event, context):
     """Triggered by a Cloud Monitoring alert notification via Pub/Sub."""
 
     # Parse the alert notification
-    alert_data = json.loads(event["data"].decode("utf-8")) if "data" in event else event
+    alert_data = json.loads(base64.b64decode(event["data"]).decode("utf-8")) if "data" in event else event
 
     # Extract the condition and metric information
-    condition_name = alert_data.get("incident", {}).get("condition_name", "Unknown")
-    resource_name = alert_data.get("incident", {}).get("resource_name", "Unknown")
+    incident = alert_data.get("incident", {})
+    condition_name = incident.get("condition_name") or alert_data.get("subject", "Error Reporting notification")
+    resource_name = incident.get("resource_name") or alert_data.get("group_info", {}).get("detail_link", "Unknown")
 
     # Query Error Reporting for recent error details
     error_details = get_recent_errors()
@@ -169,7 +157,7 @@ def get_recent_errors():
         for stat in response:
             total_count += stat.count
             error_info = {
-                "message": stat.group.group_id,
+                "message": stat.representative.message[:300] if stat.representative.message else stat.group.group_id,
                 "count": stat.count,
                 "affected_users": stat.affected_users_count
             }
@@ -177,7 +165,13 @@ def get_recent_errors():
 
             # Collect service names from affected services
             for svc in stat.affected_services:
-                services.add(svc)
+                if svc.service:
+                    services.add(svc.service)
+                if svc.version:
+                    services.add(f"{svc.service}:{svc.version}")
+
+            if stat.representative.message and not stack_preview:
+                stack_preview = stat.representative.message
 
         return {
             "count": total_count,
@@ -220,19 +214,27 @@ gcloud functions deploy error-to-pagerduty \
   --project=my-project
 ```
 
-### Update Alert Policies to Trigger the Function
+### Update Notifications to Trigger the Function
 
-Create a Pub/Sub notification channel and update your alerting policies to publish to it.
+Create a Pub/Sub notification channel, select it in Error Reporting notifications, and add it to any alerting policies that should publish to the function.
 
 ```bash
 # Create a Pub/Sub topic for alert notifications
 gcloud pubsub topics create error-alert-notifications --project=my-project
 
 # Create a Pub/Sub notification channel in Cloud Monitoring
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --type=pubsub \
   --display-name="Error Alert Pipeline" \
   --channel-labels=topic=projects/my-project/topics/error-alert-notifications \
+  --project=my-project
+
+# Allow Cloud Monitoring notifications to publish to the topic
+PROJECT_NUMBER=$(gcloud projects describe my-project --format="value(project_number)")
+gcloud pubsub topics add-iam-policy-binding \
+  projects/my-project/topics/error-alert-notifications \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-monitoring-notification.iam.gserviceaccount.com" \
+  --role=roles/pubsub.publisher \
   --project=my-project
 ```
 
@@ -265,7 +267,7 @@ def trigger_test_error(request):
     return "Test error reported", 200
 ```
 
-After triggering the error, check the following in sequence: Error Reporting console shows the new error, Cloud Monitoring alert fires, Cloud Function executes successfully (check Cloud Logging), and PagerDuty shows a new incident with the enriched details.
+After triggering the error, check the following in sequence: Error Reporting console shows the new error, the Error Reporting notification or Cloud Monitoring alert publishes to Pub/Sub, the Cloud Function executes successfully (check Cloud Logging), and PagerDuty shows a new incident with the enriched details.
 
 ## Fine-Tuning Alert Sensitivity
 
