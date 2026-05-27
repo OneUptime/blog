@@ -259,8 +259,8 @@ After:
 locals {
   servers = {
     "server-1" = { zone = "us-central1-a" }
-    "server-2" = { zone = "us-central1-b" }
-    "server-3" = { zone = "us-central1-c" }
+    "server-2" = { zone = "us-central1-a" }
+    "server-3" = { zone = "us-central1-a" }
   }
 }
 
@@ -397,7 +397,7 @@ moved {
 
 ## Common Mistakes
 
-**Moving to a different resource type.** You cannot move a `google_compute_instance` to a `google_compute_instance_template`. The from and to must be the same resource type.
+**Moving to an incompatible resource type.** You cannot move a `google_compute_instance` to a `google_compute_instance_template`. Resource type changes are only possible when the provider explicitly supports moving state between those types.
 
 **Forgetting dependent resources.** If you move a VPC into a module, you also need to move the subnets, firewall rules, and everything else that references it.
 
