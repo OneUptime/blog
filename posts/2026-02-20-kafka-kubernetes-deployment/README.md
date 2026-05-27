@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kafka, Kubernetes, Strimzi, StatefulSet, Deployment
+Tags: Kafka, Kubernetes, Strimzi, KafkaNodePool, Deployment
 
 Description: Learn how to deploy Apache Kafka on Kubernetes using Strimzi operator for production-ready message streaming.
 
@@ -17,20 +17,19 @@ Kafka is a stateful, distributed system. Deploying it with plain Kubernetes mani
 ```mermaid
 graph TD
     A[Strimzi Operator] -->|manages| B[Kafka Cluster CR]
-    B --> C[Broker StatefulSet]
-    B --> D[ZooKeeper StatefulSet]
+    B --> C[KafkaNodePool CR]
     B --> E[Entity Operator]
     E --> F[Topic Operator]
     E --> G[User Operator]
-    C --> H[PVC per Broker]
-    D --> I[PVC per ZK Node]
+    C --> H[StrimziPodSet]
+    H --> I[PVC per Broker]
 ```
 
 ## Prerequisites
 
 Before you begin, make sure you have:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster supported by Strimzi 0.44.0 (v1.25 through v1.31)
 - `kubectl` configured to talk to your cluster
 - `helm` v3 installed
 - A StorageClass that supports dynamic provisioning
@@ -65,22 +64,56 @@ Define the cluster using a Custom Resource:
 
 ```yaml
 # kafka-cluster.yaml
-# Deploys a 3-broker Kafka cluster with KRaft mode (no ZooKeeper)
+# Deploys a 3-node Kafka cluster with KRaft mode (no ZooKeeper)
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaNodePool
+metadata:
+  name: kafka
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: production-cluster
+spec:
+  replicas: 3
+  roles:
+    - controller
+    - broker
+  storage:
+    type: persistent-claim
+    size: 100Gi
+    class: standard
+    deleteClaim: false
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: "500m"
+    limits:
+      memory: 4Gi
+      cpu: "2"
+  # JVM options for the Kafka nodes
+  jvmOptions:
+    -Xms: 1024m
+    -Xmx: 2048m
+---
 apiVersion: kafka.strimzi.io/v1beta2
 kind: Kafka
 metadata:
   name: production-cluster
   namespace: kafka
+  annotations:
+    strimzi.io/node-pools: enabled
+    strimzi.io/kraft: enabled
 spec:
   kafka:
-    version: 3.7.0
-    replicas: 3
+    version: 3.8.0
+    metadataVersion: 3.8-IV0
     listeners:
       # Internal listener for in-cluster communication
       - name: plain
         port: 9092
         type: internal
         tls: false
+        authentication:
+          type: scram-sha-512
       # TLS listener for secure communication
       - name: tls
         port: 9093
@@ -90,28 +123,17 @@ spec:
       # Use 3 partitions by default for new topics
       num.partitions: 3
       # Replication factor for internal topics
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
       default.replication.factor: 3
       min.insync.replicas: 2
       # Log retention set to 7 days
       log.retention.hours: 168
       # Segment size of 1 GB
       log.segment.bytes: 1073741824
-    storage:
-      type: persistent-claim
-      size: 100Gi
-      class: standard
-      deleteClaim: false
-    resources:
-      requests:
-        memory: 2Gi
-        cpu: "500m"
-      limits:
-        memory: 4Gi
-        cpu: "2"
-    # JVM options for the brokers
-    jvmOptions:
-      -Xms: 1024m
-      -Xmx: 2048m
+    authorization:
+      type: simple
     metricsConfig:
       type: jmxPrometheusExporter
       valueFrom:
@@ -192,6 +214,22 @@ spec:
           - Write
           - Describe
         host: "*"
+      # Required when the producer has idempotence enabled
+      - resource:
+          type: cluster
+          name: kafka-cluster
+        operations:
+          - IdempotentWrite
+        host: "*"
+```
+
+```bash
+# Apply the user definition
+kubectl apply -f kafka-user.yaml
+
+# Decode the generated SCRAM password for the application
+kubectl get secret app-producer -n kafka \
+  -o jsonpath='{.data.password}' | base64 --decode
 ```
 
 ## Deployment Architecture
@@ -228,12 +266,17 @@ graph TB
 # Producer that connects to Kafka inside Kubernetes
 from confluent_kafka import Producer
 import json
+import os
 
 # Use the internal Kubernetes service DNS name
 conf = {
     "bootstrap.servers": "production-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092",
     "client.id": "k8s-producer",
-    # Enable idempotent producer for exactly-once semantics
+    "security.protocol": "SASL_PLAINTEXT",
+    "sasl.mechanisms": "SCRAM-SHA-512",
+    "sasl.username": "app-producer",
+    "sasl.password": os.environ["KAFKA_PASSWORD"],
+    # Enable idempotent producer writes
     "enable.idempotence": True,
     "acks": "all",
 }
@@ -279,6 +322,11 @@ data:
           partition: "$2"
 ```
 
+```bash
+# Apply the metrics ConfigMap
+kubectl apply -f kafka-metrics-configmap.yaml
+```
+
 ## Production Checklist
 
 | Item | Recommendation |
@@ -294,12 +342,13 @@ data:
 ## Scaling the Cluster
 
 ```bash
-# Scale from 3 to 5 brokers by editing the CR
-kubectl patch kafka production-cluster -n kafka --type merge \
-  -p '{"spec":{"kafka":{"replicas":5}}}'
+# Scale from 3 to 5 Kafka nodes by editing the KafkaNodePool
+kubectl patch kafkanodepool kafka -n kafka --type merge \
+  -p '{"spec":{"replicas":5}}'
 
-# The operator handles partition reassignment automatically
-kubectl get pods -n kafka -l strimzi.io/name=production-cluster-kafka -w
+# Existing partitions are not automatically redistributed; use a KafkaRebalance
+# with Cruise Control or kafka-reassign-partitions for that step.
+kubectl get pods -n kafka -l strimzi.io/cluster=production-cluster -w
 ```
 
 ## Monitoring Your Kafka on Kubernetes
