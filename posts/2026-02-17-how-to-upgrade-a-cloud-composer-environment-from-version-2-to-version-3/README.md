@@ -19,9 +19,9 @@ Understanding the differences helps you plan the migration:
 | Aspect | Composer 2 | Composer 3 |
 |---|---|---|
 | Infrastructure | Managed GKE cluster (visible) | Fully managed (no GKE access) |
-| Scaling | Manual or autoscaling config | Automatic with presets |
-| KubernetesPodOperator | Uses the environment's GKE cluster | Uses a separate workloads cluster |
-| Resource config | Pod-level CPU/memory | Component-level (scheduler, worker, web server) |
+| Scaling | Autoscaling environment cluster with configurable worker limits | Automatic cluster scaling with presets or custom limits |
+| KubernetesPodOperator | Uses the environment's GKE cluster | Uses the environment's hidden GKE cluster in an isolated namespace |
+| Resource config | Workload-level CPU/memory for Airflow components | Workload-level CPU/memory, including the separate DAG processor component |
 | Environment creation | 20-30 minutes | Significantly faster |
 | Airflow versions | 2.x | 2.x (latest supported) |
 
@@ -83,12 +83,14 @@ task = KubernetesPodOperator(
     in_cluster=False,
 )
 
-# Composer 3 style (simplified, uses managed infrastructure)
+# Composer 3 style (uses the managed user workloads namespace)
 task = KubernetesPodOperator(
     task_id="run_container",
     name="my-task",
+    namespace="composer-user-workloads",
     image="gcr.io/my-project/my-image:latest",
-    # Composer 3 handles the Kubernetes configuration automatically
+    config_file="/home/airflow/composer_kube_config",
+    kubernetes_conn_id="kubernetes_default",
 )
 ```
 
@@ -107,7 +109,8 @@ The safest migration strategy is to run Composer 2 and Composer 3 side by side. 
 # Create a Composer 3 environment for testing
 gcloud composer environments create composer3-test \
   --location=us-central1 \
-  --image-version=composer-3-airflow-2.9.3 \
+  --image-version=composer-3-airflow-2 \
+  --service-account=composer-env-sa@my-project.iam.gserviceaccount.com \
   --environment-size=medium
 ```
 
@@ -143,25 +146,24 @@ Export connections and variables from Composer 2 and import them into Composer 3
 # Export connections from Composer 2
 gcloud composer environments run my-composer2-env \
   --location=us-central1 \
-  connections export -- /tmp/connections.json
+  connections export -- /home/airflow/gcs/data/connections.json
 
 # Download the export file from the environment's GCS bucket
 gcloud composer environments storage data export \
   --environment=my-composer2-env \
   --location=us-central1 \
-  --destination=./connections.json \
-  --source=/tmp/connections.json
+  --destination=./composer-migration/ \
+  --source=connections.json
 
 # Import connections into Composer 3
 gcloud composer environments storage data import \
   --environment=composer3-test \
   --location=us-central1 \
-  --source=./connections.json \
-  --destination=/tmp/connections.json
+  --source=./composer-migration/connections.json
 
 gcloud composer environments run composer3-test \
   --location=us-central1 \
-  connections import -- /tmp/connections.json
+  connections import -- /home/airflow/gcs/data/connections.json
 ```
 
 For variables, use a similar export/import process:
@@ -170,7 +172,7 @@ For variables, use a similar export/import process:
 # Export variables from Composer 2
 gcloud composer environments run my-composer2-env \
   --location=us-central1 \
-  variables export -- /tmp/variables.json
+  variables export -- /home/airflow/gcs/data/variables.json
 
 # Then import into Composer 3 following the same pattern
 ```
@@ -241,7 +243,7 @@ def validate_etl_output(**context):
 dag = DAG(
     dag_id="migration_validation",
     start_date=datetime(2025, 1, 1),
-    schedule_interval=None,
+    schedule=None,
     catchup=False,
 )
 
@@ -254,14 +256,14 @@ validate = PythonOperator(
 
 ## Step 7: Update Resource Configuration
 
-Composer 3 uses a different resource model. Translate your Composer 2 resource settings:
+Composer 3 adds the DAG processor as a separate component. Start with similar resource limits and tune after observing the migrated environment:
 
 ```bash
-# Composer 2 resource configuration (pod-level)
+# Example Composer 2 resource configuration
 # --scheduler-cpu=2 --scheduler-memory=4GB
 # --worker-cpu=2 --worker-memory=4GB --min-workers=2 --max-workers=8
 
-# Equivalent Composer 3 configuration
+# Similar Composer 3 configuration
 gcloud composer environments update composer3-test \
   --location=us-central1 \
   --scheduler-cpu=2 \
