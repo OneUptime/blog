@@ -42,7 +42,7 @@ soc2_auto_remediate: false
   set_fact:
     soc2_results: "{{ soc2_results | default([]) + [{'criteria': 'CC6.1', 'control': 'SSH key-based authentication', 'status': 'PASS' if 'no' in (ssh_password_check.stdout | default('') | lower) else 'FAIL'}] }}"
 
-- name: "CC6.1: Verify MFA configuration"
+- name: "CC6.1: Verify PAM SSH configuration"
   stat:
     path: /etc/pam.d/sshd
   register: pam_sshd
@@ -58,11 +58,10 @@ soc2_auto_remediate: false
   changed_when: false
 
 - name: "CC6.8: Check intrusion detection"
-  systemd:
-    name: fail2ban
-    state: started
-  check_mode: yes
+  command: systemctl is-active fail2ban
   register: fail2ban_status
+  changed_when: false
+  failed_when: false
   ignore_errors: yes
 ```
 
@@ -82,6 +81,7 @@ soc2_auto_remediate: false
   command: crontab -l -u root
   register: cron_list
   changed_when: false
+  failed_when: false
 
 - name: Verify backup cron is configured
   set_fact:
@@ -162,7 +162,7 @@ The most effective approach is creating a dedicated compliance role with tasks o
 
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
   register: cert_dates
   changed_when: false
   failed_when: false
@@ -200,7 +200,7 @@ The most effective approach is creating a dedicated compliance role with tasks o
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
+      - "listening_ports.stdout is not regex(':' ~ item ~ '\\\\s')"
     fail_msg: "Unauthorized port {{ item }} is listening"
   loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 ```
@@ -336,4 +336,3 @@ The real power of compliance automation is combining detection with remediation:
           ========================================
           Score: {{ (checks_passed | length * 100 / (checks_passed | length + checks_failed | length)) | round(1) }}%
 ```
-
