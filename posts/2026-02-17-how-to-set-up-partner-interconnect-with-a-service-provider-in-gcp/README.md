@@ -65,7 +65,7 @@ Service providers offer two types of Partner Interconnect:
 
 **Layer 2 (L2)**: The provider gives you a raw VLAN and you manage BGP yourself between your router and Cloud Router. You have full control over routing.
 
-**Layer 3 (L3)**: The provider manages BGP on your behalf. They peer with Cloud Router and with your router, acting as a route reflector. This is simpler but gives you less control.
+**Layer 3 (L3)**: The provider manages BGP on your behalf. They establish the BGP session with Cloud Router and handle routing between Google Cloud and your network. This is simpler but gives you less control.
 
 For most scenarios, Layer 2 is preferred because it gives you direct BGP control and is more flexible. Use Layer 3 only if you do not have a BGP-capable router.
 
@@ -106,7 +106,7 @@ Write this down - you will give it to the service provider.
 
 ## Step 4: Create a Second Attachment for Redundancy
 
-For the 99.99% SLA, create a second attachment in a different Edge Availability Domain:
+For the 99.9% SLA, create a second attachment in a different Edge Availability Domain:
 
 ```bash
 # Create a second attachment in a different availability domain
@@ -169,39 +169,34 @@ gcloud compute interconnects attachments describe partner-attachment-1 \
 
 ## Step 7: Configure BGP (Layer 2 Only)
 
-If you chose Layer 2, you need to configure BGP sessions between your router and Cloud Router.
+If you chose Layer 2, you need to configure the BGP sessions between your router and Cloud Router. After the provider configures the attachment, Google automatically creates the Cloud Router interface and BGP peer; you add your on-premises ASN to that peer.
 
-Add BGP peers on the Cloud Router:
+Find the automatically created BGP peer names:
 
 ```bash
-# Add BGP peer for the first attachment
-gcloud compute routers add-interface partner-router \
-    --interface-name=if-partner-1 \
-    --interconnect-attachment=partner-attachment-1 \
-    --region=us-east4
+# Find the managed BGP peers for the attachments
+gcloud compute routers describe partner-router \
+    --region=us-east4 \
+    --format="yaml(bgpPeers, interfaces)"
+```
 
-gcloud compute routers add-bgp-peer partner-router \
-    --peer-name=onprem-peer-1 \
-    --interface=if-partner-1 \
-    --peer-ip-address=169.254.60.2 \
+Then update each managed BGP peer with your on-premises ASN:
+
+```bash
+# Update the BGP peer for the first attachment
+gcloud compute routers update-bgp-peer partner-router \
+    --peer-name=auto-ia-bgp-partner-attachment-1 \
     --peer-asn=65001 \
     --region=us-east4
 
-# Add BGP peer for the second attachment
-gcloud compute routers add-interface partner-router \
-    --interface-name=if-partner-2 \
-    --interconnect-attachment=partner-attachment-2 \
-    --region=us-east4
-
-gcloud compute routers add-bgp-peer partner-router \
-    --peer-name=onprem-peer-2 \
-    --interface=if-partner-2 \
-    --peer-ip-address=169.254.61.2 \
+# Update the BGP peer for the second attachment
+gcloud compute routers update-bgp-peer partner-router \
+    --peer-name=auto-ia-bgp-partner-attachment-2 \
     --peer-asn=65001 \
     --region=us-east4
 ```
 
-On your on-premises router, configure matching BGP sessions using the Cloud Router IP addresses and VLAN IDs from the attachment details.
+Replace the `--peer-name` values with the actual managed BGP peer names from the `gcloud compute routers describe` output. On your on-premises router, configure matching BGP sessions using the Cloud Router IP addresses and the VLAN ID provided by your service provider.
 
 ## Step 8: Verify Connectivity
 
@@ -234,16 +229,16 @@ Set up monitoring for both your attachments:
 ```bash
 # Check attachment health metrics
 gcloud monitoring metrics list \
-    --filter="metric.type:interconnect" \
+    --filter="metric.type:interconnect.googleapis.com" \
     --format="table(name, description)"
 ```
 
 Key metrics to watch:
 
-- `compute.googleapis.com/interconnect/link/received_bytes_count` - incoming traffic
-- `compute.googleapis.com/interconnect/link/transmitted_bytes_count` - outgoing traffic
-- `compute.googleapis.com/interconnect/attachment/received_bytes_count` - per-attachment traffic
-- BGP session status through Cloud Router metrics
+- `interconnect.googleapis.com/network/attachment/received_bytes_count` - incoming traffic per attachment
+- `interconnect.googleapis.com/network/attachment/sent_bytes_count` - outgoing traffic per attachment
+- `interconnect.googleapis.com/network/attachment/received_packets_count` - incoming packets per attachment
+- `router.googleapis.com/bgp/session_up` - BGP session status through Cloud Router metrics
 
 ## Common Pitfalls
 
@@ -251,7 +246,7 @@ Key metrics to watch:
 
 **Forgetting to activate**: After the provider is done, you must explicitly enable the attachment with `--admin-enabled`. Many people miss this step.
 
-**Wrong Edge Availability Domain**: If both attachments are in the same domain, you do not qualify for the 99.99% SLA. Always use different domains.
+**Wrong Edge Availability Domain**: If both attachments are in the same domain, you do not qualify for the redundant Partner Interconnect SLA. Always use different domains.
 
 **Layer 3 provider but trying to configure BGP**: If your provider handles BGP (Layer 3), you do not need to add BGP peers on Cloud Router. The provider takes care of it.
 
