@@ -28,7 +28,7 @@ Let us start with the fundamentals. This playbook updates all packages on a grou
   tasks:
     # Update the package cache first
     - name: Update package cache (RedHat)
-      ansible.builtin.yum:
+      ansible.builtin.dnf:
         update_cache: true
       when: ansible_os_family == "RedHat"
 
@@ -40,11 +40,11 @@ Let us start with the fundamentals. This playbook updates all packages on a grou
 
     # Apply all available updates
     - name: Apply all updates (RedHat)
-      ansible.builtin.yum:
+      ansible.builtin.dnf:
         name: "*"
         state: latest
         security: "{{ security_only | default(false) }}"
-      register: yum_result
+      register: dnf_result
       when: ansible_os_family == "RedHat"
 
     - name: Apply all updates (Debian)
@@ -56,13 +56,19 @@ Let us start with the fundamentals. This playbook updates all packages on a grou
     # Display what was updated
     - name: Show updated packages (RedHat)
       ansible.builtin.debug:
-        msg: "{{ yum_result.changes.updated | default([]) | length }} packages updated"
-      when: ansible_os_family == "RedHat" and yum_result is changed
+        msg: "Packages updated on {{ inventory_hostname }}"
+      when: ansible_os_family == "RedHat" and dnf_result is changed
 
     - name: Show updated packages (Debian)
       ansible.builtin.debug:
         msg: "Packages updated on {{ inventory_hostname }}"
       when: ansible_os_family == "Debian" and apt_result is changed
+
+    - name: Install reboot check plugin (RedHat)
+      ansible.builtin.dnf:
+        name: dnf-plugins-core
+        state: present
+      when: ansible_os_family == "RedHat"
 
     # Check if a reboot is required
     - name: Check if reboot is needed (RedHat)
@@ -101,19 +107,17 @@ Sometimes you only want to apply security patches, especially on production syst
   serial: 3
 
   tasks:
-    # Install yum-plugin-security if needed (RHEL/CentOS 7)
-    - name: Install security plugin
-      ansible.builtin.yum:
-        name: yum-plugin-security
+    # Install dnf plugins if needed
+    - name: Install dnf plugins
+      ansible.builtin.dnf:
+        name: dnf-plugins-core
         state: present
-      when:
-        - ansible_os_family == "RedHat"
-        - ansible_distribution_major_version | int <= 7
+      when: ansible_os_family == "RedHat"
 
     # List available security updates before applying
     - name: List available security updates
       ansible.builtin.shell:
-        cmd: "yum updateinfo list security --available 2>/dev/null || dnf updateinfo list --security --available"
+        cmd: "dnf updateinfo list --security --available"
       register: security_list
       changed_when: false
       when: ansible_os_family == "RedHat"
@@ -125,19 +129,26 @@ Sometimes you only want to apply security patches, especially on production syst
 
     # Apply security-only updates
     - name: Apply security updates (RedHat)
-      ansible.builtin.yum:
+      ansible.builtin.dnf:
         name: "*"
         state: latest
         security: true
       register: security_update
       when: ansible_os_family == "RedHat"
 
+    - name: Install unattended-upgrades (Debian)
+      ansible.builtin.apt:
+        name: unattended-upgrades
+        state: present
+        update_cache: true
+      when: ansible_os_family == "Debian"
+
     - name: Apply security updates (Debian)
-      ansible.builtin.shell:
-        cmd: "apt-get -s dist-upgrade | grep '^Inst' | grep -i security | awk '{print $2}' | xargs apt-get install -y"
+      ansible.builtin.command:
+        cmd: unattended-upgrade -d
       register: security_update_deb
       when: ansible_os_family == "Debian"
-      changed_when: "'0 newly installed' not in security_update_deb.stdout"
+      changed_when: "'No packages found that can be upgraded unattended' not in security_update_deb.stdout"
 
     # Record what was patched
     - name: Log patching activity
@@ -176,6 +187,12 @@ For production environments, you need a more careful approach. Patch in small ba
 
   tasks:
     # Create a snapshot/checkpoint before patching
+    - name: Install reboot check plugin
+      ansible.builtin.dnf:
+        name: dnf-plugins-core
+        state: present
+      when: ansible_os_family == "RedHat"
+
     - name: Record pre-patch package state
       ansible.builtin.shell:
         cmd: "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}\n' | sort > /var/log/packages-before-patch-$(date +%Y%m%d).txt"
@@ -184,7 +201,7 @@ For production environments, you need a more careful approach. Patch in small ba
 
     # Apply updates
     - name: Apply all updates
-      ansible.builtin.yum:
+      ansible.builtin.dnf:
         name: "*"
         state: latest
       register: patch_result
@@ -283,7 +300,7 @@ For auditing purposes, you often need a report of what was patched:
     # Check for pending updates
     - name: Check for pending updates (RedHat)
       ansible.builtin.shell:
-        cmd: "yum check-update --quiet 2>/dev/null | wc -l"
+        cmd: "dnf check-update --quiet 2>/dev/null | wc -l"
       register: pending_count
       changed_when: false
       failed_when: false
@@ -326,6 +343,7 @@ For auditing purposes, you often need a report of what was patched:
         dest: "/tmp/patch-report-{{ inventory_hostname }}.yml"
         mode: '0644'
       delegate_to: localhost
+      become: false
 ```
 
 ## Excluding Specific Packages
@@ -345,20 +363,26 @@ Sometimes you need to hold certain packages at a specific version:
       - docker-ce*
       - kubelet*
       - kubeadm*
+    debian_hold_packages:
+      - linux-image-amd64
+      - linux-generic
+      - docker-ce
+      - kubelet
+      - kubeadm
 
   tasks:
     # Apply updates excluding specified packages
     - name: Apply updates with exclusions (RedHat)
-      ansible.builtin.yum:
+      ansible.builtin.dnf:
         name: "*"
         state: latest
-        exclude: "{{ exclude_packages | join(',') }}"
+        exclude: "{{ exclude_packages }}"
       when: ansible_os_family == "RedHat"
 
     - name: Apply updates with holds (Debian)
       ansible.builtin.shell:
         cmd: |
-          {% for pkg in exclude_packages %}
+          {% for pkg in debian_hold_packages %}
           apt-mark hold {{ pkg }}
           {% endfor %}
           apt-get upgrade -y
@@ -378,7 +402,7 @@ From years of patching production servers:
 
 4. Track which servers need reboots separately from the patching itself. Not every update requires a reboot, and forcing unnecessary reboots causes downtime.
 
-5. Maintain a rollback plan. On RHEL-family systems, `yum history undo` can revert the last transaction. On Debian, it is harder, so snapshot your servers before major patch cycles.
+5. Maintain a rollback plan. On RHEL-family systems, `dnf history undo` can revert a specific transaction. On Debian, it is harder, so snapshot your servers before major patch cycles.
 
 6. Schedule patching regularly. Monthly is the most common cadence for production systems. Falling behind on patches makes each patch cycle riskier because there are more changes.
 
