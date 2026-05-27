@@ -36,7 +36,9 @@ Lookup plugins are the most common type where errors need careful handling:
 
 ```python
 from ansible.plugins.lookup import LookupBase
-from ansible.errors import AnsibleError, AnsibleLookupError
+from ansible.errors import AnsibleError, AnsibleLookupError, AnsibleOptionsError
+from ansible.module_utils.common.text.converters import to_native
+from urllib.error import HTTPError, URLError
 import json
 
 
@@ -51,7 +53,7 @@ class LookupModule(LookupBase):
             self.set_options(var_options=variables, direct=kwargs)
         except Exception as e:
             raise AnsibleOptionsError(
-                "Failed to load plugin options: %s" % str(e)
+                "Failed to load plugin options: %s" % to_native(e)
             )
 
         api_url = self.get_option('api_url')
@@ -66,22 +68,22 @@ class LookupModule(LookupBase):
             try:
                 data = self._fetch(api_url, term)
                 results.append(data)
-            except ConnectionError as e:
+            except HTTPError as e:
+                raise AnsibleLookupError(
+                    "API returned status %s for term '%s' at %s: %s. "
+                    "Verify the term, API URL, and credentials."
+                    % (e.code, term, api_url, to_native(e))
+                )
+            except URLError as e:
                 raise AnsibleLookupError(
                     "Cannot connect to API at %s: %s. "
                     "Check that the API server is running and the URL is correct."
-                    % (api_url, str(e))
+                    % (api_url, to_native(e))
                 )
             except json.JSONDecodeError as e:
                 raise AnsibleLookupError(
                     "API returned invalid JSON for term '%s': %s"
-                    % (term, str(e))
-                )
-            except PermissionError:
-                raise AnsibleLookupError(
-                    "Access denied when looking up '%s'. "
-                    "Verify your API token has the required permissions."
-                    % term
+                    % (term, to_native(e))
                 )
 
         return results
@@ -91,7 +93,7 @@ class LookupModule(LookupBase):
         from ansible.module_utils.urls import open_url
         url = "%s/api/v1/%s" % (api_url.rstrip('/'), term)
         self._display.vv("Fetching: %s" % url)
-        response = open_url(url, headers=self._get_headers())
+        response = open_url(url, headers={})
         return json.loads(response.read())
 ```
 
@@ -100,7 +102,9 @@ class LookupModule(LookupBase):
 Filter plugins should raise `AnsibleFilterError`:
 
 ```python
-from ansible.errors import AnsibleFilterError
+from ansible.errors import AnsibleFilterError, AnsibleUndefinedVariable
+from ansible.module_utils.common.text.converters import to_native
+from jinja2.exceptions import UndefinedError
 import ipaddress
 
 
@@ -131,10 +135,12 @@ class FilterModule:
         try:
             network = ipaddress.IPv4Network("0.0.0.0/%d" % prefix_length)
             return str(network.netmask)
+        except (UndefinedError, AnsibleUndefinedVariable):
+            raise
         except Exception as e:
             raise AnsibleFilterError(
                 "Failed to convert prefix %d to netmask: %s"
-                % (prefix_length, str(e))
+                % (prefix_length, to_native(e))
             )
 
     @staticmethod
@@ -162,9 +168,11 @@ class FilterModule:
                 key, value = line.split('=', 1)
                 result[key.strip()] = value.strip()
             return result
+        except (UndefinedError, AnsibleUndefinedVariable):
+            raise
         except Exception as e:
             raise AnsibleFilterError(
-                "Failed to parse config: %s" % str(e)
+                "Failed to parse config: %s" % to_native(e)
             )
 ```
 
@@ -174,6 +182,7 @@ Callback plugins should never crash Ansible. Wrap everything in try/except:
 
 ```python
 from ansible.plugins.callback import CallbackBase
+from ansible.module_utils.common.text.converters import to_native
 import json
 import traceback
 
@@ -196,7 +205,7 @@ class CallbackModule(CallbackBase):
         except Exception as e:
             self._display.warning(
                 "Webhook callback: failed to load options: %s. "
-                "Notifications will be disabled." % str(e)
+                "Notifications will be disabled." % to_native(e)
             )
 
     def v2_playbook_on_stats(self, stats):
@@ -211,7 +220,7 @@ class CallbackModule(CallbackBase):
         except Exception as e:
             # Log the error but do not let it affect the playbook result
             self._display.warning(
-                "Webhook notification failed: %s" % str(e)
+                "Webhook notification failed: %s" % to_native(e)
             )
             self._display.vvv(
                 "Webhook error traceback:\n%s" % traceback.format_exc()
@@ -244,6 +253,7 @@ For plugins that interact with external services, implement retry logic:
 ```python
 import time
 from ansible.errors import AnsibleError
+from ansible.module_utils.common.text.converters import to_native
 
 
 def _fetch_with_retry(self, url, max_retries=3, backoff_factor=2):
@@ -264,13 +274,13 @@ def _fetch_with_retry(self, url, max_retries=3, backoff_factor=2):
                 wait_time = backoff_factor ** attempt
                 self._display.v(
                     "Request failed (%s), retrying in %ds..."
-                    % (str(e), wait_time)
+                    % (to_native(e), wait_time)
                 )
                 time.sleep(wait_time)
 
     raise AnsibleError(
         "Failed after %d attempts to fetch %s: %s"
-        % (max_retries, url, str(last_error))
+        % (max_retries, url, to_native(last_error))
     )
 ```
 
@@ -279,6 +289,10 @@ def _fetch_with_retry(self, url, max_retries=3, backoff_factor=2):
 The most important aspect of error handling is the message. Bad error messages waste hours of debugging time. Follow these rules:
 
 ```python
+from ansible.errors import AnsibleError
+from ansible.module_utils.common.text.converters import to_native
+
+
 # BAD: Vague error message
 
 raise AnsibleError("API error")
@@ -290,22 +304,33 @@ raise AnsibleError(
     "Verify that the token in VAULT_TOKEN has read access to the 'db/' path."
 )
 
-# BAD: Raw exception passthrough
-except Exception as e:
-    raise AnsibleError(str(e))
+def bad_passthrough():
+    try:
+        parse_inventory()
+    except Exception as e:
+        # BAD: Raw exception passthrough
+        raise AnsibleError(to_native(e))
 
-# GOOD: Add context to the original error
-except Exception as e:
-    raise AnsibleError(
-        "Failed to parse inventory from CMDB API (%s): %s. "
-        "Check that the API response format matches the expected schema."
-        % (api_url, str(e))
-    )
+
+def good_with_context(api_url):
+    try:
+        parse_inventory()
+    except Exception as e:
+        # GOOD: Add context to the original error
+        raise AnsibleError(
+            "Failed to parse inventory from CMDB API (%s): %s. "
+            "Check that the API response format matches the expected schema."
+            % (api_url, to_native(e))
+        )
 ```
 
 ## Error Handling Pattern Summary
 
 ```python
+from ansible.errors import AnsibleError
+from ansible.module_utils.common.text.converters import to_native
+
+
 # Standard error handling pattern for any plugin type
 class MyPlugin(SomeBase):
     def run(self, *args, **kwargs):
@@ -313,7 +338,7 @@ class MyPlugin(SomeBase):
         try:
             self.set_options(...)
         except Exception as e:
-            raise AnsibleError("Configuration error: %s" % str(e))
+            raise AnsibleError("Configuration error: %s" % to_native(e))
 
         # 2. Validate required options
         required = self.get_option('required_option')
@@ -326,13 +351,13 @@ class MyPlugin(SomeBase):
         try:
             result = self._do_work()
         except ConnectionError as e:
-            raise AnsibleError("Connection failed: %s" % str(e))
+            raise AnsibleError("Connection failed: %s" % to_native(e))
         except ValueError as e:
-            raise AnsibleError("Invalid data: %s" % str(e))
+            raise AnsibleError("Invalid data: %s" % to_native(e))
         except Exception as e:
             raise AnsibleError(
                 "Unexpected error in my_plugin: %s (%s)"
-                % (str(e), type(e).__name__)
+                % (to_native(e), type(e).__name__)
             )
 
         # 4. Validate output
