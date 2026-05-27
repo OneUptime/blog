@@ -108,45 +108,63 @@ features:
         login_password: "{{ db_admin_password }}"
         state: present
 
+    - name: Generate tenant database password
+      ansible.builtin.set_fact:
+        tenant_db_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=24, chars=['ascii_letters', 'digits']) }}"
+      no_log: true
+
     - name: Create tenant database user
       community.postgresql.postgresql_user:
         name: "{{ tenant_id }}_user"
-        password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+        password: "{{ tenant_db_password }}"
         login_host: "{{ db_host }}"
         login_user: "{{ db_admin_user }}"
         login_password: "{{ db_admin_password }}"
-        db: "{{ database.name }}"
-        priv: "ALL"
+        login_db: "{{ database.name }}"
       no_log: true
-      register: tenant_db_user
+
+    - name: Grant tenant user access to tenant database
+      community.postgresql.postgresql_privs:
+        login_db: "{{ database.name }}"
+        login_host: "{{ db_host }}"
+        login_user: "{{ db_admin_user }}"
+        login_password: "{{ db_admin_password }}"
+        type: database
+        privs: ALL
+        roles: "{{ tenant_id }}_user"
 
     - name: Run tenant schema migrations
-      community.postgresql.postgresql_query:
-        db: "{{ database.name }}"
+      community.postgresql.postgresql_script:
+        login_db: "{{ database.name }}"
         login_host: "{{ db_host }}"
         login_user: "{{ db_admin_user }}"
         login_password: "{{ db_admin_password }}"
-        path_to_script: "{{ playbook_dir }}/../sql/tenant_schema.sql"
+        path: "{{ playbook_dir }}/../sql/tenant_schema.sql"
 
     - name: Seed default tenant data
       community.postgresql.postgresql_query:
-        db: "{{ database.name }}"
+        login_db: "{{ database.name }}"
         login_host: "{{ db_host }}"
         login_user: "{{ db_admin_user }}"
         login_password: "{{ db_admin_password }}"
         query: |
           INSERT INTO tenant_settings (key, value) VALUES
-          ('tenant_name', '{{ tenant_name }}'),
-          ('tier', '{{ tenant_tier }}'),
-          ('max_users', '{{ features.max_users }}'),
-          ('api_rate_limit', '{{ features.api_rate_limit }}');
+          ('tenant_name', %(tenant_name)s),
+          ('tier', %(tenant_tier)s),
+          ('max_users', %(max_users)s),
+          ('api_rate_limit', %(api_rate_limit)s);
+        named_args:
+          tenant_name: "{{ tenant_name }}"
+          tenant_tier: "{{ tenant_tier }}"
+          max_users: "{{ features.max_users }}"
+          api_rate_limit: "{{ features.api_rate_limit }}"
 
     - name: Store tenant credentials in vault
       ansible.builtin.command:
         cmd: >
           vault kv put secret/tenants/{{ tenant_id }}
           db_user={{ tenant_id }}_user
-          db_password={{ tenant_db_user.queries | default('generated') }}
+          db_password={{ tenant_db_password }}
       no_log: true
 
     - name: Configure DNS for tenant domain
@@ -203,20 +221,29 @@ Apply resource limits per tenant tier:
 # Apply resource limits based on tenant tier
 ---
 - name: Load all tenant configurations
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../tenants/"
+    patterns: "*.yml"
+  register: tenant_files
+  delegate_to: localhost
+
+- name: Read each tenant configuration
   ansible.builtin.include_vars:
-    dir: "{{ playbook_dir }}/../tenants/"
-    extensions: [yml]
-    name: all_tenants
+    file: "{{ item.path }}"
+    name: tenant_config
+  loop: "{{ tenant_files.files }}"
+  register: tenant_configs
 
 - name: Apply database connection limits per tenant
-  community.postgresql.postgresql_query:
-    db: postgres
+  community.postgresql.postgresql_user:
+    login_db: postgres
     login_host: "{{ db_host }}"
     login_user: "{{ db_admin_user }}"
     login_password: "{{ db_admin_password }}"
-    query: "ALTER ROLE {{ item.value.tenant_id }}_user CONNECTION LIMIT {{ item.value.database.max_connections }};"
-  loop: "{{ all_tenants | dict2items }}"
-  when: item.value.tenant_id is defined
+    name: "{{ item.ansible_facts.tenant_config.tenant_id }}_user"
+    conn_limit: "{{ item.ansible_facts.tenant_config.database.max_connections }}"
+  loop: "{{ tenant_configs.results }}"
+  when: item.ansible_facts.tenant_config.tenant_id is defined
 
 - name: Deploy Nginx rate limiting per tenant
   ansible.builtin.template:
@@ -294,7 +321,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -438,4 +465,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
