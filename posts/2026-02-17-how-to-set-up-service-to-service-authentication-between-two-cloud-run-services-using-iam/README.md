@@ -216,6 +216,11 @@ func callBackend(ctx context.Context, path string) ([]byte, error) {
     }
     defer resp.Body.Close()
 
+    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+        body, _ := io.ReadAll(resp.Body)
+        return nil, fmt.Errorf("backend returned %s: %s", resp.Status, string(body))
+    }
+
     return io.ReadAll(resp.Body)
 }
 
@@ -338,6 +343,6 @@ gcloud run services add-iam-policy-binding db-service \
   --role="roles/run.invoker"
 ```
 
-This gives you fine-grained control over which services can communicate with each other. It is the serverless equivalent of network policies in Kubernetes.
+This gives you fine-grained identity-based control over which services can communicate with each other.
 
 Service-to-service authentication on Cloud Run is one of the cleanest implementations of zero-trust networking I have worked with. No shared secrets, no certificate management, no external auth servers. IAM handles everything.
