@@ -12,10 +12,10 @@ The `become_user` directive in Ansible controls which user you escalate to when 
 
 ## Understanding become_user
 
-When you set `become: true` without specifying `become_user`, Ansible defaults to root. The `become_user` directive changes that target user. Behind the scenes, Ansible translates `become_user` into the appropriate sudo command.
+When you set `become: true` without specifying `become_user`, Ansible defaults to root. The `become_user` directive changes that target user. With the default `sudo` become method, Ansible passes the target user to sudo.
 
 ```bash
-# What Ansible does when become_user is set:
+# What Ansible does with the default sudo become method:
 
 # become_user: root    -> sudo -H -S -n -u root /bin/bash -c 'command'
 # become_user: postgres -> sudo -H -S -n -u postgres /bin/bash -c 'command'
@@ -43,8 +43,8 @@ Here is a playbook that demonstrates running tasks as different users.
       become: true
       become_user: root
 
-    - name: Initialize database as postgres
-      ansible.builtin.command: initdb -D /var/lib/postgresql/data
+    - name: Check database user context as postgres
+      ansible.builtin.command: whoami
       become: true
       become_user: postgres
 
@@ -172,10 +172,9 @@ A common use case is managing PostgreSQL, where most commands need to run as the
 
     - name: Create application database user
       community.postgresql.postgresql_user:
-        db: myapp_production
+        login_db: myapp_production
         name: myapp
         password: "{{ db_password }}"
-        priv: ALL
       become_user: postgres
 
     - name: Configure pg_hba for application access
