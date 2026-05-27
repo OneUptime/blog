@@ -8,13 +8,13 @@ Description: Configure Prisma ORM to connect to Cloud SQL PostgreSQL from a Node
 
 ---
 
-Prisma is one of the most popular ORMs for Node.js, and Cloud SQL is Google's managed database service. Getting them to work together on Cloud Run involves a few specific configuration steps - particularly around how Cloud Run connects to Cloud SQL through Unix sockets rather than TCP connections. In this guide, I will walk through the full setup from Prisma schema configuration to Cloud Run deployment.
+Prisma is one of the most popular ORMs for Node.js, and Cloud SQL is Google's managed database service. Getting them to work together on Cloud Run involves a few specific configuration steps - particularly around how Cloud Run connects to Cloud SQL through the built-in Cloud SQL Auth Proxy and Unix sockets rather than making a direct TCP connection from your application. In this guide, I will walk through the full setup from Prisma schema configuration to Cloud Run deployment.
 
 ## How Cloud Run Connects to Cloud SQL
 
-Cloud Run does not connect to Cloud SQL over the public internet. Instead, it uses the Cloud SQL Auth Proxy, which is built into the Cloud Run platform. When you configure a Cloud SQL connection on your Cloud Run service, GCP automatically mounts a Unix socket at `/cloudsql/INSTANCE_CONNECTION_NAME`. Your application connects to this socket instead of a TCP host and port.
+Cloud Run uses the Cloud SQL Auth Proxy, which is built into the Cloud Run platform, when you configure a Cloud SQL connection on your service. GCP automatically mounts a Unix socket at `/cloudsql/INSTANCE_CONNECTION_NAME`. Your application connects to this local socket instead of opening its own direct TCP connection to the database host and port.
 
-This is more secure (no public IP needed) and faster (no TLS overhead) than connecting over the network.
+This keeps Cloud SQL authorization and encryption handled by the platform. The Cloud SQL Auth Proxy still encrypts the connection between Cloud Run and Cloud SQL; the Unix socket is the local application-to-proxy connection.
 
 ## Setting Up Cloud SQL
 
@@ -52,14 +52,14 @@ gcloud sql instances describe my-postgres --format='value(connectionName)'
 # Initialize a new project
 mkdir prisma-cloudrun && cd prisma-cloudrun
 npm init -y
-npm install @prisma/client express
-npm install -D prisma
+npm install @prisma/client@6 express
+npm install -D prisma@6
 npx prisma init
 ```
 
 ## Configuring the Prisma Schema
 
-The schema needs to support both local development (TCP connection) and Cloud Run (Unix socket connection).
+The schema needs to support both local development (TCP connection) and Cloud Run (Unix socket connection). The following example uses Prisma ORM 6, where the connection URL is configured in `schema.prisma`.
 
 ```prisma
 // prisma/schema.prisma - Prisma schema for Cloud SQL PostgreSQL
@@ -147,10 +147,9 @@ const { PrismaClient } = require('@prisma/client');
 const app = express();
 app.use(express.json());
 
-// Initialize Prisma client with connection pool settings
+// Initialize a single Prisma client for this process
 const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'info'] : ['error'],
-  // Configure the connection pool
   datasources: {
     db: {
       url: process.env.DATABASE_URL,
@@ -286,7 +285,7 @@ app.listen(PORT, () => {
 ## Dockerfile
 
 ```dockerfile
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
@@ -294,7 +293,7 @@ RUN npm ci
 # Generate Prisma client at build time
 RUN npx prisma generate
 
-FROM node:20-alpine
+FROM node:20-slim
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
@@ -336,22 +335,44 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'gcr.io/$PROJECT_ID/prisma-api', '.']
 
-  # Run migrations using Cloud SQL Proxy
   - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/prisma-api']
+
+  # Start the Cloud SQL Auth Proxy on Cloud Build's local Docker network
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'start-cloud-sql-proxy'
     args:
       - 'run'
+      - '-d'
+      - '--name=cloud-sql-proxy'
       - '--network=cloudbuild'
-      - 'gcr.io/$PROJECT_ID/prisma-api'
-      - 'npx'
-      - 'prisma'
-      - 'migrate'
-      - 'deploy'
-    env:
-      - 'DATABASE_URL=postgresql://appuser:$$DB_PASS@cloud-sql-proxy:5432/myapp'
+      - 'gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.19.0'
+      - 'your-project:us-central1:my-postgres'
+
+  # Run migrations through the proxy
+  - name: 'gcr.io/cloud-builders/docker'
+    waitFor: ['start-cloud-sql-proxy']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        docker run --network=cloudbuild \
+          -e DATABASE_URL="postgresql://appuser:$$DB_PASS@cloud-sql-proxy:5432/myapp" \
+          gcr.io/$PROJECT_ID/prisma-api \
+          npx prisma migrate deploy
     secretEnv: ['DB_PASS']
 
   - name: 'gcr.io/cloud-builders/gcloud'
-    args: ['run', 'deploy', 'prisma-api', '--image', 'gcr.io/$PROJECT_ID/prisma-api', '--region', 'us-central1']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run deploy prisma-api \
+          --image gcr.io/$PROJECT_ID/prisma-api \
+          --region us-central1 \
+          --add-cloudsql-instances your-project:us-central1:my-postgres \
+          --set-env-vars "DATABASE_URL=postgresql://appuser:$$DB_PASS@localhost/myapp?host=/cloudsql/your-project:us-central1:my-postgres&schema=public"
+    secretEnv: ['DB_PASS']
 
 availableSecrets:
   secretManager:
@@ -359,4 +380,4 @@ availableSecrets:
       env: 'DB_PASS'
 ```
 
-Setting up Prisma with Cloud SQL on Cloud Run takes a bit of configuration, but once it is working you get the best of both worlds - Prisma's developer experience with type-safe queries and migrations, and Cloud SQL's managed PostgreSQL with automatic backups, high availability, and the security of private Unix socket connections.
+Setting up Prisma with Cloud SQL on Cloud Run takes a bit of configuration, but once it is working you get the best of both worlds - Prisma's developer experience with type-safe queries and migrations, and Cloud SQL's managed PostgreSQL with automatic backups, optional high availability, and the security of local Unix socket connections.
