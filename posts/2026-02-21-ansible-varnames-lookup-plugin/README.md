@@ -36,12 +36,12 @@ This playbook finds all variables that start with `myapp_`:
     - name: Find all myapp variables
       ansible.builtin.debug:
         msg: "Found variable: {{ item }}"
-      loop: "{{ lookup('varnames', 'myapp_.*', wantlist=True) }}"
+      loop: "{{ lookup('varnames', '^myapp_.*', wantlist=True) }}"
 
     - name: Show all myapp variables with their values
       ansible.builtin.debug:
         msg: "{{ item }} = {{ lookup('vars', item) }}"
-      loop: "{{ lookup('varnames', 'myapp_.*', wantlist=True) }}"
+      loop: "{{ lookup('varnames', '^myapp_.*', wantlist=True) }}"
 ```
 
 ## Combining varnames with vars Lookup
@@ -64,7 +64,7 @@ This playbook collects all feature flags and acts on them:
   tasks:
     - name: Discover all feature flags
       ansible.builtin.set_fact:
-        all_feature_flags: "{{ lookup('varnames', 'feature_flag_.*', wantlist=True) }}"
+        all_feature_flags: "{{ lookup('varnames', '^feature_flag_.*', wantlist=True) }}"
 
     - name: Build feature flag dictionary
       ansible.builtin.set_fact:
@@ -112,7 +112,7 @@ Suppose you define configuration for multiple services using a naming convention
     # Find all unique service names
     - name: Extract service names from variable naming pattern
       ansible.builtin.set_fact:
-        service_names: "{{ lookup('varnames', 'svc_.*_port', wantlist=True) | map('regex_replace', '^svc_(.*)_port$', '\\1') | list }}"
+        service_names: "{{ lookup('varnames', '^svc_.*_port$', wantlist=True) | map('regex_replace', '^svc_(.*)_port$', '\\1') | list }}"
 
     - name: Show discovered services
       ansible.builtin.debug:
@@ -147,7 +147,7 @@ You can use `varnames` to find all environment-related variables and build a com
   tasks:
     - name: Find all env_ prefixed variables
       ansible.builtin.set_fact:
-        env_var_names: "{{ lookup('varnames', 'env_.*', wantlist=True) }}"
+        env_var_names: "{{ lookup('varnames', '^env_.*', wantlist=True) }}"
 
     - name: Generate .env file
       ansible.builtin.copy:
@@ -196,11 +196,13 @@ monitoring_check_ssl_expiry: true
   tasks:
     - name: Discover all monitoring checks
       ansible.builtin.set_fact:
-        all_checks: "{{ lookup('varnames', 'monitoring_check_.*', wantlist=True) }}"
+        all_checks: "{{ lookup('varnames', '^monitoring_check_.*', wantlist=True) }}"
 
     - name: Build enabled checks list
       ansible.builtin.set_fact:
-        enabled_checks: "{{ all_checks | select('match', '.*') | map('regex_replace', '^monitoring_check_', '') | list }}"
+        enabled_checks: "{{ enabled_checks | default([]) + [item | regex_replace('^monitoring_check_', '')] }}"
+      loop: "{{ all_checks }}"
+      when: lookup('vars', item) | bool
 
     - name: Show enabled monitoring checks
       ansible.builtin.debug:
@@ -230,7 +232,7 @@ Use `varnames` to validate that all required variables are defined.
   tasks:
     - name: Find all deploy_ variables that are defined
       ansible.builtin.set_fact:
-        defined_deploy_vars: "{{ lookup('varnames', 'deploy_.*', wantlist=True) }}"
+        defined_deploy_vars: "{{ lookup('varnames', '^deploy_.*', wantlist=True) }}"
 
     - name: Check for required variables
       ansible.builtin.assert:
@@ -267,7 +269,7 @@ Here is a pattern for generating configuration files where the schema is driven 
     # Extract unique section names
     - name: Discover configuration sections
       ansible.builtin.set_fact:
-        config_sections: "{{ lookup('varnames', 'cfg_.*', wantlist=True) | map('regex_replace', '^cfg_([^_]+)_.*$', '\\1') | unique | list }}"
+        config_sections: "{{ lookup('varnames', '^cfg_.*', wantlist=True) | map('regex_replace', '^cfg_([^_]+)_.*$', '\\1') | unique | sort | list }}"
 
     - name: Show discovered sections
       ansible.builtin.debug:
@@ -279,7 +281,7 @@ Here is a pattern for generating configuration files where the schema is driven 
           # Auto-generated configuration
           {% for section in config_sections %}
           [{{ section }}]
-          {% for var_name in lookup('varnames', 'cfg_' + section + '_.*', wantlist=True) | sort %}
+          {% for var_name in lookup('varnames', '^cfg_' + section + '_.*', wantlist=True) | sort %}
           {{ var_name | regex_replace('^cfg_' + section + '_', '') }} = {{ lookup('vars', var_name) }}
           {% endfor %}
 
@@ -309,7 +311,7 @@ level = info
 
 ## Tips and Considerations
 
-1. **Regex patterns**: The `varnames` lookup uses Python regular expressions, not glob patterns. `myapp_.*` is correct; `myapp_*` will not match as expected.
+1. **Regex patterns**: The `varnames` lookup uses Python regular expressions, not glob patterns. `^myapp_.*` is correct for variables that start with `myapp_`; `myapp_*` will not match as expected.
 
 2. **Performance**: The lookup iterates over all defined variables in the current scope. In playbooks with thousands of variables, this is still fast, but keep it in mind.
 
