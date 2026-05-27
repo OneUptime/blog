@@ -1,14 +1,14 @@
-# How to Use the Ansible syslog Callback Plugin
+# How to Use the Ansible syslog_json Callback Plugin
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback Plugins, Syslog, Logging, Monitoring
 
-Description: Configure the Ansible syslog callback plugin to send playbook events to syslog for centralized logging and integration with log management systems.
+Description: Configure the Ansible syslog_json callback plugin to send playbook events to syslog for centralized logging and integration with log management systems.
 
 ---
 
-The `syslog` callback plugin sends Ansible playbook events to the system's syslog facility. Every task execution, success, failure, and play recap gets written as syslog messages. This integrates Ansible with your existing centralized logging infrastructure, whether that is rsyslog, syslog-ng, Splunk, ELK, or any system that consumes syslog data.
+The `syslog_json` callback plugin sends Ansible run events to a syslog server. Task results, failures, skipped tasks, unreachable hosts, and import events get written as syslog messages, with result data serialized in JSON. This integrates Ansible with your existing centralized logging infrastructure, whether that is rsyslog, syslog-ng, Splunk, ELK, or any system that consumes syslog data.
 
 ## Why Syslog?
 
@@ -22,20 +22,22 @@ Syslog is the universal logging interface on Unix systems. By sending Ansible ev
 
 ## Enabling the Syslog Callback
 
-Add it to your callback whitelist:
+Add it to your enabled callbacks:
 
 ```ini
 # ansible.cfg - Enable syslog logging
 
 [defaults]
-callback_whitelist = community.general.syslog
+callbacks_enabled = community.general.syslog_json
+# Also load callbacks for ad hoc "ansible" commands
+bin_ansible_callbacks = True
 ```
 
 Or via environment variable:
 
 ```bash
 # Enable syslog for this run
-ANSIBLE_CALLBACK_WHITELIST=community.general.syslog ansible-playbook site.yml
+ANSIBLE_CALLBACKS_ENABLED=community.general.syslog_json ansible-playbook site.yml
 ```
 
 Install the required collection:
@@ -50,64 +52,62 @@ ansible-galaxy collection install community.general
 ```ini
 # ansible.cfg - Configure syslog callback
 [defaults]
-callback_whitelist = community.general.syslog
+callbacks_enabled = community.general.syslog_json
 
-[callback_syslog]
-# Syslog facility (default: LOG_USER)
-facility = LOG_USER
-# Log messages at this priority for successes
-# Options: LOG_EMERG, LOG_ALERT, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_NOTICE, LOG_INFO, LOG_DEBUG
+[callback_syslog_json]
+# Syslog server and UDP port (defaults: localhost and 514)
+syslog_server = localhost
+syslog_port = 514
+# Syslog facility (default: user)
+syslog_facility = user
+# Include setup/gather_facts task results (default: true)
+syslog_setup = true
 ```
 
 ## What Gets Logged
 
 The syslog callback logs events at different syslog priorities:
 
-- Task success: `LOG_INFO`
-- Task changed: `LOG_INFO`
-- Task failure: `LOG_ERR`
-- Host unreachable: `LOG_ERR`
-- Playbook start/end: `LOG_INFO`
+- Task success, changed, skipped, and import events: `INFO`
+- Task failure and host unreachable events: `ERROR`
+- Changed status and module output are included in the JSON result payload
 
 Check your syslog after running a playbook:
 
 ```bash
 # View Ansible syslog messages on Linux
-grep ansible /var/log/syslog
+grep ansible-command /var/log/syslog
 
 # Or with journalctl on systemd systems
-journalctl -t ansible --since "1 hour ago"
+journalctl --since "1 hour ago" | grep ansible-command
 ```
 
 Sample syslog output:
 
 ```text
-Feb 21 10:15:23 control-node ansible: playbook start: /opt/ansible/deploy.yml
-Feb 21 10:15:25 control-node ansible: task start: Gathering Facts
-Feb 21 10:15:30 control-node ansible: task ok: [web-01] Gathering Facts
-Feb 21 10:15:31 control-node ansible: task ok: [web-02] Gathering Facts
-Feb 21 10:15:32 control-node ansible: task start: Install nginx
-Feb 21 10:15:45 control-node ansible: task ok: [web-01] Install nginx
-Feb 21 10:15:48 control-node ansible: task changed: [web-02] Install nginx
-Feb 21 10:15:49 control-node ansible: task start: Deploy config
-Feb 21 10:15:52 control-node ansible: task failed: [web-03] Deploy config - msg: file not found
-Feb 21 10:15:55 control-node ansible: playbook complete: /opt/ansible/deploy.yml
+Feb 21 10:15:30 control-node ansible-playbook[1234]: control-node ansible-command: task execution OK; host: web-01; message: {"changed": false, "ping": "pong"}
+Feb 21 10:15:48 control-node ansible-playbook[1234]: control-node ansible-command: task execution OK; host: web-02; message: {"changed": true, "name": "nginx", "state": "present"}
+Feb 21 10:15:52 control-node ansible-playbook[1234]: control-node ansible-command: task execution FAILED; host: web-03; message: {"changed": false, "msg": "file not found"}
 ```
 
 ## Forwarding to a Central Syslog Server
 
-Most production setups forward syslog messages to a central server. Configure your syslog daemon to forward Ansible messages:
+Most production setups forward syslog messages to a central server. You can also set `syslog_server` and `syslog_port` directly in the callback configuration. If you receive the callback locally and then relay it, configure your syslog daemon to forward Ansible messages:
 
 rsyslog configuration:
 
 ```bash
 # /etc/rsyslog.d/50-ansible.conf - Forward Ansible logs to central server
-# Match ansible tag and forward to central syslog
-if $programname == 'ansible' then {
+# Receive callback messages sent to localhost:514 over UDP
+module(load="imudp")
+input(type="imudp" port="514")
+
+# Match Ansible callback messages and forward to central syslog
+if $msg contains 'ansible-command' then {
     action(type="omfwd"
            target="syslog.example.com"
            port="514"
-           protocol="tcp"
+           protocol="udp"
            template="RSYSLOG_SyslogProtocol23Format")
 }
 ```
@@ -116,9 +116,10 @@ syslog-ng configuration:
 
 ```text
 # /etc/syslog-ng/conf.d/ansible.conf
-filter f_ansible { program("ansible"); };
-destination d_central { tcp("syslog.example.com" port(514)); };
-log { source(s_src); filter(f_ansible); destination(d_central); };
+source s_ansible_udp { network(ip("127.0.0.1") port(514) transport("udp")); };
+filter f_ansible { message("ansible-command"); };
+destination d_central { network("syslog.example.com" port(514) transport("udp")); };
+log { source(s_ansible_udp); filter(f_ansible); destination(d_central); };
 ```
 
 ## Integration with ELK Stack
@@ -138,10 +139,15 @@ filter {
   if [type] == "ansible" {
     grok {
       match => {
-        "message" => "task %{WORD:task_status}: \[%{HOSTNAME:target_host}\] %{GREEDYDATA:task_name}"
+        "message" => "%{HOSTNAME:controller_host} ansible-command: task execution %{WORD:task_status}; host: %{DATA:target_host}; message: %{GREEDYDATA:ansible_result_json}"
       }
     }
-    if [task_status] == "failed" {
+    json {
+      source => "ansible_result_json"
+      target => "ansible_result"
+      skip_on_invalid_json => true
+    }
+    if [task_status] == "FAILED" {
       mutate { add_tag => ["ansible_failure"] }
     }
   }
@@ -166,13 +172,13 @@ Forward syslog to Splunk using a Splunk Universal Forwarder:
 [monitor:///var/log/syslog]
 sourcetype = syslog
 index = ansible
-whitelist = ansible
+whitelist = ansible-command
 ```
 
 Create a Splunk saved search for Ansible failures:
 
 ```text
-index=ansible "task failed" | stats count by target_host, task_name | sort -count
+index=ansible "task execution FAILED" | stats count by target_host | sort -count
 ```
 
 ## Syslog Callback with Local Log Files
@@ -181,8 +187,12 @@ If you want Ansible events in a dedicated local log file without a central serve
 
 ```bash
 # /etc/rsyslog.d/50-ansible-local.conf
+# Receive callback messages sent to localhost:514 over UDP
+module(load="imudp")
+input(type="imudp" port="514")
+
 # Write Ansible messages to a dedicated file
-if $programname == 'ansible' then /var/log/ansible/ansible-syslog.log
+if $msg contains 'ansible-command' then /var/log/ansible/ansible-syslog.log
 & stop
 ```
 
@@ -219,7 +229,7 @@ The syslog callback is a notification type, so it works with any other callbacks
 # ansible.cfg - Syslog with other useful callbacks
 [defaults]
 stdout_callback = yaml
-callback_whitelist = community.general.syslog, timer, profile_tasks, junit
+callbacks_enabled = community.general.syslog_json, timer, profile_tasks, junit
 
 [callback_junit]
 output_dir = ./junit-results
@@ -234,7 +244,7 @@ Set up alerts for Ansible failures using syslog-based alerting:
 ```bash
 # /etc/rsyslog.d/51-ansible-alerts.conf
 # Send Ansible failures to an alert script
-if $programname == 'ansible' and $msg contains 'task failed' then {
+if $msg contains 'ansible-command' and $msg contains 'task execution FAILED' then {
     action(type="omprog"
            binary="/opt/scripts/ansible-alert.sh")
 }
@@ -247,13 +257,13 @@ The alert script:
 # /opt/scripts/ansible-alert.sh - Alert on Ansible failures from syslog
 while read -r line; do
     # Extract host and task from the message
-    host=$(echo "$line" | grep -oP '\[\K[^\]]+')
-    task=$(echo "$line" | sed 's/.*task failed: //')
+    host=$(echo "$line" | sed -n 's/.*host: \([^;]*\);.*/\1/p')
+    result=$(echo "$line" | sed 's/.*message: //')
 
     # Send alert via webhook
     curl -s -X POST "https://alerts.example.com/api/alert" \
         -H "Content-Type: application/json" \
-        -d "{\"source\":\"ansible\",\"host\":\"$host\",\"message\":\"$task\"}"
+        -d "{\"source\":\"ansible\",\"host\":\"$host\",\"message\":$result}"
 done
 ```
 
@@ -263,13 +273,13 @@ After enabling the callback, verify messages are being written:
 
 ```bash
 # Run a test playbook
-ANSIBLE_CALLBACK_WHITELIST=community.general.syslog ansible localhost -m ping
+ANSIBLE_CALLBACKS_ENABLED=community.general.syslog_json ANSIBLE_LOAD_CALLBACK_PLUGINS=1 ansible localhost -m ping
 
 # Check syslog immediately
-tail -5 /var/log/syslog | grep ansible
+tail -5 /var/log/syslog | grep ansible-command
 
 # Or on RHEL/CentOS
-tail -5 /var/log/messages | grep ansible
+tail -5 /var/log/messages | grep ansible-command
 ```
 
 The syslog callback is one of the most operationally valuable callbacks available. It plugs Ansible into whatever logging and monitoring infrastructure you already have, with zero additional tools needed beyond the syslog daemon that is already running on your system.
