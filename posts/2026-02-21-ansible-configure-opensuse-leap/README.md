@@ -8,7 +8,7 @@ Description: Configure openSUSE Leap servers with Ansible using zypper package m
 
 ---
 
-openSUSE Leap is the community version of SUSE Linux Enterprise, sharing the same core packages but with additional community-maintained repositories. It is free to use and does not require a subscription, making it a good choice for development, testing, and smaller production workloads. This guide covers Ansible configuration specific to openSUSE Leap 15.5+.
+openSUSE Leap is the community version of SUSE Linux Enterprise, sharing the same core packages but with additional community-maintained repositories. It is free to use and does not require a subscription, making it a good choice for development, testing, and smaller production workloads. This guide covers Ansible configuration specific to openSUSE Leap 15.5 and 15.6. Leap 16.0 uses SELinux by default on new installations, so enable AppArmor first or adjust the security tasks before using this playbook on Leap 16.0.
 
 ## Inventory
 
@@ -37,7 +37,9 @@ ansible_python_interpreter=/usr/bin/python3
       ansible.builtin.assert:
         that:
           - ansible_distribution == "openSUSE Leap"
-        fail_msg: "Expected openSUSE Leap, got {{ ansible_distribution }}"
+          - ansible_distribution_version is version('15.5', '>=')
+          - ansible_distribution_version is version('16.0', '<')
+        fail_msg: "Expected openSUSE Leap 15.5 or 15.6, got {{ ansible_distribution }} {{ ansible_distribution_version }}"
 
     - name: Refresh all repositories
       community.general.zypper_repository:
@@ -155,14 +157,14 @@ openSUSE has excellent community repository support through OBS (Open Build Serv
     - name: Add Packman repository for multimedia codecs
       community.general.zypper_repository:
         name: packman
-        repo: "https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Leap_15.5/"
+        repo: "https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Leap_$releasever/"
         auto_import_keys: true
         state: present
 ```
 
 ## Summary
 
-openSUSE Leap configuration is very similar to SLES but without the subscription requirements. Use `community.general.zypper` for package management, AppArmor for security, and firewalld for the firewall. The community repositories through OBS provide access to a wide range of additional software. This playbook provides a solid foundation for openSUSE Leap servers.
+openSUSE Leap configuration is very similar to SLES but without the subscription requirements. Use `community.general.zypper` for package management, AppArmor for security on Leap 15.x, and firewalld for the firewall. The community repositories through OBS provide access to a wide range of additional software. This playbook provides a solid foundation for openSUSE Leap servers.
 
 ## Common Use Cases
 
@@ -204,7 +206,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -348,4 +350,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
