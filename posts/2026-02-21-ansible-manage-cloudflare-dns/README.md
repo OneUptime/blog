@@ -10,7 +10,7 @@ Description: Manage Cloudflare DNS records, zones, and settings programmatically
 
 Cloudflare DNS is fast, free for basic use, and has an excellent API. That API support makes it a natural fit for Ansible automation. Instead of clicking through the Cloudflare dashboard to add DNS records, you can define all your records in YAML and let Ansible keep them in sync.
 
-This guide covers managing Cloudflare DNS with Ansible, from basic record management to advanced patterns like dynamic DNS updates and bulk migrations.
+This guide covers managing Cloudflare DNS with Ansible, from basic record management to advanced patterns like dynamic DNS updates and multi-zone management.
 
 ## Prerequisites
 
@@ -107,7 +107,8 @@ The `community.general.cloudflare_dns` module handles creating, updating, and de
     - name: Set SRV record for SIP
       community.general.cloudflare_dns:
         zone: "{{ domain }}"
-        record: "_sip._tcp"
+        service: sip
+        proto: tcp
         type: SRV
         value: "sip.example.com"
         priority: 10
@@ -339,7 +340,7 @@ Setting up email authentication records is tedious by hand. Automate it:
         record: "_dmarc"
         type: TXT
         value: "v=DMARC1; p=quarantine; rua=mailto:dmarc@{{ domain }}; pct=100"
-        api_token: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN }}"
+        api_token: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN') }}"
         state: present
 ```
 
@@ -349,6 +350,6 @@ Store your Cloudflare API token in Ansible Vault, not as an environment variable
 
 The `cloudflare_dns` module is idempotent for most record types, but be careful with TXT records. Multiple TXT records can exist for the same name, so always specify the exact value you want to match.
 
-Use `--check --diff` mode before applying DNS changes in production. A wrong DNS record can take down your entire site, and even with Cloudflare's fast propagation, the impact is immediate.
+Use `--check` mode before applying DNS changes in production. A wrong DNS record can take down your entire site, and even with Cloudflare's fast propagation, the impact is immediate.
 
 Keep your DNS records in version control. When someone asks "when did we change the API endpoint," the git log will tell you.
