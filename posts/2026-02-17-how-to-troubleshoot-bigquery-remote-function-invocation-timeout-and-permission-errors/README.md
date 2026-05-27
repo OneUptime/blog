@@ -39,7 +39,7 @@ bq ls --connection --project_id=my-project --location=US
 bq show --connection --project_id=my-project --location=US my-connection
 ```
 
-The output shows the service account used by the connection. This service account needs the `roles/cloudfunctions.invoker` role for Cloud Functions or `roles/run.invoker` for Cloud Run.
+The output shows the service account used by the connection. This service account needs permission to invoke the endpoint: `roles/cloudfunctions.invoker` for 1st gen Cloud Functions, or `roles/run.invoker` for 2nd gen Cloud Functions and Cloud Run.
 
 ```bash
 # Grant Cloud Functions invoker role to the connection's service account
@@ -85,17 +85,17 @@ The default Cloud Function timeout is 60 seconds. If your function processes lar
 ```bash
 # Increase the Cloud Function timeout
 gcloud functions deploy my-function \
-    --timeout=540 \
+    --timeout=540s \
     --region=us-central1 \
     --runtime=python311
 ```
 
-### BigQuery Remote Function Timeout
+### BigQuery Remote Function Batching
 
-BigQuery also has a timeout for remote function calls. You can set it when creating the function.
+BigQuery remote function queries can still fail if the endpoint is slow. BigQuery does not expose a separate timeout option in the remote function definition, but you can reduce the maximum number of rows sent in each HTTP request.
 
 ```sql
--- Create a remote function with an extended timeout
+-- Create a remote function with smaller batches
 CREATE OR REPLACE FUNCTION `my_dataset.my_remote_function`(input STRING)
 RETURNS STRING
 REMOTE WITH CONNECTION `my-project.us.my-connection`
@@ -142,7 +142,7 @@ Expected request format from BigQuery.
 ```json
 {
   "requestId": "unique-request-id",
-  "caller": "//bigquery.googleapis.com/projects/my-project/datasets/my_dataset/routines/my_function",
+  "caller": "//bigquery.googleapis.com/projects/my-project/jobs/my-project:US.bquxjob_123",
   "sessionUser": "user@company.com",
   "userDefinedContext": {},
   "calls": [
@@ -244,7 +244,8 @@ gcloud functions describe my-function \
 SELECT
   routine_name,
   routine_type,
-  remote_function_options
+  ddl,
+  connection
 FROM `my_dataset.INFORMATION_SCHEMA.ROUTINES`
 WHERE routine_type = 'FUNCTION';
 ```
