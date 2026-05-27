@@ -33,19 +33,19 @@ graph TD
 # etcd-snapshot.sh
 
 # Takes a point-in-time snapshot of the etcd database
-# Run this on a control plane node or a pod with etcdctl access
+# Run this on a control plane node or a pod with etcdctl and etcdutl access
 
 # Set etcd connection parameters
 # These paths are standard for kubeadm-managed clusters
 ETCDCTL_API=3 etcdctl snapshot save /tmp/etcd-snapshot.db \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/server.crt \
-  --key=/etc/kubernetes/pki/etcd/server.key
+  --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+  --key=/etc/kubernetes/pki/etcd/healthcheck-client.key
 
 # Verify the snapshot is valid
-ETCDCTL_API=3 etcdctl snapshot status /tmp/etcd-snapshot.db \
-  --write-out=table
+etcdutl snapshot status /tmp/etcd-snapshot.db \
+  -w table
 ```
 
 The status command outputs a table showing the snapshot hash, revision, total keys, and total size. Always verify after taking a snapshot.
@@ -77,9 +77,12 @@ spec:
           tolerations:
             - key: node-role.kubernetes.io/control-plane
               effect: NoSchedule
+          hostNetwork: true
+          dnsPolicy: ClusterFirstWithHostNet
           containers:
             - name: etcd-backup
-              image: bitnami/etcd:3.5
+              # Use an image that includes etcdctl, etcdutl, and the AWS CLI
+              image: your-registry.example.com/etcdctl-awscli:3.5
               command:
                 - /bin/sh
                 - -c
@@ -92,12 +95,12 @@ spec:
                   etcdctl snapshot save "${SNAPSHOT_FILE}" \
                     --endpoints=https://127.0.0.1:2379 \
                     --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-                    --cert=/etc/kubernetes/pki/etcd/server.crt \
-                    --key=/etc/kubernetes/pki/etcd/server.key
+                    --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+                    --key=/etc/kubernetes/pki/etcd/healthcheck-client.key
 
                   # Verify snapshot integrity
-                  etcdctl snapshot status "${SNAPSHOT_FILE}" \
-                    --write-out=json
+                  etcdutl snapshot status "${SNAPSHOT_FILE}" \
+                    -w json
 
                   # Upload to S3 with server-side encryption
                   aws s3 cp "${SNAPSHOT_FILE}" \
@@ -129,7 +132,7 @@ spec:
             - name: etcd-certs
               hostPath:
                 path: /etc/kubernetes/pki/etcd
-                type: DirectoryOrCreate
+                type: Directory
           restartPolicy: OnFailure
 ```
 
@@ -155,15 +158,22 @@ MAX_AGE_HOURS = 12
 
 def check_recent_backups():
     """Verify that a recent, valid backup exists in S3."""
-    response = s3.list_objects_v2(Bucket=BUCKET, Prefix=PREFIX)
+    paginator = s3.get_paginator("list_objects_v2")
+    pages = paginator.paginate(Bucket=BUCKET, Prefix=PREFIX)
 
-    if "Contents" not in response:
+    objects = [
+        obj
+        for page in pages
+        for obj in page.get("Contents", [])
+    ]
+
+    if not objects:
         print("CRITICAL: No etcd backups found in S3")
         sys.exit(2)
 
     # Sort by last modified, newest first
     objects = sorted(
-        response["Contents"],
+        objects,
         key=lambda x: x["LastModified"],
         reverse=True,
     )
@@ -238,14 +248,18 @@ sleep 30
 sudo mv /var/lib/etcd /var/lib/etcd.bak
 
 # Step 4: Restore the snapshot to a new data directory
-ETCDCTL_API=3 etcdctl snapshot restore /tmp/restore.db \
-  --data-dir=/var/lib/etcd \
-  --name=controlplane \
-  --initial-cluster=controlplane=https://127.0.0.1:2380 \
-  --initial-advertise-peer-urls=https://127.0.0.1:2380
+# Use the name and peer URL from the etcd static pod manifest.
+CONTROL_PLANE_NAME="controlplane"
+CONTROL_PLANE_IP="10.0.1.10"
 
-# Step 5: Fix ownership on the restored data directory
-sudo chown -R etcd:etcd /var/lib/etcd
+sudo etcdutl snapshot restore /tmp/restore.db \
+  --data-dir=/var/lib/etcd \
+  --name="${CONTROL_PLANE_NAME}" \
+  --initial-cluster="${CONTROL_PLANE_NAME}=https://${CONTROL_PLANE_IP}:2380" \
+  --initial-advertise-peer-urls="https://${CONTROL_PLANE_IP}:2380"
+
+# Step 5: Fix ownership on the restored data directory for kubeadm static pods
+sudo chown -R root:root /var/lib/etcd
 
 # Step 6: Restart etcd and the API server
 sudo mv /tmp/etcd.yaml /etc/kubernetes/manifests/
@@ -266,7 +280,7 @@ For clusters with three etcd nodes, each node must restore independently with th
 # restore-node1.sh
 # Restore on etcd node 1 of a 3-node cluster
 
-ETCDCTL_API=3 etcdctl snapshot restore /tmp/restore.db \
+sudo etcdutl snapshot restore /tmp/restore.db \
   --data-dir=/var/lib/etcd \
   --name=etcd-1 \
   --initial-cluster="etcd-1=https://10.0.1.10:2380,etcd-2=https://10.0.1.11:2380,etcd-3=https://10.0.1.12:2380" \
@@ -280,12 +294,10 @@ Repeat for nodes 2 and 3 with their respective names and peer URLs. Start all et
 
 ```mermaid
 graph LR
-    A[Every 6 Hours] --> B[Keep 7 Days]
-    B --> C[Transition to Daily]
-    C --> D[Keep 30 Days]
-    D --> E[Transition to Weekly]
-    E --> F[Keep 90 Days]
-    F --> G[Delete]
+    A[Every 6 Hours] --> B[Keep in Standard for 30 Days]
+    B --> C[Transition to Standard-IA]
+    C --> D[Transition to Glacier after 90 Days]
+    D --> E[Delete after 365 Days]
 ```
 
 Implement this with S3 lifecycle rules:
