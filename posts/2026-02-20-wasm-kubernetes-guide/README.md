@@ -8,7 +8,7 @@ Description: Learn how to run WebAssembly workloads on Kubernetes using SpinKube
 
 ---
 
-WebAssembly (WASM) is expanding beyond the browser into server-side and cloud-native environments. WASM modules start in milliseconds, use a fraction of the memory of traditional containers, and provide strong sandboxing by default. Running WASM workloads on Kubernetes lets you combine the ecosystem and orchestration capabilities of Kubernetes with the efficiency of WebAssembly.
+WebAssembly (WASM) is expanding beyond the browser into server-side and cloud-native environments. WASM modules can start in milliseconds, often use less memory than traditional containers, and provide strong sandboxing by default. Running WASM workloads on Kubernetes lets you combine the ecosystem and orchestration capabilities of Kubernetes with the efficiency of WebAssembly.
 
 This guide covers how to run WASM workloads on Kubernetes using SpinKube, runwasi, and other tools.
 
@@ -30,7 +30,7 @@ graph LR
     B1 --> B2
 ```
 
-WASM modules are typically 10-100x smaller than equivalent container images. They start in under 1 millisecond compared to seconds for containers. They also run in a sandboxed environment with no access to the host filesystem or network unless explicitly granted.
+WASM modules are often much smaller than equivalent container images. They can start in milliseconds compared to seconds for many containerized workloads. They also run in a sandboxed environment with no access to host capabilities such as the filesystem or network unless explicitly granted by the runtime.
 
 ## Step 1: Install a WASM Runtime on Kubernetes
 
@@ -39,20 +39,29 @@ SpinKube is the most mature solution for running WASM workloads on Kubernetes. I
 ```bash
 # Install cert-manager (required by SpinKube)
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
-kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager -n cert-manager
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.0/cert-manager.yaml
+kubectl wait --for=condition=available --timeout=300s deployment/cert-manager-webhook -n cert-manager
+
+# Install Runtime Class Manager so the shim can be installed on Kubernetes nodes
+helm upgrade --install runtime-class-manager \
+  --namespace runtime-class-manager \
+  --create-namespace \
+  --version 0.2.0 \
+  oci://ghcr.io/spinframework/charts/runtime-class-manager
+
+kubectl apply -f https://raw.githubusercontent.com/spinframework/runtime-class-manager/refs/tags/v0.2.0/config/samples/sample_shim_spin.yaml
+kubectl label node --all spin=true
 
 # Install the SpinKube operator
-kubectl apply -f https://github.com/spinkube/spin-operator/releases/download/v0.4.0/spin-operator.crds.yaml
-kubectl apply -f https://github.com/spinkube/spin-operator/releases/download/v0.4.0/spin-operator.runtime-class.yaml
-kubectl apply -f https://github.com/spinkube/spin-operator/releases/download/v0.4.0/spin-operator.shim-executor.yaml
+kubectl apply -f https://github.com/spinframework/spin-operator/releases/download/v0.6.1/spin-operator.crds.yaml
+kubectl apply -f https://github.com/spinframework/spin-operator/releases/download/v0.6.1/spin-operator.shim-executor.yaml
 
-helm install spin-operator \
+helm upgrade --install spin-operator \
   --namespace spin-operator \
   --create-namespace \
-  --version 0.4.0 \
+  --version 0.6.1 \
   --wait \
-  oci://ghcr.io/spinkube/charts/spin-operator
+  oci://ghcr.io/spinframework/charts/spin-operator
 
 # Verify the installation
 kubectl get runtimeclass
@@ -65,6 +74,9 @@ kubectl get runtimeclass
 # Install the Spin CLI
 curl -fsSL https://developer.fermyon.com/downloads/install.sh | bash
 sudo mv spin /usr/local/bin/
+
+# Install or update the Spin application templates
+spin templates install --git https://github.com/spinframework/spin --update
 
 # Create a new Spin application
 spin new -t http-rust my-wasm-api
@@ -82,10 +94,10 @@ use spin_sdk::http_component;
 #[http_component]
 fn handle_request(req: Request) -> anyhow::Result<impl IntoResponse> {
     // Log the incoming request path
-    println!("Received request: {} {}", req.method(), req.path());
+    println!("Received request: {} {}", req.method(), req.uri().path());
 
     // Route based on the request path
-    match req.path() {
+    match req.uri().path() {
         // Health check endpoint for Kubernetes probes
         "/health" => Ok(Response::builder()
             .status(200)
@@ -96,7 +108,9 @@ fn handle_request(req: Request) -> anyhow::Result<impl IntoResponse> {
         // Main API endpoint
         "/api/hello" => {
             let name = req
+                .uri()
                 .query()
+                .unwrap_or("")
                 .split('&')
                 .find_map(|param| {
                     let mut parts = param.splitn(2, '=');
@@ -181,13 +195,13 @@ spec:
     requests:
       cpu: 50m
       memory: 32Mi
-  # Readiness probe configuration
-  readinessProbe:
-    httpGet:
-      path: /health
-      port: 80
-    initialDelaySeconds: 1
-    periodSeconds: 5
+  # Readiness check configuration
+  checks:
+    readiness:
+      httpGet:
+        path: /health
+      initialDelaySeconds: 1
+      periodSeconds: 5
 ```
 
 ```bash
@@ -198,11 +212,11 @@ kubectl apply -f spin-app.yaml
 # Verify the pods are running
 kubectl get pods -n wasm-apps
 
-# Expose the service
-kubectl expose spinapp my-wasm-api \
-  --namespace wasm-apps \
-  --port 80 \
-  --type LoadBalancer
+# SpinKube creates a Service for the SpinApp
+kubectl get services -n wasm-apps
+
+# For local testing, forward a local port to the generated service
+kubectl port-forward -n wasm-apps svc/my-wasm-api 8080:80
 ```
 
 ## WASM vs Container Startup Comparison
@@ -233,7 +247,7 @@ If you prefer a lower-level approach without SpinKube, you can use runwasi direc
 # These enable containerd to run WASM modules directly
 
 # For wasmtime runtime
-curl -fsSL https://github.com/containerd/runwasi/releases/download/containerd-shim-wasmtime-v0.5.0/containerd-shim-wasmtime-v1-linux-amd64.tar.gz | \
+curl -fsSL https://github.com/containerd/runwasi/releases/download/containerd-shim-wasmtime/v0.6.0/containerd-shim-wasmtime-x86_64-linux-musl.tar.gz | \
   sudo tar -xzf - -C /usr/local/bin/
 
 # Configure containerd to use the WASM shim
@@ -287,7 +301,7 @@ WASM is particularly powerful at the edge where resources are constrained and fa
 
 ```yaml
 # edge-deployment.yaml
-# Deploy WASM workloads to edge nodes with specific tolerations
+# Deploy WASM workloads with an executor configured for edge nodes
 apiVersion: core.spinkube.dev/v1alpha1
 kind: SpinApp
 metadata:
@@ -296,7 +310,7 @@ metadata:
 spec:
   image: "my-registry.com/edge-processor:v1"
   replicas: 1
-  executor: containerd-shim-spin
+  executor: edge-containerd-shim-spin
   resources:
     limits:
       cpu: 50m
@@ -304,13 +318,6 @@ spec:
     requests:
       cpu: 10m
       memory: 8Mi
-  # Schedule on edge nodes
-  nodeSelector:
-    node-role: edge
-  tolerations:
-    - key: "edge"
-      operator: "Exists"
-      effect: "NoSchedule"
 ```
 
 ## Architecture: Mixed WASM and Container Workloads
