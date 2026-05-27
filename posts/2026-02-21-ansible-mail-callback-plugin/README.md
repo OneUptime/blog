@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback Plugins, Email, Notification
 
-Description: Configure the Ansible mail callback plugin to send email notifications when playbooks complete, fail, or encounter errors during execution.
+Description: Configure the Ansible mail callback plugin to send email notifications when playbooks fail or hosts become unreachable during execution.
 
 ---
 
-The `mail` callback plugin sends email notifications when Ansible playbooks finish running. You can configure it to send emails on failure only, on any completion, or on specific events. This is useful for operations teams who need to be notified about deployment results without watching the terminal.
+The `community.general.mail` callback plugin sends email notifications when Ansible tasks fail, async tasks fail, or hosts become unreachable. This is useful for operations teams who need to be notified about deployment failures without watching the terminal.
 
 ## Enabling the Mail Callback
 
@@ -18,27 +18,24 @@ The mail callback is a notification callback that works alongside your normal ou
 # ansible.cfg - Enable the mail callback
 
 [defaults]
-callback_whitelist = mail
+callbacks_enabled = community.general.mail
 
 [callback_mail]
 # SMTP server settings
 smtphost = smtp.example.com
 smtpport = 587
 # Sender and recipient
-from = ansible@example.com
+sender = ansible@example.com
 to = ops-team@example.com
 # Optional: CC recipients
 cc = devops-lead@example.com
-# Send on these events (default: failure only)
-# Options: failure, ok, unreachable
-send_on = failure
 ```
 
 ## SMTP Configuration
 
 The mail callback needs an SMTP server to send through. Here are configurations for common setups.
 
-Using a local MTA (postfix, sendmail):
+Using a local MTA or relay (postfix, sendmail):
 
 ```ini
 # ansible.cfg - Use local mail server
@@ -46,57 +43,50 @@ Using a local MTA (postfix, sendmail):
 smtphost = localhost
 smtpport = 25
 to = ops@example.com
-from = ansible@{{ ansible_hostname }}
+sender = ansible@example.com
 ```
 
-Using Gmail SMTP (with app password):
+Using an internal SMTP relay:
 
 ```ini
-# ansible.cfg - Gmail SMTP
+# ansible.cfg - Internal SMTP relay
 [callback_mail]
-smtphost = smtp.gmail.com
+smtphost = smtp-relay.example.com
 smtpport = 587
-smtpuser = ansible-bot@gmail.com
-smtppass = your-app-password
 to = ops@example.com
-from = ansible-bot@gmail.com
+sender = ansible-bot@example.com
 ```
 
-Using Amazon SES:
+Using Amazon SES requires an unauthenticated relay in front of SES, because the callback itself does not expose SMTP username, password, or TLS options:
 
 ```ini
-# ansible.cfg - Amazon SES
+# ansible.cfg - Relay to Amazon SES
 [callback_mail]
-smtphost = email-smtp.us-east-1.amazonaws.com
+smtphost = ses-relay.internal.example.com
 smtpport = 587
-smtpuser = AKIAIOSFODNN7EXAMPLE
-smtppass = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 to = ops@example.com
-from = ansible@example.com
+sender = ansible@example.com
 ```
 
 ## Environment Variable Configuration
 
-You can also configure the mail callback through environment variables:
+You can configure the SMTP host through the `SMTPHOST` environment variable. Other callback options are configured in `ansible.cfg`.
 
 ```bash
 # Set mail callback via environment
-export ANSIBLE_CALLBACK_WHITELIST=mail
-export ANSIBLE_CALLBACK_MAIL_TO=ops@example.com
-export ANSIBLE_CALLBACK_MAIL_FROM=ansible@example.com
-export ANSIBLE_CALLBACK_MAIL_SMTPHOST=smtp.example.com
-export ANSIBLE_CALLBACK_MAIL_SMTPPORT=587
+export ANSIBLE_CALLBACKS_ENABLED=community.general.mail
+export SMTPHOST=smtp.example.com
 ```
 
 ## Email Content
 
-The mail callback sends an email with the playbook results. The email body includes:
+The mail callback sends an email for failed or unreachable results. The email body includes:
 
 - The playbook name
-- The inventory used
-- Per-host results (ok, changed, failures, unreachable)
+- The task and module that failed
+- The host where the failure occurred
 - Error messages for failed tasks
-- The play recap
+- A JSON dump of the failed result
 
 A failure notification looks something like:
 
@@ -104,37 +94,27 @@ A failure notification looks something like:
 Subject: Ansible: deploy.yml failed on web-03
 
 Playbook: deploy.yml
-Host: web-03
 
 Task: Deploy application
+Module: command
+Host: web-03
+
 Status: FAILED
 Message: msg: Could not find /opt/app/release-2.5.1.tar.gz
-
-Play Recap:
-web-01  : ok=5  changed=2  unreachable=0  failed=0
-web-02  : ok=5  changed=2  unreachable=0  failed=0
-web-03  : ok=3  changed=0  unreachable=0  failed=1
 ```
 
 ## Configuring When to Send
 
-The `send_on` setting controls which events trigger emails:
+The callback sends email for task failures, unreachable hosts, and async failures. It does not have a `send_on` setting and does not send success notifications.
 
 ```ini
-# Send only on failures (default)
+# Send failure notifications
 [callback_mail]
-send_on = failure
-
-# Send on failure and unreachable
-[callback_mail]
-send_on = failure, unreachable
-
-# Send on every completion (including success)
-[callback_mail]
-send_on = failure, ok, unreachable
+to = ops@example.com
+sender = ansible@example.com
 ```
 
-For production deployments, sending on failure only keeps noise down:
+For production deployments, failure-only behavior keeps noise down:
 
 ```ini
 # ansible.cfg - Production mail settings
@@ -142,8 +122,7 @@ For production deployments, sending on failure only keeps noise down:
 smtphost = smtp.example.com
 smtpport = 587
 to = oncall@example.com, ops-team@example.com
-from = ansible-prod@example.com
-send_on = failure, unreachable
+sender = ansible-prod@example.com
 ```
 
 ## Multiple Recipients
@@ -163,19 +142,16 @@ Here is a complete setup for a deployment workflow:
 ```ini
 # ansible.cfg - Deployment email notifications
 [defaults]
-callback_whitelist = mail, timer
+callbacks_enabled = community.general.mail, timer
 
 [callback_mail]
 smtphost = smtp.company.com
 smtpport = 587
-smtpuser = ansible-bot
-smtppass = {{ lookup('env', 'SMTP_PASSWORD') }}
-from = deployments@company.com
+sender = deployments@company.com
 to = deploy-notifications@company.com
-send_on = failure, unreachable
 ```
 
-The timer callback complements mail by including timing in the output. The email shows how long the playbook ran before it failed, which helps with troubleshooting.
+The timer callback complements mail by including timing in the normal Ansible output. The mail callback still sends the failure details for the failed task.
 
 ## Testing the Mail Callback
 
@@ -200,22 +176,20 @@ Before relying on it in production, test that emails are sent:
 
 ```bash
 # Run the test - should trigger a failure email
-ANSIBLE_CALLBACK_WHITELIST=mail ansible-playbook test-mail-callback.yml
+ANSIBLE_CALLBACKS_ENABLED=community.general.mail ansible-playbook test-mail-callback.yml
 ```
 
 Check your inbox for the failure notification.
 
 ## Handling SMTP Authentication Issues
 
-If emails are not being sent, troubleshoot the SMTP connection:
+If emails are not being sent, troubleshoot the SMTP connection to the configured relay:
 
 ```bash
 # Test SMTP connectivity
 python3 -c "
 import smtplib
-server = smtplib.SMTP('smtp.example.com', 587)
-server.starttls()
-server.login('ansible-bot', 'password')
+server = smtplib.SMTP('smtp.example.com', 25)
 server.sendmail('from@example.com', 'to@example.com', 'Subject: Test\n\nTest message')
 server.quit()
 print('Email sent successfully')
@@ -224,21 +198,21 @@ print('Email sent successfully')
 
 Common issues:
 
-- Firewall blocking outbound port 587 or 25
-- TLS required but not configured
-- App-specific passwords needed (Gmail, Microsoft 365)
+- Firewall blocking outbound port 25 or the relay port you configured
+- The SMTP server requires authentication or TLS that the callback does not configure
+- The callback is not enabled with `callbacks_enabled`
 - SPF/DKIM not configured for the from address
 
 ## Mail Callback with Ansible Vault
 
-Store SMTP credentials securely:
+The mail callback does not have SMTP username or password options, so there are no SMTP credentials to store directly in Ansible Vault for this callback. If your SMTP provider requires authentication, configure a local or internal SMTP relay that handles those credentials.
 
 ```bash
-# Encrypt the SMTP password
-ansible-vault encrypt_string 'my-smtp-password' --name 'smtp_password'
+# Store relay credentials for your MTA configuration, not for the callback itself
+ansible-vault encrypt_string 'my-smtp-password' --name 'smtp_relay_password'
 ```
 
-Then reference it in a variables file that the callback reads, or use environment variables sourced from a vault-encrypted file.
+Then use that value in the configuration management for your relay or MTA.
 
 ## Alternatives to the Mail Callback
 
@@ -246,7 +220,7 @@ The mail callback works but has limitations. For more advanced notification need
 
 - The `slack` callback for team channel notifications
 - A custom callback that integrates with PagerDuty or OpsGenie
-- Using a `mail` task at the end of your playbook for more control over the email content
+- Using the `community.general.mail` module in a task for more control over the email content and authenticated SMTP settings
 
 The advantage of the callback approach is that it works even when the playbook fails partway through. A mail task at the end of the playbook would not run if an earlier task fails (unless you use `rescue` blocks).
 
