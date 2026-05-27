@@ -35,18 +35,24 @@ A route can be lost at any step. You need to check each stage to find where the 
 Always start from the MetalLB side to confirm that routes are being sent.
 
 ```bash
+# In current FRR-K8s mode, check which services MetalLB intends to advertise
+kubectl get servicebgpstatuses -n metallb-system
+
+# Check BGP session state when the BGPSessionState CRD is present
+kubectl get bgpsessionstates -n metallb-system
+
 # Get the speaker pod name
 
 SPEAKER_POD=$(kubectl get pods -n metallb-system \
   -l component=speaker \
   -o jsonpath='{.items[0].metadata.name}')
 
-# Verify the BGP session is established
-kubectl exec -n metallb-system $SPEAKER_POD -- \
+# Verify the BGP session is established in direct FRR mode
+kubectl exec -n metallb-system $SPEAKER_POD -c frr -- \
   vtysh -c "show bgp summary"
 
-# Check what routes MetalLB is advertising to the peer
-kubectl exec -n metallb-system $SPEAKER_POD -- \
+# Check what routes MetalLB is advertising to the peer in direct FRR mode
+kubectl exec -n metallb-system $SPEAKER_POD -c frr -- \
   vtysh -c "show bgp ipv4 unicast neighbors 10.0.0.1 advertised-routes"
 
 # The output should list the service IPs from your IPAddressPool
@@ -96,8 +102,8 @@ show bgp summary
 # View routes received from the MetalLB peer
 show route receive-protocol bgp 10.0.1.10
 
-# View accepted routes from the MetalLB peer
-show route protocol bgp neighbor 10.0.1.10
+# View accepted BGP routes after import policy
+show route protocol bgp
 
 # Check a specific prefix in the routing table
 show route 172.16.10.1/32 detail
@@ -118,14 +124,14 @@ MikroTik routers are popular in smaller data center and homelab setups.
 # Show BGP peer status (RouterOS v7)
 /routing/bgp/session print detail
 
-# View received routes from the MetalLB peer
-/routing/bgp/advertisements print where peer="metallb-peer"
+# View BGP routes received from peers, including filtered routes and BGP attributes
+/routing/route/print detail where bgp
 
-# Check the routing table for BGP-learned routes
-/ip/route print where routing-table=main and bgp
+# Check the IPv4 routing table for BGP-learned routes
+/ip/route/print where routing-table=main and bgp
 
 # Look for a specific prefix
-/ip/route print where dst-address="172.16.10.1/32"
+/routing/route/print detail where dst-address="172.16.10.1/32"
 
 # Check BGP connection configuration
 /routing/bgp/connection print detail
@@ -143,10 +149,10 @@ VyOS uses a FRR backend, so the commands are similar to standard FRR.
 show bgp summary
 
 # View routes received from MetalLB peer
-show bgp ipv4 unicast neighbors 10.0.1.10 received-routes
+show bgp ipv4 neighbors 10.0.1.10 received-routes
 
 # View accepted routes
-show bgp ipv4 unicast neighbors 10.0.1.10 routes
+show bgp ipv4 neighbors 10.0.1.10 routes
 
 # Check the routing table
 show ip route bgp
@@ -207,8 +213,8 @@ show route for 172.16.10.1/32
 # View route details including path attributes
 show route for 172.16.10.1/32 all
 
-# Check the export filter
-show route export metallb_peer
+# Check routes filtered by the import policy, if import keep filtered is enabled
+show route filtered protocol metallb_peer
 ```
 
 ## Diagnostic Decision Tree
@@ -256,7 +262,7 @@ show ip route 172.16.10.1
 # Verify ECMP is enabled on the router
 # Cisco: maximum-paths <number> under router bgp
 # FRR: maximum-paths <number> under address-family
-# JunOS: set protocols bgp multipath multiple-as
+# JunOS: set protocols bgp multipath
 ```
 
 ```mermaid
