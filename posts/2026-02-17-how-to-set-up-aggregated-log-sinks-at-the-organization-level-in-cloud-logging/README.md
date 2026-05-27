@@ -18,7 +18,7 @@ Regular log sinks operate at the project level - they only see logs from the pro
 
 When you create an aggregated sink at the organization level, it processes logs from every project in the organization. When you create one at the folder level, it processes logs from every project in that folder and its subfolders.
 
-This is a pull model - the sink automatically receives logs from all child resources without needing to configure anything in individual projects.
+The Log Router automatically evaluates logs from all child resources against the aggregated sink without needing to configure anything in individual projects.
 
 ## When to Use Aggregated Sinks
 
@@ -108,6 +108,11 @@ This returns something like `serviceAccount:o123456789-123456@gcp-sa-logging.iam
 Then grant access to the destination:
 
 ```bash
+# Required for routing log entries to destinations in the central project
+gcloud projects add-iam-policy-binding central-logging-project \
+  --member="serviceAccount:o123456789-123456@gcp-sa-logging.iam.gserviceaccount.com" \
+  --role="roles/logging.logWriter"
+
 # For BigQuery destination
 gcloud projects add-iam-policy-binding central-logging-project \
   --member="serviceAccount:o123456789-123456@gcp-sa-logging.iam.gserviceaccount.com" \
@@ -123,6 +128,11 @@ gcloud pubsub topics add-iam-policy-binding security-logs \
   --project=central-logging-project \
   --member="serviceAccount:o123456789-123456@gcp-sa-logging.iam.gserviceaccount.com" \
   --role="roles/pubsub.publisher"
+
+# For Cloud Logging log bucket destination
+gcloud projects add-iam-policy-binding central-logging-project \
+  --member="serviceAccount:o123456789-123456@gcp-sa-logging.iam.gserviceaccount.com" \
+  --role="roles/logging.bucketWriter"
 ```
 
 ## Creating Folder-Level Aggregated Sinks
@@ -169,16 +179,17 @@ By default, aggregated sinks do not intercept logs - the logs still flow to each
 If you want to intercept logs (prevent them from going to the project-level sinks), use the `--intercept-children` flag:
 
 ```bash
-# Create an intercepting sink that prevents logs from going to project-level sinks
+# Create an intercepting sink that prevents logs from going to project-level sinks.
+# Intercepting aggregated sinks must use a Google Cloud project as the destination.
 gcloud logging sinks create org-intercept-debug \
-  logging.googleapis.com/projects/central-logging-project/locations/global/buckets/debug-logs \
+  logging.googleapis.com/projects/central-logging-project \
   --organization=ORGANIZATION_ID \
   --include-children \
   --intercept-children \
   --log-filter='severity=DEBUG'
 ```
 
-This is useful for cost management - you can intercept debug-level logs at the organization level and route them to a central bucket with short retention, preventing each project from paying for debug log ingestion.
+This is useful for cost management - you can intercept debug-level logs at the organization level and route them through a central project to a bucket with short retention, preventing matching logs from being routed to child-resource sinks other than `_Required`.
 
 ## Managing Aggregated Sinks
 
@@ -257,6 +268,12 @@ resource "google_logging_organization_sink" "archive_storage" {
 }
 
 # Grant BigQuery access to the sink
+resource "google_project_iam_member" "audit_sink_route_writer" {
+  project = var.central_logging_project
+  role    = "roles/logging.logWriter"
+  member  = google_logging_organization_sink.audit_bigquery.writer_identity
+}
+
 resource "google_bigquery_dataset_iam_member" "org_sink_writer" {
   project    = var.central_logging_project
   dataset_id = google_bigquery_dataset.org_audit.dataset_id
@@ -265,6 +282,12 @@ resource "google_bigquery_dataset_iam_member" "org_sink_writer" {
 }
 
 # Grant Cloud Storage access to the sink
+resource "google_project_iam_member" "archive_sink_route_writer" {
+  project = var.central_logging_project
+  role    = "roles/logging.logWriter"
+  member  = google_logging_organization_sink.archive_storage.writer_identity
+}
+
 resource "google_storage_bucket_iam_member" "org_sink_writer" {
   bucket = google_storage_bucket.org_archive.name
   role   = "roles/storage.objectCreator"
@@ -276,8 +299,9 @@ resource "google_storage_bucket_iam_member" "org_sink_writer" {
 
 Aggregated sinks can generate significant volumes:
 
-- **Ingestion is charged per project**: The aggregated sink does not affect ingestion charges. Each project still pays for its own log ingestion.
-- **Destination costs are centralized**: Storage costs in BigQuery, Cloud Storage, or Pub/Sub are charged to the destination project.
+- **Log routing has no additional charge**: Cloud Logging does not charge for the Log Router forwarding entries to supported destinations.
+- **Log bucket storage depends on where logs are stored**: Cloud Logging charges for streaming logs into log buckets, except for logs stored in `_Required`. Non-intercepting aggregated sinks can create additional stored copies in the central log bucket.
+- **Destination costs are centralized**: Storage or delivery costs in BigQuery, Cloud Storage, or Pub/Sub are charged to the destination project.
 - **Use filters aggressively**: Do not route all logs from all projects unless you have a specific need. Focus on audit logs, error logs, or security-relevant logs.
 
 ## Wrapping Up
