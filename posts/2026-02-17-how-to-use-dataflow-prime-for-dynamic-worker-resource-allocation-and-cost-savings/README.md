@@ -8,7 +8,7 @@ Description: Learn how to use Dataflow Prime to dynamically allocate worker reso
 
 ---
 
-Standard Dataflow gives you horizontal autoscaling - it adds or removes worker VMs based on pipeline backlog. But every worker has the same machine type, which means you pick a size that works for the most demanding stage of your pipeline and pay for that everywhere. Dataflow Prime changes this by introducing vertical autoscaling and per-step resource configuration. Each stage of your pipeline can use different amounts of CPU and memory.
+Standard Dataflow gives you horizontal autoscaling - it adds or removes worker VMs based on pipeline backlog. But every worker has the same machine type, which means you pick a size that works for the most demanding stage of your pipeline and pay for that everywhere. Dataflow Prime changes this by introducing vertical autoscaling and support for per-step resource configuration through right fitting. Each stage of your pipeline can use different worker resources, especially memory and GPUs.
 
 I switched a few pipelines from standard Dataflow to Dataflow Prime and saw cost reductions between 30% and 50%, mainly because stages that only needed 1 GB of memory were no longer running on machines with 16 GB. The savings add up fast for pipelines that run continuously or process large batch jobs daily.
 
@@ -16,11 +16,11 @@ I switched a few pipelines from standard Dataflow to Dataflow Prime and saw cost
 
 In standard Dataflow, you pick a machine type (like n1-standard-4) and all workers use that configuration. If one stage needs a lot of memory for a large GroupByKey and another stage just does simple map operations, both stages run on the same oversized machines.
 
-Dataflow Prime decouples resource allocation from fixed machine types. Instead of specifying machine types, you specify resource hints at the pipeline or step level. Dataflow Prime then allocates the right amount of CPU and memory for each step, packing work onto shared infrastructure more efficiently.
+Dataflow Prime decouples resource allocation from fixed machine types. Instead of specifying machine types, you specify resource hints at the pipeline or step level. Dataflow Prime then allocates the requested memory and accelerator resources for each step, packing work onto shared infrastructure more efficiently.
 
 ## Enabling Dataflow Prime
 
-To use Dataflow Prime, you specify it as the runner mode in your pipeline options:
+To use Dataflow Prime, enable the Cloud Autoscaling API and specify the Prime service option in your pipeline options:
 
 ```python
 # pipeline_options.py
@@ -54,12 +54,13 @@ python my_pipeline.py \
 
 ## Setting Resource Hints
 
-Resource hints tell Dataflow Prime how much memory or CPU a particular step needs. You can set hints at the step level for fine-grained control.
+Resource hints tell Dataflow Prime how much memory or which accelerator resources a particular step needs. You can set hints at the step level for fine-grained control.
 
 ```python
 # resource_hints.py
 # Pipeline with per-step resource hints for Dataflow Prime
 import apache_beam as beam
+import json
 from apache_beam.options.pipeline_options import PipelineOptions
 
 options = PipelineOptions(
@@ -115,6 +116,7 @@ For steps that benefit from hardware accelerators, you can request GPUs:
 # gpu_hints.py
 # Request GPU resources for ML inference steps
 import apache_beam as beam
+import json
 
 class MLInference(beam.DoFn):
     """DoFn that runs ML model inference on each element."""
@@ -146,32 +148,52 @@ with beam.Pipeline(options=options) as pipeline:
 
 ## Vertical Autoscaling in Action
 
-Dataflow Prime automatically adjusts resources based on actual usage. If a step starts using more memory than initially allocated, Prime can scale it up without restarting the worker. Here is how to monitor this:
+Dataflow Prime automatically adjusts worker memory based on actual usage. If a step starts using more memory than initially allocated, Prime can replace workers with workers that have a larger memory allocation. Here is how to monitor this:
 
 ```python
 # monitoring.py
 # Check resource utilization of a Dataflow Prime job
-from google.cloud import dataflow_v1beta3
+from datetime import datetime, timedelta, timezone
 
-def get_job_metrics(project_id, region, job_id):
-    """Retrieve resource metrics for a Dataflow Prime job."""
-    client = dataflow_v1beta3.MetricsV1Beta3Client()
+from google.cloud import monitoring_v3
+from google.protobuf.timestamp_pb2 import Timestamp
 
-    request = dataflow_v1beta3.GetJobMetricsRequest(
-        project_id=project_id,
-        location=region,
-        job_id=job_id,
-    )
 
-    response = client.get_job_metrics(request=request)
+def get_resource_metrics(project_id, job_id):
+    """Retrieve CPU and allocated-memory metrics for a Dataflow job."""
+    client = monitoring_v3.MetricServiceClient()
+    project_name = f"projects/{project_id}"
 
-    for metric in response.metrics:
-        name = metric.name.name
-        # Look for resource-related metrics
-        if "Resource" in name or "memory" in name.lower() or "cpu" in name.lower():
-            print(f"{name}: {metric.scalar}")
+    now = datetime.now(timezone.utc)
+    start = Timestamp()
+    start.FromDatetime(now - timedelta(hours=1))
+    end = Timestamp()
+    end.FromDatetime(now)
 
-get_job_metrics("my-project", "us-central1", "2026-02-17_12345")
+    interval = monitoring_v3.TimeInterval(start_time=start, end_time=end)
+    metric_types = [
+        "dataflow.googleapis.com/job/aggregated_worker_utilization",
+        "dataflow.googleapis.com/job/memory_capacity",
+    ]
+
+    for metric_type in metric_types:
+        results = client.list_time_series(
+            request={
+                "name": project_name,
+                "filter": (
+                    f'metric.type = "{metric_type}" '
+                    f'AND metric.labels.job_id = "{job_id}"'
+                ),
+                "interval": interval,
+                "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
+            }
+        )
+
+        for series in results:
+            for point in series.points:
+                print(f"{metric_type}: {point.value}")
+
+get_resource_metrics("my-project", "2026-02-17_12345")
 ```
 
 ## Comparing Costs: Standard vs Prime
@@ -182,12 +204,12 @@ Use the Dataflow monitoring page or the billing API to compare costs between sta
 # List recent Dataflow jobs and their resource consumption
 gcloud dataflow jobs list \
   --region=us-central1 \
-  --status=done \
+  --status=terminated \
   --format="table(id, name, currentState, createTime)" \
   --limit=10
 
 # Get detailed metrics for a specific job
-gcloud dataflow metrics list JOB_ID \
+gcloud beta dataflow metrics list JOB_ID \
   --region=us-central1 \
   --source=service
 ```
@@ -198,34 +220,41 @@ You can also estimate savings by analyzing your current pipeline's resource usag
 # cost_analysis.py
 # Analyze resource usage to estimate Prime savings
 from google.cloud import monitoring_v3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from google.protobuf.timestamp_pb2 import Timestamp
 
-def analyze_worker_utilization(project_id, job_name):
-    """Analyze CPU and memory utilization of Dataflow workers."""
+
+def analyze_worker_utilization(project_id, job_id):
+    """Analyze CPU and allocated memory for a Dataflow job."""
     client = monitoring_v3.MetricServiceClient()
     project_name = f"projects/{project_id}"
 
-    now = datetime.utcnow()
-    interval = monitoring_v3.TimeInterval(
-        start_time={"seconds": int((now - timedelta(hours=24)).timestamp())},
-        end_time={"seconds": int(now.timestamp())},
-    )
+    now = datetime.now(timezone.utc)
+    start = Timestamp()
+    start.FromDatetime(now - timedelta(hours=24))
+    end = Timestamp()
+    end.FromDatetime(now)
+
+    interval = monitoring_v3.TimeInterval(start_time=start, end_time=end)
 
     # Query CPU utilization
     results = client.list_time_series(
         request={
             "name": project_name,
-            "filter": f'metric.type = "dataflow.googleapis.com/job/per_stage/system_lag" AND resource.labels.job_name = "{job_name}"',
+            "filter": (
+                'metric.type = "dataflow.googleapis.com/job/aggregated_worker_utilization" '
+                f'AND metric.labels.job_id = "{job_id}"'
+            ),
             "interval": interval,
+            "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
         }
     )
 
     for series in results:
-        stage = series.metric.labels.get("stage_name", "unknown")
         for point in series.points:
-            print(f"Stage: {stage}, Value: {point.value}")
+            print(f"CPU utilization: {point.value}")
 
-analyze_worker_utilization("my-project", "my-pipeline")
+analyze_worker_utilization("my-project", "2026-02-17_12345")
 ```
 
 ## Best Practices for Dataflow Prime
@@ -287,12 +316,13 @@ def build_optimized_pipeline(pipeline):
 
 ## Streaming Pipeline with Prime
 
-Dataflow Prime works especially well for streaming pipelines where different stages have very different resource needs:
+Dataflow Prime works especially well for streaming pipelines where different stages have very different resource needs. For streaming pipelines, enable streaming right fitting when you want resource hints to create separate worker pools:
 
 ```python
 # streaming_prime.py
 # Streaming pipeline optimized for Dataflow Prime
 import apache_beam as beam
+import json
 from apache_beam.options.pipeline_options import PipelineOptions
 
 options = PipelineOptions(
@@ -302,6 +332,7 @@ options = PipelineOptions(
     temp_location="gs://my-bucket/temp",
     streaming=True,
     dataflow_service_options=["enable_prime"],
+    experiments=["enable_streaming_rightfitting"],
     # Prime handles autoscaling, but you can set bounds
     autoscaling_algorithm="THROUGHPUT_BASED",
     max_num_workers=20,
@@ -345,4 +376,4 @@ with beam.Pipeline(options=options) as pipeline:
 
 ## Summary
 
-Dataflow Prime replaces fixed machine types with dynamic resource allocation. Enable it with the `enable_prime` service option and add resource hints to your pipeline steps using `with_resource_hints()`. The key to maximizing cost savings is structuring your pipeline so that light processing and heavy aggregation are in separate steps, allowing Prime to allocate small resources to simple transforms and large resources only where needed. For streaming pipelines with mixed workloads, Prime particularly shines because different branches can scale their resources independently. Monitor your jobs through the Dataflow console to see the actual resource usage and verify the cost savings compared to standard Dataflow runs.
+Dataflow Prime replaces fixed machine types with dynamic resource allocation. Enable it with the `enable_prime` service option and add resource hints to your pipeline steps using `with_resource_hints()`. The key to maximizing cost savings is structuring your pipeline so that light processing and heavy aggregation are in separate steps, allowing Prime to allocate small resources to simple transforms and large resources only where needed. For streaming pipelines with mixed workloads, enable streaming right fitting so different branches can use separate worker pools. Monitor your jobs through the Dataflow console to see the actual resource usage and verify the cost savings compared to standard Dataflow runs.
