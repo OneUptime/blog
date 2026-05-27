@@ -10,7 +10,7 @@ Description: Manage cgroup resource limits with Ansible to control CPU, memory, 
 
 Control groups (cgroups) are a Linux kernel feature that lets you limit, account for, and isolate the resource usage of process groups. They are the foundation of container isolation in Docker and Kubernetes, but they are equally useful on regular servers. Without cgroups, a runaway process can consume all available CPU and memory, starving other services and potentially crashing the entire system.
 
-Ansible gives you a way to define and enforce resource limits consistently across your fleet. This guide covers practical cgroup management using both systemd (the modern approach) and direct cgroup configuration.
+Ansible gives you a way to define and enforce resource limits consistently across your fleet. This guide covers practical cgroup management using systemd, the modern approach on most Linux distributions.
 
 ## Understanding cgroups v1 vs v2
 
@@ -141,8 +141,13 @@ The easiest way to manage cgroups on modern systems is through systemd service u
 
     # Apply the changes
     - name: Reload systemd and restart affected services
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
+        name: "{{ item.service }}"
+        state: restarted
         daemon_reload: true
+      loop: "{{ service_limits }}"
+      loop_control:
+        label: "{{ item.service }}"
 
     # Verify limits are applied
     - name: Verify resource limits
@@ -164,7 +169,7 @@ The easiest way to manage cgroups on modern systems is through systemd service u
 
   handlers:
     - name: reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
 ```
 
@@ -236,12 +241,17 @@ Systemd organizes cgroups into slices. You can create custom slices to group rel
       notify: reload systemd
 
     - name: Reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
+
+    - name: Restart nginx to move it into the web slice
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: restarted
 
   handlers:
     - name: reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
 ```
 
@@ -268,27 +278,44 @@ Limit resources for specific users, useful for shared servers:
         tasks_max: 1024
 
   tasks:
-    # Create user slice overrides
-    - name: Create user slice override directory
-      ansible.builtin.file:
-        path: "/etc/systemd/system/user-{{ item.user | hash('md5') | truncate(8, true, '') }}.slice.d"
-        state: directory
-        mode: '0755'
+    # Look up numeric UIDs for user slice names
+    - name: Get user UIDs
+      ansible.builtin.command:
+        argv:
+          - id
+          - -u
+          - "{{ item.user }}"
       loop: "{{ user_limits }}"
+      register: user_ids
+      changed_when: false
       loop_control:
         label: "{{ item.user }}"
 
-    # Configure limits via systemd-run for user sessions
+    # Create user slice overrides
+    - name: Create user slice override directory
+      ansible.builtin.file:
+        path: "/etc/systemd/system/user-{{ item.1.stdout }}.slice.d"
+        state: directory
+        mode: '0755'
+      loop: "{{ user_limits | zip(user_ids.results) | list }}"
+      loop_control:
+        label: "{{ item.0.user }}"
+
+    # Configure limits for user sessions
     - name: Deploy user resource limits
       ansible.builtin.copy:
-        dest: /etc/systemd/system/user-.slice.d/resource-limits.conf
+        dest: "/etc/systemd/system/user-{{ item.1.stdout }}.slice.d/resource-limits.conf"
         mode: '0644'
         content: |
           # Per-user resource limits - Managed by Ansible
           [Slice]
-          TasksMax=1024
-          MemoryMax=4G
-          CPUQuota=200%
+          TasksMax={{ item.0.tasks_max }}
+          MemoryMax={{ item.0.memory_max }}
+          CPUQuota={{ item.0.cpu_quota }}
+      loop: "{{ user_limits | zip(user_ids.results) | list }}"
+      loop_control:
+        label: "{{ item.0.user }}"
+      notify: reload systemd
 
     # Also set traditional ulimits
     - name: Configure ulimits for users
@@ -308,7 +335,7 @@ Limit resources for specific users, useful for shared servers:
 
   handlers:
     - name: reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
 ```
 
@@ -434,7 +461,7 @@ When a process is consuming too many resources and you need to act fast:
 
 ## Setting Default Limits for All Services
 
-Apply baseline limits to prevent any single service from monopolizing resources:
+Apply baseline accounting and task limits so resource usage is visible and no single service creates too many tasks:
 
 ```yaml
 # default-limits.yml - Set default resource limits for all systemd services
@@ -444,6 +471,19 @@ Apply baseline limits to prevent any single service from monopolizing resources:
   become: true
 
   tasks:
+    # Create systemd manager configuration directories
+    - name: Create systemd system.conf.d directory
+      ansible.builtin.file:
+        path: /etc/systemd/system.conf.d
+        state: directory
+        mode: '0755'
+
+    - name: Create systemd user.conf.d directory
+      ansible.builtin.file:
+        path: /etc/systemd/user.conf.d
+        state: directory
+        mode: '0755'
+
     # Configure default limits in system.conf
     - name: Set default service limits
       ansible.builtin.copy:
@@ -458,7 +498,6 @@ Apply baseline limits to prevent any single service from monopolizing resources:
           DefaultMemoryAccounting=yes
           DefaultCPUAccounting=yes
           DefaultIOAccounting=yes
-          DefaultBlockIOAccounting=yes
       notify: reload systemd
 
     # Set default limits for user sessions
@@ -474,15 +513,9 @@ Apply baseline limits to prevent any single service from monopolizing resources:
           DefaultTasksMax=1024
       notify: reload systemd
 
-    - name: Create user.conf.d directory
-      ansible.builtin.file:
-        path: /etc/systemd/user.conf.d
-        state: directory
-        mode: '0755'
-
   handlers:
     - name: reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
 ```
 
