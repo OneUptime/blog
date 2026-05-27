@@ -14,7 +14,7 @@ This post shows you how to create PostgreSQL databases with Ansible, including s
 
 ## Prerequisites
 
-You need the PostgreSQL community collection and the `psycopg2` Python library on the managed hosts.
+You need the PostgreSQL community collection and a supported PostgreSQL Python adapter on the managed hosts, such as `psycopg2` or `psycopg`.
 
 ```bash
 # Install the PostgreSQL Ansible collection
@@ -105,7 +105,7 @@ Most projects need more than one database. Define them as a list and loop.
     - name: Install extensions for each database
       community.postgresql.postgresql_ext:
         name: "{{ item.1 }}"
-        db: "{{ item.0.name }}"
+        login_db: "{{ item.0.name }}"
         state: present
       loop: "{{ postgresql_databases | subelements('extensions', skip_missing=True) }}"
 ```
@@ -119,7 +119,7 @@ Extensions add powerful features to your databases. Here is how to manage them.
 - name: Install database extensions
   community.postgresql.postgresql_ext:
     name: "{{ item }}"
-    db: myapp_production
+    login_db: myapp_production
     state: present
   loop:
     - uuid-ossp        # UUID generation functions
@@ -138,13 +138,11 @@ Some settings are per-database rather than global.
 ```yaml
 # Set database-specific configuration parameters
 - name: Configure database settings
-  community.postgresql.postgresql_set:
-    name: "{{ item.name }}"
-    value: "{{ item.value }}"
-    db: myapp_production
-  loop:
-    - { name: "log_statement", value: "all" }
-    - { name: "statement_timeout", value: "30000" }
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    query:
+      - "ALTER DATABASE myapp_production SET log_statement TO 'all'"
+      - "ALTER DATABASE myapp_production SET statement_timeout TO '30000'"
   become: true
   become_user: postgres
 ```
@@ -164,16 +162,16 @@ After creating the database, you often need to apply an initial schema.
 
 - name: Check if schema has been applied
   community.postgresql.postgresql_query:
-    db: myapp_production
+    login_db: myapp_production
     query: "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'users');"
   register: schema_check
   become: true
   become_user: postgres
 
 - name: Apply database schema
-  community.postgresql.postgresql_query:
-    db: myapp_production
-    path_to_script: /tmp/schema.sql
+  community.postgresql.postgresql_script:
+    login_db: myapp_production
+    path: /tmp/schema.sql
   when: not schema_check.query_result[0].exists
   become: true
   become_user: postgres
