@@ -42,7 +42,9 @@ This playbook installs Chrony and deploys an NTS-enabled configuration:
         options: "iburst nts"
       - name: ntppool1.time.nl
         options: "iburst nts"
-    chrony_config_path: /etc/chrony.conf
+    chrony_config_path: "{{ '/etc/chrony/chrony.conf' if ansible_os_family == 'Debian' else '/etc/chrony.conf' }}"
+    chrony_service_name: "{{ 'chrony' if ansible_os_family == 'Debian' else 'chronyd' }}"
+    chrony_user: "{{ '_chrony' if ansible_os_family == 'Debian' else 'chrony' }}"
     chrony_nts_cookie_dir: /var/lib/chrony
 
   tasks:
@@ -67,7 +69,7 @@ This playbook installs Chrony and deploys an NTS-enabled configuration:
     - name: Verify Chrony version is 4.0 or higher
       ansible.builtin.assert:
         that:
-          - chrony_version.stdout | regex_search('(\d+)\.(\d+)') | regex_search('^\d+') | int >= 4
+          - (chrony_version.stdout | regex_search('version ([0-9.]+)', '\1') | first) is ansible.builtin.version('4.0', '>=')
         fail_msg: "Chrony version must be 4.0+ for NTS support. Found: {{ chrony_version.stdout }}"
 
     - name: Deploy NTS-enabled Chrony configuration
@@ -84,20 +86,20 @@ This playbook installs Chrony and deploys an NTS-enabled configuration:
       ansible.builtin.file:
         path: "{{ chrony_nts_cookie_dir }}"
         state: directory
-        owner: chrony
-        group: chrony
+        owner: "{{ chrony_user }}"
+        group: "{{ chrony_user }}"
         mode: '0750'
 
     - name: Enable and start Chrony service
       ansible.builtin.systemd:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         enabled: true
         state: started
 
   handlers:
     - name: Restart chronyd
       ansible.builtin.systemd:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         state: restarted
 ```
 
@@ -148,7 +150,7 @@ minsources 2
 
 If you want to run your own NTS server for internal clients (which reduces external dependencies), you need a TLS certificate. Here is how to configure that.
 
-This playbook sets up a Chrony NTS server with TLS certificates:
+This playbook sets up a RHEL-based Chrony NTS server with TLS certificates:
 
 ```yaml
 # configure-nts-server.yml - Set up internal NTS time server
@@ -280,8 +282,8 @@ This playbook verifies NTS authentication is active on each host:
 
     - name: Verify at least one NTS source is authenticated
       ansible.builtin.shell: |
-        # Check that we have at least one NTS-authenticated source
-        chronyc -N authdata | grep -c "NTS" || echo "0"
+        # Check that at least one NTS source has completed key establishment.
+        chronyc -N authdata | awk '$2 == "NTS" && $3 != 0 && $4 != 0 && $5 != 0 { count++ } END { print count + 0 }'
       register: nts_count
       changed_when: false
       failed_when: nts_count.stdout | int < 1
@@ -348,7 +350,7 @@ This playbook collects NTS metrics and flags problems:
 
 A few things tend to trip people up when deploying NTS:
 
-**Firewall blocking port 4460**: NTS-KE uses TCP port 4460. If this port is blocked, the TLS handshake fails and Chrony falls back to unauthenticated NTP. Your time will still sync, but without the security guarantees.
+**Firewall blocking port 4460**: NTS-KE uses TCP port 4460. If this port is blocked, the TLS handshake fails and Chrony will not be able to authenticate or synchronize with that `nts` source. Check `chronyc -N authdata` and the system log for NTS-KE errors.
 
 **Old Chrony version**: Distributions like CentOS 7 ship with Chrony 3.x, which has zero NTS support. You will need to use a newer OS or build Chrony from source.
 
