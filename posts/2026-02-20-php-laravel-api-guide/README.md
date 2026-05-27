@@ -42,13 +42,16 @@ cd my-api
 # DB_USERNAME=postgres
 # DB_PASSWORD=secret
 
+# Enable API routing and install Sanctum for API authentication
+php artisan install:api
+
 # Run migrations
 php artisan migrate
 ```
 
 ## Defining Routes
 
-Laravel separates web and API routes. API routes are defined in `routes/api.php`:
+Laravel can separate web and API routes. In current Laravel applications, `php artisan install:api` creates `routes/api.php` and installs Sanctum:
 
 ```php
 <?php
@@ -198,10 +201,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StorePostRequest;
 use App\Http\Requests\UpdatePostRequest;
 use App\Http\Resources\PostResource;
-use App\Http\Resources\PostCollection;
 use App\Models\Post;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class PostController extends Controller
 {
@@ -209,7 +212,7 @@ class PostController extends Controller
      * List all published posts with pagination.
      * Supports filtering by search query.
      */
-    public function index(Request $request): PostCollection
+    public function index(Request $request): AnonymousResourceCollection
     {
         $query = Post::published()
             ->with('user') // Eager load the author to avoid N+1 queries
@@ -225,7 +228,7 @@ class PostController extends Controller
         }
 
         // Return paginated results wrapped in a resource collection
-        return new PostCollection($query->paginate($request->input('per_page', 15)));
+        return PostResource::collection($query->paginate($request->input('per_page', 15)));
     }
 
     /**
@@ -392,6 +395,8 @@ class PostResource extends JsonResource
 
 ## Authentication with Sanctum
 
+Before issuing tokens, make sure your `App\Models\User` model uses the `Laravel\Sanctum\HasApiTokens` trait.
+
 ```php
 <?php
 // app/Http/Controllers/Api/AuthController.php
@@ -452,6 +457,22 @@ class AuthController extends Controller
         return response()->json([
             'user' => $user,
             'token' => $token,
+        ]);
+    }
+
+    // Return the authenticated user's profile
+    public function profile(Request $request): JsonResponse
+    {
+        return response()->json($request->user());
+    }
+
+    // Revoke the current access token
+    public function logout(Request $request): JsonResponse
+    {
+        $request->user()->currentAccessToken()->delete();
+
+        return response()->json([
+            'message' => 'Logged out successfully.',
         ]);
     }
 }
