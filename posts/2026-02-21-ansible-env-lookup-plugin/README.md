@@ -12,7 +12,7 @@ Environment variables are a common way to pass configuration to applications, an
 
 ## How the env Lookup Works
 
-The `env` lookup reads environment variables from the control node's environment. It does NOT read environment variables on the remote/target hosts. If you need to read an environment variable on a remote host, you would use the `ansible.builtin.command` module to run `echo $VARIABLE` or gather it through facts.
+The `env` lookup reads environment variables from the control node's environment. It does NOT read environment variables on the remote/target hosts. If you need to read an environment variable on a remote host, you would use gathered facts such as `ansible_env`, or use the `ansible.builtin.shell` module when you specifically need shell expansion like `echo "$VARIABLE"`.
 
 Basic syntax:
 
@@ -73,11 +73,11 @@ The env lookup is extremely useful in CI/CD pipelines where variables are inject
   hosts: app_servers
   become: true
   vars:
-    git_commit: "{{ lookup('env', 'CI_COMMIT_SHA') | default('HEAD') }}"
-    git_branch: "{{ lookup('env', 'CI_BRANCH') | default('main') }}"
-    build_number: "{{ lookup('env', 'BUILD_NUMBER') | default('local') }}"
-    docker_registry: "{{ lookup('env', 'DOCKER_REGISTRY') | default('registry.example.com') }}"
-    image_tag: "{{ lookup('env', 'IMAGE_TAG') | default('latest') }}"
+    git_commit: "{{ lookup('env', 'CI_COMMIT_SHA') | default('HEAD', true) }}"
+    git_branch: "{{ lookup('env', 'CI_BRANCH') | default('main', true) }}"
+    build_number: "{{ lookup('env', 'BUILD_NUMBER') | default('local', true) }}"
+    docker_registry: "{{ lookup('env', 'DOCKER_REGISTRY') | default('registry.example.com', true) }}"
+    image_tag: "{{ lookup('env', 'IMAGE_TAG') | default('latest', true) }}"
   tasks:
     - name: Display deployment info
       ansible.builtin.debug:
@@ -213,7 +213,7 @@ Use environment variables to dynamically select configuration:
   hosts: all
   become: true
   vars:
-    target_env: "{{ lookup('env', 'TARGET_ENV') | default('development') }}"
+    target_env: "{{ lookup('env', 'TARGET_ENV') | default('development', true) }}"
     env_configs:
       development:
         replicas: 1
@@ -259,7 +259,7 @@ The env lookup combines well with other lookups:
   tasks:
     - name: Read file path from env, then read the file
       ansible.builtin.set_fact:
-        config_path: "{{ lookup('env', 'CONFIG_PATH') | default('files/default.conf') }}"
+        config_path: "{{ lookup('env', 'CONFIG_PATH') | default('files/default.conf', true) }}"
 
     - name: Load config from the path
       ansible.builtin.set_fact:
@@ -269,7 +269,7 @@ The env lookup combines well with other lookups:
     - name: Build connection string from env vars
       ansible.builtin.set_fact:
         db_connection: >-
-          postgresql://{{ lookup('env', 'DB_USER') }}:{{ lookup('env', 'DB_PASS') }}@{{ lookup('env', 'DB_HOST') }}:{{ lookup('env', 'DB_PORT') | default('5432') }}/{{ lookup('env', 'DB_NAME') }}
+          postgresql://{{ lookup('env', 'DB_USER') }}:{{ lookup('env', 'DB_PASS') }}@{{ lookup('env', 'DB_HOST') }}:{{ lookup('env', 'DB_PORT') | default('5432', true) }}/{{ lookup('env', 'DB_NAME') }}
 
     - name: Show connection string (masked)
       ansible.builtin.debug:
@@ -289,8 +289,8 @@ export DB_PASSWORD=secret
 export DEPLOY_ENV=production
 ansible-playbook deploy.yml
 
-# Or use a .env file with source
-source .env && ansible-playbook deploy.yml
+# Or export variables from a .env file in your shell
+set -a && source .env && set +a && ansible-playbook deploy.yml
 
 # In CI/CD (GitLab CI example)
 # Variables are automatically available as env vars
@@ -315,6 +315,6 @@ graph LR
 
 ## Important Limitations
 
-The env lookup has several important characteristics to keep in mind. It only reads from the control node, never from remote hosts. The value is resolved at playbook parse time, not at task execution time. If an environment variable is not set, the lookup returns an empty string (not an error). For secrets, consider using Ansible Vault instead of environment variables in production, since env vars can be leaked through process listings or logs.
+The env lookup has several important characteristics to keep in mind. It only reads from the control node, never from remote hosts. Like other lookups, it is evaluated by Ansible templating on the control node when the expression is used in a task or template. If an environment variable is not set, the lookup returns an empty string (not an error). For secrets, consider using Ansible Vault instead of environment variables in production, since env vars can be leaked through process listings or logs.
 
 That said, the env lookup is perfect for CI/CD pipelines, local development overrides, and any scenario where you need to inject values into a playbook from the outside without modifying files.
