@@ -57,7 +57,7 @@ This playbook installs and configures an NFS server with exports:
         path: "{{ item.path }}"
         state: directory
         owner: nobody
-        group: nogroup
+        group: "{{ 'nogroup' if ansible_os_family == 'Debian' else 'nobody' }}"
         mode: '0775'
       loop: "{{ nfs_exports }}"
       loop_control:
@@ -132,11 +132,11 @@ This playbook configures NFS clients with persistent mounts:
     nfs_mounts:
       - src: "{{ nfs_server }}:/srv/nfs/shared"
         path: /mnt/shared
-        opts: "rw,soft,timeo=300,retrans=3,_netdev"
+        opts: "rw,hard,timeo=600,retrans=2,_netdev"
         fstype: nfs4
       - src: "{{ nfs_server }}:/srv/nfs/backups"
         path: /mnt/backups
-        opts: "rw,soft,timeo=300,_netdev"
+        opts: "rw,hard,timeo=600,retrans=2,_netdev"
         fstype: nfs4
 
   tasks:
@@ -194,9 +194,9 @@ This playbook configures NFS clients with persistent mounts:
 
 Mount options can make or break your NFS setup. Here is what the important ones mean:
 
-- **soft vs hard**: `soft` returns an error after timeout; `hard` retries forever. Use `soft` for non-critical data, `hard` for important data.
+- **soft vs hard**: `soft` returns an error after timeout; `hard` retries until the server responds. Use `hard` for data you care about, and use `soft` only when client responsiveness is more important than data integrity.
 - **timeo**: Timeout in tenths of a second before a retransmission.
-- **retrans**: Number of retransmissions before giving up (with `soft`).
+- **retrans**: Number of retransmissions before a major timeout; with `soft`, that timeout returns an error, while `hard` continues retrying.
 - **_netdev**: Tells the system this mount requires networking, so it waits for the network to be up before trying to mount.
 - **noatime**: Do not update access times on files (reduces NFS traffic).
 - **async vs sync**: `async` buffers writes (faster but riskier); `sync` writes through (safer but slower).
@@ -218,10 +218,10 @@ This playbook configures AutoFS for on-demand NFS mounting:
     autofs_mounts:
       - name: shared
         remote_path: /srv/nfs/shared
-        options: "-rw,soft,timeo=300"
+        options: "-rw,hard,timeo=600,retrans=2"
       - name: backups
         remote_path: /srv/nfs/backups
-        options: "-rw,soft,timeo=300"
+        options: "-rw,hard,timeo=600,retrans=2"
       - name: readonly
         remote_path: /srv/nfs/readonly
         options: "-ro,soft,timeo=300"
@@ -241,14 +241,10 @@ This playbook configures AutoFS for on-demand NFS mounting:
       notify: Restart autofs
 
     - name: Create auto.nfs map file
-      ansible.builtin.copy:
+      ansible.builtin.template:
+        src: auto.nfs.j2
         dest: /etc/auto.nfs
         mode: '0644'
-        content: |
-          # AutoFS NFS map - managed by Ansible
-          {% for mount in autofs_mounts %}
-          {{ mount.name }} {{ mount.options }} {{ nfs_server }}:{{ mount.remote_path }}
-          {% endfor %}
       notify: Restart autofs
 
     - name: Enable and start AutoFS
@@ -262,6 +258,17 @@ This playbook configures AutoFS for on-demand NFS mounting:
       ansible.builtin.systemd:
         name: autofs
         state: restarted
+```
+
+The AutoFS map template:
+
+```jinja2
+# auto.nfs.j2 - AutoFS NFS map
+# Managed by Ansible - do not edit manually
+
+{% for mount in autofs_mounts %}
+{{ mount.name }} {{ mount.options }} {{ nfs_server }}:{{ mount.remote_path }}
+{% endfor %}
 ```
 
 With AutoFS, you access shares at `/nfs/shared`, `/nfs/backups`, etc. They mount automatically on first access and unmount after 5 minutes of inactivity (300 seconds timeout).
@@ -287,7 +294,7 @@ This playbook applies NFS performance optimizations:
       when: ansible_os_family == "Debian"
       notify: Restart NFS
 
-    - name: Set NFS read and write sizes via sysctl
+    - name: Set NFS socket buffer and RPC slot settings via sysctl
       ansible.posix.sysctl:
         name: "{{ item.key }}"
         value: "{{ item.value }}"
@@ -368,7 +375,7 @@ graph TD
 
 ## Common NFS Pitfalls
 
-**Stale file handles**: The most annoying NFS problem. Happens when the server restarts or the export changes. Use `soft` mount option so operations fail with an error instead of hanging indefinitely.
+**Stale file handles**: The most annoying NFS problem. Happens when exported files or directories are replaced, moved, or recreated, and can also happen after disruptive server-side changes. Use `hard` mounts for important data, and reserve `soft` for cases where returning an error is more important than preserving data integrity.
 
 **Permission issues with root_squash**: By default, NFS maps root on the client to `nobody` on the server. If your application runs as root and needs to write files, you either need `no_root_squash` (security risk) or change the application to run as a regular user.
 
