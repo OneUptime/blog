@@ -8,15 +8,15 @@ Description: Send deployment notifications to Microsoft Teams channels from Ansi
 
 ---
 
-If your organization uses Microsoft Teams instead of Slack, you still want deployment notifications flowing into your team channels. Ansible can post messages to Teams using Incoming Webhooks and the `uri` module. Teams also supports Adaptive Cards, which let you build rich, structured notifications with buttons and formatted sections.
+If your organization uses Microsoft Teams instead of Slack, you still want deployment notifications flowing into your team channels. Ansible can post messages to Teams using webhook URLs and the `uri` module. Teams also supports Adaptive Cards, which let you build rich, structured notifications with buttons and formatted sections.
 
 This post covers everything from basic webhook messages to rich Adaptive Card notifications, and how to integrate it all into your CI/CD pipeline.
 
 ## Setting Up an Incoming Webhook in Teams
 
-First, you need to create an Incoming Webhook in your Teams channel. Go to the channel, click the three dots menu, select "Connectors" (or "Manage channel" then "Connectors"), find "Incoming Webhook", and configure it. Give it a name like "Ansible Deploy Bot" and copy the webhook URL.
+First, you need to create a webhook endpoint for your Teams channel. For new integrations, Microsoft recommends using the Workflows app: go to the channel, click the three dots menu, select "Workflows", choose a webhook template such as "Send webhook alerts to a channel", configure it, and copy the generated webhook URL. Existing tenants may still have the older Incoming Webhook connector available under "Manage channel" then "Connectors", but Microsoft 365 connectors are being deprecated.
 
-The URL will look something like `https://myorg.webhook.office.com/webhookb2/...`.
+An older connector URL will look something like `https://myorg.webhook.office.com/webhookb2/...`.
 
 ## Sending Basic Notifications
 
@@ -132,7 +132,7 @@ Adaptive Cards provide a more modern and flexible notification format. They supp
           content:
             "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
             type: "AdaptiveCard"
-            version: "1.4"
+            version: "1.2"
             body:
               - type: "TextBlock"
                 text: "Deployment Report"
@@ -225,6 +225,8 @@ When deployments fail, you want a clear alert in Teams.
           uri:
             url: "http://{{ ansible_host }}:8080/health"
             status_code: 200
+          register: health
+          until: health.status == 200
           retries: 5
           delay: 3
 
