@@ -41,7 +41,7 @@ logName = "projects/my-project/logs/run.googleapis.com%2Frequests"
 Note the URL encoding - forward slashes in the log name are encoded as `%2F`. You can also use the `logName:` operator (colon means "has") for partial matching.
 
 ```text
-# Find all audit-related logs
+-- Find all audit-related logs
 
 logName : "cloudaudit.googleapis.com"
 ```
@@ -69,7 +69,7 @@ textPayload : "connection refused"
 For case-insensitive substring matching, you can use the `=~` regex operator.
 
 ```text
-# Case-insensitive search for connection errors
+-- Case-insensitive search for connection errors
 textPayload =~ "(?i)connection (refused|reset|timeout)"
 ```
 
@@ -86,8 +86,8 @@ jsonPayload.error_code = "DEADLINE_EXCEEDED"
 You can also check for the existence of a field.
 
 ```text
-# Find entries that have an error field, regardless of its value
-jsonPayload.error : ""
+-- Find entries that have an error field, regardless of its value
+jsonPayload.error:*
 ```
 
 ## Advanced Regex Patterns
@@ -100,10 +100,10 @@ This filter matches stack traces containing specific exception types.
 textPayload =~ "(?:NullPointerException|ArrayIndexOutOfBoundsException|ClassCastException)"
 ```
 
-Here is one that finds HTTP errors with specific status codes in the 5xx range.
+Here is one that finds HTTP errors with status codes in the 5xx range.
 
 ```text
-httpRequest.status =~ "^5[0-9]{2}$"
+httpRequest.status >= 500 AND httpRequest.status < 600
 ```
 
 And this finds error messages that contain what looks like a database connection string, which might indicate a configuration leak.
@@ -116,7 +116,7 @@ textPayload =~ "(?i)(jdbc|mongodb|mysql|postgres)://[^\\s]+"
 
 When debugging distributed systems, you often need to find related errors across multiple services. Here are some practical patterns.
 
-This filter finds errors from any Cloud Run service in the last hour.
+This filter finds errors from any Cloud Run service since a specific timestamp.
 
 ```text
 resource.type = "cloud_run_revision"
@@ -202,26 +202,26 @@ gcloud logging views create prod-errors \
 Here is a quick reference of filters I use regularly.
 
 ```text
-# All GKE container errors
+-- All GKE container errors
 resource.type = "k8s_container" AND severity >= "ERROR"
 
-# Cloud SQL slow queries
+-- Cloud SQL slow queries
 resource.type = "cloudsql_database" AND textPayload : "slow query"
 
-# Load balancer 5xx responses
+-- Load balancer 5xx responses
 resource.type = "http_load_balancer" AND httpRequest.status >= 500
 
-# Cloud Function cold starts
+-- Cloud Function cold starts
 resource.type = "cloud_function" AND textPayload : "Function execution started"
 AND labels."execution_id" != ""
 
-# IAM permission denied errors
+-- IAM permission denied errors
 protoPayload.status.code = 7
 
-# Failed API calls
+-- Failed API calls
 protoPayload.status.message : "PERMISSION_DENIED"
 
-# Specific user's actions in audit logs
+-- Specific user's actions in audit logs
 protoPayload.authenticationInfo.principalEmail = "user@example.com"
 AND logName : "cloudaudit.googleapis.com"
 ```
