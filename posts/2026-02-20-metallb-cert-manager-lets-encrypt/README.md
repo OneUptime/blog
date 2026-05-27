@@ -8,7 +8,7 @@ Description: Learn how to combine MetalLB with cert-manager to automatically pro
 
 ---
 
-Running services on bare-metal Kubernetes with MetalLB means you need to handle TLS certificates yourself. cert-manager automates the process of obtaining and renewing TLS certificates from Let's Encrypt. When combined with MetalLB, you get a fully automated pipeline: MetalLB assigns the IP, cert-manager provisions the TLS certificate, and your service is reachable over HTTPS with a valid certificate.
+Running services on bare-metal Kubernetes with MetalLB means you need to handle TLS certificates yourself. cert-manager automates the process of obtaining and renewing TLS certificates from Let's Encrypt. When combined with MetalLB, you get a fully automated pipeline: MetalLB assigns the IP to the Ingress controller's LoadBalancer Service, cert-manager provisions the TLS certificate, and your service is reachable over HTTPS with a valid certificate.
 
 This post walks you through setting up MetalLB with cert-manager and Let's Encrypt.
 
@@ -18,7 +18,7 @@ Here is how the components work together:
 
 ```mermaid
 flowchart TD
-    A[User creates Ingress with TLS] --> B[MetalLB assigns IP to Ingress Controller]
+    A[User creates Ingress with TLS] --> B[MetalLB assigns IP to Ingress Controller Service]
     B --> C[cert-manager detects TLS spec in Ingress]
     C --> D[cert-manager creates Certificate resource]
     D --> E{Challenge Type}
@@ -326,12 +326,12 @@ Common issues when using MetalLB with cert-manager:
 ```bash
 # Debug a stuck certificate
 kubectl describe certificate <cert-name>
-kubectl describe certificaterequest <cert-name>
+kubectl describe certificaterequest -l cert-manager.io/certificate-name=<cert-name>
 kubectl describe challenge -l cert-manager.io/certificate-name=<cert-name>
 ```
 
 ## Summary
 
-Combining MetalLB with cert-manager and Let's Encrypt gives you automated TLS certificate provisioning on bare-metal Kubernetes. MetalLB provides the external IP, cert-manager handles certificate lifecycle, and Let's Encrypt issues trusted certificates at no cost. This eliminates manual certificate management entirely.
+Combining MetalLB with cert-manager and Let's Encrypt gives you automated TLS certificate provisioning on bare-metal Kubernetes. MetalLB provides the external IP for the Ingress controller's LoadBalancer Service, cert-manager handles certificate lifecycle, and Let's Encrypt issues trusted certificates at no cost. This eliminates manual certificate management entirely.
 
 To monitor that your certificates are valid, your services are reachable over HTTPS, and your TLS configuration is correct, use [OneUptime](https://oneuptime.com). OneUptime can check TLS certificate expiry, alert you when certificates are about to expire, and track the HTTPS health of your MetalLB-exposed services.
