@@ -77,7 +77,7 @@ spec:
   messageRetentionDuration: "604800s"
 ```
 
-Message retention on the topic level is separate from subscription-level retention. Topic retention means undelivered messages stay in the topic, which is useful for creating new subscriptions that can seek back in time.
+Message retention on the topic level is separate from subscription-level retention. Topic retention means messages published during the retention window remain available to subscribers, which is useful for creating new subscriptions that can seek back in time.
 
 ## Creating a Topic with Schema Validation
 
@@ -91,9 +91,9 @@ kind: PubSubSchema
 metadata:
   name: order-event-schema
   namespace: default
-  annotations:
-    cnrm.cloud.google.com/project-id: "my-project-id"
 spec:
+  projectRef:
+    external: "my-project-id"
   type: AVRO
   definition: |
     {
@@ -274,6 +274,21 @@ spec:
     apiVersion: pubsub.cnrm.cloud.google.com/v1beta1
     kind: PubSubTopic
     name: order-events-dlq
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: pubsub-dlq-subscriber
+  namespace: default
+  annotations:
+    cnrm.cloud.google.com/project-id: "my-project-id"
+spec:
+  member: "serviceAccount:service-PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com"
+  role: roles/pubsub.subscriber
+  resourceRef:
+    apiVersion: pubsub.cnrm.cloud.google.com/v1beta1
+    kind: PubSubSubscription
+    name: order-processor-with-dlq
 ```
 
 ## Creating a BigQuery Subscription
@@ -297,7 +312,37 @@ spec:
     tableRef:
       external: "my-project-id.analytics.user_events"
     writeMetadata: true
-    dropUnknownFields: true
+```
+
+You also need to grant the Pub/Sub service agent permission to read table metadata and write rows to BigQuery.
+
+```yaml
+# bq-iam.yaml
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: pubsub-bq-metadata-viewer
+  namespace: default
+spec:
+  member: "serviceAccount:service-PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com"
+  role: roles/bigquery.metadataViewer
+  resourceRef:
+    apiVersion: resourcemanager.cnrm.cloud.google.com/v1beta1
+    kind: Project
+    external: "projects/my-project-id"
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  name: pubsub-bq-data-editor
+  namespace: default
+spec:
+  member: "serviceAccount:service-PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com"
+  role: roles/bigquery.dataEditor
+  resourceRef:
+    apiVersion: resourcemanager.cnrm.cloud.google.com/v1beta1
+    kind: Project
+    external: "projects/my-project-id"
 ```
 
 ## Monitoring Your Resources
