@@ -49,7 +49,7 @@ sequenceDiagram
 - A global external application load balancer (`EXTERNAL_MANAGED` scheme) already running
 - A Certificate Authority (CA) for issuing client certificates
 - Client certificates signed by that CA
-- The `gcloud` CLI and the Certificate Manager API enabled
+- The `gcloud` CLI with the Certificate Manager API and Network Security API enabled
 
 ## Step 1: Create a Trust Config
 
@@ -76,11 +76,11 @@ trustStores:
 EOF
 ```
 
-Create the TrustConfig resource:
+Import the TrustConfig resource:
 
 ```bash
-# Create the trust config in Certificate Manager
-gcloud certificate-manager trust-configs create my-trust-config \
+# Import the trust config in Certificate Manager
+gcloud certificate-manager trust-configs import my-trust-config \
     --source=trust-config.yaml \
     --location=global
 ```
@@ -100,8 +100,8 @@ mtlsPolicy:
   clientValidationTrustConfig: projects/MY_PROJECT/locations/global/trustConfigs/my-trust-config
 EOF
 
-# Create the server TLS policy
-gcloud network-security server-tls-policies create my-mtls-policy \
+# Import the server TLS policy
+gcloud network-security server-tls-policies import my-mtls-policy \
     --source=server-tls-policy.yaml \
     --location=global
 ```
@@ -117,7 +117,7 @@ mtlsPolicy:
   clientValidationTrustConfig: projects/MY_PROJECT/locations/global/trustConfigs/my-trust-config
 EOF
 
-gcloud network-security server-tls-policies create my-mtls-policy-permissive \
+gcloud network-security server-tls-policies import my-mtls-policy-permissive \
     --source=server-tls-policy-permissive.yaml \
     --location=global
 ```
@@ -170,7 +170,7 @@ curl --cert client-cert.pem --key client-key.pem \
 
 # Test without a client certificate (should fail with strict mTLS)
 curl https://app.example.com/api/data
-# Expected: SSL handshake failure or 403
+# Expected: TLS handshake failure
 ```
 
 ## Reading Client Certificate Information in Your Backend
@@ -181,14 +181,14 @@ The load balancer passes client certificate details to your backend through cust
 # Configure the load balancer to forward client cert info
 gcloud compute backend-services update my-backend \
     --global \
-    --custom-request-headers="X-Client-Cert-Present:{client_cert_present}" \
-    --custom-request-headers="X-Client-Cert-Chain-Verified:{client_cert_chain_verified}" \
-    --custom-request-headers="X-Client-Cert-Error:{client_cert_error}" \
-    --custom-request-headers="X-Client-Cert-Hash:{client_cert_sha256_fingerprint}" \
-    --custom-request-headers="X-Client-Cert-Serial:{client_cert_serial_number}" \
-    --custom-request-headers="X-Client-Cert-SPIFFE:{client_cert_spiffe_id}" \
-    --custom-request-headers="X-Client-Cert-Subject-DN:{client_cert_subject_dn}" \
-    --custom-request-headers="X-Client-Cert-Issuer-DN:{client_cert_issuer_dn}"
+    --custom-request-header="X-Client-Cert-Present:{client_cert_present}" \
+    --custom-request-header="X-Client-Cert-Chain-Verified:{client_cert_chain_verified}" \
+    --custom-request-header="X-Client-Cert-Error:{client_cert_error}" \
+    --custom-request-header="X-Client-Cert-Hash:{client_cert_sha256_fingerprint}" \
+    --custom-request-header="X-Client-Cert-Serial:{client_cert_serial_number}" \
+    --custom-request-header="X-Client-Cert-SPIFFE:{client_cert_spiffe_id}" \
+    --custom-request-header="X-Client-Cert-Subject-DN:{client_cert_subject_dn}" \
+    --custom-request-header="X-Client-Cert-Issuer-DN:{client_cert_issuer_dn}"
 ```
 
 Then in your backend application:
@@ -235,13 +235,20 @@ gcloud privateca roots create my-root-ca \
     --subject="CN=My Root CA, O=My Company" \
     --key-algorithm=ec-p256-sha256
 
+# Enable the root CA
+gcloud privateca roots enable my-root-ca \
+    --pool=my-ca-pool \
+    --location=us-central1
+
 # Issue a client certificate
 gcloud privateca certificates create client-cert-1 \
-    --pool=my-ca-pool \
-    --location=us-central1 \
+    --issuer-pool=my-ca-pool \
+    --issuer-location=us-central1 \
     --ca=my-root-ca \
     --subject="CN=api-client-1, O=My Company" \
     --validity=P365D \
+    --generate-key \
+    --use-preset-profile=leaf_client_tls \
     --cert-output-file=client-cert.pem \
     --key-output-file=client-key.pem
 ```
@@ -250,23 +257,9 @@ Then use the CA certificate from CAS in your TrustConfig.
 
 ## Certificate Revocation
 
-If a client certificate is compromised, you need to revoke it. GCP's mTLS supports certificate revocation through CRLs (Certificate Revocation Lists):
+If a client certificate is compromised, you need a revocation strategy. Certificate Manager TrustConfig resources for load balancer mTLS contain trust anchors, intermediate CAs, and optional allowlisted certificates; they do not include a CRL field that makes the load balancer check a CRL for each client certificate.
 
-```bash
-# Add a CRL to the trust config
-cat > trust-config-with-crl.yaml << 'EOF'
-name: my-trust-config-with-crl
-trustStores:
-- trustAnchors:
-  - pemCertificate: |
-      -----BEGIN CERTIFICATE-----
-      CA_CERT_CONTENT
-      -----END CERTIFICATE-----
-allowlistedCertificates: []
-EOF
-```
-
-For real-time revocation, consider using short-lived certificates (valid for hours or days) instead of long-lived ones with CRLs.
+For stronger revocation behavior, consider using short-lived certificates (valid for hours or days), rotating the affected CA or trust config, or enforcing certificate serial-number deny lists in your backend using the forwarded mTLS headers.
 
 ## Troubleshooting
 
