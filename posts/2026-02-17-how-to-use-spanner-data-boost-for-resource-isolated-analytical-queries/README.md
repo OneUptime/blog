@@ -8,15 +8,15 @@ Description: Learn how to use Cloud Spanner Data Boost to run heavy analytical q
 
 ---
 
-One of the oldest tensions in database management is running analytical queries against a production database. Your application needs consistent, low-latency reads and writes for transactional workloads. But someone in the analytics team wants to scan millions of rows for a report, and suddenly your API response times spike. Cloud Spanner's Data Boost feature solves this by running analytical queries on separate, isolated compute resources that do not touch your provisioned Spanner nodes.
+One of the oldest tensions in database management is running analytical queries against a production database. Your application needs consistent, low-latency reads and writes for transactional workloads. But someone in the analytics team wants to scan millions of rows for a report, and suddenly your API response times spike. Cloud Spanner's Data Boost feature solves this for supported analytical workloads by running them on separate, isolated compute resources instead of your provisioned Spanner nodes.
 
-Data Boost is essentially on-demand compute that reads directly from Spanner's distributed storage layer. Your OLTP workload keeps humming along on your provisioned nodes while the analytical query runs on completely independent resources. There is no shared CPU, no shared memory, no contention.
+Data Boost is essentially on-demand compute that reads directly from Spanner's distributed storage layer. Your OLTP workload keeps humming along on your provisioned nodes while the analytical workload runs on independent resources. There is no shared CPU or memory with your provisioned instance capacity.
 
 ## How Data Boost Works
 
 In a standard Spanner setup, all queries - transactional and analytical - share the same set of provisioned nodes. When you run a heavy table scan, it competes for CPU and memory with your application queries.
 
-Data Boost changes this by introducing a separate compute path. When you execute a query with Data Boost enabled, Spanner routes it to ephemeral, independently provisioned compute resources. These resources read directly from Spanner's Colossus-based storage layer, bypassing your provisioned nodes entirely.
+Data Boost changes this by introducing a separate compute path. When you execute an eligible partitioned query or read with Data Boost enabled, Spanner routes it to independently provisioned compute resources. These resources read directly from Spanner's Colossus-based storage layer, bypassing your provisioned nodes.
 
 The flow looks like this:
 
@@ -24,7 +24,7 @@ The flow looks like this:
 graph LR
     A[Application Queries] --> B[Provisioned Spanner Nodes]
     B --> C[Distributed Storage]
-    D[Analytical Query with Data Boost] --> E[Ephemeral Data Boost Compute]
+    D[Analytical Query with Data Boost] --> E[Data Boost Compute]
     E --> C
 ```
 
@@ -32,18 +32,15 @@ The important thing to notice is that the analytical query path and the applicat
 
 ## Enabling Data Boost
 
-Data Boost does not require any changes to your Spanner instance configuration. You enable it per-query by specifying the `DATA_BOOST_ENABLED` option in your read or query request.
+Data Boost does not require any changes to your Spanner instance configuration. The principal running the workload must have the `spanner.databases.useDataBoost` IAM permission, and the request must be a supported partitioned read or query. Eligible queries are queries whose first operator in the execution plan is a distributed union.
 
-Using gcloud to run a Data Boost query:
+You enable Data Boost by setting the `data_boost_enabled` or `DataBoostEnabled` option on the partitioned read or query request. The `gcloud spanner databases execute-sql` command does not currently expose a Data Boost flag for ad-hoc SQL execution.
 
 ```bash
-# Run a query using Data Boost through gcloud
-
-# The --data-boost flag routes the query to isolated compute
+# This runs a normal Spanner SQL query; it does not use Data Boost.
 gcloud spanner databases execute-sql my-database \
   --instance=my-instance \
-  --sql="SELECT COUNT(*) as total, status FROM orders GROUP BY status" \
-  --data-boost
+  --sql="SELECT COUNT(*) as total, status FROM orders GROUP BY status"
 ```
 
 ## Using Data Boost in Application Code
@@ -54,26 +51,28 @@ Here is how to enable Data Boost in the most common client libraries.
 
 ```python
 from google.cloud import spanner
-from google.cloud.spanner_v1 import DirectedReadOptions
 
 client = spanner.Client()
 instance = client.instance('my-instance')
 database = instance.database('my-database')
 
-# Run an analytical query with Data Boost enabled
-# This will not impact your production OLTP workload
-with database.snapshot() as snapshot:
-    results = snapshot.execute_sql(
-        "SELECT user_id, COUNT(*) as order_count, SUM(total) as revenue "
-        "FROM orders "
-        "GROUP BY user_id "
-        "ORDER BY revenue DESC "
-        "LIMIT 100",
-        data_boost_enabled=True  # Routes query to isolated compute
-    )
+# Run an analytical query as partitioned batch work with Data Boost enabled
+batch_txn = database.batch_snapshot()
 
+partitions = batch_txn.generate_query_batches(
+    sql=(
+        "SELECT user_id, total "
+        "FROM orders"
+    ),
+    data_boost_enabled=True  # Routes partitioned work to isolated compute
+)
+
+for partition in partitions:
+    results = batch_txn.process(partition)
     for row in results:
-        print(f"User: {row[0]}, Orders: {row[1]}, Revenue: {row[2]}")
+        print(f"User: {row[0]}, Revenue: {row[1]}")
+
+batch_txn.close()
 ```
 
 ### Java
@@ -88,26 +87,10 @@ DatabaseClient dbClient = spanner.getDatabaseClient(
     DatabaseId.of("my-project", "my-instance", "my-database")
 );
 
-// Execute an analytical query with Data Boost
-// The setDataBoostEnabled(true) call isolates this from production traffic
-try (ResultSet resultSet = dbClient
-    .singleUse()
-    .executeQuery(
-        Statement.of(
-            "SELECT region, COUNT(*) as cnt, AVG(response_time_ms) as avg_latency "
-            + "FROM api_logs "
-            + "WHERE timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR) "
-            + "GROUP BY region"
-        ),
-        Options.dataBoostEnabled(true)  // Enable Data Boost
-    )) {
-    while (resultSet.next()) {
-        System.out.printf("Region: %s, Count: %d, Avg Latency: %.2f%n",
-            resultSet.getString("region"),
-            resultSet.getLong("cnt"),
-            resultSet.getDouble("avg_latency"));
-    }
-}
+// Enable Data Boost only for partitioned reads or partitioned queries.
+// Options.dataBoostEnabled(true) is a Data Boost option for partitioned work,
+// not for ordinary single-use executeQuery calls.
+Options.DataBoostQueryOption dataBoost = Options.dataBoostEnabled(true);
 ```
 
 ### Go
@@ -121,7 +104,6 @@ import (
     "log"
 
     "cloud.google.com/go/spanner"
-    "google.golang.org/api/iterator"
 )
 
 func runDataBoostQuery() {
@@ -133,34 +115,15 @@ func runDataBoostQuery() {
     }
     defer client.Close()
 
-    // Create a read-only transaction with Data Boost enabled
-    // This query will run on isolated compute resources
+    // Data Boost is enabled through QueryOptions for partitioned queries.
     stmt := spanner.Statement{
-        SQL: `SELECT product_id, SUM(quantity) as total_sold
-              FROM order_items
-              GROUP BY product_id
-              ORDER BY total_sold DESC
-              LIMIT 50`,
+        SQL: `SELECT product_id, quantity FROM order_items`,
     }
+    queryOptions := spanner.QueryOptions{DataBoostEnabled: true}
 
-    iter := client.Single().WithDataBoostEnabled(true).Query(ctx, stmt)
-    defer iter.Stop()
-
-    for {
-        row, err := iter.Next()
-        if err == iterator.Done {
-            break
-        }
-        if err != nil {
-            log.Fatal(err)
-        }
-        var productID string
-        var totalSold int64
-        if err := row.Columns(&productID, &totalSold); err != nil {
-            log.Fatal(err)
-        }
-        fmt.Printf("Product: %s, Sold: %d\n", productID, totalSold)
-    }
+    _ = stmt
+    _ = queryOptions
+    fmt.Println("Use queryOptions with partitioned query execution.")
 }
 ```
 
@@ -201,7 +164,7 @@ batch_txn.close()
 
 ## Data Boost with Dataflow and Spark
 
-Data Boost integrates with GCP's data processing ecosystem. When using the Spanner connector for Dataflow or Spark, you can enable Data Boost to ensure your pipeline does not affect production.
+Data Boost integrates with GCP's data processing ecosystem. When using connectors that support Data Boost, such as the Spark SQL connector for Spanner or Dataflow export templates, you can enable Data Boost to reduce impact on production.
 
 For a Dataflow pipeline:
 
@@ -209,8 +172,9 @@ For a Dataflow pipeline:
 import apache_beam as beam
 from apache_beam.io.gcp.spanner import ReadFromSpanner
 
-# Apache Beam pipeline that reads from Spanner using Data Boost
-# Production workloads are completely unaffected
+# Apache Beam pipeline that reads from Spanner.
+# The Python ReadFromSpanner transform does not expose a data_boost_enabled
+# parameter; this example is a normal Spanner read.
 with beam.Pipeline() as pipeline:
     rows = (
         pipeline
@@ -218,9 +182,7 @@ with beam.Pipeline() as pipeline:
             project_id='my-project',
             instance_id='my-instance',
             database_id='my-database',
-            sql='SELECT * FROM large_table WHERE created_at > @start_date',
-            params={'start_date': '2026-01-01'},
-            data_boost_enabled=True  # Enable Data Boost for the read
+            sql="SELECT * FROM large_table WHERE created_at > TIMESTAMP '2026-01-01T00:00:00Z'"
         )
         | 'TransformData' >> beam.Map(transform_row)
         | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
@@ -232,17 +194,17 @@ with beam.Pipeline() as pipeline:
 
 ## Cost Considerations
 
-Data Boost is billed separately from your provisioned Spanner nodes. You pay for the amount of data processed by Data Boost queries, measured in processing units. This is a usage-based cost on top of your base Spanner instance cost.
+Data Boost is billed separately from your provisioned Spanner nodes. You pay for the actual processing units used by queries that run on Data Boost. This is a usage-based cost on top of your base Spanner instance cost.
 
 The pricing model means Data Boost is most cost-effective for periodic analytical workloads rather than continuous ones. If you need constant analytical capacity, adding read replicas or provisioning additional nodes might be more economical. But for daily reports, ad-hoc analysis, and periodic data exports, Data Boost is usually cheaper than over-provisioning your instance to handle both OLTP and analytical workloads.
 
-You can monitor Data Boost usage and costs in the Cloud Console under Spanner's monitoring tab, or through Cloud Monitoring metrics.
+You can monitor Data Boost usage and costs in Cloud Monitoring and, when audit logs are enabled, with Spanner audit logs.
 
 ## When to Use Data Boost
 
 Data Boost is the right choice in several scenarios. Large table scans for reporting and analytics are the primary use case. ETL and ELT pipelines that read data from Spanner for processing elsewhere benefit greatly. Data exports to BigQuery or Cloud Storage become safe operations. Ad-hoc analytical queries from data scientists or analysts no longer require coordination with the operations team.
 
-Data Boost is not the right choice for transactional workloads (it only supports read operations), low-latency queries where the overhead of spinning up ephemeral compute would be noticeable, or continuous streaming reads where provisioned capacity would be more economical.
+Data Boost is not the right choice for transactional workloads (it only supports read operations), queries that are not partitionable, or continuous streaming reads where provisioned capacity would be more economical.
 
 ## Monitoring Data Boost Queries
 
@@ -254,8 +216,8 @@ gcloud monitoring metrics list \
   --filter="metric.type = starts_with(\"spanner.googleapis.com/instance/data_boost\")"
 ```
 
-The key metrics to watch are data_boost/processing_units (how much compute your queries consumed) and data_boost/bytes_returned (how much data was returned).
+The key metric to watch is `instance/data_boost/processing_unit_second_count`, which reports the total processing units used for Data Boost operations.
 
 ## Wrapping Up
 
-Data Boost is one of those features that eliminates an entire category of operational headaches. The separation between OLTP and analytical compute means you no longer need to schedule reports during off-peak hours, over-provision your instance for occasional heavy reads, or say no to the analytics team. You just add a single flag to your query, and it runs on isolated resources. For teams running mixed workloads on Spanner, this is a significant quality-of-life improvement.
+Data Boost is one of those features that eliminates an entire category of operational headaches. The separation between OLTP and analytical compute means you no longer need to schedule supported reports during off-peak hours, over-provision your instance for occasional heavy reads, or say no to the analytics team. You add the Data Boost option to a supported partitioned read or query, and it runs on isolated resources. For teams running mixed workloads on Spanner, this is a significant quality-of-life improvement.
