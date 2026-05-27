@@ -84,6 +84,7 @@ Here is a compliance playbook that checks the running configuration against the 
   connection: network_cli
 
   vars:
+    ansible_network_os: cisco.ios.ios
     compliance_results: []
 
   tasks:
@@ -97,6 +98,7 @@ Here is a compliance playbook that checks the running configuration against the 
     - name: Store config as fact
       ansible.builtin.set_fact:
         device_config: "{{ running_config.stdout[0] }}"
+        device_config_lines: "{{ running_config.stdout[0].split('\n') | map('trim') | list }}"
 
     # Check NTP compliance
     - name: Verify NTP servers are configured
@@ -134,7 +136,7 @@ Here is a compliance playbook that checks the running configuration against the 
     - name: Verify telnet is disabled
       ansible.builtin.assert:
         that:
-          - "'transport input ssh' in device_config"
+          - "'transport input ssh' in device_config_lines"
         fail_msg: "FAIL: Telnet may be enabled on {{ inventory_hostname }}"
         success_msg: "PASS: SSH-only transport configured"
       ignore_errors: true
@@ -143,7 +145,8 @@ Here is a compliance playbook that checks the running configuration against the 
     - name: Verify HTTP server is disabled
       ansible.builtin.assert:
         that:
-          - "'no ip http server' in device_config"
+          - "'ip http server' not in device_config_lines"
+          - "'ip http secure-server' not in device_config_lines"
         fail_msg: "FAIL: HTTP server is enabled on {{ inventory_hostname }}"
         success_msg: "PASS: HTTP server is disabled"
       ignore_errors: true
@@ -161,7 +164,7 @@ Here is a compliance playbook that checks the running configuration against the 
     # Check for forbidden services
     - name: Check for forbidden services
       ansible.builtin.debug:
-        msg: "{{ 'FAIL: Forbidden service found' if item in device_config else 'PASS: Service not present' }}: {{ item }}"
+        msg: "{{ 'FAIL: Forbidden service found' if item in device_config_lines else 'PASS: Service not present' }}: {{ item }}"
       loop: "{{ compliance_baseline.forbidden_services }}"
 
     # Check for required services
@@ -182,6 +185,8 @@ Collect all check results and generate a structured compliance report.
   hosts: all_network
   gather_facts: false
   connection: network_cli
+  vars:
+    ansible_network_os: cisco.ios.ios
 
   tasks:
     - name: Get running configuration
@@ -193,6 +198,7 @@ Collect all check results and generate a structured compliance report.
     - name: Store config
       ansible.builtin.set_fact:
         cfg: "{{ running_config.stdout[0] }}"
+        cfg_lines: "{{ running_config.stdout[0].split('\n') | map('trim') | list }}"
 
     # Run all compliance checks and build a results dictionary
     - name: Build compliance results
@@ -202,8 +208,8 @@ Collect all check results and generate a structured compliance report.
           timestamp: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
           checks:
             ssh_v2: "{{ 'ip ssh version 2' in cfg }}"
-            no_telnet: "{{ 'transport input ssh' in cfg }}"
-            no_http: "{{ 'no ip http server' in cfg }}"
+            no_telnet: "{{ 'transport input ssh' in cfg_lines }}"
+            no_http: "{{ 'ip http server' not in cfg_lines and 'ip http secure-server' not in cfg_lines }}"
             password_encryption: "{{ 'service password-encryption' in cfg }}"
             ntp_server_1: "{{ 'ntp server ' + compliance_baseline.ntp_servers[0] in cfg }}"
             ntp_server_2: "{{ 'ntp server ' + compliance_baseline.ntp_servers[1] in cfg }}"
@@ -211,7 +217,7 @@ Collect all check results and generate a structured compliance report.
             syslog_server_2: "{{ 'logging host ' + compliance_baseline.logging.required_servers[1] in cfg }}"
             no_public_community: "{{ 'community public' not in cfg }}"
             no_private_community: "{{ 'community private' not in cfg }}"
-            no_ip_source_route: "{{ 'no ip source-route' in cfg }}"
+            no_ip_source_route: "{{ 'ip source-route' not in cfg_lines }}"
             timestamps_enabled: "{{ 'service timestamps log datetime msec' in cfg }}"
             banner_configured: "{{ 'banner motd' in cfg or 'banner login' in cfg }}"
 
@@ -227,6 +233,13 @@ Collect all check results and generate a structured compliance report.
     - name: Display compliance score
       ansible.builtin.debug:
         msg: "{{ inventory_hostname }}: Compliance score {{ compliance_score }}%"
+
+    - name: Ensure report directory exists
+      ansible.builtin.file:
+        path: reports/compliance
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
 
     # Save individual device report
     - name: Save device compliance report
@@ -251,6 +264,12 @@ Collect all check results and generate a structured compliance report.
           {{ host }}: {{ hostvars[host].compliance_score | default('N/A') }}% compliant
           {% endfor %}
 
+    - name: Ensure report directory exists
+      ansible.builtin.file:
+        path: reports/compliance
+        state: directory
+        mode: '0755'
+
     - name: Save summary report
       ansible.builtin.copy:
         content: "{{ summary }}"
@@ -268,6 +287,8 @@ Once you know what is wrong, you can automatically fix it. Be careful with this 
   hosts: all_network
   gather_facts: false
   connection: network_cli
+  vars:
+    ansible_network_os: cisco.ios.ios
 
   tasks:
     - name: Get running configuration
@@ -279,6 +300,7 @@ Once you know what is wrong, you can automatically fix it. Be careful with this 
     - name: Store config
       ansible.builtin.set_fact:
         cfg: "{{ running_config.stdout[0] }}"
+        cfg_lines: "{{ running_config.stdout[0].split('\n') | map('trim') | list }}"
 
     # Fix: Enable password encryption
     - name: Enable password encryption
@@ -293,7 +315,7 @@ Once you know what is wrong, you can automatically fix it. Be careful with this 
         lines:
           - no ip http server
           - no ip http secure-server
-      when: "'no ip http server' not in cfg"
+      when: "'ip http server' in cfg_lines or 'ip http secure-server' in cfg_lines"
 
     # Fix: Force SSH version 2
     - name: Set SSH version 2
@@ -307,7 +329,7 @@ Once you know what is wrong, you can automatically fix it. Be careful with this 
       cisco.ios.ios_config:
         lines:
           - no ip source-route
-      when: "'no ip source-route' not in cfg"
+      when: "'ip source-route' in cfg_lines"
 
     # Fix: Add missing NTP servers
     - name: Configure NTP servers
@@ -339,7 +361,7 @@ Once you know what is wrong, you can automatically fix it. Be careful with this 
         lines:
           - transport input ssh
         parents: line vty 0 15
-      when: "'transport input ssh' not in cfg"
+      when: "'transport input ssh' not in cfg_lines"
 
     # Save after remediation
     - name: Save configuration
