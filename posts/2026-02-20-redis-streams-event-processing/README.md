@@ -8,7 +8,7 @@ Description: Learn how to use Redis Streams with consumer groups for reliable ev
 
 ---
 
-Redis Streams is a log-like data structure introduced in Redis 5.0. Unlike Pub/Sub, Streams persist messages, support consumer groups, and provide message acknowledgment. This makes them suitable for reliable event processing, task queues, and event sourcing.
+Redis Streams is a log-like data structure introduced in Redis 5.0. Unlike Pub/Sub, Streams retain messages in the stream, support consumer groups, and provide message acknowledgment. This makes them suitable for reliable event processing, task queues, and event sourcing.
 
 This post covers the core concepts of Redis Streams, how to produce and consume messages, set up consumer groups, and handle failures.
 
@@ -29,10 +29,10 @@ graph LR
 ```
 
 Key features:
-- Messages are persisted to disk
+- Messages are retained in Redis and can be persisted to disk when Redis persistence is enabled
 - Each message gets a unique, time-based ID
 - Consumer groups allow distributing messages across workers
-- Acknowledgment ensures no message is lost
+- Acknowledgment lets Redis track processed messages and retry unacknowledged work
 
 ## Producing Messages
 
@@ -103,7 +103,7 @@ def simple_consumer(stream: str):
 
 ## Consumer Groups
 
-Consumer groups are the real power of Redis Streams. They let multiple consumers share the workload, with each message delivered to exactly one consumer in the group.
+Consumer groups are the real power of Redis Streams. They let multiple consumers share the workload, with each new message delivered to one consumer in the group and retried if it is not acknowledged.
 
 ```mermaid
 sequenceDiagram
@@ -165,7 +165,7 @@ def group_consumer(stream: str, group: str, consumer_name: str):
     print(f"Consumer '{consumer_name}' started in group '{group}'")
 
     while True:
-        # '>' means read only messages never delivered to this consumer
+        # '>' means read only messages never delivered to any consumer in this group
         messages = r.xreadgroup(
             groupname=group,
             consumername=consumer_name,
@@ -329,7 +329,7 @@ graph TD
 
 | Feature | Redis Streams | Kafka | RabbitMQ |
 |---------|--------------|-------|----------|
-| Persistence | Yes | Yes | Yes |
+| Persistence | Yes, with Redis persistence enabled | Yes | Yes, with durable queues/messages |
 | Consumer Groups | Yes | Yes | No (but has exchanges) |
 | Ordering | Per stream | Per partition | Per queue |
 | Throughput | High | Very High | Moderate |
