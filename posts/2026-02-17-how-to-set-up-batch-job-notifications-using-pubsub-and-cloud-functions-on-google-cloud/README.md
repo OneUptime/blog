@@ -34,7 +34,7 @@ Create a Pub/Sub topic to receive Batch job notifications.
 
 gcloud pubsub topics create batch-job-notifications
 
-# Create a subscription for the Cloud Function
+# Optional: create a pull subscription for manual testing
 gcloud pubsub subscriptions create batch-notifications-sub \
   --topic=batch-job-notifications \
   --ack-deadline=60
@@ -127,7 +127,7 @@ import json
 import logging
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from google.cloud import bigquery
 
 logger = logging.getLogger(__name__)
@@ -144,31 +144,34 @@ bq_client = bigquery.Client()
 @functions_framework.cloud_event
 def handle_batch_notification(cloud_event):
     """Process a Batch job state change notification."""
-    # Decode the Pub/Sub message
-    message_data = base64.b64decode(cloud_event.data["message"]["data"])
-    notification = json.loads(message_data)
+    # Batch publishes notification details as Pub/Sub message attributes.
+    message = cloud_event.data["message"]
+    attributes = message.get("attributes", {})
 
-    # Extract job details from the notification
-    job_name = notification.get("job", {}).get("name", "unknown")
-    job_state = notification.get("job", {}).get("status", {}).get("state", "UNKNOWN")
-    job_uid = notification.get("job", {}).get("uid", "")
+    # If you also publish custom JSON data to this topic, this fallback keeps
+    # the function tolerant of those messages.
+    notification = {}
+    if message.get("data"):
+        message_data = base64.b64decode(message["data"]).decode("utf-8")
+        notification = json.loads(message_data) if message_data else {}
+
+    # Extract job details from the notification attributes
+    job_name = attributes.get("JobName", notification.get("job_name", "unknown"))
+    job_state = attributes.get("NewJobState", notification.get("state", "UNKNOWN"))
+    job_uid = attributes.get("JobUID", notification.get("job_uid", ""))
+    region = attributes.get("Region", notification.get("region", "us-central1"))
 
     # Parse the job name to get a friendly identifier
     job_id = job_name.split("/")[-1] if "/" in job_name else job_name
 
     logger.info(f"Job notification: {job_id} -> {job_state}")
 
-    # Get additional job details
-    task_count = 0
-    for tg in notification.get("job", {}).get("taskGroups", []):
-        task_count += tg.get("taskCount", 0)
-
     event = {
         "job_id": job_id,
         "job_uid": job_uid,
         "state": job_state,
-        "task_count": task_count,
-        "timestamp": datetime.utcnow().isoformat(),
+        "region": region,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "full_name": job_name,
     }
 
@@ -201,7 +204,7 @@ def send_success_notification(event):
                 "type": "section",
                 "fields": [
                     {"type": "mrkdwn", "text": f"*Job:* {event['job_id']}"},
-                    {"type": "mrkdwn", "text": f"*Tasks:* {event['task_count']}"},
+                    {"type": "mrkdwn", "text": f"*Region:* {event['region']}"},
                     {"type": "mrkdwn", "text": f"*State:* {event['state']}"},
                     {"type": "mrkdwn", "text": f"*Time:* {event['timestamp']}"},
                 ]
@@ -231,7 +234,7 @@ def send_failure_notification(event):
                     "type": "section",
                     "fields": [
                         {"type": "mrkdwn", "text": f"*Job:* {event['job_id']}"},
-                        {"type": "mrkdwn", "text": f"*Tasks:* {event['task_count']}"},
+                        {"type": "mrkdwn", "text": f"*Region:* {event['region']}"},
                         {"type": "mrkdwn", "text": f"*State:* {event['state']}"},
                         {"type": "mrkdwn", "text": f"*Time:* {event['timestamp']}"},
                     ]
@@ -240,7 +243,7 @@ def send_failure_notification(event):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"<https://console.cloud.google.com/batch/jobDetail/us-central1/{event['job_id']}|View in Console>"
+                        "text": f"<https://console.cloud.google.com/batch/jobDetail/{event['region']}/{event['job_id']}|View in Console>"
                     }
                 }
             ]
@@ -278,13 +281,22 @@ def log_to_bigquery(event):
         "job_id": event["job_id"],
         "job_uid": event["job_uid"],
         "state": event["state"],
-        "task_count": event["task_count"],
+        "region": event["region"],
         "timestamp": event["timestamp"],
     }]
 
     errors = bq_client.insert_rows_json(BQ_TABLE, rows)
     if errors:
         logger.error(f"BigQuery insert failed: {errors}")
+```
+
+Create the function dependencies file.
+
+```txt
+# notification_handler/requirements.txt
+functions-framework==3.*
+google-cloud-bigquery==3.*
+requests==2.*
 ```
 
 Deploy the notification handler.
@@ -313,7 +325,7 @@ CREATE TABLE IF NOT EXISTS `YOUR_PROJECT.batch_monitoring.job_history` (
   job_id STRING NOT NULL,
   job_uid STRING,
   state STRING NOT NULL,
-  task_count INTEGER,
+  region STRING,
   timestamp TIMESTAMP NOT NULL
 )
 PARTITION BY DATE(timestamp);
@@ -342,13 +354,35 @@ gcloud alpha monitoring channels create \
   --channel-labels=email_address=team@example.com
 
 # Create a log-based alert that sends email on batch failures
-gcloud alpha monitoring policies create \
-  --display-name="Batch Job Failure Email Alert" \
-  --notification-channels=CHANNEL_ID \
-  --condition-display-name="Batch job failure detected" \
-  --condition-filter='resource.type="cloud_batch_job" AND severity>=ERROR' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT
+cat > batch-failure-alert.json <<EOF
+{
+  "displayName": "Batch Job Failure Email Alert",
+  "documentation": {
+    "content": "A Batch job failure log entry was detected.",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "Batch job failure detected",
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"batch.googleapis.com/Job\" severity>=ERROR"
+      }
+    }
+  ],
+  "combiner": "OR",
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    },
+    "autoClose": "604800s"
+  },
+  "notificationChannels": [
+    "projects/YOUR_PROJECT/notificationChannels/CHANNEL_ID"
+  ]
+}
+EOF
+
+gcloud monitoring policies create --policy-from-file=batch-failure-alert.json
 ```
 
 ## Testing the Notification Pipeline
