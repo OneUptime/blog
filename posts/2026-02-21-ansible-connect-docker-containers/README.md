@@ -12,13 +12,13 @@ Most people use Ansible to connect to remote servers over SSH. But Ansible can a
 
 ## The Docker Connection Plugin
 
-Ansible ships with a `docker` connection plugin (also called `community.docker.docker`). Instead of using SSH, it uses the Docker API to execute commands inside a container. Think of it as an automated version of `docker exec`.
+Ansible ships with a `docker` connection plugin (also called `community.docker.docker`). Instead of using SSH to the target, it uses the Docker CLI to execute commands inside a container. Think of it as an automated version of `docker exec`.
 
 ```mermaid
 flowchart LR
     A[Ansible Control Node] -->|SSH Connection| B[Remote Server]
-    A -->|Docker API| C[Docker Container]
-    B -->|Docker API| D[Container on Remote Host]
+    A -->|Docker CLI| C[Docker Container]
+    A -->|Docker CLI with remote daemon| D[Container on Remote Host]
 ```
 
 You can connect to containers on the local machine or on remote Docker hosts.
@@ -37,14 +37,15 @@ The simplest case is running Ansible against containers on the same machine:
   gather_facts: false
 
   tasks:
-    - name: Check if Python is available
-      ansible.builtin.raw: python3 --version || python --version
+    - name: Check if Python and curl are available
+      ansible.builtin.raw: python3 --version && curl --version
       register: python_check
       changed_when: false
+      failed_when: false
 
-    - name: Install a package inside the container
-      ansible.builtin.raw: apt-get update && apt-get install -y curl
-      when: "'python' not in python_check.stdout | default('')"
+    - name: Install Python and curl inside the container
+      ansible.builtin.raw: apt-get update && apt-get install -y python3 curl
+      when: python_check.rc != 0
 
     - name: Create a configuration file
       ansible.builtin.copy:
@@ -69,7 +70,7 @@ ansible_connection=community.docker.docker
 
 ## Connecting to Containers on Remote Hosts
 
-When containers run on remote Docker hosts, you need a two-step connection. Ansible first connects to the Docker host via SSH, then uses the Docker API to reach the container:
+When containers run on remote Docker hosts, point the Docker CLI at the remote daemon. For example, Docker can connect over SSH with `-H ssh://user@docker-host-1`, and Ansible passes that through with `ansible_docker_extra_args`:
 
 ```yaml
 # connect_remote.yml - Connect to containers on remote Docker hosts
@@ -77,6 +78,7 @@ When containers run on remote Docker hosts, you need a two-step connection. Ansi
 - name: Configure Containers on Remote Docker Hosts
   hosts: remote_containers
   connection: community.docker.docker
+  gather_facts: false
 
   tasks:
     - name: Run a command inside the remote container
@@ -93,7 +95,6 @@ The inventory needs to specify both the Docker host and the container name:
 [remote_containers]
 webapp ansible_host=webapp ansible_docker_extra_args="-H ssh://user@docker-host-1"
 
-# Alternative: use docker_host variable
 [remote_containers:vars]
 ansible_connection=community.docker.docker
 ```
@@ -103,12 +104,13 @@ ansible_connection=community.docker.docker
 Instead of manually listing containers, use a dynamic inventory script that discovers running containers:
 
 ```yaml
-# docker_inventory.yml - Dynamic inventory plugin configuration
+# inventory.docker.yml - Dynamic inventory plugin configuration
 plugin: community.docker.docker_containers
 docker_host: unix:///var/run/docker.sock
 # Only include running containers
 filters:
-  status: running
+  - include: docker_state.Running
+  - exclude: true
 # Add containers to groups based on labels
 keyed_groups:
   - key: docker_config.Labels.app | default("ungrouped")
@@ -117,16 +119,16 @@ keyed_groups:
     prefix: env
 # Set connection type automatically
 compose:
-  ansible_connection: community.docker.docker
+  ansible_connection: "'community.docker.docker'"
 ```
 
-Save this as `docker_inventory.yml` in your inventory directory. Ansible will automatically discover running containers and group them by their Docker labels.
+Save this as `inventory.docker.yml` in your inventory directory. Ansible will automatically discover running containers and group them by their Docker labels.
 
 Test the dynamic inventory:
 
 ```bash
 # List discovered containers
-ansible-inventory -i docker_inventory.yml --list
+ansible-inventory -i inventory.docker.yml --list
 ```
 
 ## Running Ad-Hoc Commands in Containers
@@ -236,7 +238,7 @@ When a container is misbehaving, Ansible can gather diagnostic information syste
       changed_when: false
 
     - name: Check open files
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: ls -la /proc/1/fd/ 2>/dev/null | wc -l
       register: open_files
       changed_when: false
@@ -299,7 +301,7 @@ Keep in mind that some modules that work on regular servers might not work insid
 
 The Docker connection plugin has some limitations to be aware of:
 
-1. **No Python requirement for raw/command modules**: The `raw` and `command` modules work without Python. But modules like `copy`, `template`, and `apt` need Python installed inside the container.
+1. **Python requirements**: The `raw` module works without Python. Most other modules, including `command`, `copy`, `template`, and `apt`, need Python installed inside the container.
 
 2. **No persistent SSH session**: Each task creates a new `docker exec` session. This means shell variables set in one task are not available in the next.
 
