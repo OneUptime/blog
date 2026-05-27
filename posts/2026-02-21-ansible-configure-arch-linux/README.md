@@ -18,7 +18,7 @@ Arch has a few quirks that affect Ansible:
 - No LTS or stable branches to pin to
 - The `pacman` module in Ansible handles most package operations
 - Python must be installed before Ansible can run (it is not always present)
-- The AUR (Arch User Repository) requires a helper like `yay` or `paru`
+- The AUR (Arch User Repository) is often managed with a helper like `yay` or `paru`
 
 ## Bootstrap: Ensuring Python Exists
 
@@ -35,7 +35,7 @@ Arch minimal installations may not include Python. Use the `raw` module to boots
 
   tasks:
     - name: Install Python using raw command
-      ansible.builtin.raw: pacman -Sy --noconfirm python
+      ansible.builtin.raw: pacman -Syu --needed --noconfirm python
       changed_when: true
 ```
 
@@ -104,6 +104,12 @@ ansible_python_interpreter=/usr/bin/python3
       community.general.timezone:
         name: "{{ timezone }}"
 
+    - name: Enable en_US.UTF-8 locale
+      ansible.builtin.lineinfile:
+        path: /etc/locale.gen
+        regexp: '^#?en_US\.UTF-8 UTF-8'
+        line: 'en_US.UTF-8 UTF-8'
+
     - name: Generate locale
       ansible.builtin.command: locale-gen
       changed_when: false
@@ -130,9 +136,9 @@ Optimize pacman for automated use:
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^#Color', line: 'Color' }
-        - { regexp: '^#ParallelDownloads', line: 'ParallelDownloads = 5' }
-        - { regexp: '^#VerbosePkgLists', line: 'VerbosePkgLists' }
+        - { regexp: '^#?Color', line: 'Color' }
+        - { regexp: '^#?ParallelDownloads', line: 'ParallelDownloads = 5' }
+        - { regexp: '^#?VerbosePkgLists', line: 'VerbosePkgLists' }
 
     - name: Enable multilib repository
       ansible.builtin.blockinfile:
@@ -200,7 +206,7 @@ For AUR packages, install an AUR helper:
       notify: restart chronyd
 
     - name: Enable essential services
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}"
         enabled: true
         state: started
@@ -260,21 +266,21 @@ For AUR packages, install an AUR helper:
 
   handlers:
     - name: restart chronyd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: chronyd
         state: restarted
 
     - name: restart sshd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: sshd
         state: restarted
 
     - name: restart nftables
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: nftables
         state: restarted
 ```
 
 ## Summary
 
-Arch Linux automation with Ansible uses the `community.general.pacman` module for package management and requires bootstrapping Python first. The rolling release model means you should run updates frequently and test changes before deploying. AUR support requires a helper like yay. For firewalling, use nftables directly since Arch does not ship with ufw or firewalld by default. This playbook provides a production-ready base for Arch Linux servers.
+Arch Linux automation with Ansible uses the `community.general.pacman` module for package management and requires bootstrapping Python first. The rolling release model means you should run updates frequently and test changes before deploying. AUR support is commonly handled with a helper like yay. For firewalling, use nftables directly since Arch does not ship with ufw or firewalld by default. This playbook provides a production-ready base for Arch Linux servers.
