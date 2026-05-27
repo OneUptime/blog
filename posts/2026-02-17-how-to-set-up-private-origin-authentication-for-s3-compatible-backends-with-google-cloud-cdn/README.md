@@ -69,7 +69,7 @@ Create an IAM user, attach this policy, and generate an access key. Store the ac
 
 ## Step 2: Store Credentials in Secret Manager
 
-Store the AWS credentials in Google Cloud Secret Manager so they are not exposed in your configuration.
+Store the AWS credentials in Google Cloud Secret Manager so they are not hard-coded in scripts or shared configuration files.
 
 ```bash
 # Store the AWS access key ID
@@ -123,6 +123,7 @@ Create a backend service and configure AWS Signature Version 4 authentication.
 # Create the backend service
 gcloud compute backend-services create s3-origin-backend \
     --protocol=HTTPS \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
     --global \
     --project=my-project
 
@@ -139,11 +140,13 @@ gcloud compute backend-services update s3-origin-backend \
     --cache-mode=CACHE_ALL_STATIC \
     --default-ttl=86400 \
     --max-ttl=604800 \
+    --custom-request-header="Host: my-content-bucket.s3.us-east-1.amazonaws.com" \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
     --global \
     --project=my-project
 ```
 
-Now configure the origin authentication. This requires using the REST API or Terraform, as gcloud CLI support for this is limited.
+Now configure the origin authentication. The examples below use the REST API or Terraform; you can also use `gcloud compute backend-services export` and `gcloud compute backend-services import` if you prefer to edit the backend service YAML.
 
 ### Using the REST API
 
@@ -156,9 +159,12 @@ curl -X PATCH \
     -d '{
         "cdnPolicy": {
             "cacheMode": "CACHE_ALL_STATIC",
-            "defaultTtl": "86400s",
-            "maxTtl": "604800s"
+            "defaultTtl": 86400,
+            "maxTtl": 604800
         },
+        "customRequestHeaders": [
+            "Host: my-content-bucket.s3.us-east-1.amazonaws.com"
+        ],
         "securitySettings": {
             "awsV4Authentication": {
                 "accessKeyId": "AKIAIOSFODNN7EXAMPLE",
@@ -190,7 +196,7 @@ resource "google_compute_global_network_endpoint" "s3_endpoint" {
 resource "google_compute_backend_service" "s3_backend" {
   name                  = "s3-origin-backend"
   protocol              = "HTTPS"
-  load_balancing_scheme = "EXTERNAL"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
   enable_cdn            = true
 
   cdn_policy {
@@ -229,6 +235,8 @@ data "google_secret_manager_secret_version" "aws_secret_key" {
 }
 ```
 
+Terraform marks the secret key as sensitive, but the Google provider still stores `security_settings.aws_v4_authentication.access_key` in Terraform state. Keep your Terraform state encrypted and access-controlled.
+
 ## Step 5: Set Up the Load Balancer
 
 Complete the setup with a URL map, SSL certificate, and forwarding rule.
@@ -256,6 +264,7 @@ gcloud compute target-https-proxies create s3-cdn-proxy \
 # Reserve static IP
 gcloud compute addresses create s3-cdn-ip \
     --ip-version=IPV4 \
+    --network-tier=PREMIUM \
     --global \
     --project=my-project
 
@@ -263,6 +272,8 @@ gcloud compute addresses create s3-cdn-ip \
 gcloud compute forwarding-rules create s3-cdn-rule \
     --address=s3-cdn-ip \
     --target-https-proxy=s3-cdn-proxy \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
+    --network-tier=PREMIUM \
     --ports=443 \
     --global \
     --project=my-project
@@ -279,7 +290,7 @@ curl -I https://assets.example.com/images/photo.jpg
 # Check for successful response
 # HTTP/2 200
 # cache-control: public, max-age=86400
-# x-goog-hash: ...
+# etag: ...
 
 # Verify caching is working - second request should be faster
 curl -w "Total time: %{time_total}s\n" -o /dev/null -s https://assets.example.com/images/photo.jpg
