@@ -18,7 +18,7 @@ By requiring a longer window to also exceed a threshold, you ensure the problem 
 
 ## The MWMBR Framework
 
-The SRE Workbook recommends four alert tiers, each with two windows.
+The SRE Workbook recommends a small set of alert tiers, each with two windows. On Google Cloud Monitoring, SLO burn-rate alert lookback periods must be 24 hours or less, so the examples below use a 24-hour slow-burn tier.
 
 ```mermaid
 graph TD
@@ -34,10 +34,10 @@ graph TD
     B2 --> B4[Burn Rate: 6x]
     end
 
-    subgraph "Tier 3 - Ticket (10% budget in 3 days)"
-    C1[Short Window: 2 hours] --- C2[Long Window: 3 days]
-    C1 --> C3[Burn Rate: 1x]
-    C2 --> C4[Burn Rate: 1x]
+    subgraph "Tier 3 - Ticket (10% budget in 24h)"
+    C1[Short Window: 2 hours] --- C2[Long Window: 24 hours]
+    C1 --> C3[Burn Rate: 3x]
+    C2 --> C4[Burn Rate: 3x]
     end
 ```
 
@@ -48,17 +48,27 @@ Start with a solid SLO definition.
 ```bash
 # Create the SLO that will be the basis for burn rate alerts
 
-gcloud monitoring slos create \
-    --service=my-api-service \
-    --slo-id=availability-slo \
-    --display-name="API Availability - 99.9%" \
-    --request-based-sli \
-    --good-total-ratio-threshold \
-    --good-service-filter='metric.type="loadbalancing.googleapis.com/https/request_count" AND metric.labels.response_code_class="200"' \
-    --total-service-filter='metric.type="loadbalancing.googleapis.com/https/request_count"' \
-    --goal=0.999 \
-    --rolling-period=30d \
-    --project=my-gcp-project
+cat > availability-slo.json << 'SLO'
+{
+  "displayName": "API Availability - 99.9%",
+  "goal": 0.999,
+  "rollingPeriod": "2592000s",
+  "serviceLevelIndicator": {
+    "requestBased": {
+      "goodTotalRatio": {
+        "goodServiceFilter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" AND resource.type=\"http_lb_rule\" AND metric.label.\"response_code_class\"=\"200\"",
+        "totalServiceFilter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" AND resource.type=\"http_lb_rule\""
+      }
+    }
+  }
+}
+SLO
+
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://monitoring.googleapis.com/v3/projects/my-gcp-project/services/my-api-service/serviceLevelObjectives?serviceLevelObjectiveId=availability-slo" \
+  -d @availability-slo.json
 ```
 
 ## Step 2: Create Tier 1 - Critical Page Alert
@@ -163,27 +173,27 @@ gcloud monitoring policies create --policy-from-file=tier2-alert.json
 This catches slow, sustained degradation that would not trigger the faster alerts but would still exhaust the budget if left unchecked.
 
 ```bash
-# Tier 3: Low severity - 2-hour and 3-day windows exceeding 1x burn rate
+# Tier 3: Low severity - 2-hour and 24-hour windows exceeding 3x burn rate
 cat > tier3-alert.json << 'ALERT'
 {
   "displayName": "[SLO] Tier 3 - Low: Sustained Burn on Availability SLO",
   "conditions": [
     {
-      "displayName": "Short window burn rate (2 hours) > 1x",
+      "displayName": "Short window burn rate (2 hours) > 3x",
       "conditionThreshold": {
         "filter": "select_slo_burn_rate(\"projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/availability-slo\", \"7200s\")",
         "comparison": "COMPARISON_GT",
-        "thresholdValue": 1,
+        "thresholdValue": 3,
         "duration": "0s",
         "trigger": { "count": 1 }
       }
     },
     {
-      "displayName": "Long window burn rate (3 days) > 1x",
+      "displayName": "Long window burn rate (24 hours) > 3x",
       "conditionThreshold": {
-        "filter": "select_slo_burn_rate(\"projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/availability-slo\", \"259200s\")",
+        "filter": "select_slo_burn_rate(\"projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/availability-slo\", \"86400s\")",
         "comparison": "COMPARISON_GT",
-        "thresholdValue": 1,
+        "thresholdValue": 3,
         "duration": "0s",
         "trigger": { "count": 1 }
       }
@@ -194,7 +204,7 @@ cat > tier3-alert.json << 'ALERT'
     "projects/my-gcp-project/notificationChannels/TICKET_CHANNEL"
   ],
   "documentation": {
-    "content": "## Low Severity SLO Burn Alert\n\nSustained elevated error budget consumption detected. The current burn rate exceeds the sustainable level over both short and long windows.\n\n### Actions\n1. Review error trends for the past few days\n2. Investigate any correlations with recent changes\n3. Plan remediation within the next business day"
+    "content": "## Low Severity SLO Burn Alert\n\nSustained elevated error budget consumption detected. The current burn rate exceeds 3x the sustainable level over both short and long windows.\n\n### Actions\n1. Review error trends for the past day\n2. Investigate any correlations with recent changes\n3. Plan remediation within the next business day"
   },
   "alertStrategy": {
     "autoClose": "86400s"
@@ -234,8 +244,8 @@ locals {
     tier3_low = {
       display_name    = "[SLO] Tier 3 - Low: Sustained Burn"
       short_window    = "7200s"   # 2 hours
-      long_window     = "259200s" # 3 days
-      burn_rate       = 1
+      long_window     = "86400s"  # 24 hours
+      burn_rate       = 3
       channels        = [var.ticket_channel]
       auto_close      = "86400s"
     }
@@ -304,7 +314,7 @@ sequenceDiagram
 
 ## Tuning Tips
 
-After running MWMBR alerts for a while, you will likely need to tune them. If you get too many false positives on Tier 1, increase the short window from 5 minutes to 10 minutes. If Tier 3 is too noisy, increase its burn rate threshold from 1x to 1.5x.
+After running MWMBR alerts for a while, you will likely need to tune them. If you get too many false positives on Tier 1, increase the short window from 5 minutes to 10 minutes. If Tier 3 is too noisy, increase its burn rate threshold from 3x to 4x.
 
 Keep track of alert firings and their outcomes. An alert that fires but does not result in any action is noise that erodes trust in your alerting system. Every alert should either lead to immediate action (Tier 1 and 2) or a tracked ticket (Tier 3).
 
