@@ -92,7 +92,7 @@ For even more granularity, set the remote user on individual tasks.
       become: yes
 
     - name: Run database backup (as postgres user)
-      command: pg_dump myapp > /var/backups/myapp.sql
+      shell: pg_dump myapp > /var/backups/myapp.sql
       remote_user: postgres
       delegate_to: "{{ groups['dbservers'][0] }}"
 ```
@@ -157,17 +157,18 @@ When the remote user is set in multiple places, Ansible follows a specific prece
 
 ```mermaid
 flowchart TD
-    A["Task-level remote_user (HIGHEST)"] --> B["Play-level remote_user"]
-    B --> C["Host variable ansible_user"]
-    C --> D["Group variable ansible_user"]
-    D --> E["ansible.cfg remote_user"]
-    E --> F["Current OS user (LOWEST)"]
+    A["Host variable ansible_user (HIGHEST)"] --> B["Group variable ansible_user"]
+    B --> C["Task-level remote_user"]
+    C --> D["Play-level remote_user"]
+    D --> E["Command line -u / --user"]
+    E --> F["ansible.cfg remote_user"]
+    F --> G["Current OS user (LOWEST)"]
 
     style A fill:#f96,stroke:#333,color:#000
-    style F fill:#9f9,stroke:#333,color:#000
+    style G fill:#9f9,stroke:#333,color:#000
 ```
 
-The task-level setting wins over everything else. If nothing is set at any level, Ansible falls back to the OS username of the person running the playbook.
+Inventory variables such as `ansible_user` are connection variables, so they override playbook keywords like `remote_user` and command-line options like `-u`. Within playbook keywords, a task-level `remote_user` overrides a play-level `remote_user`. If nothing is set at any level, Ansible falls back to the OS username of the person running the playbook.
 
 ## Command Line Override
 
@@ -181,7 +182,7 @@ ansible-playbook -i inventory.ini site.yml -u root
 ansible-playbook -i inventory.ini site.yml --user root
 ```
 
-The command-line flag overrides all other settings except task-level `remote_user`.
+The command-line flag overrides configuration defaults, but it does not override playbook keywords or inventory variables such as `ansible_user`. To override those from the command line, pass `ansible_user` as an extra variable with `-e`.
 
 ## Remote User vs Become User
 
