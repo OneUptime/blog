@@ -22,7 +22,7 @@ graph TD
     B --> C[Table Level dbname.tablename]
     C --> D[Column Level]
 
-    A --> E[ALL, CREATE USER, SUPER, PROCESS, RELOAD]
+    A --> E[ALL, CREATE USER, PROCESS, RELOAD, CONNECTION_ADMIN]
     B --> F[ALL, CREATE, DROP, SELECT, INSERT, UPDATE, DELETE]
     C --> G[SELECT, INSERT, UPDATE, DELETE, INDEX]
     D --> H[SELECT, INSERT, UPDATE on specific columns]
@@ -68,7 +68,7 @@ The simplest way to manage permissions is during user creation with the `priv` p
 
   tasks:
     - name: Create users with privileges
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: "{{ item.name }}"
         password: "{{ item.password }}"
         host: "{{ item.host }}"
@@ -109,7 +109,7 @@ Sometimes you want to manage privileges independent of user creation. You can us
 ```yaml
 # Add privileges to an existing user without removing current ones
 - name: Grant additional read access to reporting user
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: reporting_user
     host: "10.0.2.%"
     priv: "myapp_audit.*:SELECT"
@@ -147,7 +147,7 @@ mysql_permission_templates:
 # Apply permission templates to users
 ---
 - name: Apply database-level permissions
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: "{{ item.0.name }}"
     host: "{{ item.0.host | default('%') }}"
     priv: "{{ item.1.database }}.*:{{ mysql_permission_templates[item.0.role].privs }}"
@@ -188,12 +188,12 @@ mysql_user_permissions:
 
 ## Revoking Privileges
 
-To revoke privileges, use `state: absent` on the privilege or create the user without the privilege and without `append_privs`.
+To revoke specific privileges, use `subtract_privs: true`, or create the user with the desired replacement privilege set and without `append_privs`.
 
 ```yaml
 # Revoke all privileges from a user
 - name: Revoke all privileges from decommissioned user
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: old_app_user
     host: "%"
     priv: "*.*:USAGE"
@@ -210,7 +210,7 @@ Check what privileges users currently have.
 ```yaml
 # Audit current user privileges
 - name: Check grants for all application users
-  community.mysql.mysql_query:
+  ansible.mysql.mysql_query:
     query: "SHOW GRANTS FOR '{{ item }}'@'10.0.1.%'"
     login_unix_socket: /var/run/mysqld/mysqld.sock
   register: user_grants
@@ -234,7 +234,7 @@ For fine-grained control, grant access to specific tables only.
 ```yaml
 # Grant access to specific tables
 - name: Grant reporting user access to specific tables only
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: limited_reporting_user
     host: "10.0.2.%"
     password: "{{ vault_limited_reporting_password }}"
@@ -275,12 +275,12 @@ privilege_patterns:
 
 ## Flushing Privileges
 
-After making permission changes outside of the `mysql_user` module (like direct SQL), you may need to flush privileges. The `mysql_user` module does this automatically, but here is how to do it manually.
+After modifying MySQL grant tables directly with statements like `INSERT`, `UPDATE`, or `DELETE` against the `mysql` system database, you need to flush privileges. Normal account-management statements such as `GRANT` and `REVOKE`, and the `mysql_user` module, do not require a manual flush.
 
 ```yaml
 # Flush privileges after manual changes
 - name: Flush MySQL privileges
-  community.mysql.mysql_query:
+  ansible.mysql.mysql_query:
     query: "FLUSH PRIVILEGES"
     login_unix_socket: /var/run/mysqld/mysqld.sock
 ```
@@ -301,4 +301,4 @@ flowchart TD
 
 ## Conclusion
 
-MySQL permission management with Ansible ensures least-privilege access control across all your database servers. Define permission templates for common roles, assign them to users through inventory variables, and use the `community.mysql.mysql_user` module to apply them idempotently. The `append_privs` option lets you layer permissions without replacing existing grants. Regular auditing with `SHOW GRANTS` queries helps detect permission drift. With permissions defined as code, you get a clear, auditable trail of who has access to what.
+MySQL permission management with Ansible ensures least-privilege access control across all your database servers. Define permission templates for common roles, assign them to users through inventory variables, and use the `ansible.mysql.mysql_user` module to apply them idempotently. The `append_privs` option lets you layer permissions without replacing existing grants. Regular auditing with `SHOW GRANTS` queries helps detect permission drift. With permissions defined as code, you get a clear, auditable trail of who has access to what.
