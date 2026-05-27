@@ -71,19 +71,28 @@ onboarding_users:
     state: present
   loop: "{{ onboarding_default_groups }}"
 
+- name: Ensure user primary groups exist
+  group:
+    name: "{{ item.username }}"
+    state: present
+  loop: "{{ onboarding_users }}"
+
 - name: Create user accounts
   user:
     name: "{{ item.username }}"
     comment: "{{ item.fullname }}"
     shell: "{{ onboarding_shell }}"
-    groups: "{{ onboarding_default_groups + onboarding_team_groups[item.team] | default([]) }}"
+    group: "{{ item.username }}"
+    groups: "{{ onboarding_default_groups + (onboarding_team_groups[item.team] | default([])) }}"
     append: yes
     create_home: yes
+    home: "{{ onboarding_home_base }}/{{ item.username }}"
+    skeleton: "{{ onboarding_skeleton_dir }}"
     state: present
   loop: "{{ onboarding_users }}"
 
 - name: Deploy SSH authorized keys
-  authorized_key:
+  ansible.posix.authorized_key:
     user: "{{ item.username }}"
     key: "{{ item.ssh_key }}"
     state: present
@@ -172,24 +181,25 @@ alias gd='git diff'
 ---
 - name: Create PostgreSQL user for developer
   become_user: postgres
-  postgresql_user:
+  community.postgresql.postgresql_user:
     name: "{{ item.username }}"
-    password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}"
+    password: "{{ lookup('ansible.builtin.password', 'credentials/' ~ item.username ~ '_postgres length=20 chars=ascii_letters,digits') }}"
     role_attr_flags: LOGIN,NOSUPERUSER
     state: present
   loop: "{{ onboarding_users }}"
-  when: "'backend' in item.team or 'data' in item.team"
+  when: item.team in ['backend', 'data']
 
 - name: Grant read access to development database
   become_user: postgres
-  postgresql_privs:
-    database: app_development
+  community.postgresql.postgresql_privs:
+    login_db: app_development
     privs: SELECT
     type: table
     objs: ALL_IN_SCHEMA
-    role: "{{ item.username }}"
+    schema: public
+    roles: "{{ item.username }}"
   loop: "{{ onboarding_users }}"
-  when: "'backend' in item.team"
+  when: item.team == 'backend'
 ```
 
 ## Main Playbook
@@ -256,7 +266,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -400,4 +410,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
