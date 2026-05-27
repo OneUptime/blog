@@ -37,7 +37,7 @@ The default callback has options you can set in `ansible.cfg` or as environment 
 # Set the stdout callback (default is already 'default')
 stdout_callback = default
 
-# Show task execution time
+# Format task result output
 callback_result_format = yaml
 
 # Display skipped hosts
@@ -87,7 +87,7 @@ At level 2 (`-vv`), you get the actual module arguments that were sent, which is
 
 ## Result Format: YAML vs JSON
 
-By default, task results are displayed as Python dictionaries. You can switch to YAML or JSON format for better readability:
+By default, task results are displayed in JSON format. You can switch to YAML format for better readability:
 
 ```ini
 # ansible.cfg - Use YAML format for task results
@@ -95,7 +95,7 @@ By default, task results are displayed as Python dictionaries. You can switch to
 callback_result_format = yaml
 ```
 
-Compare the output difference. Default (Python dict) format:
+Compare the output difference. Default JSON format:
 
 ```text
 ok: [web-01] => {"changed": false, "msg": "All items completed", "results": [{"changed": false, "item": "nginx"}]}
@@ -240,10 +240,10 @@ ansible-playbook site.yml --check --diff
 
 The default callback works well for interactive use and small to medium playbooks. Consider switching to a different stdout callback when:
 
-- You need machine-parseable output (use `json`)
-- Your playbooks are too verbose for dozens of hosts (use `dense` or `minimal`)
-- You want to track performance (use `profile_tasks`)
-- You are running in CI/CD and need structured output (use `junit` or `json`)
+- You need machine-parseable output (use `ansible.posix.json`)
+- Your playbooks are too verbose for dozens of hosts (use `community.general.dense` or `minimal`)
+- You want to track performance (enable `ansible.posix.profile_tasks` as an additional callback)
+- You are running in CI/CD and need structured output (enable `junit` as an additional callback, or use `ansible.posix.json` as the stdout callback)
 
 You can always come back to the default by setting:
 
