@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Consul, Service Discovery, DevOps
 
-Description: Integrate Ansible with HashiCorp Consul for service discovery, health checking, and dynamic inventory management across your infrastructure.
+Description: Integrate Ansible with HashiCorp Consul for service discovery, health checking, and runtime inventory management across your infrastructure.
 
 ---
 
-Service discovery is essential for modern infrastructure where services come and go dynamically. HashiCorp Consul provides service registration, health checking, and a DNS interface for service lookup. Ansible can both configure Consul and use it as a dynamic inventory source.
+Service discovery is essential for modern infrastructure where services come and go dynamically. HashiCorp Consul provides service registration, health checking, and a DNS interface for service lookup. Ansible can both configure Consul and build runtime inventory from Consul's catalog API.
 
 This post covers the integration between Ansible and Consul.
 
@@ -18,7 +18,7 @@ This post covers the integration between Ansible and Consul.
 graph TD
     A[Ansible] --> B[Deploy Consul Agents]
     A --> C[Register Services]
-    A --> D[Use Consul as Inventory]
+    A --> D[Build Runtime Inventory from Consul]
     A --> E[Read KV Store Config]
     D --> F[Dynamic Host Discovery]
     E --> G[Runtime Configuration]
@@ -129,10 +129,15 @@ connect {
     mode: '0640'
   notify: reload consul
 
+- name: Reload Consul before verifying the service
+  ansible.builtin.meta: flush_handlers
+
 - name: Verify service is registered
   ansible.builtin.uri:
     url: "http://localhost:8500/v1/agent/service/{{ service_name }}"
     status_code: 200
+  register: service_registration
+  until: service_registration.status == 200
   retries: 5
   delay: 3
 ```
@@ -144,7 +149,7 @@ service {
   port = {{ service_port }}
   tags = {{ service_tags | default([]) | to_json }}
 
-  meta {
+  meta = {
     version = "{{ service_version }}"
     environment = "{{ environment_name }}"
   }
@@ -157,25 +162,39 @@ service {
 }
 ```
 
-## Using Consul as Dynamic Inventory
+## Building Runtime Inventory from Consul
 
 ```yaml
-# inventories/consul_inventory.yml
-# Use Consul as a dynamic inventory source
-plugin: community.general.consul
-url: http://consul.example.com:8500
-datacenter: dc1
+# playbooks/consul-runtime-inventory.yml
+# Query Consul's catalog API and add matching service nodes to in-memory inventory
+---
+- name: Build runtime inventory from Consul
+  hosts: localhost
+  gather_facts: false
+  vars:
+    consul_url: http://consul.example.com:8500
+    consul_datacenter: dc1
+  tasks:
+    - name: Query web service instances
+      ansible.builtin.uri:
+        url: "{{ consul_url }}/v1/catalog/service/webserver?dc={{ consul_datacenter }}"
+      register: webserver_instances
 
-services:
-  webserver:
-    groups:
-      - webservers
-  database:
-    groups:
-      - databases
-  cache:
-    groups:
-      - cache_servers
+    - name: Add web service instances to inventory
+      ansible.builtin.add_host:
+        name: "{{ item.Node }}"
+        ansible_host: "{{ item.ServiceAddress | default(item.Address, true) }}"
+        groups:
+          - webservers
+      loop: "{{ webserver_instances.json }}"
+
+- name: Configure discovered webservers
+  hosts: webservers
+  gather_facts: true
+  tasks:
+    - name: Show discovered host
+      ansible.builtin.debug:
+        msg: "Managing {{ inventory_hostname }} at {{ ansible_host }}"
 ```
 
 ## Reading Configuration from Consul KV
@@ -186,7 +205,7 @@ services:
 ---
 - name: Read config from Consul KV
   ansible.builtin.set_fact:
-    app_config: "{{ lookup('community.general.consul_kv', 'config/app/{{ environment_name }}', url='http://consul.example.com:8500') }}"
+    app_config: "{{ lookup('community.general.consul_kv', 'config/app/' ~ environment_name, url='http://consul.example.com:8500') }}"
 
 - name: Read individual config values
   ansible.builtin.set_fact:
@@ -250,7 +269,7 @@ cache:
 
 ## Key Takeaways
 
-Consul and Ansible complement each other well. Ansible deploys and configures Consul agents, registers services, and manages KV store entries. Consul provides dynamic service discovery that Ansible can use as an inventory source. Use Consul DNS in your application configuration templates so services find each other automatically. Store runtime configuration in Consul KV that applications read directly, reducing the need for redeployment when configuration changes.
+Consul and Ansible complement each other well. Ansible deploys and configures Consul agents, registers services, and manages KV store entries. Consul provides dynamic service discovery that Ansible can query to build runtime inventory. Use Consul DNS in your application configuration templates so services find each other automatically. Store runtime configuration in Consul KV that applications read directly, reducing the need for redeployment when configuration changes.
 
 ## Common Use Cases
 
@@ -291,7 +310,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -435,4 +454,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
