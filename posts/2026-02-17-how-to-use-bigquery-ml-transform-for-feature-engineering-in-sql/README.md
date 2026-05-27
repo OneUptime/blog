@@ -143,7 +143,7 @@ BigQuery ML automatically one-hot encodes string columns, but you can be explici
 -- You can also explicitly specify encoding
 TRANSFORM (
   -- ML.ONE_HOT_ENCODER for explicit control
-  ML.LABEL_ENCODER(category) OVER() AS category_encoded,
+  ML.ONE_HOT_ENCODER(category) OVER() AS category_encoded,
   -- Direct string columns are auto-encoded
   region,
   device_type,
@@ -156,11 +156,11 @@ TRANSFORM (
 For high-cardinality categorical features, feature hashing reduces dimensionality:
 
 ```sql
--- ML.FEATURE_CROSS + ML.HASH for high-cardinality categoricals
+-- ML.HASH_BUCKETIZE for high-cardinality categoricals
 -- Reduces a column with millions of unique values to a fixed number of buckets
 TRANSFORM (
-  ML.HASH(product_id, 1000) AS product_hash,  -- Hash to 1000 buckets
-  ML.HASH(user_id, 5000) AS user_hash,        -- Hash to 5000 buckets
+  ML.HASH_BUCKETIZE(product_id, 1000) AS product_hash,  -- Hash to 1000 buckets
+  ML.HASH_BUCKETIZE(user_id, 5000) AS user_hash,        -- Hash to 5000 buckets
   label
 )
 ```
@@ -175,10 +175,10 @@ Feature crosses create new features by combining two or more features, capturing
 TRANSFORM (
   ML.FEATURE_CROSS(STRUCT(device_type, browser)) AS device_browser_cross,
   ML.FEATURE_CROSS(STRUCT(region, product_category)) AS region_category_cross,
-  -- Limit the number of cross values with a hash
+  -- Generate feature crosses up to degree 3
   ML.FEATURE_CROSS(
     STRUCT(device_type, browser, os),
-    50000  -- Max number of feature values
+    3
   ) AS device_env_cross,
   label
 )
@@ -243,22 +243,22 @@ FROM `my_project.analytics.user_features`
 WHERE visit_date BETWEEN '2024-01-01' AND '2024-12-31';
 ```
 
-## Inspecting Transform Parameters
+## Inspecting Feature Information
 
-After training, you can inspect the transformation parameters that were learned:
+After training, you can inspect feature statistics recorded for the model:
 
 ```sql
--- See the scaling parameters used during training
+-- See feature statistics recorded during training
 -- These are automatically applied during prediction
 SELECT *
 FROM ML.FEATURE_INFO(MODEL `my_project.models.purchase_predictor`);
 ```
 
-This shows the mean, standard deviation, min, max, and other parameters used by each transformation. These values are stored with the model and applied identically during prediction.
+This shows information such as mean, standard deviation, min, max, category count, and null count for the model's input feature columns. If the model was created with a TRANSFORM clause, ML.FEATURE_INFO returns information for the pre-transform columns from the training query. The values needed by TRANSFORM preprocessing functions are stored with the model and applied identically during prediction.
 
 ## Custom SQL Transformations
 
-You are not limited to built-in functions. Any valid SQL expression works in TRANSFORM:
+You are not limited to built-in functions. Many scalar SQL expressions work in TRANSFORM:
 
 ```sql
 TRANSFORM (
