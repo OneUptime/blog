@@ -14,13 +14,13 @@ Let me show you how to set this up properly.
 
 ## Why Use Secret Manager
 
-You could theoretically pass credentials directly when creating the remote repository, but storing them in Secret Manager has clear advantages:
+Artifact Registry stores upstream passwords or tokens by referencing Secret Manager secret versions. Using Secret Manager has clear advantages:
 
 - Credentials are encrypted at rest and in transit
 - Access is controlled through IAM
 - You can rotate credentials without recreating the repository
 - Audit logs track who accesses the secrets
-- No credentials in your Terraform state files or gcloud history
+- No plaintext password in your Artifact Registry repository configuration
 
 ## Step 1: Enable the Required APIs
 
@@ -85,7 +85,7 @@ gcloud secrets add-iam-policy-binding upstream-registry-password \
   --project=my-project
 ```
 
-This is the step people most commonly forget. Without this IAM binding, the remote repository creation will succeed but it will fail to authenticate with the upstream when pulling packages.
+This is the step people most commonly forget. Without this IAM binding, repository creation can fail during upstream validation, or the repository can fail to authenticate with the upstream when pulling packages.
 
 ## Step 4: Create the Remote Repository with Credentials
 
@@ -171,8 +171,9 @@ resource "google_secret_manager_secret" "registry_password" {
 }
 
 resource "google_secret_manager_secret_version" "registry_password_v1" {
-  secret      = google_secret_manager_secret.registry_password.id
-  secret_data = var.upstream_registry_password  # Pass via variable, never hardcode
+  secret                 = google_secret_manager_secret.registry_password.id
+  secret_data_wo_version = 1
+  secret_data_wo         = var.upstream_registry_password  # Pass via a sensitive or ephemeral variable, never hardcode
 }
 
 # Get the Artifact Registry service agent
@@ -193,10 +194,8 @@ resource "google_artifact_registry_repository" "private_proxy" {
   mode          = "REMOTE_REPOSITORY"
 
   remote_repository_config {
-    docker_repository {
-      custom_repository {
-        uri = "https://registry.example.com"
-      }
+    common_repository {
+      uri = "https://registry.example.com"
     }
 
     upstream_credentials {
