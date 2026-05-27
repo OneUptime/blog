@@ -10,11 +10,11 @@ Description: Learn how to create and manage Kubernetes PersistentVolumes with An
 
 PersistentVolumes (PVs) represent a piece of storage in your Kubernetes cluster that has been provisioned by an administrator or dynamically by a StorageClass. They exist independently of any pod, which means the data survives pod restarts, rescheduling, and even pod deletion. If you are managing storage infrastructure with Ansible, creating PersistentVolumes through playbooks gives you a repeatable, version-controlled approach to storage provisioning.
 
-This guide covers creating PersistentVolumes for different storage backends using Ansible, including NFS, local storage, AWS EBS, GCE Persistent Disks, and how to set up reclaim policies and access modes correctly.
+This guide covers creating PersistentVolumes for different storage backends using Ansible, including NFS, local storage, AWS EBS, and how to set up reclaim policies and access modes correctly.
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- ansible-core 2.16+ with the `kubernetes.core` collection
 - A Kubernetes cluster
 - Storage backend configured (NFS server, cloud provider, local disks, etc.)
 
@@ -28,8 +28,8 @@ pip install kubernetes
 Every PV has three important properties:
 
 - **Capacity**: How much storage it provides
-- **Access Modes**: Who can mount it and how (ReadWriteOnce, ReadOnlyMany, ReadWriteMany)
-- **Reclaim Policy**: What happens when the PV is released (Retain, Delete, Recycle)
+- **Access Modes**: Who can mount it and how (ReadWriteOnce, ReadOnlyMany, ReadWriteMany, ReadWriteOncePod)
+- **Reclaim Policy**: What happens when the PV is released (Retain, Delete, Recycle). `Recycle` is only supported by a few volume types such as NFS and hostPath.
 
 ## Creating an NFS PersistentVolume
 
@@ -131,6 +131,7 @@ Local PVs use storage directly attached to a node. They provide better performan
             name: "{{ item.name }}"
             labels:
               storage-type: local-ssd
+              managed-by: ansible
           spec:
             capacity:
               storage: "{{ item.capacity }}"
@@ -191,12 +192,13 @@ For AWS clusters not using dynamic provisioning, you can create PVs backed by ex
             labels:
               storage-type: ebs
               topology.kubernetes.io/zone: "{{ item.az }}"
+              managed-by: ansible
           spec:
             capacity:
               storage: "{{ item.capacity }}"
             accessModes:
               - ReadWriteOnce
-            persistentVolumeReclaimPolicy: Delete
+            persistentVolumeReclaimPolicy: Retain
             storageClassName: gp3
             csi:
               driver: ebs.csi.aws.com
@@ -271,7 +273,7 @@ Instead of manually creating PVs, you can set up a StorageClass that dynamically
 
 ## Checking PersistentVolume Status
 
-After creation, verify your PVs are in the expected state.
+After creation, verify your Ansible-managed PVs are in the expected state.
 
 ```yaml
 # task: check status of all PersistentVolumes
