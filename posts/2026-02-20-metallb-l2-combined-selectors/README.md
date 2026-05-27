@@ -8,28 +8,31 @@ Description: Learn how to combine interface selectors and node selectors in Meta
 
 ---
 
-MetalLB L2Advertisement supports two selector fields: `nodeSelectors` and `interfaces`. Each one narrows advertisement behavior on its own. When you use both in the same L2Advertisement resource, MetalLB applies AND logic. The IP is only advertised on the chosen interfaces of the chosen nodes. This post walks through how to combine them for multi-NIC, multi-node bare-metal clusters.
+MetalLB L2Advertisement supports two selector fields: `nodeSelectors` and `interfaces`. Each one narrows advertisement behavior on its own. When you use both in the same L2Advertisement resource, the IP is advertised only from the chosen interfaces of nodes that match the node selector. This post walks through how to combine them for multi-NIC, multi-node bare-metal clusters.
 
 ## How the Two Selectors Work Individually
 
-**nodeSelectors** restricts which nodes participate in leader election. Only nodes matching the selector respond to ARP for the pool's IPs.
+**nodeSelectors** restricts which nodes can announce the pool's IPs. Only nodes matching the selector are eligible to respond to ARP for those IPs.
 
 **interfaces** restricts which network interfaces the MetalLB speaker uses for ARP responses. If a node has `eth0`, `eth1`, and `bond0`, you can limit announcements to only `eth0`.
 
 ### How They Combine: AND Logic
 
-When you specify both `nodeSelectors` and `interfaces` in the same L2Advertisement, MetalLB applies them together:
+When you specify both `nodeSelectors` and `interfaces` in the same L2Advertisement, MetalLB applies them together for the effective announcement:
 
 1. The node must match the `nodeSelectors`, AND
-2. The node must have at least one of the listed `interfaces`.
+2. MetalLB announces only from the listed `interfaces` on that node.
+
+The interface selector does not affect how MetalLB chooses the L2 leader. Make sure every node selected by `nodeSelectors` has the listed interface, because if MetalLB elects a matching node that lacks the interface, the service will not be announced from that node.
 
 ```mermaid
 flowchart TD
     A[MetalLB evaluates node for L2 election] --> B{Does node match nodeSelectors?}
     B -->|No| C[Node excluded from election]
-    B -->|Yes| D{Does node have a listed interface?}
-    D -->|No| E[Node excluded from election]
-    D -->|Yes| F[Node is eligible - uses only listed interfaces for ARP]
+    B -->|Yes| D[Node is eligible for L2 election]
+    D --> E{Elected node has listed interface?}
+    E -->|No| F[Service is not announced from that node]
+    E -->|Yes| G[Speaker uses only listed interfaces for ARP]
 ```
 
 ### Scenario: Multi-NIC Ingress Nodes
@@ -92,7 +95,7 @@ This is where the combination happens. The `nodeSelectors` picks ingress nodes. 
 ```yaml
 # l2-combined.yaml
 # L2Advertisement combining nodeSelectors and interfaces
-# MetalLB applies AND logic: node must match the label AND have the interface
+# MetalLB restricts announcers by node label and restricts ARP to the selected interface
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
 metadata:
@@ -130,7 +133,7 @@ metadata:
   name: web-public
   annotations:
     # Explicitly request an IP from the public pool
-    metallb.universe.tf/address-pool: public-pool
+    metallb.io/address-pool: public-pool
 spec:
   type: LoadBalancer
   ports:
@@ -151,7 +154,7 @@ Verify which node is announcing:
 
 ```bash
 # Check MetalLB speaker logs for the ARP announcement
-kubectl logs -n metallb-system -l app=metallb-speaker | grep "announcing"
+kubectl logs -n metallb-system -l app=metallb,app.kubernetes.io/component=speaker | grep "announcing"
 
 # Confirm the ARP entry on a client machine or the gateway
 # The MAC address should belong to eth1 of the elected ingress node
@@ -232,7 +235,7 @@ spec:
 ### Common Mistakes
 
 - **Interface name typos**: Must match exactly (e.g., `eth1`, not `Eth1`). Check with `ip link show`.
-- **Missing interface on a matching node**: The node is silently skipped. No error is raised.
+- **Missing interface on a matching node**: The interface selector does not affect leader election. If MetalLB elects a matching node without the selected interface, the service will not be announced from that node.
 - **Omitting ipAddressPools**: The L2Advertisement applies to all pools, which may not be intended.
 - **Confusing OR vs AND**: Multiple `nodeSelectors` entries are OR. The relationship between `nodeSelectors` and `interfaces` is AND.
 
