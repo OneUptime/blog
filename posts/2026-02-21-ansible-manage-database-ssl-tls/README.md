@@ -29,7 +29,7 @@ flowchart TD
 
 ## Generating Certificates with Ansible
 
-First, create a CA and generate server certificates. In production, you would use a proper CA. For internal services, a self-signed CA works.
+First, create a CA and generate a server certificate. In production, you would use a proper CA. For internal services, a self-signed CA works.
 
 ```yaml
 # playbooks/generate-certificates.yml
@@ -89,8 +89,8 @@ First, create a CA and generate server certificates. In production, you would us
         privatekey_path: "{{ cert_dir }}/server.key"
         common_name: "database-server"
         subject_alt_name: >-
-          {{ groups['database_servers'] | map('regex_replace', '^(.*)$', 'DNS:\1') | list
-          + groups['database_servers'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '^(.*)$', 'IP:\1') | list }}
+          {{ groups['database_servers'] | map('regex_replace', '^(.*)$', 'DNS:\\1') | list
+          + groups['database_servers'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '^(.*)$', 'IP:\\1') | list }}
 
     - name: Sign the server certificate with the CA
       community.crypto.x509_certificate:
@@ -194,7 +194,7 @@ Deploy the certificates to all database servers.
         line: "ssl_key_file = '{{ db_cert_dir }}/server.key'"
       notify: Restart PostgreSQL
 
-    - name: Set SSL CA file for client certificate verification
+    - name: Set SSL CA file for clients that use certificate authentication
       ansible.builtin.lineinfile:
         path: "{{ pg_conf_dir }}/postgresql.conf"
         regexp: "^#?ssl_ca_file = "
@@ -208,12 +208,17 @@ Deploy the certificates to all database servers.
         line: "ssl_min_protocol_version = 'TLSv1.2'"
       notify: Restart PostgreSQL
 
-    - name: Require SSL for remote connections in pg_hba.conf
+    - name: Require SSL for remote IPv4 and IPv6 connections in pg_hba.conf
       ansible.builtin.lineinfile:
         path: "{{ pg_conf_dir }}/pg_hba.conf"
-        regexp: "^hostssl"
-        line: "hostssl all all 0.0.0.0/0 scram-sha-256"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
         insertafter: "^# IPv4"
+      loop:
+        - regexp: "^hostssl\\s+all\\s+all\\s+0\\.0\\.0\\.0/0\\s+"
+          line: "hostssl all all 0.0.0.0/0 scram-sha-256"
+        - regexp: "^hostssl\\s+all\\s+all\\s+::/0\\s+"
+          line: "hostssl all all ::/0 scram-sha-256"
       notify: Reload PostgreSQL
 
   handlers:
@@ -268,6 +273,9 @@ Deploy the certificates to all database servers.
         mode: "0644"
       notify: Restart MySQL
 
+    - name: Apply MySQL SSL configuration before verification
+      ansible.builtin.meta: flush_handlers
+
     - name: Verify MySQL SSL is enabled
       ansible.builtin.command:
         cmd: mysql -e "SHOW VARIABLES LIKE '%ssl%';"
@@ -312,9 +320,9 @@ Deploy the certificates to all database servers.
     - name: Enable TLS in mongod.conf
       ansible.builtin.blockinfile:
         path: /etc/mongod.conf
-        marker: "# {mark} ANSIBLE MANAGED TLS BLOCK"
-        block: |
-          net:
+        insertafter: "^net:"
+        marker: "  # {mark} ANSIBLE MANAGED TLS BLOCK"
+        block: |2
             tls:
               mode: requireTLS
               certificateKeyFile: {{ db_cert_dir }}/mongodb.pem
