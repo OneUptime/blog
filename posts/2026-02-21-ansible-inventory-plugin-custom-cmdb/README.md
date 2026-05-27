@@ -121,6 +121,7 @@ compose:
 """
 
 import json
+from ansible.module_utils.six.moves.urllib.parse import urlencode
 from ansible.plugins.inventory import BaseInventoryPlugin, Constructable, Cacheable
 from ansible.errors import AnsibleParserError
 from ansible.module_utils.urls import open_url
@@ -146,22 +147,23 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
 
         # Check cache first
         cache_key = self.get_cache_key(path)
-        use_cache = self.get_option('cache') and cache
-        update_cache = False
+        user_cache_setting = self.get_option('cache')
+        attempt_to_read_cache = user_cache_setting and cache
+        cache_needs_update = user_cache_setting and not cache
 
         hosts_data = None
 
-        if use_cache:
+        if attempt_to_read_cache:
             try:
                 hosts_data = self._cache[cache_key]
                 self.display.vv("cmdb_inventory: using cached data")
             except KeyError:
-                update_cache = True
+                cache_needs_update = True
 
         if hosts_data is None:
             hosts_data = self._fetch_hosts()
 
-        if update_cache:
+        if cache_needs_update:
             self._cache[cache_key] = hosts_data
 
         self._populate(hosts_data)
@@ -178,11 +180,11 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
 
         # Build the API URL with filters
         url = '%s/hosts' % api_url.rstrip('/')
-        params = []
+        params = {}
         if environment:
-            params.append('environment=%s' % environment)
+            params['environment'] = environment
         if params:
-            url += '?' + '&'.join(params)
+            url += '?' + urlencode(params)
 
         self.display.vv("cmdb_inventory: fetching from %s" % url)
 
