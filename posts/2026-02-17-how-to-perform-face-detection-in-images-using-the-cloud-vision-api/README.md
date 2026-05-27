@@ -32,6 +32,9 @@ Set up the Vision API and install the client library:
 
 gcloud services enable vision.googleapis.com
 
+# Set up Application Default Credentials for local development
+gcloud auth application-default login
+
 # Install required packages
 pip install google-cloud-vision Pillow
 ```
@@ -231,6 +234,10 @@ def analyze_emotions_batch(image_dir):
 
     # Print summary statistics
     print(f"Analyzed {total_faces} faces across {len(image_files)} images\n")
+    if total_faces == 0:
+        print("No faces detected.")
+        return emotion_counter
+
     print("Emotion Distribution:")
     for emotion, count in emotion_counter.most_common():
         percentage = (count / total_faces) * 100
