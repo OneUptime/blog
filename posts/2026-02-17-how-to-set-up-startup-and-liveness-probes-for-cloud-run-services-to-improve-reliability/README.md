@@ -101,22 +101,15 @@ You can also set probes during deployment with gcloud flags:
 gcloud run deploy my-reliable-service \
   --image=us-central1-docker.pkg.dev/MY_PROJECT/my-repo/my-app:latest \
   --region=us-central1 \
-  --startup-probe-path=/healthz/startup \
-  --startup-probe-initial-delay=5 \
-  --startup-probe-period=5 \
-  --startup-probe-failure-threshold=12 \
-  --startup-probe-timeout=3 \
-  --liveness-probe-path=/healthz/liveness \
-  --liveness-probe-period=15 \
-  --liveness-probe-failure-threshold=3 \
-  --liveness-probe-timeout=5
+  --startup-probe=httpGet.path=/healthz/startup,httpGet.port=8080,initialDelaySeconds=5,periodSeconds=5,failureThreshold=12,timeoutSeconds=3 \
+  --liveness-probe=httpGet.path=/healthz/liveness,httpGet.port=8080,periodSeconds=15,failureThreshold=3,timeoutSeconds=5
 ```
 
 ## Probe Types: HTTP, TCP, and gRPC
 
-Cloud Run supports three types of probes.
+Cloud Run supports HTTP, TCP, and gRPC startup probes. Liveness probes support HTTP and gRPC.
 
-**HTTP probes** send a GET request to a specified path. A 200-299 status code means healthy. This is the most common and most flexible option:
+**HTTP probes** send a GET request to a specified path. A 2xx or 3xx status code means healthy. This is the most common and most flexible option:
 
 ```yaml
 # HTTP probe - checks a specific endpoint
@@ -126,7 +119,7 @@ startupProbe:
     port: 8080
 ```
 
-**TCP probes** just check if the port is accepting connections. They are simpler but less informative:
+**TCP startup probes** just check if the port is accepting connections. They are simpler but less informative:
 
 ```yaml
 # TCP probe - just checks if the port is open
@@ -151,11 +144,15 @@ The quality of your health check endpoints directly determines how useful your p
 
 ```python
 # health.py - Health check endpoints for Cloud Run probes
+import os
+
 import psycopg2
 import redis
 from flask import Flask, jsonify
 
 app = Flask(__name__)
+DATABASE_URL = os.environ["DATABASE_URL"]
+REDIS_URL = os.environ["REDIS_URL"]
 
 # Track whether the app has finished initializing
 startup_complete = False
