@@ -26,7 +26,7 @@ pip install google-cloud-logging
 
 ## Basic Setup with Python's Standard Logging
 
-The simplest approach is to integrate Cloud Logging with Python's built-in logging module. This way, all your existing log statements automatically go to Cloud Logging.
+The simplest approach is to integrate Cloud Logging with Python's built-in logging module. This way, your existing log statements at the configured level automatically go to Cloud Logging.
 
 ```python
 import google.cloud.logging
@@ -35,8 +35,9 @@ import logging
 # Create the Cloud Logging client
 client = google.cloud.logging.Client()
 
-# This patches Python's standard logging to send logs to Cloud Logging
-# All existing logging.info(), logging.error(), etc. calls will now go to GCP
+# This attaches a Cloud Logging handler to Python's standard logging
+# Existing logging.info(), logging.error(), etc. calls at INFO level and higher
+# will now go to Cloud Logging
 client.setup_logging()
 
 # Use Python's standard logging as usual
@@ -45,11 +46,11 @@ logging.warning("Configuration file not found, using defaults")
 logging.error("Failed to connect to database")
 ```
 
-The `setup_logging()` call installs a Cloud Logging handler on the root logger. From that point on, every log call in your application (and third-party libraries) sends logs to Cloud Logging.
+The `setup_logging()` call installs a Cloud Logging handler on the root logger. From that point on, log calls in your application and child loggers are sent to Cloud Logging when they meet the configured log level.
 
 ## Sending Structured Log Entries
 
-To send structured data instead of plain text, pass a dictionary as your log message. Cloud Logging will store it as a JSON payload.
+To send structured data instead of plain text, pass a dictionary in the `json_fields` extra argument. Cloud Logging will store it as a JSON payload.
 
 ```python
 import google.cloud.logging
@@ -60,26 +61,32 @@ client.setup_logging()
 
 logger = logging.getLogger("my-app")
 
-# Log a structured payload by passing a dictionary
+# Log a structured payload with json_fields
 # This becomes a JSON object in Cloud Logging's jsonPayload field
-logger.info({
-    "action": "user_login",
-    "user_id": "user-123",
-    "ip_address": "192.168.1.100",
-    "method": "oauth2",
-    "success": True,
-    "response_time_ms": 245,
-})
+logger.info(
+    "User login completed",
+    extra={"json_fields": {
+        "action": "user_login",
+        "user_id": "user-123",
+        "ip_address": "192.168.1.100",
+        "method": "oauth2",
+        "success": True,
+        "response_time_ms": 245,
+    }},
+)
 
 # Log an error with structured context
-logger.error({
-    "action": "payment_processing",
-    "order_id": "ORD-456",
-    "error": "insufficient_funds",
-    "amount": 99.99,
-    "currency": "USD",
-    "retry_count": 3,
-})
+logger.error(
+    "Payment processing failed",
+    extra={"json_fields": {
+        "action": "payment_processing",
+        "order_id": "ORD-456",
+        "error": "insufficient_funds",
+        "amount": 99.99,
+        "currency": "USD",
+        "retry_count": 3,
+    }},
+)
 ```
 
 ## Using the Cloud Logging Client Directly
@@ -157,7 +164,7 @@ class StructuredFormatter(logging.Formatter):
             "module": record.module,
             "function": record.funcName,
             "line": record.lineno,
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
 
         # Include any extra fields passed to the logger
@@ -178,8 +185,8 @@ logger = logging.getLogger("structured-app")
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
-# When running on Cloud Run or GKE, stdout logs are automatically
-# picked up by Cloud Logging's log agent
+# When running on Cloud Run or GKE, stdout and stderr logs are automatically
+# picked up by Google Cloud's integrated logging
 logger.info("Processing request", extra={"extra_fields": {
     "request_id": "req-abc-123",
     "method": "POST",
@@ -202,7 +209,7 @@ def log_structured(severity, message, **kwargs):
         "message": message,
         **kwargs,
     }
-    # Cloud Run's log agent picks up JSON from stdout
+    # Cloud Run's integrated logging picks up JSON from stdout
     print(json.dumps(entry), file=sys.stdout, flush=True)
 
 # Usage in your application
@@ -219,7 +226,7 @@ log_structured("ERROR", "Database connection failed",
 )
 ```
 
-This approach works because Cloud Run's log agent recognizes JSON output and maps the `severity` field to Cloud Logging's severity levels.
+This approach works because Cloud Run's integrated logging recognizes JSON output and maps the `severity` field to Cloud Logging's severity levels.
 
 ## Correlating Logs with Traces
 
@@ -245,23 +252,23 @@ def handle_request(request):
 
     # All logs with the same trace ID will be grouped together in Cloud Logging
     logger.info(
-        {
+        "Request started",
+        extra={"json_fields": {
             "action": "request_start",
             "path": request.path,
             "method": request.method,
-        },
-        extra={"json_fields": {"logging.googleapis.com/trace": trace}},
+        }, "trace": trace},
     )
 
     # ... process the request ...
 
     logger.info(
-        {
+        "Request completed",
+        extra={"json_fields": {
             "action": "request_complete",
             "status": 200,
             "response_time_ms": 150,
-        },
-        extra={"json_fields": {"logging.googleapis.com/trace": trace}},
+        }, "trace": trace},
     )
 ```
 
@@ -275,7 +282,7 @@ from google.cloud import logging as cloud_logging
 client = cloud_logging.Client()
 
 # Query for specific structured log fields
-# This filter finds all failed login attempts in the last hour
+# This filter finds failed login attempts since the specified timestamp
 filter_str = (
     'jsonPayload.action="user_login" '
     'AND jsonPayload.success=false '
