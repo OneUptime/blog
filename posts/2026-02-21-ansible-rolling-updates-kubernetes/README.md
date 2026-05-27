@@ -14,13 +14,13 @@ This guide covers performing rolling updates with Ansible, configuring update st
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- Ansible Core 2.16+ with the current `kubernetes.core` collection
 - A Kubernetes cluster with an existing Deployment
 - A valid kubeconfig
 
 ```bash
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes
+pip install kubernetes PyYAML jsonpatch
 ```
 
 ## How Rolling Updates Work
@@ -192,9 +192,9 @@ You can also use percentages:
                 maxUnavailable: 25%
 ```
 
-This scales with the replica count: for 10 replicas, 25% means 2-3 pods.
+This scales with the replica count: for 10 replicas, `maxUnavailable: 25%` rounds down to 2 pods, while `maxSurge: 25%` rounds up to 3 pods.
 
-## Rolling Update with Readiness Gates
+## Rolling Update with Readiness Probes
 
 Proper readiness probes are critical for safe rolling updates. Without them, Kubernetes considers a pod ready as soon as the container starts, which might be before your application can handle traffic.
 
@@ -276,7 +276,7 @@ Key settings for zero-downtime updates:
 - `maxUnavailable: 0` ensures no pods are terminated before replacements are ready
 - `minReadySeconds: 30` adds a 30-second buffer after readiness probe passes before considering the pod available
 - `startupProbe` gives slow-starting applications time to initialize without triggering the liveness probe
-- `terminationGracePeriodSeconds: 60` gives the old pod time to finish in-flight requests
+- `terminationGracePeriodSeconds: 60` gives the old pod time to finish in-flight requests if the application handles termination gracefully
 
 ## Canary Deployment Pattern
 
@@ -340,9 +340,8 @@ Deploy the new version to a subset of pods first, verify it works, then roll out
       retries: 30
       delay: 10
 
-    - name: Pause for canary observation period
+    - name: Pause for canary approval
       ansible.builtin.pause:
-        minutes: 5
         prompt: "Canary is running. Check metrics, then press Enter to promote or Ctrl+C to abort"
 
     - name: Promote canary to stable
