@@ -8,7 +8,7 @@ Description: Learn how to monitor and audit BeyondCorp Enterprise access events 
 
 ---
 
-BeyondCorp Enterprise generates a wealth of access event data every time a user attempts to reach a protected resource. Every authentication, authorization decision, access level evaluation, and session event gets logged. But having the data is only useful if you know how to find it, analyze it, and act on it.
+BeyondCorp Enterprise generates a wealth of access event data every time a user attempts to reach a protected resource. IAP authorization decisions, access-level details recorded in the audit entry, and policy changes can be logged. But having the data is only useful if you know how to find it, analyze it, and act on it.
 
 This guide covers querying BeyondCorp access events in Cloud Logging, building dashboards for visibility, setting up alerts for suspicious activity, and exporting logs for long-term retention.
 
@@ -16,26 +16,25 @@ This guide covers querying BeyondCorp access events in Cloud Logging, building d
 
 BeyondCorp Enterprise logs several types of events:
 
-- **Authentication events**: User sign-ins and token refreshes
 - **Authorization decisions**: Whether access was granted or denied, and why
-- **Access level evaluations**: Which access levels were checked and their results
-- **Device state changes**: When a device's compliance status changes
-- **Session events**: Session creation, renewal, and termination
+- **Access level information**: Access levels recorded in the IAP audit entry
+- **Device posture signals**: Device details used by context-aware access, when available
 - **Policy changes**: Modifications to access levels and IAP settings
 
-These logs appear in Cloud Audit Logs under the IAP service.
+IAP access and policy logs appear in Cloud Audit Logs under the IAP service. Related device events can come from Endpoint Verification or Cloud Identity logs, depending on how your organization collects device data.
 
 ## Prerequisites
 
 - BeyondCorp Enterprise configured with IAP-protected resources
 - Cloud Logging enabled (it is on by default)
-- Appropriate IAM roles for log access (`roles/logging.viewer` or `roles/logging.admin`)
+- Data Access audit logs enabled for the Cloud Identity-Aware Proxy API
+- Appropriate IAM roles for log access (`roles/logging.privateLogViewer` for Data Access audit logs, or `roles/logging.admin`)
 
 ```bash
 # Verify logging is working by checking recent IAP logs
 
 gcloud logging read \
-  'resource.type="audited_resource" AND protoPayload.serviceName="iap.googleapis.com"' \
+  'protoPayload.serviceName="iap.googleapis.com"' \
   --project=my-project-id \
   --limit=5
 ```
@@ -47,7 +46,6 @@ Find all successful access events for a specific application.
 ```bash
 # View successful access events for a specific backend service
 gcloud logging read '
-  resource.type="audited_resource" AND
   protoPayload.serviceName="iap.googleapis.com" AND
   protoPayload.methodName="AuthorizeUser" AND
   protoPayload.authorizationInfo.granted=true
@@ -63,7 +61,6 @@ Access denied events are the most important for security monitoring. They can in
 ```bash
 # View all access denied events
 gcloud logging read '
-  resource.type="audited_resource" AND
   protoPayload.serviceName="iap.googleapis.com" AND
   protoPayload.methodName="AuthorizeUser" AND
   protoPayload.authorizationInfo.granted=false
@@ -81,7 +78,6 @@ Track a specific user's access history.
 ```bash
 # View all access events for a specific user
 gcloud logging read '
-  resource.type="audited_resource" AND
   protoPayload.serviceName="iap.googleapis.com" AND
   protoPayload.authenticationInfo.principalEmail="alice@example.com"
 ' --project=my-project-id \
@@ -91,12 +87,11 @@ gcloud logging read '
 
 ## Querying Device State Events
 
-Monitor device compliance changes from Endpoint Verification.
+Monitor device compliance changes from Endpoint Verification if your organization routes those events into Cloud Logging.
 
 ```bash
 # View device state changes
 gcloud logging read '
-  resource.type="audited_resource" AND
   protoPayload.serviceName="endpointverification.googleapis.com"
 ' --project=my-project-id \
   --limit=20 \
@@ -112,7 +107,6 @@ Create metrics from log entries for dashboarding and alerting.
 gcloud logging metrics create beyondcorp-access-denied \
   --description="Count of BeyondCorp access denied events" \
   --log-filter='
-    resource.type="audited_resource" AND
     protoPayload.serviceName="iap.googleapis.com" AND
     protoPayload.methodName="AuthorizeUser" AND
     protoPayload.authorizationInfo.granted=false
@@ -123,7 +117,6 @@ gcloud logging metrics create beyondcorp-access-denied \
 gcloud logging metrics create beyondcorp-access-granted \
   --description="Count of BeyondCorp access granted events" \
   --log-filter='
-    resource.type="audited_resource" AND
     protoPayload.serviceName="iap.googleapis.com" AND
     protoPayload.methodName="AuthorizeUser" AND
     protoPayload.authorizationInfo.granted=true
@@ -131,14 +124,30 @@ gcloud logging metrics create beyondcorp-access-granted \
   --project=my-project-id
 
 # Create a metric for access denied by user (for detecting brute force)
+cat > beyondcorp-denied-by-user.json <<'EOF'
+{
+  "name": "beyondcorp-denied-by-user",
+  "description": "Access denied events grouped by user",
+  "filter": "protoPayload.serviceName=\"iap.googleapis.com\" AND protoPayload.methodName=\"AuthorizeUser\" AND protoPayload.authorizationInfo.granted=false",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "INT64",
+    "labels": [
+      {
+        "key": "user",
+        "valueType": "STRING",
+        "description": "Authenticated principal email"
+      }
+    ]
+  },
+  "labelExtractors": {
+    "user": "EXTRACT(protoPayload.authenticationInfo.principalEmail)"
+  }
+}
+EOF
+
 gcloud logging metrics create beyondcorp-denied-by-user \
-  --description="Access denied events grouped by user" \
-  --log-filter='
-    resource.type="audited_resource" AND
-    protoPayload.serviceName="iap.googleapis.com" AND
-    protoPayload.authorizationInfo.granted=false
-  ' \
-  --label-extractors='user=EXTRACT(protoPayload.authenticationInfo.principalEmail)' \
+  --config-from-file=beyondcorp-denied-by-user.json \
   --project=my-project-id
 ```
 
@@ -202,14 +211,14 @@ Create alerts for security-relevant events.
 ### Alert: Unusual Access Denied Spike
 
 ```bash
-# Alert when access denied rate exceeds normal levels
-gcloud monitoring alerting policies create \
+# Alert when access denied count exceeds normal levels
+gcloud monitoring policies create \
   --display-name="BeyondCorp Access Denied Spike" \
-  --condition-display-name="Access denied rate above threshold" \
+  --condition-display-name="Access denied count above threshold" \
   --condition-filter='metric.type="logging.googleapis.com/user/beyondcorp-access-denied"' \
-  --condition-threshold-value=20 \
-  --condition-threshold-duration=300s \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --aggregation='{"alignmentPeriod":"300s","perSeriesAligner":"ALIGN_DELTA"}' \
+  --duration=300s \
+  --if="> 20" \
   --notification-channels=CHANNEL_ID \
   --project=my-project-id
 ```
@@ -217,10 +226,9 @@ gcloud monitoring alerting policies create \
 ### Alert: Access from Unusual Location
 
 ```bash
-# Create a log-based alert for access from unexpected regions
+# Route candidate events to Pub/Sub for alert processing
 gcloud logging sinks create beyondcorp-geo-alert \
   --log-filter='
-    resource.type="audited_resource" AND
     protoPayload.serviceName="iap.googleapis.com" AND
     protoPayload.requestMetadata.callerIp!="" AND
     NOT protoPayload.requestMetadata.callerIp:("203.0.113." OR "198.51.100.")
@@ -232,16 +240,14 @@ gcloud logging sinks create beyondcorp-geo-alert \
 ### Alert: After-Hours Access
 
 ```bash
-# Create an alert for access outside business hours
-# This uses a log-based metric with time filtering
+# Create a metric for granted access. Use Cloud Monitoring notification routing,
+# incident handling, or BigQuery analysis to apply recurring business-hour logic.
 gcloud logging metrics create after-hours-access \
-  --description="Access events outside business hours" \
+  --description="Granted IAP access events for after-hours analysis" \
   --log-filter='
-    resource.type="audited_resource" AND
     protoPayload.serviceName="iap.googleapis.com" AND
     protoPayload.methodName="AuthorizeUser" AND
-    protoPayload.authorizationInfo.granted=true AND
-    (timestamp.hour < 7 OR timestamp.hour > 19)
+    protoPayload.authorizationInfo.granted=true
   ' \
   --project=my-project-id
 ```
@@ -254,7 +260,6 @@ Cloud Logging retains logs for 30 days by default. For compliance, export to lon
 # Export BeyondCorp logs to Cloud Storage for long-term retention
 gcloud logging sinks create beyondcorp-archive \
   --log-filter='
-    resource.type="audited_resource" AND
     protoPayload.serviceName="iap.googleapis.com"
   ' \
   --destination="storage.googleapis.com/my-security-logs-bucket" \
@@ -263,7 +268,6 @@ gcloud logging sinks create beyondcorp-archive \
 # Export to BigQuery for analytical queries
 gcloud logging sinks create beyondcorp-analytics \
   --log-filter='
-    resource.type="audited_resource" AND
     protoPayload.serviceName="iap.googleapis.com"
   ' \
   --destination="bigquery.googleapis.com/projects/my-project-id/datasets/security_logs" \
@@ -312,11 +316,10 @@ Generate compliance reports from the logged data.
 ```bash
 # Generate a report of all unique users who accessed a specific application
 gcloud logging read '
-  resource.type="audited_resource" AND
   protoPayload.serviceName="iap.googleapis.com" AND
   protoPayload.methodName="AuthorizeUser" AND
   protoPayload.authorizationInfo.granted=true AND
-  protoPayload.resourceName:"my-sensitive-app"
+  protoPayload.resourceName:"my-sensitive-app" AND
   timestamp>="2026-01-01T00:00:00Z"
 ' --project=my-project-id \
   --format="value(protoPayload.authenticationInfo.principalEmail)" | sort -u
