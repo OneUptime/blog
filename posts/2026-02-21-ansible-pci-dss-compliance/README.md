@@ -8,7 +8,7 @@ Description: Automate PCI DSS compliance checks and remediation with Ansible cov
 
 ---
 
-PCI DSS (Payment Card Industry Data Security Standard) compliance is mandatory for any organization that processes, stores, or transmits credit card data. The standard has 12 main requirements spanning network security, data protection, vulnerability management, access control, monitoring, and security policies. Manually verifying compliance across all systems in your cardholder data environment (CDE) is a massive undertaking. Ansible automates both the compliance checking and the remediation.
+PCI DSS (Payment Card Industry Data Security Standard) compliance applies to organizations that process, store, or transmit cardholder data. The standard has 12 main requirements spanning network security, data protection, vulnerability management, access control, monitoring, and security policies. Manually verifying compliance across all systems in your cardholder data environment (CDE) is a massive undertaking. Ansible helps automate both the compliance checking and the remediation.
 
 ## PCI DSS Requirements Overview
 
@@ -21,7 +21,7 @@ graph TD
     A --> F[Monitoring]
     A --> G[Security Policy]
     B --> B1[Firewall Config]
-    B --> B2[No Vendor Defaults]
+    B --> B2[Secure Config]
     C --> C1[Protect Stored Data]
     C --> C2[Encrypt Transmission]
 ```
@@ -32,35 +32,35 @@ graph TD
 # roles/pci_dss/tasks/main.yml - PCI DSS compliance automation
 
 ---
-- name: "Req 1: Install and maintain a firewall"
-  include_tasks: req1_firewall.yml
+- name: "Req 1: Install and maintain network security controls"
+  ansible.builtin.include_tasks: req1_firewall.yml
 
-- name: "Req 2: Do not use vendor-supplied defaults"
-  include_tasks: req2_defaults.yml
+- name: "Req 2: Apply secure configurations to all system components"
+  ansible.builtin.include_tasks: req2_defaults.yml
 
-- name: "Req 3: Protect stored cardholder data"
-  include_tasks: req3_stored_data.yml
+- name: "Req 3: Protect stored account data"
+  ansible.builtin.include_tasks: req3_stored_data.yml
 
-- name: "Req 4: Encrypt transmission of cardholder data"
-  include_tasks: req4_encryption.yml
+- name: "Req 4: Protect cardholder data during transmission"
+  ansible.builtin.include_tasks: req4_encryption.yml
 
-- name: "Req 5: Use and update anti-virus"
-  include_tasks: req5_antivirus.yml
+- name: "Req 5: Protect systems and networks from malicious software"
+  ansible.builtin.include_tasks: req5_antivirus.yml
 
-- name: "Req 6: Develop and maintain secure systems"
-  include_tasks: req6_secure_systems.yml
+- name: "Req 6: Develop and maintain secure systems and software"
+  ansible.builtin.include_tasks: req6_secure_systems.yml
 
-- name: "Req 7: Restrict access to cardholder data"
-  include_tasks: req7_access_control.yml
+- name: "Req 7: Restrict access by business need to know"
+  ansible.builtin.include_tasks: req7_access_control.yml
 
-- name: "Req 8: Assign unique IDs"
-  include_tasks: req8_unique_ids.yml
+- name: "Req 8: Identify users and authenticate access"
+  ansible.builtin.include_tasks: req8_unique_ids.yml
 
-- name: "Req 10: Track and monitor all access"
-  include_tasks: req10_monitoring.yml
+- name: "Req 10: Log and monitor all access"
+  ansible.builtin.include_tasks: req10_monitoring.yml
 
 - name: Generate PCI DSS compliance report
-  template:
+  ansible.builtin.template:
     src: pci_report.j2
     dest: "/opt/compliance/pci_dss_{{ inventory_hostname }}_{{ ansible_date_time.date }}.txt"
     mode: '0600'
@@ -72,22 +72,23 @@ graph TD
 # roles/pci_dss/tasks/req1_firewall.yml - Firewall compliance
 ---
 - name: "1.1: Verify firewall is installed and active"
-  command: ufw status
+  ansible.builtin.command: ufw status
   register: firewall_status
   changed_when: false
+  failed_when: false
 
 - name: "1.1: Enable firewall if not active"
-  ufw:
+  community.general.ufw:
     state: enabled
-  when: "'inactive' in firewall_status.stdout"
+  when: "'Status: inactive' in firewall_status.stdout"
 
 - name: "1.2: Deny all inbound by default"
-  ufw:
+  community.general.ufw:
     direction: incoming
     default: deny
 
 - name: "1.3: Restrict inbound traffic to CDE"
-  ufw:
+  community.general.ufw:
     rule: allow
     port: "{{ item.port }}"
     proto: tcp
@@ -95,8 +96,8 @@ graph TD
   loop: "{{ pci_allowed_inbound_rules }}"
 
 - name: Record Requirement 1 results
-  set_fact:
-    pci_results: "{{ pci_results | default([]) + [{'req': '1', 'check': 'Firewall active', 'status': 'PASS' if 'active' in firewall_status.stdout else 'FAIL'}] }}"
+  ansible.builtin.set_fact:
+    pci_results: "{{ pci_results | default([]) + [{'req': '1', 'check': 'Firewall active', 'status': 'PASS' if 'Status: active' in firewall_status.stdout else 'FAIL'}] }}"
 ```
 
 ## Requirement 4: Encryption in Transit
@@ -104,18 +105,24 @@ graph TD
 ```yaml
 # roles/pci_dss/tasks/req4_encryption.yml - Encryption compliance
 ---
-- name: "4.1: Check TLS versions in use"
-  command: openssl s_client -connect localhost:443 -tls1_1
+- name: "4.2.1: Check whether TLS 1.0 is accepted"
+  ansible.builtin.shell: "printf '' | openssl s_client -connect localhost:443 -tls1 -brief"
+  register: tls10_check
+  ignore_errors: yes
+  changed_when: false
+
+- name: "4.2.1: Check whether TLS 1.1 is accepted"
+  ansible.builtin.shell: "printf '' | openssl s_client -connect localhost:443 -tls1_1 -brief"
   register: tls11_check
   ignore_errors: yes
   changed_when: false
 
-- name: "4.1: Verify TLS 1.0 and 1.1 are disabled"
-  set_fact:
-    pci_results: "{{ pci_results | default([]) + [{'req': '4', 'check': 'TLS 1.1 disabled', 'status': 'PASS' if tls11_check.rc != 0 else 'FAIL'}] }}"
+- name: "4.2.1: Verify TLS 1.0 and 1.1 are disabled"
+  ansible.builtin.set_fact:
+    pci_results: "{{ pci_results | default([]) + [{'req': '4', 'check': 'TLS 1.0 and 1.1 disabled', 'status': 'PASS' if tls10_check.rc != 0 and tls11_check.rc != 0 else 'FAIL'}] }}"
 
-- name: "4.1: Enforce TLS 1.2+ in Nginx"
-  lineinfile:
+- name: "4.2.1: Enforce TLS 1.2+ in Nginx"
+  ansible.builtin.lineinfile:
     path: /etc/nginx/nginx.conf
     regexp: 'ssl_protocols'
     line: '    ssl_protocols TLSv1.2 TLSv1.3;'
@@ -179,9 +186,15 @@ The most effective approach is creating a dedicated compliance role with tasks o
   register: block_devices
   changed_when: false
 
+- name: Verify LUKS encryption is present
+  ansible.builtin.assert:
+    that:
+      - "'crypto_LUKS' in block_devices.stdout"
+    fail_msg: "No LUKS-encrypted volumes found"
+
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
   register: cert_dates
   changed_when: false
   failed_when: false
@@ -219,7 +232,7 @@ The most effective approach is creating a dedicated compliance role with tasks o
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
+      - "(listening_ports.stdout | regex_search('(?m)(^|\\s)\\S+:' ~ item ~ '\\s')) is none"
     fail_msg: "Unauthorized port {{ item }} is listening"
   loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 ```
@@ -327,7 +340,7 @@ The real power of compliance automation is combining detection with remediation:
       when: "'permitrootlogin no' not in sshd_config.stdout"
 
     - name: Check password complexity
-      ansible.builtin.command: grep -E '^minlen' /etc/security/pwquality.conf
+      ansible.builtin.command: grep -E '^[[:space:]]*minlen[[:space:]]*=' /etc/security/pwquality.conf
       register: pwquality
       changed_when: false
       failed_when: false
@@ -336,6 +349,11 @@ The real power of compliance automation is combining detection with remediation:
       ansible.builtin.set_fact:
         checks_passed: "{{ checks_passed + ['Password minimum length configured'] }}"
       when: pwquality.rc == 0
+
+    - name: Record password failure
+      ansible.builtin.set_fact:
+        checks_failed: "{{ checks_failed + ['Password minimum length NOT configured'] }}"
+      when: pwquality.rc != 0
 
     - name: Print compliance summary
       ansible.builtin.debug:
@@ -355,4 +373,3 @@ The real power of compliance automation is combining detection with remediation:
           ========================================
           Score: {{ (checks_passed | length * 100 / (checks_passed | length + checks_failed | length)) | round(1) }}%
 ```
-
