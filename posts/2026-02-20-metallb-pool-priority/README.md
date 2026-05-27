@@ -160,11 +160,11 @@ Route services to the nearest network segment:
 
 ## What Happens With Equal Priority
 
-When two pools have the same priority, MetalLB uses alphabetical order of the pool name as a tiebreaker. This can lead to surprises:
+When two pools have the same priority, MetalLB chooses between them randomly. This can lead to surprises:
 
 ```yaml
 # Both pools have priority 50
-# "alpha-pool" will be tried before "beta-pool" due to alphabetical order
+# MetalLB may choose either pool because equal priorities are random
 ---
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
@@ -189,13 +189,13 @@ spec:
     priority: 50
 ```
 
-Best practice: always use distinct priority values to avoid relying on name ordering.
+Best practice: always use distinct priority values to avoid relying on random selection.
 
 ---
 
 ## Pools Without serviceAllocation
 
-If a pool does not have a `serviceAllocation` block at all, it has no explicit priority. These pools are evaluated after all pools with explicit priorities and are ordered alphabetically by name.
+If a pool does not have a `serviceAllocation` block at all, it has no explicit priority. These pools, along with pools whose priority is set to `0`, have the lowest priority and are used only if higher-priority pools cannot be used.
 
 ```yaml
 # pool-legacy.yaml
@@ -209,7 +209,7 @@ spec:
   addresses:
     - 10.0.99.0/24
   # No serviceAllocation block
-  # This pool is tried after all pools with explicit priorities
+  # This pool is used only if higher-priority pools cannot be used
 ```
 
 ---
@@ -222,7 +222,7 @@ kubectl get ipaddresspool -n metallb-system \
   -o custom-columns=NAME:.metadata.name,PRIORITY:.spec.serviceAllocation.priority
 
 # Watch MetalLB controller logs during service creation
-kubectl logs -n metallb-system -l app=metallb,component=controller -f | grep "pool"
+kubectl logs -n metallb-system -l app=metallb,app.kubernetes.io/component=controller -f | grep "pool"
 
 # Check which pool a service was assigned from
 kubectl describe svc my-service | grep -A3 "Events"
@@ -244,6 +244,6 @@ kubectl describe svc my-service | grep -A3 "Events"
 
 ## Wrapping Up
 
-Pool priority gives you deterministic control over allocation order. Use low numbers for pools you want MetalLB to prefer and high numbers for fallback pools. Always assign distinct priorities and avoid relying on alphabetical name ordering.
+Pool priority gives you deterministic control over allocation order. Use low numbers for pools you want MetalLB to prefer and high numbers for fallback pools. Always assign distinct priorities and avoid relying on random selection.
 
 To get alerts when your primary pools are running low and services start falling through to overflow pools, set up monitoring with **[OneUptime](https://oneuptime.com)**.
