@@ -43,7 +43,7 @@ For server-side API keys, restrict by IP address. Only requests from your server
 gcloud services api-keys create \
   --display-name="Backend API Key" \
   --api-target=service=storage.googleapis.com \
-  --allowed-ips="35.192.0.1,35.192.0.2,10.128.0.0/20" \
+  --allowed-ips="35.192.0.1,35.192.0.2,198.51.100.0/24" \
   --project=my-project
 ```
 
@@ -53,7 +53,7 @@ To update an existing key:
 # First, get the key's unique ID
 gcloud services api-keys list \
   --project=my-project \
-  --format="table(uid,displayName,restrictions)"
+  --format="table(name.basename():label=KEY_ID,displayName,restrictions)"
 
 # Update the key with IP restrictions
 gcloud services api-keys update KEY_ID \
@@ -165,14 +165,9 @@ gcloud services api-keys create \
 Set up monitoring to detect unusual usage patterns:
 
 ```bash
-# Check API key usage metrics
-gcloud monitoring time-series list \
-  --project=my-project \
-  --filter='metric.type="serviceruntime.googleapis.com/api/request_count" AND
-            metric.labels.credential_id!=""' \
-  --interval-start-time=$(date -u -v-24H +%Y-%m-%dT%H:%M:%SZ) \
-  --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-  --format="table(metric.labels.credential_id,points.value)"
+# Check API request count metrics for the last 24 hours
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://monitoring.googleapis.com/v3/projects/my-project/timeSeries?filter=metric.type%3D%22serviceruntime.googleapis.com%2Fapi%2Frequest_count%22%20AND%20resource.type%3D%22consumed_api%22&interval.startTime=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)&interval.endTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
 Create an alert for unusual spikes:
@@ -182,10 +177,9 @@ Create an alert for unusual spikes:
 gcloud monitoring policies create \
   --display-name="API Key Usage Spike" \
   --condition-display-name="API key requests exceeding normal levels" \
-  --condition-filter='metric.type="serviceruntime.googleapis.com/api/request_count"' \
-  --condition-threshold-value=10000 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --condition-filter='metric.type="serviceruntime.googleapis.com/api/request_count" AND resource.type="consumed_api"' \
+  --if='> 10000' \
+  --duration=300s \
   --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
   --combiner=OR \
   --project=my-project
@@ -222,7 +216,7 @@ Periodically review all keys in your project to ensure they are properly restric
 # List all API keys and their restrictions
 gcloud services api-keys list \
   --project=my-project \
-  --format="table(uid,displayName,restrictions.apiTargets,restrictions.serverKeyRestrictions,restrictions.browserKeyRestrictions)"
+  --format="table(name.basename():label=KEY_ID,displayName,restrictions.apiTargets,restrictions.serverKeyRestrictions,restrictions.browserKeyRestrictions)"
 ```
 
 Look for keys that have:
