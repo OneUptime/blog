@@ -114,7 +114,7 @@ Having a partitioned table is useless if your queries do not take advantage of i
 Good - the partition filter is a direct comparison:
 
 ```sql
--- This query only scans the February 2026 partition
+-- This query only scans the February 17, 2026 partition
 SELECT user_id, event_type, COUNT(*) as cnt
 FROM `my-project.my_dataset.events_partitioned`
 WHERE DATE(event_timestamp) = '2026-02-17'
@@ -127,14 +127,15 @@ Good - range filter also enables partition pruning:
 -- Scans only partitions in the date range
 SELECT *
 FROM `my-project.my_dataset.events_partitioned`
-WHERE event_timestamp BETWEEN '2026-02-01' AND '2026-02-17';
+WHERE event_timestamp >= '2026-02-01'
+  AND event_timestamp < '2026-02-18';
 ```
 
-Bad - wrapping the partition column in a function prevents pruning:
+Bad - using a different function from the partitioning expression prevents pruning:
 
 ```sql
 -- This scans ALL partitions because BigQuery cannot prune
--- when the partition column is inside a function
+-- when the filter does not match the partition boundaries
 SELECT *
 FROM `my-project.my_dataset.events_partitioned`
 WHERE EXTRACT(MONTH FROM event_timestamp) = 2;
