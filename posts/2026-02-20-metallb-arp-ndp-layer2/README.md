@@ -90,14 +90,14 @@ flowchart TD
     B -->|Node B, C| D[Other speakers stay silent]
     C --> E[Client sends traffic to Node A]
     E --> F[kube-proxy on Node A routes to correct pod]
-    F --> G[Pod may be on Node A or any other node]
+    F --> G[With Cluster policy, pod may be on Node A or any other node]
 ```
 
 Key behaviors:
 
 - Only the leader responds. All other speakers ignore ARP/NDP for that VIP.
-- Traffic for the VIP always arrives at the leader node first, then kube-proxy distributes it to the correct pod.
-- The pod serving the request may be on a different node entirely. In that case, kube-proxy forwards the packet across the cluster network.
+- Traffic for the VIP always arrives at the leader node first, then kube-proxy distributes it according to the Service traffic policy.
+- With the default `externalTrafficPolicy: Cluster`, the pod serving the request may be on a different node entirely. In that case, kube-proxy forwards the packet across the cluster network. With `externalTrafficPolicy: Local`, traffic is sent only to ready endpoints on the leader node.
 
 ---
 
@@ -105,7 +105,7 @@ Key behaviors:
 
 MetalLB does not elect a single leader for all services. It runs a **separate leader election for each service VIP**. This means different services can land on different nodes, spreading the load across the cluster.
 
-The election uses a consistent hash. Each MetalLB speaker announces itself as a candidate, and the speakers converge on a single leader per VIP through memberlist-based coordination.
+The election uses a consistent hash. Each MetalLB speaker builds the same sorted list of eligible announcers for a VIP, based on active speakers and service constraints, and announces the VIP only if it is first in that list. Memberlist is used to detect which speakers are active; the per-VIP election itself is stateless.
 
 ```mermaid
 flowchart LR
@@ -127,7 +127,7 @@ You can check which node is the current leader for a service by looking at Metal
 ```bash
 # Check which node is the leader for a specific VIP
 # Look for "handling" or "leader" entries in the speaker logs
-kubectl logs -n metallb-system -l app=metallb,component=speaker --all-containers \
+kubectl logs -n metallb-system -l component=speaker --all-containers \
   | grep "192.168.1.240"
 ```
 
@@ -166,14 +166,14 @@ sequenceDiagram
     Note over OldLeader: Node A goes offline
     Note over NewLeader: Memberlist detects failure, Node B elected
     NewLeader->>Switch: Gratuitous ARP: 192.168.1.240 is now at BB:CC:DD:EE:FF:02
-    Switch->>Switch: Updates MAC table for 192.168.1.240
+    Switch->>Switch: Learns BB:CC:DD:EE:FF:02 on Node B's port
     NewLeader->>Client: Gratuitous ARP broadcast
     Client->>Client: Updates ARP cache
     Client->>NewLeader: Traffic now flows to Node B
     NewLeader->>NewLeader: kube-proxy routes to pod
 ```
 
-A gratuitous ARP is an ARP reply sent without a preceding request. The sender and target IP in the packet are both the VIP. Its purpose is to force all devices on the network to update their cached MAC address for that IP.
+A gratuitous ARP is an ARP announcement sent without a preceding request. MetalLB sends both gratuitous ARP request and reply packets for the VIP, with the sender and target IP set to the VIP. Its purpose is to prompt hosts on the network to update their cached MAC address for that IP.
 
 For IPv6, the unsolicited Neighbor Advertisement sets the **Override flag**, telling recipients to replace their existing cache entry immediately.
 
@@ -187,11 +187,11 @@ Common ARP cache timeouts:
 
 | Operating System | Default ARP Cache Timeout |
 |-----------------|--------------------------|
-| Linux           | 30 to 60 seconds         |
+| Linux           | 15 to 45 seconds to become STALE; garbage collection is commonly 60 seconds |
 | macOS           | 20 minutes               |
 | Windows         | 15 to 45 seconds         |
 
-MetalLB's gratuitous ARP typically updates clients within milliseconds of re-election. But some network equipment (managed switches, firewalls) may take longer to flush their MAC tables.
+MetalLB's gratuitous ARP typically updates modern clients promptly after re-election. But some network equipment (managed switches, firewalls) or older clients may take longer to update their forwarding or neighbor state.
 
 You can force-clear a stale ARP entry on a Linux client:
 
@@ -263,7 +263,7 @@ kubectl get svc my-service -o wide
 sudo arping -D -c 3 192.168.1.240
 ```
 
-**Slow failover** - Lower the memberlist probe interval in MetalLB's Helm values or ConfigMap to detect failures faster. Monitor speaker logs during a failover to measure actual detection and re-election times.
+**Slow failover** - Monitor speaker logs during a failover to measure actual detection and re-election times. MetalLB's documentation treats L2 failover slower than about 10 seconds as worth investigating, because the delay is often caused by client or network handling of gratuitous layer 2 packets rather than the Kubernetes Service itself.
 
 ---
 
@@ -286,12 +286,12 @@ flowchart TD
     I[Leader node fails] --> J[Memberlist detects failure in 5-10s]
     J --> K[New leader elected]
     K --> L[New leader sends gratuitous ARP]
-    L --> M[All clients update ARP cache]
+    L --> M[Most clients update ARP cache]
     M --> N[Traffic flows to new leader]
     N --> F
 ```
 
-The entire failover window is typically under 10 seconds. The gratuitous ARP ensures clients switch over immediately once the new leader is ready, without waiting for their ARP cache to expire.
+The entire failover window is typically under 10 seconds. The gratuitous ARP lets clients switch over promptly once the new leader is ready, without waiting for their ARP cache to expire.
 
 ---
 
