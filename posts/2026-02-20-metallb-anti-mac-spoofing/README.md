@@ -1,22 +1,22 @@
-# How to Fix Anti-MAC Spoofing Blocking MetalLB L2 Traffic
+# How to Fix Port-Security Filters Blocking MetalLB L2 Traffic
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, MAC Spoofing, Virtualization, Layer 2, Networking
 
-Description: Learn how to fix MetalLB Layer 2 traffic being blocked by anti-MAC spoofing features on hypervisors like VMware, Hyper-V, and cloud platforms.
+Description: Learn how to troubleshoot MetalLB Layer 2 traffic being blocked by virtualization port-security and anti-spoofing features.
 
 ---
 
-If you run MetalLB in Layer 2 mode on virtual machines, there is a good chance your LoadBalancer services are silently failing. The culprit is almost always anti-MAC spoofing. Hypervisors like VMware ESXi, Microsoft Hyper-V, and cloud platforms like Proxmox enforce MAC address filtering by default. MetalLB L2 mode relies on gratuitous ARP replies that originate from a MAC address the hypervisor does not recognize, so the traffic gets dropped before it ever reaches the network.
+If you run MetalLB in Layer 2 mode on virtual machines, one possible reason your LoadBalancer services can silently fail is virtualization port security. Normal MetalLB L2 mode does not create a separate virtual MAC address: the elected node answers ARP requests for the service IP with the node interface's MAC address. However, hypervisor firewall rules, IP/MAC spoofing filters, OpenStack port security, or nested virtualization setups can still block the ARP/NDP traffic that MetalLB relies on.
 
 This post walks through exactly why this happens, how to diagnose it, and how to fix it across the most common virtualization platforms.
 
-## Why MetalLB L2 Mode Triggers Anti-MAC Spoofing
+## Why MetalLB L2 Mode Can Trigger Port-Security Filters
 
 MetalLB in Layer 2 mode works by having one node in your cluster claim a virtual IP address. That node responds to ARP requests for the VIP using its own MAC address. When failover occurs, a different node takes over the VIP and sends a gratuitous ARP to update the network.
 
-The problem is that the VIP does not belong to any physical NIC that the hypervisor assigned. The hypervisor sees ARP traffic from a MAC address it did not provision and flags it as MAC spoofing.
+The problem is that the VIP is not one of the IP addresses that the virtualization platform assigned to the VM. Strict port-security systems can treat ARP/NDP or data traffic for that unassigned IP address as spoofing. In nested virtualization, bridge, macvtap, or appliance-style configurations, you can also run into MAC anti-spoofing if frames leave the VM with a source MAC different from the VM's configured vNIC MAC.
 
 ```mermaid
 sequenceDiagram
@@ -30,26 +30,26 @@ sequenceDiagram
     Switch->>Hypervisor: Forward ARP to VM port
     Hypervisor->>VM: Deliver ARP request
     VM->>MetalLB: ARP for VIP 10.0.0.100
-    MetalLB->>VM: Gratuitous ARP Reply (VIP MAC)
+    MetalLB->>VM: ARP Reply (VIP -> node MAC)
     VM->>Hypervisor: Send ARP Reply
-    Hypervisor--xSwitch: BLOCKED - MAC not in allow list
-    Note over Hypervisor: Anti-MAC spoofing drops<br/>the frame because the<br/>source MAC does not match<br/>the VM's assigned MAC
+    Hypervisor--xSwitch: BLOCKED - port security policy
+    Note over Hypervisor: Port security can drop<br/>ARP/NDP or data traffic when<br/>the VIP is not allowed on<br/>the VM's virtual port
 ```
 
 ## How to Diagnose the Problem
 
-Before changing any hypervisor settings, confirm that anti-MAC spoofing is actually the issue.
+Before changing any hypervisor settings, confirm that port security is actually the issue.
 
 ### Step 1: Check MetalLB speaker logs
 
 ```bash
 # Check the MetalLB speaker pods for ARP announcement activity
 
-# The speaker is responsible for sending gratuitous ARP replies
-kubectl logs -n metallb-system -l app=metallb-speaker --tail=100
+# The speaker is responsible for answering ARP/NDP for advertised services
+kubectl logs -n metallb-system -l app=metallb,app.kubernetes.io/component=speaker --tail=100
 ```
 
-If you see lines like `"announcing from node"` but external clients still cannot reach the VIP, the ARP replies are likely being dropped at the hypervisor level.
+If `kubectl describe svc <service-name>` shows an event like `"announcing from node"` but external clients still cannot reach the VIP, the service is being advertised and you should check whether ARP/NDP traffic is leaving the VM and reaching the client network.
 
 ### Step 2: Verify ARP visibility from outside the cluster
 
@@ -62,7 +62,7 @@ From a machine on the same Layer 2 segment (but outside the cluster), run:
 sudo tcpdump -i eth0 -n arp host 10.0.0.100
 ```
 
-If you see no ARP replies at all, the hypervisor is dropping them.
+If you see no ARP replies at all, the problem may be a MetalLB advertisement issue, a host firewall issue, a wrong Layer 2 segment, or a virtualization port-security rule dropping the packets.
 
 ### Step 3: Check the ARP table on the client machine
 
@@ -72,20 +72,20 @@ If you see no ARP replies at all, the hypervisor is dropping them.
 arp -n | grep 10.0.0.100
 ```
 
-An incomplete or missing entry confirms the gratuitous ARP never made it through.
+An incomplete or missing entry confirms that the client did not learn a MAC address for the VIP.
 
 ## The Flow With and Without the Fix
 
-Here is what happens once anti-MAC spoofing is disabled or configured to allow MetalLB traffic:
+Here is what happens once the relevant port-security rule is disabled or configured to allow MetalLB traffic:
 
 ```mermaid
 flowchart TD
-    A[Client sends ARP request for VIP] --> B{Hypervisor MAC filter}
-    B -->|Anti-spoofing ON| C[Frame dropped silently]
+    A[Client sends ARP request for VIP] --> B{Virtualization port-security filter}
+    B -->|VIP or source MAC not allowed| C[Frame dropped silently]
     C --> D[Client gets no ARP reply]
     D --> E[Service unreachable]
 
-    B -->|Anti-spoofing OFF or allowed| F[ARP reply forwarded to switch]
+    B -->|VIP and source MAC allowed| F[ARP reply forwarded to switch]
     F --> G[Client learns VIP-to-MAC mapping]
     G --> H[Traffic flows to MetalLB VIP]
     H --> I[Service reachable]
@@ -98,7 +98,7 @@ flowchart TD
 
 ## Fix for VMware ESXi / vSphere
 
-VMware calls this feature "Forged Transmits" and "MAC Address Changes." Both must be set to Accept.
+VMware calls MAC anti-spoofing controls "Forged Transmits" and "MAC Address Changes." Normal MetalLB L2 replies use the VM's vNIC MAC, so these settings are only needed if your guest or nested networking setup sends frames with a source MAC address different from the vNIC MAC.
 
 ### Option A: vSphere Web Client
 
@@ -140,7 +140,7 @@ Connect-VIServer -Server vcenter.example.com
 # Replace "K8s-PortGroup" with your actual port group name
 $pg = Get-VDPortgroup -Name "K8s-PortGroup"
 
-# Configure the security policy to allow MetalLB traffic
+# Configure the security policy when your guest sends non-vNIC source MACs
 # ForgedTransmits: allows frames with non-assigned source MAC
 # MacChanges: allows the VM to change its effective MAC address
 $pg | Get-VDSecurityPolicy | Set-VDSecurityPolicy `
@@ -150,7 +150,7 @@ $pg | Get-VDSecurityPolicy | Set-VDSecurityPolicy `
 
 ## Fix for Microsoft Hyper-V
 
-Hyper-V uses a setting called "Enable MAC address spoofing" on each virtual network adapter.
+Hyper-V uses a setting called "Enable MAC address spoofing" on each virtual network adapter. Enable it only when the VM is expected to send frames with source MAC addresses other than its assigned virtual adapter MAC, such as nested virtualization or virtual appliances.
 
 ### PowerShell
 
@@ -178,52 +178,49 @@ You can also do this through Hyper-V Manager:
 
 ## Fix for Proxmox VE
 
-Proxmox does not have a single toggle for MAC spoofing. Instead, you need to configure the bridge to skip MAC learning or disable the firewall MAC filter.
+Proxmox does not have a single hypervisor-wide toggle for MAC spoofing. If the Proxmox firewall is enabled for the VM, disable the VM firewall's MAC filter or adjust its IP filter rules so the MetalLB VIP is allowed.
 
 ### Option A: Disable the firewall MAC filter
 
 ```bash
-# Edit the VM's configuration file
+# Edit the VM's firewall configuration file
 # Replace 100 with your actual VM ID
-# The configuration lives in /etc/pve/qemu-server/
-nano /etc/pve/qemu-server/100.conf
+# The configuration lives in /etc/pve/firewall/
+nano /etc/pve/firewall/100.fw
 ```
 
-Find the network line and add `macfilter=0`:
+Add or update the `macfilter` option:
 
 ```ini
-# Before: standard network configuration with MAC filtering enabled
-# net0: virtio=AA:BB:CC:DD:EE:FF,bridge=vmbr0
-
-# After: MAC filtering disabled so MetalLB ARP replies pass through
-net0: virtio=AA:BB:CC:DD:EE:FF,bridge=vmbr0,macfilter=0
+# Disable the Proxmox firewall MAC address filter for this VM
+[OPTIONS]
+macfilter: 0
 ```
 
 ### Option B: Use an Open vSwitch bridge
 
-If you use Open vSwitch instead of the default Linux bridge, you can add a rule to allow unknown MACs:
+Open vSwitch itself does not have a generic `mac-restriction=false` port option. If you use OVS, inspect the bridge and any OpenFlow or Proxmox firewall rules applied to the VM tap port, then remove or adjust the rule that blocks the VIP traffic.
 
 ```bash
-# Add an OVS port with VLAN trunk mode and no MAC restrictions
-# Replace vmbr0 with your OVS bridge name
+# Inspect the OVS bridge and flows
 # Replace tap100i0 with your VM's tap interface
-ovs-vsctl set port tap100i0 other-config:mac-restriction=false
+ovs-vsctl list port tap100i0
+ovs-ofctl dump-flows vmbr0
 ```
 
 ## Fix for KVM / libvirt (without Proxmox)
 
-If you run KVM with libvirt directly, edit the VM's XML definition:
+If you run KVM with libvirt directly and use a macvtap/direct interface where the guest changes its MAC or receive filters, edit the VM's XML definition:
 
 ```xml
 <!-- VM network interface configuration for libvirt/KVM -->
-<!-- The trustGuestRxFilters='yes' attribute tells libvirt -->
-<!-- to trust MAC address changes made by the guest OS -->
-<interface type='bridge'>
+<!-- trustGuestRxFilters='yes' tells libvirt to trust supported -->
+<!-- MAC address and receive-filter changes made by the guest OS. -->
+<!-- It is supported for virtio with macvtap/direct connections. -->
+<interface type='direct' trustGuestRxFilters='yes'>
   <mac address='52:54:00:aa:bb:cc'/>
-  <source bridge='br0'/>
+  <source dev='eth0' mode='bridge'/>
   <model type='virtio'/>
-  <!-- Allow the guest to use MAC addresses not assigned to this interface -->
-  <trustGuestRxFilters>yes</trustGuestRxFilters>
 </interface>
 ```
 
@@ -241,7 +238,7 @@ virsh start k8s-node-1
 
 ## Fix for Cloud Providers (AWS, GCP, Azure)
 
-Cloud environments add another layer of MAC filtering at the virtual network level.
+Cloud environments add another layer of filtering at the virtual network level, and many public clouds do not expose the Layer 2 broadcast domain that MetalLB L2 mode requires.
 
 ### AWS
 
@@ -259,9 +256,9 @@ Azure VMs do not support promiscuous mode or MAC spoofing on standard virtual ne
 
 ```bash
 # Disable port security on the Neutron port attached to your VM
-# This allows the port to send/receive traffic with any MAC or IP
+# This disables Neutron port security on the port
 # Replace PORT_ID with the actual Neutron port UUID
-openstack port set --no-security-groups --disable-port-security PORT_ID
+openstack port set --no-security-group --disable-port-security PORT_ID
 ```
 
 ## Verifying the Fix
@@ -290,11 +287,11 @@ curl -v http://10.0.0.100:80
 
 | Platform | Setting | Default | Required Value |
 |----------|---------|---------|----------------|
-| VMware ESXi | Forged Transmits | Reject | Accept |
-| VMware ESXi | MAC Address Changes | Reject | Accept |
-| Hyper-V | MAC Address Spoofing | Off | On |
+| VMware ESXi | Forged Transmits | Reject | Accept only if non-vNIC source MACs are used |
+| VMware ESXi | MAC Address Changes | Reject | Accept only if guest MAC changes are used |
+| Hyper-V | MAC Address Spoofing | Off | On only if non-vNIC source MACs are used |
 | Proxmox | macfilter | 1 (on) | 0 (off) |
-| KVM/libvirt | trustGuestRxFilters | no | yes |
+| KVM/libvirt | trustGuestRxFilters | no | yes for supported macvtap/direct guest MAC changes |
 | OpenStack | Port Security | Enabled | Disabled |
 | AWS/GCP | N/A | N/A | Use BGP mode |
 
@@ -304,12 +301,12 @@ curl -v http://10.0.0.100:80
 
 **Forgetting to restart MetalLB.** After changing hypervisor settings, MetalLB may not re-announce immediately. Restart the speaker pods to force new gratuitous ARP broadcasts.
 
-**Applying changes to one node only.** MetalLB can fail over to any node in the cluster. Every node VM needs the anti-MAC spoofing fix applied, not just the current leader.
+**Applying changes to one node only.** MetalLB can fail over to any node in the cluster. Every node VM that can advertise the service needs the relevant port-security fix applied, not just the current leader.
 
-**Enabling promiscuous mode unnecessarily.** You do not need promiscuous mode for MetalLB. Only "Forged Transmits" and "MAC Address Changes" are required on VMware. Promiscuous mode introduces a security risk with no benefit for this use case.
+**Enabling promiscuous mode unnecessarily.** You do not need promiscuous mode for MetalLB. VMware's "Forged Transmits" and "MAC Address Changes" settings are only relevant when your VM actually sends or receives frames with MAC addresses different from the configured vNIC MAC. Promiscuous mode introduces a security risk with no benefit for normal MetalLB L2 mode.
 
 ## Conclusion
 
-Anti-MAC spoofing is a sensible default for hypervisors, but it directly conflicts with how MetalLB Layer 2 mode operates. The fix is straightforward once you know which setting to change on your platform. Disable MAC filtering for your Kubernetes VM port groups, restart the MetalLB speakers, and verify ARP replies are reaching the network.
+Anti-spoofing and port-security controls are sensible defaults for virtualized networks, but they can conflict with MetalLB Layer 2 mode when they block ARP/NDP or traffic for the service VIP. The fix is straightforward once you know which setting applies on your platform. Allow the MetalLB VIP or the required guest MAC behavior on every Kubernetes VM that can advertise the service, restart the MetalLB speakers, and verify ARP replies are reaching the network.
 
 If you are running Kubernetes on bare metal or in virtualized environments and need full observability into your cluster, services, and network health, check out [OneUptime](https://oneuptime.com). OneUptime provides open-source infrastructure monitoring, incident management, and status pages so you can catch issues like silent traffic drops before your users do.
