@@ -12,12 +12,12 @@ One of the most powerful features of Gemini models is their ability to understan
 
 ## Setting Up
 
-Make sure you have the Vertex AI SDK installed and configured:
+Make sure you have the Google Gen AI SDK installed and configured for Vertex AI:
 
 ```bash
 # Install the SDK
 
-pip install google-cloud-aiplatform
+pip install google-genai
 
 # Authenticate
 gcloud auth application-default login
@@ -31,24 +31,27 @@ Let us start with the simplest case - sending an image and asking a question abo
 # analyze_image.py
 # Analyze a single image with Gemini
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Image
+from google import genai
+from google.genai.types import Part
 
-vertexai.init(
+client = genai.Client(
+    vertexai=True,
     project='your-project-id',
     location='us-central1',
 )
 
-model = GenerativeModel('gemini-1.5-pro')
-
 # Load an image from a local file
-image = Image.load_from_file('server-rack.jpg')
+with open('server-rack.jpg', 'rb') as f:
+    image = Part.from_bytes(data=f.read(), mime_type='image/jpeg')
 
 # Ask a question about the image
-response = model.generate_content([
-    image,
-    'Describe what you see in this image. If this is a server room or data center, identify any potential issues with the setup.',
-])
+response = client.models.generate_content(
+    model='gemini-2.5-pro',
+    contents=[
+        image,
+        'Describe what you see in this image. If this is a server room or data center, identify any potential issues with the setup.',
+    ],
+)
 
 print(response.text)
 ```
@@ -61,26 +64,28 @@ For production applications, your images are likely in GCS:
 # gcs_image.py
 # Load and analyze an image from Cloud Storage
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part
+from google import genai
+from google.genai.types import Part
 
-vertexai.init(
+client = genai.Client(
+    vertexai=True,
     project='your-project-id',
     location='us-central1',
 )
 
-model = GenerativeModel('gemini-1.5-pro')
-
 # Load image from GCS using Part.from_uri
 image_part = Part.from_uri(
-    uri='gs://your-bucket/images/dashboard-screenshot.png',
+    file_uri='gs://your-bucket/images/dashboard-screenshot.png',
     mime_type='image/png',
 )
 
-response = model.generate_content([
-    image_part,
-    'This is a monitoring dashboard screenshot. What metrics are shown, and are there any concerning patterns?',
-])
+response = client.models.generate_content(
+    model='gemini-2.5-pro',
+    contents=[
+        image_part,
+        'This is a monitoring dashboard screenshot. What metrics are shown, and are there any concerning patterns?',
+    ],
+)
 
 print(response.text)
 ```
@@ -93,26 +98,28 @@ You can also pass images from URLs:
 # url_image.py
 # Analyze an image from a URL
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part
+from google import genai
+from google.genai.types import Part
 
-vertexai.init(
+client = genai.Client(
+    vertexai=True,
     project='your-project-id',
     location='us-central1',
 )
 
-model = GenerativeModel('gemini-1.5-pro')
-
-# Load an image from a URL
+# Load a publicly readable image from a URL
 image_part = Part.from_uri(
-    uri='https://example.com/architecture-diagram.png',
+    file_uri='https://example.com/architecture-diagram.png',
     mime_type='image/png',
 )
 
-response = model.generate_content([
-    image_part,
-    'Analyze this architecture diagram. What GCP services are being used and how do they connect?',
-])
+response = client.models.generate_content(
+    model='gemini-2.5-pro',
+    contents=[
+        image_part,
+        'Analyze this architecture diagram. What GCP services are being used and how do they connect?',
+    ],
+)
 
 print(response.text)
 ```
@@ -125,29 +132,33 @@ Gemini can look at multiple images in a single request. This is useful for compa
 # compare_images.py
 # Compare two architecture diagrams
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Image
+from google import genai
+from google.genai.types import Part
 
-vertexai.init(
+client = genai.Client(
+    vertexai=True,
     project='your-project-id',
     location='us-central1',
 )
 
-model = GenerativeModel('gemini-1.5-pro')
-
 # Load two images to compare
-image_before = Image.load_from_file('architecture-v1.png')
-image_after = Image.load_from_file('architecture-v2.png')
+with open('architecture-v1.png', 'rb') as f:
+    image_before = Part.from_bytes(data=f.read(), mime_type='image/png')
+with open('architecture-v2.png', 'rb') as f:
+    image_after = Part.from_bytes(data=f.read(), mime_type='image/png')
 
 # Ask Gemini to compare them
-response = model.generate_content([
-    'Compare these two architecture diagrams. The first is the current architecture and the second is the proposed change.',
-    image_before,
-    'Current architecture (above)',
-    image_after,
-    'Proposed architecture (above)',
-    'What are the key differences? What are the benefits and risks of the proposed changes?',
-])
+response = client.models.generate_content(
+    model='gemini-2.5-pro',
+    contents=[
+        'Compare these two architecture diagrams. The first is the current architecture and the second is the proposed change.',
+        image_before,
+        'Current architecture (above)',
+        image_after,
+        'Proposed architecture (above)',
+        'What are the key differences? What are the benefits and risks of the proposed changes?',
+    ],
+)
 
 print(response.text)
 ```
@@ -160,23 +171,26 @@ Gemini is very good at reading text from images, which makes it useful for proce
 # ocr.py
 # Extract and analyze text from an image
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Image
+from google import genai
+from google.genai.types import Part
 
-vertexai.init(
+client = genai.Client(
+    vertexai=True,
     project='your-project-id',
     location='us-central1',
 )
 
-model = GenerativeModel('gemini-1.5-pro')
-
 # Load a screenshot containing error logs
-image = Image.load_from_file('error-screenshot.png')
+with open('error-screenshot.png', 'rb') as f:
+    image = Part.from_bytes(data=f.read(), mime_type='image/png')
 
-response = model.generate_content([
-    image,
-    'Extract all the error messages visible in this screenshot. For each error, explain what it means and suggest a fix.',
-])
+response = client.models.generate_content(
+    model='gemini-2.5-pro',
+    contents=[
+        image,
+        'Extract all the error messages visible in this screenshot. For each error, explain what it means and suggest a fix.',
+    ],
+)
 
 print(response.text)
 ```
@@ -189,27 +203,30 @@ Gemini can interpret charts, making it useful for automated report analysis:
 # analyze_chart.py
 # Analyze a monitoring chart
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Image
+from google import genai
+from google.genai.types import Part
 
-vertexai.init(
+client = genai.Client(
+    vertexai=True,
     project='your-project-id',
     location='us-central1',
 )
 
-model = GenerativeModel('gemini-1.5-pro')
-
 # Load a Cloud Monitoring chart
-chart_image = Image.load_from_file('cpu-usage-chart.png')
+with open('cpu-usage-chart.png', 'rb') as f:
+    chart_image = Part.from_bytes(data=f.read(), mime_type='image/png')
 
-response = model.generate_content([
-    chart_image,
-    """Analyze this CPU usage chart and answer:
-    1. What is the average CPU utilization?
-    2. Are there any spikes? When do they occur?
-    3. Is there a trending pattern (increasing, decreasing, stable)?
-    4. Based on this data, would you recommend scaling up?""",
-])
+response = client.models.generate_content(
+    model='gemini-2.5-pro',
+    contents=[
+        chart_image,
+        """Analyze this CPU usage chart and answer:
+        1. What is the average CPU utilization?
+        2. Are there any spikes? When do they occur?
+        3. Is there a trending pattern (increasing, decreasing, stable)?
+        4. Based on this data, would you recommend scaling up?""",
+    ],
+)
 
 print(response.text)
 ```
@@ -222,33 +239,33 @@ For complex analysis, combine images with detailed text context:
 # detailed_analysis.py
 # Complex multimodal analysis with context
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Image, GenerationConfig
+from google import genai
+from google.genai import types
+from google.genai.types import Part
 
-vertexai.init(
+client = genai.Client(
+    vertexai=True,
     project='your-project-id',
     location='us-central1',
 )
 
-model = GenerativeModel(
-    'gemini-1.5-pro',
+config = types.GenerateContentConfig(
     system_instruction=[
         'You are a senior cloud architect reviewing infrastructure diagrams.',
         'Focus on security, scalability, and cost optimization.',
         'Reference GCP best practices in your analysis.',
     ],
-)
-
-# Load the architecture diagram
-diagram = Image.load_from_file('infrastructure-diagram.png')
-
-config = GenerationConfig(
     temperature=0.3,  # Lower temperature for more factual analysis
     max_output_tokens=2048,
 )
 
-response = model.generate_content(
-    [
+# Load the architecture diagram
+with open('infrastructure-diagram.png', 'rb') as f:
+    diagram = Part.from_bytes(data=f.read(), mime_type='image/png')
+
+response = client.models.generate_content(
+    model='gemini-2.5-pro',
+    contents=[
         diagram,
         """Review this infrastructure diagram for a production e-commerce platform on GCP.
 
@@ -265,7 +282,7 @@ response = model.generate_content(
         4. Any missing components or anti-patterns
         5. Cost optimization opportunities""",
     ],
-    generation_config=config,
+    config=config,
 )
 
 print(response.text)
@@ -279,16 +296,15 @@ For batch processing multiple images:
 # batch_process.py
 # Process multiple images with Gemini
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Image
+from google import genai
+from google.genai.types import Part
 import os
 
-vertexai.init(
+client = genai.Client(
+    vertexai=True,
     project='your-project-id',
     location='us-central1',
 )
-
-model = GenerativeModel('gemini-1.5-flash')
 
 # Process all images in a directory
 image_dir = './monitoring-screenshots/'
@@ -298,12 +314,18 @@ for filename in os.listdir(image_dir):
     if filename.endswith(('.png', '.jpg', '.jpeg')):
         print(f"Processing: {filename}")
 
-        image = Image.load_from_file(os.path.join(image_dir, filename))
+        path = os.path.join(image_dir, filename)
+        mime_type = 'image/png' if filename.endswith('.png') else 'image/jpeg'
+        with open(path, 'rb') as f:
+            image = Part.from_bytes(data=f.read(), mime_type=mime_type)
 
-        response = model.generate_content([
-            image,
-            'Briefly describe any issues or anomalies visible in this monitoring screenshot. If everything looks normal, say so.',
-        ])
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[
+                image,
+                'Briefly describe any issues or anomalies visible in this monitoring screenshot. If everything looks normal, say so.',
+            ],
+        )
 
         results.append({
             'filename': filename,
@@ -324,19 +346,20 @@ You can also use images in multi-turn conversations:
 # multimodal_chat.py
 # Chat conversation that includes images
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Image
+from google import genai
+from google.genai.types import Part
 
-vertexai.init(
+client = genai.Client(
+    vertexai=True,
     project='your-project-id',
     location='us-central1',
 )
 
-model = GenerativeModel('gemini-1.5-pro')
-chat = model.start_chat()
+chat = client.chats.create(model='gemini-2.5-pro')
 
 # First turn - send an architecture diagram
-diagram = Image.load_from_file('current-architecture.png')
+with open('current-architecture.png', 'rb') as f:
+    diagram = Part.from_bytes(data=f.read(), mime_type='image/png')
 response = chat.send_message([
     diagram,
     'This is our current architecture. Can you identify the main components?',
@@ -350,7 +373,8 @@ response = chat.send_message(
 print(f"Gemini: {response.text}\n")
 
 # Third turn - send another image for comparison
-new_diagram = Image.load_from_file('proposed-architecture.png')
+with open('proposed-architecture.png', 'rb') as f:
+    new_diagram = Part.from_bytes(data=f.read(), mime_type='image/png')
 response = chat.send_message([
     new_diagram,
     'Here is the proposed architecture. Does it address the resilience issues you identified?',
@@ -363,11 +387,11 @@ print(f"Gemini: {response.text}")
 Gemini supports these image formats:
 - PNG
 - JPEG
-- GIF (including animated GIFs)
 - WebP
-- BMP
+- HEIC
+- HEIF
 
-The maximum image size varies by model, but generally images up to 20 MB are supported. For best results, keep images under 4 MB.
+The maximum image size varies by model and by whether the image is sent inline or from Cloud Storage. For Gemini 2.5 models, inline images are limited to 7 MB per file, while images from Cloud Storage can be up to 30 MB per file.
 
 ## Tips for Better Results
 
