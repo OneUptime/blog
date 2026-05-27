@@ -8,11 +8,11 @@ Description: Understand Ansible plugin base classes and how to properly extend t
 
 ---
 
-Every Ansible plugin type has a base class that provides common functionality like option handling, display output, and configuration loading. Understanding these base classes is essential for writing plugins that behave correctly and integrate properly with Ansible's runtime. This guide covers the base classes for each plugin type and what methods and attributes they provide.
+Many Ansible plugin types have a base class that provides common functionality like option handling, display output, and configuration loading. Understanding these base classes is essential for writing plugins that behave correctly and integrate properly with Ansible's runtime. This guide covers the base classes for several common plugin types and what methods and attributes they provide.
 
 ## The Plugin Base Class Hierarchy
 
-All Ansible plugins ultimately inherit from `AnsiblePlugin`, which provides the core configuration and option management. Each plugin type then has its own specialized base class that adds type-specific behavior.
+Most class-based Ansible plugins ultimately inherit from `AnsiblePlugin`, which provides the core configuration and option management. Several plugin types then have their own specialized base class that adds type-specific behavior.
 
 ```mermaid
 graph TD
@@ -29,7 +29,7 @@ graph TD
 
 ## AnsiblePlugin: The Root Base Class
 
-Every plugin inherits from `AnsiblePlugin` (located in `ansible.plugins`). It provides:
+Most class-based plugins inherit from `AnsiblePlugin` (located in `ansible.plugins`). It provides:
 
 ```python
 # What AnsiblePlugin gives you
@@ -53,7 +53,7 @@ class AnsiblePlugin:
         pass
 ```
 
-The `set_options` method is called during plugin initialization and loads values from environment variables, `ansible.cfg` INI settings, and Ansible variables based on what you defined in your `DOCUMENTATION` string.
+The `set_options` method loads values from environment variables, `ansible.cfg` INI settings, and Ansible variables based on what you defined in your `DOCUMENTATION` string. Some plugin types have `set_options()` called by Ansible, while lookup plugins call it from `run()` and inventory plugins usually load options through `_read_config_data()`.
 
 ## LookupBase
 
@@ -100,7 +100,7 @@ LookupBase also provides:
 - `self._loader` - The Ansible data loader for reading files
 - `self._templar` - The Jinja2 template engine
 - `self._display` - Display object for output messages
-- `self.find_file_in_search_path()` - Helper to locate files
+- `self.find_file_in_search_path(variables, 'files', term)` - Helper to locate files
 
 ## CallbackBase
 
@@ -315,7 +315,7 @@ Regardless of plugin type, these patterns apply:
 def __init__(self, *args, **kwargs):
     super(MyPlugin, self).__init__(*args, **kwargs)
 
-# Always call set_options to load configuration
+# Call set_options explicitly when your plugin type does not load options for you
 self.set_options(var_options=variables, direct=kwargs)
 
 # Use self._display for output at various verbosity levels
@@ -333,4 +333,4 @@ raise AnsibleError("Something went wrong: %s" % details)
 
 ## Summary
 
-Every Ansible plugin type has a base class that handles boilerplate like configuration loading, display output, and integration with the Ansible runtime. Extend the correct base class for your plugin type, call `super().__init__()` in your constructor, use `set_options()` to load configuration, and leverage `self._display` for output. Understanding these base classes means you spend less time fighting the framework and more time on your actual plugin logic.
+Many Ansible plugin types have a base class that handles boilerplate like configuration loading, display output, and integration with the Ansible runtime. Extend the correct base class for your plugin type, call `super().__init__()` in your constructor, use `set_options()` when your plugin type requires it, and leverage `self._display` for output. Understanding these base classes means you spend less time fighting the framework and more time on your actual plugin logic.
