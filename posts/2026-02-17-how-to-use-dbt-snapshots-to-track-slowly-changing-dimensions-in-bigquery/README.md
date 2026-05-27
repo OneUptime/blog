@@ -25,17 +25,17 @@ Snapshots live in the `snapshots/` directory of your dbt project. Here is a snap
 ```sql
 -- snapshots/snap_customers.sql
 -- Track all changes to customer records over time
--- Any change to the check_cols triggers a new snapshot row
+-- Any row with a newer updated_at value triggers a new snapshot row
 
 {% snapshot snap_customers %}
 
 {{
   config(
-    target_schema='snapshots',
+    schema='snapshots',
     unique_key='customer_id',
     strategy='timestamp',
     updated_at='updated_at',
-    invalidate_hard_deletes=True
+    hard_deletes='invalidate'
   )
 }}
 
@@ -56,11 +56,11 @@ FROM {{ source('raw', 'customers') }}
 
 Let me break down the configuration:
 
-- `target_schema`: Where the snapshot table will be created in BigQuery
+- `schema`: Where the snapshot table will be created in BigQuery
 - `unique_key`: The column that uniquely identifies each record
 - `strategy`: How to detect changes (timestamp or check)
 - `updated_at`: The column that indicates when a record was last modified
-- `invalidate_hard_deletes`: Whether to close out records that disappear from the source
+- `hard_deletes`: How to handle records that disappear from the source
 
 ## Snapshot Strategies
 
@@ -75,7 +75,7 @@ The timestamp strategy uses a column (like `updated_at`) to detect changes. If t
 
 {{
   config(
-    target_schema='snapshots',
+    schema='snapshots',
     unique_key='product_id',
     strategy='timestamp',
     updated_at='updated_at'
@@ -110,7 +110,7 @@ The check strategy compares actual column values to detect changes. Use this whe
 
 {{
   config(
-    target_schema='snapshots',
+    schema='snapshots',
     unique_key='supplier_id',
     strategy='check',
     check_cols=['supplier_name', 'contact_email', 'payment_terms', 'status']
@@ -137,7 +137,7 @@ You can also use `check_cols='all'` to monitor every column, but be aware this i
 -- Monitor all columns for changes
 {{
   config(
-    target_schema='snapshots',
+    schema='snapshots',
     unique_key='supplier_id',
     strategy='check',
     check_cols='all'
@@ -158,7 +158,7 @@ dbt snapshot
 dbt snapshot --select snap_customers
 ```
 
-On the first run, dbt creates the snapshot table with all current records plus two additional columns: `dbt_valid_from` and `dbt_valid_to`. All initial records have `dbt_valid_to` set to NULL, meaning they are the current version.
+On the first run, dbt creates the snapshot table with all current records plus snapshot metadata columns, including `dbt_valid_from`, `dbt_valid_to`, `dbt_scd_id`, and `dbt_updated_at`. All initial records have `dbt_valid_to` set to NULL, meaning they are the current version.
 
 On subsequent runs, dbt compares the source to the snapshot. For any changed records, it sets `dbt_valid_to` on the old version and inserts a new row with `dbt_valid_to = NULL`.
 
@@ -208,8 +208,8 @@ SELECT
     region,
     tier
 FROM {{ ref('snap_customers') }}
-WHERE dbt_valid_from <= '2026-01-20'
-  AND (dbt_valid_to > '2026-01-20' OR dbt_valid_to IS NULL)
+WHERE dbt_valid_from <= TIMESTAMP '2026-01-20 00:00:00'
+  AND (dbt_valid_to > TIMESTAMP '2026-01-20 00:00:00' OR dbt_valid_to IS NULL)
 ```
 
 ### Join with Fact Tables Using Point-in-Time Logic
@@ -273,7 +273,7 @@ FROM {{ ref('snap_customers') }}
 
 ## Handling Hard Deletes
 
-By default, if a record disappears from the source, the snapshot just keeps the last version open (dbt_valid_to stays NULL). With `invalidate_hard_deletes=True`, dbt will close out deleted records:
+By default, if a record disappears from the source, the snapshot just keeps the last version open (dbt_valid_to stays NULL). With `hard_deletes='invalidate'`, dbt will close out deleted records:
 
 ```sql
 -- Track and close out records that get deleted from the source
@@ -281,11 +281,11 @@ By default, if a record disappears from the source, the snapshot just keeps the 
 
 {{
   config(
-    target_schema='snapshots',
+    schema='snapshots',
     unique_key='employee_id',
     strategy='timestamp',
     updated_at='updated_at',
-    invalidate_hard_deletes=True
+    hard_deletes='invalidate'
   )
 }}
 
@@ -352,7 +352,7 @@ snapshots:
         tests:
           - not_null
     tests:
-      # Ensure no overlapping validity periods for the same customer
+      # Ensure one row per customer per validity start timestamp
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:
             - customer_id
