@@ -66,6 +66,10 @@ flowchart TD
 
     # Log directory
     chrony_log_dir: /var/log/chrony
+    chrony_config_path: "{{ '/etc/chrony/chrony.conf' if ansible_os_family == 'Debian' else '/etc/chrony.conf' }}"
+    chrony_service_name: "{{ 'chrony' if ansible_os_family == 'Debian' else 'chronyd' }}"
+    chrony_user: "{{ '_chrony' if ansible_os_family == 'Debian' else 'chrony' }}"
+    chrony_group: "{{ '_chrony' if ansible_os_family == 'Debian' else 'chrony' }}"
 
   tasks:
     # Install chrony (remove ntpd if present)
@@ -94,7 +98,7 @@ flowchart TD
     - name: Deploy chrony.conf
       ansible.builtin.template:
         src: chrony.conf.j2
-        dest: /etc/chrony.conf
+        dest: "{{ chrony_config_path }}"
         owner: root
         group: root
         mode: '0644'
@@ -106,14 +110,14 @@ flowchart TD
       ansible.builtin.file:
         path: "{{ chrony_log_dir }}"
         state: directory
-        owner: chrony
-        group: chrony
+        owner: "{{ chrony_user }}"
+        group: "{{ chrony_group }}"
         mode: '0755'
 
     # Enable and start chrony
     - name: Enable chronyd
       ansible.builtin.systemd:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         state: started
         enabled: true
 
@@ -130,7 +134,7 @@ flowchart TD
   handlers:
     - name: restart chronyd
       ansible.builtin.systemd:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         state: restarted
 ```
 
@@ -219,12 +223,16 @@ For environments that need their own NTP infrastructure:
       - "10.0.0.0/8"
       - "172.16.0.0/12"
       - "192.168.0.0/16"
+    chrony_max_offset: 3
+    chrony_log_dir: /var/log/chrony
+    chrony_config_path: "{{ '/etc/chrony/chrony.conf' if ansible_os_family == 'Debian' else '/etc/chrony.conf' }}"
+    chrony_service_name: "{{ 'chrony' if ansible_os_family == 'Debian' else 'chronyd' }}"
 
   tasks:
     - name: Deploy NTP server chrony.conf
       ansible.builtin.template:
         src: chrony.conf.j2
-        dest: /etc/chrony.conf
+        dest: "{{ chrony_config_path }}"
         owner: root
         group: root
         mode: '0644'
@@ -232,7 +240,7 @@ For environments that need their own NTP infrastructure:
 
     - name: Enable chronyd
       ansible.builtin.systemd:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         state: started
         enabled: true
 
@@ -247,7 +255,7 @@ For environments that need their own NTP infrastructure:
   handlers:
     - name: restart chronyd
       ansible.builtin.systemd:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         state: restarted
 ```
 
@@ -350,8 +358,8 @@ Set up ongoing monitoring for time synchronization:
       ansible.builtin.set_fact:
         chrony_ref_name: "{{ tracking_csv.stdout.split(',')[0] }}"
         chrony_stratum: "{{ tracking_csv.stdout.split(',')[2] }}"
-        chrony_offset: "{{ tracking_csv.stdout.split(',')[4] }}"
-        chrony_last_update: "{{ tracking_csv.stdout.split(',')[3] }}"
+        chrony_offset: "{{ tracking_csv.stdout.split(',')[5] }}"
+        chrony_ref_time: "{{ tracking_csv.stdout.split(',')[3] }}"
 
     # Build health report
     - name: Build chrony health report
