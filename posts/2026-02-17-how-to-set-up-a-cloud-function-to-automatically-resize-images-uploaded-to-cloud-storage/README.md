@@ -90,9 +90,19 @@ const SUPPORTED_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
+  'image/avif',
   'image/gif',
   'image/tiff'
 ]);
+
+function buildOutputPath(filePath, suffix, outputFormat) {
+  const ext = path.extname(filePath);
+  const baseName = path.basename(filePath, ext);
+  const dirName = path.dirname(filePath);
+  const fileName = `${baseName}-${suffix}.${outputFormat}`;
+
+  return dirName === '.' ? fileName : `${dirName}/${fileName}`;
+}
 
 functions.cloudEvent('resizeImage', async (cloudEvent) => {
   const file = cloudEvent.data;
@@ -125,11 +135,6 @@ functions.cloudEvent('resizeImage', async (cloudEvent) => {
   const metadata = await sharp(imageBuffer).metadata();
   console.log(`Original dimensions: ${metadata.width}x${metadata.height}`);
 
-  // Parse the file name and extension
-  const ext = path.extname(filePath);
-  const baseName = path.basename(filePath, ext);
-  const dirName = path.dirname(filePath);
-
   // Process each resize configuration in parallel
   const resizePromises = RESIZE_CONFIGS.map(async (config) => {
     // Skip if original is smaller than the target size
@@ -157,7 +162,7 @@ functions.cloudEvent('resizeImage', async (cloudEvent) => {
       const resizedBuffer = await resizer.toBuffer();
 
       // Construct the output path
-      const outputPath = `${dirName}/${baseName}-${config.suffix}.${outputFormat}`;
+      const outputPath = buildOutputPath(filePath, config.suffix, outputFormat);
 
       // Upload to the resized bucket
       const resizedFile = storage.bucket(RESIZED_BUCKET).file(outputPath);
@@ -194,7 +199,7 @@ functions.cloudEvent('resizeImage', async (cloudEvent) => {
 # Deploy with a Cloud Storage trigger on the originals bucket
 gcloud functions deploy resize-image \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --source=. \
   --entry-point=resizeImage \
@@ -269,10 +274,12 @@ For images larger than the function's available memory, use streaming instead of
 
 ```javascript
 // Stream-based approach for very large images
+const { pipeline } = require('stream/promises');
+
 async function resizeLargeImage(bucket, filePath, config) {
   const readStream = storage.bucket(bucket).file(filePath).createReadStream();
   const resizedBucket = storage.bucket(RESIZED_BUCKET);
-  const outputPath = buildOutputPath(filePath, config);
+  const outputPath = buildOutputPath(filePath, config.suffix, 'webp');
 
   const writeStream = resizedBucket.file(outputPath).createWriteStream({
     metadata: { contentType: 'image/webp' }
@@ -283,13 +290,7 @@ async function resizeLargeImage(bucket, filePath, config) {
     .resize(config.width, config.height, { fit: config.fit })
     .webp({ quality: 80 });
 
-  return new Promise((resolve, reject) => {
-    readStream
-      .pipe(transformer)
-      .pipe(writeStream)
-      .on('finish', resolve)
-      .on('error', reject);
-  });
+  await pipeline(readStream, transformer, writeStream);
 }
 ```
 
@@ -308,11 +309,10 @@ if (contentType === 'image/gif') {
 
 ### EXIF Rotation
 
-Some images have EXIF rotation metadata that makes them appear rotated. Sharp handles this automatically by default with the `autoOrient` option:
+Some images have EXIF rotation metadata that makes them appear rotated. Sharp does not auto-rotate by default, so call `rotate()` with no arguments before resizing:
 
 ```javascript
-// Sharp auto-rotates based on EXIF by default
-// This is explicitly shown for clarity
+// Auto-rotate based on EXIF orientation
 const resizedBuffer = await sharp(imageBuffer)
   .rotate() // Auto-rotate based on EXIF orientation
   .resize(config.width, config.height, { fit: config.fit })
@@ -331,6 +331,6 @@ Image resizing functions can get expensive if you process a high volume of image
 
 ## Monitoring
 
-Set up monitoring with OneUptime to track your image processing pipeline. Key metrics to watch are function execution time (which correlates with image size), error rate (which might indicate corrupt images or memory limits), and the lag between upload time and resize completion. If processing times start creeping up, it usually means you are hitting memory limits and the function is swapping.
+Set up monitoring with OneUptime to track your image processing pipeline. Key metrics to watch are function execution time (which correlates with image size), error rate (which might indicate corrupt images or memory limits), and the lag between upload time and resize completion. If processing times start creeping up or instances are terminated for using too much memory, increase the memory limit or switch large-image paths to streaming.
 
 This pattern scales well from a few images per day to thousands per hour, all without managing any servers. The key is getting the memory allocation right and handling edge cases like oversized images and unsupported formats gracefully.
