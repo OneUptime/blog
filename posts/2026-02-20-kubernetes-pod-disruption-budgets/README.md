@@ -8,11 +8,11 @@ Description: Learn how to use Pod Disruption Budgets to ensure minimum availabil
 
 ---
 
-When you drain a node for maintenance or upgrade your cluster, Kubernetes needs to evict pods. Without guardrails, it might evict too many pods at once and cause downtime. Pod Disruption Budgets (PDBs) tell Kubernetes how many pods of a given application must stay available during voluntary disruptions. This post explains how PDBs work and how to configure them for different scenarios.
+When you drain a node for maintenance or upgrade your cluster, Kubernetes needs to evict pods. Without guardrails, it might evict too many pods at once and cause downtime. Pod Disruption Budgets (PDBs) tell Kubernetes how many pods of a given application must stay available during voluntary evictions. This post explains how PDBs work and how to configure them for different scenarios.
 
 ## Voluntary vs Involuntary Disruptions
 
-Not all disruptions are created equal. PDBs only protect against voluntary disruptions.
+Not all disruptions are created equal. PDBs protect against voluntary evictions that use the Kubernetes Eviction API.
 
 ```mermaid
 graph TD
@@ -30,10 +30,10 @@ graph TD
     style C fill:#ffe0e0
 ```
 
-**Voluntary disruptions** are planned actions that Kubernetes can control:
+**Voluntary disruptions** are actions initiated by a user, controller, or cluster administrator:
 - Draining a node for maintenance
 - Cluster autoscaler removing a node
-- Rolling updates
+- Rolling updates and direct pod deletions, although these are not blocked by PDBs
 
 **Involuntary disruptions** happen unexpectedly and PDBs cannot prevent them:
 - Hardware failure
@@ -67,14 +67,14 @@ sequenceDiagram
 ```yaml
 # pdb-min-available.yaml
 
-# Ensure at least 2 pods of the web-app are always available
-# during voluntary disruptions like node drains.
+# Ensure at least 2 pods of the web-app are available
+# during voluntary evictions like node drains.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: web-app-pdb
 spec:
-  # At least 2 pods must remain running at all times
+  # At least 2 pods must remain available during voluntary evictions
   minAvailable: 2
   selector:
     matchLabels:
@@ -104,8 +104,8 @@ spec:
 
 ```yaml
 # pdb-max-unavailable.yaml
-# Allow at most 1 pod to be unavailable during disruptions.
-# For 4 replicas, at least 3 must remain running.
+# Allow at most 1 pod to be unavailable during voluntary evictions.
+# For 4 replicas, at least 3 must remain available.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -285,7 +285,7 @@ kubectl get pods -l app=web-app
 ## Best Practices
 
 1. Always create a PDB for production workloads that need high availability.
-2. Use `maxUnavailable: 1` as a safe default for most applications.
+2. Use `maxUnavailable: 1` as a safe default for most replicated applications.
 3. For quorum-based systems (etcd, ZooKeeper), set `minAvailable` to the quorum size.
 4. Spread pods across nodes using `topologySpreadConstraints` so a single node drain affects fewer pods.
 5. Make sure your PDB allows at least one disruption, or node drains will hang forever.
