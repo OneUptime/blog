@@ -151,13 +151,15 @@ Automate tier changes when customers upgrade or downgrade:
 
     - name: Update database resource limits
       community.postgresql.postgresql_query:
-        db: "{{ tenant.database.name }}"
+        login_db: "{{ tenant.database.name }}"
         login_host: "{{ db_host }}"
         login_user: "{{ db_admin_user }}"
         login_password: "{{ db_admin_password }}"
         query: |
-          UPDATE tenant_settings SET value = '{{ item.value }}' WHERE key = '{{ item.key }}';
-        named_args: {}
+          UPDATE tenant_settings SET value = %(value)s WHERE key = %(key)s;
+        named_args:
+          key: "{{ item.key }}"
+          value: "{{ item.value }}"
       loop:
         - { key: 'tier', value: '{{ new_tier }}' }
         - { key: 'max_users', value: '{{ tier_config.max_users }}' }
@@ -204,7 +206,7 @@ Automate tier changes when customers upgrade or downgrade:
       Authorization: "Bearer {{ grafana_api_key }}"
     body_format: json
     body:
-      dashboard: "{{ lookup('template', 'platform-dashboard.json.j2') }}"
+      dashboard: "{{ lookup('template', 'platform-dashboard.json.j2') | from_json }}"
       overwrite: true
   delegate_to: localhost
   run_once: true
@@ -237,7 +239,7 @@ Scale platform components based on demand:
         required_instances: "{{ ((current_load.json.data.result[0].value[1] | float / requests_per_instance) | round(0, 'ceil')) | int }}"
 
     - name: Scale app servers if needed
-      amazon.aws.ec2_asg:
+      amazon.aws.autoscaling_group:
         name: "{{ platform_name }}-app-asg"
         desired_capacity: "{{ [required_instances | int, min_instances | int] | max }}"
         min_size: "{{ min_instances }}"
@@ -288,7 +290,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -432,4 +434,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
