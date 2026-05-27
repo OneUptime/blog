@@ -20,15 +20,8 @@ Add the Bigtable HBase client to your Maven project.
 <!-- Add to your pom.xml dependencies section -->
 <dependency>
     <groupId>com.google.cloud.bigtable</groupId>
-    <artifactId>bigtable-hbase-2.x-hadoop</artifactId>
-    <version>2.14.1</version>
-</dependency>
-
-<!-- You also need the HBase client -->
-<dependency>
-    <groupId>org.apache.hbase</groupId>
-    <artifactId>hbase-client</artifactId>
-    <version>2.5.7</version>
+    <artifactId>bigtable-hbase-2.x</artifactId>
+    <version>2.18.3</version>
 </dependency>
 ```
 
@@ -36,8 +29,7 @@ For Gradle:
 
 ```groovy
 // Add to your build.gradle dependencies block
-implementation 'com.google.cloud.bigtable:bigtable-hbase-2.x-hadoop:2.14.1'
-implementation 'org.apache.hbase:hbase-client:2.5.7'
+implementation 'com.google.cloud.bigtable:bigtable-hbase-2.x:2.18.3'
 ```
 
 ## Connecting to Bigtable
@@ -85,7 +77,7 @@ Configuration config = BigtableConfiguration.configure(PROJECT_ID, INSTANCE_ID);
 // Optional: specify an app profile for routing control
 config.set("google.bigtable.app_profile.id", "my-app-profile");
 
-// Optional: set timeouts
+// Optional: configure the number of gRPC channels
 config.set("google.bigtable.grpc.channel.count", "4");
 
 Connection connection = BigtableConfiguration.connect(config);
@@ -230,8 +222,6 @@ public void scanRows(Table table) throws Exception {
     scan.withStopRow(Bytes.toBytes("user#12345#~"));  // ~ is after all printable chars
 
     // Performance tuning
-    scan.setCaching(100);        // Number of rows to fetch per RPC
-    scan.setBatch(10);           // Number of columns to fetch per row per RPC
     scan.setMaxResultSize(1024 * 1024);  // Max bytes per RPC response
 
     // Optional: only read specific columns
@@ -274,7 +264,7 @@ public void scanWithFilters(Table table) throws Exception {
         CompareOperator.EQUAL,
         Bytes.toBytes("purchase")
     );
-    // Include rows where the column does not exist
+    // Exclude rows where the column does not exist
     typeFilter.setFilterIfMissing(true);
 
     scan.setFilter(typeFilter);
@@ -306,7 +296,7 @@ public void scanWithMultipleFilters(Table table) throws Exception {
         Bytes.toBytes("event"),
         Bytes.toBytes("page"),
         CompareOperator.EQUAL,
-        new BinaryPrefixComparator(Bytes.toBytes("/dashboard"))
+        new RegexStringComparator("^/dashboard.*")
     ));
 
     // Limit to 100 results
@@ -331,11 +321,10 @@ A very common pattern is scanning by row key prefix.
 
 ```java
 // Scan all rows with a specific prefix
-// PrefixFilter is optimized for this use case
+// setRowPrefixFilter configures the scan to the matching row-key range
 public List<Map<String, String>> scanByPrefix(Table table, String prefix) throws Exception {
     Scan scan = new Scan();
     scan.setRowPrefixFilter(Bytes.toBytes(prefix));
-    scan.setCaching(500);
 
     List<Map<String, String>> results = new ArrayList<>();
 
@@ -381,7 +370,7 @@ public void deleteExamples(Table table) throws Exception {
 
     // Delete a specific column from a row
     Delete deleteColumn = new Delete(Bytes.toBytes("user#12345"));
-    deleteColumn.addColumn(
+    deleteColumn.addColumns(
         Bytes.toBytes("profile"),
         Bytes.toBytes("temp_field")
     );
