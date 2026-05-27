@@ -10,18 +10,18 @@ Description: Configure Kubernetes LimitRanges with Ansible to set default resour
 
 LimitRanges work alongside Resource Quotas to control resource consumption in Kubernetes. While Resource Quotas set aggregate limits for an entire namespace, LimitRanges set constraints on individual pods and containers. They define default resource requests and limits, enforce minimum and maximum values, and prevent anyone from creating a pod that requests an absurd amount of CPU or memory.
 
-When a namespace has a Resource Quota for compute resources, every container must specify requests and limits. LimitRanges provide those defaults automatically, so developers do not need to figure out the right values for every single pod.
+When a namespace has a Resource Quota for compute resources, pods must specify the relevant requests or limits for the enforced CPU and memory resources. LimitRanges provide those defaults automatically, so developers do not need to figure out the right values for every single pod.
 
 This guide covers creating LimitRanges with Ansible for containers, pods, and PVCs, along with practical patterns for multi-tenant clusters.
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- ansible-core 2.16+ with `kubernetes.core` collection
 - A valid kubeconfig
 
 ```bash
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes
+pip install "kubernetes>=24.2.0" PyYAML jsonpatch
 ```
 
 ## How LimitRanges Work
@@ -32,7 +32,7 @@ LimitRanges operate at three levels:
 - **Pod**: Aggregate min/max across all containers in a pod
 - **PersistentVolumeClaim**: Min/max storage size for PVCs
 
-When a pod is created without resource specifications, the LimitRange's `default` values are injected automatically. If a pod specifies values outside the min/max range, the API server rejects it.
+When a pod is created with containers that do not specify resource limits, the LimitRange's `default` values are injected automatically. If a pod specifies values outside the min/max range, the API server rejects it.
 
 ## Creating a Container LimitRange
 
