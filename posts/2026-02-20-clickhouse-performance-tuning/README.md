@@ -106,7 +106,7 @@ ORDER BY (level, service, timestamp);
 
 -- Check the compression improvement
 SELECT
-    column,
+    name AS column,
     formatReadableSize(data_compressed_bytes) AS compressed,
     formatReadableSize(data_uncompressed_bytes) AS uncompressed,
     round(data_uncompressed_bytes / data_compressed_bytes, 2) AS ratio
@@ -127,9 +127,9 @@ CREATE TABLE metrics
     -- DoubleDelta works great for sorted sequences
     timestamp DateTime CODEC(DoubleDelta, LZ4),
 
-    -- Metric values often have small deltas between consecutive rows
-    -- Delta encoding reduces the data before compression
-    value Float64 CODEC(Delta, ZSTD(1)),
+    -- Floating-point metric values often change slowly between consecutive rows
+    -- Gorilla encoding is designed for Float32 and Float64 time-series data
+    value Float64 CODEC(Gorilla, ZSTD(1)),
 
     -- Integer IDs with no particular pattern
     -- ZSTD provides good general compression
@@ -150,7 +150,7 @@ ORDER BY (metric_id, timestamp);
 graph LR
     A[Codec Selection] --> B{Data Type?}
     B -->|Sorted Integers/Dates| C[DoubleDelta + LZ4]
-    B -->|Float Values| D[Delta + ZSTD]
+    B -->|Float Values| D[Gorilla + ZSTD]
     B -->|Random Integers| E[ZSTD]
     B -->|Low Cardinality Strings| F[LZ4]
     B -->|High Cardinality Strings| G[ZSTD]
@@ -290,7 +290,7 @@ SET max_bytes_before_external_sort = 5000000000;  -- Spill to disk after 5 GB
             <!-- Number of threads per query -->
             <max_threads>8</max_threads>
 
-            <!-- Enable query result caching -->
+            <!-- Enable uncompressed block caching for repeated short queries -->
             <use_uncompressed_cache>1</use_uncompressed_cache>
 
             <!-- Background merge settings -->
