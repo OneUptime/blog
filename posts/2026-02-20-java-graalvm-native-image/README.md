@@ -62,11 +62,11 @@ Configure your project to support native image compilation.
                 <!-- Configure native image build options -->
                 <buildArgs>
                     <!-- Enable URL protocols for HTTP clients -->
-                    <arg>--enable-url-protocols=http,https</arg>
+                    <buildArg>--enable-url-protocols=http,https</buildArg>
                     <!-- Reduce image size by removing debug info -->
-                    <arg>-H:+RemoveUnusedSymbols</arg>
+                    <buildArg>-H:+RemoveUnusedSymbols</buildArg>
                     <!-- Install signal handlers for graceful shutdown -->
-                    <arg>--install-exit-handlers</arg>
+                    <buildArg>--install-exit-handlers</buildArg>
                 </buildArgs>
             </configuration>
         </plugin>
@@ -112,12 +112,12 @@ Configure your project to support native image compilation.
 
 # Step 1: Install GraalVM (using SDKMAN)
 
-sdk install java 21.0.5-graal
-sdk use java 21.0.5-graal
+sdk install java 21.0.11-graal
+sdk use java 21.0.11-graal
 
 # Step 2: Verify GraalVM installation
 java -version
-# Expected: GraalVM CE 21.0.5
+# Expected: Oracle GraalVM 21.0.11
 
 # Step 3: Build the native image
 # The -Pnative profile activates ahead-of-time compilation
@@ -262,6 +262,7 @@ Run tests in native mode to catch AOT-related issues.
 <plugin>
     <groupId>org.graalvm.buildtools</groupId>
     <artifactId>native-maven-plugin</artifactId>
+    <extensions>true</extensions>
     <executions>
         <execution>
             <id>test-native</id>
@@ -319,16 +320,17 @@ class NativeImageTest {
 ```java
 // NativeImageConfig.java - Solve common native image build issues
 @Configuration
+@RegisterReflectionForBinding({Product.class, OrderResponse.class})
 public class NativeImageConfig {
 
     // Issue: Jackson serialization fails at runtime
-    // Solution: Register types used with Jackson
+    // Solution: Register binding types used with Jackson
     @Bean
     public Jackson2ObjectMapperBuilderCustomizer jacksonCustomizer() {
         return builder -> {
             // Ensure date/time types are properly registered
             builder.modulesToInstall(new JavaTimeModule());
-            // Disable features that require reflection
+            // Serialize dates as ISO-8601 strings instead of numeric timestamps
             builder.featuresToDisable(
                 SerializationFeature.WRITE_DATES_AS_TIMESTAMPS
             );
