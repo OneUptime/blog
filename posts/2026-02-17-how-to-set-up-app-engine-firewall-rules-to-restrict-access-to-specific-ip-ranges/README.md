@@ -10,7 +10,7 @@ Description: A practical guide to configuring App Engine firewall rules to contr
 
 App Engine includes a built-in firewall that sits in front of your application. Every request passes through it before reaching your code. By default, the firewall allows all traffic, but you can add rules to restrict access to specific IP addresses or ranges. This is useful for locking down staging environments, restricting admin panels to office IPs, or blocking abusive traffic.
 
-The App Engine firewall is evaluated before your application code runs, which means blocked requests never consume instance hours. This makes it an efficient first line of defense.
+The App Engine firewall is evaluated before your application code runs, which means blocked requests do not reach your app handlers. This makes it an efficient first line of defense.
 
 ## How the Firewall Works
 
@@ -52,30 +52,30 @@ With a deny-by-default configuration, add rules for IP ranges that should have a
 ```bash
 # Allow traffic from your office IP range
 gcloud app firewall-rules create \
+  100 \
   --action=ALLOW \
   --source-range="203.0.113.0/24" \
   --description="Office network" \
-  --priority=100 \
   --project=your-project-id
 ```
 
 ```bash
 # Allow traffic from your VPN exit point
 gcloud app firewall-rules create \
+  200 \
   --action=ALLOW \
   --source-range="198.51.100.50/32" \
   --description="VPN server" \
-  --priority=200 \
   --project=your-project-id
 ```
 
 ```bash
 # Allow traffic from a partner's IP range
 gcloud app firewall-rules create \
+  300 \
   --action=ALLOW \
   --source-range="192.0.2.0/28" \
   --description="Partner API access" \
-  --priority=300 \
   --project=your-project-id
 ```
 
@@ -88,20 +88,20 @@ With an allow-by-default configuration, add deny rules to block specific sources
 ```bash
 # Block a known abusive IP
 gcloud app firewall-rules create \
+  100 \
   --action=DENY \
   --source-range="198.18.0.100/32" \
   --description="Blocked - abusive scraping" \
-  --priority=100 \
   --project=your-project-id
 ```
 
 ```bash
 # Block an entire IP range associated with bot traffic
 gcloud app firewall-rules create \
+  200 \
   --action=DENY \
   --source-range="198.18.0.0/16" \
   --description="Blocked - bot network" \
-  --priority=200 \
   --project=your-project-id
 ```
 
@@ -127,13 +127,15 @@ PRIORITY  ACTION  SOURCE_RANGE     DESCRIPTION
 Update an existing rule:
 
 ```bash
-# Update the priority of an existing rule
+# Update an existing rule's source range, action, or description
 gcloud app firewall-rules update 100 \
   --source-range="203.0.113.0/24" \
   --action=ALLOW \
   --description="Office network - updated" \
   --project=your-project-id
 ```
+
+To change a rule's priority, delete the rule and recreate it with the new priority.
 
 Delete a rule:
 
@@ -154,38 +156,38 @@ gcloud app firewall-rules update default \
 
 # Step 2: Allow your office
 gcloud app firewall-rules create \
+  100 \
   --action=ALLOW \
   --source-range="203.0.113.0/24" \
   --description="Office" \
-  --priority=100 \
   --project=staging-project-id
 
-# Step 3: Allow your CI/CD system for health checks
+# Step 3: Allow your CI/CD system if it has a known egress IP
 gcloud app firewall-rules create \
+  200 \
   --action=ALLOW \
-  --source-range="35.190.247.0/24" \
-  --description="Cloud Build health checks" \
-  --priority=200 \
+  --source-range="198.51.100.10/32" \
+  --description="CI/CD egress IP" \
   --project=staging-project-id
 
-# Step 4: Allow Google health check IPs (needed for App Engine)
+# Step 4: Allow Cloud Scheduler, Cloud Tasks, and current App Engine Cron requests if needed
 gcloud app firewall-rules create \
-  --action=ALLOW \
-  --source-range="0.1.0.1/32" \
-  --description="App Engine health checks" \
-  --priority=50 \
-  --project=staging-project-id
-
-# Step 5: Allow Cloud Tasks and Cron IPs
-gcloud app firewall-rules create \
+  50 \
   --action=ALLOW \
   --source-range="0.1.0.2/32" \
-  --description="Cloud Tasks and Cron" \
-  --priority=51 \
+  --description="Cloud Scheduler, Cloud Tasks, and Cron" \
+  --project=staging-project-id
+
+# Step 5: Allow legacy App Engine Cron requests if needed
+gcloud app firewall-rules create \
+  51 \
+  --action=ALLOW \
+  --source-range="0.1.0.1/32" \
+  --description="Legacy App Engine Cron" \
   --project=staging-project-id
 ```
 
-Important: The IP `0.1.0.1` is a special App Engine internal IP used for health check requests. If you block it, App Engine will think your instances are unhealthy and keep restarting them. The IP `0.1.0.2` is used by Cloud Tasks and App Engine cron jobs.
+Important: The IP `0.1.0.2` is used by Cloud Scheduler jobs using App Engine HTTP and by App Engine tasks in Cloud Tasks, and current App Engine Cron requests also use it. Older App Engine Cron jobs created with gcloud versions earlier than 326.0.0 can use `0.1.0.1`. In the standard environment, these internal requests can bypass a deny default rule; in the flexible environment, allow the relevant IPs when you use deny-by-default.
 
 ## Practical Scenario: Geo-Blocking
 
@@ -194,10 +196,10 @@ While App Engine firewall does not support country-based blocking directly, you 
 ```bash
 # Block specific IP ranges (example)
 gcloud app firewall-rules create \
+  500 \
   --action=DENY \
   --source-range="45.64.0.0/12" \
   --description="Blocked region range 1" \
-  --priority=500 \
   --project=your-project-id
 ```
 
@@ -216,10 +218,10 @@ def add_ip(ip_range, description, priority, project):
     """Add an IP range to the App Engine firewall allowlist."""
     cmd = [
         "gcloud", "app", "firewall-rules", "create",
+        str(priority),
         "--action=ALLOW",
         f"--source-range={ip_range}",
         f"--description={description}",
-        f"--priority={priority}",
         f"--project={project}",
         "--format=json"
     ]
@@ -295,4 +297,4 @@ For most applications, a combination of the App Engine firewall for IP-level res
 
 ## Summary
 
-The App Engine firewall provides a simple, effective way to control who can reach your application. For internal tools and staging environments, use a deny-by-default approach with explicit allow rules for trusted IPs. For public applications, use an allow-by-default approach with deny rules for abusive sources. Remember to allow the special App Engine health check IPs (0.1.0.1 and 0.1.0.2) when using deny-by-default, and test your rules before relying on them in production.
+The App Engine firewall provides a simple, effective way to control who can reach your application. For internal tools and staging environments, use a deny-by-default approach with explicit allow rules for trusted IPs. For public applications, use an allow-by-default approach with deny rules for abusive sources. Remember to account for App Engine internal service IPs such as `0.1.0.2` for Cloud Scheduler, Cloud Tasks, and current Cron requests when using deny-by-default, and test your rules before relying on them in production.
