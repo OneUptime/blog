@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, HashiCorp Vault, Secrets Management, Security, DevOps
 
-Description: Deploy a HashiCorp Vault server with auto-unseal, secret engines, authentication backends, and policies using Ansible automation.
+Description: Deploy a HashiCorp Vault server with TLS, storage configuration, initialization, and manual unseal steps using Ansible automation.
 
 ---
 
-Storing secrets in plain text files, environment variables, or configuration management tools is a known security risk. HashiCorp Vault solves this by providing a centralized secrets management system with access control, audit logging, dynamic credentials, and encryption as a service. Deploying Vault properly involves setting up the storage backend, configuring TLS, initializing the seal, enabling secret engines, and defining access policies. Ansible automates all of this into a repeatable process.
+Storing secrets in plain text files, environment variables, or configuration management tools is a known security risk. HashiCorp Vault solves this by providing a centralized secrets management system with access control, audit logging, dynamic credentials, and encryption as a service. Deploying Vault properly involves setting up the storage backend, configuring TLS, initializing the seal, enabling secret engines, and defining access policies. Ansible automates the server installation and configuration into a repeatable process.
 
 ## Role Defaults
 
@@ -31,7 +31,7 @@ vault_tls_enabled: true
 vault_tls_cert_file: "{{ vault_config_dir }}/tls/vault-cert.pem"
 vault_tls_key_file: "{{ vault_config_dir }}/tls/vault-key.pem"
 
-# Secret engines to enable
+# Optional secret engines for follow-up configuration tasks
 vault_secret_engines:
   - path: secret
     type: kv-v2
@@ -40,7 +40,7 @@ vault_secret_engines:
   - path: pki
     type: pki
 
-# Auth methods to enable
+# Optional auth methods for follow-up configuration tasks
 vault_auth_methods:
   - type: userpass
   - type: approle
@@ -76,9 +76,11 @@ vault_auth_methods:
     url: "https://releases.hashicorp.com/vault/{{ vault_version }}/vault_{{ vault_version }}_linux_amd64.zip"
     dest: /tmp/vault.zip
 
-- name: Install unzip
+- name: Install required packages
   apt:
-    name: unzip
+    name:
+      - unzip
+      - libcap2-bin
     state: present
 
 - name: Extract Vault binary
@@ -89,9 +91,9 @@ vault_auth_methods:
     creates: /usr/local/bin/vault
 
 - name: Set Vault binary capabilities
-  capabilities:
+  community.general.capabilities:
     path: /usr/local/bin/vault
-    capability: cap_ipc_lock=+ep
+    capability: cap_ipc_lock+ep
     state: present
 
 - name: Deploy TLS certificates
