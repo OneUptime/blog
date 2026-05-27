@@ -40,7 +40,7 @@ mysql_datadir: /var/lib/mysql
 # InnoDB settings (tune based on available RAM)
 mysql_innodb_buffer_pool_size: "256M"
 mysql_innodb_buffer_pool_instances: 1
-mysql_innodb_log_file_size: "64M"
+mysql_innodb_redo_log_capacity: "64M"
 mysql_innodb_log_buffer_size: "16M"
 mysql_innodb_flush_log_at_trx_commit: 1
 mysql_innodb_flush_method: "O_DIRECT"
@@ -54,10 +54,6 @@ mysql_max_connect_errors: 100000
 mysql_wait_timeout: 28800
 mysql_interactive_timeout: 28800
 mysql_thread_cache_size: 16
-
-# Query cache (disabled in MySQL 8.0+)
-mysql_query_cache_type: 0
-mysql_query_cache_size: 0
 
 # Temp tables and sort buffers
 mysql_tmp_table_size: "64M"
@@ -104,7 +100,7 @@ collation-server = utf8mb4_unicode_ci
 # InnoDB Settings
 innodb_buffer_pool_size = {{ mysql_innodb_buffer_pool_size }}
 innodb_buffer_pool_instances = {{ mysql_innodb_buffer_pool_instances }}
-innodb_log_file_size = {{ mysql_innodb_log_file_size }}
+innodb_redo_log_capacity = {{ mysql_innodb_redo_log_capacity }}
 innodb_log_buffer_size = {{ mysql_innodb_log_buffer_size }}
 innodb_flush_log_at_trx_commit = {{ mysql_innodb_flush_log_at_trx_commit }}
 innodb_flush_method = {{ mysql_innodb_flush_method }}
@@ -186,7 +182,11 @@ default-character-set = utf8mb4
   notify: restart mysql
 
 - name: Validate MySQL configuration syntax
-  command: mysqld --validate-config
+  command:
+    argv:
+      - mysqld
+      - "--defaults-file={{ _mysql_config_path }}"
+      - --validate-config
   changed_when: false
   when: mysql_config_changed.changed
 ```
@@ -218,7 +218,7 @@ Use inventory variables to tune MySQL differently per environment.
 ---
 mysql_innodb_buffer_pool_size: "20G"
 mysql_innodb_buffer_pool_instances: 8
-mysql_innodb_log_file_size: "1G"
+mysql_innodb_redo_log_capacity: "1G"
 mysql_innodb_log_buffer_size: "64M"
 mysql_innodb_io_capacity: 2000
 mysql_innodb_io_capacity_max: 4000
@@ -235,7 +235,7 @@ mysql_bind_address: "0.0.0.0"
 ---
 mysql_innodb_buffer_pool_size: "4G"
 mysql_innodb_buffer_pool_instances: 4
-mysql_innodb_log_file_size: "256M"
+mysql_innodb_redo_log_capacity: "256M"
 mysql_max_connections: 100
 mysql_bind_address: "0.0.0.0"
 ```
