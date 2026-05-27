@@ -25,12 +25,12 @@ Restic is distributed as a single binary, which makes installation clean and sim
   become: true
 
   vars:
-    restic_version: "0.16.4"
+    restic_version: "0.18.1"
 
   tasks:
     # Try system package manager first
     - name: Install Restic from package manager (RedHat)
-      ansible.builtin.yum:
+      ansible.builtin.dnf:
         name: restic
         state: present
       when: ansible_os_family == "RedHat"
@@ -46,7 +46,7 @@ Restic is distributed as a single binary, which makes installation clean and sim
       register: pkg_install_deb
       failed_when: false
 
-    # Fall back to binary download if package is unavailable or too old
+    # Fall back to binary download if package is unavailable
     - name: Download Restic binary
       ansible.builtin.get_url:
         url: "https://github.com/restic/restic/releases/download/v{{ restic_version }}/restic_{{ restic_version }}_linux_{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}.bz2"
@@ -233,6 +233,7 @@ A well-structured backup script handles the full lifecycle: backup, prune, and c
 
           # Run the backup
           log "INFO" "Starting backup"
+          set +e
           restic backup \
               --verbose \
               --exclude-file=/etc/restic-excludes.txt \
@@ -245,6 +246,7 @@ A well-structured backup script handles the full lifecycle: backup, prune, and c
               2>&1 | tee -a "$LOG"
 
           BACKUP_RC=${PIPESTATUS[0]}
+          set -e
           if [ $BACKUP_RC -ne 0 ]; then
               log "ERROR" "Backup failed with exit code $BACKUP_RC"
               exit $BACKUP_RC
@@ -422,7 +424,7 @@ Cloud storage gives you off-site backup protection. Here is the S3-specific setu
     # List recent snapshots
     - name: Get recent snapshots
       ansible.builtin.command:
-        cmd: restic snapshots --last --json
+        cmd: restic snapshots --latest 1 --json
       register: snapshots_raw
       changed_when: false
 
@@ -443,13 +445,13 @@ Cloud storage gives you off-site backup protection. Here is the S3-specific setu
     # Check repository statistics
     - name: Get repository stats
       ansible.builtin.command:
-        cmd: restic stats --json
+        cmd: restic stats --mode raw-data --json
       register: stats_raw
       changed_when: false
 
     - name: Parse and display stats
       ansible.builtin.debug:
-        msg: "Repository size: {{ ((stats_raw.stdout | from_json).total_size / 1073741824) | round(2) }} GB"
+        msg: "Repository data size: {{ ((stats_raw.stdout | from_json).total_size / 1073741824) | round(2) }} GB"
 
     # Alert if no recent backups
     - name: Alert on missing backups
