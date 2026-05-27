@@ -85,8 +85,8 @@ metadata:
   namespace: rook-ceph
 spec:
   cephVersion:
-    # Use the latest stable Ceph release
-    image: quay.io/ceph/ceph:v18.2
+    # Use a supported stable Ceph release
+    image: quay.io/ceph/ceph:v19.2.3
   dataDirHostPath: /var/lib/rook
   mon:
     # Run 3 monitors for high availability
@@ -163,6 +163,10 @@ parameters:
   imageFeatures: layering
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
   csi.storage.k8s.io/fstype: ext4
@@ -199,6 +203,33 @@ spec:
     # Run 2 MDS instances for high availability
     activeCount: 1
     activeStandby: true
+---
+# cephfs-storage-class.yaml
+# StorageClass that provisions shared CephFS volumes
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rook-cephfs
+provisioner: rook-ceph.cephfs.csi.ceph.com
+parameters:
+  clusterID: rook-ceph
+  fsName: ceph-filesystem
+  pool: ceph-filesystem-data0
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+```
+
+```bash
+# Apply the filesystem and storage class
+kubectl apply -f cephfs.yaml
 ```
 
 ## Step 5: Test with a Sample Application
@@ -255,7 +286,7 @@ Use the Rook toolbox to run Ceph commands directly.
 
 ```bash
 # Deploy the Rook toolbox pod
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/release-1.14/deploy/examples/toolbox.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/release-1.19/deploy/examples/toolbox.yaml
 
 # Check overall cluster status
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph status
