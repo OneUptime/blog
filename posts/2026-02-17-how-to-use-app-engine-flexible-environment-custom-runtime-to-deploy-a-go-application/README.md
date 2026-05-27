@@ -236,7 +236,7 @@ This is where Go really shines. The multi-stage build produces a tiny final imag
 # Dockerfile - Multi-stage build for Go application
 
 # Stage 1: Build the Go binary
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Install git for fetching dependencies (if using private repos)
 RUN apk add --no-cache git ca-certificates
@@ -302,7 +302,8 @@ Keep the build context clean:
 *.md
 app.yaml
 .gcloudignore
-vendor/  # if not vendoring
+# Uncomment this if your project does not vendor dependencies:
+# vendor/
 ```
 
 ## App Engine Configuration
@@ -314,7 +315,7 @@ env: flex
 
 resources:
   cpu: 1
-  memory_gb: 0.5    # Go is memory efficient - 512MB is generous
+  memory_gb: 0.6    # Minimum requested memory for 1 CPU
   disk_size_gb: 10
 
 automatic_scaling:
@@ -384,7 +385,7 @@ gcloud app deploy app.yaml --project=your-project-id
 The deployment process:
 1. Source code uploaded to Cloud Storage
 2. Docker image built with Cloud Build
-3. Image pushed to Container Registry
+3. Image pushed to Artifact Registry
 4. New instances created with the image
 5. Health checks verify the instances
 6. Traffic routed to new instances
@@ -403,6 +404,7 @@ import (
     "database/sql"
     "fmt"
     "os"
+    "time"
 
     _ "github.com/lib/pq" // PostgreSQL driver
 )
@@ -429,7 +431,7 @@ func NewConnection() (*sql.DB, error) {
     // Configure connection pool
     db.SetMaxOpenConns(10)
     db.SetMaxIdleConns(5)
-    db.SetConnMaxLifetime(30 * 60) // 30 minutes
+    db.SetConnMaxLifetime(30 * time.Minute)
 
     // Verify connectivity
     if err := db.Ping(); err != nil {
@@ -450,6 +452,7 @@ beta_settings:
 env_variables:
   CLOUD_SQL_CONNECTION_NAME: "your-project:us-central1:your-instance"
   DB_USER: "app"
+  DB_PASS: "your-password"
   DB_NAME: "mydb"
 ```
 
@@ -457,16 +460,11 @@ env_variables:
 
 Go on App Engine Flex performs exceptionally well. Here are a few tuning tips:
 
-Set GOMAXPROCS to match your CPU allocation:
+For Go 1.25 and later, the runtime is container-aware and sets `GOMAXPROCS` based on CPU quota by default. If you need to pin it explicitly, set the environment variable to match your CPU allocation:
 
-```go
-import "runtime"
-
-func init() {
-    // Match GOMAXPROCS to the allocated CPU
-    // For 1 CPU in app.yaml, this is already the default
-    runtime.GOMAXPROCS(runtime.NumCPU())
-}
+```yaml
+env_variables:
+  GOMAXPROCS: "1"
 ```
 
 Use connection pooling for database and HTTP clients:
@@ -487,6 +485,22 @@ Enable gzip compression for API responses:
 
 ```go
 // Middleware for gzip compression
+import (
+    "compress/gzip"
+    "io"
+    "net/http"
+    "strings"
+)
+
+type gzipResponseWriter struct {
+    io.Writer
+    http.ResponseWriter
+}
+
+func (w gzipResponseWriter) Write(b []byte) (int, error) {
+    return w.Writer.Write(b)
+}
+
 func GzipMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
