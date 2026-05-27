@@ -8,23 +8,23 @@ Description: Retrieve and analyze Docker container logs using Ansible for debugg
 
 ---
 
-When something goes wrong with a containerized service, the first place you look is the container logs. Docker captures everything written to stdout and stderr by the container's main process. While you can SSH into each host and run `docker logs` manually, Ansible lets you pull logs from multiple containers across many hosts in a single run. This is especially valuable during incident response when you need to quickly check logs across your entire fleet.
+When something goes wrong with a containerized service, the first place you look is the container logs. Docker captures everything written to stdout and stderr by processes in the container. While you can SSH into each host and run `docker logs` manually, Ansible lets you pull logs from multiple containers across many hosts in a single run. This is especially valuable during incident response when you need to quickly check logs across your entire fleet.
 
 ## How Docker Logging Works
 
-Docker captures the standard output and standard error streams from the container's PID 1 process. These logs are stored locally on the Docker host (typically as JSON files under `/var/lib/docker/containers/`). The `docker logs` command reads from this storage.
+Docker captures the standard output and standard error streams from the container. With the default `json-file` logging driver, these logs are stored locally on the Docker host as JSON files under `/var/lib/docker/containers/`. The `docker logs` command reads from the logging driver's storage.
 
 ```mermaid
 flowchart LR
     A[Container Process] -->|stdout/stderr| B[Docker Log Driver]
-    B --> C[Local JSON File]
+    B --> C[Driver Storage]
     C --> D[docker logs command]
     D --> E[Ansible captures output]
 ```
 
 ## Basic Log Retrieval
 
-The simplest approach uses the `docker_container_info` module to get the container ID, then the `command` module to fetch logs:
+The simplest approach uses the `shell` module to fetch logs and merge stdout and stderr into one registered output:
 
 ```yaml
 # get_logs.yml - Retrieve container logs
@@ -36,8 +36,8 @@ The simplest approach uses the `docker_container_info` module to get the contain
 
   tasks:
     - name: Get last 100 lines of container logs
-      ansible.builtin.command:
-        cmd: docker logs --tail 100 myapp
+      ansible.builtin.shell:
+        cmd: docker logs --tail 100 myapp 2>&1
       register: container_logs
       changed_when: false
 
@@ -59,8 +59,8 @@ Adding timestamps helps correlate events across services:
 
   tasks:
     - name: Get logs with timestamps
-      ansible.builtin.command:
-        cmd: docker logs --timestamps --tail 50 myapp
+      ansible.builtin.shell:
+        cmd: docker logs --timestamps --tail 50 myapp 2>&1
       register: timestamped_logs
       changed_when: false
 
@@ -85,14 +85,14 @@ During incident investigation, you usually know approximately when the problem s
 
   tasks:
     - name: Get logs from the last hour
-      ansible.builtin.command:
-        cmd: docker logs --since 1h myapp
+      ansible.builtin.shell:
+        cmd: docker logs --since 1h myapp 2>&1
       register: recent_logs
       changed_when: false
 
     - name: Get logs from a specific time range
-      ansible.builtin.command:
-        cmd: "docker logs --since {{ since_time }} --until {{ until_time }} myapp"
+      ansible.builtin.shell:
+        cmd: "docker logs --since {{ since_time }} --until {{ until_time }} myapp 2>&1"
       register: range_logs
       changed_when: false
 
@@ -120,8 +120,8 @@ When debugging distributed applications, you need logs from several services at 
 
   tasks:
     - name: Get logs from each container
-      ansible.builtin.command:
-        cmd: "docker logs --tail 50 --timestamps {{ item }}"
+      ansible.builtin.shell:
+        cmd: "docker logs --tail 50 --timestamps {{ item }} 2>&1"
       register: all_logs
       loop: "{{ containers }}"
       changed_when: false
@@ -158,8 +158,8 @@ Instead of dumping all logs, filter for specific patterns:
 
   tasks:
     - name: Get recent logs
-      ansible.builtin.command:
-        cmd: docker logs --tail 500 myapp
+      ansible.builtin.shell:
+        cmd: docker logs --tail 500 myapp 2>&1
       register: raw_logs
       changed_when: false
 
@@ -211,8 +211,8 @@ For auditing or post-mortem analysis, save logs to the Ansible control node:
       delegate_to: localhost
 
     - name: Get full container logs
-      ansible.builtin.command:
-        cmd: docker logs --timestamps myapp
+      ansible.builtin.shell:
+        cmd: docker logs --timestamps myapp 2>&1
       register: full_logs
       changed_when: false
 
@@ -239,15 +239,9 @@ While Ansible is not ideal for streaming real-time logs (it is a batch tool), yo
     max_polls: 6
 
   tasks:
-    - name: Get initial log line count
-      ansible.builtin.command:
-        cmd: docker logs myapp 2>&1 | wc -l
-      register: initial_count
-      changed_when: false
-
-    - name: Poll for new log entries
-      ansible.builtin.command:
-        cmd: "docker logs --tail {{ (current_count.stdout | default(initial_count.stdout) | int) * -1 + 1 }} --timestamps myapp"
+    - name: Poll for matching log entries
+      ansible.builtin.shell:
+        cmd: "docker logs --since {{ poll_interval }}s --timestamps myapp 2>&1"
       register: new_logs
       changed_when: false
       until: new_logs.stdout_lines | select('search', 'ready|started|listening') | list | length > 0
@@ -279,8 +273,8 @@ A common pattern is to check logs right after deploying a new version to make su
         seconds: 15
 
     - name: Check startup logs for errors
-      ansible.builtin.command:
-        cmd: docker logs --since 30s myapp
+      ansible.builtin.shell:
+        cmd: docker logs --since 30s myapp 2>&1
       register: startup_logs
       changed_when: false
 
@@ -301,12 +295,12 @@ A common pattern is to check logs right after deploying a new version to make su
 
 ## Separating stdout and stderr
 
-Docker captures stdout and stderr separately. You can retrieve just one stream:
+Docker captures stdout and stderr separately. When Ansible runs `docker logs`, container stdout appears in the registered stdout and container stderr appears in the registered stderr. Use shell redirection if you want only one stream:
 
 ```yaml
     - name: Get only stderr (error output)
-      ansible.builtin.command:
-        cmd: docker logs myapp
+      ansible.builtin.shell:
+        cmd: docker logs myapp 1>/dev/null
       register: container_output
       changed_when: false
 
@@ -345,4 +339,4 @@ This limits each log file to 50MB and keeps at most 5 rotated files, for a maxim
 
 ## Summary
 
-Retrieving Docker container logs with Ansible is straightforward using the `command` module with `docker logs`. The real power comes from automating log collection across multiple hosts and containers, filtering for error patterns, and integrating log checks into your deployment pipelines. For production environments, combine these techniques with a centralized logging solution like Fluentd or Loki, using Ansible to verify that logs are flowing correctly and to pull ad-hoc logs during troubleshooting.
+Retrieving Docker container logs with Ansible is straightforward using the `shell` module with `docker logs` when you need to merge stdout and stderr. The real power comes from automating log collection across multiple hosts and containers, filtering for error patterns, and integrating log checks into your deployment pipelines. For production environments, combine these techniques with a centralized logging solution like Fluentd or Loki, using Ansible to verify that logs are flowing correctly and to pull ad-hoc logs during troubleshooting.
