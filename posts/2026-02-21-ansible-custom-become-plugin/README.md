@@ -80,7 +80,7 @@ DOCUMENTATION = """
 """
 
 from ansible.plugins.become import BecomeBase
-from ansible.module_utils.six.moves import shlex_quote
+import shlex
 
 
 class BecomeModule(BecomeBase):
@@ -92,8 +92,6 @@ class BecomeModule(BecomeBase):
     prompt = 'privrun password:'
     # Pattern to detect authentication failure
     fail = ('Authentication failed', 'Permission denied', 'privrun: error')
-    # Pattern to detect successful escalation
-    success = ('privrun: authenticated',)
 
     def build_become_command(self, cmd, shell):
         """Build the privrun command wrapper."""
@@ -111,14 +109,14 @@ class BecomeModule(BecomeBase):
         # Build the privrun command
         # privrun --user root --reason "ansible-automation" -- /bin/sh -c "actual command"
         become_cmd = 'privrun'
-        become_cmd += ' --user %s' % shlex_quote(become_user)
-        become_cmd += ' --reason %s' % shlex_quote(reason)
+        become_cmd += ' --user %s' % shlex.quote(become_user)
+        become_cmd += ' --reason %s' % shlex.quote(reason)
 
         if flags:
             become_cmd += ' %s' % flags
 
         # The -- separates privrun flags from the command to execute
-        become_cmd += ' -- %s' % cmd
+        become_cmd += ' -- %s' % self._build_success_command(cmd, shell)
 
         return become_cmd
 ```
@@ -183,18 +181,26 @@ You can also set the become method per task:
 
 ## Handling Password Prompts
 
-The `prompt` attribute in your become plugin tells Ansible what to look for when the escalation tool asks for a password. Ansible watches the command output for this string and sends the become password when it sees it.
+The `prompt` attribute in your become plugin tells Ansible what literal text to look for when the escalation tool asks for a password. Ansible watches the command output for this string and sends the become password when it sees it.
 
-If your tool has a more complex prompt, you can use a regular expression:
+If your tool has a more complex prompt, override `check_password_prompt`:
 
 ```python
+import re
+from ansible.module_utils.common.text.converters import to_text
+
+
 class BecomeModule(BecomeBase):
     name = 'privrun'
 
     # Use a regex pattern for the prompt
-    prompt = r'privrun password for \w+:'
     fail = ('Authentication failed', 'Permission denied')
-    success = ('privrun: authenticated',)
+
+    def check_password_prompt(self, b_output):
+        match = re.search(r'privrun password for \w+:', to_text(b_output))
+        if match:
+            self.prompt = match.group(0)
+        return bool(match)
 ```
 
 To pass the password, set it in your inventory or at runtime:
@@ -210,48 +216,39 @@ Or prompt at runtime:
 ansible-playbook playbooks/escalate_with_privrun.yml --ask-become-pass
 ```
 
-## A Real-World Example: CyberArk PSM Become Plugin
+## A Real-World Pattern: Vault-Backed Sudo Become Plugin
 
-Here is a more realistic example that integrates with a password vault for just-in-time credentials:
+Here is the command-wrapping portion of a plugin you might pair with a password vault workflow. The vault lookup should populate `ansible_become_password` before execution; `build_become_command` is responsible for wrapping the command:
 
 ```python
-# cyberark_become.py - Become plugin that fetches credentials from a vault
+# vault_sudo.py - Become plugin for a vault-backed sudo workflow
 from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 DOCUMENTATION = """
-    name: cyberark_become
-    short_description: Privilege escalation with CyberArk credential retrieval
+    name: vault_sudo
+    short_description: Privilege escalation with vault-backed sudo credentials
     description:
-        - Fetches temporary sudo credentials from CyberArk before escalating.
+        - Uses sudo after the become password has been supplied by a vault workflow.
     options:
       become_user:
         description: User to escalate to
         default: root
         vars:
           - name: ansible_become_user
-      vault_url:
-        description: CyberArk vault API endpoint
+      become_pass:
+        description: Password for sudo authentication
         vars:
-          - name: ansible_cyberark_vault_url
-        env:
-          - name: CYBERARK_VAULT_URL
-      vault_app_id:
-        description: Application ID for CyberArk authentication
-        vars:
-          - name: ansible_cyberark_app_id
-        env:
-          - name: CYBERARK_APP_ID
+          - name: ansible_become_password
+          - name: ansible_become_pass
 """
 
-import json
 from ansible.plugins.become import BecomeBase
-from ansible.module_utils.six.moves import shlex_quote
-from ansible.module_utils.urls import open_url
+import shlex
 
 
 class BecomeModule(BecomeBase):
-    name = 'cyberark_become'
+    name = 'vault_sudo'
     prompt = '[sudo] password for'
     fail = ('Sorry, try again', 'sudo: 3 incorrect password attempts')
 
@@ -263,10 +260,10 @@ class BecomeModule(BecomeBase):
 
         become_user = self.get_option('become_user') or 'root'
 
-        # Standard sudo wrapping (credentials are fetched separately)
-        become_cmd = 'sudo -H -S -n'
-        become_cmd += ' -u %s' % shlex_quote(become_user)
-        become_cmd += ' %s' % cmd
+        # Standard sudo wrapping. The password is supplied by Ansible when prompted.
+        become_cmd = 'sudo -H -S'
+        become_cmd += ' -u %s' % shlex.quote(become_user)
+        become_cmd += ' %s' % self._build_success_command(cmd, shell)
 
         return become_cmd
 ```
@@ -296,11 +293,18 @@ plugin._options = {
 original_get_option = plugin.get_option
 plugin.get_option = lambda key: plugin._options.get(key, '')
 
-cmd = plugin.build_become_command('/bin/whoami', None)
+class DummyShell:
+    ECHO = 'echo'
+    COMMAND_SEP = '&&'
+    executable = '/bin/sh'
+
+
+cmd = plugin.build_become_command('/bin/whoami', DummyShell())
 print(f"Generated command: {cmd}")
 assert 'privrun' in cmd
 assert '--user' in cmd
 assert '--reason' in cmd
+assert 'BECOME-SUCCESS' in cmd
 print("Tests passed")
 ```
 
@@ -315,4 +319,4 @@ For Ansible to find your become plugin, it needs to be in one of these locations
 
 ## Summary
 
-Custom become plugins let you integrate Ansible with any privilege escalation system your organization uses. The plugin interface is clean: override `build_become_command` to wrap commands, set `prompt`/`fail`/`success` patterns for password handling, and define your options in the `DOCUMENTATION` string. Whether you are integrating with PAM wrappers, commercial IAM tools, or homegrown solutions, the become plugin system gives you full control over how Ansible escalates privileges.
+Custom become plugins let you integrate Ansible with any privilege escalation system your organization uses. The plugin interface is clean: override `build_become_command` to wrap commands, use `_build_success_command` so Ansible can detect successful escalation, set `prompt` and `fail` patterns for password handling, and define your options in the `DOCUMENTATION` string. Whether you are integrating with PAM wrappers, commercial IAM tools, or homegrown solutions, the become plugin system gives you full control over how Ansible escalates privileges.
