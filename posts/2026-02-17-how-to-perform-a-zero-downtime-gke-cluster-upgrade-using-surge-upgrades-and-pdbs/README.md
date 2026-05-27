@@ -16,7 +16,7 @@ I have performed this process on production clusters serving real traffic, and t
 
 A GKE cluster upgrade happens in two phases:
 
-1. **Control plane upgrade**: Google upgrades the Kubernetes API server, scheduler, and controller manager. This is automatic and causes no workload disruption.
+1. **Control plane upgrade**: Google upgrades the Kubernetes API server, scheduler, and controller manager. This is automatic and does not affect the availability of worker nodes running your workloads, although you might be unable to change cluster resources for several minutes, especially on zonal clusters.
 2. **Node pool upgrade**: Nodes are drained and replaced with new nodes running the updated version. This is where workload disruption can happen.
 
 ```mermaid
@@ -32,11 +32,13 @@ sequenceDiagram
 
     Note over Old,New: Phase 2: Node Pool Upgrade
     New->>New: Create surge node
-    Pod->>New: Schedule pods on surge node
-    Note over Pod: Pods become ready
-    LB->>Pod: Traffic shifts to new pods
+    Note over New: Surge node becomes Ready
+    Old->>Old: Cordon old node
     Old->>Old: Drain old node
     Pod->>Old: Evict pods (respecting PDBs)
+    Pod->>New: Replacement pods schedule on new node
+    Note over Pod: Pods become ready
+    LB->>Pod: Traffic shifts to ready pods
     Old->>Old: Delete old node
 ```
 
@@ -222,7 +224,7 @@ The settings mean:
 - `--max-surge-upgrade 2`: Create up to 2 extra nodes during the upgrade
 - `--max-unavailable-upgrade 0`: Never have fewer nodes than the pool's target size
 
-This is the most important setting for zero-downtime. With `max-unavailable-upgrade 0`, every old node is replaced by a new one before being drained. Your total capacity never drops.
+This is the most important setting for zero-downtime. With `max-unavailable-upgrade 0`, GKE waits for surge nodes to be ready before draining old nodes, so the node pool's target capacity does not drop. Make sure your project has enough Compute Engine quota and regional capacity for the temporary surge nodes.
 
 ## Step 4: Set a Maintenance Window
 
@@ -279,7 +281,7 @@ If you are on a release channel, upgrades happen automatically. For manual upgra
 gcloud container clusters upgrade my-cluster \
   --region us-central1 \
   --master \
-  --cluster-version 1.28.5-gke.1200
+  --cluster-version TARGET_VERSION
 
 # Wait for control plane upgrade to complete
 gcloud container operations list \
@@ -290,7 +292,7 @@ gcloud container operations list \
 gcloud container clusters upgrade my-cluster \
   --region us-central1 \
   --node-pool default-pool \
-  --cluster-version 1.28.5-gke.1200
+  --cluster-version TARGET_VERSION
 ```
 
 ## Step 7: Monitor the Upgrade
@@ -363,11 +365,16 @@ gcloud container operations cancel OPERATION_ID --region us-central1
 
 ## Rollback Plan
 
-GKE does not support automatic version rollback, but you can mitigate issues.
+GKE does not automatically roll back a completed node pool upgrade, but you can roll back an incomplete or canceled node pool upgrade. If the upgrade completed, you can downgrade to an earlier compatible version that is still available.
 
 ```bash
-# If the new version has problems, you can create a new node pool
-# with the previous version and migrate workloads
+# If the node pool upgrade was canceled, failed, or left incomplete
+gcloud container node-pools rollback default-pool \
+  --cluster my-cluster \
+  --region us-central1
+
+# If the upgrade completed, create a new node pool with an available
+# compatible previous version and migrate workloads
 gcloud container node-pools create rollback-pool \
   --cluster my-cluster \
   --region us-central1 \
