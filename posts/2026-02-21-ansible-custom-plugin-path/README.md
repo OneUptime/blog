@@ -8,7 +8,7 @@ Description: Configure custom plugin paths in Ansible for filter, lookup, callba
 
 ---
 
-Ansible's plugin system is what makes it so extensible. Filters, lookups, callbacks, actions, inventory sources, and connection plugins can all be customized or replaced. By default, Ansible looks for plugins in a few standard locations, but for real projects, you need control over where plugins are loaded from. This guide covers how to configure custom paths for every plugin type.
+Ansible's plugin system is what makes it so extensible. Filters, lookups, callbacks, actions, inventory sources, and connection plugins can all be customized or replaced. By default, Ansible looks for plugins in a few standard locations, but for real projects, you need control over where plugins are loaded from. This guide covers how to configure custom paths for many common plugin types.
 
 ## Plugin Types in Ansible
 
@@ -29,17 +29,17 @@ Ansible supports many plugin types, each with its own configuration setting:
 
 ## Default Plugin Search Paths
 
-Ansible searches for plugins in these locations by default:
+Ansible searches for plugins from these sources:
 
 1. Directories adjacent to the playbook being run (e.g., `./filter_plugins/`)
-2. Paths configured in ansible.cfg
-3. Paths in the corresponding environment variable
+2. Paths in the corresponding environment variable
+3. Paths configured in ansible.cfg
 4. `~/.ansible/plugins/<type>/`
 5. Built-in plugin paths
 
 ## Configuring Plugin Paths in ansible.cfg
 
-Here is a comprehensive ansible.cfg with all plugin paths configured:
+Here is an ansible.cfg with common plugin paths configured:
 
 ```ini
 # ansible.cfg
@@ -92,6 +92,7 @@ export ANSIBLE_CONNECTION_PLUGINS=./connection_plugins
 export ANSIBLE_INVENTORY_PLUGINS=./inventory_plugins
 export ANSIBLE_STRATEGY_PLUGINS=./strategy_plugins
 export ANSIBLE_VARS_PLUGINS=./vars_plugins
+export ANSIBLE_TEST_PLUGINS=./test_plugins
 export ANSIBLE_LIBRARY=./library
 ```
 
@@ -326,7 +327,7 @@ roles/
       main.yml
 ```
 
-Plugins in a role's directories are only available to that role's tasks, not to the entire playbook.
+Plugins in a standalone role's directories are available once the role is loaded. For example, a filter plugin embedded in one role can be used by roles called after that role.
 
 ## Sharing Plugins Across Projects
 
