@@ -12,7 +12,7 @@ Cloud Tasks is Google Cloud's managed task queue service. It lets you offload wo
 
 ## How Cloud Tasks Differs from Pub/Sub
 
-Both Cloud Tasks and Pub/Sub handle asynchronous processing, but they serve different purposes. Cloud Tasks is for task execution - you create a task that targets a specific HTTP endpoint, and Cloud Tasks makes sure that endpoint gets called. Pub/Sub is for event distribution - you publish an event, and multiple subscribers can react to it independently. Use Cloud Tasks when you need explicit rate limiting, scheduled execution, or exactly-once delivery to a specific handler.
+Both Cloud Tasks and Pub/Sub handle asynchronous processing, but they serve different purposes. Cloud Tasks is for task execution - you create a task that targets a specific HTTP endpoint, and Cloud Tasks makes sure that endpoint gets called. Pub/Sub is for event distribution - you publish an event, and multiple subscribers can react to it independently. Use Cloud Tasks when you need explicit rate limiting, scheduled execution, or at-least-once delivery to a specific handler.
 
 ## Installation
 
@@ -46,7 +46,7 @@ def create_queue(project_id, location, queue_id):
             max_concurrent_dispatches=10,   # Max tasks running simultaneously
         ),
         retry_config=tasks_v2.RetryConfig(
-            max_attempts=5,                           # Retry up to 5 times
+            max_attempts=5,                           # Try the task up to 5 times total
             min_backoff={"seconds": 10},              # Wait 10s before first retry
             max_backoff={"seconds": 300},              # Max wait of 5 minutes
             max_doublings=4,                           # Double backoff 4 times
@@ -168,7 +168,7 @@ When your task target is a Cloud Run service that requires authentication, inclu
 from google.cloud import tasks_v2
 import json
 
-def create_authenticated_task(project_id, location, queue_id, url, payload, service_account_email):
+def create_authenticated_task(project_id, location, queue_id, url, payload, service_account_email, audience):
     """Create a task with OIDC authentication for protected endpoints."""
     client = tasks_v2.CloudTasksClient()
     parent = client.queue_path(project_id, location, queue_id)
@@ -182,7 +182,7 @@ def create_authenticated_task(project_id, location, queue_id, url, payload, serv
             # Include OIDC token for authenticated Cloud Run services
             oidc_token=tasks_v2.OidcToken(
                 service_account_email=service_account_email,
-                audience=url,
+                audience=audience,
             ),
         ),
     )
@@ -199,6 +199,7 @@ create_authenticated_task(
     url="https://my-private-service.run.app/process",
     payload={"job_id": "job-789", "action": "process_report"},
     service_account_email="task-invoker@my-gcp-project.iam.gserviceaccount.com",
+    audience="https://my-private-service.run.app",
 )
 ```
 
@@ -238,7 +239,7 @@ def list_queues(project_id, location):
         print(f"Queue: {queue.name}")
         print(f"  State: {queue.state.name}")
         print(f"  Rate: {queue.rate_limits.max_dispatches_per_second}/s")
-        print(f"  Max retries: {queue.retry_config.max_attempts}")
+        print(f"  Max attempts: {queue.retry_config.max_attempts}")
         print()
 
 # Usage examples
@@ -282,7 +283,7 @@ async def handle_send_email(request: Request):
 @app.post("/process")
 async def handle_process(request: Request):
     """Handle processing tasks from Cloud Tasks."""
-    # Verify the request comes from Cloud Tasks (optional but recommended)
+    # Read Cloud Tasks metadata headers. Do not use these headers as identity proof.
     task_name = request.headers.get("X-CloudTasks-TaskName", "unknown")
     retry_count = request.headers.get("X-CloudTasks-TaskRetryCount", "0")
 
