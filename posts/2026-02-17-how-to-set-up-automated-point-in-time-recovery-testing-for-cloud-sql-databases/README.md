@@ -45,9 +45,12 @@ Create a Cloud Function that orchestrates the PITR test process.
 
 ```python
 # pitr_test/main.py
+import base64
 import json
+import os
 import time
 import datetime
+import functions_framework
 from google.cloud import sqladmin_v1
 from google.cloud import monitoring_v3
 from google.cloud import secretmanager
@@ -60,17 +63,24 @@ class PITRTester:
         self.sql_client = sqladmin_v1.SqlInstancesServiceClient()
         self.monitoring_client = monitoring_v3.MetricServiceClient()
 
-    def run_pitr_test(self, source_instance, target_zone="us-central1-c"):
+    def run_pitr_test(
+        self,
+        source_instance,
+        database_name,
+        db_type="postgresql",
+        target_zone="us-central1-c",
+    ):
         """Run a complete PITR test cycle."""
         results = {
             "source_instance": source_instance,
-            "test_started": datetime.datetime.utcnow().isoformat(),
+            "test_started": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "steps": {},
         }
 
         # Step 1: Create a PITR restore to a test instance
         restore_target_time = (
-            datetime.datetime.utcnow() - datetime.timedelta(minutes=5)
+            datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(minutes=5)
         )
         test_instance_name = f"pitr-test-{int(time.time())}"
 
@@ -97,14 +107,18 @@ class PITRTester:
                 "status": "FAILED",
                 "error": str(e),
             }
+            results["overall_status"] = "FAILED"
             self.report_failure(source_instance, "restore", str(e))
+            self.report_metrics(results)
             return results
 
         # Step 2: Validate the restored database
         try:
             validation_start = time.time()
             validation_results = self.validate_restored_database(
-                test_instance_name
+                test_instance_name,
+                database_name,
+                db_type,
             )
             validation_duration = time.time() - validation_start
 
@@ -129,7 +143,7 @@ class PITRTester:
                 "error": str(e),
             }
 
-        results["test_completed"] = datetime.datetime.utcnow().isoformat()
+        results["test_completed"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         results["overall_status"] = (
             "PASSED" if all(
                 s.get("status") == "SUCCESS"
@@ -150,9 +164,7 @@ class PITRTester:
             body=sqladmin_v1.InstancesCloneRequest(
                 clone_context=sqladmin_v1.CloneContext(
                     destination_instance_name=target,
-                    point_in_time=restore_time.strftime(
-                        "%Y-%m-%dT%H:%M:%S.000Z"
-                    ),
+                    point_in_time=restore_time,
                     preferred_zone=zone,
                 )
             ),
@@ -182,6 +194,53 @@ class PITRTester:
         raise TimeoutError(
             f"Operation {operation_name} did not complete within {timeout}s"
         )
+
+    def validate_restored_database(self, test_instance_name, database_name, db_type):
+        """Connect to the restored instance and run validation checks."""
+        instance = self.sql_client.get(
+            project=self.project_id,
+            instance=test_instance_name,
+        )
+        instance_ip = next(
+            ip.ip_address
+            for ip in instance.ip_addresses
+            if ip.type_ == sqladmin_v1.IpMapping.SqlIpAddressType.PRIMARY
+        )
+
+        validator = DatabaseValidator(
+            self.project_id,
+            instance_ip,
+            database_name,
+            db_type,
+        )
+        return validator.run_all_checks()
+
+    def cleanup_test_instance(self, test_instance_name):
+        """Delete the restored test instance."""
+        operation = self.sql_client.delete(
+            project=self.project_id,
+            instance=test_instance_name,
+        )
+        self.wait_for_operation(operation.name)
+
+    def report_failure(self, source_instance, step, error):
+        """Log a failed PITR test step."""
+        print(f"PITR test failed for {source_instance} during {step}: {error}")
+
+
+@functions_framework.cloud_event
+def run_test(cloud_event):
+    """Cloud Function entry point for Pub/Sub-triggered PITR tests."""
+    message = cloud_event.data.get("message", {})
+    payload = json.loads(base64.b64decode(message["data"]).decode("utf-8"))
+
+    tester = PITRTester(os.environ["GOOGLE_CLOUD_PROJECT"])
+    return tester.run_pitr_test(
+        payload["instance"],
+        payload["database"],
+        payload.get("db_type", "postgresql"),
+        payload.get("target_zone", "us-central1-c"),
+    )
 ```
 
 ## Step 3: Implement Database Validation
@@ -191,18 +250,27 @@ After the restore completes, validate that the database is actually usable and c
 ```python
 import psycopg2
 import mysql.connector
+from google.cloud import secretmanager
 
 class DatabaseValidator:
     """Validate a restored Cloud SQL database."""
 
-    def __init__(self, instance_ip, db_name, db_type="postgresql"):
+    def __init__(self, project_id, instance_ip, db_name, db_type="postgresql"):
+        self.project_id = project_id
         self.instance_ip = instance_ip
         self.db_name = db_name
         self.db_type = db_type
 
+    def get_secret(self, secret_id):
+        """Get the latest version of a Secret Manager secret."""
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{self.project_id}/secrets/{secret_id}/versions/latest"
+        response = client.access_secret_version(request={"name": name})
+        return response.payload.data.decode("utf-8")
+
     def get_connection(self):
         """Get a database connection."""
-        password = get_secret("pitr-test-db-password")
+        password = self.get_secret("pitr-test-db-password")
 
         if self.db_type == "postgresql":
             return psycopg2.connect(
@@ -322,10 +390,16 @@ class DatabaseValidator:
             conn = self.get_connection()
             cursor = conn.cursor()
 
-            cursor.execute("""
-                SELECT COUNT(*) FROM orders
-                WHERE created_at >= NOW() - INTERVAL '24 hours'
-            """)
+            if self.db_type == "postgresql":
+                cursor.execute("""
+                    SELECT COUNT(*) FROM orders
+                    WHERE created_at >= NOW() - INTERVAL '24 hours'
+                """)
+            else:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM orders
+                    WHERE created_at >= NOW() - INTERVAL 24 HOUR
+                """)
             recent_count = cursor.fetchone()[0]
 
             cursor.close()
@@ -345,11 +419,18 @@ class DatabaseValidator:
             conn = self.get_connection()
             cursor = conn.cursor()
 
-            cursor.execute("""
-                SELECT indexname, tablename
-                FROM pg_indexes
-                WHERE schemaname = 'public'
-            """)
+            if self.db_type == "postgresql":
+                cursor.execute("""
+                    SELECT indexname, tablename
+                    FROM pg_indexes
+                    WHERE schemaname = 'public'
+                """)
+            else:
+                cursor.execute("""
+                    SELECT index_name, table_name
+                    FROM information_schema.statistics
+                    WHERE table_schema = DATABASE()
+                """)
             indexes = cursor.fetchall()
 
             cursor.close()
@@ -414,7 +495,7 @@ gcloud functions deploy pitr-test \
 gcloud scheduler jobs create pubsub weekly-pitr-test \
   --schedule="0 3 * * 0" \
   --topic=pitr-test-trigger \
-  --message-body='{"instance": "my-production-db", "database": "myapp"}' \
+  --message-body='{"instance": "my-production-db", "database": "myapp", "db_type": "postgresql"}' \
   --location=us-central1 \
   --time-zone="UTC"
 ```
@@ -431,11 +512,20 @@ def report_metrics(self, results):
     series.metric.type = "custom.googleapis.com/cloud_sql/pitr_test_result"
     series.metric.labels["instance"] = results["source_instance"]
     series.resource.type = "global"
+    series.resource.labels["project_id"] = self.project_id
 
-    point = monitoring_v3.Point()
-    point.value.int64_value = 1 if results["overall_status"] == "PASSED" else 0
     now = time.time()
-    point.interval.end_time.seconds = int(now)
+    seconds = int(now)
+    nanos = int((now - seconds) * 10**9)
+    interval = monitoring_v3.TimeInterval(
+        {"end_time": {"seconds": seconds, "nanos": nanos}}
+    )
+    point = monitoring_v3.Point({
+        "interval": interval,
+        "value": {
+            "int64_value": 1 if results["overall_status"] == "PASSED" else 0
+        },
+    })
     series.points = [point]
 
     self.monitoring_client.create_time_series(
