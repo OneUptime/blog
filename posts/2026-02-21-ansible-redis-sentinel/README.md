@@ -37,7 +37,7 @@ flowchart TD
     M --> R2
 ```
 
-You need an odd number of Sentinel instances (at least three) so they can reach a quorum when deciding whether the master is down. Running Sentinel on the same hosts as your Redis nodes is fine for small deployments.
+Deploy at least three Sentinel instances so a majority can authorize failover. An odd number is common, but the quorum value itself is the number of Sentinels that must agree the master is down before failover is triggered. Running Sentinel on the same hosts as your Redis nodes is fine for small deployments.
 
 ## Inventory
 
@@ -94,14 +94,25 @@ First, install Redis on every host in the deployment.
         state: present
         update_cache: true
 
-    - name: Add Redis GPG key
-      ansible.builtin.apt_key:
+    - name: Create APT keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Download Redis GPG key
+      ansible.builtin.get_url:
         url: https://packages.redis.io/gpg
-        state: present
+        dest: /etc/apt/keyrings/redis.asc
+        owner: root
+        group: root
+        mode: "0644"
 
     - name: Add Redis repository
       ansible.builtin.apt_repository:
-        repo: "deb https://packages.redis.io/deb {{ ansible_distribution_release }} main"
+        repo: "deb [signed-by=/etc/apt/keyrings/redis.asc] https://packages.redis.io/deb {{ ansible_distribution_release }} main"
         state: present
         filename: redis
 
@@ -224,7 +235,7 @@ Replicas need the `replicaof` directive pointing to the master.
 # templates/redis-replica.conf.j2
 # Redis Replica - managed by Ansible
 bind 0.0.0.0
-port 6379
+port {{ redis_master_port }}
 protected-mode no
 
 # This node replicates from the master
@@ -303,6 +314,8 @@ The Sentinel configuration template.
 # templates/sentinel.conf.j2
 # Redis Sentinel - managed by Ansible
 port {{ redis_sentinel_port }}
+bind 0.0.0.0
+protected-mode no
 daemonize no
 supervised systemd
 
