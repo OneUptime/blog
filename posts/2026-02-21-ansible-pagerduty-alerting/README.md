@@ -28,23 +28,39 @@ graph LR
 ---
 - name: Create PagerDuty incident
   community.general.pagerduty_alert:
-    service_id: "{{ pagerduty_service_id }}"
-    api_key: "{{ pagerduty_api_key }}"
+    integration_key: "{{ pagerduty_integration_key }}"
+    api_version: v2
+    source: "{{ inventory_hostname | default('ansible') }}"
     state: triggered
     desc: "{{ incident_description }}"
     incident_key: "{{ incident_key }}"
+  register: pd_event
+
+- name: Look up PagerDuty incident by incident key
+  ansible.builtin.uri:
+    url: "https://api.pagerduty.com/incidents?incident_key={{ incident_key | urlencode }}"
+    method: GET
+    headers:
+      Authorization: "Token token={{ pagerduty_rest_api_key }}"
+      Accept: "application/vnd.pagerduty+json;version=2"
+      Content-Type: "application/json"
   register: pd_incident
 
 - name: Add context to incident
   ansible.builtin.uri:
-    url: "https://api.pagerduty.com/incidents/{{ pd_incident.incident_key }}/notes"
+    url: "https://api.pagerduty.com/incidents/{{ pd_incident.json.incidents[0].id }}/notes"
     method: POST
     headers:
-      Authorization: "Token token={{ pagerduty_api_key }}"
+      Authorization: "Token token={{ pagerduty_rest_api_key }}"
+      Accept: "application/vnd.pagerduty+json;version=2"
+      Content-Type: "application/json"
+      From: "{{ pagerduty_from_email }}"
     body_format: json
+    status_code: 200
     body:
       note:
         content: "Automated incident from Ansible playbook. Runbook: {{ ansible_play_name }}"
+  when: pd_incident.json.incidents | length > 0
 ```
 
 ## Maintenance Windows
@@ -57,13 +73,17 @@ graph LR
     url: "https://api.pagerduty.com/maintenance_windows"
     method: POST
     headers:
-      Authorization: "Token token={{ pagerduty_api_key }}"
+      Authorization: "Token token={{ pagerduty_rest_api_key }}"
+      Accept: "application/vnd.pagerduty+json;version=2"
+      Content-Type: "application/json"
+      From: "{{ pagerduty_from_email }}"
     body_format: json
+    status_code: 201
     body:
       maintenance_window:
         type: maintenance_window
         start_time: "{{ ansible_date_time.iso8601 }}"
-        end_time: "{{ (ansible_date_time.epoch | int + maintenance_duration_seconds) | strftime('%Y-%m-%dT%H:%M:%SZ') }}"
+        end_time: "{{ '%Y-%m-%dT%H:%M:%SZ' | strftime(seconds=(ansible_date_time.epoch | int + maintenance_duration_seconds), utc=true) }}"
         description: "Deployment of {{ app_version }}"
         services:
           - id: "{{ pagerduty_service_id }}"
@@ -97,9 +117,11 @@ graph LR
         url: "https://api.pagerduty.com/maintenance_windows/{{ maintenance_window.json.maintenance_window.id }}"
         method: DELETE
         headers:
-          Authorization: "Token token={{ pagerduty_api_key }}"
-      run_once: true
-      when: ansible_play_hosts_all[-1] == inventory_hostname
+          Authorization: "Token token={{ pagerduty_rest_api_key }}"
+          Accept: "application/vnd.pagerduty+json;version=2"
+          Content-Type: "application/json"
+        status_code: 204
+      when: inventory_hostname == ansible_play_hosts_all[-1]
 ```
 
 ## Key Takeaways
@@ -145,7 +167,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -289,4 +311,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
