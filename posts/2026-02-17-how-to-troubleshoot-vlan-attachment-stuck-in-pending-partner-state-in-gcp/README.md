@@ -19,16 +19,19 @@ Before diving into troubleshooting, let us understand the lifecycle of a Partner
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING_PARTNER: Created by customer
-    PENDING_PARTNER --> PENDING_CUSTOMER: Provider completes setup
+    PENDING_PARTNER --> PARTNER_REQUEST_RECEIVED: Provider starts setup
+    PARTNER_REQUEST_RECEIVED --> PENDING_CUSTOMER: Provider completes setup
+    PARTNER_REQUEST_RECEIVED --> ACTIVE: Provider completes pre-activated setup
     PENDING_CUSTOMER --> ACTIVE: Customer activates
-    PENDING_PARTNER --> DEFUNCT: Expires (no provider action)
+    PENDING_PARTNER --> DEFUNCT: Deleted externally
     ACTIVE --> [*]: Attachment working
 ```
 
 - **PENDING_PARTNER**: You created the attachment and are waiting for the service provider to complete their side.
+- **PARTNER_REQUEST_RECEIVED**: The service provider has started provisioning the attachment.
 - **PENDING_CUSTOMER**: The provider has done their part. Now you need to activate the attachment.
 - **ACTIVE**: Both sides are configured and the attachment is operational.
-- **DEFUNCT**: The attachment expired because the provider never completed the setup (typically after 14 days).
+- **DEFUNCT**: The attachment was deleted externally and is no longer functional, or the pairing key is no longer valid because the provider did not complete setup within its maximum lifetime.
 
 If you are stuck at PENDING_PARTNER, the provider has not yet finished their configuration.
 
@@ -46,7 +49,7 @@ gcloud compute interconnects attachments describe my-partner-attachment \
 
 Make sure:
 - The state is indeed `PENDING_PARTNER`
-- Note the creation timestamp (attachments expire after approximately 14 days in this state)
+- Note the creation timestamp (Partner Interconnect pairing keys are valid for up to 28 days)
 - The edge availability domain is what you intended
 
 ## Step 2: Verify the Pairing Key
@@ -62,7 +65,7 @@ gcloud compute interconnects attachments describe my-partner-attachment \
 
 The pairing key format looks like:
 ```text
-a]7e51371e-72a3-40b5-b844-2e3efefaee59/us-east4/1
+7e51371e-72a3-40b5-b844-2e3efefaee59/us-east4/1
 ```
 
 Common pairing key issues:
@@ -139,7 +142,7 @@ gcloud compute project-info describe \
     --format="yaml(quotas)" | grep -i interconnect
 ```
 
-If you have hit the quota for VLAN attachments, the creation might have succeeded on the GCP side but the pairing process could be affected.
+If you have hit the quota for VLAN attachments, creating a replacement or redundant attachment can fail until you delete unused attachments or request more quota.
 
 ## Step 7: Delete and Recreate (If Needed)
 
@@ -182,7 +185,7 @@ gcloud compute interconnects attachments describe my-partner-attachment \
 # Activate the attachment
 gcloud compute interconnects attachments partner update my-partner-attachment \
     --region=us-east4 \
-    --admin-enabled
+    --enable-admin
 ```
 
 Before activating, check the `partnerMetadata` field. It should show your provider's name and the interconnect name. If it looks wrong, contact the provider before activating.
