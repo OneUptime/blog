@@ -39,6 +39,15 @@ mysql-primary ansible_host=10.0.9.20
 [mongodb_servers]
 mongo-primary ansible_host=10.0.9.30
 
+[postgres_servers:vars]
+db_type=postgresql
+
+[mysql_servers:vars]
+db_type=mysql
+
+[mongodb_servers:vars]
+db_type=mongodb
+
 [all:vars]
 ansible_user=ubuntu
 backup_base_dir=/var/backups/databases
@@ -159,37 +168,21 @@ backup_retention_days=14
         group: mysql
         mode: "0750"
 
-    - name: Dump each MySQL database with mysqldump
-      ansible.builtin.command:
-        cmd: >
-          mysqldump
-          --host=localhost
-          --user={{ vault_mysql_backup_user }}
-          --password={{ vault_mysql_backup_password }}
-          --single-transaction
-          --routines
-          --triggers
-          --events
-          --quick
-          {{ item }}
-      register: mysql_dump
-      loop: "{{ mysql_databases }}"
-      changed_when: true
-      no_log: true
-
     - name: Write and compress each dump to a file
       ansible.builtin.shell:
         cmd: >
+          set -o pipefail &&
           mysqldump
           --host=localhost
-          --user={{ vault_mysql_backup_user }}
-          --password={{ vault_mysql_backup_password }}
+          --user={{ vault_mysql_backup_user | quote }}
+          --password={{ vault_mysql_backup_password | quote }}
           --single-transaction
           --routines
           --triggers
           --events
-          {{ item }}
-          | gzip > {{ backup_dir }}/{{ item }}_{{ timestamp }}.sql.gz
+          {{ item | quote }}
+          | gzip > {{ (backup_dir ~ '/' ~ item ~ '_' ~ timestamp ~ '.sql.gz') | quote }}
+        executable: /bin/bash
       loop: "{{ mysql_databases }}"
       changed_when: true
       no_log: true
@@ -251,7 +244,7 @@ backup_retention_days=14
           -C {{ backup_dir }} full_{{ timestamp }}
       changed_when: true
 
-    - name: Remove the uncompressed backup directory
+    - name: Remove the temporary dump directory
       ansible.builtin.file:
         path: "{{ backup_dir }}/full_{{ timestamp }}"
         state: absent
@@ -267,6 +260,8 @@ Local backups are not enough. Upload to remote storage for disaster recovery.
 - name: Upload database backups to S3
   hosts: all
   become: true
+  vars_files:
+    - ../vault/db-secrets.yml
   vars:
     s3_bucket: mycompany-db-backups
     s3_prefix: "{{ inventory_hostname }}/{{ ansible_date_time.date }}"
@@ -287,7 +282,9 @@ Local backups are not enough. Upload to remote storage for disaster recovery.
           --include "*.sql.gz"
           --include "*.tar.gz"
           --storage-class STANDARD_IA
+          --sse AES256
       changed_when: true
+      no_log: true
       environment:
         AWS_ACCESS_KEY_ID: "{{ vault_aws_access_key }}"
         AWS_SECRET_ACCESS_KEY: "{{ vault_aws_secret_key }}"
@@ -360,7 +357,7 @@ Clean up old backups to prevent disk from filling up.
 
 1. **Test restores regularly.** A backup you have never restored is not really a backup. Schedule monthly restore tests to a staging environment.
 
-2. **Use `--single-transaction` for MySQL.** This takes a consistent snapshot without locking tables. Without it, you get inconsistent backups on busy databases.
+2. **Use `--single-transaction` for MySQL.** For transactional tables such as InnoDB, this takes a consistent snapshot without locking tables. Without it or another locking strategy, you can get inconsistent backups on busy databases.
 
 3. **Use `--format=custom` for pg_dump.** The custom format is compressed by default and supports parallel restore. Plain SQL dumps cannot be restored in parallel.
 
