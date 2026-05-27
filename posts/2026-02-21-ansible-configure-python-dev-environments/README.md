@@ -73,12 +73,17 @@ ansible_python_interpreter=/usr/bin/python3
         state: latest
       become_user: "{{ app_user }}"
 
+    - name: Check for application requirements
+      ansible.builtin.stat:
+        path: "{{ app_dir }}/requirements.txt"
+      register: requirements_file
+
     - name: Install application dependencies
       ansible.builtin.pip:
         virtualenv: "{{ app_dir }}/venv"
         requirements: "{{ app_dir }}/requirements.txt"
       become_user: "{{ app_user }}"
-      when: requirements_file.stat.exists | default(false)
+      when: requirements_file.stat.exists
 ```
 
 ## Configuration Tasks
@@ -104,6 +109,7 @@ ansible_python_interpreter=/usr/bin/python3
     - name: Enable and start application
       ansible.builtin.systemd:
         name: "{{ app_name }}"
+        daemon_reload: true
         enabled: true
         state: started
 ```
@@ -334,7 +340,7 @@ Here are several practical scenarios where this module proves essential in real-
   tasks:
     - name: Create scan script
       ansible.builtin.copy:
-        dest: /opt/scripts/compliance_scan.sh
+        dest: /usr/local/bin/compliance_scan.sh
         mode: '0755'
         content: |
           #!/bin/bash
@@ -354,7 +360,6 @@ Here are several practical scenarios where this module proves essential in real-
         minute: "0"
         hour: "3"
         weekday: "1"
-        job: "/opt/scripts/compliance_scan.sh"
+        job: "/usr/local/bin/compliance_scan.sh"
         user: ansible
 ```
-
