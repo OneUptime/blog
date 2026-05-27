@@ -64,19 +64,7 @@ gcloud artifacts repositories create vendor-images \
   --project=my-project
 ```
 
-### Step 2: Create the Virtual Repository
-
-```bash
-# Create the virtual repository
-gcloud artifacts repositories create docker-virtual \
-  --repository-format=docker \
-  --location=us-central1 \
-  --mode=virtual-repository \
-  --description="Aggregated Docker repository" \
-  --project=my-project
-```
-
-### Step 3: Configure Upstream Policies
+### Step 2: Configure Upstream Policies
 
 Define which repositories feed into the virtual repository and their priorities:
 
@@ -101,10 +89,17 @@ cat > upstream-policy.json << 'EOF'
   }
 ]
 EOF
+```
 
-# Apply the upstream policies
-gcloud artifacts repositories update docker-virtual \
+### Step 3: Create the Virtual Repository
+
+```bash
+# Create the virtual repository with its upstream policies
+gcloud artifacts repositories create docker-virtual \
+  --repository-format=docker \
   --location=us-central1 \
+  --mode=virtual-repository \
+  --description="Aggregated Docker repository" \
   --upstream-policy-file=upstream-policy.json \
   --project=my-project
 ```
@@ -152,14 +147,6 @@ gcloud artifacts repositories create npmjs-cache \
   --description="npmjs proxy" \
   --project=my-project
 
-# Create the virtual npm repository
-gcloud artifacts repositories create npm-virtual \
-  --repository-format=npm \
-  --location=us-central1 \
-  --mode=virtual-repository \
-  --description="Aggregated npm repository" \
-  --project=my-project
-
 # Set upstream policies
 cat > npm-upstream-policy.json << 'EOF'
 [
@@ -176,8 +163,11 @@ cat > npm-upstream-policy.json << 'EOF'
 ]
 EOF
 
-gcloud artifacts repositories update npm-virtual \
+gcloud artifacts repositories create npm-virtual \
+  --repository-format=npm \
   --location=us-central1 \
+  --mode=virtual-repository \
+  --description="Aggregated npm repository" \
   --upstream-policy-file=npm-upstream-policy.json \
   --project=my-project
 ```
@@ -211,13 +201,6 @@ gcloud artifacts repositories create pypi-cache \
   --remote-python-repo=PYPI \
   --project=my-project
 
-# Virtual Python repository
-gcloud artifacts repositories create python-virtual \
-  --repository-format=python \
-  --location=us-central1 \
-  --mode=virtual-repository \
-  --project=my-project
-
 # Upstream policies
 cat > python-upstream-policy.json << 'EOF'
 [
@@ -234,8 +217,10 @@ cat > python-upstream-policy.json << 'EOF'
 ]
 EOF
 
-gcloud artifacts repositories update python-virtual \
+gcloud artifacts repositories create python-virtual \
+  --repository-format=python \
   --location=us-central1 \
+  --mode=virtual-repository \
   --upstream-policy-file=python-upstream-policy.json \
   --project=my-project
 ```
