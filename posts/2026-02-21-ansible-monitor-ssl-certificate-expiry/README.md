@@ -107,13 +107,8 @@ ssl_alert_smtp_host: "smtp.company.com"
           {% set results = [] %}
           {% for check in cert_checks.results %}
           {% if check.rc == 0 and check.stdout | length > 0 %}
-          {% set lines = check.stdout.split('\n') %}
-          {% set not_after = '' %}
-          {% set subject = '' %}
-          {% for line in lines %}
-          {% if 'notAfter=' in line %}{% set not_after = line.split('=', 1)[1] %}{% endif %}
-          {% if 'subject=' in line %}{% set subject = line.split('=')[-1] | trim %}{% endif %}
-          {% endfor %}
+          {% set not_after = (check.stdout_lines | select('match', '^notAfter=') | first | default('notAfter=') | regex_replace('^notAfter=', '')) %}
+          {% set subject = (check.stdout_lines | select('match', '^subject=') | first | default('subject=') | regex_replace('^subject=\\s*', '')) %}
           {% set _ = results.append({
             'domain': check.item.domain,
             'name': check.item.name,
@@ -138,7 +133,7 @@ ssl_alert_smtp_host: "smtp.company.com"
     - name: Calculate days until expiry for each certificate
       ansible.builtin.shell:
         cmd: |
-          expiry_epoch=$(date -d "{{ item.expiry_date }}" +%s 2>/dev/null || date -j -f "%b %d %T %Y %Z" "{{ item.expiry_date }}" +%s 2>/dev/null)
+          expiry_epoch=$(date -d "{{ item.expiry_date }}" +%s 2>/dev/null || date -j -f "%b %e %T %Y %Z" "{{ item.expiry_date }}" +%s 2>/dev/null)
           current_epoch=$(date +%s)
           days_left=$(( (expiry_epoch - current_epoch) / 86400 ))
           echo "${days_left}"
@@ -262,7 +257,7 @@ For internal certificates stored as files on servers, check them directly.
   tasks:
     - name: Find certificate files to check
       ansible.builtin.set_fact:
-        certs_to_check: "{{ ssl_check_files | selectattr('hosts', 'equalto', 'all') | list + ssl_check_files | selectattr('hosts', 'equalto', group_names[0] | default('none')) | list }}"
+        certs_to_check: "{{ ssl_check_files | selectattr('hosts', 'equalto', 'all') | list + ssl_check_files | selectattr('hosts', 'in', group_names) | list }}"
 
     - name: Check each certificate file
       ansible.builtin.shell:
@@ -305,17 +300,15 @@ When a certificate is close to expiry, trigger an automated renewal with certbot
 
     - name: Run certbot renewal
       ansible.builtin.command:
-        cmd: certbot renew --non-interactive --quiet
+        argv:
+          - certbot
+          - renew
+          - --non-interactive
+          - --quiet
+          - --deploy-hook
+          - systemctl reload nginx
       register: certbot_result
       when: certbot_check.rc == 0
-
-    - name: Reload nginx after renewal
-      ansible.builtin.service:
-        name: nginx
-        state: reloaded
-      when:
-        - certbot_check.rc == 0
-        - certbot_result.changed
 ```
 
 ## Scheduling
