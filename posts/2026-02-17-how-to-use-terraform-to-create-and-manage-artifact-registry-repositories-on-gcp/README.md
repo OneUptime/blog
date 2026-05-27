@@ -182,8 +182,8 @@ docker push us-central1-docker.pkg.dev/my-project/docker-images/my-app:latest
 Enable vulnerability scanning for your Docker repositories:
 
 ```hcl
-# Enable Container Analysis API for vulnerability scanning
-resource "google_project_service" "containeranalysis" {
+# Enable Container Scanning API for vulnerability scanning
+resource "google_project_service" "container_scanning" {
   project = var.project_id
   service = "containerscanning.googleapis.com"
 
@@ -251,13 +251,13 @@ resource "google_artifact_registry_repository" "npm_virtual" {
     upstream_policies {
       id         = "internal"
       repository = google_artifact_registry_repository.npm.id
-      priority   = 10  # Check internal first
+      priority   = 20  # Check internal first
     }
 
     upstream_policies {
       id         = "proxy"
       repository = google_artifact_registry_repository.npm_proxy.id
-      priority   = 20  # Fall back to proxy
+      priority   = 10  # Fall back to proxy
     }
   }
 }
