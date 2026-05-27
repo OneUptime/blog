@@ -25,7 +25,7 @@ Get the Filestore connection details if you do not have them handy:
 # Get the IP address and share name of your Filestore instance
 
 gcloud filestore instances describe my-filestore \
-  --zone=us-central1-a \
+  --location=us-central1-a \
   --format="value(networks[0].ipAddresses[0],fileShares[0].name)"
 ```
 
@@ -132,7 +132,7 @@ The default mount options work fine for most cases, but you can tune them for be
 
 ```bash
 # Mount with optimized options for better throughput
-sudo mount -t nfs -o rw,hard,nointr,rsize=1048576,wsize=1048576,timeo=600,retrans=2 \
+sudo mount -t nfs -o rw,hard,tcp,rsize=524288,wsize=524288,timeo=600,retrans=3,resvport,async \
   10.0.0.2:/vol1 /mnt/filestore
 ```
 
@@ -140,16 +140,18 @@ Here is what each option does:
 
 - `rw` - Mount read-write (default)
 - `hard` - If the NFS server becomes unreachable, keep retrying instead of returning errors
-- `nointr` - Do not allow signal interrupts on hard mounts
-- `rsize=1048576` - Read buffer size of 1MB for better throughput on large files
-- `wsize=1048576` - Write buffer size of 1MB
+- `tcp` - Use TCP to reduce mount and unmount latency
+- `rsize=524288` - Read buffer size of 512KB for better throughput on large files (use `rsize=1048576` for basic-tier instances)
+- `wsize=524288` - Write buffer size of 512KB
 - `timeo=600` - Timeout in tenths of a second (60 seconds) before retrying
-- `retrans=2` - Number of retries before a hard mount reports an error to the application
+- `retrans=3` - Number of retries before the NFS client takes further recovery action
+- `resvport` - Use a privileged source port when communicating with the NFS server
+- `async` - Delay sending application writes to the server until certain conditions are met
 
 The corresponding fstab entry would be:
 
 ```text
-10.0.0.2:/vol1 /mnt/filestore nfs rw,hard,nointr,rsize=1048576,wsize=1048576,timeo=600,retrans=2,_netdev 0 0
+10.0.0.2:/vol1 /mnt/filestore nfs rw,hard,tcp,rsize=524288,wsize=524288,timeo=600,retrans=3,resvport,async,_netdev 0 0
 ```
 
 ## Setting Up File Permissions
@@ -211,7 +213,7 @@ sudo umount -f /mnt/filestore
 
 ## Troubleshooting Common Issues
 
-**Mount hangs or times out** - Check that the VM and Filestore instance are in the same VPC. Verify there are no firewall rules blocking NFS traffic (TCP port 2049).
+**Mount hangs or times out** - Check that the VM and Filestore instance are in the same VPC. Verify there are no firewall rules blocking NFS traffic to the Filestore instance, including TCP ports 111, 2046, 2049, 2050, or 4045.
 
 **Permission denied** - The NFS client on the VM must have the proper UID/GID mapping. Check that the user running the application has access to the mount point.
 
