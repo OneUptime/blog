@@ -75,10 +75,15 @@ Query Prometheus for load metrics and scale accordingly:
         path: /tmp/last_scale_event
       register: last_scale
 
+    - name: Check cooldown window
+      ansible.builtin.set_fact:
+        in_cooldown: "{{ last_scale.stat.exists and ((ansible_date_time.epoch | int) - (last_scale.stat.mtime | int) < ((cooldown_minutes | int) * 60)) }}"
+
     - name: Determine scaling action
       ansible.builtin.set_fact:
         scale_action: >-
-          {% if current_cpu | float > scale_up_threshold and current_count | int < max_instances %}scale_up
+          {% if in_cooldown %}none
+          {% elif current_cpu | float > scale_up_threshold and current_count | int < max_instances %}scale_up
           {% elif current_cpu | float < scale_down_threshold and current_count | int > min_instances %}scale_down
           {% else %}none{% endif %}
 
@@ -113,7 +118,7 @@ Query Prometheus for load metrics and scale accordingly:
     name: "app-{{ item }}"
     instance_type: "{{ app_instance_type }}"
     image_id: "{{ app_ami }}"
-    subnet_id: "{{ app_subnet }}"
+    vpc_subnet_id: "{{ app_subnet }}"
     security_group: "{{ app_sg }}"
     key_name: "{{ deploy_key }}"
     tags:
@@ -140,7 +145,13 @@ Query Prometheus for load metrics and scale accordingly:
   loop: "{{ new_instances.results }}"
 
 - name: Configure new instances
-  ansible.builtin.include_tasks: tasks/configure-app-server.yml
+  ansible.builtin.include_tasks:
+    file: tasks/configure-app-server.yml
+    apply:
+      delegate_to: "{{ new_instance.instances[0].tags.Name }}"
+  loop: "{{ new_instances.results }}"
+  loop_control:
+    loop_var: new_instance
 
 - name: Register with load balancer
   ansible.builtin.uri:
