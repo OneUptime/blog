@@ -10,7 +10,7 @@ Description: Learn how to enable and configure GKE Node Local DNS Cache to reduc
 
 DNS resolution is one of those things that you never think about until it becomes a problem. In a busy GKE cluster, every pod making HTTP requests starts with a DNS lookup. Those lookups go to kube-dns, and when you have hundreds or thousands of pods all hammering the same kube-dns pods, things can get slow. Worse, you can hit Linux conntrack table limits, causing DNS lookups to fail entirely.
 
-Node Local DNS Cache fixes this by running a DNS cache on every node in your cluster. Instead of sending every DNS query across the network to kube-dns, pods resolve names through a local cache that sits on the same node. Cache hits return instantly, and even cache misses benefit from a shorter network path.
+Node Local DNS Cache fixes this by running a DNS cache on every node in your cluster. Instead of sending every DNS query across the network to kube-dns or Cloud DNS for GKE, pods resolve names through a local cache that sits on the same node. Cache hits return instantly, and cache misses are forwarded based on the query destination.
 
 ## Why Node Local DNS Cache Matters
 
@@ -44,13 +44,13 @@ The local cache handles most queries without any network hops. For a typical web
 
 ## Enabling Node Local DNS Cache
 
-On GKE, you can enable Node Local DNS Cache as a cluster addon. For existing clusters:
+On GKE, Node Local DNS Cache is enabled by default for Autopilot clusters and for newer Standard clusters. For older Standard clusters where it is not already enabled, you can enable it as a cluster addon. For existing clusters:
 
 ```bash
 # Enable Node Local DNS Cache on an existing GKE cluster
 
 gcloud container clusters update my-cluster \
-  --zone us-central1-a \
+  --location us-central1-a \
   --update-addons=NodeLocalDNS=ENABLED
 ```
 
@@ -59,12 +59,12 @@ For new clusters:
 ```bash
 # Create a cluster with Node Local DNS Cache enabled from the start
 gcloud container clusters create my-cluster \
-  --zone us-central1-a \
-  --addons=NodeLocalDNS \
+  --location us-central1-a \
+  --addons=NodeLocalDNS=ENABLED \
   --num-nodes=3
 ```
 
-After enabling it, GKE deploys a DaemonSet called `node-local-dns` in the `kube-system` namespace. This runs a DNS cache pod on every node.
+After enabling it, GKE deploys a DaemonSet called `node-local-dns` in the `kube-system` namespace. This runs a DNS cache pod on every eligible Linux node. Enabling the add-on on an existing Standard cluster can require node re-creation, so the change may follow your cluster's node upgrade and maintenance policies.
 
 ## Verifying the Deployment
 
@@ -86,9 +86,9 @@ kubectl get pods -n kube-system -l k8s-app=node-local-dns -o wide
 
 ## How It Works Under the Hood
 
-When Node Local DNS Cache is enabled, GKE modifies the node's iptables rules so that DNS queries from pods are intercepted and sent to the local cache instead of the kube-dns service IP. The local cache listens on a link-local address (169.254.20.10 by default).
+When Node Local DNS Cache is enabled, GKE updates the node's DNS routing so that DNS queries from pods are handled by the local cache instead of going directly to the kube-dns service IP. With Cloud DNS for GKE, pods use the link-local nameserver address 169.254.20.10.
 
-If the local cache has the answer, it responds immediately. If not, it forwards the query to kube-dns using TCP (which avoids conntrack issues with UDP). The response is cached locally for future queries.
+If the local cache has the answer, it responds immediately. If not, it forwards cluster-domain queries to kube-dns using TCP (which avoids conntrack issues with UDP). Queries for custom stub domains or upstream name servers are forwarded according to that configuration, and clusters that use Cloud DNS for GKE forward external queries through the local metadata server. The response is cached locally for future queries.
 
 The key benefit is that cached responses are served from the same node with sub-millisecond latency. No network hop, no conntrack entry, no kube-dns load.
 
@@ -115,10 +115,10 @@ Typical results without Node Local DNS Cache show 1-5ms for cached queries and 1
 
 The Node Local DNS Cache on GKE is managed by Google, so you cannot directly modify its configuration. However, understanding its default behavior is helpful:
 
-- Cache TTL follows the upstream DNS record TTL
+- Cache TTL follows the upstream DNS record TTL, capped at 30 seconds
 - The cache size is tuned for typical workloads
-- It supports both IPv4 and IPv6
-- The cache listens on 169.254.20.10 for cluster DNS and on the kube-dns service IP
+- Node Local DNS Cache requires GKE 1.15 or later and is not supported on Windows Server node pools
+- With Cloud DNS for GKE, pods use 169.254.20.10 as the nameserver; otherwise, pods commonly keep using the kube-dns service IP and node rules route traffic to the local cache
 
 If you need custom configuration, you can inspect the ConfigMap:
 
@@ -131,18 +131,18 @@ kubectl get configmap node-local-dns -n kube-system -o yaml
 
 One thing to be aware of is negative caching. When a DNS query fails (for example, trying to resolve a service that does not exist yet), the failure is cached too. This means if you create a new service and immediately try to resolve it, the negative cache entry might cause the lookup to fail for a short period.
 
-The default negative cache TTL is 30 seconds. In practice, this is rarely a problem because new service creation and DNS propagation within the cluster happen quickly.
+On GKE, `NXDOMAIN` responses are cached for 5 seconds. In practice, this is rarely a problem because new service creation and DNS propagation within the cluster happen quickly.
 
 ## Monitoring DNS Performance
 
-You can monitor Node Local DNS Cache performance through Cloud Monitoring. Look for these metrics:
+You can start by checking the Node Local DNS Cache pod logs:
 
 ```bash
 # Check logs for the Node Local DNS pods
 kubectl logs -n kube-system -l k8s-app=node-local-dns --tail=50
 ```
 
-The cache exposes Prometheus metrics that include cache hit rates, query counts, and response times. If your cluster has Cloud Monitoring with managed Prometheus, these metrics are collected automatically.
+The cache exposes CoreDNS-style metrics on the node-local-dns pods. If you use Cloud Monitoring or Managed Service for Prometheus, make sure your metrics collection is configured to scrape those pod metrics.
 
 ## Troubleshooting Common Issues
 
@@ -163,7 +163,7 @@ Second, make sure your pods are actually using the local cache. Check the resolv
 kubectl exec my-pod -- cat /etc/resolv.conf
 ```
 
-The nameserver should point to the kube-dns service IP (usually 10.x.0.10), which the node's iptables rules redirect to the local cache.
+The nameserver often points to the kube-dns service IP (usually 10.x.0.10), which the node's rules route to the local cache. If the cluster uses Cloud DNS for GKE, the nameserver should be 169.254.20.10 instead.
 
 Third, check if the node has enough resources. The local DNS cache is lightweight, but if a node is under severe resource pressure, even system components can be affected.
 
