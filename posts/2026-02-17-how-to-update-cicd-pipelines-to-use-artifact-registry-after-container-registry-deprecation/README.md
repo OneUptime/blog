@@ -8,7 +8,7 @@ Description: Practical guide to updating your CI/CD pipelines to push and pull D
 
 ---
 
-With Google Container Registry being deprecated, every CI/CD pipeline that pushes Docker images to gcr.io needs to be updated. The changes are not complicated, but they touch a lot of files - Dockerfiles, build configs, pipeline definitions, and deployment manifests all might have gcr.io references baked in. Missing even one can break your builds or deployments.
+With Google Container Registry being deprecated, CI/CD pipelines that push Docker images to gcr.io should be reviewed and migrated either to gcr.io repositories hosted on Artifact Registry or to pkg.dev Artifact Registry repositories. If you choose pkg.dev repositories, the changes are not complicated, but they touch a lot of files - Dockerfiles, build configs, pipeline definitions, and deployment manifests all might have gcr.io references baked in. Missing even one can break your builds or deployments.
 
 This post covers the specific changes you need to make for the most common CI/CD tools: Cloud Build, GitHub Actions, GitLab CI, and Jenkins.
 
@@ -83,13 +83,13 @@ images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/docker-images/my-app:latest'
 ```
 
-The Cloud Build service account (`PROJECT_NUMBER@cloudbuild.gserviceaccount.com`) needs `roles/artifactregistry.writer` on the repository.
+The Cloud Build service account needs `roles/artifactregistry.writer` on the repository if the repository is in another project or you are using a user-specified service account. Depending on your project and organization settings, the default Cloud Build service account can be the Compute Engine default service account (`PROJECT_NUMBER-compute@developer.gserviceaccount.com`) or the legacy Cloud Build service account (`PROJECT_NUMBER@cloudbuild.gserviceaccount.com`). You can check the default service account with `gcloud builds get-default-service-account`.
 
 ```bash
 # Grant Cloud Build access to push to Artifact Registry
 gcloud artifacts repositories add-iam-policy-binding docker-images \
   --location=us-central1 \
-  --member="serviceAccount:PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
+  --member="serviceAccount:BUILD_SERVICE_ACCOUNT" \
   --role="roles/artifactregistry.writer" \
   --project=my-project-id
 ```
@@ -134,6 +134,10 @@ jobs:
         with:
           workload_identity_provider: 'projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
           service_account: 'cicd@my-project-id.iam.gserviceaccount.com'
+
+      # Install and configure the Google Cloud CLI
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
 
       # Configure Docker to use gcloud credentials
       - name: Configure Docker
@@ -204,6 +208,8 @@ Before (GCR):
 ```groovy
 // Old Jenkinsfile
 pipeline {
+    agent any
+
     stages {
         stage('Push') {
             steps {
@@ -220,6 +226,8 @@ After (Artifact Registry):
 // Jenkinsfile
 // Updated pipeline pushing to Artifact Registry
 pipeline {
+    agent any
+
     environment {
         REGISTRY = 'us-central1-docker.pkg.dev'
         REPO = "${PROJECT}/docker-images"
