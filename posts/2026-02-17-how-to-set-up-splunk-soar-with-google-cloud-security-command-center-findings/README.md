@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Splunk SOAR, Security Command Center, Security Automation, Google Cloud, SIEM
 
-Description: Configure Splunk SOAR to automatically ingest and respond to Google Cloud Security Command Center findings for automated security incident response.
+Description: Configure Splunk and Splunk SOAR to ingest and respond to Google Cloud Security Command Center findings for automated security incident response.
 
 ---
 
@@ -20,16 +20,17 @@ Each finding includes a severity level, the affected resource, a description of 
 
 ## Architecture
 
-The integration works through a pipeline. SCC generates findings and publishes notifications to a Pub/Sub topic. Splunk SOAR polls the Pub/Sub subscription (or receives webhook notifications) and creates containers (SOAR's term for cases) for each finding. Playbooks then run automatically based on the finding type and severity.
+The integration works through a pipeline. SCC generates findings and publishes notifications to a Pub/Sub topic. The Google SCC Add-on for Splunk reads the Pub/Sub subscription into Splunk, and Splunk App for SOAR Export forwards the resulting notable events or alerts to Splunk SOAR as containers. Playbooks then run automatically based on the finding type and severity.
 
 ```mermaid
 graph LR
     A[Security Command Center] -->|Notifications| B[Pub/Sub Topic]
     B --> C[Pub/Sub Subscription]
-    C --> D[Splunk SOAR]
-    D --> E[Automated Playbooks]
-    E --> F[Response Actions]
-    F -->|Remediate| G[GCP Resources]
+    C --> D[Splunk Platform]
+    D --> E[Splunk SOAR]
+    E --> F[Automated Playbooks]
+    F --> G[Response Actions]
+    G -->|Remediate| H[GCP Resources]
 ```
 
 ## GCP-Side Configuration
@@ -47,10 +48,11 @@ gcloud pubsub topics create scc-findings-topic \
 # Create a notification config that sends all high and critical findings to the topic
 gcloud scc notifications create scc-to-splunk-soar \
   --organization=123456789 \
+  --location=global \
   --pubsub-topic=projects/my-project/topics/scc-findings-topic \
   --filter='severity="HIGH" OR severity="CRITICAL"'
 
-# Create a subscription for Splunk SOAR to pull from
+# Create a subscription for Splunk to pull from
 gcloud pubsub subscriptions create scc-soar-subscription \
   --topic=scc-findings-topic \
   --ack-deadline=120 \
@@ -58,9 +60,9 @@ gcloud pubsub subscriptions create scc-soar-subscription \
   --project=my-project
 ```
 
-### Create a Service Account for SOAR
+### Create a Service Account for Splunk and SOAR
 
-Splunk SOAR needs a service account with permissions to read SCC findings and take remediation actions.
+Splunk needs a service account with permissions to read SCC findings, and Splunk SOAR action assets need permissions for any remediation actions that your playbooks perform.
 
 ```bash
 # Create the service account
@@ -93,29 +95,32 @@ gcloud iam service-accounts keys create soar-scc-key.json \
   --iam-account=splunk-soar-scc@my-project.iam.gserviceaccount.com
 ```
 
-## Configuring the SOAR App
+## Configuring Splunk and SOAR Apps
 
-In Splunk SOAR, install the Google Cloud Security Command Center app from the SOAR app store.
+In Splunk, install the Google SCC Add-on for Splunk and the Google SCC App for Splunk. In Splunk SOAR, install the Google Cloud Compute Engine and Google Cloud IAM apps for response actions, and configure Splunk App for SOAR Export to send selected SCC events into SOAR.
 
-### Asset Configuration
+### Splunk Configuration
 
-Create a new asset for the GCP SCC app with the following settings:
+Create a Google SCC account in the Splunk add-on with the following settings:
 
-- Asset Name: `gcp-scc-production`
-- Product: Google Cloud Security Command Center
 - Configuration:
-  - Service Account JSON: Paste the contents of your key file
-  - Organization ID: Your GCP organization ID
-  - Project ID: The project containing your Pub/Sub resources
-  - Pub/Sub Subscription: `scc-soar-subscription`
+  - Service Account JSON: Upload the key file, or use workload identity federation if your deployment supports it
+  - Organization: Your GCP organization ID
+
+Create a findings input with the following settings:
+
+- Input name: `gcp_scc_findings`
+- Interval: `60`
+- Index: The Splunk index that should store SCC findings
+- Findings Subscription Id: `scc-soar-subscription`
+- Maximum Fetching: `50`
 
 ### Ingestion Settings
 
-Configure the app to poll for new findings on a regular interval.
+Configure a Splunk saved search or notable event rule to send high-priority SCC findings to SOAR with Splunk App for SOAR Export. Map the SCC fields you need into CEF fields on the SOAR artifact.
 
 ```json
 {
-  "polling_interval": 60,
   "container_label": "gcp_security",
   "severity_mapping": {
     "CRITICAL": "high",
@@ -123,7 +128,6 @@ Configure the app to poll for new findings on a regular interval.
     "MEDIUM": "medium",
     "LOW": "low"
   },
-  "max_containers_per_poll": 50,
   "artifact_fields": [
     "finding.category",
     "finding.resourceName",
@@ -138,61 +142,63 @@ Configure the app to poll for new findings on a regular interval.
 
 The real value of SOAR comes from playbooks that automate your response procedures. Here are examples for common SCC findings.
 
-### Playbook: Auto-Remediate Public Firewall Rules
+### Playbook: Escalate Public Firewall Rules
 
-When SCC detects a firewall rule that allows unrestricted access (0.0.0.0/0), this playbook can automatically restrict it.
+When SCC detects a firewall rule that allows unrestricted access (0.0.0.0/0), this playbook can raise the case severity and create a remediation ticket.
 
 ```python
-# playbook_restrict_public_firewall.py
-# Automatically restricts overly permissive firewall rules detected by SCC
+# playbook_escalate_public_firewall.py
+# Escalates overly permissive firewall rules detected by SCC
 
-def restrict_firewall_rule(action=None, success=None, container=None, results=None, handle=None, filtered_artifacts=None, filtered_results=None, custom_function=None, **kwargs):
-    """Main playbook function for firewall rule remediation."""
+import phantom.rules as phantom
+
+def escalate_firewall_rule(action=None, success=None, container=None, results=None, handle=None, filtered_artifacts=None, filtered_results=None, custom_function=None, **kwargs):
+    """Main playbook function for firewall rule escalation."""
 
     # Get the finding details from the container artifacts
     artifacts = phantom.collect2(
         container=container,
-        datapath=["artifact:*.cef.resourceName", "artifact:*.cef.category"],
-        filter_func=lambda x: x[1] == "FIREWALL_RULE_OPEN_TO_PUBLIC"
+        datapath=["artifact:*.cef.resourceName", "artifact:*.cef.category"]
     )
 
     for artifact_data in artifacts:
         resource_name = artifact_data[0]
+        category = artifact_data[1]
 
-        # Extract project and rule name from the resource path
+        if category != "FIREWALL_RULE_OPEN_TO_PUBLIC":
+            continue
+
+        # Extract project and rule name from the resource path.
         # Format: //compute.googleapis.com/projects/PROJECT/global/firewalls/RULE_NAME
         parts = resource_name.split("/")
         project = parts[4]
         rule_name = parts[-1]
 
-        # Call the GCP app action to update the firewall rule
-        parameters = [{
-            "project": project,
-            "firewall_rule": rule_name,
-            "action": "restrict_source_ranges",
-            "allowed_ranges": "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
-        }]
+        phantom.set_severity(container=container, severity="high")
+        phantom.comment(
+            container=container,
+            comment=f"SCC reported public firewall rule {rule_name} in project {project}."
+        )
 
         phantom.act(
-            "update firewall rule",
-            parameters=parameters,
-            app="Google Cloud Platform",
+            "create ticket",
+            parameters=[{
+                "summary": f"SCC Finding: Public firewall rule - {rule_name}",
+                "description": f"Restrict source ranges for {resource_name}.",
+                "priority": "High",
+                "project_key": "SEC"
+            }],
+            assets=["jira"],
             callback=post_remediation_notify
         )
 
 def post_remediation_notify(action=None, success=None, container=None, results=None, **kwargs):
-    """Send notification after remediation."""
+    """Send notification after escalation."""
     if success:
-        phantom.comment(container=container, comment="Firewall rule automatically restricted to private ranges.")
-        # Update the SCC finding state to mark it as remediated
-        phantom.act(
-            "update finding",
-            parameters=[{"state": "INACTIVE"}],
-            app="Google Cloud SCC"
-        )
+        phantom.comment(container=container, comment="Remediation ticket created for public firewall rule.")
     else:
         phantom.set_severity(container=container, severity="high")
-        phantom.comment(container=container, comment="Auto-remediation failed. Manual intervention required.")
+        phantom.comment(container=container, comment="Ticket creation failed. Manual intervention required.")
 ```
 
 ### Playbook: Investigate Service Account Key Findings
@@ -202,6 +208,8 @@ When SCC detects an old or leaked service account key, this playbook gathers con
 ```python
 # playbook_investigate_sa_key.py
 # Investigates service account key findings and creates investigation tickets
+
+import phantom.rules as phantom
 
 def investigate_sa_key(action=None, success=None, container=None, results=None, **kwargs):
     """Gather context about a service account key finding."""
@@ -214,19 +222,27 @@ def investigate_sa_key(action=None, success=None, container=None, results=None, 
     for artifact_data in artifacts:
         resource_name = artifact_data[0]
         source_props = artifact_data[1]
+        account = source_props.get("serviceAccountEmail") if isinstance(source_props, dict) else None
+
+        if not account and "/serviceAccounts/" in resource_name:
+            account = resource_name.split("/serviceAccounts/", 1)[1].split("/", 1)[0]
+
+        if not account:
+            phantom.comment(container=container, comment=f"Could not extract service account email from {resource_name}.")
+            continue
 
         # Get the service account details
         phantom.act(
-            "describe service account",
-            parameters=[{"resource_name": resource_name}],
-            app="Google Cloud Platform",
+            "get serviceaccount",
+            parameters=[{"account": account}],
+            assets=["gcp_iam"],
             callback=enrich_with_iam_info
         )
 
 def enrich_with_iam_info(action=None, success=None, container=None, results=None, **kwargs):
     """Add IAM policy information and create a Jira ticket."""
     if success:
-        sa_info = results[0]["data"]
+        sa_info = results[0]["data"][0]
         # Create investigation ticket with all gathered context
         phantom.act(
             "create ticket",
@@ -236,7 +252,7 @@ def enrich_with_iam_info(action=None, success=None, container=None, results=None
                 "priority": "High",
                 "project_key": "SEC"
             }],
-            app="Jira"
+            assets=["jira"]
         )
 ```
 
@@ -248,29 +264,30 @@ Generate a test finding in SCC and verify it flows through to SOAR.
 # Create a test finding in Security Command Center
 gcloud scc findings create test-finding-001 \
   --organization=123456789 \
-  --source=organizations/123456789/sources/SOURCE_ID \
+  --location=global \
+  --source=SOURCE_ID \
   --state=ACTIVE \
-  --severity=HIGH \
   --category="TEST_FINDING" \
+  --event-time="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --resource-name="//compute.googleapis.com/projects/my-project/global/firewalls/test-rule"
 ```
 
-Check the Splunk SOAR mission control dashboard to see if a new container was created for the finding. Verify that the playbook triggered and the expected actions ran.
+Check Splunk SOAR to see if a new container was created for the finding. Verify that the playbook triggered and the expected actions ran.
 
 ## Operational Considerations
 
 Keep your playbook permissions scoped tightly. The service account should only have the permissions needed for the specific remediation actions your playbooks perform. Avoid granting broad admin roles.
 
-Monitor the Pub/Sub subscription lag. If SOAR falls behind, findings pile up and your response time degrades. Set up an alert in Cloud Monitoring for subscription age.
+Monitor the Pub/Sub subscription lag. If the Splunk input falls behind, findings pile up and your response time degrades. Set up an alert in Cloud Monitoring for the subscription backlog.
 
 ```bash
 # Create an alert for Pub/Sub subscription backlog
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="SOAR Subscription Backlog" \
   --condition-display-name="High unacked messages" \
   --condition-filter='resource.type="pubsub_subscription" AND resource.labels.subscription_id="scc-soar-subscription" AND metric.type="pubsub.googleapis.com/subscription/num_undelivered_messages"' \
-  --condition-threshold-value=100 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --duration=300s \
+  --if='> 100'
 ```
 
 Start with low-risk playbooks that gather information and create tickets. Once you trust the automation, gradually add remediation actions. The combination of SCC's detection capabilities and SOAR's automation gives you a security operations workflow that scales without scaling your team linearly.
