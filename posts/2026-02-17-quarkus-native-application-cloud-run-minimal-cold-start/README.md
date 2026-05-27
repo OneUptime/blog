@@ -26,7 +26,7 @@ Regular Java applications on Cloud Run can take 3-10 seconds for a cold start. A
 ```bash
 # Create a new Quarkus project with REST extensions
 
-mvn io.quarkus.platform:quarkus-maven-plugin:3.6.0:create \
+mvn io.quarkus.platform:quarkus-maven-plugin:3.36.0:create \
   -DprojectGroupId=com.example \
   -DprojectArtifactId=quarkus-cloudrun \
   -Dextensions="rest-jackson,health,smallrye-openapi" \
@@ -209,13 +209,7 @@ public class InfoResource {
     }
 
     private boolean isNativeImage() {
-        // Check if running as a GraalVM native image
-        try {
-            Class.forName("org.graalvm.nativeimage.ImageInfo");
-            return true;
-        } catch (ClassNotFoundException e) {
-            return false;
-        }
+        return "runtime".equals(System.getProperty("org.graalvm.nativeimage.imagecode"));
     }
 }
 ```
@@ -251,39 +245,43 @@ Quarkus provides a multi-stage Dockerfile that handles the native image compilat
 ```dockerfile
 # Dockerfile.native-micro - Optimized native image build
 # Stage 1: Build the native image using GraalVM
-FROM quay.io/quarkus/ubi-quarkus-mandrel-builder-image:jdk-21 AS build
-USER root
-WORKDIR /code
+FROM quay.io/quarkus/ubi9-quarkus-mandrel-builder-image:jdk-21 AS build
 
 # Copy Maven files first for better layer caching
-COPY pom.xml .
-COPY .mvn .mvn
-COPY mvnw .
-RUN chmod +x mvnw && ./mvnw dependency:go-offline
+COPY --chown=quarkus:quarkus --chmod=0755 mvnw /code/mvnw
+COPY --chown=quarkus:quarkus .mvn /code/.mvn
+COPY --chown=quarkus:quarkus pom.xml /code/
+USER quarkus
+WORKDIR /code
+RUN ./mvnw -B org.apache.maven.plugins:maven-dependency-plugin:3.8.1:go-offline
 
 # Copy source code and build native image
-COPY src ./src
+COPY src /code/src
 RUN ./mvnw package -Dnative -DskipTests \
   -Dquarkus.native.additional-build-args="--initialize-at-build-time"
 
 # Stage 2: Create minimal runtime image
-FROM quay.io/quarkus/quarkus-micro-image:2.0
-WORKDIR /work
+FROM quay.io/quarkus/ubi9-quarkus-micro-image:2.0
+WORKDIR /work/
 
 # Copy the native binary
 COPY --from=build /code/target/*-runner /work/application
 
-# Set correct permissions
-RUN chmod 775 /work/application
+# Set correct permissions for user 1001
+RUN chmod 775 /work /work/application \
+  && chown -R 1001 /work \
+  && chmod -R "g+rwX" /work \
+  && chown -R 1001:root /work
 
 # Expose the port
 EXPOSE 8080
+USER 1001
 
 # Run the native binary directly - no JVM needed
 CMD ["./application", "-Dquarkus.http.host=0.0.0.0"]
 ```
 
-The `quarkus-micro-image` base image is only about 30MB, and your native binary adds another 50-80MB. The total image size is typically under 120MB, compared to 300-500MB for a JVM-based image.
+The `ubi9-quarkus-micro-image` base image is only about 30MB, and your native binary adds another 50-80MB. The total image size is typically under 120MB, compared to 300-500MB for a JVM-based image.
 
 ## Building with Cloud Build
 
@@ -341,13 +339,14 @@ gcloud run deploy quarkus-app \
   --port 8080 \
   --memory 128Mi \
   --cpu 1 \
+  --execution-environment gen1 \
   --min-instances 0 \
   --max-instances 20 \
   --concurrency 100 \
   --timeout 30
 ```
 
-Notice the `--memory 128Mi`. A Quarkus native application can run comfortably with 128MB of memory, which is significantly less than the 512MB-1GB typically needed for JVM-based Java applications.
+Notice the `--memory 128Mi` and `--execution-environment gen1`. Cloud Run services that use less than 512Mi of memory need the first-generation execution environment. A Quarkus native application can run comfortably with 128MB of memory, which is significantly less than the 512MB-1GB typically needed for JVM-based Java applications.
 
 ## Verifying Cold Start Performance
 
