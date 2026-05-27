@@ -19,13 +19,14 @@ Google's Cloud Adoption Framework organizes the migration into four themes that 
 3. **Scale** - build the cloud foundation (networking, security, identity)
 4. **Secure** - implement security controls and compliance
 
-And three migration phases:
+And four migration phases:
 
 1. **Assess** - understand what you have and plan the migration
 2. **Plan** - design the target architecture and migration approach
 3. **Deploy** - execute the migration in waves
+4. **Optimize** - improve performance, resiliency, operations, and costs after migration
 
-Let me walk through the practical implementation of each phase.
+Let me walk through the practical implementation of the main migration phases.
 
 ## Phase 1 - Assess (Weeks 1-8)
 
@@ -38,19 +39,26 @@ You need a complete inventory of every application, service, and dependency in y
 ```bash
 # Use Google's StratoZone or Migration Center for automated discovery
 
-# Migration Center agent collects data from your servers
+# Migration Center discovery client CLI collects data from your servers
 
-# Install the Migration Center discovery agent on Linux servers
-curl -O https://storage.googleapis.com/migrate/mc-discovery-agent.sh
-chmod +x mc-discovery-agent.sh
-sudo ./mc-discovery-agent.sh --project-id my-project
+# Download the Migration Center discovery client CLI on a Linux host
+curl -O "https://mc-release.storage.googleapis.com/mcdc/$(curl -s https://mc-release.storage.googleapis.com/mcdc/latest)/mcdc"
+chmod +x mcdc
 
-# For Windows servers, download and run the Windows agent
-# The agent collects:
+# Run guest discovery over SSH against a Linux machine
+./mcdc discover ssh -u my-user 192.0.2.10
+
+# Or run the local collection script on a Linux target without SSH access
+curl -O "https://mc-release.storage.googleapis.com/mcdc/$(curl -s https://mc-release.storage.googleapis.com/mcdc/latest)/mcdc-linux-collect.sh"
+chmod +x mcdc-linux-collect.sh
+sudo ./mcdc-linux-collect.sh
+
+# For Windows servers, use the Windows mcdc CLI or mcdc-windows-collect.ps1
+# The discovery tools collect:
 # - Hardware specs (CPU, RAM, disk)
 # - Running processes and services
 # - Network connections and dependencies
-# - Resource utilization over time
+# - Machine configuration, open files, and database discovery data
 ```
 
 Build your application inventory with key metadata:
@@ -169,7 +177,8 @@ Establish connectivity between on-premises and GCP:
 # For the migration phase, Cloud VPN is usually sufficient
 # For production, plan for Dedicated or Partner Interconnect
 
-# Set up HA VPN for initial connectivity
+# Start by creating the Google Cloud HA VPN gateway. You still need
+# Cloud Router/BGP, the peer gateway, and VPN tunnels for full connectivity.
 gcloud compute vpn-gateways create migration-vpn \
   --network production-vpc \
   --region us-central1
@@ -255,17 +264,15 @@ waves:
 Start with low-risk applications to build confidence and establish patterns:
 
 ```bash
-# Migrate a simple VM using Migrate to Virtual Machines
-gcloud migration vms create my-vm-migration \
-  --source-vm-id vm-wiki-server \
-  --target-project my-project \
-  --target-zone us-central1-a
+# Migrate a simple VM using Migrate to Virtual Machines.
+# Onboard the source VM, start replication, set target details,
+# test-clone, cut over, and finalize the migration in the console or API.
 
-# Or use Migrate to Containers for containerized workloads
-migctl migration create wiki-migration \
-  --source my-vsphere-source \
-  --vm-id vm-wiki-server \
-  --intent Image
+# Or use Migrate to Containers CLI for workloads you want to modernize
+# into containers. Copy, analyze, and generate deployable artifacts.
+./m2c copy ssh appuser@192.0.2.10 --output copied-filesystem --remote-sudo
+./m2c analyze --source copied-filesystem --plugin linux-vm-container --output analysis-output
+./m2c generate --input analysis-output --output migration-artifacts
 ```
 
 ### Establish Monitoring from Day 1
@@ -273,21 +280,24 @@ migctl migration create wiki-migration \
 Set up monitoring before migrating production workloads:
 
 ```bash
-# Set up Cloud Monitoring workspace
-gcloud monitoring workspaces create --project my-project
+# Cloud Monitoring automatically collects Google Cloud service metrics
+# in each project. Configure a multi-project metrics scope only if you
+# need one project to chart and alert on metrics from other projects.
 
 # Create uptime checks for migrated applications
-gcloud monitoring uptime-check-configs create \
-  --display-name "Customer Portal" \
-  --monitored-resource-type uptime-url \
+gcloud monitoring uptime create "Customer Portal" \
+  --resource-type uptime-url \
   --resource-labels host=portal.mycompany.com,project_id=my-project \
-  --http-check-path /health \
-  --period 60s
+  --path /health \
+  --period 1
 
 # Set up alerting policies
 gcloud monitoring policies create \
   --display-name "High Error Rate" \
   --condition-display-name "Error rate > 5%" \
+  --condition-filter 'metric.type="logging.googleapis.com/user/http_error_rate"' \
+  --duration 60s \
+  --if "> 5" \
   --notification-channels $NOTIFICATION_CHANNEL_ID
 ```
 
