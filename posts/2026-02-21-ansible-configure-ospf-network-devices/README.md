@@ -33,7 +33,7 @@ graph TD
     R1 --- R2
     R1 --- R3
     R2 --- R4
-    R3 --- R5
+    R2 --- R5
 ```
 
 ## Inventory Setup
@@ -54,26 +54,37 @@ all:
               ansible_host: 10.1.1.1
               router_id: 10.255.0.1
               ospf_role: abr
+              expected_neighbor_count: 2
             core-rtr02:
               ansible_host: 10.1.1.2
               router_id: 10.255.0.2
               ospf_role: abr
+              expected_neighbor_count: 3
         area1_routers:
           hosts:
             dist-rtr01:
               ansible_host: 10.1.2.1
               router_id: 10.255.0.3
               ospf_role: internal
+              expected_neighbor_count: 1
             dist-rtr02:
               ansible_host: 10.1.2.2
               router_id: 10.255.0.4
               ospf_role: internal
+              expected_neighbor_count: 1
         area2_routers:
           hosts:
             branch-rtr01:
               ansible_host: 10.1.3.1
               router_id: 10.255.0.5
               ospf_role: internal
+              expected_neighbor_count: 1
+        area2_abr_routers:
+          hosts:
+            core-rtr02:
+        edge_routers:
+          hosts:
+            core-rtr02:
       vars:
         ansible_connection: ansible.netcommon.network_cli
         ansible_network_os: cisco.ios.ios
@@ -104,11 +115,11 @@ The `ios_ospfv2` resource module handles the OSPF process configuration.
               router_id: "{{ router_id }}"
               auto_cost:
                 reference_bandwidth: 10000
+                set: true
               log_adjacency_changes:
                 detail: true
               passive_interfaces:
                 default: true
-                set_interface: false
         state: merged
       register: ospf_result
 
@@ -199,8 +210,8 @@ Interface-level OSPF settings control timers, network type, cost, and authentica
       loop: "{{ ospf_interfaces.active_interfaces }}"
       when: ospf_role == 'abr'
 
-    # Configure OSPF authentication on backbone links
-    - name: Enable OSPF MD5 authentication on Area 0 links
+    # Configure OSPF authentication on active links
+    - name: Enable OSPF MD5 authentication on active links
       cisco.ios.ios_config:
         lines:
           - ip ospf authentication message-digest
@@ -244,6 +255,7 @@ Area Border Routers (ABRs) should summarize routes between areas to keep routing
         lines:
           - area 2 range 10.2.0.0 255.255.0.0
         parents: router ospf 1
+      when: inventory_hostname in groups['area2_abr_routers']
 
     # Configure Area 2 as a stub area to reduce LSA flooding
     - name: Set Area 2 as stub
@@ -251,6 +263,7 @@ Area Border Routers (ABRs) should summarize routes between areas to keep routing
         lines:
           - area 2 stub
         parents: router ospf 1
+      when: inventory_hostname in groups['area2_abr_routers']
 
 - name: Configure stub area on branch routers
   hosts: area2_routers
