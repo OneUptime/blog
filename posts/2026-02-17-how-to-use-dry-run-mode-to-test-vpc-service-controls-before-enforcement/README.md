@@ -14,7 +14,7 @@ I have seen teams enforce perimeters that immediately broke their CI/CD pipeline
 
 ## How Dry Run Mode Works
 
-When a perimeter is in dry run mode, every API call is evaluated against the perimeter rules, but violations are only logged, not enforced. The actual API call still succeeds. This gives you a window to see exactly what would break if you enforced the perimeter.
+When a perimeter is in dry run mode, API calls are evaluated against the dry-run perimeter rules, but dry-run-only violations are logged, not enforced. If a request is allowed by the enforced configuration, the actual API call still succeeds. This gives you a window to see exactly what would break if you enforced the perimeter.
 
 ```mermaid
 graph TD
@@ -41,9 +41,9 @@ ACCESS_POLICY_ID=$(gcloud access-context-manager policies list \
 # Create a dry-run-only perimeter
 gcloud access-context-manager perimeters dry-run create test-perimeter \
   --perimeter-type=regular \
-  --resources="projects/PROJECT_NUMBER_1,projects/PROJECT_NUMBER_2" \
-  --restricted-services="bigquery.googleapis.com,storage.googleapis.com,cloudsql.googleapis.com" \
-  --title="Test Perimeter - Dry Run" \
+  --perimeter-resources="projects/PROJECT_NUMBER_1,projects/PROJECT_NUMBER_2" \
+  --perimeter-restricted-services="bigquery.googleapis.com,storage.googleapis.com,cloudsql.googleapis.com" \
+  --perimeter-title="Test Perimeter - Dry Run" \
   --policy=$ACCESS_POLICY_ID
 ```
 
@@ -83,7 +83,7 @@ This is where the real value of dry run comes in. The audit logs tell you exactl
 ```bash
 # Query for dry-run violations
 gcloud logging read \
-  'protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.dryRun=true' \
+  'log_id("cloudaudit.googleapis.com/policy") AND severity="error" AND protoPayload.metadata.dryRun="true"' \
   --limit=50 \
   --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.methodName, protoPayload.metadata.violationReason)" \
   --project=my-project-id
@@ -94,7 +94,7 @@ For a more detailed view:
 ```bash
 # Get full details on dry-run violations
 gcloud logging read \
-  'protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.dryRun=true' \
+  'log_id("cloudaudit.googleapis.com/policy") AND severity="error" AND protoPayload.metadata.dryRun="true"' \
   --limit=10 \
   --format=json \
   --project=my-project-id
@@ -108,7 +108,7 @@ Export dry-run violations to BigQuery for deeper analysis.
 # Create a log sink to export VPC SC violations to BigQuery
 gcloud logging sinks create vpc-sc-dryrun-sink \
   bigquery.googleapis.com/projects/my-project-id/datasets/vpc_sc_analysis \
-  --log-filter='protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.dryRun=true' \
+  --log-filter='log_id("cloudaudit.googleapis.com/policy") AND severity="error" AND protoPayload.metadata.dryRun="true"' \
   --project=my-project-id
 ```
 
@@ -121,7 +121,7 @@ SELECT
   protopayload_auditlog.methodName AS method,
   COUNT(*) AS violation_count
 FROM `my-project-id.vpc_sc_analysis.cloudaudit_googleapis_com_policy_*`
-WHERE protopayload_auditlog.metadata.dryRun = TRUE
+WHERE JSON_VALUE(protopayload_auditlog.metadataJson, '$.dryRun') = 'true'
 GROUP BY identity, method
 ORDER BY violation_count DESC
 LIMIT 20;
@@ -133,7 +133,7 @@ SELECT
   DISTINCT protopayload_auditlog.serviceName AS blocked_service,
   COUNT(*) as count
 FROM `my-project-id.vpc_sc_analysis.cloudaudit_googleapis_com_policy_*`
-WHERE protopayload_auditlog.metadata.dryRun = TRUE
+WHERE JSON_VALUE(protopayload_auditlog.metadataJson, '$.dryRun') = 'true'
 GROUP BY blocked_service
 ORDER BY count DESC;
 ```
@@ -203,7 +203,7 @@ Even after enforcement, monitor closely for the first few days.
 ```bash
 # Watch for enforced violations (these are actual blocks)
 gcloud logging read \
-  'protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.dryRun=false AND protoPayload.metadata.violationReason!=""' \
+  'log_id("cloudaudit.googleapis.com/policy") AND severity="error" AND protoPayload.metadata.dryRun="false" AND protoPayload.metadata.violationReason!=""' \
   --limit=20 \
   --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.methodName, protoPayload.metadata.violationReason)" \
   --project=my-project-id
