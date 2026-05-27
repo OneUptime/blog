@@ -37,13 +37,15 @@ flowchart LR
     Switch["Network Switch / Router"]
     Node["Single K8s Node"]
     MetalLB["MetalLB Speaker Pod"]
+    KubeProxy["kube-proxy"]
     SVC["LoadBalancer Service"]
     Pod["Application Pod"]
 
     Client -->|"Sends traffic to VIP"| Switch
     Switch -->|"ARP resolves to node MAC"| Node
-    Node --> MetalLB
-    MetalLB -->|"Forwards to Service ClusterIP"| SVC
+    MetalLB -->|"answers ARP/NDP for VIP"| Switch
+    Node --> KubeProxy
+    KubeProxy -->|"routes service traffic"| SVC
     SVC -->|"Routes to endpoint"| Pod
 ```
 
@@ -58,7 +60,7 @@ Before you begin, make sure you have:
 - A single-node Kubernetes cluster (Microk8s, k3s, kubeadm, or kind)
 - `kubectl` configured and able to reach the cluster
 - A range of free IP addresses on your local subnet (even one is enough)
-- `kube-proxy` running in `iptables` or `ipvs` mode (not `userspace`)
+- `kube-proxy` running in `iptables`, `nftables`, or `ipvs` mode. If you use `ipvs`, enable strict ARP mode as described in the MetalLB installation docs.
 
 Find your node IP and subnet to plan the address pool:
 
@@ -327,14 +329,14 @@ kubectl get pods -n metallb-system -l app.kubernetes.io/component=speaker
 # Replace the IP with your assigned external IP
 arp -a | grep 192.168.1.240
 
-# Check if kube-proxy is routing correctly
-kubectl get endpoints nginx-test-lb
+# Check if kube-proxy has service endpoints to route to
+kubectl get endpointslices -l kubernetes.io/service-name=nginx-test-lb
 ```
 
 Common causes:
 - The client is not on the same Layer 2 network as the node
 - A firewall on the node is blocking traffic on the service port
-- `kube-proxy` is in `userspace` mode (switch to `iptables` or `ipvs`)
+- `kube-proxy` is not programming service forwarding rules correctly
 
 ### Conflicting DHCP assignments
 
