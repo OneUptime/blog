@@ -10,7 +10,9 @@ Description: A practical guide to using Vertex AI Explainable AI to understand w
 
 A model that predicts loan defaults with 95% accuracy is impressive until someone asks why a specific application was rejected. "The model said so" is not an acceptable answer for regulators, customers, or your own debugging process. Feature attribution tells you which input features contributed most to each prediction, turning your black-box model into something you can actually explain.
 
-Vertex AI Explainable AI provides built-in feature attribution methods that work with tabular models deployed on Vertex AI endpoints. You configure it once during model upload, and every prediction can include explanations at no extra training cost.
+Vertex AI Explainable AI provides built-in feature attribution methods that work with tabular models deployed on Vertex AI endpoints. You configure it once during model upload, and explanation requests can include feature attributions without retraining the model.
+
+Note: Vertex Explainable AI was deprecated on March 16, 2026. Google Cloud says access will no longer be available on or after March 16, 2027, so use this approach only for existing workloads or migrations that can finish before that shutdown date.
 
 ## How Feature Attribution Works
 
@@ -165,13 +167,13 @@ for i, explanation in enumerate(response.explanations):
 
 ## Understanding the Attribution Output
 
-The attribution output contains several important values. The baseline output is the model's prediction when all features are at their baseline values (typically the mean or median of the training data). The instance output is the actual prediction for the given input. The difference between these two is distributed across the feature attributions.
+The attribution output contains several important values. The baseline output is the model's prediction when all features are at their configured or default baseline values. If you do not specify input baselines, Vertex AI chooses defaults for the model input, such as zero-valued baselines for many tabular custom models. The instance output is the actual prediction for the given input. The difference between these two is distributed across the feature attributions.
 
 This means the attributions sum up to approximately the difference between the instance output and the baseline output. If the baseline default probability is 0.15 and the instance prediction is 0.72, the feature attributions should sum to approximately 0.57.
 
 ## Using Integrated Gradients for Neural Networks
 
-If your model is a neural network (TensorFlow or PyTorch), Integrated Gradients often provides better explanations than Sampled Shapley because it can leverage the model's gradient information.
+If your model is a differentiable TensorFlow model served with a Vertex AI prebuilt TensorFlow container, Integrated Gradients can be a better fit than Sampled Shapley because it can leverage the model's gradient information.
 
 This code configures Integrated Gradients:
 
@@ -270,7 +272,7 @@ importance = analyze_global_feature_importance(
 
 ## Practical Considerations
 
-The number of sample paths for Sampled Shapley directly affects both accuracy and latency. With 25 paths, each explanation request takes roughly 25 times longer than a plain prediction. For real-time serving where latency matters, start with 10 paths and increase only if the explanations seem unstable across repeated calls for the same input.
+The number of sample paths for Sampled Shapley directly affects both approximation quality and latency. Higher path counts are more computationally intensive, and explanation requests can be much slower than plain predictions because Vertex AI needs additional model evaluations. For real-time serving where latency matters, start with 10 paths and increase only if the explanations seem unstable across repeated calls for the same input.
 
 For categorical features with high cardinality, consider grouping related categories before computing attributions. Explaining 500 individual one-hot encoded features is less useful than explaining "product category" as a single grouped feature.
 
