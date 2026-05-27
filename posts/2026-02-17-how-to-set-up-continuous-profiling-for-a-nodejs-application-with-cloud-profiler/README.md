@@ -4,26 +4,29 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Profiler, Node.js, Continuous Profiling, Performance
 
-Description: A complete guide to setting up Google Cloud Profiler for continuous CPU and heap profiling of Node.js applications, with deployment examples for Cloud Run and GKE.
+Description: A complete guide to setting up Google Cloud Profiler for continuous wall-time and heap profiling of Node.js applications, with deployment examples for Cloud Run and GKE.
 
 ---
 
 Node.js performance issues are tricky. The single-threaded event loop means that one slow synchronous operation can block everything. CPU-intensive code in a request handler stalls all other requests. Memory leaks from closures and event listeners slowly degrade performance until the process runs out of memory.
 
-Cloud Profiler helps you find these problems in production by continuously collecting CPU and heap profiles with minimal overhead. Unlike attaching a profiler to a running process for a few minutes, continuous profiling gives you always-available data that shows how your Node.js application behaves under real production load.
+Cloud Profiler helps you find these problems in production by continuously collecting wall-time and heap profiles with minimal overhead. Unlike attaching a profiler to a running process for a few minutes, continuous profiling gives you always-available data that shows how your Node.js application behaves under real production load.
 
 ## How Cloud Profiler Works with Node.js
 
 The `@google-cloud/profiler` package uses V8's built-in profiling APIs to collect:
 
-- **CPU (wall-clock) profiles**: Shows where elapsed time is spent, including async operations.
+- **Wall-time profiles**: Shows where elapsed time is spent, including async operations.
 - **Heap profiles**: Shows memory allocation by function, helping identify memory leaks and high-allocation code paths.
 
-The profiler collects a 10-second profile approximately once per minute. During collection, it samples the call stack at a fixed interval. Between collection windows, there is zero overhead.
+The profiler collects one profile per minute, on average, for each deployment and profile type. Wall-time profiles usually collect data for 10 seconds; heap profiles are collected at a single point in time. Between collection windows, the profiler agent is mostly idle.
 
 ## Step 1: Install the Package
 
 ```bash
+# Enable the Cloud Profiler API for your project
+gcloud services enable cloudprofiler.googleapis.com
+
 # Install the Cloud Profiler package
 
 npm install @google-cloud/profiler
@@ -50,11 +53,13 @@ profiler.start({
   // Project ID is auto-detected on GCP
   // projectId: 'your-project-id',
 
-  // Enable heap profiling (disabled by default)
-  heapProfiler: true,
+  // Heap and wall-time profiling are enabled by default.
+  // Use disableHeap or disableTime to turn off either profile type.
 
   // Log level for profiler diagnostics (0=silent, 1=error, 2=warn, 3=info, 4=debug)
   logLevel: 1,
+}).catch((err) => {
+  console.error(`Failed to start Cloud Profiler: ${err}`);
 });
 ```
 
@@ -77,7 +82,7 @@ app.get('/api/users', async (req, res) => {
 app.get('/api/reports', async (req, res) => {
   // This endpoint does CPU-intensive data processing
   const data = await fetchReportData();
-  const report = generateReport(data); // Will show up in CPU profiles
+  const report = generateReport(data); // Will show up in wall-time profiles
   res.json(report);
 });
 
@@ -104,7 +109,7 @@ WORKDIR /app
 
 # Copy dependency files first for better caching
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
@@ -169,9 +174,9 @@ spec:
               memory: 512Mi
 ```
 
-## Understanding Node.js CPU Profiles
+## Understanding Node.js Wall-Time Profiles
 
-When you view CPU profiles in Cloud Profiler, the flame graph shows the V8 call stack. Here is what to look for:
+When you view wall-time profiles in Cloud Profiler, the flame graph shows the V8 call stack. Here is what to look for:
 
 ### Event Loop Blocking
 
@@ -193,7 +198,7 @@ app.post('/api/import', (req, res) => {
 });
 
 // BETTER: Use streaming JSON parsing for large payloads
-const JSONStream = require('jsonstream');
+const JSONStream = require('JSONStream');
 
 app.post('/api/import', (req, res) => {
   const parser = JSONStream.parse('*');
@@ -276,8 +281,8 @@ function getCachedData(key) {
 }
 
 // FIXED: Use an LRU cache with a size limit
-const LRU = require('lru-cache');
-const cache = new LRU({ max: 1000 }); // Max 1000 entries
+const { LRUCache } = require('lru-cache');
+const cache = new LRUCache({ max: 1000 }); // Max 1000 entries
 
 function getCachedData(key) {
   if (cache.has(key)) return cache.get(key);
@@ -329,11 +334,12 @@ if (process.env.NODE_ENV === 'production') {
       service: process.env.SERVICE_NAME || 'my-node-service',
       version: process.env.APP_VERSION || '1.0.0',
     },
-    heapProfiler: true,
+  }).catch((err) => {
+    console.error(`Failed to start Cloud Profiler: ${err}`);
   });
 }
 ```
 
 ## Wrapping Up
 
-Continuous profiling for Node.js applications is easy to set up and provides insights you cannot get from metrics alone. A few lines of code give you always-available flame graphs that show exactly where CPU time is spent and where memory is being allocated. Focus on event loop blocking for CPU issues and closure-captured references for memory issues. Check the profiles after every deployment and you will catch performance problems before they affect your users.
+Continuous profiling for Node.js applications is easy to set up and provides insights you cannot get from metrics alone. A few lines of code give you always-available flame graphs that show exactly where wall time is spent and where memory is being allocated. Focus on event loop blocking for time-related issues and closure-captured references for memory issues. Check the profiles after every deployment and you will catch performance problems before they affect your users.
