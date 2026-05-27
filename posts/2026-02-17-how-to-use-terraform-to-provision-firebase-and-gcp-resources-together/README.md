@@ -12,7 +12,7 @@ Managing Firebase resources through the console is fine for prototyping, but it 
 
 ## Prerequisites
 
-You need Terraform installed (version 1.0 or later), a GCP project with billing enabled, and the Firebase Management API enabled. You also need a service account with sufficient permissions to create resources.
+You need Terraform installed (version 1.0 or later), a GCP project with billing enabled, and the required Google Cloud and Firebase APIs enabled. You also need a service account with sufficient permissions to create resources.
 
 Enable the required APIs with gcloud:
 
@@ -23,6 +23,12 @@ gcloud services enable firebase.googleapis.com --project YOUR_PROJECT_ID
 gcloud services enable firestore.googleapis.com --project YOUR_PROJECT_ID
 gcloud services enable identitytoolkit.googleapis.com --project YOUR_PROJECT_ID
 gcloud services enable cloudresourcemanager.googleapis.com --project YOUR_PROJECT_ID
+gcloud services enable serviceusage.googleapis.com --project YOUR_PROJECT_ID
+gcloud services enable run.googleapis.com --project YOUR_PROJECT_ID
+gcloud services enable iam.googleapis.com --project YOUR_PROJECT_ID
+gcloud services enable storage.googleapis.com --project YOUR_PROJECT_ID
+gcloud services enable firebasestorage.googleapis.com --project YOUR_PROJECT_ID
+gcloud services enable firebaserules.googleapis.com --project YOUR_PROJECT_ID
 ```
 
 ## Project Structure
@@ -59,6 +65,10 @@ terraform {
       source  = "hashicorp/google-beta"
       version = ">= 5.0"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = ">= 3.0"
+    }
   }
 
   # Store state remotely in a GCS bucket
@@ -74,8 +84,9 @@ provider "google" {
 }
 
 provider "google-beta" {
-  project = var.project_id
-  region  = var.region
+  project               = var.project_id
+  region                = var.region
+  user_project_override = true
 }
 ```
 
@@ -233,11 +244,12 @@ resource "google_project_iam_member" "api_firestore" {
 
 ## Cloud Storage Buckets for Firebase
 
-Configure Cloud Storage buckets that Firebase can use:
+Configure Cloud Storage buckets and associate them with Firebase:
 
 ```hcl
 # gcp.tf - Storage bucket for user uploads
 resource "google_storage_bucket" "user_uploads" {
+  provider = google-beta
   name     = "${var.project_id}-user-uploads-${var.environment}"
   location = var.region
 
@@ -259,6 +271,14 @@ resource "google_storage_bucket" "user_uploads" {
       storage_class = "NEARLINE"
     }
   }
+}
+
+resource "google_firebase_storage_bucket" "user_uploads" {
+  provider  = google-beta
+  project   = var.project_id
+  bucket_id = google_storage_bucket.user_uploads.name
+
+  depends_on = [google_firebase_project.default]
 }
 ```
 
