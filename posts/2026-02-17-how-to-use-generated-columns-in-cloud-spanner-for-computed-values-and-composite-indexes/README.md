@@ -10,7 +10,7 @@ Description: Learn how to use generated columns in Cloud Spanner to store comput
 
 Generated columns in Cloud Spanner let you define columns whose values are automatically computed from other columns in the same row. If you have ever found yourself computing the same derived value in every INSERT and UPDATE statement across multiple services, generated columns are the answer.
 
-They come in two flavors: stored and non-stored. Stored generated columns persist the computed value to disk, so they can be indexed. Non-stored ones are computed at read time. Both have their uses, and choosing the right one depends on your access patterns.
+They come in two flavors: stored and non-stored. Stored generated columns persist the computed value to disk. Non-stored ones are computed at read time. Both can be indexed, and choosing the right one depends on your access patterns.
 
 ## When Generated Columns Make Sense
 
@@ -53,7 +53,7 @@ ORDER BY TotalPrice DESC;
 
 ## Creating Indexes on Generated Columns
 
-One of the biggest advantages of stored generated columns is that you can index them. This lets you build expression-based indexes that would otherwise be impossible in Spanner.
+One of the biggest advantages of generated columns is that you can index them. This lets you build expression-based indexes that would otherwise be impossible in Spanner.
 
 For example, imagine you want case-insensitive email lookups:
 
@@ -119,7 +119,7 @@ WHERE RegionMonth = 'us-east1-2026-01'
 
 ## Non-Stored Generated Columns
 
-Non-stored generated columns are computed at read time rather than being persisted to disk. They save storage space but cannot be indexed.
+Non-stored generated columns are computed at read time rather than being persisted to disk. They save storage space in the base table, and can also be indexed when you need efficient lookups on the computed value.
 
 ```sql
 -- Table with a non-stored generated column (computed at read time)
@@ -133,17 +133,17 @@ CREATE TABLE Invoices (
 ) PRIMARY KEY (InvoiceId);
 ```
 
-Notice the absence of the `STORED` keyword. These columns exist only in query results - Spanner calculates them on the fly.
+Notice the absence of the `STORED` keyword. In this table, these columns exist only in query results - Spanner calculates them on the fly.
 
 Use non-stored generated columns when:
-- You do not need to filter or sort by the computed value
+- You do not need to persist the computed value in the base table
 - Storage cost is a concern
 - The computation is simple and fast
 
 Use stored generated columns when:
-- You need to create an index on the computed value
-- The computation is referenced frequently in WHERE clauses
-- You want to avoid recomputing on every read
+- You need to avoid recomputing the value during reads from the base table
+- The computation is selected frequently from the base table
+- You want the generated value stored alongside the rest of the row
 
 ## Adding Generated Columns to Existing Tables
 
@@ -155,7 +155,7 @@ ALTER TABLE Users
 ADD COLUMN NameLower STRING(256) AS (LOWER(DisplayName)) STORED;
 ```
 
-Be aware that the backfill operation can take time on large tables. Spanner handles this in the background, and the column will show NULL values until the backfill completes for each row.
+Be aware that the backfill operation can take time on large tables. Spanner handles this in the background, and the stored generated column cannot be read or queried until the backfill completes.
 
 After the backfill is done, you can create an index on the new column:
 
@@ -171,7 +171,7 @@ Generated columns support a wide range of SQL expressions. Here are some pattern
 
 ```sql
 -- Extract year from a timestamp
-YearCreated INT64 AS (EXTRACT(YEAR FROM CreatedAt)) STORED
+YearCreated INT64 AS (EXTRACT(YEAR FROM PublishedAt)) STORED
 
 -- Concatenate first and last name
 FullName STRING(512) AS (CONCAT(FirstName, ' ', LastName)) STORED
@@ -193,9 +193,11 @@ DomainName STRING(256) AS (
 Generated columns have a few constraints:
 
 - The expression can only reference columns from the same table and row.
-- You cannot reference other generated columns in a generated column expression.
+- The expression cannot contain subqueries, and stored or indexed generated columns must use immutable expressions.
+- A generated primary key column cannot reference other generated columns.
 - You cannot directly INSERT or UPDATE a generated column. Spanner computes it automatically.
-- Some functions are not allowed in generated column expressions (like CURRENT_TIMESTAMP or PENDING_COMMIT_TIMESTAMP).
+- Non-deterministic functions such as CURRENT_TIMESTAMP or PENDING_COMMIT_TIMESTAMP cannot be used in a stored or indexed generated column.
+- The `allow_commit_timestamp` option is not allowed on generated columns or on columns referenced by generated columns.
 - Stored generated columns consume storage space just like regular columns.
 
 ## Practical Example: Application Code
@@ -239,6 +241,6 @@ def get_expensive_products(min_total):
 
 ## Wrapping Up
 
-Generated columns are one of those features that seem small but end up saving a lot of headaches. They move computed logic from your application into the database, which means every service that touches the data gets consistent results without duplicating the computation. Combined with Spanner's indexing capabilities, stored generated columns give you expression-based indexes that can dramatically speed up queries on derived values.
+Generated columns are one of those features that seem small but end up saving a lot of headaches. They move computed logic from your application into the database, which means every service that touches the data gets consistent results without duplicating the computation. Combined with Spanner's indexing capabilities, generated columns give you expression-based indexes that can dramatically speed up queries on derived values.
 
 Start with the patterns you see repeated most in your application layer - case normalization, composite keys, derived calculations - and move them into generated columns. Your codebase will be cleaner, and your queries will be faster.
