@@ -27,7 +27,7 @@ Before diving in, make sure you have:
 - The `gcloud` CLI installed and configured
 - An existing access policy for your organization
 
-If you do not have an access policy yet, you can create one. Note that each organization gets one access policy.
+If you do not have an access policy yet, you can create one. Note that each organization can have one organization-level access policy. VPC Service Controls also supports scoped access policies for folders and projects.
 
 The following command creates an access policy for your org:
 
@@ -69,13 +69,13 @@ Once you have the policy ID, create the access level:
 
 ```bash
 # Create a geographic access level from the YAML definition
-gcloud access-context-manager levels create geo-restricted-na \
+gcloud access-context-manager levels create geo_restricted_us_ca \
   --policy=POLICY_ID \
-  --title="North America Only" \
+  --title="US and Canada Only" \
   --basic-level-spec=geo-access-level.yaml
 ```
 
-This creates an access level called `geo-restricted-na` that only allows requests originating from the US or Canada.
+This creates an access level called `geo_restricted_us_ca` that only allows requests originating from the US or Canada.
 
 ## Step 3: Verify the Access Level
 
@@ -83,7 +83,7 @@ Check that the access level was created correctly:
 
 ```bash
 # Describe the access level to verify its configuration
-gcloud access-context-manager levels describe geo-restricted-na \
+gcloud access-context-manager levels describe geo_restricted_us_ca \
   --policy=POLICY_ID
 ```
 
@@ -97,19 +97,19 @@ Here is how to create a service perimeter that references the geographic access 
 
 ```bash
 # Create a service perimeter that enforces geographic restrictions
-gcloud access-context-manager perimeters create geo-perimeter \
+gcloud access-context-manager perimeters create geo_perimeter \
   --policy=POLICY_ID \
   --title="Geo-Restricted Perimeter" \
   --resources="projects/PROJECT_NUMBER" \
   --restricted-services="bigquery.googleapis.com,storage.googleapis.com" \
-  --access-levels="accessPolicies/POLICY_ID/accessLevels/geo-restricted-na"
+  --access-levels="accessPolicies/POLICY_ID/accessLevels/geo_restricted_us_ca"
 ```
 
-This perimeter wraps your project's BigQuery and Cloud Storage services so that only requests from North America (matching the access level) can reach them.
+This perimeter wraps your project's BigQuery and Cloud Storage services so that only requests from the US or Canada (matching the access level) can reach them.
 
 ## Step 5: Combine Geographic and Other Conditions
 
-In practice, you often want to combine geographic restrictions with other conditions. For example, you might want to allow access only from North America AND only from corporate-managed devices.
+In practice, you often want to combine geographic restrictions with other conditions. For example, you might want to allow access only from the US or Canada AND only from corporate-managed devices.
 
 Here is a more complete YAML that combines conditions:
 
@@ -124,7 +124,7 @@ Here is a more complete YAML that combines conditions:
     - 198.51.100.0/24
 ```
 
-When multiple conditions are in the same block, they are combined with AND logic. If you want OR logic (allow if any condition matches), put them in separate blocks:
+When multiple attributes are in the same condition block, they are combined with AND logic. If you want OR logic across multiple condition blocks (allow if any condition matches), put them in separate blocks and create the access level with `--combine-function=OR`:
 
 ```yaml
 # or-logic-access-level.yaml
@@ -133,6 +133,14 @@ When multiple conditions are in the same block, they are combined with AND logic
     - US
 - ipSubnetworks:
     - 203.0.113.0/24
+```
+
+```bash
+gcloud access-context-manager levels create us_or_corporate_ip \
+  --policy=POLICY_ID \
+  --title="US or Corporate IP" \
+  --basic-level-spec=or-logic-access-level.yaml \
+  --combine-function=OR
 ```
 
 ## Step 6: Using Access Levels with Identity-Aware Proxy
@@ -147,7 +155,7 @@ gcloud iap web add-iam-policy-binding \
   --resource-type=app-engine \
   --member="user:developer@example.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --condition="expression=accessPolicies/POLICY_ID/accessLevels/geo-restricted-na in request.auth.access_levels,title=geo-restriction"
+  --condition='expression="accessPolicies/POLICY_ID/accessLevels/geo_restricted_us_ca" in request.auth.access_levels,title=geo_restriction'
 ```
 
 ## Managing Access Levels with Terraform
@@ -159,7 +167,7 @@ If you manage your infrastructure as code (and you should), here is how to defin
 resource "google_access_context_manager_access_level" "geo_restricted" {
   parent = "accessPolicies/${var.policy_id}"
   name   = "accessPolicies/${var.policy_id}/accessLevels/geo_restricted_na"
-  title  = "North America Only"
+  title  = "US and Canada Only"
 
   basic {
     conditions {
@@ -195,17 +203,17 @@ A few tips from my experience working with geographic access levels:
 
 ```bash
 # Create a dry-run perimeter to test without enforcing
-gcloud access-context-manager perimeters dry-run create geo-perimeter-test \
+gcloud access-context-manager perimeters dry-run create geo_perimeter_test \
   --policy=POLICY_ID \
   --title="Geo Perimeter Test" \
   --resources="projects/PROJECT_NUMBER" \
   --restricted-services="storage.googleapis.com" \
-  --access-levels="accessPolicies/POLICY_ID/accessLevels/geo-restricted-na"
+  --access-levels="accessPolicies/POLICY_ID/accessLevels/geo_restricted_us_ca"
 ```
 
 **Check audit logs for denied requests.** When a request is blocked by an access level, it shows up in Cloud Audit Logs. Look for `PERMISSION_DENIED` errors with details about which access level was not satisfied.
 
-**Be aware of VPN and proxy traffic.** Geographic restrictions are based on the source IP's geolocation. If your users connect through a VPN that exits in a different country, they might get blocked. Plan your access levels with this in mind.
+**Be aware of VPN, proxy, and private IP traffic.** Geographic restrictions are based on the source public IP's geolocation. If your users connect through a VPN that exits in a different country, they might get blocked. Requests from private IP addresses cannot be geolocated, so access levels that require a geographic location deny those requests. Plan your access levels with this in mind.
 
 **Service accounts are evaluated differently.** Requests from GCP service accounts within the same project may or may not need to satisfy access levels, depending on how your perimeter is configured. Test this carefully.
 
