@@ -18,14 +18,20 @@ Enable it in your `ansible.cfg`:
 # ansible.cfg - Enable role profiling
 
 [defaults]
-callback_whitelist = profile_roles
+callbacks_enabled = ansible.posix.profile_roles
 ```
 
 Or via environment variable:
 
 ```bash
 # Enable role profiling for one run
-ANSIBLE_CALLBACK_WHITELIST=profile_roles ansible-playbook site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_roles ansible-playbook site.yml
+```
+
+The `profile_roles` callback is part of the `ansible.posix` collection. If you are using `ansible-core` without the full `ansible` package, install it first:
+
+```bash
+ansible-galaxy collection install ansible.posix
 ```
 
 ## What the Output Shows
@@ -37,16 +43,19 @@ PLAY RECAP *******************************************************************
 web-01  : ok=15  changed=3  unreachable=0  failed=0
 web-02  : ok=15  changed=3  unreachable=0  failed=0
 
-Thursday 21 February 2026  10:05:30 +0000 (0:00:01.234)       0:05:30.567 ****
+ROLES RECAP *******************************************************************
+Saturday 21 February 2026  10:05:30 +0000 (0:00:01.234)       0:05:30.567 ****
 ===============================================================================
 database ----------------------------------------------------------- 145.23s
 webserver ----------------------------------------------------------- 98.45s
 common -------------------------------------------------------------- 45.67s
 monitoring ---------------------------------------------------------- 32.12s
 security ------------------------------------------------------------ 12.34s
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+total -------------------------------------------------------------- 333.81s
 ```
 
-Each line shows the role name and the total time spent executing tasks in that role. The roles are sorted from slowest to fastest.
+Each role line shows the role name and the total time spent executing tasks in that role. The roles are sorted from slowest to fastest, followed by a `total` line.
 
 ## Why Role-Level Timing Matters
 
@@ -67,7 +76,7 @@ Consider a playbook that applies several roles:
     - application
 ```
 
-With profile_tasks, you might see 30 individual tasks sorted by time. With profile_roles, you see 5 role summaries. This tells you immediately: "the database role takes 2.5 minutes, everything else combined takes 3 minutes." You know where to focus your optimization effort.
+With profile_tasks, you might see 30 individual tasks sorted by time. With profile_roles, you see 5 role summaries. This tells you immediately: "the webserver role takes about 1.5 minutes, everything else combined takes about 2 minutes." You know where to focus your optimization effort.
 
 ## Combining with profile_tasks
 
@@ -76,7 +85,7 @@ Use both callbacks together for the full picture:
 ```ini
 # ansible.cfg - Both task and role profiling
 [defaults]
-callback_whitelist = profile_roles, profile_tasks, timer
+callbacks_enabled = ansible.posix.profile_roles, ansible.posix.profile_tasks, ansible.posix.timer
 ```
 
 The output includes three summaries:
@@ -95,12 +104,15 @@ common : Update apt cache -------------------------------------------- 23.45s
 ...
 
 # profile_roles output
+ROLES RECAP *******************************************************************
 ===============================================================================
 database ----------------------------------------------------------- 145.23s
 webserver ----------------------------------------------------------- 98.45s
 common -------------------------------------------------------------- 45.67s
 monitoring ---------------------------------------------------------- 32.12s
 security ------------------------------------------------------------ 12.34s
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+total -------------------------------------------------------------- 333.81s
 
 Playbook run took 0 days, 0 hours, 5 minutes, 30 seconds
 ```
@@ -112,8 +124,8 @@ You can see that the `database` role takes 145 seconds total, broken down into 8
 Once you know which role is slowest, dig into it:
 
 ```bash
-# Profile a single role in isolation
-ANSIBLE_CALLBACK_WHITELIST=profile_tasks,profile_roles \
+# Profile tagged database tasks
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks,ansible.posix.profile_roles \
   ansible-playbook -i inventory --tags database site.yml
 ```
 
@@ -131,7 +143,7 @@ Or create a test playbook that runs just one role:
 
 ```bash
 # Run with profiling
-ANSIBLE_CALLBACK_WHITELIST=profile_tasks,profile_roles ansible-playbook test-database-role.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks,ansible.posix.profile_roles ansible-playbook test-database-role.yml
 ```
 
 ## Role Profiling Across Environments
@@ -141,14 +153,14 @@ Compare role execution times between environments:
 ```bash
 #!/bin/bash
 # compare-environments.sh - Compare role timing across staging and production
-export ANSIBLE_CALLBACK_WHITELIST=profile_roles
+export ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_roles
 
 echo "=== Staging ==="
-ansible-playbook -i inventory/staging site.yml 2>&1 | sed -n '/^====/,$ p'
+ansible-playbook -i inventory/staging site.yml 2>&1 | sed -n '/^ROLES RECAP /,/^total /p'
 
 echo ""
 echo "=== Production ==="
-ansible-playbook -i inventory/production site.yml 2>&1 | sed -n '/^====/,$ p'
+ansible-playbook -i inventory/production site.yml 2>&1 | sed -n '/^ROLES RECAP /,/^total /p'
 ```
 
 If a role takes significantly longer in production, it could indicate:
@@ -165,14 +177,14 @@ Build a simple tracking system:
 #!/bin/bash
 # track-role-timing.sh - Extract and log role timing data
 LOG_FILE="/var/log/ansible/role-timing.csv"
-export ANSIBLE_CALLBACK_WHITELIST=profile_roles
+export ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_roles
 
 # Run the playbook and capture output
 output=$(ansible-playbook site.yml 2>&1)
 timestamp=$(date -Iseconds)
 
 # Parse the role timing summary
-echo "$output" | sed -n '/^====/,$ p' | grep -E '^\w' | while read -r line; do
+echo "$output" | awk '/^=+/{in_summary=1; next} /^~+/{in_summary=0} in_summary && /^[A-Za-z0-9_.-]+ -+ +[0-9.]+s$/' | while read -r line; do
     role=$(echo "$line" | awk '{print $1}')
     time=$(echo "$line" | grep -oP '[\d.]+s$' | sed 's/s//')
     echo "$timestamp,$role,$time" >> "$LOG_FILE"
