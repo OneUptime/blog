@@ -14,13 +14,13 @@ GKE Fleet Management addresses this by letting you group clusters into a fleet a
 
 ## What Is a Fleet?
 
-A fleet is a logical grouping of Kubernetes clusters that you manage together. Every GCP project has one fleet by default. Clusters in the same fleet can share configurations, enforce common policies, and use fleet-level features.
+A fleet is a logical grouping of Kubernetes clusters that you manage together. A Google Cloud project can have at most one fleet, and a fleet is created when you register a cluster or create an empty fleet. Clusters in the same fleet can share configurations, enforce common policies, and use fleet-level features.
 
 Fleets are not limited to GKE clusters. You can register EKS clusters, AKS clusters, and even on-premises clusters. But GKE clusters get the deepest integration.
 
 ## Registering Clusters to a Fleet
 
-GKE clusters are registered to their project fleet automatically when you use the fleet API. For existing clusters, you need to register them explicitly.
+GKE clusters can be registered to a fleet when they are created. For existing clusters, you need to register them explicitly.
 
 Register a GKE cluster to the fleet:
 
@@ -29,7 +29,8 @@ Register a GKE cluster to the fleet:
 
 gcloud container clusters update production-us \
   --zone us-central1-a \
-  --fleet-project=my-project
+  --enable-fleet \
+  --project=my-project
 ```
 
 Register another cluster in a different region:
@@ -38,7 +39,8 @@ Register another cluster in a different region:
 # Register a second cluster in a different region
 gcloud container clusters update production-eu \
   --zone europe-west1-b \
-  --fleet-project=my-project
+  --enable-fleet \
+  --project=my-project
 ```
 
 Verify the registrations:
@@ -63,26 +65,22 @@ Config Sync keeps cluster configuration in sync with a Git repository. Enable it
 gcloud beta container fleet config-management enable --project=my-project
 ```
 
-Then apply a configuration that tells all fleet clusters to sync from a Git repo:
+Then apply a configuration that tells a fleet member to sync from a Git repo:
 
 ```yaml
-# config-sync.yaml - Fleet-wide Config Sync configuration
-apiVersion: configmanagement.gke.io/v1
-kind: ConfigManagement
-metadata:
-  name: config-management
+# config-sync.yaml - Config Sync apply spec
+applySpecVersion: 1
 spec:
   configSync:
     enabled: true
     sourceFormat: unstructured
-    git:
-      syncRepo: https://github.com/my-org/cluster-config
-      syncBranch: main
-      secretType: none
-      policyDir: /config
+    syncRepo: https://github.com/my-org/cluster-config
+    syncBranch: main
+    secretType: none
+    policyDir: /config
 ```
 
-Apply this to all clusters in the fleet:
+Apply this to each fleet member that should use these settings:
 
 ```bash
 # Apply Config Sync settings to a specific fleet member
@@ -99,20 +97,10 @@ Policy Controller lets you enforce policies across all fleet clusters. It is bas
 Enable Policy Controller:
 
 ```bash
-# Enable Policy Controller for the fleet
-gcloud beta container fleet config-management apply \
-  --membership=production-us \
-  --config=/dev/stdin \
-  --project=my-project <<EOF
-apiVersion: configmanagement.gke.io/v1
-kind: ConfigManagement
-metadata:
-  name: config-management
-spec:
-  policyController:
-    enabled: true
-    templateLibraryInstalled: true
-EOF
+# Enable Policy Controller for a fleet member
+gcloud container fleet policycontroller enable \
+  --memberships=production-us \
+  --project=my-project
 ```
 
 Now you can create constraints that apply across clusters. For example, requiring all containers to have resource limits:
@@ -147,7 +135,7 @@ gcloud container fleet memberships list --project=my-project
 # Get detailed information about a specific membership
 gcloud container fleet memberships describe production-us \
   --project=my-project \
-  --location=us-central1-a
+  --location=us-central1
 ```
 
 Check the overall fleet feature status:
@@ -202,7 +190,7 @@ Grant the required IAM roles:
 ```bash
 # Grant the MCS service account the required permissions
 gcloud projects add-iam-policy-binding my-project \
-  --member="serviceAccount:my-project.svc.id.goog[gke-mcs/gke-mcs-importer]" \
+  --member="principal://iam.googleapis.com/projects/123456789012/locations/global/workloadIdentityPools/my-project.svc.id.goog/subject/ns/gke-mcs/sa/gke-mcs-importer" \
   --role="roles/compute.networkViewer"
 ```
 
