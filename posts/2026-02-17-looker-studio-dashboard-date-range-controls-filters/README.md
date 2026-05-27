@@ -42,14 +42,14 @@ By default, a date range control affects all charts on the page that use a date 
 For each chart that should respond to the date range:
 
 1. Select the chart
-2. In the data panel, check that a date dimension is assigned
-3. The date field used in the chart must match the date field in the data source
+2. In the data panel, check that a date range dimension is assigned
+3. The date range dimension must be a valid date or date-time field from the data source
 
-If your data source has multiple date fields (like `order_date`, `ship_date`, `created_at`), the date range control will filter on the default date dimension of the data source. To change which date field the control uses:
+If your data source has multiple date fields (like `order_date`, `ship_date`, `created_at`), Looker Studio may automatically choose one of them as the date range dimension. To change which date field the control uses:
 
 1. Click on the date range control
-2. In the properties panel, check if there is an option to set the date field
-3. If not, go to your data source settings and set the correct default date
+2. In the properties panel, open the Setup tab
+3. Under the data source settings, set the Date range dimension to the field you want to use
 
 ## Drop-Down Filter Controls
 
@@ -119,8 +119,8 @@ One of the most powerful features in Looker Studio is cross-chart filtering. Whe
 To enable this:
 
 1. Select a chart (like a bar chart showing revenue by region)
-2. Go to the chart properties
-3. Under "Interactions," enable "Apply filter"
+2. Go to the Data properties panel
+3. Under "Chart interactions," enable "Cross-filtering"
 
 Now when someone clicks on "North America" in the bar chart, every other chart on the page filters to show only North American data.
 
@@ -134,28 +134,27 @@ graph TD
     A --> E[Data Table filters to NA rows]
 ```
 
-To disable cross-filtering on specific charts (like summary scorecards that should always show totals), select the chart and uncheck "Apply filter" in its interaction settings.
+To keep cross-filtering limited to specific charts, group the chart that acts as the filter with only the charts it should affect.
 
-## Filter Groups
+## Report-Level Filters
 
-When you have multiple pages in a report, you may want filters to persist across pages. Use filter groups to link controls together:
+When you have multiple pages in a report, you may want filters to persist across pages. Make the control report-level so it appears in the same location on every page:
 
-1. Right-click on a filter control
-2. Select "Group" then "Create filter group"
-3. Give the group a name
-4. On other pages, create the same filter control and add it to the same group
+1. Select the filter control
+2. Select "Arrange" then "Make report-level"
+3. Place the report-level control where you want it to appear on each page
 
-Now changing the filter on one page affects all pages in the group.
+Now changing the filter on one page carries over to the other pages in the report.
 
 ## Comparison Date Ranges
 
-For dashboards that need period-over-period comparisons, add a comparison date range:
+For dashboards that need period-over-period comparisons, add a comparison date range to the charts that should show comparisons:
 
-1. Select the date range control
-2. In the properties panel, enable "Comparison date range"
-3. Choose "Previous period" or "Previous year" or a custom range
+1. Select a time series, table, area chart, or scorecard
+2. In the properties panel, open the Setup tab
+3. Under "Default date range," set "Comparison date range" to "Previous period," "Previous year," or a custom range
 
-Charts that support comparison (like scorecards and time series) will automatically show the comparison values. Scorecards will display the delta and percentage change.
+Charts that support comparison will show the comparison values. Scorecards can display the delta and percentage change.
 
 ## Building a Complete Dashboard Layout
 
@@ -197,20 +196,23 @@ Some design principles that make dashboards easier to use:
 
 ## Performance Considerations
 
-Every filter change triggers a new BigQuery query. To keep dashboards fast:
+For BigQuery-backed dashboards, filter changes can cause charts to fetch fresh results from BigQuery unless Looker Studio can answer from cached or extracted data. To keep dashboards fast:
 
-**Use data extracts for frequently accessed dashboards.** Data extracts cache the data and avoid repeated BigQuery queries.
+**Use data extracts for frequently accessed dashboards.** Data extracts store a static snapshot of selected fields and can avoid repeated BigQuery queries for that extracted data.
 
 **Limit the number of distinct values in filter controls.** A drop-down with 10,000 values is slow to load and hard to use. Pre-aggregate or group values in BigQuery before connecting.
 
-**Avoid too many charts per page.** Each chart generates a separate query. Keep pages under 15 charts for reasonable load times.
+**Avoid too many charts per page.** Each chart can generate its own query. Keep pages under 15 charts for reasonable load times.
 
 **Use BI Engine.** BigQuery BI Engine dramatically improves dashboard performance by caching data in memory.
 
 ```bash
 # Create a BI Engine reservation for your project
 
-bq mk --bi_reservation --location=us --size=2G --project_id=my-project
+bq --project_id=my-project update \
+  --bi_reservation_size=2 \
+  --location=us \
+  --reservation
 ```
 
 ## Common Mistakes
