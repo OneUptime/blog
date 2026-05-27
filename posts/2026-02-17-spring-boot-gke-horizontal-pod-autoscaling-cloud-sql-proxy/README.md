@@ -63,10 +63,10 @@ management:
     health:
       probes:
         enabled: true
-  # Expose Prometheus metrics for HPA custom metrics
-  metrics:
-    export:
-      prometheus:
+  # Expose Prometheus metrics at /actuator/prometheus
+  prometheus:
+    metrics:
+      export:
         enabled: true
 ```
 
@@ -230,7 +230,7 @@ spec:
 
         # Cloud SQL Proxy sidecar
         - name: cloud-sql-proxy
-          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0
           args:
             # Replace with your Cloud SQL instance connection name
             - "YOUR_PROJECT:us-central1:my-postgres"
@@ -406,4 +406,4 @@ kubectl get hpa spring-boot-app-hpa -n spring-app --watch
 
 As load increases, you should see the HPA increase the replica count, and as load decreases, it will gradually scale back down according to the behavior policies.
 
-Deploying Spring Boot to GKE with HPA and Cloud SQL Proxy gives you a robust, auto-scaling Java backend. The Cloud SQL Proxy sidecar handles secure database connectivity without VPC peering or public IPs, and HPA ensures your application scales to meet demand while keeping resource usage efficient. Combined with proper liveness and readiness probes, you get a production-grade deployment that handles rolling updates, self-healing, and automatic scaling.
+Deploying Spring Boot to GKE with HPA and Cloud SQL Proxy gives you a robust, auto-scaling Java backend. The Cloud SQL Proxy sidecar handles secure database connectivity without authorized networks or manually managed SSL certificates, and HPA ensures your application scales to meet demand while keeping resource usage efficient. If your Cloud SQL instance only has a private IP address, the GKE workload still needs network access to the instance and the proxy should be started with `--private-ip`. Combined with proper liveness and readiness probes, you get a production-grade deployment that handles rolling updates, self-healing, and automatic scaling.
