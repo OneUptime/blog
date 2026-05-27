@@ -38,7 +38,7 @@ After the first run, you will find a file at `credentials/db_password.txt` conta
 
 You can control the length and character set of generated passwords using parameters.
 
-This example generates passwords with specific requirements:
+This example generates passwords with specific character sets:
 
 ```yaml
 # playbook.yml - Password generation with custom parameters
@@ -51,7 +51,7 @@ This example generates passwords with specific requirements:
       ansible.builtin.debug:
         msg: "{{ lookup('password', 'credentials/long_pass.txt length=32') }}"
 
-    # Generate a password with only ASCII letters and digits
+    # Generate a password using only ASCII letters and digits
     - name: Alphanumeric only password
       ansible.builtin.debug:
         msg: "{{ lookup('password', 'credentials/alphanum_pass.txt chars=ascii_letters,digits') }}"
@@ -61,7 +61,7 @@ This example generates passwords with specific requirements:
       ansible.builtin.debug:
         msg: "{{ lookup('password', 'credentials/pin.txt length=6 chars=digits') }}"
 
-    # Include special characters explicitly
+    # Allow special characters explicitly
     - name: Password with special chars
       ansible.builtin.debug:
         msg: "{{ lookup('password', 'credentials/special_pass.txt chars=ascii_letters,digits,punctuation') }}"
@@ -74,9 +74,9 @@ The `chars` parameter accepts Python string module character class names:
 - `ascii_lowercase` - a-z only
 - `ascii_uppercase` - A-Z only
 - `punctuation` - special characters like `!@#$%` etc.
-- `hexdigits` - 0-9 and a-f
+- `hexdigits` - 0-9, a-f, and A-F
 
-You can also specify literal characters by including them directly.
+You can also specify literal characters by including them directly. The `chars` parameter controls the possible characters in the generated password; it does not guarantee that every listed character class appears at least once.
 
 ## Generating Passwords Without Storing Them
 
@@ -163,7 +163,7 @@ Each host gets its own credential directory, so every server has unique password
 
 ## Hashing Passwords for User Accounts
 
-When creating Linux user accounts, you need hashed passwords rather than plaintext. Combine the password lookup with the `password_hash` filter.
+When creating Linux user accounts, you need hashed passwords rather than plaintext. Use the password lookup's `encrypt` parameter to return a hashed password while keeping the stored plaintext and salt stable between runs.
 
 This playbook creates user accounts with randomly generated, properly hashed passwords:
 
@@ -176,14 +176,14 @@ This playbook creates user accounts with randomly generated, properly hashed pas
     - name: Create deploy user with random password
       ansible.builtin.user:
         name: deploy
-        password: "{{ lookup('password', 'credentials/' + inventory_hostname + '/deploy_pass.txt length=20 chars=ascii_letters,digits') | password_hash('sha512') }}"
+        password: "{{ lookup('password', 'credentials/' + inventory_hostname + '/deploy_pass.txt length=20 chars=ascii_letters,digits encrypt=sha512_crypt') }}"
         state: present
         shell: /bin/bash
 
     - name: Create service accounts
       ansible.builtin.user:
         name: "{{ item }}"
-        password: "{{ lookup('password', 'credentials/' + inventory_hostname + '/' + item + '_pass.txt length=20 chars=ascii_letters,digits') | password_hash('sha512') }}"
+        password: "{{ lookup('password', 'credentials/' + inventory_hostname + '/' + item + '_pass.txt length=20 chars=ascii_letters,digits encrypt=sha512_crypt') }}"
         state: present
         shell: /usr/sbin/nologin
       loop:
@@ -268,12 +268,12 @@ There are a few things that trip people up with this plugin:
 
 1. **Password changes on accident**: If you delete the password file, the next run generates a new password. This will break things if the old password was already in use somewhere. Keep backups of your credential files.
 
-2. **File permissions**: The plugin creates files with your default umask. On shared systems, other users might be able to read them. Set strict permissions on your credentials directory.
+2. **File permissions**: The plugin stores the plaintext password on the controller and writes password files with restrictive permissions. Keep the surrounding credentials directory private and avoid weakening those permissions.
 
 3. **Idempotency with /dev/null**: Using `/dev/null` generates a new password every run. If you pass that password to a task that sets a password, it will change the password on every run. Only use `/dev/null` when you genuinely want fresh passwords each time.
 
 4. **Special characters in passwords**: Some applications choke on certain special characters in passwords. Use `chars=ascii_letters,digits` to avoid problems with characters that need escaping in shell commands or config file formats.
 
-5. **Directory creation**: The plugin does not create parent directories automatically. Make sure the directory exists before the lookup runs, or create it with a task first.
+5. **Controller permissions**: The plugin runs on the Ansible controller as the playbook user, and `become` does not apply to the lookup. Make sure that user can read existing password files or create the target files and directories.
 
 The `password` lookup plugin is one of the most practical tools in the Ansible ecosystem. It removes the manual work of generating and tracking passwords across your infrastructure, and the file-based persistence means your playbooks stay idempotent without any extra effort on your part.
