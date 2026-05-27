@@ -8,20 +8,20 @@ Description: A complete guide to installing and configuring the EPEL (Extra Pack
 
 ---
 
-EPEL (Extra Packages for Enterprise Linux) is one of those repositories that nearly every RHEL and CentOS administrator needs. It provides thousands of additional packages that are not included in the base RHEL/CentOS distribution but are commonly needed in production environments. Tools like `htop`, `jq`, `certbot`, `fail2ban`, and many others live in EPEL.
+EPEL (Extra Packages for Enterprise Linux) is one of those repositories that nearly every RHEL and CentOS administrator needs. It provides thousands of additional packages that are not included in the base RHEL/CentOS distribution but are commonly needed in production environments. Tools like `htop`, `certbot`, `fail2ban`, `ShellCheck`, and many others live in EPEL.
 
 Installing EPEL manually is simple enough, but when you are managing a fleet of servers with Ansible, you want a clean, reusable approach that works across RHEL versions and handles the GPG key properly.
 
 ## The Quick Way: epel-release Package
 
-On CentOS and CentOS Stream, EPEL can be installed directly from the base repositories.
+On many CentOS-compatible systems, EPEL can be installed directly from the base repositories. For CentOS Stream 9, install both `epel-release` and `epel-next-release`.
 
 ```yaml
 # Install EPEL repository from the base CentOS repos
 
 - name: Install EPEL repository (CentOS)
   ansible.builtin.dnf:
-    name: epel-release
+    name: "{{ ['epel-release', 'epel-next-release'] if ansible_distribution_major_version | int == 9 else ['epel-release'] }}"
     state: present
   when: ansible_distribution == "CentOS"
 ```
@@ -61,7 +61,7 @@ With the GPG key already imported, the package installation will verify the sign
 
 ## A Cross-Version Role
 
-Here is a complete Ansible role that works across RHEL 7, 8, and 9, as well as CentOS and CentOS Stream.
+Here is a complete Ansible role that works across RHEL 8 and 9, as well as CentOS and CentOS Stream on those major versions.
 
 ```yaml
 # roles/epel/tasks/main.yml
@@ -93,8 +93,16 @@ Here is a complete Ansible role that works across RHEL 7, 8, and 9, as well as C
     - not epel_repo.stat.exists
     - ansible_distribution == "RedHat"
 
-# On RHEL 8+, also enable CodeReady Builder / CRB (needed for some EPEL packages)
-- name: Enable CRB repository (RHEL / CentOS Stream 9)
+# On RHEL 8+, also enable CodeReady Builder / CRB / PowerTools (needed for some EPEL packages)
+- name: Enable PowerTools repository (EL8 compatible distributions)
+  ansible.builtin.command:
+    cmd: dnf config-manager --set-enabled powertools
+  when:
+    - ansible_distribution_major_version | int == 8
+    - ansible_distribution in ['CentOS', 'Rocky', 'AlmaLinux']
+  changed_when: true
+
+- name: Enable CRB repository (EL9 compatible distributions)
   ansible.builtin.command:
     cmd: dnf config-manager --set-enabled crb
   when:
@@ -104,10 +112,10 @@ Here is a complete Ansible role that works across RHEL 7, 8, and 9, as well as C
 
 - name: Enable CodeReady Builder (RHEL)
   ansible.builtin.command:
-    cmd: subscription-manager repos --enable codeready-builder-for-rhel-9-x86_64-rpms
+    cmd: "subscription-manager repos --enable codeready-builder-for-rhel-{{ ansible_distribution_major_version }}-{{ ansible_architecture }}-rpms"
   when:
     - ansible_distribution == "RedHat"
-    - ansible_distribution_major_version | int >= 9
+    - ansible_distribution_major_version | int >= 8
   changed_when: true
   failed_when: false
 ```
@@ -139,8 +147,8 @@ EPEL also has a testing repository with packages that are not yet in the stable 
 Once EPEL is enabled, you can install packages from it like any other repository.
 
 ```yaml
-# Install commonly needed packages from EPEL
-- name: Install EPEL packages
+# Install commonly needed packages after enabling EPEL
+- name: Install common packages
   ansible.builtin.dnf:
     name:
       - htop
@@ -189,15 +197,10 @@ The `exclude` parameter prevents specific packages from being installed from EPE
 
 ### Setting Repository Priority
 
-If you use EPEL alongside other third-party repositories, priorities help avoid package conflicts.
+If you use EPEL alongside other third-party repositories, DNF repository priorities help avoid package conflicts.
 
 ```yaml
 # Set EPEL to a lower priority than your internal repos
-- name: Install priorities plugin
-  ansible.builtin.dnf:
-    name: yum-plugin-priorities
-    state: present
-
 - name: Set EPEL priority to 50
   ansible.builtin.lineinfile:
     path: /etc/yum.repos.d/epel.repo
@@ -251,7 +254,7 @@ Here is how EPEL fits into a typical server provisioning workflow.
     - role: epel
 
   tasks:
-    - name: Install essential tools from EPEL
+    - name: Install essential tools
       ansible.builtin.dnf:
         name:
           - htop
@@ -265,7 +268,7 @@ Here is how EPEL fits into a typical server provisioning workflow.
           - bash-completion
         state: present
 
-    - name: Install security tools from EPEL
+    - name: Install security tools
       ansible.builtin.dnf:
         name:
           - fail2ban
