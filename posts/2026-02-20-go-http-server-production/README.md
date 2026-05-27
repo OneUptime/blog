@@ -23,7 +23,7 @@ graph TD
     R --> H1[GET /health]
     R --> H2[GET /api/users]
     R --> H3[POST /api/users]
-    R --> H4[GET /api/users/:id]
+    R --> H4[GET /api/users/{id}]
 ```
 
 ## Project Structure
@@ -203,10 +203,10 @@ func recoveryMiddleware(next http.Handler) http.Handler {
 					"stack", string(debug.Stack()),
 					"path", r.URL.Path,
 				)
-				http.Error(w, `{"error": "internal server error"}`, http.StatusInternalServerError)
+				writeError(w, http.StatusInternalServerError, "internal server error")
 			}
 		}()
-		next.ServeHTTP(wrapped, r)
+		next.ServeHTTP(w, r)
 	})
 }
 ```
@@ -219,7 +219,10 @@ func recoveryMiddleware(next http.Handler) http.Handler {
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -273,9 +276,9 @@ func handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate required fields
-	if user.Name == "" || user.Email == "" {
-		writeError(w, http.StatusBadRequest, "name and email are required")
+	// Validate user input
+	if err := validateUser(user); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -299,6 +302,48 @@ func handleGetUser(w http.ResponseWriter, r *http.Request) {
 	// Look up the user (simplified for this example)
 	user := User{ID: id, Name: "Alice", Email: "alice@example.com", CreatedAt: time.Now()}
 	writeJSON(w, http.StatusOK, user)
+}
+
+// handleUpdateUser updates an existing user by ID
+func handleUpdateUser(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "user ID is required")
+		return
+	}
+
+	var user User
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := validateUser(user); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	user.ID = id
+	writeJSON(w, http.StatusOK, user)
+}
+
+// handleDeleteUser deletes an existing user by ID
+func handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "user ID is required")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// generateID creates a random hexadecimal identifier
+func generateID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
 }
 
 // writeJSON sends a JSON response with the given status code
@@ -330,12 +375,12 @@ sequenceDiagram
     participant R2 as In-Flight Request 2
 
     OS->>S: SIGTERM
-    S->>S: Stop accepting new connections
+    S->>S: Close listeners and stop accepting new connections
+    S->>S: Close idle connections
     S->>R1: Wait for completion
     S->>R2: Wait for completion
     R1-->>S: Response sent
     R2-->>S: Response sent
-    S->>S: Close listeners
     S->>OS: Exit 0
 ```
 
