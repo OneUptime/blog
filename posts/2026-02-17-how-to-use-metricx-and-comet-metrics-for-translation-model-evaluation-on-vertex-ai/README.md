@@ -20,7 +20,7 @@ MetricX and COMET are trained neural models that evaluate translations by unders
 
 ## Understanding MetricX
 
-MetricX is Google's neural translation evaluation metric. It uses a trained model to score translation quality, taking into account the source text, the translated text, and optionally a reference translation. Lower scores mean better translations (it is a quality estimation model where 0 is perfect).
+MetricX is Google's neural translation evaluation metric. It uses a trained model to score translation quality, taking into account the source text, the translated text, and optionally a reference translation depending on the MetricX version you choose. Lower scores mean better translations, with 0 representing a perfect translation on Vertex AI's 0 to 25 scale.
 
 ## Understanding COMET
 
@@ -33,6 +33,7 @@ Here is how to get started with translation evaluation on Vertex AI:
 ```python
 import vertexai
 from vertexai.evaluation import EvalTask
+from vertexai.evaluation.metrics import pointwise_metric
 import pandas as pd
 
 # Initialize Vertex AI
@@ -40,7 +41,8 @@ import pandas as pd
 vertexai.init(project="your-project-id", location="us-central1")
 
 # Prepare your evaluation dataset
-# Each row needs the source text, the translation, and optionally a reference
+# Each row needs the source text, the translation, and a reference for COMET
+# and the default MetricX source-reference metric.
 eval_dataset = pd.DataFrame({
     "source": [
         "The weather forecast predicts heavy rain tomorrow afternoon.",
@@ -74,7 +76,7 @@ Use the Vertex AI evaluation framework to run MetricX on your translations.
 # Run evaluation with MetricX
 eval_task = EvalTask(
     dataset=eval_dataset,
-    metrics=["metricx"],
+    metrics=[pointwise_metric.MetricX()],
     experiment="translation-eval-metricx-v1"
 )
 
@@ -89,7 +91,7 @@ for metric, value in result.summary_metrics.items():
 print("\nPer-example MetricX scores:")
 for idx, row in result.metrics_table.iterrows():
     source_preview = eval_dataset.iloc[idx]["source"][:50]
-    score = row.get("metricx", "N/A")
+    score = row["metricx/score"]
     print(f"  [{idx}] {source_preview}... -> {score:.4f}")
 ```
 
@@ -101,7 +103,7 @@ COMET works similarly but with a different scoring direction - higher is better.
 # Run evaluation with COMET
 eval_task_comet = EvalTask(
     dataset=eval_dataset,
-    metrics=["comet"],
+    metrics=[pointwise_metric.Comet()],
     experiment="translation-eval-comet-v1"
 )
 
@@ -122,8 +124,8 @@ For a comprehensive evaluation, run multiple metrics together and compare.
 comprehensive_eval = EvalTask(
     dataset=eval_dataset,
     metrics=[
-        "metricx",
-        "comet",
+        pointwise_metric.MetricX(),
+        pointwise_metric.Comet(),
         "bleu",
         "rouge_l_sum",
     ],
@@ -134,7 +136,7 @@ result_all = comprehensive_eval.evaluate()
 
 # Create a comparison table
 comparison = result_all.metrics_table[[
-    "metricx", "comet", "bleu", "rouge_l_sum"
+    "metricx/score", "comet/score", "bleu/score", "rouge_l_sum/score"
 ]].copy()
 comparison.insert(0, "source", eval_dataset["source"].str[:40] + "...")
 
@@ -166,8 +168,8 @@ def translate_batch(model, texts, target_language):
     return translations
 
 # Compare two models
-model_flash = GenerativeModel("gemini-2.0-flash")
-model_pro = GenerativeModel("gemini-2.0-pro")
+model_flash = GenerativeModel("gemini-2.5-flash")
+model_pro = GenerativeModel("gemini-2.5-pro")
 
 sources = eval_dataset["source"].tolist()
 
@@ -181,7 +183,7 @@ flash_dataset["response"] = flash_translations
 
 flash_eval = EvalTask(
     dataset=flash_dataset,
-    metrics=["metricx", "comet"],
+    metrics=[pointwise_metric.MetricX(), pointwise_metric.Comet()],
     experiment="flash-translation-eval"
 )
 flash_result = flash_eval.evaluate()
@@ -192,7 +194,7 @@ pro_dataset["response"] = pro_translations
 
 pro_eval = EvalTask(
     dataset=pro_dataset,
-    metrics=["metricx", "comet"],
+    metrics=[pointwise_metric.MetricX(), pointwise_metric.Comet()],
     experiment="pro-translation-eval"
 )
 pro_result = pro_eval.evaluate()
@@ -213,7 +215,7 @@ For production translation systems, build an automated quality pipeline.
 class TranslationQualityPipeline:
     """Automated quality assessment for translation pipelines."""
 
-    def __init__(self, quality_threshold_metricx=0.5, quality_threshold_comet=0.8):
+    def __init__(self, quality_threshold_metricx=5.0, quality_threshold_comet=0.8):
         # MetricX: lower is better, COMET: higher is better
         self.metricx_threshold = quality_threshold_metricx
         self.comet_threshold = quality_threshold_comet
@@ -224,14 +226,18 @@ class TranslationQualityPipeline:
             "source": sources,
             "response": translations,
         }
-        if references:
+        if references is not None:
             data["reference"] = references
+        else:
+            raise ValueError(
+                "COMET requires reference translations. Provide references or remove COMET from the metric list."
+            )
 
         dataset = pd.DataFrame(data)
 
         eval_task = EvalTask(
             dataset=dataset,
-            metrics=["metricx", "comet"],
+            metrics=[pointwise_metric.MetricX(), pointwise_metric.Comet()],
             experiment=f"quality-check-{pd.Timestamp.now().strftime('%Y%m%d%H%M')}"
         )
 
@@ -244,8 +250,8 @@ class TranslationQualityPipeline:
         issues = []
 
         for idx, row in table.iterrows():
-            metricx_score = row.get("metricx", 0)
-            comet_score = row.get("comet", 1)
+            metricx_score = row.get("metricx/score", 0)
+            comet_score = row.get("comet/score", 1)
 
             # Flag low quality translations
             if metricx_score > self.metricx_threshold or comet_score < self.comet_threshold:
@@ -303,7 +309,7 @@ def evaluate_by_language_pair(translation_data):
 
         eval_task = EvalTask(
             dataset=dataset,
-            metrics=["metricx", "comet"],
+            metrics=[pointwise_metric.MetricX(), pointwise_metric.Comet()],
             experiment=f"langpair-{lang_pair}"
         )
         result = eval_task.evaluate()
@@ -342,6 +348,13 @@ def continuous_quality_check(pipeline, translation_service):
         "The new feature will be available to all users next week.",
         "For security reasons, please change your password immediately.",
     ]
+    test_references = [
+        "Los ingresos trimestrales superaron las expectativas en un 15%.",
+        "Reinicie la aplicacion despues de aplicar la actualizacion.",
+        "Lamentamos sinceramente cualquier inconveniente causado.",
+        "La nueva funcion estara disponible para todos los usuarios la proxima semana.",
+        "Por razones de seguridad, cambie su contrasena inmediatamente.",
+    ]
 
     # Get fresh translations
     translations = [
@@ -352,7 +365,8 @@ def continuous_quality_check(pipeline, translation_service):
     # Evaluate
     results = pipeline.evaluate_batch(
         sources=test_sources,
-        translations=translations
+        translations=translations,
+        references=test_references
     )
 
     # Alert if quality drops
