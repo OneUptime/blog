@@ -104,6 +104,7 @@ def configure_tracing(service_name):
     # Auto-instrument common libraries
     FlaskInstrumentor().instrument()
     RequestsInstrumentor().instrument()
+    SQLAlchemyInstrumentor().instrument()
 
     return trace.get_tracer(service_name)
 ```
@@ -171,11 +172,11 @@ const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { TraceExporter } = require('@google-cloud/opentelemetry-cloud-trace-exporter');
 const { CloudPropagator } = require('@google-cloud/opentelemetry-cloud-trace-propagator');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 function initTracing(serviceName) {
   const sdk = new NodeSDK({
-    resource: new Resource({
+    resource: resourceFromAttributes({
       'service.name': serviceName,
     }),
     traceExporter: new TraceExporter(),
@@ -249,6 +250,8 @@ Beyond automatic instrumentation, add business-relevant context to your traces.
 
 ```python
 # Add events and attributes that help with debugging
+from opentelemetry.trace import Status, StatusCode
+
 with tracer.start_as_current_span('process-payment') as span:
     span.set_attribute('payment.method', payment_method)
     span.set_attribute('payment.amount', amount)
@@ -269,7 +272,7 @@ with tracer.start_as_current_span('process-payment') as span:
 
     # Record exceptions as span events
     if result.status == 'failed':
-        span.set_status(trace.StatusCode.ERROR, result.error_message)
+        span.set_status(Status(StatusCode.ERROR, result.error_message))
         span.record_exception(Exception(result.error_message))
 ```
 
@@ -278,25 +281,31 @@ with tracer.start_as_current_span('process-payment') as span:
 Once your services are instrumented, traces appear in the Cloud Trace console. You can filter by service, latency, and time range.
 
 ```bash
-# View recent traces using gcloud
-gcloud trace traces list --project=my-project --limit=10
+# View recent traces using the Cloud Trace API
+PROJECT_ID=my-project
+ACCESS_TOKEN=$(gcloud auth print-access-token)
+
+curl -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  "https://cloudtrace.googleapis.com/v1/projects/${PROJECT_ID}/traces?pageSize=10&view=ROOTSPAN"
 
 # Get details for a specific trace
-gcloud trace traces describe TRACE_ID --project=my-project
+curl -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  "https://cloudtrace.googleapis.com/v1/projects/${PROJECT_ID}/traces/TRACE_ID"
 ```
 
-## Setting Up Trace-Based Alerts
+## Setting Up Latency-Based Alerts
 
-Create alerts that trigger when trace latency exceeds your SLO thresholds.
+Create alerts that trigger when service latency exceeds your SLO thresholds.
 
 ```bash
-# Create an alert policy for high latency traces
-gcloud alpha monitoring policies create \
+# Create an alert policy for high Cloud Run request latency
+gcloud monitoring policies create \
   --display-name="Order API latency > 2s" \
   --condition-display-name="P95 latency too high" \
-  --condition-filter='metric.type="cloudtrace.googleapis.com/http/server/latency" AND resource.type="cloud_run_revision" AND metric.labels.service="order-service"' \
-  --condition-threshold-value=2000 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --condition-filter='metric.type="run.googleapis.com/request_latencies" AND resource.type="cloud_run_revision" AND resource.labels.service_name="order-service"' \
+  --aggregation='{"alignmentPeriod":"300s","perSeriesAligner":"ALIGN_PERCENTILE_95"}' \
+  --duration=300s \
+  --if="> 2000"
 ```
 
 ## Wrapping Up
