@@ -21,9 +21,9 @@ The fundamental difference is redundancy:
 | Replication | None | Automatic replica |
 | Zones | Single zone | Cross-zone |
 | Failover | Manual recovery | Automatic |
-| Data persistence | Lost on failure | Preserved via replica |
+| Failure recovery | Cold restart/full cache flush | Replica failover, with possible acknowledged write loss |
 | SLA | None | 99.9% |
-| Cost | 1x | ~2x |
+| Cost | Lower | Higher |
 
 For anything beyond development and testing, Standard Tier is the right choice.
 
@@ -39,7 +39,7 @@ graph TD
     C -->|Promoted to primary| A
 ```
 
-The primary handles all reads and writes. The replica receives asynchronous updates from the primary. If the primary fails, Memorystore promotes the replica to primary and updates the DNS endpoint. Your application sees a brief interruption (typically under 30 seconds) and then reconnects to the new primary.
+The primary handles all reads and writes. The replica receives asynchronous updates from the primary. If the primary fails, Memorystore promotes the replica to primary and redirects the primary endpoint. Your application sees a brief interruption (around 30 seconds on average) and then reconnects to the new primary using the same connection string or IP address.
 
 ## Creating a Standard Tier Instance
 
@@ -178,7 +178,7 @@ const client = new Redis({
             return null; // Stop retrying
         }
         // Exponential backoff: 100ms, 200ms, 400ms...
-        const delay = Math.min(times * 100, 5000);
+        const delay = Math.min(100 * 2 ** (times - 1), 5000);
         console.log(`Redis: reconnecting in ${delay}ms (attempt ${times})`);
         return delay;
     },
@@ -206,10 +206,10 @@ Understanding the failover timeline helps you set appropriate timeouts:
 1. **Primary fails** (0 seconds) - Existing connections to the primary break
 2. **Memorystore detects failure** (5-10 seconds) - Health checks determine the primary is down
 3. **Replica promoted** (10-20 seconds) - The replica becomes the new primary
-4. **DNS updated** (20-30 seconds) - The instance IP points to the new primary
+4. **Endpoint redirected** (20-30 seconds) - The same connection string or IP address routes to the new primary
 5. **Clients reconnect** (30+ seconds) - Applications establish new connections
 
-The total failover time is typically under 30 seconds but can occasionally take up to 60 seconds.
+The failover usually takes around 30 seconds, but your application should allow for longer recovery during repairs or heavy load.
 
 ```mermaid
 sequenceDiagram
@@ -223,7 +223,7 @@ sequenceDiagram
     App->>P: Connection error
     M->>R: Promote to primary
     R->>R: Becomes new primary
-    M->>App: IP now points to new primary
+    M->>App: Same endpoint routes to new primary
     App->>R: Reconnects to new primary
     R->>App: Normal operations resume
 ```
@@ -241,9 +241,9 @@ gcloud redis instances describe production-cache \
 
 Key metrics to monitor in Cloud Monitoring:
 
-- `redis.googleapis.com/stats/connected_clients` - Track connected client count
-- `redis.googleapis.com/stats/rejected_connections` - Should be zero
-- `redis.googleapis.com/replication/master_repl_offset` - Replication lag indicator
+- `redis.googleapis.com/clients/connected` - Track connected client count
+- `redis.googleapis.com/stats/reject_connections_count` - Should be zero
+- `redis.googleapis.com/replication/offset_diff` - Bytes pending replication
 
 Create an alert for high replication lag:
 
@@ -253,7 +253,8 @@ gcloud monitoring policies create \
   --display-name="Redis Replication Lag Alert" \
   --condition-display-name="High replication lag" \
   --condition-filter='resource.type="redis_instance" AND metric.type="redis.googleapis.com/replication/offset_diff"' \
-  --condition-threshold-value=1000000 \
+  --if='> 1000000' \
+  --duration=60s \
   --notification-channels=YOUR_CHANNEL_ID
 ```
 
@@ -270,18 +271,18 @@ gcloud redis instances failover production-cache \
 
 The `--data-protection-mode` flag has two options:
 - `limited-data-loss` - Waits for replication to catch up before failover (safer, but slightly longer)
-- `force-data-loss` - Immediately promotes the replica (faster, but may lose recent writes)
+- `force-data-loss` - Skips the replication offset check and tries to fail over more aggressively (faster, but may lose recent writes)
 
 During the failover test, watch your application logs for connection errors and recovery time.
 
 ## Sizing for High Availability
 
-When sizing a Standard Tier instance, remember that the replica consumes the same amount of memory as the primary. A 5 GB Standard Tier instance actually provisions 10 GB total (5 GB primary + 5 GB replica), and you pay for both.
+When sizing a Standard Tier instance, remember that Memorystore maintains replica capacity for high availability. A 5 GB Standard Tier instance has a 5 GB primary capacity and matching replica capacity behind the service.
 
 Factor this into your cost calculations:
 
 ```text
-Standard Tier cost = 2 x (per-GB price) x (instance size in GB)
+Standard Tier cost = Standard Tier per-GiB price x provisioned capacity in GiB
 ```
 
 Do not over-provision. If your dataset is 2 GB, a 3 GB instance with some headroom is better than a 10 GB instance. You can always scale up later.
