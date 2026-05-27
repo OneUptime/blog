@@ -38,7 +38,7 @@ flowchart TD
 
     subgraph Dynamic Secrets
         D1[Unique creds per request]
-        D2[Automatic rotation via TTL]
+        D2[Lease-based expiration via TTL]
         D3[Isolated per consumer]
         D4[Auto-revoked on expiry]
     end
@@ -56,7 +56,7 @@ sequenceDiagram
 
     App->>V: GET /v1/database/creds/app-role
     V->>DB: CREATE ROLE "v-app-xyz" WITH PASSWORD '...'
-    V->>DB: GRANT SELECT, INSERT ON tables TO "v-app-xyz"
+    V->>DB: GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA public TO "v-app-xyz"
     V-->>App: {username: "v-app-xyz", password: "...", lease: "1h"}
 
     Note over App: Use credentials for 1 hour
@@ -106,6 +106,8 @@ vault write database/roles/app-role \
     GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO \"{{name}}\";
   " \
   revocation_statements="
+    REVOKE SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public FROM \"{{name}}\";
+    REVOKE USAGE ON ALL SEQUENCES IN SCHEMA public FROM \"{{name}}\";
     DROP ROLE IF EXISTS \"{{name}}\";
   " \
   default_ttl="1h" \
@@ -243,6 +245,9 @@ flowchart TD
 # renew_lease.py
 # Renew a Vault lease to extend the credential lifetime.
 
+import hvac
+
+
 def renew_lease(client: hvac.Client, lease_id: str, increment: int = 3600):
     """
     Renew a Vault lease to extend the credential lifetime.
@@ -272,6 +277,8 @@ If an application shuts down, it should revoke its credentials immediately rathe
 
 import signal
 import sys
+
+import hvac
 
 
 def revoke_on_shutdown(client: hvac.Client, lease_id: str):
