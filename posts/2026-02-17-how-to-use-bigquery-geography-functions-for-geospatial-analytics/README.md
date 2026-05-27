@@ -12,7 +12,7 @@ Geospatial data is increasingly common - store locations, delivery addresses, se
 
 ## Geography Data Types in BigQuery
 
-BigQuery uses the GEOGRAPHY data type, which follows the GeoJSON standard. A GEOGRAPHY value can be a point, line, polygon, or collection of these. The coordinate system is WGS 84 (the same one GPS uses), with coordinates as longitude and latitude in degrees.
+BigQuery uses the GEOGRAPHY data type, which is based on the OGC Simple Features specification. A GEOGRAPHY value can be a point, line, polygon, or collection of these. The coordinate system is WGS 84 (the same one GPS uses), with coordinates as longitude and latitude in degrees.
 
 Create a geography value from coordinates:
 
@@ -46,7 +46,7 @@ ORDER BY distance_km
 LIMIT 10;
 ```
 
-`ST_DISTANCE` returns the geodesic distance (shortest path on Earth's surface) in meters. This is accurate even for long distances because it accounts for the curvature of the Earth.
+`ST_DISTANCE` returns the shortest distance in meters between two non-empty geographies. By default, BigQuery measures this on the surface of a perfect sphere, with an optional `use_spheroid` parameter available for `ST_DISTANCE`.
 
 ## Finding Points Within a Radius
 
@@ -70,7 +70,7 @@ WHERE ST_DWITHIN(
 ORDER BY distance_km;
 ```
 
-`ST_DWITHIN` is optimized for this pattern and is significantly faster than filtering with `ST_DISTANCE < value` because it can use spatial indexing.
+`ST_DWITHIN` is the right predicate for this pattern and can benefit from BigQuery's spatial optimizations, especially when geography values are persisted and tables are clustered appropriately.
 
 ## Point-in-Polygon Queries
 
@@ -91,7 +91,7 @@ FROM `my_project.logistics.orders` o, delivery_zone dz
 WHERE ST_CONTAINS(dz.zone_boundary, ST_GEOGPOINT(o.delivery_lng, o.delivery_lat));
 ```
 
-`ST_CONTAINS` returns TRUE if the point is entirely within the polygon. For checking if geometries overlap (which is more general), use `ST_INTERSECTS`.
+`ST_CONTAINS` returns TRUE if the point is inside the polygon's interior; points on the boundary are not considered contained. For checking if geometries overlap (which is more general), use `ST_INTERSECTS`.
 
 ## Spatial Joins
 
@@ -145,7 +145,7 @@ SELECT
   longitude,
   ST_CLUSTERDBSCAN(
     ST_GEOGPOINT(longitude, latitude),
-    0.5,  -- epsilon: 500 meters (expressed in degrees, roughly)
+    500,  -- epsilon: 500 meters
     5     -- minimum 5 points to form a cluster
   ) OVER () AS cluster_id
 FROM `my_project.safety.incidents`
@@ -234,6 +234,6 @@ Materialize geography columns if you are converting from lat/long repeatedly. Pr
 
 For spatial joins, put the smaller dataset on the right side of the join. BigQuery's optimizer handles this better.
 
-Partition and cluster your tables by geographic region if you frequently filter spatially. While BigQuery cannot cluster on GEOGRAPHY directly, clustering on a region or country code column still helps by reducing the data scanned.
+Cluster your tables by GEOGRAPHY columns if you frequently filter spatially. Partitioning by a supported date, timestamp, or region-like column, and clustering on region or country code columns, can also help when those columns are part of your filters.
 
 BigQuery's geography functions bring GIS capabilities into your data warehouse, eliminating the need to export data to specialized tools for spatial analysis. Whether you are optimizing delivery routes, analyzing market coverage, or enriching customer data with geographic context, these functions handle it efficiently at any scale.
