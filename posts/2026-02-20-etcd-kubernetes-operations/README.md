@@ -29,7 +29,7 @@ graph TD
     I <-->|Raft Consensus| G
 ```
 
-etcd uses the Raft consensus algorithm to maintain consistency across nodes. A cluster of 3 etcd nodes can tolerate 1 node failure. A cluster of 5 nodes can tolerate 2 failures. Always deploy an odd number of etcd nodes.
+etcd uses the Raft consensus algorithm to maintain consistency across nodes. A cluster of 3 etcd nodes can tolerate 1 node failure. A cluster of 5 nodes can tolerate 2 failures. For production high availability, deploy an odd number of etcd nodes.
 
 ## Checking etcd Health
 
@@ -110,14 +110,14 @@ kubectl cp kube-system/etcd-master-1:/var/lib/etcd/snapshot.db ./etcd-snapshot.d
 
 # Verify the snapshot integrity
 # This checks that the snapshot is not corrupted
-ETCDCTL_API=3 etcdctl snapshot status ./etcd-snapshot.db -w table
+etcdutl snapshot status ./etcd-snapshot.db -w table
 ```
 
 ## Automated Backup with a CronJob
 
 ```yaml
 # etcd-backup-cronjob.yaml
-# Runs an etcd backup every 6 hours and uploads to S3
+# Runs an etcd backup every 6 hours and stores it on a PVC
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -157,7 +157,7 @@ spec:
                     --key=/etc/kubernetes/pki/etcd/server.key
 
                   # Verify the snapshot
-                  etcdctl snapshot status "${SNAPSHOT_FILE}" -w table
+                  etcdutl snapshot status "${SNAPSHOT_FILE}" -w table
 
                   echo "Backup completed: ${SNAPSHOT_FILE}"
               volumeMounts:
@@ -191,16 +191,16 @@ sleep 30
 
 # Restore from the snapshot
 # This creates a new data directory from the snapshot
-sudo ETCDCTL_API=3 etcdctl snapshot restore ./etcd-snapshot.db \
+# For a multi-member cluster, run this on each etcd node and change --name for that member.
+sudo etcdutl snapshot restore ./etcd-snapshot.db \
   --data-dir=/var/lib/etcd-restored \
   --name=master-1 \
-  --initial-cluster=master-1=https://10.0.0.1:2380 \
+  --initial-cluster=master-1=https://10.0.0.1:2380,master-2=https://10.0.0.2:2380,master-3=https://10.0.0.3:2380 \
   --initial-advertise-peer-urls=https://10.0.0.1:2380
 
 # Replace the old data directory with the restored one
 sudo rm -rf /var/lib/etcd
 sudo mv /var/lib/etcd-restored /var/lib/etcd
-sudo chown -R etcd:etcd /var/lib/etcd
 
 # Restart etcd and the API server
 # Move the manifests back to restart the static pods
