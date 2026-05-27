@@ -41,8 +41,9 @@ ansible_python_interpreter=/usr/bin/python3
   vars:
     app_name: myapp
     app_dir: /opt/{{ app_name }}
-    app_user: www-data
-    python_version: "3.11"
+    app_user: deploy
+    pyenv_root: "/home/{{ app_user }}/.pyenv"
+    python_version: "3.11.8"
 
   tasks:
     - name: Install system dependencies
@@ -50,12 +51,53 @@ ansible_python_interpreter=/usr/bin/python3
         name:
           - python3
           - python3-pip
-          - python3-venv
           - python3-dev
           - build-essential
+          - curl
+          - git
           - libssl-dev
+          - zlib1g-dev
+          - libbz2-dev
+          - libreadline-dev
+          - libsqlite3-dev
+          - libncursesw5-dev
+          - xz-utils
+          - tk-dev
+          - libxml2-dev
+          - libxmlsec1-dev
           - libffi-dev
+          - liblzma-dev
         state: present
+
+    - name: Install pyenv
+      ansible.builtin.git:
+        repo: https://github.com/pyenv/pyenv.git
+        dest: "{{ pyenv_root }}"
+        version: master
+        update: true
+      become_user: "{{ app_user }}"
+
+    - name: Install Python with pyenv
+      ansible.builtin.command: "{{ pyenv_root }}/bin/pyenv install {{ python_version }}"
+      args:
+        creates: "{{ pyenv_root }}/versions/{{ python_version }}/bin/python"
+      environment:
+        PYENV_ROOT: "{{ pyenv_root }}"
+        PATH: "{{ pyenv_root }}/bin:{{ ansible_env.PATH }}"
+      become_user: "{{ app_user }}"
+
+    - name: Set pyenv global Python version
+      ansible.builtin.copy:
+        dest: "{{ pyenv_root }}/version"
+        content: "{{ python_version }}\n"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0644'
+
+    - name: Check for application requirements
+      ansible.builtin.stat:
+        path: "{{ app_dir }}/requirements.txt"
+      register: requirements_file
 
     - name: Create application directory
       ansible.builtin.file:
@@ -68,9 +110,9 @@ ansible_python_interpreter=/usr/bin/python3
     - name: Create virtual environment
       ansible.builtin.pip:
         virtualenv: "{{ app_dir }}/venv"
-        virtualenv_command: python3 -m venv
+        virtualenv_command: "{{ pyenv_root }}/versions/{{ python_version }}/bin/python -m venv"
         name: pip
-        state: latest
+        state: present
       become_user: "{{ app_user }}"
 
     - name: Install application dependencies
@@ -78,7 +120,7 @@ ansible_python_interpreter=/usr/bin/python3
         virtualenv: "{{ app_dir }}/venv"
         requirements: "{{ app_dir }}/requirements.txt"
       become_user: "{{ app_user }}"
-      when: requirements_file.stat.exists | default(false)
+      when: requirements_file.stat.exists
 ```
 
 ## Configuration Tasks
@@ -172,16 +214,16 @@ ansible-playbook -i inventory/hosts playbook.yml --limit app01
 
 ## Summary
 
-This playbook automates the complete setup process, from installing system dependencies through configuring the application service. Every step is idempotent, meaning you can run it repeatedly without side effects. Extend it with additional tasks for your specific needs like database migrations, static file collection, or load balancer registration.
+This playbook automates the complete setup process, from installing pyenv and Python through configuring the application service. The tasks are designed to be idempotent, meaning you can run them repeatedly without unnecessary changes. Extend it with additional tasks for your specific needs like database migrations, static file collection, or load balancer registration.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this pattern
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -254,7 +296,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -295,7 +337,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this pattern
 - name: Robust task execution
   hosts: all
   tasks:
@@ -357,4 +399,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
