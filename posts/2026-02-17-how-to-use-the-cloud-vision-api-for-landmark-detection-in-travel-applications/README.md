@@ -114,12 +114,11 @@ Here is a more complete example that identifies landmarks and enriches the resul
 
 ```python
 from google.cloud import vision
-import math
 
 def identify_travel_photo(image_path):
     """
     Identify landmarks in a travel photo and return enriched results
-    with distance calculations and map links.
+    with map links and scene context.
     """
     client = vision.ImageAnnotatorClient()
 
@@ -182,7 +181,6 @@ A practical travel app feature is automatically building a travel diary from a c
 
 ```python
 from google.cloud import vision
-from datetime import datetime
 import glob
 import json
 
@@ -230,7 +228,7 @@ def build_travel_diary(photos_directory):
         else:
             print(f"  {photo_path}: No landmarks detected")
 
-    # Sort entries by location to create a route
+    # Sort entries by latitude for a simple geographic ordering
     diary_entries.sort(
         key=lambda e: (
             e["landmarks"][0].get("lat", 0) if e["landmarks"] else 0
