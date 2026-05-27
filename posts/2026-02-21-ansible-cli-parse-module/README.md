@@ -14,7 +14,7 @@ In this post, I will show you how to set it up, use different parsing engines, a
 
 ## Installing the Required Collections
 
-The `cli_parse` module lives in the `ansible.utils` collection, and the parsing engine plugins are in `ansible.netcommon`.
+The `cli_parse` module lives in the `ansible.utils` collection. Some parsing engine plugins, such as NTC Templates and pyATS, are in `ansible.netcommon`, while others, such as TextFSM, TTP, and XML, are in `ansible.utils`.
 
 ```bash
 # Install the collections that provide cli_parse and its parser plugins
@@ -83,7 +83,7 @@ NTC Templates is the easiest to use because it ships with pre-built templates fo
 
     - name: List all static routes
       ansible.builtin.debug:
-        msg: "Static route: {{ item.NETWORK }}/{{ item.MASK }} via {{ item.NEXTHOP_IP }}"
+        msg: "Static route: {{ item.NETWORK }}/{{ item.PREFIX_LENGTH }} via {{ item.NEXTHOP_IP }}"
       loop: "{{ routes.parsed }}"
       when: item.PROTOCOL == 'S'
 ```
@@ -105,7 +105,7 @@ When NTC does not have a template for your command, you can write your own TextF
       ansible.utils.cli_parse:
         command: show power inline
         parser:
-          name: ansible.netcommon.textfsm
+          name: ansible.utils.textfsm
           template_path: templates/cisco_ios_show_power_inline.textfsm
       register: poe_data
 
@@ -133,7 +133,7 @@ TTP is an alternative to TextFSM that uses a more intuitive template syntax. Ins
       ansible.utils.cli_parse:
         command: show ip ospf neighbor
         parser:
-          name: ansible.netcommon.ttp
+          name: ansible.utils.ttp
           template_path: templates/show_ip_ospf_neighbor.ttp
       register: ospf_neighbors
 
@@ -195,7 +195,7 @@ For devices that return XML output (like Juniper over NETCONF), the XML parser c
       ansible.utils.cli_parse:
         text: "{{ lookup('file', 'sample_output/junos_interfaces.xml') }}"
         parser:
-          name: ansible.netcommon.xml
+          name: ansible.utils.xml
       register: junos_data
 ```
 
@@ -221,7 +221,7 @@ You do not always need to run the command live. The `text` parameter lets you pa
           GigabitEthernet0/1     unassigned      YES unset  down                  down
           Loopback0              10.255.0.1      YES manual up                    up
         parser:
-          name: ansible.netcommon.textfsm
+          name: ansible.utils.textfsm
           template_path: templates/cisco_ios_show_ip_interface_brief.textfsm
         set_fact: parsed_interfaces
 
@@ -294,8 +294,8 @@ When parsing fails, you want to catch it gracefully rather than letting the play
     - name: Report results
       ansible.builtin.debug:
         msg: >
-          BGP data: {{ bgp_result.parsed | default('Parse failed, found ' +
-          bgp_neighbor_count | default('0') + ' neighbors via regex') }}
+          BGP data: {{ bgp_result.parsed | default('Parse failed, found ' ~
+          (bgp_neighbor_count | default(0)) ~ ' neighbors via regex') }}
 ```
 
 ## Building a Multi-Command Audit Playbook
