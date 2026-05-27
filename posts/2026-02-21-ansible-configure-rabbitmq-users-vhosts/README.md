@@ -22,8 +22,8 @@ RabbitMQ has a simple but effective permission model:
 
 The three permission types control:
 - **Configure**: create/delete exchanges and queues
-- **Write**: publish messages to exchanges, bind queues
-- **Read**: consume messages from queues, get messages, purge queues
+- **Write**: publish messages to exchanges, and grant the queue-side permission needed for queue bindings
+- **Read**: consume messages from queues, get messages, purge queues, and grant the exchange-side permission needed for queue bindings
 
 ## Prerequisites
 
@@ -297,6 +297,8 @@ After setting permissions, verify they are correct.
 - name: Verify RabbitMQ user permissions
   hosts: rabbitmq_servers
   become: true
+  vars_files:
+    - ../vault/rabbitmq-secrets.yml
 
   tasks:
     - name: List all users
@@ -331,6 +333,7 @@ After setting permissions, verify they are correct.
         method: GET
         user: admin_user
         password: "{{ vault_admin_password }}"
+        force_basic_auth: true
         status_code: 200
       no_log: true
 ```
