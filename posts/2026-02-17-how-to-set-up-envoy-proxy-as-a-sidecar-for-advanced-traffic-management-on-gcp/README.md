@@ -49,11 +49,11 @@ spec:
             - containerPort: 8080
               name: http
           env:
-            # Application sends all outbound traffic through the Envoy sidecar
-            - name: UPSTREAM_HOST
+            # Application sends outbound HTTP traffic through the Envoy sidecar
+            - name: ENVOY_OUTBOUND_HOST
               value: "localhost"
-            - name: UPSTREAM_PORT
-              value: "9901"
+            - name: ENVOY_OUTBOUND_PORT
+              value: "10001"
           resources:
             requests:
               cpu: 200m
@@ -61,12 +61,14 @@ spec:
 
         # Envoy sidecar container
         - name: envoy
-          image: envoyproxy/envoy:v1.28-latest
+          image: envoyproxy/envoy:v1.38-latest
           ports:
             - containerPort: 9901
               name: envoy-admin
             - containerPort: 10000
               name: envoy-ingress
+            - containerPort: 10001
+              name: envoy-egress
           volumeMounts:
             - name: envoy-config
               mountPath: /etc/envoy
@@ -103,6 +105,9 @@ data:
         socket_address:
           address: 0.0.0.0
           port_value: 9901
+      allow_paths:
+        - exact: /ready
+        - prefix: /stats
 
     static_resources:
       listeners:
@@ -257,6 +262,8 @@ data:
                 max_requests: 100
 ```
 
+With this listener-based example, configure your application clients to connect to `localhost:10001` while preserving the upstream HTTP `Host` or HTTP/2 `:authority` value, such as `order-service.production.svc.cluster.local`. Configure the Kubernetes Service for inbound traffic to target the `envoy-ingress` port if you want incoming requests to pass through the sidecar before reaching the application.
+
 ## Deploying the Configuration
 
 ```bash
@@ -307,18 +314,10 @@ http_filters:
 
 ## Observability with Cloud Monitoring
 
-Configure Envoy to export metrics to Google Cloud Monitoring via OpenTelemetry or Prometheus.
+Configure Envoy to expose Prometheus-formatted metrics, then use GKE Managed Service for Prometheus to send them to Cloud Monitoring.
 
 ```yaml
-# Add stats configuration to export metrics
-stats_sinks:
-  - name: envoy.stat_sinks.statsd
-    typed_config:
-      "@type": type.googleapis.com/envoy.config.metrics.v3.StatsdSink
-      tcp_cluster_name: statsd_cluster
-      prefix: envoy
-
-# Enable Prometheus metrics endpoint
+# Optional: add stats tags for Prometheus metrics exposed on /stats/prometheus
 stats_config:
   stats_tags:
     - tag_name: cluster_name
@@ -350,7 +349,7 @@ spec:
 
 Start with a minimal configuration and add features incrementally. Retry policies, circuit breakers, and timeouts each need tuning based on your specific traffic patterns. Setting aggressive circuit breakers before you understand your baseline will cause unnecessary outages.
 
-Use Envoy's admin interface during development to inspect cluster health, see active connections, and trigger config dumps. Access it at `localhost:9901` on the pod.
+Use Envoy's admin interface during development to inspect cluster health, see active connections, and trigger config dumps. Access it at `localhost:9901` on the pod, and keep production access restricted to the paths you need for readiness and metrics.
 
 Monitor Envoy's memory usage. Under heavy load with many active connections, Envoy can consume significant memory. Set resource limits appropriately and watch for OOM kills.
 
