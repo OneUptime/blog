@@ -93,10 +93,26 @@ Grant the service account only the permissions it needs:
 
 ```bash
 # Grant specific roles to the service account
-# Example: deploy to Cloud Run
+# Example: deploy to Cloud Run from source
+PROJECT_NUMBER=$(gcloud projects describe my-project --format="value(projectNumber)")
+
 gcloud projects add-iam-policy-binding my-project \
     --member="serviceAccount:github-actions-sa@my-project.iam.gserviceaccount.com" \
-    --role="roles/run.developer"
+    --role="roles/run.sourceDeveloper"
+
+gcloud projects add-iam-policy-binding my-project \
+    --member="serviceAccount:github-actions-sa@my-project.iam.gserviceaccount.com" \
+    --role="roles/serviceusage.serviceUsageConsumer"
+
+gcloud iam service-accounts add-iam-policy-binding \
+    ${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+    --project="my-project" \
+    --member="serviceAccount:github-actions-sa@my-project.iam.gserviceaccount.com" \
+    --role="roles/iam.serviceAccountUser"
+
+gcloud projects add-iam-policy-binding my-project \
+    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+    --role="roles/run.builder"
 
 # Example: push to Artifact Registry
 gcloud projects add-iam-policy-binding my-project \
@@ -129,7 +145,7 @@ gcloud iam service-accounts add-iam-policy-binding \
     github-actions-sa@my-project.iam.gserviceaccount.com \
     --project="my-project" \
     --role="roles/iam.workloadIdentityUser" \
-    --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/subject/repo:my-github-org/my-repo:ref:refs/heads/main"
+    --member="principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/subject/repo:my-github-org/my-repo:ref:refs/heads/main"
 ```
 
 ## Step 5: Configure the GitHub Actions Workflow
@@ -160,14 +176,14 @@ jobs:
       # Authenticate to GCP using Workload Identity Federation
       - name: Authenticate to Google Cloud
         id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: "projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
           service_account: "github-actions-sa@my-project.iam.gserviceaccount.com"
 
       # Now you can use gcloud, gsutil, etc.
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Deploy to Cloud Run
         run: |
@@ -230,14 +246,14 @@ Then in your workflows, use the appropriate service account based on the trigger
 # Different auth for different environments
 - name: Auth (Production)
   if: github.ref == 'refs/heads/main'
-  uses: google-github-actions/auth@v2
+  uses: google-github-actions/auth@v3
   with:
     workload_identity_provider: "projects/NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
     service_account: "github-actions-prod@my-project.iam.gserviceaccount.com"
 
 - name: Auth (Staging)
   if: github.ref != 'refs/heads/main'
-  uses: google-github-actions/auth@v2
+  uses: google-github-actions/auth@v3
   with:
     workload_identity_provider: "projects/NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
     service_account: "github-actions-staging@my-project.iam.gserviceaccount.com"
