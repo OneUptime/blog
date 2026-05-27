@@ -15,9 +15,8 @@ Ansible ships with hundreds of built-in modules, but sooner or later you will ne
 When you reference a module in a task, Ansible searches for it in this order:
 
 1. The `library` directory adjacent to the playbook being run
-2. Paths specified in the `library` setting in ansible.cfg
-3. Paths in the `ANSIBLE_LIBRARY` environment variable
-4. The default module path (`~/.ansible/plugins/modules` and the built-in module path)
+2. Paths specified by the active module path configuration, either the `ANSIBLE_LIBRARY` environment variable or the `library` setting in ansible.cfg
+3. The default module path (`~/.ansible/plugins/modules` and `/usr/share/ansible/plugins/modules`)
 
 If Ansible finds a module with the same name in multiple locations, the first match wins.
 
@@ -25,13 +24,11 @@ If Ansible finds a module with the same name in multiple locations, the first ma
 flowchart TD
     A[Task references module 'my_module'] --> B{Check ./library/ next to playbook}
     B -->|Found| G[Use this module]
-    B -->|Not found| C{Check ansible.cfg library paths}
+    B -->|Not found| C{Check configured module paths}
     C -->|Found| G
-    C -->|Not found| D{Check ANSIBLE_LIBRARY env var}
+    C -->|Not found| D{Check default paths}
     D -->|Found| G
-    D -->|Not found| E{Check default paths}
-    E -->|Found| G
-    E -->|Not found| F[Module not found error]
+    D -->|Not found| E[Module not found error]
 ```
 
 ## Setting the Module Path in ansible.cfg
@@ -47,7 +44,7 @@ library = ./library:~/shared-modules:/opt/ansible/custom-modules
 ```
 
 This tells Ansible to look in three directories (in order):
-1. `./library` relative to the current working directory
+1. `./library` relative to the ansible.cfg file
 2. `~/shared-modules` in your home directory
 3. `/opt/ansible/custom-modules` as an absolute path
 
@@ -91,7 +88,7 @@ my-ansible-project/
         nginx_config_validator.py
 ```
 
-The `library/` directory at the project root is automatically searched when you run playbooks from the project directory. Roles can also have their own `library/` directory for role-specific modules.
+With the ansible.cfg examples above, the `library/` directory at the project root is included in the module search path. A `library/` directory next to a playbook is also automatically searched for that playbook, and standalone roles can have their own `library/` directory for role-specific modules.
 
 ## Creating a Simple Custom Module
 
@@ -309,9 +306,9 @@ ansible-playbook -vvvv playbooks/health-check.yml
 Look for lines containing "module" and "search" in the output to see which paths Ansible is checking.
 
 Common issues:
-- The module file does not have a `.py` extension
-- The module file is not executable (though Ansible handles this for Python modules)
-- The `library` path in ansible.cfg is relative but you are running the playbook from a different directory
+- The module file name does not match the module name you use in the task
+- A non-Python module file is not executable
+- The `library` path in ansible.cfg is relative but the config file is not where you expected
 - There is a syntax error in the module file preventing it from loading
 
 ## Summary
