@@ -49,8 +49,8 @@ app.post('/pubsub/order-events', async (req, res) => {
   // Validate the request format
   if (!req.body || !req.body.message) {
     console.error('Invalid Pub/Sub message format');
-    // Return 400 to tell Pub/Sub not to retry invalid messages
-    return res.status(400).json({ error: 'Invalid message format' });
+    // Return 200 to acknowledge and drop invalid messages
+    return res.status(200).json({ status: 'skipped', reason: 'invalid format' });
   }
 
   const pubsubMessage = req.body.message;
@@ -139,9 +139,12 @@ async function verifyPubSubToken(req, res, next) {
 
     const payload = ticket.getPayload();
 
-    // Verify the token is from a Google service account
-    if (!payload.email.endsWith('.iam.gserviceaccount.com')) {
-      console.warn('Token not from a service account:', payload.email);
+    // Verify the token is from the service account configured on the push subscription
+    if (
+      payload.email !== process.env.PUBSUB_PUSH_SERVICE_ACCOUNT ||
+      payload.email_verified !== true
+    ) {
+      console.warn('Token not from the expected service account:', payload.email);
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -166,6 +169,12 @@ npm install google-auth-library
 gcloud pubsub subscriptions update order-events-push \
   --push-auth-service-account=your-sa@your-project.iam.gserviceaccount.com \
   --push-auth-token-audience=https://your-service-url.run.app
+
+# Allow Pub/Sub's service agent to mint tokens for the push service account
+PROJECT_NUMBER=$(gcloud projects describe your-project --format='value(projectNumber)')
+gcloud projects add-iam-policy-binding your-project \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+  --role=roles/iam.serviceAccountTokenCreator
 ```
 
 ## Idempotent Message Processing
@@ -266,6 +275,18 @@ gcloud pubsub topics create order-events-dlq
 gcloud pubsub subscriptions create order-events-dlq-sub \
   --topic=order-events-dlq
 
+# Allow Pub/Sub to publish to the dead letter topic and acknowledge forwarded messages
+PROJECT_NUMBER=$(gcloud projects describe your-project --format='value(projectNumber)')
+PUBSUB_SERVICE_ACCOUNT="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+
+gcloud pubsub topics add-iam-policy-binding order-events-dlq \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role=roles/pubsub.publisher
+
+gcloud pubsub subscriptions add-iam-policy-binding order-events-push \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role=roles/pubsub.subscriber
+
 # Update the original subscription with dead letter configuration
 gcloud pubsub subscriptions update order-events-push \
   --dead-letter-topic=order-events-dlq \
@@ -313,8 +334,18 @@ gcloud run deploy pubsub-handler \
 # Update the push subscription with the service URL
 SERVICE_URL=$(gcloud run services describe pubsub-handler --region us-central1 --format='value(status.url)')
 
+gcloud run services update pubsub-handler \
+  --region us-central1 \
+  --set-env-vars="SERVICE_URL=${SERVICE_URL},PUBSUB_PUSH_SERVICE_ACCOUNT=your-sa@your-project.iam.gserviceaccount.com"
+
+gcloud run services add-iam-policy-binding pubsub-handler \
+  --region us-central1 \
+  --member=serviceAccount:your-sa@your-project.iam.gserviceaccount.com \
+  --role=roles/run.invoker
+
 gcloud pubsub subscriptions update order-events-push \
-  --push-endpoint="${SERVICE_URL}/pubsub/order-events"
+  --push-endpoint="${SERVICE_URL}/pubsub/order-events" \
+  --push-auth-token-audience="${SERVICE_URL}"
 ```
 
 ## Starting the Server
