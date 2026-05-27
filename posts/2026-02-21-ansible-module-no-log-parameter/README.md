@@ -8,7 +8,7 @@ Description: Protect sensitive data in custom Ansible modules using the no_log p
 
 ---
 
-The no_log parameter prevents sensitive values from appearing in Ansible output and log files.
+The no_log parameter prevents sensitive values from appearing in normal Ansible output and log files. It does not affect debugging output, so avoid debugging secrets in production.
 
 ## Parameter-Level no_log
 
