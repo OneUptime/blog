@@ -207,7 +207,7 @@ gcloud resource-manager org-policies set-policy /dev/stdin \
 constraint: constraints/iam.allowedPolicyMemberDomains
 listPolicy:
   allowedValues:
-    - C0xxxxxxx  # Your Cloud Identity customer ID
+    - is:C0xxxxxxx  # Your Cloud Identity customer ID
 EOF
 ```
 
@@ -216,7 +216,7 @@ EOF
 Grant roles at the folder level so they automatically apply to new projects:
 
 ```bash
-# Platform team gets admin access to production projects
+# Platform team gets broad edit access to production projects
 gcloud resource-manager folders add-iam-policy-binding PRODUCTION_FOLDER_ID \
   --member="group:platform-team@company.com" \
   --role="roles/editor"
@@ -261,22 +261,24 @@ Create a label policy document that all teams follow:
 Enable Data Access audit logs for sensitive services:
 
 ```bash
-# Enable audit logging for the project
-gcloud projects set-iam-policy prod-webapp-a1b2 /dev/stdin << 'EOF'
-{
-  "auditConfigs": [
-    {
-      "service": "allServices",
-      "auditLogConfigs": [
-        {"logType": "ADMIN_READ"},
-        {"logType": "DATA_WRITE"},
-        {"logType": "DATA_READ"}
-      ]
-    }
-  ],
-  "bindings": []
-}
-EOF
+# Get the current IAM policy first
+gcloud projects get-iam-policy prod-webapp-a1b2 > /tmp/policy.yaml
+```
+
+Edit `/tmp/policy.yaml` and add or update only the `auditConfigs` section, preserving the existing `bindings` and `etag`:
+
+```yaml
+auditConfigs:
+- auditLogConfigs:
+  - logType: ADMIN_READ
+  - logType: DATA_WRITE
+  - logType: DATA_READ
+  service: allServices
+```
+
+```bash
+# Apply the edited policy
+gcloud projects set-iam-policy prod-webapp-a1b2 /tmp/policy.yaml
 ```
 
 Export audit logs to a central project for long-term storage:
@@ -286,8 +288,11 @@ Export audit logs to a central project for long-term storage:
 gcloud logging sinks create org-audit-sink \
   bigquery.googleapis.com/projects/shared-logging/datasets/audit_logs \
   --organization=ORGANIZATION_ID \
+  --include-children \
   --log-filter='logName:"cloudaudit.googleapis.com"'
 ```
+
+Grant the sink's writer identity permission to write to the BigQuery dataset after creating the sink.
 
 ## Step 8: Automate with Terraform
 
