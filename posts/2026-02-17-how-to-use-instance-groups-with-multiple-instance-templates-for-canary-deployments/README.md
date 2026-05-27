@@ -104,9 +104,16 @@ Compare metrics between v1 and v2 instances using Cloud Monitoring:
 
 ```bash
 # Query error rates for canary instances
-gcloud monitoring time-series list \
-    --filter='metric.type="custom.googleapis.com/app/error_rate" AND resource.labels.instance_id=CANARY_INSTANCE_ID' \
-    --interval='{"end_time":"now","duration":"3600s"}'
+PROJECT_ID=$(gcloud config get-value project)
+END_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+START_TIME=$(date -u -d "1 hour ago" +"%Y-%m-%dT%H:%M:%SZ")
+
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" -G \
+    "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/timeSeries" \
+    --data-urlencode 'filter=metric.type="custom.googleapis.com/app/error_rate" AND resource.labels.instance_id="CANARY_INSTANCE_ID"' \
+    --data-urlencode "interval.startTime=${START_TIME}" \
+    --data-urlencode "interval.endTime=${END_TIME}" \
+    --data-urlencode 'view=FULL'
 ```
 
 ## Step 5: Expand or Roll Back
@@ -155,7 +162,7 @@ Control how the MIG replaces instances during updates:
 
 ```bash
 # Configure the update policy for safe canary deployments
-gcloud compute instance-groups managed rolling-action start-update app-mig \
+gcloud beta compute instance-groups managed rolling-action start-update app-mig \
     --version=template=app-template-v1 \
     --canary-version=template=app-template-v2,target-size=10% \
     --zone=us-central1-a \
@@ -163,7 +170,7 @@ gcloud compute instance-groups managed rolling-action start-update app-mig \
     --max-surge=1 \
     --max-unavailable=0 \
     --replacement-method=substitute \
-    --min-ready=120
+    --min-ready=120s
 ```
 
 The update policy parameters:
@@ -172,7 +179,7 @@ The update policy parameters:
 - **--max-surge=1**: Create at most 1 extra instance during the update (provides capacity while replacing)
 - **--max-unavailable=0**: Never have fewer instances than target size (zero downtime)
 - **--replacement-method=substitute**: Create a new instance before deleting the old one
-- **--min-ready=120**: Wait 120 seconds after an instance is created before marking it as updated
+- **--min-ready=120s**: Wait 120 seconds after an instance is created before marking it as updated
 
 ## Terraform Configuration
 
@@ -333,7 +340,7 @@ echo "Canary deployment completed successfully!"
 
 ## Load Balancer Considerations
 
-When using a load balancer in front of your MIG, the canary instances receive traffic proportional to their share of the instance group. With 10% canary, roughly 10% of traffic goes to canary instances.
+When using a load balancer in front of your MIG, the canary instances receive traffic roughly proportional to their share of the instance group, assuming identical backend capacity and no session affinity. With 10% canary, roughly 10% of traffic goes to canary instances.
 
 If you want more control over traffic splitting, consider using Traffic Director or a service mesh instead of raw instance group percentages.
 
