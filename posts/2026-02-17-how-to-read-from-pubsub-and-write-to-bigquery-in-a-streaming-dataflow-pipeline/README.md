@@ -22,17 +22,22 @@ First, make sure you have the right dependencies. Here is the Maven configuratio
     <dependency>
         <groupId>org.apache.beam</groupId>
         <artifactId>beam-sdks-java-core</artifactId>
-        <version>2.52.0</version>
+        <version>2.73.0</version>
     </dependency>
     <dependency>
         <groupId>org.apache.beam</groupId>
         <artifactId>beam-runners-google-cloud-dataflow-java</artifactId>
-        <version>2.52.0</version>
+        <version>2.73.0</version>
     </dependency>
     <dependency>
         <groupId>org.apache.beam</groupId>
         <artifactId>beam-sdks-java-io-google-cloud-platform</artifactId>
-        <version>2.52.0</version>
+        <version>2.73.0</version>
+    </dependency>
+    <dependency>
+        <groupId>com.google.code.gson</groupId>
+        <artifactId>gson</artifactId>
+        <version>2.14.0</version>
     </dependency>
 </dependencies>
 ```
@@ -255,7 +260,7 @@ Pub/Sub messages have both a body and attributes. You might want to use attribut
 ```java
 // Read full Pub/Sub messages to access attributes
 PCollection<PubsubMessage> messages = pipeline
-    .apply("ReadPubSub", PubsubIO.readMessages()
+    .apply("ReadPubSub", PubsubIO.readMessagesWithAttributes()
         .fromSubscription(options.getInputSubscription()));
 
 // Extract attributes and body
