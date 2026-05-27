@@ -19,7 +19,7 @@ First, confirm that CPU usage is the bottleneck and that it correlates with quer
 
 gcloud monitoring time-series list \
     --filter='resource.type="cloudsql_database" AND resource.labels.database_id="my-project:my-instance" AND metric.type="cloudsql.googleapis.com/database/cpu/utilization"' \
-    --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+    --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
     --format="table(points.value.doubleValue, points.interval.endTime)"
 ```
 
@@ -29,7 +29,7 @@ Also check memory and disk I/O. High CPU sometimes is a secondary symptom of mem
 # Check memory utilization alongside CPU
 gcloud monitoring time-series list \
     --filter='resource.type="cloudsql_database" AND resource.labels.database_id="my-project:my-instance" AND metric.type="cloudsql.googleapis.com/database/memory/utilization"' \
-    --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+    --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
     --format="table(points.value.doubleValue, points.interval.endTime)"
 ```
 
@@ -56,7 +56,7 @@ WHERE command != 'Sleep'
 ORDER BY time DESC;
 ```
 
-Check the slow query log:
+Check the slow query log if it is enabled and `log_output` includes `TABLE`:
 
 ```sql
 -- If slow query log is enabled, check recent slow queries
@@ -90,7 +90,7 @@ WHERE state = 'active'
 ORDER BY duration DESC;
 ```
 
-Check for queries with high buffer usage (an indicator of CPU-intensive work):
+Check for queries with high buffer usage (an indicator of I/O or cache-heavy work that often correlates with expensive queries):
 
 ```sql
 -- Top queries by total execution time (requires pg_stat_statements extension)
@@ -243,7 +243,7 @@ Prevent runaway queries from consuming CPU indefinitely.
 For MySQL:
 
 ```bash
-# Set query timeout to 300 seconds
+# Set timeout for read-only SELECT statements to 300 seconds
 gcloud sql instances patch my-instance \
     --database-flags=max_execution_time=300000 \
     --project=my-project
@@ -252,10 +252,13 @@ gcloud sql instances patch my-instance \
 For PostgreSQL:
 
 ```bash
-# Set statement timeout to 5 minutes
-gcloud sql instances patch my-instance \
-    --database-flags=statement_timeout=300000 \
-    --project=my-project
+# Set statement timeout to 5 minutes for new sessions on a database
+psql "host=/cloudsql/my-project:my-region:my-instance dbname=mydb user=postgres" \
+    -c "ALTER DATABASE mydb SET statement_timeout = '5min';"
+
+# Or set it for one application role
+psql "host=/cloudsql/my-project:my-region:my-instance dbname=mydb user=postgres" \
+    -c "ALTER ROLE app_user SET statement_timeout = '5min';"
 ```
 
 ## Monitoring Dashboard
