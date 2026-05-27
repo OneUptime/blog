@@ -42,16 +42,23 @@ graph TD
 ### Multi-Stage Build with Minimal Image
 
 ```dockerfile
-# Stage 1: Build stage - uses full SDK image
+# Stage 1: Build stage - uses Debian Python packages to match distroless
 
-FROM python:3.12-slim AS builder
+FROM debian:12-slim AS builder
 
 # Set working directory
 WORKDIR /app
 
+# Install Python and pip for dependency installation
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies in a virtual environment
 # This keeps dependencies isolated and makes the final image smaller
-RUN python -m venv /opt/venv
+RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy and install requirements first for better layer caching
@@ -62,7 +69,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Stage 2: Production stage - uses distroless image
-FROM gcr.io/distroless/python3-debian12
+FROM gcr.io/distroless/python3-debian12:nonroot
 
 # Copy only the virtual environment and application code
 COPY --from=builder /opt/venv /opt/venv
@@ -72,11 +79,11 @@ COPY --from=builder /app /app
 ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /app
 
-# Run as non-root user (distroless default is nonroot)
+# Run as non-root user
 USER nonroot
 
 # Use exec form for proper signal handling
-ENTRYPOINT ["python", "main.py"]
+ENTRYPOINT ["python3", "main.py"]
 ```
 
 ### Dockerfile Security Linting
@@ -120,6 +127,9 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -128,7 +138,7 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: "myapp:${{ github.sha }}"
           format: "sarif"
@@ -137,7 +147,8 @@ jobs:
           exit-code: "1"             # Fail the build if vulnerabilities found
 
       - name: Upload scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: "trivy-results.sarif"
 ```
@@ -178,7 +189,7 @@ spec:
 
       containers:
         - name: app
-          image: myregistry.io/myapp:v1.2.3@sha256:abc123...  # Pin by digest
+          image: myregistry.io/myapp:v1.2.3@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  # Pin by digest
           ports:
             - containerPort: 8080
               protocol: TCP
@@ -254,7 +265,7 @@ spec:
         # Only allow traffic from the ingress controller
         - namespaceSelector:
             matchLabels:
-              name: ingress-nginx
+              kubernetes.io/metadata.name: ingress-nginx
           podSelector:
             matchLabels:
               app: ingress-nginx
@@ -272,7 +283,9 @@ spec:
           port: 5432
     - to:
         # Allow DNS resolution
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
