@@ -12,7 +12,7 @@ One of the most common patterns in cloud development is running a function on a 
 
 ## How the Integration Works
 
-Cloud Scheduler triggers a Cloud Function by making an HTTP request to the function's URL on a defined cron schedule. For HTTP-triggered Cloud Functions, the scheduler sends a request (typically POST) with optional headers and body data. The function processes the request and returns a response. If the function returns an error, Cloud Scheduler can retry based on your retry configuration.
+Cloud Scheduler triggers a Cloud Function by making an HTTP request to the function's URL on a defined cron schedule. For HTTP-triggered Cloud Functions, the scheduler sends a request (typically POST) with optional headers and body data. The function processes the request and returns a response. If the function returns a non-2xx response or times out, Cloud Scheduler can retry based on your retry configuration.
 
 ```mermaid
 sequenceDiagram
@@ -106,7 +106,7 @@ Deploy the function with an HTTP trigger.
 
 gcloud functions deploy cleanup-expired-sessions \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --source=. \
   --entry-point=cleanupExpiredSessions \
@@ -128,13 +128,13 @@ Create a service account for Cloud Scheduler that has permission to invoke the f
 gcloud iam service-accounts create scheduler-invoker \
   --display-name="Cloud Scheduler Function Invoker"
 
-# Grant it the Cloud Functions Invoker role
+# Grant it permission to invoke the function
 gcloud functions add-invoker-policy-binding cleanup-expired-sessions \
   --region=us-central1 \
   --member="serviceAccount:scheduler-invoker@YOUR_PROJECT_ID.iam.gserviceaccount.com"
 ```
 
-For 2nd gen functions (which run on Cloud Run under the hood), you may also need:
+For 2nd gen functions (which run on Cloud Run under the hood), the command above grants the Cloud Run Invoker role on the underlying Cloud Run service. You can also grant that role directly:
 
 ```bash
 # For 2nd gen functions, grant Cloud Run invoker role
@@ -174,8 +174,8 @@ gcloud scheduler jobs create http session-cleanup-nightly \
 A few things to note:
 - We use `--oidc-service-account-email` because Cloud Functions (especially 2nd gen) expect OIDC tokens for authentication
 - The `--oidc-token-audience` should match the function URL
-- `--attempt-deadline` gives the function 3 minutes to complete
-- `--max-retry-attempts=3` means it will retry up to 3 times if the function returns a 5xx error
+- `--attempt-deadline` lets Cloud Scheduler wait up to 3 minutes for a response from each attempt
+- `--max-retry-attempts=3` means it will retry up to 3 times if the function returns a non-2xx response or times out
 
 ## Step 5: Test the Setup
 
