@@ -10,7 +10,7 @@ Description: Learn how headless services provide direct pod-to-pod DNS resolutio
 
 ## What Is a Headless Service?
 
-A headless service is a Kubernetes service with `clusterIP: None`. Instead of assigning a single virtual IP that load-balances across pods, a headless service returns the individual IP addresses of all backing pods directly in DNS responses.
+A headless service is a Kubernetes service with `clusterIP: None`. Instead of assigning a single virtual IP that load-balances across pods, a headless service returns the individual IP addresses of backing pods directly in DNS responses. By default, only ready pods are included; `publishNotReadyAddresses: true` includes pods that are not ready yet.
 
 This is critical for stateful workloads like databases, where clients need to connect to a specific pod rather than any random pod behind a load balancer.
 
@@ -20,9 +20,9 @@ This is critical for stateful workloads like databases, where clients need to co
 flowchart TD
     subgraph Regular["Regular ClusterIP Service"]
         RClient[Client] -->|DNS: my-svc| RCIP["ClusterIP: 10.96.0.10"]
-        RCIP -->|iptables LB| RPod1[Pod 1]
-        RCIP -->|iptables LB| RPod2[Pod 2]
-        RCIP -->|iptables LB| RPod3[Pod 3]
+        RCIP -->|service proxy LB| RPod1[Pod 1]
+        RCIP -->|service proxy LB| RPod2[Pod 2]
+        RCIP -->|service proxy LB| RPod3[Pod 3]
         RNote["DNS returns 1 IP\nLoad balanced by kube-proxy"]
     end
 
@@ -153,7 +153,7 @@ sequenceDiagram
     participant API as K8s API
 
     App->>DNS: A? postgres.database.svc.cluster.local
-    DNS->>API: List Endpoints for postgres service
+    DNS->>API: Watch/List EndpointSlices for postgres service
     API-->>DNS: Pod IPs: 172.16.0.10, .11, .12
     DNS-->>App: A records: 172.16.0.10, .11, .12
 
@@ -237,6 +237,10 @@ spec:
             - containerPort: 9093
               name: controller
           env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: KAFKA_NODE_ID
               valueFrom:
                 fieldRef:
@@ -244,10 +248,6 @@ spec:
             # Each broker advertises its stable DNS name
             - name: KAFKA_ADVERTISED_LISTENERS
               value: "PLAINTEXT://$(POD_NAME).kafka-headless.streaming.svc.cluster.local:9092"
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
 ```
 
 ## Combining Headless and Regular Services
@@ -323,12 +323,13 @@ kubectl get svc postgres-headless -n database
 # NAME                TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)
 # postgres-headless   ClusterIP   None         <none>        5432/TCP
 
-# Check that endpoints are populated
-kubectl get endpoints postgres-headless -n database
-# NAME                ENDPOINTS
-# postgres-headless   172.16.0.10:5432,172.16.0.11:5432,172.16.0.12:5432
+# Check that EndpointSlices are populated
+kubectl get endpointslice -n database \
+  -l kubernetes.io/service-name=postgres-headless
+# NAME                      ADDRESSTYPE   PORTS   ENDPOINTS
+# postgres-headless-abcde   IPv4          5432    172.16.0.10,172.16.0.11,172.16.0.12
 
-# If endpoints are empty, check that the selector matches pod labels
+# If EndpointSlices are empty, check that the selector matches pod labels
 kubectl get pods -n database -l app=postgres --show-labels
 
 # Check that pods are in Ready state
