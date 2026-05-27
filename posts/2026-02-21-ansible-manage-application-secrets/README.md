@@ -106,16 +106,17 @@ For larger organizations, HashiCorp Vault provides dynamic secrets, automatic ro
 
 ```yaml
 # Install the HashiCorp Vault lookup plugin requirements
+# ansible-galaxy collection install community.hashi_vault
 # pip install hvac
 
-# Use the hashi_vault lookup plugin in your playbook
+# Use the Vault KV v2 lookup plugin in your playbook
 - name: Retrieve database password from HashiCorp Vault
   set_fact:
-    db_password: "{{ lookup('hashi_vault', 'secret/data/myapp/database:password token={{ vault_token }} url=https://vault.example.com:8200') }}"
+    db_password: "{{ lookup('community.hashi_vault.vault_kv2_get', 'myapp/database', token=vault_token, url='https://vault.example.com:8200').secret.password }}"
 
 - name: Retrieve all app secrets from Vault
   set_fact:
-    app_secrets: "{{ lookup('hashi_vault', 'secret/data/myapp/config token={{ vault_token }} url=https://vault.example.com:8200') }}"
+    app_secrets: "{{ lookup('community.hashi_vault.vault_kv2_get', 'myapp/config', token=vault_token, url='https://vault.example.com:8200').secret }}"
 ```
 
 ### Full HashiCorp Vault Integration Role
@@ -173,10 +174,14 @@ For larger organizations, HashiCorp Vault provides dynamic secrets, automatic ro
 If you are on AWS, Secrets Manager provides native secret management:
 
 ```yaml
+# Install the AWS lookup plugin requirements
+# ansible-galaxy collection install amazon.aws
+# pip install boto3 botocore
+
 # Retrieve secrets from AWS Secrets Manager
 - name: Get database credentials from AWS Secrets Manager
   set_fact:
-    db_creds: "{{ lookup('aws_secret', 'myapp/database', region='us-east-1') | from_json }}"
+    db_creds: "{{ lookup('amazon.aws.secretsmanager_secret', 'myapp/database', region='us-east-1') | from_json }}"
 
 - name: Deploy application config with AWS secrets
   template:
