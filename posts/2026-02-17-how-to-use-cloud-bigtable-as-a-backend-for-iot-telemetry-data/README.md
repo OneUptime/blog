@@ -16,9 +16,9 @@ I have designed Bigtable schemas for IoT platforms handling data from hundreds o
 
 Several characteristics make Bigtable an excellent fit:
 
-- **Write throughput:** Each node handles 10,000+ writes per second. Scale horizontally by adding nodes.
-- **Low-latency reads:** Consistent single-digit millisecond reads regardless of data volume.
-- **Automatic scaling:** Storage scales infinitely. Compute scales with node count or autoscaling.
+- **Write throughput:** Each node can handle 10,000+ writes per second for typical 1 KB rows under optimal conditions. Scale horizontally by adding nodes.
+- **Low-latency reads:** Low-latency reads at scale when the schema and cluster are sized appropriately.
+- **Automatic scaling:** Storage is distributed across tablets, and compute scales with node count or autoscaling.
 - **Time-series native:** The data model with row keys and timestamps maps naturally to time-series data.
 - **Cost at scale:** Cheaper per GB than relational databases for multi-terabyte datasets.
 
@@ -54,18 +54,18 @@ def create_row_key(device_type, device_id, timestamp_ms=None):
         timestamp_ms = int(time.time() * 1000)
 
     # Reverse timestamp puts newest data first in scan order
-    max_long = 9999999999999  # Large enough for millisecond timestamps
+    max_long = 9223372036854775807  # Equivalent to Java's Long.MAX_VALUE
     reverse_ts = max_long - timestamp_ms
 
     # Pad components for consistent sorting
-    return f"{device_type}#{device_id}#{reverse_ts:013d}"
+    return f"{device_type}#{device_id}#{reverse_ts:019d}"
 
 # Examples of generated row keys
 print(create_row_key("thermostat", "device-001"))
-# Output: thermostat#device-001#7973828461234
+# Output varies based on the current timestamp
 
 print(create_row_key("thermostat", "device-001", 1706140800000))
-# Output: thermostat#device-001#8293859199999
+# Output: thermostat#device-001#9223370330713975807
 ```
 
 ### Column Families
@@ -91,11 +91,11 @@ cbt -instance=my-iot-instance setgcpolicy telemetry alerts maxage=90d
 
 ## Ingestion Pipeline
 
-For IoT data ingestion, you typically receive data through Cloud IoT Core or directly via Pub/Sub. Here is an ingestion pipeline:
+For IoT data ingestion, you typically receive data through an MQTT broker, a partner IoT platform, or directly via Pub/Sub. Here is an ingestion pipeline:
 
 ```mermaid
 graph LR
-    A[IoT Devices] -->|MQTT/HTTP| B[Cloud IoT Core]
+    A[IoT Devices] -->|MQTT/HTTP| B[MQTT Broker or IoT Platform]
     B -->|Publishes| C[Cloud Pub/Sub]
     C -->|Subscribes| D[Dataflow Pipeline]
     D -->|Batch writes| E[Cloud Bigtable]
@@ -138,9 +138,9 @@ class CreateBigtableMutations(beam.DoFn):
         readings = telemetry["readings"]
 
         # Build the row key with reverse timestamp
-        max_long = 9999999999999
+        max_long = 9223372036854775807
         reverse_ts = max_long - timestamp_ms
-        row_key = f"{device_type}#{device_id}#{reverse_ts:013d}"
+        row_key = f"{device_type}#{device_id}#{reverse_ts:019d}"
 
         # Create the Bigtable row mutation
         direct_row = bt_row.DirectRow(row_key=row_key.encode("utf-8"))
@@ -250,13 +250,13 @@ for r in readings:
 def get_readings_in_range(device_type, device_id, start_time_ms, end_time_ms):
     """Fetch telemetry readings within a time window."""
 
-    max_long = 9999999999999
+    max_long = 9223372036854775807
 
     # Reverse timestamps flip the range
     # Start key uses end_time (smaller reverse ts = more recent)
     # End key uses start_time (larger reverse ts = older)
-    start_key = f"{device_type}#{device_id}#{max_long - end_time_ms:013d}"
-    end_key = f"{device_type}#{device_id}#{max_long - start_time_ms:013d}"
+    start_key = f"{device_type}#{device_id}#{max_long - end_time_ms:019d}"
+    end_key = f"{device_type}#{device_id}#{max_long - start_time_ms:019d}"
 
     rows = table.read_rows(
         start_key=start_key.encode("utf-8"),
@@ -292,10 +292,10 @@ def create_salted_row_key(device_type, device_id, timestamp_ms):
     # Generate a 2-character hex prefix from the device ID
     salt = hashlib.md5(device_id.encode()).hexdigest()[:2]
 
-    max_long = 9999999999999
+    max_long = 9223372036854775807
     reverse_ts = max_long - timestamp_ms
 
-    return f"{salt}#{device_type}#{device_id}#{reverse_ts:013d}"
+    return f"{salt}#{device_type}#{device_id}#{reverse_ts:019d}"
 ```
 
 The tradeoff is that prefix scans for a single device now need to know the salt value. Store the salt in a separate lookup table or compute it deterministically from the device ID.
@@ -310,7 +310,8 @@ gcloud bigtable clusters update iot-cluster \
   --instance=my-iot-instance \
   --autoscaling-min-nodes=3 \
   --autoscaling-max-nodes=30 \
-  --autoscaling-cpu-target=60
+  --autoscaling-cpu-target=60 \
+  --autoscaling-storage-target=2560
 ```
 
 ## Monitoring IoT Workloads
@@ -318,10 +319,10 @@ gcloud bigtable clusters update iot-cluster \
 Track these metrics specific to IoT telemetry workloads:
 
 - **Write throughput per device type** - detect if a device type is generating unexpected volumes
-- **Read latency by query pattern** - latest-reading queries should be under 10ms
+- **Read latency by query pattern** - verify latest-reading queries meet your application's latency target
 - **Storage growth rate** - verify your GC policies are working and storage is not growing unbounded
 - **Hot tablet detection** - watch for uneven CPU distribution across nodes
 
 ## Wrapping Up
 
-Cloud Bigtable handles IoT telemetry at any scale you need - from thousands of devices to millions. The critical investment is in row key design. Get the key structure right, set appropriate garbage collection policies, and build your ingestion pipeline with Pub/Sub and Dataflow. From there, Bigtable does the heavy lifting of storing and serving your telemetry data with the low latency your applications demand.
+Cloud Bigtable handles IoT telemetry at large scale - from thousands of devices to millions. The critical investment is in row key design. Get the key structure right, set appropriate garbage collection policies, and build your ingestion pipeline with Pub/Sub and Dataflow. From there, Bigtable does the heavy lifting of storing and serving your telemetry data with the low latency your applications demand.
