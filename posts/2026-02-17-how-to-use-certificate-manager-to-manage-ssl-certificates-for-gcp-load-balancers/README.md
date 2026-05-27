@@ -18,7 +18,7 @@ Before diving in, here is how Certificate Manager compares to the classic approa
 
 | Feature | Classic ssl-certificates | Certificate Manager |
 |---------|------------------------|-------------------|
-| Authorization method | HTTP-01 only | DNS authorization or LB authorization |
+| Authorization method | Load balancer-based domain validation | DNS authorization or LB authorization |
 | Wildcard certificates | Not supported | Supported (with DNS auth) |
 | Certificate maps | Not available | Yes - group and manage certificates together |
 | Multi-load-balancer sharing | Manual per-proxy attachment | Certificate maps shared across proxies |
@@ -112,16 +112,15 @@ Look for `state: ACTIVE`. If it shows `PROVISIONING`, make sure the DNS CNAME re
 
 ## Approach 2: Load Balancer Authorization
 
-If you cannot modify DNS records or prefer a simpler setup, you can use load balancer authorization. This works similarly to the classic HTTP-01 challenge.
+If you cannot add DNS authorization records or prefer a simpler setup, you can use load balancer authorization. This method does not require a Certificate Manager DNS authorization CNAME record, but the domain still needs to point to the load balancer.
 
 ```bash
 # Create a certificate with load balancer authorization
 gcloud certificate-manager certificates create my-lb-cert \
-    --domains="app.example.com" \
-    --issuance-config=my-issuance-config
+    --domains="app.example.com"
 ```
 
-The domain must resolve to the load balancer's IP, and the load balancer must be serving traffic on port 80 or 443.
+The domain must resolve to the load balancer's IP, and the load balancer's forwarding rule must include TCP port 443.
 
 ## Step 4: Create a Certificate Map
 
@@ -152,7 +151,8 @@ gcloud certificate-manager maps entries create wildcard-entry \
 # Add a default entry (serves when no hostname matches)
 gcloud certificate-manager maps entries create default-entry \
     --map=my-cert-map \
-    --certificates=my-cert
+    --certificates=my-cert \
+    --set-primary
 ```
 
 ## Step 6: Attach the Certificate Map to the Load Balancer
@@ -281,6 +281,20 @@ resource "google_certificate_manager_certificate_map_entry" "default" {
   certificates = [google_certificate_manager_certificate.default.id]
   hostname     = "example.com"
 }
+
+resource "google_certificate_manager_certificate_map_entry" "wildcard" {
+  name         = "wildcard-entry"
+  map          = google_certificate_manager_certificate_map.default.name
+  certificates = [google_certificate_manager_certificate.default.id]
+  hostname     = "*.example.com"
+}
+
+resource "google_certificate_manager_certificate_map_entry" "primary" {
+  name         = "default-entry"
+  map          = google_certificate_manager_certificate_map.default.name
+  certificates = [google_certificate_manager_certificate.default.id]
+  matcher      = "PRIMARY"
+}
 ```
 
 ## Common Mistakes
@@ -289,7 +303,7 @@ resource "google_certificate_manager_certificate_map_entry" "default" {
 
 **Mismatched hostnames in map entries**: The hostname in the map entry must exactly match what clients request. `www.example.com` and `example.com` are different hostnames.
 
-**Not creating a default map entry**: Without a default entry, requests for hostnames not explicitly listed will fail TLS negotiation.
+**Not creating a default map entry**: Without a primary entry, requests for hostnames not explicitly listed fall back to no default certificate, and clients that do not send SNI fail TLS negotiation.
 
 **Attaching both certificate map and classic SSL certs**: While this works, the certificate map takes priority. Remove classic SSL certificate references to avoid confusion.
 
