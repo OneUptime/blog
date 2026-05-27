@@ -68,7 +68,7 @@ The `doc.ref.path` is particularly useful - it gives you the full document path 
 
 ## Required Index
 
-Collection group queries require a specific index. Firestore will not run the query without one. You can create the index in several ways.
+Filtered or ordered collection group queries require an index with collection group scope. Firestore will not run the query above without one. You can create the index in several ways.
 
 The easiest way: just run the query and check the error message. Firestore will give you a direct link to create the required index.
 
@@ -92,9 +92,9 @@ Or define it in your `firestore.indexes.json`:
 Deploy the index:
 
 ```bash
-# Deploy indexes - this can take a few minutes to build
+# Deploy Firestore indexes and rules - indexes can take a few minutes to build
 
-firebase deploy --only firestore:indexes
+firebase deploy --only firestore
 ```
 
 You can also create indexes through the gcloud CLI:
@@ -103,7 +103,7 @@ You can also create indexes through the gcloud CLI:
 # Create a collection group index using gcloud
 gcloud firestore indexes composite create \
   --collection-group=messages \
-  --query-scope=COLLECTION_GROUP \
+  --query-scope=collection-group \
   --field-config=field-path=sender,order=ASCENDING \
   --field-config=field-path=timestamp,order=DESCENDING \
   --project=your-project-id
@@ -252,11 +252,14 @@ async function getLatestReviews(count = 20) {
 A common need with collection group query results is getting a reference to the parent document. Here is a helper function.
 
 ```javascript
+import { collectionGroup, query, where, getDocs, getDoc, orderBy, limit } from 'firebase/firestore';
+
 // Helper to extract parent document references from collection group results
 // Useful when you need to fetch the parent document for context
 function getParentRef(docSnapshot) {
   // doc.ref.parent gives you the collection reference
-  // doc.ref.parent.parent gives you the parent document reference
+  // doc.ref.parent.parent gives you the parent document reference,
+  // or null if the matching collection is at the database root
   return docSnapshot.ref.parent.parent;
 }
 
@@ -274,11 +277,11 @@ async function getMessagesWithRoomDetails(userId) {
   const results = await Promise.all(
     snapshot.docs.map(async (msgDoc) => {
       const roomRef = getParentRef(msgDoc);
-      const roomDoc = await getDoc(roomRef);
+      const roomDoc = roomRef ? await getDoc(roomRef) : null;
 
       return {
         message: { id: msgDoc.id, ...msgDoc.data() },
-        room: roomDoc.exists() ? { id: roomDoc.id, ...roomDoc.data() } : null
+        room: roomDoc?.exists() ? { id: roomDoc.id, ...roomDoc.data() } : null
       };
     })
   );
@@ -289,9 +292,9 @@ async function getMessagesWithRoomDetails(userId) {
 
 ## Performance Considerations
 
-Collection group queries scan across all collections with the matching name. If you have a "messages" collection at the top level and "messages" subcollections under rooms, a collection group query will include both. Be aware of this when naming your collections.
+Collection group queries match all collections with the same collection ID. If you have a "messages" collection at the top level and "messages" subcollections under rooms, a collection group query will include both. Be aware of this when naming your collections.
 
-Also, since collection group queries can potentially span a very large number of documents, always use appropriate `where` filters and `limit` clauses to keep the result set manageable. An unfiltered collection group query on a large dataset will be slow and expensive.
+Also, since collection group queries can potentially return a very large number of documents, always use appropriate `where` filters and `limit` clauses to keep the result set manageable. An unfiltered collection group query on a large dataset can be slow and expensive because it reads every document it returns.
 
 ## Wrapping Up
 
