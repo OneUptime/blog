@@ -16,7 +16,7 @@ This guide covers the most useful middleware patterns for production Kubernetes 
 
 ```mermaid
 graph LR
-    A[Incoming Request] --> B[IP Whitelist]
+    A[Incoming Request] --> B[IP AllowList]
     B --> C[Rate Limiter]
     C --> D[Basic Auth]
     D --> E[Security Headers]
@@ -49,8 +49,9 @@ spec:
     sourceCriterion:
       # Rate limit by client IP address
       ipStrategy:
-        # Skip the first proxy IP (load balancer)
-        depth: 1
+        # Skip trusted proxy ranges in X-Forwarded-For
+        excludedIPs:
+          - "172.16.0.0/12"
 ```
 
 ## Security Headers
@@ -97,8 +98,8 @@ Protect internal services with HTTP basic authentication.
 # generate-auth-secret.sh
 # Generate a bcrypt-hashed password and store it as a Kubernetes secret
 
-# Create the htpasswd entry (user: admin)
-CREDENTIALS=$(htpasswd -nb admin 'secure-password-here')
+# Create the bcrypt htpasswd entry (user: admin)
+CREDENTIALS=$(htpasswd -nbB admin 'secure-password-here')
 
 # Store as a Kubernetes secret
 kubectl create secret generic basic-auth-secret \
@@ -146,24 +147,22 @@ spec:
       - X-Auth-User
       - X-Auth-Email
       - X-Auth-Groups
-    # Trust headers from upstream proxies
-    trustForwardHeader: true
 ```
 
-## IP Whitelisting
+## IP Allowlisting
 
 Restrict access to specific IP ranges.
 
 ```yaml
-# middleware-ip-whitelist.yaml
+# middleware-ip-allowlist.yaml
 # Only allows requests from specified IP ranges
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
-  name: ip-whitelist
+  name: ip-allowlist
   namespace: production
 spec:
-  ipWhiteList:
+  ipAllowList:
     # Allowed source IP ranges in CIDR notation
     sourceRange:
       # Office network
@@ -171,8 +170,9 @@ spec:
       # VPN gateway
       - "203.0.113.0/24"
     ipStrategy:
-      # Skip load balancer IP when determining client IP
-      depth: 1
+      # Skip trusted proxy ranges in X-Forwarded-For
+      excludedIPs:
+        - "172.16.0.0/12"
 ```
 
 ## Response Compression
@@ -181,7 +181,7 @@ Reduce bandwidth by compressing responses.
 
 ```yaml
 # middleware-compress.yaml
-# Enables gzip compression for responses larger than 1KB
+# Enables response compression for responses larger than 1KB
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -245,8 +245,8 @@ spec:
           port: 8080
       middlewares:
         # Middleware is applied in the order listed
-        # 1. Check IP whitelist first
-        - name: ip-whitelist
+        # 1. Check IP allowlist first
+        - name: ip-allowlist
         # 2. Enforce rate limits
         - name: rate-limit
         # 3. Authenticate the request
@@ -266,7 +266,7 @@ spec:
 ```mermaid
 sequenceDiagram
     participant Client
-    participant IPWhitelist
+    participant IPAllowList
     participant RateLimiter
     participant ForwardAuth
     participant SecurityHeaders
@@ -274,9 +274,9 @@ sequenceDiagram
     participant CircuitBreaker
     participant Backend
 
-    Client->>IPWhitelist: Request
-    IPWhitelist->>IPWhitelist: Check source IP
-    IPWhitelist->>RateLimiter: Allowed
+    Client->>IPAllowList: Request
+    IPAllowList->>IPAllowList: Check source IP
+    IPAllowList->>RateLimiter: Allowed
     RateLimiter->>RateLimiter: Check rate
     RateLimiter->>ForwardAuth: Under limit
     ForwardAuth->>ForwardAuth: Validate token
@@ -290,11 +290,11 @@ sequenceDiagram
 
 ## Retry Middleware
 
-Automatically retry failed requests against other backend pods.
+Automatically retry requests when a backend server does not reply.
 
 ```yaml
 # middleware-retry.yaml
-# Retries failed requests up to 3 times on different pods
+# Retries unanswered requests up to 3 times
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
