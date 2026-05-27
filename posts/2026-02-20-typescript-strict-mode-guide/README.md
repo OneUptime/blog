@@ -34,6 +34,7 @@ graph TD
     A --> G[noImplicitThis]
     A --> H[useUnknownInCatchVariables]
     A --> I[alwaysStrict]
+    A --> J[strictBuiltinIteratorReturn]
 ```
 
 ## strictNullChecks
@@ -328,7 +329,10 @@ Enable flags one at a time to keep the number of errors manageable:
         "strictPropertyInitialization": false,
         "strictFunctionTypes": false,
         "strictBindCallApply": false,
-        "useUnknownInCatchVariables": false
+        "useUnknownInCatchVariables": false,
+        "noImplicitThis": false,
+        "alwaysStrict": false,
+        "strictBuiltinIteratorReturn": false
     }
 }
 ```
