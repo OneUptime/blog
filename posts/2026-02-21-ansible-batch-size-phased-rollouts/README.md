@@ -102,7 +102,7 @@ Batch 4: 25 hosts   (large group)
 Batch 5: 59 hosts   (remaining hosts)
 ```
 
-If any batch fails, the rollout stops before affecting more hosts. The early small batches act as increasingly confident checks.
+If a batch fails completely, or exceeds the failure threshold you configure, the rollout stops before affecting more hosts. The early small batches act as increasingly confident checks.
 
 ## Mixing Fixed Numbers and Percentages
 
@@ -140,7 +140,7 @@ General guidelines:
 
 ## Batch Size with Failure Thresholds
 
-Combine batch sizes with `max_fail_percentage` for automatic rollback:
+Combine batch sizes with `max_fail_percentage` to stop the rollout automatically when a batch has too many failures:
 
 ```yaml
 # safe-phased-rollout.yml
@@ -202,7 +202,7 @@ For more nuance, use different playbooks for different phases:
 
 ## Batch Tracking Variables
 
-Ansible provides variables to track batch progress:
+Ansible provides variables to inspect the hosts in the current batch:
 
 ```yaml
 - name: Deployment with batch tracking
@@ -214,13 +214,13 @@ Ansible provides variables to track batch progress:
       debug:
         msg: >
           Host {{ inventory_hostname }}
-          in batch {{ ansible_play_batch }}
-          (hosts in batch: {{ ansible_play_hosts | join(', ') }})
+          in current batch {{ ansible_play_batch | join(', ') }}
+          (active hosts in play: {{ ansible_play_hosts | join(', ') }})
       run_once: true
 ```
 
-- `ansible_play_batch`: The current batch number (list index)
-- `ansible_play_hosts`: List of hosts in the current batch
+- `ansible_play_batch`: List of active hosts in the current serial batch
+- `ansible_play_hosts`: List of active hosts in the play, not limited by `serial`
 - `ansible_play_hosts_all`: All hosts in the play
 
 ## Wait Between Batches
@@ -242,13 +242,11 @@ Add a pause between batches for observation:
         url: "http://{{ ansible_host }}:8080/health"
         status_code: 200
 
-    # Pause at the end of each batch for manual observation
+    # Pause once at the end of each batch for manual observation
     - name: Pause for observation
       pause:
         minutes: 2
-        prompt: "Batch complete. Check dashboards. Press Enter to continue..."
-      run_once: true
-      when: ansible_play_batch | int < (groups['webservers'] | length / 10) | int
+        prompt: "Batch complete. Check dashboards before the next batch starts..."
 ```
 
 ## Notifications Per Batch
@@ -269,9 +267,11 @@ Send notifications at batch boundaries:
         token: "{{ slack_token }}"
         channel: "#deployments"
         msg: >
-          Batch {{ ansible_play_batch }} complete:
-          {{ ansible_play_hosts | length }} hosts updated.
-          {{ groups['webservers'] | length - ansible_play_hosts_all | length }} remaining.
+          Batch complete:
+          {{ ansible_play_batch | length }} hosts updated
+          ({{ ansible_play_batch | join(', ') }}).
+          Active hosts in play: {{ ansible_play_hosts | length }} of
+          {{ ansible_play_hosts_all | length }}.
       run_once: true
       delegate_to: localhost
 ```
