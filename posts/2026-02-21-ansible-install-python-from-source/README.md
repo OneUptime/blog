@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Python, Compilation, Source Build
 
-Description: Compile and install specific Python versions from source on any Linux distribution using Ansible for precise version control.
+Description: Compile and install specific Python versions from source on Debian or Ubuntu servers using Ansible for precise version control.
 
 ---
 
@@ -42,7 +42,11 @@ ansible_python_interpreter=/usr/bin/python3
     app_name: myapp
     app_dir: /opt/{{ app_name }}
     app_user: www-data
-    python_version: "3.11"
+    python_version: "3.11.15"
+    python_major_minor: "3.11"
+    python_tarball: "Python-{{ python_version }}.tgz"
+    python_source_url: "https://www.python.org/ftp/python/{{ python_version }}/{{ python_tarball }}"
+    python_build_dir: "/usr/local/src/Python-{{ python_version }}"
 
   tasks:
     - name: Install system dependencies
@@ -51,11 +55,49 @@ ansible_python_interpreter=/usr/bin/python3
           - python3
           - python3-pip
           - python3-venv
-          - python3-dev
           - build-essential
+          - pkg-config
+          - zlib1g-dev
+          - libbz2-dev
+          - libreadline-dev
+          - libsqlite3-dev
           - libssl-dev
           - libffi-dev
+          - liblzma-dev
+          - tk-dev
+          - uuid-dev
         state: present
+
+    - name: Download Python source archive
+      ansible.builtin.get_url:
+        url: "{{ python_source_url }}"
+        dest: "/usr/local/src/{{ python_tarball }}"
+        mode: '0644'
+
+    - name: Extract Python source archive
+      ansible.builtin.unarchive:
+        src: "/usr/local/src/{{ python_tarball }}"
+        dest: /usr/local/src
+        remote_src: true
+        creates: "{{ python_build_dir }}/configure"
+
+    - name: Configure Python build
+      ansible.builtin.command:
+        cmd: ./configure --prefix=/usr/local --enable-optimizations --with-ensurepip=install
+        chdir: "{{ python_build_dir }}"
+        creates: "{{ python_build_dir }}/Makefile"
+
+    - name: Compile Python
+      ansible.builtin.command:
+        cmd: "make -j {{ ansible_processor_vcpus | default(2) }}"
+        chdir: "{{ python_build_dir }}"
+        creates: "{{ python_build_dir }}/python"
+
+    - name: Install Python without replacing system python3
+      ansible.builtin.command:
+        cmd: make altinstall
+        chdir: "{{ python_build_dir }}"
+        creates: "/usr/local/bin/python{{ python_major_minor }}"
 
     - name: Create application directory
       ansible.builtin.file:
@@ -68,10 +110,15 @@ ansible_python_interpreter=/usr/bin/python3
     - name: Create virtual environment
       ansible.builtin.pip:
         virtualenv: "{{ app_dir }}/venv"
-        virtualenv_command: python3 -m venv
+        virtualenv_command: "/usr/local/bin/python{{ python_major_minor }} -m venv"
         name: pip
         state: latest
       become_user: "{{ app_user }}"
+
+    - name: Check for application requirements file
+      ansible.builtin.stat:
+        path: "{{ app_dir }}/requirements.txt"
+      register: requirements_file
 
     - name: Install application dependencies
       ansible.builtin.pip:
@@ -104,6 +151,7 @@ ansible_python_interpreter=/usr/bin/python3
     - name: Enable and start application
       ansible.builtin.systemd:
         name: "{{ app_name }}"
+        daemon_reload: true
         enabled: true
         state: started
 ```
@@ -357,4 +405,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
