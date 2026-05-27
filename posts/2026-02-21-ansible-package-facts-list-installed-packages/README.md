@@ -24,7 +24,7 @@ The `package_facts` module populates the `ansible_facts.packages` dictionary wit
     manager: auto
 ```
 
-The `manager` parameter tells Ansible which package manager to query. Setting it to `auto` lets Ansible detect the appropriate manager (apt, rpm, etc.) based on the system. You can also explicitly set it to `apt`, `rpm`, or `pacman`.
+The `manager` parameter tells Ansible which package manager to query. Setting it to `auto` lets Ansible detect the appropriate manager (apt, rpm, etc.) based on the system. You can also explicitly set it to a supported manager such as `apt`, `rpm`, `pacman`, `apk`, or `pkg`.
 
 After running this task, the `ansible_facts.packages` variable contains a dictionary where keys are package names and values are lists of installed versions (a list because you can have multiple versions of the same package installed in some cases).
 
@@ -253,22 +253,22 @@ The corresponding template might look like this.
 The `ansible_facts.packages` dictionary can be large (thousands of entries on some systems). You can filter it to focus on what matters.
 
 ```yaml
-# Find all packages from a specific source/repository
+# Find all packages reported by a specific package manager
 - name: Gather package facts
   ansible.builtin.package_facts:
     manager: auto
 
-- name: Find all packages from Docker repository
+- name: Find all packages reported by apt
   ansible.builtin.set_fact:
-    docker_packages: >-
+    apt_packages: >-
       {{ ansible_facts.packages | dict2items
          | selectattr('value.0.source', 'defined')
-         | selectattr('value.0.source', 'search', 'docker')
+         | selectattr('value.0.source', 'equalto', 'apt')
          | map(attribute='key') | list }}
 
-- name: Show Docker-related packages
+- name: Show apt-managed packages
   ansible.builtin.debug:
-    var: docker_packages
+    var: apt_packages
 ```
 
 ## Performance Considerations
