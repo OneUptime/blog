@@ -12,24 +12,9 @@ An API without documentation is an API nobody uses. The Apigee integrated develo
 
 ## Creating the Developer Portal
 
-The Apigee integrated portal is built into the Apigee experience on GCP. You create it through the Apigee Console or the API.
+The Apigee integrated portal is built into the Apigee experience on GCP. You create it through the Apigee Console.
 
-Using the Apigee API to create a portal:
-
-```bash
-# Create the developer portal
-
-curl -X POST \
-  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/sites" \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "developer-portal",
-    "description": "API Developer Portal for external consumers"
-  }'
-```
-
-Through the Console, navigate to Apigee > Publish > Portals and click "Create Portal." Give it a name and select the APIs you want to feature.
+Through the Console, navigate to Distribution > Portals and click "Create." Give it a name and description. The portal's site ID is generated from the organization and portal name, such as `YOUR_ORG-developerportal` for a portal named `Developer Portal`.
 
 ## Adding API Documentation
 
@@ -62,7 +47,7 @@ info:
 
     ```
     x-api-key: YOUR_API_KEY
-    ```text
+    ```
 
     ## Rate Limits
 
@@ -217,7 +202,7 @@ Upload your OpenAPI spec and link it to an API product:
 ```bash
 # Create an API doc entry linked to your product
 curl -X POST \
-  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/sites/developer-portal/apidocs" \
+  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/sites/SITE_ID/apidocs" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{
@@ -234,13 +219,14 @@ Then upload the spec content:
 
 ```bash
 # Upload the OpenAPI spec content
-curl -X PUT \
-  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/sites/developer-portal/apidocs/DOC_ID/documentation" \
+curl -X PATCH \
+  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/sites/SITE_ID/apidocs/API_DOC/documentation" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{
     "oasDocumentation": {
       "spec": {
+        "displayName": "openapi-spec.yaml",
         "contents": "'"$(base64 -w0 openapi-spec.yaml)"'"
       }
     }
@@ -253,49 +239,21 @@ The integrated portal supports customization for branding. You can set colors, l
 
 ### Theme Configuration
 
-Configure the portal theme through the API:
-
-```bash
-# Update portal theme
-curl -X PATCH \
-  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/sites/developer-portal" \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "description": "Acme API Developer Portal",
-    "analyticsConfig": {
-      "enabled": true
-    }
-  }'
-```
-
-Through the Console, you can customize:
+Configure the portal theme in the Console by opening Distribution > Portals, selecting your portal, and using the theme editor. You can customize:
 
 - Logo and favicon
 - Primary and secondary colors
 - Navigation menu items
 - Footer content
-- Custom CSS
+- Custom SCSS
+
+To configure Google Analytics or custom analytics tracking, open your portal settings and use the Custom Scripts tab.
 
 ## Adding Custom Pages
 
 Beyond API documentation, you might want pages for getting started guides, tutorials, and FAQs.
 
-Create a custom page:
-
-```bash
-# Create a "Getting Started" page
-curl -X POST \
-  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/sites/developer-portal/pages" \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Getting Started",
-    "description": "Quick start guide for the Acme Data API",
-    "published": true,
-    "content": "<h2>Quick Start Guide</h2><p>Follow these steps to make your first API call...</p>"
-  }'
-```
+Create a custom page by opening your portal, clicking Pages, and clicking "+Page." Enter the page name and path, then edit the page content using Markdown and HTML in the page editor.
 
 ## Configuring Developer Registration
 
@@ -305,36 +263,14 @@ Control how developers register on your portal. You can allow self-registration 
 
 In the Apigee Console, go to your portal settings and configure:
 
-1. **Registration**: Enable self-registration
-2. **Email verification**: Require email verification
-3. **Auto-approve**: Automatically approve new accounts (or require manual review)
+1. **Built-in identity provider**: Let portal users create accounts with email and password
+2. **Email configuration**: Configure the confirmation email and SMTP settings before launch
+3. **Account activation**: Automatically activate new accounts or require manual activation
 4. **Terms of Service**: Link to your ToS (registration requires acceptance)
 
 ### Custom Registration Fields
 
-You can add custom fields to the registration form to collect additional information:
-
-```bash
-# Configure custom registration attributes
-curl -X PUT \
-  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/sites/developer-portal/developerAttributes" \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "attributes": [
-      {
-        "name": "company",
-        "displayName": "Company Name",
-        "required": true
-      },
-      {
-        "name": "use_case",
-        "displayName": "Intended Use Case",
-        "required": false
-      }
-    ]
-  }'
-```
+You can add up to three custom fields to the registration form to collect additional information. Open your portal, click Accounts, open the Authentication tab, click Edit in the Account creation and sign-in section, then add the custom field labels and mark any required fields.
 
 ## Enabling the API Playground
 
@@ -342,29 +278,29 @@ The portal includes a built-in API testing tool (sometimes called a "playground"
 
 To enable this, make sure:
 
-1. Your API products allow the portal's test credentials
+1. Your OpenAPI document defines the supported authentication method
 2. CORS is configured on your API proxy to allow requests from the portal domain
 3. The OpenAPI spec includes server URLs that developers can reach
 
 Add CORS support to your API proxy:
 
 ```xml
-<!-- apiproxy/policies/CORSPolicy.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<AssignMessage name="CORSPolicy">
-    <DisplayName>CORS Policy</DisplayName>
-    <AssignTo createNew="false" transport="http" type="response"/>
-    <Set>
-        <Headers>
-            <Header name="Access-Control-Allow-Origin">{request.header.origin}</Header>
-            <Header name="Access-Control-Allow-Methods">GET, POST, PUT, DELETE, OPTIONS</Header>
-            <Header name="Access-Control-Allow-Headers">x-api-key, Content-Type, Authorization</Header>
-            <Header name="Access-Control-Max-Age">86400</Header>
-        </Headers>
-    </Set>
+<!-- apiproxy/policies/CORSPolicy.xml -->
+<CORS continueOnError="false" enabled="true" name="add-cors">
+    <DisplayName>Add CORS</DisplayName>
+    <AllowOrigins>{request.header.origin}</AllowOrigins>
+    <AllowMethods>GET, PUT, POST, DELETE</AllowMethods>
+    <AllowHeaders>origin, x-requested-with, accept, content-type, authorization, x-api-key</AllowHeaders>
+    <ExposeHeaders>*</ExposeHeaders>
+    <MaxAge>3628800</MaxAge>
+    <AllowCredentials>false</AllowCredentials>
+    <GeneratePreflightResponse>true</GeneratePreflightResponse>
     <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
-</AssignMessage>
+</CORS>
 ```
+
+If your proxy validates API keys in the ProxyEndpoint PreFlow, add a condition so the Verify API Key policy is skipped for `OPTIONS` preflight requests.
 
 ## Setting Up Custom Domain
 
@@ -372,16 +308,18 @@ By default, the portal is accessible at an Apigee-provided URL. For production u
 
 Steps:
 1. Register your domain (e.g., `developers.acme.com`)
-2. In the Apigee Console, go to Portal > Settings > Domains
-3. Add your custom domain
-4. Create a CNAME DNS record pointing to the Apigee-provided target
-5. Wait for SSL certificate provisioning (automatic through Let's Encrypt)
+2. Create a TLS certificate for the custom domain
+3. Determine the default hostname for your portal
+4. Create an Internet network endpoint group (NEG) for the portal hostname
+5. Create a global external Application Load Balancer that points to the Internet NEG
+6. In the Apigee Console, open Distribution > Portals > your portal > Settings > Domains and enable the custom domain
+7. Create an A record pointing to the load balancer IP address
 
 ```bash
 # Verify DNS is configured correctly
-dig developers.acme.com CNAME
+dig developers.acme.com A
 
-# The CNAME should point to the Apigee portal hostname
+# The A record should point to the load balancer IP address
 ```
 
 ## Monitoring Portal Usage
