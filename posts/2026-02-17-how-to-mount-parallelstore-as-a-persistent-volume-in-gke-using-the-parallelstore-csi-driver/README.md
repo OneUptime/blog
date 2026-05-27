@@ -18,7 +18,7 @@ Before diving in, make sure you have a few things ready:
 
 - A GKE cluster running version 1.29 or later
 - The Parallelstore CSI driver add-on enabled on your cluster
-- A Parallelstore instance created in the same VPC and region as your GKE cluster
+- A Parallelstore instance created in the same VPC and supported zone as the GKE nodes that will use it
 - The gcloud CLI installed and configured
 - kubectl configured to talk to your GKE cluster
 
@@ -27,22 +27,23 @@ Before diving in, make sure you have a few things ready:
 First, create a Parallelstore instance if you have not already. The instance needs to be in the same VPC network as your GKE cluster for direct connectivity.
 
 ```bash
-# Create a Parallelstore instance with 12 TiB capacity
+# Create a Parallelstore instance with 12,000 GiB capacity
 
-# The instance must be in the same region and VPC as your GKE cluster
-gcloud parallelstore instances create my-parallelstore \
+# The instance must be in the same VPC, and should be in the same zone, as your GKE nodes
+gcloud beta parallelstore instances create my-parallelstore \
     --project=my-project \
     --location=us-central1-a \
-    --capacity-gib=12288 \
+    --capacity-gib=12000 \
     --network=projects/my-project/global/networks/default \
-    --description="Parallelstore for ML training data"
+    --file-stripe-level=file-stripe-level-balanced \
+    --directory-stripe-level=directory-stripe-level-balanced
 ```
 
 This takes a few minutes to provision. You can check the status with:
 
 ```bash
 # Check the instance status - wait until it shows ACTIVE
-gcloud parallelstore instances describe my-parallelstore \
+gcloud beta parallelstore instances describe my-parallelstore \
     --project=my-project \
     --location=us-central1-a
 ```
@@ -72,7 +73,7 @@ You should see driver pods running on each node in your cluster.
 
 ## Step 3: Create a StorageClass
 
-Now create a StorageClass that references the Parallelstore CSI driver. This tells Kubernetes how to provision and mount Parallelstore volumes.
+Now create a StorageClass that references the Parallelstore CSI driver. This tells Kubernetes which CSI driver and network settings to use for Parallelstore volumes.
 
 ```yaml
 # parallelstore-storageclass.yaml
@@ -107,32 +108,40 @@ apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: parallelstore-pv
+  annotations:
+    pv.kubernetes.io/provisioned-by: parallelstore.csi.storage.gke.io
 spec:
   storageClassName: parallelstore-sc
   capacity:
-    storage: 12Ti
+    storage: 12000Gi
   accessModes:
     - ReadWriteMany  # Parallelstore supports concurrent read/write from multiple pods
   persistentVolumeReclaimPolicy: Retain
+  volumeMode: Filesystem
   csi:
     driver: parallelstore.csi.storage.gke.io
-    # The volumeHandle format is projects/<project>/locations/<zone>/instances/<instance-name>
-    volumeHandle: projects/my-project/locations/us-central1-a/instances/my-parallelstore
+    # The volumeHandle format is <project>/<zone>/<instance-name>/default-pool/default-container
+    volumeHandle: my-project/us-central1-a/my-parallelstore/default-pool/default-container
     volumeAttributes:
+      accessPoints: 10.51.110.2,10.51.110.4,10.51.110.3
       network: projects/my-project/global/networks/default
+  claimRef:
+    name: parallelstore-pvc
+    namespace: default
 ---
 # PersistentVolumeClaim that binds to the PV above
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: parallelstore-pvc
+  namespace: default
 spec:
   storageClassName: parallelstore-sc
   accessModes:
     - ReadWriteMany
   resources:
     requests:
-      storage: 12Ti
+      storage: 12000Gi
   volumeName: parallelstore-pv
 ```
 
@@ -168,6 +177,8 @@ spec:
     metadata:
       labels:
         app: ml-training
+      annotations:
+        gke-parallelstore/volumes: "true"
     spec:
       containers:
       - name: trainer
@@ -178,14 +189,11 @@ spec:
         volumeMounts:
         - name: training-data
           mountPath: /data  # Your training scripts read data from here
-        - name: checkpoints
+        - name: training-data
           mountPath: /checkpoints
           subPath: checkpoints  # Use a subdirectory for model checkpoints
       volumes:
       - name: training-data
-        persistentVolumeClaim:
-          claimName: parallelstore-pvc
-      - name: checkpoints
         persistentVolumeClaim:
           claimName: parallelstore-pvc
 ```
@@ -209,15 +217,15 @@ First, consider your mount options. The CSI driver supports passing DAOS-specifi
 
 Second, think about your node pool configuration. Parallelstore performance scales with the number of nodes accessing it. If you are running a distributed training job across 8 GPU nodes, each node gets its own connection to the Parallelstore instance, and the aggregate throughput scales linearly.
 
-Third, make sure your GKE nodes and Parallelstore instance are in the same zone. Cross-zone access works but adds latency that can eat into your throughput gains.
+Third, make sure your GKE nodes and Parallelstore instance are in the same zone. If the region of your cluster differs from that of your Parallelstore instance, I/O performance can decline noticeably.
 
 ## Troubleshooting Common Issues
 
-If the PVC stays in "Pending" state, check that the CSI driver is running and that the volumeHandle in your PV matches the exact resource path of your Parallelstore instance. A mismatch in the project ID, zone, or instance name will prevent binding.
+If the PVC stays in "Pending" state, check that the CSI driver is running and that the volumeHandle in your PV uses the exact `PROJECT_ID/LOCATION/INSTANCE_NAME/default-pool/default-container` format for your Parallelstore instance. A mismatch in the project ID, zone, or instance name will prevent binding.
 
 If pods cannot mount the volume, verify that the VPC network specified in the StorageClass matches the network your Parallelstore instance is connected to. Network mismatches are the most common cause of mount failures.
 
-If you see permission errors, ensure your GKE node service account has the `roles/parallelstore.user` IAM role on the Parallelstore instance.
+If you see file permission errors after the volume mounts, check the POSIX ownership and mode bits in the Parallelstore file system. IAM controls access to Parallelstore API operations, but file access inside the mounted file system is controlled by POSIX permissions.
 
 ## Wrapping Up
 
