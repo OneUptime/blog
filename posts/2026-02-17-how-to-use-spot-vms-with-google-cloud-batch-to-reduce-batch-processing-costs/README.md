@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Batch, Spot VMs, Cost Optimization, Preemptible, Batch Processing, Google Cloud
 
-Description: Use Spot VMs with Google Cloud Batch to reduce batch processing costs by up to 60-91% while handling preemption gracefully with automatic retries.
+Description: Use Spot VMs with Google Cloud Batch to reduce batch processing costs by up to 91% while handling preemption gracefully with automatic retries.
 
 ---
 
-Batch processing workloads are the ideal candidate for Spot VMs (formerly called preemptible VMs). These are excess Compute Engine capacity available at a steep discount - typically 60-91% cheaper than on-demand pricing. The catch is that Google can reclaim them with 30 seconds notice when the capacity is needed elsewhere. For batch jobs, this is usually fine because Cloud Batch handles the preemption automatically: it detects when a VM is reclaimed, reschedules the affected tasks on new VMs, and retries them.
+Batch processing workloads are the ideal candidate for Spot VMs (formerly called preemptible VMs). These are excess Compute Engine capacity available at a steep discount - up to 91% cheaper than on-demand pricing for many resources. The catch is that Google can reclaim them when the capacity is needed elsewhere, with a best-effort shutdown period of up to 30 seconds. For batch jobs, this is usually fine because Cloud Batch handles the preemption automatically: it marks the affected tasks as failed due to Spot preemption and retries them when `maxRetryCount` allows it.
 
-In this post, I will show you how to configure Spot VMs with Cloud Batch, handle preemption properly in your task code, set up fallback to on-demand VMs, and estimate the cost savings.
+In this post, I will show you how to configure Spot VMs with Cloud Batch, handle preemption properly in your task code, and estimate the cost savings.
 
 ## How Much Can You Save
 
@@ -28,7 +28,7 @@ For a batch job that uses 100 VM-hours, switching from on-demand to Spot could s
 ## Prerequisites
 
 - Google Cloud Batch API enabled
-- Spot VM quota in your target region (separate from on-demand quota)
+- Enough Compute Engine quota in your target region. If you have been granted preemptible quota in a region, Spot VMs use that quota; otherwise they can use standard quota. Spot VMs with GPUs or Local SSDs also need the relevant GPU or disk quota.
 - Workloads that can tolerate restarts (most batch workloads can)
 
 ## Step 1: Create a Basic Spot VM Batch Job
@@ -97,13 +97,13 @@ Key settings for Spot VMs:
 
 ## Step 2: Configure with the Python Client
 
-For more control, use the Python client library to set up Spot VM jobs with fallback policies.
+For more control, use the Python client library to set up Spot VM jobs.
 
 ```python
 from google.cloud import batch_v1
 
 def create_spot_batch_job(project_id, region, job_name, task_count):
-    """Creates a batch job using Spot VMs with fallback to on-demand."""
+    """Creates a batch job using Spot VMs."""
     client = batch_v1.BatchServiceClient()
 
     # Container workload
@@ -192,7 +192,7 @@ from datetime import datetime
 preempted = False
 
 def handle_preemption(signum, frame):
-    """Handles the SIGTERM signal sent before preemption."""
+    """Handles SIGTERM when the container or VM is shutting down."""
     global preempted
     print(f"Received SIGTERM at {datetime.now()} - saving checkpoint before preemption")
     preempted = True
@@ -224,8 +224,8 @@ def main():
         # Check for preemption signal before each item
         if preempted:
             save_checkpoint(checkpoint_blob, task_index, i - 1)
-            print(f"Checkpoint saved at item {i - 1}. Exiting for preemption.")
-            sys.exit(0)
+            print(f"Checkpoint saved at item {i - 1}. Exiting so Batch can retry.")
+            sys.exit(1)
 
         # Process the item
         process_item(items[i])
@@ -327,7 +327,7 @@ Follow these practices to maximize reliability with Spot VMs:
 2. **Keep tasks short**: Tasks under 1 hour are less likely to get preempted. If possible, break long tasks into smaller chunks
 3. **Checkpoint progress**: For tasks longer than 15 minutes, save progress periodically
 4. **Set generous retry counts**: A `maxRetryCount` of 3-5 handles most preemption scenarios
-5. **Use diverse machine types**: If one type is scarce, consider allowing Cloud Batch to choose from a set of equivalent types
+5. **Use common machine types**: If one type is scarce, consider omitting a specific machine type so Batch can select compatible VMs, or submit separate jobs for equivalent machine types
 6. **Monitor preemption rates**: Track how often tasks are preempted and adjust parallelism accordingly
 
 ```bash
@@ -340,4 +340,4 @@ gcloud logging read \
 
 ## Summary
 
-Spot VMs with Google Cloud Batch can cut your batch processing costs by 60-91% with minimal effort. The key is that batch workloads are naturally fault-tolerant - tasks can be retried without side effects, and Cloud Batch handles the retry logic automatically. Write your tasks to be idempotent, add checkpointing for longer-running tasks, spread across multiple zones for availability, and set a generous retry count. The slight increase in total processing time from occasional preemptions is usually a very good trade for the dramatic cost reduction.
+Spot VMs with Google Cloud Batch can cut your batch processing costs by up to 91% with minimal effort. The key is that batch workloads are naturally fault-tolerant - tasks can be retried without side effects, and Cloud Batch handles the retry logic automatically. Write your tasks to be idempotent, add checkpointing for longer-running tasks, spread across multiple zones for availability, and set a generous retry count. The slight increase in total processing time from occasional preemptions is usually a very good trade for the dramatic cost reduction.
