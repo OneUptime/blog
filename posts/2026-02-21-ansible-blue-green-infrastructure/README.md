@@ -48,8 +48,11 @@ bg_switch_delay: 30
 - name: Deploy new version to inactive environment
   include_role:
     name: app_deploy
-  delegate_to: "{{ item }}"
+    apply:
+      delegate_to: "{{ target_server }}"
   loop: "{{ inactive_servers }}"
+  loop_control:
+    loop_var: target_server
 
 - name: Verify deployment on inactive environment
   uri:
@@ -87,6 +90,9 @@ bg_switch_delay: 30
     active_servers: "{{ inactive_servers }}"
   notify: reload haproxy
 
+- name: Apply load balancer configuration
+  ansible.builtin.meta: flush_handlers
+
 - name: Wait for traffic switch to stabilize
   pause:
     seconds: "{{ bg_switch_delay }}"
@@ -119,6 +125,11 @@ bg_switch_delay: 30
   register: current_active
   delegate_to: localhost
 
+- name: Determine previous environment
+  set_fact:
+    previous_env: "{{ 'blue' if current_active.content | b64decode | trim == 'green' else 'green' }}"
+    previous_servers: "{{ bg_blue_servers if current_active.content | b64decode | trim == 'green' else bg_green_servers }}"
+
 - name: Switch back to previous environment
   template:
     src: haproxy_backend.cfg.j2
@@ -126,8 +137,18 @@ bg_switch_delay: 30
     mode: '0644'
   delegate_to: "{{ bg_load_balancer }}"
   vars:
-    active_servers: "{{ bg_blue_servers if current_active.content | b64decode | trim == 'green' else bg_green_servers }}"
+    active_servers: "{{ previous_servers }}"
   notify: reload haproxy
+
+- name: Apply load balancer configuration
+  ansible.builtin.meta: flush_handlers
+
+- name: Update active environment marker
+  copy:
+    content: "{{ previous_env }}"
+    dest: /opt/blue-green/active_env
+    mode: '0644'
+  delegate_to: localhost
 ```
 
 ## Running the Deployment
@@ -146,12 +167,12 @@ Blue-green deployment with Ansible gives you zero-downtime releases with instant
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this pattern proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this pattern
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -183,7 +204,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -265,7 +286,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this pattern
 - name: Robust task execution
   hosts: all
   tasks:
@@ -327,4 +348,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
