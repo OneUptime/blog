@@ -45,8 +45,8 @@ Cloud Data Fusion publishes metrics to Cloud Monitoring that you can use for ale
 # Alert policy for any pipeline failure in the namespace
 
 Resource type: Cloud Data Fusion Pipeline
-Metric: pipeline/run_count
-Filter: status = "FAILED"
+Metric: datafusion.googleapis.com/pipeline/v2/runs_completed_count
+Filter: complete_state = "FAILED"
 Condition: Any time series violates threshold of 0
 ```
 
@@ -55,16 +55,17 @@ Condition: Any time series violates threshold of 0
 ```yaml
 # Alert when a pipeline takes longer than expected
 Resource type: Cloud Data Fusion Pipeline
-Metric: pipeline/run_duration
+Metric: datafusion.googleapis.com/pipeline/v2/pipeline_duration
 Condition: Above threshold of 3600 seconds (adjust based on your baseline)
 ```
 
 **Record processing alerts:**
 
 ```yaml
-# Alert when error records exceed a threshold
+# Alert when records routed to an Error Collector stage exceed a threshold
 Resource type: Cloud Data Fusion Pipeline
-Metric: pipeline/error_count
+Metric: datafusion.googleapis.com/pipeline/v2/plugin/outgoing_records_count
+Filter: stage_name = "ErrorCollector"
 Condition: Above threshold of 100
 ```
 
@@ -72,14 +73,14 @@ Configure notification channels to send alerts to your preferred destination - e
 
 ### Using Cloud Logging
 
-All pipeline logs are sent to Cloud Logging. You can access them from the pipeline UI (click "Logs" on a specific run) or from the Cloud Logging console.
+In current Cloud Data Fusion versions, pipeline logs are available in Cloud Logging. You can access them from the pipeline UI (click "Logs" on a specific run) or from the Cloud Logging console.
 
 To find logs for a specific pipeline run in Cloud Logging:
 
 ```text
 # Cloud Logging query for a specific pipeline's logs
-resource.type="cloud_data_fusion_pipeline"
-resource.labels.pipeline_name="my_etl_pipeline"
+resource.type="datafusion.googleapis.com/PipelineV2"
+resource.labels.pipeline_id="my_etl_pipeline"
 severity>=WARNING
 ```
 
@@ -87,8 +88,8 @@ For more targeted searches, filter by the run ID:
 
 ```text
 # Filter logs for a specific pipeline run
-resource.type="cloud_data_fusion_pipeline"
-labels.run_id="abc123-def456"
+resource.type="datafusion.googleapis.com/PipelineV2"
+resource.labels.run_id="abc123-def456"
 ```
 
 ## Debugging Failed Stages
@@ -173,14 +174,14 @@ If your pipeline fails with `java.lang.OutOfMemoryError`, you have a few options
 
 1. Increase the executor memory in the pipeline runtime arguments:
 ```text
-system.resources.memory=4096
+task.executor.system.resources.memory=4096
 ```
 
 2. Reduce the number of records processed per batch by adjusting the source fetch size
 
-3. If using the Spark execution engine, adjust the Spark executor memory:
+3. If using the Spark execution engine, review the Dataproc cluster configuration and Spark memory settings:
 ```text
-system.spark.executor.memory=8g
+task.executor.system.resources.memory=8192
 ```
 
 ### Slow Pipeline Performance
@@ -218,7 +219,7 @@ Group pipelines by criticality. Your business-critical daily ETL pipeline deserv
 
 ## Implementing Retry Logic
 
-For transient failures (network blips, temporary resource unavailability), configure automatic retries in your pipeline's schedule settings. Set the maximum number of retries and the delay between attempts.
+For transient failures (network blips, temporary resource unavailability), configure a trigger that runs the pipeline again when the previous run fails.
 
 For more sophisticated retry logic, use Cloud Composer (Apache Airflow) as an orchestration layer on top of Data Fusion. Airflow provides built-in retry mechanisms, SLA monitoring, and complex dependency management.
 
@@ -230,7 +231,7 @@ Cloud Data Fusion retains pipeline run logs for a limited period. If you need lo
 # Create a log sink to export Data Fusion logs to BigQuery
 gcloud logging sinks create cdf-log-export \
   bigquery.googleapis.com/projects/my-project/datasets/cdf_logs \
-  --log-filter='resource.type="cloud_data_fusion_pipeline"'
+  --log-filter='resource.type="datafusion.googleapis.com/PipelineV2"'
 ```
 
 This gives you a queryable archive of all pipeline executions, which is invaluable for debugging intermittent issues and tracking performance trends over time.
