@@ -26,8 +26,10 @@ Keycloak is an open-source identity and access management solution that provides
       - "8443:8443"
       - "8080:8080"
     env:
-      KEYCLOAK_ADMIN: "{{ keycloak_admin_user }}"
-      KEYCLOAK_ADMIN_PASSWORD: "{{ keycloak_admin_password }}"
+      KC_BOOTSTRAP_ADMIN_USERNAME: "{{ keycloak_admin_user }}"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "{{ keycloak_admin_password }}"
+      KC_HOSTNAME: "{{ keycloak_hostname | default(keycloak_host) }}"
+      KC_HTTP_ENABLED: "true"
       KC_DB: postgres
       KC_DB_URL: "jdbc:postgresql://{{ db_host }}:5432/keycloak"
       KC_DB_USERNAME: "{{ keycloak_db_user }}"
@@ -128,7 +130,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -272,4 +274,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
