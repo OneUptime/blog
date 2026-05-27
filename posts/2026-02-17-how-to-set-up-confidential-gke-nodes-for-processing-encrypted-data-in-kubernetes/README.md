@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Confidential GKE, Kubernetes, Confidential Computing, Container Security
 
-Description: Step-by-step guide to deploying Confidential GKE nodes that encrypt container memory at the hardware level for processing sensitive data in Kubernetes.
+Description: Step-by-step guide to deploying Confidential GKE nodes that encrypt node VM memory at the hardware level for processing sensitive data in Kubernetes.
 
 ---
 
-Running sensitive workloads in Kubernetes introduces questions about data protection that go beyond standard container isolation. Containers on the same node share the same kernel and, at the hardware level, the same memory. Confidential GKE nodes solve this by running your containers on nodes where memory is encrypted by AMD SEV technology. The hypervisor and other system software cannot read the memory contents of your workloads.
+Running sensitive workloads in Kubernetes introduces questions about data protection that go beyond standard container isolation. Containers on the same node share the same kernel and, at the hardware level, the same host resources. Confidential GKE nodes solve this by running your containers on nodes where VM memory is encrypted by Confidential VM technology such as AMD SEV, AMD SEV-SNP, or Intel TDX. The hypervisor and other host system software cannot read the memory contents of your workloads.
 
 This guide covers how to set up Confidential GKE nodes, configure node pools, schedule workloads onto them, and handle the operational nuances that come with confidential computing in a Kubernetes environment.
 
@@ -21,7 +21,7 @@ Confidential GKE nodes are GKE nodes that use Confidential VM technology. All co
 - Other VMs on the same physical host cannot access your memory
 - The protection is transparent to your application code - no code changes required
 
-The encryption happens at the hardware level using AMD SEV (Secure Encrypted Virtualization). Each VM gets a unique memory encryption key managed by the AMD processor, not by software.
+The encryption happens at the hardware level using a supported Confidential Computing technology. In the AMD SEV mode used by the basic `--enable-confidential-nodes` examples below, each VM gets a unique memory encryption key managed by the AMD processor, not by software.
 
 ## Creating a Cluster with Confidential Nodes
 
@@ -39,14 +39,14 @@ gcloud container clusters create confidential-cluster \
   --num-nodes=3 \
   --disk-type=pd-ssd \
   --disk-size=100GB \
-  --workload-pool=my-project.svc.id.goog \
+  --workload-pool=my-secure-project.svc.id.goog \
   --enable-shielded-nodes \
   --project=my-secure-project
 ```
 
 Key points about this configuration:
 - `--enable-confidential-nodes` turns on hardware memory encryption
-- N2D machine types are required because they use AMD EPYC processors with SEV
+- N2D machine types support the default AMD SEV configuration used by this command
 - Shielded nodes should also be enabled for boot integrity verification
 - Workload Identity is recommended for secure authentication
 
@@ -108,7 +108,7 @@ spec:
 
       containers:
         - name: processor
-          image: gcr.io/my-secure-project/data-processor:v1.2
+          image: us-docker.pkg.dev/my-secure-project/containers/data-processor:v1.2
           resources:
             requests:
               cpu: "1"
@@ -129,7 +129,7 @@ spec:
           secret:
             secretName: processor-config
 
-      # Use Workload Identity for authentication
+      # Use a Kubernetes ServiceAccount mapped for Workload Identity
       serviceAccountName: data-processor-sa
 ```
 
@@ -237,25 +237,27 @@ After deploying your cluster, verify that Confidential nodes are running with me
 # Check node labels to confirm Confidential nodes
 kubectl get nodes -l security-tier=confidential -o wide
 
-# Verify Confidential Computing status on a specific node
-gcloud compute instances describe \
-  $(kubectl get nodes -l security-tier=confidential -o jsonpath='{.items[0].metadata.name}') \
-  --zone=us-central1-a \
-  --format="yaml(confidentialInstanceConfig)"
+# Verify Confidential Computing status on the node pool
+gcloud container node-pools describe confidential-pool \
+  --cluster=confidential-cluster \
+  --region=us-central1 \
+  --format="yaml(confidentialNodes.confidentialInstanceType)"
 ```
 
-You can also verify from within a pod running on a Confidential node.
+You can also verify that a workload landed on a Confidential node by checking the node that runs the pod and inspecting the GKE Confidential node label.
 
 ```bash
-# Run a debug pod on a Confidential node and check SEV status
+# Run a debug pod on a Confidential node
 kubectl run sev-check \
   --image=ubuntu:22.04 \
   --overrides='{"spec":{"tolerations":[{"key":"confidential","operator":"Equal","value":"true","effect":"NoSchedule"}],"nodeSelector":{"security-tier":"confidential"}}}' \
   --restart=Never \
-  --command -- bash -c "dmesg | grep -i sev; sleep 30"
+  --command -- sleep 300
 
-# Check the logs
-kubectl logs sev-check
+# Check the Confidential GKE node label on the selected node
+kubectl get node \
+  $(kubectl get pod sev-check -o jsonpath='{.spec.nodeName}') \
+  -o jsonpath='{.metadata.labels.cloud\.google\.com/gke-confidential-nodes-instance-type}{"\n"}'
 ```
 
 ## Network Policies for Confidential Workloads
@@ -304,7 +306,7 @@ spec:
 
 ## Auto-Scaling Considerations
 
-Confidential nodes cannot be live migrated, which affects how GKE handles maintenance events. When a host needs maintenance, Confidential nodes are terminated and recreated. Plan for this in your workload design.
+Most Confidential VM instances cannot be live migrated, which affects how GKE handles maintenance events. Live migration is supported for some AMD SEV configurations on N2D and C3D machine types, but other Confidential VM types are terminated and recreated during host maintenance. Plan for this in your workload design.
 
 ```yaml
 # Pod Disruption Budget to maintain availability during node maintenance
@@ -351,7 +353,7 @@ gcloud monitoring dashboards create --config-from-file=- <<EOF
             "dataSets": [{
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "resource.type=\"k8s_node\" AND metadata.user_labels.\"security-tier\"=\"confidential\"",
+                  "filter": "metric.type=\"kubernetes.io/node/cpu/allocatable_utilization\" AND resource.type=\"k8s_node\" AND metadata.user_labels.\"security-tier\"=\"confidential\"",
                   "aggregation": {
                     "alignmentPeriod": "300s",
                     "perSeriesAligner": "ALIGN_MEAN"
