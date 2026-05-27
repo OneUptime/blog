@@ -17,7 +17,7 @@ This is where custom log buckets and retention policies come in. Instead of trea
 Cloud Logging gives you two built-in buckets in every project:
 
 - **_Required**: Stores Admin Activity audit logs, System Event audit logs, and Access Transparency logs. Retention is fixed at 400 days and cannot be changed.
-- **_Default**: Stores everything else that is not routed elsewhere. Default retention is 30 days, but you can adjust this.
+- **_Default**: Stores all log entries except those routed by the `_Required` sink, unless you add exclusion filters or modify the sink. Default retention is 30 days, but you can adjust this for project-level buckets.
 
 Beyond these, you can create custom buckets with retention periods ranging from 1 day to 3,650 days (10 years). This flexibility is what makes it possible to implement a real log management strategy.
 
@@ -54,7 +54,7 @@ You can also specify a region instead of `global` if you need logs stored in a p
 
 Creating buckets alone does nothing - you need sinks to route logs into them. A sink is basically a filter that sends matching log entries to a specific destination.
 
-The following commands create sinks that route logs based on their severity and resource type.
+The following commands create sinks that route logs based on their severity and log name.
 
 ```bash
 # Route debug-level logs to the debug-logs bucket
@@ -91,7 +91,7 @@ gcloud logging buckets update _Default \
   --retention-days=14
 ```
 
-One important thing to know: you can increase retention on the `_Default` bucket at any time, but once you decrease it, logs older than the new retention period will be deleted and cannot be recovered.
+One important thing to know: you can increase retention on the `_Default` bucket at any time, but when you shorten retention, logs older than the new retention period are no longer queryable or viewable. Cloud Logging provides a 7-day grace period before deleting those expired logs; during that period, you can restore access by increasing the retention period again.
 
 ## Step 4: Exclude Logs from the Default Bucket
 
@@ -161,7 +161,7 @@ resource "google_logging_project_exclusion" "exclude_app_logs" {
 Here is a rough breakdown of how retention policies affect your costs:
 
 - Cloud Logging charges for log ingestion (per GiB ingested beyond the free tier).
-- Storage beyond the default retention period of each bucket incurs additional storage costs.
+- Storage beyond the default retention period of the `_Default` bucket and user-defined buckets incurs additional storage costs.
 - Shorter retention on non-critical logs can significantly reduce your bill.
 
 A practical approach is to start by analyzing which log sources generate the most volume. You can check this in the Cloud Console under Logging > Logs Storage, which shows ingestion volume per bucket. Route high-volume, low-value logs (like load balancer health checks) to a short-retention bucket or exclude them entirely.
