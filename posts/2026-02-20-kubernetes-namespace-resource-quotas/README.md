@@ -225,7 +225,7 @@ sequenceDiagram
     Note over APIServer: all pods to have resource specs.
 ```
 
-When a ResourceQuota is active, every pod must specify resource requests and limits. LimitRanges provide defaults so pods without explicit resources are not rejected.
+When a ResourceQuota enforces CPU or memory requests or limits, pods must specify the corresponding resource values. LimitRanges provide defaults so pods without explicit resources are not rejected.
 
 ## Multi-Tenant Configuration Example
 
@@ -331,10 +331,8 @@ spec:
   # Only count pods with BestEffort QoS class
   scopeSelector:
     matchExpressions:
-      - scopeName: PriorityClass
-        operator: In
-        values:
-          - low-priority
+      - scopeName: BestEffort
+        operator: Exists
 ```
 
 ## Best Practices
