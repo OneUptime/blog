@@ -45,7 +45,7 @@ First, create an IAM role in AWS that BigQuery will assume to read your S3 data:
 }
 ```
 
-The trust policy for this role needs to allow the BigQuery Omni service account to assume it:
+The trust policy for this role needs to allow the BigQuery Google identity for the connection to assume it. Use `00000` as a placeholder when you first create the role, then replace it after you create the BigQuery connection:
 
 ```json
 {
@@ -59,7 +59,7 @@ The trust policy for this role needs to allow the BigQuery Omni service account 
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "accounts.google.com:sub": "YOUR_BQ_SERVICE_ACCOUNT_ID"
+          "accounts.google.com:sub": "00000"
         }
       }
     }
@@ -77,12 +77,12 @@ Create a connection in BigQuery that references the AWS IAM role:
 # The connection runs in an AWS region (aws-us-east-1)
 bq mk --connection \
   --connection_type='AWS' \
-  --properties='{"accessRole":{"iamRoleId":"arn:aws:iam::123456789012:role/bigquery-omni-role"}}' \
+  --iam_role_id=arn:aws:iam::123456789012:role/bigquery-omni-role \
   --location=aws-us-east-1 \
   my-aws-connection
 ```
 
-After creating the connection, BigQuery generates a service account ID. You need to add this to your AWS IAM role's trust policy.
+After creating the connection, BigQuery returns a Google identity value. You need to replace the `00000` placeholder in your AWS IAM role's trust policy with this value.
 
 ```bash
 # Get the BigQuery Omni service account ID
@@ -137,7 +137,7 @@ ORDER BY total_revenue DESC;
 
 ## Setting Up BigQuery Omni for Azure Blob Storage
 
-### Step 1: Create an Azure Service Principal
+### Step 1: Create an Azure Application and Service Principal
 
 BigQuery needs an Azure AD application and service principal to access your Azure storage:
 
@@ -147,12 +147,6 @@ az ad app create --display-name "BigQuery Omni Access"
 
 # Create a service principal for the application
 az ad sp create --id <application-id>
-
-# Assign Storage Blob Data Reader role on the storage account
-az role assignment create \
-  --assignee <service-principal-id> \
-  --role "Storage Blob Data Reader" \
-  --scope "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/<storage-account>"
 ```
 
 ### Step 2: Create the Azure Connection
@@ -161,9 +155,31 @@ az role assignment create \
 # Create a BigQuery connection to Azure
 bq mk --connection \
   --connection_type='Azure' \
-  --properties='{"customerTenantId":"<azure-tenant-id>","federatedApplicationClientId":"<app-client-id>"}' \
+  --tenant_id=<azure-tenant-id> \
   --location=azure-eastus2 \
+  --federated_azure=true \
+  --federated_app_client_id=<app-client-id> \
   my-azure-connection
+```
+
+The command output includes a `SUBJECT_ID` value for the BigQuery Google identity. Add that identity as a federated credential on the Azure application:
+
+```bash
+az ad app federated-credential create \
+  --id <application-id> \
+  --parameters '{
+    "name": "bigquery-omni",
+    "issuer": "https://accounts.google.com",
+    "subject": "<subject-id-from-bigquery-connection>",
+    "audiences": ["api://AzureADTokenExchange"]
+  }'
+
+# Assign Storage Blob Data Reader role on the storage account
+az role assignment create \
+  --assignee-object-id <service-principal-object-id> \
+  --assignee-principal-type ServicePrincipal \
+  --role "Storage Blob Data Reader" \
+  --scope "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/<storage-account>"
 ```
 
 ### Step 3: Create External Tables Over Azure Data
@@ -258,7 +274,7 @@ GROUP BY event_type;
 
 ## Cost and Performance Considerations
 
-BigQuery Omni charges for compute in the cloud where the data resides. Slot pricing applies, and you need BigQuery Editions reservations for Omni workloads. There is no on-demand pricing for Omni queries.
+BigQuery Omni charges for compute in the cloud where the data resides. BigQuery Omni supports both on-demand compute pricing and Enterprise edition reservations in Omni regions.
 
 Data transfer costs apply when results cross cloud boundaries. Minimize this by aggregating in subqueries before joining with data in other clouds.
 
