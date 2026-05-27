@@ -17,6 +17,7 @@ Many custom modules interact with REST APIs to manage external services. Ansible
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.urls import open_url
 import json
+import urllib.error
 
 def run_module():
     module = AnsibleModule(
@@ -56,7 +57,7 @@ def run_module():
                 base_url + '/resources',
                 headers=headers,
                 method='POST',
-                data=json.dumps({'name': name, 'config': module.params['config']}),
+                data=json.dumps({'name': name, 'config': module.params['config']}).encode('utf-8'),
             )
             result = json.loads(resp.read())
             module.exit_json(changed=True, resource=result)
@@ -86,6 +87,8 @@ if __name__ == '__main__':
 ## Error Handling for APIs
 
 ```python
+import urllib.error
+
 try:
     resp = open_url(url, headers=headers, method='POST', data=payload)
 except urllib.error.HTTPError as e:
