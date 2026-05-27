@@ -92,7 +92,7 @@ resource "google_logging_organization_sink" "admin_activity" {
   # Filter for admin activity audit logs
   # These capture resource creation, modification, and deletion
   filter = <<-FILTER
-    logName:"cloudaudit.googleapis.com/activity"
+    log_id("cloudaudit.googleapis.com/activity")
   FILTER
 
   # Use partitioned tables for better query performance and cost
@@ -111,7 +111,7 @@ resource "google_logging_organization_sink" "data_access" {
   # Filter for data access audit logs
   # These capture who read what data and when
   filter = <<-FILTER
-    logName:"cloudaudit.googleapis.com/data_access"
+    log_id("cloudaudit.googleapis.com/data_access")
   FILTER
 
   bigquery_options {
@@ -127,7 +127,7 @@ resource "google_logging_organization_sink" "system_events" {
   include_children = true
 
   filter = <<-FILTER
-    logName:"cloudaudit.googleapis.com/system_event"
+    log_id("cloudaudit.googleapis.com/system_event")
   FILTER
 
   bigquery_options {
@@ -143,7 +143,7 @@ resource "google_logging_organization_sink" "policy_denied" {
   include_children = true
 
   filter = <<-FILTER
-    logName:"cloudaudit.googleapis.com/policy"
+    log_id("cloudaudit.googleapis.com/policy")
   FILTER
 
   bigquery_options {
@@ -154,7 +154,7 @@ resource "google_logging_organization_sink" "policy_denied" {
 
 ## IAM for the Sink Service Account
 
-Each logging sink creates a unique service account (called a writer identity) that needs permission to write to the destination:
+Each logging sink has a writer identity that needs permission to write to the destination:
 
 ```hcl
 # iam.tf - Grant sink service accounts access to write to BigQuery
@@ -304,8 +304,10 @@ SELECT
   protopayload_auditlog.resourceName AS deleted_resource
 FROM `logging_project.org_audit_logs.cloudaudit_googleapis_com_activity`
 WHERE
-  protopayload_auditlog.methodName LIKE '%delete%'
-  OR protopayload_auditlog.methodName LIKE '%Delete%'
+  (
+    protopayload_auditlog.methodName LIKE '%delete%'
+    OR protopayload_auditlog.methodName LIKE '%Delete%'
+  )
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
 ORDER BY timestamp DESC
 LIMIT 500
@@ -318,7 +320,18 @@ Automate reporting with scheduled queries:
 ```hcl
 # scheduled-queries.tf - Automated audit reports
 
+data "google_project" "logging_project" {
+  project_id = var.logging_project_id
+}
+
 resource "google_bigquery_data_transfer_config" "weekly_iam_report" {
+  depends_on = [
+    google_project_iam_member.bq_data_transfer_token_creator,
+    google_project_iam_member.bq_scheduler_job_user,
+    google_bigquery_dataset_iam_member.bq_scheduler_audit_logs_reader,
+    google_bigquery_dataset_iam_member.bq_scheduler_reports_editor,
+  ]
+
   project                = var.logging_project_id
   display_name           = "Weekly IAM Changes Report"
   data_source_id         = "scheduled_query"
@@ -360,6 +373,32 @@ resource "google_service_account" "bq_scheduler" {
   project      = var.logging_project_id
   account_id   = "bq-audit-scheduler"
   display_name = "BigQuery Audit Report Scheduler"
+}
+
+resource "google_project_iam_member" "bq_data_transfer_token_creator" {
+  project = var.logging_project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
+  member  = "serviceAccount:service-${data.google_project.logging_project.number}@gcp-sa-bigquerydatatransfer.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "bq_scheduler_job_user" {
+  project = var.logging_project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.bq_scheduler.email}"
+}
+
+resource "google_bigquery_dataset_iam_member" "bq_scheduler_audit_logs_reader" {
+  project    = var.logging_project_id
+  dataset_id = google_bigquery_dataset.audit_logs.dataset_id
+  role       = "roles/bigquery.dataViewer"
+  member     = "serviceAccount:${google_service_account.bq_scheduler.email}"
+}
+
+resource "google_bigquery_dataset_iam_member" "bq_scheduler_reports_editor" {
+  project    = var.logging_project_id
+  dataset_id = google_bigquery_dataset.audit_reports.dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${google_service_account.bq_scheduler.email}"
 }
 ```
 
