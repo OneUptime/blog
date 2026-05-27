@@ -17,7 +17,7 @@ Ansible and Terraform are both infrastructure as code tools, but they solve diff
 | Primary Purpose | Infrastructure provisioning | Configuration management |
 | Approach | Declarative | Procedural (with declarative modules) |
 | State | Maintains state file | Stateless |
-| Agent | Agentless (API-based) | Agentless (SSH-based) |
+| Agent | Agentless (API-based) | Agentless (SSH/WinRM-based) |
 | Language | HCL | YAML |
 | Idempotency | Built-in via state | Module-dependent |
 | Cloud Support | Excellent (providers) | Good (modules/collections) |
@@ -123,7 +123,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -164,7 +164,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -218,6 +218,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -267,4 +268,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
