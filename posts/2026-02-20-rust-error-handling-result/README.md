@@ -8,7 +8,7 @@ Description: Learn how to handle errors in Rust using Result types, the ? operat
 
 ---
 
-Rust does not have exceptions. Instead, it uses the type system to make error handling explicit and exhaustive. Every function that can fail returns a Result type, and the compiler ensures you handle both the success and failure cases. This approach eliminates entire categories of runtime surprises.
+Rust does not have exceptions for recoverable errors. Instead, it uses the type system to make error handling explicit. Recoverable failures are commonly represented with a Result type, and pattern matching ensures you handle both the success and failure cases when you inspect the value. This approach eliminates entire categories of runtime surprises.
 
 In this guide, we will explore Rust's error handling from basic Result usage through custom error types and the thiserror crate.
 
@@ -25,13 +25,13 @@ enum Result<T, E> {
 }
 ```
 
-Every function that can fail uses this type:
+Many functions that can fail use this type:
 
 ```rust
 use std::fs;
 use std::num::ParseIntError;
 
-// read_file returns either the file contents or an IO error
+// read_config returns either the file contents or an IO error
 fn read_config() -> Result<String, std::io::Error> {
     // fs::read_to_string returns Result<String, io::Error>
     let contents = fs::read_to_string("config.toml")?;
@@ -95,7 +95,7 @@ fn read_username_verbose() -> Result<String, io::Error> {
 }
 
 // With the ? operator - clean and concise
-// The ? unwraps Ok or returns Err to the caller automatically
+// The ? unwraps Ok or converts and returns Err to the caller automatically
 fn read_username_clean() -> Result<String, io::Error> {
     let contents = fs::read_to_string("username.txt")?;
     Ok(contents.trim().to_string())
@@ -227,11 +227,11 @@ enum ServiceError {
 }
 
 // Using the error type in a service function
-async fn get_user(id: &str) -> Result<User, ServiceError> {
+async fn get_user(pool: &sqlx::PgPool, id: &str) -> Result<User, ServiceError> {
     // sqlx::Error is automatically converted via #[from]
-    let user = sqlx::query_as("SELECT * FROM users WHERE id = $1")
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
         .bind(id)
-        .fetch_optional(&pool)
+        .fetch_optional(pool)
         .await?;
 
     // Return a structured NotFound error if the user does not exist
@@ -303,7 +303,7 @@ fn find_user_email(users: &[User], name: &str) -> Result<String, AppError> {
 
 ## Best Practices
 
-1. Use Result for all operations that can fail. Never panic in library code.
+1. Use Result for recoverable operations that can fail. Avoid panicking in library code for recoverable errors; return an error instead.
 2. Use the ? operator to propagate errors cleanly through the call stack.
 3. Add context to errors as they propagate so the final error message tells a clear story.
 4. Use thiserror for libraries where callers need to match on error variants.
