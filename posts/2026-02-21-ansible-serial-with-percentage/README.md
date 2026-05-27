@@ -54,11 +54,11 @@ The same playbook works correctly in all environments without modification.
 
 ## Rounding Behavior
 
-Ansible rounds percentage calculations. With odd numbers:
+Ansible truncates percentage calculations to an integer. With odd numbers:
 
-- 7 hosts at 25%: batch size = 1 (7 * 0.25 = 1.75, rounds to 1)
-- 7 hosts at 30%: batch size = 2 (7 * 0.30 = 2.1, rounds to 2)
-- 7 hosts at 50%: batch size = 3 (7 * 0.50 = 3.5, rounds to 3)
+- 7 hosts at 25%: batch size = 1 (7 * 0.25 = 1.75, truncates to 1)
+- 7 hosts at 30%: batch size = 2 (7 * 0.30 = 2.1, truncates to 2)
+- 7 hosts at 50%: batch size = 3 (7 * 0.50 = 3.5, truncates to 3)
 
 The minimum batch size is always 1, regardless of percentage.
 
@@ -162,7 +162,7 @@ When both `serial` and `max_fail_percentage` use percentages, the math compounds
   max_fail_percentage: 10  # Stop if >10% of BATCH fails
 ```
 
-In each batch of 20 hosts, if more than 2 fail (10% of 20), the play stops. This limits the blast radius to at most 22 hosts (20 in the current batch + 2 failures).
+In each batch of 20 hosts, the play stops if more than 2 fail (10% of 20). The threshold must be exceeded, not merely equaled, so 2 failures would not stop the play, but 3 failures would. This limits the rollout blast radius to the current 20-host batch before Ansible aborts later batches.
 
 ## Calculating Capacity During Rollout
 
@@ -202,7 +202,7 @@ If you need 60 hosts to handle peak traffic:
     - name: Verify capacity is sufficient
       assert:
         that:
-          - "(groups['webservers'] | length) - (ansible_play_hosts | length) >= 60"
+          - "(groups['webservers'] | length) - (ansible_play_batch | length) >= 60"
         fail_msg: "Not enough capacity to proceed with this batch size"
       run_once: true
 
@@ -256,15 +256,15 @@ Track rollout progress with batch information:
   tasks:
     - name: Calculate progress
       set_fact:
-        total_hosts: "{{ groups['webservers'] | length }}"
-        batch_size: "{{ ansible_play_hosts | length }}"
-        batch_number: "{{ ansible_play_batch }}"
+        total_hosts: "{{ ansible_play_hosts_all | length }}"
+        batch_size: "{{ ansible_play_batch | length }}"
+        completed_or_current: "{{ (ansible_play_hosts_all | difference(ansible_play_hosts) | length) + (ansible_play_batch | length) }}"
 
     - name: Report progress
       debug:
         msg: >
-          Batch {{ batch_number }}: Updating {{ batch_size }}/{{ total_hosts }} hosts
-          ({{ ((batch_number | int) * (batch_size | int) * 100 / (total_hosts | int)) | round }}% complete)
+          Current batch: Updating {{ batch_size }}/{{ total_hosts }} hosts
+          ({{ ((completed_or_current | int) * 100 / (total_hosts | int)) | round }}% complete after this batch)
       run_once: true
 
     - name: Deploy
