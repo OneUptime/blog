@@ -246,16 +246,17 @@ Always validate configuration before deploying:
 
 - name: Validate required fields are present
   ansible.builtin.command:
-    cmd: >
-      python3 -c "
-      import yaml
-      config = yaml.safe_load(open('/tmp/app_config_validate.yml'))
-      required = ['server', 'database', 'cache']
-      missing = [r for r in required if r not in config]
-      if missing:
-          raise ValueError(f'Missing required config sections: {missing}')
-      print('Config validation passed')
-      "
+    argv:
+      - python3
+      - -c
+      - |
+        import yaml
+        config = yaml.safe_load(open('/tmp/app_config_validate.yml'))
+        required = ['server', 'database', 'cache']
+        missing = [r for r in required if r not in config]
+        if missing:
+            raise ValueError(f'Missing required config sections: {missing}')
+        print('Config validation passed')
   changed_when: false
 
 - name: Remove temporary validation file
@@ -318,8 +319,8 @@ Some configuration changes need a full restart while others can be hot-reloaded:
     state: reloaded
 
 - name: signal config reload
-  ansible.builtin.command:
-    cmd: "kill -HUP $(cat /var/run/{{ app_name }}.pid)"
+  ansible.builtin.shell:
+    cmd: "kill -HUP $(cat /var/run/{{ app_name | quote }}.pid)"
   changed_when: true
 ```
 
