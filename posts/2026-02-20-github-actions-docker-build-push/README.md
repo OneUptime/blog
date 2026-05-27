@@ -55,15 +55,16 @@ jobs:
     steps:
       # Step 1: Check out the repository code
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Step 2: Set up Docker Buildx for advanced features
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # Step 3: Log in to GitHub Container Registry
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -72,7 +73,7 @@ jobs:
       # Step 4: Generate tags and labels from Git metadata
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -88,7 +89,7 @@ jobs:
 
       # Step 5: Build and push the Docker image
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           # Only push on main branch and tags, not PRs
@@ -116,26 +117,26 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # Log in using Docker Hub credentials stored as secrets
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: myorg/myapp
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -159,7 +160,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Configure AWS credentials for ECR access
       - name: Configure AWS credentials
@@ -175,7 +176,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push to ECR
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -202,17 +203,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # QEMU is needed for cross-platform emulation
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -220,7 +221,7 @@ jobs:
 
       # Build for multiple platforms simultaneously
       - name: Build and push multi-platform
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           # Target both AMD64 and ARM64
@@ -247,7 +248,7 @@ graph TD
 ```yaml
 # Strategy 1: GitHub Actions cache (recommended)
 - name: Build with GHA cache
-  uses: docker/build-push-action@v5
+  uses: docker/build-push-action@v7
   with:
     context: .
     push: true
@@ -257,7 +258,7 @@ graph TD
 
 # Strategy 2: Registry cache
 - name: Build with registry cache
-  uses: docker/build-push-action@v5
+  uses: docker/build-push-action@v7
   with:
     context: .
     push: true
@@ -277,7 +278,7 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 # Copy only package files first for better cache utilization
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Stage 2: Build the application
 FROM node:20-alpine AS builder
@@ -317,7 +318,7 @@ Scan images for vulnerabilities before pushing to production.
 ```yaml
 # Add scanning step before pushing
 - name: Build image for scanning
-  uses: docker/build-push-action@v5
+  uses: docker/build-push-action@v7
   with:
     context: .
     load: true
@@ -325,7 +326,7 @@ Scan images for vulnerabilities before pushing to production.
 
 # Scan with Trivy
 - name: Run Trivy vulnerability scanner
-  uses: aquasecurity/trivy-action@master
+  uses: aquasecurity/trivy-action@v0.36.0
   with:
     image-ref: myapp:scan
     format: table
