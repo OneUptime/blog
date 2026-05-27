@@ -18,7 +18,7 @@ Before starting, you need:
 
 - A Google Cloud project with billing enabled
 - Retail API enabled (this is the underlying API for Search for Commerce)
-- A product catalog in JSON, CSV, or Google Merchant Center format
+- A product catalog in Retail API JSON format, BigQuery, or Google Merchant Center
 - A service account with the `retail.editor` role
 
 ## Step 1: Enable the Retail API
@@ -29,16 +29,13 @@ The Retail API powers Vertex AI Search for Commerce. Enable it and set up the in
 # Enable the Retail API
 
 gcloud services enable retail.googleapis.com
-
-# Also enable Vertex AI for the full search capabilities
-gcloud services enable aiplatform.googleapis.com
 ```
 
 ## Step 2: Prepare Your Product Catalog
 
 Your product catalog needs to follow the Retail API's product schema. Each product needs at minimum an ID, title, and categories.
 
-This JSON shows the required structure for product data:
+This JSON shows the structure for a product. For Cloud Storage imports, each product object should be on its own line in the JSON file.
 
 ```json
 {
@@ -63,6 +60,10 @@ This JSON shows the required structure for product data:
   },
   "availability": "IN_STOCK",
   "availableQuantity": 156,
+  "rating": {
+    "ratingCount": 84,
+    "averageRating": 4.7
+  },
   "brands": ["CloudRunner"],
   "colorInfo": {
     "colorFamilies": ["Red"],
@@ -105,8 +106,6 @@ def import_products(project_id, catalog_id, branch_id, gcs_bucket, gcs_file):
         data_schema="product",
     )
 
-    input_config = retail_v2.ProductInlineSource()
-
     import_request = retail_v2.ImportProductsRequest(
         parent=parent,
         input_config=retail_v2.ProductInputConfig(
@@ -118,10 +117,14 @@ def import_products(project_id, catalog_id, branch_id, gcs_bucket, gcs_file):
     # Execute the import operation
     operation = client.import_products(request=import_request)
     print("Import in progress...")
-    result = operation.result(timeout=600)
+    operation.result(timeout=600)
+    metadata = operation.metadata
 
-    print(f"Import complete. Success: {result.success_count}, Failure: {result.failure_count}")
-    return result
+    print(
+        f"Import complete. Success: {metadata.success_count}, "
+        f"Failure: {metadata.failure_count}"
+    )
+    return metadata
 
 # Import products from GCS
 import_products(
@@ -145,8 +148,10 @@ from google.cloud import retail_v2
 def create_search_controls(project_id, catalog_id):
     """Creates search controls for synonyms and boosting."""
     client = retail_v2.ControlServiceClient()
+    serving_config_client = retail_v2.ServingConfigServiceClient()
 
     parent = f"projects/{project_id}/locations/global/catalogs/{catalog_id}"
+    serving_config = f"{parent}/servingConfigs/default_search"
 
     # Create a synonym control so "sneakers" matches "running shoes"
     synonym_control = retail_v2.Control(
@@ -158,8 +163,9 @@ def create_search_controls(project_id, catalog_id):
                     retail_v2.Condition.QueryTerm(value="sneakers")
                 ]
             ),
-            replacement_action=retail_v2.Rule.ReplacementAction(
-                query_terms=["running shoes"]
+            oneway_synonyms_action=retail_v2.Rule.OnewaySynonymsAction(
+                query_terms=["sneakers"],
+                synonyms=["running shoes"],
             ),
         ),
     )
@@ -170,6 +176,10 @@ def create_search_controls(project_id, catalog_id):
         control_id="sneakers-synonym",
     )
     print(f"Synonym control created: {result.name}")
+    serving_config_client.add_control(
+        serving_config=serving_config,
+        control_id="sneakers-synonym",
+    )
 
     # Create a boost control for high-rated products
     boost_control = retail_v2.Control(
@@ -178,7 +188,7 @@ def create_search_controls(project_id, catalog_id):
         rule=retail_v2.Rule(
             boost_action=retail_v2.Rule.BoostAction(
                 boost=0.5,
-                products_filter='attributes.rating: IN("4", "5")',
+                products_filter="rating: IN(4.0i, *)",
             ),
         ),
     )
@@ -189,27 +199,31 @@ def create_search_controls(project_id, catalog_id):
         control_id="boost-high-rated",
     )
     print(f"Boost control created: {result.name}")
+    serving_config_client.add_control(
+        serving_config=serving_config,
+        control_id="boost-high-rated",
+    )
 
 create_search_controls("my-project", "default_catalog")
 ```
 
 ## Step 5: Implement Search in Your Application
 
-Now integrate the search into your application. The Search API returns ranked results with snippets, facets, and attribution.
+Now integrate the search into your application. The Search API returns ranked results with facets and an attribution token.
 
 This function handles search requests with faceting and pagination:
 
 ```python
 from google.cloud import retail_v2
 
-def search_products(project_id, query, page_size=20, page_token=None, filters=None):
+def search_products(project_id, query, visitor_id, page_size=20, page_token=None, filters=None):
     """Searches the product catalog with faceting and filters."""
     client = retail_v2.SearchServiceClient()
 
     # Build the placement path - this identifies which serving config to use
     placement = (
         f"projects/{project_id}/locations/global"
-        f"/catalogs/default_catalog/placements/default_search"
+        f"/catalogs/default_catalog/servingConfigs/default_search"
     )
 
     # Configure facet specifications for filtering in the UI
@@ -242,7 +256,12 @@ def search_products(project_id, query, page_size=20, page_token=None, filters=No
     # Build the search request
     search_request = retail_v2.SearchRequest(
         placement=placement,
+        branch=(
+            f"projects/{project_id}/locations/global"
+            f"/catalogs/default_catalog/branches/default_branch"
+        ),
         query=query,
+        visitor_id=visitor_id,
         page_size=page_size,
         page_token=page_token or "",
         filter=filters or "",
@@ -275,15 +294,28 @@ def search_products(project_id, query, page_size=20, page_token=None, filters=No
     return {
         "results": results,
         "total_size": response.total_size,
-        "facets": [{
-            "key": f.key,
-            "values": [{"value": v.value, "count": v.count} for v in f.values]
-        } for f in response.facets],
+        "facets": [
+            {
+                "key": f.key,
+                "values": [
+                    {
+                        "value": v.value or {
+                            "minimum": v.interval.minimum,
+                            "maximum": v.interval.maximum,
+                        },
+                        "count": v.count,
+                    }
+                    for v in f.values
+                ],
+            }
+            for f in response.facets
+        ],
+        "attribution_token": response.attribution_token,
         "next_page_token": response.next_page_token,
     }
 
 # Example search
-results = search_products("my-project", "red running shoes", page_size=10)
+results = search_products("my-project", "red running shoes", "visitor-123", page_size=10)
 print(f"Found {results['total_size']} results")
 for r in results["results"]:
     print(f"  {r['title']} - ${r['price']}")
@@ -297,19 +329,30 @@ This function records user events for improving search quality:
 
 ```python
 from google.cloud import retail_v2
-import time
+from google.protobuf.timestamp_pb2 import Timestamp
 
-def record_user_event(project_id, event_type, visitor_id, product_ids=None, search_query=None):
+def record_user_event(
+    project_id,
+    event_type,
+    visitor_id,
+    product_ids=None,
+    search_query=None,
+    attribution_token=None,
+    purchase_transaction=None,
+):
     """Records a user event for search personalization."""
     client = retail_v2.UserEventServiceClient()
 
     parent = f"projects/{project_id}/locations/global/catalogs/default_catalog"
+    event_time = Timestamp()
+    event_time.GetCurrentTime()
 
     # Build the user event
     user_event = retail_v2.UserEvent(
         event_type=event_type,
         visitor_id=visitor_id,
-        event_time={"seconds": int(time.time())},
+        event_time=event_time,
+        attribution_token=attribution_token or "",
     )
 
     # Add product details if this is a product interaction event
@@ -326,6 +369,14 @@ def record_user_event(project_id, event_type, visitor_id, product_ids=None, sear
     if search_query:
         user_event.search_query = search_query
 
+    # Purchase events require transaction details.
+    if event_type == "purchase-complete" and purchase_transaction:
+        user_event.purchase_transaction = retail_v2.PurchaseTransaction(
+            id=purchase_transaction["id"],
+            revenue=purchase_transaction["revenue"],
+            currency_code=purchase_transaction["currency_code"],
+        )
+
     response = client.write_user_event(
         parent=parent,
         user_event=user_event,
@@ -339,7 +390,17 @@ record_user_event("my-project", "search", "visitor-123", search_query="running s
 record_user_event("my-project", "detail-page-view", "visitor-123", product_ids=["sku-12345"])
 
 # Record a purchase
-record_user_event("my-project", "purchase-complete", "visitor-123", product_ids=["sku-12345"])
+record_user_event(
+    "my-project",
+    "purchase-complete",
+    "visitor-123",
+    product_ids=["sku-12345"],
+    purchase_transaction={
+        "id": "order-10001",
+        "revenue": 129.99,
+        "currency_code": "USD",
+    },
+)
 ```
 
 ## Summary
