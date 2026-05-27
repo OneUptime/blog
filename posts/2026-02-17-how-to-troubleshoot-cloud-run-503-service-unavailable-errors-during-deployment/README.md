@@ -175,7 +175,7 @@ Check your application's memory usage during startup. Applications that load lar
 
 ## Common Cause 4: Startup Timeout
 
-The container takes too long to start listening on the port. The default startup timeout is 300 seconds.
+The container takes too long to start listening on the port. Cloud Run services must listen for requests within 4 minutes after being started.
 
 **Symptoms:**
 - Container starts but never becomes ready
@@ -183,22 +183,19 @@ The container takes too long to start listening on the port. The default startup
 
 **Fix:**
 
-Either optimize your startup time or increase the startup timeout:
+Either optimize your startup time or tune the startup behavior:
 
 ```bash
 # Enable startup CPU boost for faster initialization
 gcloud run services update my-service \
   --region=us-central1 \
-  --startup-cpu-boost
+  --cpu-boost
 
-# Or increase the startup probe timeout
+# Or tune the startup probe timing
 gcloud run deploy my-service \
   --image=us-central1-docker.pkg.dev/MY_PROJECT/my-repo/my-app:latest \
   --region=us-central1 \
-  --startup-probe-path=/health \
-  --startup-probe-initial-delay=10 \
-  --startup-probe-period=5 \
-  --startup-probe-failure-threshold=30
+  --startup-probe=httpGet.path=/health,initialDelaySeconds=10,periodSeconds=5,failureThreshold=30,timeoutSeconds=5
 ```
 
 With the above probe settings, the container has up to 160 seconds (10 + 30*5) to start.
@@ -325,7 +322,7 @@ To avoid 503 errors during deployment:
 
 - Always test containers locally before deploying
 - Use staging environments or revision tags for pre-production testing
-- Set up startup probes with generous timeouts
+- Set up startup probes with generous timing, within Cloud Run's 240-second startup probe limit
 - Monitor deployment success rates
 - Use Cloud Build for consistent image builds (avoids architecture mismatches)
 - Set appropriate memory and CPU limits based on actual usage
