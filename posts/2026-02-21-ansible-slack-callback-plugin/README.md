@@ -29,6 +29,7 @@ Install the community.general collection if you do not have it:
 # Install the collection containing the slack callback
 
 ansible-galaxy collection install community.general
+python -m pip install prettytable
 ```
 
 Configure in `ansible.cfg`:
@@ -36,13 +37,15 @@ Configure in `ansible.cfg`:
 ```ini
 # ansible.cfg - Enable Slack notifications
 [defaults]
-callback_whitelist = community.general.slack
+callbacks_enabled = community.general.slack
 
 [callback_slack]
 webhook_url = https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
 channel = #deployments
 username = Ansible Bot
 ```
+
+The `channel` and `username` settings are sent by the callback, but modern Slack app incoming webhooks inherit their default channel and identity from the Slack app configuration.
 
 ## Configuration Options
 
@@ -51,16 +54,16 @@ The slack callback has several useful settings:
 ```ini
 # ansible.cfg - Full Slack callback configuration
 [defaults]
-callback_whitelist = community.general.slack
+callbacks_enabled = community.general.slack
 
 [callback_slack]
 # Required: Slack webhook URL
 webhook_url = https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 
-# Channel to post to (overrides webhook default)
+# Channel to post to (Slack may ignore this for modern incoming webhooks)
 channel = #ansible-notifications
 
-# Bot username shown in Slack
+# Bot username sent by Ansible (Slack may ignore this for modern incoming webhooks)
 username = Ansible
 
 # Validate SSL certificate for webhook
@@ -71,7 +74,7 @@ Environment variable configuration:
 
 ```bash
 # Configure via environment
-export ANSIBLE_CALLBACK_WHITELIST=community.general.slack
+export ANSIBLE_CALLBACKS_ENABLED=community.general.slack
 export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 export SLACK_CHANNEL=#deployments
 ```
@@ -82,31 +85,31 @@ When a playbook runs, the slack callback posts messages at key points:
 
 **Playbook start:**
 ```text
-Ansible: deploy.yml started on inventory/production
-Hosts: web-01, web-02, web-03
+Playbook initiated (a1b2c3)
+
+deploy.yml
 ```
 
-**Playbook success:**
+**Play start:**
 ```text
-Ansible: deploy.yml completed successfully
-Duration: 3m 47s
-Results:
-  web-01: ok=5, changed=2
-  web-02: ok=5, changed=2
-  web-03: ok=5, changed=2
+Starting play (a1b2c3)
+
+Deploy application
 ```
 
-**Playbook failure:**
+**Playbook summary:**
 ```text
-Ansible: deploy.yml FAILED
-Host: web-03
-Task: Deploy application
-Error: msg: Could not find /opt/app/release.tar.gz
+Playbook Complete (a1b2c3)
 
-Results:
-  web-01: ok=5, changed=2
-  web-02: ok=5, changed=2
-  web-03: ok=3, changed=0, failed=1
+Failed!
+
++--------+----+---------+-------------+----------+---------+---------+
+|  Host  | Ok | Changed | Unreachable | Failures | Rescued | Ignored |
++--------+----+---------+-------------+----------+---------+---------+
+| web-01 | 5  |    2    |      0      |    0     |    0    |    0    |
+| web-02 | 5  |    2    |      0      |    0     |    0    |    0    |
+| web-03 | 3  |    0    |      0      |    1     |    0    |    0    |
++--------+----+---------+-------------+----------+---------+---------+
 ```
 
 ## Securing the Webhook URL
@@ -119,12 +122,11 @@ ansible-vault encrypt_string 'https://hooks.slack.com/services/T00/B00/XXX' \
   --name 'slack_webhook_url' > vault/slack.yml
 ```
 
-Or use an environment variable in your ansible.cfg:
+Or provide the webhook URL through the callback's environment variable instead of putting it in `ansible.cfg`:
 
-```ini
-# ansible.cfg - Reference environment variable
-[callback_slack]
-webhook_url = {{ lookup('env', 'SLACK_WEBHOOK_URL') }}
+```bash
+# Configure the webhook URL outside ansible.cfg
+export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 ```
 
 In CI/CD, set the webhook URL as a secret:
@@ -133,7 +135,7 @@ In CI/CD, set the webhook URL as a secret:
 # .gitlab-ci.yml
 deploy:
   variables:
-    ANSIBLE_CALLBACK_WHITELIST: "community.general.slack"
+    ANSIBLE_CALLBACKS_ENABLED: "community.general.slack"
   script:
     - ansible-playbook deploy.yml
   # SLACK_WEBHOOK_URL is set as a CI/CD variable (masked)
@@ -160,7 +162,7 @@ case $ENV in
         ;;
 esac
 
-export ANSIBLE_CALLBACK_WHITELIST=community.general.slack
+export ANSIBLE_CALLBACKS_ENABLED=community.general.slack
 ansible-playbook -i "inventory/$ENV" deploy.yml
 ```
 
@@ -171,18 +173,15 @@ Slack works alongside any stdout callback and other notification callbacks:
 ```ini
 # ansible.cfg - Slack with profiling and JUnit
 [defaults]
-stdout_callback = yaml
-callback_whitelist = community.general.slack, timer, profile_tasks, junit
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
+callbacks_enabled = community.general.slack, ansible.posix.timer, ansible.posix.profile_tasks, ansible.builtin.junit
 
 [callback_slack]
-webhook_url = {{ lookup('env', 'SLACK_WEBHOOK_URL') }}
 channel = #deployments
-
-[callback_junit]
-output_dir = ./junit-results
 ```
 
-Your terminal shows YAML-formatted output with timing, Slack gets notified, and JUnit XML gets written for CI.
+Set `SLACK_WEBHOOK_URL` and `JUNIT_OUTPUT_DIR=./junit-results` in the environment before running the playbook. Your terminal shows YAML-formatted output with timing, Slack gets notified, and JUnit XML gets written for CI.
 
 ## Slack Notifications for Scheduled Jobs
 
@@ -191,10 +190,7 @@ For cron-scheduled Ansible runs, Slack notifications are especially valuable sin
 ```bash
 # /etc/cron.d/ansible-nightly
 # Run nightly compliance checks with Slack notification
-0 2 * * * ansible ANSIBLE_CALLBACK_WHITELIST=community.general.slack \
-  SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL \
-  ansible-playbook /opt/ansible/compliance-check.yml \
-  >> /var/log/ansible/nightly.log 2>&1
+0 2 * * * ansible ANSIBLE_CALLBACKS_ENABLED=community.general.slack SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL ansible-playbook /opt/ansible/compliance-check.yml >> /var/log/ansible/nightly.log 2>&1
 ```
 
 Every morning, the team sees whether the nightly compliance check passed or found issues.
@@ -220,12 +216,12 @@ If you want more control over Slack messages, combine the callback with the `com
       delegate_to: localhost
 
     - name: Pull new Docker image
-      docker_image:
+      community.docker.docker_image:
         name: "myapp:{{ app_version }}"
         source: pull
 
     - name: Restart application
-      docker_container:
+      community.docker.docker_container:
         name: myapp
         image: "myapp:{{ app_version }}"
         state: started
@@ -255,7 +251,7 @@ curl -X POST -H 'Content-type: application/json' \
 
 If that works but the callback does not, check:
 - The collection is installed: `ansible-galaxy collection list | grep community.general`
-- The callback name is correct in the whitelist
+- The callback name is correct in `callbacks_enabled`
 - The webhook URL does not have extra whitespace
 - Your Ansible control node can reach hooks.slack.com (check firewalls)
 
