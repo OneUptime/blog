@@ -24,31 +24,32 @@ BI Engine works natively with Looker Studio (formerly Data Studio), Looker, and 
 
 A BI Engine reservation allocates a specified amount of memory for caching and accelerating queries. The reservation is created at the project level and applies to a specific region.
 
-You can create a reservation through the Google Cloud Console, gcloud CLI, or the API. Here is how to do it with gcloud.
+You can create a reservation through the Google Cloud Console, the bq CLI, SQL, or the API. Here is how to do it with the bq CLI.
 
 ```bash
-# Create a BI Engine reservation with 2 GB of memory in us-central1
+# Create a BI Engine reservation with 2 GiB of memory in us-central1
 
-gcloud bq bi-engine-reservations create \
-  --project=my-project \
+bq --project_id=my-project update \
+  --bi_reservation_size=2 \
   --location=us-central1 \
-  --size=2Gi
+  --reservation
 ```
 
-You can also create a reservation using the BigQuery API directly.
+You can also create or update a reservation using the BigQuery Reservation API directly. A singleton BI reservation already exists with a default size of 0, so reserving capacity means updating its size.
 
 ```bash
-# Create a BI Engine reservation using the REST API
-curl -X POST \
+# Create or update a BI Engine reservation using the REST API
+curl -X PATCH \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
-  "https://bigqueryreservation.googleapis.com/v1/projects/my-project/locations/us-central1/biReservation" \
+  "https://bigqueryreservation.googleapis.com/v1/projects/my-project/locations/us-central1/biReservation?updateMask=size" \
   -d '{
+    "name": "projects/my-project/locations/us-central1/biReservation",
     "size": "2147483648"
   }'
 ```
 
-The size is specified in bytes when using the API directly. 2 GB (2147483648 bytes) is a reasonable starting point, but you may need more depending on the volume of data your dashboards query.
+The size is specified in bytes when using the API directly. 2 GiB (2147483648 bytes) is a reasonable starting point, but you may need more depending on the volume of data your dashboards query.
 
 ## Sizing Your Reservation
 
@@ -56,20 +57,24 @@ Getting the right reservation size is important. Too small and BI Engine will no
 
 A few factors affect how much memory you need. The total size of data queried by your dashboards matters - BI Engine needs enough memory to hold the relevant columns. Only the columns actually referenced in queries are cached, so a wide table with 100 columns might only need cache space for the 10 columns your dashboards use. Compression also helps - BI Engine compresses cached data, so the memory footprint is often smaller than the raw data size.
 
-As a rough guideline, start with 1-2 GB per dashboard if your tables are under 100 GB. For larger tables or more dashboards, increase accordingly. You can always adjust the reservation size later based on actual usage patterns.
+As a rough guideline, start with 1-2 GiB per dashboard if your tables are under 100 GiB. For larger tables or more dashboards, increase accordingly. You can always adjust the reservation size later based on actual usage patterns.
 
 ## Checking BI Engine Status
 
-After creating a reservation, you can verify it is active and check how much capacity is being used.
+After creating a reservation, you can verify it is active with the `INFORMATION_SCHEMA.BI_CAPACITIES` view.
 
-```bash
-# Check the current BI Engine reservation details
-gcloud bq bi-engine-reservations describe \
-  --project=my-project \
-  --location=us-central1
+```sql
+-- Check the current BI Engine reservation details
+SELECT
+  project_id,
+  bi_capacity_name,
+  size / 1024.0 / 1024.0 / 1024.0 AS size_gib,
+  preferred_tables
+FROM
+  `my-project.region-us-central1`.INFORMATION_SCHEMA.BI_CAPACITIES;
 ```
 
-For more detailed information about which tables are being cached and how much memory each consumes, query the INFORMATION_SCHEMA.
+For more detailed information about whether recent queries used BI Engine acceleration, query the job metadata in INFORMATION_SCHEMA.
 
 ```sql
 -- Check BI Engine statistics for recent queries
@@ -77,27 +82,27 @@ SELECT
   job_id,
   creation_time,
   total_bytes_processed,
-  bi_engine_statistics.bi_engine_mode AS bi_engine_mode,
   bi_engine_statistics.acceleration_mode AS acceleration_mode
 FROM
-  `region-us-central1`.INFORMATION_SCHEMA.JOBS
+  `my-project.region-us-central1`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE
   creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
   AND bi_engine_statistics IS NOT NULL
+  AND job_type = "QUERY"
 ORDER BY
   creation_time DESC
 LIMIT 20;
 ```
 
-The bi_engine_mode field tells you whether BI Engine fully accelerated the query (FULL), partially accelerated it (PARTIAL), or could not accelerate it at all (DISABLED). Partial acceleration means BI Engine ran part of the query but had to fall back to regular BigQuery processing for some operations.
+The `acceleration_mode` field tells you whether BI Engine accelerated the full query (`FULL_QUERY`), all query input stages (`FULL_INPUT`), part of the query input (`PARTIAL_INPUT`), or did not accelerate the query (`BI_ENGINE_DISABLED`). Partial acceleration means BI Engine ran part of the query but had to fall back to regular BigQuery processing for some operations.
 
 ## Configuring Looker Studio for BI Engine
 
-Looker Studio automatically uses BI Engine when a reservation exists in the same project and region as the BigQuery data source. No special configuration is needed - just create your Looker Studio report pointing at a BigQuery table and the acceleration happens transparently.
+Looker Studio automatically uses BI Engine when a reservation exists in the project billed for the BigQuery queries and in the region used to query the data. No special configuration is needed - just create your Looker Studio report pointing at a BigQuery table and the acceleration happens transparently.
 
 However, there are some query patterns that BI Engine accelerates better than others. To get the most benefit, keep these guidelines in mind.
 
-Use standard aggregations like SUM, COUNT, AVG, MIN, and MAX. These are fully accelerated. Avoid complex subqueries or CTEs in custom SQL data sources, as these may not be fully accelerated. Use date range filters rather than complex date functions. Prefer calculated fields in Looker Studio over complex SQL expressions.
+Use standard aggregations like SUM, COUNT, AVG, MIN, and MAX. These are good candidates for acceleration when the rest of the query is supported. Avoid complex subqueries or CTEs in custom SQL data sources, as these may not be fully accelerated. Use date range filters rather than complex date functions. Prefer calculated fields in Looker Studio over complex SQL expressions.
 
 ## Using BI Engine with Looker
 
@@ -162,26 +167,26 @@ Pre-aggregating data into a summary table is another effective strategy. Instead
 You can change the reservation size at any time without downtime. If you find that BI Engine is not caching enough data, increase the reservation.
 
 ```bash
-# Increase the BI Engine reservation to 5 GB
-gcloud bq bi-engine-reservations update \
-  --project=my-project \
+# Increase the BI Engine reservation to 5 GiB
+bq --project_id=my-project update \
+  --bi_reservation_size=5 \
   --location=us-central1 \
-  --size=5Gi
+  --reservation
 ```
 
 To remove the reservation entirely, set the size to 0.
 
 ```bash
 # Remove the BI Engine reservation
-gcloud bq bi-engine-reservations update \
-  --project=my-project \
+bq --project_id=my-project update \
+  --bi_reservation_size=0 \
   --location=us-central1 \
-  --size=0
+  --reservation
 ```
 
 ## Cost Considerations
 
-BI Engine reservations are charged per GB of memory per hour. The cost is relatively modest compared to on-demand BigQuery query costs, especially for dashboards that are accessed frequently. If a dashboard runs the same query 100 times a day across multiple users, paying for BI Engine memory to cache that data is almost certainly cheaper than paying for 100 full BigQuery scans.
+BI Engine reservations are charged per GiB of memory per hour. The cost is relatively modest compared to on-demand BigQuery query costs, especially for dashboards that are accessed frequently. If a dashboard runs the same query 100 times a day across multiple users, paying for BI Engine memory to cache that data is almost certainly cheaper than paying for 100 full BigQuery scans.
 
 The key to cost optimization is right-sizing your reservation. Monitor the acceleration status of your queries and adjust the reservation size based on actual usage. If most queries are fully accelerated, your reservation is well-sized. If you see many partially accelerated or unaccelerated queries, you might need more capacity.
 
