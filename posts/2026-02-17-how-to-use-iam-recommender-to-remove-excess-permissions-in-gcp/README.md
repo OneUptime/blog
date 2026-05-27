@@ -14,21 +14,21 @@ Google Cloud's IAM Recommender addresses this problem by analyzing actual permis
 
 ## How IAM Recommender Works
 
-IAM Recommender is part of the Active Assist family of services in GCP. It uses machine learning models trained on permission usage patterns across your project. The recommender looks at 90 days of activity logs to determine which permissions a principal has actually exercised. If a service account has been granted the Storage Admin role but has only ever called `storage.objects.get` and `storage.objects.list`, the recommender will suggest replacing Storage Admin with a more limited role like Storage Object Viewer.
+IAM Recommender is part of the Active Assist family of services in GCP. It uses aggregated IAM access data and machine learning to understand permission usage patterns. The recommender looks at up to 90 days of permission usage data to determine which permissions a principal has actually exercised. If a service account has been granted the Storage Admin role but has only ever called `storage.objects.get` and `storage.objects.list`, the recommender might suggest replacing Storage Admin with a more limited role like Storage Object Viewer.
 
 The recommendations fall into a few categories:
 
 - **Replace role** - swap a broad role for a narrower one
 - **Remove role** - remove a binding entirely if it was never used
-- **Combine roles** - suggest a single custom role to replace multiple predefined roles
+- **Create custom role** - suggest a new custom role when existing predefined or custom roles are not a close fit
 
-Each recommendation comes with a confidence level (low, moderate, high) and a priority ranking, so you can tackle the highest-impact changes first.
+Each recommendation comes with a priority ranking, so you can tackle the highest-impact changes first.
 
 ## Prerequisites
 
 Before you start, make sure you have the following:
 
-- A GCP project with IAM activity for at least 60 days (90 days gives the best recommendations)
+- A GCP project with enough IAM activity for the configured observation period. By default this is 90 days, but project-level role recommendations can be configured to use 30 or 60 days.
 - The `roles/recommender.iamViewer` role or equivalent permissions on your project
 - The `gcloud` CLI installed and authenticated
 
@@ -157,7 +157,7 @@ gcloud recommender recommendations mark-succeeded RECOMMENDATION_ID \
 
 ## Automating the Process with Terraform
 
-If you manage your IAM bindings with Terraform, you can use the Recommender API to generate Terraform-compatible changes. Google provides a tool called `policy-library` that can convert recommendations into policy-as-code formats.
+If you manage your IAM bindings with Terraform, you can use the Recommender API as input to an Infrastructure as Code workflow. Google documents an IaC pattern that parses IAM recommendations and maps them to Terraform-managed IAM policy bindings.
 
 For a more hands-on approach, you can query recommendations via the REST API and generate Terraform diffs:
 
@@ -192,6 +192,6 @@ Consider using organization-level recommendations if you manage multiple project
 
 ## Monitoring and Alerting
 
-You can set up alerts when new high-priority recommendations appear by using Cloud Monitoring. Create a metric-based alert that watches for new ACTIVE recommendations with P1 priority, and route notifications to your security team's Slack channel or email. This ensures that excess permissions are flagged promptly rather than sitting unnoticed for months.
+You can set up alerts when new high-priority recommendations appear by exporting recommendations to BigQuery or polling the Recommender API on a schedule. Filter for new ACTIVE recommendations with P1 priority, and route notifications to your security team's Slack channel or email. This ensures that excess permissions are flagged promptly rather than sitting unnoticed for months.
 
 IAM Recommender is one of the easiest wins for improving your GCP security posture. The analysis is automatic, the suggestions are specific, and the risk of breaking something is low when you follow a review-then-apply workflow. If you have not looked at your recommendations lately, there are probably a few hundred unnecessary permissions waiting to be cleaned up.
