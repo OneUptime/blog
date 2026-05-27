@@ -8,7 +8,7 @@ Description: Learn how to deploy MetalLB with Traefik Ingress Controller for a l
 
 ---
 
-Traefik is a popular cloud-native ingress controller known for its automatic service discovery, middleware support, and lightweight footprint. On bare-metal Kubernetes, Traefik needs MetalLB to provide an external IP for its LoadBalancer service.
+Traefik is a popular cloud-native ingress controller known for its automatic service discovery, middleware support, and lightweight footprint. On bare-metal Kubernetes, Traefik can use MetalLB to provide an external IP for its LoadBalancer service.
 
 This guide walks you through deploying MetalLB with Traefik for a production-ready bare-metal ingress stack.
 
@@ -41,6 +41,7 @@ flowchart TD
 - MetalLB installed and configured with an IP address pool
 - Helm 3 installed
 - kubectl configured for your cluster
+- If kube-proxy runs in IPVS mode, strict ARP enabled as required by MetalLB
 
 ## Step 1: Install MetalLB
 
@@ -49,7 +50,7 @@ If MetalLB is not already installed, set it up:
 ```bash
 # Install MetalLB
 
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.0/config/manifests/metallb-native.yaml
 
 # Wait for readiness
 kubectl wait --namespace metallb-system \
@@ -97,14 +98,15 @@ helm repo update
 helm install traefik traefik/traefik \
   --namespace traefik \
   --create-namespace \
-  --set service.type=LoadBalancer \
+  --set service.spec.type=LoadBalancer \
   --set service.spec.externalTrafficPolicy=Local \
   --set ports.web.port=8000 \
   --set ports.web.exposedPort=80 \
   --set ports.websecure.port=8443 \
   --set ports.websecure.exposedPort=443 \
-  --set metrics.prometheus.enabled=true \
-  --set dashboard.enabled=true
+  --set metrics.prometheus.service.enabled=true \
+  --set api.dashboard=true \
+  --set ingressRoute.dashboard.enabled=true
 ```
 
 ## Step 3: Verify Traefik Received a MetalLB IP
@@ -119,6 +121,7 @@ kubectl get svc -n traefik
 
 # Test connectivity
 curl -v http://192.168.1.200
+# A 404 response is expected until you create a matching route.
 ```
 
 ## Step 4: Deploy an Application with IngressRoute
@@ -299,7 +302,7 @@ Traefik includes a built-in dashboard for visualizing your routes and services:
 
 ```bash
 # Port-forward to the Traefik dashboard
-kubectl port-forward -n traefik svc/traefik 9000:9000
+kubectl port-forward -n traefik deployment/traefik 9000:8080
 
 # Open http://localhost:9000/dashboard/ in your browser
 ```
@@ -313,7 +316,7 @@ The dashboard shows:
 
 ## Monitoring Traefik Metrics
 
-Traefik exposes Prometheus metrics that you can scrape:
+Traefik exposes Prometheus metrics that you can scrape. The install command above enables a dedicated metrics Service for Prometheus Operator:
 
 ```yaml
 # servicemonitor-traefik.yaml
