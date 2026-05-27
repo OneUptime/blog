@@ -8,9 +8,16 @@ Description: Use the Ansible dense callback plugin to get compact playbook outpu
 
 ---
 
-The `dense` callback plugin compresses Ansible output into a compact format that shows progress in real time without overwhelming your terminal. Unlike the default callback, which prints a line for every host on every task, the dense callback updates a single status line per task. It is built for running playbooks against large inventories where the default output would produce thousands of lines.
+The `dense` callback plugin compresses Ansible output into a compact format that shows progress in real time without overwhelming your terminal. Unlike the default callback, which prints a line for every host on every task, the dense callback rewrites the current task line with the hosts that have reported a result. It is built for running playbooks against large inventories where the default output would produce thousands of lines.
 
 ## Enabling the Dense Callback
+
+The `dense` callback is part of the `community.general` collection. If your installation does not already include it, install the collection first:
+
+```bash
+# Install the collection that provides the dense callback
+ansible-galaxy collection install community.general
+```
 
 Add it to `ansible.cfg`:
 
@@ -18,14 +25,14 @@ Add it to `ansible.cfg`:
 # ansible.cfg - Enable dense output
 
 [defaults]
-stdout_callback = dense
+stdout_callback = community.general.dense
 ```
 
 Or set it for a single run:
 
 ```bash
 # Use dense callback for this run
-ANSIBLE_STDOUT_CALLBACK=dense ansible-playbook site.yml
+ANSIBLE_STDOUT_CALLBACK=community.general.dense ansible-playbook site.yml
 ```
 
 ## What Dense Output Looks Like
@@ -41,47 +48,41 @@ ok: [web-04]
 ok: [web-05]
 ```
 
-The same task with dense:
+The same task with dense is shown on a single progress line while the task is running:
 
 ```text
-TASK 003 Install packages                    ok=4    changed=1    unreachable=0    failed=0
+task 3: web-01 web-02 web-03 web-04 web-05
 ```
 
-Each task gets a single summary line instead of one line per host. The task number, name, and aggregated counts are all on one line. You can see at a glance how many hosts succeeded, changed, or failed without scrolling through individual results.
+Dense uses terminal control sequences to rewrite the line as hosts finish. In a real terminal, host names are color-coded by result state, so an `ok`, `changed`, `failed`, `unreachable`, or `skipped` result is visible without printing a separate line for every host.
 
 ## Dense Output for a Full Playbook
 
-A complete playbook run with dense looks like:
+A complete playbook run with dense looks like this simplified representation:
 
 ```text
-PLAY 001 Configure web servers
-  TASK 001 Gathering Facts                   ok=50   changed=0    unreachable=0    failed=0
-  TASK 002 Install nginx                     ok=45   changed=5    unreachable=0    failed=0
-  TASK 003 Deploy config                     ok=30   changed=20   unreachable=0    failed=0
-  TASK 004 Start service                     ok=50   changed=0    unreachable=0    failed=0
-  TASK 005 Verify health                     ok=50   changed=0    unreachable=0    failed=0
+PLAY 1: CONFIGURE WEB SERVERS
+task 1: web-01 web-02 web-03 web-04 web-05
+task 2: web-01 web-02 web-03 web-04 web-05
+changed: web-03: {"changed": true}
+task 3: web-01 web-02 web-03 web-04 web-05
 
-PLAY 002 Configure database servers
-  TASK 001 Gathering Facts                   ok=10   changed=0    unreachable=0    failed=0
-  TASK 002 Install postgresql                ok=8    changed=2    unreachable=0    failed=0
-
-PLAY RECAP
-  web-01                  ok=5    changed=1    unreachable=0    failed=0
-  web-02                  ok=5    changed=2    unreachable=0    failed=0
-  ...
+PLAY 2: CONFIGURE DATABASE SERVERS
+task 1: db-01 db-02
+task 2: db-01 db-02
 ```
 
-The dense callback still shows the play recap at the end, so you get the per-host summary when the run finishes.
+The dense callback keeps normal output compact by not printing the standard `PLAY RECAP` in normal verbosity. If you need the per-host summary at the end, run with verbosity enabled.
 
 ## Real-Time Progress
 
-One feature that sets dense apart from the minimal and oneline callbacks is real-time progress. During task execution, the dense callback updates the current task line in place. You see the counters incrementing as hosts complete:
+One feature that sets dense apart from the minimal and oneline callbacks is real-time progress. During task execution, the dense callback updates the current task line in place. You see hosts appear as they complete:
 
 ```text
-  TASK 002 Install nginx                     ok=23   changed=5    unreachable=0    failed=0
+task 2: web-01 web-02 web-03 web-04
 ```
 
-This counter updates as each host finishes. When all hosts complete, the line gets its final values and the next task begins below it. This gives you a live view of progress without scrolling.
+This line updates as each host finishes. When all hosts complete, the next task begins below it. This gives you a live view of progress without scrolling through one result line per host.
 
 ## When Dense is the Right Choice
 
@@ -94,9 +95,9 @@ Dense is ideal for:
 
 Dense is not great for:
 
-- Debugging, because you cannot see individual host results
+- Debugging, because normal verbosity intentionally hides most individual result details
 - Small inventories where the default output is fine
-- Situations where you need to see which specific hosts changed or failed
+- Situations where you need a standard recap or full result data from every host
 
 ## Combining Dense with Verbose Mode
 
@@ -104,26 +105,26 @@ Even with the dense callback, verbose flags add more detail:
 
 ```bash
 # Dense with some verbosity
-ANSIBLE_STDOUT_CALLBACK=dense ansible-playbook site.yml -v
+ANSIBLE_STDOUT_CALLBACK=community.general.dense ansible-playbook site.yml -v
 ```
 
-At `-v`, the dense callback shows individual host results for failed and changed tasks while still keeping ok hosts aggregated. This is a good middle ground.
+At `-v`, the dense callback prints additional result details for non-`ok` results while keeping routine `ok` hosts compact. At `-vv` and higher, it falls back to the default callback behavior, which is better for troubleshooting.
 
 ## Dense Callback Configuration
 
-The dense callback has a few configuration options:
+The dense callback uses the standard stdout callback configuration path:
 
 ```ini
 # ansible.cfg - Dense callback settings
 [defaults]
-stdout_callback = dense
+stdout_callback = community.general.dense
 
-[callback_dense]
-# Display skipped hosts
+# Common callback options documented by Ansible
 display_skipped_hosts = false
-# Display ok hosts
 display_ok_hosts = false
 ```
+
+These options are configured under `[defaults]`, not under a separate `[callback_dense]` section. They are most relevant when dense is using default-style output at higher verbosity.
 
 ## Practical Example: Large Deployment
 
@@ -139,18 +140,18 @@ Here is a realistic deployment playbook output with the dense callback across 10
 
   tasks:
     - name: Pull latest Docker image
-      docker_image:
+      community.docker.docker_image:
         name: myapp
         tag: v2.5.1
         source: pull
 
     - name: Stop current container
-      docker_container:
+      community.docker.docker_container:
         name: myapp
         state: stopped
 
     - name: Start new container
-      docker_container:
+      community.docker.docker_container:
         name: myapp
         image: myapp:v2.5.1
         state: started
@@ -158,7 +159,7 @@ Here is a realistic deployment playbook output with the dense callback across 10
           - "8080:8080"
 
     - name: Wait for health check
-      uri:
+      ansible.builtin.uri:
         url: "http://localhost:8080/health"
         status_code: 200
       retries: 10
@@ -167,32 +168,29 @@ Here is a realistic deployment playbook output with the dense callback across 10
       until: health.status == 200
 ```
 
-Dense output during the first batch:
+Dense output during a serial batch is a live host-status line for each task:
 
 ```text
-PLAY 001 Deploy application v2.5.1 (batch 1/4)
-  TASK 001 Gathering Facts                   ok=25   changed=0    unreachable=0    failed=0
-  TASK 002 Pull latest Docker image          ok=20   changed=5    unreachable=0    failed=0
-  TASK 003 Stop current container            ok=0    changed=25   unreachable=0    failed=0
-  TASK 004 Start new container               ok=0    changed=25   unreachable=0    failed=0
-  TASK 005 Wait for health check             ok=25   changed=0    unreachable=0    failed=0
-
-PLAY 001 Deploy application v2.5.1 (batch 2/4)
-  TASK 001 Gathering Facts                   ok=25   changed=0    unreachable=0    failed=0
-  ...
+PLAY 1: DEPLOY APPLICATION V2.5.1
+task 1: web-001 web-002 web-003 web-004 web-005 ... web-025
+task 2: web-001 web-002 web-003 web-004 web-005 ... web-025
+changed: web-005: {"changed": true}
+task 3: web-001 web-002 web-003 web-004 web-005 ... web-025
+task 4: web-001 web-002 web-003 web-004 web-005 ... web-025
+task 5: web-001 web-002 web-003 web-004 web-005 ... web-025
 ```
 
-You can watch the deployment progress batch by batch, seeing each task complete across the group.
+You can watch the deployment progress as hosts report back, while changed or failed results remain visible for follow-up.
 
 ## Dense vs Other Compact Callbacks
 
 Comparison of compact callbacks:
 
-- **dense**: One summary line per task with aggregated counts. Best for large inventories.
-- **minimal**: One line per host per task, no task names. Best for scripting.
-- **oneline**: Similar to minimal, one line per result. Best for parsing.
+- **dense**: One live progress line per task with host names color-coded by result state. Best for large interactive runs.
+- **minimal**: Minimal screen output and the default callback for the `ansible` ad hoc command. Best when you want less playbook-style formatting.
+- **oneline**: The callback used by the `-o`/`--one-line` option. Best when you want one-line result output.
 
-Dense gives you the most context of the three while using the least screen space. It is the only compact callback that shows task names alongside results.
+Dense gives you useful task progress while using very little screen space. Unlike minimal and oneline, it rewrites the current task line as hosts complete.
 
 ## Using Dense in Production Operations
 
@@ -201,7 +199,7 @@ For production operations rooms or deployment dashboards, the dense callback pro
 ```bash
 #!/bin/bash
 # production-deploy.sh - Deploy with dense output for the operations screen
-export ANSIBLE_STDOUT_CALLBACK=dense
+export ANSIBLE_STDOUT_CALLBACK=community.general.dense
 export ANSIBLE_FORCE_COLOR=true
 
 echo "=== Production Deployment Started: $(date) ==="
@@ -218,4 +216,4 @@ fi
 exit $exit_code
 ```
 
-The dense callback is the sweet spot between too much information (default) and too little (minimal). If you regularly run playbooks against more than a handful of hosts, give it a try. The compact, real-time progress view is genuinely useful during large deployments.
+The dense callback is the sweet spot between too much information (default) and too little (minimal) when you want live progress on a terminal. If you regularly run playbooks against more than a handful of hosts, give it a try. The compact, real-time progress view is genuinely useful during large deployments.
