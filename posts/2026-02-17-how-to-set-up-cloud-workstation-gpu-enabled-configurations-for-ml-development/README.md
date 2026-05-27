@@ -39,9 +39,9 @@ You develop and prototype on the workstation. When the model is ready for full-s
 Not all regions and zones support GPUs for Cloud Workstations. Check availability first.
 
 ```bash
-# List available GPU types in your region
+# List available GPU types in the zones you want to use
 
-gcloud compute accelerator-types list --filter="zone:us-central1-a"
+gcloud compute accelerator-types list --filter="zone:( us-central1-a us-central1-c )"
 ```
 
 NVIDIA T4 GPUs are the most widely available and a good choice for development. For heavier work, look for V100 or A100 options.
@@ -55,6 +55,7 @@ The key parameter is `--accelerator-type` in the workstation configuration.
 gcloud workstations configs create ml-gpu-config \
   --cluster=dev-cluster \
   --region=us-central1 \
+  --replica-zones=us-central1-a,us-central1-c \
   --machine-type=n1-standard-8 \
   --boot-disk-size=100 \
   --pd-disk-size=500 \
@@ -67,30 +68,30 @@ gcloud workstations configs create ml-gpu-config \
 
 A few things to note:
 
-- GPU-enabled configs require N1 or N2 machine types (not E2)
+- For T4, V100, P100, and P4 GPUs, use a compatible N1 machine type. A100 GPUs use A2 machine types with a fixed GPU count.
+- The `--replica-zones` value must include two zones in the cluster's region where the GPU model is available
 - The `--pd-disk-size=500` gives you room for datasets and model checkpoints
 - SSD persistent disk is important for data loading performance
 - The idle timeout of 1800 seconds (30 minutes) auto-stops the workstation after inactivity
 
 ## Step 3: Build a Custom Container Image with CUDA
 
-The default Cloud Workstation image does not include GPU drivers or CUDA. You need a custom image.
+Cloud Workstations installs the GPU drivers when GPUs are attached. The default Cloud Workstation image does not include the CUDA toolkit or ML libraries, so you need a custom image for the user-space CUDA stack.
 
 ```dockerfile
 # ML development workstation image with CUDA support
 FROM us-central1-docker.pkg.dev/cloud-workstations-images/predefined/base:latest
 
-# Install NVIDIA drivers and CUDA toolkit
+# Install CUDA toolkit
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gnupg2 \
     ca-certificates \
-    && curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/3bf863cc.pub | apt-key add - \
-    && echo "deb https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64 /" > /etc/apt/sources.list.d/cuda.list \
+    wget \
+    && wget https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb \
+    && dpkg -i cuda-keyring_1.1-1_all.deb \
+    && rm cuda-keyring_1.1-1_all.deb \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
     cuda-toolkit-12-3 \
-    libcudnn8 \
-    libcudnn8-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set CUDA environment variables
@@ -104,7 +105,7 @@ RUN pip3 install --no-cache-dir \
     torchvision \
     torchaudio \
     tensorflow \
-    jax[cuda12_pip] \
+    "jax[cuda12]" \
     jupyter \
     jupyterlab \
     numpy \
@@ -120,9 +121,9 @@ RUN pip3 install --no-cache-dir \
     google-cloud-storage \
     google-cloud-bigquery
 
-# Configure Jupyter to run on startup
+# Configure Jupyter
 RUN mkdir -p /home/user/.jupyter
-COPY jupyter_config.py /home/user/.jupyter/jupyter_notebook_config.py
+COPY jupyter_config.py /home/user/.jupyter/jupyter_server_config.py
 ```
 
 Create the Jupyter configuration file:
@@ -216,8 +217,8 @@ Pull training data into the local SSD for fastest access:
 # Copy training data from GCS to local SSD
 gsutil -m cp -r gs://my-ml-bucket/datasets/cifar10/ /home/user/data/
 
-# For larger datasets, use parallel composite downloads
-gsutil -o GSUtil:parallel_composite_upload_threshold=150M \
+# For larger datasets, enable sliced object downloads
+gsutil -o GSUtil:sliced_object_download_threshold=150M \
   -m cp -r gs://my-ml-bucket/datasets/imagenet/ /home/user/data/
 ```
 
