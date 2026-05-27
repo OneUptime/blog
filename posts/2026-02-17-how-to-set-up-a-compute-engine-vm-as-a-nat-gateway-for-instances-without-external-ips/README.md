@@ -222,15 +222,15 @@ gcloud compute routes create nat-route-backup \
   --priority=900
 ```
 
-If the primary NAT gateway goes down, traffic automatically fails over to the backup because the route with priority 800 becomes unavailable and the route with priority 900 takes effect.
+If the primary NAT gateway VM is stopped or deleted, Google Cloud disregards the route with priority 800 and the route with priority 900 takes effect. If the VM is still running but the NAT configuration or internet connectivity is broken, use your health check to alert you or to update the routes.
 
 ## Monitoring NAT Traffic
 
 Add logging to track what traffic flows through the NAT:
 
 ```bash
-# Log all NAT translations (run on the NAT gateway)
-sudo iptables -t nat -A POSTROUTING -o ens4 -j LOG \
+# Log outbound forwarded traffic (run on the NAT gateway)
+sudo iptables -I FORWARD 1 -o ens4 -j LOG \
   --log-prefix "NAT-TRAFFIC: " --log-level 4
 
 # View the logs
