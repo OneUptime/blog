@@ -12,7 +12,7 @@ Migrating from Chef to Ansible follows a similar pattern to any configuration ma
 
 ## Migration Mapping
 
-Chef and Ansible concepts map directly:
+Chef and Ansible concepts map roughly:
 
 | Chef Concept | Ansible Equivalent |
 |---|---|
@@ -22,8 +22,8 @@ Chef and Ansible concepts map directly:
 | Template (ERB) | Template (Jinja2) |
 | Resource | Module |
 | Data Bag | Variable file / Vault |
-| Chef Server | Ansible Controller |
-| Knife | ansible-playbook CLI |
+| Chef Server | Ansible inventory and controller workflow |
+| Knife | ansible CLI / ansible-playbook CLI |
 
 ## Converting a Chef Cookbook
 
@@ -72,6 +72,17 @@ Equivalent Ansible role:
     name: nginx
     state: started
     enabled: true
+```
+
+Role handler:
+
+```yaml
+# roles/nginx/handlers/main.yml
+---
+- name: reload nginx
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
 ```
 
 ## Converting ERB to Jinja2
@@ -124,14 +135,16 @@ events {
 
     - name: Remove Chef
       ansible.builtin.apt:
-        name: chef
+        name:
+          - chef
+          - chef-infra-client
         state: absent
         purge: true
 ```
 
 ## Key Takeaways
 
-Chef to Ansible migration is straightforward because the concepts map directly. Cookbooks become roles. Recipes become task files. ERB templates become Jinja2 templates. Attributes become variables. Migrate one cookbook at a time, verify the Ansible configuration matches, then disable Chef management for that component.
+Chef to Ansible migration is straightforward because the concepts map closely. Cookbooks become roles. Recipes become task files. ERB templates become Jinja2 templates. Attributes become variables. Migrate one cookbook at a time, verify the Ansible configuration matches, then disable Chef management for that component.
 
 ## Common Use Cases
 
@@ -172,7 +185,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -213,7 +226,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -291,6 +304,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -316,4 +335,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
