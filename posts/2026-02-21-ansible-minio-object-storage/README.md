@@ -19,6 +19,7 @@ minio_version: "RELEASE.2024-01-16T16-07-38Z"
 minio_domain: s3.example.internal
 minio_console_port: 9001
 minio_api_port: 9000
+minio_endpoint: "{{ ('https' if minio_tls_enabled else 'http') ~ '://' ~ minio_domain ~ ':' ~ (minio_api_port | string) }}"
 minio_data_dir: /data/minio
 minio_config_dir: /etc/minio
 minio_user: minio-user
@@ -72,7 +73,7 @@ minio_buckets:
 
 - name: Download MinIO server binary
   get_url:
-    url: "https://dl.min.io/server/minio/release/linux-amd64/minio"
+    url: "https://dl.min.io/server/minio/release/linux-amd64/archive/minio.{{ minio_version }}"
     dest: /usr/local/bin/minio
     mode: '0755'
 
@@ -122,7 +123,7 @@ minio_buckets:
 
 - name: Wait for MinIO to be ready
   uri:
-    url: "http://localhost:{{ minio_api_port }}/minio/health/live"
+    url: "{{ minio_endpoint }}/minio/health/live"
     status_code: 200
   register: minio_health
   until: minio_health.status == 200
@@ -132,7 +133,7 @@ minio_buckets:
 - name: Configure mc client alias
   command: >
     mc alias set local
-    http://localhost:{{ minio_api_port }}
+    {{ minio_endpoint }}
     {{ minio_root_user }}
     {{ minio_root_password }}
   changed_when: false
@@ -171,10 +172,7 @@ minio_buckets:
 MINIO_ROOT_USER={{ minio_root_user }}
 MINIO_ROOT_PASSWORD={{ minio_root_password }}
 MINIO_VOLUMES="{{ minio_data_dir }}"
-MINIO_OPTS="--console-address :{{ minio_console_port }}"
-{% if minio_tls_enabled %}
-MINIO_CERTS_DIR="{{ minio_config_dir }}/certs"
-{% endif %}
+MINIO_OPTS="--address :{{ minio_api_port }} --console-address :{{ minio_console_port }}{% if minio_tls_enabled %} --certs-dir {{ minio_config_dir }}/certs{% endif %}"
 ```
 
 ## Systemd Service Template
@@ -190,7 +188,7 @@ Wants=network-online.target
 User={{ minio_user }}
 Group={{ minio_user }}
 EnvironmentFile={{ minio_config_dir }}/minio.env
-ExecStart=/usr/local/bin/minio server $MINIO_VOLUMES $MINIO_OPTS
+ExecStart=/usr/local/bin/minio server $MINIO_OPTS $MINIO_VOLUMES
 Restart=always
 RestartSec=10
 LimitNOFILE=65536
@@ -204,14 +202,14 @@ WantedBy=multi-user.target
 ```yaml
 # roles/minio/handlers/main.yml
 ---
+- name: reload systemd
+  systemd:
+    daemon_reload: yes
+
 - name: restart minio
   systemd:
     name: minio
     state: restarted
-
-- name: reload systemd
-  systemd:
-    daemon_reload: yes
 ```
 
 ## Testing
@@ -224,7 +222,7 @@ mc cp /etc/hostname local/app-assets/test.txt
 mc ls local/app-assets/
 
 # Test S3 API compatibility with AWS CLI
-aws --endpoint-url http://localhost:9000 s3 ls s3://app-assets/
+aws --endpoint-url https://s3.example.internal:9000 s3 ls s3://app-assets/
 ```
 
 ## Running the Playbook
@@ -421,4 +419,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
