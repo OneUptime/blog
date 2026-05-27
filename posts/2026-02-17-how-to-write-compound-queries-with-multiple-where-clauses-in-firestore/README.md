@@ -36,17 +36,17 @@ const admins = await db.collection('users')
 
 ## Combining Multiple Equality Filters
 
-You can combine multiple equality (==) filters without a composite index:
+You can often combine multiple equality (==) filters without defining a composite index yourself:
 
 ```javascript
-// Multiple equality filters work without a composite index
+// Simple equality filters can use index merging
 const activeAdminUsers = await db.collection('users')
     .where('active', '==', true)
     .where('role', '==', 'admin')
     .get();
 ```
 
-Wait, that is not entirely accurate. While some simple combinations work with automatically created indexes, most multi-field queries require composite indexes. Firestore will tell you when you need one - the error message includes a direct link to create the required index.
+Wait, that is not entirely accurate. Firestore can merge single-field indexes for simple equality filters, but many multi-field queries still require composite indexes, especially when you add range filters or sorting. Firestore will tell you when you need one - the error message includes a direct link to create the required index.
 
 ## Equality Plus Range Queries
 
@@ -67,7 +67,10 @@ This query filters by an exact match on `active` and a range on `createdAt`. Fir
 ### Python Example
 
 ```python
+from datetime import datetime
+
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 db = firestore.Client()
 
@@ -77,8 +80,8 @@ def get_active_recent_users():
 
     # Compound query: equality on active + range on createdAt
     query = (users_ref
-        .where('active', '==', True)
-        .where('createdAt', '>', datetime(2026, 1, 1))
+        .where(filter=FieldFilter('active', '==', True))
+        .where(filter=FieldFilter('createdAt', '>', datetime(2026, 1, 1)))
         .order_by('createdAt', direction=firestore.Query.DESCENDING))
 
     return [{'id': doc.id, **doc.to_dict()} for doc in query.stream()]
@@ -86,7 +89,7 @@ def get_active_recent_users():
 
 ## The Range Filter Rule
 
-Firestore has an important restriction: **range filters and orderBy can only apply to a single field** (unless you have the right composite index). Here is what works and what does not:
+Firestore has important rules for range filters and sorting: if you have a range comparison (`<`, `<=`, `>`, `>=`), your first explicit `orderBy` must be on a range field, and compound range queries usually need a composite index. Here is what works and what does not:
 
 ```javascript
 // This works: equality on field A, range on field B
@@ -100,44 +103,40 @@ const query2 = db.collection('products')
     .where('price', '>', 100)
     .orderBy('price');
 
-// This requires a composite index: range on field A, orderBy on field B
+// This does NOT work: range on field A, first orderBy on field B
+// Firestore requires the first orderBy to match a range field
 const query3 = db.collection('products')
     .where('price', '>', 100)
     .orderBy('createdAt', 'desc');
 
-// This does NOT work: range filters on two different fields
-// Firestore will reject this query
+// This works with a composite index: range filters on two different fields
 const query4 = db.collection('products')
     .where('price', '>', 100)
-    .where('rating', '>', 4);  // Error: range on multiple fields
+    .where('rating', '>', 4);
 ```
 
-The last example fails because Firestore cannot efficiently serve range queries on two different fields simultaneously. You need to restructure your query or your data to work around this.
+The last example is supported, but it requires the right index and can be more expensive than a single-range query because Firestore scans index entries. Cloud Firestore supports up to 10 range or inequality fields in a query.
 
-## Workarounds for Multiple Range Filters
+## Optimizing Multiple Range Filters
 
 When you need to filter on ranges of two fields, here are your options:
 
-### Option 1: Filter One in the Query, Filter the Other Client-Side
+### Option 1: Query Both Fields with a Composite Index
 
 ```javascript
 async function getAffordableHighRatedProducts() {
-    // Range filter on price in the query
+    // Range filters on price and rating in the query
     const snapshot = await db.collection('products')
         .where('price', '>', 100)
         .where('price', '<', 500)
+        .where('rating', '>', 4)
         .get();
 
-    // Filter by rating on the client side
-    const filtered = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(product => product.rating > 4);
-
-    return filtered;
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 ```
 
-This works but reads more data than necessary. Only use it when the first filter is selective enough.
+This keeps filtering on the server, but it needs a composite index and may read index entries as well as documents. Put the most selective range field first in your ordering and index when you add explicit ordering.
 
 ### Option 2: Create a Composite Field
 
@@ -209,8 +208,8 @@ The easiest way. Run your query, get the error message, click the link. Firestor
 
 gcloud firestore indexes composite create \
     --collection-group=products \
-    --field-config=field-path=category,order=ASCENDING \
-    --field-config=field-path=price,order=ASCENDING
+    --field-config=field-path=category,order=ascending \
+    --field-config=field-path=price,order=ascending
 ```
 
 ### Using a Configuration File
@@ -242,8 +241,8 @@ gcloud firestore indexes composite create \
 Deploy the indexes:
 
 ```bash
-# Deploy all indexes from the configuration file
-firebase deploy --only firestore:indexes
+# Deploy Firestore indexes from the configuration file
+firebase deploy --only firestore
 ```
 
 ## Practical Query Patterns
@@ -318,4 +317,4 @@ async function getProductsPage(category, lastDoc, pageSize = 20) {
 
 ## Wrapping Up
 
-Compound queries in Firestore require a bit more planning than SQL queries, but once you understand the rules they become second nature. The key principles are: you can combine any number of equality filters, you can add one range filter or orderBy clause without issues, and any other combination requires a composite index. When Firestore tells you an index is needed, the error message makes it one click to create it. Design your data model and indexes around your query patterns, and Firestore will serve those queries efficiently at any scale.
+Compound queries in Firestore require a bit more planning than SQL queries, but once you understand the rules they become second nature. The key principles are: simple equality filters can often use index merging, range filters and sorting must follow Firestore's ordering rules, and more complex compound queries usually require a composite index. When Firestore tells you an index is needed, the error message makes it one click to create it. Design your data model and indexes around your query patterns, and Firestore will serve those queries efficiently at any scale.
