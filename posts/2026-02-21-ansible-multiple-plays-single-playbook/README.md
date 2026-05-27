@@ -49,7 +49,7 @@ Here is a simple example with two plays.
         state: present
 
     - name: Deploy application
-      synchronize:
+      ansible.posix.synchronize:
         src: /opt/releases/current/
         dest: /var/www/app/
 
@@ -213,16 +213,16 @@ Each play is independent and can have its own settings for `become`, `gather_fac
 - name: Configure network switches
   hosts: switches
   gather_facts: no
-  connection: network_cli
+  connection: ansible.netcommon.network_cli
   become: yes
   become_method: enable
 
   vars:
-    ansible_network_os: ios
+    ansible_network_os: cisco.ios.ios
 
   tasks:
     - name: Update switch configuration
-      ios_config:
+      cisco.ios.ios_config:
         lines:
           - ip name-server 8.8.8.8
           - ip name-server 8.8.4.4
@@ -230,7 +230,7 @@ Each play is independent and can have its own settings for `become`, `gather_fac
 
 ## Sharing Data Between Plays
 
-Variables set in one play are not automatically available in another play. To share data between plays, use `set_fact` with `delegate_to` or `hostvars`.
+Play-level variables set in one play are not automatically available in another play. To share data between plays, use `set_fact` to create host variables, then read them through `hostvars`.
 
 ```yaml
 # share-data.yml - passing data between plays
@@ -259,11 +259,11 @@ Variables set in one play are not automatically available in another play. To sh
         src: templates/db-connection.conf.j2
         dest: /etc/myapp/db-connection.conf
       vars:
-        database_host: "{{ hostvars[groups['dbservers'][0]]['ansible_default_ipv4']['address'] }}"
+        database_host: "{{ hostvars[groups['dbservers'][0]]['ansible_facts']['default_ipv4']['address'] }}"
         database_port: "{{ hostvars[groups['dbservers'][0]]['db_port'] }}"
 ```
 
-The key here is `hostvars`. It gives you access to all facts and variables set on any host, even from a different play. We reference the first host in the `dbservers` group and pull its `db_port` fact.
+The key here is `hostvars`. It gives you access to host variables, gathered facts, and variables created with `set_fact` on other hosts, even from a different play. We reference the first host in the `dbservers` group and pull its `db_port` fact.
 
 ## Common Multi-Play Patterns
 
