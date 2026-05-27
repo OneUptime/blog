@@ -31,10 +31,12 @@ Pub/Sub reports several metrics to Cloud Monitoring. Here are the ones that matt
 
 ### Publishing Metrics
 
-- **`pubsub.googleapis.com/topic/send_message_operation_count`** - Number of publish operations.
+- **`pubsub.googleapis.com/topic/message_sizes`** - Distribution of publish message sizes. Count this metric to track the number of individual messages published.
 - **`pubsub.googleapis.com/topic/send_request_count`** - Number of publish requests (a request can contain multiple messages).
 
 ## Building a Pub/Sub Monitoring Dashboard
+
+The query examples below use Monitoring Query Language (MQL). MQL is no longer the recommended query language for new Cloud Monitoring assets in the Google Cloud console, but existing MQL assets continue to work and new ones can still be created with the Cloud Monitoring API. For new console dashboards, use PromQL or the interactive query builder.
 
 ### Backlog Size Chart
 
@@ -64,25 +66,27 @@ fetch pubsub_subscription
 
 ### Message Throughput
 
-Track the rate of messages being published and acknowledged to understand your system's throughput:
+Track the number of messages being published and acknowledged each minute to understand your system's throughput:
 
 ```text
-# Message acknowledge rate per subscription
+# Messages acknowledged per minute by subscription
 fetch pubsub_subscription
 | metric 'pubsub.googleapis.com/subscription/ack_message_count'
+| align delta(1m)
 | group_by [resource.subscription_id],
-    [val: rate(value.ack_message_count)]
+    [val: sum(value.ack_message_count)]
 | every 1m
 ```
 
-Compare this with the publish rate to see if your consumers are keeping up:
+Compare this with the publish throughput to see if your consumers are keeping up:
 
 ```text
-# Message publish rate per topic
+# Messages published per minute by topic
 fetch pubsub_topic
-| metric 'pubsub.googleapis.com/topic/send_message_operation_count'
+| metric 'pubsub.googleapis.com/topic/message_sizes'
+| align delta(1m)
 | group_by [resource.topic_id],
-    [val: rate(value.send_message_operation_count)]
+    [val: count(value.message_sizes)]
 | every 1m
 ```
 
@@ -173,7 +177,7 @@ For push subscriptions, latency measures how long Pub/Sub waits for your endpoin
       "conditionThreshold": {
         "filter": "resource.type=\"pubsub_subscription\" AND metric.type=\"pubsub.googleapis.com/subscription/push_request_latencies\"",
         "comparison": "COMPARISON_GT",
-        "thresholdValue": 10000,
+        "thresholdValue": 10000000,
         "duration": "300s",
         "aggregations": [
           {
@@ -248,14 +252,14 @@ A well-organized Pub/Sub dashboard follows this pattern:
 
 ```mermaid
 graph TD
-    A[Pub/Sub Dashboard] --> B[Row 1: Publish Rate per Topic]
+    A[Pub/Sub Dashboard] --> B[Row 1: Publish Throughput per Topic]
     A --> C[Row 2: Backlog Size per Subscription]
     A --> D[Row 3: Oldest Unacked Message Age]
-    A --> E[Row 4: Ack Rate vs Publish Rate]
+    A --> E[Row 4: Ack Throughput vs Publish Throughput]
     A --> F[Row 5: Push Latency - if using push]
 ```
 
-The comparison in Row 4 between acknowledge rate and publish rate is particularly useful. When the ack rate drops below the publish rate, the backlog starts growing.
+The comparison in Row 4 between acknowledge throughput and publish throughput is particularly useful. When the ack throughput drops below the publish throughput, the backlog starts growing.
 
 ## Practical Tips
 
