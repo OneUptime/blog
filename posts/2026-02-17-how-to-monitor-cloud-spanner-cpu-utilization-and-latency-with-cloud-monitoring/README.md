@@ -14,7 +14,7 @@ Running Cloud Spanner in production without proper monitoring is like driving wi
 
 Before setting up dashboards, let's understand which metrics matter most:
 
-**CPU Utilization** - The most critical metric. Spanner recommends keeping CPU below 65% for regional instances and below 45% for multi-region instances. Going above these thresholds leads to increased latency and potential transaction aborts.
+**CPU Utilization** - The most critical metric. Spanner recommends keeping high-priority CPU below 65% for regional instances and below 45% per region for dual-region and multi-region instances. Going above these thresholds leads to increased latency and potential transaction aborts.
 
 **Operation Latency** - How long read and write operations take. Track both p50 (median) and p99 (worst case) latencies. A spike in p99 often indicates contention or hotspots.
 
@@ -49,13 +49,13 @@ Here is the dashboard configuration JSON:
         "width": 6,
         "height": 4,
         "widget": {
-          "title": "CPU Utilization",
+          "title": "High-Priority CPU Utilization",
           "xyChart": {
             "dataSets": [
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "resource.type=\"spanner_instance\" AND metric.type=\"spanner.googleapis.com/instance/cpu/utilization\"",
+                    "filter": "resource.type=\"spanner_instance\" AND metric.type=\"spanner.googleapis.com/instance/cpu/utilization_by_priority\" AND metric.labels.priority=\"high\"",
                     "aggregation": {
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_MEAN"
@@ -105,7 +105,7 @@ For ad-hoc investigation, use the Metrics Explorer in Cloud Monitoring. Here are
 
 ### CPU Utilization by Priority
 
-Spanner splits CPU usage into "high priority" (user-facing queries) and "smoothed" (background tasks like compaction). High-priority CPU is the one to watch:
+Spanner reports CPU usage by task priority and also provides a separate 24-hour smoothed CPU metric. High-priority CPU is the one to watch for user-facing workloads:
 
 ```text
 Resource type: spanner_instance
@@ -124,14 +124,14 @@ Group by: method
 Aligner: 99th percentile
 ```
 
-### Transaction Commit Attempts vs Aborts
+### API Errors and Aborted Requests
 
-A high abort rate signals contention problems:
+A high rate of non-OK responses, including aborted requests, signals problems worth investigating:
 
 ```text
 Resource type: spanner_instance
 Metric: api/request_count
-Filter: status != "OK"
+Filter: status != "ok"
 Group by: method, status
 ```
 
@@ -142,14 +142,14 @@ Alerts notify you before problems become outages. Here are the essential alerts 
 ### High CPU Alert
 
 ```bash
-# Create an alert for CPU utilization exceeding 65%
-gcloud alpha monitoring policies create \
+# Create an alert for high-priority CPU utilization exceeding 65%
+gcloud monitoring policies create \
     --display-name="Spanner High CPU" \
-    --condition-display-name="CPU > 65%" \
-    --condition-filter='resource.type="spanner_instance" AND metric.type="spanner.googleapis.com/instance/cpu/utilization"' \
-    --condition-threshold-value=0.65 \
-    --condition-threshold-comparison=COMPARISON_GT \
-    --condition-threshold-duration=300s \
+    --condition-display-name="High-priority CPU > 65%" \
+    --condition-filter='resource.type="spanner_instance" AND metric.type="spanner.googleapis.com/instance/cpu/utilization_by_priority" AND metric.labels.priority="high"' \
+    --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_MEAN"}' \
+    --if='> 0.65' \
+    --duration=300s \
     --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID"
 ```
 
@@ -157,13 +157,13 @@ gcloud alpha monitoring policies create \
 
 ```bash
 # Alert when p99 read latency exceeds 100ms for 5 minutes
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
     --display-name="Spanner High Latency" \
     --condition-display-name="Read latency p99 > 100ms" \
     --condition-filter='resource.type="spanner_instance" AND metric.type="spanner.googleapis.com/api/request_latencies" AND metric.labels.method="Read"' \
-    --condition-threshold-value=100 \
-    --condition-threshold-comparison=COMPARISON_GT \
-    --condition-threshold-duration=300s \
+    --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_PERCENTILE_99"}' \
+    --if='> 0.1' \
+    --duration=300s \
     --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID"
 ```
 
@@ -171,13 +171,13 @@ gcloud alpha monitoring policies create \
 
 ```bash
 # Alert when storage exceeds 80% of recommended capacity
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
     --display-name="Spanner Storage Warning" \
     --condition-display-name="Storage nearing recommended limit" \
     --condition-filter='resource.type="spanner_instance" AND metric.type="spanner.googleapis.com/instance/storage/utilization"' \
-    --condition-threshold-value=0.8 \
-    --condition-threshold-comparison=COMPARISON_GT \
-    --condition-threshold-duration=3600s \
+    --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_MEAN"}' \
+    --if='> 0.8' \
+    --duration=3600s \
     --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID"
 ```
 
@@ -257,7 +257,6 @@ If you want to pull metrics into your own monitoring system:
 
 ```python
 from google.cloud import monitoring_v3
-from google.protobuf import timestamp_pb2
 import time
 
 def get_cpu_utilization(project_id, instance_id):
