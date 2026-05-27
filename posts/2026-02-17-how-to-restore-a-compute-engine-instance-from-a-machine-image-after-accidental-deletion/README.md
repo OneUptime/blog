@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Compute Engine, Machine Image, Disaster Recovery, Backup
 
-Description: Learn how to create machine images of your Compute Engine instances and use them to restore VMs after accidental deletion, preserving all disks, metadata, and configuration.
+Description: Learn how to create machine images of your Compute Engine instances and use them to restore VMs after accidental deletion, preserving persistent disks, metadata, and most configuration.
 
 ---
 
 Accidentally deleting a VM happens more often than anyone likes to admit. Maybe someone ran the wrong gcloud command, maybe a Terraform destroy went further than expected, or maybe a cleanup script was a bit too aggressive. Whatever the cause, the question is always the same: can I get it back?
 
-If you had a machine image, the answer is yes. Machine images capture everything about an instance - boot disk, additional disks, machine configuration, metadata, network settings, and more. They are the most complete backup option for Compute Engine VMs.
+If you had a machine image, the answer is yes. Machine images capture most of what matters about an instance - boot disk, additional persistent disks, machine configuration, metadata, network settings, and more. They are the most complete backup option for Compute Engine VMs, although they do not capture data in memory, Local SSD data, or source-instance-specific attributes such as the original VM name or IP address.
 
 ## Machine Images vs Snapshots vs Custom Images
 
@@ -18,7 +18,7 @@ Before diving in, it helps to understand how machine images differ from other ba
 
 - **Snapshots** capture individual disks. To fully restore a VM with multiple disks, you need a snapshot for each disk plus notes on the VM configuration.
 - **Custom images** capture a single boot disk. They are useful for creating templates but do not include additional disks or instance settings.
-- **Machine images** capture everything - all disks, instance properties, metadata, labels, tags, service account, and network configuration. They are the only option that gives you a one-click restore.
+- **Machine images** capture the VM configuration and attached persistent disk data - including most instance properties, metadata, labels, tags, service account, and network configuration. They are the closest option to a full-instance restore.
 
 ## Creating a Machine Image
 
@@ -35,7 +35,7 @@ gcloud compute machine-images create my-vm-backup-2026-02-17 \
 
 The `--storage-location` flag controls where the machine image is stored. Storing it in the same region as the instance reduces costs and speeds up restoration.
 
-You can also create machine images from stopped instances, which is recommended for data consistency:
+You can also create machine images from stopped instances, which is recommended when you need application-level consistency:
 
 ```bash
 # Stop the instance first for a consistent backup
@@ -100,7 +100,7 @@ gcloud compute instances create my-vm-restored \
   --source-machine-image=my-vm-backup-2026-02-17
 ```
 
-This recreates the VM with all its original disks, metadata, labels, tags, and network interfaces. The instance name can be different from the original - you do not have to use the same name.
+This recreates the VM with its persistent disks, metadata, labels, tags, and network interfaces. The instance name can be different from the original - you do not have to use the same name.
 
 ## Restoring with Modified Settings
 
@@ -126,22 +126,38 @@ gcloud compute instances create my-vm-restored \
 
 ## Restoring Specific Disks Only
 
-If you only need the data from a machine image but not the full VM, you can create disks from the machine image:
+If you only need the data from a machine image but not the full VM, create a temporary VM from the machine image and preserve the recreated disk you want to recover:
 
 ```bash
-# Create a disk from a machine image to access the data
-gcloud compute disks create recovered-data-disk \
+# Create a temporary VM from the machine image
+gcloud compute instances create temp-restore \
   --zone=us-central1-a \
-  --source-machine-image=my-vm-backup-2026-02-17 \
-  --source-machine-image-disk-name=my-data-disk
+  --source-machine-image=my-vm-backup-2026-02-17
+
+# Find the recreated disk source URL for the device you need
+gcloud compute instances describe temp-restore \
+  --zone=us-central1-a \
+  --format="table(disks.deviceName,disks.source,disks.autoDelete)"
+
+# Stop the temporary VM and keep the disk when it is detached
+gcloud compute instances stop temp-restore --zone=us-central1-a
+gcloud compute instances set-disk-auto-delete temp-restore \
+  --zone=us-central1-a \
+  --device-name=my-data-disk \
+  --no-auto-delete
+
+# Detach the recovered disk from the temporary VM
+gcloud compute instances detach-disk temp-restore \
+  --zone=us-central1-a \
+  --device-name=my-data-disk
 ```
 
-You can then attach this disk to an existing VM to access the data:
+You can then attach the disk shown in the `disks.source` output to an existing VM to access the data:
 
 ```bash
 # Attach the recovered disk to an existing VM
 gcloud compute instances attach-disk existing-vm \
-  --disk=recovered-data-disk \
+  --disk=DISK_NAME_FROM_SOURCE_URL \
   --zone=us-central1-a
 
 # Mount the disk inside the VM to access the files
