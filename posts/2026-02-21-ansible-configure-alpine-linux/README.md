@@ -36,8 +36,9 @@ Alpine does not have Python pre-installed. Use the raw module to install it:
 
   tasks:
     - name: Install Python 3
-      ansible.builtin.raw: apk add --no-cache python3
-      changed_when: true
+      ansible.builtin.raw: test -x /usr/bin/python3 || apk add --no-cache python3
+      register: bootstrap_python
+      changed_when: bootstrap_python.stdout != ""
 ```
 
 ## Inventory
@@ -123,10 +124,9 @@ ansible_python_interpreter=/usr/bin/python3
         force: true
 
     - name: Set hostname
-      ansible.builtin.copy:
-        content: "{{ inventory_hostname }}\n"
-        dest: /etc/hostname
-        mode: '0644'
+      ansible.builtin.hostname:
+        name: "{{ inventory_hostname }}"
+        use: alpine
 ```
 
 ## OpenRC Service Management
@@ -145,7 +145,7 @@ Alpine uses OpenRC instead of systemd. Ansible handles this with the `service` m
         dest: /etc/chrony/chrony.conf
         mode: '0644'
 
-    - name: Enable and start services (OpenRC)
+    - name: Enable and start default services (OpenRC)
       ansible.builtin.service:
         name: "{{ item }}"
         enabled: true
@@ -153,22 +153,19 @@ Alpine uses OpenRC instead of systemd. Ansible handles this with the `service` m
       loop:
         - sshd
         - chronyd
-        - networking
-
-    - name: Add services to default runlevel
-      ansible.builtin.command: "rc-update add {{ item }} default"
-      loop:
-        - sshd
-        - chronyd
-        - networking
         - crond
-      changed_when: true
-      failed_when: false
+
+    - name: Enable networking in boot runlevel
+      ansible.builtin.service:
+        name: networking
+        enabled: true
+        state: started
+        runlevel: boot
 ```
 
 ## Firewall with iptables
 
-Alpine uses iptables rather than nftables or firewalld:
+This example uses iptables rather than firewalld:
 
 ```yaml
     - name: Configure iptables rules
@@ -260,7 +257,7 @@ Alpine uses service (OpenRC) instead of systemd:
         state: restarted
 
     - name: load iptables
-      ansible.builtin.command: iptables-restore < /etc/iptables/rules-save
+      ansible.builtin.shell: iptables-restore < /etc/iptables/rules-save
 ```
 
 ## Summary
@@ -269,7 +266,7 @@ Alpine Linux automation with Ansible uses the `community.general.apk` module for
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
@@ -306,7 +303,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -330,25 +327,31 @@ Here are several practical scenarios where this module proves essential in real-
       notify: restart sshd
 
     - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
-      loop:
-        - "22"
-        - "80"
-        - "443"
-
-    - name: Enable firewall
-      community.general.ufw:
-        state: enabled
-        policy: deny
+      ansible.builtin.copy:
+        content: |
+          *filter
+          :INPUT DROP [0:0]
+          :FORWARD DROP [0:0]
+          :OUTPUT ACCEPT [0:0]
+          -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+          -A INPUT -i lo -j ACCEPT
+          -A INPUT -p tcp --dport 22 -j ACCEPT
+          -A INPUT -p tcp --dport 80 -j ACCEPT
+          -A INPUT -p tcp --dport 443 -j ACCEPT
+          -A INPUT -p icmp -j ACCEPT
+          COMMIT
+        dest: /etc/iptables/rules-save
+        mode: '0600'
+      notify: load iptables
 
   handlers:
     - name: restart sshd
       ansible.builtin.service:
         name: sshd
         state: restarted
+
+    - name: load iptables
+      ansible.builtin.shell: iptables-restore < /etc/iptables/rules-save
 ```
 
 ### Integration with Monitoring
@@ -450,4 +453,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
