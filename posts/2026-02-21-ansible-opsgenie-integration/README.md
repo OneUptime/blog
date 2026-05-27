@@ -40,6 +40,7 @@ graph TD
 
 opsgenie_api_key: "{{ vault_opsgenie_api_key }}"
 opsgenie_api_url: "https://api.opsgenie.com/v2"
+opsgenie_alertmanager_api_url: "https://api.opsgenie.com/"
 opsgenie_alert_api_url: "https://api.opsgenie.com/v2/alerts"
 
 # OpsGenie team configurations
@@ -82,7 +83,7 @@ alertmanager_port: 9093
 
 ## Alertmanager OpsGenie Configuration
 
-Configure Alertmanager to send alerts to OpsGenie via its webhook receiver.
+Configure Alertmanager to send alerts to OpsGenie via its native OpsGenie receiver.
 
 ```yaml
 # roles/alertmanager-opsgenie/tasks/main.yml
@@ -129,7 +130,7 @@ The Alertmanager configuration uses OpsGenie's native receiver type.
 # Alertmanager with OpsGenie - Managed by Ansible
 global:
   resolve_timeout: 5m
-  opsgenie_api_url: '{{ opsgenie_alert_api_url }}'
+  opsgenie_api_url: '{{ opsgenie_alertmanager_api_url }}'
   opsgenie_api_key: '{{ opsgenie_api_key }}'
 
 templates:
@@ -144,9 +145,9 @@ route:
 
   routes:
 {% for rule in opsgenie_alert_routing %}
-    - match:
+    - matchers:
 {% for key, value in rule.match.items() %}
-        {{ key }}: '{{ value }}'
+        - {{ key }}="{{ value }}"
 {% endfor %}
       receiver: 'opsgenie-{{ rule.opsgenie_team }}'
       repeat_interval: {{ rule.repeat_interval }}
@@ -167,7 +168,7 @@ receivers:
     opsgenie_configs:
       - api_key: '{{ team.api_key }}'
         message: '{{ "{{ .GroupLabels.alertname }}" }}: {{ "{{ .CommonAnnotations.summary }}" }}'
-        priority: '{{ (opsgenie_alert_routing | selectattr("opsgenie_team", "equalto", team.name) | first).priority | default("P3") }}'
+        priority: '{{ opsgenie_alert_routing | selectattr("opsgenie_team", "equalto", team.name) | map(attribute="priority") | first | default("P3") }}'
         tags: 'ansible,prometheus,{{ team.name }},{{ "{{ .GroupLabels.alertname }}" }}'
         responders:
           - name: '{{ team.name }}'
@@ -177,10 +178,10 @@ receivers:
 {% endfor %}
 
 inhibit_rules:
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ['alertname', 'instance']
 ```
 
@@ -284,26 +285,39 @@ DESCRIPTION="${3:-No description provided}"
 TEAM="${4:-{{ opsgenie_teams[0].name }}}"
 API_KEY="${OG_API_KEY:-{{ opsgenie_api_key }}}"
 
+PAYLOAD=$(PRIORITY="${PRIORITY}" MESSAGE="${MESSAGE}" DESCRIPTION="${DESCRIPTION}" TEAM="${TEAM}" python3 - <<'PY'
+import json
+import os
+import socket
+import getpass
+from datetime import datetime, timezone
+
+payload = {
+    "message": os.environ["MESSAGE"],
+    "description": os.environ["DESCRIPTION"],
+    "priority": os.environ["PRIORITY"],
+    "source": socket.gethostname(),
+    "tags": ["ansible", "automated"],
+    "responders": [
+        {"name": os.environ["TEAM"], "type": "team"}
+    ],
+    "details": {
+        "hostname": socket.gethostname(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "user": getpass.getuser()
+    }
+}
+
+print(json.dumps(payload))
+PY
+)
+
 # Trigger alert
 RESPONSE=$(curl -s -X POST \
   "{{ opsgenie_alert_api_url }}" \
   -H "Content-Type: application/json" \
   -H "Authorization: GenieKey ${API_KEY}" \
-  -d "{
-    \"message\": \"${MESSAGE}\",
-    \"description\": \"${DESCRIPTION}\",
-    \"priority\": \"${PRIORITY}\",
-    \"source\": \"$(hostname)\",
-    \"tags\": [\"ansible\", \"automated\"],
-    \"responders\": [
-      {\"name\": \"${TEAM}\", \"type\": \"team\"}
-    ],
-    \"details\": {
-      \"hostname\": \"$(hostname)\",
-      \"timestamp\": \"$(date -Iseconds)\",
-      \"user\": \"$(whoami)\"
-    }
-  }")
+  -d "${PAYLOAD}")
 
 echo "OpsGenie response: ${RESPONSE}"
 ```
@@ -363,7 +377,7 @@ OpsGenie heartbeats let you know when a monitoring system stops sending data. Co
   tasks:
     - name: Send test alert via Alertmanager
       ansible.builtin.uri:
-        url: "http://localhost:{{ alertmanager_port }}/api/v1/alerts"
+        url: "http://localhost:{{ alertmanager_port }}/api/v2/alerts"
         method: POST
         body_format: json
         body:
