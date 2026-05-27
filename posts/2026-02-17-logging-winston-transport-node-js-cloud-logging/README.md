@@ -78,22 +78,29 @@ logger.debug('Query executed in 45ms');      // DEBUG
 logger.verbose('Entering function X');       // DEBUG
 ```
 
-You can customize the level mapping if your application uses different levels.
+If your application uses custom Winston levels, pass the same numeric level map to both Winston and the Cloud Logging transport.
 
 ```javascript
-// Custom level mapping
+// Custom Winston levels
+const customLevels = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  http: 3,
+  verbose: 4,
+  debug: 5,
+  silly: 6,
+};
+
 const cloudLogging = new LoggingWinston({
-  levels: winston.config.npm.levels,
-  // Map Winston levels to Cloud Logging severities
-  levelToSeverity: {
-    error: 'ERROR',
-    warn: 'WARNING',
-    info: 'INFO',
-    http: 'NOTICE',
-    verbose: 'DEBUG',
-    debug: 'DEBUG',
-    silly: 'DEFAULT',
-  },
+  // Used to translate custom Winston levels to Cloud Logging severity.
+  // Values must be integers from 0 (most severe) to 7 (least severe).
+  levels: customLevels,
+});
+
+const logger = winston.createLogger({
+  levels: customLevels,
+  transports: [cloudLogging],
 });
 ```
 
@@ -112,11 +119,13 @@ logger.info('Order processed successfully', {
 });
 
 // Log an error with stack trace and context
+const paymentError = new Error('Card was declined');
+
 logger.error('Payment processing failed', {
   orderId: 'ORD-12345',
   errorCode: 'CARD_DECLINED',
-  // Include the error object for stack trace
-  error: new Error('Card was declined'),
+  // Include the stack trace so Error Reporting and Logs Explorer can show it
+  stack: paymentError.stack,
   metadata: {
     gateway: 'stripe',
     retryCount: 3,
@@ -128,7 +137,7 @@ In the Cloud Logging console, you can filter on these structured fields using ad
 
 ## Request Logging with Express
 
-A common pattern is to log every HTTP request that hits your Express application. The `@google-cloud/logging-winston` package includes an Express middleware for this.
+A common pattern is to log every HTTP request that hits your Express application. You can use `express-winston` with the Cloud Logging transport for this.
 
 ```javascript
 // app.js - Express application with request logging
@@ -165,10 +174,10 @@ app.use(expressWinston.errorLogger({
 }));
 ```
 
-Note: You will also need to install `express-winston` for this middleware.
+Note: You will also need to install `express` and `express-winston` for this middleware.
 
 ```bash
-npm install express-winston
+npm install express express-winston
 ```
 
 ## Correlating Logs with Cloud Trace
@@ -179,8 +188,7 @@ If you are using Cloud Trace for distributed tracing, you can correlate logs wit
 // Correlate logs with Cloud Trace
 const cloudLogging = new LoggingWinston({
   logName: 'my-app',
-  // Automatically extract trace context from request headers
-  // Works with Cloud Run and other GCP services
+  // Used by Error Reporting for logged errors
   serviceContext: {
     service: 'my-service',
     version: process.env.K_REVISION || '1.0.0',
@@ -295,7 +303,7 @@ The Cloud Logging transport batches log entries for efficiency. Make sure to flu
 process.on('SIGTERM', async () => {
   logger.info('Shutting down, flushing logs...');
 
-  // Wait for all pending log entries to be sent
+  // Give the transport a chance to send pending asynchronous log entries
   await new Promise((resolve) => {
     logger.on('finish', resolve);
     logger.end();
