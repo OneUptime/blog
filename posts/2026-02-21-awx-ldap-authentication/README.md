@@ -294,10 +294,10 @@ Members of `AWX-Admins` automatically get superuser access. Members of `AWX-Audi
 
 ## Multiple LDAP Servers
 
-AWX supports up to five LDAP configurations. This is useful when you need to authenticate against multiple directories (for example, corporate AD and a partner LDAP).
+AWX supports the default LDAP configuration plus five numbered LDAP configurations. This is useful when you need to authenticate against multiple directories (for example, corporate AD and a partner LDAP).
 
 ```bash
-# Configure a second LDAP source (LDAP1 through LDAP5)
+# Configure an additional LDAP source (AUTH_LDAP_1 through AUTH_LDAP_5)
 curl -X PATCH "https://awx.example.com/api/v2/settings/ldap/" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $AWX_TOKEN" \
