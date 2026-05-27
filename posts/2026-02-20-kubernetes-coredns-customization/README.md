@@ -148,10 +148,10 @@ The `rewrite` plugin lets you modify DNS queries before they are processed. This
     ready
 
     # Rewrite queries for old-api to new-api in the same namespace
-    rewrite name old-api.default.svc.cluster.local new-api.default.svc.cluster.local
+    rewrite name exact old-api.default.svc.cluster.local new-api.default.svc.cluster.local answer auto
 
     # Rewrite a short name to a fully qualified domain
-    rewrite name legacy-db.default.svc.cluster.local postgres.database.svc.cluster.local
+    rewrite name exact legacy-db.default.svc.cluster.local postgres.database.svc.cluster.local answer auto
 
     kubernetes cluster.local in-addr.arpa ip6.arpa {
         pods insecure
@@ -284,15 +284,21 @@ For large clusters, you may need to scale CoreDNS:
 kubectl scale deployment coredns -n kube-system --replicas=5
 
 # Or use the DNS autoscaler
-kubectl get deployment dns-autoscaler -n kube-system
+kubectl get deployment kube-dns-autoscaler -n kube-system
 ```
 
 You can also use NodeLocal DNSCache to reduce latency and load on CoreDNS:
 
 ```bash
 # Deploy NodeLocal DNSCache
-# This runs a DNS cache on each node, reducing cross-node DNS queries
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/dns/nodelocaldns/nodelocaldns.yaml
+# This runs a DNS cache on each node, reducing cross-node DNS queries.
+# For kube-proxy in iptables mode:
+curl -o nodelocaldns.yaml https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/dns/nodelocaldns/nodelocaldns.yaml
+kubedns=$(kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIP}')
+domain=cluster.local
+localdns=169.254.20.10
+sed -i "s/__PILLAR__LOCAL__DNS__/$localdns/g; s/__PILLAR__DNS__DOMAIN__/$domain/g; s/__PILLAR__DNS__SERVER__/$kubedns/g" nodelocaldns.yaml
+kubectl apply -f nodelocaldns.yaml
 ```
 
 ```mermaid
