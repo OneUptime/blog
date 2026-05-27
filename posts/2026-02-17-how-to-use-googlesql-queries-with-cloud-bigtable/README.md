@@ -103,9 +103,9 @@ Every cell in Bigtable can have multiple versions, each with a different timesta
 -- Retrieve cell values with their timestamps
 SELECT
   _key,
-  activity['page_view'].value AS page_view,
-  activity['page_view'].timestamp AS recorded_at
-FROM user_activity
+  activity['page_view'][0].value AS page_view,
+  activity['page_view'][0].timestamp AS recorded_at
+FROM user_activity(with_history => TRUE)
 WHERE _key = 'user#12345';
 ```
 
@@ -116,9 +116,11 @@ You can also filter by timestamp to get data within a specific time range:
 SELECT
   _key,
   activity['page_view']
-FROM user_activity
-WHERE _key >= 'user#100' AND _key < 'user#200'
-  AND activity['page_view'].timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR);
+FROM user_activity(
+  with_history => TRUE,
+  after => TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+)
+WHERE _key >= 'user#100' AND _key < 'user#200';
 ```
 
 ## Aggregation Queries
@@ -143,10 +145,10 @@ Bigtable stores everything as bytes. When you need to work with specific data ty
 SELECT
   _key,
   CAST(profile['username'] AS STRING) AS username,
-  CAST(activity['login_count'] AS INT64) AS login_count
+  CAST(CAST(activity['login_count'] AS STRING) AS INT64) AS login_count
 FROM user_activity
 WHERE _key >= 'user#100' AND _key < 'user#200'
-ORDER BY CAST(activity['login_count'] AS INT64) DESC
+  AND CAST(CAST(activity['login_count'] AS STRING) AS INT64) > 10
 LIMIT 20;
 ```
 
@@ -156,29 +158,33 @@ You can run GoogleSQL queries programmatically using the Bigtable client library
 
 ```python
 # Query Bigtable using GoogleSQL from the Python client library
-from google.cloud import bigtable
+from google.cloud.bigtable.data import BigtableDataClient
 
 def query_bigtable_sql(project_id, instance_id):
     """Run a GoogleSQL query against a Bigtable table."""
 
-    client = bigtable.Client(project=project_id)
-    instance = client.instance(instance_id)
-
     # Define the SQL query
     query = """
-        SELECT _key, profile['username'], activity['last_login']
+        SELECT _key, profile['username'] AS username, activity['last_login'] AS last_login
         FROM user_activity
         WHERE _key >= 'user#100' AND _key < 'user#200'
         LIMIT 50
     """
 
-    # Execute the query using the instance's execute_query method
-    rows = instance.execute_query(query)
+    client = BigtableDataClient(project=project_id)
 
-    for row in rows:
-        print(f"Key: {row['_key']}, Username: {row['username']}")
+    try:
+        # Execute the query using the client's execute_query method
+        rows = client.execute_query(query, instance_id)
 
-    return rows
+        results = []
+        for row in rows:
+            print(f"Key: {row['_key']}, Username: {row['username']}")
+            results.append(row)
+
+        return results
+    finally:
+        client.close()
 
 # Run the query
 results = query_bigtable_sql("my-project", "my-instance")
