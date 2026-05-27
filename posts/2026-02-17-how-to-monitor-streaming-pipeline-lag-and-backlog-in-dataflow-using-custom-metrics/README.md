@@ -16,7 +16,7 @@ This guide shows how to implement custom metrics in your Dataflow streaming pipe
 
 Two terms that often get confused:
 
-**System lag** is the time between when an event occurred and when it was processed. If a transaction happened at 2:00 PM and your pipeline processes it at 2:00:30 PM, the lag is 30 seconds.
+**Processing lag** is the time between when an event occurred and when it was processed. If a transaction happened at 2:00 PM and your pipeline processes it at 2:00:30 PM, the lag is 30 seconds.
 
 **Backlog** is the number of unprocessed messages waiting in Pub/Sub. If 50,000 messages are sitting in the subscription, that is your backlog.
 
@@ -29,8 +29,8 @@ Before writing custom metrics, make sure you are monitoring the built-in ones.
 ```bash
 # Key Dataflow metrics available in Cloud Monitoring
 
-# dataflow.googleapis.com/job/system_lag - current system lag in seconds
-# dataflow.googleapis.com/job/data_watermark_age - watermark staleness
+# dataflow.googleapis.com/job/system_lag - max system lag across the pipeline in seconds
+# dataflow.googleapis.com/job/data_watermark_age - data watermark lag in seconds
 # dataflow.googleapis.com/job/elapsed_time - total job runtime
 # pubsub.googleapis.com/subscription/oldest_unacked_message_age - oldest message in backlog
 # pubsub.googleapis.com/subscription/num_undelivered_messages - backlog size
@@ -45,7 +45,7 @@ gcloud monitoring dashboards create --config-from-file=pipeline-dashboard.json
 
 ## Implementing Custom Metrics in Apache Beam
 
-Apache Beam provides a `Metrics` API that integrates with Cloud Monitoring. You can create counters, distributions, and gauges.
+Apache Beam provides a `Metrics` API for counters, distributions, and gauges. When a Beam pipeline runs on Dataflow, Dataflow reports counters and distributions to Cloud Monitoring.
 
 ### Tracking Processing Lag
 
@@ -95,21 +95,21 @@ class TrackProcessingLag(beam.DoFn):
         yield element
 ```
 
-### Tracking Throughput Per Window
+### Tracking Throughput
 
 ```python
-# Track throughput within fixed time windows
+# Track throughput as a counter that can be converted to a rate in Cloud Monitoring
 class MeasureThroughput(beam.DoFn):
-    """Counts elements per window for throughput monitoring."""
+    """Counts processed elements for throughput monitoring."""
 
     def __init__(self):
-        self.window_element_count = Metrics.distribution(
-            'pipeline_health', 'elements_per_window'
+        self.elements_processed = Metrics.counter(
+            'pipeline_health', 'elements_processed'
         )
 
-    def process(self, element, window=beam.DoFn.WindowParam):
-        # Each element increments the window count
-        self.window_element_count.update(1)
+    def process(self, element):
+        # Cloud Monitoring can chart the rate of this counter over time
+        self.elements_processed.inc()
         yield element
 ```
 
@@ -182,12 +182,12 @@ def run():
         # Process with stage timing
         enriched = (
             parsed
-            | "Enrich" >> beam.ParDo(TimedEnrichment('enrichment'))
+            | "Enrich" >> beam.ParDo(TimedTransform('enrichment'))
         )
 
         scored = (
             enriched
-            | "Score" >> beam.ParDo(TimedScoring('scoring'))
+            | "Score" >> beam.ParDo(TimedTransform('scoring'))
         )
 
         # Write to BigQuery with throughput tracking
@@ -206,14 +206,19 @@ if __name__ == '__main__':
 
 ## Viewing Custom Metrics in Cloud Monitoring
 
-Custom Beam metrics appear in Cloud Monitoring under the `custom.googleapis.com/dataflow/` namespace. You can query them using MQL (Monitoring Query Language):
+Custom Beam metrics appear in Cloud Monitoring as `dataflow.googleapis.com/job/user_counter` with metric labels such as `metric_name` and `ptransform`. For backward compatibility, Dataflow also publishes them under the `custom.googleapis.com/dataflow/` namespace. Distribution metrics are exported as separate values with `_MAX`, `_MIN`, `_MEAN`, and `_COUNT` suffixes.
+
+You can query the mean processing lag using PromQL:
 
 ```text
-# MQL query for average processing lag
-fetch dataflow_job
-| metric 'custom.googleapis.com/dataflow/pipeline_health/processing_lag_ms'
-| align delta(1m)
-| group_by [resource.job_name], [mean(value.distribution_value.mean)]
+# PromQL query for average processing lag
+avg(
+  {
+    "__name__"="dataflow.googleapis.com/job/user_counter",
+    "monitored_resource"="dataflow_job",
+    "metric_name"="processing_lag_ms_MEAN"
+  }
+)
 ```
 
 ## Setting Up Alerts
@@ -227,10 +232,9 @@ Create alerts for the metrics that matter most.
 gcloud monitoring policies create \
   --display-name="High Pipeline Lag" \
   --condition-display-name="Processing lag > 5 minutes" \
-  --condition-filter='resource.type="dataflow_job" AND metric.type="custom.googleapis.com/dataflow/pipeline_health/processing_lag_ms"' \
-  --condition-threshold-value=300000 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --condition-filter='resource.type="dataflow_job" AND metric.type="dataflow.googleapis.com/job/user_counter" AND metric.label.metric_name="processing_lag_ms_MEAN"' \
+  --if="> 300000" \
+  --duration=300s \
   --notification-channels=CHANNEL_ID
 ```
 
@@ -242,23 +246,21 @@ gcloud monitoring policies create \
   --display-name="Growing Pipeline Backlog" \
   --condition-display-name="Oldest unacked message > 10 min" \
   --condition-filter='resource.type="pubsub_subscription" AND metric.type="pubsub.googleapis.com/subscription/oldest_unacked_message_age"' \
-  --condition-threshold-value=600 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --if="> 600" \
+  --duration=300s \
   --notification-channels=CHANNEL_ID
 ```
 
-### Alert on Error Rate
+### Alert on Error Count
 
 ```bash
-# Alert when error rate exceeds 1% of processed events
+# Alert when a stage reports any errors for more than 1 minute
 gcloud monitoring policies create \
-  --display-name="High Pipeline Error Rate" \
-  --condition-display-name="Error rate > 1%" \
-  --condition-filter='resource.type="dataflow_job" AND metric.type="custom.googleapis.com/dataflow/stage_errors"' \
-  --condition-threshold-value=100 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=60s \
+  --display-name="Dataflow Stage Errors" \
+  --condition-display-name="Enrichment errors > 0" \
+  --condition-filter='resource.type="dataflow_job" AND metric.type="dataflow.googleapis.com/job/user_counter" AND metric.label.metric_name="enrichment_errors"' \
+  --if="> 0" \
+  --duration=60s \
   --notification-channels=CHANNEL_ID
 ```
 
@@ -276,4 +278,4 @@ When alerts fire, here is how to diagnose the problem.
 
 ## Wrapping Up
 
-Custom metrics bridge the gap between knowing your pipeline is running and knowing it is running well. The built-in Dataflow metrics give you the infrastructure view, while custom metrics give you the application view. Track processing lag, throughput per stage, and error rates. Set alerts on the metrics that indicate real problems. When an alert fires, the stage-level timing metrics will point you to the bottleneck. This combination of observability and alerting is what turns a streaming pipeline from a black box into a system you can confidently operate in production.
+Custom metrics bridge the gap between knowing your pipeline is running and knowing it is running well. The built-in Dataflow metrics give you the infrastructure view, while custom metrics give you the application view. Track processing lag, throughput, and error counts. Set alerts on the metrics that indicate real problems. When an alert fires, the stage-level timing metrics will point you to the bottleneck. This combination of observability and alerting is what turns a streaming pipeline from a black box into a system you can confidently operate in production.
