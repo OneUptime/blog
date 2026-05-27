@@ -117,6 +117,7 @@ def make_prediction_request(user_event, serving_config_id):
         user_event=user_event,
         page_size=12,
         filter='availability: ANY("IN_STOCK")',
+        params={"filterSyntaxV2": True},
     )
 
     return predict_client.predict(request=request)
@@ -124,7 +125,7 @@ def make_prediction_request(user_event, serving_config_id):
 
 ## Filtering Recommendations
 
-Use filter expressions to exclude certain products from recommendations.
+Use filter expressions to exclude certain products from recommendations. Attribute-based filters require `filterSyntaxV2` to be enabled, and custom attributes must be configured as filterable before you use them in prediction filters.
 
 ```python
 def get_filtered_recommendations(visitor_id, user_id=None):
@@ -160,6 +161,7 @@ def get_filtered_recommendations(visitor_id, user_id=None):
         user_event=user_event,
         page_size=12,
         filter=filter_expr,
+        params={"filterSyntaxV2": True},
     )
 
     return predict_client.predict(request=request)
@@ -210,6 +212,7 @@ def homepage_recommendations():
                 user_event=user_event,
                 page_size=count,
                 filter='availability: ANY("IN_STOCK")',
+                params={"filterSyntaxV2": True},
             )
         )
 
@@ -284,37 +287,35 @@ def get_popular_products(count):
 
 ## Caching for Performance
 
-The Predict API is fast, but caching can reduce latency further and save on API costs.
+The Predict API is fast, but caching can reduce latency further and save on API costs. Do not cache personalized Predict responses for end users. Cache non-personalized fallback lists or product metadata instead.
 
 ```python
-from functools import lru_cache
-import hashlib
 import json
 import redis
 
-# Redis-based caching for recommendations
+# Redis-based caching for fallback recommendations
 redis_client = redis.Redis(host="redis-host", port=6379)
 
-def get_cached_recommendations(visitor_id, user_id, serving_config,
-                                page_size=12, cache_ttl=300):
-    """Get recommendations with Redis caching."""
-    # Build a cache key
-    cache_key = f"recs:{serving_config}:{user_id or visitor_id}:{page_size}"
+def get_recommendations_with_cached_fallback(visitor_id, user_id, serving_config,
+                                             page_size=12, cache_ttl=300):
+    """Get personalized recommendations with a cached non-personalized fallback."""
+    try:
+        response = get_recommendations(
+            "my-gcp-project", serving_config,
+            visitor_id, user_id, page_size
+        )
+        if response.results:
+            return [r.id for r in response.results]
+    except Exception:
+        pass
 
-    # Check cache first
+    cache_key = f"popular:{page_size}"
+
     cached = redis_client.get(cache_key)
     if cached:
         return json.loads(cached)
 
-    # Cache miss - fetch from Recommendations AI
-    response = get_recommendations(
-        "my-gcp-project", serving_config,
-        visitor_id, user_id, page_size
-    )
-
-    result = [r.id for r in response.results]
-
-    # Cache for 5 minutes (recommendations change slowly)
+    result = get_popular_products(page_size)
     redis_client.setex(cache_key, cache_ttl, json.dumps(result))
 
     return result
@@ -325,6 +326,8 @@ def get_cached_recommendations(visitor_id, user_id, serving_config,
 Track how well recommendations perform in production.
 
 ```python
+from datetime import datetime
+
 def log_recommendation_interaction(visitor_id, recommended_product_id,
                                      action, serving_config_id):
     """Log when a user interacts with a recommended product."""
@@ -345,4 +348,4 @@ def log_recommendation_interaction(visitor_id, recommended_product_id,
 
 ## Wrapping Up
 
-Serving real-time recommendations requires more than just calling the Predict API. You need to handle different page contexts, filter by business rules, manage cold start scenarios for new users, implement caching for performance, and build fallback strategies for when the service is temporarily unavailable. The Predict API itself is designed for low-latency responses, typically returning results in under 200 milliseconds. Combined with caching and proper error handling, you can deliver personalized recommendations reliably across your entire application.
+Serving real-time recommendations requires more than just calling the Predict API. You need to handle different page contexts, filter by business rules, manage cold start scenarios for new users, implement caching for performance, and build fallback strategies for when the service is temporarily unavailable. The Predict API itself is designed for low-latency responses. Combined with caching and proper error handling, you can deliver personalized recommendations reliably across your entire application.
