@@ -105,7 +105,7 @@ env_variables:
 
 The `egress_setting` controls which traffic goes through the connector:
 
-- `private-ranges-only` - Only traffic to private IP ranges (10.x.x.x, 172.16.x.x, 192.168.x.x) goes through the connector. All other traffic goes directly to the internet.
+- `private-ranges-only` - Only traffic to RFC 1918 private IP ranges (10.x.x.x, 172.16.x.x, 192.168.x.x), RFC 6598 ranges (100.64.0.0/10), and internal DNS names goes through the connector. All other traffic goes directly to the internet.
 - `all-traffic` - All outbound traffic routes through the connector, including public internet requests.
 
 Use `private-ranges-only` unless you have a specific reason to route all traffic through your VPC (like needing a static egress IP through Cloud NAT).
@@ -159,22 +159,22 @@ def internal_health():
 
 ## Connector Sizing
 
-The connector's throughput depends on the machine type and number of instances:
+The connector's estimated throughput depends on the machine type and number of instances:
 
 ```text
-e2-micro:  100 Mbps per instance (default)
-e2-standard-4: 2 Gbps per instance (high throughput)
+e2-micro: 200-1000 Mbps
+e2-standard-4: 3200-16000 Mbps
 
 With min-instances=2, max-instances=3:
-  e2-micro: 200-300 Mbps throughput
-  e2-standard-4: 4-6 Gbps throughput
+  e2-micro starts near the low end of its range
+  e2-standard-4 starts near the low end of its range
 ```
 
 For most applications, `e2-micro` instances are sufficient. If you are transferring large amounts of data through the connector (like bulk database reads), consider upgrading to `e2-standard-4`:
 
 ```bash
 # Create a high-throughput connector
-gcloud compute networks vpc-access connectors create high-throughput-connector \
+gcloud compute networks vpc-access connectors create hi-connector \
   --network=default \
   --region=us-central1 \
   --range=10.8.0.16/28 \
@@ -215,33 +215,35 @@ vpc_access_connector:
 
 ## Shared VPC Configuration
 
-If your organization uses Shared VPC, the connector needs to be created in the host project's network:
+If your organization uses Shared VPC, you can create the connector in the service project and point it at a subnet in the host project's network:
 
 ```bash
 # Create connector in a shared VPC subnet
 gcloud compute networks vpc-access connectors create shared-connector \
-  --subnet=projects/host-project-id/regions/us-central1/subnetworks/connector-subnet \
+  --subnet=connector-subnet \
+  --subnet-project=host-project-id \
   --region=us-central1 \
   --project=service-project-id
 ```
 
-The service account for your App Engine project needs the `compute.networkUser` role on the host project's subnet.
+The service project's Serverless VPC Access service account and Cloud Services service account need the `compute.networkUser` role on the host project or on the host project's connector subnet.
 
 ## Firewall Rules
 
-The VPC connector uses instances in your VPC, so your firewall rules apply. Make sure you have rules that allow traffic from the connector's IP range to your destination resources:
+The VPC connector uses instances in your VPC, so your firewall rules apply. In standalone VPC networks and Shared VPC host projects, Google Cloud creates the required connector firewall rules automatically. If you have higher-priority deny rules, or if you create a connector in a Shared VPC service project, make sure you have rules that allow traffic from the connector's IP range to your destination resources:
 
 ```bash
 # Allow traffic from the connector to Redis
 gcloud compute firewall-rules create allow-connector-to-redis \
   --network=default \
+  --priority=900 \
   --allow=tcp:6379 \
   --source-ranges=10.8.0.0/28 \
   --target-tags=redis-server \
   --project=your-project-id
 ```
 
-If you are using the default network with its default allow-internal rule, you probably do not need additional firewall rules. But in custom networks with restricted firewalls, explicitly creating rules for the connector IP range is necessary.
+If you are using the default network with its default allow-internal rule and no higher-priority deny policies, you probably do not need additional firewall rules. But in custom networks with restricted firewalls, explicitly creating rules for the connector IP range might be necessary.
 
 ## Monitoring Connector Health
 
@@ -266,7 +268,7 @@ If you see the connector consistently maxing out its instances, increase `max-in
 If your App Engine app cannot reach private resources after setting up the connector, check these things in order:
 
 1. Verify the connector is in `READY` state
-2. Confirm the connector region matches your App Engine region
+2. Confirm the connector region matches your App Engine service's Serverless VPC Access region (`us-central1` for `us-central`, `europe-west1` for `europe-west`)
 3. Check that the connector's IP range does not overlap with existing subnets
 4. Verify firewall rules allow traffic from the connector IP range
 5. Make sure the target resource is in the same VPC network (or a peered network)
