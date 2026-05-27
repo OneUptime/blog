@@ -211,7 +211,7 @@ A production Deployment needs resource limits, health checks, security contexts,
 
 Let me break down the key sections:
 
-- **strategy.rollingUpdate.maxUnavailable: 0** ensures no downtime during updates by keeping all old pods running until new ones are ready.
+- **strategy.rollingUpdate.maxUnavailable: 0** helps avoid downtime during updates by ensuring Kubernetes does not reduce the number of available pods below the desired replica count while new pods become ready.
 - **startupProbe** gives slow-starting applications time to initialize before liveness checks begin.
 - **topologySpreadConstraints** distributes pods evenly across nodes for high availability.
 - **readOnlyRootFilesystem** plus a writable `/tmp` emptyDir is a security best practice.
@@ -235,6 +235,7 @@ When you change the image version and re-run the playbook, Kubernetes performs a
   tasks:
     - name: Get current deployment
       kubernetes.core.k8s_info:
+        api_version: apps/v1
         kind: Deployment
         namespace: "{{ namespace }}"
         name: "{{ app_name }}"
@@ -270,6 +271,7 @@ When you change the image version and re-run the playbook, Kubernetes performs a
 
     - name: Verify rollout status
       kubernetes.core.k8s_info:
+        api_version: apps/v1
         kind: Deployment
         namespace: "{{ namespace }}"
         name: "{{ app_name }}"
@@ -318,6 +320,7 @@ If the new version has problems, roll back to the previous revision:
 
     - name: Verify rolled-back version
       kubernetes.core.k8s_info:
+        api_version: apps/v1
         kind: Deployment
         namespace: "{{ namespace }}"
         name: "{{ app_name }}"
@@ -345,6 +348,7 @@ Scale replicas up or down:
   tasks:
     - name: Scale to 10 replicas
       kubernetes.core.k8s_scale:
+        api_version: apps/v1
         kind: Deployment
         namespace: "{{ namespace }}"
         name: "{{ app_name }}"
@@ -354,6 +358,7 @@ Scale replicas up or down:
 
     - name: Verify scaling
       kubernetes.core.k8s_info:
+        api_version: apps/v1
         kind: Deployment
         namespace: "{{ namespace }}"
         name: "{{ app_name }}"
@@ -523,6 +528,7 @@ After deploying, run comprehensive checks:
   tasks:
     - name: Get deployment status
       kubernetes.core.k8s_info:
+        api_version: apps/v1
         kind: Deployment
         namespace: "{{ namespace }}"
         name: "{{ app_name }}"
