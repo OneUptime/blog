@@ -17,13 +17,13 @@ Writing a custom IO connector is not as daunting as it sounds. The Beam SDK prov
 Before building a custom connector, check whether you can work around it. Sometimes a simple DoFn that calls an API is good enough for small-scale use cases. But a proper IO connector gives you:
 
 - Automatic parallelism for reads through splitting
-- Backpressure handling for writes
+- Batching and retry hooks for writes
 - Consistent error handling patterns
 - Reusability across pipelines
 
 ## Building a Custom Source: BoundedSource
 
-Let us build a source that reads records from a REST API. We will implement `BoundedSource` for batch reads first, then discuss unbounded sources for streaming.
+Let us build a source that reads records from a REST API. For new Beam IO connectors, `Splittable DoFn` is the recommended source framework for both bounded and unbounded reads. This example uses the older `BoundedSource` API because it clearly shows the pieces a finite batch source needs: size estimation, splitting, and a reader.
 
 ```java
 // Custom source that reads from a REST API
@@ -40,6 +40,22 @@ public class RestApiSource extends BoundedSource<Record> {
         this.authToken = authToken;
         this.startPage = startPage;
         this.endPage = endPage;
+    }
+
+    public String getApiBaseUrl() {
+        return apiBaseUrl;
+    }
+
+    public String getAuthToken() {
+        return authToken;
+    }
+
+    public int getStartPage() {
+        return startPage;
+    }
+
+    public int getEndPage() {
+        return endPage;
     }
 
     // Estimate the total size of data to read (helps Dataflow plan parallelism)
@@ -76,6 +92,7 @@ public class RestApiSource extends BoundedSource<Record> {
 
     @Override
     public Coder<Record> getOutputCoder() {
+        // Assumes Record implements Serializable.
         return SerializableCoder.of(Record.class);
     }
 }
@@ -142,6 +159,11 @@ public class RestApiReader extends BoundedSource.BoundedReader<Record> {
         try {
             HttpResponse<String> response = httpClient.send(
                 request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() >= 400) {
+                throw new IOException("API read failed with status "
+                    + response.statusCode() + ": " + response.body());
+            }
 
             currentPageRecords = parseRecords(response.body());
             currentIndex = 0;
@@ -232,7 +254,7 @@ PCollection<Record> records = pipeline
 
 ## Building a Custom Sink
 
-For writing data to an external system, implement a DoFn with batching and error handling. The modern approach uses a ParDo-based sink rather than the older Sink API.
+For writing data to an external system, implement a DoFn with batching and error handling. The modern approach uses a ParDo-based sink rather than the older Sink API. Because Dataflow can retry custom DoFns, the external write should be idempotent or use a stable idempotency key to avoid duplicate side effects.
 
 ```java
 // Custom sink that writes records to a REST API in batches
@@ -421,4 +443,4 @@ public void testRestApiSource() {
 }
 ```
 
-Building custom IO connectors takes more upfront effort than a quick DoFn, but the payoff is a reusable, well-structured component that handles parallelism, batching, and error recovery correctly. Once built, your team can use the connector across multiple pipelines without worrying about the integration details.
+Building custom IO connectors takes more upfront effort than a quick DoFn, but the payoff is a reusable, well-structured component that handles parallelism, batching, and error recovery more consistently. Once built, your team can use the connector across multiple pipelines without worrying about the integration details.
