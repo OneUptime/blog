@@ -30,7 +30,7 @@ graph TD
 | Layer | Protocols | What It Does |
 |-------|-----------|-------------|
 | Application | HTTP, DNS, gRPC | Application-specific communication |
-| Transport | TCP, UDP | Reliable delivery and port multiplexing |
+| Transport | TCP, UDP | End-to-end delivery, reliability features, and port multiplexing |
 | Internet | IP, ICMP | Addressing and routing between networks |
 | Link | Ethernet, ARP | Communication on the local network |
 
@@ -127,7 +127,7 @@ graph LR
 | Feature | TCP | UDP |
 |---------|-----|-----|
 | Use case | HTTP, databases, file transfer | DNS, video streaming, gaming |
-| Reliability | Guaranteed delivery with retransmission | Best effort, no retransmission |
+| Reliability | Reliable delivery with acknowledgments and retransmission | Best effort, no delivery guarantee |
 | Overhead | Higher (20+ byte header, handshake) | Lower (8 byte header, no handshake) |
 | Ordering | Packets delivered in order | No ordering guarantee |
 
@@ -163,7 +163,7 @@ ipcalc 10.0.0.0/24
 ## Port Numbers
 
 ```bash
-# Well-known ports (0-1023) - require root to bind
+# Well-known ports (0-1023) - usually require root or CAP_NET_BIND_SERVICE to bind
 # 22   - SSH
 # 53   - DNS
 # 80   - HTTP
@@ -178,7 +178,7 @@ ipcalc 10.0.0.0/24
 # 8443 - HTTPS alternative
 # 9090 - Prometheus
 
-# Ephemeral ports (49152-65535) - used for outgoing connections
+# Dynamic/private ports (49152-65535) - IANA's range for temporary/private use
 # Check your system's ephemeral port range
 cat /proc/sys/net/ipv4/ip_local_port_range
 
@@ -217,7 +217,9 @@ sequenceDiagram
 
     Note over Client,Server: Connection Close
     Client->>Server: FIN
-    Server->>Client: FIN-ACK
+    Server->>Client: ACK
+    Server->>Client: FIN
+    Client->>Server: ACK
 ```
 
 ## Common TCP/IP Problems and Diagnosis
@@ -263,7 +265,8 @@ ss -t state time-wait | wc -l
 # 2. Enable TCP reuse (careful in production)
 cat /proc/sys/net/ipv4/tcp_tw_reuse
 
-# 3. Reduce the FIN timeout
+# 3. Do not expect tcp_fin_timeout to reduce TIME_WAIT;
+#    it controls orphaned FIN_WAIT_2 sockets on Linux
 cat /proc/sys/net/ipv4/tcp_fin_timeout
 ```
 
