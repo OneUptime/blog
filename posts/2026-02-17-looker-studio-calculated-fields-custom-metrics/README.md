@@ -86,9 +86,9 @@ Name this "Customer Segment" and use it as a dimension in charts.
 
 ```text
 CASE
-  WHEN REGEXP_MATCH(utm_source, "google|bing|yahoo") THEN "Search"
-  WHEN REGEXP_MATCH(utm_source, "facebook|instagram|twitter|linkedin") THEN "Social"
-  WHEN REGEXP_MATCH(utm_source, "email|newsletter") THEN "Email"
+  WHEN REGEXP_MATCH(utm_source, ".*(google|bing|yahoo).*") THEN "Search"
+  WHEN REGEXP_MATCH(utm_source, ".*(facebook|instagram|twitter|linkedin).*") THEN "Social"
+  WHEN REGEXP_MATCH(utm_source, ".*(email|newsletter).*") THEN "Email"
   WHEN utm_source IS NULL THEN "Direct"
   ELSE "Other"
 END
@@ -133,7 +133,7 @@ END
 **Days since last order:**
 
 ```text
-DATE_DIFF(CURRENT_DATE(), last_order_date)
+DATETIME_DIFF(CURRENT_DATE(), last_order_date, DAY)
 ```
 
 **Fiscal quarter (for companies with non-calendar fiscal years starting in April):**
@@ -150,7 +150,7 @@ END
 **Year-month string for chart labels:**
 
 ```text
-CONCAT(CAST(YEAR(order_date) AS TEXT), "-", LPAD(CAST(MONTH(order_date) AS TEXT), 2, "0"))
+FORMAT_DATETIME("%Y-%m", order_date)
 ```
 
 ## Text Manipulation
@@ -166,7 +166,7 @@ REGEXP_EXTRACT(email, "@(.+)")
 **Capitalize first letter:**
 
 ```text
-CONCAT(UPPER(LEFT(city, 1)), LOWER(SUBSTR(city, 2)))
+CONCAT(UPPER(LEFT_TEXT(city, 1)), LOWER(SUBSTR(city, 2)))
 ```
 
 **Combine fields for display:**
@@ -242,16 +242,16 @@ Regular expressions are powerful for extracting patterns from text fields.
 **Extract version number from user agent:**
 
 ```text
-REGEXP_EXTRACT(user_agent, "Chrome/(\\d+)")
+REGEXP_EXTRACT(user_agent, ".*Chrome/(\\d+).*")
 ```
 
 **Classify URL paths into page categories:**
 
 ```text
 CASE
-  WHEN REGEXP_MATCH(page_path, "^/product/") THEN "Product Pages"
-  WHEN REGEXP_MATCH(page_path, "^/blog/") THEN "Blog"
-  WHEN REGEXP_MATCH(page_path, "^/checkout") THEN "Checkout"
+  WHEN REGEXP_MATCH(page_path, "^/product/.*") THEN "Product Pages"
+  WHEN REGEXP_MATCH(page_path, "^/blog/.*") THEN "Blog"
+  WHEN REGEXP_MATCH(page_path, "^/checkout.*") THEN "Checkout"
   WHEN page_path = "/" THEN "Homepage"
   ELSE "Other"
 END
@@ -261,7 +261,7 @@ END
 
 ```text
 CASE
-  WHEN REGEXP_MATCH(email, "@(gmail|yahoo|hotmail|outlook)\\.com$") THEN "Personal"
+  WHEN REGEXP_MATCH(email, ".*@(gmail|yahoo|hotmail|outlook)\\.com$") THEN "Personal"
   ELSE "Business"
 END
 ```
@@ -294,7 +294,7 @@ Name this "Discount Rate" and use it in pricing calculations.
 
 ## Performance Tips
 
-Calculated fields in Looker Studio run in the reporting layer, not in BigQuery. This means:
+Calculated fields in Looker Studio are defined in the reporting layer, not in your BigQuery schema. This means:
 
 **Complex calculations on large datasets are slow.** If you find a calculated field making your dashboard sluggish, move the calculation to a BigQuery view instead.
 
