@@ -114,6 +114,16 @@ radius_ldap_bind_password: "{{ vault_radius_ldap_password }}"
   when: radius_ldap_enabled
   notify: restart freeradius
 
+- name: Configure LDAP in the default virtual server
+  template:
+    src: default-site.j2
+    dest: /etc/freeradius/3.0/sites-available/default
+    owner: freerad
+    group: freerad
+    mode: '0640'
+  when: radius_ldap_enabled
+  notify: restart freeradius
+
 - name: Ensure FreeRADIUS is started and enabled
   systemd:
     name: freeradius
@@ -121,7 +131,7 @@ radius_ldap_bind_password: "{{ vault_radius_ldap_password }}"
     enabled: yes
 
 - name: Allow RADIUS ports through firewall
-  ufw:
+  community.general.ufw:
     rule: allow
     port: "{{ item }}"
     proto: udp
@@ -140,7 +150,7 @@ client {{ client.name }} {
     ipaddr = {{ client.ipaddr }}
     secret = {{ client.secret }}
     shortname = {{ client.shortname }}
-    require_message_authenticator = no
+    require_message_authenticator = auto
     nas_type = other
 }
 
@@ -151,7 +161,7 @@ client {{ client.name }} {
 
 ```text
 # roles/freeradius/templates/users.j2 - Local user authentication database
-# Format: username  Auth-Type := Local, User-Password == "password"
+# Format: username  Cleartext-Password := "password"
 {% for user in radius_users %}
 {{ user.username }}  Cleartext-Password := "{{ user.password }}"
 {% for group in user.groups %}
@@ -203,6 +213,13 @@ For 802.1X wireless authentication, configure the EAP module:
     owner: freerad
     group: freerad
     mode: '0640'
+  notify: restart freeradius
+
+- name: Enable EAP module
+  file:
+    src: /etc/freeradius/3.0/mods-available/eap
+    dest: /etc/freeradius/3.0/mods-enabled/eap
+    state: link
   notify: restart freeradius
 
 - name: Deploy TLS certificates for EAP
@@ -269,7 +286,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -288,8 +305,8 @@ Here are several practical scenarios where this module proves essential in real-
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
     - name: Configure firewall rules
@@ -413,4 +430,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
