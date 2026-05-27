@@ -146,13 +146,16 @@ flowchart TD
 
 ## Matching Task Names
 
-The task name match is exact. You need to provide the full task name as it appears in the playbook.
+The safest option is to provide the full task name exactly as it appears in the playbook. Ansible also supports shell-style wildcard matching for this option, but a plain partial name will not match unless you include a wildcard.
 
 ```bash
 # This works (exact match)
 ansible-playbook deploy.yml --start-at-task "Deploy application files"
 
-# This does NOT work (partial match)
+# This also works (wildcard match)
+ansible-playbook deploy.yml --start-at-task "Deploy*"
+
+# This does NOT work (plain partial match)
 ansible-playbook deploy.yml --start-at-task "Deploy"
 
 # This does NOT work (case mismatch)
@@ -266,6 +269,8 @@ ansible-playbook -i inventory.ini multi-play.yml --start-at-task "Install nginx"
 **Missing directory or file creation**: If earlier tasks create directories or files that later tasks need, skipping those setup tasks will cause failures.
 
 **Handler notifications**: If a skipped task would have notified a handler, that handler will not run. Make sure skipping tasks does not leave your system in an inconsistent state.
+
+**Dynamic includes**: `--start-at-task` does not work with tasks inside dynamically reused roles or tasks such as `include_role` or `include_tasks`. Use static imports if you need those tasks to be visible to this option.
 
 ## Alternative: Using --step for Interactive Control
 
