@@ -37,8 +37,9 @@ Start with a minimal HTTPS server block.
 # /etc/nginx/conf.d/ssl.conf
 
 server {
-    # Listen on port 443 with SSL and HTTP/2 enabled
-    listen 443 ssl http2;
+    # Listen on port 443 with SSL enabled
+    listen 443 ssl;
+    http2 on;
     server_name example.com www.example.com;
 
     # Path to your SSL certificate (includes intermediate certs)
@@ -76,11 +77,11 @@ Configure TLS protocols and cipher suites for security and compatibility.
 # TLS 1.0 and 1.1 have known vulnerabilities and are deprecated
 ssl_protocols TLSv1.2 TLSv1.3;
 
-# Use server-preferred cipher order
-# This ensures the server picks the strongest cipher the client supports
+# Use server-preferred cipher order for TLS 1.2
+# This does not affect TLS 1.3 cipher selection
 ssl_prefer_server_ciphers on;
 
-# Modern cipher suite configuration
+# Modern TLS 1.2 cipher suite configuration
 # These ciphers provide forward secrecy and strong encryption
 ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305';
 
@@ -104,7 +105,8 @@ HSTS tells browsers to always use HTTPS for your domain, preventing downgrade at
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     # Include the shared SSL parameters
@@ -161,7 +163,8 @@ Add security headers alongside your SSL configuration.
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     include /etc/nginx/conf.d/ssl-params.conf;
@@ -178,8 +181,8 @@ server {
     # Clickjacking protection
     add_header X-Frame-Options "SAMEORIGIN" always;
 
-    # XSS protection (legacy but still useful)
-    add_header X-XSS-Protection "1; mode=block" always;
+    # Disable deprecated browser XSS filters; use Content-Security-Policy for XSS mitigation
+    add_header X-XSS-Protection "0" always;
 
     # Referrer policy
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
@@ -214,7 +217,7 @@ sudo certbot renew --dry-run
 
 ## Diffie-Hellman Parameters
 
-Generate strong DH parameters for key exchange.
+Generate strong DH parameters only if you enable DHE cipher suites. The ECDHE cipher suites configured above do not use `ssl_dhparam`.
 
 ```bash
 # Generate a 4096-bit DH parameter file (takes a few minutes)
@@ -222,7 +225,7 @@ sudo openssl dhparam -out /etc/ssl/certs/dhparam.pem 4096
 ```
 
 ```nginx
-# Add to your SSL configuration
+# Add to your SSL configuration if you enable DHE cipher suites
 ssl_dhparam /etc/ssl/certs/dhparam.pem;
 ```
 
@@ -238,7 +241,7 @@ openssl s_client -connect example.com:443 -servername example.com < /dev/null 2>
 nmap --script ssl-enum-ciphers -p 443 example.com
 
 # Check OCSP stapling
-openssl s_client -connect example.com:443 -status < /dev/null 2>/dev/null | grep -A 5 "OCSP Response"
+openssl s_client -connect example.com:443 -servername example.com -status < /dev/null 2>/dev/null | grep -A 5 "OCSP Response"
 
 # Validate Nginx configuration
 sudo nginx -t && sudo nginx -s reload
