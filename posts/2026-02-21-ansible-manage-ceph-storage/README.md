@@ -10,7 +10,7 @@ Description: Deploy and manage Ceph distributed storage clusters using Ansible p
 
 Ceph is one of the most powerful open-source distributed storage systems available. It provides object storage, block storage, and a POSIX-compliant filesystem all from a single cluster. But deploying and managing Ceph by hand is notoriously complex. There are monitors, OSDs, managers, metadata servers, and a web of configuration that all needs to be consistent.
 
-Ansible is the natural fit for managing Ceph. The official ceph-ansible project from the Ceph community provides battle-tested roles, but understanding the fundamentals will help you customize and troubleshoot when things get interesting. This guide covers both approaches.
+Ansible is a useful fit for preparing hosts and automating Ceph operations. The Ceph community also maintains cephadm-ansible for workflows around cephadm, while the older ceph-ansible project is widely deployed but not integrated with the newer orchestrator APIs. Understanding the fundamentals will help you customize and troubleshoot when things get interesting.
 
 ## Ceph Architecture at a Glance
 
@@ -69,7 +69,7 @@ rgws
 
 ## Installing Ceph Packages
 
-The first step is getting the Ceph packages installed on all nodes. This playbook adds the official repository and installs the right packages per role:
+The first step is getting the Ceph packages installed on all nodes. This RHEL-family example adds the official repository and installs the right packages per role:
 
 ```yaml
 # install-ceph.yml - Install Ceph packages on all cluster nodes
@@ -79,7 +79,7 @@ The first step is getting the Ceph packages installed on all nodes. This playboo
   become: true
 
   vars:
-    ceph_release: reef  # Current stable release
+    ceph_release: tentacle  # Use an actively maintained Ceph release
     ceph_repo_baseurl: "https://download.ceph.com/rpm-{{ ceph_release }}/el{{ ansible_distribution_major_version }}"
 
   tasks:
@@ -89,6 +89,16 @@ The first step is getting the Ceph packages installed on all nodes. This playboo
         name: ceph
         description: "Ceph {{ ceph_release }} Repository"
         baseurl: "{{ ceph_repo_baseurl }}/{{ ansible_architecture }}"
+        gpgcheck: true
+        gpgkey: "https://download.ceph.com/keys/release.asc"
+        enabled: true
+      when: ansible_os_family == "RedHat"
+
+    - name: Add Ceph noarch repository
+      ansible.builtin.yum_repository:
+        name: ceph-noarch
+        description: "Ceph {{ ceph_release }} Noarch Repository"
+        baseurl: "{{ ceph_repo_baseurl }}/noarch"
         gpgcheck: true
         gpgkey: "https://download.ceph.com/keys/release.asc"
         enabled: true
@@ -104,6 +114,7 @@ The first step is getting the Ceph packages installed on all nodes. This playboo
           - python3-rados
           - python3-rbd
         state: present
+      when: ansible_os_family == "RedHat"
 
     # Install monitor-specific packages
     - name: Install Ceph monitor packages
@@ -111,7 +122,9 @@ The first step is getting the Ceph packages installed on all nodes. This playboo
         name:
           - ceph-mon
         state: present
-      when: "'mons' in group_names"
+      when:
+        - ansible_os_family == "RedHat"
+        - "'mons' in group_names"
 
     # Install OSD-specific packages
     - name: Install Ceph OSD packages
@@ -120,7 +133,9 @@ The first step is getting the Ceph packages installed on all nodes. This playboo
           - ceph-osd
           - ceph-volume
         state: present
-      when: "'osds' in group_names"
+      when:
+        - ansible_os_family == "RedHat"
+        - "'osds' in group_names"
 
     # Install manager packages
     - name: Install Ceph manager packages
@@ -129,12 +144,34 @@ The first step is getting the Ceph packages installed on all nodes. This playboo
           - ceph-mgr
           - ceph-mgr-dashboard
         state: present
-      when: "'mgrs' in group_names"
+      when:
+        - ansible_os_family == "RedHat"
+        - "'mgrs' in group_names"
+
+    # Install metadata server packages
+    - name: Install Ceph MDS packages
+      ansible.builtin.yum:
+        name:
+          - ceph-mds
+        state: present
+      when:
+        - ansible_os_family == "RedHat"
+        - "'mdss' in group_names"
+
+    # Install object gateway packages
+    - name: Install Ceph RGW packages
+      ansible.builtin.yum:
+        name:
+          - ceph-radosgw
+        state: present
+      when:
+        - ansible_os_family == "RedHat"
+        - "'rgws' in group_names"
 ```
 
-## Bootstrapping the Monitor Cluster
+## Bootstrapping the Initial Monitor
 
-Monitors are the brain of Ceph. They maintain the cluster map and handle consensus. You need at least three for production.
+Monitors are the brain of Ceph. They maintain the cluster map and handle consensus. You need at least three for production, but the first step is bootstrapping an initial monitor that the rest of the cluster can join.
 
 ```yaml
 # bootstrap-monitors.yml - Initialize the Ceph monitor cluster
@@ -171,21 +208,41 @@ Monitors are the brain of Ceph. They maintain the cluster map and handle consens
         cmd: ceph-authtool --create-keyring /etc/ceph/ceph.client.admin.keyring --gen-key -n client.admin --cap mon 'allow *' --cap osd 'allow *' --cap mds 'allow *' --cap mgr 'allow *'
         creates: /etc/ceph/ceph.client.admin.keyring
 
+    # Generate the bootstrap OSD keyring
+    - name: Create bootstrap OSD keyring directory
+      ansible.builtin.file:
+        path: /var/lib/ceph/bootstrap-osd
+        state: directory
+        owner: ceph
+        group: ceph
+        mode: '0755'
+
+    - name: Create bootstrap OSD keyring
+      ansible.builtin.command:
+        cmd: ceph-authtool --create-keyring /var/lib/ceph/bootstrap-osd/ceph.keyring --gen-key -n client.bootstrap-osd --cap mon 'profile bootstrap-osd' --cap mgr 'allow r'
+        creates: /var/lib/ceph/bootstrap-osd/ceph.keyring
+
     # Import admin key into monitor keyring
     - name: Import admin key into monitor keyring
       ansible.builtin.command:
         cmd: ceph-authtool /tmp/ceph.mon.keyring --import-keyring /etc/ceph/ceph.client.admin.keyring
+
+    - name: Import bootstrap OSD key into monitor keyring
+      ansible.builtin.command:
+        cmd: ceph-authtool /tmp/ceph.mon.keyring --import-keyring /var/lib/ceph/bootstrap-osd/ceph.keyring
 
     # Generate the monitor map
     - name: Create initial monmap
       ansible.builtin.command:
         cmd: >
           monmaptool --create
-          --add {{ hostvars[item]['inventory_hostname'] }} {{ hostvars[item]['ansible_host'] }}
+          {% for host in groups['mons'] %}
+          --add {{ hostvars[host]['inventory_hostname'] }} {{ hostvars[host]['ansible_host'] }}
+          {% endfor %}
           --fsid {{ fsid }}
           /tmp/monmap
-      loop: "{{ groups['mons'] }}"
-      when: item == groups['mons'][0]
+      args:
+        creates: /tmp/monmap
 
     # Initialize the monitor data directory
     - name: Create monitor data directory
@@ -246,7 +303,7 @@ osd_crush_chooseleaf_type = 1
 
 ## Deploying OSDs
 
-OSDs are where the actual data lives. Each OSD manages one disk. Here is how to deploy them:
+OSDs are where the actual data lives. In this example, each OSD is backed by one device. Here is how to deploy them:
 
 ```yaml
 # deploy-osds.yml - Prepare and activate OSDs on storage nodes
@@ -265,12 +322,18 @@ OSDs are where the actual data lives. Each OSD manages one disk. Here is how to 
       - /dev/sde
 
   tasks:
-    # Distribute the ceph.conf and admin keyring from the first monitor
+    # Distribute the ceph.conf and bootstrap OSD keyring from the first monitor
     - name: Copy ceph.conf from monitor
       ansible.builtin.slurp:
         src: /etc/ceph/ceph.conf
       delegate_to: "{{ groups['mons'][0] }}"
       register: ceph_conf
+
+    - name: Copy bootstrap OSD keyring from monitor
+      ansible.builtin.slurp:
+        src: /var/lib/ceph/bootstrap-osd/ceph.keyring
+      delegate_to: "{{ groups['mons'][0] }}"
+      register: bootstrap_osd_keyring
 
     - name: Deploy ceph.conf to OSD node
       ansible.builtin.copy:
@@ -279,6 +342,22 @@ OSDs are where the actual data lives. Each OSD manages one disk. Here is how to 
         owner: ceph
         group: ceph
         mode: '0644'
+
+    - name: Create bootstrap OSD keyring directory
+      ansible.builtin.file:
+        path: /var/lib/ceph/bootstrap-osd
+        state: directory
+        owner: ceph
+        group: ceph
+        mode: '0755'
+
+    - name: Deploy bootstrap OSD keyring to OSD node
+      ansible.builtin.copy:
+        content: "{{ bootstrap_osd_keyring.content | b64decode }}"
+        dest: /var/lib/ceph/bootstrap-osd/ceph.keyring
+        owner: ceph
+        group: ceph
+        mode: '0600'
 
     # Prepare each disk as an OSD using ceph-volume
     - name: Create OSD on each device
@@ -381,6 +460,7 @@ Ongoing cluster management includes tasks like adding new OSDs, rebalancing, and
 
   vars:
     osd_id: 5  # The OSD to drain
+    osd_host: ceph-osd-02  # Host running the OSD daemon
 
   tasks:
     # Mark the OSD out so data migrates away from it
@@ -388,12 +468,12 @@ Ongoing cluster management includes tasks like adding new OSDs, rebalancing, and
       ansible.builtin.command:
         cmd: "ceph osd out osd.{{ osd_id }}"
 
-    # Wait for rebalancing to complete
-    - name: Wait for cluster to rebalance
+    # Wait until removing this OSD no longer reduces data redundancy
+    - name: Wait until the OSD is safe to stop
       ansible.builtin.command:
-        cmd: ceph health
-      register: health
-      until: "'HEALTH_OK' in health.stdout or 'HEALTH_WARN' in health.stdout"
+        cmd: "ceph osd safe-to-destroy osd.{{ osd_id }}"
+      register: safe_to_destroy
+      until: safe_to_destroy.rc == 0
       retries: 60
       delay: 30
       changed_when: false
