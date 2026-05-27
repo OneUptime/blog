@@ -38,6 +38,7 @@ Before you begin, make sure you have:
 - `kubectl` configured and pointing at your cluster.
 - A range of unused IP addresses on your network that you can dedicate to MetalLB.
 - No other load balancer controller running in the cluster.
+- If you plan to use Layer 2 mode, TCP and UDP traffic on port 7946 must be allowed between nodes.
 
 Verify your cluster is healthy:
 
@@ -52,7 +53,7 @@ kubectl get pods -n kube-system
 
 ## Step 1: Enable Strict ARP Mode
 
-kubeadm clusters use kube-proxy in IPVS mode by default on many setups. When IPVS is active, kube-proxy responds to ARP requests for every Service IP on every node. This conflicts with MetalLB, which needs to be the only component answering ARP requests for the IPs it manages.
+Kubernetes uses kube-proxy in iptables mode by default on Linux, but some kubeadm clusters are configured to use IPVS mode. When IPVS is active without strict ARP, nodes can answer ARP requests for Service IPs they do not own. This conflicts with MetalLB, which needs to be the only component answering ARP requests for the IPs it manages.
 
 You must enable `strictARP` so kube-proxy stops responding to ARP for addresses it does not own.
 
@@ -111,9 +112,9 @@ There are two common ways to install MetalLB: plain manifests and Helm.
 This is the simplest approach. Apply the official manifest directly:
 
 ```bash
-# Install MetalLB v0.14.9 using the official manifest
+# Install MetalLB v0.16.0 using the official manifest
 # This creates the metallb-system namespace and all required resources
-METALLB_VERSION="v0.14.9"
+METALLB_VERSION="v0.16.0"
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/${METALLB_VERSION}/config/manifests/metallb-native.yaml
 ```
 
@@ -378,7 +379,7 @@ To uninstall MetalLB entirely (if you installed via manifests):
 
 ```bash
 # Remove all MetalLB resources and the namespace
-kubectl delete -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+kubectl delete -f https://raw.githubusercontent.com/metallb/metallb/v0.16.0/config/manifests/metallb-native.yaml
 ```
 
 ## Wrapping Up
