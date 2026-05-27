@@ -10,7 +10,7 @@ Description: Build a Cloud Function that sends email notifications through SendG
 
 When a monitoring alert fires - a server is down, error rates spike, or a database is running out of space - you need to notify your team immediately. While tools like PagerDuty and Slack are popular for alerts, email remains essential for many teams, compliance requirements, and stakeholders who do not use chat tools.
 
-SendGrid is the most straightforward way to send transactional emails from a Cloud Function. Google Cloud does not allow direct SMTP connections from Cloud Functions, but SendGrid's HTTP API works perfectly. Here is how to wire it all together.
+SendGrid is the most straightforward way to send transactional emails from a Cloud Function. Cloud Run functions do not allow outbound connections on port 25, so you cannot use non-secure SMTP on the default SMTP port, but SendGrid's HTTP API works perfectly. Here is how to wire it all together.
 
 ## Prerequisites
 
@@ -223,7 +223,7 @@ Package.json:
 # Deploy with SendGrid API key from Secret Manager
 gcloud functions deploy send-alert-email \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs24 \
   --region=us-central1 \
   --source=. \
   --entry-point=sendAlertEmail \
@@ -356,8 +356,9 @@ import functions_framework
 import base64
 import json
 import os
+from html import escape
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail, Email, To, Content
+from sendgrid.helpers.mail import Mail, Email, To
 
 sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
 
@@ -375,13 +376,28 @@ def send_alert_email(cloud_event):
     # Build the email
     mail = Mail(
         from_email=Email(os.environ.get('FROM_EMAIL', 'alerts@example.com')),
-        to_emails=[To(r) for r in os.environ.get('ALERT_RECIPIENTS', '').split(',')],
+        to_emails=[To(r) for r in os.environ.get('ALERT_RECIPIENTS', '').split(',') if r],
         subject=f'[{severity}] {alert.get("title", "System Alert")}',
         html_content=build_html(alert, severity)
     )
 
     response = sg.send(mail)
     print(f"Email sent, status: {response.status_code}")
+
+def build_html(alert, severity):
+    """Build a simple HTML alert email."""
+    title = escape(str(alert.get("title", "System Alert")))
+    message = escape(str(alert.get("message", alert.get("description", "No description provided."))))
+    source = escape(str(alert.get("source", "Unknown")))
+
+    return f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2>{escape(str(severity))} Alert</h2>
+      <h3>{title}</h3>
+      <p>{message}</p>
+      <p><strong>Source:</strong> {source}</p>
+    </div>
+    """
 ```
 
 ## Monitoring
