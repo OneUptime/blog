@@ -123,6 +123,7 @@ dr_dns_records:
 - name: Promote PostgreSQL replica to primary
   command: >
     pg_ctl promote -D /var/lib/postgresql/15/main
+  become: true
   become_user: postgres
   delegate_to: "{{ dr_db_replica }}"
   when: dr_db_type == 'postgresql'
@@ -130,12 +131,14 @@ dr_dns_records:
 - name: Wait for promotion to complete
   command: >
     psql -c "SELECT pg_is_in_recovery();"
+  become: true
   become_user: postgres
   delegate_to: "{{ dr_db_replica }}"
   register: recovery_check
   until: "'f' in recovery_check.stdout"
   retries: 10
   delay: 5
+  when: dr_db_type == 'postgresql'
 ```
 
 ## DNS Switching
@@ -144,7 +147,7 @@ dr_dns_records:
 # roles/dr_failover/tasks/switch_dns.yml
 ---
 - name: Update DNS records to DR site IPs
-  route53:
+  amazon.aws.route53:
     state: present
     zone: "{{ dr_dns_zone }}"
     record: "{{ item.name }}"
@@ -209,7 +212,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -353,4 +356,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
