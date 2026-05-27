@@ -44,10 +44,15 @@ ansible_python_interpreter=/usr/bin/python3
           - ansible_distribution_major_version == "9"
         fail_msg: "This playbook targets CentOS Stream 9"
 
-    - name: Enable CRB repository (Code Ready Builder equivalent)
+    - name: Install DNF plugin helpers
       ansible.builtin.dnf:
-        name: centos-release-crb
+        name: dnf-plugins-core
         state: present
+
+    - name: Enable CRB repository (Code Ready Builder equivalent)
+      community.general.dnf_config_manager:
+        name: crb
+        state: enabled
 
     - name: Install EPEL repository
       ansible.builtin.dnf:
@@ -243,13 +248,13 @@ CentOS Stream 9 ships with SELinux in enforcing mode, same as RHEL:
         name: dnf-automatic
         state: present
 
-    - name: Configure automatic security updates
+    - name: Configure automatic updates
       ansible.builtin.lineinfile:
         path: /etc/dnf/automatic.conf
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^upgrade_type', line: 'upgrade_type = security' }
+        - { regexp: '^upgrade_type', line: 'upgrade_type = default' }
         - { regexp: '^apply_updates', line: 'apply_updates = yes' }
 
     - name: Enable dnf-automatic timer
@@ -286,4 +291,4 @@ CentOS Stream 9 ships with SELinux in enforcing mode, same as RHEL:
 
 ## Summary
 
-CentOS Stream 9 is configured similarly to RHEL but without subscription management. Key differences: you get CRB (Code Ready Builder) via the `centos-release-crb` package, EPEL is available as `epel-release`, and there is no need for `rhsm_repository` calls. SELinux, firewalld, and dnf work identically to RHEL. This playbook gives you a production-ready base configuration for CentOS Stream 9.
+CentOS Stream 9 is configured similarly to RHEL but without subscription management. Key differences: you enable CRB (Code Ready Builder) with `dnf config-manager`, EPEL is available as `epel-release`, and there is no need for `rhsm_repository` calls. SELinux, firewalld, and most dnf workflows are similar to RHEL, but security-only DNF updates depend on advisory metadata that standard CentOS Stream repositories do not publish. This playbook gives you a production-ready base configuration for CentOS Stream 9.
