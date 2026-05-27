@@ -168,6 +168,7 @@ gcloud functions deploy gcs-processor \
 `index.js`:
 
 ```javascript
+const functions = require('@google-cloud/functions-framework');
 const { Storage } = require('@google-cloud/storage');
 const storage = new Storage();
 
@@ -175,7 +176,7 @@ const storage = new Storage();
  * Triggered by a Cloud Storage object change event.
  * Processes uploaded files based on their type.
  */
-exports.processGcsEvent = async (cloudEvent) => {
+functions.cloudEvent('processGcsEvent', async (cloudEvent) => {
   const data = cloudEvent.data;
 
   const bucketName = data.bucket;
@@ -202,7 +203,7 @@ exports.processGcsEvent = async (cloudEvent) => {
   } else {
     console.log(`No handler for content type: ${contentType}`);
   }
-};
+});
 
 async function handleCsv(bucketName, fileName) {
   const file = storage.bucket(bucketName).file(fileName);
@@ -290,7 +291,7 @@ You can trigger on different types of storage events:
 
 ## Filtering by File Pattern
 
-You cannot filter by file extension at the trigger level, but you can do it efficiently in your function code:
+If you do not configure Eventarc path pattern filters, handle file extension filtering efficiently in your function code:
 
 ```python
 @functions_framework.cloud_event
@@ -347,9 +348,11 @@ OUTPUT_BUCKET = "my-output-bucket"  # No trigger configured
 
 ## Error Handling and Retries
 
-Cloud Functions retries failed invocations by default. Make your function idempotent:
+Cloud Functions created with the Cloud Functions v2 API do not retry failed invocations by default. If you deploy with `--retry`, make your function idempotent:
 
 ```python
+from datetime import datetime, timezone
+
 @functions_framework.cloud_event
 def idempotent_processor(cloud_event):
     """Process files idempotently to handle retries safely."""
@@ -376,7 +379,7 @@ def idempotent_processor(cloud_event):
 
     # Write a marker to prevent reprocessing
     marker_blob.upload_from_string(
-        f"Processed at {datetime.utcnow().isoformat()}"
+        f"Processed at {datetime.now(timezone.utc).isoformat()}"
     )
     print(f"Marked as processed: {file_name}")
 ```
@@ -392,7 +395,7 @@ gcloud functions logs read gcs-processor \
   --region=us-central1 \
   --limit=50
 
-# Follow logs in real time
+# Read logs since a specific time
 gcloud functions logs read gcs-processor \
   --gen2 \
   --region=us-central1 \
