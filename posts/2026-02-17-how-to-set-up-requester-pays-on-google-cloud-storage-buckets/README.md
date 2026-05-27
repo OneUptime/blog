@@ -52,9 +52,11 @@ gcloud storage buckets update gs://my-shared-dataset \
 ### On a New Bucket
 
 ```bash
-# Create a bucket with Requester Pays enabled
+# Create a bucket, then enable Requester Pays
 gcloud storage buckets create gs://public-research-data \
-  --location=us-central1 \
+  --location=us-central1
+
+gcloud storage buckets update gs://public-research-data \
   --requester-pays
 ```
 
@@ -71,12 +73,13 @@ gcloud storage buckets describe gs://my-shared-dataset \
 ```bash
 # Disable Requester Pays on a bucket
 gcloud storage buckets update gs://my-shared-dataset \
+  --billing-project=my-billing-project \
   --no-requester-pays
 ```
 
 ## Accessing a Requester Pays Bucket
 
-When Requester Pays is enabled, every request must include a billing project. Without it, the request fails.
+When Requester Pays is enabled, requests normally must include a billing project. Without it, the request fails unless the requester has permission to bill the bucket owner's project.
 
 ### Using gcloud
 
@@ -300,9 +303,9 @@ gcloud billing budgets create \
   --billing-account=BILLING_ACCOUNT_ID \
   --display-name="GCS Requester Pays Budget" \
   --budget-amount=100USD \
-  --threshold-rule=percent=50 \
-  --threshold-rule=percent=80 \
-  --threshold-rule=percent=100
+  --threshold-rule=percent=0.50 \
+  --threshold-rule=percent=0.80 \
+  --threshold-rule=percent=1.00
 ```
 
 ## Important Considerations
@@ -311,12 +314,12 @@ gcloud billing budgets create \
 
 **The billing project must have billing enabled.** If the requester's project does not have an active billing account, requests will fail.
 
-**Object-level operations require the billing project.** Every operation - listing, reading, writing, metadata updates - needs the billing project parameter.
+**Object-level operations require the billing project.** Listing, reading, writing, and metadata updates need the billing project parameter unless the requester has permission to bill the bucket owner's project.
 
-**Cloud CDN and Requester Pays.** If you put a CDN in front of a Requester Pays bucket, the CDN's project pays for cache misses, not individual requesters.
+**Cloud CDN and Requester Pays.** Cloud CDN is not a good fit for Requester Pays buckets. Cloud CDN documentation recommends not storing cacheable objects in buckets that have Requester Pays enabled.
 
 **Audit logs still go to the bucket owner.** Even though the requester pays for access, the audit logs for bucket access are in the bucket owner's project.
 
-**Signed URLs work differently.** Signed URLs for Requester Pays buckets must include the billing project in the URL parameters.
+**Signed URLs work differently.** Signed URLs for Requester Pays buckets must include the billing project, such as the `userProject` query parameter, as part of the signed request.
 
 Requester Pays is a simple but effective mechanism for controlling costs when sharing data. It aligns incentives well - you share the data, and consumers pay proportionally to how much they use it. For large datasets or widely shared resources, it can save significant money on egress and operations costs.
