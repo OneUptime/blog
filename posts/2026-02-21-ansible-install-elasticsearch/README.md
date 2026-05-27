@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Elasticsearch, Search, DevOps
 
-Description: Automate Elasticsearch installation on Ubuntu and RHEL systems using Ansible playbooks with proper configuration and security.
+Description: Automate Elasticsearch installation on Ubuntu/Debian systems using Ansible playbooks with proper configuration and security.
 
 ---
 
@@ -14,8 +14,9 @@ This post walks through installing Elasticsearch using Ansible, covering package
 
 ## Prerequisites
 
-- Ansible 2.9+ on your control node
-- Target servers running Ubuntu 20.04+ or RHEL 8+
+- Ansible Core 2.15+ on your control node
+- The `ansible.posix` collection installed on your control node
+- Target servers running Ubuntu 20.04+ or another supported Debian-based distribution
 - At least 4GB RAM on each Elasticsearch node (8GB+ recommended)
 - Java is bundled with Elasticsearch since version 7, so no separate JDK needed
 
@@ -32,7 +33,6 @@ es-node-3 ansible_host=10.0.4.12
 [elasticsearch_nodes:vars]
 ansible_user=ubuntu
 ansible_ssh_private_key_file=~/.ssh/es-key.pem
-es_version=8.12
 es_heap_size=4g
 es_cluster_name=production-logs
 ```
@@ -49,28 +49,30 @@ Here is the playbook for installing Elasticsearch from the official Elastic repo
   become: true
   vars:
     es_major_version: "8.x"
-    es_heap_size: "{{ es_heap_size | default('4g') }}"
 
   tasks:
     - name: Install required packages
       ansible.builtin.apt:
         name:
           - apt-transport-https
-          - curl
-          - gnupg
+          - ca-certificates
+          - python3-debian
         state: present
         update_cache: true
 
-    - name: Add Elasticsearch GPG key
-      ansible.builtin.apt_key:
-        url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
-        state: present
-
     - name: Add Elasticsearch APT repository
-      ansible.builtin.apt_repository:
-        repo: "deb https://artifacts.elastic.co/packages/{{ es_major_version }}/apt stable main"
+      ansible.builtin.deb822_repository:
+        name: elastic-{{ es_major_version }}
+        types:
+          - deb
+        uris:
+          - "https://artifacts.elastic.co/packages/{{ es_major_version }}/apt"
+        suites:
+          - stable
+        components:
+          - main
+        signed_by: https://artifacts.elastic.co/GPG-KEY-elasticsearch
         state: present
-        filename: elastic-{{ es_major_version }}
 
     - name: Install Elasticsearch package
       ansible.builtin.apt:
@@ -79,7 +81,7 @@ Here is the playbook for installing Elasticsearch from the official Elastic repo
         update_cache: true
       register: es_install
 
-    - name: Store the initial security output
+    - name: Show package installation output
       ansible.builtin.debug:
         msg: "{{ es_install.stdout_lines | default([]) }}"
       when: es_install.changed
@@ -100,7 +102,7 @@ Elasticsearch requires specific system settings to run correctly. Without these,
     - name: Set vm.max_map_count for Elasticsearch mmap requirements
       ansible.posix.sysctl:
         name: vm.max_map_count
-        value: "262144"
+        value: "1048576"
         state: present
         reload: true
 
@@ -145,7 +147,7 @@ Elasticsearch requires specific system settings to run correctly. Without these,
 
 ## JVM Heap Configuration
 
-The JVM heap size is one of the most important settings. Set it to half of available RAM, but never more than 31GB (to stay in the compressed OOPs range).
+The JVM heap size is one of the most important settings. Set it to no more than half of available RAM, and keep it below the compressed OOPs threshold. Elastic documents 26GB as safe on most systems and 30GB as possible on some systems.
 
 ```yaml
 # playbooks/configure-jvm.yml
@@ -170,7 +172,7 @@ The JVM heap size is one of the most important settings. Set it to half of avail
         dest: /etc/elasticsearch/jvm.options.d/heap.options
         content: |
           # Heap size - managed by Ansible
-          # Set to half of available RAM, max 31g
+          # Set to no more than half of available RAM; keep below the compressed OOPs threshold.
           -Xms{{ es_heap_size }}
           -Xmx{{ es_heap_size }}
         owner: root
@@ -268,6 +270,7 @@ bootstrap.memory_lock: true
 # Security (Elasticsearch 8+ has security enabled by default)
 xpack.security.enabled: true
 xpack.security.transport.ssl.enabled: true
+xpack.security.transport.ssl.client_authentication: required
 xpack.security.transport.ssl.verification_mode: certificate
 xpack.security.transport.ssl.keystore.path: certs/transport.p12
 xpack.security.transport.ssl.truststore.path: certs/transport.p12
@@ -292,7 +295,7 @@ flowchart TD
 
 ## Setting Up Security
 
-Elasticsearch 8 enables security by default. Generate certificates and set passwords.
+Elasticsearch 8 enables security by default. Because this playbook configures discovery and transport TLS before the first start, automatic security setup is skipped, so generate and distribute the transport certificate yourself. Set or reset the `elastic` user password separately and provide it to Ansible as `es_elastic_password`.
 
 ```yaml
 # playbooks/setup-es-security.yml
@@ -300,8 +303,18 @@ Elasticsearch 8 enables security by default. Generate certificates and set passw
 - name: Set up Elasticsearch security
   hosts: elasticsearch_nodes[0]
   become: true
+  vars:
+    transport_cert_local_path: ./transport.p12
 
   tasks:
+    - name: Ensure certificate directory exists
+      ansible.builtin.file:
+        path: /etc/elasticsearch/certs
+        state: directory
+        owner: root
+        group: elasticsearch
+        mode: "0750"
+
     - name: Generate certificate authority
       ansible.builtin.command:
         cmd: >
@@ -320,6 +333,12 @@ Elasticsearch 8 enables security by default. Generate certificates and set passw
           --pass ""
         creates: /etc/elasticsearch/certs/transport.p12
 
+    - name: Fetch transport certificate for distribution
+      ansible.builtin.fetch:
+        src: /etc/elasticsearch/certs/transport.p12
+        dest: "{{ transport_cert_local_path }}"
+        flat: true
+
     - name: Set correct ownership on certificate files
       ansible.builtin.file:
         path: /etc/elasticsearch/certs
@@ -328,6 +347,29 @@ Elasticsearch 8 enables security by default. Generate certificates and set passw
         group: elasticsearch
         mode: "0750"
         recurse: true
+
+- name: Distribute Elasticsearch transport certificate
+  hosts: elasticsearch_nodes
+  become: true
+  vars:
+    transport_cert_local_path: ./transport.p12
+
+  tasks:
+    - name: Ensure certificate directory exists
+      ansible.builtin.file:
+        path: /etc/elasticsearch/certs
+        state: directory
+        owner: root
+        group: elasticsearch
+        mode: "0750"
+
+    - name: Copy transport certificate to every node
+      ansible.builtin.copy:
+        src: "{{ transport_cert_local_path }}"
+        dest: /etc/elasticsearch/certs/transport.p12
+        owner: root
+        group: elasticsearch
+        mode: "0640"
 ```
 
 ## Verification
@@ -344,11 +386,10 @@ After installation, check that Elasticsearch is healthy.
   tasks:
     - name: Wait for Elasticsearch to start responding
       ansible.builtin.uri:
-        url: "https://{{ ansible_host }}:9200"
+        url: "http://{{ ansible_host }}:9200"
         method: GET
         user: elastic
         password: "{{ es_elastic_password }}"
-        validate_certs: false
         status_code: 200
       register: es_response
       retries: 10
@@ -364,9 +405,9 @@ After installation, check that Elasticsearch is healthy.
 
 Here are mistakes I have encountered in production:
 
-1. **Not setting `vm.max_map_count`.** Elasticsearch will refuse to start without at least 262144 memory map areas. This is the single most common installation problem.
+1. **Not setting `vm.max_map_count`.** Elasticsearch package installs usually configure this automatically, but if the value is lower than 1048576, configure it before production use.
 
-2. **Heap size too large.** Going above 31GB disables compressed OOPs and wastes memory. Setting it to more than half your RAM starves the OS file cache, which Elasticsearch depends on heavily for Lucene segment reads.
+2. **Heap size too large.** Going above the compressed OOPs threshold wastes memory; Elastic documents 26GB as safe on most systems and 30GB as possible on some systems. Setting it to more than half your RAM starves the OS file cache, which Elasticsearch depends on heavily for Lucene segment reads.
 
 3. **Forgetting to open port 9300.** The transport port is how nodes communicate. If your firewall blocks it, nodes will install fine but never form a cluster.
 
