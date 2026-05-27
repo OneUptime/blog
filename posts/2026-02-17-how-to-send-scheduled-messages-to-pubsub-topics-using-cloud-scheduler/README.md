@@ -16,8 +16,8 @@ In this post, I will show you how to set this up and cover some practical patter
 
 With an HTTP target, Cloud Scheduler calls one endpoint directly. If that endpoint is down, the message is lost unless you configure retries. With Pub/Sub as the intermediary:
 
-- Messages are durably stored in the topic until subscribers acknowledge them
-- Multiple subscribers can process the same message independently
+- Messages are durably stored in each subscription backlog until subscribers acknowledge them or the retention period expires
+- Multiple subscriptions can process the same published message independently
 - You can add or remove subscribers without changing the scheduler configuration
 - Pub/Sub handles delivery retries to subscribers automatically
 
@@ -47,7 +47,7 @@ First, create the topic that Cloud Scheduler will publish to.
 # Create a Pub/Sub topic for scheduled events
 gcloud pubsub topics create scheduled-tasks
 
-# Optionally, add a dead-letter topic for failed deliveries
+# Optionally, create a topic you can later configure as a dead-letter topic on subscriptions
 gcloud pubsub topics create scheduled-tasks-deadletter
 ```
 
@@ -77,7 +77,7 @@ Pub/Sub messages support attributes - key-value pairs that subscribers can use f
 gcloud scheduler jobs create pubsub nightly-report \
   --location=us-central1 \
   --schedule="0 2 * * *" \
-  --topic=report-requests \
+  --topic=scheduled-tasks \
   --message-body='{"report_type": "daily_summary", "format": "pdf"}' \
   --attributes="priority=high,environment=production,source=scheduler" \
   --time-zone="America/New_York" \
@@ -96,7 +96,7 @@ Now let me show a few subscriber configurations.
 # Deploy a Cloud Function triggered by the Pub/Sub topic
 gcloud functions deploy process-scheduled-task \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --trigger-topic=scheduled-tasks \
   --entry-point=processTask \
@@ -202,6 +202,14 @@ def process_task(payload, attributes):
     elif task_type == "cleanup":
         run_cleanup(payload)
 
+def run_sync(payload):
+    """Run sync work."""
+    print("Running sync task...")
+
+def run_cleanup(payload):
+    """Run cleanup work."""
+    print("Running cleanup task...")
+
 # Start listening for messages
 streaming_pull = subscriber.subscribe(subscription_path, callback=callback)
 print(f"Listening for messages on {subscription_path}")
@@ -254,17 +262,17 @@ Pub/Sub supports subscription-level filters so different subscribers only receiv
 # Create a subscription that only receives sync tasks
 gcloud pubsub subscriptions create sync-processor \
   --topic=scheduled-tasks \
-  --filter='attributes.task_type = "sync"'
+  --message-filter='attributes.task_type = "sync"'
 
 # Create a subscription that only receives cleanup tasks
 gcloud pubsub subscriptions create cleanup-processor \
   --topic=scheduled-tasks \
-  --filter='attributes.task_type = "cleanup"'
+  --message-filter='attributes.task_type = "cleanup"'
 
 # Create a subscription that only receives report tasks
 gcloud pubsub subscriptions create report-processor \
   --topic=scheduled-tasks \
-  --filter='attributes.task_type = "report"'
+  --message-filter='attributes.task_type = "report"'
 ```
 
 ## Testing the Setup
@@ -296,7 +304,7 @@ gcloud scheduler jobs describe hourly-sync \
 # Check Pub/Sub topic metrics
 gcloud pubsub topics list-subscriptions scheduled-tasks
 
-# Check unacknowledged message count (backlog)
+# Check subscription retention and acknowledgment settings
 gcloud pubsub subscriptions describe scheduled-tasks-processor \
   --format="yaml(messageRetentionDuration, ackDeadlineSeconds)"
 ```
