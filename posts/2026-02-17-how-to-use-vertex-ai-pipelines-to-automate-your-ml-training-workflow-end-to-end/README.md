@@ -8,7 +8,7 @@ Description: Learn how to build and run automated ML training pipelines on Verte
 
 ---
 
-If you have ever trained a model manually - downloading data, preprocessing it, training, evaluating, and then deploying - you know how tedious and error-prone it gets. Every step depends on the previous one, and if something goes wrong midway, you start over. Vertex AI Pipelines solves this by letting you define your entire ML workflow as a directed acyclic graph (DAG) where each step is an independent, containerized component. If a step fails, you fix it and rerun just that step, not the whole pipeline.
+If you have ever trained a model manually - downloading data, preprocessing it, training, evaluating, and then deploying - you know how tedious and error-prone it gets. Every step depends on the previous one, and if something goes wrong midway, you start over. Vertex AI Pipelines solves this by letting you define your entire ML workflow as a directed acyclic graph (DAG) where each step is an independent, containerized component. If a step fails, you fix it and rerun the pipeline; with caching enabled, successful unchanged steps can be skipped.
 
 In this guide, I will show you how to build, compile, and run a complete ML pipeline on Vertex AI.
 
@@ -38,6 +38,7 @@ Here is the data loading component:
 
 from kfp import dsl
 from kfp.dsl import Output, Input, Dataset, Model, Metrics
+from typing import NamedTuple
 
 @dsl.component(
     base_image='python:3.10',
@@ -154,7 +155,7 @@ def evaluate_model(
     test_dataset: Input[Dataset],
     model_artifact: Input[Model],
     metrics: Output[Metrics],
-):
+) -> NamedTuple('Outputs', [('accuracy', float), ('f1_score', float)]):
     """Evaluate the trained model on the test set."""
     import pandas as pd
     from sklearn.metrics import accuracy_score, f1_score
@@ -176,6 +177,7 @@ def evaluate_model(
     metrics.log_metric('f1_score', f1)
 
     print(f"Accuracy: {accuracy:.4f}, F1 Score: {f1:.4f}")
+    return (accuracy, f1)
 ```
 
 ## Defining the Pipeline
@@ -187,6 +189,7 @@ Now connect the components into a pipeline:
 # Define the ML pipeline connecting all components
 
 from kfp import dsl
+from components import load_data, preprocess_data, train_model, evaluate_model
 
 @dsl.pipeline(
     name='ml-training-pipeline',
@@ -235,6 +238,7 @@ Compile the pipeline to a JSON file and submit it to Vertex AI:
 
 from kfp import compiler
 from google.cloud import aiplatform
+from pipeline import ml_pipeline
 
 # Compile the pipeline to a JSON spec file
 compiler.Compiler().compile(
@@ -300,9 +304,16 @@ schedule.create_schedule(
 Sometimes you want to deploy a model only if it meets a quality threshold. You can use pipeline conditions for this:
 
 ```python
+@dsl.component(
+    base_image='python:3.10',
+)
+def deploy_model(model_artifact: Input[Model]):
+    """Placeholder for your model deployment logic."""
+    print(f"Model artifact ready for deployment: {model_artifact.path}")
+
 @dsl.pipeline(name='conditional-pipeline')
 def conditional_pipeline(project_id: str, accuracy_threshold: float = 0.85):
-    load_task = load_data(project_id=project_id, query="SELECT * FROM training_data")
+    load_task = load_data(project_id=project_id, query="SELECT * FROM `your_dataset.training_data`")
     preprocess_task = preprocess_data(input_dataset=load_task.outputs['output_dataset'])
     train_task = train_model(train_dataset=preprocess_task.outputs['train_dataset'])
     eval_task = evaluate_model(
@@ -311,8 +322,8 @@ def conditional_pipeline(project_id: str, accuracy_threshold: float = 0.85):
     )
 
     # Only deploy if accuracy exceeds threshold
-    with dsl.Condition(
-        eval_task.outputs['metrics'].metadata['accuracy'] >= accuracy_threshold,
+    with dsl.If(
+        eval_task.outputs['accuracy'] >= accuracy_threshold,
         name='deploy-if-accurate'
     ):
         deploy_task = deploy_model(
@@ -332,7 +343,7 @@ Use caching. Vertex AI automatically caches component outputs. If you rerun a pi
 
 Version your pipeline definitions. Treat pipeline JSON files like code - check them into version control and tag releases.
 
-Test components locally before running them on Vertex AI. You can call component functions directly in a notebook to verify they work before submitting an expensive cloud job.
+Test components locally before running them on Vertex AI. With KFP local execution initialized, you can call component functions directly in a notebook to verify they work before submitting an expensive cloud job.
 
 ## Wrapping Up
 
