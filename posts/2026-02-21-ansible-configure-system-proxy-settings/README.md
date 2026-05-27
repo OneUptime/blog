@@ -94,12 +94,21 @@ Each package manager has its own proxy settings:
 
   vars:
     proxy_url: "http://proxy.corp.example.com:8080"
+    no_proxy_list:
+      - localhost
+      - 127.0.0.1
+      - "*.corp.example.com"
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+    no_proxy: "{{ no_proxy_list | join(',') }}"
+    redhat_pkg_proxy_config: "{{ '/etc/dnf/dnf.conf' if ansible_pkg_mgr in ['dnf', 'dnf5'] else '/etc/yum.conf' }}"
 
   tasks:
     # Configure YUM/DNF proxy (RHEL/CentOS)
-    - name: Configure YUM proxy
+    - name: Configure YUM/DNF proxy
       ansible.builtin.lineinfile:
-        path: /etc/yum.conf
+        path: "{{ redhat_pkg_proxy_config }}"
         regexp: '^proxy='
         line: "proxy={{ proxy_url }}"
         insertafter: '\[main\]'
@@ -116,13 +125,6 @@ Each package manager has its own proxy settings:
       when: ansible_os_family == "Debian"
 
     # Configure pip proxy
-    - name: Create pip config directory
-      ansible.builtin.file:
-        path: /etc/pip.conf.d
-        state: directory
-        mode: '0755'
-      failed_when: false
-
     - name: Configure pip proxy
       ansible.builtin.copy:
         dest: /etc/pip.conf
@@ -162,15 +164,15 @@ Each package manager has its own proxy settings:
           https_proxy = {{ proxy_url }}
           use_proxy = on
 
-    # Configure curl proxy
-    - name: Configure curl proxy (system-wide)
+    # Configure curl proxy for root
+    - name: Configure curl proxy for root
       ansible.builtin.copy:
-        dest: /etc/curlrc
-        mode: '0644'
+        dest: /root/.curlrc
+        mode: '0600'
         content: |
           # Proxy settings - Managed by Ansible
           proxy="{{ proxy_url }}"
-          noproxy="{{ no_proxy_list | join(',') }}"
+          noproxy="{{ no_proxy }}"
 ```
 
 ## Docker Proxy Configuration
@@ -251,14 +253,14 @@ flowchart TD
     A --> D[Package Managers]
     A --> E[Docker]
     A --> F[Development Tools]
-    D --> D1[yum.conf]
+    D --> D1[yum.conf/dnf.conf]
     D --> D2[apt.conf.d/99proxy]
     E --> E1[docker.service.d/proxy.conf]
     E --> E2[.docker/config.json]
     F --> F1[pip.conf]
     F --> F2[npm config]
     F --> F3[wgetrc]
-    F --> F4[curlrc]
+    F --> F4[.curlrc]
 ```
 
 ## Authenticated Proxy Configuration
@@ -277,9 +279,12 @@ Many corporate proxies require authentication:
     proxy_port: 8080
     proxy_user: "{{ vault_proxy_user }}"
     proxy_pass: "{{ vault_proxy_pass }}"
-    proxy_url_auth: "http://{{ proxy_user }}:{{ proxy_pass }}@{{ proxy_host }}:{{ proxy_port }}"
+    proxy_user_encoded: "{{ proxy_user | urlencode }}"
+    proxy_pass_encoded: "{{ proxy_pass | urlencode }}"
+    proxy_url_auth: "http://{{ proxy_user_encoded }}:{{ proxy_pass_encoded }}@{{ proxy_host }}:{{ proxy_port }}"
     proxy_url_noauth: "http://{{ proxy_host }}:{{ proxy_port }}"
     no_proxy: "localhost,127.0.0.1,10.0.0.0/8"
+    redhat_pkg_proxy_config: "{{ '/etc/dnf/dnf.conf' if ansible_pkg_mgr in ['dnf', 'dnf5'] else '/etc/yum.conf' }}"
 
   tasks:
     # For environment variables, use the authenticated URL
@@ -296,10 +301,10 @@ Many corporate proxies require authentication:
         - { key: "no_proxy", value: "{{ no_proxy }}" }
       no_log: true
 
-    # For YUM, use username/password separately
-    - name: Configure YUM with proxy auth
+    # For YUM/DNF, use username/password separately
+    - name: Configure YUM/DNF with proxy auth
       ansible.builtin.blockinfile:
-        path: /etc/yum.conf
+        path: "{{ redhat_pkg_proxy_config }}"
         insertafter: '\[main\]'
         marker: "# {mark} PROXY CONFIG - ANSIBLE MANAGED"
         block: |
@@ -360,17 +365,17 @@ After configuration, verify everything works:
         label: "{{ item.item }}"
 
     # Test package manager connectivity
-    - name: Test YUM repo access
+    - name: Test YUM/DNF repo access
       ansible.builtin.command:
-        cmd: "yum repolist --quiet"
-      register: yum_test
+        cmd: "{{ ansible_pkg_mgr }} repolist --quiet"
+      register: redhat_pkg_test
       changed_when: false
       failed_when: false
       when: ansible_os_family == "RedHat"
 
-    - name: Report YUM access
+    - name: Report YUM/DNF access
       ansible.builtin.debug:
-        msg: "YUM repo access: {{ 'OK' if yum_test.rc == 0 else 'FAILED' }}"
+        msg: "YUM/DNF repo access: {{ 'OK' if redhat_pkg_test.rc == 0 else 'FAILED' }}"
       when: ansible_os_family == "RedHat"
 ```
 
@@ -384,6 +389,9 @@ When servers move to a network with direct internet access, you need to cleanly 
 - name: Remove system proxy settings
   hosts: "{{ target_hosts }}"
   become: true
+
+  vars:
+    redhat_pkg_proxy_config: "{{ '/etc/dnf/dnf.conf' if ansible_pkg_mgr in ['dnf', 'dnf5'] else '/etc/yum.conf' }}"
 
   tasks:
     # Remove environment variables
@@ -402,11 +410,11 @@ When servers move to a network with direct internet access, you need to cleanly 
         - /etc/profile.d/proxy.sh
         - /etc/profile.d/proxy.csh
 
-    # Remove YUM proxy
-    - name: Remove YUM proxy
+    # Remove YUM/DNF proxy
+    - name: Remove YUM/DNF proxy
       ansible.builtin.lineinfile:
-        path: /etc/yum.conf
-        regexp: '^proxy'
+        path: "{{ redhat_pkg_proxy_config }}"
+        regexp: '^(proxy|proxy_username|proxy_password)='
         state: absent
       when: ansible_os_family == "RedHat"
 
@@ -417,6 +425,48 @@ When servers move to a network with direct internet access, you need to cleanly 
         state: absent
       when: ansible_os_family == "Debian"
 
+    # Remove pip proxy
+    - name: Remove pip proxy
+      ansible.builtin.lineinfile:
+        path: /etc/pip.conf
+        regexp: '^proxy\s*='
+        state: absent
+      failed_when: false
+
+    # Remove npm proxy
+    - name: Check if npm is installed
+      ansible.builtin.command:
+        cmd: which npm
+      register: npm_check
+      changed_when: false
+      failed_when: false
+
+    - name: Remove npm proxy
+      ansible.builtin.command:
+        cmd: "npm config delete proxy --global"
+      when: npm_check.rc == 0
+      changed_when: true
+
+    - name: Remove npm https proxy
+      ansible.builtin.command:
+        cmd: "npm config delete https-proxy --global"
+      when: npm_check.rc == 0
+      changed_when: true
+
+    # Remove wget proxy
+    - name: Remove wget proxy
+      ansible.builtin.lineinfile:
+        path: /etc/wgetrc
+        regexp: '^\s*(http_proxy|https_proxy|use_proxy)\s*='
+        state: absent
+      failed_when: false
+
+    # Remove curl proxy for root
+    - name: Remove curl proxy for root
+      ansible.builtin.file:
+        path: /root/.curlrc
+        state: absent
+
     # Remove Docker proxy
     - name: Remove Docker daemon proxy
       ansible.builtin.file:
@@ -425,6 +475,11 @@ When servers move to a network with direct internet access, you need to cleanly 
       notify:
         - reload systemd
         - restart docker
+
+    - name: Remove Docker client proxy for root
+      ansible.builtin.file:
+        path: /root/.docker/config.json
+        state: absent
 
   handlers:
     - name: reload systemd
