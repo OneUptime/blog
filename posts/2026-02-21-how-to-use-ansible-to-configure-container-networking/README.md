@@ -78,7 +78,8 @@ Overlay networks enable cross-host container communication in Docker Swarm:
     name: "{{ item.name }}"
     driver: overlay
     attachable: "{{ item.attachable | default(true) }}"
-    encrypted: "{{ item.encrypted | default(true) }}"
+    driver_options:
+      encrypted: "{{ item.encrypted | default(true) | string }}"
     ipam_config:
       - subnet: "{{ item.subnet }}"
     state: present
@@ -149,7 +150,7 @@ container_network_assignments:
   loop: "{{ dns_configured_containers }}"
 ```
 
-```json
+```jinja
 {
   "dns": {{ docker_dns_servers | to_json }},
   "dns-search": {{ docker_dns_search | to_json }},
@@ -169,7 +170,7 @@ container_network_assignments:
 # Configure iptables rules for container network isolation
 - name: Block inter-network traffic by default
   ansible.builtin.iptables:
-    chain: DOCKER-ISOLATION-STAGE-1
+    chain: DOCKER-USER
     source: "{{ item.0.subnet }}"
     destination: "{{ item.1.subnet }}"
     jump: DROP
@@ -183,7 +184,8 @@ container_network_assignments:
 
 - name: Allow specific cross-network traffic
   ansible.builtin.iptables:
-    chain: DOCKER-ISOLATION-STAGE-1
+    chain: DOCKER-USER
+    action: insert
     source: "{{ item.source_subnet }}"
     destination: "{{ item.dest_subnet }}"
     protocol: tcp
