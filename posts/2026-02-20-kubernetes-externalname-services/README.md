@@ -241,21 +241,21 @@ spec:
 ExternalName requires a DNS name, not an IP address:
 
 ```yaml
-# This will NOT work - ExternalName needs a DNS hostname
+# This will NOT work as an IP target - ExternalName needs a DNS hostname
 spec:
   type: ExternalName
-  externalName: 54.23.100.55  # Invalid
+  externalName: 54.23.100.55  # Treated as a DNS name, not an IP address
 
-# Use Endpoints + ClusterIP service for IP-based external targets instead
+# Use EndpointSlice + ClusterIP service for IP-based external targets instead
 ```
 
 ### For IP-Based External Targets
 
-If you need to point to an external IP address, use a ClusterIP service with manually managed Endpoints:
+If you need to point to an external IP address, use a ClusterIP service with a manually managed EndpointSlice:
 
 ```yaml
 # external-ip-service.yaml
-# Service without a selector - requires manual Endpoints
+# Service without a selector - requires a manual EndpointSlice
 apiVersion: v1
 kind: Service
 metadata:
@@ -267,18 +267,23 @@ spec:
     - port: 5432
       targetPort: 5432
 ---
-# Manually define the external IP as an endpoint
-apiVersion: v1
-kind: Endpoints
+# Manually define the external IP as an EndpointSlice
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  # Name must match the service name
-  name: external-db
+  name: external-db-1
   namespace: production
-subsets:
+  labels:
+    # Link this EndpointSlice to the Service
+    kubernetes.io/service-name: external-db
+    endpointslice.kubernetes.io/managed-by: cluster-admins
+addressType: IPv4
+ports:
+  - protocol: TCP
+    port: 5432
+endpoints:
   - addresses:
-      - ip: 54.23.100.55
-    ports:
-      - port: 5432
+      - "54.23.100.55"
 ```
 
 ### TLS/SNI Considerations
@@ -314,13 +319,13 @@ kubectl exec -it debug-pod -- nc -zv database 5432
 
 ## Comparison Table
 
-| Feature | ExternalName | ClusterIP + Endpoints |
+| Feature | ExternalName | ClusterIP + EndpointSlice |
 |---------|-------------|----------------------|
 | Target type | DNS hostname | IP address |
 | Port mapping | No | Yes |
 | Proxy/kube-proxy | No | Yes |
 | Health checks | No | No (manual endpoints) |
-| TLS | May cause SNI issues | Transparent |
+| TLS | May cause SNI issues | May need hostname configuration |
 | Setup complexity | Simple | Moderate |
 
 ## Summary
