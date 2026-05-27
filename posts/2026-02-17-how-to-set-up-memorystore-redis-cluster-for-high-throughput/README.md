@@ -38,7 +38,7 @@ gcloud redis clusters create my-redis-cluster \
   --shard-count=3 \
   --replica-count=1 \
   --node-type=redis-standard-small \
-  --transit-encryption-mode=TRANSIT_ENCRYPTION_MODE_SERVER_AUTHENTICATION
+  --transit-encryption-mode=server-authentication
 ```
 
 Key parameters:
@@ -46,6 +46,7 @@ Key parameters:
 - `--shard-count` - Number of shards (each shard handles a portion of the keyspace). More shards = more throughput.
 - `--replica-count` - Replicas per shard. Set to 1 for HA, 2 for extra read capacity.
 - `--node-type` - The machine type for each node. Options include `redis-standard-small`, `redis-highmem-medium`, `redis-highmem-xlarge`.
+- `--transit-encryption-mode` - Enables TLS for client connections. With `server-authentication`, configure clients with the cluster CA certificate.
 
 ## Sizing Your Cluster
 
@@ -65,21 +66,26 @@ def estimate_shard_count(
     target_write_ops,
     target_read_ops,
     total_data_gb,
+    replica_count=1,
     ops_per_shard=100000,  # Conservative estimate per shard
-    gb_per_shard=13  # Memory per shard based on node type
+    gb_per_shard=6.5  # Writable capacity per redis-standard-small primary
 ):
     """Estimate the number of shards needed for a Redis Cluster."""
 
     # Shards needed for write throughput
     shards_for_writes = target_write_ops / ops_per_shard
 
+    # Shards needed for read throughput if clients read from primaries and replicas
+    shards_for_reads = target_read_ops / (ops_per_shard * (replica_count + 1))
+
     # Shards needed for storage
     shards_for_storage = total_data_gb / gb_per_shard
 
     # Take the maximum
-    min_shards = max(shards_for_writes, shards_for_storage, 3)
+    min_shards = max(shards_for_writes, shards_for_reads, shards_for_storage, 3)
 
     print(f"Shards needed for write throughput: {shards_for_writes:.1f}")
+    print(f"Shards needed for read throughput: {shards_for_reads:.1f}")
     print(f"Shards needed for storage: {shards_for_storage:.1f}")
     print(f"Recommended shard count: {int(min_shards) + 1}")
 
@@ -104,7 +110,9 @@ gcloud redis clusters describe my-redis-cluster \
   --format="json(discoveryEndpoints)"
 ```
 
-### Python with redis-py-cluster
+Because the cluster was created with in-transit encryption, install the cluster CA certificate on your client and set `REDIS_CA_FILE` to that PEM file before connecting.
+
+### Python with redis-py
 
 The `redis-py` library supports Redis Cluster natively:
 
@@ -119,6 +127,7 @@ def create_cluster_client():
     # The discovery endpoint routes to the cluster
     discovery_host = os.environ.get("REDIS_CLUSTER_HOST", "10.0.0.100")
     discovery_port = int(os.environ.get("REDIS_CLUSTER_PORT", "6379"))
+    ca_file = os.environ.get("REDIS_CA_FILE", "/tmp/server_ca.pem")
 
     # Create the cluster client with the discovery endpoint
     startup_nodes = [ClusterNode(discovery_host, discovery_port)]
@@ -127,9 +136,10 @@ def create_cluster_client():
         startup_nodes=startup_nodes,
         decode_responses=True,
         password=os.environ.get("REDIS_AUTH"),
+        ssl=True,
+        ssl_ca_certs=ca_file,
         # Cluster-specific settings
-        skip_full_coverage_check=True,
-        retry_on_timeout=True,
+        require_full_coverage=False,
         socket_timeout=5,
         socket_connect_timeout=5,
     )
@@ -158,6 +168,7 @@ rc.setex("session:abc123", 3600, "session-data")
 ```javascript
 // cluster_client.js - Node.js client for Redis Cluster
 const Redis = require("ioredis");
+const fs = require("fs");
 
 const cluster = new Redis.Cluster(
     [
@@ -171,6 +182,9 @@ const cluster = new Redis.Cluster(
         redisOptions: {
             password: process.env.REDIS_AUTH,
             connectTimeout: 5000,
+            tls: {
+                ca: fs.readFileSync(process.env.REDIS_CA_FILE || "/tmp/server_ca.pem"),
+            },
         },
         // Scale reads across replicas
         scaleReads: "slave",
@@ -194,7 +208,7 @@ main().catch(console.error);
 
 ## Hash Tags for Multi-Key Operations
 
-Redis Cluster has a critical limitation: multi-key operations (MGET, MSET, pipelines) only work when all involved keys are on the same shard. You can control key placement using hash tags:
+Redis Cluster has a critical limitation: multi-key commands and transactions only work when all involved keys are in the same hash slot. Many cluster clients can fan out independent pipelined commands across shards, but related keys should still use the same hash tag when you need same-slot operations. You can control key placement using hash tags:
 
 ```python
 # Hash tags force keys to the same shard by putting the routing part in {}
@@ -209,7 +223,7 @@ rc.set("{user:1001}.role", "admin")
 values = rc.mget("{user:1001}.name", "{user:1001}.email", "{user:1001}.role")
 print(f"User data: {values}")
 
-# Pipeline operations also work with same hash tag
+# Pipelined operations on related keys are simplest with the same hash tag
 pipe = rc.pipeline()
 pipe.get("{user:1001}.name")
 pipe.get("{user:1001}.email")
@@ -287,14 +301,14 @@ def check_cluster_health(rc):
 check_cluster_health(rc)
 ```
 
-## Commands Not Supported in Cluster Mode
+## Commands That Need Cluster Awareness
 
-Some Redis commands do not work across a cluster:
+Some Redis commands need extra care in cluster mode:
 
-- `KEYS` - Runs against a single shard, not the full keyspace
-- `FLUSHALL` - Only flushes one shard unless you iterate
+- `KEYS` - Runs against a single shard unless your client fans it out across the cluster
+- `FLUSHALL` - Must be executed on all primary shards to clear the whole cluster
 - `SELECT` - Cluster mode only supports database 0
-- Multi-key commands without hash tags cross shard boundaries
+- Multi-key commands without hash tags can cross slot boundaries and fail with `CROSSSLOT`
 
 For operations that need to touch all shards, iterate over nodes:
 
