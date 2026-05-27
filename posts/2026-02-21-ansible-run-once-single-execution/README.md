@@ -39,7 +39,7 @@ The `run_once` directive tells Ansible to execute a task on only one host, even 
         state: restarted
 ```
 
-The database migration runs on the first host in the inventory (typically the first host listed). All other hosts skip this task.
+The database migration runs on the first host in the current batch (typically the first host selected for the play). All other hosts skip this task.
 
 ## How run_once Selects the Host
 
@@ -76,12 +76,13 @@ Batch 1: runs on web-01 (batch of web-01, web-02)
 Batch 2: runs on web-03 (batch of web-03, web-04)
 ```
 
-To run truly once across all batches, combine `run_once` with `delegate_to`:
+To run truly once across all batches, add a `when` guard that only matches one host. Use `delegate_to` as well if the task should run on a specific host:
 
 ```yaml
     - name: This runs exactly once across all batches
       command: /opt/migrate.sh
       run_once: true
+      when: inventory_hostname == ansible_play_hosts_all[0]
       delegate_to: "{{ groups['webservers'][0] }}"
 ```
 
@@ -280,6 +281,6 @@ These two are different:
   # web-01, then web-02, then web-03 (sequentially)
 ```
 
-Use `run_once` when the task should execute exactly once. Use `throttle: 1` when every host needs to run the task but only one at a time.
+Use `run_once` when the task should execute once for the current batch. Add a host-specific `when` guard if the task must run only once across a play that uses `serial`. Use `throttle: 1` when every host needs to run the task but only one at a time.
 
 The `run_once` directive is a fundamental pattern for any playbook that targets multiple hosts but has tasks that should only execute once. Database migrations, cache purges, API calls to central services, and notifications are all natural fits for `run_once`.
