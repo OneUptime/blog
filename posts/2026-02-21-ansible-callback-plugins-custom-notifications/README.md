@@ -8,7 +8,7 @@ Description: Build custom Ansible notification callback plugins that send alerts
 
 ---
 
-Ansible ships with Slack and email notification callbacks, but your team might use Microsoft Teams, Discord, Google Chat, PagerDuty, OpsGenie, or a custom internal system. Building a notification callback plugin for any webhook-based service takes about 50 lines of Python. This guide walks through the pattern and provides ready-to-use examples for several popular platforms.
+Ansible has built-in and collection-provided notification callbacks such as email and Slack, but your team might use Microsoft Teams, Discord, Google Chat, PagerDuty, OpsGenie, or a custom internal system. Building a notification callback plugin for any webhook-based service takes about 50 lines of Python. This guide walks through the pattern and provides ready-to-use examples for several popular platforms.
 
 ## The Notification Callback Pattern
 
@@ -106,7 +106,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'teams_notify'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super().__init__()
@@ -202,7 +202,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'discord_notify'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super().__init__()
@@ -278,7 +278,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'gchat_notify'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super().__init__()
@@ -327,7 +327,7 @@ All these callbacks follow the same usage pattern:
 ```ini
 # ansible.cfg - Enable custom notification callbacks
 [defaults]
-callback_whitelist = teams_notify
+callbacks_enabled = teams_notify
 callback_plugins = ./callback_plugins
 ```
 
