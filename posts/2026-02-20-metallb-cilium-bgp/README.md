@@ -14,9 +14,10 @@ Cilium is a powerful eBPF-based CNI that includes its own BGP Control Plane for 
 
 Both MetalLB and Cilium's BGP Control Plane can:
 
-- Assign IPs to LoadBalancer-type services
-- Advertise those IPs via BGP to network routers
+- Advertise LoadBalancer service IPs via BGP to network routers
 - Handle failover when a node goes down
+
+MetalLB can also assign IPs to LoadBalancer-type services. In Cilium, that job is handled by LB IPAM; the BGP Control Plane advertises the IPs that LB IPAM assigns.
 
 Running both simultaneously without coordination leads to duplicate BGP advertisements and unpredictable routing.
 
@@ -31,7 +32,7 @@ flowchart TD
 
 ## Understanding Cilium's BGP Control Plane
 
-Cilium's BGP Control Plane uses CiliumBGPPeeringPolicy resources to configure BGP sessions. It can advertise:
+Cilium's BGP Control Plane uses `CiliumBGPClusterConfig`, `CiliumBGPPeerConfig`, and `CiliumBGPAdvertisement` resources to configure BGP sessions and decide what to advertise. It can advertise:
 
 - Pod CIDRs (replacing kube-router or Calico BGP)
 - Service LoadBalancer IPs (replacing MetalLB BGP mode)
@@ -84,14 +85,18 @@ spec:
 ```yaml
 # cilium-pool.yaml
 # Cilium handles this IP range (new services)
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumLoadBalancerIPPool
 metadata:
   name: new-pool
 spec:
   blocks:
     # Second half of the range for Cilium
-    - cidr: 192.168.1.211/28
+    - start: "192.168.1.211"
+      stop: "192.168.1.222"
+  serviceSelector:
+    matchLabels:
+      lb-pool: cilium
 ```
 
 ### Configure Cilium BGP Peering
@@ -99,8 +104,8 @@ spec:
 ```yaml
 # cilium-bgp-peering.yaml
 # Configure Cilium's BGP Control Plane to peer with the router.
-apiVersion: cilium.io/v2alpha1
-kind: CiliumBGPPeeringPolicy
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
 metadata:
   name: rack-bgp
 spec:
@@ -108,17 +113,45 @@ spec:
     matchLabels:
       # Apply to all nodes (or use specific labels)
       kubernetes.io/os: linux
-  virtualRouters:
-    - localASN: 64512
-      exportPodCIDR: false
-      neighbors:
-        - peerAddress: "192.168.1.1/32"
+  bgpInstances:
+    - name: rack-64512
+      localASN: 64512
+      peers:
+        - name: router-192-168-1-1
+          peerAddress: "192.168.1.1"
           peerASN: 64513
-          # Graceful restart for seamless failover
-          gracefulRestart:
-            enabled: true
-            restartTimeSeconds: 120
-      serviceSelector:
+          peerConfigRef:
+            name: rack-peer
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPPeerConfig
+metadata:
+  name: rack-peer
+spec:
+  # Graceful restart helps peers keep routes briefly during agent restarts.
+  gracefulRestart:
+    enabled: true
+    restartTimeSeconds: 120
+  families:
+    - afi: ipv4
+      safi: unicast
+      advertisements:
+        matchLabels:
+          advertise: cilium-services
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: cilium-service-advertisements
+  labels:
+    advertise: cilium-services
+spec:
+  advertisements:
+    - advertisementType: "Service"
+      service:
+        addresses:
+          - LoadBalancerIP
+      selector:
         matchExpressions:
           # Only advertise services with this label
           - key: bgp-advertise
@@ -142,8 +175,11 @@ metadata:
   labels:
     # Tell Cilium BGP to advertise this service
     bgp-advertise: cilium
+    # Tell Cilium LB IPAM to allocate from the Cilium pool
+    lb-pool: cilium
 spec:
   type: LoadBalancer
+  loadBalancerClass: io.cilium/bgp-control-plane
   selector:
     app: new-app
   ports:
@@ -163,10 +199,9 @@ Update your Cilium Helm values to enable the BGP Control Plane:
 # Upgrade Cilium with BGP Control Plane enabled
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
+  --reuse-values \
   --set bgpControlPlane.enabled=true \
-  --set ipam.mode=kubernetes \
-  --set k8sServiceHost=<api-server-ip> \
-  --set k8sServicePort=6443
+  --set ipam.mode=kubernetes
 ```
 
 ### Step 2: Create Cilium IP Pool
@@ -174,14 +209,15 @@ helm upgrade cilium cilium/cilium \
 ```yaml
 # cilium-lb-pool.yaml
 # Define the IP pool for Cilium to assign LoadBalancer IPs.
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumLoadBalancerIPPool
 metadata:
   name: service-pool
 spec:
   blocks:
     # Use the same range that MetalLB was using
-    - cidr: 192.168.1.200/27
+    - start: "192.168.1.200"
+      stop: "192.168.1.222"
 ```
 
 ### Step 3: Configure BGP Peering
@@ -189,26 +225,55 @@ spec:
 ```yaml
 # cilium-bgp-full.yaml
 # Full BGP peering configuration for Cilium.
-apiVersion: cilium.io/v2alpha1
-kind: CiliumBGPPeeringPolicy
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
 metadata:
   name: cluster-bgp
 spec:
   nodeSelector:
     matchLabels:
       kubernetes.io/os: linux
-  virtualRouters:
-    - localASN: 64512
-      # Advertise pod CIDRs for direct routing
-      exportPodCIDR: true
-      neighbors:
-        - peerAddress: "192.168.1.1/32"
+  bgpInstances:
+    - name: cluster-64512
+      localASN: 64512
+      peers:
+        - name: router-192-168-1-1
+          peerAddress: "192.168.1.1"
           peerASN: 64513
-          gracefulRestart:
-            enabled: true
-            restartTimeSeconds: 120
-      # Advertise all LoadBalancer services
-      serviceSelector:
+          peerConfigRef:
+            name: cluster-peer
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPPeerConfig
+metadata:
+  name: cluster-peer
+spec:
+  gracefulRestart:
+    enabled: true
+    restartTimeSeconds: 120
+  families:
+    - afi: ipv4
+      safi: unicast
+      advertisements:
+        matchLabels:
+          advertise: cluster-routes
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: cluster-advertisements
+  labels:
+    advertise: cluster-routes
+spec:
+  advertisements:
+    # Advertise pod CIDRs for direct routing
+    - advertisementType: "PodCIDR"
+    # Advertise all LoadBalancer services
+    - advertisementType: "Service"
+      service:
+        addresses:
+          - LoadBalancerIP
+      selector:
         matchExpressions:
           - key: somekey
             operator: NotIn
@@ -223,6 +288,8 @@ Migrate services one at a time by removing MetalLB annotations and letting Ciliu
 ```bash
 # Remove MetalLB-specific annotations from a service
 kubectl annotate svc my-service metallb.universe.tf/loadBalancerIPs- \
+  metallb.io/loadBalancerIPs- \
+  metallb.io/address-pool- \
   metallb.universe.tf/address-pool-
 
 # The service will get a new IP from Cilium's pool
@@ -281,14 +348,14 @@ Here is a comparison to help you decide:
 
 ```bash
 # Check BGP peering status on each node
-kubectl exec -n kube-system -it cilium-xxxxx -- cilium bgp peers
+cilium bgp peers
 
 # Expected output shows peer address, ASN, and session state
-# Peer Address   ASN     State        Uptime
-# 192.168.1.1    64513   established  3h25m
+# Node      Local AS   Peer AS   Peer Address   Session State   Uptime
+# worker-1  64512      64513     192.168.1.1    established     3h25m
 
 # Check advertised routes
-kubectl exec -n kube-system -it cilium-xxxxx -- cilium bgp routes advertised ipv4 unicast
+cilium bgp routes advertised ipv4 unicast
 ```
 
 ### Verify Routes on the Router
@@ -299,13 +366,13 @@ vtysh -c "show bgp ipv4 unicast summary"
 vtysh -c "show bgp ipv4 unicast"
 
 # You should see:
-# - Pod CIDRs if exportPodCIDR is true
+# - Pod CIDRs if a PodCIDR advertisement is configured
 # - Service IPs for LoadBalancer services
 ```
 
 ## L2 Mode Consideration
 
-If you are using MetalLB in L2 mode (not BGP), there is no conflict with Cilium's BGP Control Plane. Cilium BGP handles BGP while MetalLB handles L2 ARP/NDP. They operate at different network layers:
+If you are using MetalLB in L2 mode (not BGP) for service IPs and Cilium's BGP Control Plane only for pod CIDRs or separate service IPs, there is no BGP advertisement conflict. MetalLB handles L2 ARP/NDP while Cilium BGP handles routed prefixes:
 
 ```mermaid
 flowchart TD
@@ -315,7 +382,7 @@ flowchart TD
     end
 ```
 
-This is a valid configuration that does not require any special handling.
+This is a valid configuration as long as both systems are not trying to allocate or advertise the same LoadBalancer service IPs.
 
 ## Troubleshooting
 
@@ -328,7 +395,7 @@ This is a valid configuration that does not require any special handling.
 # Debug Cilium BGP issues
 kubectl logs -n kube-system -l k8s-app=cilium | grep -i bgp
 cilium bgp peers
-cilium bgp routes
+cilium bgp routes advertised ipv4 unicast
 
 # Debug MetalLB issues during migration
 kubectl logs -n metallb-system -l component=speaker | grep -i bgp
