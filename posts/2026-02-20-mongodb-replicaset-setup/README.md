@@ -10,7 +10,7 @@ Description: Step-by-step guide to setting up MongoDB replica sets for high avai
 
 A single MongoDB instance is a single point of failure. If it crashes, your application goes down. MongoDB replica sets solve this by maintaining multiple copies of your data across different servers. If the primary fails, a secondary is automatically elected as the new primary within seconds.
 
-This post walks through setting up a production-ready MongoDB replica set, configuring read preferences, and handling failover.
+This post walks through setting up a self-managed MongoDB replica set, configuring read preferences, and handling failover.
 
 ## How Replica Sets Work
 
@@ -150,18 +150,18 @@ rs.initiate({
     members: [
         {
             _id: 0,
-            host: "mongo-0.example.com:27017",
+            host: "localhost:27017",
             // Higher priority means more likely to be elected primary
             priority: 2
         },
         {
             _id: 1,
-            host: "mongo-1.example.com:27018",
+            host: "localhost:27018",
             priority: 1
         },
         {
             _id: 2,
-            host: "mongo-2.example.com:27019",
+            host: "localhost:27019",
             priority: 1
         }
     ]
@@ -210,20 +210,20 @@ from pymongo import MongoClient, WriteConcern
 
 # Connect to the replica set
 client = MongoClient(
-    "mongodb://mongo-0:27017,mongo-1:27018,mongo-2:27019",
+    "mongodb://localhost:27017,localhost:27018,localhost:27019",
     replicaSet="rs0"
 )
 
 db = client["myapp"]
 
-# Default write concern: acknowledged by primary only (w=1)
-# Fast but data could be lost if primary crashes before replication
-db_default = db.with_options(
+# Explicit w=1 write concern: acknowledged by primary only
+# Fast but data could be lost if the primary crashes before replication
+db_w1 = db.with_options(
     write_concern=WriteConcern(w=1)
 )
 
 # Majority write concern: acknowledged by majority of members
-# Slower but guarantees data survives a primary failure
+# Slower but protects acknowledged writes from rollback after primary failure
 db_majority = db.with_options(
     write_concern=WriteConcern(w="majority", wtimeout=5000)
 )
@@ -235,7 +235,7 @@ db_majority.users.insert_one({
 })
 
 # Use w=1 for less critical data (e.g., logs)
-db_default.logs.insert_one({
+db_w1.logs.insert_one({
     "level": "info",
     "message": "User logged in",
     "timestamp": "2026-02-20T10:00:00Z"
@@ -294,9 +294,9 @@ mongosh --port 27017 --eval "rs.stepDown(60)"
 mongosh --port 27018 --eval "rs.status().members.forEach(m => print(m.name + ': ' + m.stateStr))"
 
 # Expected output:
-# mongo-0:27017: SECONDARY
-# mongo-1:27018: PRIMARY (or mongo-2 becomes primary)
-# mongo-2:27019: SECONDARY
+# localhost:27017: SECONDARY
+# localhost:27018: PRIMARY (or localhost:27019 becomes primary)
+# localhost:27019: SECONDARY
 ```
 
 ```mermaid
@@ -324,7 +324,14 @@ def check_replication_health(client: MongoClient) -> dict:
     admin = client.admin
     status = admin.command("replSetGetStatus")
 
-    primary_optime = None
+    primary_optime = next(
+        (
+            member["optimeDate"]
+            for member in status["members"]
+            if member["stateStr"] == "PRIMARY" and "optimeDate" in member
+        ),
+        None
+    )
     members_status = []
 
     for member in status["members"]:
@@ -336,7 +343,6 @@ def check_replication_health(client: MongoClient) -> dict:
         }
 
         if member["stateStr"] == "PRIMARY":
-            primary_optime = member["optimeDate"]
             info["role"] = "PRIMARY"
         elif member["stateStr"] == "SECONDARY":
             info["role"] = "SECONDARY"
