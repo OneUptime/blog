@@ -28,7 +28,7 @@ After redirection is enabled, `docker pull gcr.io/my-project/my-image` is actual
 Before starting:
 
 - Your project must have the Artifact Registry API enabled
-- You need `roles/artifactregistry.admin` on the project
+- You need `roles/artifactregistry.admin` and `roles/storage.admin` on the project to enable redirection manually
 - Make sure you have read the images from your existing GCR setup
 
 ```bash
@@ -67,16 +67,15 @@ Google provides an automatic copy mechanism, but you can also do it manually for
 # This copies all images from gcr.io to the corresponding Artifact Registry repo
 gcloud artifacts docker upgrade migrate \
   --projects=my-project-id \
-  --from-prefix=gcr.io
+  --copy-only
 ```
 
-For a dry run to see what would be copied without actually copying.
+Before enabling redirection, you can validate the project setup.
 
 ```bash
-# Dry run to see what images will be migrated
-gcloud artifacts docker upgrade migrate \
-  --projects=my-project-id \
-  --from-prefix=gcr.io \
+# Dry run to validate redirection setup
+gcloud artifacts settings enable-upgrade-redirection \
+  --project=my-project-id \
   --dry-run
 ```
 
@@ -149,7 +148,7 @@ gcloud artifacts repositories add-iam-policy-binding gcr.io \
   --project=my-project-id
 ```
 
-Note: GKE clusters with Workload Identity need the reader role on the Artifact Registry repository, not the old Storage Object Viewer role on the GCR bucket.
+Note: GKE nodes need the reader role on the Artifact Registry repository, not the old Storage Object Viewer role on the GCR bucket. Workload Identity Federation for GKE controls workload access to Google Cloud APIs, but image pulls use the node service account.
 
 ## Step 6: Monitor the Transition
 
@@ -159,8 +158,8 @@ Check Artifact Registry logs to confirm traffic is flowing through correctly.
 # View recent pull/push activity on the transition repository
 gcloud logging read \
   'resource.type="audited_resource" AND
-   resource.labels.service="artifactregistry.googleapis.com" AND
-   resource.labels.method="docker.v2"' \
+   protoPayload.serviceName="artifactregistry.googleapis.com" AND
+   protoPayload.methodName=~"^Docker-"' \
   --project=my-project-id \
   --limit=20 \
   --format="table(timestamp,protoPayload.methodName,protoPayload.resourceName)"
@@ -193,7 +192,7 @@ The redirection handles backward compatibility, so you do not need to update eve
 # Enable vulnerability scanning on the transition repository
 gcloud artifacts repositories update gcr.io \
   --location=us \
-  --enable-vulnerability-scanning \
+  --allow-vulnerability-scanning \
   --project=my-project-id
 ```
 
@@ -207,7 +206,7 @@ gcloud artifacts settings disable-upgrade-redirection \
   --project=my-project-id
 ```
 
-This is a safe operation - it just routes gcr.io traffic back to the original Container Registry storage. No images are lost.
+This operation does not delete images. It routes gcr.io traffic back to the original Container Registry storage, but Container Registry writes are unavailable after the March 18, 2025 shutdown.
 
 ## Summary
 
