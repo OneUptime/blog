@@ -8,42 +8,42 @@ Description: Learn how to use BigQuery Data Canvas to visually explore datasets,
 
 ---
 
-Not everyone who needs insights from data wants to write SQL. And even experienced SQL users sometimes want a faster way to explore an unfamiliar dataset before committing to a query. BigQuery Data Canvas provides a visual, node-based interface for data exploration. You can browse tables, filter data, join datasets, aggregate results, and create charts - all through a drag-and-drop canvas that generates SQL under the hood.
+Not everyone who needs insights from data wants to write SQL from scratch. And even experienced SQL users sometimes want a faster way to explore an unfamiliar dataset before committing to a query. BigQuery Data Canvas provides a visual, node-based interface for data exploration. You can search for tables, inspect schemas and previews, use natural language to generate SQL, join datasets, persist query results, and create charts - all through a canvas that helps generate SQL and visualizations.
 
 This guide covers how to use Data Canvas effectively, from basic exploration to building multi-step analysis workflows.
 
 ## What Is Data Canvas?
 
-Data Canvas is a visual query builder within the BigQuery console. It represents data operations as nodes on a canvas, connected by edges that show data flow. Each node performs an operation: select a table, filter rows, join tables, group and aggregate, or visualize results.
+Data Canvas is a Gemini in BigQuery feature within the BigQuery console. It represents analysis workflows as nodes on a canvas, connected by edges that show data flow. Node types include search, table, SQL, destination, visualization, text, and insights nodes.
 
 ```mermaid
 graph LR
-    T1[Table: orders] --> F1[Filter: status = 'completed']
-    F1 --> J1[Join]
+    T1[Table: orders] --> Q1[SQL: status = 'completed']
+    Q1 --> J1[SQL: Join customers]
     T2[Table: customers] --> J1
-    J1 --> G1[Group By: region]
-    G1 --> V1[Chart: Revenue by Region]
+    J1 --> G1[SQL: Group by region]
+    G1 --> V1[Visualization: Revenue by Region]
 ```
 
-The canvas generates standard SQL that you can copy, modify, and use anywhere. Think of it as a visual IDE for data exploration that produces SQL as its output.
+The canvas can generate standard BigQuery SQL that you can inspect, edit, and export from SQL nodes. Think of it as a visual workspace for data exploration that helps you find data, generate queries, and visualize results.
 
 ## Getting Started
 
 ### Accessing Data Canvas
 
 1. Open the BigQuery console at console.cloud.google.com/bigquery
-2. Click the "Data Canvas" button in the top toolbar (next to the SQL editor tabs)
+2. In the query editor, next to "SQL query," click "Create new," and then click "Data canvas"
 3. A new canvas workspace opens
 
 ### Adding Your First Table
 
-Click "Add Data" or the "+" button on the canvas. You can:
+Click "Search for data" or add a search node on the canvas. You can:
 
 - Browse your project's datasets and tables
-- Search for tables by name
+- Search for tables by name, keyword, or natural language
 - Use a public dataset to experiment
 
-Select a table and it appears as a node on the canvas. Click the node to see a preview of the data - the first 100 rows are shown automatically.
+Select a table and it appears as a node on the canvas. Click the node to view schema information, table details, and a data preview.
 
 ## Basic Exploration Workflow
 
@@ -55,7 +55,7 @@ Add your `analytics.sales` table to the canvas. The node shows the table schema 
 
 ### Step 2: Filter the Data
 
-Click the "+" on the table node and select "Filter." This adds a filter node connected to the table.
+Click "Query" on the table node and use a SQL prompt or SQL editor to filter the table.
 
 Configure the filter:
 - Column: `order_date`
@@ -67,28 +67,28 @@ Add another filter condition:
 - Condition: `=`
 - Value: `completed`
 
-The preview updates to show only matching rows.
+Run the SQL node to see only matching rows.
 
 ### Step 3: Group and Aggregate
 
-Click "+" on the filter node and select "Aggregate." Configure:
+In the SQL node, extend the query to aggregate the filtered rows. Configure or generate:
 - Group by: `product_category`
 - Aggregations:
   - `SUM(revenue)` as `total_revenue`
   - `COUNT(*)` as `order_count`
   - `AVG(revenue)` as `avg_order_value`
 
-The result shows one row per product category with the aggregated values.
+The query result shows one row per product category with the aggregated values.
 
 ### Step 4: Visualize
 
-Click "+" on the aggregate node and select "Chart." Choose:
+Click "Visualize" from the query result and create a chart. Choose:
 - Chart type: Bar chart
 - X-axis: `product_category`
 - Y-axis: `total_revenue`
 - Sort: Descending by `total_revenue`
 
-The chart renders directly on the canvas.
+The visualization node renders the chart directly on the canvas.
 
 ## Joining Multiple Tables
 
@@ -98,13 +98,14 @@ Data Canvas really shines when you need to join data from multiple sources witho
 
 1. Add the `orders` table to the canvas
 2. Add the `customers` table to the canvas
-3. Drag a connection from the `orders` node to the `customers` node
-4. The join configuration panel opens:
+3. From the `orders` table node, click "Join"
+4. Select or search for the `customers` table
+5. Use a natural language prompt or edit the generated SQL to create the join:
    - Join type: LEFT JOIN
    - Join condition: `orders.customer_id = customers.customer_id`
-5. Select which columns to include from each table
+6. Select or edit which columns to include from each table in the SQL
 
-The join node shows the combined data. You can chain additional operations (filters, aggregations, charts) from the join result.
+The SQL node shows the combined data after you run it. You can chain additional SQL nodes, destination nodes, or visualization nodes from the join result.
 
 ## Using Natural Language Queries
 
@@ -112,13 +113,13 @@ Data Canvas supports natural language input. Instead of configuring each node ma
 
 For example, type: "Show me the top 10 customers by total spending in January 2026"
 
-Data Canvas creates the necessary nodes: table selection, date filter, group by customer, sum of spending, sort, and limit. You can inspect each node to verify the logic and modify it if needed.
+Data Canvas can generate a SQL node that selects the relevant table, filters by date, groups by customer, sums spending, sorts, and limits the result. You can inspect the generated SQL to verify the logic and modify it if needed.
 
-This is particularly useful when you are exploring an unfamiliar dataset and do not know the exact column names or relationships.
+This is particularly useful when you are exploring an unfamiliar dataset and want Data Canvas to use catalog metadata, table descriptions, and column names to help find relevant assets.
 
 ## Working with the Generated SQL
 
-Every canvas workflow generates standard BigQuery SQL. Click the "SQL" tab to see it.
+SQL nodes generate standard BigQuery SQL. Open the SQL node to see and edit it.
 
 ```sql
 -- Example SQL generated by Data Canvas
@@ -149,13 +150,13 @@ You can:
 
 A single canvas can have multiple branches. For example, start with a sales table, then branch into two paths: one that aggregates by region and another that aggregates by time period. Both branches share the same source data but produce different views.
 
-### Parameterized Exploration
+### Persisting Results
 
-Use Data Canvas parameters to make your exploration dynamic. Set a parameter for date range, and all nodes that reference it update together when you change the value.
+Use a destination node to persist the result of a SQL node to a BigQuery table. This is useful when you want to reuse an intermediate result or keep the output of an exploratory query.
 
 ### Saving and Sharing Canvases
 
-Save your canvas as a named resource in your project. Share it with team members who can open it, run it with current data, and fork it for their own analysis.
+Save your canvas as a resource in your project. Share it with team members who have the right permissions so they can open it, review comments, and use the canvas for their own analysis.
 
 ## When Data Canvas Is the Right Tool
 
@@ -163,7 +164,7 @@ Data Canvas works well for:
 
 - **Initial data exploration**: Understanding the shape, distribution, and relationships in a new dataset
 - **Ad-hoc analysis**: Quick one-off questions that do not justify writing a full query
-- **Non-SQL users**: Business analysts, product managers, and others who need data but do not write SQL daily
+- **Data professionals who prefer visual exploration**: Analysts, engineers, and others who are comfortable validating SQL but do not want to write every query from scratch
 - **Prototyping queries**: Building complex queries visually before refining the SQL
 
 Data Canvas is less appropriate for:
@@ -174,16 +175,16 @@ Data Canvas is less appropriate for:
 
 ## Tips for Effective Use
 
-1. **Start with a preview**. Before building a complex workflow, preview the table to understand the data types and value distributions.
+1. **Start with a preview**. Before building a complex workflow, preview the table and schema to understand the data types and available fields.
 
 2. **Use filters early**. Filtering before aggregation reduces the data processed and makes previews faster. This also keeps your BigQuery costs lower during exploration.
 
-3. **Name your nodes**. Give meaningful names to nodes so the canvas is readable. "Completed Orders Q1" is better than "Filter 3."
+3. **Use text nodes for context**. Add short notes near important branches so the canvas is readable.
 
-4. **Export the SQL when done**. Once you have found the insight you need, export the generated SQL and save it as a view or scheduled query for ongoing use.
+4. **Export the SQL when done**. Once you have found the insight you need, export the generated SQL from the SQL node or export it as a scheduled query for ongoing use.
 
-5. **Use the schema panel**. The schema panel shows column names, types, and descriptions. Refer to it when building filter and join conditions to avoid type mismatches.
+5. **Use the schema tab**. The table node shows column names, types, and descriptions. Refer to it when building filter and join conditions to avoid type mismatches.
 
 ## Wrapping Up
 
-BigQuery Data Canvas lowers the barrier to data exploration on GCP. It does not replace SQL for production workloads, but it gives everyone on the team - not just the SQL experts - a way to explore data, test hypotheses, and build visualizations quickly. The generated SQL serves as a bridge: start visual, verify the results, then take the SQL into your production workflow. For teams that spend a lot of time fielding ad-hoc data requests, enabling self-service exploration through Data Canvas can free up significant engineering time.
+BigQuery Data Canvas lowers the barrier to data exploration on GCP. It does not replace SQL for production workloads, but it gives data teams a way to explore data, test hypotheses, and build visualizations quickly. The generated SQL serves as a bridge: start visual, verify the results, then take the SQL into your production workflow. For teams that spend a lot of time fielding ad-hoc data requests, enabling guided exploration through Data Canvas can free up significant engineering time.
