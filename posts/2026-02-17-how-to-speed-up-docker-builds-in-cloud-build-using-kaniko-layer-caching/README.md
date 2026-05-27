@@ -8,11 +8,11 @@ Description: Learn how to use Kaniko with layer caching in Google Cloud Build to
 
 ---
 
-Docker builds on Cloud Build can be slow, especially for large applications with many dependencies. Every time a build runs, it starts from scratch - downloading base images, installing packages, and compiling code. Kaniko changes this by caching individual Docker layers in a container registry, so subsequent builds only rebuild layers that actually changed. In this post, I will show you how to switch from standard Docker builds to Kaniko builds in Cloud Build and how to get the most out of layer caching.
+Docker builds on Cloud Build can be slow, especially for large applications with many dependencies. Every time a build runs without an external cache, it starts from scratch - downloading base images, installing packages, and compiling code. Kaniko changes this by caching Dockerfile `RUN` layers, and optionally `COPY` layers, in a container registry, so subsequent builds can reuse cached layers instead of rebuilding everything. In this post, I will show you how to switch from standard Docker builds to Kaniko builds in Cloud Build and how to get the most out of layer caching.
 
 ## Why Docker Builds Are Slow in Cloud Build
 
-By default, Cloud Build runs each build in a fresh environment. There is no Docker daemon running between builds, which means there is no local image cache. Every single `docker build` command starts completely cold - it pulls the base image, runs every Dockerfile instruction from scratch, and produces the final image.
+By default, Cloud Build runs each build in a fresh environment. There is no Docker daemon running between builds, which means there is no local image cache. A plain `docker build` command starts cold unless you explicitly configure an external cache source - it pulls the base image, runs Dockerfile instructions as needed, and produces the final image.
 
 For a Node.js application, this means every build does a full `npm install` even if your package.json has not changed. For a Go application, it downloads all modules every time. For anything with system-level dependencies, it runs `apt-get install` on every build.
 
@@ -20,9 +20,9 @@ This is where Kaniko comes in.
 
 ## What Is Kaniko?
 
-Kaniko is a tool developed by Google that builds container images from a Dockerfile inside a container, without needing a Docker daemon. The key feature for us is its ability to cache layers in a remote container registry and reuse them in subsequent builds.
+Kaniko is a tool originally developed under Google's GoogleContainerTools organization that builds container images from a Dockerfile inside a container, without needing a Docker daemon. The original GoogleContainerTools Kaniko project was archived on June 3, 2025 and is no longer maintained, so use these examples for environments that still standardize on Kaniko and evaluate maintained builders for new projects. The key feature for us is its ability to cache layers in a remote container registry and reuse them in subsequent builds.
 
-When Kaniko builds an image, it checks each layer against the cache stored in your registry. If a layer's inputs have not changed, Kaniko skips rebuilding it and uses the cached version instead. This can reduce build times from minutes to seconds for layers that rarely change (like dependency installation).
+When Kaniko builds an image with caching enabled, it checks cacheable Dockerfile commands against the cache stored in your registry. If a layer's inputs have not changed, Kaniko skips rebuilding it and uses the cached version instead. After the first cache miss, Kaniko builds subsequent layers locally without consulting the cache for the rest of that build, so Dockerfile ordering still matters. This can reduce build times from minutes to seconds for layers that rarely change (like dependency installation).
 
 ## Switching from Docker to Kaniko
 
@@ -48,6 +48,7 @@ steps:
       - '--destination=gcr.io/$PROJECT_ID/my-app:latest'
       - '--cache=true'
       - '--cache-ttl=72h'
+      - '--cache-copy-layers=true'
 ```
 
 That is the core change. Replace the Docker builder with the Kaniko executor and add the `--cache=true` flag. Notice that there is no separate `images` section - Kaniko pushes the image as part of the build step.
@@ -67,10 +68,13 @@ args:
   # Enable layer caching
   - '--cache=true'
 
+  # Also cache COPY layers (RUN layers are cached by default when cache is enabled)
+  - '--cache-copy-layers=true'
+
   # How long cached layers are valid (default is 2 weeks)
   - '--cache-ttl=168h'
 
-  # Where to store cached layers (defaults to same registry as destination)
+  # Where to store cached layers (defaults to a repo inferred from the destination)
   - '--cache-repo=gcr.io/$PROJECT_ID/my-app/cache'
 ```
 
@@ -85,10 +89,10 @@ args:
   # Use snapshotting mode for faster layer creation
   - '--snapshot-mode=redo'
 
-  # Skip unnecessary file system scans
+  # Skip unused multi-stage Dockerfile stages
   - '--skip-unused-stages=true'
 
-  # Compress layers in parallel
+  # Disable cache compression to reduce memory usage; this can increase runtime
   - '--compressed-caching=false'
 ```
 
@@ -127,7 +131,7 @@ COPY package.json package-lock.json ./
 
 # Step 2: Install dependencies
 # Cached as long as package files have not changed
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 # Step 3: Copy application source
 # This layer changes on every commit, but previous layers are cached
@@ -165,6 +169,7 @@ steps:
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
       - '--cache=true'
+      - '--cache-copy-layers=true'
       - '--cache-ttl=168h'
       - '--cache-repo=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app/cache'
 
@@ -177,7 +182,7 @@ Notice that you can specify multiple `--destination` flags to push the image wit
 
 ## Cache Location and Management
 
-By default, Kaniko stores cached layers in the same registry and repository as the destination image. Each cached layer is stored as a separate image tagged with a hash of its contents.
+By default, Kaniko infers a cache repository from the destination image. For example, a destination like `gcr.io/$PROJECT_ID/my-app:latest` stores cached layers under `gcr.io/$PROJECT_ID/my-app/cache` unless you provide `--cache-repo`. Each cached layer is stored as a separate image tagged with a hash of its contents.
 
 You can specify a different cache location with `--cache-repo`:
 
@@ -221,6 +226,7 @@ gcloud artifacts docker images list \
 # Delete old cached images
 gcloud artifacts docker images delete \
   us-central1-docker.pkg.dev/my-project/my-repo/build-cache@sha256:abc123 \
+  --delete-tags \
   --quiet
 ```
 
@@ -240,10 +246,10 @@ For a Node.js application that takes 5 minutes with a cold build, Kaniko caching
 
 Cloud Build also supports the `--cache-from` flag with the standard Docker builder. Both approaches solve the same problem, but there are differences:
 
-- **Kaniko** - Caches individual layers, more granular, works without a Docker daemon
-- **Docker cache-from** - Pulls a complete image and uses it as a cache source, less granular but simpler
+- **Kaniko** - Stores cacheable Dockerfile command layers in a remote registry and works without a Docker daemon
+- **Docker cache-from** - Uses an existing image or BuildKit cache as a cache source, but requires that cache source to be available to the build
 
-Kaniko generally provides better cache hit rates because it caches at the layer level. Docker's `--cache-from` is an all-or-nothing approach for each layer and requires pulling the full previous image first.
+Kaniko can be convenient in Cloud Build because it stores its build cache directly in a registry and does not need a Docker daemon. Docker's `--cache-from` can also reuse matching layers, but you need to provide a cache source, and in simple Cloud Build configurations that usually means pulling or otherwise making the previous image cache available before the build.
 
 ## Troubleshooting
 
