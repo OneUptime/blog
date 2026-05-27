@@ -14,7 +14,7 @@ This guide walks you through the whole process: understanding why the conflict h
 
 ## What Is ServiceLB (Klipper) and Why Does It Conflict?
 
-K3s is designed to be a lightweight Kubernetes distribution that works out of the box. Part of that "out of the box" experience is ServiceLB - a simple load balancer that runs as a DaemonSet. When you create a Kubernetes Service of type `LoadBalancer`, ServiceLB spins up a pod on each node that uses `iptables` rules to forward traffic from the node's IP to your service.
+K3s is designed to be a lightweight Kubernetes distribution that works out of the box. Part of that "out of the box" experience is ServiceLB - a simple load balancer that creates a DaemonSet for each `LoadBalancer` service. When you create a Kubernetes Service of type `LoadBalancer`, ServiceLB creates pods on nodes where the service port is available. Those pods use `hostPort`, and in NAT scenarios they use `iptables` rules to forward traffic to your service.
 
 MetalLB does something similar but more sophisticated. It supports both Layer 2 (ARP/NDP) and BGP modes, gives you fine-grained control over IP address pools, and is the standard choice for bare-metal Kubernetes clusters that need proper load balancing.
 
@@ -131,7 +131,7 @@ Apply the MetalLB manifests from the official repository:
 ```bash
 # Install MetalLB using the official manifests
 # This creates the metallb-system namespace and all required resources
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.0/config/manifests/metallb-native.yaml
 ```
 
 Wait for the MetalLB pods to become ready before moving on:
@@ -278,7 +278,7 @@ metadata:
   name: my-app
   annotations:
     # This annotation tells MetalLB which pool to allocate from
-    metallb.universe.tf/address-pool: staging-pool
+    metallb.io/address-pool: staging-pool
 spec:
   type: LoadBalancer
   selector:
@@ -337,10 +337,13 @@ kubectl delete svc nginx-test
 
 Here are a few things that can trip you up:
 
-**Services stuck in Pending state** - This usually means MetalLB's speaker pods cannot announce the IP. Check that the speaker pods are running on all nodes and that your IP pool addresses are on the same subnet as your nodes.
+**Services stuck in Pending state** - This usually means MetalLB's controller cannot allocate an IP. Check the controller logs, verify that your `IPAddressPool` and `L2Advertisement` resources exist, and make sure the requested pool has available addresses. If the service has an external IP but is not reachable, check that the speaker pods are running on the right nodes and that your IP pool addresses are reachable on the same Layer 2 network.
 
 ```bash
-# Check speaker pod logs for errors
+# Check controller logs for allocation errors
+kubectl logs -n metallb-system -l component=controller --tail=50
+
+# Check speaker pod logs for advertisement errors
 kubectl logs -n metallb-system -l component=speaker --tail=50
 ```
 
