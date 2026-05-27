@@ -25,6 +25,7 @@ First, enable Policy Controller on your GKE cluster if you have not already:
 
 gcloud container fleet policycontroller enable \
   --memberships=my-gke-cluster \
+  --location=global \
   --project=my-project-id
 
 # Verify it is running
@@ -35,8 +36,9 @@ Policy Controller ships with a library of pre-built constraint templates. You ca
 
 ```bash
 # Install the constraint template library
-gcloud container fleet policycontroller content templates apply \
-  --memberships=my-gke-cluster
+gcloud container fleet policycontroller content templates enable \
+  --memberships=my-gke-cluster \
+  --location=global
 ```
 
 ## Defining Compliance Constraints
@@ -58,8 +60,6 @@ spec:
     kinds:
       - apiGroups: [""]
         kinds: ["Pod"]
-      - apiGroups: ["apps"]
-        kinds: ["Deployment", "StatefulSet", "DaemonSet"]
   parameters:
     runAsUser:
       rule: MustRunAsNonRoot
@@ -80,8 +80,6 @@ spec:
     kinds:
       - apiGroups: [""]
         kinds: ["Pod"]
-      - apiGroups: ["apps"]
-        kinds: ["Deployment", "StatefulSet"]
   parameters:
     cpu: "2"
     memory: "4Gi"
@@ -102,8 +100,6 @@ spec:
     kinds:
       - apiGroups: [""]
         kinds: ["Pod"]
-      - apiGroups: ["apps"]
-        kinds: ["Deployment", "StatefulSet", "DaemonSet"]
   parameters:
     repos:
       - "gcr.io/my-project-id/"
@@ -113,6 +109,8 @@ spec:
 ## Shift-Left Validation with Gator CLI
 
 The real power comes from running these checks in your CI/CD pipeline before anything touches the cluster. The `gator` CLI tool lets you evaluate manifests against constraints locally.
+
+For Pod-scoped library constraints to evaluate workload resources such as Deployments before the generated Pods exist, include an `ExpansionTemplate` in your policy bundle; otherwise match and test Pod objects directly.
 
 Here is a Cloud Build step that uses gator to validate Kubernetes manifests:
 
@@ -126,7 +124,8 @@ steps:
       - '-c'
       - |
         # Download gator binary for constraint validation
-        curl -L https://github.com/open-policy-agent/gatekeeper/releases/download/v3.14.0/gator-v3.14.0-linux-amd64.tar.gz \
+        mkdir -p /workspace/bin
+        curl -L https://github.com/open-policy-agent/gatekeeper/releases/download/v3.22.2/gator-v3.22.2-linux-amd64.tar.gz \
           | tar xz -C /workspace/bin/
         chmod +x /workspace/bin/gator
     id: 'install-gator'
@@ -137,15 +136,13 @@ steps:
     args:
       - '-c'
       - |
-        # Run gator test against all manifests in the k8s directory
-        /workspace/bin/gator verify \
-          --filename=policies/ \
-          --filename=k8s/
+        # Run gator verify against policy test suites
+        /workspace/bin/gator verify policies/tests/...
 
-        # Also run gator test for individual constraint evaluation
+        # Also run gator test against all manifests in the k8s directory
         /workspace/bin/gator test \
-          --filename=policies/constraints/ \
           --filename=policies/templates/ \
+          --filename=policies/constraints/ \
           --filename=k8s/
     waitFor: ['install-gator']
     id: 'validate-policies'
@@ -172,13 +169,15 @@ project-root/
       container-limits.yaml
       allowed-repos.yaml
       psp-allowed-users.yaml
+      required-label-keys.yaml
     constraints/        # Constraint instances (the rules)
       require-resource-limits.yaml
       allowed-registries.yaml
       no-root-containers.yaml
     tests/              # Test cases for policy validation
-      allowed-deployment.yaml
-      violation-deployment.yaml
+      suite.yaml
+      valid-nonroot-pod.yaml
+      invalid-root-pod.yaml
   k8s/
     deployment.yaml
     service.yaml
@@ -198,15 +197,15 @@ metadata:
   name: policy-tests
 tests:
   - name: "containers must not run as root"
-    template: templates/psp-allowed-users.yaml
-    constraint: constraints/no-root-containers.yaml
+    template: ../templates/psp-allowed-users.yaml
+    constraint: ../constraints/no-root-containers.yaml
     cases:
       - name: "non-root container should pass"
-        object: tests/valid-nonroot-pod.yaml
+        object: valid-nonroot-pod.yaml
         assertions:
           - violations: "no"
       - name: "root container should fail"
-        object: tests/invalid-root-pod.yaml
+        object: invalid-root-pod.yaml
         assertions:
           - violations: "yes"
 ```
@@ -220,6 +219,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: valid-pod
+  namespace: default
 spec:
   containers:
     - name: app
@@ -246,13 +246,15 @@ steps:
       - '-c'
       - |
         # Install gator
-        curl -L https://github.com/open-policy-agent/gatekeeper/releases/download/v3.14.0/gator-v3.14.0-linux-amd64.tar.gz \
+        mkdir -p /workspace/bin
+        curl -L https://github.com/open-policy-agent/gatekeeper/releases/download/v3.22.2/gator-v3.22.2-linux-amd64.tar.gz \
           | tar xz -C /workspace/bin/
+        chmod +x /workspace/bin/gator
 
         # Run validation and capture output
         /workspace/bin/gator test \
-          --filename=policies/constraints/ \
           --filename=policies/templates/ \
+          --filename=policies/constraints/ \
           --filename=k8s/ 2>&1 | tee /workspace/policy-results.txt
 
         # Exit with the gator exit code
@@ -265,17 +267,17 @@ steps:
 Sometimes the built-in templates are not enough. Here is how to create a custom constraint template that requires specific labels on all deployments:
 
 ```yaml
-# policies/templates/required-labels.yaml
+# policies/templates/required-label-keys.yaml
 # Custom template that checks for mandatory labels
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
-  name: k8srequiredlabels
+  name: k8srequiredlabelkeys
 spec:
   crd:
     spec:
       names:
-        kind: K8sRequiredLabels
+        kind: K8sRequiredLabelKeys
       validation:
         openAPIV3Schema:
           type: object
@@ -287,11 +289,12 @@ spec:
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
-        package k8srequiredlabels
+        package k8srequiredlabelkeys
 
         # Check that all required labels are present
         violation[{"msg": msg}] {
-          provided := {label | input.review.object.metadata.labels[label]}
+          labels := object.get(input.review.object.metadata, "labels", {})
+          provided := {label | labels[label]}
           required := {label | label := input.parameters.labels[_]}
           missing := required - provided
           count(missing) > 0
@@ -305,7 +308,7 @@ And the corresponding constraint:
 # policies/constraints/require-team-labels.yaml
 # Requires team and environment labels on all Deployments
 apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sRequiredLabels
+kind: K8sRequiredLabelKeys
 metadata:
   name: require-team-labels
 spec:
