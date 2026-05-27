@@ -150,12 +150,12 @@ Staging needs realistic data, but it must be anonymized:
 
     - name: Restore production data
       ansible.builtin.shell: |
-        gunzip -c /tmp/prod_backup.sql.gz | psql {{ staging_db }}
+        gunzip -c /tmp/prod_backup.sql.gz | psql {{ staging_db | quote }}
       changed_when: true
 
     - name: Anonymize user data
       community.postgresql.postgresql_query:
-        db: "{{ staging_db }}"
+        login_db: "{{ staging_db }}"
         query: |
           UPDATE users SET
             email = 'user_' || id || '@staging.example.com',
@@ -166,7 +166,7 @@ Staging needs realistic data, but it must be anonymized:
 
     - name: Anonymize payment data
       community.postgresql.postgresql_query:
-        db: "{{ staging_db }}"
+        login_db: "{{ staging_db }}"
         query: |
           UPDATE payment_methods SET
             card_number = '4111111111111111',
@@ -175,7 +175,7 @@ Staging needs realistic data, but it must be anonymized:
 
     - name: Reset admin passwords to staging defaults
       community.postgresql.postgresql_query:
-        db: "{{ staging_db }}"
+        login_db: "{{ staging_db }}"
         query: |
           UPDATE users SET password_hash = '{{ staging_admin_password_hash }}'
           WHERE role = 'admin';
@@ -236,6 +236,9 @@ Staging does not need to run 24/7:
         state: started
         filters:
           "tag:Environment": staging
+          instance-state-name:
+            - stopped
+            - running
         wait: true
       register: started_instances
 
@@ -263,6 +266,8 @@ Staging does not need to run 24/7:
       ansible.builtin.uri:
         url: "http://localhost:{{ app_port }}/health"
         status_code: 200
+      register: health_check
+      until: health_check.status == 200
       retries: 15
       delay: 10
 ```
@@ -287,8 +292,8 @@ Keep staging configuration in sync with production changes:
         - common
         - security_baseline
         - monitoring_agent
-        - "{{ 'nginx' if 'webservers' in group_names else '' }}"
-        - "{{ 'app_deploy' if 'appservers' in group_names else '' }}"
+        - "{{ 'nginx' if 'staging_webservers' in group_names else '' }}"
+        - "{{ 'app_deploy' if 'staging_webservers' in group_names else '' }}"
       when: item != ''
 
     - name: Deploy same application version as production
@@ -296,7 +301,7 @@ Keep staging configuration in sync with production changes:
         name: app_deploy
       vars:
         app_version: "{{ production_current_version }}"
-      when: "'appservers' in group_names"
+      when: "'staging_webservers' in group_names"
 ```
 
 ## Access Management for Staging
