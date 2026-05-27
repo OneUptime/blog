@@ -8,11 +8,11 @@ Description: Learn how to use the Ansible fileglob lookup plugin to match and it
 
 ---
 
-When you need to copy a bunch of configuration files, deploy all scripts in a directory, or process every YAML file in a folder, the `fileglob` lookup plugin is your best friend. It takes a glob pattern and returns a list of matching file paths from the Ansible controller, which you can then loop over in your tasks.
+When you need to copy a bunch of configuration files, deploy all scripts in a directory, or process every YAML file in a folder, the `fileglob` lookup plugin is your best friend. It takes a glob pattern and returns matching file paths from the Ansible controller, which you can then loop over in your tasks.
 
 ## What fileglob Does
 
-The `fileglob` lookup plugin matches files on the Ansible controller (the machine running Ansible) using shell-style glob patterns. It returns a list of absolute file paths that match the pattern. Unlike the `find` module which searches on remote hosts, `fileglob` operates locally and is evaluated at playbook parse time.
+The `fileglob` lookup plugin matches files on the Ansible controller (the machine running Ansible) using shell-style glob patterns. With `wantlist=True`, it returns a list of local file paths that match the pattern. Unlike the `find` module which searches on remote hosts, `fileglob` operates locally and is evaluated when the lookup expression is executed in a task or template.
 
 ## Basic Usage
 
@@ -195,8 +195,8 @@ This playbook only runs cleanup if there are old log files to process:
         msg: "Found {{ patch_files | length }} patches to apply"
 
     - name: Apply patches
-      ansible.builtin.command:
-        cmd: "patch -p1 < {{ item }}"
+      ansible.builtin.shell:
+        cmd: "patch -p1 < {{ item | quote }}"
         chdir: /opt/application
       loop: "{{ patch_files }}"
       when: patch_files | length > 0
@@ -224,7 +224,7 @@ This playbook collects both `.conf` and `.ini` files:
 
 ## Role-Based File Discovery
 
-Inside roles, fileglob searches relative to the role's `files` directory. This makes it perfect for roles that need to deploy variable sets of files.
+Inside roles, fileglob uses Ansible's local task search paths, including the role's `files` directory. This makes it perfect for roles that need to deploy variable sets of files.
 
 ```yaml
 # roles/myapp/tasks/main.yml - Using fileglob inside a role
@@ -268,14 +268,14 @@ A few important details about `fileglob`:
 
 1. **Controller-side only**: `fileglob` searches files on the machine running Ansible, not on the remote hosts. To search remote files, use the `find` module instead.
 
-2. **No recursion**: Glob patterns do not descend into subdirectories. `configs/*.conf` will not match `configs/subdir/something.conf`. If you need recursion, use the `find` module or `with_filetree`.
+2. **No recursion**: Glob patterns do not descend into subdirectories. `configs/*.conf` will not match `configs/subdir/something.conf`. If you need recursion, use the `find` module or the `community.general.filetree` lookup.
 
 3. **Hidden files excluded**: By default, files starting with `.` are not matched unless you explicitly include the dot in your pattern (e.g., `configs/.*`).
 
-4. **Return order**: Files are returned in alphabetical order based on their path. If order matters for your deployment, consider naming files with numeric prefixes like `01-first.conf`, `02-second.conf`.
+4. **Return order**: File order is not guaranteed. If order matters for your deployment, sort the list explicitly and consider naming files with numeric prefixes like `01-first.conf`, `02-second.conf`.
 
 5. **Empty results**: If no files match the pattern, the lookup returns an empty list. Tasks with `loop` over an empty list simply skip, which is usually the behavior you want.
 
-6. **Path resolution**: Relative paths are resolved relative to the playbook directory (or the role's `files` directory when used inside a role).
+6. **Path resolution**: Relative local paths follow Ansible's task search paths. In a role, that includes the role's appropriate subdirectory such as `files`; otherwise, it includes paths relative to the task file and playbook.
 
 The `fileglob` lookup plugin eliminates the need to maintain hard-coded lists of files. When you add a new config file or script to your repository, it gets automatically picked up on the next playbook run without any changes to your tasks.
