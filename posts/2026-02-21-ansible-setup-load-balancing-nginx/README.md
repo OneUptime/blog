@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Nginx, Load Balancing, High Availability, DevOps
 
-Description: Configure Nginx load balancing with Ansible including round-robin, least connections, IP hash, health checks, and sticky sessions.
+Description: Configure Nginx load balancing with Ansible including round-robin, least connections, IP hash, passive health checks, and session affinity.
 
 ---
 
-When your application gets more traffic than a single server can handle, you need load balancing. Nginx is an excellent load balancer that distributes incoming requests across multiple backend servers. It supports several balancing algorithms, health checks, connection draining, and session persistence. Setting up load balancing with Ansible means you can add or remove backend servers by simply updating your inventory and rerunning the playbook.
+When your application gets more traffic than a single server can handle, you need load balancing. Nginx is an excellent load balancer that distributes incoming requests across multiple backend servers. It supports several balancing algorithms, passive failure handling, and session affinity. Setting up load balancing with Ansible means you can add or remove backend servers by simply updating your inventory and rerunning the playbook.
 
-This guide covers configuring Nginx as a load balancer with Ansible, including different balancing strategies, health checks, and SSL termination.
+This guide covers configuring Nginx as a load balancer with Ansible, including different balancing strategies and backend health verification.
 
 ## Load Balancing Concepts
 
@@ -90,9 +90,7 @@ lb_name: myapp
 server_name: www.example.com
 backend_port: 8080
 lb_method: least_conn  # round_robin, least_conn, ip_hash
-enable_ssl: false
 health_check_path: /health
-health_check_interval: 10
 max_fails: 3
 fail_timeout: 30
 keepalive_connections: 32
@@ -217,7 +215,7 @@ upstream {{ lb_name }}_backends {
 
 {% for host in groups['backend_servers'] %}
     # Backend server: {{ host }}
-    server {{ hostvars[host].ansible_host }}:{{ backend_port }} weight={{ hostvars[host].weight | default(1) }} max_fails={{ max_fails }} fail_timeout={{ fail_timeout }}s;
+    server {{ hostvars[host].ansible_host }}:{{ backend_port }} weight={{ hostvars[host].weight | default(1) }} max_fails={{ max_fails }} fail_timeout={{ fail_timeout }}s{% if drain_server is defined and drain_server == host %} down{% endif %};
 {% endfor %}
 
     # Keep connections alive to backend servers
@@ -297,9 +295,9 @@ server {
     - nginx_lb
 ```
 
-## Active Health Checks
+## Backend Health Verification
 
-Nginx open source uses passive health checks (marking servers down after failures). For active health checks, add a verification task in your playbook:
+Nginx open source uses passive health checks (marking servers down after failures). To verify backend health before applying or reloading the load balancer configuration, add a check task in your playbook:
 
 ```yaml
 # Verify all backends are reachable from the load balancer
@@ -340,13 +338,13 @@ backend_servers:
 ansible-playbook -i inventory/production.yml playbook.yml
 ```
 
-## Connection Draining
+## Taking a Server Out of Rotation
 
-When removing a server for maintenance, set its weight to 0 first to stop new connections while existing ones complete:
+When removing a server for maintenance, mark it as down in the generated upstream before reloading Nginx. This stops new upstream selection for that server while requests already being handled by old worker processes can finish during Nginx's graceful reload:
 
 ```yaml
-# Temporarily drain connections from a server
-- name: Set server weight to zero for draining
+# Temporarily remove a server from upstream rotation
+- name: Mark server down for maintenance
   template:
     src: load-balancer.conf.j2
     dest: /etc/nginx/sites-available/{{ lb_name }}-lb
