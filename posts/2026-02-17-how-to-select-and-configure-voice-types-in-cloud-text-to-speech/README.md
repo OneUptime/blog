@@ -4,23 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Text-to-Speech, Voice Selection, Neural Voice, Speech API
 
-Description: A comprehensive guide to selecting and configuring the right voice type in Google Cloud Text-to-Speech including Standard, WaveNet, Neural2, and Studio voices.
+Description: A comprehensive guide to selecting and configuring the right voice type in Google Cloud Text-to-Speech including Standard, WaveNet, Neural2, Studio, and newer voice families.
 
 ---
 
-Choosing the right voice for your text-to-speech application is more important than most developers realize. The wrong voice can make your product feel cheap, while the right one makes interactions feel natural and professional. Google Cloud Text-to-Speech offers four different voice technologies, hundreds of voice variants across 40+ languages, and a range of configuration options. Let me help you navigate these choices.
+Choosing the right voice for your text-to-speech application is more important than most developers realize. The wrong voice can make your product feel cheap, while the right one makes interactions feel natural and professional. Google Cloud Text-to-Speech offers multiple voice technologies, hundreds of voice variants across many languages, and a range of configuration options. Let me help you navigate these choices.
 
 ## Voice Technology Types
 
-Cloud Text-to-Speech provides four tiers of voice technology, each with different quality and cost trade-offs:
+Cloud Text-to-Speech provides several voice technologies, including newer Chirp 3 and Gemini TTS models. The legacy and general-purpose voice families developers commonly compare include these options, each with different quality and cost trade-offs:
 
 **Standard voices** use concatenative synthesis, where pre-recorded speech fragments are stitched together. They are the most affordable option and work fine for basic use cases, but they can sound robotic or uneven in longer passages.
 
-**WaveNet voices** use DeepMind's WaveNet model to generate raw audio waveforms. They sound significantly more natural than Standard voices, with better intonation and rhythm. They cost about 4x more than Standard.
+**WaveNet voices** use DeepMind's WaveNet model to generate raw audio waveforms. They sound significantly more natural than Standard voices, with better intonation and rhythm. Check the current pricing table before choosing a voice for production volume; WaveNet and Standard are listed at the same per-character price in the current Google Cloud pricing table.
 
-**Neural2 voices** are Google's latest generation of neural network voices. They offer the best balance of quality and consistency, with more natural pacing and emotion than WaveNet. Same price as WaveNet.
+**Neural2 voices** are Google's neural network voices for general-purpose synthesis. They offer a strong balance of quality and consistency, with more natural pacing and emotion than many older voices. They are priced higher than Standard and WaveNet in the current Google Cloud pricing table.
 
-**Studio voices** are premium voices designed for media production. They sound the most polished and professional but are only available for a limited set of languages. They cost about 2x more than Neural2/WaveNet.
+**Studio voices** are premium voices designed for media production. They sound the most polished and professional but are only available for a limited set of languages. They cost more than Neural2, WaveNet, and Standard voices.
 
 ## Listing and Comparing Voices
 
@@ -238,6 +238,7 @@ Each voice responds differently to parameter changes. Here is how to fine-tune:
 
 ```python
 from google.cloud import texttospeech
+import os
 
 def fine_tune_voice(text, voice_name, output_dir="tuning"):
     """Generate multiple variants of the same text to find optimal settings."""
@@ -292,6 +293,8 @@ fine_tune_voice(
 When your application supports multiple languages, maintain a consistent voice mapping:
 
 ```python
+from google.cloud import texttospeech
+
 # Recommended voices for each supported language
 MULTILINGUAL_VOICES = {
     "en-US": {"male": "en-US-Neural2-D", "female": "en-US-Neural2-F"},
@@ -302,7 +305,7 @@ MULTILINGUAL_VOICES = {
     "ja-JP": {"male": "ja-JP-Neural2-C", "female": "ja-JP-Neural2-B"},
     "ko-KR": {"male": "ko-KR-Neural2-C", "female": "ko-KR-Neural2-A"},
     "pt-BR": {"male": "pt-BR-Neural2-B", "female": "pt-BR-Neural2-A"},
-    "zh-CN": {"male": "zh-CN-Neural2-B", "female": "zh-CN-Neural2-A"},
+    "cmn-CN": {"male": "cmn-CN-Wavenet-B", "female": "cmn-CN-Wavenet-A"},
 }
 
 def get_voice_for_language(language_code, gender="female"):
@@ -330,14 +333,14 @@ def get_voice_for_language(language_code, gender="female"):
 Understanding the cost differences helps you make informed choices:
 
 - Standard: $4 per 1 million characters
-- WaveNet: $16 per 1 million characters
+- WaveNet: $4 per 1 million characters
 - Neural2: $16 per 1 million characters
 - Studio: $160 per 1 million characters
 
-For high-volume use cases like IVR systems processing millions of calls, the cost difference between Standard and Neural2 is significant. Consider using Neural2 for customer-facing audio and Standard for internal or testing purposes.
+For high-volume use cases like IVR systems processing millions of calls, the cost difference between Standard or WaveNet and Neural2 is significant. Consider using Neural2 for customer-facing audio and Standard for internal or testing purposes.
 
 ## Wrapping Up
 
-Voice selection in Cloud Text-to-Speech comes down to matching the voice technology and configuration to your use case. Neural2 voices offer the best quality-to-cost ratio for most applications. Start by generating comparison samples with different voices, then fine-tune the speaking rate and pitch until the output matches the tone you want. The investment in finding the right voice pays off in a more professional and engaging user experience.
+Voice selection in Cloud Text-to-Speech comes down to matching the voice technology and configuration to your use case. Neural2 voices offer a strong quality-to-cost ratio for many applications. Start by generating comparison samples with different voices, then fine-tune the speaking rate and pitch until the output matches the tone you want. The investment in finding the right voice pays off in a more professional and engaging user experience.
 
 For monitoring the performance of your text-to-speech integrations in production, [OneUptime](https://oneuptime.com) helps you track API latency and availability so your audio generation stays reliable.
