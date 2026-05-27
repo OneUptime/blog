@@ -18,7 +18,7 @@ Before starting, you need a few things in place:
 
 - A GCP project with billing enabled
 - The `gcloud` CLI installed and configured
-- At least one instance group or backend service running your application
+- At least one instance group running your application, with a named port such as `http:80`
 - A registered domain name with DNS access (you will need to point it at the load balancer IP)
 
 ## Step 1: Reserve a Global Static IP Address
@@ -42,7 +42,7 @@ gcloud compute addresses describe lb-ipv4-address \
     --global
 ```
 
-Go to your DNS provider and create an A record pointing your domain (e.g., `app.example.com`) to this IP address. DNS propagation can take anywhere from a few minutes to 48 hours, though it is usually much faster.
+Go to your DNS provider and create an A record pointing your domain (e.g., `app.example.com`) to this IP address. DNS propagation can take anywhere from a few minutes to 72 hours, though it is usually much faster.
 
 ## Step 2: Create a Health Check
 
@@ -68,6 +68,7 @@ The backend service ties your instance group to the load balancer and applies th
 ```bash
 # Create a backend service with the health check attached
 gcloud compute backend-services create web-backend-service \
+    --load-balancing-scheme=EXTERNAL \
     --protocol=HTTP \
     --port-name=http \
     --health-checks=http-basic-check \
@@ -114,7 +115,7 @@ gcloud compute ssl-certificates create my-multi-cert \
     --global
 ```
 
-Keep in mind that the certificate will not be provisioned until DNS is properly configured and the load balancer is serving traffic. Google needs to verify domain ownership through the HTTP-01 challenge.
+Keep in mind that the certificate will not be provisioned until DNS is properly configured and the load balancer is serving traffic. Google verifies the domain by checking that the domain's public A and AAAA records point to the load balancer's forwarding rule IP address.
 
 ## Step 6: Create the HTTPS Target Proxy
 
@@ -135,6 +136,8 @@ The forwarding rule ties the external IP address to the target proxy on port 443
 # Create the forwarding rule to route HTTPS traffic to the proxy
 gcloud compute forwarding-rules create https-content-rule \
     --address=lb-ipv4-address \
+    --load-balancing-scheme=EXTERNAL \
+    --network-tier=PREMIUM \
     --global \
     --target-https-proxy=https-lb-proxy \
     --ports=443
@@ -147,7 +150,8 @@ You almost certainly want to redirect HTTP traffic to HTTPS. This requires a sep
 ```bash
 # Create a URL map that redirects HTTP to HTTPS
 gcloud compute url-maps import http-redirect \
-    --source=/dev/stdin <<EOF
+    --source=/dev/stdin \
+    --global <<EOF
 name: http-redirect
 defaultUrlRedirect:
   redirectResponseCode: MOVED_PERMANENTLY_DEFAULT
@@ -161,6 +165,7 @@ gcloud compute target-http-proxies create http-redirect-proxy \
 # Create a forwarding rule for port 80
 gcloud compute forwarding-rules create http-redirect-rule \
     --address=lb-ipv4-address \
+    --load-balancing-scheme=EXTERNAL \
     --global \
     --target-http-proxy=http-redirect-proxy \
     --ports=80
@@ -168,16 +173,16 @@ gcloud compute forwarding-rules create http-redirect-rule \
 
 ## Step 9: Verify Certificate Provisioning
 
-Google-managed certificates can take anywhere from 15 minutes to an hour to provision. Check the status with:
+Google-managed certificates can take up to 60 minutes to provision after your DNS and load balancer configuration have propagated. Check the status with:
 
 ```bash
 # Check the status of your managed SSL certificate
 gcloud compute ssl-certificates describe my-ssl-cert \
     --global \
-    --format="get(managed.status)"
+    --format="get(managed.status,managed.domainStatus)"
 ```
 
-You want to see `ACTIVE`. If it shows `PROVISIONING`, give it more time. If it shows `FAILED_NOT_VISIBLE`, double-check your DNS records and make sure the forwarding rule is in place.
+You want to see `ACTIVE` for the managed status and for each domain. If the managed status shows `PROVISIONING`, give it more time. If a domain shows `FAILED_NOT_VISIBLE`, double-check your DNS records and make sure the forwarding rule is in place.
 
 ## Step 10: Test Your Setup
 
@@ -212,7 +217,7 @@ graph LR
 
 ## Common Issues and Fixes
 
-**Certificate stuck in PROVISIONING state**: The most common cause is DNS not pointing to the load balancer IP. Verify with `dig app.example.com` and confirm the A record matches your reserved IP.
+**Certificate stuck in PROVISIONING state**: The most common cause is DNS not pointing to the load balancer IP. Verify with `dig app.example.com` and confirm the A record matches your reserved IP. If you use IPv6, also confirm the AAAA record points only to the load balancer's IPv6 address.
 
 **502 Bad Gateway errors**: This usually means the health check is failing. Check that your application is responding on the health check port and path. Also verify that firewall rules allow traffic from the Google health check IP ranges (130.211.0.0/22 and 35.191.0.0/16).
 
