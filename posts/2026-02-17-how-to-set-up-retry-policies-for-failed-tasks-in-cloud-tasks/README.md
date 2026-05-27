@@ -52,7 +52,7 @@ gcloud tasks queues create limited-retry-queue \
   --location=us-central1 \
   --max-attempts=5
 
-# Queue with unlimited retries (will retry until max-retry-duration)
+# Queue with unlimited attempts (will retry until max-retry-duration)
 gcloud tasks queues create unlimited-retry-queue \
   --location=us-central1 \
   --max-attempts=-1 \
@@ -97,7 +97,7 @@ Controls how many times the backoff doubles before increasing linearly.
 
 ### max-retry-duration
 
-The total time window within which retries can happen. After this duration passes from the first attempt, no more retries are scheduled.
+The time limit for retrying a failed task, measured from the first attempt. If `max-attempts` is set to `-1`, retries stop when this duration is reached. If `max-attempts` is finite and `max-retry-duration` is greater than zero, Cloud Tasks stops retrying only when both limits are satisfied.
 
 ```bash
 # Retry for up to 2 hours
@@ -143,8 +143,8 @@ app.post("/process-payment", async (req, res) => {
       return;
     }
 
-    // Process the payment
-    await chargeCustomer(customerId, amount);
+    // Process the payment with a provider-level idempotency key
+    await chargeCustomer(customerId, amount, { idempotencyKey: paymentId });
 
     // Mark as processed
     await processedRef.set({
@@ -240,7 +240,8 @@ app.post("/process-data", async (req, res) => {
     } else {
       // Too many retries: save to dead letter and stop
       console.error(`Attempt ${retryCount}: sending to dead letter`);
-      await saveToDeadLetter(dataId, req.body);
+      const taskName = req.headers["x-cloudtasks-taskname"] || dataId;
+      await saveToDeadLetter(taskName, req.body, new Error("retry limit reached"));
       res.status(200).json({ status: "dead_lettered" });
       return;
     }
