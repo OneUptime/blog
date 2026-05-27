@@ -16,19 +16,19 @@ This guide covers setting up Cloud SQL for PostgreSQL as a vector store with Lan
 
 Using Cloud SQL for vectors has some practical advantages. You keep your vectors alongside your relational data, which means you can join vector search results with your existing tables. You get the same backups, high availability, and IAM integration you already rely on. And you avoid the operational overhead of managing a separate vector database.
 
-The tradeoff is that pgvector on Cloud SQL will not match the throughput of purpose-built vector databases for extremely large collections (hundreds of millions of vectors). But for most applications with up to tens of millions of vectors, it works well.
+The tradeoff is that pgvector on Cloud SQL will not match the throughput of purpose-built vector databases for extremely large collections (hundreds of millions of vectors). But for many moderate-scale applications, it can work well when you choose the right index type and benchmark against your own data and query patterns.
 
 ## Prerequisites
 
 - Google Cloud project with Cloud SQL Admin API enabled
 - A Cloud SQL for PostgreSQL instance (PostgreSQL 15 or later recommended)
 - Python 3.9+
-- The Cloud SQL Auth Proxy or direct connectivity
+- Google Cloud authentication configured, such as Application Default Credentials
 
 ```bash
 # Install required packages
 
-pip install langchain langchain-google-cloud-sql-pg langchain-google-vertexai google-cloud-aiplatform
+pip install langchain langchain-google-cloud-sql-pg langchain-google-genai google-cloud-aiplatform
 ```
 
 ## Setting Up the Cloud SQL Instance
@@ -57,11 +57,11 @@ gcloud sql users set-password postgres \
 
 ## Connecting to Cloud SQL
 
-LangChain's Cloud SQL integration uses the `CloudSQLVectorStore` class. First, you need to establish a connection.
+LangChain's Cloud SQL integration uses the `PostgresVectorStore` class. First, you need to establish a connection.
 
 ```python
-from langchain_google_cloud_sql_pg import PostgresEngine, CloudSQLVectorStore
-from langchain_google_vertexai import VertexAIEmbeddings
+from langchain_google_cloud_sql_pg import PostgresEngine, PostgresVectorStore
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 # Create a connection engine to Cloud SQL
 # This handles authentication and connection pooling automatically
@@ -83,9 +83,12 @@ Before storing vectors, you need to create the table structure. The LangChain in
 import asyncio
 
 # Initialize the embedding model - this generates vectors from text
-embeddings = VertexAIEmbeddings(
-    model_name="text-embedding-004",
+embeddings = GoogleGenerativeAIEmbeddings(
+    model="text-embedding-005",
     project="your-project-id",
+    location="us-central1",
+    vertexai=True,
+    output_dimensionality=768,
 )
 
 # Create the vector store table in Cloud SQL
@@ -98,7 +101,7 @@ asyncio.run(
 )
 
 # Initialize the vector store
-vector_store = CloudSQLVectorStore(
+vector_store = PostgresVectorStore.create_sync(
     engine=engine,
     table_name="document_embeddings",
     embedding_service=embeddings,
@@ -189,7 +192,7 @@ for doc in results:
 Here is how to use the vector store as a retriever in a full RAG pipeline with Gemini.
 
 ```python
-from langchain_google_vertexai import ChatVertexAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -201,10 +204,11 @@ retriever = vector_store.as_retriever(
 )
 
 # Initialize the Gemini model for answer generation
-llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-pro",
     project="your-project-id",
     location="us-central1",
+    vertexai=True,
     temperature=0.2,
 )
 
@@ -242,15 +246,11 @@ print(answer)
 For better query performance at scale, create an index on the vector column.
 
 ```python
+from langchain_google_cloud_sql_pg.indexes import IVFFlatIndex
+
 # Create an IVFFlat index for faster approximate nearest neighbor search
 # Run this after you have loaded a significant amount of data
-asyncio.run(
-    engine.ainit_vectorstore_table(
-        table_name="document_embeddings",
-        vector_size=768,
-        overwrite_existing=False,
-    )
-)
+vector_store.apply_vector_index(IVFFlatIndex(lists=100))
 ```
 
 You can also create indexes directly with SQL:
@@ -276,6 +276,10 @@ engine = PostgresEngine.from_instance(
     database="vectordb",
     user="postgres",
     password="your-secure-password",
+    engine_args={
+        "pool_size": 5,
+        "max_overflow": 2,
+    },
 )
 ```
 
