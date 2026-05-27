@@ -153,8 +153,6 @@ The core deployment playbook needs to handle pulling the new artifact, stopping 
       ansible.builtin.shell: |
         cd {{ releases_dir }}
         ls -dt */ | tail -n +6 | xargs rm -rf
-      args:
-        warn: false
       changed_when: false
 ```
 
@@ -223,6 +221,9 @@ When a deployment goes wrong, you need fast rollback. Here is a dedicated rollba
   hosts: webservers
   become: true
   serial: "50%"
+  vars:
+    app_name: myapp
+    deploy_dir: /opt/{{ app_name }}
 
   tasks:
     - name: Read previous release path
