@@ -8,11 +8,11 @@ Description: Learn how to safely run Django database migrations on Cloud SQL as 
 
 ---
 
-Running database migrations during deployment is one of those things that sounds simple but has a few gotchas on GCP. Your Cloud Build job needs to connect to Cloud SQL, which is on a private network. You need credentials for the database, and you need to handle migration failures gracefully so a bad migration does not leave your database in a broken state while also deploying broken code. In this post, I will cover the patterns that work reliably.
+Running database migrations during deployment is one of those things that sounds simple but has a few gotchas on GCP. Your Cloud Build job needs to connect to Cloud SQL, which might be on a public IP path or reachable only through a private network. You need credentials for the database, and you need to handle migration failures gracefully so a bad migration does not leave your database in a broken state while also deploying broken code. In this post, I will cover the patterns that work reliably.
 
 ## The Challenge
 
-Cloud Build runs in its own isolated environment. It does not have direct network access to Cloud SQL instances. You need the Cloud SQL Auth Proxy to create a connection, and you need database credentials available during the build. There are a few ways to set this up, and I will cover the most reliable approaches.
+Cloud Build runs in its own isolated environment. It can connect to Cloud SQL over the public IP path with the Cloud SQL Auth Proxy, or it can connect directly to a private IP only when the build runs in a properly configured Cloud Build private pool. You also need database credentials available during the build. There are a few ways to set this up, and I will cover the most reliable approaches.
 
 ## Approach 1: Cloud Build with Cloud SQL Proxy Sidecar
 
@@ -36,9 +36,12 @@ steps:
     args:
       - '-c'
       - |
+        set -euo pipefail
+
         # Start Cloud SQL proxy in the background
+        trap 'docker rm -f cloudsql-proxy >/dev/null 2>&1 || true' EXIT
         docker run -d --name cloudsql-proxy --network cloudbuild \
-          gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0 \
+          gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0 \
           --address 0.0.0.0 --port 5432 \
           $PROJECT_ID:us-central1:my-instance
 
@@ -56,8 +59,7 @@ steps:
           python manage.py migrate --noinput
 
         # Clean up the proxy container
-        docker stop cloudsql-proxy
-        docker rm cloudsql-proxy
+        docker rm -f cloudsql-proxy
     secretEnv: ['DB_NAME', 'DB_USER', 'DB_PASSWORD']
 
   # Step 4: Deploy to Cloud Run
@@ -253,6 +255,7 @@ Not all migrations are safe to run during deployment. Here are some patterns to 
 
 ```python
 # migrations/0025_add_email_index.py - Safe migration example
+from django.contrib.postgres.operations import AddIndexConcurrently
 from django.db import migrations, models
 
 class Migration(migrations.Migration):
@@ -267,8 +270,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Use AddIndex with concurrently=True for zero-downtime index creation
-        migrations.AddIndex(
+        # Use AddIndexConcurrently for PostgreSQL's CREATE INDEX CONCURRENTLY
+        AddIndexConcurrently(
             model_name='user',
             index=models.Index(
                 fields=['email'],
@@ -283,14 +286,14 @@ class Migration(migrations.Migration):
 from django.db import migrations, models
 
 class Migration(migrations.Migration):
-    """Add a new nullable column - safe for zero-downtime deployment."""
+    """Add a new nullable column - usually safe for zero-downtime deployment."""
 
     dependencies = [
         ('myapp', '0025_add_email_index'),
     ]
 
     operations = [
-        # Adding a nullable column does not lock the table or break existing code
+        # Adding a nullable column avoids a table rewrite and keeps existing code compatible
         migrations.AddField(
             model_name='user',
             name='phone_number',
@@ -352,7 +355,7 @@ def check_migration_safety():
     return True
 
 if __name__ == "__main__":
-    check_migration_safety()
+    sys.exit(0 if check_migration_safety() else 1)
 ```
 
 ## IAM Permissions
@@ -360,8 +363,9 @@ if __name__ == "__main__":
 Make sure Cloud Build has the right permissions.
 
 ```bash
-PROJECT_NUMBER=$(gcloud projects describe my-project --format='value(projectNumber)')
-CLOUD_BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+CLOUD_BUILD_SA=$(gcloud builds get-default-service-account \
+    --project=my-project \
+    --format='value(serviceAccountEmail)')
 
 # Cloud SQL client access
 gcloud projects add-iam-policy-binding my-project \
@@ -378,7 +382,12 @@ gcloud projects add-iam-policy-binding my-project \
     --member="serviceAccount:${CLOUD_BUILD_SA}" \
     --role="roles/run.admin"
 
-# Cloud Run jobs admin (if using Cloud Run jobs for migrations)
+# Service Account User (needed to deploy services or jobs that run as a service account)
+gcloud projects add-iam-policy-binding my-project \
+    --member="serviceAccount:${CLOUD_BUILD_SA}" \
+    --role="roles/iam.serviceAccountUser"
+
+# Cloud Run developer (if using Cloud Run jobs for migrations and not granting run.admin)
 gcloud projects add-iam-policy-binding my-project \
     --member="serviceAccount:${CLOUD_BUILD_SA}" \
     --role="roles/run.developer"
@@ -390,4 +399,4 @@ Failed migrations can leave your database in an inconsistent state. OneUptime (h
 
 ## Summary
 
-Running Django migrations during Cloud Build deployments requires solving the Cloud SQL connectivity problem and handling failures gracefully. The Cloud Run jobs approach is the cleanest because it uses the same container image and Cloud SQL connection method as your production service. Whichever approach you choose, always run migrations before deploying the new code (so the new code finds the schema it expects), use nullable columns and concurrent indexes for zero-downtime migrations, and inspect the generated SQL before applying migrations to production.
+Running Django migrations during Cloud Build deployments requires solving the Cloud SQL connectivity problem and handling failures gracefully. The Cloud Run jobs approach is the cleanest because it uses the same container image and Cloud SQL connection method as your production service. Whichever approach you choose, run backward-compatible schema migrations before deploying the new code (so the new code finds the schema it expects), use nullable columns and concurrent indexes for zero-downtime migrations, and inspect the generated SQL before applying migrations to production.
