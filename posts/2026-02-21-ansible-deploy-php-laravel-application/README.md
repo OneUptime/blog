@@ -159,12 +159,10 @@ redis_host: localhost
     mode: '0775'
     recurse: yes
 
-- name: Generate application key if not set
-  shell: php artisan key:generate --force
-  args:
-    chdir: "{{ app_dir }}"
-  become_user: "{{ app_user }}"
-  when: git_result.changed
+- name: Verify Laravel application key is set
+  fail:
+    msg: "Set vault_app_key in group_vars/all/vault.yml before deploying. Generate it with php artisan key:generate --show."
+  when: vault_app_key is not defined or vault_app_key | length == 0
 
 - name: Run database migrations
   shell: php artisan migrate --force
@@ -245,6 +243,7 @@ redis_host: localhost
 - name: Enable and start queue worker
   systemd:
     name: "{{ app_name }}-worker"
+    daemon_reload: yes
     enabled: yes
     state: started
 
