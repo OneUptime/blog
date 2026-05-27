@@ -17,7 +17,7 @@ In this post, I will walk through building a Go application that both publishes 
 Before we start, make sure you have:
 
 - A GCP project with Pub/Sub API enabled
-- Go 1.21 or later installed
+- Go 1.25 or later installed
 - The `gcloud` CLI configured with your project
 
 ## Setting Up the Project
@@ -28,7 +28,7 @@ First, initialize a Go module and pull in the Pub/Sub client library.
 # Initialize the Go module and install the Pub/Sub dependency
 
 go mod init pubsub-demo
-go get cloud.google.com/go/pubsub
+go get cloud.google.com/go/pubsub/v2
 ```
 
 ## Creating a Topic and Subscription
@@ -57,7 +57,7 @@ import (
     "sync"
     "time"
 
-    "cloud.google.com/go/pubsub"
+    "cloud.google.com/go/pubsub/v2"
 )
 
 // publishMessages sends a batch of messages to the given topic
@@ -72,10 +72,10 @@ func publishMessages(projectID, topicID string, messageCount int) error {
     }
     defer client.Close()
 
-    topic := client.Topic(topicID)
+    publisher := client.Publisher(topicID)
 
     // Configure publish settings for controlled throughput
-    topic.PublishSettings = pubsub.PublishSettings{
+    publisher.PublishSettings = pubsub.PublishSettings{
         // Maximum number of messages to batch before sending
         CountThreshold: 100,
         // Maximum size of a batch in bytes
@@ -99,7 +99,7 @@ func publishMessages(projectID, topicID string, messageCount int) error {
     for i := 0; i < messageCount; i++ {
         wg.Add(1)
         // Publish returns a future - the actual send happens asynchronously
-        result := topic.Publish(ctx, &pubsub.Message{
+        result := publisher.Publish(ctx, &pubsub.Message{
             Data: []byte(fmt.Sprintf("message-%d", i)),
             Attributes: map[string]string{
                 "origin": "go-demo",
@@ -122,7 +122,7 @@ func publishMessages(projectID, topicID string, messageCount int) error {
     }
 
     wg.Wait()
-    topic.Stop()
+    publisher.Stop()
 
     if len(publishErrors) > 0 {
         return fmt.Errorf("encountered %d publish errors", len(publishErrors))
@@ -151,22 +151,24 @@ func receiveMessages(projectID, subscriptionID string) error {
     }
     defer client.Close()
 
-    sub := client.Subscription(subscriptionID)
+    subscriber := client.Subscriber(subscriptionID)
 
     // Configure receive settings for controlled concurrency
-    sub.ReceiveSettings = pubsub.ReceiveSettings{
+    subscriber.ReceiveSettings = pubsub.ReceiveSettings{
         // Maximum number of unprocessed messages
         MaxOutstandingMessages: 100,
         // Maximum total size of unprocessed messages
         MaxOutstandingBytes:    100 * 1024 * 1024, // 100 MB
-        // Number of goroutines for pulling messages from the server
+        // Number of StreamingPull streams used to receive messages from the server
         NumGoroutines: 2,
+        // Recommended when NumGoroutines is greater than 1
+        EnablePerStreamFlowControl: true,
     }
 
     log.Println("Listening for messages...")
 
     // Receive blocks until the context is cancelled
-    err = sub.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
+    err = subscriber.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
         // Process the message
         log.Printf("Received message: %s (ID: %s)", string(msg.Data), msg.ID)
 
@@ -256,19 +258,19 @@ Here are some practical guidelines I have found helpful:
 
 3. **Use flow control on the publisher** - Even if your subscriber can handle the load, an uncontrolled publisher can create message backlogs that are hard to drain.
 
-4. **Monitor acknowledgment deadlines** - If messages are being nacked because processing takes too long, either increase the ack deadline on the subscription or reduce `MaxOutstandingMessages`.
+4. **Monitor acknowledgment deadlines** - If messages are being redelivered because processing takes too long, either tune the subscriber's ack deadline extension settings or reduce `MaxOutstandingMessages`.
 
-5. **Watch for ordering issues** - If you need ordered processing, set `NumGoroutines` to 1 on the subscriber and use ordering keys on the publisher side.
+5. **Watch for ordering issues** - If you need ordered processing, enable message ordering on the subscription and use ordering keys on the publisher side.
 
 ## Handling Errors and Nacks
 
 When processing fails, you should nack the message so Pub/Sub redelivers it:
 
 ```go
-err = sub.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
+err = subscriber.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
     if err := processMessage(msg); err != nil {
         log.Printf("Failed to process message %s: %v", msg.ID, err)
-        // Nack triggers redelivery after the ack deadline
+        // Nack asks Pub/Sub to redeliver the message sooner
         msg.Nack()
         return
     }
