@@ -112,29 +112,25 @@ def main():
     print(f"Test accuracy: {accuracy:.4f}")
 
     # Save the model to the output directory
-    model.save(args.model_dir)
+    model.export(args.model_dir)
     print(f"Model saved to {args.model_dir}")
 
 if __name__ == '__main__':
     main()
 ```
 
-## Uploading Your Training Code to GCS
+## Preparing Your Training Code
 
-Vertex AI needs to access your training script from Cloud Storage. Package your script and upload it.
+Vertex AI needs to access your training script as a Python package. The Vertex AI Python SDK and `gcloud` CLI can stage your local package for you when you submit the job.
 
 ```bash
-# Create a source distribution of your training package
-# First, make sure your directory structure looks like:
+# Make sure your directory structure looks like:
 # trainer/
 #   __init__.py
 #   task.py
 
 # Create an empty __init__.py file
 touch trainer/__init__.py
-
-# Upload the training package to GCS
-gsutil cp -r trainer/ gs://your-bucket-name/training/
 ```
 
 ## Submitting the Training Job with Python
@@ -160,15 +156,13 @@ job = aiplatform.CustomTrainingJob(
     # Path to your training script
     script_path='trainer/task.py',
     # Pre-built TensorFlow container URI
-    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-14.py310:latest',
+    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-17.py310:latest',
     # Requirements for additional packages (if any)
     requirements=['tensorflow-datasets'],
-    # Where to save the trained model
-    model_serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-14:latest',
 )
 
 # Run the training job
-model = job.run(
+job.run(
     # Machine type with GPU
     machine_type='n1-standard-4',
     accelerator_type='NVIDIA_TESLA_T4',
@@ -179,12 +173,10 @@ model = job.run(
         '--batch-size', '128',
         '--learning-rate', '0.001',
     ],
-    # Display name for the resulting model
-    model_display_name='fashion-mnist-model',
     replica_count=1,
 )
 
-print(f"Model resource name: {model.resource_name}")
+print(f"Training job resource name: {job.resource_name}")
 ```
 
 ## Choosing the Right Pre-Built Container
@@ -192,18 +184,13 @@ print(f"Model resource name: {model.resource_name}")
 Google maintains several pre-built containers for different TensorFlow versions and hardware configurations. Here are the common ones:
 
 For training with GPU:
-- `us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-14.py310:latest` (TensorFlow 2.14)
-- `us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-12.py310:latest` (TensorFlow 2.12)
+- `us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-17.py310:latest` (TensorFlow 2.17)
+- `us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-16.py310:latest` (TensorFlow 2.16)
 
 For training with CPU only:
-- `us-docker.pkg.dev/vertex-ai/training/tf-cpu.2-14.py310:latest` (TensorFlow 2.14)
+- `us-docker.pkg.dev/vertex-ai/training/tf-cpu.2-17.py310:latest` (TensorFlow 2.17)
 
-You can list all available containers with this gcloud command:
-
-```bash
-# List available pre-built training containers
-gcloud ai custom-jobs list --region=us-central1 --format="table(displayName)"
-```
+You can find the full list of available containers in the official Vertex AI pre-built training containers documentation.
 
 ## Using the gcloud CLI Instead
 
@@ -214,7 +201,7 @@ If you prefer the command line, you can submit training jobs with gcloud:
 gcloud ai custom-jobs create \
   --region=us-central1 \
   --display-name=fashion-mnist-training \
-  --worker-pool-spec=machine-type=n1-standard-4,accelerator-type=NVIDIA_TESLA_T4,accelerator-count=1,replica-count=1,container-image-uri=us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-14.py310:latest,local-package-path=./trainer,python-module=task \
+  --worker-pool-spec=machine-type=n1-standard-4,accelerator-type=NVIDIA_TESLA_T4,accelerator-count=1,replica-count=1,executor-image-uri=us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-17.py310:latest,local-package-path=.,python-module=trainer.task \
   --args=--epochs=20,--batch-size=128,--learning-rate=0.001
 ```
 
@@ -245,7 +232,7 @@ You can also check the job status programmatically:
 
 ```python
 # Check job status with the Python SDK
-job = aiplatform.CustomTrainingJob.get('projects/your-project/locations/us-central1/customJobs/12345')
+job = aiplatform.CustomJob.get('projects/your-project/locations/us-central1/customJobs/12345')
 print(f"State: {job.state}")
 ```
 
@@ -253,7 +240,7 @@ print(f"State: {job.state}")
 
 One issue I ran into early on was the training script failing to find imported modules. Make sure your trainer directory has an `__init__.py` file. Without it, Python does not recognize the directory as a package.
 
-Another common mistake is forgetting to save the model to the `AIP_MODEL_DIR` path. If you save it somewhere else, Vertex AI will not be able to find your trained model for deployment.
+Another common mistake is forgetting to save the model to the `AIP_MODEL_DIR` path. If you save it somewhere else, the model artifacts will not be in the expected Vertex AI output directory.
 
 If your job fails immediately, check that the container URI is correct and that the machine type you requested is available in your chosen region. Not all GPU types are available in every region.
 
