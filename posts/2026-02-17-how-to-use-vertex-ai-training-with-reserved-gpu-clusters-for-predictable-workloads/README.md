@@ -4,25 +4,25 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Vertex AI, GPU Reservations, Training, Cost Optimization
 
-Description: Learn how to use Vertex AI Training with reserved GPU clusters to guarantee capacity and reduce costs for predictable ML training workloads.
+Description: Learn how to use Vertex AI Training with reserved GPU clusters to improve capacity assurance and reduce costs for predictable ML training workloads.
 
 ---
 
-GPU availability on cloud platforms can be unpredictable. You submit a training job at 2 PM and it sits in a queue because all the A100s in your region are taken. For teams running regular training jobs - nightly retraining pipelines, weekly model refreshes, or multi-day training runs - this unpredictability is a serious problem. Reserved GPU clusters guarantee that you have the GPUs you need, when you need them, at a discount compared to on-demand pricing.
+GPU availability on cloud platforms can be unpredictable. You submit a training job at 2 PM and it sits in a queue because all the A100s in your region are taken. For teams running regular training jobs - nightly retraining pipelines, weekly model refreshes, or multi-day training runs - this unpredictability is a serious problem. Reserved GPU clusters help ensure that you have the GPUs you need, when you need them. If you combine reservations with committed use discounts, you can also reduce costs compared to on-demand pricing.
 
 Vertex AI integrates with Google Cloud's reservation system, letting you reserve GPU capacity and then direct your training jobs to use those reservations. This guide covers the setup, cost analysis, and practical workflow.
 
 ## Understanding GPU Reservations
 
-GPU reservations work like hotel reservations. You commit to paying for a certain number of GPUs for a defined period (1 year or 3 years), and in return you get guaranteed availability at a discounted price. The discount is typically 40-60% compared to on-demand pricing.
+GPU reservations work like hotel reservations. You reserve a specific VM shape in a specific zone, and Google Cloud holds that capacity until you delete the reservation. Reservations by themselves are charged at the same on-demand rate as running VMs, including any applicable discounts. To get a 1-year or 3-year discounted price, purchase a committed use discount (CUD) and use it with the reservation.
 
 ```mermaid
 graph TD
     A[Training Job] --> B{Reservation Available?}
     B -->|Yes| C[Use Reserved GPUs]
-    B -->|No| D[Queue for On-Demand GPUs]
-    C --> E["Guaranteed capacity<br>Discounted price"]
-    D --> F["Variable wait time<br>Full price"]
+    B -->|No| D[Wait for matching capacity]
+    C --> E["Assured capacity<br>Discounts apply through CUDs"]
+    D --> F["Variable wait time"]
 ```
 
 ## Creating a GPU Reservation
@@ -39,8 +39,8 @@ gcloud compute reservations create ml-training-reservation \
     --zone=us-central1-a \
     --vm-count=2 \
     --machine-type=a2-highgpu-4g \
-    --accelerator=count=4,type=nvidia-tesla-a100 \
-    --require-specific-reservation
+    --require-specific-reservation \
+    --reservation-sharing-policy=ALLOW_ALL
 
 # Verify the reservation
 gcloud compute reservations describe ml-training-reservation \
@@ -48,7 +48,7 @@ gcloud compute reservations describe ml-training-reservation \
     --zone=us-central1-a
 ```
 
-This creates a reservation for 2 VMs, each with 4 A100 GPUs, giving you 8 A100 GPUs total. The `--require-specific-reservation` flag means these GPUs are only used by jobs that explicitly request this reservation - they will not be consumed by random Compute Engine VMs.
+This creates a reservation for 2 A2 VMs, each with 4 A100 GPUs, giving you 8 A100 GPUs total. The `--require-specific-reservation` flag means these GPUs are only used by jobs that explicitly request this reservation - they will not be consumed by random Compute Engine VMs. The `--reservation-sharing-policy=ALLOW_ALL` flag lets Vertex AI consume the GPU VM reservation.
 
 ## Submitting Training Jobs with Reservations
 
@@ -69,7 +69,12 @@ job = aiplatform.CustomJob(
             "machine_spec": {
                 "machine_type": "a2-highgpu-4g",
                 "accelerator_type": "NVIDIA_TESLA_A100",
-                "accelerator_count": 4
+                "accelerator_count": 4,
+                "reservation_affinity": {
+                    "reservation_affinity_type": "SPECIFIC_RESERVATION",
+                    "key": "compute.googleapis.com/reservation-name",
+                    "values": ["projects/your-project-id/zones/us-central1-a/reservations/ml-training-reservation"]
+                }
             },
             "replica_count": 2,  # 2 workers matching reservation
             "python_package_spec": {
@@ -83,13 +88,7 @@ job = aiplatform.CustomJob(
                 ]
             }
         }
-    ],
-    # Reference the specific reservation
-    reservation_affinity={
-        "reservation_affinity_type": "SPECIFIC_RESERVATION",
-        "key": "compute.googleapis.com/reservation-name",
-        "values": ["projects/your-project-id/zones/us-central1-a/reservations/ml-training-reservation"]
-    }
+    ]
 )
 
 job.run(sync=False)
@@ -129,7 +128,12 @@ def submit_training_job(
                 "machine_spec": {
                     "machine_type": "a2-highgpu-4g",
                     "accelerator_type": "NVIDIA_TESLA_A100",
-                    "accelerator_count": 4
+                    "accelerator_count": 4,
+                    "reservation_affinity": {
+                        "reservation_affinity_type": "SPECIFIC_RESERVATION",
+                        "key": "compute.googleapis.com/reservation-name",
+                        "values": ["projects/your-project-id/zones/us-central1-a/reservations/ml-training-reservation"]
+                    }
                 },
                 "replica_count": 2,
                 "python_package_spec": {
@@ -179,36 +183,36 @@ schedule.create_schedule(
 
 ## Cost Analysis: Reserved vs On-Demand
 
-Let us do the math for a concrete scenario. Your team trains models every night for 4 hours on 8 A100 GPUs.
+Let us do the math for a concrete scenario. Your team trains models every night for 4 hours on 8 A100 GPUs. This simplified example focuses on the Compute Engine VM cost and excludes Vertex AI management fees, disks, storage, and networking.
 
-On-demand pricing for A100 in us-central1 is approximately $3.67/GPU/hour:
+On-demand pricing for an `a2-highgpu-1g` VM in us-central1 is approximately $3.67/hour. An `a2-highgpu-4g` VM has 4 A100 GPUs, so two `a2-highgpu-4g` VMs are roughly equivalent to 8 of those GPU units for this estimate:
 
 ```text
-On-demand cost per night: 8 GPUs x 4 hours x $3.67 = $117.44
+On-demand cost per night: 8 GPU units x 4 hours x $3.67 = $117.44
 On-demand cost per month: $117.44 x 30 = $3,523.20
 On-demand cost per year: $117.44 x 365 = $42,865.60
 ```
 
-With a 1-year reservation at approximately 40% discount:
+With a 1-year resource-based committed use discount at approximately $2.31/GPU-unit/hour:
 
 ```text
-Reserved price: ~$2.20/GPU/hour
-But you pay for 24 hours regardless: 8 GPUs x 24 hours x $2.20 = $422.40/day
-Reserved cost per month: $422.40 x 30 = $12,672.00
-Reserved cost per year: $422.40 x 365 = $154,176.00
+CUD price: ~$2.31/GPU-unit/hour
+But you pay for 24 hours regardless: 8 GPU units x 24 hours x $2.31 = $443.52/day
+Reserved cost per month: $443.52 x 30 = $13,305.60
+Reserved cost per year: $443.52 x 365 = $161,884.80
 ```
 
-Wait - reservations cost more? Only if you are using them 4 hours a day. Reservations make financial sense when your GPUs are utilized most of the time.
+Wait - reservations with commitments cost more? Only if you are using them 4 hours a day. Reservations make financial sense financially when the committed resources are utilized most of the time.
 
-Break-even utilization: $3.67 x hours = $2.20 x 24 hours, so hours = 14.4.
+Break-even utilization: $3.67 x hours = $2.31 x 24 hours, so hours = 15.1.
 
-You need to use the reserved GPUs for about 14-15 hours per day for reservations to be cheaper than on-demand. If you have multiple teams and multiple training jobs that can share the reservation throughout the day, this becomes very achievable.
+You need to use the reserved GPUs for about 15-16 hours per day for the reservation plus commitment to be cheaper than on-demand. If you have multiple teams and multiple training jobs that can share the reservation throughout the day, this becomes very achievable.
 
 ```python
 def calculate_reservation_savings(
     gpu_count,
     on_demand_price_per_gpu_hr,
-    reserved_price_per_gpu_hr,
+    committed_price_per_gpu_hr,
     daily_usage_hours,
     commitment_years=1
 ):
@@ -221,9 +225,9 @@ def calculate_reservation_savings(
         * daily_usage_hours * days_per_year
     )
 
-    # Reserved: pay for 24/7 at discounted rate
+    # Reservation plus commitment: pay for 24/7 at the committed rate
     reserved_annual = (
-        gpu_count * reserved_price_per_gpu_hr
+        gpu_count * committed_price_per_gpu_hr
         * 24 * days_per_year
     )
 
@@ -233,7 +237,7 @@ def calculate_reservation_savings(
     print(f"On-demand annual cost: ${on_demand_annual:,.2f}")
     print(f"Reserved annual cost: ${reserved_annual:,.2f}")
     print(f"Annual savings: ${savings:,.2f} ({savings_pct:.1f}%)")
-    print(f"Break-even usage: {reserved_price_per_gpu_hr * 24 / on_demand_price_per_gpu_hr:.1f} hrs/day")
+    print(f"Break-even usage: {committed_price_per_gpu_hr * 24 / on_demand_price_per_gpu_hr:.1f} hrs/day")
 
     return savings
 
@@ -241,7 +245,7 @@ def calculate_reservation_savings(
 calculate_reservation_savings(
     gpu_count=8,
     on_demand_price_per_gpu_hr=3.67,
-    reserved_price_per_gpu_hr=2.20,
+    committed_price_per_gpu_hr=2.31,
     daily_usage_hours=18  # Multiple teams sharing
 )
 ```
@@ -250,10 +254,9 @@ calculate_reservation_savings(
 
 To make reservations cost-effective, share them across teams and jobs.
 
-This code shows how to queue multiple jobs to use the same reservation:
+This code shows how to configure multiple jobs to use the same reservation:
 
 ```python
-import time
 from google.cloud import aiplatform
 
 aiplatform.init(project="your-project-id", location="us-central1")
@@ -297,7 +300,12 @@ for config in jobs_config:
                 "machine_spec": {
                     "machine_type": "a2-highgpu-4g",
                     "accelerator_type": "NVIDIA_TESLA_A100",
-                    "accelerator_count": 4
+                    "accelerator_count": 4,
+                    "reservation_affinity": {
+                        "reservation_affinity_type": "SPECIFIC_RESERVATION",
+                        "key": "compute.googleapis.com/reservation-name",
+                        "values": ["projects/your-project-id/zones/us-central1-a/reservations/ml-training-reservation"]
+                    }
                 },
                 "replica_count": 2,
                 "python_package_spec": {
@@ -323,4 +331,4 @@ gcloud compute reservations describe ml-training-reservation \
     --format="table(name, specificReservation.count, specificReservation.inUseCount)"
 ```
 
-Reserved GPU clusters on Vertex AI are a strategic choice for teams with predictable, high-volume training workloads. The guaranteed availability eliminates the frustration of GPU queues, and the cost savings are real when utilization is kept above the break-even point. The key is planning your training schedule to maximize GPU utilization across the reservation period.
+Reserved GPU clusters on Vertex AI are a strategic choice for teams with predictable, high-volume training workloads. The assured availability eliminates the frustration of GPU queues, and the cost savings are real when reservations are combined with committed use discounts and utilization is kept above the break-even point. The key is planning your training schedule to maximize GPU utilization across the reservation period.
