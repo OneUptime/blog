@@ -48,7 +48,8 @@ sudo dnf install -y iputils
 # Alpine (useful inside containers)
 apk add --no-cache iputils
 
-# macOS (via Homebrew)
+# macOS (via Homebrew; this installs a different arping implementation,
+# so use its man page for option names)
 brew install arping
 ```
 
@@ -106,7 +107,7 @@ graph LR
 
 - **Replies received** - if you get zero replies, MetalLB is not answering ARP at all.
 - **Consistent MAC** - every reply should come from the same MAC address. That MAC belongs to the leader node's interface.
-- **Changing MAC** - if the MAC alternates between replies, the leader election is unstable.
+- **Changing MAC** - if the MAC alternates between replies, check for multiple speakers replying, an IP conflict, CNI ARP responses, or unstable announcements.
 - **Response time** - sub-millisecond to low-millisecond replies are normal. High latency may indicate network congestion.
 
 ## Matching the MAC to a Kubernetes Node
@@ -114,7 +115,7 @@ graph LR
 Once you have the MAC address from arping, match it to a node to confirm which speaker is the leader.
 
 ```bash
-# List all node MAC addresses to find which node owns the responding MAC
+# List node names and internal IPs so you can check the right host interfaces
 # Replace AA:BB:CC:DD:EE:FF with the MAC from your arping output
 kubectl get nodes -o wide
 ```
@@ -139,7 +140,7 @@ kubectl logs -n metallb-system -l app=metallb,component=speaker --all-containers
 
 ## Verifying Gratuitous ARP
 
-When MetalLB elects a new leader, it sends a **gratuitous ARP** to update switch MAC tables. You can watch for these with arping in continuous mode alongside `tcpdump`:
+When MetalLB elects a new leader, it sends **gratuitous ARP** packets to update client neighbor caches. You can watch for ARP replies with arping in continuous mode alongside `tcpdump`:
 
 ```bash
 # Terminal 1: continuous arping to watch for MAC changes
@@ -158,7 +159,7 @@ For production environments, you can script the verification to run periodically
 #!/bin/bash
 # verify_metallb_arp.sh
 # Checks that a MetalLB LoadBalancer IP responds to ARP requests
-# Returns exit code 0 on success, 1 on failure
+# Returns exit code 0 on success, 1 for partial replies, 2 for no replies
 
 # Configuration
 TARGET_IP="${1:?Usage: $0 <loadbalancer-ip> <interface>}"
@@ -242,7 +243,7 @@ If some probes get replies and others do not, check for:
 | Basic check | `sudo arping -c 3 -I eth0 <IP>` | Replies received |
 | Continuous watch | `sudo arping -I eth0 <IP>` | MAC stability over time |
 | Timeout control | `sudo arping -c 3 -w 5 -I eth0 <IP>` | Replies within 5 seconds |
-| Specific source | `sudo arping -c 3 -S <src-ip> -I eth0 <IP>` | Response from correct segment |
+| Specific source | `sudo arping -c 3 -s <src-ip> -I eth0 <IP>` | Response from correct segment |
 
 ## Conclusion
 
