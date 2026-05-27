@@ -98,7 +98,7 @@ PIVOT (
 );
 ```
 
-This produces columns like `Q1_total_rev`, `Q1_num_transactions`, `Q2_total_rev`, and so on.
+This produces columns like `total_rev_Q1`, `num_transactions_Q1`, `total_rev_Q2`, and so on.
 
 ## The Old Way: PIVOT with CASE Statements
 
@@ -213,11 +213,10 @@ WITH monthly_data AS (
   SELECT
     product_category,
     FORMAT_DATE('%b', order_date) AS month_name,
-    EXTRACT(MONTH FROM order_date) AS month_num,
     SUM(revenue) AS total_revenue
   FROM `my_project.sales.orders`
   WHERE EXTRACT(YEAR FROM order_date) = 2025
-  GROUP BY product_category, month_name, month_num
+  GROUP BY product_category, month_name
 )
 SELECT *
 FROM monthly_data
@@ -262,24 +261,23 @@ UNPIVOT (
 
 ## Handling NULLs in UNPIVOT
 
-By default, UNPIVOT excludes rows where the value is NULL. If you want to include NULLs, you need a workaround:
+By default, UNPIVOT excludes rows where the value is NULL. If you want to include NULLs, add `INCLUDE NULLS`:
 
 ```sql
 -- UNPIVOT excludes NULLs by default
--- Use COALESCE to replace NULLs with a sentinel value before unpivoting
 SELECT
   server_name,
   metric,
-  NULLIF(value, -999) AS value  -- Convert sentinel back to NULL
+  value
 FROM (
   SELECT
     server_name,
-    COALESCE(cpu_usage, -999) AS cpu_usage,
-    COALESCE(memory_usage, -999) AS memory_usage,
-    COALESCE(disk_usage, -999) AS disk_usage
+    cpu_usage,
+    memory_usage,
+    disk_usage
   FROM `my_project.monitoring.server_metrics_wide`
 )
-UNPIVOT (
+UNPIVOT INCLUDE NULLS (
   value FOR metric
   IN (cpu_usage AS 'CPU', memory_usage AS 'Memory', disk_usage AS 'Disk')
 );
