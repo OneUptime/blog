@@ -61,7 +61,7 @@ kind: Community
 metadata:
   # Name of this Community resource - referenced by BGPAdvertisements
   name: my-communities
-  # Must be in the metallb-system namespace
+  # Use the namespace where MetalLB is deployed
   namespace: metallb-system
 spec:
   communities:
@@ -135,6 +135,11 @@ metadata:
   name: primary-advert
   namespace: metallb-system
 spec:
+  # Optional: limit this advertisement to specific BGPPeers.
+  # Replace this with the name of your primary BGPPeer.
+  peers:
+    - primary-router
+
   # Which IP address pools this advertisement applies to.
   ipAddressPools:
     - production-pool
@@ -159,7 +164,7 @@ kubectl apply -f bgp-advertisement.yaml
 
 ### Step 4: Create a Backup Advertisement with Different Communities
 
-You can create multiple advertisements for the same pool with different communities. This is useful for active/backup setups.
+You can create multiple advertisements for the same pool with different communities when you scope them to different peers or nodes. This is useful for active/backup setups.
 
 ```yaml
 # bgp-advertisement-backup.yaml
@@ -171,6 +176,10 @@ metadata:
   name: backup-advert
   namespace: metallb-system
 spec:
+  # Replace this with the name of your backup BGPPeer.
+  peers:
+    - backup-router
+
   ipAddressPools:
     - production-pool
 
@@ -179,6 +188,13 @@ spec:
     - backup-route
 
   aggregationLength: 32
+```
+
+Apply it:
+
+```bash
+# Apply the backup BGP advertisement with its own community tag.
+kubectl apply -f bgp-advertisement-backup.yaml
 ```
 
 ### Step 5: Verify the Configuration
@@ -213,7 +229,7 @@ flowchart TD
 
 ### Common Mistakes to Avoid
 
-1. **Wrong namespace**: Community and BGPAdvertisement resources must be in the `metallb-system` namespace.
+1. **Wrong namespace**: Community and BGPAdvertisement resources must be in the same namespace where MetalLB is deployed, typically `metallb-system`.
 2. **Mismatched alias names**: The community name in your BGPAdvertisement must exactly match the name in your Community resource.
 3. **Missing BGPPeer**: Communities only matter if you have a working BGPPeer session established. Verify your peering first.
 4. **Provider-specific values**: Check with your upstream provider which community values they support before tagging routes.
