@@ -55,7 +55,7 @@ Common filter mistakes include:
 
 ## Step 3: Check the Sink's Service Account Permissions
 
-Every sink has a writer identity - a service account that writes logs to the destination. If this service account does not have the right permissions on the destination, logs silently fail to deliver.
+Most sinks have a writer identity - a service account that writes logs to the destination. Sinks that write to a Cloud Logging bucket in the same project do not need a writer identity. If a sink has a writer identity and that service account does not have the right permissions on the destination, logs fail to deliver.
 
 First, find the sink's writer identity.
 
@@ -64,14 +64,14 @@ First, find the sink's writer identity.
 gcloud logging sinks describe my-sink --format='value(writerIdentity)'
 ```
 
-This will return something like `serviceAccount:p123456789-123456@gcp-sa-logging.iam.gserviceaccount.com`.
+This will return something like `serviceAccount:service-123456789012@gcp-sa-logging.iam.gserviceaccount.com`. If the command does not return a writer identity, you do not need to configure destination permissions for that sink.
 
 Then verify it has the right role on the destination. The required role depends on the destination type:
 
 - **Cloud Storage bucket**: `roles/storage.objectCreator`
 - **BigQuery dataset**: `roles/bigquery.dataEditor`
 - **Pub/Sub topic**: `roles/pubsub.publisher`
-- **Another Cloud Logging bucket**: No additional permissions needed (same project)
+- **Cloud Logging bucket**: `roles/logging.bucketWriter` if the bucket is in a different project; no additional permissions are needed for a log bucket in the same project
 
 Here is how to grant the correct permissions for a Cloud Storage destination.
 
@@ -88,26 +88,25 @@ gcloud storage buckets add-iam-policy-binding gs://my-log-bucket \
 For BigQuery:
 
 ```bash
-# Grant dataEditor role on the BigQuery dataset
-bq add-iam-policy-binding \
+# Grant dataEditor role on the project that contains the BigQuery dataset
+gcloud projects add-iam-policy-binding my-project \
   --member="$WRITER_IDENTITY" \
-  --role="roles/bigquery.dataEditor" \
-  my-project:my_log_dataset
+  --role="roles/bigquery.dataEditor"
 ```
 
 ## Step 4: Check for Exclusion Filters
 
-Exclusion filters on other sinks can prevent logs from reaching your destination. The `_Default` sink processes logs before custom sinks, so if it has exclusion filters, those apply globally.
+Exclusion filters on your sink can prevent matching logs from reaching your destination. Other project-level sinks, including `_Default`, evaluate logs independently, so an exclusion on `_Default` does not globally exclude logs from your custom sink. Organization-level or folder-level intercepting sinks are the exception; those can prevent matching logs from reaching child-resource sinks.
 
 ```bash
-# Check exclusion filters on the _Default sink
-gcloud logging sinks describe _Default
+# Check exclusion filters on your sink
+gcloud logging sinks describe my-sink
 
 # Check exclusion filters on all sinks
 gcloud logging sinks list --format="table(name, exclusions)"
 ```
 
-If you see exclusion filters that match the logs you are expecting, that is your problem. Either modify the exclusion or adjust your sink to process logs before the exclusion applies.
+If you see exclusion filters on your sink that match the logs you are expecting, that is your problem. Modify or remove the exclusion. If an intercepting aggregated sink is involved, modify that sink's filters or routing behavior.
 
 ## Step 5: Verify the Destination Is Accessible
 
@@ -131,11 +130,11 @@ Also check for organization policies that might block cross-project or cross-reg
 Log delivery is not instant. Different destinations have different latency characteristics:
 
 - **Cloud Logging buckets**: Near real-time (seconds)
-- **BigQuery**: 1-3 minutes typically, can be up to 10 minutes during high volume
-- **Cloud Storage**: Batched hourly by default, with files appearing at the end of each hour
+- **BigQuery**: typically within one minute, though a newly created table can take several minutes before the first log entries are available
+- **Cloud Storage**: saved in hourly batches, and it can take 2-3 hours before the first entries appear
 - **Pub/Sub**: Near real-time (seconds)
 
-If you just created the sink and are not seeing logs, wait at least 10-15 minutes before troubleshooting further. For Cloud Storage sinks, you might need to wait a full hour.
+If you just created the sink and are not seeing logs, wait at least 10-15 minutes before troubleshooting further. For Cloud Storage sinks, you might need to wait several hours.
 
 ## Step 7: Check the Sink Error Metrics
 
@@ -145,7 +144,7 @@ Cloud Monitoring tracks sink delivery errors. This is one of the most useful deb
 # Query for sink export errors in the last hour
 gcloud monitoring time-series list \
   --filter='metric.type="logging.googleapis.com/exports/error_count"' \
-  --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+  --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
   --format=json
 ```
 
@@ -158,7 +157,7 @@ Common errors include:
 
 ## Step 8: Check Organization and Folder-Level Sinks
 
-If you are working in an organization with multiple projects, remember that sinks can be defined at the organization, folder, or project level. An organization-level sink might be intercepting logs before they reach your project-level sink.
+If you are working in an organization with multiple projects, remember that sinks can be defined at the organization, folder, or project level. An organization-level or folder-level sink can be configured as an intercepting aggregated sink, which can route matching logs before they reach your project-level sink.
 
 ```bash
 # List organization-level sinks (requires org admin access)
@@ -170,7 +169,7 @@ gcloud logging sinks list --folder=YOUR_FOLDER_ID
 
 ## Step 9: Check Log Ingestion Itself
 
-If none of the above steps reveal the problem, verify that the logs are actually being ingested in the first place. Check the log ingestion metrics.
+If none of the above steps reveal the problem, verify that the logs are actually being ingested in the first place. Sample recent logs from Cloud Logging.
 
 ```bash
 # Check recent log ingestion volume
