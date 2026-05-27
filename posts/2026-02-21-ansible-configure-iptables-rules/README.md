@@ -8,7 +8,7 @@ Description: Learn how to manage iptables firewall rules with Ansible using the 
 
 ---
 
-While higher-level tools like UFW and firewalld are popular, iptables remains the backbone of Linux packet filtering. It is what those tools use under the hood. Sometimes you need the fine-grained control that only raw iptables provides, especially in environments with complex routing, NAT requirements, or custom packet mangling. Ansible's `ansible.builtin.iptables` module gives you direct control over iptables rules from your playbooks.
+While higher-level tools like UFW and firewalld are popular, iptables remains widely used for Linux packet filtering. Some systems still use iptables directly or through compatibility layers, while modern firewalld defaults to nftables. Sometimes you need the fine-grained control that raw iptables provides, especially in environments with complex routing, NAT requirements, or custom packet mangling. Ansible's `ansible.builtin.iptables` module gives you direct control over iptables rules from your playbooks.
 
 This guide covers practical patterns for managing iptables with Ansible.
 
@@ -18,6 +18,7 @@ This guide covers practical patterns for managing iptables with Ansible.
 - Linux target hosts (any distribution)
 - Root or sudo privileges
 - The `iptables` package installed on target hosts
+- The `ansible.posix` collection installed if you use the sysctl example
 
 ## Understanding iptables Basics
 
@@ -300,7 +301,7 @@ Notice the `validate` parameter on the template task. This runs `iptables-restor
 
 ## NAT and Port Forwarding
 
-iptables is also used for NAT. Here is how to configure SNAT and DNAT:
+iptables is also used for NAT. Here is how to configure source NAT with MASQUERADE and DNAT:
 
 ```yaml
 # nat_rules.yml - Configure NAT rules with iptables
@@ -362,7 +363,7 @@ When you need to start fresh, flush the rules but keep SSH access:
         table: nat
         flush: true
 
-    - name: Delete all custom chains
+    - name: Delete custom chains in the filter table
       ansible.builtin.command: iptables -X
       changed_when: true
 ```
