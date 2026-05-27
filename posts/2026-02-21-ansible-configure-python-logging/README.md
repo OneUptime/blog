@@ -1,14 +1,14 @@
-# How to Use Ansible to Configure Python Logging
+# How to Use Ansible to Deploy a Python Application
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Logging, Monitoring, Configuration
+Tags: Ansible, Python, Monitoring, Configuration
 
-Description: Configure centralized Python application logging with Ansible including log rotation, structured logging, and remote log shipping.
+Description: Deploy a Python application with Ansible including system packages, a virtual environment, systemd service management, a reverse proxy, and health checks.
 
 ---
 
-Proper logging is essential for production Python applications in production environments. This guide walks through the complete process with practical Ansible playbooks and working code examples.
+Reliable deployment automation is essential for production Python applications. This guide walks through the complete process with practical Ansible playbooks and working code examples.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ First, install the required system packages:
 
 ```yaml
 ---
-- name: How to Use Ansible to Configure Python Logging
+- name: Deploy Python application
   hosts: app_servers
   become: true
 
@@ -139,6 +139,7 @@ First, install the required system packages:
     - name: Enable and start application
       ansible.builtin.systemd:
         name: "{{ app_name }}"
+        daemon_reload: true
         enabled: true
         state: started
 ```
@@ -229,11 +230,11 @@ ansible-playbook -i inventory/hosts deploy.yml --limit app01
 
 ## Summary
 
-This playbook provides a complete deployment pipeline: system preparation, code deployment, virtual environment management, service configuration, and reverse proxy setup. Each task is idempotent and can be run repeatedly. Extend it with additional steps like database migrations, cache warming, or load balancer integration based on your specific application requirements.
+This playbook provides a complete deployment pipeline: system preparation, code deployment, virtual environment management, service configuration, and reverse proxy setup. Most tasks use idempotent Ansible modules and can be run repeatedly. Extend it with additional steps like database migrations, cache warming, or load balancer integration based on your specific application requirements.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these Ansible patterns prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
@@ -414,4 +415,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
