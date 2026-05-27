@@ -48,7 +48,8 @@ apache_vhosts:
       directory_index: index.html index.php
       enable_compression: true
       custom_headers:
-        - "Cache-Control: public, max-age=3600"
+        - name: Cache-Control
+          value: "public, max-age=3600"
 
   - name: app-backend
     domain: app.example.com
@@ -72,9 +73,11 @@ apache_vhosts:
       cert: /etc/letsencrypt/live/api.example.com/fullchain.pem
       key: /etc/letsencrypt/live/api.example.com/privkey.pem
     options:
-      rate_limiting: true
+      bandwidth_limiting: true
       cors_enabled: true
-      cors_origins: "https://www.example.com https://app.example.com"
+      cors_origins:
+        - "https://www.example.com"
+        - "https://app.example.com"
 
   - name: staging
     domain: staging.example.com
@@ -176,12 +179,13 @@ A single Jinja2 template handles all virtual host types.
     LimitRequestBody {{ vhost.options.client_max_body | regex_replace('[^0-9]', '') | int * 1048576 }}
 {% endif %}
 
+{% if vhost.options.proxy_timeout is defined %}
+    ProxyTimeout {{ vhost.options.proxy_timeout }}
+{% endif %}
+
     <Location />
         ProxyPass {{ vhost.proxy_pass }}/
         ProxyPassReverse {{ vhost.proxy_pass }}/
-{% if vhost.options.proxy_timeout is defined %}
-        ProxyTimeout {{ vhost.options.proxy_timeout }}
-{% endif %}
     </Location>
 
 {% if vhost.options.websocket_support | default(false) %}
@@ -194,7 +198,13 @@ A single Jinja2 template handles all virtual host types.
 
 {% if vhost.options.cors_enabled | default(false) %}
     # CORS headers
-    Header always set Access-Control-Allow-Origin "{{ vhost.options.cors_origins | default('*') }}"
+{% if vhost.options.cors_origins is defined %}
+    SetEnvIf Origin "^({{ vhost.options.cors_origins | map('regex_escape') | join('|') }})$" CORS_ORIGIN=$0
+    Header always set Access-Control-Allow-Origin "%{CORS_ORIGIN}e" env=CORS_ORIGIN
+    Header always merge Vary Origin
+{% else %}
+    Header always set Access-Control-Allow-Origin "*"
+{% endif %}
     Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
     Header always set Access-Control-Allow-Headers "Authorization, Content-Type"
     Header always set Access-Control-Max-Age "3600"
@@ -211,8 +221,8 @@ A single Jinja2 template handles all virtual host types.
     </Location>
 {% endif %}
 
-{% if vhost.options.rate_limiting | default(false) %}
-    # Rate limiting (requires mod_ratelimit)
+{% if vhost.options.bandwidth_limiting | default(false) %}
+    # Bandwidth limiting (requires mod_ratelimit)
     <IfModule mod_ratelimit.c>
         <Location />
             SetOutputFilter RATE_LIMIT
@@ -222,7 +232,7 @@ A single Jinja2 template handles all virtual host types.
 {% endif %}
 
 {% for header in vhost.options.custom_headers | default([]) %}
-    Header always set {{ header }}
+    Header always set {{ header.name }} "{{ header.value }}"
 {% endfor %}
 
     # Security headers
@@ -277,6 +287,7 @@ A single Jinja2 template handles all virtual host types.
         label: "{{ item.name }}"
       register: enable_result
       changed_when: "'Enabling' in enable_result.stdout"
+      notify: Test and reload Apache
 
     - name: Disable the default site
       ansible.builtin.command:
@@ -284,6 +295,7 @@ A single Jinja2 template handles all virtual host types.
       register: disable_default
       changed_when: "'disabled' in disable_default.stdout"
       failed_when: false
+      notify: Test and reload Apache
 
     - name: Deploy a catch-all default virtual host
       ansible.builtin.copy:
@@ -292,31 +304,34 @@ A single Jinja2 template handles all virtual host types.
           # Default catch-all virtual host - managed by Ansible
           # Returns 403 for requests that do not match any configured domain
           <VirtualHost *:80>
-              ServerName _default_
+              ServerName default.invalid
               <Location />
                   Require all denied
               </Location>
           </VirtualHost>
         mode: "0644"
+      notify: Test and reload Apache
 
     - name: Enable the catch-all default site
       ansible.builtin.command:
         cmd: a2ensite 000-default
       register: enable_default
       changed_when: "'Enabling' in enable_default.stdout"
+      notify: Test and reload Apache
 
   handlers:
-    - name: Test and reload Apache
+    - name: Test Apache configuration
       ansible.builtin.command:
         cmd: apache2ctl configtest
       register: test_result
       changed_when: false
-      notify: Reload Apache
+      listen: Test and reload Apache
 
     - name: Reload Apache
       ansible.builtin.systemd:
         name: apache2
         state: reloaded
+      listen: Test and reload Apache
 ```
 
 ## Managing Basic Authentication
