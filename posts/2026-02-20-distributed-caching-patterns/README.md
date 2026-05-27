@@ -90,7 +90,7 @@ class CacheAsideRepository:
 
 ## Write-Through Pattern
 
-With write-through caching, every write goes to both the cache and the database synchronously. This ensures the cache is always up to date, at the cost of higher write latency.
+With write-through caching, every write goes to both the cache and the database synchronously. This keeps the cache up to date when both writes succeed, at the cost of higher write latency.
 
 ```mermaid
 sequenceDiagram
@@ -98,18 +98,21 @@ sequenceDiagram
     participant Cache
     participant Database
 
-    App->>Cache: Write data
-    Cache->>Database: Write data
-    Database-->>Cache: Acknowledged
+    App->>Database: Write data
+    Database-->>App: Acknowledged
+    App->>Cache: Update cache
     Cache-->>App: Acknowledged
     Note over Cache,Database: Both are updated synchronously
 ```
 
 ```python
+import json
+from typing import Optional
+
 class WriteThroughCache:
     """
     Write-through pattern: writes go to both cache and database.
-    The cache is always consistent with the database.
+    Successful writes update both the database and the cache.
     """
 
     def __init__(self, redis_client, db_connection):
@@ -126,7 +129,7 @@ class WriteThroughCache:
         )
 
         # Then write to the cache
-        # If the cache write fails, the next read will repopulate it
+        # If this fails, handle the error before acknowledging the write
         self.cache.setex(
             f"product:{product_id}",
             3600,  # 1 hour TTL as a safety net
@@ -134,7 +137,7 @@ class WriteThroughCache:
         )
 
     def get_product(self, product_id: str) -> Optional[dict]:
-        # Since writes always update the cache, reads are simple
+        # Since successful writes update the cache, reads are simple
         cached = self.cache.get(f"product:{product_id}")
         if cached:
             return json.loads(cached)
@@ -183,7 +186,7 @@ redis_client.setex("config:feature_flags", 60, json.dumps(flags))  # 60 second T
 
 ### Event-Based Invalidation
 
-When data changes, publish an event that tells all cache nodes to invalidate the affected entries.
+When data changes, publish an event that tells all app instances to invalidate the affected entries.
 
 ```python
 import redis
@@ -199,7 +202,7 @@ class EventBasedInvalidation:
         self.pubsub = redis_client.pubsub()
 
     def invalidate_and_notify(self, cache_key: str):
-        """Delete the local entry and broadcast to other instances."""
+        """Delete the cache entry and broadcast to other instances."""
         self.cache.delete(cache_key)
         # Publish the invalidation event to all subscribers
         self.cache.publish("cache:invalidation", cache_key)
@@ -247,8 +250,9 @@ class VersionedCache:
 A cache stampede happens when many requests simultaneously miss the cache and all hit the database at once. This commonly occurs when a popular cache entry expires.
 
 ```python
+import json
+import secrets
 import time
-import threading
 
 class StampedeProtectedCache:
     """
@@ -268,7 +272,8 @@ class StampedeProtectedCache:
 
         # Acquire a distributed lock to prevent stampede
         lock_key = f"lock:{cache_key}"
-        acquired = self.cache.set(lock_key, "1", nx=True, ex=10)
+        lock_token = secrets.token_urlsafe(16)
+        acquired = self.cache.set(lock_key, lock_token, nx=True, ex=10)
 
         if acquired:
             # We got the lock - rebuild the cache
@@ -277,7 +282,14 @@ class StampedeProtectedCache:
                 self.cache.setex(cache_key, ttl, json.dumps(data))
                 return data
             finally:
-                self.cache.delete(lock_key)
+                unlock_script = """
+                if redis.call("get", KEYS[1]) == ARGV[1] then
+                    return redis.call("del", KEYS[1])
+                else
+                    return 0
+                end
+                """
+                self.cache.eval(unlock_script, 1, lock_key, lock_token)
         else:
             # Another process is rebuilding - wait and retry
             time.sleep(0.1)
