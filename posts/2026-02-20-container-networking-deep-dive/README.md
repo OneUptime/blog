@@ -183,7 +183,7 @@ graph TB
 
 ## Overlay Networks
 
-Overlay networks enable pod-to-pod communication across nodes. They encapsulate pod traffic inside packets that can be routed between hosts.
+Overlay networks are one common way to enable pod-to-pod communication across nodes. They encapsulate pod traffic inside packets that can be routed between hosts.
 
 ### VXLAN - The Most Common Overlay
 
@@ -191,16 +191,16 @@ VXLAN (Virtual Extensible LAN) encapsulates Layer 2 Ethernet frames inside Layer
 
 ```mermaid
 sequenceDiagram
-    participant Pod A on Node 1
-    participant VXLAN on Node 1
-    participant Physical Network
-    participant VXLAN on Node 2
-    participant Pod B on Node 2
+    participant PodA as Pod A on Node 1
+    participant VXLAN1 as VXLAN on Node 1
+    participant Network as Physical Network
+    participant VXLAN2 as VXLAN on Node 2
+    participant PodB as Pod B on Node 2
 
-    Pod A on Node 1->>VXLAN on Node 1: Original packet (src: 10.244.1.2)
-    VXLAN on Node 1->>Physical Network: Encapsulated in UDP (src: 192.168.1.10)
-    Physical Network->>VXLAN on Node 2: Forwarded to Node 2 (dst: 192.168.1.11)
-    VXLAN on Node 2->>Pod B on Node 2: Decapsulated (dst: 10.244.2.2)
+    PodA->>VXLAN1: Original packet (src: 10.244.1.2)
+    VXLAN1->>Network: Encapsulated in UDP (src: 192.168.1.10)
+    Network->>VXLAN2: Forwarded to Node 2 (dst: 192.168.1.11)
+    VXLAN2->>PodB: Decapsulated (dst: 10.244.2.2)
 ```
 
 ## CNI Plugins Compared
@@ -211,7 +211,7 @@ Container Network Interface (CNI) plugins implement the Kubernetes networking mo
 |-----------|---------|---------------|-------------|-----------|
 | Flannel | VXLAN | No | Good | Low |
 | Calico | VXLAN or BGP | Yes | Excellent | Medium |
-| Cilium | eBPF | Yes | Excellent | Medium |
+| Cilium | VXLAN, Geneve, or native routing | Yes | Excellent | Medium |
 | Weave | VXLAN | Yes | Good | Low |
 | Canal | VXLAN | Yes | Good | Low |
 
