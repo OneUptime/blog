@@ -26,7 +26,7 @@ Crostini must be enabled manually through ChromeOS Settings > Linux Development 
 
 ## Managing the Crostini Linux Environment
 
-Once Crostini is running, you can SSH into it from a remote Ansible controller:
+Once Crostini is running, you can SSH into it from a remote Ansible controller if ChromeOS Linux port forwarding is enabled for the SSH port:
 
 ```ini
 # inventory/hosts
@@ -37,17 +37,21 @@ chromebook-dev01 ansible_host=192.168.1.50
 [chromeos_linux:vars]
 ansible_user=username
 ansible_python_interpreter=/usr/bin/python3
-ansible_port=22
+ansible_port=2022
 ```
 
-First, enable SSH inside Crostini:
+First, enable SSH inside Crostini and configure it to listen on an unprivileged forwarded port:
 
 ```bash
 # Run inside the Crostini terminal
 sudo apt update && sudo apt install -y openssh-server
+sudo install -d -m 0755 /etc/ssh/sshd_config.d
+echo "Port 2022" | sudo tee /etc/ssh/sshd_config.d/crostini-ansible.conf
 sudo systemctl enable ssh
-sudo systemctl start ssh
+sudo systemctl restart ssh
 ```
+
+Then open ChromeOS Settings > Developers > Linux > Port forwarding and add TCP port 2022.
 
 ## Developer Workstation Playbook
 
@@ -85,22 +89,16 @@ sudo systemctl start ssh
           - unzip
           - python3-pip
           - python3-venv
-          - nodejs
-          - npm
-          - docker.io
-          - docker-compose
-          - code
-        state: present
-
-    - name: Install Python development packages
-      ansible.builtin.pip:
-        name:
-          - virtualenv
+          - python3-virtualenv
           - pipx
           - black
           - flake8
           - mypy
-        executable: pip3
+          - nodejs
+          - npm
+          - docker.io
+          - docker-compose
+        state: present
 
     - name: Configure Git
       become: false
@@ -157,7 +155,7 @@ For enterprise ChromeOS fleet management, use the Google Admin Console REST API 
 ```yaml
     - name: Get ChromeOS device list from Google Admin
       ansible.builtin.uri:
-        url: "https://www.googleapis.com/admin/directory/v1/customer/my_customer/devices/chromeos"
+        url: "https://admin.googleapis.com/admin/directory/v1/customer/my_customer/devices/chromeos"
         method: GET
         headers:
           Authorization: "Bearer {{ google_admin_token }}"
@@ -172,7 +170,7 @@ For enterprise ChromeOS fleet management, use the Google Admin Console REST API 
 
 ## Summary
 
-Ansible's role with ChromeOS is limited to two scenarios: managing the Crostini Linux environment for developer workstations, and calling Google Admin APIs for fleet management. The Crostini environment is standard Debian, so all Debian Ansible modules work. For enterprise ChromeOS management (policies, enrollment, updates), the Google Admin Console is the primary tool, though you can automate API calls through Ansible's `uri` module. This playbook focuses on setting up the Linux development environment for consistent developer workstations.
+Ansible's role with ChromeOS is limited to two scenarios: managing the Crostini Linux environment for developer workstations, and calling Google Admin APIs for fleet management. The Crostini environment is standard Debian, so standard Debian package and configuration modules generally work, subject to Crostini container boundaries. For enterprise ChromeOS management (policies, enrollment, updates), the Google Admin Console is the primary tool, though you can automate API calls through Ansible's `uri` module. This playbook focuses on setting up the Linux development environment for consistent developer workstations.
 
 ## Common Use Cases
 
@@ -210,6 +208,7 @@ Here are several practical scenarios where this module proves essential in real-
           - vim
           - htop
           - jq
+          - ufw
         state: present
 
     - name: Configure system timezone
@@ -254,7 +253,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -332,6 +331,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -348,6 +353,12 @@ Here are several practical scenarios where this module proves essential in real-
           fi
           exit $EXIT_CODE
 
+    - name: Ensure scan user exists
+      ansible.builtin.user:
+        name: ansible
+        system: true
+        create_home: false
+
     - name: Schedule weekly compliance scan
       ansible.builtin.cron:
         name: "Weekly compliance scan"
@@ -357,4 +368,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
