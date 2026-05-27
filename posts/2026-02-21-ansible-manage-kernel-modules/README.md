@@ -12,7 +12,7 @@ Kernel modules are pieces of code that can be loaded into the Linux kernel on de
 
 ## Understanding Kernel Modules
 
-Before diving into Ansible, here is a quick refresher. Kernel modules live in `/lib/modules/<kernel-version>/` and are loaded with `modprobe`. You can check currently loaded modules with `lsmod`, and module parameters with `modinfo`. The key files involved are:
+Before diving into Ansible, here is a quick refresher. Kernel modules live in `/lib/modules/<kernel-version>/` and are loaded with `modprobe`. You can check currently loaded modules with `lsmod`, and available module parameters with `modinfo`. The key files involved are:
 
 - `/etc/modules-load.d/*.conf` - Modules to load at boot
 - `/etc/modprobe.d/*.conf` - Module parameters and blacklist rules
@@ -71,7 +71,8 @@ This playbook loads required kernel modules and makes them persistent:
 
     - name: Verify modules are loaded
       ansible.builtin.shell: |
-        lsmod | grep -c "^{{ item.name }}" || echo "0"
+        module_name="{{ item.name | replace('-', '_') }}"
+        lsmod | awk '{print $1}' | grep -cx "${module_name}" || true
       register: module_check
       changed_when: false
       loop: "{{ required_modules }}"
@@ -153,7 +154,8 @@ This playbook blacklists modules that should not be loaded:
 
     - name: Verify blacklisted modules are not loaded
       ansible.builtin.shell: |
-        lsmod | grep -c "^{{ item.name }}" || echo "0"
+        module_name="{{ item.name | replace('-', '_') }}"
+        lsmod | awk '{print $1}' | grep -cx "${module_name}" || true
       register: blacklist_check
       changed_when: false
       loop: "{{ blacklisted_modules }}"
@@ -191,9 +193,6 @@ This playbook configures module parameters for specific hardware and workloads:
       - module: nf_conntrack
         options: "hashsize=131072"
         comment: "Increase connection tracking hash table"
-      - module: tcp_bbr
-        options: ""
-        comment: "BBR congestion control"
 
   tasks:
     - name: Create module options configuration
@@ -209,12 +208,17 @@ This playbook configures module parameters for specific hardware and workloads:
           {% endif %}
           {% endfor %}
 
+    - name: Check whether nf_conntrack hashsize can be set at runtime
+      ansible.builtin.stat:
+        path: /sys/module/nf_conntrack/parameters/hashsize
+      register: nf_conntrack_hashsize
+
     - name: Apply nf_conntrack hashsize at runtime
       ansible.builtin.shell: |
         echo 131072 > /sys/module/nf_conntrack/parameters/hashsize
       changed_when: false
       failed_when: false
-      when: "'nf_conntrack' in ansible_loaded_modules | default([])"
+      when: nf_conntrack_hashsize.stat.exists
 ```
 
 ## Kubernetes-Specific Module Management
