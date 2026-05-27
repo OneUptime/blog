@@ -1,14 +1,14 @@
-# How to Use Ansible with GCP Deployment Manager
+# How to Use Ansible with GCP Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, GCP, Deployment Manager, Cloud
 
-Description: Integrate Ansible with Google Cloud Deployment Manager and manage GCP resources using the google.cloud collection.
+Description: Manage GCP resources using Ansible and the google.cloud collection.
 
 ---
 
-Google Cloud Platform provides Deployment Manager for infrastructure provisioning. Ansible's google.cloud collection offers modules for managing GCP resources directly, and you can trigger Deployment Manager templates from Ansible.
+Google Cloud Platform previously provided Deployment Manager for infrastructure provisioning, but the service was discontinued on March 31, 2026. Ansible's google.cloud collection offers modules for managing GCP resources directly, and existing Deployment Manager workflows should be migrated to Infrastructure Manager or another supported deployment tool.
 
 ## Managing GCP Resources
 
@@ -38,6 +38,7 @@ Google Cloud Platform provides Deployment Manager for infrastructure provisionin
         project: "{{ gcp_project }}"
         auth_kind: serviceaccount
         service_account_file: "{{ gcp_sa_file }}"
+      register: subnet
 
     - name: Create compute instance
       google.cloud.gcp_compute_instance:
@@ -70,10 +71,11 @@ Google Cloud Platform provides Deployment Manager for infrastructure provisionin
 # tasks/gcp-secrets.yml
 ---
 - name: Retrieve secret from GCP Secret Manager
-  google.cloud.gcp_secretmanager_secret_version_info:
+  google.cloud.gcp_secret_manager:
     project: "{{ gcp_project }}"
-    secret: "{{ secret_name }}"
+    name: "{{ secret_name }}"
     version: latest
+    state: present
     auth_kind: serviceaccount
     service_account_file: "{{ gcp_sa_file }}"
   register: secret_version
@@ -82,7 +84,7 @@ Google Cloud Platform provides Deployment Manager for infrastructure provisionin
 
 ## Key Takeaways
 
-The google.cloud Ansible collection provides comprehensive GCP resource management. Provision compute instances, networks, and storage through playbooks. Use GCP Secret Manager for sensitive credentials. Combine Ansible's configuration management with GCP Deployment Manager for complex resource provisioning.
+The google.cloud Ansible collection provides comprehensive GCP resource management. Provision compute instances, networks, and storage through playbooks. Use GCP Secret Manager for sensitive credentials. Combine Ansible's configuration management with supported Google Cloud infrastructure tooling for complex resource provisioning.
 
 ## Common Use Cases
 
@@ -120,10 +122,11 @@ Here are several practical scenarios where this module proves essential in real-
           - vim
           - htop
           - jq
+          - ufw
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -164,7 +167,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -267,4 +270,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
