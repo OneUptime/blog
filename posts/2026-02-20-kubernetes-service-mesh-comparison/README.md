@@ -45,8 +45,8 @@ graph TD
 | Proxy | Envoy | linkerd2-proxy (Rust) | Envoy |
 | mTLS | Yes, auto | Yes, auto | Yes, auto |
 | Traffic splitting | Yes | Yes | Yes |
-| Circuit breaking | Yes | No (uses retries) | Yes |
-| Rate limiting | Yes (external) | No | Yes (via intentions) |
+| Circuit breaking | Yes | Yes (endpoint failure accrual) | Yes |
+| Rate limiting | Yes (external) | Yes (local HTTP rate limits) | Yes (HTTP rate limit config) |
 | Multi-cluster | Yes | Yes | Yes |
 | Resource overhead | High (~50MB/sidecar) | Low (~10MB/sidecar) | Medium (~30MB/sidecar) |
 | Complexity | High | Low | Medium |
@@ -75,7 +75,7 @@ kubectl label namespace default istio-injection=enabled
 ```yaml
 # istio-virtual-service.yaml
 # Split traffic between v1 and v2 of a service for canary deployment
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -97,7 +97,7 @@ spec:
           weight: 10
 ---
 # Define the subsets based on pod labels
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -118,7 +118,7 @@ spec:
 ```yaml
 # istio-circuit-breaker.yaml
 # Configure circuit breaking to prevent cascading failures
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -133,7 +133,7 @@ spec:
       http:
         # Maximum pending HTTP requests
         h2UpgradePolicy: DEFAULT
-        maxPendingRequests: 100
+        http1MaxPendingRequests: 100
         # Maximum requests per connection
         maxRequestsPerConnection: 10
     outlierDetection:
@@ -176,22 +176,29 @@ kubectl get deployment my-app -o yaml \
 
 ```yaml
 # linkerd-traffic-split.yaml
-# Split traffic between two services using the SMI spec
-apiVersion: split.smi-spec.io/v1alpha2
-kind: TrafficSplit
+# Split traffic between two services using Linkerd's HTTPRoute API
+apiVersion: policy.linkerd.io/v1beta2
+kind: HTTPRoute
 metadata:
-  name: my-service-split
+  name: my-service-route
   namespace: default
 spec:
   # The root service that clients connect to
-  service: my-service
-  backends:
-    # 90% to the stable version
-    - service: my-service-v1
-      weight: 900
-    # 10% to the canary version
-    - service: my-service-v2
-      weight: 100
+  parentRefs:
+    - name: my-service
+      kind: Service
+      group: core
+      port: 80
+  rules:
+    - backendRefs:
+        # 90% to the stable version
+        - name: my-service-v1
+          port: 80
+          weight: 90
+        # 10% to the canary version
+        - name: my-service-v2
+          port: 80
+          weight: 10
 ```
 
 ## Linkerd Service Profiles
@@ -305,8 +312,8 @@ graph TD
 All three meshes provide golden signal metrics out of the box:
 
 ```bash
-# Check latency percentiles with Linkerd
-linkerd stat deploy/my-service
+# Check latency percentiles with Linkerd Viz
+linkerd viz stat deploy/my-service
 
 # Query Istio metrics via Prometheus
 # istio_request_duration_milliseconds_bucket{destination_service="my-service"}
