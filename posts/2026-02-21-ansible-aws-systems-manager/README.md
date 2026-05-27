@@ -22,7 +22,7 @@ all:
     app_servers:
       hosts:
         i-0abc123def456:
-          ansible_connection: aws_ssm
+          ansible_connection: amazon.aws.aws_ssm
           ansible_aws_ssm_region: us-east-1
           ansible_aws_ssm_bucket_name: ansible-ssm-bucket
 ```
@@ -59,15 +59,22 @@ enable_plugins = amazon.aws.aws_ec2
 # tasks/ssm-run-command.yml
 ---
 - name: Run SSM command on instances
-  community.aws.ssm_document:
-    name: AWS-RunShellScript
-    targets:
-      - key: tag:Role
-        values: [webserver]
-    parameters:
-      commands:
-        - "systemctl restart {{ app_name }}"
-    region: us-east-1
+  ansible.builtin.command:
+    argv:
+      - aws
+      - ssm
+      - send-command
+      - --document-name
+      - AWS-RunShellScript
+      - --targets
+      - "Key=tag:Role,Values=webserver"
+      - --parameters
+      - '{"commands":["systemctl restart {{ app_name }}"]}'
+      - --region
+      - us-east-1
+  delegate_to: localhost
+  register: ssm_command
+  changed_when: ssm_command.rc == 0
 ```
 
 ## Key Takeaways
@@ -257,4 +264,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
