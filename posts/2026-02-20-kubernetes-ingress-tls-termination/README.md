@@ -33,10 +33,11 @@ There are three TLS modes:
 ```bash
 # Generate a self-signed certificate for development
 
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+openssl req -x509 -noenc -days 365 -newkey rsa:2048 \
   -keyout tls.key \
   -out tls.crt \
-  -subj "/CN=app.example.com/O=MyOrg"
+  -subj "/CN=app.example.com/O=MyOrg" \
+  -addext "subjectAltName=DNS:app.example.com"
 
 # Create a Kubernetes TLS secret from the certificate
 kubectl create secret tls app-tls \
@@ -55,10 +56,10 @@ cert-manager automates certificate issuance and renewal.
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager to be ready
-kubectl wait --for=condition=ready pod -l app=cert-manager -n cert-manager --timeout=120s
+kubectl wait --for=condition=available deployment --all -n cert-manager --timeout=120s
 ```
 
 Create a ClusterIssuer for Let's Encrypt:
@@ -203,10 +204,6 @@ spec:
     - hosts:
         - api.example.com
       secretName: api-tls
-    # Or use a wildcard certificate for all subdomains
-    - hosts:
-        - "*.example.com"
-      secretName: wildcard-tls
   rules:
     - host: app.example.com
       http:
@@ -272,16 +269,24 @@ Note: TLS passthrough requires the `--enable-ssl-passthrough` flag on the Nginx 
 Control which TLS versions and ciphers are accepted:
 
 ```yaml
-# tls-config.yaml
-# Configure TLS security settings
+# nginx-config.yaml
+# Configure TLS protocol versions globally for ingress-nginx
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  ssl-protocols: "TLSv1.2 TLSv1.3"
+---
+# strict-tls-ingress.yaml
+# Configure TLS cipher settings for this host
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: strict-tls
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    # Set minimum TLS version to 1.2
-    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
     # Specify allowed cipher suites
     nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384"
     # Prefer server cipher order
