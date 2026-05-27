@@ -204,7 +204,7 @@ server {
 
     # Main proxy location
     location / {
-        proxy_pass {{ item.backend }};
+        proxy_pass http://{{ item.name }}_backend;
         include /etc/nginx/conf.d/proxy-params.conf;
 
         # HTTP 1.1 for keepalive connections to backend
@@ -221,7 +221,7 @@ server {
 {% if item.websocket | default(false) %}
     # Dedicated WebSocket endpoint (common patterns)
     location /ws {
-        proxy_pass {{ item.backend }};
+        proxy_pass http://{{ item.name }}_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -231,7 +231,7 @@ server {
     }
 
     location /socket.io {
-        proxy_pass {{ item.backend }};
+        proxy_pass http://{{ item.name }}_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -244,8 +244,8 @@ server {
     # Health check endpoint for monitoring
     location /nginx-health {
         access_log off;
+        default_type text/plain;
         return 200 "healthy\n";
-        add_header Content-Type text/plain;
     }
 }
 ```
