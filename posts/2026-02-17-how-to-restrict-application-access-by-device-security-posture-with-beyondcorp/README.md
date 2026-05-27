@@ -19,13 +19,12 @@ BeyondCorp Enterprise, through Endpoint Verification, collects these device secu
 - **Disk encryption**: Is the device's disk encrypted (FileVault, BitLocker, dm-crypt)?
 - **Screen lock**: Is the device configured to lock after inactivity?
 - **OS version**: What operating system and version is the device running?
-- **OS firewall**: Is the built-in firewall enabled?
 - **Device ownership**: Is this a company-owned or personal device?
 - **Management level**: Is the device managed by an MDM solution?
-- **Password compliance**: Does the device meet password policy requirements?
-- **Jailbreak/root status**: Has the device been tampered with?
+- **Administrator approval**: Has an administrator approved the device?
+- **Mobile device security**: For custom access levels, is an Android device verified and free of harmful apps, or is an iOS device jailbroken?
 
-Each of these can be used as a condition in your access policies.
+These signals can be used in basic device policies or custom access levels, depending on the attribute.
 
 ## Prerequisites
 
@@ -53,7 +52,7 @@ The minimum security requirement for most organizations.
 
 ```bash
 # Create the access level
-gcloud access-context-manager levels create disk-encrypted \
+gcloud access-context-manager levels create disk_encrypted \
   --title="Disk Encryption Required" \
   --basic-level-spec=encryption-required-spec.yaml \
   --policy=POLICY_NUMBER
@@ -73,7 +72,7 @@ Add screen lock to prevent unauthorized physical access.
 ```
 
 ```bash
-gcloud access-context-manager levels create secured-device \
+gcloud access-context-manager levels create secured_device \
   --title="Secured Device" \
   --basic-level-spec=secured-device-spec.yaml \
   --policy=POLICY_NUMBER
@@ -92,20 +91,18 @@ For sensitive applications, enforce comprehensive device security.
     allowedEncryptionStatuses:
       - ENCRYPTED
     allowedDeviceManagementLevels:
-      - ADVANCED
+      - COMPLETE
     osConstraints:
       - osType: DESKTOP_MAC
         minimumVersion: "14.0.0"
-        requireVerifiedChromeOs: false
       - osType: DESKTOP_WINDOWS
         minimumVersion: "10.0.22631"
-        requireVerifiedChromeOs: false
       - osType: DESKTOP_CHROME_OS
         requireVerifiedChromeOs: true
 ```
 
 ```bash
-gcloud access-context-manager levels create full-posture \
+gcloud access-context-manager levels create full_posture \
   --title="Full Device Posture Check" \
   --basic-level-spec=full-posture-spec.yaml \
   --policy=POLICY_NUMBER
@@ -122,7 +119,7 @@ gcloud iap web add-iam-policy-binding \
   --service=hr-portal \
   --member="group:hr-team@example.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/full-posture\" in request.auth.access_levels,title=Full Device Posture Required" \
+  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/full_posture\" in request.auth.access_levels,title=Full Device Posture Required" \
   --project=my-project-id
 ```
 
@@ -135,7 +132,7 @@ gcloud iap web add-iam-policy-binding \
   --service=internal-wiki \
   --member="group:all-staff@example.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/disk-encrypted\" in request.auth.access_levels,title=Encryption Required" \
+  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/disk_encrypted\" in request.auth.access_levels,title=Encryption Required" \
   --project=my-project-id
 ```
 
@@ -197,7 +194,7 @@ Create separate access levels for BYOD and corporate devices.
     allowedEncryptionStatuses:
       - ENCRYPTED
     allowedDeviceManagementLevels:
-      - ADVANCED
+      - COMPLETE
 ```
 
 Then create IAP bindings that give BYOD users access to some resources and corporate device users access to more.
@@ -209,7 +206,7 @@ gcloud iap web add-iam-policy-binding \
   --service=general-tools \
   --member="group:all-staff@example.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/byod-acceptable\" in request.auth.access_levels,title=BYOD Acceptable" \
+  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/byod_acceptable\" in request.auth.access_levels,title=BYOD Acceptable" \
   --project=my-project-id
 
 # Only corporate device users can access sensitive tools
@@ -218,7 +215,7 @@ gcloud iap web add-iam-policy-binding \
   --service=sensitive-tools \
   --member="group:all-staff@example.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/corp-device\" in request.auth.access_levels,title=Corp Device Required" \
+  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/corp_device\" in request.auth.access_levels,title=Corp Device Required" \
   --project=my-project-id
 ```
 
@@ -247,16 +244,16 @@ When users are blocked due to an outdated OS, they see a 403 error. You should p
 Track how many devices in your organization meet each posture level.
 
 ```bash
-# List all devices and their compliance status
-gcloud endpoint-verification list \
-  --project=my-project-id \
-  --format="table(deviceName,userEmail,osType,osVersion,encryptionStatus,screenLockEnabled)"
+# List devices with the Cloud Identity Devices API.
+# Requires Devices API access, which commonly uses domain-wide delegation.
+curl -H "Authorization: Bearer ACCESS_TOKEN" \
+  "https://cloudidentity.googleapis.com/v1/devices?customer=customers/my_customer&view=USER_ASSIGNED_DEVICES" \
+  | jq -r '.devices[] | [.hostname, .deviceType, .osVersion, .encryptionState, .managementState] | @tsv'
 
 # Filter for non-compliant devices
-gcloud endpoint-verification list \
-  --project=my-project-id \
-  --filter="encryptionStatus!=ENCRYPTED OR screenLockEnabled=false" \
-  --format="table(deviceName,userEmail,encryptionStatus,screenLockEnabled)"
+curl -H "Authorization: Bearer ACCESS_TOKEN" \
+  "https://cloudidentity.googleapis.com/v1/devices?customer=customers/my_customer&view=USER_ASSIGNED_DEVICES" \
+  | jq -r '.devices[] | select(.encryptionState != "ENCRYPTED") | [.hostname, .deviceType, .osVersion, .encryptionState] | @tsv'
 ```
 
 Set up alerts for compliance trends.
@@ -279,12 +276,18 @@ When a user is denied access due to device posture, provide a helpful experience
 
 You can customize the IAP error page.
 
+```yaml
+# iap-settings.yaml
+applicationSettings:
+  accessDeniedPageSettings:
+    accessDeniedPageUri: https://help.example.com/access-denied
+```
+
 ```bash
 # Set a custom error page URL for IAP
-gcloud iap settings set \
+gcloud iap settings set iap-settings.yaml \
   --resource-type=backend-services \
   --service=my-app \
-  --access-denied-page-uri="https://help.example.com/access-denied" \
   --project=my-project-id
 ```
 
@@ -292,7 +295,7 @@ gcloud iap settings set \
 
 Do not enforce device posture for everyone at once. Roll it out gradually.
 
-1. Start in monitor-only mode - log which requests would be blocked without actually blocking them
+1. Start by reviewing IAP audit logs for the access levels users already satisfy
 2. Communicate requirements to users and give them time to comply
 3. Enforce for a pilot group first
 4. Roll out to the broader organization
