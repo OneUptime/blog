@@ -36,20 +36,23 @@ This playbook imports GPG keys for various package repositories:
   vars:
     gpg_repo_keys:
       - name: Docker CE
-        url: https://download.docker.com/linux/ubuntu/gpg
+        apt_url: https://download.docker.com/linux/ubuntu/gpg
+        rpm_url: https://download.docker.com/linux/centos/gpg
         keyring: /usr/share/keyrings/docker-archive-keyring.gpg
       - name: HashiCorp
-        url: https://apt.releases.hashicorp.com/gpg
+        apt_url: https://apt.releases.hashicorp.com/gpg
+        rpm_url: https://rpm.releases.hashicorp.com/gpg
         keyring: /usr/share/keyrings/hashicorp-archive-keyring.gpg
       - name: Kubernetes
-        url: https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key
+        apt_url: https://pkgs.k8s.io/core:/stable:/v1.34/deb/Release.key
+        rpm_url: https://pkgs.k8s.io/core:/stable:/v1.34/rpm/repodata/repomd.xml.key
         keyring: /usr/share/keyrings/kubernetes-apt-keyring.gpg
 
   tasks:
     - name: Import GPG keys for APT repositories
       ansible.builtin.shell: |
         # Download and dearmor the GPG key into the target keyring
-        curl -fsSL "{{ item.url }}" | gpg --dearmor -o "{{ item.keyring }}"
+        curl -fsSL "{{ item.apt_url }}" | gpg --dearmor -o "{{ item.keyring }}"
       args:
         creates: "{{ item.keyring }}"
       loop: "{{ gpg_repo_keys }}"
@@ -59,7 +62,7 @@ This playbook imports GPG keys for various package repositories:
 
     - name: Import GPG keys for YUM repositories
       ansible.builtin.rpm_key:
-        key: "{{ item.url }}"
+        key: "{{ item.rpm_url }}"
         state: present
       loop: "{{ gpg_repo_keys }}"
       loop_control:
@@ -163,7 +166,7 @@ This playbook exports a public key from the source server and imports it on targ
   tasks:
     - name: Write public key to temporary file
       ansible.builtin.copy:
-        content: "{{ hostvars['backup_primary']['backup_public_key'] }}"
+        content: "{{ hostvars[groups['backup_primary'][0]]['backup_public_key'] }}"
         dest: /tmp/backup-public.key
         mode: '0600'
 
@@ -208,14 +211,14 @@ This playbook rotates GPG keys by generating new ones and re-encrypting existing
       ansible.builtin.shell: |
         # Get the expiration timestamp of the primary key
         gpg --list-keys --with-colons "{{ gpg_key_email }}" | \
-        grep '^pub' | cut -d: -f7
+        awk -F: '$1 == "pub" {print $7; exit}'
       register: expiry_timestamp
       changed_when: false
 
     - name: Calculate days until expiration
       ansible.builtin.set_fact:
         days_until_expiry: >-
-          {{ ((expiry_timestamp.stdout | int) - (ansible_date_time.epoch | int)) / 86400 | int }}
+          {{ (((expiry_timestamp.stdout | int) - (ansible_date_time.epoch | int)) / 86400) | int if expiry_timestamp.stdout | length > 0 else 999999 }}
 
     - name: Display expiration status
       ansible.builtin.debug:
