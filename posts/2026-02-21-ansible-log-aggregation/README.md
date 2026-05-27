@@ -35,6 +35,7 @@ First, let us set up a clean Ansible project structure for this.
 # Create the project layout
 
 mkdir -p log-aggregation/{roles,group_vars,host_vars}
+mkdir -p log-aggregation/inventory
 mkdir -p log-aggregation/roles/{rsyslog-client,rsyslog-server,elasticsearch,kibana}/{tasks,templates,handlers,defaults}
 ```
 
@@ -72,7 +73,10 @@ log_aggregator_port: 514
 # Elasticsearch connection details
 elasticsearch_host: 10.0.3.10
 elasticsearch_port: 9200
+elasticsearch_scheme: http
 elasticsearch_index_prefix: "syslog"
+elasticsearch_security_enabled: false
+kibana_port: 5601
 
 # Retention settings
 log_retention_days: 30
@@ -232,6 +236,7 @@ template(name="RemoteLogPath" type="string"
 action(type="omelasticsearch"
     server="{{ elasticsearch_host }}"
     serverport="{{ elasticsearch_port }}"
+    usehttps="{{ 'on' if elasticsearch_scheme == 'https' else 'off' }}"
     searchIndex="{{ elasticsearch_index_prefix }}-%$YEAR%.%$MONTH%.%$DAY%"
     searchType="_doc"
     template="json-syslog"
@@ -248,14 +253,26 @@ A simplified role to get Elasticsearch up and running for log storage.
 
 ```yaml
 # roles/elasticsearch/tasks/main.yml
-- name: Add Elasticsearch GPG key
-  ansible.builtin.apt_key:
-    url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+- name: Install repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - python3-debian
     state: present
+    update_cache: yes
 
 - name: Add Elasticsearch repository
-  ansible.builtin.apt_repository:
-    repo: "deb https://artifacts.elastic.co/packages/8.x/apt stable main"
+  ansible.builtin.deb822_repository:
+    name: elastic-8.x
+    types:
+      - deb
+    uris:
+      - https://artifacts.elastic.co/packages/8.x/apt
+    suites:
+      - stable
+    components:
+      - main
+    signed_by: https://artifacts.elastic.co/GPG-KEY-elasticsearch
     state: present
 
 - name: Install Elasticsearch
@@ -290,13 +307,28 @@ A simplified role to get Elasticsearch up and running for log storage.
 
 - name: Wait for Elasticsearch to become available
   ansible.builtin.uri:
-    url: "http://localhost:{{ elasticsearch_port }}"
+    url: "{{ elasticsearch_scheme }}://localhost:{{ elasticsearch_port }}"
     method: GET
     status_code: 200
   register: es_health
   retries: 30
   delay: 5
   until: es_health.status == 200
+
+- name: Configure index lifecycle management
+  ansible.builtin.import_tasks: ilm.yml
+```
+
+The Elasticsearch configuration template keeps this simple lab stack on unauthenticated HTTP. For production, leave Elasticsearch security enabled and configure rsyslog and Kibana with TLS and credentials instead.
+
+```jinja2
+# roles/elasticsearch/templates/elasticsearch.yml.j2
+cluster.name: log-aggregation
+node.name: "{{ inventory_hostname }}"
+network.host: 0.0.0.0
+http.port: {{ elasticsearch_port }}
+discovery.type: single-node
+xpack.security.enabled: {{ elasticsearch_security_enabled | bool | lower }}
 ```
 
 ## Index Lifecycle Management
@@ -307,17 +339,12 @@ To keep your Elasticsearch cluster from running out of disk, set up an ILM polic
 # roles/elasticsearch/tasks/ilm.yml
 - name: Create ILM policy for log retention
   ansible.builtin.uri:
-    url: "http://localhost:{{ elasticsearch_port }}/_ilm/policy/log-retention"
+    url: "{{ elasticsearch_scheme }}://localhost:{{ elasticsearch_port }}/_ilm/policy/log-retention"
     method: PUT
     body_format: json
     body:
       policy:
         phases:
-          hot:
-            actions:
-              rollover:
-                max_size: "10gb"
-                max_age: "1d"
           delete:
             min_age: "{{ log_retention_days }}d"
             actions:
@@ -325,6 +352,87 @@ To keep your Elasticsearch cluster from running out of disk, set up an ILM polic
     status_code:
       - 200
       - 201
+
+- name: Apply ILM policy to syslog indices
+  ansible.builtin.uri:
+    url: "{{ elasticsearch_scheme }}://localhost:{{ elasticsearch_port }}/_index_template/syslog-template"
+    method: PUT
+    body_format: json
+    body:
+      index_patterns:
+        - "{{ elasticsearch_index_prefix }}-*"
+      template:
+        settings:
+          index.lifecycle.name: log-retention
+    status_code:
+      - 200
+      - 201
+```
+
+## Kibana Role
+
+Install Kibana and point it at the Elasticsearch node.
+
+```yaml
+# roles/kibana/tasks/main.yml
+- name: Install repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - python3-debian
+    state: present
+    update_cache: yes
+
+- name: Add Elastic repository
+  ansible.builtin.deb822_repository:
+    name: elastic-8.x
+    types:
+      - deb
+    uris:
+      - https://artifacts.elastic.co/packages/8.x/apt
+    suites:
+      - stable
+    components:
+      - main
+    signed_by: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    state: present
+
+- name: Install Kibana
+  ansible.builtin.apt:
+    name: kibana
+    state: present
+    update_cache: yes
+
+- name: Configure Kibana
+  ansible.builtin.template:
+    src: kibana.yml.j2
+    dest: /etc/kibana/kibana.yml
+    owner: root
+    group: kibana
+    mode: '0660'
+  notify: Restart Kibana
+
+- name: Enable and start Kibana
+  ansible.builtin.service:
+    name: kibana
+    state: started
+    enabled: yes
+```
+
+```jinja2
+# roles/kibana/templates/kibana.yml.j2
+server.host: "0.0.0.0"
+server.port: {{ kibana_port }}
+elasticsearch.hosts:
+  - "{{ elasticsearch_scheme }}://{{ elasticsearch_host }}:{{ elasticsearch_port }}"
+```
+
+```yaml
+# roles/kibana/handlers/main.yml
+- name: Restart Kibana
+  ansible.builtin.service:
+    name: kibana
+    state: restarted
 ```
 
 ## The Main Playbook
@@ -389,7 +497,7 @@ After deployment, verify that logs are flowing correctly.
 
     - name: Verify Elasticsearch has received logs
       ansible.builtin.uri:
-        url: "http://{{ elasticsearch_host }}:{{ elasticsearch_port }}/{{ elasticsearch_index_prefix }}-*/_count"
+        url: "{{ elasticsearch_scheme }}://{{ elasticsearch_host }}:{{ elasticsearch_port }}/{{ elasticsearch_index_prefix }}-*/_count"
         method: GET
       register: log_count
 
@@ -400,14 +508,14 @@ After deployment, verify that logs are flowing correctly.
 
 ## Adding Log Parsing
 
-You can enhance the setup by parsing structured logs like nginx access logs.
+You can enhance the setup by parsing JSON-formatted application logs.
 
 ```jinja2
-# roles/rsyslog-client/templates/nginx-parse.conf.j2
-# Parse nginx access logs into structured fields
+# roles/rsyslog-server/templates/app-json-parse.conf.j2
+# Parse JSON application logs into structured fields
 module(load="mmjsonparse")
 
-template(name="nginx-json" type="list") {
+template(name="app-json" type="list") {
     constant(value="{")
     constant(value="\"@timestamp\":\"") property(name="timereported" dateFormat="rfc3339")
     constant(value="\",\"client_ip\":\"") property(name="$!client_ip")
@@ -417,13 +525,14 @@ template(name="nginx-json" type="list") {
     constant(value="\"}")
 }
 
-if $programname == 'nginx' then {
-    action(type="mmjsonparse")
+if $programname == 'my-json-app' then {
+    action(type="mmjsonparse" mode="find-json")
     action(type="omelasticsearch"
         server="{{ elasticsearch_host }}"
         serverport="{{ elasticsearch_port }}"
-        searchIndex="nginx-%$YEAR%.%$MONTH%.%$DAY%"
-        template="nginx-json")
+        usehttps="{{ 'on' if elasticsearch_scheme == 'https' else 'off' }}"
+        searchIndex="app-json-%$YEAR%.%$MONTH%.%$DAY%"
+        template="app-json")
 }
 ```
 
