@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, BGP, Graceful Restart, High Availability
 
-Description: Learn how to enable BGP graceful restart in MetalLB to maintain traffic forwarding during speaker pod restarts and node maintenance.
+Description: Learn how to enable BGP graceful restart in MetalLB to maintain traffic forwarding during speaker pod restarts and control-plane maintenance.
 
 ---
 
@@ -52,13 +52,13 @@ The key parameters are:
 
 ### Prerequisites
 
-- MetalLB installed in FRR mode (graceful restart requires FRR)
+- MetalLB installed with an FRR-based backend (FRR-K8s or FRR mode)
 - Upstream router that supports BGP graceful restart (most modern routers do)
 - kubectl access to the cluster
 
-### Step 1: Verify FRR Mode is Active
+### Step 1: Verify an FRR-Based Backend is Active
 
-Graceful restart is only available when MetalLB uses FRR mode. Confirm that FRR containers are running:
+Graceful restart is available when MetalLB uses an FRR-based backend. Confirm that FRR containers are running:
 
 ```bash
 # Check that speaker pods have the frr container
@@ -74,7 +74,7 @@ kubectl get pod -n metallb-system "$SPEAKER_POD" \
 
 ### Step 2: Enable Graceful Restart on the BGP Peer
 
-Add the `enableGracefulRestart` field to your BGPPeer resource:
+Add the `enableGracefulRestart` field to your BGPPeer resource. This field is immutable, so if the peer already exists without graceful restart enabled, delete and re-create the BGPPeer instead of patching the field in place.
 
 ```yaml
 # bgp-peer-graceful.yaml
@@ -96,7 +96,7 @@ spec:
 ```
 
 ```bash
-# Apply the updated peer configuration
+# Apply the peer configuration
 kubectl apply -f bgp-peer-graceful.yaml
 ```
 
@@ -107,7 +107,7 @@ After applying the configuration, check that the BGP session has negotiated grac
 ```bash
 # Check neighbor details for graceful restart capability
 kubectl exec -n metallb-system "$SPEAKER_POD" -c frr -- \
-  vtysh -c "show bgp neighbors 10.0.0.1" | grep -A 5 -i "graceful restart"
+  vtysh -c "show bgp neighbors 10.0.0.1 graceful-restart"
 ```
 
 You should see output similar to:
@@ -127,11 +127,11 @@ You should see output similar to:
       End-of-RIB received: Yes
 ```
 
-Both "Local GR Mode" and "Remote GR Mode" should show "Restart". If the remote side shows "Helper", it means the router will preserve routes but will not request the same from MetalLB. If it shows "NotApplicable", the router does not support graceful restart and you need to enable it on the router side.
+Both "Local GR Mode" and "Remote GR Mode" should show "Restart" for full graceful restart support. If the remote side shows "Helper", it means the router will preserve MetalLB routes during a MetalLB restart but is not advertising itself as a restarting speaker for this session. If it shows "NotApplicable", the router has not negotiated graceful restart and you need to enable it on the router side.
 
 ### Step 4: Configure the Upstream Router
 
-Graceful restart is a bilateral negotiation. The upstream router must also have it enabled. Here is an example for a router running FRR or Quagga:
+Graceful restart is negotiated in the BGP OPEN message, so the upstream router must also advertise support for it. Here is an example for a router running FRR:
 
 ```bash
 # Example FRR configuration on the upstream router
@@ -206,7 +206,7 @@ gantt
     Routes refreshed      :b3, 25, 05
 ```
 
-During the "Stale route forwarding" window, traffic continues to flow even though the BGP session is down.
+During the "Stale route forwarding" window, traffic can continue to flow even though the BGP session is down, as long as the node's forwarding path for that service remains viable.
 
 ### Tuning Restart Timers
 
@@ -258,7 +258,7 @@ kubectl apply -f multi-peer-graceful.yaml
 
 ### Combining Graceful Restart with BFD
 
-You can use both BFD and graceful restart together. BFD handles fast detection of genuine link failures, while graceful restart handles planned restarts:
+You can use both BFD and graceful restart together, but their interaction is implementation specific. BFD handles fast detection of genuine forwarding failures, while graceful restart handles BGP control-plane restarts:
 
 ```yaml
 # peer-with-bfd-and-gr.yaml
@@ -276,10 +276,10 @@ spec:
   bfdProfile: fast-detect
 ```
 
-When a speaker pod restarts (no actual link failure), BFD may detect the session drop before the graceful restart timer kicks in. Most modern routers handle this correctly by distinguishing between BFD-triggered downs and TCP session drops, but test this in your environment to be sure.
+When a speaker pod restarts, BFD behavior depends on the router implementation and whether BFD shares fate with the BGP control plane. Test this combination in your environment before relying on graceful restart and BFD together.
 
 ### Summary
 
-BGP graceful restart is a critical feature for production MetalLB deployments. It eliminates traffic disruption during routine operations like rolling updates, node drains, and pod evictions. Enable it on every BGP peer and make sure your upstream routers negotiate it successfully.
+BGP graceful restart is a useful feature for production MetalLB deployments. It reduces traffic disruption during routine BGP control-plane restarts like speaker pod restarts and rolling updates, provided the node can still forward traffic for the advertised service. Enable it on every BGP peer and make sure your upstream routers negotiate it successfully.
 
 To monitor your MetalLB services and get alerted when BGP sessions drop or traffic patterns change, [OneUptime](https://oneuptime.com) provides infrastructure monitoring, alerting, and incident management that integrates with your Kubernetes environment.
