@@ -135,16 +135,16 @@ Acquire::https::Proxy "{{ https_proxy_url }}";
   hosts: rhel_servers
   become: true
   tasks:
-    - name: Set proxy in yum.conf
+    - name: Set proxy in YUM/DNF main config
       ansible.builtin.lineinfile:
-        path: /etc/yum.conf
+        path: "{{ '/etc/dnf/dnf.conf' if ansible_pkg_mgr == 'dnf' else '/etc/yum.conf' }}"
         regexp: '^proxy='
         line: "proxy={{ proxy_url }}"
         insertafter: '^\[main\]'
 
     - name: Set proxy username if authentication required
       ansible.builtin.lineinfile:
-        path: /etc/yum.conf
+        path: "{{ '/etc/dnf/dnf.conf' if ansible_pkg_mgr == 'dnf' else '/etc/yum.conf' }}"
         regexp: '^proxy_username='
         line: "proxy_username={{ proxy_user }}"
         insertafter: '^proxy='
@@ -152,7 +152,7 @@ Acquire::https::Proxy "{{ https_proxy_url }}";
 
     - name: Set proxy password if authentication required
       ansible.builtin.lineinfile:
-        path: /etc/yum.conf
+        path: "{{ '/etc/dnf/dnf.conf' if ansible_pkg_mgr == 'dnf' else '/etc/yum.conf' }}"
         regexp: '^proxy_password='
         line: "proxy_password={{ proxy_pass }}"
         insertafter: '^proxy_username='
@@ -161,7 +161,7 @@ Acquire::https::Proxy "{{ https_proxy_url }}";
 
 ## Docker Proxy Configuration
 
-Docker needs proxy settings in multiple places: the daemon configuration for image pulls and the systemd service for the Docker daemon itself:
+Docker daemon proxy settings for image pulls can be configured with a systemd service drop-in. Docker client configuration can also define default proxy environment variables for newly created containers:
 
 ```yaml
 # docker_proxy.yml - Configure proxy for Docker
@@ -176,7 +176,7 @@ Docker needs proxy settings in multiple places: the daemon configuration for ima
         state: directory
         mode: '0755'
 
-    - name: Configure Docker daemon proxy
+    - name: Configure Docker daemon proxy for systemd
       ansible.builtin.template:
         src: templates/docker-proxy.conf.j2
         dest: /etc/systemd/system/docker.service.d/http-proxy.conf
@@ -187,14 +187,21 @@ Docker needs proxy settings in multiple places: the daemon configuration for ima
         - Reload systemd
         - Restart Docker
 
-    - name: Configure Docker client proxy for all users
+    - name: Create root Docker client config directory
+      ansible.builtin.file:
+        path: /root/.docker
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Configure Docker client proxy defaults for root
       ansible.builtin.template:
         src: templates/docker-config.json.j2
-        dest: /etc/docker/daemon.json
+        dest: /root/.docker/config.json
         owner: root
         group: root
         mode: '0644'
-      notify: Restart Docker
 
   handlers:
     - name: Reload systemd
@@ -213,6 +220,19 @@ Docker needs proxy settings in multiple places: the daemon configuration for ima
 Environment="HTTP_PROXY={{ proxy_url }}"
 Environment="HTTPS_PROXY={{ https_proxy_url }}"
 Environment="NO_PROXY={{ no_proxy }}"
+```
+
+```jinja2
+# templates/docker-config.json.j2 - Docker client proxy defaults for containers
+{
+  "proxies": {
+    "default": {
+      "httpProxy": "{{ proxy_url }}",
+      "httpsProxy": "{{ https_proxy_url }}",
+      "noProxy": "{{ no_proxy }}"
+    }
+  }
+}
 ```
 
 ## Git Proxy Configuration
@@ -256,12 +276,6 @@ Python applications and pip also need proxy settings:
   hosts: all
   become: true
   tasks:
-    - name: Create pip config directory
-      ansible.builtin.file:
-        path: /etc/pip.conf.d
-        state: directory
-        mode: '0755'
-
     - name: Configure pip proxy globally
       ansible.builtin.copy:
         dest: /etc/pip.conf
@@ -278,7 +292,7 @@ Python applications and pip also need proxy settings:
 
 ## Ansible Itself Through a Proxy
 
-When Ansible itself needs to go through a proxy (for example, when downloading roles from Galaxy or fetching URLs), configure the environment:
+When Ansible tasks need to go through a proxy on the managed host, configure the task or play environment:
 
 ```yaml
 # ansible_proxy.yml - Use proxy within Ansible tasks
@@ -330,9 +344,10 @@ Tying everything together into a single comprehensive playbook:
 
     - name: Configure YUM proxy
       ansible.builtin.lineinfile:
-        path: /etc/yum.conf
+        path: "{{ '/etc/dnf/dnf.conf' if ansible_pkg_mgr == 'dnf' else '/etc/yum.conf' }}"
         regexp: '^proxy='
         line: "proxy={{ proxy_url }}"
+        insertafter: '^\[main\]'
       when: ansible_os_family == "RedHat"
 
     - name: Configure wget proxy
