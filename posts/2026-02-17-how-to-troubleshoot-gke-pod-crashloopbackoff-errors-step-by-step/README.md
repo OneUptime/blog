@@ -75,7 +75,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
       - name: my-app
@@ -114,7 +120,7 @@ kubectl get configmaps -n my-namespace
 kubectl get secrets -n my-namespace
 ```
 
-If a ConfigMap or Secret referenced by the pod does not exist, the pod will fail to start. The `describe` output will show an event like:
+If a required ConfigMap or Secret referenced by the pod does not exist, the container can fail before it starts. The `describe` output will show an event like:
 
 ```text
 Warning  Failed  configmap "my-config" not found
@@ -225,7 +231,7 @@ graph TD
 
 A few things specific to GKE that can cause CrashLoopBackOff:
 
-1. **Workload Identity misconfiguration** - If your pod expects to authenticate using Workload Identity but the annotation or binding is wrong, any GCP API call will fail.
+1. **Workload Identity misconfiguration** - If your pod expects to authenticate using Workload Identity but the annotation or IAM binding is wrong, GCP API calls that depend on that identity can fail.
 
 2. **Node pool resources** - If your node pool uses e2-micro or e2-small instances, the limited CPU can cause applications to start too slowly and fail health checks.
 
@@ -238,4 +244,4 @@ gcloud container clusters describe my-cluster \
     --format="value(autopilot.enabled)"
 ```
 
-The key to debugging CrashLoopBackOff is getting the logs from the previous container. Start there, and the error messages will guide you to the fix. If there are no logs, it is almost certainly an OOM kill, a missing entrypoint, or a probe killing the container before it finishes starting.
+The key to debugging CrashLoopBackOff is getting the logs from the previous container. Start there, and the error messages will guide you to the fix. If there are no logs, common causes include an OOM kill, a missing or broken entrypoint, or a probe killing the container before it finishes starting.
