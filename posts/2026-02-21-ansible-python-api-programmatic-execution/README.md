@@ -8,19 +8,17 @@ Description: Use the Ansible Python API to execute playbooks and ad-hoc commands
 
 ---
 
-The Ansible Python API lets you run playbooks and ad-hoc commands directly from Python code. This is useful when you need to integrate Ansible into a web application, a CI/CD pipeline, or a custom automation framework. Instead of shelling out to the `ansible-playbook` command, you can use the API for tighter control over execution, result handling, and error management.
+The Ansible Python API can run playbooks and ad-hoc commands directly from Python code. This is useful when you need to integrate Ansible into a web application, a CI/CD pipeline, or a custom automation framework. Instead of shelling out to the `ansible-playbook` command, you can use the API for tighter control over execution, result handling, and error management.
 
 ## The Modern Ansible API
 
-Ansible's Python API has evolved significantly. The current approach uses `ansible-runner` for most use cases (covered in the next post), but the core API gives you lower-level control.
+Ansible's Python API has evolved significantly. The current approach uses `ansible-runner` for most use cases (covered in the next post), but the core API gives you lower-level control. The core Ansible API is intended for Ansible's internal use and can change between releases, so treat direct usage as version-sensitive.
 
 Here is the minimal setup for running an ad-hoc command:
 
 ```python
 # run_adhoc.py - Execute an ad-hoc command using Ansible Python API
 
-import json
-import shutil
 from ansible.module_utils.common.collections import ImmutableDict
 from ansible.parsing.dataloader import DataLoader
 from ansible.vars.manager import VariableManager
@@ -76,6 +74,8 @@ def run_adhoc_command(hosts, module, args, inventory_path='/etc/ansible/hosts'):
         check=False,
         diff=False,
         verbosity=0,
+        module_path=[],
+        start_at_task=None,
     )
 
     # Initialize the data loader
@@ -88,16 +88,15 @@ def run_adhoc_command(hosts, module, args, inventory_path='/etc/ansible/hosts'):
     variable_manager = VariableManager(loader=loader, inventory=inventory)
 
     # Create a play with the ad-hoc task
+    task_action = module if not args else f'{module} {args}'
+
     play_source = {
         'name': 'Ad-Hoc Command',
         'hosts': hosts,
         'gather_facts': 'no',
         'tasks': [
             {
-                'action': {
-                    'module': module,
-                    'args': args,
-                },
+                'action': task_action,
             },
         ],
     }
@@ -115,13 +114,15 @@ def run_adhoc_command(hosts, module, args, inventory_path='/etc/ansible/hosts'):
             variable_manager=variable_manager,
             loader=loader,
             passwords={},
-            stdout_callback=callback,
+            forks=context.CLIARGS['forks'],
         )
+        callback._init_callback_methods()
+        tqm._callback_plugins.append(callback)
         result_code = tqm.run(play)
     finally:
         if tqm is not None:
             tqm.cleanup()
-        shutil.rmtree(loader._tempdir, True)
+        loader.cleanup_all_tmp_files()
 
     return {
         'rc': result_code,
@@ -177,6 +178,7 @@ def run_playbook(playbook_path, inventory_path, extra_vars=None):
         listtasks=False,
         listtags=False,
         syntax=False,
+        module_path=[],
     )
 
     loader = DataLoader()
@@ -244,7 +246,7 @@ The Ansible Python API gives you programmatic control over playbook and ad-hoc c
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these API patterns prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
@@ -281,7 +283,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -376,6 +378,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -425,4 +428,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
