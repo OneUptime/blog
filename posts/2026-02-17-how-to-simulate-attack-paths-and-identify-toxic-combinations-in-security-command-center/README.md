@@ -26,59 +26,88 @@ The key concepts are:
 
 Attack path simulation requires SCC Enterprise tier. Once enabled, the simulation runs automatically, but you need to configure your high-value resources for meaningful results.
 
-This command designates specific resource types as high-value targets for the simulation engine.
+This API request designates specific resource types as high-value targets for the simulation engine.
 
 ```bash
 # Create a resource value configuration to mark BigQuery datasets as high-value
 
-gcloud scc resource-value-configs create \
-  --organization=123456789 \
-  --resource-type="bigquery.googleapis.com/Dataset" \
-  --resource-value=HIGH \
-  --description="Production BigQuery datasets containing customer data"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://securitycenter.googleapis.com/v2/organizations/123456789/resourceValueConfigs:batchCreate" \
+  -d '{
+    "requests": [
+      {
+        "resourceValueConfig": {
+          "resourceType": "bigquery.googleapis.com/Dataset",
+          "resourceValue": "HIGH",
+          "description": "Production BigQuery datasets containing customer data"
+        }
+      }
+    ]
+  }'
 ```
 
-You can also scope high-value designations using tag filters.
+You can also scope high-value designations using tag value IDs.
 
 ```bash
 # Mark only resources tagged as production as high-value
-gcloud scc resource-value-configs create \
-  --organization=123456789 \
-  --resource-type="sqladmin.googleapis.com/Instance" \
-  --resource-value=HIGH \
-  --tag-filter='environment=production' \
-  --description="Production Cloud SQL instances"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://securitycenter.googleapis.com/v2/organizations/123456789/resourceValueConfigs:batchCreate" \
+  -d '{
+    "requests": [
+      {
+        "resourceValueConfig": {
+          "resourceType": "sqladmin.googleapis.com/Instance",
+          "resourceValue": "HIGH",
+          "tagValues": ["tagValues/1234567890"],
+          "description": "Production Cloud SQL instances"
+        }
+      }
+    ]
+  }'
 ```
 
 ## Configuring Resource Value Levels
 
-SCC supports three resource value levels: HIGH, MEDIUM, and LOW. The simulation engine uses these to calculate attack exposure scores. Resources marked HIGH get the most attention in the simulation.
+For high-value resources, SCC uses three priority levels: HIGH, MEDIUM, and LOW. Resource value configs also support NONE to ignore matching resources. The simulation engine uses these values to calculate attack exposure scores. Resources marked HIGH get the most attention in the simulation.
 
-Here is a Terraform configuration that sets up resource value configs for multiple resource types.
+Here is an API request that sets up resource value configs for multiple resource types.
 
-```hcl
+```bash
 # Define high-value resource configurations for the attack path simulator
-resource "google_scc_management_organization_resource_value_config" "secret_manager" {
-  organization = "123456789"
-  resource_type = "secretmanager.googleapis.com/Secret"
-  resource_value = "HIGH"
-  description = "Secret Manager secrets are high-value targets"
-}
-
-resource "google_scc_management_organization_resource_value_config" "cloud_sql" {
-  organization = "123456789"
-  resource_type = "sqladmin.googleapis.com/Instance"
-  resource_value = "HIGH"
-  tag_values = ["tagValues/production"]
-  description = "Production databases"
-}
-
-resource "google_scc_management_organization_resource_value_config" "gke_clusters" {
-  organization = "123456789"
-  resource_type = "container.googleapis.com/Cluster"
-  resource_value = "MEDIUM"
-  description = "GKE clusters as medium-value targets"
-}
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://securitycenter.googleapis.com/v2/organizations/123456789/resourceValueConfigs:batchCreate" \
+  -d '{
+    "requests": [
+      {
+        "resourceValueConfig": {
+          "resourceType": "secretmanager.googleapis.com/Secret",
+          "resourceValue": "HIGH",
+          "description": "Secret Manager secrets are high-value targets"
+        }
+      },
+      {
+        "resourceValueConfig": {
+          "resourceType": "sqladmin.googleapis.com/Instance",
+          "resourceValue": "HIGH",
+          "tagValues": ["tagValues/1234567890"],
+          "description": "Production databases"
+        }
+      },
+      {
+        "resourceValueConfig": {
+          "resourceType": "container.googleapis.com/Cluster",
+          "resourceValue": "MEDIUM",
+          "description": "GKE clusters as medium-value targets"
+        }
+      }
+    ]
+  }'
 ```
 
 ## Reading Attack Path Results
@@ -88,13 +117,15 @@ Once the simulation has run, you can query the results through the SCC API or co
 This command retrieves findings sorted by their attack exposure score, showing you which findings present the greatest real-world risk.
 
 ```bash
-# List findings sorted by attack exposure score, highest first
+# List active findings and sort them by attack exposure score, highest first
 gcloud scc findings list 123456789 \
-  --source=SECURITY_HEALTH_ANALYTICS \
+  --source=- \
+  --location=global \
   --filter="state=\"ACTIVE\"" \
-  --order-by="attackExposure.score DESC" \
-  --format="table(resourceName, category, severity, attackExposure.score)" \
-  --limit=20
+  --format=json | \
+  jq -r 'sort_by(.finding.attackExposure.score // 0) | reverse | .[:20][] |
+    [.finding.resourceName, .finding.category, .finding.severity, (.finding.attackExposure.score // 0)] |
+    @tsv'
 ```
 
 ## Understanding Toxic Combinations
@@ -137,30 +168,41 @@ def get_toxic_combinations(org_id):
     """Retrieve toxic combination findings for an organization."""
     client = securitycenter_v2.SecurityCenterClient()
 
-    parent = f"organizations/{org_id}/sources/-/locations/-"
+    parent = f"organizations/{org_id}/sources/-/locations/global"
 
-    # Filter for toxic combination findings specifically
-    finding_filter = 'category="TOXIC_COMBINATION" AND state="ACTIVE"'
+    # The list API filter supports state. Filter the toxic-combination
+    # finding class in code, because finding_class is not a list filter field.
+    finding_filter = 'state="ACTIVE"'
 
     request = securitycenter_v2.ListFindingsRequest(
         parent=parent,
-        filter=finding_filter,
-        order_by="attackExposure.score desc"
+        filter=finding_filter
     )
 
     findings = client.list_findings(request=request)
+    toxic_findings = []
 
     for response in findings:
         finding = response.finding
-        print(f"Toxic Combination: {finding.display_name}")
-        print(f"  Score: {finding.attack_exposure.score}")
+        if finding.finding_class != securitycenter_v2.Finding.FindingClass.TOXIC_COMBINATION:
+            continue
+        toxic_findings.append(finding)
+
+    toxic_findings.sort(
+        key=lambda f: f.toxic_combination.attack_exposure_score,
+        reverse=True
+    )
+
+    for finding in toxic_findings:
+        print(f"Toxic Combination: {finding.category}")
+        print(f"  Score: {finding.toxic_combination.attack_exposure_score}")
         print(f"  Severity: {finding.severity.name}")
 
         # Print the individual findings that form this combination
-        if finding.connections:
+        if finding.toxic_combination.related_findings:
             print("  Component Findings:")
-            for conn in finding.connections:
-                print(f"    - {conn.destination_finding}")
+            for related_finding in finding.toxic_combination.related_findings:
+                print(f"    - {related_finding}")
         print()
 
 # Run for your organization
@@ -177,15 +219,18 @@ This script exports findings with attack exposure scores for trend analysis.
 # Export SCC findings with attack exposure data to BigQuery
 gcloud scc findings list 123456789 \
   --source=- \
-  --filter="attackExposure.score > 0 AND state=\"ACTIVE\"" \
-  --format=json > /tmp/attack_exposure_findings.json
+  --location=global \
+  --filter="state=\"ACTIVE\"" \
+  --format=json | \
+  jq -c '.[] | .finding | select((.attackExposure.score // 0) > 0)' \
+  > /tmp/attack_exposure_findings.ndjson
 
 # Load into BigQuery for analysis
 bq load \
   --source_format=NEWLINE_DELIMITED_JSON \
   --autodetect \
   security_analytics.attack_exposure_findings \
-  /tmp/attack_exposure_findings.json
+  /tmp/attack_exposure_findings.ndjson
 ```
 
 Once the data is in BigQuery, you can run queries to identify trends.
@@ -193,7 +238,7 @@ Once the data is in BigQuery, you can run queries to identify trends.
 ```sql
 -- Find the most exposed projects based on cumulative attack exposure scores
 SELECT
-  JSON_EXTRACT_SCALAR(resourceName, '$.project') AS project_id,
+  REGEXP_EXTRACT(resourceName, r'/projects/([^/]+)') AS project_id,
   COUNT(*) AS finding_count,
   AVG(CAST(attackExposure.score AS FLOAT64)) AS avg_exposure_score,
   MAX(CAST(attackExposure.score AS FLOAT64)) AS max_exposure_score
@@ -225,17 +270,18 @@ The key insight is that fixing one finding in a toxic combination often breaks t
 
 ## Automating Response to Toxic Combinations
 
-You can set up SCC notifications to trigger automated responses when new toxic combinations are detected.
+You can set up SCC notifications to trigger automated responses when new active findings are detected, then filter for toxic-combination findings in your subscriber code.
 
 ```bash
-# Create a notification config for toxic combination findings
-gcloud scc notifications create toxic-combo-alerts \
+# Create a notification config for active findings
+gcloud scc notifications create active-finding-alerts \
   --organization=123456789 \
-  --pubsub-topic=projects/my-project/topics/scc-toxic-combos \
-  --filter='category="TOXIC_COMBINATION" AND state="ACTIVE" AND attackExposure.score >= 7.0'
+  --location=global \
+  --pubsub-topic=projects/my-project/topics/scc-active-findings \
+  --filter='state="ACTIVE"'
 ```
 
-With Pub/Sub receiving these notifications, you can wire up Cloud Functions to automatically create tickets, page on-call engineers, or even apply temporary mitigations like restricting network access.
+With Pub/Sub receiving these notifications, you can wire up Cloud Functions to automatically create tickets, page on-call engineers, or even apply temporary mitigations like restricting network access. In the subscriber, check for `finding.findingClass == "TOXIC_COMBINATION"` and the desired `finding.toxicCombination.attackExposureScore` threshold before taking action.
 
 ## Practical Tips
 
