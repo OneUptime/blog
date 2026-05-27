@@ -16,7 +16,7 @@ Let me show you how to get it working and how to make sense of the findings it p
 
 ## What Security Health Analytics Covers
 
-SHA checks over 140 detector types across GCP services. Here are some of the major categories:
+SHA checks many built-in detector types across GCP services. Here are some of the major categories:
 
 - Compute Engine: Open firewall rules, unencrypted disks, public IP addresses, OS login disabled
 - Cloud Storage: Publicly accessible buckets, uniform bucket-level access not enabled
@@ -42,7 +42,7 @@ SHA should be enabled by default when you activate SCC, but let us verify.
 ```bash
 # Check the status of Security Health Analytics
 
-gcloud scc settings services describe sha \
+gcloud scc manage services describe sha \
   --organization=ORGANIZATION_ID
 ```
 
@@ -55,20 +55,20 @@ Let us see what SHA has found across your organization.
 ```bash
 # List all active SHA findings
 gcloud scc findings list ORGANIZATION_ID \
-  --source=organizations/ORGANIZATION_ID/sources/SHA_SOURCE_ID \
+  --source=SHA_SOURCE_ID \
   --filter='state="ACTIVE"' \
-  --format="table(finding.category, finding.severity, finding.resourceName)"
+  --format="table(finding.category, finding.severity, finding.resource_name)"
 ```
 
 To find the SHA source ID:
 
 ```bash
-# List all sources to find the SHA source ID
-gcloud scc sources list ORGANIZATION_ID \
-  --format="table(name, displayName)"
+# Describe the Security Health Analytics source
+gcloud scc sources describe ORGANIZATION_ID \
+  --source-display-name="Security Health Analytics"
 ```
 
-Look for the source with display name "Security Health Analytics".
+The output includes a `name` like `organizations/ORGANIZATION_ID/sources/SOURCE_ID`. Use the final `SOURCE_ID` value as `SHA_SOURCE_ID`.
 
 ## Step 3: Filter by Severity
 
@@ -77,9 +77,9 @@ In a large organization, you might have thousands of findings. Focus on the crit
 ```bash
 # List only HIGH and CRITICAL severity findings
 gcloud scc findings list ORGANIZATION_ID \
-  --source=organizations/ORGANIZATION_ID/sources/SHA_SOURCE_ID \
-  --filter='state="ACTIVE" AND severity="HIGH"' \
-  --format="table(finding.category, finding.resourceName, finding.createTime)" \
+  --source=SHA_SOURCE_ID \
+  --filter='state="ACTIVE" AND (severity="HIGH" OR severity="CRITICAL")' \
+  --format="table(finding.category, finding.resource_name, finding.create_time)" \
   --limit=50
 ```
 
@@ -92,9 +92,9 @@ Here are the findings you are most likely to see and what they mean:
 ```bash
 # Find all open firewall findings
 gcloud scc findings list ORGANIZATION_ID \
-  --source=organizations/ORGANIZATION_ID/sources/SHA_SOURCE_ID \
+  --source=SHA_SOURCE_ID \
   --filter='state="ACTIVE" AND category="OPEN_FIREWALL"' \
-  --format="table(finding.resourceName, finding.severity)"
+  --format="table(finding.resource_name, finding.severity)"
 ```
 
 **PUBLIC_BUCKET_ACL** - A Cloud Storage bucket is accessible to the public internet. Unless you are intentionally serving public content, this should be fixed immediately.
@@ -112,8 +112,8 @@ For any specific finding, you can get the full details including remediation gui
 ```bash
 # Get details of a specific finding
 gcloud scc findings list ORGANIZATION_ID \
-  --source=organizations/ORGANIZATION_ID/sources/SHA_SOURCE_ID \
-  --filter='finding.name="organizations/ORGANIZATION_ID/sources/SOURCE_ID/findings/FINDING_ID"' \
+  --source=SHA_SOURCE_ID \
+  --filter='name="organizations/ORGANIZATION_ID/sources/SHA_SOURCE_ID/findings/FINDING_ID"' \
   --format=json
 ```
 
@@ -127,7 +127,7 @@ Some findings might be intentional. For example, you might have a public bucket 
 # Create a mute config to suppress specific finding patterns
 gcloud scc muteconfigs create accepted-public-buckets \
   --organization=ORGANIZATION_ID \
-  --filter='category="PUBLIC_BUCKET_ACL" AND resource.name="//storage.googleapis.com/my-public-website-bucket"' \
+  --filter='category="PUBLIC_BUCKET_ACL" AND resource_name="//storage.googleapis.com/projects/_/buckets/my-public-website-bucket"' \
   --description="Website bucket is intentionally public"
 ```
 
@@ -148,9 +148,9 @@ Fix a public bucket:
 
 ```bash
 # Remove public access from a bucket
-gcloud storage buckets update gs://my-bucket \
-  --no-public-access \
-  --project=my-project-id
+gcloud storage buckets remove-iam-policy-binding gs://my-bucket \
+  --member=allUsers \
+  --role=roles/storage.objectViewer
 ```
 
 Fix a Cloud SQL public IP:
@@ -171,7 +171,7 @@ Instead of manually checking findings, set up notifications for new findings.
 gcloud scc notifications create sha-alerts \
   --organization=ORGANIZATION_ID \
   --pubsub-topic=projects/my-project-id/topics/sha-findings \
-  --filter='state="ACTIVE" AND severity="HIGH" AND source_properties.source_id="SHA_SOURCE_ID"'
+  --filter='state="ACTIVE" AND severity="HIGH" AND parent="organizations/ORGANIZATION_ID/sources/SHA_SOURCE_ID"'
 ```
 
 ## Step 9: Track Remediation Progress
@@ -181,7 +181,7 @@ Use the SCC API to track how many findings are being resolved over time.
 ```bash
 # Count active findings by category
 gcloud scc findings list ORGANIZATION_ID \
-  --source=organizations/ORGANIZATION_ID/sources/SHA_SOURCE_ID \
+  --source=SHA_SOURCE_ID \
   --filter='state="ACTIVE"' \
   --format="value(finding.category)" | sort | uniq -c | sort -rn | head -20
 ```
@@ -192,18 +192,14 @@ This gives you a quick snapshot of where your biggest security gaps are.
 
 The Standard tier (free) includes detectors for:
 
-- Open firewall rules
-- Public buckets
-- Public Cloud SQL instances
-- Web UI enabled on GKE clusters
-- A handful of other basic checks
+- A basic group of medium-severity and high-severity vulnerabilities, such as open firewall rules, public buckets, and public Cloud SQL instances
 
 The Premium tier adds detectors for:
 
 - CIS benchmark compliance
 - Detailed IAM analysis
-- Cryptomining detection
-- Anomaly detection
+- Attack path simulation and attack exposure scoring for most Security Health Analytics findings
+- Custom Security Health Analytics detection modules
 - 100+ additional misconfiguration checks
 
 If you are serious about security, Premium tier is worth the investment. The standard tier catches the obvious issues, but the premium detectors find the subtle misconfigurations that are easy to overlook.
