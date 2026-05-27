@@ -12,7 +12,7 @@ Cloud Run is one of the easiest ways to deploy containerized applications on GCP
 
 ## What Concurrency Means in Cloud Run
 
-When a request arrives at Cloud Run, the platform routes it to an available container instance. The concurrency setting determines how many requests can be processed by a single instance at the same time. The default is 80, and the maximum is 1000.
+When a request arrives at Cloud Run, the platform routes it to an available container instance. The concurrency setting determines how many requests can be processed by a single instance at the same time. The maximum is 1000. Cloud Run services created in the Google Cloud console default to 80, while services created with Google Cloud CLI or Terraform default to 80 times the number of vCPUs when the service is first created.
 
 If concurrency is set to 1, each instance handles exactly one request at a time. This is the simplest model but also the most expensive because Cloud Run needs to spin up more instances to handle traffic. If concurrency is set to 80, a single instance can handle up to 80 simultaneous requests, meaning you need fewer instances overall.
 
@@ -28,13 +28,13 @@ Web applications and APIs that spend most of their time waiting on I/O (database
 
 The right concurrency depends on your application's resource profile. Here is how to figure it out systematically.
 
-Start by deploying your service with the default concurrency of 80:
+Start by deploying your service with a baseline concurrency of 80:
 
 ```bash
-# Deploy with default concurrency (80)
+# Deploy with baseline concurrency (80)
 
 gcloud run deploy my-service \
-  --image gcr.io/my-project/my-service:latest \
+  --image us-central1-docker.pkg.dev/my-project/my-repo/my-service:latest \
   --region us-central1 \
   --concurrency 80 \
   --cpu 2 \
@@ -86,7 +86,7 @@ spec:
       # Concurrency per container instance
       containerConcurrency: 150
       containers:
-        - image: gcr.io/my-project/my-service:latest
+        - image: us-central1-docker.pkg.dev/my-project/my-repo/my-service:latest
           resources:
             limits:
               cpu: "2"
@@ -98,17 +98,17 @@ spec:
 Cloud Run gives you two CPU allocation modes: CPU is only allocated during request processing, or CPU is always allocated. This significantly affects concurrency behavior.
 
 ```bash
-# Always allocate CPU - better for high concurrency workloads
+# Always allocate CPU - better for steady high-concurrency workloads
 # that do background processing between requests
 gcloud run deploy my-service \
-  --image gcr.io/my-project/my-service:latest \
-  --cpu-throttling \
+  --image us-central1-docker.pkg.dev/my-project/my-repo/my-service:latest \
+  --no-cpu-throttling \
   --concurrency 200
 ```
 
 With "CPU only during requests," your container gets CPU time only when actively handling a request. At high concurrency, this can lead to CPU contention. With "CPU always allocated," your container can use CPU even between requests, which helps with connection pooling, background tasks, and warming caches.
 
-For high-concurrency services, I recommend "CPU always allocated" because it gives your application more consistent performance under load.
+For steady high-concurrency services with background work between requests, I recommend "CPU always allocated" because it gives your application more consistent performance under load.
 
 ## Concurrency and Memory Relationship
 
@@ -129,7 +129,7 @@ total_memory = 50MB + (2MB * 150) = 350MB
 ```bash
 # Deploy with calculated memory and concurrency
 gcloud run deploy my-api \
-  --image gcr.io/my-project/my-api:latest \
+  --image us-central1-docker.pkg.dev/my-project/my-repo/my-api:latest \
   --memory 512Mi \
   --cpu 2 \
   --concurrency 150
@@ -143,7 +143,7 @@ When Cloud Run scales up new instances, it does not send traffic until the insta
 # Configure startup probe so Cloud Run knows when to send traffic
 spec:
   containers:
-    - image: gcr.io/my-project/my-service:latest
+    - image: us-central1-docker.pkg.dev/my-project/my-repo/my-service:latest
       startupProbe:
         httpGet:
           path: /healthz
@@ -181,8 +181,8 @@ gcloud monitoring policies create \
   --display-name="Cloud Run CPU Alert" \
   --condition-display-name="High CPU" \
   --condition-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/container/cpu/utilizations"' \
-  --condition-threshold-value=0.8 \
-  --condition-threshold-duration=300s
+  --if="> 0.8" \
+  --duration=300s
 ```
 
 The tuning process is iterative. Start with a reasonable default, load test, observe metrics, adjust, and repeat. The goal is to find the highest concurrency your instances can handle while keeping p99 latency acceptable and CPU utilization under 70 percent. That sweet spot gives you maximum throughput per instance, which directly translates to lower costs on Cloud Run.
