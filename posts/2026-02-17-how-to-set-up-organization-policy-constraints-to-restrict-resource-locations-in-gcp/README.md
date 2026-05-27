@@ -45,7 +45,7 @@ This constraint accepts a list of allowed locations using GCP location values. L
 
 - **Regions**: `in:us-central1-locations`, `in:europe-west1-locations`
 - **Multi-regions**: `in:us-locations`, `in:eu-locations`
-- **Zones**: Specific zones within regions
+- **Zones**: Specific zones within regions, such as `us-central1-a`
 
 ## Step 2: Set Location Restrictions at the Organization Level
 
@@ -69,7 +69,7 @@ listPolicy:
     - in:us-locations
 ```
 
-The `in:us-locations` value group includes all US regions (us-central1, us-east1, us-east4, us-west1, us-west2, us-west3, us-west4, us-south1) and the US multi-region.
+The `in:us-locations` value group includes Google Cloud locations in the United States, including current and future US regions and the US multi-region.
 
 ## Step 3: Set More Specific Restrictions
 
@@ -245,13 +245,13 @@ The `gcp.resourceLocations` constraint applies to most regional and zonal GCP re
 
 | Service | Covered Resources |
 |---------|------------------|
-| Compute Engine | VMs, disks, snapshots, images |
+| Compute Engine | VMs, disks, snapshots/images when storage locations are specified |
 | Cloud Storage | Bucket locations |
 | Cloud SQL | Instance locations |
 | BigQuery | Dataset locations |
 | GKE | Cluster locations |
-| Cloud Functions | Function locations |
-| Pub/Sub | Topic locations (for single-region topics) |
+| Cloud Run functions | Function locations |
+| Pub/Sub | Message storage locations; topics are global resources |
 | Cloud Run | Service locations |
 
 Some resources are global by nature (like IAM policies, DNS zones) and are not affected by this constraint.
@@ -275,17 +275,24 @@ listPolicy:
   inheritFromParent: true
 ```
 
-### Conditional Policy (Requires Policy Tags)
+### Conditional Policy (Requires Resource Manager Tags)
 
 For more complex scenarios, you can use tag-based conditions:
 
 ```yaml
 # conditional-policy.yaml
-constraint: constraints/gcp.resourceLocations
-listPolicy:
-  allowedValues:
-    - in:us-locations
-  inheritFromParent: false
+name: folders/FOLDER_ID/policies/gcp.resourceLocations
+spec:
+  rules:
+    - condition:
+        expression: "resource.matchTag('ORGANIZATION_ID/environment', 'dev')"
+      values:
+        allowedValues:
+          - in:us-locations
+    - values:
+        allowedValues:
+          - in:us-central1-locations
+          - in:us-east4-locations
 ```
 
 ## Monitoring Policy Violations
@@ -294,20 +301,20 @@ Even with policies in place, it is good to monitor for attempted violations:
 
 ```bash
 # Check audit logs for policy violation attempts
-gcloud logging read 'protoPayload.status.message:"constraints/gcp.resourceLocations"' \
+gcloud logging read 'protoPayload.response.error.message:"constraints/gcp.resourceLocations"' \
     --project=my-project \
     --limit=20 \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.resourceName)"
 ```
 
-Set up an alert to notify you when someone tries to create resources in restricted locations:
+Create a log-based metric that you can use for an alert when someone tries to create resources in restricted locations:
 
 ```bash
 # Create a log-based alert for policy violations
 gcloud logging metrics create location-policy-violations \
     --project=my-project \
     --description="Count of resource location policy violations" \
-    --log-filter='protoPayload.status.message:"constraints/gcp.resourceLocations"'
+    --log-filter='protoPayload.response.error.message:"constraints/gcp.resourceLocations"'
 ```
 
 ## Common Patterns
