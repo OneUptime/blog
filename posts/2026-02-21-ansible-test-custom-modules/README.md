@@ -13,7 +13,7 @@ Testing ensures modules work correctly before production use.
 ## Unit Tests
 
 ```python
-# tests/unit/test_my_module.py
+# tests/units/plugins/modules/test_my_module.py
 
 import pytest
 from unittest.mock import patch, MagicMock
@@ -40,7 +40,7 @@ def test_idempotency():
 ## Running Tests
 
 ```bash
-pytest tests/unit/ -v
+pytest tests/units/ -v
 ansible-test units --python 3.11
 ```
 
