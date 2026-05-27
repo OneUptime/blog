@@ -15,7 +15,7 @@ AlmaLinux 9 is another community-driven RHEL rebuild, created by the CloudLinux 
 The main Ansible-relevant differences:
 
 - `ansible_distribution` returns "AlmaLinux" instead of "RedHat"
-- Repository names use "almalinux" prefix
+- AlmaLinux repository IDs include `baseos`, `appstream`, `extras`, and `crb`
 - EPEL is available as `epel-release`
 - CRB repository is enabled differently
 - No subscription management required
@@ -54,9 +54,15 @@ ansible_python_interpreter=/usr/bin/python3
           - ansible_distribution_major_version == "9"
         fail_msg: "Expected AlmaLinux 9"
 
+    - name: Install DNF plugins
+      ansible.builtin.dnf:
+        name: dnf-plugins-core
+        state: present
+
     - name: Enable CRB repository
-      ansible.builtin.command: dnf config-manager --set-enabled crb
-      changed_when: true
+      community.general.dnf_config_manager:
+        name: crb
+        state: enabled
 
     - name: Install EPEL
       ansible.builtin.dnf:
@@ -84,6 +90,7 @@ ansible_python_interpreter=/usr/bin/python3
           - tcpdump
           - sysstat
           - chrony
+          - firewalld
           - fail2ban-firewalld
           - policycoreutils-python-utils
           - bash-completion
@@ -119,7 +126,7 @@ AlmaLinux 9 has SELinux enforcing by default, identical to RHEL:
       loop:
         - httpd_can_network_connect
         - httpd_can_network_connect_db
-      when: "'web' in group_names"
+      when: "'web' in inventory_hostname"
 ```
 
 ## Firewall and SSH
@@ -245,16 +252,16 @@ This condition matches RHEL, CentOS Stream, Rocky Linux, AlmaLinux, and Oracle L
 
 ## Summary
 
-AlmaLinux 9 is configured identically to RHEL through Ansible, with the exception of repository management and distribution detection. Use `ansible_os_family == "RedHat"` for conditions that should apply to all RHEL-compatible distributions. This playbook provides the base configuration: package management, SELinux, firewall, SSH hardening, NTP, and automatic security updates. Any RHEL role works on AlmaLinux 9 without modification.
+AlmaLinux 9 is configured similarly to RHEL through Ansible, with the exception of repository management, subscription-specific tasks, and distribution detection. Use `ansible_os_family == "RedHat"` for conditions that should apply to all RHEL-compatible distributions. This playbook provides the base configuration: package management, SELinux, firewall, SSH hardening, NTP, and automatic security updates. Most RHEL roles work on AlmaLinux 9 when they avoid Red Hat subscription management and RHEL-specific repository IDs.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this approach proves useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this approach
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -283,10 +290,11 @@ Here are several practical scenarios where this module proves essential in real-
           - vim
           - htop
           - jq
+          - firewalld
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -309,20 +317,22 @@ Here are several practical scenarios where this module proves essential in real-
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
+    - name: Enable firewall
+      ansible.builtin.systemd:
+        name: firewalld
+        enabled: true
+        state: started
+
     - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
+      ansible.posix.firewalld:
+        port: "{{ item }}/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
       loop:
         - "22"
         - "80"
         - "443"
-
-    - name: Enable firewall
-      community.general.ufw:
-        state: enabled
-        policy: deny
 
   handlers:
     - name: restart sshd
@@ -368,7 +378,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this approach
 - name: Robust task execution
   hosts: all
   tasks:
@@ -430,4 +440,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
