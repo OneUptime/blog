@@ -69,7 +69,7 @@ Use the `sourceAddress` field in the `BGPPeer` resource to force MetalLB to use 
 ```yaml
 # bgp-peer-source.yaml
 # Configures a BGP peer with an explicit source address.
-# MetalLB will bind the BGP session to this specific IP
+# MetalLB will bind the BGP session to this specific IP when it exists locally
 # instead of letting the kernel choose.
 apiVersion: metallb.io/v1beta2
 kind: BGPPeer
@@ -85,9 +85,13 @@ spec:
   peerAddress: 10.0.0.1
 
   # Force the BGP session to originate from this specific IP.
-  # This must be an IP assigned to an interface on the node.
-  # It overrides the kernel's default source selection.
+  # This must be an IP assigned to an interface on the selected node.
+  # It overrides the kernel's default source selection when the address exists locally.
   sourceAddress: 10.0.0.100
+  # Limit this peer to the node that owns 10.0.0.100.
+  nodeSelectors:
+  - matchLabels:
+      kubernetes.io/hostname: node-1
 ```
 
 Apply the configuration:
@@ -121,7 +125,7 @@ sequenceDiagram
 
 ### Step 3: Multi-Homed Node Configuration
 
-For nodes with multiple interfaces connecting to different peers, create separate BGPPeer resources with different source addresses.
+For a node with multiple interfaces connecting to different peers, create separate BGPPeer resources with different source addresses and scope them to the node that owns those addresses.
 
 ```yaml
 # bgp-peers-multi-homed.yaml
@@ -142,6 +146,9 @@ spec:
   peerAddress: 192.168.1.1
   # Use the IP on the interface that connects to Router A.
   sourceAddress: 192.168.1.100
+  nodeSelectors:
+  - matchLabels:
+      kubernetes.io/hostname: node-1
 
 ---
 apiVersion: metallb.io/v1beta2
@@ -155,6 +162,9 @@ spec:
   peerAddress: 10.0.0.1
   # Use the IP on the interface that connects to Router B.
   sourceAddress: 10.0.0.100
+  nodeSelectors:
+  - matchLabels:
+      kubernetes.io/hostname: node-1
 ```
 
 Apply:
@@ -184,8 +194,8 @@ ss -tnp | grep 179
 
 ### Common Mistakes to Avoid
 
-1. **IP not on the node**: The `sourceAddress` must be an IP actually assigned to an interface on the node. MetalLB cannot use an IP that does not exist locally.
-2. **Wrong subnet**: The source address must be on the same subnet as the path to the peer, or there must be a route from the source address to the peer.
+1. **IP not on the node**: The `sourceAddress` must be an IP actually assigned to an interface on the selected node. If the address is not found locally, MetalLB falls back to the kernel's default source address selection.
+2. **No route from the selected address**: The node and upstream router must have working reachability for traffic sourced from the configured address.
 3. **Single source for multiple nodes**: If you use node selectors and the source address is node-specific, you need separate BGPPeer resources per node or per group of identically-addressed nodes.
 4. **Firewall blocking**: Ensure that outbound TCP port 179 is allowed from the configured source address.
 
@@ -203,6 +213,6 @@ kubectl delete bgppeer router-a router-b -n metallb-system
 
 ### Summary
 
-Configuring the BGP source address in MetalLB is essential for multi-homed nodes and environments where the upstream router expects sessions from a specific IP. The `sourceAddress` field on the `BGPPeer` resource overrides the kernel's default source selection, ensuring that BGP sessions are established on the correct network interface. This is a common requirement in production bare-metal clusters with separate management and data plane networks.
+Configuring the BGP source address in MetalLB is essential for multi-homed nodes and environments where the upstream router expects sessions from a specific IP. The `sourceAddress` field on the `BGPPeer` resource overrides the kernel's default source selection when the address exists on the selected node, ensuring that BGP sessions are established on the correct network interface. This is a common requirement in production bare-metal clusters with separate management and data plane networks.
 
 For comprehensive monitoring of your MetalLB BGP sessions, network connectivity, and Kubernetes services, use [OneUptime](https://oneuptime.com). It provides real-time alerting, status pages, and incident management to keep your infrastructure reliable.
