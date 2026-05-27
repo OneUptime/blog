@@ -218,7 +218,7 @@ First, pull the backup file from remote storage.
       when: not backup_check.stat.exists
 
     - name: Drop the existing database
-      community.mysql.mysql_db:
+      ansible.mysql.mysql_db:
         name: "{{ db_name }}"
         login_user: "{{ vault_mysql_admin_user }}"
         login_password: "{{ vault_mysql_admin_password }}"
@@ -226,7 +226,7 @@ First, pull the backup file from remote storage.
       no_log: true
 
     - name: Create a fresh empty database
-      community.mysql.mysql_db:
+      ansible.mysql.mysql_db:
         name: "{{ db_name }}"
         login_user: "{{ vault_mysql_admin_user }}"
         login_password: "{{ vault_mysql_admin_password }}"
@@ -236,30 +236,44 @@ First, pull the backup file from remote storage.
       no_log: true
 
     - name: Restore the database from gzipped dump
-      ansible.builtin.shell:
-        cmd: >
-          gunzip -c {{ backup_file }}
-          | mysql
-          --host=localhost
-          --user={{ vault_mysql_admin_user }}
-          --password={{ vault_mysql_admin_password }}
-          {{ db_name }}
+      ansible.mysql.mysql_db:
+        name: "{{ db_name }}"
+        login_user: "{{ vault_mysql_admin_user }}"
+        login_password: "{{ vault_mysql_admin_password }}"
+        state: import
+        target: "{{ backup_file }}"
       changed_when: true
       no_log: true
 
-    - name: Run OPTIMIZE TABLE on large tables
-      community.mysql.mysql_query:
+    - name: Find large tables to optimize
+      ansible.mysql.mysql_query:
         login_user: "{{ vault_mysql_admin_user }}"
         login_password: "{{ vault_mysql_admin_password }}"
         login_db: "{{ db_name }}"
         query: >
-          SELECT CONCAT('OPTIMIZE TABLE ', table_name, ';') as cmd
+          SELECT CONCAT(
+            'OPTIMIZE TABLE `',
+            REPLACE(table_schema, '`', '``'),
+            '`.`',
+            REPLACE(table_name, '`', '``'),
+            '`'
+          ) as cmd
           FROM information_schema.tables
           WHERE table_schema = %s
           AND table_rows > 100000
         positional_args:
           - "{{ db_name }}"
       register: optimize_tables
+      no_log: true
+
+    - name: Run OPTIMIZE TABLE on large tables
+      ansible.mysql.mysql_query:
+        login_user: "{{ vault_mysql_admin_user }}"
+        login_password: "{{ vault_mysql_admin_password }}"
+        login_db: "{{ db_name }}"
+        query: "{{ item.cmd }}"
+      loop: "{{ optimize_tables.query_result[0] }}"
+      when: optimize_tables.query_result[0] | length > 0
       no_log: true
 ```
 
@@ -293,18 +307,31 @@ First, pull the backup file from remote storage.
         dest: "{{ restore_dir }}"
         remote_src: true
 
+    - name: Find extracted MongoDB dump directories
+      ansible.builtin.find:
+        paths: "{{ restore_dir }}"
+        patterns: "full_*"
+        file_type: directory
+      register: mongo_dump_dirs
+
+    - name: Fail if no MongoDB dump directory was extracted
+      ansible.builtin.fail:
+        msg: "No MongoDB dump directory matching {{ restore_dir }}/full_* was found"
+      when: mongo_dump_dirs.matched == 0
+
     - name: Restore all databases using mongorestore
       ansible.builtin.command:
-        cmd: >
-          mongorestore
-          --host=localhost
-          --port=27017
-          --username={{ vault_mongo_admin_user }}
-          --password={{ vault_mongo_admin_password }}
-          --authenticationDatabase=admin
-          --gzip
-          --drop
-          {{ restore_dir }}/full_*
+        argv:
+          - mongorestore
+          - --host=localhost
+          - --port=27017
+          - "--username={{ vault_mongo_admin_user }}"
+          - "--password={{ vault_mongo_admin_password }}"
+          - --authenticationDatabase=admin
+          - --gzip
+          - --drop
+          - "{{ item.path }}"
+      loop: "{{ mongo_dump_dirs.files }}"
       changed_when: true
       no_log: true
 ```
