@@ -60,6 +60,11 @@ metadata:
 description: Development cluster
 gke:
   cluster: projects/my-project/locations/us-central1/clusters/dev-cluster
+executionConfigs:
+- usages:
+  - RENDER
+  - DEPLOY
+  serviceAccount: deploy-sa@my-project.iam.gserviceaccount.com
 ---
 apiVersion: deploy.cloud.google.com/v1
 kind: Target
@@ -68,6 +73,12 @@ metadata:
 description: Staging cluster
 gke:
   cluster: projects/my-project/locations/us-central1/clusters/staging-cluster
+executionConfigs:
+- usages:
+  - RENDER
+  - DEPLOY
+  - VERIFY
+  serviceAccount: deploy-sa@my-project.iam.gserviceaccount.com
 ---
 apiVersion: deploy.cloud.google.com/v1
 kind: Target
@@ -77,6 +88,12 @@ description: Production cluster
 requireApproval: true
 gke:
   cluster: projects/my-project/locations/us-central1/clusters/prod-cluster
+executionConfigs:
+- usages:
+  - RENDER
+  - DEPLOY
+  - VERIFY
+  serviceAccount: deploy-sa@my-project.iam.gserviceaccount.com
 ```
 
 ```yaml
@@ -147,7 +164,7 @@ verify:
     name: smoke-test
     image: us-central1-docker.pkg.dev/my-project/my-app-repo/smoke-tests:latest
     command: ["sh", "-c", "/test.sh"]
-  timeout: 300s
+  timeout: 300
 ```
 
 ## Writing the Cloud Build Configuration
@@ -255,18 +272,47 @@ Cloud Build needs permission to create Cloud Deploy releases, and Cloud Deploy n
 
 ```bash
 # Get the Cloud Build service account
-PROJECT_NUMBER=$(gcloud projects describe my-project --format='value(projectNumber)')
-CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+CB_SA=$(gcloud builds get-default-service-account --project=my-project | sed 's#.*/serviceAccounts/##')
 
 # Grant Cloud Deploy releaser role to Cloud Build SA
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:$CB_SA" \
   --role="roles/clouddeploy.releaser"
 
+# Allow Cloud Build to push images to Artifact Registry
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:$CB_SA" \
+  --role="roles/artifactregistry.writer"
+
 # Grant act-as permission for the execution service account
 gcloud iam service-accounts add-iam-policy-binding \
   deploy-sa@my-project.iam.gserviceaccount.com \
   --member="serviceAccount:$CB_SA" \
+  --role="roles/iam.serviceAccountUser"
+
+# Grant Cloud Deploy execution permissions
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:deploy-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/clouddeploy.jobRunner"
+
+# Grant runtime permissions for deploying to GKE
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:deploy-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/container.developer"
+
+# Allow the execution service account to read verification images
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:deploy-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.reader"
+
+# Grant automation permissions
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:deploy-automation-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/clouddeploy.releaser"
+
+gcloud iam service-accounts add-iam-policy-binding \
+  deploy-sa@my-project.iam.gserviceaccount.com \
+  --member="serviceAccount:deploy-automation-sa@my-project.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
 ```
 
@@ -297,18 +343,21 @@ To reduce manual steps, add an automation rule that promotes from dev to staging
 apiVersion: deploy.cloud.google.com/v1
 kind: Automation
 metadata:
-  name: auto-promote-to-staging
+  name: my-app-pipeline/auto-promote-to-staging
 selector:
-- targets:
+  targets:
   - id: dev
-deliveryPipeline: my-app-pipeline
 serviceAccount: deploy-automation-sa@my-project.iam.gserviceaccount.com
 suspended: false
 rules:
 - promoteReleaseRule:
-    name: dev-to-staging
-    wait: 120s
-    toTargetId: staging
+    id: dev-to-staging
+    wait: 2m
+    destinationTargetId: staging
+```
+
+```bash
+gcloud deploy apply --file=deploy/automation.yaml --region=us-central1
 ```
 
 With this in place, the only manual step is approving the production deployment. Everything else is automated.
