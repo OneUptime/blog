@@ -14,7 +14,7 @@ Cloud Run revision tags solve this. They give you a dedicated URL for a specific
 
 ## How Revision Tags Work
 
-Every Cloud Run deployment creates a new revision. By default, 100% of traffic goes to the latest revision. When you add a tag to a revision, Cloud Run creates a unique URL specifically for that revision.
+Every Cloud Run deployment creates a new revision. By default, 100% of traffic goes to the latest revision, unless you have already configured a traffic split or routed traffic to a specific revision. When you add a tag to a revision, Cloud Run creates a unique URL specifically for that revision.
 
 The URL format is: `https://TAG---SERVICE-XXXXXX-XX.a.run.app`
 
@@ -193,7 +193,9 @@ jobs:
         run: |
           CANARY_URL=$(gcloud run services describe my-service \
             --region=us-central1 \
-            --format='value(status.traffic[tag=canary].url)')
+            --flatten=status.traffic \
+            --filter="status.traffic.tag=canary" \
+            --format="value(status.traffic.url)")
 
           # Run your test suite against the canary
           npm run test:integration -- --base-url=$CANARY_URL
@@ -258,9 +260,10 @@ Removing a tag does not delete the revision or affect traffic allocation. It onl
 
 ## Cost Considerations
 
-Tagged revisions that receive no production traffic still cost money if they receive test traffic. They scale to zero when not being tested, so the cost is minimal. But keep in mind:
+Tagged revisions that receive no production traffic still cost money if they receive test traffic. With default scaling and no revision-level minimum instances, they scale to zero when not being tested, so the cost is minimal. But keep in mind:
 
 - Each tagged URL keeps the revision warm while it is receiving requests
+- Revision-level minimum instances are allocated for tagged revisions
 - If you have many tagged revisions receiving test traffic simultaneously, that is many active instances
 - Remove tags and let unused revisions scale to zero when you are done testing
 
