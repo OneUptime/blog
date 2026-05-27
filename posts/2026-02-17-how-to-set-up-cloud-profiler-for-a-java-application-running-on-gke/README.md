@@ -18,7 +18,7 @@ Cloud Profiler for Java uses the Google Cloud Profiler agent, which is a native 
 
 - **CPU time**: Tracks time spent executing code on the CPU. Helps find computationally expensive methods.
 - **Wall time**: Tracks elapsed time including I/O waits, locks, and sleeps. Helps find methods that are slow but not necessarily CPU-intensive.
-- **Heap**: Tracks memory allocations. Helps find methods that create excessive garbage.
+- **Heap**: Shows memory allocated in the heap when the profile is collected. Helps find methods that retain excessive memory.
 
 The agent collects a 10-second profile approximately once per minute. The overhead is typically 0.5-1% of CPU.
 
@@ -47,7 +47,7 @@ COPY target/my-app.jar /app/app.jar
 # -cprof_service sets the service name shown in Cloud Profiler
 # -cprof_service_version helps compare profiles across versions
 ENTRYPOINT ["java", \
-  "-agentpath:/opt/cprof/profiler_java_agent=-cprof_service=my-java-service,-cprof_service_version=1.0.0", \
+  "-agentpath:/opt/cprof/profiler_java_agent.so=-cprof_service=my-java-service,-cprof_service_version=1.0.0", \
   "-jar", "/app/app.jar"]
 ```
 
@@ -56,6 +56,9 @@ ENTRYPOINT ["java", \
 The profiler agent needs to authenticate with Google Cloud. On GKE, use Workload Identity for this.
 
 ```bash
+# Enable the Cloud Profiler API
+gcloud services enable cloudprofiler.googleapis.com
+
 # Create a service account for profiling
 gcloud iam service-accounts create profiler-agent \
   --display-name="Cloud Profiler Agent"
@@ -110,6 +113,9 @@ spec:
             # Tell the profiler agent which GCP project to report to
             - name: GOOGLE_CLOUD_PROJECT
               value: "YOUR_PROJECT_ID"
+            # JVM tuning for GKE
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
           resources:
             requests:
               cpu: 500m
@@ -117,10 +123,6 @@ spec:
             limits:
               cpu: "1"
               memory: 1Gi
-          # JVM tuning for GKE
-          env:
-            - name: JAVA_TOOL_OPTIONS
-              value: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
 ```
 
 ## Step 4: Configure Profiling Options
@@ -130,7 +132,7 @@ The profiler agent accepts several configuration options through the `-agentpath
 ```dockerfile
 # Full configuration example with all major options
 ENTRYPOINT ["java", \
-  "-agentpath:/opt/cprof/profiler_java_agent=\
+  "-agentpath:/opt/cprof/profiler_java_agent.so=\
 -cprof_service=my-java-service,\
 -cprof_service_version=1.0.0,\
 -cprof_cpu_use_per_thread_timers=true,\
@@ -140,50 +142,51 @@ ENTRYPOINT ["java", \
 ```
 
 Configuration options explained:
-- `cprof_service`: The service name displayed in the Cloud Profiler UI. Required.
-- `cprof_service_version`: Version string for comparing profiles across deployments.
-- `cprof_cpu_use_per_thread_timers`: Enables per-thread CPU time measurement. More accurate but slightly higher overhead.
-- `cprof_enable_heap_sampling`: Enables heap allocation profiling. Disabled by default.
-- `cprof_heap_sampling_interval`: Bytes between heap samples. Lower values give more detail but higher overhead. Default is 512KiB.
+- `-cprof_service`: The service name displayed in the Cloud Profiler UI. Required.
+- `-cprof_service_version`: Version string for comparing profiles across deployments.
+- `-cprof_cpu_use_per_thread_timers`: Enables per-thread CPU time measurement. More accurate but slightly higher overhead.
+- `-cprof_enable_heap_sampling`: Enables heap profiling. Disabled by default.
+- `-cprof_heap_sampling_interval`: Bytes between heap samples. Lower values give more detail but higher overhead. Default is 512KiB.
 
-## Step 5: Using the Maven/Gradle Approach
+## Step 5: Avoid Confusing the API Client with the Agent
 
-If you use Spring Boot, you can add the profiler agent programmatically instead of through the JVM agent path.
+If you use Spring Boot, do not add the Cloud Profiler API client and expect it to collect profiles. The Maven artifact named `google-cloud-profiler` is a generated client for the Profiler API, not the native JVM profiling agent.
 
-Add the dependency to your `pom.xml`:
+You might see this dependency in API examples:
 
 ```xml
-<!-- pom.xml - Add the Cloud Profiler dependency -->
+<!-- pom.xml - This is the Cloud Profiler API client, not the JVM profiling agent -->
 <dependency>
   <groupId>com.google.cloud</groupId>
   <artifactId>google-cloud-profiler</artifactId>
-  <version>2.3.0</version>
 </dependency>
 ```
 
-Then initialize it in your application startup code.
+This dependency lets Java code call the Cloud Profiler API. It does not attach a profiler to your Spring Boot application.
 
 ```java
-// ProfilerConfig.java - Initialize Cloud Profiler in Spring Boot
+// ProfilerConfig.java - Do not do this expecting profiles to be collected
 package com.example.myapp.config;
 
 import com.google.devtools.cloudprofiler.v2.ProfilerServiceClient;
 import org.springframework.context.annotation.Configuration;
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
 
 @Configuration
 public class ProfilerConfig {
 
     @PostConstruct
-    public void startProfiler() {
-        // The agent-based approach (Dockerfile) is preferred over the API approach
-        // This class is here to show the alternative if you cannot modify the Dockerfile
+    public void startProfiler() throws Exception {
+        // ProfilerServiceClient is an API client. It does not start the JVM profiler.
+        try (ProfilerServiceClient ignored = ProfilerServiceClient.create()) {
+            // Use -agentpath in the Dockerfile instead.
+        }
         System.out.println("Cloud Profiler agent should be configured via -agentpath JVM flag");
     }
 }
 ```
 
-The native agent approach through the Dockerfile is generally preferred because it has lower overhead and does not require code changes.
+The native agent approach through the Dockerfile is the supported approach for profiling Java applications on GKE.
 
 ## Step 6: Viewing Profiles in the Cloud Console
 
