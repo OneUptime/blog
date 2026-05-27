@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Priority, Preemption, Scheduling, Resource Management
 
-Description: Learn how to use PriorityClasses and pod preemption to ensure critical workloads always have resources in Kubernetes.
+Description: Learn how to use PriorityClasses and pod preemption to help critical workloads get scheduled in Kubernetes.
 
 ---
 
-When your Kubernetes cluster is at capacity, which pods get scheduled and which ones wait? By default, it is first-come, first-served. But in production, your payment processing service is more important than your log aggregator. Kubernetes PriorityClasses and pod preemption solve this by letting you assign priorities to pods so that critical workloads can evict lower-priority ones when resources are scarce. This post covers how to set it up.
+When your Kubernetes cluster is at capacity, which pods get scheduled and which ones wait? Without custom PriorityClasses, pods use the cluster's default priority, or zero if no default exists. But in production, your payment processing service is more important than your log aggregator. Kubernetes PriorityClasses and pod preemption help by letting you assign priorities to pods so that critical workloads can evict lower-priority ones when resources are scarce. This post covers how to set it up.
 
 ## How Priority and Preemption Work
 
@@ -29,7 +29,7 @@ Priority is a numeric value. Higher numbers mean higher priority. When a high-pr
 
 ## Step 1: Create PriorityClasses
 
-PriorityClasses are cluster-scoped resources. Create them in order from lowest to highest priority.
+PriorityClasses are cluster-scoped resources. You can create them in any order.
 
 ```yaml
 # priority-classes.yaml
@@ -89,7 +89,7 @@ kubectl get priorityclasses
 
 ```yaml
 # critical-deployment.yaml
-# Payment service with critical priority - will preempt lower-priority pods
+# Payment service with critical priority - can preempt lower-priority pods
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -164,7 +164,7 @@ flowchart TD
     F --> K[Last resort: Node 1]
 ```
 
-The scheduler minimizes the number of preempted pods and avoids preempting pods with PodDisruptionBudgets when possible.
+The scheduler tries to find a minimum set of lower-priority pods to preempt on a node and avoids violating PodDisruptionBudgets when possible.
 
 ## Step 3: Use PreemptionPolicy
 
@@ -185,7 +185,7 @@ preemptionPolicy: Never  # Will NOT evict lower-priority pods
 description: "High priority but will not preempt running pods"
 ```
 
-With `preemptionPolicy: Never`, the pod gets scheduling priority (it moves to the front of the queue) but will not cause evictions. It waits until resources become available naturally.
+With `preemptionPolicy: Never`, the pod gets scheduling priority ahead of lower-priority pods but will not cause evictions. It waits until resources become available naturally and is still subject to normal scheduler back-off.
 
 ## Step 4: System-Level Priority Classes
 
@@ -229,19 +229,19 @@ spec:
               memory: "64Mi"
 ```
 
-## Step 5: Protect Pods from Preemption with PDBs
+## Step 5: Reduce Preemption Risk with PDBs
 
-PodDisruptionBudgets limit how many pods can be simultaneously disrupted, including during preemption.
+PodDisruptionBudgets limit how many pods can be simultaneously disrupted by voluntary disruptions. During scheduler preemption, Kubernetes considers PDBs on a best-effort basis: it tries to avoid violating them, but may still preempt lower-priority pods if no better victims are available.
 
 ```yaml
 # pdb-protection.yaml
-# PDB that protects the payment service during preemption events
+# PDB that reduces preemption risk for the payment service
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: payment-service-pdb
 spec:
-  minAvailable: 2  # Always keep at least 2 replicas running
+  minAvailable: 2  # Keep at least 2 replicas available during voluntary disruptions
   selector:
     matchLabels:
       app: payment-service
@@ -333,12 +333,12 @@ kubectl get events --field-selector reason=Preempted --watch
 # Check if pods are pending due to priority issues
 kubectl get pods --field-selector=status.phase=Pending -o wide
 
-# View the scheduling queue order
+# View scheduling diagnostics for a pending pod
 kubectl describe pod <pending-pod> | grep -A 10 Events
 ```
 
 ## Summary
 
-PriorityClasses and pod preemption ensure your most important workloads always have the resources they need, even when the cluster is under pressure. Define a clear priority hierarchy, protect critical services with PodDisruptionBudgets, and use non-preempting priorities for important-but-not-urgent workloads.
+PriorityClasses and pod preemption help your most important workloads get scheduled when the cluster is under pressure. Define a clear priority hierarchy, reduce disruption risk for critical services with PodDisruptionBudgets, and use non-preempting priorities for important-but-not-urgent workloads.
 
-To monitor preemption events, track pod evictions, and get alerted when critical services are disrupted, use [OneUptime](https://oneuptime.com). OneUptime gives you visibility into your Kubernetes scheduling behavior, helping you verify that your priority strategy is working and that critical workloads are never starved of resources.
+To monitor preemption events, track pod evictions, and get alerted when critical services are disrupted, use [OneUptime](https://oneuptime.com). OneUptime gives you visibility into your Kubernetes scheduling behavior, helping you verify that your priority strategy is working and that critical workloads are not starved of resources.
