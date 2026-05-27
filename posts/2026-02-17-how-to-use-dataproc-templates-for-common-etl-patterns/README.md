@@ -14,13 +14,13 @@ Instead of writing, testing, and maintaining custom Spark code, you configure a 
 
 ## What Are Dataproc Templates?
 
-Dataproc Templates are open-source, production-ready Spark applications maintained by Google. They cover common data engineering patterns like:
+Dataproc Templates are open-source Spark applications provided by Google as a reference and for customization. The repository was archived in 2026, but the templates are still available to use. They cover common data engineering patterns like:
 
 - GCS to BigQuery
 - BigQuery to GCS
 - GCS to GCS (format conversion)
 - JDBC to BigQuery (for relational databases)
-- BigQuery to BigQuery (transformation)
+- JDBC to GCS
 - Kafka to BigQuery
 - Hive to BigQuery
 
@@ -45,13 +45,13 @@ Configure your environment variables for the template execution:
 
 ```bash
 # Set environment variables for Dataproc Templates
-export PROJECT=my-project
+export GCP_PROJECT=my-project
 export REGION=us-central1
 export GCS_STAGING_LOCATION=gs://my-staging-bucket/dataproc-templates/
-export SUBNET=default
+export GCS_DEPS_BUCKET=gs://my-staging-bucket/dataproc-templates-deps/
+export SUBNET=projects/my-project/regions/us-central1/subnetworks/default
 
-# Set the Dataproc Serverless version
-export SPARK_VERSION=2.1
+# The helper script submits to Dataproc Serverless runtime 1.2 by default.
 ```
 
 Install the required dependencies:
@@ -82,6 +82,7 @@ Or submit it using the provided helper script that handles Dataproc Serverless s
 ```bash
 # Submit the GCS to BigQuery template as a serverless batch
 ./bin/start.sh \
+  -- \
   --template=GCSTOBIGQUERY \
   --gcs.bigquery.input.location=gs://my-data-bucket/events/parquet/ \
   --gcs.bigquery.input.format=parquet \
@@ -91,7 +92,7 @@ Or submit it using the provided helper script that handles Dataproc Serverless s
   --gcs.bigquery.temp.bucket.name=my-staging-bucket
 ```
 
-The template supports multiple input formats including `parquet`, `avro`, `csv`, `json`, and `orc`.
+The Python template supports multiple input formats including `parquet`, `avro`, `csv`, `json`, and `delta`.
 
 ## Step 4: BigQuery to GCS Template
 
@@ -100,6 +101,7 @@ For exporting BigQuery data to files in Cloud Storage:
 ```bash
 # Export BigQuery table to Parquet files in GCS
 ./bin/start.sh \
+  -- \
   --template=BIGQUERYTOGCS \
   --bigquery.gcs.input.table=my-project:my_dataset.large_table \
   --bigquery.gcs.output.format=parquet \
@@ -107,14 +109,14 @@ For exporting BigQuery data to files in Cloud Storage:
   --bigquery.gcs.output.mode=overwrite
 ```
 
-You can also use a SQL query to export specific data:
+To export specific data, point the template at a BigQuery table or view that contains the filtered result:
 
 ```bash
-# Export filtered BigQuery data using a SQL query
+# Export filtered BigQuery data from a view
 ./bin/start.sh \
+  -- \
   --template=BIGQUERYTOGCS \
-  --bigquery.gcs.input.table=my-project:my_dataset.events \
-  --bigquery.gcs.input.sql="SELECT * FROM my_dataset.events WHERE event_date >= '2025-01-01'" \
+  --bigquery.gcs.input.table=my-project:my_dataset.recent_events_view \
   --bigquery.gcs.output.format=csv \
   --bigquery.gcs.output.location=gs://my-data-bucket/exports/recent_events/ \
   --bigquery.gcs.output.mode=overwrite
@@ -127,6 +129,7 @@ Need to convert CSV files to Parquet? This template handles it:
 ```bash
 # Convert CSV files in GCS to Parquet format
 ./bin/start.sh \
+  -- \
   --template=GCSTOGCS \
   --gcs.to.gcs.input.location=gs://my-data-bucket/raw/csv/ \
   --gcs.to.gcs.input.format=csv \
@@ -141,13 +144,18 @@ Notice the SQL query parameter - you can apply transformations during the format
 
 ## Step 6: JDBC to BigQuery Template
 
-For loading data from relational databases (MySQL, PostgreSQL, Oracle, SQL Server) into BigQuery:
+For loading data from relational databases (MySQL, PostgreSQL, Oracle, SQL Server) into BigQuery, first make the appropriate JDBC driver JAR available through the `JARS` environment variable:
+
+```bash
+export JARS=gs://my-staging-bucket/jars/mysql-connector-j-8.4.0.jar
+```
 
 ```bash
 # Load data from a Cloud SQL MySQL instance into BigQuery
 ./bin/start.sh \
+  -- \
   --template=JDBCTOBIGQUERY \
-  --jdbc.bigquery.input.url="jdbc:mysql://10.0.0.5:3306/production_db" \
+  --jdbc.bigquery.input.url="jdbc:mysql://10.0.0.5:3306/production_db?user=db_user&password=db_password" \
   --jdbc.bigquery.input.driver=com.mysql.cj.jdbc.Driver \
   --jdbc.bigquery.input.table=orders \
   --jdbc.bigquery.input.fetchsize=10000 \
@@ -163,8 +171,9 @@ You can also use a SQL query to extract specific data from the source database:
 ```bash
 # Extract filtered data from PostgreSQL to BigQuery
 ./bin/start.sh \
+  -- \
   --template=JDBCTOBIGQUERY \
-  --jdbc.bigquery.input.url="jdbc:postgresql://10.0.0.10:5432/analytics" \
+  --jdbc.bigquery.input.url="jdbc:postgresql://10.0.0.10:5432/analytics?user=db_user&password=db_password" \
   --jdbc.bigquery.input.driver=org.postgresql.Driver \
   --jdbc.bigquery.input.table="(SELECT * FROM events WHERE created_at >= '2025-01-01') AS filtered" \
   --jdbc.bigquery.output.dataset=my_dataset \
@@ -180,6 +189,8 @@ If you have data managed by the Hive Metastore, this template moves it to BigQue
 ```bash
 # Move data from Hive tables to BigQuery
 ./bin/start.sh \
+  --properties=spark.hadoop.hive.metastore.uris=thrift://10.0.0.20:9083 \
+  -- \
   --template=HIVETOBIGQUERY \
   --hive.bigquery.input.database=analytics_db \
   --hive.bigquery.input.table=user_events \
