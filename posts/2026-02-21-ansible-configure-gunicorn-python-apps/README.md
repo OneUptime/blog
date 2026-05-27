@@ -8,13 +8,13 @@ Description: Configure Gunicorn WSGI server for Python applications using Ansibl
 
 ---
 
-Gunicorn (Green Unicorn) is the most widely used WSGI HTTP server for Python web applications. It works with any WSGI-compatible framework including Django, Flask, FastAPI (via uvicorn workers), and Pyramid. Configuring Gunicorn properly for production involves choosing the right number of workers, setting up proper logging, configuring graceful restarts, and managing it as a system service. Ansible handles all of this configuration consistently across your servers.
+Gunicorn (Green Unicorn) is a widely used WSGI HTTP server for Python web applications. It works with WSGI-compatible frameworks including Django, Flask, and Pyramid, and it can run ASGI apps such as FastAPI when paired with uvicorn workers. Configuring Gunicorn properly for production involves choosing the right number of workers, setting up proper logging, configuring graceful restarts, and managing it as a system service. Ansible handles all of this configuration consistently across your servers.
 
 This guide covers setting up Gunicorn with Ansible, including worker optimization, different worker types, systemd integration, logging, and monitoring.
 
 ## Why Gunicorn Needs Careful Configuration
 
-Gunicorn's default settings are fine for development but not for production. The default single worker means you cannot handle concurrent requests properly. The default logging goes to stdout, which is not useful for production debugging. And without a process manager, Gunicorn will not restart after a crash. We will fix all of these issues with Ansible.
+Gunicorn's default settings are fine for development but not for production. The default single worker limits request concurrency. Access logging is disabled by default, and the error log goes to stderr, which is not always the production logging setup you want. And without a process manager, Gunicorn will not restart after a crash. We will fix all of these issues with Ansible.
 
 ## Project Structure
 
@@ -53,7 +53,7 @@ wsgi_module: "myapp.wsgi:application"  # Django style
 
 # Gunicorn worker configuration
 gunicorn_workers: "{{ (ansible_processor_vcpus * 2) + 1 }}"
-gunicorn_worker_class: sync  # sync, gevent, uvicorn.workers.UvicornWorker
+gunicorn_worker_class: sync  # sync, gevent, uvicorn_worker.UvicornWorker
 gunicorn_threads: 1
 gunicorn_timeout: 120
 gunicorn_graceful_timeout: 30
@@ -96,11 +96,12 @@ gunicorn_log_level: info
   pip:
     name:
       - uvicorn
+      - uvicorn-worker
       - uvloop
       - httptools
     virtualenv: "{{ venv_dir }}"
   become_user: "{{ app_user }}"
-  when: gunicorn_worker_class == "uvicorn.workers.UvicornWorker"
+  when: gunicorn_worker_class == "uvicorn_worker.UvicornWorker"
 
 - name: Create log directory
   file:
@@ -174,11 +175,19 @@ gunicorn_log_level: info
     state: started
   when: gunicorn_bind_type == "tcp"
 
-- name: Verify Gunicorn is running
+- name: Verify Gunicorn socket is active
+  command: "systemctl is-active {{ app_name }}.socket"
+  register: gunicorn_socket_status
+  changed_when: false
+  failed_when: gunicorn_socket_status.rc != 0
+  when: gunicorn_bind_type == "socket"
+
+- name: Verify Gunicorn service is running
   command: "systemctl is-active {{ app_name }}"
   register: gunicorn_status
   changed_when: false
   failed_when: gunicorn_status.rc != 0
+  when: gunicorn_bind_type == "tcp"
 ```
 
 ## Gunicorn Configuration File
@@ -312,7 +321,7 @@ WantedBy=multi-user.target
     create 0640 {{ app_user }} {{ app_group }}
     sharedscripts
     postrotate
-        systemctl reload {{ app_name }} 2>/dev/null || true
+        systemctl kill -s USR1 {{ app_name }}.service 2>/dev/null || true
     endscript
 }
 ```
@@ -345,7 +354,7 @@ Choosing the right worker class depends on your application:
 |---|---|---|
 | sync | CPU-bound work | Your app does heavy computation |
 | gevent | I/O-bound work | Your app makes many external API calls |
-| uvicorn.workers.UvicornWorker | ASGI apps | You use FastAPI or async Django |
+| uvicorn_worker.UvicornWorker | ASGI apps | You use FastAPI or async Django |
 
 ## Running the Playbook
 
