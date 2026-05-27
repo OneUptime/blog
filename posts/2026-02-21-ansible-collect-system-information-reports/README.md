@@ -92,6 +92,13 @@ For a full system report including hardware, storage, networking, and installed 
       changed_when: false
       when: ansible_os_family == "Debian"
 
+    - name: Set installed package count
+      ansible.builtin.set_fact:
+        installed_package_count: >-
+          {{ pkg_count_rh.stdout if ansible_os_family == "RedHat" else
+             pkg_count_deb.stdout if ansible_os_family == "Debian" else
+             "unknown" }}
+
     # Get running services
     - name: Get running services
       ansible.builtin.shell:
@@ -135,7 +142,7 @@ For a full system report including hardware, storage, networking, and installed 
           cpu_cores: "{{ ansible_processor_vcpus }}"
           ram_gb: "{{ (ansible_memtotal_mb / 1024) | round(1) }}"
           swap_gb: "{{ (ansible_swaptotal_mb / 1024) | round(1) }}"
-          installed_packages: "{{ pkg_count_rh.stdout | default(pkg_count_deb.stdout) | default('unknown') }}"
+          installed_packages: "{{ installed_package_count }}"
           running_services: "{{ running_services.stdout }}"
           uptime_days: "{{ (ansible_uptime_seconds / 86400) | round(1) }}"
 
@@ -166,6 +173,9 @@ For a full system report including hardware, storage, networking, and installed 
             Arch:        {{ ansible_architecture }}
             Python:      {{ ansible_python_version }}
 
+          BLOCK DEVICES
+          {{ disk_info.stdout }}
+
           STORAGE
           {{ fs_usage.stdout }}
 
@@ -179,7 +189,7 @@ For a full system report including hardware, storage, networking, and installed 
           {{ top_procs.stdout }}
 
           STATISTICS
-            Packages:    {{ pkg_count_rh.stdout | default(pkg_count_deb.stdout) | default('unknown') }}
+            Packages:    {{ installed_package_count }}
             Services:    {{ running_services.stdout }} running
             Uptime:      {{ (ansible_uptime_seconds / 86400) | round(1) }} days
         dest: "/tmp/system-report-{{ inventory_hostname }}.txt"
@@ -202,7 +212,14 @@ For spreadsheet-friendly output:
   tasks:
     - name: Collect additional facts
       ansible.builtin.shell:
-        cmd: "rpm -qa | wc -l 2>/dev/null || dpkg -l | grep '^ii' | wc -l 2>/dev/null || echo 0"
+        cmd: |
+          if command -v rpm >/dev/null 2>&1; then
+            rpm -qa | wc -l
+          elif command -v dpkg >/dev/null 2>&1; then
+            dpkg -l | grep '^ii' | wc -l
+          else
+            echo 0
+          fi
       register: pkg_count
       changed_when: false
 
@@ -259,7 +276,7 @@ For security audits, you need specific information:
   gather_facts: true
 
   tasks:
-    # Check SELinux/AppArmor status
+    # Check SELinux status
     - name: Check SELinux status (RedHat)
       ansible.builtin.command:
         cmd: getenforce
