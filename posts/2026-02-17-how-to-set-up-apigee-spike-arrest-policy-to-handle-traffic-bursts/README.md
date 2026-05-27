@@ -12,28 +12,27 @@ Traffic spikes are inevitable. Maybe a popular blog post links to your API, a mo
 
 ## What SpikeArrest Actually Does
 
-SpikeArrest is not a quota. It does not count total requests over a time period. Instead, it enforces a maximum rate by spacing out requests. If you set a rate of 10 per second, SpikeArrest ensures that at most one request passes through every 100 milliseconds. Two requests arriving 50ms apart will result in one being rejected.
+SpikeArrest is not a quota. It is intended for short-period rate limiting, such as requests per second or requests per minute, rather than for enforcing business usage over hours, days, weeks, or months. In current Apigee organizations, set `<UseEffectiveCount>true</UseEffectiveCount>` so SpikeArrest uses the supported effective-count algorithm. If you set a rate of 10 per second, a rapid burst can pass only while it stays within that configured rate.
 
-This behavior is different from what most people expect. They think "10 per second" means any 10 requests within a 1-second window are okay. That is how a quota works. SpikeArrest works more like a leaky bucket - it smooths traffic into a steady stream.
+This behavior is different from a long-term quota. Quota is the right policy for accurate request counting over longer periods. SpikeArrest is for protecting the proxy and backend from short traffic surges.
 
-## Why This Smoothing Behavior Matters
+## Why This Rate Limiting Behavior Matters
 
 Consider a backend that can handle 60 requests per second sustainably. If 60 requests all arrive in the first 100ms of a second (followed by 900ms of silence), your backend sees a burst of 60 concurrent requests. Even though the per-second average is fine, the burst can overwhelm connection pools, database connections, and memory.
 
-SpikeArrest prevents this by spacing requests evenly. With a rate of `60ps` (60 per second), requests are spaced approximately 16.7ms apart. Your backend sees a steady, predictable load.
+SpikeArrest helps by enforcing a short-period rate limit before the request reaches the backend. With a rate of `60ps` (60 per second), requests that exceed that rate are rejected with a 429 response.
 
 ## Basic SpikeArrest Configuration
 
 Here is the simplest SpikeArrest policy:
 
 ```xml
-<!-- apiproxy/policies/SpikeArrest-Global.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <SpikeArrest name="SpikeArrest-Global">
     <DisplayName>Global Spike Arrest</DisplayName>
 
-    <!-- Allow 30 requests per second, evenly spaced -->
+    <!-- Allow 30 requests per second -->
     <Rate>30ps</Rate>
+    <UseEffectiveCount>true</UseEffectiveCount>
 </SpikeArrest>
 ```
 
@@ -58,12 +57,12 @@ Attach it as the first step in your proxy's PreFlow:
 
 SpikeArrest supports two rate formats:
 
-- **Per second**: `30ps` means 30 per second (one request every ~33ms)
-- **Per minute**: `300pm` means 300 per minute (one request every ~200ms)
+- **Per second**: `30ps` means 30 per second
+- **Per minute**: `300pm` means 300 per minute
 
-Under the hood, both are converted to a per-millisecond interval. There is no "per hour" or "per day" option - those are what Quota is for.
+There is no "per hour" or "per day" option - those are what Quota is for.
 
-A practical tip: if your desired rate results in intervals shorter than 1 millisecond, SpikeArrest effectively becomes a no-op because every request passes. For example, `10000ps` means one request every 0.1ms, which is effectively unlimited for most workloads.
+A practical tip: keep SpikeArrest rates within Apigee's documented limits and use it for short-period protection. If you need accurate counting over longer windows, use Quota instead.
 
 ## Per-Client SpikeArrest
 
@@ -72,8 +71,6 @@ The basic configuration applies the rate globally - all clients share the same r
 This policy applies the rate limit per API key:
 
 ```xml
-<!-- apiproxy/policies/SpikeArrest-PerClient.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <SpikeArrest name="SpikeArrest-PerClient">
     <DisplayName>Per-Client Spike Arrest</DisplayName>
 
@@ -82,6 +79,7 @@ This policy applies the rate limit per API key:
 
     <!-- Use the API key as the identifier -->
     <Identifier ref="request.header.x-api-key"/>
+    <UseEffectiveCount>true</UseEffectiveCount>
 </SpikeArrest>
 ```
 
@@ -98,24 +96,18 @@ Sometimes you need to adjust the rate without redeploying. Use a variable refere
 This policy gets its rate from a flow variable:
 
 ```xml
-<!-- apiproxy/policies/SpikeArrest-Dynamic.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <SpikeArrest name="SpikeArrest-Dynamic">
     <DisplayName>Dynamic Spike Arrest</DisplayName>
 
-    <!-- Rate comes from a flow variable set by a KVM lookup or AssignMessage -->
-    <Rate ref="spike.arrest.rate">
-        <!-- Fallback rate if the variable is not set -->
-        <Rate>30ps</Rate>
-    </Rate>
+    <!-- Use 30ps if the variable is not set -->
+    <Rate ref="spike.arrest.rate">30ps</Rate>
+    <UseEffectiveCount>true</UseEffectiveCount>
 </SpikeArrest>
 ```
 
 Set the rate variable from a KVM or AssignMessage policy that runs before SpikeArrest:
 
 ```xml
-<!-- apiproxy/policies/SetSpikeArrestRate.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <AssignMessage name="SetSpikeArrestRate">
     <DisplayName>Set Spike Arrest Rate</DisplayName>
     <AssignVariable>
@@ -177,6 +169,7 @@ Define each SpikeArrest policy with appropriate rates:
     <DisplayName>Search Spike Arrest</DisplayName>
     <Rate>5ps</Rate>
     <Identifier ref="client_id"/>
+    <UseEffectiveCount>true</UseEffectiveCount>
 </SpikeArrest>
 ```
 
@@ -186,6 +179,7 @@ Define each SpikeArrest policy with appropriate rates:
     <DisplayName>Write Operations Spike Arrest</DisplayName>
     <Rate>2ps</Rate>
     <Identifier ref="client_id"/>
+    <UseEffectiveCount>true</UseEffectiveCount>
 </SpikeArrest>
 ```
 
@@ -194,13 +188,10 @@ Define each SpikeArrest policy with appropriate rates:
 When SpikeArrest rejects a request, provide a helpful error response that tells clients to slow down.
 
 ```xml
-<!-- apiproxy/policies/SpikeArrestFaultResponse.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <AssignMessage name="SpikeArrestFaultResponse">
     <DisplayName>Spike Arrest Error Response</DisplayName>
     <Set>
         <StatusCode>429</StatusCode>
-        <ReasonPhrase>Too Many Requests</ReasonPhrase>
         <Payload contentType="application/json">
 {
     "error": {
@@ -223,10 +214,10 @@ Wire up the fault rule:
 ```xml
 <FaultRules>
     <FaultRule name="SpikeArrestFault">
-        <Condition>(fault.name = "SpikeArrestViolation")</Condition>
         <Step>
             <Name>SpikeArrestFaultResponse</Name>
         </Step>
+        <Condition>(fault.name = "SpikeArrestViolation")</Condition>
     </FaultRule>
 </FaultRules>
 ```
@@ -245,7 +236,7 @@ graph TD
     F --> G[Backend Service]
 ```
 
-1. **Global SpikeArrest** - protects the entire platform from DDoS-level traffic
+1. **Global SpikeArrest** - protects the proxy and backend from large traffic spikes
 2. **Per-Client SpikeArrest** - prevents a single client from dominating
 3. **Per-Endpoint SpikeArrest** - protects expensive operations
 4. **Quota** - enforces business-level usage limits
@@ -280,7 +271,7 @@ for i in $(seq 1 20); do
 done
 ```
 
-With a rate of `10ps`, the rapid burst should see some 429 responses, while the spaced-out requests should all pass.
+With a rate of `10ps`, the rapid burst should see some 429 responses, while the spaced-out requests should normally pass.
 
 ## Monitoring SpikeArrest in Production
 
@@ -289,7 +280,10 @@ Track SpikeArrest violations in Apigee Analytics to understand if your rates are
 ```bash
 # Query for spike arrest violations
 
-curl "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/prod/stats/apiproxy?select=sum(is_error)&timeRange=01/01/2026+00:00~02/17/2026+23:59&filter=(fault.name+eq+'SpikeArrestViolation')" \
+curl --get "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/prod/stats/apiproxy" \
+  --data-urlencode "select=sum(policy_error)" \
+  --data-urlencode "timeRange=01/01/2026 00:00~02/17/2026 23:59" \
+  --data-urlencode "filter=(ax_edge_execution_fault_code eq 'policies.ratelimit.SpikeArrestViolation')" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)"
 ```
 
@@ -297,4 +291,4 @@ If you see a high rate of legitimate traffic being throttled, increase your Spik
 
 ## Summary
 
-SpikeArrest protects your backend by smoothing traffic into an even stream rather than allowing bursts. Set it as the first policy in your proxy flow for global protection, use identifiers for per-client limits, and combine it with endpoint-specific rates for heavy operations. The key thing to remember is that SpikeArrest works on intervals between requests, not on totals - so `10ps` means one request every 100ms, not "any 10 within a second." Use Quota for total counts, SpikeArrest for rate smoothing, and layer them together for comprehensive protection.
+SpikeArrest protects your backend by enforcing short-period rate limits before requests reach the target. Set it as the first policy in your proxy flow for global protection, use identifiers for per-client limits, and combine it with endpoint-specific rates for heavy operations. The key thing to remember is that SpikeArrest is for short traffic surges, while Quota is for accurate usage limits over longer periods. Use Quota for total counts, SpikeArrest for spike protection, and layer them together for comprehensive protection.
