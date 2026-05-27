@@ -30,14 +30,18 @@ Before starting, you need:
 - A Google Cloud project with billing enabled
 - The Cloud SQL Admin API enabled
 - The Managed Microsoft AD API enabled
+- The Cloud DNS API enabled
+- The Compute Engine API enabled
 - A VPC network for the AD domain
-- Appropriate IAM permissions (Cloud SQL Admin, Managed AD Admin)
+- Appropriate IAM permissions (Cloud SQL Admin, Managed AD Admin, and Managed Identities SQL Integrator for the Cloud SQL service account)
 
 ```bash
 # Enable required APIs
 
 gcloud services enable sqladmin.googleapis.com
 gcloud services enable managedidentities.googleapis.com
+gcloud services enable dns.googleapis.com
+gcloud services enable compute.googleapis.com
 ```
 
 ## Step 1: Create a Managed Microsoft AD Domain
@@ -64,21 +68,16 @@ gcloud active-directory domains describe my-domain.example.com \
 
 The domain is ready when the state is `READY`. Note the admin account - it is usually `setupadmin@my-domain.example.com`.
 
-## Step 2: Configure the VPC for AD
+## Step 2: Verify VPC DNS for AD
 
-The VPC network needs DNS configured to resolve the AD domain:
+Managed Microsoft AD integrates with Cloud DNS for authorized VPC networks. VMs in the authorized network should be able to resolve the AD domain without creating a separate forwarding zone:
 
 ```bash
-# Create a DNS peering zone to resolve the AD domain
-gcloud dns managed-zones create ad-dns-forwarding \
-    --dns-name=my-domain.example.com. \
-    --visibility=private \
-    --networks=my-vpc \
-    --description="Forward DNS for Managed AD" \
-    --forwarding-targets=$(gcloud active-directory domains describe my-domain.example.com --format="value(name)" | xargs gcloud active-directory domains get-ldaps-settings --domain=my-domain.example.com --format="value(dnsIpAddresses[0])")
+# Verify DNS resolution from a VM in the authorized VPC
+nslookup my-domain.example.com
 ```
 
-Alternatively, Cloud DNS automatically handles this if the VPC is an authorized network for the Managed AD domain.
+If you need on-premises resources to resolve the Managed Microsoft AD domain, create a Cloud DNS inbound forwarding policy and configure conditional forwarding on your on-premises DNS servers.
 
 ## Step 3: Create the Cloud SQL for SQL Server Instance
 
@@ -86,7 +85,7 @@ Create the SQL Server instance with the AD domain configuration:
 
 ```bash
 # Create a Cloud SQL for SQL Server instance joined to the AD domain
-gcloud sql instances create my-sqlserver \
+gcloud beta sql instances create my-sqlserver \
     --database-version=SQLSERVER_2019_STANDARD \
     --tier=db-custom-4-16384 \
     --region=us-central1 \
@@ -94,7 +93,7 @@ gcloud sql instances create my-sqlserver \
     --network=projects/my-project/global/networks/my-vpc \
     --no-assign-ip \
     --storage-type=SSD \
-    --storage-size=100GB \
+    --storage-size=100 \
     --availability-type=REGIONAL \
     --active-directory-domain=projects/my-project/locations/global/domains/my-domain.example.com
 ```
@@ -154,7 +153,7 @@ Add-ADGroupMember -Identity "SQL-Admins" -Members "app-dbuser"
 Connect to the Cloud SQL for SQL Server instance and create Windows logins:
 
 ```bash
-# Connect using sqlcmd with the SA account
+# Connect using sqlcmd with the default Cloud SQL SQL Server account
 sqlcmd -S PRIVATE_IP -U sqlserver -P YourStrongPassword123
 ```
 
@@ -192,17 +191,17 @@ From a domain-joined machine, connect using Windows Authentication:
 
 ```bash
 # Connect using sqlcmd with Windows Authentication
-sqlcmd -S PRIVATE_IP -E -d myapp
+sqlcmd -S private.my-sqlserver.us-central1.my-project.cloudsql.my-domain.example.com -E -d myapp
 ```
 
-The `-E` flag uses the current Windows credentials for authentication.
+The `-E` flag uses the current Windows credentials for authentication. Use the instance DNS name shown in the Google Cloud console for Windows Authentication; connecting by IP address requires extra Kerberos client configuration and is not supported for users from domains connected through a trust relationship.
 
 From a .NET application:
 
 ```csharp
 // C# connection string using Windows Authentication
 string connectionString = @"
-    Server=PRIVATE_IP;
+    Server=private.my-sqlserver.us-central1.my-project.cloudsql.my-domain.example.com;
     Database=myapp;
     Integrated Security=true;
     TrustServerCertificate=true;
@@ -283,20 +282,19 @@ w32tm /resync
 
 1. **Use AD groups for authorization** instead of individual logins. This follows the principle of least privilege and makes management easier.
 
-2. **Audit login events** by enabling SQL Server auditing:
+2. **Audit login events** by enabling Cloud SQL for SQL Server auditing:
 
-```sql
--- Enable login auditing
-EXEC sp_configure 'login auditing', 2;  -- Log both successful and failed logins
-RECONFIGURE;
+```bash
+# Enable SQL Server auditing and upload audit files to Cloud Storage
+gcloud sql instances patch my-sqlserver \
+    --audit-bucket-path=gs://my-sql-audit-bucket \
+    --audit-retention-interval=24h \
+    --audit-upload-interval=10m
 ```
 
-3. **Disable SA account** after setting up AD authentication:
+3. **Protect the default SQL Server account** after setting up AD authentication:
 
-```sql
--- Disable the SA account for security
-ALTER LOGIN [sqlserver] DISABLE;
-```
+Cloud SQL for SQL Server uses `sqlserver` as the default administrative login. Keep it as a tightly controlled break-glass account instead of treating it as a regular application login.
 
 4. **Use private IP** to keep all authentication traffic on your VPC.
 
@@ -304,11 +302,11 @@ ALTER LOGIN [sqlserver] DISABLE;
 
 Managed Microsoft AD pricing:
 
-- Standard edition: Per domain per hour (includes two domain controllers)
-- Additional domain controllers: Per DC per hour
-- AD trust: No additional cost
+- Managed Active Domain: Per hour per region, with two domain controllers deployed in each region
+- Additional regions: Charged at the same per-hour regional rate
+- AD trust: No separate Managed Microsoft AD line item
 
-The cost is in addition to your Cloud SQL instance cost. For a small deployment with one domain, expect approximately $200-300/month for Managed AD.
+The cost is in addition to your Cloud SQL instance cost. At the published rate of $0.40 per hour per region, a single-region domain is approximately $288/month for a 30-day month.
 
 ## Summary
 
