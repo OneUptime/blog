@@ -14,7 +14,7 @@ MetalLB exposes a Prometheus metric called `metallb_k8s_client_config_stale_bool
 
 The `metallb_k8s_client_config_stale_bool` metric is a boolean gauge:
 
-- **0**: Configuration is current. MetalLB has successfully loaded the latest CRDs.
+- **0**: Configuration is current. MetalLB has successfully loaded the latest configuration resources.
 - **1**: Configuration is stale. MetalLB failed to load the latest configuration and is running with an older version.
 
 ```mermaid
@@ -78,16 +78,25 @@ for POD in $SPEAKERS; do
   NODE=$(kubectl get pod "$POD" -n metallb-system \
     -o jsonpath='{.spec.nodeName}')
 
-  # Query the metric directly using kubectl exec
-  STALE=$(kubectl exec -n metallb-system "$POD" -- \
-    wget -qO- http://localhost:7472/metrics 2>/dev/null | \
-    grep "metallb_k8s_client_config_stale_bool" | \
-    awk '{print $2}')
+  # Query the metric through a local port-forward
+  LOCAL_PORT=$((17472 + RANDOM % 1000))
+  kubectl port-forward -n metallb-system "pod/$POD" \
+    "$LOCAL_PORT:7472" >/tmp/metallb-"$POD".log 2>&1 &
+  PF_PID=$!
+  sleep 2
+
+  STALE=$(curl -fsS "http://127.0.0.1:$LOCAL_PORT/metrics" 2>/dev/null | \
+    awk '$1 == "metallb_k8s_client_config_stale_bool" {print $2; exit}')
+
+  kill "$PF_PID" 2>/dev/null
+  wait "$PF_PID" 2>/dev/null
 
   if [ "$STALE" = "1" ]; then
     echo "ALERT: Speaker on node $NODE has STALE config"
-  else
+  elif [ "$STALE" = "0" ]; then
     echo "OK: Speaker on node $NODE has current config"
+  else
+    echo "UNKNOWN: Could not read stale config metric from speaker on node $NODE"
   fi
 done
 ```
@@ -100,7 +109,41 @@ To continuously monitor this metric, configure Prometheus to scrape MetalLB pods
 
 ```yaml
 # metallb-servicemonitor.yaml
-# ServiceMonitor to scrape MetalLB metrics with Prometheus Operator
+# Services and ServiceMonitor to scrape MetalLB metrics with Prometheus Operator
+apiVersion: v1
+kind: Service
+metadata:
+  name: metallb-controller-metrics
+  namespace: metallb-system
+  labels:
+    app: metallb
+    component: controller
+spec:
+  selector:
+    app: metallb
+    component: controller
+  ports:
+    - name: monitoring
+      port: 7472
+      targetPort: monitoring
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metallb-speaker-metrics
+  namespace: metallb-system
+  labels:
+    app: metallb
+    component: speaker
+spec:
+  selector:
+    app: metallb
+    component: speaker
+  ports:
+    - name: monitoring
+      port: 7472
+      targetPort: monitoring
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -112,8 +155,8 @@ metadata:
 spec:
   selector:
     matchLabels:
-      # This matches the MetalLB service labels
-      app.kubernetes.io/name: metallb
+      # This matches the MetalLB metrics Services above
+      app: metallb
   endpoints:
     - port: monitoring
       # Scrape interval - check config staleness every 30 seconds
@@ -129,12 +172,18 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
-  name: metallb-speakers
+  name: metallb-pods
   namespace: metallb-system
 spec:
   selector:
     matchLabels:
-      component: speaker
+      app: metallb
+    matchExpressions:
+      - key: component
+        operator: In
+        values:
+          - controller
+          - speaker
   podMetricsEndpoints:
     - port: monitoring
       interval: 30s
@@ -155,9 +204,13 @@ scrape_configs:
             - metallb-system
     relabel_configs:
       # Only scrape pods with the metallb app label
-      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+      - source_labels: [__meta_kubernetes_pod_label_app]
         action: keep
         regex: metallb
+      # Only scrape controller and speaker pods
+      - source_labels: [__meta_kubernetes_pod_label_component]
+        action: keep
+        regex: controller|speaker
       # Use the monitoring port
       - source_labels: [__meta_kubernetes_pod_container_port_name]
         action: keep
@@ -190,11 +243,10 @@ spec:
           annotations:
             summary: "MetalLB configuration is stale on {{ $labels.pod }}"
             description: >
-              The MetalLB component {{ $labels.pod }} on node
-              {{ $labels.node }} has been running with stale
-              configuration for more than 5 minutes. New IP pools
-              and advertisements may not be active.
-            runbook: "Restart the affected MetalLB component to force config reload."
+              The MetalLB component {{ $labels.pod }} has been running
+              with stale configuration for more than 5 minutes. New IP
+              pools and advertisements may not be active.
+            runbook: "Check the affected MetalLB component logs, fix the invalid configuration, and restart the component if needed."
 ```
 
 ## Other Useful MetalLB Metrics
@@ -214,7 +266,7 @@ Key metrics to watch:
 | `metallb_k8s_client_config_loaded_bool` | Config was ever successfully loaded |
 | `metallb_allocator_addresses_in_use_total` | Number of IPs currently allocated |
 | `metallb_allocator_addresses_total` | Total IPs available in all pools |
-| `metallb_bgp_session_up` | BGP session state per peer |
+| `metallb_bgp_session_up` | BGP session state per peer in native BGP mode; default FRR-K8s mode uses `frrk8s_bgp_session_up` |
 | `metallb_layer2_requests_received` | ARP/NDP requests handled |
 
 ## Building a Grafana Dashboard
@@ -243,8 +295,11 @@ metallb_allocator_addresses_in_use_total / metallb_allocator_addresses_total * 1
 # Config stale across all components (should be 0)
 max(metallb_k8s_client_config_stale_bool)
 
-# BGP sessions that are down
+# BGP sessions that are down in native BGP mode
 metallb_bgp_session_up == 0
+
+# BGP sessions that are down in the default FRR-K8s mode
+frrk8s_bgp_session_up == 0
 ```
 
 ## Responding to a Stale Config Alert
@@ -265,9 +320,9 @@ kubectl rollout restart deployment controller -n metallb-system
 kubectl rollout restart daemonset speaker -n metallb-system
 
 # Step 5: Verify the metric returns to 0
-kubectl exec -n metallb-system <new-pod-name> -- \
-  wget -qO- http://localhost:7472/metrics 2>/dev/null | \
-  grep config_stale
+kubectl port-forward -n metallb-system pod/<new-pod-name> 7472:7472 &
+curl -s http://localhost:7472/metrics | grep config_stale
+kill %1
 ```
 
 ## Monitoring with OneUptime
