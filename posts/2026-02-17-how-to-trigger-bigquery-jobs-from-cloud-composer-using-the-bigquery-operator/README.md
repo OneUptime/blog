@@ -20,8 +20,9 @@ The `apache-airflow-providers-google` package includes several BigQuery operator
 - `BigQueryCheckOperator` - Run a query and fail if the result is falsy
 - `BigQueryValueCheckOperator` - Check a query result against an expected value
 - `BigQueryGetDataOperator` - Retrieve query results as Python objects
-- `BigQueryTableExistenceSensor` - Wait for a table or partition to exist
-- `BigQueryCreateEmptyTableOperator` - Create a new table with a specified schema
+- `BigQueryTableExistenceSensor` - Wait for a table to exist
+- `BigQueryTablePartitionExistenceSensor` - Wait for a table partition to exist
+- `BigQueryCreateTableOperator` - Create a new table with a specified schema
 
 ## Running a BigQuery Query
 
@@ -31,7 +32,7 @@ The `BigQueryInsertJobOperator` is the go-to operator for running SQL queries:
 # bq_query_dag.py - Run BigQuery queries from Cloud Composer
 
 from datetime import datetime, timedelta
-from airflow import DAG
+from airflow.sdk import DAG
 from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
 
 default_args = {
@@ -43,7 +44,7 @@ default_args = {
 dag = DAG(
     dag_id="bigquery_daily_etl",
     default_args=default_args,
-    schedule_interval="0 6 * * *",
+    schedule="0 6 * * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
     tags=["bigquery", "etl"],
@@ -178,7 +179,7 @@ check_nulls = BigQueryCheckOperator(
     sql="""
         SELECT COUNT(*) = 0
         FROM `my-project.analytics.daily_events_{{ ds_nodash }}`
-        WHERE user_id IS NULL
+        WHERE event_type IS NULL
     """,
     use_legacy_sql=False,
     location="US",
@@ -192,17 +193,18 @@ Use sensors to wait for tables or partitions to be available before processing:
 
 ```python
 # Wait for upstream data to be available
-from airflow.providers.google.cloud.sensors.bigquery import BigQueryTableExistenceSensor
+from airflow.providers.google.cloud.sensors.bigquery import BigQueryTablePartitionExistenceSensor
 
 # Wait for a specific partition to exist
-wait_for_data = BigQueryTableExistenceSensor(
+wait_for_data = BigQueryTablePartitionExistenceSensor(
     task_id="wait_for_raw_events",
     project_id="my-project",
     dataset_id="raw_data",
-    table_id="events${{ ds_nodash }}",  # Dollar sign for partition decorator
+    table_id="events",
+    partition_id="{{ ds_nodash }}",
     poke_interval=300,       # Check every 5 minutes
     timeout=7200,            # Give up after 2 hours
-    mode="reschedule",       # Free up the worker slot while waiting
+    deferrable=True,         # Free up the worker slot while waiting
     dag=dag,
 )
 
@@ -217,13 +219,13 @@ Here is a full example putting everything together:
 ```python
 # complete_bq_etl.py - A complete BigQuery ETL pipeline
 from datetime import datetime, timedelta
-from airflow import DAG
+from airflow.sdk import DAG
 from airflow.providers.google.cloud.operators.bigquery import (
     BigQueryInsertJobOperator,
     BigQueryCheckOperator,
 )
-from airflow.providers.google.cloud.sensors.bigquery import BigQueryTableExistenceSensor
-from airflow.operators.python import PythonOperator
+from airflow.providers.google.cloud.sensors.bigquery import BigQueryTablePartitionExistenceSensor
+from airflow.providers.standard.operators.python import PythonOperator
 
 default_args = {
     "owner": "data-engineering",
@@ -235,21 +237,22 @@ default_args = {
 dag = DAG(
     dag_id="complete_bq_etl",
     default_args=default_args,
-    schedule_interval="0 7 * * *",
+    schedule="0 7 * * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
     tags=["bigquery", "etl", "production"],
 )
 
 # Step 1: Wait for source data
-wait_for_events = BigQueryTableExistenceSensor(
+wait_for_events = BigQueryTablePartitionExistenceSensor(
     task_id="wait_for_events",
     project_id="my-project",
     dataset_id="raw_data",
-    table_id="events${{ ds_nodash }}",
+    table_id="events",
+    partition_id="{{ ds_nodash }}",
     poke_interval=300,
     timeout=7200,
-    mode="reschedule",
+    deferrable=True,
     dag=dag,
 )
 
@@ -323,9 +326,9 @@ notify = PythonOperator(
 wait_for_events >> transform >> [check_rows, check_revenue] >> notify
 ```
 
-## Handling Large Result Sets with XCom
+## Handling Small Result Sets with XCom
 
-If you need to use query results in downstream tasks:
+If you need to use a small set of query results in downstream tasks:
 
 ```python
 # Get query results and use them in downstream tasks
@@ -360,7 +363,7 @@ get_top_users >> process
 
 1. **Use partitioned tables** - Always include partition filters in your queries to avoid full table scans
 2. **Set query priority** - Use `"priority": "BATCH"` for non-urgent queries to reduce costs
-3. **Use the `reschedule` mode for sensors** - This frees worker slots while waiting
+3. **Use deferrable sensors** - This frees worker slots while waiting
 4. **Set appropriate timeouts** - Use `execution_timeout` on tasks to prevent runaway queries
 5. **Use `WRITE_TRUNCATE` for idempotent loads** - This makes re-runs safe
 
