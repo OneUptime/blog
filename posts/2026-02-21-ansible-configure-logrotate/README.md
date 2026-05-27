@@ -60,7 +60,7 @@ This playbook configures the main logrotate.conf with production-ready defaults:
           # Rotate logs on a {{ logrotate_frequency }} basis
           {{ logrotate_frequency }}
 
-          # Keep {{ logrotate_rotate }} weeks worth of backlogs
+          # Keep {{ logrotate_rotate }} rotated log files
           rotate {{ logrotate_rotate }}
 
           # Create new log files after rotating old ones
@@ -123,7 +123,7 @@ This playbook creates logrotate configs for common applications:
         path: /var/log/app/*.log
         frequency: daily
         rotate: 30
-        size: 100M
+        maxsize: 100M
         options:
           - compress
           - delaycompress
@@ -182,6 +182,9 @@ The template for generating logrotate configs:
 {% if item.size is defined %}
     size {{ item.size }}
 {% endif %}
+{% if item.maxsize is defined %}
+    maxsize {{ item.maxsize }}
+{% endif %}
 {% for opt in item.options %}
     {{ opt }}
 {% endfor %}
@@ -229,14 +232,14 @@ This playbook configures size-based log rotation:
               dateformat -%Y%m%d-%s
           }
 
-    - name: Create size-based logrotate for Docker container logs
+    - name: Create size-based logrotate for high-volume application logs
       ansible.builtin.copy:
-        dest: /etc/logrotate.d/docker-containers
+        dest: /etc/logrotate.d/high-volume-app
         mode: '0644'
         content: |
-          # Docker container log rotation
+          # High-volume application log rotation
           # Managed by Ansible
-          /var/lib/docker/containers/*/*.log {
+          /var/log/high-volume-app/*.log {
               size 50M
               rotate 5
               compress
@@ -296,14 +299,13 @@ This playbook template creates logrotate configs for custom apps:
           {{ item.log_dir }}/{{ item.log_pattern }} {
               daily
               rotate {{ item.rotate_days }}
-              size {{ item.max_size }}
+              maxsize {{ item.max_size }}
               compress
               delaycompress
               notifempty
               missingok
               copytruncate
               dateext
-              create 0640 {{ item.user }} {{ item.group }}
           }
       loop: "{{ apps }}"
       loop_control:
@@ -414,11 +416,9 @@ This playbook monitors log directory sizes and alerts on high usage:
 graph TD
     A[Logrotate Cron Runs Daily] --> B[Read /etc/logrotate.conf]
     B --> C[Read /etc/logrotate.d/*]
-    C --> D{Time to Rotate?}
-    D -->|Daily/Weekly/Monthly| E{Size Threshold?}
+    C --> D{Rotation Criterion Met?}
+    D -->|Time Interval or Size Threshold| G[Rotate Log File]
     D -->|No| F[Skip]
-    E -->|Exceeded| G[Rotate Log File]
-    E -->|Under| F
     G --> H{Compress?}
     H -->|Yes| I[gzip Old File]
     H -->|No| J[Keep Uncompressed]
