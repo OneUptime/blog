@@ -39,6 +39,7 @@ project/
       test_services.yml
   molecule/
     default/
+      Dockerfile.j2
       molecule.yml
       converge.yml
       verify.yml
@@ -51,7 +52,8 @@ Install the required testing tools:
 ```bash
 # Install testing tools
 
-pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest testinfra
+pip install ansible-core molecule "molecule-plugins[docker]" ansible-lint yamllint pytest pytest-testinfra
+ansible-galaxy collection install community.general
 ```
 
 ## Writing Tests
@@ -67,15 +69,22 @@ driver:
 platforms:
   - name: ubuntu2404
     image: ubuntu:24.04
-    pre_build_image: true
+    pre_build_image: false
     command: /bin/systemd
     privileged: true
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
   - name: rocky9
     image: rockylinux:9
-    pre_build_image: true
+    pre_build_image: false
     command: /usr/sbin/init
+    privileged: true
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+  - name: debian12
+    image: debian:12
+    pre_build_image: false
+    command: /lib/systemd/systemd
     privileged: true
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -184,10 +193,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install ansible molecule molecule-docker
-      - run: molecule test
-        env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
+      - run: pip install ansible molecule "molecule-plugins[docker]"
+      - run: ansible-galaxy collection install community.general
+      - run: molecule test -- --limit ${{ matrix.distro }}
 ```
 
 ### GitLab CI
@@ -208,11 +216,14 @@ lint:
 
 molecule:
   stage: test
-  image: docker:latest
+  image: docker:stable-dind
   services:
     - docker:dind
+  before_script:
+    - apk add --no-cache python3 py3-pip gcc git curl build-base musl-dev libffi-dev openssl-dev openssh
   script:
-    - pip install ansible molecule molecule-docker
+    - python3 -m pip install ansible molecule "molecule-plugins[docker]"
+    - ansible-galaxy collection install community.general
     - molecule test
 ```
 
@@ -221,7 +232,7 @@ molecule:
 ### Testing Idempotency
 
 ```bash
-# Molecule automatically tests idempotency by running converge twice
+# The default molecule test sequence includes an idempotence step after converge
 # The second run should have zero changes
 molecule converge
 molecule idempotence
@@ -266,12 +277,12 @@ Testing Ansible code requires multiple layers: linting for style and best practi
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this testing approach proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this approach
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -298,12 +309,17 @@ Here are several practical scenarios where this module proves essential in real-
           - wget
           - git
           - vim
-          - htop
           - jq
         state: present
 
+    - name: Install UFW on Debian family systems
+      ansible.builtin.package:
+        name: ufw
+        state: present
+      when: ansible_os_family == 'Debian'
+
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -331,6 +347,7 @@ Here are several practical scenarios where this module proves essential in real-
         rule: allow
         port: "{{ item }}"
         proto: tcp
+      when: ansible_os_family == 'Debian'
       loop:
         - "22"
         - "80"
@@ -340,11 +357,12 @@ Here are several practical scenarios where this module proves essential in real-
       community.general.ufw:
         state: enabled
         policy: deny
+      when: ansible_os_family == 'Debian'
 
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -385,7 +403,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this approach
 - name: Robust task execution
   hosts: all
   tasks:
@@ -447,4 +465,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
