@@ -20,7 +20,7 @@ ML Metadata uses three main abstractions:
 - **Executions** - Processes that create or consume artifacts. A training run is an execution that takes a dataset artifact as input and produces a model artifact as output.
 - **Contexts** - Groupings of artifacts and executions. A pipeline run is a context that contains all the executions and artifacts from that run.
 
-These concepts map to the W3C PROV standard, which means the lineage graph is well-structured and queryable.
+Together, these concepts form a lineage graph that is well-structured and queryable.
 
 ## Step 1: Setting Up the Metadata Store
 
@@ -30,6 +30,7 @@ Vertex AI ML Metadata is available automatically in your project. You just need 
 # metadata_setup.py
 
 from google.cloud import aiplatform
+from google.cloud import aiplatform_v1
 
 # Initialize Vertex AI - the metadata store is created automatically
 aiplatform.init(
@@ -38,8 +39,13 @@ aiplatform.init(
 )
 
 # Verify the metadata store is accessible
-metadata_store = aiplatform.MetadataStore("default")
-print(f"Metadata store: {metadata_store.resource_name}")
+metadata_client = aiplatform_v1.MetadataServiceClient(
+    client_options={"api_endpoint": "us-central1-aiplatform.googleapis.com"}
+)
+metadata_store = metadata_client.get_metadata_store(
+    name="projects/my-project/locations/us-central1/metadataStores/default"
+)
+print(f"Metadata store: {metadata_store.name}")
 ```
 
 ## Step 2: Log Artifacts from Your Training Pipeline
@@ -49,7 +55,6 @@ When you run a training pipeline, log every input and output as an artifact. Her
 ```python
 # training/train_with_metadata.py
 from google.cloud import aiplatform
-from google.cloud.aiplatform import metadata
 import datetime
 import json
 
@@ -60,12 +65,16 @@ def train_model_with_metadata(
 ):
     """Train a model and log all metadata for lineage tracking."""
 
-    aiplatform.init(project="my-project", location="us-central1")
+    aiplatform.init(
+        project="my-project",
+        location="us-central1",
+        experiment="metadata-lineage",
+    )
 
     # Generate a unique run ID for this training execution
     run_id = f"training-run-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
-    # Create a metadata context for this training run
+    # Create an experiment run for parameters and metrics
     with aiplatform.start_run(run_id) as run:
 
         # Log the training dataset as an input artifact
@@ -81,9 +90,6 @@ def train_model_with_metadata(
                 "table": "ml_features.training_data",
             }
         )
-
-        # Log the input artifact
-        run.log_input(dataset_artifact)
 
         # Log hyperparameters
         aiplatform.log_params({
@@ -132,8 +138,21 @@ def train_model_with_metadata(
             }
         )
 
-        # Log the output artifact
-        run.log_output(model_artifact)
+        # Record the artifact lineage with a metadata execution
+        with aiplatform.start_execution(
+            schema_title="system.Run",
+            display_name=run_id,
+            resource_id=run_id,
+            metadata={
+                "learning_rate": hyperparameters["learning_rate"],
+                "n_estimators": hyperparameters["n_estimators"],
+                "max_depth": hyperparameters["max_depth"],
+                "batch_size": hyperparameters["batch_size"],
+            },
+        ) as execution:
+            execution.assign_input_artifacts([dataset_artifact])
+            execution.assign_output_artifacts([model_artifact])
+            run.associate_execution(execution)
 
         print(f"Training complete. Run ID: {run_id}")
         return run_id
@@ -146,6 +165,7 @@ Do not just track training - track the entire pipeline including data preprocess
 ```python
 # preprocessing/preprocess_with_metadata.py
 from google.cloud import aiplatform
+import datetime
 
 def preprocess_data_with_metadata(
     raw_data_uri,
@@ -153,7 +173,11 @@ def preprocess_data_with_metadata(
     preprocessing_params,
 ):
     """Preprocess data and record the lineage."""
-    aiplatform.init(project="my-project", location="us-central1")
+    aiplatform.init(
+        project="my-project",
+        location="us-central1",
+        experiment="metadata-lineage",
+    )
 
     run_id = f"preprocessing-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
@@ -169,8 +193,6 @@ def preprocess_data_with_metadata(
                 "row_count": 500000,
             }
         )
-        run.log_input(raw_data)
-
         # Log preprocessing parameters
         aiplatform.log_params({
             "null_handling": preprocessing_params.get("null_handling", "drop"),
@@ -195,8 +217,6 @@ def preprocess_data_with_metadata(
                 "null_percentage": 0.0,
             }
         )
-        run.log_output(processed_data)
-
         # Log data quality metrics
         aiplatform.log_metrics({
             "rows_removed": 20000,
@@ -205,6 +225,17 @@ def preprocess_data_with_metadata(
             "feature_count_before": 50,
             "feature_count_after": 25,
         })
+
+        # Record the artifact lineage with a metadata execution
+        with aiplatform.start_execution(
+            schema_title="system.Run",
+            display_name=run_id,
+            resource_id=run_id,
+            metadata=preprocessing_params,
+        ) as execution:
+            execution.assign_input_artifacts([raw_data])
+            execution.assign_output_artifacts([processed_data])
+            run.associate_execution(execution)
 
         return run_id
 ```
@@ -216,6 +247,7 @@ The real power of ML Metadata comes from querying it. You can trace the complete
 ```python
 # lineage/query_lineage.py
 from google.cloud import aiplatform
+from google.cloud import aiplatform_v1
 
 def get_model_lineage(model_artifact_name):
     """Trace the complete lineage of a model back to raw data."""
@@ -225,8 +257,11 @@ def get_model_lineage(model_artifact_name):
     model = aiplatform.Artifact(model_artifact_name)
 
     # Query the lineage subgraph
-    lineage = aiplatform.Artifact.get_with_lineage_subgraph(
-        resource_id=model_artifact_name
+    metadata_client = aiplatform_v1.MetadataServiceClient(
+        client_options={"api_endpoint": "us-central1-aiplatform.googleapis.com"}
+    )
+    lineage = metadata_client.query_artifact_lineage_subgraph(
+        artifact=model.resource_name
     )
 
     print(f"Model: {model.display_name}")
@@ -252,8 +287,8 @@ def compare_training_runs(run_id_1, run_id_2):
     """Compare two training runs to identify what changed."""
     aiplatform.init(project="my-project", location="us-central1")
 
-    run_1 = aiplatform.ExperimentRun(run_id_1, experiment="default")
-    run_2 = aiplatform.ExperimentRun(run_id_2, experiment="default")
+    run_1 = aiplatform.ExperimentRun(run_id_1, experiment="metadata-lineage")
+    run_2 = aiplatform.ExperimentRun(run_id_2, experiment="metadata-lineage")
 
     # Get parameters from both runs
     params_1 = run_1.get_params()
@@ -287,6 +322,11 @@ Vertex AI Experiments provides a higher-level API for organizing related trainin
 ```python
 # experiments/run_experiment.py
 from google.cloud import aiplatform
+
+def train_and_evaluate(config):
+    """Train and evaluate a model for one hyperparameter configuration."""
+    # ... actual training and evaluation code here ...
+    return 0.90
 
 def run_hyperparameter_experiment():
     """Run multiple training configurations and compare results."""
@@ -328,8 +368,8 @@ When using Vertex AI Pipelines, metadata tracking can be built into each compone
 
 ```python
 # pipeline_components/tracked_training.py
-from kfp.v2 import dsl
-from kfp.v2.dsl import Input, Output, Dataset, Model, Metrics
+from kfp import dsl
+from kfp.dsl import Input, Output, Dataset, Model, Metrics
 
 @dsl.component(
     base_image="python:3.10",
