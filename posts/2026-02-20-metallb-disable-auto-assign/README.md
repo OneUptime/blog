@@ -28,7 +28,7 @@ sequenceDiagram
 
     Dev->>K8s: Create Service (no annotation)
     K8s->>MLB: Assign IP
-    MLB->>Pool2: Grab IP (alphabetically first!)
+    MLB->>Pool2: Grab IP (available pool)
     Pool2-->>MLB: 203.0.113.5
     MLB-->>K8s: Assigned 203.0.113.5
     Note over Dev: Oops - used a premium IP
@@ -130,7 +130,7 @@ metadata:
   name: production-api
   annotations:
     # Explicitly request an IP from the premium pool
-    metallb.universe.tf/address-pool: premium-ips
+    metallb.io/address-pool: premium-ips
 spec:
   type: LoadBalancer
   selector:
@@ -151,11 +151,11 @@ kind: Service
 metadata:
   name: payment-gateway
   annotations:
-    metallb.universe.tf/address-pool: premium-ips
+    # Explicitly request the premium pool and one IP from it
+    metallb.io/address-pool: premium-ips
+    metallb.io/loadBalancerIPs: 203.0.113.11
 spec:
   type: LoadBalancer
-  # Request a specific IP from the premium pool
-  loadBalancerIP: 203.0.113.11
   selector:
     app: payment-gateway
   ports:
@@ -206,7 +206,7 @@ This is the intended behavior - you never want automatic fallback into an expens
 | Practice | Reason |
 |----------|--------|
 | Always set `autoAssign: false` on premium pools | Prevents accidental consumption of expensive IPs |
-| Name your default pool alphabetically first | Makes the allocation order predictable |
+| Use `serviceAllocation.priority` when multiple auto-assign pools match | Makes the allocation order predictable |
 | Use RBAC to limit who can add pool annotations | Prevents unauthorized use of premium IPs |
 | Monitor pool utilization | Get alerts before you run out of default IPs |
 
