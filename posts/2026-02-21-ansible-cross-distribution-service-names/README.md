@@ -13,15 +13,15 @@ Just like package names, service names differ across Linux distributions. The SS
 ## The Problem
 
 ```yaml
-# Works on RHEL, fails on Debian
+# Works on RHEL, but uses the wrong canonical name on Debian
 
 - name: Restart SSH
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: sshd
     state: restarted
 ```
 
-On Debian/Ubuntu, the service is named `ssh`, not `sshd`. This means the task fails on half your fleet.
+On Debian/Ubuntu, the canonical service is named `ssh`, not `sshd`. This means the task may fail on systems that do not provide an `sshd` alias.
 
 ## Solution: Service Name Variables
 
@@ -79,7 +79,7 @@ Use them in your playbook:
 
   pre_tasks:
     - name: Load OS-specific service names
-      ansible.builtin.include_vars: "services_{{ ansible_os_family | lower }}.yml"
+      ansible.builtin.include_vars: "vars/services_{{ ansible_os_family | lower }}.yml"
 
   tasks:
     - name: Restart SSH service
@@ -156,7 +156,7 @@ Load and use the combined mapping:
 
   pre_tasks:
     - name: Load OS-specific variables
-      ansible.builtin.include_vars: "os_{{ ansible_os_family | lower }}.yml"
+      ansible.builtin.include_vars: "vars/os_{{ ansible_os_family | lower }}.yml"
 
   tasks:
     - name: Install web server
@@ -198,7 +198,7 @@ Load and use the combined mapping:
 
 ## Using the service Module
 
-The `ansible.builtin.service` module works with both systemd and non-systemd init systems. It is more portable than `ansible.builtin.systemd`:
+The `ansible.builtin.service` module works with both systemd and non-systemd init systems. It is more portable than `ansible.builtin.systemd_service`:
 
 ```yaml
 # This works on systemd AND OpenRC (Alpine)
@@ -210,7 +210,7 @@ The `ansible.builtin.service` module works with both systemd and non-systemd ini
 
 # This ONLY works on systemd
 - name: Start a service (systemd only)
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ svc_ssh }}"
     enabled: true
     state: started
@@ -243,7 +243,7 @@ The `with_first_found` pattern tries the most specific match first (e.g., `Ubunt
 
 ## Summary
 
-Cross-distribution service name handling follows the same pattern as package names: variable files loaded per OS family. Combine packages, services, and config paths into unified variable files for each distribution. Use `ansible.builtin.service` instead of `ansible.builtin.systemd` for maximum portability. The `with_first_found` pattern gives you granular control, from distribution-version-specific overrides down to family-level defaults.
+Cross-distribution service name handling follows the same pattern as package names: variable files loaded per OS family. Combine packages, services, and config paths into unified variable files for each distribution. Use `ansible.builtin.service` instead of `ansible.builtin.systemd_service` for maximum portability. The `with_first_found` pattern gives you granular control, from distribution-version-specific overrides down to family-level defaults.
 
 ## Common Use Cases
 
@@ -257,6 +257,10 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   gather_facts: true
+  pre_tasks:
+    - name: Load OS-specific variables
+      ansible.builtin.include_vars: "vars/os_{{ ansible_os_family | lower }}.yml"
+
   tasks:
     - name: Gather system information
       ansible.builtin.setup:
@@ -284,7 +288,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -305,7 +309,7 @@ Here are several practical scenarios where this module proves essential in real-
       loop:
         - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
-      notify: restart sshd
+      notify: restart ssh
 
     - name: Configure firewall rules
       community.general.ufw:
@@ -316,16 +320,18 @@ Here are several practical scenarios where this module proves essential in real-
         - "22"
         - "80"
         - "443"
+      when: services.firewall == 'ufw'
 
     - name: Enable firewall
       community.general.ufw:
         state: enabled
         policy: deny
+      when: services.firewall == 'ufw'
 
   handlers:
-    - name: restart sshd
+    - name: restart ssh
       ansible.builtin.service:
-        name: sshd
+        name: "{{ services.ssh }}"
         state: restarted
 ```
 
@@ -428,4 +434,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
