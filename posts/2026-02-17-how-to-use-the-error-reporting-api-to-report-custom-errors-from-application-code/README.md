@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Error Reporting, API, Custom Errors, Application Monitoring
 
-Description: Learn how to use the Google Cloud Error Reporting API to report custom errors directly from your application code in Python, Node.js, Java, and Go.
+Description: Learn how to use the Google Cloud Error Reporting API to report custom errors directly from your application code in Python, Node.js, and Go.
 
 ---
 
@@ -33,7 +33,7 @@ For Python:
 ```bash
 # Install the Error Reporting client library for Python
 
-pip install google-cloud-error_reporting
+pip install google-cloud-error-reporting
 ```
 
 For Node.js:
@@ -127,7 +127,7 @@ const errors = new ErrorReporting({
 });
 
 // Report a custom error message
-function processUserRegistration(userData) {
+async function processUserRegistration(userData) {
   const existingUser = await db.findUser(userData.email);
 
   if (existingUser) {
@@ -301,7 +301,9 @@ Background jobs like Pub/Sub subscribers or Cloud Tasks handlers do not have HTT
 
 ```python
 # Error reporting for Pub/Sub message handlers
-from google.cloud import error_reporting, pubsub_v1
+import json
+
+from google.cloud import error_reporting
 
 client = error_reporting.Client(service='message-processor', version='1.0.0')
 
