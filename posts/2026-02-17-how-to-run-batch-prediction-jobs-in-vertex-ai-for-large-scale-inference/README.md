@@ -88,7 +88,7 @@ batch_prediction_job = model.batch_predict(
     machine_type='n1-standard-4',
     # Number of starting replicas
     starting_replica_count=2,
-    # Maximum replicas (Vertex AI will auto-scale)
+    # Maximum replicas Vertex AI may use for the batch operation
     max_replica_count=10,
     # Sync=True means the call blocks until the job completes
     sync=False,
@@ -122,7 +122,7 @@ batch_prediction_job = model.batch_predict(
     job_display_name='bq-scoring-job',
     # BigQuery input table
     bigquery_source='bq://your-project-id.dataset.input_table',
-    # BigQuery output - results will be written to a new table
+    # BigQuery output - results will be written to prediction tables
     bigquery_destination_prefix='bq://your-project-id.dataset',
     # Instance type for BigQuery input tells the model
     # how to interpret the table columns
@@ -201,18 +201,16 @@ if job.state.name == 'JOB_STATE_SUCCEEDED':
     print(f"Output location: {job.output_info}")
 ```
 
-Using gcloud:
+Using the REST API with gcloud authentication:
 
 ```bash
 # Check the status of a batch prediction job
-gcloud ai batch-prediction-jobs describe JOB_ID \
-  --region=us-central1 \
-  --format="table(displayName,state,createTime,endTime)"
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://us-central1-aiplatform.googleapis.com/v1/projects/your-project-id/locations/us-central1/batchPredictionJobs/JOB_ID"
 
 # List all batch prediction jobs
-gcloud ai batch-prediction-jobs list \
-  --region=us-central1 \
-  --format="table(displayName,state,createTime)"
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://us-central1-aiplatform.googleapis.com/v1/projects/your-project-id/locations/us-central1/batchPredictionJobs"
 ```
 
 ## Reading the Output
@@ -235,7 +233,8 @@ bucket = client.bucket('your-bucket')
 blobs = bucket.list_blobs(prefix='batch-predictions/output/')
 
 for blob in blobs:
-    if blob.name.endswith('.jsonl'):
+    filename = blob.name.rsplit('/', 1)[-1]
+    if filename.startswith('prediction.results') or filename.endswith('.jsonl'):
         # Download and parse each output file
         content = blob.download_as_text()
         for line in content.strip().split('\n'):
@@ -258,7 +257,7 @@ client = bigquery.Client()
 # Query the output table
 query = """
 SELECT *
-FROM `your-project-id.dataset.predictions_TIMESTAMP`
+FROM `your-project-id.dataset.predictions`
 LIMIT 100
 """
 
