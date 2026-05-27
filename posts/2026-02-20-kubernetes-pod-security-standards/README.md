@@ -21,14 +21,14 @@ flowchart LR
 
     A -.- D["No restrictions<br/>Full host access<br/>Root containers"]
     B -.- E["Blocks known escalations<br/>No privileged containers<br/>No host namespaces"]
-    C -.- F["Hardened defaults<br/>Non-root required<br/>Drop all capabilities<br/>Read-only root FS"]
+    C -.- F["Hardened defaults<br/>Non-root required<br/>Drop all capabilities<br/>Seccomp required"]
 ```
 
 | Profile | Use Case | Key Restrictions |
 |---------|----------|-----------------|
 | Privileged | System-level workloads (CNI, CSI drivers) | None |
 | Baseline | General workloads | No privileged, no hostNetwork, no hostPID |
-| Restricted | Security-sensitive workloads | Non-root, drop ALL capabilities, no privilege escalation |
+| Restricted | Security-sensitive workloads | Non-root, drop ALL capabilities, no privilege escalation, seccomp required |
 
 ## Pod Security Admission Modes
 
@@ -163,7 +163,7 @@ spec:
 ```yaml
 # pod-restricted.yaml
 # This pod passes the restricted profile.
-# All fields required by the restricted policy are explicitly set.
+# It also sets readOnlyRootFilesystem as an additional hardening measure.
 apiVersion: v1
 kind: Pod
 metadata:
@@ -247,16 +247,16 @@ plugins:
 | Privilege escalation must be disallowed | Add `allowPrivilegeEscalation: false` |
 | Capabilities must be dropped | Add `capabilities: { drop: ["ALL"] }` |
 | Seccomp profile must be set | Add `seccompProfile: { type: RuntimeDefault }` |
-| Container must use read-only root FS | Add `readOnlyRootFilesystem: true` |
+| Writable root filesystem increases risk | Add `readOnlyRootFilesystem: true` as an additional hardening measure |
 
 ## Checking Compliance
 
 ```bash
-# Dry-run a pod against the restricted profile
-# This shows warnings without creating the pod
+# Dry-run a pod against the namespace's PSA labels.
+# This may show warnings or reject the pod, without creating it.
 kubectl apply --dry-run=server -f pod.yaml -n production
 
-# Check all pods in a namespace for violations
+# Show warnings for future pod or workload submissions in a namespace
 kubectl label namespace staging \
   pod-security.kubernetes.io/warn=restricted \
   --overwrite
