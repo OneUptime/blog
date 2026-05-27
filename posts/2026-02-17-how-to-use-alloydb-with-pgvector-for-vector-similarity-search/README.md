@@ -37,7 +37,7 @@ AlloyDB also supports the `alloydb_scann` extension for the ScaNN index, which y
 
 ```sql
 -- Enable the ScaNN index extension for better performance
-CREATE EXTENSION IF NOT EXISTS alloydb_scann;
+CREATE EXTENSION IF NOT EXISTS alloydb_scann CASCADE;
 ```
 
 ## Creating a Table with Vector Columns
@@ -66,16 +66,17 @@ Here is a Python script that generates embeddings using Vertex AI and stores the
 # Generate embeddings with Vertex AI and store them in AlloyDB
 
 import psycopg2
-from google.cloud import aiplatform
+import vertexai
+from vertexai.language_models import TextEmbeddingInput, TextEmbeddingModel
 
 # Initialize the Vertex AI client
-aiplatform.init(project="my-project", location="us-central1")
+vertexai.init(project="my-project", location="us-central1")
 
-def get_embedding(text):
+def get_embedding(text, task_type="RETRIEVAL_DOCUMENT"):
     """Generate a text embedding using Vertex AI."""
-    from vertexai.language_models import TextEmbeddingModel
-    model = TextEmbeddingModel.from_pretrained("text-embedding-004")
-    embeddings = model.get_embeddings([text])
+    model = TextEmbeddingModel.from_pretrained("text-embedding-005")
+    text_input = TextEmbeddingInput(text, task_type)
+    embeddings = model.get_embeddings([text_input])
     return embeddings[0].values
 
 # Connect to AlloyDB
@@ -139,7 +140,7 @@ import psycopg2
 
 def search_products(query_text, limit=10):
     """Search for products semantically similar to the query."""
-    query_embedding = get_embedding(query_text)
+    query_embedding = get_embedding(query_text, task_type="RETRIEVAL_QUERY")
 
     conn = psycopg2.connect(host="10.0.0.5", dbname="mydb", user="postgres", password="my-password")
     cur = conn.cursor()
@@ -189,13 +190,13 @@ The ScaNN index is AlloyDB's secret weapon. It uses Google's ScaNN algorithm and
 -- Create a ScaNN index for high-performance vector search
 -- This is AlloyDB-specific and outperforms IVFFlat for most workloads
 CREATE INDEX idx_products_embedding_scann ON products
-USING scann (embedding vector_cosine_ops)
-WITH (num_leaves = 1000, max_num_levels = 2);
+USING scann (embedding cosine)
+WITH (num_leaves = 1000);
 ```
 
 The ScaNN index parameters:
-- `num_leaves`: Similar to IVFFlat's lists. A good starting point is sqrt(row_count).
-- `max_num_levels`: Controls the tree depth. Use 2 for most workloads.
+- `num_leaves`: Similar to IVFFlat's lists. For a two-level ScaNN index, a good starting point is sqrt(row_count) for balanced index build time and quality.
+- `max_num_levels`: Controls the tree depth. The default is 1 for a two-level ScaNN index; use 2 for a three-level index on very large datasets.
 
 ## Tuning Search Quality
 
