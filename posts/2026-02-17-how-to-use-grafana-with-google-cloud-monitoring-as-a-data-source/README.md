@@ -26,7 +26,7 @@ You might wonder why you would use Grafana when Cloud Monitoring already has its
 You will need:
 
 - A Grafana instance (self-hosted or Grafana Cloud) running version 7.1 or later
-- A GCP project with metrics flowing into Cloud Monitoring
+- A GCP project with the Cloud Monitoring API and Cloud Resource Manager API enabled, and metrics flowing into Cloud Monitoring
 - A GCP service account with the `roles/monitoring.viewer` role
 
 ## Step 1: Create a Service Account
@@ -55,15 +55,16 @@ Keep the key file safe. You will upload it to Grafana in the next step.
 ## Step 2: Configure the Data Source in Grafana
 
 1. Log into your Grafana instance
-2. Navigate to **Configuration** > **Data Sources** > **Add data source**
+2. Navigate to **Connections** > **Add new connection**
 3. Search for "Google Cloud Monitoring" and select it
-4. Configure the following settings:
+4. Click **Add new data source**
+5. Configure the following settings:
 
 - **Name**: Give it a descriptive name like "GCP Production Monitoring"
-- **Authentication Type**: Select "Service Account Key"
-- **Service Account Key**: Paste the contents of your `grafana-sa-key.json` file
+- **Authentication Type**: Select "Google JWT File"
+- **JWT token**: Upload the `grafana-sa-key.json` file, or paste its contents
 
-5. Click **Save & Test**
+6. Click **Save & Test**
 
 If the connection is successful, you will see a green "Successfully queried the Google Cloud Monitoring API" message.
 
@@ -104,7 +105,7 @@ With the data source configured, you can start building dashboards. Let me walk 
    - **Group By**: `instance_name`
    - **Aggregation**: Mean
 
-The query editor provides a visual builder, but you can also switch to the raw MQL editor for more complex queries.
+The query editor provides a visual builder, but you can also switch to MQL or PromQL mode for more complex queries.
 
 ### Using MQL in Grafana
 
@@ -118,7 +119,7 @@ fetch gce_instance
 | every 1m
 ```
 
-MQL gives you access to the full power of Cloud Monitoring's query language.
+MQL is still supported in Grafana, but Google no longer recommends it for new Cloud Monitoring queries. For new dashboards, consider PromQL unless you need an existing MQL query or MQL-specific behavior.
 
 ### Querying Cloud SQL Metrics
 
@@ -165,7 +166,7 @@ For a more dynamic approach, you can use a query variable that pulls instance na
 
 - **Type**: Query
 - **Data Source**: Your GCP data source
-- **Query Type**: Metric Labels
+- **Query Type**: Labels Values
 - **Service**: Compute Engine
 - **Metric**: `instance/cpu/utilization`
 - **Label**: `instance_name`
@@ -198,9 +199,9 @@ This saves time, especially for common setups like GCE instance monitoring or GK
 
 When using Grafana with Cloud Monitoring, keep these performance considerations in mind:
 
-- **Use appropriate time ranges**: Cloud Monitoring charges for API calls. Very wide time ranges with high resolution generate many API calls.
+- **Use appropriate time ranges**: Cloud Monitoring read API costs are based on the number of time series returned after the free monthly allotment. Very wide time ranges with high resolution can also increase query latency and quota usage.
 - **Aggregate early**: Use the aggregation options in the query editor to reduce the number of time series returned. Group by only the labels you need.
-- **Cache settings**: Configure Grafana's data source caching to reduce repeated API calls. Set a reasonable minimum interval (60 seconds for most metrics).
+- **Cache settings**: If you use Grafana Enterprise or Grafana Cloud, configure data source query caching to reduce repeated API reads. Set a reasonable minimum interval (60 seconds for most metrics).
 - **Limit dashboard panels**: Each panel makes separate API calls. A dashboard with 30 panels querying Cloud Monitoring will be slower than one with 10 focused panels.
 
 ## Wrapping Up
