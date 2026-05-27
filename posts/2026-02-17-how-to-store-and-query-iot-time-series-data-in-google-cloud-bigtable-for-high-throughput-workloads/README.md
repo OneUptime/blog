@@ -45,7 +45,8 @@ gcloud components install cbt
 # HDD storage is cheaper but slower - fine for batch analytics
 gcloud bigtable instances create iot-timeseries \
   --display-name="IoT Time Series" \
-  --cluster-config=id=iot-cluster-1,zone=us-central1-a,nodes=3,storage-type=SSD
+  --cluster-storage-type=SSD \
+  --cluster-config=id=iot-cluster-1,zone=us-central1-a,nodes=3
 
 # Configure the cbt CLI to use this instance
 echo 'project = your-project-id' > ~/.cbtrc
@@ -70,12 +71,12 @@ Breaking this down:
 
 - `device_id_hash`: First 4 characters of the MD5 hash of the device_id. This distributes writes across nodes evenly.
 - `device_id`: The actual device identifier for readability.
-- `reverse_timestamp`: `Long.MAX_VALUE - timestamp` so newer data sorts first.
+- `reverse_timestamp`: `Long.MAX_VALUE - timestamp`, padded to a fixed width so newer data sorts first.
 
 ```python
 import hashlib
-import struct
-import time
+
+MAX_TIMESTAMP = 9223372036854775807
 
 def build_row_key(device_id, timestamp_ms):
     """Builds a Bigtable row key that distributes writes evenly
@@ -85,9 +86,9 @@ def build_row_key(device_id, timestamp_ms):
     hash_prefix = hashlib.md5(device_id.encode()).hexdigest()[:4]
 
     # Reverse timestamp puts newest data first in scan order
-    reverse_ts = 9999999999999 - timestamp_ms
+    reverse_ts = MAX_TIMESTAMP - timestamp_ms
 
-    return f"{hash_prefix}#{device_id}#{reverse_ts}"
+    return f"{hash_prefix}#{device_id}#{reverse_ts:019d}".encode()
 ```
 
 Why does this matter? Without the hash prefix, devices with similar IDs (like "sensor-001", "sensor-002") would all land on the same Bigtable node. The hash prefix spreads them out.
@@ -98,10 +99,11 @@ Here is how to write sensor data efficiently using the Python client:
 
 ```python
 from google.cloud import bigtable
-from google.cloud.bigtable import row as bt_row
-import json
+from google.cloud.bigtable.row_set import RowSet
 import time
 import hashlib
+
+MAX_TIMESTAMP = 9223372036854775807
 
 # Initialize the Bigtable client
 client = bigtable.Client(project="your-project-id", admin=True)
@@ -201,12 +203,12 @@ def get_latest_readings(device_id, count=10):
 
     hash_prefix = hashlib.md5(device_id.encode()).hexdigest()[:4]
     prefix = f"{hash_prefix}#{device_id}#"
+    row_set = RowSet()
+    row_set.add_row_range_with_prefix(prefix)
 
     # Read rows with this prefix, limited to the requested count
     rows = table.read_rows(
-        row_set=bt_row.RowSet(row_ranges=[
-            bt_row.RowRange(start_key=prefix.encode())
-        ]),
+        row_set=row_set,
         limit=count,
     )
 
@@ -231,16 +233,17 @@ def get_readings_in_range(device_id, start_ms, end_ms):
     hash_prefix = hashlib.md5(device_id.encode()).hexdigest()[:4]
 
     # Reverse the timestamps - start becomes end and vice versa
-    range_start = f"{hash_prefix}#{device_id}#{9999999999999 - end_ms}"
-    range_end = f"{hash_prefix}#{device_id}#{9999999999999 - start_ms}"
+    range_start = f"{hash_prefix}#{device_id}#{MAX_TIMESTAMP - end_ms:019d}".encode()
+    range_end = f"{hash_prefix}#{device_id}#{MAX_TIMESTAMP - start_ms:019d}".encode()
+    row_set = RowSet()
+    row_set.add_row_range_from_keys(
+        start_key=range_start,
+        end_key=range_end,
+        end_inclusive=True,
+    )
 
     rows = table.read_rows(
-        row_set=bt_row.RowSet(row_ranges=[
-            bt_row.RowRange(
-                start_key=range_start.encode(),
-                end_key=range_end.encode(),
-            )
-        ]),
+        row_set=row_set,
     )
 
     results = []
@@ -256,7 +259,7 @@ def get_readings_in_range(device_id, start_ms, end_ms):
 
 ## Performance Tuning Tips
 
-- **Node count**: Each Bigtable node handles about 10,000 reads/writes per second with SSD storage. Size accordingly.
+- **Node count**: Each Bigtable SSD node can handle up to about 17,000 reads per second or 14,000 writes per second for typical 1 KB rows under optimal conditions. Size accordingly.
 - **Row size**: Keep rows under 100 MB. For IoT data, this is rarely an issue since each reading is small.
 - **Column qualifiers**: Use short names. "t" instead of "temperature" saves storage at scale.
 - **Garbage collection**: Set it based on your retention needs. The `maxage=90d` policy we set earlier automatically deletes old data.
