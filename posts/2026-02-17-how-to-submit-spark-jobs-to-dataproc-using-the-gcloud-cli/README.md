@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Dataproc, Spark, Gcloud, Big Data
 
-Description: Step-by-step instructions for submitting PySpark, SparkR, and Spark SQL jobs to Dataproc clusters using the gcloud command-line interface.
+Description: Step-by-step instructions for submitting PySpark and Spark SQL jobs to Dataproc clusters using the gcloud command-line interface.
 
 ---
 
@@ -28,7 +28,7 @@ gcloud dataproc clusters create my-spark-cluster \
   --region=us-central1 \
   --zone=us-central1-a \
   --single-node \
-  --image-version=2.1-debian11
+  --image-version=2.3-debian12
 ```
 
 ## Submitting a PySpark Job
@@ -227,7 +227,7 @@ If you prefer not to manage clusters, submit your job as a serverless batch inst
 gcloud dataproc batches submit pyspark gs://my-data-bucket/scripts/etl_job.py \
   --region=us-central1 \
   --subnet=default \
-  --version=2.1 \
+  --version=2.3 \
   --properties="spark.executor.memory=4g" \
   -- "2025-12-01" "gs://my-data-bucket/processed/events"
 ```
@@ -267,4 +267,4 @@ gcloud dataproc jobs submit pyspark gs://my-data-bucket/scripts/production_etl.p
 
 ## Wrapping Up
 
-The gcloud CLI gives you a flexible and scriptable way to submit Spark jobs to Dataproc. Whether you are doing quick ad-hoc analysis or building automated pipelines, the same set of commands works across PySpark, Spark SQL, and Scala Spark jobs. Start with simple submissions, layer on properties and dependencies as needed, and integrate into your CI/CD or orchestration tooling when you are ready for production.
+The gcloud CLI gives you a flexible and scriptable way to submit Spark jobs to Dataproc. Whether you are doing quick ad-hoc analysis or building automated pipelines, the same CLI workflow works across PySpark, Spark SQL, and Scala Spark jobs. Start with simple submissions, layer on properties and dependencies as needed, and integrate into your CI/CD or orchestration tooling when you are ready for production.
