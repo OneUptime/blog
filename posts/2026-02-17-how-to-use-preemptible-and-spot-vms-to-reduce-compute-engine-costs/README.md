@@ -8,7 +8,7 @@ Description: Learn how to use Google Cloud Spot and Preemptible VMs to cut compu
 
 ---
 
-If you are running batch jobs, data processing pipelines, CI/CD builds, or any workload that can handle interruptions, you are probably paying too much for compute. Spot VMs (the successor to Preemptible VMs) offer the same machine types as regular VMs at up to 60-91% discount. The catch is that Google can reclaim them at any time with a 30-second warning. For the right workloads, that trade-off is absolutely worth it.
+If you are running batch jobs, data processing pipelines, CI/CD builds, or any workload that can handle interruptions, you are probably paying too much for compute. Spot VMs (the successor to Preemptible VMs) offer the same machine types as regular VMs at up to 91% discount. The catch is that Google can reclaim them at any time; by default, the preemption notice starts a best-effort shutdown period of up to 30 seconds. For the right workloads, that trade-off is absolutely worth it.
 
 This guide covers the differences between Spot and Preemptible VMs, how to set them up, and patterns for building resilient systems that take advantage of these discounted instances.
 
@@ -19,14 +19,14 @@ Preemptible VMs were Google's original discounted instance offering. Spot VMs re
 | Feature | Preemptible VMs | Spot VMs |
 |---------|----------------|----------|
 | Max lifetime | 24 hours | No maximum |
-| Preemption notice | 30 seconds | 30 seconds |
-| Pricing | 60-91% discount | 60-91% discount |
-| Availability | Being deprecated | Current offering |
+| Preemption notice | Up to 30 seconds | Up to 30 seconds by default |
+| Pricing | Up to 91% discount | Up to 91% discount |
+| Availability | Still available, but not recommended for new workloads | Current offering |
 | Live migration | Not supported | Not supported |
 
 Spot VMs are strictly better than Preemptible VMs. The main improvement is removing the 24-hour maximum lifetime. If Google does not need the capacity back, your Spot VM can run indefinitely.
 
-New workloads should always use Spot VMs. Preemptible VMs are still available but will eventually be retired.
+New workloads should use Spot VMs. Preemptible VMs are still available, but Google recommends using Spot VMs instead.
 
 ## Creating Spot VMs
 
@@ -87,7 +87,7 @@ resource "google_compute_instance" "spot_worker" {
 
 ## Handling Preemption Gracefully
 
-The key to using Spot VMs successfully is handling preemption gracefully. Google sends a 30-second warning before reclaiming an instance. You can detect this warning and take action.
+The key to using Spot VMs successfully is handling preemption gracefully. By default, Google starts a best-effort shutdown period of up to 30 seconds before reclaiming an instance. You can detect this warning and take action.
 
 ### Checking the Metadata Server
 
@@ -181,10 +181,10 @@ gcloud compute instances create ci-runner-spot \
     gitlab-runner register \
       --non-interactive \
       --url "https://gitlab.example.com" \
-      --registration-token "TOKEN" \
+      --token "glrt-TOKEN" \
       --executor "docker" \
       --docker-image "alpine:latest" \
-      --tag-list "spot,linux"
+      --description "spot-linux-runner"
   '
 ```
 
@@ -271,9 +271,10 @@ gcloud compute instance-groups managed set-autoscaling burst-workers \
 Spot VM availability varies by zone, region, and machine type. If you get preempted frequently in one zone, try another:
 
 ```bash
-# Check Spot VM pricing (which reflects availability)
+# Check whether the machine type is available in a zone
 gcloud compute machine-types list \
-  --filter="zone:us-central1-a AND name:e2-standard-4" \
+  --zones=us-central1-a \
+  --filter="name=e2-standard-4" \
   --format="table(name, zone, guestCpus, memoryMb)"
 ```
 
@@ -289,16 +290,16 @@ gcloud compute instance-groups managed create regional-spot-workers \
 
 ## Cost Comparison
 
-Here is what the savings look like for a typical workload:
+Here is what the savings can look like for a typical workload. Spot prices are dynamic and vary by region, machine type, and date, so check the Spot VMs pricing page or Cloud Billing Catalog API for current prices:
 
-| Instance Type | Hourly Cost | Monthly Cost (730h) | Savings |
+| Instance Type | Example Hourly Cost | Example Monthly Cost (730h) | Savings |
 |--------------|-------------|-------------------|---------|
 | e2-standard-4 (on-demand) | $0.134 | $97.82 | - |
-| e2-standard-4 (Spot) | $0.040 | $29.20 | 70% |
+| e2-standard-4 (Spot, 70% lower) | $0.040 | $29.20 | 70% |
 | n2-standard-8 (on-demand) | $0.389 | $283.97 | - |
-| n2-standard-8 (Spot) | $0.097 | $70.81 | 75% |
+| n2-standard-8 (Spot, 75% lower) | $0.097 | $70.81 | 75% |
 
-At scale, this adds up quickly. A fleet of 50 Spot e2-standard-4 instances costs about $1,460/month versus $4,891/month on-demand, saving over $3,400 monthly.
+At scale, this adds up quickly. In the 70% discount example above, a fleet of 50 Spot e2-standard-4 instances costs about $1,460/month versus $4,891/month on-demand, saving over $3,400 monthly.
 
 ## Best Practices
 
