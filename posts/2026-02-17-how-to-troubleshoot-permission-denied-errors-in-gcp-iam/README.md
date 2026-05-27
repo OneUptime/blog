@@ -175,15 +175,15 @@ Here is a reference table of the most common permission denied causes:
 | 403 despite having the role | IAM condition not satisfied | Check condition expression |
 | 403 from local machine | VPC Service Controls | Add access level for your IP |
 | 403 when adding external user | Domain-restricted sharing | Request exception or use allowed domain |
-| 403 on new service account | Permission propagation delay | Wait 60 seconds and retry |
+| 403 on new service account | Permission propagation delay | Wait a few minutes and retry |
 
 ## Permission Propagation Delays
 
-When you grant a new IAM role, it can take up to 60 seconds (sometimes up to 7 minutes for certain resources) for the change to propagate. If you just added a role and are getting permission denied, wait a minute and try again before further debugging.
+When you grant a new IAM role, IAM policy changes are typically visible within 2 minutes, but they can take 7 minutes or more to propagate. Group membership changes can take several minutes or longer. If you just added a role and are getting permission denied, wait a few minutes and try again before further debugging.
 
 ## Using Audit Logs for Investigation
 
-Cloud Audit Logs record every API call, including denied ones. You can search for denied requests to see exactly what permission was checked:
+Cloud Audit Logs can record denied API calls, but coverage depends on the type of audit log and your Data Access audit log configuration. You can search for denied requests to see what permission was checked:
 
 ```bash
 # Search for access denied events in audit logs
