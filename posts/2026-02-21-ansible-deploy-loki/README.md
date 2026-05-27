@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Loki, Logging, Grafana, DevOps
 
-Description: Deploy Grafana Loki and Promtail for lightweight log management using Ansible playbooks with production-ready configuration.
+Description: Deploy Grafana Loki and Promtail for lightweight log management using Ansible playbooks.
 
 ---
 
 If you have tried running Elasticsearch just for log storage and found it demanding too many resources, Loki is the answer. Built by Grafana Labs, Loki takes a fundamentally different approach to log management. Instead of indexing the full text of every log line, it only indexes metadata (labels), which makes it dramatically cheaper to run. Think of it as "Prometheus, but for logs."
 
-Deploying Loki along with Promtail (the log shipping agent) across your infrastructure is a perfect fit for Ansible. In this guide, I will walk through deploying a complete Loki stack that includes the Loki server, Promtail agents on each node, and Grafana for log exploration.
+Deploying Loki along with Promtail (the legacy log shipping agent) across your infrastructure is a perfect fit for Ansible. Promtail is deprecated and reached end-of-life in March 2026, so new deployments should use Grafana Alloy instead. In this guide, I will walk through deploying a complete Loki stack for existing Promtail environments that includes the Loki server, Promtail agents on each node, and Grafana for log exploration.
 
 ## Architecture
 
@@ -28,7 +28,7 @@ graph LR
     L -->|Query| G[Grafana]
 ```
 
-Promtail runs on every server, tails log files, attaches labels, and pushes them to Loki. Loki stores the chunks in object storage (S3 or MinIO) and the index in BoltDB. Grafana provides LogQL for querying.
+Promtail runs on every server, tails log files, attaches labels, and pushes them to Loki. Loki stores the chunks in object storage (S3 or MinIO) and the index in TSDB. Grafana provides LogQL for querying.
 
 ## Inventory
 
@@ -107,8 +107,8 @@ Install and configure the Loki server.
     - /etc/loki
     - "{{ loki_data_dir }}"
     - "{{ loki_data_dir }}/chunks"
-    - "{{ loki_data_dir }}/boltdb-shipper-active"
-    - "{{ loki_data_dir }}/boltdb-shipper-cache"
+    - "{{ loki_data_dir }}/tsdb-shipper-active"
+    - "{{ loki_data_dir }}/tsdb-shipper-cache"
     - "{{ loki_data_dir }}/rules"
 
 - name: Download Loki binary
@@ -202,26 +202,24 @@ ingester:
 schema_config:
   configs:
     - from: 2024-01-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: {{ loki_storage_backend }}
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
 
 storage_config:
 {% if loki_storage_backend == "filesystem" %}
-  boltdb_shipper:
-    active_index_directory: {{ loki_data_dir }}/boltdb-shipper-active
-    cache_location: {{ loki_data_dir }}/boltdb-shipper-cache
-    shared_store: filesystem
+  tsdb_shipper:
+    active_index_directory: {{ loki_data_dir }}/tsdb-shipper-active
+    cache_location: {{ loki_data_dir }}/tsdb-shipper-cache
   filesystem:
     directory: {{ loki_data_dir }}/chunks
 {% elif loki_storage_backend == "s3" %}
-  boltdb_shipper:
-    active_index_directory: {{ loki_data_dir }}/boltdb-shipper-active
-    cache_location: {{ loki_data_dir }}/boltdb-shipper-cache
-    shared_store: s3
+  tsdb_shipper:
+    active_index_directory: {{ loki_data_dir }}/tsdb-shipper-active
+    cache_location: {{ loki_data_dir }}/tsdb-shipper-cache
   aws:
     s3: s3://{{ loki_s3_region }}/{{ loki_s3_bucket }}
     endpoint: {{ loki_s3_endpoint }}
@@ -233,18 +231,12 @@ limits_config:
   max_entries_limit_per_query: 5000
   ingestion_rate_mb: 10
   ingestion_burst_size_mb: 20
+  retention_period: {{ loki_retention_period }}
+  max_query_lookback: {{ loki_retention_period }}
 
 compactor:
   working_directory: {{ loki_data_dir }}/compactor
-  shared_store: {{ loki_storage_backend }}
   retention_enabled: true
-
-chunk_store_config:
-  max_look_back_period: {{ loki_retention_period }}
-
-table_manager:
-  retention_deletes_enabled: true
-  retention_period: {{ loki_retention_period }}
 
 ruler:
   storage:
@@ -312,6 +304,11 @@ Promtail runs on every server that needs to ship logs to Loki.
     url: "https://github.com/grafana/loki/releases/download/v{{ promtail_version }}/promtail-linux-amd64.zip"
     dest: /tmp/promtail.zip
 
+- name: Install unzip
+  ansible.builtin.package:
+    name: unzip
+    state: present
+
 - name: Extract Promtail binary
   ansible.builtin.unarchive:
     src: /tmp/promtail.zip
@@ -368,13 +365,15 @@ scrape_configs:
 {% for config in promtail_scrape_configs %}
   - job_name: {{ config.job_name }}
     static_configs:
+{% for path in config.paths %}
       - targets:
           - localhost
         labels:
           job: {{ config.job_name }}
           host: {{ ansible_hostname }}
           environment: {{ env | default('production') }}
-          __path__: "{{ config.paths | join(',') }}"
+          __path__: "{{ path }}"
+{% endfor %}
 {% if config.pipeline_stages is defined %}
     pipeline_stages:
 {% for stage in config.pipeline_stages %}
@@ -450,6 +449,26 @@ scrape_configs:
         group: grafana
         mode: '0640'
       notify: Restart Grafana
+  handlers:
+    - name: Restart Grafana
+      ansible.builtin.service:
+        name: grafana-server
+        state: restarted
+```
+
+The Grafana datasource provisioning template points Grafana at the Loki server.
+
+```jinja2
+# grafana-loki-datasource.yml.j2
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    url: {{ loki_server_url }}
+    isDefault: false
+    editable: true
 ```
 
 ## Verification
@@ -496,4 +515,4 @@ ansible-playbook -i inventory/hosts.ini verify-loki.yml
 
 ## Wrapping Up
 
-Loki is a great fit for teams that want centralized logging without the operational overhead of Elasticsearch. With this Ansible setup, adding a new server to the logging pipeline is just adding it to the promtail inventory group and running the playbook. The Promtail configuration automatically picks up the hostname and environment labels, so logs are organized without manual intervention. For production deployments, switch the storage backend to S3, add retention policies, and consider running Loki in microservices mode for horizontal scaling.
+Loki is a great fit for teams that want centralized logging without the operational overhead of Elasticsearch. With this Ansible setup, adding a new server to the logging pipeline is just adding it to the promtail inventory group and running the playbook. The Promtail configuration automatically picks up the hostname and environment labels, so logs are organized without manual intervention. For production deployments, switch the storage backend to S3, keep retention policies enabled, and consider running Loki in microservices mode for horizontal scaling.
