@@ -51,7 +51,7 @@ Install the required testing tools:
 ```bash
 # Install testing tools
 
-pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest testinfra
+pip install ansible molecule molecule-docker ansible-lint yamllint pytest-testinfra
 ```
 
 ## Writing Tests
@@ -156,8 +156,8 @@ molecule converge  # Run the playbook
 molecule verify    # Run verification tests
 molecule destroy   # Clean up
 
-# Run with specific platform
-molecule test -- --limit ubuntu2404
+# Run with a specific scenario
+molecule test -s default
 
 # Run linting
 ansible-lint roles/my_role/
@@ -176,9 +176,6 @@ on: [push, pull_request]
 jobs:
   molecule:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        distro: [ubuntu2404, rocky9, debian12]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -186,8 +183,6 @@ jobs:
           python-version: '3.11'
       - run: pip install ansible molecule molecule-docker
       - run: molecule test
-        env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
 ```
 
 ### GitLab CI
@@ -208,9 +203,13 @@ lint:
 
 molecule:
   stage: test
-  image: docker:latest
+  image: python:3.11
   services:
-    - docker:dind
+    - name: docker:dind
+      command: ["--tls=false"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
     - pip install ansible molecule molecule-docker
     - molecule test
@@ -222,7 +221,7 @@ molecule:
 
 ```bash
 # Molecule automatically tests idempotency by running converge twice
-# The second run should have zero changes
+# The idempotence action should report no changes
 molecule converge
 molecule idempotence
 ```
@@ -266,7 +265,7 @@ Testing Ansible code requires multiple layers: linting for style and best practi
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
@@ -303,7 +302,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -344,7 +343,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -447,4 +446,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
