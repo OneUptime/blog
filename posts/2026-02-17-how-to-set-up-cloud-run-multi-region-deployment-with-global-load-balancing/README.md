@@ -24,7 +24,7 @@ flowchart TD
     GLB --> ASIA[Cloud Run<br/>asia-east1]
 ```
 
-The global load balancer uses anycast routing. Users' requests go to the nearest Google edge location, and the load balancer routes them to the closest healthy Cloud Run region. If one region is down, traffic automatically fails over to the next closest region.
+The global load balancer uses anycast routing. Users' requests go to the nearest Google edge location, and the load balancer routes them to the closest available Cloud Run region. If you want the load balancer to reduce traffic to a region that is returning server errors, enable outlier detection on the backend service.
 
 ## Prerequisites
 
@@ -82,6 +82,7 @@ I set `min-instances=1` in each region to avoid cold starts for the first reques
 # Reserve a global static IP address
 gcloud compute addresses create my-service-global-ip \
   --global \
+  --network-tier=PREMIUM \
   --ip-version=IPV4
 
 # Note the IP address for DNS configuration
@@ -165,6 +166,8 @@ gcloud compute target-https-proxies create my-service-https-proxy \
 # Create the forwarding rule
 gcloud compute forwarding-rules create my-service-https-rule \
   --global \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
+  --network-tier=PREMIUM \
   --target-https-proxy=my-service-https-proxy \
   --address=my-service-global-ip \
   --ports=443
@@ -175,6 +178,7 @@ gcloud compute forwarding-rules create my-service-https-rule \
 ```bash
 # Create a URL map for HTTP redirect
 gcloud compute url-maps import my-service-http-redirect \
+  --global \
   --source=/dev/stdin <<EOF
 name: my-service-http-redirect
 defaultUrlRedirect:
@@ -188,6 +192,8 @@ gcloud compute target-http-proxies create my-service-http-proxy \
 
 gcloud compute forwarding-rules create my-service-http-rule \
   --global \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
+  --network-tier=PREMIUM \
   --target-http-proxy=my-service-http-proxy \
   --address=my-service-global-ip \
   --ports=80
@@ -210,9 +216,34 @@ gcloud compute ssl-certificates describe my-service-cert \
   --format="get(managed.status, managed.domainStatus)"
 ```
 
-## Step 9: Add Health Checks
+## Step 9: Add Outlier Detection and Logging
 
-By default, serverless NEGs do not use health checks because Cloud Run handles health internally. However, you can add Cloud Armor or enable logging to monitor regional health:
+Health checks are not supported for serverless NEG backends, and the load balancer cannot detect application-level failures just from Cloud Run's container health. To reduce traffic to a region that returns repeated errors, enable outlier detection on the backend service:
+
+```bash
+# Export the backend service
+gcloud compute backend-services export my-service-backend \
+  --global \
+  --destination=my-service-backend.yaml
+
+# Add an outlierDetection block to my-service-backend.yaml:
+#
+# outlierDetection:
+#   baseEjectionTime:
+#     seconds: 30
+#   consecutiveErrors: 5
+#   enforcingConsecutiveErrors: 100
+#   interval:
+#     seconds: 1
+#   maxEjectionPercent: 50
+
+# Import the updated backend service
+gcloud compute backend-services import my-service-backend \
+  --global \
+  --source=my-service-backend.yaml
+```
+
+You can also enable logging to monitor regional routing:
 
 ```bash
 # Enable logging on the backend service to track regional routing
@@ -258,7 +289,7 @@ gcloud run deploy my-service \
   --region=asia-east1
 
 # 2. Test the Asia deployment
-curl -H "Host: api.yourdomain.com" https://my-service-xxxxx-de.a.run.app/health
+curl https://my-service-xxxxx-de.a.run.app/health
 
 # 3. Deploy to Europe
 gcloud run deploy my-service \
@@ -275,9 +306,9 @@ gcloud run deploy my-service \
 
 Multi-region deployment works seamlessly for stateless services. If your service has state (database, cache), you need a data strategy:
 
-**Global database**: Use Spanner for globally consistent data or Firestore for eventually consistent data. Both replicate across regions automatically.
+**Global database**: Use Spanner for globally consistent relational data or Firestore for strongly consistent document data in a multi-region location. Both can replicate data across regions when configured with multi-region locations.
 
-**Regional databases with read replicas**: Use Cloud SQL with cross-region read replicas. Writes go to the primary region, reads go to the nearest replica.
+**Regional databases with read replicas**: Use Cloud SQL with cross-region read replicas. Writes go to the primary region, and your application can send reads to the nearest replica.
 
 **Cache per region**: Each region gets its own Memorystore Redis instance. Cache misses fall through to the database.
 
@@ -315,11 +346,13 @@ gcloud compute security-policies create my-service-security \
 # Add a rate limiting rule
 gcloud compute security-policies rules create 1000 \
   --security-policy=my-service-security \
+  --src-ip-ranges="*" \
   --action=throttle \
   --rate-limit-threshold-count=100 \
   --rate-limit-threshold-interval-sec=60 \
   --conform-action=allow \
-  --exceed-action=deny-429
+  --exceed-action=deny-429 \
+  --enforce-on-key=IP
 
 # Apply to the backend service
 gcloud compute backend-services update my-service-backend \
@@ -361,4 +394,4 @@ To optimize costs:
 
 ## Summary
 
-Multi-region Cloud Run with global load balancing gives you low latency and high availability for global users. Deploy your service to multiple regions, create serverless NEGs, wire them into a global load balancer, and users automatically get routed to the closest region. The load balancer handles failover if a region goes down. For stateful services, pair this with a global database like Spanner or Firestore. The setup takes more work than a single-region deployment, but for production services with a global user base, the reliability and performance improvements are well worth it.
+Multi-region Cloud Run with global load balancing gives you low latency and high availability for global users. Deploy your service to multiple regions, create serverless NEGs, wire them into a global load balancer, and users automatically get routed to the closest available region. Use outlier detection if you want the load balancer to reduce traffic to a region that starts returning server errors. For stateful services, pair this with a global database like Spanner or Firestore. The setup takes more work than a single-region deployment, but for production services with a global user base, the reliability and performance improvements are well worth it.
