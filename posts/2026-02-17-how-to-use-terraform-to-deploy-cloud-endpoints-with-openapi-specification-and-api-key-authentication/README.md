@@ -8,7 +8,7 @@ Description: Deploy Google Cloud Endpoints with Terraform using an OpenAPI speci
 
 ---
 
-If you are building APIs on GCP, Cloud Endpoints gives you API management features - authentication, rate limiting, monitoring, and documentation - without running a separate API gateway. It works by deploying an Extensible Service Proxy (ESP) alongside your backend that validates requests before they reach your service.
+If you are building APIs on GCP, Cloud Endpoints gives you API management features - authentication, rate limiting, monitoring, and documentation - without running a separate API gateway. It works by deploying an Extensible Service Proxy V2 (ESPv2) in front of your backend that validates requests before they reach your service.
 
 Managing Cloud Endpoints with Terraform means your API configuration is versioned and reproducible. Let me show you how to set it up with an OpenAPI spec and API key authentication.
 
@@ -16,14 +16,14 @@ Managing Cloud Endpoints with Terraform means your API configuration is versione
 
 ```mermaid
 graph LR
-    Client["API Client"] -->|"API Key in header"| ESP["ESP Proxy<br/>(Cloud Endpoints)"]
+    Client["API Client"] -->|"API Key in header"| ESP["ESPv2 Proxy<br/>(Cloud Endpoints)"]
     ESP -->|Validated request| Backend["Cloud Run<br/>Backend Service"]
     ESP -->|Metrics| Monitoring["Cloud Monitoring"]
     ESP -->|Logs| Logging["Cloud Logging"]
     ServiceControl["Service Control API"] -.->|"Validate key,<br/>check quota"| ESP
 ```
 
-The ESP proxy sits in front of your backend. It validates API keys, checks rate limits, and reports metrics - all before the request touches your application code.
+The ESPv2 proxy sits in front of your backend. It validates API keys, checks rate limits, and reports metrics - all before the request touches your application code.
 
 ## The OpenAPI Specification
 
@@ -199,6 +199,9 @@ resource "google_project_service" "endpoints" {
     "servicemanagement.googleapis.com",
     "servicecontrol.googleapis.com",
     "endpoints.googleapis.com",
+    "run.googleapis.com",
+    "apikeys.googleapis.com",
+    "monitoring.googleapis.com",
   ])
 
   project = var.project_id
@@ -218,49 +221,20 @@ resource "google_endpoints_service" "api" {
 }
 ```
 
-## Backend Cloud Run Service with ESP
+## Backend Cloud Run Service with ESPv2
 
-Deploy the backend service with the ESP sidecar:
+Deploy the backend service and a separate ESPv2 Cloud Run service:
 
 ```hcl
-# cloud-run.tf - Backend service with ESP proxy
+# cloud-run.tf - Backend service with ESPv2 proxy
 
 resource "google_cloud_run_v2_service" "backend" {
   project  = var.project_id
   name     = "${var.environment}-api-backend"
   location = var.region
-  ingress  = "INGRESS_TRAFFIC_ALL"
+  ingress  = "INGRESS_TRAFFIC_INTERNAL_ONLY"
 
   template {
-    containers {
-      # ESP proxy container
-      name  = "esp"
-      image = "gcr.io/endpoints-release/endpoints-runtime-serverless:2"
-
-      env {
-        name  = "ENDPOINTS_SERVICE_NAME"
-        value = var.api_service_name
-      }
-
-      env {
-        name  = "ESPv2_ARGS"
-        value = "--cors_preset=cors_with_regex --cors_allow_origin_regex=.*"
-      }
-
-      ports {
-        container_port = 8080
-      }
-
-      startup_probe {
-        http_get {
-          path = "/health"
-          port = 8080
-        }
-        initial_delay_seconds = 5
-        period_seconds        = 5
-      }
-    }
-
     containers {
       # Your actual backend application
       name  = "backend"
@@ -268,11 +242,11 @@ resource "google_cloud_run_v2_service" "backend" {
 
       env {
         name  = "PORT"
-        value = "8081"
+        value = "8080"
       }
 
       ports {
-        container_port = 8081
+        container_port = 8080
       }
     }
 
@@ -283,13 +257,48 @@ resource "google_cloud_run_v2_service" "backend" {
   }
 }
 
-# Allow public access (authentication is handled by ESP)
-resource "google_cloud_run_v2_service_iam_member" "public" {
+resource "google_cloud_run_v2_service" "esp" {
+  project  = var.project_id
+  name     = "${var.environment}-api-gateway"
+  location = var.region
+  ingress  = "INGRESS_TRAFFIC_ALL"
+
+  template {
+    service_account = var.espv2_service_account_email
+
+    containers {
+      # Build this image with the deployed Endpoints config ID.
+      name  = "esp"
+      image = var.espv2_image
+
+      env {
+        name  = "ESPv2_ARGS"
+        value = "^++^--cors_preset=cors_with_regex++--cors_allow_origin_regex=.*++--service_control_network_fail_policy=close"
+      }
+
+      ports {
+        container_port = 8080
+      }
+    }
+  }
+}
+
+# Allow public access to the ESPv2 service (authentication is handled by ESPv2)
+resource "google_cloud_run_v2_service_iam_member" "esp_public" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.esp.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+# Allow ESPv2 to invoke the private backend
+resource "google_cloud_run_v2_service_iam_member" "backend_invoker" {
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.backend.name
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = "serviceAccount:${var.espv2_service_account_email}"
 }
 ```
 
@@ -332,10 +341,10 @@ resource "google_apikeys_key" "partner" {
     api_targets {
       service = google_endpoints_service.api.service_name
 
-      # Restrict which methods the partner can call
+      # Restrict which operationIds the partner can call
       methods = [
-        "GET /api/v1/users",
-        "GET /api/v1/users/{user_id}",
+        "listUsers",
+        "getUser",
       ]
     }
 
@@ -366,7 +375,7 @@ resource "google_apikeys_key" "internal" {
 
 ## Rate Limiting with Service Control
 
-Configure quota limits per API key:
+Configure quota limits per consumer project:
 
 ```yaml
 # Add to openapi.yaml.tpl - Rate limiting configuration
@@ -427,7 +436,8 @@ resource "google_monitoring_alert_policy" "api_errors" {
       filter = <<-FILTER
         resource.type = "api"
         AND resource.labels.service = "${var.api_service_name}"
-        AND metric.type = "serviceruntime.googleapis.com/api/producer/by_consumer/error_count"
+        AND metric.type = "serviceruntime.googleapis.com/api/request_count"
+        AND metric.labels.response_code_class = "5xx"
       FILTER
 
       comparison      = "COMPARISON_GT"
@@ -456,11 +466,11 @@ resource "google_monitoring_alert_policy" "api_latency" {
       filter = <<-FILTER
         resource.type = "api"
         AND resource.labels.service = "${var.api_service_name}"
-        AND metric.type = "serviceruntime.googleapis.com/api/producer/total_latencies"
+        AND metric.type = "serviceruntime.googleapis.com/api/request_latencies"
       FILTER
 
       comparison      = "COMPARISON_GT"
-      threshold_value = 2000
+      threshold_value = 2
       duration        = "300s"
 
       aggregations {
@@ -483,6 +493,8 @@ variable "region" { type = string; default = "us-central1" }
 variable "environment" { type = string }
 variable "api_service_name" { type = string }
 variable "backend_image" { type = string }
+variable "espv2_image" { type = string }
+variable "espv2_service_account_email" { type = string }
 variable "min_instances" { type = number; default = 0 }
 variable "max_instances" { type = number; default = 10 }
 variable "notification_channels" { type = list(string); default = [] }
@@ -491,7 +503,7 @@ variable "partner_ip_ranges" { type = list(string); default = [] }
 
 # outputs.tf
 output "api_url" {
-  value = google_cloud_run_v2_service.backend.uri
+  value = google_cloud_run_v2_service.esp.uri
 }
 
 output "service_name" {
@@ -522,4 +534,4 @@ curl -s https://your-api-url.com/health
 
 ## Summary
 
-Cloud Endpoints with Terraform gives you a managed API gateway for your GCP services. The OpenAPI spec defines your API contract, API keys control access, rate limiting prevents abuse, and built-in monitoring tracks everything automatically. The ESP proxy handles all of this without any changes to your backend application code - it just sees clean, validated requests.
+Cloud Endpoints with Terraform gives you a managed API gateway for your GCP services. The OpenAPI spec defines your API contract, API keys control access, rate limiting prevents abuse, and built-in monitoring tracks everything automatically. The ESPv2 proxy handles all of this without any changes to your backend application code - it just sees clean, validated requests.
