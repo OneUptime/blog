@@ -45,38 +45,36 @@ sudo tcpdump -i eth0 arp -nn -e \
   | grep "192.168.1.240"
 
 # Example output showing the problem:
-# aa:bb:cc:11:11:11 > ff:ff:ff:ff:ff:ff, ARP, Reply 192.168.1.240 is-at aa:bb:cc:11:11:11
-# aa:bb:cc:22:22:22 > ff:ff:ff:ff:ff:ff, ARP, Reply 192.168.1.240 is-at aa:bb:cc:22:22:22
+# aa:bb:cc:11:11:11 > cc:dd:ee:ff:00:00, ARP, Reply 192.168.1.240 is-at aa:bb:cc:11:11:11
+# aa:bb:cc:22:22:22 > cc:dd:ee:ff:00:00, ARP, Reply 192.168.1.240 is-at aa:bb:cc:22:22:22
 ```
 
 ### Step 2: Use arping to Detect Multiple Responders
 
 ```bash
 # Send ARP requests and check for multiple replies
-# The -D flag does duplicate address detection
-# Multiple replies confirm the multi-MAC problem
+# Multiple replies with different MAC addresses confirm the multi-MAC problem
 sudo arping -I eth0 192.168.1.240 -c 5
 
-# More explicit: request ARP and show all responses
+# More explicit: keep sending broadcast ARP requests and show all responses
 # Each response line shows the MAC address of the responder
 sudo arping -I eth0 -b 192.168.1.240 -c 10
 ```
 
-### Step 3: Check MetalLB Speaker Leader Election
+### Step 3: Check Which MetalLB Speaker Is Announcing
 
 ```bash
-# Check which speaker thinks it is the leader for the service
-# Only one speaker should show "announcing" for each service
+# Check which speaker is announcing the service
+# In Layer 2 mode, only one speaker should announce the service
+kubectl describe svc -n <namespace> <service-name> \
+  | grep -i "announcing from node"
+
+# Check speaker logs for announcement or ARP handling messages
 kubectl logs -n metallb-system \
   -l component=speaker \
   --all-containers \
   --timestamps \
-  | grep "announcing\|handling\|service"
-
-# Check the speaker leader election status
-# Each service should have exactly one leader
-kubectl get endpoints -n metallb-system \
-  -o yaml | grep -A 5 "leader"
+  | grep -i "announcing\|got ARP request\|service"
 ```
 
 ## Common Causes and Fixes
@@ -97,7 +95,7 @@ sudo ip addr del 192.168.1.240/32 dev eth0
 
 ### Cause 2: Another Service Is Using the Same IP
 
-If two different LoadBalancer services are assigned the same IP from overlapping pools, both speakers will respond.
+By default, MetalLB does not let two different LoadBalancer services use the same IP unless they meet the documented IP sharing rules. If you find duplicate assignments, check whether IP sharing was intentionally configured or whether overlapping pools, stale configuration, or another MetalLB installation caused an unexpected assignment.
 
 ```bash
 # Check for duplicate IP assignments across services
@@ -222,7 +220,8 @@ sudo arping -I eth0 192.168.1.240 -c 10
 sudo timeout 60 tcpdump -i eth0 \
   'arp and host 192.168.1.240' -nn -e 2>/dev/null \
   | grep "is-at" \
-  | awk '{print $NF}' \
+  | awk '/is-at/ {for (i = 1; i < NF; i++) if ($i == "is-at") print $(i + 1)}' \
+  | tr -d ',' \
   | sort -u
 
 # The output should show exactly one MAC address
@@ -230,6 +229,6 @@ sudo timeout 60 tcpdump -i eth0 \
 
 ## Conclusion
 
-Multiple MAC addresses for the same LoadBalancer IP is a Layer 2 issue that causes unpredictable traffic routing. The five most common causes are: static IPs on nodes, overlapping IP pools, multiple MetalLB installations, stale speaker state, and non-MetalLB ARP responders. Diagnosing the issue requires capturing ARP traffic and checking MetalLB speaker logs to verify the leader election is working correctly.
+Multiple MAC addresses for the same LoadBalancer IP is a Layer 2 issue that causes unpredictable traffic routing. The five most common causes are: static IPs on nodes, overlapping IP pools, multiple MetalLB installations, stale speaker state, and non-MetalLB ARP responders. Diagnosing the issue requires capturing ARP traffic and checking MetalLB service events and speaker logs to verify the announcement is working correctly.
 
 For continuous monitoring of your MetalLB-exposed services, [OneUptime](https://oneuptime.com) can detect the symptoms of this problem - intermittent failures, increased latency, and connection resets - and alert you before your users are significantly impacted. OneUptime's external health checks verify service reachability from the perspective of your clients, catching Layer 2 issues that internal monitoring might miss.
