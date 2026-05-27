@@ -51,51 +51,51 @@ gcloud container fleet memberships register my-cluster \
   --gke-cluster us-central1/my-cluster \
   --enable-workload-identity
 
-# Enable Config Management (which includes Config Sync)
-gcloud container fleet config-management apply \
+# Enable the Config Management fleet feature
+gcloud beta container fleet config-management enable
+
+# Enable Config Sync
+gcloud beta container fleet config-management apply \
   --membership my-cluster \
-  --config config-management.yaml
+  --config apply-spec.yaml
 ```
 
-Create the Config Management configuration file.
+Create the Config Sync apply spec.
 
 ```yaml
-# config-management.yaml
-apiVersion: configmanagement.gke.io/v1
-kind: ConfigManagement
-metadata:
-  name: config-management
+# apply-spec.yaml
+applySpecVersion: 1
 spec:
-  sourceFormat: unstructured
-  git:
+  configSync:
+    enabled: true
+    sourceFormat: unstructured
     syncRepo: https://github.com/your-org/cluster-config.git
-    syncBranch: main
+    syncRev: main
     secretType: token  # or ssh, gcpserviceaccount, etc.
     policyDir: clusters/my-cluster
-  # Enable Policy Controller for additional policy enforcement
-  policyController:
-    enabled: true
 ```
 
-Alternatively, enable it through the gcloud CLI directly.
+Policy Controller is managed separately from Config Sync with the `gcloud container fleet policycontroller` commands.
+
+Alternatively, create the apply spec inline and apply it.
 
 ```bash
 # Enable Config Sync via gcloud
-gcloud container fleet config-management apply \
-  --membership my-cluster \
-  --config - <<EOF
-apiVersion: configmanagement.gke.io/v1
-kind: ConfigManagement
-metadata:
-  name: config-management
+cat > apply-spec.yaml <<EOF
+applySpecVersion: 1
 spec:
-  sourceFormat: unstructured
-  git:
+  configSync:
+    enabled: true
+    sourceFormat: unstructured
     syncRepo: https://github.com/your-org/cluster-config.git
-    syncBranch: main
+    syncRev: main
     secretType: token
     policyDir: clusters/my-cluster
 EOF
+
+gcloud beta container fleet config-management apply \
+  --membership my-cluster \
+  --config apply-spec.yaml
 ```
 
 ## Step 2: Set Up Git Authentication
@@ -115,12 +115,21 @@ kubectl create secret generic git-creds \
 ### For Cloud Source Repositories
 
 ```bash
-# Use GCP service account authentication (no token needed)
-# The cluster's service account needs Source Reader access
+# Use Google service account authentication (no token needed)
+# The Google service account needs Cloud Source Repositories Reader access
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member "serviceAccount:YOUR_PROJECT_ID.svc.id.goog[config-management-system/root-reconciler]" \
-  --role "roles/source.reader"
+  --role roles/source.reader \
+  --member "serviceAccount:config-sync-reader@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+
+# Allow the root-sync Kubernetes service account to act as the Google service account
+gcloud iam service-accounts add-iam-policy-binding \
+  config-sync-reader@YOUR_PROJECT_ID.iam.gserviceaccount.com \
+  --role roles/iam.workloadIdentityUser \
+  --member "serviceAccount:YOUR_PROJECT_ID.svc.id.goog[config-management-system/root-sync]" \
+  --project YOUR_PROJECT_ID
 ```
+
+When using this method, set `secretType: gcpserviceaccount` in your apply spec and add `gcpServiceAccountEmail: config-sync-reader@YOUR_PROJECT_ID.iam.gserviceaccount.com`.
 
 ## Step 3: Structure Your Git Repository
 
@@ -228,7 +237,7 @@ Check that Config Sync has picked up your changes and applied them.
 
 ```bash
 # Check Config Sync status
-gcloud container fleet config-management status \
+gcloud beta container fleet config-management status \
   --membership my-cluster
 
 # Or check via kubectl
@@ -267,38 +276,38 @@ Register each cluster with its own policyDir.
 
 ```bash
 # Cluster US syncs from clusters/cluster-us
-gcloud container fleet config-management apply \
-  --membership cluster-us \
-  --config - <<EOF
-apiVersion: configmanagement.gke.io/v1
-kind: ConfigManagement
-metadata:
-  name: config-management
+cat > cluster-us-apply-spec.yaml <<EOF
+applySpecVersion: 1
 spec:
-  sourceFormat: unstructured
-  git:
+  configSync:
+    enabled: true
+    sourceFormat: unstructured
     syncRepo: https://github.com/your-org/cluster-config.git
-    syncBranch: main
+    syncRev: main
     secretType: token
     policyDir: clusters/cluster-us
 EOF
 
+gcloud beta container fleet config-management apply \
+  --membership cluster-us \
+  --config cluster-us-apply-spec.yaml
+
 # Cluster EU syncs from clusters/cluster-eu
-gcloud container fleet config-management apply \
-  --membership cluster-eu \
-  --config - <<EOF
-apiVersion: configmanagement.gke.io/v1
-kind: ConfigManagement
-metadata:
-  name: config-management
+cat > cluster-eu-apply-spec.yaml <<EOF
+applySpecVersion: 1
 spec:
-  sourceFormat: unstructured
-  git:
+  configSync:
+    enabled: true
+    sourceFormat: unstructured
     syncRepo: https://github.com/your-org/cluster-config.git
-    syncBranch: main
+    syncRev: main
     secretType: token
     policyDir: clusters/cluster-eu
 EOF
+
+gcloud beta container fleet config-management apply \
+  --membership cluster-eu \
+  --config cluster-eu-apply-spec.yaml
 ```
 
 ## Drift Prevention
@@ -351,17 +360,20 @@ Set up monitoring for Config Sync to catch sync failures early.
 
 ```bash
 # Check sync status across all clusters
-gcloud container fleet config-management status
+gcloud beta container fleet config-management status
 
 # View Config Sync metrics in Cloud Monitoring
-# Metric: configsync.googleapis.com/reconciler/reconcile_duration
-# Metric: configsync.googleapis.com/reconciler/last_sync_timestamp
+# Metric: custom.googleapis.com/opencensus/config_sync/reconcile_duration_seconds
+# Metric: custom.googleapis.com/opencensus/config_sync/last_sync_timestamp
 
 # Set up an alert for sync failures
 gcloud monitoring policies create \
+  --display-name "Config Sync Failure" \
   --notification-channels CHANNEL_ID \
   --condition-display-name "Config Sync Failure" \
-  --condition-filter 'metric.type="configsync.googleapis.com/reconciler/error_count" AND resource.type="k8s_container"'
+  --condition-filter 'metric.type="custom.googleapis.com/opencensus/config_sync/pipeline_error_observed" AND resource.type="k8s_container"' \
+  --duration 60s \
+  --if "> 0"
 ```
 
 ## CI/CD Integration
