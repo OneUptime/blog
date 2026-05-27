@@ -14,7 +14,7 @@ This guide walks through the full upgrade process for MetalLB, covering both Hel
 
 ## How MetalLB Handles Upgrades Internally
 
-Before diving into the commands, it helps to understand what actually happens during an upgrade. MetalLB runs as a DaemonSet (the speaker component) and a Deployment (the controller). When you apply a new version, Kubernetes rolls out new pods gradually. The key insight is that MetalLB's IP allocations are stored in Custom Resources (IPAddressPool, L2Advertisement, etc.), not in the pods themselves. So even when pods restart, the configuration persists.
+Before diving into the commands, it helps to understand what actually happens during an upgrade. MetalLB runs as a DaemonSet (the speaker component) and a Deployment (the controller). When you apply a new version, Kubernetes rolls out new pods gradually. The key insight is that MetalLB's configuration is stored in Custom Resources (IPAddressPool, L2Advertisement, etc.), and assigned LoadBalancer IPs are recorded on the Services themselves, not in the pods. So even when pods restart, the configuration and Service status persist.
 
 Here is a simplified view of the upgrade flow:
 
@@ -25,7 +25,7 @@ flowchart TD
     C --> D{Installation Method?}
     D -->|Helm| E[helm upgrade metallb]
     D -->|Manifests| F[kubectl apply manifests]
-    E --> G[CRDs Updated Automatically]
+    E --> G[Chart Applies CRDs]
     F --> H[Apply CRD Updates Manually]
     G --> I[Controller Restarts with New Version]
     H --> I
@@ -113,7 +113,7 @@ kubectl logs -n metallb-system deployment/controller --tail=20
 
 ## Upgrading via Helm
 
-If you installed MetalLB with Helm, this is the cleanest upgrade path. Helm handles CRD updates (depending on your version) and manages the rollout for you.
+If you installed MetalLB with Helm, this is the cleanest upgrade path. The MetalLB chart manages the rollout and, when its `crds.enabled` value is left at the default, applies MetalLB's CRDs as part of the chart.
 
 ### Update the Helm Repository
 
@@ -169,14 +169,16 @@ helm upgrade metallb metallb/metallb \
 
 ### Helm and CRDs - the Gotcha
 
-Here is something that trips people up: Helm does not upgrade CRDs by default after the initial install. Starting with Helm 3, CRDs in the `crds/` directory of a chart are only installed, never upgraded or deleted. If the new MetalLB version ships updated CRDs, you may need to apply them manually.
+Here is something that trips people up: Helm itself does not upgrade CRDs placed in a chart's `crds/` directory after the initial install. The MetalLB chart handles this differently by shipping CRDs through a chart dependency, and `crds.enabled` defaults to `true`. If you have explicitly disabled that value or manage CRDs outside the chart, apply the matching CRDs yourself before upgrading the release.
 
 ```bash
-# Download the chart to inspect CRD changes
-helm pull metallb/metallb --version 0.14.9 --untar
+# Confirm whether the chart will manage CRDs for this release
+helm show values metallb/metallb --version 0.14.9 | grep -A2 '^crds:'
 
-# Apply the updated CRDs manually
-kubectl apply -f metallb/crds/
+# If you manage CRDs manually, apply the CRDs from the matching release
+kubectl apply -k "github.com/metallb/metallb/config/crd?ref=v0.14.9" \
+  --server-side \
+  --force-conflicts
 ```
 
 After applying CRD updates, re-run the Helm upgrade command so the controller picks up the changes.
@@ -211,12 +213,8 @@ diff <(kubectl get -n metallb-system deploy,daemonset,sa,clusterrole,clusterrole
 When upgrading via manifests, always apply CRDs before the main resources. The controller needs the new CRD definitions to start properly.
 
 ```bash
-# Download and apply CRDs separately
-curl -sL "https://raw.githubusercontent.com/metallb/metallb/${METALLB_VERSION}/config/crd/bases/" -o /dev/null
-
-# Or extract CRDs from the manifest and apply them
-# The CRD manifest is usually separate
-kubectl apply -f "https://raw.githubusercontent.com/metallb/metallb/${METALLB_VERSION}/config/manifests/metallb-native.yaml" \
+# The MetalLB release includes a CRD kustomization, so apply it server-side first
+kubectl apply -k "github.com/metallb/metallb/config/crd?ref=${METALLB_VERSION}" \
   --server-side \
   --force-conflicts
 ```
@@ -227,7 +225,9 @@ The `--server-side` flag with `--force-conflicts` is important here. It tells Ku
 
 ```bash
 # Apply the complete MetalLB manifest
-kubectl apply -f metallb-native-${METALLB_VERSION}.yaml
+kubectl apply -f metallb-native-${METALLB_VERSION}.yaml \
+  --server-side \
+  --force-conflicts
 ```
 
 ### Watch the Rollout
