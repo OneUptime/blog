@@ -44,9 +44,9 @@ graph TD
 graph TD
     subgraph "Control Plane"
         Istiod[Istiod]
-        Istiod --> Pilot[Pilot - Traffic Config]
-        Istiod --> Citadel[Citadel - Certificates]
-        Istiod --> Galley[Galley - Validation]
+        Istiod --> SD[Service Discovery]
+        Istiod --> TC[Traffic Configuration]
+        Istiod --> CM[Certificate Management]
     end
 
     subgraph "Data Plane"
@@ -72,16 +72,16 @@ graph TD
 
 curl -L https://istio.io/downloadIstio | sh -
 
-# Move to the Istio directory
-cd istio-1.22.0
+# Move to the Istio directory created by the download script
+cd istio-*
 export PATH=$PWD/bin:$PATH
 
 # Install Istio with the demo profile (good for learning)
 # Production: use "default" or "minimal" profile
 istioctl install --set profile=demo -y
 
-# Verify the installation
-istioctl verify-install
+# Analyze the installation and mesh configuration
+istioctl analyze
 
 # Check that Istio pods are running
 kubectl get pods -n istio-system
@@ -153,7 +153,7 @@ spec:
 
 ```yaml
 # Istio Gateway - entry point for external traffic
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: bookinfo-gateway
@@ -180,7 +180,7 @@ spec:
 ---
 
 # VirtualService - route traffic from the gateway to services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: bookinfo
@@ -229,16 +229,16 @@ sequenceDiagram
 
 ```bash
 # Install Kiali (service mesh dashboard)
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/kiali.yaml
+kubectl apply -f samples/addons/kiali.yaml
 
 # Install Prometheus (metrics collection)
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/prometheus.yaml
+kubectl apply -f samples/addons/prometheus.yaml
 
 # Install Grafana (metrics dashboards)
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/grafana.yaml
+kubectl apply -f samples/addons/grafana.yaml
 
 # Install Jaeger (distributed tracing)
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/jaeger.yaml
+kubectl apply -f samples/addons/jaeger.yaml
 
 # Access Kiali dashboard
 istioctl dashboard kiali
@@ -281,7 +281,7 @@ spec:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"       # Capture DNS for metrics
 
-    # Enable mTLS by default
+    # Use automatic mTLS when services support it
     enableAutoMtls: true
 
   components:
