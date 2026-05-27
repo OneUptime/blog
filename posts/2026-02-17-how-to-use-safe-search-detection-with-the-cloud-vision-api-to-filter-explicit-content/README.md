@@ -197,9 +197,9 @@ def moderate_upload(cloud_event):
         print(f"APPROVED: {file_name} (adult={safe.adult.name}, violence={safe.violence.name})")
 ```
 
-## Batch Processing with the Async API
+## Batch Processing with the Batch API
 
-For large volumes of images, use the asynchronous batch API to avoid timeouts and improve throughput:
+For multiple images, use the synchronous batch API to group up to 16 image annotation requests:
 
 ```python
 from google.cloud import vision
