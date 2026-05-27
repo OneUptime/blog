@@ -27,7 +27,7 @@ compliance_checks:
     - ensure_nodev_on_tmp
     - ensure_nosuid_on_tmp
   ssh:
-    - ensure_ssh_protocol_2
+    - ensure_ssh_effective_config_valid
     - ensure_ssh_log_level
     - ensure_ssh_max_auth_tries
     - ensure_ssh_root_login_disabled
@@ -81,7 +81,7 @@ compliance_checks:
 
 - name: Calculate compliance score
   set_fact:
-    compliance_score: "{{ (compliance_results | selectattr('status', 'equalto', 'PASS') | list | length / compliance_results | length * 100) | round(1) }}"
+    compliance_score: "{{ ((((compliance_results | selectattr('status', 'equalto', 'PASS') | list | length) * 100) / (compliance_results | length)) if (compliance_results | length > 0) else 0) | round(1) }}"
 
 - name: Display compliance score
   debug:
@@ -93,35 +93,23 @@ compliance_checks:
 ```yaml
 # roles/compliance/tasks/check_ssh.yml - SSH security checks
 ---
-- name: Check SSH Protocol version
-  command: grep -E "^Protocol" /etc/ssh/sshd_config
-  register: ssh_protocol
+- name: Check SSH effective configuration
+  command: sshd -T
+  register: sshd_effective_config
   changed_when: false
-  ignore_errors: yes
+  failed_when: false
 
 - name: Record SSH protocol check result
   set_fact:
-    compliance_results: "{{ compliance_results + [{'check': 'SSH Protocol 2', 'status': 'PASS' if '2' in (ssh_protocol.stdout | default('')) else 'FAIL', 'detail': ssh_protocol.stdout | default('Not configured')}] }}"
-
-- name: Check SSH root login disabled
-  command: grep -E "^PermitRootLogin" /etc/ssh/sshd_config
-  register: ssh_root
-  changed_when: false
-  ignore_errors: yes
+    compliance_results: "{{ compliance_results + [{'check': 'SSH Protocol 2', 'status': 'PASS' if sshd_effective_config.rc == 0 else 'FAIL', 'detail': 'OpenSSH supports SSH protocol 2 only' if sshd_effective_config.rc == 0 else (sshd_effective_config.stderr | default('Unable to read effective sshd configuration'))}] }}"
 
 - name: Record root login check
   set_fact:
-    compliance_results: "{{ compliance_results + [{'check': 'SSH Root Login Disabled', 'status': 'PASS' if 'no' in (ssh_root.stdout | default('')) else 'FAIL', 'detail': ssh_root.stdout | default('Not configured')}] }}"
-
-- name: Check SSH MaxAuthTries
-  command: grep -E "^MaxAuthTries" /etc/ssh/sshd_config
-  register: ssh_max_auth
-  changed_when: false
-  ignore_errors: yes
+    compliance_results: "{{ compliance_results + [{'check': 'SSH Root Login Disabled', 'status': 'PASS' if 'permitrootlogin no' in (sshd_effective_config.stdout_lines | default([])) else 'FAIL', 'detail': (sshd_effective_config.stdout_lines | default([]) | select('match', '^permitrootlogin ') | list | first | default('Not configured'))}] }}"
 
 - name: Record MaxAuthTries check
   set_fact:
-    compliance_results: "{{ compliance_results + [{'check': 'SSH MaxAuthTries <= 4', 'status': 'PASS' if (ssh_max_auth.stdout | default('MaxAuthTries 6') | regex_search('[0-9]+') | int) <= 4 else 'FAIL', 'detail': ssh_max_auth.stdout | default('Not configured')}] }}"
+    compliance_results: "{{ compliance_results + [{'check': 'SSH MaxAuthTries <= 4', 'status': 'PASS' if ((sshd_effective_config.stdout_lines | default([]) | select('match', '^maxauthtries ') | list | first | default('maxauthtries 6') | regex_replace('^maxauthtries\\s+', '') | int) <= 4) else 'FAIL', 'detail': (sshd_effective_config.stdout_lines | default([]) | select('match', '^maxauthtries ') | list | first | default('maxauthtries 6'))}] }}"
 
 - name: Auto-remediate SSH settings
   template:
@@ -155,7 +143,7 @@ Summary:
 Total Checks: {{ compliance_results | length }}
 Passed: {{ compliance_results | selectattr('status', 'equalto', 'PASS') | list | length }}
 Failed: {{ compliance_results | selectattr('status', 'equalto', 'FAIL') | list | length }}
-Score: {{ (compliance_results | selectattr('status', 'equalto', 'PASS') | list | length / compliance_results | length * 100) | round(1) }}%
+Score: {{ ((((compliance_results | selectattr('status', 'equalto', 'PASS') | list | length) * 100) / (compliance_results | length)) if (compliance_results | length > 0) else 0) | round(1) }}%
 ```
 
 ## Running the Audit
@@ -214,17 +202,23 @@ The most effective approach is creating a dedicated compliance role with tasks o
   register: block_devices
   changed_when: false
 
+- name: Assert LUKS encryption is present
+  ansible.builtin.assert:
+    that:
+      - "'crypto_LUKS' in block_devices.stdout"
+    fail_msg: "No LUKS-encrypted volumes found"
+
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
-  register: cert_dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
+  register: cert_check
   changed_when: false
   failed_when: false
 
 - name: Verify certificate is not expired
   ansible.builtin.assert:
     that:
-      - cert_dates.rc == 0
+      - cert_check.rc == 0
     fail_msg: "TLS certificate check failed"
     success_msg: "TLS certificate is valid"
 ```
@@ -247,14 +241,14 @@ The most effective approach is creating a dedicated compliance role with tasks o
     fail_msg: "Firewall is not active"
 
 - name: Check for unauthorized listening ports
-  ansible.builtin.command: ss -tlnp
+  ansible.builtin.command: ss -tln
   register: listening_ports
   changed_when: false
 
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
+      - "listening_ports.stdout is not search(':' ~ item ~ '\\s')"
     fail_msg: "Unauthorized port {{ item }} is listening"
   loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 ```
@@ -372,6 +366,11 @@ The real power of compliance automation is combining detection with remediation:
         checks_passed: "{{ checks_passed + ['Password minimum length configured'] }}"
       when: pwquality.rc == 0
 
+    - name: Record password failure
+      ansible.builtin.set_fact:
+        checks_failed: "{{ checks_failed + ['Password minimum length NOT configured'] }}"
+      when: pwquality.rc != 0
+
     - name: Print compliance summary
       ansible.builtin.debug:
         msg: |
@@ -388,6 +387,5 @@ The real power of compliance automation is combining detection with remediation:
             [FAIL] {{ check }}
           {% endfor %}
           ========================================
-          Score: {{ (checks_passed | length * 100 / (checks_passed | length + checks_failed | length)) | round(1) }}%
+          Score: {{ ((((checks_passed | length) * 100) / ((checks_passed | length) + (checks_failed | length))) if (((checks_passed | length) + (checks_failed | length)) > 0) else 0) | round(1) }}%
 ```
-
