@@ -8,7 +8,7 @@ Description: Deploy a production-ready RabbitMQ cluster with quorum queues and a
 
 ---
 
-A standalone RabbitMQ server is a single point of failure. When it goes down, every service that depends on it stops processing messages. RabbitMQ clustering solves this by distributing the broker across multiple nodes. Combined with quorum queues, you get both high availability and data safety. Setting up a RabbitMQ cluster involves sharing Erlang cookies, configuring peer discovery, and setting up queue mirroring policies. Ansible automates all of it.
+A standalone RabbitMQ server is a single point of failure. When it goes down, every service that depends on it stops processing messages. RabbitMQ clustering solves this by distributing the broker across multiple nodes. Combined with quorum queues, you get both high availability and data safety. Setting up a RabbitMQ cluster involves sharing Erlang cookies, configuring peer discovery, and setting the default queue type and queue policies. Ansible automates all of it.
 
 This guide walks through deploying a three-node RabbitMQ cluster using Ansible.
 
@@ -110,23 +110,16 @@ All nodes in a RabbitMQ cluster must share the same Erlang cookie. This is a sha
         mode: "0400"
       no_log: true
 
-    - name: Start RabbitMQ with the new cookie
+    - name: Keep RabbitMQ stopped until cluster configuration is in place
       ansible.builtin.systemd:
         name: rabbitmq-server
-        state: started
+        state: stopped
         enabled: true
-
-    - name: Wait for RabbitMQ to fully start
-      ansible.builtin.command:
-        cmd: rabbitmqctl await_startup
-      changed_when: false
-      retries: 5
-      delay: 10
 ```
 
 ## Step 3: Configure Cluster with Peer Discovery
 
-RabbitMQ supports automatic peer discovery through configuration. This is cleaner than manually joining nodes.
+RabbitMQ supports automatic peer discovery through configuration. This is cleaner than manually joining nodes. Peer discovery runs when a node starts with a blank database, so apply this configuration before the nodes are first started as standalone brokers.
 
 ```yaml
 # playbooks/configure-cluster.yml
@@ -140,20 +133,6 @@ RabbitMQ supports automatic peer discovery through configuration. This is cleane
       ansible.builtin.template:
         src: ../templates/rabbitmq-cluster.conf.j2
         dest: /etc/rabbitmq/rabbitmq.conf
-        owner: rabbitmq
-        group: rabbitmq
-        mode: "0640"
-      notify: Restart RabbitMQ for clustering
-
-    - name: Deploy advanced configuration for cluster name
-      ansible.builtin.copy:
-        dest: /etc/rabbitmq/advanced.config
-        content: |
-          [
-            {rabbit, [
-              {cluster_name, <<"{{ rabbitmq_cluster_name }}">>}
-            ]}
-          ].
         owner: rabbitmq
         group: rabbitmq
         mode: "0640"
@@ -175,6 +154,7 @@ The cluster configuration template.
 # Network
 listeners.tcp.default = 5672
 management.tcp.port = 15672
+cluster_name = {{ rabbitmq_cluster_name }}
 
 # Cluster peer discovery using classic config
 cluster_formation.peer_discovery_backend = classic_config
@@ -257,16 +237,15 @@ Quorum queues are the recommended way to achieve data safety in a RabbitMQ clust
   become: true
 
   tasks:
-    - name: Set a policy for quorum queues with replication
+    - name: Set a delivery limit policy for quorum queues
       community.rabbitmq.rabbitmq_policy:
-        name: ha-quorum
+        name: quorum-delivery-limit
         pattern: "^(?!amq\\.).*"  # All queues except built-in ones
         tags:
-          queue-mode: default
           delivery-limit: 5
         vhost: /
         state: present
-        apply_to: queues
+        apply_to: quorum_queues
 
     - name: Set max queue length policy to prevent unbounded growth
       community.rabbitmq.rabbitmq_policy:
@@ -277,7 +256,7 @@ Quorum queues are the recommended way to achieve data safety in a RabbitMQ clust
           overflow: reject-publish
         vhost: /
         state: present
-        apply_to: queues
+        apply_to: quorum_queues
 ```
 
 ## Step 6: Verify Cluster
@@ -365,7 +344,7 @@ Network partitions are the biggest challenge in RabbitMQ clustering. The `cluste
 
 1. **Use an odd number of nodes.** Three nodes gives you tolerance for one failure. Five nodes gives you tolerance for two.
 
-2. **Use quorum queues, not classic mirrored queues.** Classic mirrored queues are deprecated as of RabbitMQ 3.13. Quorum queues are safer and perform better.
+2. **Use quorum queues, not classic mirrored queues.** Classic mirrored queues were deprecated in 2021 and removed in RabbitMQ 4.0. Quorum queues are safer and perform better.
 
 3. **Put a load balancer in front of the cluster.** Clients should not hardcode individual node addresses. Use a TCP load balancer that health-checks each node.
 
