@@ -54,6 +54,7 @@ gcloud services enable \
   iam.googleapis.com \
   iamcredentials.googleapis.com \
   cloudresourcemanager.googleapis.com \
+  sts.googleapis.com \
   run.googleapis.com \
   artifactregistry.googleapis.com \
   cloudbuild.googleapis.com
@@ -120,7 +121,7 @@ gcloud iam workload-identity-pools providers create-oidc github-provider \
   --attribute-condition="assertion.repository=='YOUR_GITHUB_USERNAME/YOUR_REPO_NAME'"
 ```
 
-The `--attribute-condition` is critical for security. It restricts which GitHub repositories can authenticate. Replace `YOUR_GITHUB_USERNAME/YOUR_REPO_NAME` with your actual repository. Without this, any GitHub repository could authenticate to your GCP project.
+The `--attribute-condition` is critical for security. It restricts which GitHub repositories can be accepted by the provider. Replace `YOUR_GITHUB_USERNAME/YOUR_REPO_NAME` with your actual repository. Without this, tokens from other GitHub repositories could be accepted by the provider, even though access to resources would still depend on your IAM bindings.
 
 ## Step 4: Allow the Service Account to Be Impersonated
 
@@ -193,14 +194,14 @@ jobs:
       # Authenticate to GCP using Workload Identity Federation
       - name: Authenticate to Google Cloud
         id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: "projects/123456789/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
           service_account: "github-deployer@your-gcp-project-id.iam.gserviceaccount.com"
 
       # Set up gcloud CLI
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       # Configure Docker to use gcloud for authentication
       - name: Configure Docker
@@ -241,7 +242,7 @@ jobs:
 The key parts here:
 
 - `permissions.id-token: write` allows the workflow to request an OIDC token
-- `google-github-actions/auth@v2` handles the Workload Identity Federation exchange
+- `google-github-actions/auth@v3` handles the Workload Identity Federation exchange
 - No service account keys or JSON credentials anywhere
 
 ## Step 7: Create the Artifact Registry Repository
@@ -293,13 +294,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: "projects/123456789/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
           service_account: "github-deployer@your-gcp-project-id.iam.gserviceaccount.com"
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Configure Docker
         run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
@@ -311,19 +312,24 @@ jobs:
 
       # Deploy with a revision tag for testing
       - name: Deploy to staging
+        id: deploy-staging
         run: |
           gcloud run deploy my-app \
             --image=us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-images/my-app:pr-${{ github.event.number }} \
             --region=us-central1 \
             --tag=pr-${{ github.event.number }} \
             --no-traffic
+          PREVIEW_URL=$(gcloud run services describe my-app \
+            --region=us-central1 \
+            --format=json | jq -r --arg tag "pr-${{ github.event.number }}" '.status.traffic[] | select(.tag == $tag) | .url')
+          echo "preview_url=${PREVIEW_URL}" >> "$GITHUB_OUTPUT"
 
       - name: Comment PR with preview URL
         uses: actions/github-script@v7
         with:
           script: |
-            const url = `https://pr-${{ github.event.number }}---my-app-xxxxx-uc.a.run.app`;
-            github.rest.issues.createComment({
+            const url = `${{ steps.deploy-staging.outputs.preview_url }}`;
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
