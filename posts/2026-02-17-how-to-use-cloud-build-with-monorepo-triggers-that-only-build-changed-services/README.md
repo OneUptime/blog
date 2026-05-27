@@ -48,6 +48,7 @@ Cloud Build triggers support an `includedFiles` filter that tells the trigger to
 # Create a trigger that only fires when files in services/api/ change
 
 gcloud builds triggers create github \
+  --name="my-api-trigger" \
   --repo-name="my-monorepo" \
   --repo-owner="my-org" \
   --branch-pattern="^main$" \
@@ -61,6 +62,7 @@ Now create one for the web service:
 ```bash
 # Trigger for the web service
 gcloud builds triggers create github \
+  --name="my-web-trigger" \
   --repo-name="my-monorepo" \
   --repo-owner="my-org" \
   --branch-pattern="^main$" \
@@ -74,6 +76,7 @@ And one for the worker:
 ```bash
 # Trigger for the worker service
 gcloud builds triggers create github \
+  --name="my-worker-trigger" \
   --repo-name="my-monorepo" \
   --repo-owner="my-org" \
   --branch-pattern="^main$" \
@@ -93,6 +96,7 @@ You handle this by including the shared paths in each trigger:
 ```bash
 # API trigger - also fires on shared code changes
 gcloud builds triggers create github \
+  --name="my-api-shared-trigger" \
   --repo-name="my-monorepo" \
   --repo-owner="my-org" \
   --branch-pattern="^main$" \
@@ -104,6 +108,7 @@ gcloud builds triggers create github \
 ```bash
 # Web trigger - also fires on shared code changes
 gcloud builds triggers create github \
+  --name="my-web-shared-trigger" \
   --repo-name="my-monorepo" \
   --repo-owner="my-org" \
   --branch-pattern="^main$" \
@@ -121,6 +126,7 @@ Sometimes it is easier to specify what should not trigger a build. The `ignoredF
 ```bash
 # Build everything except when only docs or config files change
 gcloud builds triggers create github \
+  --name="my-all-services-trigger" \
   --repo-name="my-monorepo" \
   --repo-owner="my-org" \
   --branch-pattern="^main$" \
@@ -129,7 +135,7 @@ gcloud builds triggers create github \
   --description="Build all services (ignore docs changes)"
 ```
 
-You can combine `includedFiles` and `ignoredFiles`, but keep in mind that `includedFiles` is evaluated first. If a file matches both, it is still included.
+You can combine `includedFiles` and `ignoredFiles`, but keep in mind that `ignoredFiles` takes precedence. If a file matches both, changes to that file will not invoke a build.
 
 ## Per-Service Cloud Build Configuration
 
@@ -138,35 +144,39 @@ Each service should have its own cloudbuild.yaml that knows how to build and dep
 ```yaml
 # services/api/cloudbuild.yaml - Build config for the API service
 steps:
+  # Run API tests
+  - name: 'node:24'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        npm ci
+        npm test
+    dir: 'services/api'
+
   # Build the Docker image for the API
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/api:$SHORT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/services/api:$SHORT_SHA'
       - '-f'
       - 'services/api/Dockerfile'
       - '.'  # Build context is the repo root (for shared code access)
 
-  # Run API tests
-  - name: 'gcr.io/$PROJECT_ID/api:$SHORT_SHA'
-    entrypoint: 'npm'
-    args: ['test']
-    dir: 'services/api'
-
   # Push the image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/api:$SHORT_SHA']
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/services/api:$SHORT_SHA']
 
   # Deploy to GKE
   - name: 'gcr.io/cloud-builders/kubectl'
-    args: ['set', 'image', 'deployment/api', 'api=gcr.io/$PROJECT_ID/api:$SHORT_SHA']
+    args: ['set', 'image', 'deployment/api', 'api=us-central1-docker.pkg.dev/$PROJECT_ID/services/api:$SHORT_SHA']
     env:
       - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
       - 'CLOUDSDK_CONTAINER_CLUSTER=my-cluster'
 
 images:
-  - 'gcr.io/$PROJECT_ID/api:$SHORT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/services/api:$SHORT_SHA'
 ```
 
 Notice that the build context is set to `.` (the repo root) even though the Dockerfile is in `services/api/`. This lets the Docker build access shared code from the `shared/` directory.
@@ -177,7 +187,7 @@ Your Dockerfiles need to account for the monorepo structure:
 
 ```dockerfile
 # services/api/Dockerfile - API service in a monorepo
-FROM node:18-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -186,7 +196,7 @@ COPY shared/ ./shared/
 
 # Copy service-specific code
 COPY services/api/package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 COPY services/api/src/ ./src/
 
@@ -258,7 +268,7 @@ Sometimes services depend on each other - maybe you need to build a shared libra
 # cloudbuild-shared.yaml - Build shared components first
 steps:
   # Build and publish shared library
-  - name: 'node:18'
+  - name: 'node:24'
     dir: 'shared/lib'
     entrypoint: 'bash'
     args:
@@ -278,6 +288,7 @@ For infrastructure code, you probably want a separate trigger entirely:
 ```bash
 # Trigger for Terraform changes
 gcloud builds triggers create github \
+  --name="my-infrastructure-trigger" \
   --repo-name="my-monorepo" \
   --repo-owner="my-org" \
   --branch-pattern="^main$" \
