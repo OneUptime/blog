@@ -8,11 +8,11 @@ Description: Learn how to use the Ansible git module with Git submodules for clo
 
 ---
 
-Git submodules let you include one repository inside another. They are commonly used for shared libraries, themes, plugins, and vendor dependencies. When deploying with Ansible, you need to handle submodules explicitly because they are not initialized or updated by default.
+Git submodules let you include one repository inside another. They are commonly used for shared libraries, themes, plugins, and vendor dependencies. When deploying with Ansible, you can let the `git` module handle submodules automatically, or disable that behavior when you want to initialize only selected submodules yourself.
 
 ## Cloning with Submodules
 
-The `recursive` parameter tells the git module to initialize and update submodules:
+The `recursive` parameter tells the git module whether to initialize and update submodules:
 
 ```yaml
 # playbook-recursive-clone.yml
@@ -35,12 +35,12 @@ Setting `recursive: true` is equivalent to running `git clone --recursive`. It i
 
 ## Without recursive Parameter
 
-If you omit `recursive`, only the parent repository is cloned. Submodule directories will exist but be empty:
+In current Ansible versions, `recursive` defaults to `true`. If you set `recursive: false`, only the parent repository is cloned. Submodule directories will exist but be empty:
 
 ```yaml
 # playbook-no-recursive.yml
-# Shows what happens when you clone without the recursive parameter
-- name: Clone without submodules (default)
+# Shows what happens when you clone with recursive disabled
+- name: Clone without submodules
   hosts: webservers
   become: true
 
@@ -50,7 +50,7 @@ If you omit `recursive`, only the parent repository is cloned. Submodule directo
         repo: "https://github.com/example/myapp.git"
         dest: /opt/myapp
         version: main
-        # recursive defaults to true in newer Ansible versions
+        recursive: false
 
     - name: Verify submodule status
       ansible.builtin.shell: "cd /opt/myapp && git submodule status"
@@ -110,7 +110,7 @@ When submodules point to private repositories, you need authentication for each:
         version: main
         recursive: true
         key_file: /home/deploy/.ssh/deploy_key
-        accept_hostkey: true
+        accept_newhostkey: true
       become_user: deploy
 ```
 
@@ -196,9 +196,9 @@ When updating a deployment, you may need to update submodules to match the paren
           {% set parts = line.strip().split() %}
           {% if parts | length >= 2 %}
           {% set _ = result.append({
-            'commit': parts[0] | regex_replace('^[+-]', ''),
+            'commit': parts[0] | regex_replace('^[+-U]', ''),
             'path': parts[1],
-            'status': 'modified' if parts[0].startswith('+') else 'uninitialized' if parts[0].startswith('-') else 'ok'
+            'status': 'modified' if parts[0].startswith('+') else 'uninitialized' if parts[0].startswith('-') else 'merge_conflict' if parts[0].startswith('U') else 'ok'
           }) %}
           {% endif %}
           {% endfor %}
@@ -296,4 +296,4 @@ The parent repository tracks a specific commit for each submodule. When you chec
 
 ## Summary
 
-The `recursive: true` parameter in the Ansible git module handles submodule initialization and updates automatically. Use it when your repositories include submodules for shared code, themes, plugins, or vendor libraries. For private submodules, ensure SSH keys are configured for all the Git hosts involved. Use selective initialization when you only need specific submodules. After updating the parent repository, always ensure submodules are synced. And when deploying tagged releases, remember that the parent tag pins each submodule to a specific commit, giving you reproducible deployments across all components.
+The `recursive: true` parameter in the Ansible git module handles submodule initialization and updates automatically, and it is the default in current Ansible versions. Use it when your repositories include submodules for shared code, themes, plugins, or vendor libraries. For private submodules, ensure SSH keys are configured for all the Git hosts involved. Use `recursive: false` with selective initialization when you only need specific submodules. After updating the parent repository, sync submodules when their URLs have changed. And when deploying tagged releases, remember that the parent tag pins each submodule to a specific commit, giving you reproducible deployments across all components.
