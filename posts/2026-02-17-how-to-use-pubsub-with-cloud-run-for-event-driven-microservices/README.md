@@ -8,7 +8,7 @@ Description: Learn how to connect Google Cloud Pub/Sub with Cloud Run to build e
 
 ---
 
-Cloud Run and Pub/Sub are a natural pair for event-driven microservices on GCP. Pub/Sub handles message delivery and buffering, while Cloud Run provides serverless HTTP endpoints that scale to zero when there is no traffic and scale up automatically when messages start flowing. You do not manage servers, and you only pay when messages are being processed.
+Cloud Run and Pub/Sub are a natural pair for event-driven microservices on GCP. Pub/Sub handles message delivery and buffering, while Cloud Run provides serverless HTTP endpoints that scale to zero when there is no traffic and scale up automatically when messages start flowing. You do not manage servers, and with request-based billing and no minimum instances, you only pay when messages are being processed.
 
 The connection works through push subscriptions. Pub/Sub pushes messages as HTTP requests to your Cloud Run service. Cloud Run processes the message and returns an HTTP response. If the response is successful, Pub/Sub acknowledges the message. If not, it retries.
 
@@ -27,7 +27,7 @@ graph LR
 3. Your Cloud Run service processes the message and returns a 200 response
 4. Pub/Sub marks the message as acknowledged
 
-If your service returns a non-2xx response (or times out), Pub/Sub retries delivery with exponential backoff.
+If your service returns anything other than one of Pub/Sub's success responses (`102`, `200`, `201`, `202`, or `204`), or times out, Pub/Sub retries delivery with exponential backoff.
 
 ## Setting Up the Cloud Run Service
 
@@ -152,6 +152,12 @@ gcloud run services add-iam-policy-binding order-processor \
   --member="serviceAccount:pubsub-cloud-run-invoker@my-project.iam.gserviceaccount.com" \
   --role="roles/run.invoker"
 
+# For projects created on or before April 8, 2021, allow Pub/Sub to create
+# authentication tokens for push requests
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:service-PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountTokenCreator"
+
 # Create the push subscription
 gcloud pubsub subscriptions create order-events-push-sub \
   --topic=order-events \
@@ -167,6 +173,8 @@ gcloud pubsub subscriptions create order-events-push-sub \
 Here is the complete setup in Terraform:
 
 ```hcl
+data "google_project" "current" {}
+
 # Cloud Run service
 resource "google_cloud_run_v2_service" "order_processor" {
   name     = "order-processor"
@@ -203,6 +211,14 @@ resource "google_service_account" "pubsub_invoker" {
   display_name = "Pub/Sub Cloud Run Invoker"
 }
 
+# For projects created on or before April 8, 2021, Pub/Sub needs this role to
+# mint OIDC tokens for authenticated push requests.
+resource "google_project_iam_member" "pubsub_token_creator" {
+  project = data.google_project.current.project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
+  member  = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
 # Grant the invoker permission to call Cloud Run
 resource "google_cloud_run_v2_service_iam_member" "invoker" {
   name     = google_cloud_run_v2_service.order_processor.name
@@ -215,6 +231,16 @@ resource "google_cloud_run_v2_service_iam_member" "invoker" {
 resource "google_pubsub_topic" "order_events" {
   name = "order-events"
   message_retention_duration = "604800s"
+}
+
+resource "google_pubsub_topic" "order_events_dlq" {
+  name = "order-events-dlq"
+}
+
+resource "google_pubsub_topic_iam_member" "dlq_publisher" {
+  topic  = google_pubsub_topic.order_events_dlq.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 
 # Push subscription pointing to Cloud Run
@@ -326,12 +352,11 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: order-processor
+  annotations:
+    run.googleapis.com/minScale: "1"  # Keep 1 instance warm
+    run.googleapis.com/maxScale: "50"
 spec:
   template:
-    metadata:
-      annotations:
-        autoscaling.knative.dev/minScale: "1"  # Keep 1 instance warm
-        autoscaling.knative.dev/maxScale: "50"
     spec:
       containerConcurrency: 10
       timeoutSeconds: 60
@@ -344,22 +369,33 @@ Setting `minScale` to 1 eliminates cold start latency for the first message, at 
 Monitor both the Pub/Sub subscription and the Cloud Run service:
 
 ```bash
-# Check Pub/Sub backlog
-gcloud monitoring read \
-  "pubsub.googleapis.com/subscription/num_undelivered_messages" \
-  --filter='resource.labels.subscription_id = "order-events-push-sub"'
+PROJECT_ID=my-project
+START_TIME=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+ACCESS_TOKEN=$(gcloud auth print-access-token)
 
-# Check Cloud Run request latency and error rate
-gcloud monitoring read \
-  "run.googleapis.com/request_latencies" \
-  --filter='resource.labels.service_name = "order-processor"'
+# Check Pub/Sub backlog
+curl --get \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  --data-urlencode 'filter=metric.type="pubsub.googleapis.com/subscription/num_undelivered_messages" AND resource.labels.subscription_id="order-events-push-sub"' \
+  --data-urlencode "interval.startTime=${START_TIME}" \
+  --data-urlencode "interval.endTime=${END_TIME}" \
+  "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/timeSeries"
+
+# Check Cloud Run request latency
+curl --get \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  --data-urlencode 'filter=metric.type="run.googleapis.com/request_latencies" AND resource.labels.service_name="order-processor"' \
+  --data-urlencode "interval.startTime=${START_TIME}" \
+  --data-urlencode "interval.endTime=${END_TIME}" \
+  "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/timeSeries"
 ```
 
 Key metrics to watch:
 - **Pub/Sub backlog**: Growing backlog means Cloud Run cannot keep up
 - **Cloud Run instance count**: Verify autoscaling is working as expected
 - **Request latency**: Track how long message processing takes
-- **Error rate**: Non-2xx responses trigger Pub/Sub retries
+- **Error rate**: Responses outside Pub/Sub's success status codes trigger retries
 
 ## Wrapping Up
 
