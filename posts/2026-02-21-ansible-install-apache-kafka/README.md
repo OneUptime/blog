@@ -10,15 +10,15 @@ Description: Automate Apache Kafka installation and broker configuration using A
 
 Apache Kafka is the standard for event streaming. It powers real-time data pipelines, event-driven architectures, and log aggregation at companies of all sizes. But installing Kafka is not trivial. You need Java, ZooKeeper (or KRaft for newer versions), the Kafka binaries, proper system tuning, and systemd service files. Doing this manually on multiple brokers is slow and error-prone. Ansible automates the entire process.
 
-This guide covers installing Apache Kafka using Ansible, including both the traditional ZooKeeper mode and the newer KRaft mode.
+This guide covers installing Apache Kafka using Ansible with the newer KRaft mode.
 
 ## Architecture Overview
 
-A minimal production Kafka deployment has three brokers. In KRaft mode, you do not need separate ZooKeeper nodes.
+A minimal Kafka deployment has three brokers. In KRaft mode, you do not need separate ZooKeeper nodes.
 
 ```mermaid
 flowchart TD
-    subgraph Kafka Cluster - KRaft Mode
+    subgraph kraft["Kafka Cluster - KRaft Mode"]
         K1[Broker 1<br/>10.0.8.10<br/>Controller + Broker]
         K2[Broker 2<br/>10.0.8.11<br/>Controller + Broker]
         K3[Broker 3<br/>10.0.8.12<br/>Controller + Broker]
@@ -36,10 +36,10 @@ flowchart TD
 
 ## Prerequisites
 
-- Ansible 2.9+
-- Target servers running Ubuntu 20.04+ or RHEL 8+
+- Ansible 2.10+ with the `ansible.posix` collection installed
+- Target servers running Ubuntu 20.04+
 - At least 4GB RAM per broker (8GB+ recommended)
-- Java 17+ (we will install it via Ansible)
+- Java 17 (we will install it via Ansible)
 
 ## Inventory
 
@@ -99,7 +99,7 @@ Kafka requires a JDK. Install OpenJDK 17.
   hosts: kafka_brokers
   become: true
   vars:
-    kafka_download_url: "https://downloads.apache.org/kafka/{{ kafka_version }}/kafka_{{ scala_version }}-{{ kafka_version }}.tgz"
+    kafka_download_url: "https://archive.apache.org/dist/kafka/{{ kafka_version }}/kafka_{{ scala_version }}-{{ kafka_version }}.tgz"
     kafka_install_dir: /opt/kafka
 
   tasks:
@@ -175,7 +175,6 @@ KRaft mode eliminates the ZooKeeper dependency. Here is the configuration.
         owner: kafka
         group: kafka
         mode: "0640"
-      notify: Restart Kafka
 
     - name: Check if the log directory is already formatted
       ansible.builtin.stat:
@@ -191,12 +190,6 @@ KRaft mode eliminates the ZooKeeper dependency. Here is the configuration.
       become_user: kafka
       when: not meta_check.stat.exists
       changed_when: true
-
-  handlers:
-    - name: Restart Kafka
-      ansible.builtin.systemd:
-        name: kafka
-        state: restarted
 ```
 
 The KRaft configuration template.
@@ -216,6 +209,7 @@ controller.quorum.voters={% for host in groups['kafka_brokers'] %}{{ hostvars[ho
 
 # Listeners
 listeners=PLAINTEXT://{{ ansible_host }}:{{ kafka_port }},CONTROLLER://{{ ansible_host }}:{{ kafka_controller_port }}
+listener.security.protocol.map=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
 inter.broker.listener.name=PLAINTEXT
 controller.listener.names=CONTROLLER
 advertised.listeners=PLAINTEXT://{{ ansible_host }}:{{ kafka_port }}
@@ -339,7 +333,10 @@ transaction.state.log.min.isr=2
   tasks:
     - name: Check Kafka broker status
       ansible.builtin.command:
-        cmd: /opt/kafka/bin/kafka-metadata.sh --snapshot {{ kafka_data_dir }}/__cluster_metadata-0/00000000000000000000.log --cluster-id
+        cmd: >
+          /opt/kafka/bin/kafka-metadata-quorum.sh
+          --bootstrap-server {{ ansible_host }}:{{ kafka_port }}
+          describe --status
       become_user: kafka
       register: cluster_info
       changed_when: false
@@ -353,7 +350,7 @@ transaction.state.log.min.isr=2
           --bootstrap-server {{ ansible_host }}:{{ kafka_port }}
       register: topic_create
       changed_when: "'Created' in topic_create.stdout"
-      failed_when: topic_create.rc != 0 and 'already exists' not in topic_create.stdout
+      failed_when: topic_create.rc != 0 and 'already exists' not in (topic_create.stdout + topic_create.stderr)
 
     - name: Describe the test topic to verify replication
       ansible.builtin.command:
@@ -373,11 +370,11 @@ transaction.state.log.min.isr=2
 
 1. **Separate data and log disks.** Kafka is I/O intensive. Putting data on dedicated SSDs significantly improves throughput and latency.
 
-2. **Set `min.insync.replicas=2` with `replication.factor=3`.** This ensures no data loss even if one broker fails during a write.
+2. **Set `min.insync.replicas=2` with `replication.factor=3`.** This prevents acknowledged writes from succeeding unless at least two replicas are in sync when producers use `acks=all`.
 
 3. **Size the JVM heap at 4-6GB.** Kafka relies on the OS page cache more than JVM heap. Giving too much to the heap starves the page cache.
 
-4. **Use G1GC garbage collector.** The default CMS collector is fine for small deployments, but G1GC handles the large heaps better with more predictable pause times.
+4. **Use G1GC garbage collector.** Kafka's recommended JVM flags use G1GC, which handles larger heaps with more predictable pause times.
 
 5. **Monitor consumer lag.** Use `kafka-consumer-groups.sh` or a monitoring tool to track how far behind consumers are. Growing lag means consumers cannot keep up with producers.
 
