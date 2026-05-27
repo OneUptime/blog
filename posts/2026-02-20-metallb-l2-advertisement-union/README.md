@@ -30,7 +30,7 @@ spec:
 
 ## How Union Behavior Works
 
-If multiple L2Advertisement resources match the same IPAddressPool, MetalLB does not pick one and ignore the rest. Instead, it takes the union of all matching advertisements. This means the IP will be announced on every interface and from every node that any of the matching advertisements specify.
+If multiple L2Advertisement resources match the same IPAddressPool, MetalLB does not pick one and ignore the rest. Instead, it takes the union of all matching advertisements. This means the elected speaker can announce the IP on every interface selected by the matching advertisements, and every node selected by any matching advertisement can become eligible to announce it.
 
 ```mermaid
 flowchart TD
@@ -39,8 +39,8 @@ flowchart TD
     C -->|One| D[Use that single advertisement config]
     C -->|Multiple| E[Merge all matching advertisements]
     E --> F[Union of all interfaces]
-    E --> G[Union of all node selectors]
-    F --> H[Announce IP on all combined interfaces]
+    E --> G[Union of eligible nodes]
+    F --> H[Elected speaker announces IP on combined interfaces]
     G --> H
 ```
 
@@ -85,7 +85,7 @@ spec:
     - eth1                 # Only announce on the management interface
 ```
 
-Because both advertisements reference `shared-pool`, MetalLB merges them. The effective result is that any IP from `shared-pool` will be announced on both `eth0` and `eth1`.
+Because both advertisements reference `shared-pool`, MetalLB merges them. The effective result is that the elected speaker can announce any IP from `shared-pool` on both `eth0` and `eth1`.
 
 ```mermaid
 flowchart LR
@@ -169,7 +169,7 @@ flowchart LR
 
 ## Node Selectors and Union
 
-L2Advertisements also support `nodeSelectors` to restrict which nodes respond to ARP requests. When multiple advertisements with different node selectors reference the same pool, MetalLB takes the union of all selectors. This means more nodes become eligible to announce the IP, not fewer.
+L2Advertisements also support `nodeSelectors` to restrict which nodes can be elected to respond to ARP requests. When multiple advertisements with different node selectors reference the same pool, MetalLB takes the union of all selectors. This means more nodes become eligible to announce the IP, not fewer.
 
 ```yaml
 # Advertisement restricted to worker nodes
@@ -199,7 +199,7 @@ spec:
         node-role.kubernetes.io/edge: ""     # Only edge nodes
 ```
 
-The union result: any node labeled as either `worker` or `edge` can announce IPs from `shared-pool`. This is useful when you want to expand announcement coverage across node roles without modifying existing advertisements.
+The union result: any node labeled as either `worker` or `edge` can be elected to announce IPs from `shared-pool`. This is useful when you want to expand announcement coverage across node roles without modifying existing advertisements.
 
 ## Common Pitfalls
 
@@ -226,7 +226,7 @@ kubectl logs -n metallb-system -l app=metallb,component=speaker --tail=50
 
 1. **One pool per network segment.** Map each L2Advertisement to a dedicated IPAddressPool when you need isolation.
 2. **Use union intentionally.** When you want an IP reachable from multiple interfaces or node roles, overlapping advertisements is the right pattern.
-3. **Avoid mixing wildcard and specific advertisements.** A wildcard advertisement (no interfaces, no node selectors) makes all other advertisements for the same pool redundant.
+3. **Avoid mixing wildcard and specific advertisements.** A wildcard advertisement (no interfaces, no node selectors) makes all nodes eligible and all interfaces available for the same pool, so narrower advertisements become redundant.
 4. **Document your intent.** Add annotations or comments to each L2Advertisement explaining which network segment it serves.
 
 ## Monitoring Your MetalLB Setup
