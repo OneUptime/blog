@@ -65,7 +65,7 @@ kubectl apply -f ipaddresspool.yaml
 
 ## Basic L2Advertisement with Interface Selection
 
-Here is the key resource. The `interfaces` field accepts a list of interface matchers that control where MetalLB sends ARP/NDP responses:
+Here is the key resource. The `interfaces` field accepts a list of interface names that control where MetalLB sends ARP/NDP responses:
 
 ```yaml
 # L2Advertisement restricted to a single named interface
@@ -93,27 +93,43 @@ kubectl apply -f l2advertisement.yaml
 
 With this configuration, MetalLB only sends Layer 2 announcements on `eth1`. All other interfaces are left untouched.
 
-## Matching Interfaces by Regex
+## Handling Different Interface Names
 
-Not every cluster uses consistent interface names. One node might have `ens192`, another `ens224`. You can use regex patterns to match groups of interfaces:
+Not every cluster uses consistent interface names. One node might have `ens192`, another `ens224`. The `interfaces` field uses exact interface names, so combine it with `nodeSelectors` when different nodes need different interface names:
 
 ```yaml
-# L2Advertisement using regex to match interface names
-# Matches any interface starting with "ens" followed by digits
+# L2Advertisement for nodes whose data interface is ens192
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
 metadata:
-  name: data-network-advert
+  name: data-network-node-a
   namespace: metallb-system
 spec:
   ipAddressPools:
     - public-pool
+  nodeSelectors:
+    - matchLabels:
+        kubernetes.io/hostname: node-a
   interfaces:
-    # Regex pattern matching ens-prefixed interfaces
-    - ens1.*
+    - ens192
+---
+# L2Advertisement for nodes whose data interface is ens224
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: data-network-node-b
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - public-pool
+  nodeSelectors:
+    - matchLabels:
+        kubernetes.io/hostname: node-b
+  interfaces:
+    - ens224
 ```
 
-This matches `ens192`, `ens19`, `ens1f0`, and any other interface whose name starts with `ens1`.
+This announces the same pool from `ens192` on `node-a` and from `ens224` on `node-b`.
 
 ## Multi-NIC Scenario: Separating Traffic
 
@@ -237,14 +253,14 @@ sequenceDiagram
 
 ## Common Pitfalls
 
-**Misspelled interface names.** MetalLB silently ignores interfaces it cannot find. Double-check names with `ip link show` on each node.
+**Misspelled interface names.** If MetalLB elects a node where the selected interface is not available, the service is not announced from that node. Double-check names with `ip link show` on each node.
 
-**Inconsistent naming across nodes.** If node-1 has `eth1` but node-2 has `ens192`, a single static name will not work. Use regex patterns or ensure consistent naming with udev rules.
+**Inconsistent naming across nodes.** If node-1 has `eth1` but node-2 has `ens192`, a single static name will not work. Use separate `L2Advertisement` resources with `nodeSelectors`, or ensure consistent naming with udev rules.
 
 **VLAN interfaces.** If your data network uses VLANs, use the VLAN interface name (for example, `eth1.100`) rather than the parent interface.
 
 ## Conclusion
 
-Interface selection in MetalLB gives you precise control over where Layer 2 announcements are sent. In multi-homed environments, this prevents traffic leaking across network boundaries, reduces ARP noise, and improves security. The `interfaces` field in `L2Advertisement` supports both exact names and regex patterns, making it flexible enough for heterogeneous clusters.
+Interface selection in MetalLB gives you precise control over where Layer 2 announcements are sent. In multi-homed environments, this prevents traffic leaking across network boundaries, reduces ARP noise, and improves security. The `interfaces` field in `L2Advertisement` supports exact interface names and can be combined with `nodeSelectors` for heterogeneous clusters.
 
 If you are running MetalLB in a production bare-metal cluster, pairing interface selection with proper monitoring ensures you catch misconfigurations before they cause outages. [OneUptime](https://oneuptime.com) can monitor your Kubernetes services, alert you when load balancer IPs become unreachable, and give you full observability into your bare-metal infrastructure.
