@@ -371,7 +371,7 @@ kubectl logs job/myapp-migrate
 # List all hooks in a release
 helm get hooks my-release
 
-# If a hook fails, the release will be stuck
+# If a hook fails, the release will fail
 # Check the hook job status
 kubectl describe job myapp-migrate
 ```
