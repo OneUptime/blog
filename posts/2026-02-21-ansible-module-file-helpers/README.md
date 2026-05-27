@@ -13,6 +13,9 @@ Ansible provides file utility functions that handle common operations like atomi
 ## Atomic File Write
 
 ```python
+import os
+import tempfile
+
 from ansible.module_utils.basic import AnsibleModule
 
 def run_module():
@@ -28,12 +31,23 @@ def run_module():
     path = module.params['path']
     content = module.params['content']
 
-    # Use module's atomic_move for safe writes
-    tmp_fd, tmp_path = module.tmpfile()
-    with os.fdopen(tmp_fd, 'w') as f:
-        f.write(content)
+    if module.check_mode:
+        module.exit_json(changed=True)
 
-    module.atomic_move(tmp_path, path)
+    # Use module's atomic_move for safe writes
+    directory = os.path.dirname(path) or '.'
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=directory)
+    try:
+        with os.fdopen(tmp_fd, 'w') as f:
+            f.write(content)
+
+        module.atomic_move(tmp_path, path, unsafe_writes=module.params['unsafe_writes'])
+    except Exception as e:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        module.fail_json(msg=str(e))
+
+    module.exit_json(changed=True)
 ```
 
 ## Backup Files
@@ -46,7 +60,7 @@ backup_file = module.backup_local(path)
 
 ## File Common Arguments
 
-With add_file_common_args=True, your module gets owner, group, mode, seuser, selevel, setype, serole, and attributes parameters automatically.
+With add_file_common_args=True, your module gets owner, group, mode, seuser, selevel, setype, serole, attributes, and unsafe_writes parameters automatically.
 
 ```python
 # Apply file attributes after creating/modifying
@@ -59,9 +73,11 @@ changed = module.set_fs_attributes_if_different(file_args, changed)
 ```python
 # Get file info
 import os
-stat = os.stat(path)
-current_mode = oct(stat.st_mode)[-3:]
-current_owner = stat.st_uid
+import stat
+
+file_stat = os.stat(path)
+current_mode = format(stat.S_IMODE(file_stat.st_mode), '04o')
+current_owner = file_stat.st_uid
 ```
 
 ## Key Takeaways
