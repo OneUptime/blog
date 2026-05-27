@@ -14,7 +14,7 @@ This guide covers how to use Helm's release management to inspect, compare, and 
 
 ## How Helm Stores Release History
 
-Every time you install or upgrade a release, Helm creates a new revision and stores it as a Kubernetes Secret in the release namespace.
+Every time you install or upgrade a release, Helm creates a new revision. By default, Helm stores release information as a Kubernetes Secret in the release namespace.
 
 ```mermaid
 graph LR
@@ -24,7 +24,7 @@ graph LR
 ```
 
 ```bash
-# Helm stores release data as Kubernetes secrets
+# Helm stores release data as Kubernetes secrets by default
 
 kubectl get secrets -l owner=helm
 # Output:
@@ -142,12 +142,12 @@ Notice that rollback creates a new revision (4) rather than removing revision 3.
 
 ## Automatic Rollback on Failure
 
-Use the `--atomic` flag to automatically roll back if an upgrade fails:
+Use the `--rollback-on-failure` flag to automatically roll back if an upgrade fails:
 
 ```bash
-# Atomic upgrade: automatically rolls back on failure
+# Automatically roll back on failure
 helm upgrade myapp ./myapp \
-  --atomic \
+  --rollback-on-failure \
   --timeout 5m \
   -f production-values.yaml
 
@@ -166,7 +166,7 @@ helm upgrade myapp ./myapp \
 
 # Combine --install for first-time deployments
 helm upgrade --install myapp ./myapp \
-  --atomic \
+  --rollback-on-failure \
   --timeout 5m
 ```
 
@@ -179,7 +179,7 @@ By default, Helm keeps 10 revisions. Too many revisions waste cluster storage. T
 helm upgrade myapp ./myapp --history-max 5
 
 # Check current revision count
-helm history myapp | wc -l
+helm history myapp -o json | jq length
 ```
 
 ```yaml
@@ -188,7 +188,7 @@ helm history myapp | wc -l
 deploy:
   script:
     - helm upgrade --install myapp ./myapp
-        --atomic
+        --rollback-on-failure
         --timeout 5m
         --history-max 10
         -f values-production.yaml
@@ -231,15 +231,15 @@ VALUES_FILE="values-production.yaml"
 # Record the current revision before upgrading
 CURRENT_REVISION=$(helm history "$RELEASE_NAME" \
   -n "$NAMESPACE" \
-  -o json | jq -r '.[-1].revision')
+  -o json 2>/dev/null | jq -r '.[-1].revision // empty' || true)
 
 echo "Current revision: $CURRENT_REVISION"
 echo "Starting upgrade..."
 
-# Attempt the upgrade with atomic rollback
+# Attempt the upgrade with automatic rollback
 if helm upgrade --install "$RELEASE_NAME" "$CHART_PATH" \
   -n "$NAMESPACE" \
-  --atomic \
+  --rollback-on-failure \
   --timeout "$TIMEOUT" \
   --history-max 10 \
   -f "$VALUES_FILE" \
@@ -248,7 +248,7 @@ if helm upgrade --install "$RELEASE_NAME" "$CHART_PATH" \
   echo "Upgrade successful"
   helm status "$RELEASE_NAME" -n "$NAMESPACE"
 else
-  echo "Upgrade failed, atomic flag handled rollback"
+  echo "Upgrade failed, rollback-on-failure handled rollback"
   echo "Current status:"
   helm status "$RELEASE_NAME" -n "$NAMESPACE"
   exit 1
@@ -259,8 +259,13 @@ echo "Running Helm tests..."
 if helm test "$RELEASE_NAME" -n "$NAMESPACE" --timeout 2m; then
   echo "All tests passed"
 else
-  echo "Tests failed, rolling back to revision $CURRENT_REVISION"
-  helm rollback "$RELEASE_NAME" "$CURRENT_REVISION" -n "$NAMESPACE" --wait
+  if [ -n "$CURRENT_REVISION" ]; then
+    echo "Tests failed, rolling back to revision $CURRENT_REVISION"
+    helm rollback "$RELEASE_NAME" "$CURRENT_REVISION" -n "$NAMESPACE" --wait
+  else
+    echo "Tests failed, uninstalling first deployment"
+    helm uninstall "$RELEASE_NAME" -n "$NAMESPACE"
+  fi
   exit 1
 fi
 ```
@@ -278,7 +283,7 @@ kubectl get pods -l app.kubernetes.io/instance=myapp
 kubectl get events --sort-by='.lastTimestamp' | tail -20
 
 # Force replace resources if stuck
-helm upgrade myapp ./myapp --force
+helm upgrade myapp ./myapp --force-replace
 
 # As a last resort, delete and reinstall
 helm uninstall myapp
@@ -287,7 +292,7 @@ helm install myapp ./myapp -f values-production.yaml
 
 ## Best Practices
 
-1. **Always use --atomic in production** to get automatic rollback on failure
+1. **Always use --rollback-on-failure in production** to get automatic rollback on failure
 2. **Set --timeout appropriately** based on your application's startup time
 3. **Keep 5-10 revisions** of history for rollback capability
 4. **Run helm test after deployment** to catch issues early
@@ -296,6 +301,6 @@ helm install myapp ./myapp -f values-production.yaml
 
 ## Conclusion
 
-Helm's release history and rollback features give you a safety net for every deployment. Combined with atomic upgrades, automated tests, and CI/CD integration, you can deploy with confidence knowing that any failure will be quickly reverted.
+Helm's release history and rollback features give you a safety net for every deployment. Combined with automatic rollback, automated tests, and CI/CD integration, you can deploy with confidence knowing that any failure will be quickly reverted.
 
 For comprehensive monitoring of your Helm deployments, [OneUptime](https://oneuptime.com) provides real-time alerts, uptime monitoring, and incident management so you know immediately when a deployment impacts your users.
