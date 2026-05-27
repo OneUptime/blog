@@ -57,11 +57,11 @@ gcloud compute sole-tenancy node-templates create my-node-template \
 
 The `--node-affinity-labels` flag is important. You will reference these labels when creating VMs to ensure they land on your sole-tenant nodes.
 
-For workloads with specific license requirements, you can also configure the node template to use a specific maintenance policy:
+For workloads with specific license requirements, you can also configure the node template to use a specific server binding policy:
 
 ```bash
-# Create a node template with a restart maintenance policy
-# This is important for license compliance - ensures VMs stay on the same physical server
+# Create a node template with a restart server binding policy
+# This helps minimize server changes for licenses tied to physical server characteristics
 gcloud compute sole-tenancy node-templates create license-node-template \
     --region=us-central1 \
     --node-type=n1-node-96-624 \
@@ -69,10 +69,10 @@ gcloud compute sole-tenancy node-templates create license-node-template \
     --server-binding=restart-node-on-minimal-servers
 ```
 
-The `--server-binding` option controls how VMs are placed during maintenance events:
+The `--server-binding` option controls where nodes restart after maintenance events:
 
-- `restart-node-on-any-server`: VMs can move to any server in the node group (default)
-- `restart-node-on-minimal-servers`: VMs are restarted on the minimum number of physical servers
+- `restart-node-on-any-server`: Nodes using the template restart on any physical server after maintenance (default)
+- `restart-node-on-minimal-servers`: Nodes using the template restart on the same physical server when possible, which can cause VM outages during maintenance
 
 ## Step 3: Create a Node Group
 
@@ -207,9 +207,9 @@ resource "google_compute_instance" "licensed_app" {
 
 Sole-tenant nodes are commonly used for bring-your-own-license scenarios. Here are the key license types that benefit:
 
-**Windows Server**: You can use your existing Windows Server licenses on sole-tenant nodes instead of paying for GCP's per-VM Windows license. This is allowed under Microsoft's License Mobility rules for Software Assurance.
+**Windows Server**: Some existing Windows Server licenses can be used on sole-tenant nodes instead of paying for Google Cloud's per-VM Windows license, but Windows Server is not covered by Microsoft's License Mobility. Eligibility depends on your Microsoft agreement, and BYOL Windows Server workloads require imported custom images rather than Google Cloud's prebuilt Windows images.
 
-**SQL Server**: Similar to Windows Server, SQL Server licenses with Software Assurance can be brought to sole-tenant nodes.
+**SQL Server**: SQL Server licenses with Software Assurance are typically handled through Microsoft License Mobility and might not require sole-tenant nodes by themselves. Sole-tenant nodes are still required when your SQL Server deployment also uses a BYOL Windows Server image, or when your SQL Server license terms require dedicated hardware.
 
 **Oracle**: Oracle licensing is famously tied to physical cores. On sole-tenant nodes, you know exactly how many physical cores your VM has access to, which simplifies license audits.
 
