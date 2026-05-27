@@ -4,41 +4,41 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IAM, IAM Conditions, IP Restriction, Security, Access Control
 
-Description: Learn how to use IAM Conditions in GCP to restrict resource access based on the requester's IP address for enhanced security and compliance.
+Description: Learn how to use IAM Conditions with Access Context Manager in GCP to restrict IAP-secured access based on the requester's IP address for enhanced security and compliance.
 
 ---
 
-Sometimes granting a role to a user or service account is not enough - you also need to control where they can access resources from. Maybe your compliance team requires that certain GCP resources can only be managed from the corporate network. Or maybe you want to restrict a contractor's access to specific IP ranges. IAM Conditions in GCP let you add these kinds of restrictions directly to IAM policy bindings.
+Sometimes granting a role to a user or service account is not enough - you also need to control where they can access resources from. Maybe your compliance team requires that certain GCP resources can only be managed from the corporate network. Or maybe you want to restrict a contractor's access to specific IP ranges. For IAP-secured applications and TCP tunnels, IAM Conditions in GCP can reference Access Context Manager access levels to add these kinds of restrictions directly to IAM policy bindings.
 
-In this post, I will show you how to set up IP-based IAM conditions to restrict who can access your GCP resources and from where.
+In this post, I will show you how to set up IP-based IAM conditions for IAP-secured access and restrict who can access your resources and from where.
 
 ## What Are IAM Conditions?
 
 IAM Conditions are expressions that you attach to IAM policy bindings. The binding only takes effect when the condition evaluates to true. You can write conditions based on:
 
-- **Request attributes**: IP address, access time, resource attributes
+- **Request attributes**: Access levels, access time, destination IP and port for IAP TCP tunneling, URL path and host for supported services
 - **Resource attributes**: Resource name, type, tags
 - **Date/time**: Time of day, day of week
 
 Conditions use the Common Expression Language (CEL). Here is a simple example:
 
 ```text
-request.auth.claims.ip_address == "203.0.113.0"
+request.time < timestamp("2026-12-31T23:59:59Z")
 ```
 
-But for IP-based restrictions, you will actually use the `origin` attributes.
+But for IP-based restrictions in IAM bindings, you will actually define the IP ranges in Access Context Manager and reference the resulting access level with `request.auth.access_levels`.
 
 ## How IP-Based Conditions Work
 
-When a request hits GCP's IAM system, it includes information about the caller including their IP address. You can reference this in conditions using `request.auth.access_levels` (for Access Context Manager) or by using VPC Service Controls for network-based restrictions.
+Access Context Manager evaluates request context, including attributes such as the origin IP address, device attributes, and time of day, and applies access levels when the request matches your policy.
 
-However, the most direct approach for IAM conditions is using the `request.auth.claims` attribute or configuring Access Context Manager access levels.
+IAM Conditions can then check whether a request has a specific Access Context Manager access level by using `request.auth.access_levels`. This IAM attribute is supported for Identity-Aware Proxy (IAP) access checks, such as IAP-secured web apps and IAP TCP tunneling. It is not a general-purpose way to restrict every Google Cloud IAM role by caller IP.
 
 Let me walk through the practical approach.
 
 ## Method 1: Using Access Context Manager (Recommended)
 
-The recommended way to restrict by IP address is to create an Access Level in Access Context Manager and reference it in IAM conditions.
+The recommended way to restrict IAP-secured access by IP address is to create an Access Level in Access Context Manager and reference it in IAM conditions.
 
 ### Step 1: Create an Access Policy
 
@@ -49,14 +49,14 @@ If you do not already have an Access Context Manager policy:
 
 gcloud access-context-manager policies create \
     --organization=123456789 \
-    --title="Organization Access Policy"
+    --title="Organization_Access_Policy"
 ```
 
 ### Step 2: Create an Access Level with IP Conditions
 
 ```bash
 # Create an access level that allows specific IP ranges
-gcloud access-context-manager levels create corporate-network \
+gcloud access-context-manager levels create corporate_network \
     --title="Corporate Network" \
     --basic-level-spec=corporate-network-spec.yaml \
     --policy=POLICY_ID
@@ -67,84 +67,91 @@ The spec file defines the IP ranges:
 ```yaml
 # corporate-network-spec.yaml
 # Define the conditions for the corporate network access level
-conditions:
-  - ipSubnetworks:
-      - "203.0.113.0/24"
-      - "198.51.100.0/24"
-      - "2001:db8::/32"
+- ipSubnetworks:
+    - "203.0.113.0/24"
+    - "198.51.100.0/24"
+    - "2001:db8::/32"
 ```
 
 You can also include device policy requirements:
 
 ```yaml
 # corporate-network-spec.yaml
-conditions:
-  - ipSubnetworks:
-      - "203.0.113.0/24"
-      - "198.51.100.0/24"
-  - ipSubnetworks:
-      - "192.0.2.0/24"
-    devicePolicy:
-      requireScreenlock: true
-      osConstraints:
-        - osType: DESKTOP_CHROME_OS
+- ipSubnetworks:
+    - "203.0.113.0/24"
+    - "198.51.100.0/24"
+- ipSubnetworks:
+    - "192.0.2.0/24"
+  devicePolicy:
+    requireScreenlock: true
+    osConstraints:
+      - osType: DESKTOP_CHROME_OS
 ```
 
 ### Step 3: Use the Access Level in an IAM Condition
 
-Now you can reference this access level in an IAM policy binding:
+Now you can reference this access level in an IAM policy binding for an IAP role:
 
 ```bash
-# Grant a role with an access level condition
+# Grant IAP web app access with an access level condition
 gcloud projects add-iam-policy-binding my-project \
     --member="user:admin@example.com" \
-    --role="roles/compute.instanceAdmin.v1" \
-    --condition="expression=request.auth.access_levels.exists(level, level == 'accessPolicies/POLICY_ID/accessLevels/corporate-network'),title=Corporate Network Only,description=Only allow access from corporate network"
+    --role="roles/iap.httpsResourceAccessor" \
+    --condition="expression='accessPolicies/POLICY_ID/accessLevels/corporate_network' in request.auth.access_levels,title=Corporate Network Only,description=Only allow access from corporate network"
 ```
 
 Breaking down the condition expression:
 
 ```text
-request.auth.access_levels.exists(level, level == 'accessPolicies/POLICY_ID/accessLevels/corporate-network')
+'accessPolicies/POLICY_ID/accessLevels/corporate_network' in request.auth.access_levels
 ```
 
-This evaluates to true only when the request originates from an IP address within the ranges defined in the `corporate-network` access level.
+This evaluates to true only when the request satisfies the `corporate_network` access level.
 
-## Method 2: Direct IP Condition in IAM (Limited)
+## Method 2: Custom Access Level with an IP Expression
 
-For simpler cases, you can write IP conditions directly without Access Context Manager, but this approach is more limited and only works with certain resource types:
+For more complex IP logic, you can create a custom Access Context Manager access level. The IP expression belongs in the access level, not directly in the IAM binding:
+
+```yaml
+# corporate-network-custom.yaml
+expression: "inIpRange(origin.ip, ['203.0.113.0/24', '198.51.100.0/24'])"
+```
 
 ```bash
-# Grant role with direct IP condition
-gcloud projects add-iam-policy-binding my-project \
-    --member="user:developer@example.com" \
-    --role="roles/storage.objectViewer" \
-    --condition='expression=request.auth.claims.client_ip == "203.0.113.50",title=Office IP Only'
+# Create a custom access level that checks origin IP ranges
+gcloud access-context-manager levels create corporate_network_custom \
+    --title="Corporate Network Custom" \
+    --custom-level-spec=corporate-network-custom.yaml \
+    --policy=POLICY_ID
 ```
 
-Note: Direct IP conditions in IAM are not universally supported across all GCP services. Access Context Manager is the more reliable approach.
+Note: IAM Conditions do not provide a documented general-purpose `request.auth.claims.client_ip` attribute for direct caller-IP checks. Access Context Manager is the reliable approach for IP-based access levels.
 
 ## Practical Examples
 
-### Example 1: Restrict Cloud Console Access to Corporate Network
+### Example 1: Restrict IAP Web App Access to Corporate Network
 
 ```bash
 # Create access level for corporate offices
-gcloud access-context-manager levels create office-network \
+gcloud access-context-manager levels create office_network \
     --title="Office Network" \
-    --basic-level-spec=- <<EOF
-conditions:
-  - ipSubnetworks:
-      - "203.0.113.0/24"
-      - "198.51.100.0/24"
-EOF
+    --basic-level-spec=office-network-spec.yaml \
     --policy=POLICY_ID
+```
 
+```yaml
+# office-network-spec.yaml
+- ipSubnetworks:
+    - "203.0.113.0/24"
+    - "198.51.100.0/24"
+```
+
+```bash
 # Bind with condition
 gcloud projects add-iam-policy-binding my-project \
     --member="group:developers@example.com" \
-    --role="roles/editor" \
-    --condition="expression=request.auth.access_levels.exists(level, level == 'accessPolicies/POLICY_ID/accessLevels/office-network'),title=Office Only"
+    --role="roles/iap.httpsResourceAccessor" \
+    --condition="expression='accessPolicies/POLICY_ID/accessLevels/office_network' in request.auth.access_levels,title=Office Only"
 ```
 
 ### Example 2: Allow VPN and Office Access
@@ -152,46 +159,46 @@ gcloud projects add-iam-policy-binding my-project \
 ```yaml
 # vpn-and-office-spec.yaml
 # Include both office and VPN exit IP ranges
-conditions:
-  - ipSubnetworks:
-      - "203.0.113.0/24"
-      - "198.51.100.0/24"
-      - "192.0.2.100/32"
-      - "192.0.2.101/32"
+- ipSubnetworks:
+    - "203.0.113.0/24"
+    - "198.51.100.0/24"
+    - "192.0.2.100/32"
+    - "192.0.2.101/32"
 ```
 
-### Example 3: Different Access Levels for Different Roles
+### Example 3: Different Access Levels for Different IAP Roles
 
 ```bash
-# Full admin access only from office
+# IAP web app access only from office
 gcloud projects add-iam-policy-binding my-project \
     --member="user:admin@example.com" \
-    --role="roles/owner" \
-    --condition="expression=request.auth.access_levels.exists(level, level == 'accessPolicies/POLICY_ID/accessLevels/office-network'),title=Admin Office Only"
+    --role="roles/iap.httpsResourceAccessor" \
+    --condition="expression='accessPolicies/POLICY_ID/accessLevels/office_network' in request.auth.access_levels,title=Admin Office Only"
 
-# Read-only access from anywhere (no condition)
+# IAP TCP tunnel access only from VPN
 gcloud projects add-iam-policy-binding my-project \
     --member="user:admin@example.com" \
-    --role="roles/viewer"
+    --role="roles/iap.tunnelResourceAccessor" \
+    --condition="expression='accessPolicies/POLICY_ID/accessLevels/vpn_network' in request.auth.access_levels,title=Admin VPN Only"
 ```
 
-This gives the admin full access from the office but read-only access when working remotely.
+This gives the admin different IAP access paths depending on which access level the request satisfies.
 
 ## Combining IP Conditions with Other Restrictions
 
-IAM conditions support logical operators, so you can combine IP restrictions with other criteria:
+IAM conditions support logical operators, so you can combine access level restrictions with other criteria:
 
 ```bash
 # Allow access only from corporate network AND only during business hours
 gcloud projects add-iam-policy-binding my-project \
     --member="user:contractor@example.com" \
-    --role="roles/compute.viewer" \
-    --condition="expression=request.auth.access_levels.exists(level, level == 'accessPolicies/POLICY_ID/accessLevels/office-network') && request.time.getHours('America/New_York') >= 9 && request.time.getHours('America/New_York') < 17,title=Office Hours from Office Only"
+    --role="roles/iap.httpsResourceAccessor" \
+    --condition="expression='accessPolicies/POLICY_ID/accessLevels/office_network' in request.auth.access_levels && request.time.getHours('America/New_York') >= 9 && request.time.getHours('America/New_York') < 17,title=Office Hours from Office Only"
 ```
 
 ## Using Terraform
 
-For infrastructure-as-code, here is how to set up IP-restricted IAM with Terraform:
+For infrastructure-as-code, here is how to set up IP-restricted IAP access with Terraform:
 
 ```hcl
 # Create the access level
@@ -211,9 +218,9 @@ resource "google_access_context_manager_access_level" "corporate" {
 }
 
 # IAM binding with condition
-resource "google_project_iam_binding" "admin_from_office" {
+resource "google_project_iam_binding" "iap_from_office" {
   project = "my-project"
-  role    = "roles/compute.instanceAdmin.v1"
+  role    = "roles/iap.httpsResourceAccessor"
 
   members = [
     "group:admins@example.com"
@@ -222,7 +229,7 @@ resource "google_project_iam_binding" "admin_from_office" {
   condition {
     title       = "Corporate Network Only"
     description = "Only allow access from corporate network"
-    expression  = "request.auth.access_levels.exists(level, level == '${google_access_context_manager_access_level.corporate.name}')"
+    expression  = "'${google_access_context_manager_access_level.corporate.name}' in request.auth.access_levels"
   }
 }
 ```
@@ -259,12 +266,12 @@ for binding in policy.get('bindings', []):
 
 Be aware of these constraints:
 
-1. **Not all resources support conditions**: Check the GCP documentation for which resource types support conditional IAM bindings.
-2. **Condition length limit**: CEL expressions cannot exceed 12,800 bytes.
-3. **Performance impact**: Complex conditions add slight latency to IAM evaluation.
-4. **Service accounts**: IP conditions apply to the direct caller. If a service account makes a request, the IP is the IP of the machine running the code, not the user who triggered it.
-5. **Cloud Console**: IP conditions work with Console access since the browser's IP is what gets checked.
+1. **Access level conditions are limited to IAP IAM checks**: `request.auth.access_levels` is supported for IAP-secured web app and TCP tunnel access checks, not for arbitrary Google Cloud roles.
+2. **Do not use basic roles with conditions**: The `gcloud projects add-iam-policy-binding --condition` flag cannot be used with basic roles such as Owner, Editor, and Viewer.
+3. **Condition length limit**: CEL expressions cannot exceed 12,800 bytes.
+4. **Service accounts**: IP-based access levels evaluate the request context for the caller making the request. If a service account makes a request, test carefully so you know which network path is being evaluated.
+5. **Cloud Console**: Access level conditions do not provide a general Cloud Console IP allowlist for all Google Cloud resources. They apply where the referenced IAM condition attribute is supported, such as IAP access.
 
 ## Wrapping Up
 
-IP-based IAM conditions are a powerful tool for enforcing network-based access controls in GCP. The recommended approach is to define IP ranges in Access Context Manager access levels and reference those levels in IAM conditions. This gives you a clean separation between the IP policy definition and the IAM bindings, making both easier to manage. Combine IP restrictions with time-based conditions for even tighter control, and always test your conditions in a non-production environment before rolling them out.
+IP-based IAM conditions are a powerful tool for enforcing network-based access controls for IAP-secured access in GCP. The recommended approach is to define IP ranges in Access Context Manager access levels and reference those levels in IAM conditions. This gives you a clean separation between the IP policy definition and the IAM bindings, making both easier to manage. Combine IP restrictions with time-based conditions for even tighter control, and always test your conditions in a non-production environment before rolling them out.
