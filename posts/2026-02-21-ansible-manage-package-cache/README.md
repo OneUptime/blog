@@ -19,7 +19,7 @@ Both APT and YUM/DNF maintain local caches:
 - **APT** stores package metadata in `/var/lib/apt/lists/` and downloaded `.deb` files in `/var/cache/apt/archives/`.
 - **YUM/DNF** stores package metadata and RPMs in `/var/cache/yum/` or `/var/cache/dnf/`.
 
-These caches serve two purposes: they avoid downloading package metadata on every operation, and they keep downloaded packages around in case you need to reinstall them.
+These caches serve two purposes: they avoid downloading package metadata on every operation, and, depending on configuration, they can keep downloaded packages around in case you need to reinstall them.
 
 ## Updating the APT Cache
 
@@ -96,8 +96,9 @@ On RHEL-based systems, cache management works through the `dnf` or `yum` modules
 ```yaml
 # Update DNF cache (equivalent to dnf makecache)
 - name: Update DNF metadata cache
-  ansible.builtin.dnf:
-    update_cache: true
+  ansible.builtin.command:
+    cmd: dnf makecache
+  changed_when: true
 ```
 
 ### Cleaning the YUM/DNF Cache
@@ -194,12 +195,9 @@ You can control how the package manager uses its cache through configuration fil
   ansible.builtin.copy:
     dest: /etc/apt/apt.conf.d/99cache-settings
     content: |
-      // Keep downloaded packages for 7 days, then auto-clean
+      // Enable periodic downloads and auto-clean obsolete package files every 7 days
       APT::Periodic::Download-Upgradeable-Packages "1";
       APT::Periodic::AutocleanInterval "7";
-
-      // Limit cache size (packages only, not metadata)
-      APT::Cache-Limit "100000000";
     mode: '0644'
 ```
 
@@ -230,15 +228,14 @@ In CI/CD environments or when provisioning new machines, you might want to pre-w
 
 ```yaml
 # Pre-warm the APT cache by downloading packages without installing
-- name: Download packages for later installation
+- name: Update APT cache
   ansible.builtin.apt:
-    name:
-      - nginx
-      - postgresql-15
-      - redis-server
-    state: present
-    download_only: true
     update_cache: true
+
+- name: Download packages for later installation
+  ansible.builtin.command:
+    cmd: apt-get --download-only install -y nginx postgresql-15 redis-server
+  changed_when: true
 ```
 
 ```yaml
