@@ -369,7 +369,6 @@ One common problem is long-running cron jobs overlapping with the next scheduled
           JOB_NAME="$1"
           TIMEOUT="$2"
           shift 2
-          COMMAND="$@"
 
           LOCK_DIR="/var/lock/cron"
           LOG_DIR="/var/log/cron-jobs"
@@ -386,7 +385,7 @@ One common problem is long-running cron jobs overlapping with the next scheduled
           fi
 
           echo "$(date '+%Y-%m-%d %H:%M:%S') START: ${JOB_NAME}" >> "$LOG_FILE"
-          timeout "${TIMEOUT}m" $COMMAND >> "$LOG_FILE" 2>&1
+          timeout "${TIMEOUT}m" "$@" >> "$LOG_FILE" 2>&1
           RC=$?
           echo "$(date '+%Y-%m-%d %H:%M:%S') END: ${JOB_NAME} (exit: ${RC})" >> "$LOG_FILE"
 
@@ -406,7 +405,7 @@ One common problem is long-running cron jobs overlapping with the next scheduled
         minute: "0"
         hour: "*/2"
         job: "/usr/local/bin/cron-wrapper.sh sitemap-gen 30 /opt/app/bin/generate-sitemap.sh"
-        user: www-data
+        user: root
 ```
 
 ## Cron Management Workflow
@@ -430,7 +429,7 @@ flowchart TD
 
 From managing thousands of cron jobs across large fleets:
 
-1. Always use the `name` parameter in Ansible cron tasks. Without it, Ansible cannot identify which cron entry to manage, and you will end up with duplicate entries every time you run the playbook.
+1. Always use a stable, unique `name` parameter in Ansible cron tasks. Modern Ansible requires it, and Ansible uses that name to identify which cron entry to update or remove on later playbook runs.
 
 2. Redirect stdout and stderr in your cron jobs. The default behavior sends output as email to the user, which usually goes nowhere on servers without local mail delivery configured. Use `>> /var/log/something.log 2>&1` on every job.
 
