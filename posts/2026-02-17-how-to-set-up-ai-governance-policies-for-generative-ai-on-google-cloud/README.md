@@ -71,7 +71,8 @@ aiplatform.endpoints.deploy,\
 aiplatform.endpoints.undeploy,\
 aiplatform.models.create,\
 aiplatform.models.delete,\
-aiplatform.models.deploy,\
+aiplatform.models.get,\
+aiplatform.models.list,\
 aiplatform.models.upload"
 
 # Assign roles to groups (not individual users)
@@ -95,12 +96,12 @@ gcloud access-context-manager perimeters create ai-perimeter \
     --resources="projects/your-project-number" \
     --restricted-services="\
 aiplatform.googleapis.com,\
-generativelanguage.googleapis.com" \
+firebasevertexai.googleapis.com" \
     --access-levels="accessPolicies/YOUR_POLICY/accessLevels/trusted-networks" \
     --policy=YOUR_POLICY_ID
 ```
 
-This ensures AI APIs can only be called from approved networks and identities, preventing unauthorized access or data exfiltration through the API.
+This helps restrict supported AI APIs to approved networks and identities, reducing unauthorized access or data exfiltration through the API.
 
 ## Step 3: Create a Usage Policy Document
 
@@ -109,17 +110,17 @@ Define clear policies for how generative AI can be used in your organization. He
 ```python
 # ai_policy.py - Enforce AI usage policies programmatically
 from google.cloud import firestore
-from datetime import datetime
-import json
+from datetime import datetime, timezone
+import re
 
 db = firestore.Client()
 
 # Define the governance policies
 POLICIES = {
     "approved_models": [
-        "gemini-2.0-flash",
-        "gemini-2.0-pro",
-        "text-embedding-005",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-embedding-001",
     ],
     "prohibited_use_cases": [
         "generating_fake_news",
@@ -154,9 +155,18 @@ def store_policies():
     doc_ref.set({
         "policies": POLICIES,
         "version": "1.0",
-        "effective_date": datetime.utcnow().isoformat(),
+        "effective_date": datetime.now(timezone.utc).isoformat(),
         "approved_by": "AI Governance Board",
     })
+
+def contains_pii(text):
+    """Basic local PII check. Use Sensitive Data Protection for production."""
+    patterns = [
+        r"\b[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}\b",
+        r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",
+        r"\b\d{3}-\d{2}-\d{4}\b",
+    ]
+    return any(re.search(pattern, text) for pattern in patterns)
 
 def check_policy_compliance(request_context):
     """Validate an AI API request against governance policies.
@@ -188,9 +198,8 @@ Log all interactions with generative AI for audit purposes:
 ```python
 # audit_logger.py - Log AI interactions for governance auditing
 from google.cloud import bigquery, logging as cloud_logging
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
-import json
 
 # Set up Cloud Logging for real-time audit trail
 logging_client = cloud_logging.Client()
@@ -200,13 +209,13 @@ bq_client = bigquery.Client()
 
 def log_ai_interaction(user_id, model, prompt, response, use_case, metadata=None):
     """Log an AI interaction for audit trail and compliance.
-    Hashes sensitive content while preserving audit capability."""
+    Hashes prompt content while preserving audit capability."""
 
-    # Hash the prompt and response for privacy while maintaining auditability
+    # Hash the prompt for privacy while maintaining auditability
     prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
 
     audit_record = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "user_id": user_id,
         "model": model,
         "use_case": use_case,
@@ -214,7 +223,7 @@ def log_ai_interaction(user_id, model, prompt, response, use_case, metadata=None
         "prompt_length": len(prompt),
         "response_length": len(response),
         "estimated_tokens": (len(prompt) + len(response)) // 4,
-        "metadata": json.dumps(metadata or {}),
+        "metadata": metadata or {},
     }
 
     # Write to Cloud Logging for real-time monitoring
@@ -309,15 +318,16 @@ def scan_prompt_for_pii(prompt_text):
 Prevent runaway AI spending with budget alerts and quotas:
 
 ```bash
-# Set a daily budget alert for Vertex AI spending
+# Set a monthly budget alert for Vertex AI spending
+# Replace VERTEX_AI_SERVICE_ID with the Cloud Billing Catalog service ID for Vertex AI.
 gcloud billing budgets create \
     --billing-account=YOUR_BILLING_ACCOUNT \
-    --display-name="AI Services Daily Budget" \
-    --budget-amount=500 \
+    --display-name="AI Services Monthly Budget" \
+    --budget-amount=10000 \
     --filter-projects="projects/your-project-id" \
-    --filter-services="services/aiplatform.googleapis.com" \
-    --threshold-rule=percent=80,basis=CURRENT_SPEND \
-    --threshold-rule=percent=100,basis=CURRENT_SPEND \
+    --filter-services="services/VERTEX_AI_SERVICE_ID" \
+    --threshold-rule=percent=0.80,basis=CURRENT_SPEND \
+    --threshold-rule=percent=1.00,basis=CURRENT_SPEND \
     --notifications-rule-pubsub-topic="projects/your-project-id/topics/budget-alerts"
 ```
 
