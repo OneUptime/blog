@@ -104,9 +104,9 @@ def main(args):
         ]
     )
 
-    # Save the model
+    # Export the model as a TensorFlow SavedModel
     model_dir = os.environ.get("AIP_MODEL_DIR", args.model_dir)
-    model.save(model_dir)
+    model.export(model_dir)
     print(f"Model saved to {model_dir}")
 
 if __name__ == "__main__":
@@ -143,7 +143,7 @@ job = aiplatform.CustomJob(
             },
             "replica_count": 1,  # Single machine with multiple GPUs
             "python_package_spec": {
-                "executor_image_uri": "us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-13:latest",
+                "executor_image_uri": "us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-17.py310:latest",
                 "package_uris": ["gs://your-bucket/packages/trainer-0.1.tar.gz"],
                 "python_module": "trainer.train",
                 "args": [
@@ -174,6 +174,29 @@ import os
 import json
 import tensorflow as tf
 
+def create_model():
+    """Build a simple CNN for demonstration."""
+    return tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(28, 28, 1)),
+        tf.keras.layers.Conv2D(32, 3, activation="relu"),
+        tf.keras.layers.MaxPooling2D(),
+        tf.keras.layers.Conv2D(64, 3, activation="relu"),
+        tf.keras.layers.MaxPooling2D(),
+        tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(128, activation="relu"),
+        tf.keras.layers.Dropout(0.3),
+        tf.keras.layers.Dense(10, activation="softmax")
+    ])
+
+def save_path_for_worker(model_dir, task_type, task_id):
+    """Return a unique export path for chief and non-chief workers."""
+    if task_type in ("chief", "master") or task_type is None or (task_type == "worker" and task_id == 0):
+        return model_dir
+
+    temp_dir = os.path.join(model_dir, f"worker-temp-{task_id}")
+    tf.io.gfile.makedirs(temp_dir)
+    return temp_dir
+
 def main():
     # Vertex AI sets TF_CONFIG automatically for multi-worker jobs
     tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
@@ -192,7 +215,10 @@ def main():
     global_batch_size = per_replica_batch * strategy.num_replicas_in_sync
 
     # Create dataset - each worker processes its own shard
-    train_dataset = tf.data.Dataset.from_tensor_slices(load_data())
+    (x_train, y_train), _ = tf.keras.datasets.mnist.load_data()
+    x_train = x_train.reshape(-1, 28, 28, 1).astype("float32") / 255.0
+
+    train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
     train_dataset = train_dataset.shuffle(10000).batch(global_batch_size)
 
     # Auto-shard dataset across workers
@@ -203,7 +229,7 @@ def main():
     train_dataset = train_dataset.with_options(options)
 
     with strategy.scope():
-        model = build_model()
+        model = create_model()
         model.compile(
             optimizer=tf.keras.optimizers.Adam(0.001),
             loss="sparse_categorical_crossentropy",
@@ -212,10 +238,17 @@ def main():
 
     model.fit(train_dataset, epochs=20)
 
-    # Only save from the chief worker to avoid conflicts
-    task_type = tf_config.get("task", {}).get("type", "")
-    if task_type == "chief" or not tf_config:
-        model.save(os.environ.get("AIP_MODEL_DIR", "/tmp/model"))
+    # Every worker participates in export. Non-chief workers write to temp paths.
+    task_type = strategy.cluster_resolver.task_type
+    task_id = strategy.cluster_resolver.task_id
+    model_dir = os.environ.get("AIP_MODEL_DIR", "/tmp/model")
+    export_path = save_path_for_worker(model_dir, task_type, task_id)
+    model.export(export_path)
+    if export_path != model_dir:
+        tf.io.gfile.rmtree(export_path)
+
+if __name__ == "__main__":
+    main()
 ```
 
 Submit the multi-worker job to Vertex AI:
@@ -234,7 +267,7 @@ job = aiplatform.CustomJob(
             },
             "replica_count": 1,
             "python_package_spec": {
-                "executor_image_uri": "us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-13:latest",
+                "executor_image_uri": "us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-17.py310:latest",
                 "package_uris": ["gs://your-bucket/packages/trainer-0.1.tar.gz"],
                 "python_module": "trainer.multi_worker_train"
             }
@@ -248,7 +281,7 @@ job = aiplatform.CustomJob(
             },
             "replica_count": 3,  # 3 additional workers
             "python_package_spec": {
-                "executor_image_uri": "us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-13:latest",
+                "executor_image_uri": "us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-17.py310:latest",
                 "package_uris": ["gs://your-bucket/packages/trainer-0.1.tar.gz"],
                 "python_module": "trainer.multi_worker_train"
             }
@@ -269,27 +302,56 @@ This PyTorch training script handles multi-GPU training:
 # pytorch_train.py - PyTorch distributed training
 
 import os
+import json
+import tempfile
 import torch
 import torch.nn as nn
 import torch.distributed as dist
+import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.data import DataLoader, DistributedSampler, TensorDataset
 
-def setup_distributed():
-    """Initialize distributed training from Vertex AI environment."""
-    # Vertex AI sets these environment variables
-    master_addr = os.environ.get("MASTER_ADDR", "localhost")
-    master_port = os.environ.get("MASTER_PORT", "12355")
-    world_size = int(os.environ.get("WORLD_SIZE", 1))
-    rank = int(os.environ.get("RANK", 0))
-    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+def vertex_cluster_config():
+    """Build PyTorch rank information from Vertex AI's CLUSTER_SPEC."""
+    cluster_spec = json.loads(os.environ.get("CLUSTER_SPEC", "{}"))
+    cluster = cluster_spec.get("cluster", {})
+    task = cluster_spec.get("task", {"type": "workerpool0", "index": 0})
 
-    os.environ["MASTER_ADDR"] = master_addr
-    os.environ["MASTER_PORT"] = master_port
+    hosts = []
+    for pool_name in ("workerpool0", "workerpool1"):
+        hosts.extend(cluster.get(pool_name, []))
+
+    if not hosts:
+        hosts = ["localhost:12355"]
+
+    task_type = task.get("type", "workerpool0")
+    task_index = int(task.get("index", 0))
+
+    if task_type == "workerpool0":
+        node_rank = task_index
+    elif task_type == "workerpool1":
+        node_rank = len(cluster.get("workerpool0", [])) + task_index
+    else:
+        raise ValueError(f"Unsupported worker pool for PyTorch DDP: {task_type}")
+
+    master_host, master_port = hosts[0].split(":")
+    return master_host, master_port, node_rank, len(hosts)
+
+def load_dataset():
+    """Create a small synthetic dataset for the DDP example."""
+    inputs = torch.randn(60000, 784)
+    labels = torch.randint(0, 10, (60000,))
+    return TensorDataset(inputs, labels)
+
+def setup_distributed(local_rank, node_rank, nodes, gpus_per_node):
+    """Initialize one PyTorch process per GPU."""
+    rank = node_rank * gpus_per_node + local_rank
+    world_size = nodes * gpus_per_node
 
     # Initialize the process group
     dist.init_process_group(
         backend="nccl",  # Use NCCL for GPU communication
+        init_method=f"tcp://{os.environ['MASTER_ADDR']}:{os.environ['MASTER_PORT']}",
         world_size=world_size,
         rank=rank
     )
@@ -299,8 +361,21 @@ def setup_distributed():
 
     return rank, local_rank, world_size
 
-def train():
-    rank, local_rank, world_size = setup_distributed()
+def save_checkpoint(state_dict, model_dir):
+    """Save locally or upload to Cloud Storage when model_dir is a gs:// path."""
+    if model_dir.startswith("gs://"):
+        from google.cloud import storage
+
+        bucket_name, prefix = model_dir[5:].split("/", 1)
+        with tempfile.NamedTemporaryFile(suffix=".pt") as tmp:
+            torch.save(state_dict, tmp.name)
+            storage.Client().bucket(bucket_name).blob(f"{prefix.rstrip('/')}/model.pt").upload_from_filename(tmp.name)
+    else:
+        os.makedirs(model_dir, exist_ok=True)
+        torch.save(state_dict, os.path.join(model_dir, "model.pt"))
+
+def train_worker(local_rank, node_rank, nodes, gpus_per_node):
+    rank, local_rank, world_size = setup_distributed(local_rank, node_rank, nodes, gpus_per_node)
 
     # Create model and move to GPU
     model = nn.Sequential(
@@ -337,9 +412,25 @@ def train():
 
     # Save model from rank 0 only
     if rank == 0:
-        torch.save(model.module.state_dict(), os.environ.get("AIP_MODEL_DIR", "/tmp/model.pt"))
+        save_checkpoint(model.module.state_dict(), os.environ.get("AIP_MODEL_DIR", "/tmp/model"))
 
     dist.destroy_process_group()
+
+def train():
+    master_addr, master_port, node_rank, nodes = vertex_cluster_config()
+    os.environ["MASTER_ADDR"] = master_addr
+    os.environ["MASTER_PORT"] = master_port
+
+    gpus_per_node = torch.cuda.device_count()
+    if gpus_per_node == 0:
+        raise RuntimeError("PyTorch DDP with NCCL requires at least one GPU per node.")
+
+    mp.spawn(
+        train_worker,
+        args=(node_rank, nodes, gpus_per_node),
+        nprocs=gpus_per_node,
+        join=True
+    )
 
 if __name__ == "__main__":
     train()
