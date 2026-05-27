@@ -20,7 +20,7 @@ Key points:
 
 - The retention period applies to all objects in the bucket
 - Objects cannot be deleted or overwritten until the retention period expires
-- You can increase the retention period but not decrease it once set
+- You can increase, decrease, or remove the retention period until the policy is locked
 - New objects added to the bucket also get the retention policy applied
 
 ## Setting a Retention Policy
@@ -43,7 +43,7 @@ gcloud storage buckets update gs://my-bucket --retention-period=7776000
 # Retention period in days
 gcloud storage buckets update gs://my-bucket --retention-period=90d
 
-# Retention period in months (approximate - 30 days per month)
+# Retention period in months (approximate - 31 days per month)
 gcloud storage buckets update gs://my-bucket --retention-period=3m
 
 # Retention period in years (approximate - 365.25 days per year)
@@ -75,7 +75,7 @@ You can still:
 You cannot:
 - Delete objects before the retention period expires
 - Overwrite objects before the retention period expires
-- Reduce the retention period (you can only increase it)
+- Reduce or remove the retention period after the policy is locked
 
 ## Checking a Bucket's Retention Policy
 
@@ -89,7 +89,7 @@ The output shows the retention period, the effective time (when the policy was s
 
 ## Modifying the Retention Period
 
-You can increase the retention period at any time:
+You can increase the retention period at any time, even after the policy is locked:
 
 ```bash
 # Increase the retention period from 90 days to 365 days
@@ -97,7 +97,7 @@ gcloud storage buckets update gs://my-compliance-bucket \
   --retention-period=365d
 ```
 
-To remove a retention policy (only possible if the bucket is not locked):
+To decrease or remove a retention policy, the bucket must not be locked. To remove a retention policy from an unlocked bucket:
 
 ```bash
 # Remove the retention policy from an unlocked bucket
@@ -214,7 +214,7 @@ resource "google_storage_bucket" "compliance_bucket" {
 
   retention_policy {
     # 7 years in seconds
-    retention_period = 220898880
+    retention_period = 220903200
 
     # Set to true to lock - WARNING: irreversible
     is_locked = false
@@ -248,7 +248,7 @@ You can use both together. A retention policy provides the baseline, and object 
 
 **Bucket deletion.** A locked bucket cannot be deleted until every object in it has met its retention period. If you have a 7-year retention policy, you are keeping that bucket for at least 7 years after the last object was added.
 
-**Versioning interaction.** Retention policies work with object versioning. Noncurrent versions are also subject to the retention policy based on when they became noncurrent.
+**Versioning interaction.** Retention policies work with object versioning. Live object versions can be made noncurrent even if their retention expiration date is in the future, and versioned objects that exist when you apply a retention policy are also protected by it.
 
 **Test thoroughly before locking.** Use an unlocked retention policy first. Upload test objects, verify that deletion is blocked, and confirm the retention period is correct. Only lock when you are completely sure.
 
