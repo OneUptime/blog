@@ -24,6 +24,7 @@ Geo-identification happens at Google's edge before the request reaches your back
 # Create a security policy for geo-based rules
 
 gcloud compute security-policies create geo-policy \
+    --type=CLOUD_ARMOR \
     --description="Geographic access restriction policy" \
     --project=my-project
 ```
@@ -56,13 +57,13 @@ gcloud compute security-policies rules create 1010 \
     --project=my-project
 ```
 
-For longer lists of countries, use the `in` operator for cleaner syntax.
+For longer lists of countries, use multiple `||` comparisons. Cloud Armor custom expressions support up to five subexpressions per rule, so split longer lists across multiple rules.
 
 ```bash
-# Block a list of countries using the in operator
+# Block a list of countries using supported OR comparisons
 gcloud compute security-policies rules create 1020 \
     --security-policy=geo-policy \
-    --expression="origin.region_code in ['XX', 'YY', 'ZZ', 'AA', 'BB']" \
+    --expression="origin.region_code == 'XX' || origin.region_code == 'YY' || origin.region_code == 'ZZ' || origin.region_code == 'AA' || origin.region_code == 'BB'" \
     --action=deny-403 \
     --description="Block traffic from high-risk countries" \
     --project=my-project
@@ -97,9 +98,44 @@ For GDPR compliance or EU-specific services:
 # Allow traffic from EU member states
 gcloud compute security-policies rules create 600 \
     --security-policy=geo-policy \
-    --expression="origin.region_code in ['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE']" \
+    --expression="origin.region_code == 'AT' || origin.region_code == 'BE' || origin.region_code == 'BG' || origin.region_code == 'HR' || origin.region_code == 'CY'" \
     --action=allow \
-    --description="Allow EU member states" \
+    --description="Allow EU member states - batch 1" \
+    --project=my-project
+
+gcloud compute security-policies rules create 610 \
+    --security-policy=geo-policy \
+    --expression="origin.region_code == 'CZ' || origin.region_code == 'DK' || origin.region_code == 'EE' || origin.region_code == 'FI' || origin.region_code == 'FR'" \
+    --action=allow \
+    --description="Allow EU member states - batch 2" \
+    --project=my-project
+
+gcloud compute security-policies rules create 620 \
+    --security-policy=geo-policy \
+    --expression="origin.region_code == 'DE' || origin.region_code == 'GR' || origin.region_code == 'HU' || origin.region_code == 'IE' || origin.region_code == 'IT'" \
+    --action=allow \
+    --description="Allow EU member states - batch 3" \
+    --project=my-project
+
+gcloud compute security-policies rules create 630 \
+    --security-policy=geo-policy \
+    --expression="origin.region_code == 'LV' || origin.region_code == 'LT' || origin.region_code == 'LU' || origin.region_code == 'MT' || origin.region_code == 'NL'" \
+    --action=allow \
+    --description="Allow EU member states - batch 4" \
+    --project=my-project
+
+gcloud compute security-policies rules create 640 \
+    --security-policy=geo-policy \
+    --expression="origin.region_code == 'PL' || origin.region_code == 'PT' || origin.region_code == 'RO' || origin.region_code == 'SK' || origin.region_code == 'SI'" \
+    --action=allow \
+    --description="Allow EU member states - batch 5" \
+    --project=my-project
+
+gcloud compute security-policies rules create 650 \
+    --security-policy=geo-policy \
+    --expression="origin.region_code == 'ES' || origin.region_code == 'SE'" \
+    --action=allow \
+    --description="Allow EU member states - batch 6" \
     --project=my-project
 ```
 
@@ -127,7 +163,7 @@ gcloud compute security-policies rules create 200 \
 # Priority 1000: Block specific countries
 gcloud compute security-policies rules create 1000 \
     --security-policy=geo-policy \
-    --expression="origin.region_code in ['XX', 'YY', 'ZZ']" \
+    --expression="origin.region_code == 'XX' || origin.region_code == 'YY' || origin.region_code == 'ZZ'" \
     --action=deny-403 \
     --description="Block high-risk countries" \
     --project=my-project
@@ -145,9 +181,9 @@ Instead of a plain 403, you can redirect blocked users to an informational page.
 # Redirect blocked geo traffic to a custom page
 gcloud compute security-policies rules create 1000 \
     --security-policy=geo-policy \
-    --expression="origin.region_code in ['XX', 'YY']" \
+    --expression="origin.region_code == 'XX' || origin.region_code == 'YY'" \
     --action=redirect \
-    --redirect-type=EXTERNAL_302 \
+    --redirect-type=external-302 \
     --redirect-target="https://example.com/geo-restricted" \
     --description="Redirect geo-blocked users to info page" \
     --project=my-project
@@ -161,7 +197,7 @@ Restrict geographic access to specific parts of your application while keeping t
 # Only restrict the checkout flow to US and CA
 gcloud compute security-policies rules create 800 \
     --security-policy=geo-policy \
-    --expression="request.path.startsWith('/checkout') && !(origin.region_code in ['US', 'CA'])" \
+    --expression="request.path.startsWith('/checkout') && origin.region_code != 'US' && origin.region_code != 'CA'" \
     --action=deny-403 \
     --description="Restrict checkout to US and CA" \
     --project=my-project
@@ -169,7 +205,7 @@ gcloud compute security-policies rules create 800 \
 # Only restrict the admin panel to specific countries
 gcloud compute security-policies rules create 810 \
     --security-policy=geo-policy \
-    --expression="request.path.startsWith('/admin') && !(origin.region_code in ['US', 'GB', 'DE'])" \
+    --expression="request.path.startsWith('/admin') && origin.region_code != 'US' && origin.region_code != 'GB' && origin.region_code != 'DE'" \
     --action=deny-403 \
     --description="Restrict admin to US, UK, Germany" \
     --project=my-project
@@ -222,7 +258,7 @@ resource "google_compute_security_policy" "geo_policy" {
 
     match {
       expr {
-        expression = "origin.region_code in ['XX', 'YY', 'ZZ']"
+        expression = "origin.region_code == 'XX' || origin.region_code == 'YY' || origin.region_code == 'ZZ'"
       }
     }
   }
@@ -235,7 +271,7 @@ resource "google_compute_security_policy" "geo_policy" {
 
     match {
       expr {
-        expression = "request.path.startsWith('/checkout') && !(origin.region_code in ['US', 'CA'])"
+        expression = "request.path.startsWith('/checkout') && origin.region_code != 'US' && origin.region_code != 'CA'"
       }
     }
   }
@@ -257,7 +293,7 @@ Always test geo-blocking rules in preview mode before enforcement.
 # Create a geo-blocking rule in preview mode
 gcloud compute security-policies rules create 1000 \
     --security-policy=geo-policy \
-    --expression="origin.region_code in ['XX', 'YY']" \
+    --expression="origin.region_code == 'XX' || origin.region_code == 'YY'" \
     --action=deny-403 \
     --description="Geo-block test - PREVIEW" \
     --preview \
@@ -281,7 +317,7 @@ gcloud logging read \
 # View geo-blocked requests
 gcloud logging read \
     'resource.type="http_load_balancer" AND jsonPayload.enforcedSecurityPolicy.name="geo-policy" AND jsonPayload.enforcedSecurityPolicy.outcome="DENY"' \
-    --format="table(timestamp,httpRequest.remoteIp,jsonPayload.remoteIpCountry)" \
+    --format="table(timestamp,httpRequest.remoteIp,jsonPayload.securityPolicyRequestData.remoteIpInfo.region_code)" \
     --limit=30 \
     --project=my-project
 ```
@@ -289,11 +325,19 @@ gcloud logging read \
 Create an alert for unusual volumes of blocked traffic:
 
 ```bash
+# Create a logs-based metric for denied requests from this policy
+gcloud logging metrics create geo_blocked_requests \
+    --description="Denied requests from the geo-policy Cloud Armor policy" \
+    --log-filter='resource.type="http_load_balancer" AND jsonPayload.enforcedSecurityPolicy.name="geo-policy" AND jsonPayload.enforcedSecurityPolicy.outcome="DENY"' \
+    --project=my-project
+
 # Alert on high volume of geo-blocked requests
 gcloud monitoring policies create \
     --display-name="High Geo-Block Volume" \
     --condition-display-name="Geo-blocked requests spike" \
-    --condition-filter='resource.type="https_lb_rule" AND metric.type="loadbalancing.googleapis.com/https/request_count"' \
+    --condition-filter='metric.type="logging.googleapis.com/user/geo_blocked_requests" AND resource.type="l7_lb_rule"' \
+    --duration=300s \
+    --if="> 100" \
     --notification-channels=projects/my-project/notificationChannels/12345 \
     --project=my-project
 ```
