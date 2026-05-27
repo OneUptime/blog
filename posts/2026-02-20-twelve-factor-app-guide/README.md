@@ -85,11 +85,11 @@ class AppConfig:
     DATABASE_URL: str = os.environ["DATABASE_URL"]
 
     # External service credentials
-    REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379")
+    REDIS_URL: str = os.environ["REDIS_URL"]
 
     # Feature flags and tuning parameters
-    LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
-    MAX_WORKERS: int = int(os.environ.get("MAX_WORKERS", "4"))
+    LOG_LEVEL: str = os.environ["LOG_LEVEL"]
+    MAX_WORKERS: int = int(os.environ["MAX_WORKERS"])
 
     # The app does not know or care which environment it is in
     # That distinction exists only in the config, not the code
@@ -131,9 +131,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build Docker image
-        run: docker build -t myapp:${{ github.sha }} .
+        run: docker build -t registry.example.com/myteam/myapp:${{ github.sha }} .
       - name: Push to registry
-        run: docker push myapp:${{ github.sha }}
+        run: docker push registry.example.com/myteam/myapp:${{ github.sha }}
 
   # Stage 2: Release - combine build artifact with environment config
   release:
@@ -142,7 +142,7 @@ jobs:
     steps:
       - name: Create release manifest
         run: |
-          echo "IMAGE=myapp:${{ github.sha }}" > release.env
+          echo "IMAGE=registry.example.com/myteam/myapp:${{ github.sha }}" > release.env
           echo "RELEASE_ID=${{ github.sha }}-$(date +%s)" >> release.env
 
   # Stage 3: Run - deploy the release
@@ -151,7 +151,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to Kubernetes
-        run: kubectl set image deployment/myapp app=myapp:${{ github.sha }}
+        run: kubectl set image deployment/myapp app=registry.example.com/myteam/myapp:${{ github.sha }}
 ```
 
 ## VI. Processes - Execute as Stateless Processes
@@ -159,6 +159,8 @@ jobs:
 Twelve-factor processes are stateless and share-nothing. Any data that needs to persist must be stored in a backing service like a database.
 
 ```python
+import os
+
 from fastapi import FastAPI
 from redis import Redis
 
