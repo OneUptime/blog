@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, AlloyDB, PostgreSQL, Disaster Recovery, Cross-Region Replication
 
-Description: Learn how to configure cross-region replication in AlloyDB for PostgreSQL to protect your database against regional outages with automated failover capabilities.
+Description: Learn how to configure cross-region replication in AlloyDB for PostgreSQL to protect your database against regional outages with secondary cluster promotion.
 
 ---
 
@@ -18,13 +18,13 @@ AlloyDB cross-region replication works at the cluster level. You create a second
 
 The replication is asynchronous, which means there is always some lag between the primary and secondary. In practice, this lag is typically under a second, but during heavy write loads it can increase. This is important for setting RPO (Recovery Point Objective) expectations.
 
-When you promote the secondary cluster, it becomes an independent read-write cluster. The old primary is disconnected and the secondary takes over as the new primary.
+When you promote the secondary cluster, it becomes an independent read-write cluster. For planned drills or regional migrations where both regions are healthy, AlloyDB also supports switchover, which reverses the replication direction with zero data loss.
 
 ## Prerequisites
 
 - An existing AlloyDB cluster in the primary region
 - The AlloyDB API enabled
-- Private Services Access configured in both the primary and secondary regions
+- Private Services Access configured for the VPC network, or Private Service Connect configured if your cluster uses PSC
 - Sufficient quota in both regions
 
 ## Step 1 - Verify the Primary Cluster
@@ -39,16 +39,16 @@ gcloud alloydb clusters describe my-primary-cluster \
   --format="yaml(state,clusterType,primaryConfig)"
 ```
 
-## Step 2 - Set Up Private Services Access in the Secondary Region
+## Step 2 - Verify Private Services Access Capacity
 
-If Private Services Access is not already configured in the secondary region's network, set it up:
+If Private Services Access is not already configured for the VPC network, set it up. The allocated range and peering connection are global to the VPC network, not regional:
 
 ```bash
-# Verify or create private services access for the secondary region
+# Verify or create an allocated range for Private Services Access
 gcloud compute addresses create google-managed-services-secondary \
   --global \
   --purpose=VPC_PEERING \
-  --prefix-length=20 \
+  --prefix-length=16 \
   --network=default
 
 # Update the VPC peering connection to include the new range
@@ -64,13 +64,12 @@ Create a secondary cluster in a different region:
 
 ```bash
 # Create a cross-region secondary cluster
-gcloud alloydb clusters create my-secondary-cluster \
+gcloud alloydb clusters create-secondary my-secondary-cluster \
   --region=us-east1 \
-  --network=default \
-  --secondary-config-primary-cluster-name=projects/my-project/locations/us-central1/clusters/my-primary-cluster
+  --primary-cluster=projects/my-project/locations/us-central1/clusters/my-primary-cluster
 ```
 
-The `--secondary-config-primary-cluster-name` flag tells AlloyDB that this is a secondary cluster linked to the specified primary.
+The `create-secondary` command tells AlloyDB to create a secondary cluster linked to the specified primary.
 
 ## Step 4 - Create a Secondary Instance
 
@@ -78,14 +77,22 @@ The secondary cluster needs at least one instance to serve reads and be ready fo
 
 ```bash
 # Create an instance in the secondary cluster
-gcloud alloydb instances create secondary-instance \
+gcloud alloydb instances create-secondary secondary-instance \
+  --cluster=my-secondary-cluster \
+  --region=us-east1
+```
+
+Choose a CPU count that matches your primary instance. You can resize the secondary instance after creating it:
+
+```bash
+# Scale the secondary instance if needed
+gcloud alloydb instances update secondary-instance \
   --cluster=my-secondary-cluster \
   --region=us-east1 \
-  --instance-type=SECONDARY \
   --cpu-count=4
 ```
 
-Choose a CPU count that matches your primary instance. During normal operation, the secondary handles only replication traffic. During failover, it needs to handle the full workload.
+During normal operation, the secondary can handle read traffic and replication traffic. During failover, it needs to handle the full workload.
 
 ## Step 5 - Verify Replication Status
 
@@ -100,18 +107,11 @@ gcloud alloydb clusters describe my-secondary-cluster \
 
 The state should be `READY` and the secondary config should reference the primary cluster.
 
-You can also check replication lag from the primary:
-
-```bash
-# Check replication details on the primary cluster
-gcloud alloydb clusters describe my-primary-cluster \
-  --region=us-central1 \
-  --format="yaml(state,primaryConfig)"
-```
+You can also check the Replication lag from primary instance chart for the secondary instance in the Google Cloud console.
 
 ## Step 6 - Testing Failover
 
-You should test failover before you actually need it. AlloyDB supports promoting a secondary cluster, which disconnects it from the primary and makes it an independent read-write cluster.
+You should test failover before you actually need it. AlloyDB supports promoting a secondary cluster, which makes it an independent read-write cluster. For planned disaster recovery drills where both regions are healthy, use switchover instead of promotion so the previous primary becomes a secondary of the new primary.
 
 Before testing, make sure you have a way to reconnect to the new primary. In production, you would use DNS or a load balancer that can be switched.
 
@@ -134,6 +134,14 @@ gcloud alloydb clusters describe my-secondary-cluster \
 ```
 
 The cluster type should now show as a primary cluster.
+
+For a planned drill, use switchover instead:
+
+```bash
+# Switch over to the secondary cluster with zero data loss when both regions are healthy
+gcloud alloydb clusters switchover my-secondary-cluster \
+  --region=us-east1
+```
 
 ## Failover Procedure
 
@@ -165,10 +173,9 @@ After the original primary region recovers, you have two options:
 
 ```bash
 # Create a new secondary cluster in the original region
-gcloud alloydb clusters create new-secondary \
+gcloud alloydb clusters create-secondary new-secondary \
   --region=us-central1 \
-  --network=default \
-  --secondary-config-primary-cluster-name=projects/my-project/locations/us-east1/clusters/my-secondary-cluster
+  --primary-cluster=projects/my-project/locations/us-east1/clusters/my-secondary-cluster
 ```
 
 **Option B - Migrate back to the original region:** If you prefer the original region as primary for latency reasons, you would need to do a full migration back using DMS or a dump/restore.
@@ -184,9 +191,9 @@ Set up monitoring to track replication health:
 gcloud alpha monitoring policies create \
   --display-name="AlloyDB Replication Lag" \
   --condition-display-name="High replication lag" \
-  --condition-filter='resource.type="alloydb.googleapis.com/Cluster" AND metric.type="alloydb.googleapis.com/database/replication/replica_lag"' \
-  --condition-threshold-value=5 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --condition-filter='resource.type="alloydb.googleapis.com/InstanceNode" AND metric.type="alloydb.googleapis.com/node/postgres/replay_lag"' \
+  --duration=60s \
+  --if="> 5000" \
   --notification-channels=CHANNEL_ID
 ```
 
@@ -196,15 +203,15 @@ gcloud alpha monitoring policies create \
 
 **RTO (Recovery Time Objective)** - How quickly do you need to recover? The promotion process takes a few minutes. Adding application failover time, you are looking at 5-15 minutes for a full failover.
 
-If you need RPO close to zero, consider combining cross-region replication with continuous backups to Cloud Storage.
+If you need RPO close to zero for planned operations, use AlloyDB switchover while both regions are healthy. Backups and point-in-time recovery help with recovery from corruption or accidental changes, but they do not provide near-zero RPO for an unplanned regional outage.
 
 ## Cost Implications
 
-Cross-region replication doubles your AlloyDB costs (roughly):
+Cross-region replication increases your AlloyDB costs significantly:
 
 - You pay for compute in both regions (primary and secondary instances)
 - You pay for storage in both regions
-- You pay for cross-region network egress for the replication traffic
+- You pay for applicable data transfer out of AlloyDB resources
 
 For many organizations, this cost is justified by the disaster recovery capability. You can also use a smaller secondary instance during normal operations and scale it up before promotion if you have warning time.
 
