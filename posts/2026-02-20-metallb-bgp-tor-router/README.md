@@ -26,15 +26,15 @@ Layer 2 mode works well for small clusters on a single subnet. But it has limits
 
 ## Architecture Overview
 
-In a typical data center rack, each Kubernetes node connects to a ToR router. MetalLB speakers on every node establish BGP sessions with the router. When a LoadBalancer service gets an external IP, all nodes with healthy endpoints announce that IP via BGP. The ToR router learns multiple paths and can use ECMP (Equal-Cost Multi-Path) to distribute traffic.
+In a typical data center rack, each Kubernetes node connects to a ToR router. MetalLB speakers on every node establish BGP sessions with the router. When a LoadBalancer service gets an external IP, MetalLB announces that IP via BGP from the eligible speaker nodes. With the default `externalTrafficPolicy: Cluster`, every eligible node can announce the service IP; with `externalTrafficPolicy: Local`, only nodes with healthy local endpoints announce it. The ToR router learns multiple paths and can use ECMP (Equal-Cost Multi-Path) to distribute traffic.
 
 ```mermaid
 flowchart TD
     subgraph Rack["Data Center Rack"]
-        ToR["ToR Router<br/>AS 64500<br/>10.0.0.1"]
-        Node1["Node 1<br/>AS 64501<br/>10.0.0.11"]
-        Node2["Node 2<br/>AS 64501<br/>10.0.0.12"]
-        Node3["Node 3<br/>AS 64501<br/>10.0.0.13"]
+        ToR["ToR Router<br/>AS 64512<br/>10.0.0.1"]
+        Node1["Node 1<br/>AS 64513<br/>10.0.0.11"]
+        Node2["Node 2<br/>AS 64513<br/>10.0.0.12"]
+        Node3["Node 3<br/>AS 64513<br/>10.0.0.13"]
     end
 
     subgraph Services["Kubernetes Services"]
@@ -68,11 +68,11 @@ BGP requires each side of the peering session to have an Autonomous System Numbe
 ```mermaid
 graph LR
     subgraph ToR["ToR Router"]
-        ASN1["ASN: 64500"]
+        ASN1["ASN: 64512"]
         RouterIP["Router ID: 10.0.0.1"]
     end
     subgraph Cluster["Kubernetes Cluster"]
-        ASN2["ASN: 64501"]
+        ASN2["ASN: 64513"]
         ServiceRange["Service IPs: 192.168.100.0/24"]
     end
     ToR -- "eBGP peering" --> Cluster
@@ -80,8 +80,8 @@ graph LR
 
 In this example:
 
-- **ToR Router ASN**: 64500
-- **Kubernetes Cluster ASN**: 64501
+- **ToR Router ASN**: 64512
+- **Kubernetes Cluster ASN**: 64513
 - **Node IPs**: 10.0.0.11, 10.0.0.12, 10.0.0.13
 - **Service IP Pool**: 192.168.100.0/24
 
@@ -126,12 +126,13 @@ metadata:
   namespace: metallb-system
 spec:
   # ASN of the ToR router (remote side)
-  peerASN: 64500
+  peerASN: 64512
   # IP address of the ToR router
   peerAddress: 10.0.0.1
   # ASN that MetalLB will use (local side)
-  myASN: 64501
-  # Source address for BGP connections (optional, useful for multi-homed nodes)
+  myASN: 64513
+  # Source address for BGP connections (optional, useful for multi-homed nodes;
+  # use nodeSelectors or separate BGPPeer resources if this differs per node)
   # sourceAddress: 10.0.0.11
   # BGP hold time in seconds - router marks peer as down if no keepalive
   # received within this window. Default is 90s. Lower values mean faster
@@ -166,7 +167,7 @@ spec:
     - bgp-service-pool
   # Optional: set BGP communities on announced routes
   # communities:
-  #   - "64500:100"
+  #   - "64512:100"
   # Optional: aggregate routes instead of announcing /32s
   # aggregationLength: 24
 ```
@@ -187,7 +188,7 @@ The router side needs a matching BGP configuration. Below is an example using FR
 ! Enter configuration mode: vtysh -c "configure terminal"
 
 ! Set the router's BGP ASN
-router bgp 64500
+router bgp 64512
   ! Router ID - typically the loopback or management IP
   bgp router-id 10.0.0.1
 
@@ -196,15 +197,15 @@ router bgp 64500
   maximum-paths 8
 
   ! Peer with Kubernetes Node 1
-  neighbor 10.0.0.11 remote-as 64501
+  neighbor 10.0.0.11 remote-as 64513
   neighbor 10.0.0.11 description "k8s-node-1"
 
   ! Peer with Kubernetes Node 2
-  neighbor 10.0.0.12 remote-as 64501
+  neighbor 10.0.0.12 remote-as 64513
   neighbor 10.0.0.12 description "k8s-node-2"
 
   ! Peer with Kubernetes Node 3
-  neighbor 10.0.0.13 remote-as 64501
+  neighbor 10.0.0.13 remote-as 64513
   neighbor 10.0.0.13 description "k8s-node-3"
 
   ! Accept the service IP routes from the cluster
@@ -277,6 +278,7 @@ metadata:
   name: test-nginx-svc
 spec:
   type: LoadBalancer
+  externalTrafficPolicy: Local
   selector:
     app: test-nginx
   ports:
@@ -300,13 +302,13 @@ Once the service gets an external IP (for example, 192.168.100.1), verify the ro
 # Check that the route is present in the routing table
 vtysh -c "show ip route 192.168.100.1"
 
-# You should see multiple BGP paths if replicas are on different nodes
+# With externalTrafficPolicy: Local, you should see multiple BGP paths if replicas are on different nodes
 # Example output:
 # B>* 192.168.100.1/32 [20/0] via 10.0.0.11, eth1, weight 1, 00:02:15
 # *                    via 10.0.0.12, eth1, weight 1, 00:02:15
 ```
 
-The `*` next to multiple entries means ECMP is active and traffic will be balanced across those nodes.
+Multiple next-hop entries for the same prefix indicate ECMP is active and traffic will be balanced across those nodes.
 
 ## Troubleshooting Common Issues
 
@@ -327,7 +329,7 @@ The `*` next to multiple entries means ECMP is active and traffic will be balanc
 
 ## ECMP and Traffic Flow
 
-When multiple nodes run pods for the same service, the ToR router sees multiple BGP paths to the same /32 prefix. With ECMP enabled, traffic is distributed using a hash of the packet headers (source IP, destination IP, ports).
+When multiple nodes announce the same service, the ToR router sees multiple BGP paths to the same /32 prefix. With ECMP enabled, traffic is distributed using a hash of the packet headers (source IP, destination IP, ports).
 
 ```mermaid
 flowchart LR
