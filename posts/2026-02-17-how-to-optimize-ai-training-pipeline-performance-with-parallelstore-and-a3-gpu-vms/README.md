@@ -14,9 +14,9 @@ Google Cloud Parallelstore combined with A3 GPU VMs is designed to solve exactly
 
 ## Why A3 VMs and Parallelstore Together
 
-A3 GPU VMs are Google Cloud's flagship GPU instances. Each A3-highgpu-8g machine comes with 8 NVIDIA H100 80GB GPUs, 208 vCPUs, and 1.9 TB of RAM. The network bandwidth on these machines is massive - up to 200 Gbps per VM.
+A3 GPU VMs are Google Cloud's high-end GPU instances. Each A3-highgpu-8g machine comes with 8 NVIDIA H100 80GB GPUs, 208 vCPUs, and 1,872 GB of RAM. The network bandwidth on these machines is massive - up to 1,000 Gbps per VM.
 
-Parallelstore is a managed parallel file system that can deliver hundreds of GB/s of aggregate throughput. It stripes data across multiple storage servers, so bandwidth scales with capacity. This is the key differentiator compared to Filestore or Cloud Storage FUSE, which top out at much lower throughput levels.
+Parallelstore is a managed parallel file system that can deliver over 100 GiB/s of aggregate read throughput from a single large instance. It stripes data across multiple storage servers, so bandwidth scales with capacity. This is the key differentiator compared to Filestore or Cloud Storage FUSE, which top out at much lower throughput levels.
 
 The pairing works because A3 VMs have the network bandwidth to actually use Parallelstore's throughput, and Parallelstore has the throughput to keep A3 VMs fed with training data.
 
@@ -41,24 +41,25 @@ The data flow is: raw data lives in Cloud Storage, gets staged into Parallelstor
 
 ## Step 1: Size Your Parallelstore Instance
 
-Parallelstore throughput scales linearly with capacity. A rough guideline:
+Parallelstore throughput scales linearly with capacity. A rough guideline based on the published 1.15 GiB/s per TiB read throughput and 0.5 GiB/s per TiB write throughput:
 
 | Instance Size | Read Throughput | Write Throughput |
 |---|---|---|
-| 12 TiB | ~12 GB/s | ~6 GB/s |
-| 27 TiB | ~27 GB/s | ~13 GB/s |
-| 100 TiB | ~100 GB/s | ~50 GB/s |
+| 12,000 GiB | ~13 GiB/s | ~6 GiB/s |
+| 28,000 GiB | ~31 GiB/s | ~14 GiB/s |
+| 100,000 GiB | ~112 GiB/s | ~49 GiB/s |
 
-For a 4-node A3 cluster, each VM can consume up to 25 GB/s from the network. That means you want at least 100 GB/s of read throughput from Parallelstore, which means a 100 TiB instance.
+For a 4-node A3 cluster, the VMs have more aggregate network capacity than a single Parallelstore instance can deliver. If your input pipeline needs roughly 100 GiB/s of aggregate read throughput, use the largest 100,000 GiB instance.
 
 ```bash
 # Create a Parallelstore instance sized for the training cluster
 
-gcloud parallelstore instances create training-pfs \
+gcloud beta parallelstore instances create training-pfs \
   --location=us-central1-a \
-  --capacity-gib=102400 \
+  --capacity-gib=100000 \
   --network=default \
-  --description="AI training data store for A3 cluster"
+  --directory-stripe-level=directory-stripe-level-max \
+  --file-stripe-level=file-stripe-level-balanced
 ```
 
 ## Step 2: Provision A3 GPU VMs
@@ -70,11 +71,10 @@ Create your A3 VMs in the same zone as the Parallelstore instance. Use a reserva
 gcloud compute instances create training-worker-0 \
   --zone=us-central1-a \
   --machine-type=a3-highgpu-8g \
-  --accelerator=type=nvidia-h100-80gb,count=8 \
-  --image-family=common-cu123-debian-12 \
+  --image-family=common-cu128-ubuntu-2204-nvidia-570 \
   --image-project=deeplearning-platform-release \
   --maintenance-policy=TERMINATE \
-  --network=default \
+  --network-interface=nic-type=GVNIC,network=default \
   --scopes=cloud-platform \
   --metadata=install-nvidia-driver=True
 ```
@@ -86,31 +86,44 @@ Repeat for each worker node, incrementing the name (`training-worker-1`, `traini
 On each A3 VM, install the DAOS client and configure it to connect to your Parallelstore instance.
 
 ```bash
-# Install DAOS client packages
-sudo apt-get update
-sudo apt-get install -y daos-client daos-agent
+# Install DAOS client packages on Ubuntu 22.04
+curl https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg | sudo apt-key add -
+echo "deb https://us-central1-apt.pkg.dev/projects/parallelstore-packages v2-6-deb main" | sudo tee -a /etc/apt/sources.list.d/artifact-registry.list
+sudo apt update
+sudo apt install -y daos-client
+
+# Ubuntu clients need a higher open file limit for dfuse and libioil
+sudo tee -a /etc/security/limits.conf > /dev/null <<EOF
+* soft nofile 131072
+* hard nofile 131072
+EOF
 
 # Configure the DAOS agent with Parallelstore access points
-INSTANCE_INFO=$(gcloud parallelstore instances describe training-pfs \
+ACCESS_POINTS=$(gcloud beta parallelstore instances describe training-pfs \
   --location=us-central1-a \
-  --format=json)
-
-ACCESS_POINTS=$(echo $INSTANCE_INFO | jq -r '.accessPoints | join(",")')
+  --format "value[delimiter=', '](format(\"'{0}'\", accessPoints))")
 
 sudo tee /etc/daos/daos_agent.yml > /dev/null <<EOF
 access_points: [$ACCESS_POINTS]
-port: 10001
 transport_config:
   allow_insecure: true
+include_fabric_ifaces: ["eth0"]
 EOF
 
 # Start the agent
-sudo systemctl enable daos_agent
-sudo systemctl start daos_agent
+sudo mkdir -p /var/run/daos_agent
+sudo daos_agent -o /etc/daos/daos_agent.yml &
 
 # Mount the file system
+echo user_allow_other | sudo tee -a /etc/fuse.conf
 sudo mkdir -p /mnt/pfs
-dfuse -m /mnt/pfs --pool default-pool --container default-container
+dfuse -m /mnt/pfs \
+  --pool default-pool \
+  --container default-container \
+  --disable-wb-cache \
+  --thread-count=20 \
+  --eq-count=10 \
+  --multi-user
 ```
 
 ## Step 4: Stage Training Data from Cloud Storage
@@ -118,11 +131,18 @@ dfuse -m /mnt/pfs --pool default-pool --container default-container
 Before training begins, copy your dataset from Cloud Storage into Parallelstore. The import command handles this efficiently using server-side data transfer.
 
 ```bash
-# Import data from GCS into Parallelstore
-gcloud parallelstore instances import training-pfs \
+# Grant the Parallelstore service agent access to the bucket first
+PROJECT_ID=$(gcloud config get-value project)
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+gcloud storage buckets add-iam-policy-binding gs://my-training-bucket \
+  --member=serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-parallelstore.iam.gserviceaccount.com \
+  --role=roles/storage.admin
+
+# Import data from Cloud Storage into Parallelstore
+gcloud beta parallelstore instances import-data training-pfs \
   --location=us-central1-a \
-  --source-gcs-uri=gs://my-training-bucket/imagenet/ \
-  --destination-path=/datasets/imagenet/
+  --source-gcs-bucket-uri=gs://my-training-bucket/imagenet/ \
+  --destination-parallelstore-path=/datasets/imagenet/
 ```
 
 For very large datasets, this can take a while, but it uses high-bandwidth internal paths that are much faster than copying through a VM.
@@ -136,12 +156,9 @@ The biggest performance gains come from tuning how your training framework reads
 The DAOS interception library (libioil) bypasses the FUSE layer and routes I/O calls directly to the DAOS client library. This reduces latency and increases throughput significantly.
 
 ```bash
-# Launch training with the interception library enabled
-export LD_PRELOAD=/usr/lib64/libioil.so
-export D_IL_REPORT=0
-
-# Now PyTorch DataLoader will use direct DAOS access
-torchrun --nproc_per_node=8 --nnodes=4 --node_rank=0 \
+# Launch training with the interception library enabled for this process
+D_IL_REPORT=0 LD_PRELOAD=/usr/lib64/libioil.so \
+  torchrun --nproc_per_node=8 --nnodes=4 --node_rank=0 \
   --master_addr=training-worker-0 --master_port=29500 \
   train.py --data-dir /mnt/pfs/datasets/imagenet/
 ```
@@ -211,10 +228,11 @@ def save_checkpoint(model, optimizer, epoch, step, path="/mnt/pfs/checkpoints"):
     # Periodically export checkpoints to GCS for durability
     if step % 1000 == 0:
         os.system(
-            f"gcloud parallelstore instances export training-pfs "
+            f"gcloud beta parallelstore instances export-data training-pfs "
             f"--location=us-central1-a "
-            f"--source-path=/checkpoints/ "
-            f"--destination-gcs-uri=gs://my-training-bucket/checkpoints/ &"
+            f"--source-parallelstore-path=/checkpoints/ "
+            f"--destination-gcs-bucket-uri=gs://my-training-bucket/checkpoints/ "
+            f"--async"
         )
 ```
 
@@ -226,14 +244,14 @@ Keep an eye on whether storage is your bottleneck. Use a combination of GPU util
 # Check GPU utilization - if it drops below 90%, storage may be the bottleneck
 nvidia-smi --query-gpu=utilization.gpu --format=csv -l 5
 
-# Monitor I/O throughput on the mount point
-iostat -m 5
+# Monitor Parallelstore throughput and IOPS in Cloud Monitoring
+gcloud monitoring metrics list --filter='metric.type = starts_with("parallelstore.googleapis.com/instance/")'
 
-# Check DAOS client statistics
+# Check DAOS client connectivity and fabric topology
 daos_agent dump-topology
 ```
 
-If GPU utilization is consistently high (above 90%), your storage pipeline is keeping up. If it dips during data loading phases, consider increasing Parallelstore capacity, adding more DataLoader workers, or switching to a more sequential data format.
+If GPU utilization is consistently high (above 90%), your storage pipeline is keeping up. If it dips during data loading phases, check the `parallelstore.googleapis.com/instance/transferred_byte_count`, `read_ops_count`, and `write_ops_count` metrics in Cloud Monitoring, then consider increasing Parallelstore capacity, adding more DataLoader workers, or switching to a more sequential data format.
 
 ## Performance Tuning Checklist
 
