@@ -20,11 +20,11 @@ graph TD
     B -->|Yes| C[Attacker has root in container]
     C --> D[Can modify system files]
     C --> E[Can install tools]
-    C --> F[Container escape = host root]
+    C --> F[Container escape could lead to host root]
     B -->|No| G[Attacker has limited access]
     G --> H[Cannot modify system files]
     G --> I[Cannot install packages]
-    G --> J[Container escape = unprivileged user]
+    G --> J[Container escape could remain unprivileged]
 ```
 
 ## Method 1: USER Instruction in Dockerfile
@@ -106,7 +106,7 @@ CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8000"]
 
 ## Method 3: Distroless Images
 
-Google's distroless images run as non-root by default and contain no shell or package manager:
+Google's distroless `:nonroot` image variants run as non-root and contain no shell or package manager:
 
 ```dockerfile
 # Multi-stage build with distroless final image
@@ -181,7 +181,7 @@ CMD ["node", "src/index.js"]
 
 ## Handling Ports Below 1024
 
-Non-root users cannot bind to ports below 1024. Use a high port instead:
+On Linux, non-root users normally need `CAP_NET_BIND_SERVICE` to bind to ports below 1024. Use a high port instead:
 
 ```dockerfile
 FROM node:20-alpine
@@ -232,7 +232,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       # Pod-level security context
       securityContext:
@@ -242,7 +248,7 @@ spec:
         fsGroup: 1001
         # Prevent running as root even if the image allows it
         runAsNonRoot: true
-        # Use a read-only root filesystem
+        # Use the runtime's default seccomp profile
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -301,8 +307,8 @@ docker run --rm myapp:latest whoami
 docker run --rm myapp:latest id
 # Output: uid=1001(appuser) gid=1001(appgroup)
 
-# Verify root operations fail
-docker run --rm myapp:latest apt-get update
+# Verify package-manager operations fail in an Alpine-based image
+docker run --rm myapp:latest apk add curl
 # Output: Permission denied
 
 # Test file write permissions
