@@ -90,9 +90,30 @@ The sliding window log tracks the timestamp of every request. It gives precise r
 # Precise rate limiting using a sorted set of timestamps
 
 import time
+import uuid
 import redis
 
 r = redis.Redis(host="localhost", port=6379, db=0)
+
+SLIDING_LOG_SCRIPT = """
+local key = KEYS[1]
+local max_requests = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
+local member = ARGV[4]
+
+redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
+local count = redis.call('ZCARD', key)
+
+if count < max_requests then
+    redis.call('ZADD', key, now, member)
+    redis.call('EXPIRE', key, window)
+    return 1
+else
+    redis.call('EXPIRE', key, window)
+    return 0
+end
+"""
 
 def is_allowed_sliding_log(client_id: str, max_requests: int, window_seconds: int) -> bool:
     """
@@ -103,28 +124,18 @@ def is_allowed_sliding_log(client_id: str, max_requests: int, window_seconds: in
     """
     key = f"rate_limit:log:{client_id}"
     now = time.time()
-    window_start = now - window_seconds
+    member = f"{now}:{uuid.uuid4()}"
 
-    # Use a pipeline to make this atomic
-    pipe = r.pipeline()
-
-    # Remove timestamps older than the window
-    pipe.zremrangebyscore(key, 0, window_start)
-
-    # Count remaining timestamps in the window
-    pipe.zcard(key)
-
-    # Add the current request timestamp
-    pipe.zadd(key, {str(now): now})
-
-    # Set expiry on the key to clean up eventually
-    pipe.expire(key, window_seconds)
-
-    results = pipe.execute()
-    request_count = results[1]  # zcard result
-
-    # Allow if the count before adding this request is under the limit
-    return request_count < max_requests
+    # Use Lua so the prune, count, and conditional insert happen atomically
+    return r.eval(
+        SLIDING_LOG_SCRIPT,
+        1,
+        key,
+        max_requests,
+        window_seconds,
+        now,
+        member,
+    ) == 1
 ```
 
 ## Sliding Window Counter
@@ -255,17 +266,33 @@ Always tell clients about their rate limit status in response headers.
 
 ```python
 # middleware.py
-# Express-style middleware that adds rate limit headers
+# Flask middleware that adds rate limit headers
 
-from flask import Flask, request, jsonify, make_response
+import time
+
+import redis
+from flask import Flask, g, request, jsonify, make_response
 
 app = Flask(__name__)
+r = redis.Redis(host="localhost", port=6379, db=0)
+
+def check_rate_limit(client_id: str, max_requests: int, window_seconds: int) -> tuple[bool, int, int]:
+    current_window = int(time.time() // window_seconds)
+    reset_at = (current_window + 1) * window_seconds
+    key = f"rate_limit:{client_id}:{current_window}"
+
+    current_count = r.incr(key)
+    if current_count == 1:
+        r.expire(key, window_seconds)
+
+    remaining = max(0, max_requests - current_count)
+    return current_count <= max_requests, remaining, reset_at
 
 @app.before_request
 def rate_limit_middleware():
     """
     Check rate limits before processing any request.
-    Add standard rate limit headers to every response.
+    Add common rate limit headers to every response.
     """
     client_id = request.headers.get("X-API-Key", request.remote_addr)
     max_requests = 100
@@ -274,7 +301,7 @@ def rate_limit_middleware():
     allowed, remaining, reset_at = check_rate_limit(client_id, max_requests, window_seconds)
 
     # Store rate limit info for the after_request handler
-    request.rate_limit_info = {
+    g.rate_limit_info = {
         "limit": max_requests,
         "remaining": remaining,
         "reset": reset_at,
@@ -292,7 +319,7 @@ def rate_limit_middleware():
 @app.after_request
 def add_rate_limit_headers(response):
     """Attach rate limit headers to every response."""
-    info = getattr(request, "rate_limit_info", None)
+    info = getattr(g, "rate_limit_info", None)
     if info:
         response.headers["X-RateLimit-Limit"] = str(info["limit"])
         response.headers["X-RateLimit-Remaining"] = str(info["remaining"])
@@ -328,11 +355,18 @@ When running multiple API instances, centralize your rate limiting state in Redi
 # distributed_limiter.py
 # Lua script for atomic rate limiting in Redis
 
+import time
+import uuid
+import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0)
+
 SLIDING_WINDOW_SCRIPT = """
 local key = KEYS[1]
 local max_requests = tonumber(ARGV[1])
 local window = tonumber(ARGV[2])
 local now = tonumber(ARGV[3])
+local member = ARGV[4]
 
 -- Remove expired entries
 redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
@@ -342,7 +376,7 @@ local count = redis.call('ZCARD', key)
 
 if count < max_requests then
     -- Add this request
-    redis.call('ZADD', key, now, now .. '-' .. math.random(1000000))
+    redis.call('ZADD', key, now, member)
     redis.call('EXPIRE', key, window)
     return 1
 else
@@ -356,7 +390,9 @@ script_sha = r.script_load(SLIDING_WINDOW_SCRIPT)
 def is_allowed_distributed(client_id: str, max_requests: int, window_seconds: int) -> bool:
     """Atomic rate limiting using a Lua script in Redis."""
     key = f"rate_limit:dist:{client_id}"
-    result = r.evalsha(script_sha, 1, key, max_requests, window_seconds, time.time())
+    now = time.time()
+    member = f"{now}:{uuid.uuid4()}"
+    result = r.evalsha(script_sha, 1, key, max_requests, window_seconds, now, member)
     return result == 1
 ```
 
