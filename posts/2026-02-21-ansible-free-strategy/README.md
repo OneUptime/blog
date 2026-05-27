@@ -206,10 +206,10 @@ Since output is interleaved, use the `dense` callback for better readability:
 # ansible.cfg - Dense output with free strategy
 [defaults]
 strategy = free
-stdout_callback = dense
-callback_whitelist = timer, profile_tasks
+stdout_callback = community.general.dense
+callbacks_enabled = timer, profile_tasks
 ```
 
-The dense callback shows aggregated counts per task, which makes more sense than individual host lines when tasks overlap.
+The dense callback provides more compact stdout output, which can be easier to scan when tasks overlap. It is part of the `community.general` collection, so install that collection if you are using `ansible-core` without the full Ansible package.
 
 The free strategy is a simple switch that can reduce playbook runtime when hosts have variable performance. Try it on read-only or independent tasks first. If the total runtime drops without breaking anything, keep it.
