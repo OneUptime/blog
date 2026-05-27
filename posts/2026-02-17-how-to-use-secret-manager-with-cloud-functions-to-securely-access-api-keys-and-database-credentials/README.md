@@ -19,10 +19,10 @@ Environment variables work for non-sensitive configuration, but they have real l
 - They are visible to anyone with `cloudfunctions.functions.get` permission
 - They show up in deployment descriptors and Terraform state
 - They cannot be rotated without redeploying the function
-- There is no audit trail of who accessed them
-- They are stored unencrypted in the function metadata
+- There is no audit trail of when your code reads them
+- They are stored in the function configuration, where users with permission to view the function can see them
 
-Secret Manager addresses all of these issues. Secrets are encrypted at rest, access is controlled via IAM, every access is logged in Cloud Audit Logs, and secrets can be versioned and rotated independently of deployments.
+Secret Manager addresses all of these issues. Secrets are encrypted at rest, access is controlled via IAM, access can be logged in Cloud Audit Logs when Data Access audit logs are enabled, and secrets can be versioned and rotated independently of deployments.
 
 ## Setting Up Secret Manager
 
@@ -57,17 +57,17 @@ Your Cloud Function runs with a service account. That service account needs perm
 
 ```bash
 # Find your function's service account
-gcloud functions describe my-function \
+FUNCTION_SA=$(gcloud functions describe my-function \
   --region=us-central1 \
-  --format="value(serviceConfig.serviceAccountEmail)"
+  --format="value(serviceConfig.serviceAccountEmail)")
 
 # Grant access to specific secrets (not all secrets!)
 gcloud secrets add-iam-policy-binding db-password \
-  --member="serviceAccount:my-project@appspot.gserviceaccount.com" \
+  --member="serviceAccount:${FUNCTION_SA}" \
   --role="roles/secretmanager.secretAccessor"
 
 gcloud secrets add-iam-policy-binding stripe-api-key \
-  --member="serviceAccount:my-project@appspot.gserviceaccount.com" \
+  --member="serviceAccount:${FUNCTION_SA}" \
   --role="roles/secretmanager.secretAccessor"
 ```
 
@@ -83,6 +83,7 @@ gcloud functions deploy my-function \
   --region=us-central1 \
   --source=. \
   --entry-point=handler \
+  --trigger-http \
   --set-secrets="DB_PASSWORD=db-password:latest,STRIPE_KEY=stripe-api-key:latest"
 ```
 
@@ -91,6 +92,8 @@ Then access them in your code like regular environment variables:
 ```javascript
 // Access mounted secrets as environment variables
 // These are populated automatically at instance startup
+const { Pool } = require('pg');
+
 exports.handler = async (req, res) => {
   const dbPassword = process.env.DB_PASSWORD;
   const stripeKey = process.env.STRIPE_KEY;
@@ -135,7 +138,7 @@ async function getSecret(secretName) {
   }
 
   // Fetch the latest version of the secret
-  const projectId = process.env.GCP_PROJECT || process.env.GCLOUD_PROJECT;
+  const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT || process.env.GCLOUD_PROJECT;
   const name = `projects/${projectId}/secrets/${secretName}/versions/latest`;
 
   const [version] = await secretClient.accessSecretVersion({ name });
@@ -175,6 +178,7 @@ gcloud functions deploy my-function \
   --region=us-central1 \
   --source=. \
   --entry-point=handler \
+  --trigger-http \
   --set-secrets="/etc/secrets/firebase-key.json=firebase-admin-key:latest"
 ```
 
@@ -207,7 +211,7 @@ import os
 
 # Initialize the client once at module level
 client = secretmanager.SecretManagerServiceClient()
-project_id = os.environ.get('GCP_PROJECT')
+project_id = os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GCP_PROJECT')
 
 # Simple cache dictionary
 _secret_cache = {}
@@ -276,6 +280,7 @@ console.log('Successfully loaded database credentials');
 # Pin to a specific version instead of "latest"
 gcloud functions deploy my-function \
   --gen2 \
+  --trigger-http \
   --set-secrets="DB_PASSWORD=db-password:3"
 ```
 
@@ -283,6 +288,6 @@ gcloud functions deploy my-function \
 
 ## Monitoring Secret Access
 
-Use Cloud Audit Logs to track who and what is accessing your secrets. Set up alerts in OneUptime to detect unusual access patterns, like a secret being accessed from an unexpected service account or at an unusual frequency. This gives you visibility into your secrets usage and helps catch potential security issues early.
+Use Cloud Audit Logs to track who and what is accessing your secrets. Make sure Data Access audit logs are enabled for Secret Manager, then set up alerts in OneUptime to detect unusual access patterns, like a secret being accessed from an unexpected service account or at an unusual frequency. This gives you visibility into your secrets usage and helps catch potential security issues early.
 
 Secret Manager adds a small amount of latency to your function (typically 10-50ms per secret fetch), but with proper caching, this is a one-time cost per instance. The security benefits far outweigh that minor overhead.
