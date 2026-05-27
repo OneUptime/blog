@@ -43,7 +43,7 @@ kubectl get bgpadvertisement -n metallb-system -o yaml > /tmp/metallb-bgp.yaml
 kubectl get bgppeer -n metallb-system -o yaml > /tmp/metallb-peers.yaml
 
 # Capture all LoadBalancer services and their current state
-kubectl get svc -A --field-selector type=LoadBalancer -o wide > /tmp/lb-services.txt
+kubectl get svc -A --field-selector spec.type=LoadBalancer -o wide > /tmp/lb-services.txt
 
 # Capture all MetalLB speaker and controller logs
 kubectl logs -n metallb-system -l component=speaker --all-containers --tail=200 > /tmp/speaker-logs.txt
@@ -65,7 +65,7 @@ metadata:
   namespace: metallb-system
 spec:
   ipAddressPools:
-    - debug-pool
+    - production-pool
   nodeSelectors:
     - matchLabels:
         kubernetes.io/hostname: worker-node-1
@@ -73,14 +73,21 @@ spec:
 
 ```bash
 # Apply the restricted L2 advertisement
-# This replaces any existing L2 advertisements temporarily
+# Temporarily disable or narrow other L2 advertisements that select the same pool,
+# because MetalLB uses the union of all matching L2 advertisements.
 kubectl apply -f node-selector-l2.yaml
 
 # Verify the speaker on worker-node-1 is the one announcing
-kubectl logs -n metallb-system \
+SPEAKER_POD=$(kubectl get pods -n metallb-system \
   -l component=speaker \
   --field-selector spec.nodeName=worker-node-1 \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl logs -n metallb-system "$SPEAKER_POD" --all-containers \
   | grep "announcing"
+
+# You can also check the service events MetalLB attaches to the Service
+kubectl describe svc <LOADBALANCER-SERVICE>
 ```
 
 Test whether the problem persists. If the problem goes away, you know the issue is related to a specific node or cross-node communication.
@@ -165,10 +172,14 @@ for i in $(seq 1 20); do
 done
 
 # Scale to 2 replicas across different nodes
-# Remove the nodeName constraint first
+# Remove the nodeName constraint first, then recreate the pods so the scheduler can place them
 kubectl patch deployment metallb-test \
   --type='json' \
   -p='[{"op": "remove", "path": "/spec/template/spec/nodeName"}]'
+
+kubectl rollout restart deployment metallb-test
+kubectl rollout status deployment metallb-test
+kubectl get pods -l app=metallb-test -o wide
 ```
 
 ```mermaid
@@ -212,7 +223,12 @@ spec:
 # Apply the debug pool
 kubectl apply -f debug-pool.yaml
 
-# Delete and recreate the test service to pick up the new pool
+# Add this annotation to metallb-test-svc in test-deployment.yaml so it uses the debug pool:
+# metadata:
+#   annotations:
+#     metallb.io/address-pool: debug-pool
+#
+# Then delete and recreate the test service to pick up the new pool
 kubectl delete svc metallb-test-svc
 kubectl apply -f test-deployment.yaml
 ```
