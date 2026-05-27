@@ -46,7 +46,7 @@ for event in result.events:
 
 ## Project Structure for ansible-runner
 
-ansible-runner expects a specific directory layout:
+When you use a `private_data_dir`, ansible-runner can read inputs from this directory layout:
 
 ```text
 project/
@@ -56,9 +56,11 @@ project/
   inventory/
     hosts                 # Inventory files
   env/
-    settings              # Runner settings (JSON)
-    extravars             # Extra variables (JSON)
-    passwords             # Passwords (JSON)
+    envvars               # Environment variables (JSON or YAML)
+    settings              # Runner settings (JSON or YAML)
+    extravars             # Extra variables (JSON or YAML)
+    passwords             # Passwords (JSON or YAML)
+    cmdline               # Additional Ansible command-line options
     ssh_key               # SSH private key
   artifacts/              # Created automatically for results
 ```
@@ -132,6 +134,8 @@ def event_handler(event):
     elif event_type == 'playbook_on_stats':
         print("[STATS] Playbook complete")
 
+    return True
+
 
 result = ansible_runner.run(
     private_data_dir='/path/to/project',
@@ -156,9 +160,10 @@ thread, runner = ansible_runner.run_async(
 )
 
 # Monitor progress
-while runner.status == 'running':
+while thread.is_alive():
     print(f"Status: {runner.status}")
     time.sleep(5)
+thread.join()
 
 # Get the final result
 print(f"Final status: {runner.status}")
@@ -216,8 +221,8 @@ result = ansible_runner.run(
     private_data_dir='/path/to/project',
     playbook='deploy.yml',
     passwords={
-        'become_pass': 'sudo_password',
-        'conn_pass': 'ssh_password',
+        r'^BECOME password.*:\s*?$': 'sudo_password',
+        r'^SSH password:\s*?$': 'ssh_password',
     },
 )
 ```
@@ -226,8 +231,8 @@ Or use the `env/passwords` file:
 
 ```json
 {
-    "^SSH [Pp]assword:": "ssh_password",
-    "^BECOME [Pp]assword:": "sudo_password"
+    "^SSH password:\\s*?$": "ssh_password",
+    "^BECOME password.*:\\s*?$": "sudo_password"
 }
 ```
 
@@ -274,7 +279,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -418,4 +423,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
