@@ -8,29 +8,29 @@ Description: Enable the Ansible timer callback plugin to display total playbook 
 
 ---
 
-The `timer` callback plugin adds one simple but useful piece of information to your Ansible runs: the total elapsed time. After the play recap, it prints how long the entire playbook took to run. This sounds trivial, but when you are optimizing playbooks or tracking deployment times, having the wall-clock time right there in the output is genuinely helpful.
+The `ansible.posix.timer` callback plugin adds one simple but useful piece of information to your Ansible runs: the total elapsed time. After the play recap, it prints how long the entire playbook took to run. This sounds trivial, but when you are optimizing playbooks or tracking deployment times, having the wall-clock time right there in the output is genuinely helpful.
 
 ## Enabling the Timer Callback
 
-The timer is a notification callback, so it adds to your existing output rather than replacing it:
+The timer is an aggregate callback, so it adds to your existing output rather than replacing it. It is part of the `ansible.posix` collection, which is included with the `ansible` package but not with `ansible-core`:
 
 ```ini
 # ansible.cfg - Enable the timer callback
 
 [defaults]
-callback_whitelist = timer
+callbacks_enabled = ansible.posix.timer
 ```
 
 Or with an environment variable:
 
 ```bash
 # Enable timer for a single run
-ANSIBLE_CALLBACK_WHITELIST=timer ansible-playbook site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer ansible-playbook site.yml
 ```
 
 ## What the Output Looks Like
 
-With the timer callback enabled, your playbook output gains a line at the very end:
+With the timer callback enabled, your playbook output gains a short recap at the very end:
 
 ```text
 PLAY RECAP *******************************************************************
@@ -38,6 +38,7 @@ web-01  : ok=5  changed=2  unreachable=0  failed=0
 web-02  : ok=5  changed=2  unreachable=0  failed=0
 db-01   : ok=3  changed=1  unreachable=0  failed=0
 
+PLAYBOOK RECAP ****************************************************************
 Playbook run took 0 days, 0 hours, 3 minutes, 47 seconds
 ```
 
@@ -59,8 +60,8 @@ The timer works alongside any other callback. A common combination is timer with
 ```ini
 # ansible.cfg - Timer with task profiling
 [defaults]
-callback_whitelist = timer, profile_tasks
-stdout_callback = yaml
+callbacks_enabled = ansible.posix.profile_tasks, ansible.posix.timer
+callback_result_format = yaml
 ```
 
 Output:
@@ -69,6 +70,7 @@ Output:
 PLAY RECAP *******************************************************************
 web-01  : ok=5  changed=2  unreachable=0  failed=0
 
+TASKS RECAP *******************************************************************
 Thursday 21 February 2026  10:15:23 +0000 (0:00:02.345)       0:03:47.123 ****
 ===============================================================================
 Install packages ---------------------------------------------------- 120.45s
@@ -77,6 +79,7 @@ Gathering Facts ------------------------------------------------------ 12.67s
 Restart services ----------------------------------------------------- 8.34s
 Verify health -------------------------------------------------------- 2.35s
 
+PLAYBOOK RECAP ****************************************************************
 Playbook run took 0 days, 0 hours, 3 minutes, 47 seconds
 ```
 
@@ -91,7 +94,7 @@ Track playbook execution times over multiple runs:
 # track-timing.sh - Log playbook execution times
 LOG_FILE="/var/log/ansible/timing.log"
 
-output=$(ANSIBLE_CALLBACK_WHITELIST=timer ansible-playbook -i inventory deploy.yml 2>&1)
+output=$(ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer ansible-playbook -i inventory deploy.yml 2>&1)
 exit_code=$?
 
 # Extract the timing line
@@ -124,8 +127,9 @@ In CI/CD, the timer output helps you monitor deployment duration trends:
 deploy:
   stage: deploy
   variables:
-    ANSIBLE_CALLBACK_WHITELIST: "timer"
+    ANSIBLE_CALLBACKS_ENABLED: "ansible.posix.timer"
   script:
+    - set -o pipefail
     - ansible-playbook -i inventory/production deploy.yml 2>&1 | tee deploy.log
     # Extract and report timing
     - grep "Playbook run took" deploy.log
@@ -133,7 +137,7 @@ deploy:
     # Send timing to metrics system
     - |
       SECONDS=$(grep "Playbook run took" deploy.log | \
-        awk '{print ($8*3600) + ($10*60) + $12}')
+        awk '{print ($4*86400) + ($6*3600) + ($8*60) + $10}')
       curl -X POST "https://metrics.example.com/api/v1/series" \
         -d "{\"metric\":\"ansible.deploy.duration\",\"value\":$SECONDS}"
 ```
@@ -144,12 +148,12 @@ Use the timer to measure the impact of optimizations. For example, before and af
 
 ```bash
 # Before pipelining
-ANSIBLE_CALLBACK_WHITELIST=timer ansible-playbook site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer ansible-playbook site.yml
 # Playbook run took 0 days, 0 hours, 8 minutes, 15 seconds
 
 # Enable pipelining
 export ANSIBLE_PIPELINING=True
-ANSIBLE_CALLBACK_WHITELIST=timer ansible-playbook site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer ansible-playbook site.yml
 # Playbook run took 0 days, 0 hours, 5 minutes, 42 seconds
 ```
 
@@ -159,11 +163,11 @@ Similarly, measuring the impact of increasing forks:
 
 ```bash
 # Default forks (5)
-ANSIBLE_CALLBACK_WHITELIST=timer ansible-playbook -f 5 site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer ansible-playbook -f 5 site.yml
 # Playbook run took 0 days, 0 hours, 12 minutes, 30 seconds
 
 # Increased forks
-ANSIBLE_CALLBACK_WHITELIST=timer ansible-playbook -f 20 site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer ansible-playbook -f 20 site.yml
 # Playbook run took 0 days, 0 hours, 4 minutes, 10 seconds
 ```
 
@@ -177,7 +181,7 @@ Set up alerts when playbooks take longer than expected:
 MAX_SECONDS=600  # 10 minutes
 
 START=$(date +%s)
-ANSIBLE_CALLBACK_WHITELIST=timer ansible-playbook deploy.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer ansible-playbook deploy.yml
 END=$(date +%s)
 
 DURATION=$((END - START))
@@ -192,13 +196,13 @@ fi
 
 ## Timer Callback Internals
 
-The timer callback is one of the simplest callback plugins in Ansible. It records the start time when the playbook begins and calculates the difference when it finishes. The entire implementation is about 20 lines of Python, making it a good reference if you want to write your own callback.
+The timer callback is one of the simplest callback plugins in Ansible. It records the start time when the callback is initialized and calculates the difference when playbook stats are emitted at the end. The compact implementation makes it a good reference if you want to write your own callback.
 
 You can look at the source:
 
 ```bash
 # Find the timer callback source
-python3 -c "import ansible.plugins.callback.timer; print(ansible.plugins.callback.timer.__file__)"
+python3 -c "import ansible_collections.ansible.posix.plugins.callback.timer as timer; print(timer.__file__)"
 ```
 
-The simplicity is the point. It does one thing, adds no overhead, and provides genuinely useful information on every run. Enable it in your `ansible.cfg` and leave it there.
+The simplicity is the point. It does one thing, adds negligible overhead, and provides genuinely useful information on every run. Enable it in your `ansible.cfg` and leave it there.
