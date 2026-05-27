@@ -42,17 +42,17 @@ While `shared_buffers` is about caching data, `work_mem` controls how much memor
 
 The default `work_mem` in Cloud SQL is typically 4MB. That might sound small, and for complex analytical queries, it often is. But here is the catch - `work_mem` is allocated per sort operation per connection. A single complex query with multiple sort steps might allocate `work_mem` several times. Multiply that by your concurrent connections, and you can see how aggressive settings can eat through memory fast.
 
-Check whether your queries are spilling to disk:
+Check whether your queries are spilling to disk. This query requires the `pg_stat_statements` extension to be enabled in the database:
 
 ```sql
 -- Find queries that are using temporary files (disk spills)
 SELECT
   query,
-  temp_files,
-  temp_bytes / 1024 / 1024 AS temp_mb
+  temp_blks_written,
+  round(temp_blks_written * current_setting('block_size')::numeric / 1024 / 1024, 2) AS temp_mb
 FROM pg_stat_statements
-WHERE temp_files > 0
-ORDER BY temp_bytes DESC
+WHERE temp_blks_written > 0
+ORDER BY temp_blks_written DESC
 LIMIT 20;
 ```
 
@@ -63,21 +63,23 @@ To modify `shared_buffers` in Cloud SQL, you use database flags through the GCP 
 Here is how to set it using gcloud:
 
 ```bash
-# Set shared_buffers to 40% of instance RAM (for a 16GB instance, ~6.5GB)
+# Set shared_buffers to about 40% of instance RAM (for a 16GB instance, 6.25GB)
 
 # This requires a database restart
 gcloud sql instances patch my-instance \
-  --database-flags shared_buffers=6710886400
+  --database-flags=shared_buffers=819200
 ```
 
-Note that Cloud SQL expects the value in bytes for `shared_buffers`. Here are some guidelines based on instance RAM:
+Note that Cloud SQL expects the value in 8KB units for `shared_buffers`. Here are some guidelines based on instance RAM:
 
-- 4GB instance: Try 1.5GB to 1.8GB (1610612736 to 1932735283 bytes)
-- 8GB instance: Try 3GB to 3.5GB (3221225472 to 3758096384 bytes)
-- 16GB instance: Try 5GB to 7GB (5368709120 to 7516192768 bytes)
-- 32GB instance: Try 10GB to 12GB (10737418240 to 12884901888 bytes)
+- 4GB instance: Try 1.5GB to 1.75GB (196608 to 229376 in 8KB units)
+- 8GB instance: Try 3GB to 3.5GB (393216 to 458752 in 8KB units)
+- 16GB instance: Try 5GB to 7GB (655360 to 917504 in 8KB units)
+- 32GB instance: Try 10GB to 12GB (1310720 to 1572864 in 8KB units)
 
 Going beyond 40 percent of total RAM for `shared_buffers` rarely helps because the operating system file cache also plays an important role, and you need to leave room for `work_mem` allocations and other processes.
+
+When using `--database-flags`, include any existing database flags you want to keep, because the command replaces the full flag list.
 
 ## Tuning work_mem in Cloud SQL
 
@@ -86,7 +88,7 @@ Adjusting `work_mem` does not require a restart. You can set it at the instance 
 ```bash
 # Set work_mem to 32MB at the instance level (no restart needed)
 gcloud sql instances patch my-instance \
-  --database-flags work_mem=33554432
+  --database-flags=work_mem=32768
 ```
 
 You can also set it per session for specific workloads:
@@ -132,23 +134,20 @@ After tuning these flags, monitor the impact. Cloud SQL exposes useful metrics i
 Track these specific metrics:
 
 ```sql
--- Check if sort operations are now in memory
+-- Check total temporary file usage for the current database
 SELECT
-  relname,
-  seq_scan,
-  idx_scan,
-  n_tup_ins,
-  n_tup_upd
-FROM pg_stat_user_tables
-ORDER BY seq_scan DESC
-LIMIT 10;
+  datname,
+  temp_files,
+  round(temp_bytes::numeric / 1024 / 1024, 2) AS temp_mb
+FROM pg_stat_database
+WHERE datname = current_database();
 ```
 
 You should also watch the Cloud Monitoring metrics for your Cloud SQL instance:
 
 - `database/memory/utilization` - make sure you are not running out of memory
-- `database/disk/read_ops_count` - this should decrease after increasing shared_buffers
-- `database/postgresql/temp_bytes_written` - this should decrease after increasing work_mem
+- `database/postgresql/blocks_read_count` with `source="disk"` - this should decrease after increasing shared_buffers
+- `database/postgresql/temp_bytes_written_count` - this should decrease after increasing work_mem
 
 ## Common Pitfalls
 
