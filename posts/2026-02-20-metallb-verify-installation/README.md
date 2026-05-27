@@ -110,7 +110,7 @@ In Layer 2 mode, MetalLB needs an L2Advertisement resource to announce IPs on th
 
 ```bash
 # List all L2 advertisements
-# At least one must exist and reference your IP address pool
+# At least one must exist and apply to your IP address pool
 kubectl get l2advertisements -n metallb-system
 ```
 
@@ -204,7 +204,7 @@ If the `EXTERNAL-IP` stays as `<pending>`, something is wrong. The most common c
 
 - No IPAddressPool is configured.
 - The IP pool is exhausted (all IPs are already assigned).
-- The L2Advertisement is missing.
+- No IPAddressPool is compatible with the service.
 - MetalLB controller is not running.
 
 ### Step 7: Test External Reachability
@@ -224,7 +224,7 @@ Expected output:
 HTTP Status: 200
 ```
 
-You can also run `ping -c 3 192.168.1.200` to verify Layer 2 reachability. If the ping works but curl does not, the issue is likely with the pod or service, not with MetalLB itself.
+You can also run `arping 192.168.1.200` from a host on the same Layer 2 subnet to verify that MetalLB is answering ARP for the LoadBalancer IP. If ARP resolution works but curl does not, the issue is likely with the pod, service, CNI, or traffic path rather than IP advertisement itself.
 
 ### Step 8: Check MetalLB Logs
 
