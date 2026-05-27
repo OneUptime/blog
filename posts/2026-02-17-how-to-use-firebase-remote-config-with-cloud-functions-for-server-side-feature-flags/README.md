@@ -24,114 +24,96 @@ You could use environment variables for some of this, but every change requires 
 
 ## Setting Up Remote Config Parameters
 
-Start by defining your server-side parameters in the Firebase Console. Go to Remote Config and create parameters for your feature flags.
+Start by defining your server-side parameters in the Firebase Console. Go to Remote Config, choose Server from the Client/Server selector, and create parameters for your feature flags.
 
-You can also manage them programmatically. This script creates Remote Config parameters using the Admin SDK:
+For a server template, the parameters look like this:
 
-```javascript
-// setup-remote-config.js - Define feature flags programmatically
-const admin = require("firebase-admin");
-
-admin.initializeApp();
-
-async function setupFeatureFlags() {
-  const remoteConfig = admin.remoteConfig();
-
-  // Get the current template
-  const template = await remoteConfig.getTemplate();
-
-  // Define server-side feature flags
-  template.parameters = {
-    ...template.parameters,
-
-    // Feature flag for new recommendation engine
-    new_recommendation_engine: {
-      defaultValue: { value: "false" },
-      description: "Enable the new recommendation engine",
-      valueType: "BOOLEAN"
+```json
+{
+  "parameters": {
+    "new_recommendation_engine": {
+      "defaultValue": { "value": "false" },
+      "description": "Enable the new recommendation engine",
+      "valueType": "BOOLEAN"
     },
-
-    // Feature flag for payment processor
-    payment_processor: {
-      defaultValue: { value: "stripe" },
-      description: "Active payment processor (stripe or braintree)",
-      valueType: "STRING"
+    "payment_processor": {
+      "defaultValue": { "value": "stripe" },
+      "description": "Active payment processor (stripe or braintree)",
+      "valueType": "STRING"
     },
-
-    // Percentage rollout for new search algorithm
-    new_search_rollout_percentage: {
-      defaultValue: { value: "0" },
-      description: "Percentage of users getting the new search (0-100)",
-      valueType: "NUMBER"
+    "new_search_rollout_percentage": {
+      "defaultValue": { "value": "0" },
+      "description": "Percentage of users getting the new search (0-100)",
+      "valueType": "NUMBER"
     },
-
-    // Feature flag for maintenance mode
-    maintenance_mode: {
-      defaultValue: { value: "false" },
-      description: "Enable maintenance mode for API",
-      valueType: "BOOLEAN"
+    "maintenance_mode": {
+      "defaultValue": { "value": "false" },
+      "description": "Enable maintenance mode for API",
+      "valueType": "BOOLEAN"
     }
-  };
-
-  // Publish the updated template
-  await remoteConfig.publishTemplate(template);
-  console.log("Feature flags published successfully");
+  }
 }
-
-setupFeatureFlags();
 ```
 
 ## Reading Remote Config in Cloud Functions
 
-The Admin SDK lets you fetch Remote Config values from within Cloud Functions. Here is the core pattern.
+The Admin Node.js SDK lets you fetch server-side Remote Config values from within Cloud Functions. Server-side Remote Config is available in the Admin Node.js SDK v12.1.0 and later. Here is the core pattern.
 
 This Cloud Function reads feature flags and adjusts its behavior accordingly:
 
 ```typescript
 // functions/src/index.ts
 import * as functions from "firebase-functions";
-import * as admin from "firebase-admin";
+import { initializeApp } from "firebase-admin/app";
+import {
+  getRemoteConfig,
+  ServerConfig,
+  ServerTemplate
+} from "firebase-admin/remote-config";
 
-admin.initializeApp();
+const app = initializeApp();
 
 // Cache the remote config template to avoid fetching on every invocation
-let cachedTemplate: admin.remoteConfig.RemoteConfigTemplate | null = null;
+let cachedTemplate: ServerTemplate | null = null;
 let templateLastFetched = 0;
 const CACHE_TTL_MS = 60000; // Refresh every 60 seconds
 
-async function getFeatureFlags(): Promise<Record<string, string>> {
+async function getServerConfig(): Promise<ServerConfig> {
   const now = Date.now();
 
   // Refresh the cache if it is stale
   if (!cachedTemplate || now - templateLastFetched > CACHE_TTL_MS) {
-    const remoteConfig = admin.remoteConfig();
-    cachedTemplate = await remoteConfig.getTemplate();
+    const remoteConfig = getRemoteConfig(app);
+    cachedTemplate = await remoteConfig.getServerTemplate({
+      defaultConfig: {
+        new_recommendation_engine: false,
+        payment_processor: "stripe",
+        new_search_rollout_percentage: 0,
+        maintenance_mode: false
+      }
+    });
     templateLastFetched = now;
   }
 
-  // Extract parameter default values into a simple key-value map
-  const flags: Record<string, string> = {};
-  const params = cachedTemplate.parameters || {};
-
-  for (const [key, param] of Object.entries(params)) {
-    if (param.defaultValue && "value" in param.defaultValue) {
-      flags[key] = param.defaultValue.value;
-    }
-  }
-
-  return flags;
+  return cachedTemplate.evaluate();
 }
 
 // Helper to check a boolean flag
 async function isFeatureEnabled(flagName: string): Promise<boolean> {
-  const flags = await getFeatureFlags();
-  return flags[flagName] === "true";
+  const config = await getServerConfig();
+  return config.getBoolean(flagName);
 }
 
 // Helper to get a string flag value
-async function getFeatureValue(flagName: string): Promise<string | undefined> {
-  const flags = await getFeatureFlags();
-  return flags[flagName];
+async function getFeatureValue(flagName: string): Promise<string> {
+  const config = await getServerConfig();
+  return config.getString(flagName);
+}
+
+// Helper to get a numeric flag value
+async function getFeatureNumber(flagName: string): Promise<number> {
+  const config = await getServerConfig();
+  return config.getNumber(flagName);
 }
 ```
 
@@ -193,8 +175,7 @@ function getUserBucket(userId: string): number {
 }
 
 async function isInRollout(userId: string, flagName: string): Promise<boolean> {
-  const flags = await getFeatureFlags();
-  const percentage = parseInt(flags[flagName] || "0", 10);
+  const percentage = await getFeatureNumber(flagName);
   const userBucket = getUserBucket(userId);
   return userBucket < percentage;
 }
@@ -226,9 +207,11 @@ This middleware checks for maintenance mode before processing any request:
 
 ```typescript
 // functions/src/middleware.ts
+import { Response } from "express";
+
 async function maintenanceCheck(
   req: functions.https.Request,
-  res: functions.Response
+  res: Response
 ): Promise<boolean> {
   const inMaintenance = await isFeatureEnabled("maintenance_mode");
 
@@ -256,7 +239,7 @@ export const api = functions.https.onRequest(async (req, res) => {
 
 ## Listening for Config Changes
 
-You can trigger a Cloud Function whenever Remote Config is updated. This is useful for logging, cache invalidation, or notifying your team.
+You can trigger a Cloud Function whenever Remote Config is updated. This is useful for logging, clearing a shared cache, or notifying your team.
 
 This function fires whenever someone publishes a Remote Config change:
 
@@ -272,9 +255,8 @@ export const onRemoteConfigUpdate = functions.remoteConfig.onUpdate(
       updateTime: versionMetadata.updateTime
     });
 
-    // Invalidate the local cache
-    cachedTemplate = null;
-    templateLastFetched = 0;
+    // Invalidate a shared cache here if you use one. Module-level
+    // caches in other Cloud Functions instances still rely on their TTL.
 
     // Optionally send a Slack notification
     // await sendSlackNotification(versionMetadata);
@@ -284,37 +266,43 @@ export const onRemoteConfigUpdate = functions.remoteConfig.onUpdate(
 
 ## Conditional Config with Server Conditions
 
-Remote Config supports conditions, which let you serve different values based on criteria. While conditions are primarily designed for client-side segmentation, you can use them creatively on the server.
+Remote Config supports conditions, which let you serve different values based on criteria. For server-side Remote Config, conditions can use percentage rules and custom signals passed to `template.evaluate()`.
 
-This setup creates conditions in the Remote Config template:
+This setup shows a custom-signal condition in the server template:
 
-```javascript
-// setup-conditions.js
-async function setupWithConditions() {
-  const remoteConfig = admin.remoteConfig();
-  const template = await remoteConfig.getTemplate();
-
-  // Add conditions based on app version or custom signals
-  template.conditions = [
+```json
+{
+  "conditions": [
     {
-      name: "beta_users",
-      expression: "app.userProperty['beta_tester'] == 'true'",
-      tagColor: "BLUE"
+      "name": "beta_users",
+      "condition": {
+        "customSignal": {
+          "customSignalKey": "beta_tester",
+          "customSignalOperator": "STRING_EXACTLY_MATCHES",
+          "targetCustomSignalValues": ["true"]
+        }
+      }
     }
-  ];
-
-  // Apply conditional values to parameters
-  template.parameters.new_recommendation_engine = {
-    defaultValue: { value: "false" },
-    conditionalValues: {
-      beta_users: { value: "true" }
-    },
-    description: "Enable new recommendation engine",
-    valueType: "BOOLEAN"
-  };
-
-  await remoteConfig.publishTemplate(template);
+  ],
+  "parameters": {
+    "new_recommendation_engine": {
+      "defaultValue": { "value": "false" },
+      "conditionalValues": {
+        "beta_users": { "value": "true" }
+      },
+      "description": "Enable new recommendation engine",
+      "valueType": "BOOLEAN"
+    }
+  }
 }
+```
+
+Then pass the custom signal when you evaluate the template:
+
+```typescript
+const config = cachedTemplate.evaluate({
+  beta_tester: "true"
+});
 ```
 
 ## Deploying and Testing
@@ -335,4 +323,4 @@ curl https://YOUR_REGION-YOUR_PROJECT.cloudfunctions.net/getRecommendations?user
 
 ## Summary
 
-Using Firebase Remote Config for server-side feature flags gives you instant control over your backend behavior without redeployments. The pattern is simple - fetch the template, cache it, and check flag values before branching your logic. Add percentage-based rollouts for gradual releases, a maintenance mode flag for emergencies, and a config change listener for audit logging. This setup works particularly well when you already use Remote Config on the client side, since you get a single dashboard for all your feature flags across the entire stack.
+Using Firebase Remote Config for server-side feature flags gives you instant control over your backend behavior without redeployments. The pattern is simple - fetch the server template, cache it, evaluate it, and check flag values before branching your logic. Add percentage-based rollouts for gradual releases, a maintenance mode flag for emergencies, and a config change listener for audit logging. This setup works particularly well when you already use Remote Config on the client side, since you get a single dashboard for all your feature flags across the entire stack.
