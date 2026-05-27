@@ -57,22 +57,26 @@ The load balancer handles splitting traffic between variants. Here is an Ansible
 # roles/ab_testing_nginx/templates/ab_testing.conf.j2
 # Nginx A/B testing configuration with sticky sessions
 
-# Map to assign users to groups based on cookie
-map $cookie_ab_group $ab_variant {
-    default     "{{ ab_default_variant | default('a') }}";
+# Split traffic based on a hash for new visitors
 {% for experiment in ab_experiments %}
-    "{{ experiment.name }}_a"  "a";
-    "{{ experiment.name }}_b"  "b";
-{% endfor %}
-}
-
-# Split traffic based on a hash of the client IP for new visitors
-split_clients "${remote_addr}${uri}" $ab_split {
-{% for experiment in ab_experiments %}
+split_clients "${remote_addr}${http_user_agent}{{ experiment.name }}" ${{ experiment.name }}_split {
     {{ experiment.variant_a_weight | default(50) }}%  a;
     *                                                   b;
-{% endfor %}
 }
+
+# Use the existing cookie when present, otherwise use the split assignment
+map $cookie_{{ experiment.name }}_ab_variant ${{ experiment.name }}_variant {
+    default  ${{ experiment.name }}_split;
+    a        a;
+    b        b;
+}
+
+map ${{ experiment.name }}_variant ${{ experiment.name }}_upstream {
+    a        {{ experiment.name }}_variant_a;
+    b        {{ experiment.name }}_variant_b;
+}
+
+{% endfor %}
 
 server {
     listen 80;
@@ -81,22 +85,15 @@ server {
 {% for experiment in ab_experiments %}
     # Experiment: {{ experiment.name }}
     location {{ experiment.path }} {
-        # Set cookie if not already assigned
-        if ($cookie_ab_group = "") {
-            add_header Set-Cookie "ab_group={{ experiment.name }}_${ab_split};Path=/;Max-Age=2592000";
-        }
+        # Persist the selected variant for repeat visits
+        add_header Set-Cookie "{{ experiment.name }}_ab_variant=${{ experiment.name }}_variant; Path=/; Max-Age=2592000; SameSite=Lax";
 
         # Route to appropriate variant
-        if ($ab_variant = "a") {
-            proxy_pass http://{{ experiment.name }}_variant_a;
-        }
-        if ($ab_variant = "b") {
-            proxy_pass http://{{ experiment.name }}_variant_b;
-        }
+        proxy_pass http://${{ experiment.name }}_upstream;
 
         # Pass experiment info to backend
         proxy_set_header X-AB-Experiment {{ experiment.name }};
-        proxy_set_header X-AB-Variant $ab_variant;
+        proxy_set_header X-AB-Variant ${{ experiment.name }}_variant;
     }
 {% endfor %}
 }
@@ -159,10 +156,11 @@ A/B tests need event data to measure results. Set up an event collection service
 # roles/ab_event_collector/tasks/main.yml
 # Deploy event collection service for A/B test metrics
 ---
-- name: Deploy event collector Docker stack
-  community.docker.docker_compose_v2:
-    project_src: "{{ app_dir }}/event-collector"
-    state: present
+- name: Create event collector project directory
+  ansible.builtin.file:
+    path: "{{ app_dir }}/event-collector"
+    state: directory
+    mode: '0755'
   vars:
     app_dir: /opt/ab-testing
 
@@ -171,12 +169,18 @@ A/B tests need event data to measure results. Set up an event collection service
     src: docker-compose.yml.j2
     dest: /opt/ab-testing/event-collector/docker-compose.yml
     mode: '0644'
+
+- name: Deploy event collector Docker stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ app_dir }}/event-collector"
+    state: present
+  vars:
+    app_dir: /opt/ab-testing
 ```
 
 ```yaml
 # roles/ab_event_collector/templates/docker-compose.yml.j2
 # Event collection stack for A/B test data
-version: "3.8"
 services:
   collector:
     image: clickhouse/clickhouse-server:latest
@@ -187,8 +191,8 @@ services:
       - clickhouse_data:/var/lib/clickhouse
       - ./init-scripts:/docker-entrypoint-initdb.d
     environment:
-      CLICKHOUSE_USER: {{ ab_db_user }}
-      CLICKHOUSE_PASSWORD: {{ ab_db_password }}
+      CLICKHOUSE_USER: "{{ ab_db_user }}"
+      CLICKHOUSE_PASSWORD: "{{ ab_db_password }}"
       CLICKHOUSE_DB: ab_testing
 
   kafka:
@@ -196,14 +200,15 @@ services:
     ports:
       - "9092:9092"
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://{{ inventory_hostname }}:9092
+      KAFKA_BROKER_ID: "1"
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://{{ inventory_hostname }}:9092"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_CLIENT_PORT: "2181"
 
 volumes:
   clickhouse_data:
@@ -237,22 +242,38 @@ volumes:
     password: "{{ ab_db_password }}"
     status_code: 200
 
+- name: Create experiment results table
+  ansible.builtin.uri:
+    url: "http://{{ clickhouse_host }}:8123/"
+    method: POST
+    body: |
+      CREATE TABLE IF NOT EXISTS ab_testing.experiment_results (
+        experiment_name String,
+        winner String,
+        concluded_at DateTime DEFAULT now(),
+        notes String
+      ) ENGINE = MergeTree()
+      ORDER BY (experiment_name, concluded_at);
+    user: "{{ ab_db_user }}"
+    password: "{{ ab_db_password }}"
+    status_code: 200
+
 - name: Create materialized view for daily aggregates
   ansible.builtin.uri:
     url: "http://{{ clickhouse_host }}:8123/"
     method: POST
     body: |
       CREATE MATERIALIZED VIEW IF NOT EXISTS ab_testing.daily_metrics
-      ENGINE = SummingMergeTree()
+      ENGINE = AggregatingMergeTree()
       ORDER BY (experiment_name, variant, event_date, event_type)
       AS SELECT
         experiment_name,
         variant,
         toDate(timestamp) as event_date,
         event_type,
-        count() as event_count,
-        sum(event_value) as total_value,
-        uniqExact(user_id) as unique_users
+        countState() as event_count,
+        sumState(event_value) as total_value,
+        uniqExactState(user_id) as unique_users
       FROM ab_testing.experiments
       GROUP BY experiment_name, variant, event_date, event_type;
     user: "{{ ab_db_user }}"
