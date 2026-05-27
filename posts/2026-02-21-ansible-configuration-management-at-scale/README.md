@@ -14,7 +14,7 @@ I have been running Ansible against fleets of 2,000+ hosts, and in this post I w
 
 ## The Scale Challenge
 
-When you go from dozens to thousands of hosts, three things break down: execution speed, inventory management, and variable organization. Ansible runs tasks sequentially on each host by default, which means a playbook that takes 5 minutes on one host would take over 6 days if you ran it on 2,000 hosts one at a time.
+When you go from dozens to thousands of hosts, three things break down: execution speed, inventory management, and variable organization. Ansible runs each task across hosts in parallel up to the configured fork limit by default, but a playbook that takes 5 minutes on one host would still take over 6 days if you forced it to run on 2,000 hosts one at a time.
 
 Fortunately, Ansible has several mechanisms to handle this.
 
@@ -32,8 +32,10 @@ gathering = smart
 fact_caching = jsonfile
 fact_caching_connection = /tmp/ansible_facts_cache
 fact_caching_timeout = 86400
-callback_whitelist = timer, profile_tasks
-stdout_callback = yaml
+callbacks_enabled = timer, profile_tasks
+stdout_callback = default
+callback_result_format = yaml
+retry_files_enabled = True
 strategy = free
 
 [ssh_connection]
@@ -132,7 +134,7 @@ Running against all hosts at once is risky. Use the `serial` keyword to roll out
       delegate_to: localhost
 ```
 
-This starts with 1 host, then 5, then 25% of the remaining hosts. If more than 10% of hosts fail, the entire run stops.
+This starts with 1 host, then 5, then 25% of the remaining hosts. If more than 10% of hosts fail in a batch, the entire run stops.
 
 ## Organizing Variables for Large Fleets
 
@@ -296,7 +298,7 @@ Not every host will succeed, especially at scale. Use `ignore_unreachable` and r
         - security
 ```
 
-After a run, Ansible creates a retry file listing failed hosts. Rerun against just those hosts:
+With `retry_files_enabled` set, Ansible creates a retry file listing failed hosts after a failed run. Rerun against just those hosts:
 
 ```bash
 # Retry only the hosts that failed
