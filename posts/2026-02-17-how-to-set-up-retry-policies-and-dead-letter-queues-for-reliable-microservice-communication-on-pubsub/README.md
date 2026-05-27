@@ -14,7 +14,7 @@ Google Cloud Pub/Sub has built-in support for retry policies and dead letter que
 
 ## Understanding Pub/Sub Message Delivery
 
-By default, Pub/Sub uses exponential backoff for retries. When a subscriber does not acknowledge a message within the acknowledgement deadline, Pub/Sub redelivers it. This happens indefinitely unless you configure a dead letter queue. That means a single poison message - one that always fails to process - will be retried forever, wasting resources and potentially causing alerting noise.
+By default, Pub/Sub uses immediate redelivery for retries. When a subscriber does not acknowledge a message within the acknowledgement deadline, Pub/Sub redelivers it. This continues until the message is acknowledged or expires according to the subscription's message retention settings, unless you configure a dead letter queue. That means a single poison message - one that always fails to process - can be retried repeatedly, wasting resources and potentially causing alerting noise.
 
 ```mermaid
 sequenceDiagram
@@ -49,11 +49,8 @@ gcloud pubsub subscriptions create order-processor-sub \
   --min-retry-delay=10s \
   --max-retry-delay=600s
 
-# The retry delay grows exponentially:
-# Attempt 1: 10s delay
-# Attempt 2: 20s delay
-# Attempt 3: 40s delay
-# ... up to the max of 600s (10 minutes)
+# The retry delay uses exponential backoff on a best-effort basis,
+# starting near the minimum delay and increasing up to the maximum.
 ```
 
 You can also set the retry policy when creating a subscription programmatically.
@@ -89,7 +86,7 @@ print(f'Subscription created: {subscription.name}')
 
 ## Setting Up Dead Letter Queues
 
-A dead letter queue catches messages that have exhausted all retry attempts. Create a dead letter topic and configure the subscription to use it.
+A dead letter queue catches messages that have reached approximately the configured maximum delivery attempts. Create a dead letter topic and configure the subscription to use it.
 
 ```bash
 # Step 1: Create the dead letter topic and its subscription
@@ -132,6 +129,15 @@ import logging
 
 subscriber = pubsub_v1.SubscriberClient()
 subscription_path = subscriber.subscription_path('my-project', 'order-processor-sub')
+
+class ProcessResult:
+    def __init__(self, success, error=''):
+        self.success = success
+        self.error = error
+
+def process_order(data):
+    """Replace this with your application-specific order processing logic."""
+    return ProcessResult(success=True)
 
 def process_message(message):
     """Process a Pub/Sub message with proper error categorization."""
@@ -212,21 +218,33 @@ def process_dead_letter(message):
     except json.JSONDecodeError:
         data = {'raw': message.data.decode('utf-8', errors='replace')}
 
+    source_delivery_count = message.attributes.get(
+        'CloudPubSubDeadLetterSourceDeliveryCount'
+    )
+    source_subscription = message.attributes.get(
+        'CloudPubSubDeadLetterSourceSubscription'
+    )
+    source_publish_time = message.attributes.get(
+        'CloudPubSubDeadLetterSourceTopicPublishTime'
+    )
+
     # Store the failed message in Firestore for investigation
     doc_ref = db.collection('dead_letters').document(message.message_id)
     doc_ref.set({
-        'message_id': message.message_id,
+        'dead_letter_message_id': message.message_id,
         'data': data,
         'attributes': dict(message.attributes),
-        'publish_time': message.publish_time.isoformat(),
-        'delivery_attempt': message.delivery_attempt,
+        'dead_letter_publish_time': message.publish_time.isoformat(),
+        'source_publish_time': source_publish_time,
+        'source_subscription': source_subscription,
+        'source_delivery_count': source_delivery_count,
         'received_at': firestore.SERVER_TIMESTAMP,
         'status': 'pending_review',
     })
 
     logging.error(
         f'Dead letter received: message_id={message.message_id}, '
-        f'attempts={message.delivery_attempt}, '
+        f'source_attempts={source_delivery_count}, '
         f'data={json.dumps(data)[:200]}'
     )
 
@@ -269,7 +287,7 @@ def replay_dead_letters(project_id, original_topic, batch_size=100):
             topic_path,
             data=json.dumps(dl_data['data']).encode('utf-8'),
             replayed='true',
-            original_message_id=dl_data['message_id'],
+            dead_letter_message_id=dl_data['dead_letter_message_id'],
         )
         future.result()
 
@@ -291,8 +309,8 @@ gcloud alpha monitoring policies create \
   --display-name="Messages in Dead Letter Queue" \
   --condition-display-name="DLQ messages > 0" \
   --condition-filter='resource.type="pubsub_subscription" AND resource.labels.subscription_id="order-events-dlq-sub" AND metric.type="pubsub.googleapis.com/subscription/num_undelivered_messages"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --duration=60s \
+  --if='> 0'
 ```
 
 ## Setting Up Per-Service DLQs
@@ -309,6 +327,6 @@ done
 
 ## Summary
 
-Retry policies and dead letter queues are the safety net for message-driven microservices. Configure appropriate backoff intervals based on the nature of your downstream dependencies. Set a reasonable max delivery attempts count - usually between 3 and 10 depending on how transient your errors typically are. Always process your DLQ messages instead of letting them sit there. And make sure you have alerts when messages start landing in the DLQ.
+Retry policies and dead letter queues are the safety net for message-driven microservices. Configure appropriate backoff intervals based on the nature of your downstream dependencies. Set a reasonable max delivery attempts count - usually between 5 and 10 depending on how transient your errors typically are. Always process your DLQ messages instead of letting them sit there. And make sure you have alerts when messages start landing in the DLQ.
 
 OneUptime can help you monitor your Pub/Sub infrastructure alongside your microservices, tracking message throughput, delivery latency, and DLQ accumulation. When messages start piling up in a dead letter queue, you want to know immediately - not days later when a customer reports a missing order.
