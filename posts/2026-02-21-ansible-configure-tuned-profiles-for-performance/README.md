@@ -212,7 +212,7 @@ Built-in profiles are a great start, but you often need custom profiles tailored
     # Create profile directories
     - name: Create custom profile directories
       ansible.builtin.file:
-        path: "/etc/tuned/{{ item.name }}"
+        path: "/etc/tuned/profiles/{{ item.name }}"
         state: directory
         owner: root
         group: root
@@ -223,7 +223,7 @@ Built-in profiles are a great start, but you often need custom profiles tailored
     - name: Deploy custom profile config
       ansible.builtin.template:
         src: tuned-profile.conf.j2
-        dest: "/etc/tuned/{{ item.name }}/tuned.conf"
+        dest: "/etc/tuned/profiles/{{ item.name }}/tuned.conf"
         owner: root
         group: root
         mode: '0644'
@@ -456,7 +456,7 @@ Practical advice from production tuned deployments:
 
 2. Run `tuned-adm verify` after applying a profile. This confirms that all the settings defined in the profile were actually applied. Sometimes other configuration management or startup scripts override tuned settings, and verify catches that.
 
-3. Disable transparent huge pages for database servers. Both PostgreSQL and MySQL documentation recommend this. The `database-optimized` custom profile above handles this automatically.
+3. Disable transparent huge pages for database servers after testing. PostgreSQL documentation discourages transparent huge pages on Linux because they have caused performance degradation for some users, and many MySQL deployments use explicit HugeTLB pages instead of relying on transparent huge pages. The `database-optimized` custom profile above handles this automatically.
 
 4. Do not stack custom sysctl settings on top of tuned. If you are using tuned, put your sysctl customizations in a custom tuned profile rather than in `/etc/sysctl.conf`. Otherwise, tuned and sysctl fight over which settings win, and the result depends on startup order.
 
