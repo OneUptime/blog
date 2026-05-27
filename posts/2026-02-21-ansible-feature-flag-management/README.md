@@ -34,16 +34,15 @@ Each approach has tradeoffs. Config files are simple but require restarts. Envir
 
 The simplest approach is managing a JSON or YAML configuration file:
 
-```yaml
+```jinja
 # roles/feature_flags/templates/feature_flags.json.j2
 
-# Feature flag configuration deployed to application servers
 {
   "flags": {
 {% for flag in feature_flags %}
-    "{{ flag.name }}": {
-      "enabled": {{ flag.enabled | lower }},
-      "description": "{{ flag.description }}",
+    {{ flag.name | to_json }}: {
+      "enabled": {{ flag.enabled | to_json }},
+      "description": {{ flag.description | to_json }},
       "rollout_percentage": {{ flag.rollout_percentage | default(100) }},
       "allowed_users": {{ flag.allowed_users | default([]) | to_json }},
       "environments": {{ flag.environments | default(['all']) | to_json }}
@@ -180,7 +179,7 @@ For runtime flag changes, store flags in a database:
 ---
 - name: Create feature flags table
   community.postgresql.postgresql_query:
-    db: "{{ app_database }}"
+    login_db: "{{ app_database }}"
     login_host: "{{ db_host }}"
     login_user: "{{ db_admin_user }}"
     login_password: "{{ db_admin_password }}"
@@ -197,7 +196,7 @@ For runtime flag changes, store flags in a database:
 
 - name: Upsert feature flags
   community.postgresql.postgresql_query:
-    db: "{{ app_database }}"
+    login_db: "{{ app_database }}"
     login_host: "{{ db_host }}"
     login_user: "{{ db_admin_user }}"
     login_password: "{{ db_admin_password }}"
@@ -235,16 +234,13 @@ If you use a feature flag service, Ansible can manage it through API calls:
     method: PATCH
     headers:
       Authorization: "{{ launchdarkly_api_token }}"
-      Content-Type: application/json
+      Content-Type: "application/json; domain-model=launchdarkly.semanticpatch"
     body_format: json
     body:
-      - op: replace
-        path: "/environments/{{ env_name }}/on"
-        value: "{{ item.enabled }}"
-      - op: replace
-        path: "/environments/{{ env_name }}/fallthrough/variation"
-        value: "{{ 0 if item.enabled else 1 }}"
-    status_code: [200, 201]
+      environmentKey: "{{ env_name }}"
+      instructions:
+        - kind: "{{ 'turnFlagOn' if item.enabled else 'turnFlagOff' }}"
+    status_code: 200
   loop: "{{ feature_flags }}"
   when: item.sync_to_launchdarkly | default(false)
 
@@ -296,7 +292,7 @@ Here is a playbook that gradually increases a feature flag rollout:
 ---
 - name: "Set {{ flag_name }} to {{ percentage }}%"
   community.postgresql.postgresql_query:
-    db: "{{ app_database }}"
+    login_db: "{{ app_database }}"
     login_host: "{{ db_host }}"
     login_user: "{{ db_admin_user }}"
     login_password: "{{ db_admin_password }}"
