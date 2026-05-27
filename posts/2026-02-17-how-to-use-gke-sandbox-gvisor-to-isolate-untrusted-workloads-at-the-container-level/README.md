@@ -14,7 +14,7 @@ GKE Sandbox uses gVisor, an open-source application kernel that intercepts syste
 
 ## How gVisor Works
 
-gVisor runs a lightweight kernel (called Sentry) in user space for each sandbox. System calls from the container are intercepted and reimplemented by Sentry without touching the host kernel for most operations.
+gVisor runs a lightweight kernel (called Sentry) in user space for each sandbox. System calls from the container are intercepted and reimplemented by Sentry instead of being passed directly to the host kernel.
 
 ```mermaid
 graph TB
@@ -41,7 +41,7 @@ Use GKE Sandbox when:
 
 Do not use GKE Sandbox when:
 
-- Your workload needs direct hardware access (GPUs, specific devices)
+- Your workload needs unsupported direct hardware access or unsupported accelerator features
 - You need maximum performance (gVisor adds overhead for system call interception)
 - Your workload makes heavy use of system calls not supported by gVisor
 
@@ -58,12 +58,12 @@ gcloud container node-pools create sandbox-pool \
   --machine-type e2-standard-4 \
   --num-nodes 3 \
   --sandbox type=gvisor \
-  --image-type COS_CONTAINERD
+  --image-type cos_containerd
 ```
 
 The `--sandbox type=gvisor` flag enables the gVisor runtime on this node pool. Nodes in this pool will have the `gvisor` RuntimeClass available.
 
-Important: You cannot enable GKE Sandbox on the default node pool. It must be a separate, dedicated pool.
+Important: You cannot use GKE Sandbox on the default node pool to separate system services from untrusted workloads. In Standard clusters, keep at least one node pool without GKE Sandbox enabled, even if all of your application workloads are sandboxed.
 
 ## Step 2: Verify the RuntimeClass
 
@@ -114,7 +114,7 @@ spec:
               cpu: "1"
               memory: "1Gi"
       # Pods with gvisor runtime are automatically scheduled
-      # on sandbox-enabled node pools via a node selector
+      # on sandbox-enabled node pools by GKE
 ```
 
 ```bash
@@ -130,14 +130,14 @@ Check that your pod is actually using the gVisor runtime.
 kubectl get pod -l app=untrusted-workload -o jsonpath='{.items[0].spec.runtimeClassName}'
 # Output: gvisor
 
-# Exec into the pod and check the kernel version
+# Optional debugging check from inside the pod
 kubectl exec deploy/untrusted-workload -- uname -r
-# Output will show a gVisor kernel version, not the host kernel
-# Something like: 4.4.0 (gVisor version, not actual Linux kernel)
+# Output is from gVisor's virtualized kernel interface, not the host kernel
 
 # Check /proc/version inside the container
 kubectl exec deploy/untrusted-workload -- cat /proc/version
-# Output will identify gVisor
+# Treat data reported from inside the sandbox as debugging information,
+# not as the authoritative verification method
 ```
 
 ## Running a Code Execution Platform
@@ -155,6 +155,9 @@ spec:
   ttlSecondsAfterFinished: 300  # Clean up after 5 minutes
   activeDeadlineSeconds: 60      # Kill after 60 seconds
   template:
+    metadata:
+      labels:
+        sandbox: "true"
     spec:
       runtimeClassName: gvisor
       automountServiceAccountToken: false  # No K8s API access
@@ -207,7 +210,7 @@ This combines gVisor isolation with Kubernetes security contexts for defense in 
 Sandboxed workloads should also have restricted network access.
 
 ```yaml
-# network-policy-sandbox.yaml - Restrict sandbox pods to internal traffic only
+# network-policy-sandbox.yaml - Restrict sandbox pods to DNS egress only
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -229,6 +232,8 @@ spec:
       ports:
         - protocol: UDP
           port: 53
+        - protocol: TCP
+          port: 53
     # Block everything else - no internet access for sandboxed code
 ```
 
@@ -236,9 +241,9 @@ spec:
 
 gVisor adds overhead because it intercepts and reimplements system calls. The impact varies by workload type:
 
-- **CPU-bound workloads**: Minimal overhead (5-10%) since computation happens in user space anyway
-- **I/O-bound workloads**: Moderate overhead (15-30%) because file I/O goes through gVisor's VFS layer
-- **System call heavy workloads**: Higher overhead (30-50%) because each syscall is intercepted
+- **CPU-bound workloads**: Usually low overhead since computation happens in user space anyway
+- **I/O-bound workloads**: Higher overhead can appear because file I/O crosses the sandbox boundary
+- **System call heavy workloads**: Higher overhead can appear because each syscall is intercepted
 
 ```bash
 # Benchmark to compare standard vs gVisor performance
@@ -299,13 +304,14 @@ spec:
 Monitor your sandboxed workloads like any other, but be aware that some metrics may look different due to gVisor's virtual kernel.
 
 ```bash
-# Check resource usage of sandboxed pods
-kubectl top pods -l runtimeClassName=gvisor
+# Check resource usage of sandboxed pods by their application label
+kubectl top pods -l app=untrusted-workload
 
-# View sandbox-specific events
-kubectl get events --field-selector involvedObject.name=untrusted-workload
+# View events for a specific sandboxed pod
+POD_NAME=$(kubectl get pod -l app=untrusted-workload -o jsonpath='{.items[0].metadata.name}')
+kubectl get events --field-selector involvedObject.name=${POD_NAME}
 ```
 
 ## Wrapping Up
 
-GKE Sandbox with gVisor provides a meaningful security improvement for untrusted workloads. By intercepting system calls at the user space level, it prevents container escapes from exploiting host kernel vulnerabilities. The setup is straightforward - create a sandbox-enabled node pool, add `runtimeClassName: gvisor` to your pod specs, and you get kernel-level isolation without managing VMs. Combine it with Kubernetes security contexts, network policies, and resource limits for a comprehensive defense-in-depth strategy. The performance overhead is real but acceptable for workloads where security matters more than raw speed.
+GKE Sandbox with gVisor provides a meaningful security improvement for untrusted workloads. By intercepting system calls at the user space level, it reduces direct exposure to host kernel vulnerabilities. The setup is straightforward - create a sandbox-enabled node pool, add `runtimeClassName: gvisor` to your pod specs, and you get an extra user-space kernel isolation layer without managing VMs. Combine it with Kubernetes security contexts, network policies, and resource limits for a comprehensive defense-in-depth strategy. The performance overhead is real but acceptable for workloads where security matters more than raw speed.
