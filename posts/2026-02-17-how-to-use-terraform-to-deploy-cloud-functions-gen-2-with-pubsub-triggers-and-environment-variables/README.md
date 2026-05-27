@@ -68,6 +68,14 @@ def process_event(cloud_event):
     return "OK"
 ```
 
+Your `requirements.txt` file needs the Functions Framework dependency:
+
+```text
+# functions/process-events/requirements.txt
+
+functions-framework==3.*
+```
+
 ## Packaging the Source Code
 
 Terraform needs the function source code as a zip file in a GCS bucket. Here is how to set that up:
@@ -158,26 +166,31 @@ resource "google_project_iam_member" "function_storage" {
 
 ## The Eventarc Service Account
 
-Gen 2 functions use Eventarc for triggers, which needs its own permissions. This is the part that catches many people off guard:
+Gen 2 functions use Eventarc for triggers, and the trigger service account needs permission to invoke the underlying Cloud Run service. This is the part that catches many people off guard:
 
 ```hcl
 # eventarc-iam.tf - Permissions required for Eventarc to deliver events
 
-# The Pub/Sub service agent needs permission to create tokens
-# for authenticating event delivery to the function
+# The Pub/Sub service agent only needs this role if the service agent
+# was enabled on or before April 8, 2021. Newer projects get it by default.
 resource "google_project_iam_member" "pubsub_token_creator" {
   project = var.project_id
   role    = "roles/iam.serviceAccountTokenCreator"
   member  = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 
-# Grant Eventarc permission to invoke the function
-resource "google_cloud_run_v2_service_iam_member" "eventarc_invoker" {
-  project  = var.project_id
-  location = var.region
-  name     = google_cloudfunctions2_function.process_events.name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.function_sa.email}"
+# Grant the Eventarc trigger service account permission to receive events
+resource "google_project_iam_member" "eventarc_event_receiver" {
+  project = var.project_id
+  role    = "roles/eventarc.eventReceiver"
+  member  = "serviceAccount:${google_service_account.function_sa.email}"
+}
+
+# Grant the Eventarc trigger service account permission to invoke Cloud Run
+resource "google_project_iam_member" "eventarc_invoker" {
+  project = var.project_id
+  role    = "roles/run.invoker"
+  member  = "serviceAccount:${google_service_account.function_sa.email}"
 }
 
 data "google_project" "current" {
@@ -193,6 +206,11 @@ Now the main resource - the Cloud Function itself with Pub/Sub trigger and envir
 # function.tf - Cloud Functions Gen 2 deployment with Pub/Sub trigger
 
 resource "google_cloudfunctions2_function" "process_events" {
+  depends_on = [
+    google_project_iam_member.eventarc_event_receiver,
+    google_project_iam_member.eventarc_invoker,
+  ]
+
   project  = var.project_id
   name     = "${var.environment}-process-events"
   location = var.region
@@ -236,6 +254,9 @@ resource "google_cloudfunctions2_function" "process_events" {
     event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
     pubsub_topic   = google_pubsub_topic.events.id
 
+    # Use the same dedicated service account as the trigger identity
+    service_account_email = google_service_account.function_sa.email
+
     # Retry on failure
     retry_policy = "RETRY_POLICY_RETRY"
   }
@@ -244,7 +265,7 @@ resource "google_cloudfunctions2_function" "process_events" {
 
 ## Using Secret Manager for Sensitive Values
 
-Environment variables are visible in the GCP Console and in Terraform state. For sensitive values like API keys, use Secret Manager:
+Environment variables are visible in the GCP Console and in Terraform state. For sensitive values like API keys, use Secret Manager. If Terraform manages the secret value, use the write-only `secret_data_wo` argument with Terraform 1.11 or later so the value is not stored in Terraform state:
 
 ```hcl
 # secrets.tf - Sensitive configuration stored in Secret Manager
@@ -259,8 +280,9 @@ resource "google_secret_manager_secret" "api_key" {
 }
 
 resource "google_secret_manager_secret_version" "api_key" {
-  secret      = google_secret_manager_secret.api_key.id
-  secret_data = var.api_key
+  secret                 = google_secret_manager_secret.api_key.id
+  secret_data_wo         = var.api_key
+  secret_data_wo_version = 1
 }
 
 # Grant the function access to read the secret
@@ -316,6 +338,7 @@ variable "log_level" {
 variable "api_key" {
   type      = string
   sensitive = true
+  ephemeral = true
   default   = ""
 }
 
