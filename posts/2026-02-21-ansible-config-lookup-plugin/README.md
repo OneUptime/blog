@@ -76,7 +76,7 @@ This playbook demonstrates several useful config lookups:
         msg:
           roles_path: "{{ lookup('config', 'DEFAULT_ROLES_PATH') }}"
           module_path: "{{ lookup('config', 'DEFAULT_MODULE_PATH') }}"
-          remote_tmp: "{{ lookup('config', 'DEFAULT_REMOTE_TMP') }}"
+          remote_tmp: "{{ lookup('config', 'remote_tmp', plugin_type='shell', plugin_name='sh') }}"
           local_tmp: "{{ lookup('config', 'DEFAULT_LOCAL_TMP') }}"
 ```
 
@@ -149,7 +149,7 @@ One great use of the config lookup is creating an audit playbook that documents 
   tasks:
     - name: Collect configuration values
       ansible.builtin.set_fact:
-        config_report: "{{ config_report | default([]) + [{'setting': item.key, 'description': item.description, 'value': lookup('config', item.key, errors='ignore') | default('N/A')}] }}"
+        config_report: "{{ config_report | default([]) + [{'setting': item.key, 'description': item.description, 'value': lookup('config', item.key, on_missing='skip') | default('N/A', true)}] }}"
       loop: "{{ config_items }}"
 
     - name: Display configuration report
@@ -187,11 +187,11 @@ When troubleshooting connectivity problems, knowing the actual configuration hel
       ansible.builtin.debug:
         msg:
           transport: "{{ lookup('config', 'DEFAULT_TRANSPORT') }}"
-          ssh_args: "{{ lookup('config', 'ANSIBLE_SSH_ARGS', errors='ignore') | default('not set') }}"
+          ssh_args: "{{ lookup('config', 'ssh_args', plugin_type='connection', plugin_name='ssh', on_missing='skip') | default('not set', true) }}"
           remote_user: "{{ lookup('config', 'DEFAULT_REMOTE_USER') }}"
           remote_port: "{{ lookup('config', 'DEFAULT_REMOTE_PORT') }}"
           timeout: "{{ lookup('config', 'DEFAULT_TIMEOUT') }}"
-          pipelining: "{{ lookup('config', 'ANSIBLE_PIPELINING', errors='ignore') | default('not set') }}"
+          pipelining: "{{ lookup('config', 'pipelining', plugin_type='connection', plugin_name='ssh', on_missing='skip') | default('not set', true) }}"
       run_once: true
 
     - name: Test connectivity with current settings
@@ -224,7 +224,7 @@ If you run Ansible from different machines or with different configs, you can tr
   tasks:
     - name: Build configuration fingerprint
       ansible.builtin.set_fact:
-        config_fingerprint: "{{ config_fingerprint | default({}) | combine({item: lookup('config', item, errors='ignore') | default('undefined')}) }}"
+        config_fingerprint: "{{ config_fingerprint | default({}) | combine({item: lookup('config', item, on_missing='skip') | default('undefined', true)}) }}"
       loop: "{{ important_settings }}"
 
     - name: Save configuration fingerprint
@@ -246,10 +246,10 @@ Inside roles, you can use the config lookup to set smart defaults that adapt to 
 # roles/myapp/defaults/main.yml
 ---
 # Use the Ansible-configured remote user unless overridden
-app_user: "{{ lookup('config', 'DEFAULT_REMOTE_USER', errors='ignore') | default('deploy') }}"
+app_user: "{{ lookup('config', 'DEFAULT_REMOTE_USER', on_missing='skip') | default('deploy', true) }}"
 
 # Scale worker threads based on fork count
-worker_threads: "{{ lookup('config', 'DEFAULT_FORKS', errors='ignore') | default(5) | int }}"
+worker_threads: "{{ lookup('config', 'DEFAULT_FORKS', on_missing='skip') | default(5, true) | int }}"
 ```
 
 ```yaml
@@ -268,7 +268,7 @@ worker_threads: "{{ lookup('config', 'DEFAULT_FORKS', errors='ignore') | default
 
 ## Error Handling
 
-Some configuration keys might not exist in all Ansible versions. Use `errors='ignore'` to handle this.
+Some configuration keys might not exist in all Ansible versions. Use `on_missing='skip'` with a fallback to handle this.
 
 ```yaml
 # playbook.yml - Safe config lookups
@@ -278,7 +278,7 @@ Some configuration keys might not exist in all Ansible versions. Use `errors='ig
   tasks:
     - name: Try to get a setting that might not exist
       ansible.builtin.set_fact:
-        some_setting: "{{ lookup('config', 'POSSIBLY_NEW_SETTING', errors='ignore') | default('fallback_value') }}"
+        some_setting: "{{ lookup('config', 'POSSIBLY_NEW_SETTING', on_missing='skip') | default('fallback_value', true) }}"
 
     - name: Use the setting
       ansible.builtin.debug:
@@ -295,6 +295,6 @@ Some configuration keys might not exist in all Ansible versions. Use `errors='ig
 
 4. **Plugin configurations**: You can also query plugin-specific settings, not just core Ansible settings. The key names follow the pattern used by the plugin's configuration documentation.
 
-5. **Version differences**: Available configuration keys vary between Ansible versions. A key that exists in Ansible 2.14 might not exist in 2.9. Always use `errors='ignore'` with a default if portability matters.
+5. **Version differences**: Available configuration keys vary between Ansible versions. A key that exists in Ansible 2.14 might not exist in 2.9. Always use `on_missing='skip'` with a default if portability matters.
 
 The `config` lookup plugin is primarily a debugging and introspection tool. It shines when you need to understand why Ansible is behaving a certain way, or when you want to build automation that adapts to the controller environment rather than making assumptions about it.
