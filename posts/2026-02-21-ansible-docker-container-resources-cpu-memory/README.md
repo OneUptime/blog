@@ -12,10 +12,10 @@ Without resource limits, a single container can consume all available CPU and me
 
 ## How Docker Resource Limits Work
 
-Docker uses Linux cgroups (control groups) to limit the resources a container can use. There are two concepts for each resource type:
+Docker uses Linux cgroups (control groups) to limit the resources a container can use. Docker and Swarm resource settings commonly use two concepts:
 
 - **Limits**: The maximum amount a container can use. Docker will kill the container if it exceeds memory limits (OOM kill) or throttle CPU usage.
-- **Reservations**: The minimum amount guaranteed to the container. Docker uses these for scheduling decisions in Swarm mode.
+- **Reservations**: A soft target or scheduling reservation. For standalone containers, memory reservations are soft limits used under memory pressure. In Swarm mode, CPU and memory reservations are used for scheduling decisions.
 
 ```mermaid
 flowchart TD
@@ -55,26 +55,30 @@ The `docker_container` module accepts `memory` and `memory_reservation` paramete
         name: webapp
         image: myapp:latest
         state: started
-        memory: "512m"             # Hard limit: container gets OOM-killed above this
-        memory_reservation: "256m" # Soft limit: Docker tries to keep it at this level
-        memory_swap: "768m"        # Memory + swap total (set equal to memory to disable swap)
+        memory: "512M"             # Hard limit: container gets OOM-killed above this
+        memory_reservation: "256M" # Soft limit: Docker tries to keep it at this level
+        memory_swap: "768M"        # Memory + swap total (set equal to memory to disable swap)
 
     - name: Run database with generous memory
       community.docker.docker_container:
         name: postgres
         image: postgres:16
         state: started
-        memory: "2g"
-        memory_reservation: "1g"
-        memory_swap: "2g"  # Same as memory = no swap usage
+        memory: "2G"
+        memory_reservation: "1G"
+        memory_swap: "2G"  # Same as memory = no swap usage
         env:
           POSTGRES_PASSWORD: "{{ vault_db_password }}"
-          # Tell PostgreSQL about its available memory
-          POSTGRES_SHARED_BUFFERS: "512MB"
-          POSTGRES_EFFECTIVE_CACHE_SIZE: "1536MB"
+        # Tell PostgreSQL about its available memory
+        command:
+          - postgres
+          - "-c"
+          - shared_buffers=512MB
+          - "-c"
+          - effective_cache_size=1536MB
 ```
 
-Memory values can use suffixes: `b` (bytes), `k` (kilobytes), `m` (megabytes), `g` (gigabytes).
+Memory values in the `community.docker` modules can use suffixes such as `B` (bytes), `K` (kibibytes), `M` (mebibytes), and `G` (gibibytes).
 
 ### Disabling Swap
 
@@ -86,8 +90,8 @@ For latency-sensitive applications, disable swap by setting `memory_swap` equal 
         name: cache
         image: redis:7-alpine
         state: started
-        memory: "1g"
-        memory_swap: "1g"  # Equal to memory = swap disabled
+        memory: "1G"
+        memory_swap: "1G"  # Equal to memory = swap disabled
         memory_swappiness: 0  # Further discourage swap usage
 ```
 
@@ -166,26 +170,26 @@ Here is a realistic production deployment with both CPU and memory limits:
       - name: web
         image: myapp/web:latest
         cpus: 1.0
-        memory: "512m"
-        memory_reserve: "256m"
+        memory: "512M"
+        memory_reserve: "256M"
         ports: ["80:8080"]
       - name: api
         image: myapp/api:latest
         cpus: 2.0
-        memory: "1g"
-        memory_reserve: "512m"
+        memory: "1G"
+        memory_reserve: "512M"
         ports: ["3000:3000"]
       - name: worker
         image: myapp/worker:latest
         cpus: 1.0
-        memory: "768m"
-        memory_reserve: "384m"
+        memory: "768M"
+        memory_reserve: "384M"
         ports: []
       - name: cache
         image: redis:7-alpine
         cpus: 0.5
-        memory: "256m"
-        memory_reserve: "128m"
+        memory: "256M"
+        memory_reserve: "128M"
         ports: []
 
   tasks:
@@ -279,10 +283,11 @@ When a container exceeds its memory limit, Docker kills it with an OOM (Out of M
       when: item.container.State.OOMKilled | default(false)
 
     - name: Check kernel logs for OOM events
-      ansible.builtin.command:
-        cmd: dmesg -T | grep -i "oom\|killed process" | tail -10
+      ansible.builtin.shell:
+        cmd: dmesg -T | grep -Ei "oom|killed process" | tail -10
       register: oom_logs
       changed_when: false
+      failed_when: oom_logs.rc not in [0, 1]
 
     - name: Display OOM kernel messages
       ansible.builtin.debug:
@@ -329,23 +334,23 @@ Getting resource limits right takes some iteration. Here are starting points for
       # Small utility services (nginx proxy, log shipper)
       small:
         cpus: 0.5
-        memory: "256m"
-        memory_reserve: "128m"
+        memory: "256M"
+        memory_reserve: "128M"
       # Medium application services (API, web)
       medium:
         cpus: 1.0
-        memory: "512m"
-        memory_reserve: "256m"
+        memory: "512M"
+        memory_reserve: "256M"
       # Large services (database, search)
       large:
         cpus: 2.0
-        memory: "2g"
-        memory_reserve: "1g"
+        memory: "2G"
+        memory_reserve: "1G"
       # Memory-intensive (caches, in-memory stores)
       memory_heavy:
         cpus: 1.0
-        memory: "4g"
-        memory_reserve: "2g"
+        memory: "4G"
+        memory_reserve: "2G"
 ```
 
 Monitor actual usage for a week and adjust based on real data. Set limits at about 150% of typical usage to give headroom for spikes without wasting resources.
