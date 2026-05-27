@@ -33,7 +33,7 @@ import time
 from ansible.plugins.callback import CallbackBase
 
 try:
-    from prometheus_client import CollectorRegistry, Gauge, Counter, push_to_gateway
+    from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
     HAS_PROMETHEUS = True
 except ImportError:
     HAS_PROMETHEUS = False
@@ -45,7 +45,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'prometheus_pushgw'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super().__init__()
@@ -128,7 +128,7 @@ Enable and configure:
 ```ini
 # ansible.cfg
 [defaults]
-callback_whitelist = prometheus_pushgw
+callbacks_enabled = prometheus_pushgw
 callback_plugins = ./callback_plugins
 ```
 
@@ -140,28 +140,32 @@ pip install prometheus_client
 
 ## Datadog Integration
 
-Datadog has a community callback plugin:
+Datadog provides a callback plugin for Ansible:
 
 ```bash
 # Install the Datadog callback
-pip install datadog
-ansible-galaxy collection install community.general
+git clone https://github.com/DataDog/ansible-datadog-callback.git
+pip install -r ansible-datadog-callback/requirements.txt
+mkdir -p callback_plugins
+cp ansible-datadog-callback/datadog_callback.py callback_plugins/
 ```
 
 ```ini
 # ansible.cfg - Datadog integration
 [defaults]
-callback_whitelist = community.general.datadog
+callbacks_enabled = datadog_callback
+callback_plugins = ./callback_plugins
+```
 
-[callback_datadog]
-api_key = {{ lookup('env', 'DATADOG_API_KEY') }}
+```bash
+export DATADOG_API_KEY=<your-datadog-api-key>
 ```
 
 The Datadog callback sends events to the Datadog Events API and creates metrics for:
 
 - Playbook duration
 - Task success/failure counts
-- Host status
+- Skipped and unreachable task counts
 - Change counts
 
 You can then build Datadog dashboards and monitors on these metrics.
@@ -173,7 +177,6 @@ Alert on-call engineers when Ansible playbooks fail:
 ```python
 # callback_plugins/pagerduty_alert.py - Alert PagerDuty on Ansible failures
 import os
-import json
 from ansible.plugins.callback import CallbackBase
 
 try:
@@ -187,7 +190,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'pagerduty_alert'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super().__init__()
@@ -237,17 +240,24 @@ class CallbackModule(CallbackBase):
 
 ## Grafana Annotations
 
-Mark Ansible runs on Grafana dashboards (see also the dedicated `grafana_annotations` callback):
+Mark Ansible runs on Grafana dashboards with the dedicated `grafana_annotations` callback:
+
+```bash
+ansible-galaxy collection install community.grafana
+```
 
 ```ini
 # ansible.cfg - Grafana annotations
 [defaults]
-callback_whitelist = community.grafana.grafana
+callbacks_enabled = community.grafana.grafana_annotations
 
-[callback_grafana]
-grafana_url = https://grafana.example.com
-grafana_api_key = {{ lookup('env', 'GRAFANA_API_KEY') }}
+[callback_grafana_annotations]
+grafana_url = https://grafana.example.com/api/annotations
 grafana_dashboard_id = 42
+```
+
+```bash
+export GRAFANA_API_KEY=<your-grafana-api-key>
 ```
 
 ## Building a Complete Monitoring Stack
@@ -257,8 +267,9 @@ Combine multiple monitoring callbacks:
 ```ini
 # ansible.cfg - Full monitoring integration
 [defaults]
-stdout_callback = yaml
-callback_whitelist = timer, profile_tasks, prometheus_pushgw, pagerduty_alert, community.general.syslog
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, prometheus_pushgw, pagerduty_alert, community.general.syslog_json
 callback_plugins = ./callback_plugins
 
 [callback_profile_tasks]
@@ -268,11 +279,11 @@ task_output_limit = 10
 
 This setup provides:
 
-- YAML output for the operator (stdout)
+- YAML-formatted output for the operator (stdout)
 - Performance timing (timer + profile_tasks)
 - Metrics in Prometheus (prometheus_pushgw)
 - Failure alerts via PagerDuty (pagerduty_alert)
-- Centralized logging via syslog
+- Centralized JSON logging via syslog
 
 ## Custom Metrics from Playbooks
 
