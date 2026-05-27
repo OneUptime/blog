@@ -23,7 +23,7 @@ Recommendations AI accepts several event types, each providing different signals
 | purchase-complete | User completed a purchase | Strongest signal |
 | search | User performed a search | Shows intent |
 | home-page-view | User visited the home page | Session start |
-| category-page-view | User browsed a category | Category interest |
+| category-page-view | User viewed a special page, such as a sale or promotion page | Special-page interest |
 | shopping-cart-page-view | User viewed their cart | Purchase consideration |
 | remove-from-cart | User removed an item | Negative signal |
 
@@ -42,7 +42,7 @@ pip install google-cloud-retail
 ```python
 from google.cloud import retail_v2
 from google.protobuf.timestamp_pb2 import Timestamp
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Initialize the user event service client
 user_event_client = retail_v2.UserEventServiceClient()
@@ -67,8 +67,7 @@ def record_product_view(visitor_id, product_id, user_id=None):
         visitor_id=visitor_id,  # Session or device ID
         product_details=[
             retail_v2.ProductDetail(
-                product=retail_v2.Product(id=product_id),
-                quantity=1
+                product=retail_v2.Product(id=product_id)
             )
         ]
     )
@@ -81,7 +80,7 @@ def record_product_view(visitor_id, product_id, user_id=None):
 
     # Set the event timestamp
     event_time = Timestamp()
-    event_time.FromDatetime(datetime.utcnow())
+    event_time.FromDatetime(datetime.now(timezone.utc))
     user_event.event_time = event_time
 
     # Send the event
@@ -124,7 +123,7 @@ def record_add_to_cart(visitor_id, product_id, quantity=1, user_id=None):
         user_event.user_info = retail_v2.UserInfo(user_id=user_id)
 
     event_time = Timestamp()
-    event_time.FromDatetime(datetime.utcnow())
+    event_time.FromDatetime(datetime.now(timezone.utc))
     user_event.event_time = event_time
 
     request = retail_v2.WriteUserEventRequest(
@@ -142,7 +141,8 @@ def record_add_to_cart(visitor_id, product_id, quantity=1, user_id=None):
 Purchase events are the most valuable signal. Include all items in the order.
 
 ```python
-def record_purchase(visitor_id, order_items, user_id=None, order_id=None):
+def record_purchase(visitor_id, order_items, user_id=None, order_id=None,
+                    currency_code="USD"):
     """Record a completed purchase with all line items."""
     # Build product details for each item in the order
     product_details = []
@@ -163,19 +163,22 @@ def record_purchase(visitor_id, order_items, user_id=None, order_id=None):
     if user_id:
         user_event.user_info = retail_v2.UserInfo(user_id=user_id)
 
-    # Include the purchase transaction details
+    # Include the required purchase transaction details
+    transaction_kwargs = {
+        "revenue": sum(
+            item.get("price", 0) * item.get("quantity", 1)
+            for item in order_items
+        ),
+        "currency_code": currency_code
+    }
     if order_id:
-        user_event.purchase_transaction = retail_v2.PurchaseTransaction(
-            id=order_id,
-            revenue=sum(
-                item.get("price", 0) * item.get("quantity", 1)
-                for item in order_items
-            ),
-            currency_code="USD"
-        )
+        transaction_kwargs["id"] = order_id
+    user_event.purchase_transaction = retail_v2.PurchaseTransaction(
+        **transaction_kwargs
+    )
 
     event_time = Timestamp()
-    event_time.FromDatetime(datetime.utcnow())
+    event_time.FromDatetime(datetime.now(timezone.utc))
     user_event.event_time = event_time
 
     request = retail_v2.WriteUserEventRequest(
@@ -210,8 +213,7 @@ def record_search(visitor_id, search_query, product_ids_shown,
     # Include the products that appeared in search results
     product_details = [
         retail_v2.ProductDetail(
-            product=retail_v2.Product(id=pid),
-            quantity=1
+            product=retail_v2.Product(id=pid)
         )
         for pid in product_ids_shown[:20]  # Limit to top 20 results
     ]
@@ -227,7 +229,7 @@ def record_search(visitor_id, search_query, product_ids_shown,
         user_event.user_info = retail_v2.UserInfo(user_id=user_id)
 
     event_time = Timestamp()
-    event_time.FromDatetime(datetime.utcnow())
+    event_time.FromDatetime(datetime.now(timezone.utc))
     user_event.event_time = event_time
 
     request = retail_v2.WriteUserEventRequest(
