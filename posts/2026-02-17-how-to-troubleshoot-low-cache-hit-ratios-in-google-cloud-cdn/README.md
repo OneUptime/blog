@@ -40,9 +40,9 @@ gcloud logging read \
 You will see entries like:
 - `response_from_cache` - cache hits
 - `response_sent_by_backend` - cache misses that went to origin
-- `cache_fill` - responses that were stored in cache
+- `response_from_cache_validated` - cached responses that were validated with the origin
 
-If most requests show `response_sent_by_backend` without any `cache_fill`, responses are not being cached at all.
+If most requests show `response_sent_by_backend`, check the corresponding `httpRequest.cacheFillBytes` field. If there are no cache fill bytes, responses are not being cached at all.
 
 ## Step 2: Check Origin Response Headers
 
@@ -98,7 +98,7 @@ app.use('/static', express.static('public', {
 
 ## Step 3: Check for Set-Cookie Headers
 
-Responses with `Set-Cookie` headers are not cached by Cloud CDN in CACHE_ALL_STATIC and USE_ORIGIN_HEADERS modes. This is a very common issue - a middleware or framework adds a session cookie to every response, including static assets.
+Responses with `Set-Cookie` headers are not cached by Cloud CDN by default. This is a very common issue - a middleware or framework adds a session cookie to every response, including static assets.
 
 ```bash
 # Check if your responses include Set-Cookie headers
@@ -121,7 +121,7 @@ location ~* \.(css|js|jpg|jpeg|png|gif|ico|svg)$ {
 
 ## Step 4: Check the Vary Header
 
-The `Vary` header tells Cloud CDN which request headers affect the response. Cloud CDN supports `Vary: Accept`, `Vary: Accept-Encoding`, and `Vary: Origin`. If your origin sends `Vary: *` or includes unsupported headers like `Vary: User-Agent`, the response will not be cached.
+The `Vary` header tells Cloud CDN which request headers affect the response. Cloud CDN supports specific `Vary` values, including `Accept`, `Accept-Encoding`, `Access-Control-Request-Headers`, `Access-Control-Request-Method`, `Origin`, `Sec-Fetch-Dest`, `Sec-Fetch-Mode`, `Sec-Fetch-Site`, `X-Goog-Allowed-Resources`, `X-Origin`, and headers configured as part of the cache key. If your origin sends `Vary: *` or includes unsupported headers like `Vary: User-Agent`, the response will not be cached.
 
 ```bash
 # Check for Vary headers
@@ -197,7 +197,7 @@ gcloud compute backend-services update my-backend \
 
 ## Step 7: Check Request Methods
 
-Cloud CDN only caches GET and HEAD requests. POST, PUT, DELETE, and other methods always go to the origin.
+Cloud CDN stores cacheable responses to GET requests. POST, PUT, DELETE, and other non-GET methods always go to the origin.
 
 ```bash
 # Check the breakdown of request methods in your logs
@@ -212,7 +212,7 @@ If you see a high percentage of non-GET requests, that is expected behavior - th
 
 ## Step 8: Check Response Status Codes
 
-Cloud CDN caches successful responses (200, 203, 204, 206, 300, 301, 302, 307, 308, 404, 405, 410, 421, 451). Other status codes are not cached by default.
+Cloud CDN can cache responses with these status codes: 200, 203, 204, 206, 300, 301, 302, 307, 308, 404, 405, 410, 421, 451, and 501. Other status codes are not cached by default.
 
 ```bash
 # Check the response code distribution
@@ -273,7 +273,7 @@ Run through this checklist when troubleshooting low cache hit ratios:
 4. Is the Vary header set to supported values only?
 5. Is the cache key too granular? Check for tracking parameters
 6. Is the Content-Type correct for static assets?
-7. Are most requests GET/HEAD?
+7. Are most requests GET?
 8. Is the TTL long enough for your traffic pattern?
 9. Is there enough traffic volume to benefit from caching?
 10. Is CACHE_ALL_STATIC missing content types you expect to be cached?
