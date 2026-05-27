@@ -433,7 +433,7 @@ Place boundaries at these levels:
 
 ## Handling Async Errors
 
-Error boundaries do not catch errors in event handlers or async code. Handle those separately:
+Error boundaries do not catch errors in event handlers or most async code, such as timers and promise callbacks. Handle those separately:
 
 ```tsx
 // src/hooks/useAsyncError.ts
@@ -441,7 +441,7 @@ import { useState, useCallback } from 'react';
 
 /**
  * Hook to throw async errors into the nearest error boundary.
- * Error boundaries only catch errors during rendering.
+ * Error boundaries catch errors during React's rendering lifecycle.
  * This hook bridges async errors into the render cycle.
  */
 function useAsyncError() {
