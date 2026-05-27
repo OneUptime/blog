@@ -12,7 +12,7 @@ When you manage servers running different Linux distributions, OS versions, or a
 
 ## What first_found Does
 
-The `first_found` lookup takes a list of file paths and returns the first one that exists on the Ansible controller. If none of the files exist, it can either fail or return a default value. Think of it as a cascading fallback mechanism for file selection.
+The `first_found` lookup takes a list of file paths and returns the first one that exists on the Ansible controller. If none of the files exist, it fails by default, or it can return an empty result when configured to skip or ignore missing files. Think of it as a cascading fallback mechanism for file selection.
 
 ## Basic Usage
 
@@ -95,7 +95,7 @@ Here is a playbook showing the available options:
 The key parameters are:
 
 - **files**: List of filenames to search for
-- **paths**: List of directories to search in. Each filename is checked in each path
+- **paths**: List of directories to search in. Each path is checked for the current filename before moving to the next filename
 - **skip**: If `true`, return an empty list instead of failing when nothing is found
 
 ## OS-Specific Package Installation
@@ -213,14 +213,14 @@ The `paths` parameter lets you search across multiple directories. This is usefu
             - "configs"
 ```
 
-The search order with `paths` works like a nested loop: for each path, check each file. So the actual search order would be:
+The search order with `paths` gives the `files` list precedence: for each file, check each path. So the actual search order would be:
 
 1. `configs/production/host-overrides/web01.conf`
-2. `configs/production/host-overrides/webservers.conf`
-3. `configs/production/host-overrides/default.conf`
-4. `configs/production/web01.conf`
-5. `configs/production/webservers.conf`
-6. `configs/production/default.conf`
+2. `configs/production/web01.conf`
+3. `configs/shared/web01.conf`
+4. `configs/web01.conf`
+5. `configs/production/host-overrides/webservers.conf`
+6. `configs/production/webservers.conf`
 7. And so on through `configs/shared` and `configs`
 
 ## Practical Example: Multi-Distro Role
@@ -336,9 +336,9 @@ Here are some things I have learned from using `first_found` in production:
 
 1. **Always include a default**: Your list should end with a catch-all default file that is guaranteed to exist. Without it, the lookup fails if no specific file matches.
 
-2. **Path resolution matters**: Relative paths in `files` are resolved relative to the playbook directory, or relative to each directory in `paths` if specified. Inside roles, they resolve relative to the role's `files` or `templates` directory.
+2. **Path resolution matters**: Relative paths are resolved on the controller using Ansible's task search path. Inside roles, that search path starts with the current role's appropriate subdirectory, such as `files`, `vars`, or `templates`, before falling back through the task and play locations.
 
-3. **Do not confuse with with_first_found**: Older Ansible versions used `with_first_found` as a loop construct. The lookup plugin syntax with `lookup('first_found', ...)` is the modern approach and works in both `loop` and variable contexts.
+3. **Do not confuse with with_first_found**: Some playbooks use `with_first_found` as a loop construct, and Ansible still supports that syntax. The lookup plugin syntax with `lookup('first_found', ...)` is useful when you need the selected file in module arguments, variables, or other template contexts.
 
 4. **Debugging**: If you are not sure which file got selected, add a debug task that prints the lookup result before using it.
 
