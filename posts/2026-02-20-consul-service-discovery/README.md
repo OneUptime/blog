@@ -52,8 +52,8 @@ helm repo add hashicorp https://helm.releases.hashicorp.com
 # Update the local Helm chart cache
 helm repo update
 
-# Install Consul with default configuration
-# This deploys Consul servers and clients as a DaemonSet
+# Install Consul with the configuration in consul-values.yaml
+# This deploys Consul servers as a StatefulSet and the Kubernetes control-plane components
 helm install consul hashicorp/consul \
   --create-namespace \
   --namespace consul \
@@ -66,8 +66,8 @@ helm install consul hashicorp/consul \
 # Enables the service mesh, UI, and metrics collection.
 global:
   name: consul
-  # Use the latest stable Consul image
-  image: hashicorp/consul:1.18.0
+  # Pin a Consul image version supported by your Helm chart
+  image: hashicorp/consul:2.0.0
   # Enable TLS for all internal Consul communication
   tls:
     enabled: true
@@ -78,9 +78,10 @@ server:
   # Run 3 server replicas for high availability
   replicas: 3
   storage: 10Gi
-  # Enable the Consul UI for visual inspection
-  ui:
-    enabled: true
+
+# Enable the Consul UI for visual inspection
+ui:
+  enabled: true
 
 connectInject:
   # Automatically inject Consul sidecars into pods
@@ -124,6 +125,12 @@ spec:
           image: registry.example.com/payment:v1.2.0
           ports:
             - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
           env:
             # Connect to the database through the local Consul proxy
             # Consul handles routing and mTLS automatically
@@ -133,11 +140,11 @@ spec:
 
 ## Health Checks
 
-Consul uses health checks to determine if a service instance is available. Unhealthy instances are removed from the registry.
+Consul uses health checks to determine if a service instance is available. On Kubernetes, Consul syncs the readiness status of connect-injected pods into Consul health checks. Unhealthy instances are omitted from healthy discovery results and service mesh traffic.
 
 ```yaml
 # service-defaults.yaml
-# Configure health check behavior for the payment service.
+# Configure the payment service protocol and expose its health endpoint through Envoy.
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceDefaults
 metadata:
@@ -160,14 +167,14 @@ sequenceDiagram
     participant R as Service Registry
 
     loop Every 10 seconds
-        C->>S: GET /health
+        C->>S: Sync Kubernetes readiness from /health
         alt Healthy Response
             S-->>C: 200 OK
             C->>R: Mark instance healthy
         else Unhealthy Response
             S-->>C: 500 Error
             C->>R: Mark instance unhealthy
-            Note over R: Instance removed from<br/>discovery results
+            Note over R: Instance omitted from<br/>healthy discovery results
         end
     end
 ```
