@@ -8,7 +8,7 @@ Description: Run BigQuery queries from a Go application using the official bigqu
 
 ---
 
-BigQuery is Google's serverless data warehouse, and the Go client library gives you a typed, efficient way to interact with it. The `cloud.google.com/go/bigquery` package handles authentication, query execution, result streaming, and data insertion. Unlike REST-based approaches, the Go client uses gRPC under the hood for better performance.
+BigQuery is Google's serverless data warehouse, and the Go client library gives you a typed, efficient way to interact with it. The `cloud.google.com/go/bigquery` package handles authentication, query execution, result streaming, and data insertion, so you do not need to make raw REST requests yourself.
 
 In this post, I will cover running queries, handling results, using parameters, and inserting data into BigQuery from a Go application.
 
@@ -27,7 +27,6 @@ package main
 
 import (
     "context"
-    "fmt"
     "log"
 
     "cloud.google.com/go/bigquery"
@@ -152,9 +151,9 @@ func QueryWithParams(ctx context.Context, client *bigquery.Client,
             COUNT(*) as event_count,
             AVG(metric_value) as avg_value
         FROM ` + "`my-project.analytics.events`" + `
-        WHERE event_date >= @start_date
-            AND event_count >= @min_count
+        WHERE event_date >= DATE(@start_date)
         GROUP BY event_type
+        HAVING COUNT(*) >= @min_count
         ORDER BY event_count DESC
     `)
     query.UseLegacySQL = false
@@ -388,8 +387,12 @@ func DryRun(ctx context.Context, client *bigquery.Client, sql string) (int64, er
     }
 
     // Get the estimated bytes processed
-    stats := job.LastStatus().Statistics
-    bytesProcessed := stats.TotalBytesProcessed
+    status := job.LastStatus()
+    if err := status.Err(); err != nil {
+        return 0, fmt.Errorf("dry run completed with errors: %w", err)
+    }
+
+    bytesProcessed := status.Statistics.TotalBytesProcessed
 
     log.Printf("Query would process %.2f MB", float64(bytesProcessed)/(1024*1024))
     return bytesProcessed, nil
