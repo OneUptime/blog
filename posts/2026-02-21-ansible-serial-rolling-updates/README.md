@@ -22,12 +22,13 @@ The `serial` keyword in Ansible controls how many hosts are processed at a time 
 
   tasks:
     - name: Pull latest application
-      docker_image:
+      community.docker.docker_image:
         name: myapp:latest
         source: pull
+        force_source: true
 
     - name: Restart application container
-      docker_container:
+      community.docker.docker_container:
         name: myapp
         image: myapp:latest
         state: started
@@ -52,7 +53,7 @@ Batch 3: web-07, web-08, web-09 (all tasks, then handlers)
 Batch 4: web-10, web-11, web-12 (all tasks, then handlers)
 ```
 
-Each batch runs the complete play including handlers. If any host in a batch fails, the play stops and does not proceed to the next batch (by default).
+Each batch runs the complete play including handlers. By default, a failed host is removed from the active hosts for the play, but other hosts in the current batch and later batches continue unless the failure threshold is reached or you enable stricter error handling such as `any_errors_fatal`.
 
 ## Why Serial Matters for Availability
 
@@ -91,7 +92,7 @@ The most powerful serial feature is progressive batching. Start with a small bat
   serial:
     - 1       # First: deploy to 1 host (canary)
     - 5       # Second: deploy to 5 more hosts
-    - "25%"   # Third: deploy to 25% of remaining
+    - "25%"   # Third: deploy to 25% of all play hosts
     - "100%"  # Fourth: deploy to all remaining hosts
 
   tasks:
@@ -128,8 +129,8 @@ With 20 hosts, the batches are:
 ```text
 Batch 1: 1 host (canary)
 Batch 2: 5 hosts
-Batch 3: 25% of remaining 14 = 4 hosts (rounded)
-Batch 4: all remaining 10 hosts
+Batch 3: 25% of 20 = 5 hosts
+Batch 4: all remaining 9 hosts
 ```
 
 If the canary fails, only 1 host is affected. If batch 2 fails, only 6 hosts total are affected.
@@ -254,7 +255,7 @@ Track which batch you are on with custom stats:
       set_stats:
         data:
           current_batch: "{{ ansible_play_batch }}"
-          hosts_in_batch: "{{ ansible_play_hosts | length }}"
+          hosts_in_batch: "{{ ansible_play_batch | length }}"
         per_host: false
       run_once: true
 
