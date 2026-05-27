@@ -8,7 +8,7 @@ Description: Troubleshooting guide for MetalLB ARP issues on WiFi-connected Rasp
 
 ---
 
-If you have set up a Kubernetes cluster on Raspberry Pi nodes connected over WiFi, you have likely hit this: MetalLB assigns an external IP, but nothing can reach it. The root cause is almost always ARP (Address Resolution Protocol) and how WiFi handles it differently from Ethernet.
+If you have set up a Kubernetes cluster on Raspberry Pi nodes connected over WiFi, you have likely hit this: MetalLB assigns an external IP, but nothing can reach it. A common root cause is ARP (Address Resolution Protocol) and how WiFi handles broadcast traffic differently from Ethernet.
 
 ## How MetalLB L2 Mode Works
 
@@ -33,7 +33,7 @@ On Ethernet this works perfectly. But WiFi access points behave differently.
 
 ## Why WiFi Breaks ARP
 
-WiFi access points bridge wireless clients to the wired network, and most have **ARP proxy** or **client isolation** features that interfere with MetalLB.
+WiFi access points bridge wireless clients to the wired network, and some have **ARP proxy**, **broadcast filtering**, or **client isolation** features that can interfere with MetalLB.
 
 ```mermaid
 flowchart TD
@@ -47,10 +47,10 @@ flowchart TD
 
 The core issues:
 
-1. **ARP suppression** - APs suppress ARP broadcasts to reduce airtime. They only forward requests for known clients.
+1. **ARP suppression** - APs may suppress or optimize ARP broadcasts to reduce airtime. In proxy ARP mode, they usually only answer or forward requests for IPs they know belong to associated wireless clients.
 2. **Proxy ARP** - The AP answers ARP on behalf of clients but ignores IPs it does not recognize, like MetalLB VIPs.
 3. **Client isolation** - Some APs block direct communication between wireless clients, breaking ARP between nodes.
-4. **MAC filtering** - APs reject gratuitous ARP announcements that claim a new IP on an existing MAC.
+4. **IP/MAC binding or ARP inspection** - Some network devices enforce IP-to-MAC mappings and can reject gratuitous ARP announcements that claim a new IP on an existing MAC.
 
 ## Diagnosing the Issue
 
@@ -67,8 +67,8 @@ kubectl logs -n metallb-system -l app=metallb,component=speaker --tail=50
 # Listen for ARP traffic on the WiFi interface
 sudo tcpdump -i wlan0 arp -n -c 20
 
-# From another machine, test ARP resolution
-sudo arping -I eth0 192.168.1.200
+# From another machine, test ARP resolution using that machine's LAN interface
+sudo arping -I <client-interface> 192.168.1.200
 
 # If arping times out but the node's real IP is reachable, WiFi ARP is the problem
 ping 192.168.1.100  # Node IP - should work
@@ -118,6 +118,8 @@ spec:
   nodeSelectors:
     - matchLabels:
         network: ethernet
+  interfaces:
+    - eth0
 ```
 
 ```bash
@@ -127,30 +129,25 @@ kubectl label node rpi-node-01 network=ethernet
 
 This is the most reliable approach. Ethernet handles ARP correctly, and you only need one wired node.
 
-## Solution 3: Disable ARP Proxy on Your AP
+## Solution 3: Adjust AP Broadcast and Isolation Settings
 
-Some access points let you turn off ARP suppression directly.
+Some access points let you turn off ARP suppression or related broadcast and isolation controls directly.
 
-For **UniFi** APs:
+For **UniFi** APs, check the SSID settings in the UniFi Network application:
 
-```bash
-# Check if proxy ARP is enabled (1 = enabled, 0 = disabled)
-cat /proc/sys/net/ipv4/conf/br0/proxy_arp
-
-# Disable it (resets on AP reboot)
-echo 0 > /proc/sys/net/ipv4/conf/br0/proxy_arp
-```
+- Disable **Client Device Isolation** on the cluster SSID.
+- If **Multicast and Broadcast Control** is enabled, either disable it or make sure the relevant node MAC addresses are allowed.
 
 For **OpenWrt** routers:
 
 ```bash
-# Disable ARP-related filtering
-uci set network.lan.igmp_snooping='0'
+# Disable wireless client isolation for the relevant SSID.
+# Replace default_radio0 with the actual wifi-iface section name from `uci show wireless`.
 uci set wireless.default_radio0.isolate='0'
 
 # Apply changes
-uci commit network && uci commit wireless
-/etc/init.d/network restart
+uci commit wireless
+wifi reload
 ```
 
 ## Solution 4: Use BGP Mode
@@ -195,7 +192,7 @@ flowchart TD
     A[MetalLB not working on WiFi?] --> B{Can you wire one node?}
     B -->|Yes| C[Solution 2: Wired Node]
     B -->|No| D{Can you configure your AP?}
-    D -->|Yes| E[Solution 3: Disable ARP Proxy]
+    D -->|Yes| E[Solution 3: Adjust AP Settings]
     D -->|No| F{Router supports BGP?}
     F -->|Yes| G[Solution 4: BGP Mode]
     F -->|No| H[Solution 1: Static ARP]
@@ -221,7 +218,7 @@ kubectl logs -n metallb-system -l component=speaker -f | grep -i "arp\|announce"
 
 ## Conclusion
 
-WiFi and MetalLB L2 mode do not mix well because WiFi access points filter ARP traffic. The most reliable fix is to connect one node via Ethernet and pin MetalLB to it. If that is not possible, BGP mode avoids ARP entirely.
+WiFi and MetalLB L2 mode do not always mix well because WiFi access points can filter or optimize ARP traffic. The most reliable fix is to connect one node via Ethernet and pin MetalLB to it. If that is not possible, BGP mode avoids ARP entirely.
 
 For home lab Raspberry Pi clusters, this issue can waste hours of debugging if you do not know where to look. Hopefully this guide saves you that time.
 
