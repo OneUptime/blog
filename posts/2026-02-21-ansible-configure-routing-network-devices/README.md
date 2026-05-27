@@ -37,7 +37,7 @@ Static routes are the simplest form of routing. They are perfect for stub networ
                     next_hops:
                       - forward_router_address: 203.0.113.1
                         name: DEFAULT_TO_ISP
-                        admin_distance: 1
+                        distance_metric: 1
                   # Route to data center network
                   - dest: 10.0.0.0/8
                     next_hops:
@@ -68,15 +68,18 @@ For environments with many branch offices, define routes per site and loop over 
 site_name: "Branch Office NYC"
 
 static_routes_v4:
-  - dest: 0.0.0.0/0
+  - prefix: 0.0.0.0
+    mask: 0.0.0.0
     next_hop: 203.0.113.1
     name: ISP_DEFAULT
     distance: 1
-  - dest: 0.0.0.0/0
+  - prefix: 0.0.0.0
+    mask: 0.0.0.0
     next_hop: 203.0.113.5
     name: ISP_BACKUP
     distance: 10
-  - dest: 10.0.0.0/8
+  - prefix: 10.0.0.0
+    mask: 255.0.0.0
     next_hop: 10.1.1.1
     name: MPLS_TO_DC
 ```
@@ -93,7 +96,7 @@ static_routes_v4:
     - name: Configure static routes from variables
       cisco.ios.ios_config:
         lines:
-          - "ip route {{ item.dest }} {{ item.next_hop }} name {{ item.name }} {{ item.distance | default('') }}"
+          - "ip route {{ item.prefix }} {{ item.mask }} {{ item.next_hop }} {{ item.distance | default('') }} name {{ item.name }}"
       loop: "{{ static_routes_v4 }}"
 
     - name: Verify routes are in the routing table
@@ -139,15 +142,14 @@ OSPF is the most widely deployed interior gateway protocol. Ansible provides the
                   ranges:
                     - address: 10.0.0.0
                       netmask: 255.0.0.0
-              # Redistribute connected and static routes
-              redistribute:
-                - connected:
-                    set: true
-                    route_map: CONNECTED_TO_OSPF
-                - static:
-                    set: true
-                    route_map: STATIC_TO_OSPF
         state: merged
+
+    - name: Redistribute connected and static routes into OSPF
+      cisco.ios.ios_config:
+        lines:
+          - redistribute connected route-map CONNECTED_TO_OSPF
+          - redistribute static route-map STATIC_TO_OSPF
+        parents: router ospf 1
 ```
 
 For the network statements, you often need to use `ios_config` for more granular control.
@@ -211,7 +213,8 @@ BGP is used for inter-AS routing, connections to ISPs, and increasingly within d
       cisco.ios.ios_bgp_global:
         config:
           as_number: "65001"
-          router_id: "{{ router_id }}"
+          router_id:
+            address: "{{ router_id }}"
           log_neighbor_changes: true
           neighbors:
             # eBGP peer to ISP
@@ -219,7 +222,7 @@ BGP is used for inter-AS routing, connections to ISPs, and increasingly within d
               remote_as: "64512"
               description: "ISP-PRIMARY"
               timers:
-                keepalive: 30
+                interval: 30
                 holdtime: 90
             # iBGP peer to other edge router
             - neighbor_address: 10.255.0.2
@@ -238,13 +241,11 @@ BGP is used for inter-AS routing, connections to ISPs, and increasingly within d
               neighbors:
                 - neighbor_address: 203.0.113.1
                   activate: true
-                  route_map:
-                    name: ISP_INBOUND
-                    in: true
-                - neighbor_address: 203.0.113.1
-                  route_map:
-                    name: ISP_OUTBOUND
-                    out: true
+                  route_maps:
+                    - name: ISP_INBOUND
+                      in: true
+                    - name: ISP_OUTBOUND
+                      out: true
               networks:
                 - address: 10.0.0.0
                   mask: 255.0.0.0
