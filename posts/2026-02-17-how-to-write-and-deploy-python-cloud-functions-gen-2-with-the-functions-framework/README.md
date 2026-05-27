@@ -397,6 +397,8 @@ Access them in your function:
 ```python
 # Access environment variables and secrets in your function
 import os
+import functions_framework
+from flask import jsonify
 
 @functions_framework.http
 def hello(request):
@@ -428,6 +430,7 @@ Use structured logging for better Cloud Logging integration:
 # Structured logging for Cloud Functions
 import json
 import functions_framework
+from flask import jsonify
 
 def log_structured(severity, message, **kwargs):
     """Write a structured log entry for Cloud Logging."""
@@ -437,6 +440,10 @@ def log_structured(severity, message, **kwargs):
     }
     entry.update(kwargs)
     print(json.dumps(entry))
+
+def do_work():
+    """Replace this with your application logic."""
+    return []
 
 @functions_framework.http
 def monitored_function(request):
