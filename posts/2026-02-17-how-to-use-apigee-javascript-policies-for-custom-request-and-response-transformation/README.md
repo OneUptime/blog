@@ -29,8 +29,8 @@ A JavaScript policy has two parts: the policy XML file and the JavaScript source
 ### The Policy Definition
 
 ```xml
-<!-- apiproxy/policies/TransformResponse.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- apiproxy/policies/TransformResponse.xml -->
 <Javascript name="TransformResponse" timeLimit="200">
     <DisplayName>Transform Response</DisplayName>
     <!-- Reference to the JS file in the resources directory -->
@@ -95,9 +95,10 @@ if (requestBody) {
 
     // Normalize phone numbers - strip everything except digits and leading +
     if (input.phone) {
-        input.phone = input.phone.replace(/[^\d+]/g, "");
+        var hasLeadingPlus = input.phone.charAt(0) === "+";
+        input.phone = (hasLeadingPlus ? "+" : "") + input.phone.replace(/\D/g, "");
         // Add country code if missing
-        if (!input.phone.startsWith("+")) {
+        if (input.phone.charAt(0) !== "+") {
             input.phone = "+1" + input.phone;
         }
     }
@@ -119,8 +120,8 @@ if (requestBody) {
 The policy definition:
 
 ```xml
-<!-- apiproxy/policies/NormalizeRequest.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- apiproxy/policies/NormalizeRequest.xml -->
 <Javascript name="NormalizeRequest" timeLimit="200">
     <DisplayName>Normalize Request</DisplayName>
     <ResourceURL>jsc://normalize-request.js</ResourceURL>
@@ -283,8 +284,8 @@ if (errors.length > 0) {
 Pair this with a RaiseFault policy that returns errors if validation fails:
 
 ```xml
-<!-- apiproxy/policies/ValidationFault.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- apiproxy/policies/ValidationFault.xml -->
 <RaiseFault name="ValidationFault">
     <DisplayName>Validation Error Response</DisplayName>
     <FaultResponse>
@@ -330,15 +331,16 @@ JavaScript policies can work with data from multiple ServiceCallout responses to
 ```javascript
 // apiproxy/resources/jsc/aggregate-responses.js
 
-// Read responses from multiple service callouts
-var userResponse = context.getVariable("userCallout.response.content");
-var ordersResponse = context.getVariable("ordersCallout.response.content");
-var prefsResponse = context.getVariable("prefsCallout.response.content");
+// Read responses from multiple service callouts. These names match the
+// <Response> variables configured in the ServiceCallout policies.
+var userResponseBody = context.getVariable("userResponse.content");
+var ordersResponseBody = context.getVariable("ordersResponse.content");
+var prefsResponseBody = context.getVariable("prefsResponse.content");
 
 try {
-    var user = JSON.parse(userResponse);
-    var orders = JSON.parse(ordersResponse);
-    var prefs = JSON.parse(prefsResponse);
+    var user = JSON.parse(userResponseBody);
+    var orders = JSON.parse(ordersResponseBody);
+    var prefs = JSON.parse(prefsResponseBody);
 
     // Aggregate into a single response
     var aggregated = {
@@ -407,7 +409,7 @@ var proxyName = context.getVariable("apiproxy.name");
 var proxyRevision = context.getVariable("apiproxy.revision");
 var environment = context.getVariable("environment.name");
 
-// Logging (visible in Trace tool)
+// Logging (visible in the Debug tool)
 print("Debug: processing request for " + path);
 ```
 
@@ -427,4 +429,4 @@ JavaScript policies add latency. Keep these best practices in mind:
 
 ## Summary
 
-Apigee JavaScript policies give you programmatic control over request and response processing when declarative policies fall short. Use them for complex JSON transformations, custom validation, response aggregation, and data calculations. Keep your scripts focused and performant - read and write through the context object, handle errors gracefully, and use the Trace tool to debug. The combination of declarative policies for standard operations and JavaScript policies for custom logic gives you a powerful, maintainable API proxy layer.
+Apigee JavaScript policies give you programmatic control over request and response processing when declarative policies fall short. Use them for complex JSON transformations, custom validation, response aggregation, and data calculations. Keep your scripts focused and performant - read and write through the context object, handle errors gracefully, and use the Debug tool to debug. The combination of declarative policies for standard operations and JavaScript policies for custom logic gives you a powerful, maintainable API proxy layer.
