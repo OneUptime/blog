@@ -83,10 +83,15 @@ These happen when a resource that requires CMEK is created with default Google-m
 
 ```bash
 # Find Cloud Storage buckets without CMEK
-gcloud storage buckets list \
+for bucket in $(gcloud storage buckets list \
   --project=fedramp-project \
-  --format="table(name,default_encryption_key)" \
-  --filter="NOT default_encryption_key:*"
+  --format="value(name)"); do
+  kms_key=$(gcloud storage buckets describe "$bucket" \
+    --format="value(default_kms_key)")
+  if [ -z "$kms_key" ]; then
+    echo "$bucket"
+  fi
+done
 ```
 
 Fix by updating the bucket's encryption:
@@ -113,7 +118,7 @@ If a policy has been overridden at the project level, remove the override to res
 ```bash
 # Remove a project-level policy override to restore the folder-level policy
 gcloud resource-manager org-policies delete \
-  constraints/gcp.resourceLocations \
+  gcp.resourceLocations \
   --project=fedramp-project
 ```
 
@@ -160,9 +165,8 @@ gcloud monitoring policies create \
   --display-name="Organization Policy Change Alert" \
   --condition-display-name="Org policy was modified" \
   --condition-filter='metric.type="logging.googleapis.com/user/org-policy-changes"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=0s \
+  --if='> 0' \
+  --duration=0s \
   --notification-channels="projects/my-admin-project/notificationChannels/CHANNEL_ID" \
   --combiner=OR \
   --project=my-admin-project
