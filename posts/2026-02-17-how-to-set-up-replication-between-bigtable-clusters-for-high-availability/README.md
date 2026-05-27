@@ -8,13 +8,13 @@ Description: Learn how to configure multi-cluster replication in Cloud Bigtable 
 
 ---
 
-A single Bigtable cluster in one zone gives you good performance, but if that zone has an outage, your database goes down. Bigtable replication lets you run multiple clusters in different zones or regions, with data automatically synchronized between them. If one cluster fails, your application transparently fails over to another. You also get lower read latency because clients can read from the nearest cluster.
+A single Bigtable cluster in one zone gives you good performance, but if that zone has an outage, your database goes down. Bigtable replication lets you run multiple clusters in different zones or regions, with data automatically synchronized between them. If one cluster fails, applications that use multi-cluster routing automatically fail over to another. You also get lower read latency because clients can read from the nearest cluster.
 
 Setting up replication is straightforward, but understanding the consistency model and configuration options is important for making good decisions. Let me walk through the whole process.
 
 ## How Replication Works
 
-When you add a second cluster to a Bigtable instance, Bigtable automatically replicates all writes to both clusters. The replication is asynchronous - a write goes to the cluster that receives it first, and then Bigtable propagates it to the other cluster(s) in the background. This typically takes less than a few seconds but is not guaranteed to be instant.
+When you add a second cluster to a Bigtable instance, Bigtable automatically starts replicating changes between the clusters. The replication is asynchronous - a write goes to the cluster that receives it first, and then Bigtable propagates it to the other cluster(s) in the background. This typically takes less than a few seconds but is not guaranteed to be instant.
 
 ```mermaid
 graph TD
@@ -43,7 +43,6 @@ gcloud bigtable instances create my-ha-instance \
   --display-name="HA Instance" \
   --cluster-config=id=cluster-central,zone=us-central1-a,nodes=3 \
   --cluster-config=id=cluster-east,zone=us-east1-b,nodes=3 \
-  --instance-type=PRODUCTION \
   --project=your-project-id
 ```
 
@@ -76,7 +75,7 @@ App profiles control how your application connects to the Bigtable instance. The
 
 There are two routing policies:
 
-**Multi-cluster routing**: Requests are automatically routed to the nearest healthy cluster. This is the default and gives you automatic failover.
+**Multi-cluster routing**: Requests are automatically routed to the nearest healthy cluster. This is the default for instances created with two or more clusters, and it gives you automatic failover.
 
 ```bash
 # Create an app profile with multi-cluster routing
@@ -165,19 +164,21 @@ sequenceDiagram
 
 ## Handling Conflicts
 
-With multi-cluster replication, it is possible for two clients to write to the same cell in different clusters at nearly the same time. Bigtable resolves conflicts using a last-write-wins strategy based on the cell timestamp.
+With multi-cluster replication, it is possible for two clients to write to the same cell in different clusters at nearly the same time. If two writes use the same row key, column family, column qualifier, and timestamp, Bigtable resolves the conflict using an internal last-write-wins algorithm based on server-side time.
 
 ```python
-# Conflict resolution: last-write-wins based on cell timestamp
+# Conflict resolution: last-write-wins for writes with the same timestamp
 # To avoid conflicts, use server-assigned timestamps
+
+import datetime
 
 # This write uses an explicit timestamp - could conflict
 row = table.direct_row(b'user#123')
-row.set_cell('data', b'name', b'Alice', timestamp=datetime.datetime.utcnow())
+row.set_cell('data', b'name', b'Alice', timestamp=datetime.datetime.now(datetime.timezone.utc))
 row.commit()
 
 # Better: let the server assign the timestamp
-# The server ensures each version has a unique timestamp
+# This avoids creating the same cell version timestamp from your application
 row = table.direct_row(b'user#123')
 row.set_cell('data', b'name', b'Alice')  # No timestamp - server assigns one
 row.commit()
@@ -209,9 +210,9 @@ Set up alerts on replication delay so you know if data synchronization falls beh
 gcloud monitoring policies create \
   --display-name="Bigtable Replication Lag Alert" \
   --condition-display-name="Replication lag > 10 seconds" \
-  --condition-filter='metric.type="bigtable.googleapis.com/replication/max_delay" AND resource.type="bigtable_cluster"' \
-  --condition-threshold-value=10 \
-  --condition-threshold-duration=300s \
+  --condition-filter='metric.type="bigtable.googleapis.com/replication/max_delay" AND resource.type="bigtable_table"' \
+  --if="> 10" \
+  --duration=300s \
   --notification-channels=your-channel-id
 ```
 
