@@ -81,8 +81,8 @@ The `ios_bgp_global` resource module manages the BGP process, neighbors, and glo
           router_id: "{{ router_id }}"
           log_neighbor_changes: true
           bgp:
-            bestpath:
-              - compare_routerid: true
+            bestpath_options:
+              compare_routerid: true
             graceful_shutdown:
               neighbors:
                 time: 120
@@ -91,10 +91,9 @@ The `ios_bgp_global` resource module manages the BGP process, neighbors, and glo
             - neighbor_address: "{{ ebgp_peer }}"
               remote_as: "{{ ebgp_remote_as }}"
               description: "{{ ebgp_description }}"
-              timers:
-                keepalive: 30
-                holdtime: 90
-              password: "{{ vault_bgp_password }}"
+              password_options:
+                encryption: 0
+                pass_key: "{{ vault_bgp_password }}"
             # iBGP peer to other edge router
             - neighbor_address: "{{ hostvars['edge-rtr01'].loopback_ip if inventory_hostname == 'edge-rtr02' else hostvars['edge-rtr02'].loopback_ip }}"
               remote_as: "{{ local_as }}"
@@ -134,7 +133,7 @@ The `ios_bgp_address_family` module handles per-address-family settings like net
                 - neighbor_address: "{{ ebgp_peer }}"
                   activate: true
                   soft_reconfiguration: true
-                  prefix_list:
+                  prefix_lists:
                     - name: ISP_INBOUND
                       in: true
                     - name: ISP_OUTBOUND
@@ -142,7 +141,7 @@ The `ios_bgp_address_family` module handles per-address-family settings like net
                 # Activate iBGP peer
                 - neighbor_address: "{{ hostvars['edge-rtr01'].loopback_ip if inventory_hostname == 'edge-rtr02' else hostvars['edge-rtr02'].loopback_ip }}"
                   activate: true
-                  next_hop_self:
+                  nexthop_self:
                     set: true
               networks:
                 # Advertise our aggregate prefixes
@@ -225,7 +224,9 @@ BGP communities are useful for tagging routes and applying policy decisions at s
       cisco.ios.ios_config:
         lines:
           - "neighbor {{ hostvars['edge-rtr01'].loopback_ip if inventory_hostname == 'edge-rtr02' else hostvars['edge-rtr02'].loopback_ip }} send-community both"
-        parents: "router bgp {{ local_as }}"
+        parents:
+          - "router bgp {{ local_as }}"
+          - address-family ipv4 unicast
 
     # Create route map that sets local preference based on community
     - name: Configure local preference for ISP routes
@@ -248,11 +249,20 @@ BGP communities are useful for tagging routes and applying policy decisions at s
         lines:
           - ip community-list standard ISP_PRIMARY permit 65001:100
           - ip community-list standard ISP_BACKUP permit 65001:200
+
+    # Apply the local-preference policy to routes learned from the ISP
+    - name: Apply local preference policy to ISP routes
+      cisco.ios.ios_config:
+        lines:
+          - "neighbor {{ ebgp_peer }} route-map SET_LOCAL_PREF in"
+        parents:
+          - "router bgp {{ local_as }}"
+          - address-family ipv4 unicast
 ```
 
 ## BGP Aggregate Routes
 
-To keep your routing advertisements clean, configure aggregate routes with the suppress-map.
+To keep your routing advertisements clean, configure aggregate routes with `summary-only`.
 
 ```yaml
 # bgp_aggregation.yml - Configure BGP route aggregation
@@ -263,7 +273,7 @@ To keep your routing advertisements clean, configure aggregate routes with the s
   connection: network_cli
 
   tasks:
-    # Create null routes for aggregates (required for BGP to advertise them)
+    # Create null routes so the network statements have matching RIB entries
     - name: Create null routes for aggregates
       cisco.ios.ios_static_routes:
         config:
@@ -355,14 +365,14 @@ After deploying BGP, always verify that sessions are established and routes are 
     - name: Check for aggregate routes
       cisco.ios.ios_command:
         commands:
-          - show ip bgp 10.0.0.0/8
-          - show ip bgp 172.16.0.0/12
+          - show ip bgp 10.0.0.0 255.0.0.0
+          - show ip bgp 172.16.0.0 255.240.0.0
       register: aggregate_check
 
     - name: Display aggregate route status
       ansible.builtin.debug:
-        msg: "Aggregate check: {{ item.stdout_lines[0] | default('NOT FOUND') }}"
-      loop: "{{ aggregate_check.results }}"
+        msg: "Aggregate check: {{ item | first | default('NOT FOUND') }}"
+      loop: "{{ aggregate_check.stdout_lines }}"
 ```
 
 ## Gathering BGP State for Documentation
