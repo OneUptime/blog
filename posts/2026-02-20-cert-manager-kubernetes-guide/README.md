@@ -38,7 +38,7 @@ cert-manager watches for Certificate resources and Ingress annotations. When it 
 # Install cert-manager using kubectl
 
 # This installs the CRDs, controller, webhook, and cainjector
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Alternatively, install with Helm for more configuration options
 helm repo add jetstack https://charts.jetstack.io
@@ -48,6 +48,7 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
+  --version v1.20.2 \
   --set crds.enabled=true \
   --set prometheus.enabled=true \
   --set webhook.timeoutSeconds=30
@@ -74,7 +75,7 @@ spec:
   acme:
     # The staging ACME server URL
     server: https://acme-staging-v02.api.letsencrypt.org/directory
-    # Email address for certificate notifications
+    # Email address for ACME account contact
     email: admin@example.com
     # Secret to store the ACME account private key
     privateKeySecretRef:
@@ -83,7 +84,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx                   # Your ingress controller class
+            ingressClassName: nginx        # Your ingress controller class
 ---
 # letsencrypt-production-issuer.yaml
 # Use this for production certificates after testing with staging
@@ -101,7 +102,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ```bash
@@ -194,7 +195,7 @@ spec:
   dnsNames:
     - app.example.com
     - api.example.com
-    - "*.staging.example.com"              # Wildcard requires DNS-01 challenge
+    - staging.example.com
   # Which issuer to use
   issuerRef:
     name: letsencrypt-production
@@ -222,7 +223,6 @@ spec:
     solvers:
       - dns01:
           cloudflare:
-            email: admin@example.com
             # API token stored in a Kubernetes Secret
             apiTokenSecretRef:
               name: cloudflare-api-token
@@ -259,7 +259,7 @@ sequenceDiagram
     ACME->>DNS: Verify TXT record
     DNS->>ACME: Record verified
     ACME->>CertManager: Issue certificate
-    CertManager->>Ingress: Store in Kubernetes Secret
+    CertManager->>CertManager: Store certificate in Kubernetes Secret
     Note over CertManager: Monitor expiry dates
     CertManager->>ACME: Renew 30 days before expiry
 ```
