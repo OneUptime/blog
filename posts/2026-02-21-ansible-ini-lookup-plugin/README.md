@@ -70,8 +70,8 @@ Here is a playbook that demonstrates the key parameters:
       ansible.builtin.debug:
         msg: "{{ lookup('ini', 'missing_key', file='db.conf', section='mysqld', default='not_found') }}"
 
-    # Use a custom key-value separator (default is '=')
-    - name: Read from a colon-separated file
+    # Read from a Java-style properties file
+    - name: Read from a properties file
       ansible.builtin.debug:
         msg: "{{ lookup('ini', 'hostname', file='custom.conf', type='properties') }}"
 
@@ -83,10 +83,10 @@ Here is a playbook that demonstrates the key parameters:
 
 The most commonly used parameters are:
 
-- **file**: Path to the INI file (relative to the playbook or absolute)
+- **file**: Path to the INI file (relative paths use Ansible's task search path, or you can use an absolute path)
 - **section**: The `[section]` to read from. Defaults to `global` (lines before any section header)
 - **default**: Value to return if the key is not found. Defaults to an empty string
-- **type**: Set to `properties` for Java-style properties files that use `:` as a separator
+- **type**: Set to `properties` for Java-style properties files without section headers
 - **re**: If set to `true`, treats the key as a regular expression
 - **encoding**: Character encoding of the file. Defaults to `utf-8`
 
@@ -159,7 +159,7 @@ server.port: 8080
 
 When key names follow a pattern, you can use the `re` parameter to match them with regular expressions.
 
-This playbook finds all keys that start with `plugin_`:
+This playbook finds the values for all keys that start with `plugin_`:
 
 ```yaml
 # playbook.yml - Using regex matching with ini lookup
@@ -169,7 +169,7 @@ This playbook finds all keys that start with `plugin_`:
   tasks:
     - name: Get all plugin settings
       ansible.builtin.debug:
-        msg: "{{ lookup('ini', 'plugin_.*', file='app.conf', section='plugins', re=true) }}"
+        msg: "{{ query('ini', 'plugin_.*', file='app.conf', section='plugins', re=true) }}"
 ```
 
 ## Practical Example: Multi-Environment Deployment
@@ -240,7 +240,7 @@ ansible-playbook playbook.yml -e target_env=production
 
 ## Error Handling
 
-If the INI file does not exist or the section/key cannot be found, the lookup will fail unless you provide a `default` value. Always set defaults for optional keys.
+If the key cannot be found, the lookup returns the `default` value. If the INI file does not exist or the section cannot be found, the lookup will still fail. Always set defaults for optional keys, and make sure the file and section exist before relying on optional values.
 
 This example handles missing values gracefully:
 
@@ -264,7 +264,7 @@ This example handles missing values gracefully:
 
 A few gotchas to keep in mind when using the `ini` lookup:
 
-1. **File path resolution**: Relative paths are resolved relative to the playbook directory, not the current working directory. Use absolute paths if you need to read system config files.
+1. **File path resolution**: Relative paths use Ansible's local task search path, which can include role and task-file directories before the playbook directory. Use absolute paths if you need to read system config files.
 2. **Whitespace handling**: The plugin strips leading and trailing whitespace from values by default. If your values contain intentional whitespace, be careful.
 3. **Comments**: Lines starting with `#` or `;` are treated as comments and ignored.
 4. **Section names are case-sensitive**: `[Database]` and `[database]` are different sections.
