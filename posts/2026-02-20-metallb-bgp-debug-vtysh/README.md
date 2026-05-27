@@ -8,13 +8,13 @@ Description: Learn how to use vtysh commands inside MetalLB FRR containers to de
 
 ---
 
-When MetalLB runs in FRR mode, each speaker pod contains a full FRR routing stack. The primary tool for inspecting that stack is vtysh, the FRR unified shell. It gives you direct access to BGP session state, routing tables, BFD status, and the running configuration - all from inside the container.
+When MetalLB runs in direct FRR mode, each speaker pod contains a full FRR routing stack. The primary tool for inspecting that stack is vtysh, the FRR unified shell. It gives you direct access to BGP session state, routing tables, BFD status, and the running configuration - all from inside the container.
 
 This guide covers the most useful vtysh commands for debugging MetalLB BGP issues, organized by the type of problem you are trying to solve.
 
 ## Accessing vtysh in a MetalLB Speaker Pod
 
-First, identify the speaker pod and exec into the FRR container:
+First, identify the speaker pod and exec into the FRR container. These commands apply to MetalLB's direct FRR mode; current MetalLB releases use FRR-K8s as the default BGP backend, where FRR runs in FRR-K8s pods instead of the speaker pod.
 
 ```bash
 # List all MetalLB speaker pods
@@ -29,7 +29,7 @@ SPEAKER_POD=$(kubectl get pod -n metallb-system -l component=speaker \
 kubectl exec -it -n metallb-system "$SPEAKER_POD" -c frr -- vtysh
 ```
 
-You are now in the FRR shell. All commands below can be run interactively, or you can pass them as one-liners using `vtysh -c "command"`.
+You are now in the FRR shell. Most vtysh commands below can be run interactively, or you can pass them as one-liners using `vtysh -c "command"`.
 
 ### Command Reference by Category
 
@@ -54,7 +54,7 @@ mindmap
     Diagnostics
       debug bgp updates
       debug bgp neighbor-events
-      show logging
+      terminal monitor
 ```
 
 ### Checking BGP Session Status
@@ -122,7 +122,7 @@ kubectl exec -n metallb-system "$SPEAKER_POD" -c frr -- \
   vtysh -c "show bgp neighbors 10.0.0.1 received-routes"
 ```
 
-MetalLB typically does not import routes from peers, but this is useful for verifying that the router is sending the expected prefixes back (for example, in ECMP setups).
+MetalLB typically does not import routes from peers, but this is useful when you intentionally configure the router to advertise prefixes back to the speaker.
 
 ### Inspecting the Routing Table
 
@@ -150,7 +150,7 @@ kubectl exec -n metallb-system "$SPEAKER_POD" -c frr -- \
   vtysh -c "show bfd peers counters"
 ```
 
-A healthy BFD session shows `Status: up`. If it shows `Status: down`, check that BFD is also enabled on the upstream router and that UDP ports 3784 and 3785 are not blocked.
+A healthy BFD session shows `Status: up`. If it shows `Status: down`, check that BFD is also enabled on the upstream router and that the relevant BFD UDP ports are not blocked: 3784 for single-hop control packets, 3785 if echo mode is used, or 4784 for multihop BFD.
 
 ### Viewing the Running Configuration
 
@@ -177,9 +177,8 @@ kubectl exec -n metallb-system "$SPEAKER_POD" -c frr -- \
 kubectl exec -n metallb-system "$SPEAKER_POD" -c frr -- \
   vtysh -c "debug bgp neighbor-events"
 
-# View the FRR log output
-kubectl exec -n metallb-system "$SPEAKER_POD" -c frr -- \
-  vtysh -c "show logging"
+# View the FRR container log output
+kubectl logs -n metallb-system "$SPEAKER_POD" -c frr
 ```
 
 Remember to disable debug logging when you are done, as it can generate a large volume of output:
@@ -197,9 +196,9 @@ kubectl exec -n metallb-system "$SPEAKER_POD" -c frr -- \
 
 ```mermaid
 flowchart TD
-    A[Service has no External IP] --> B{Is the IPAddressPool exhausted?}
-    B -- Yes --> C[Add more addresses to the pool]
-    B -- No --> D{Is the BGP session Established?}
+    A[LoadBalancer service is not reachable] --> B{Does the service have an External IP?}
+    B -- No --> C[Check IPAddressPool assignment, events, and pool exhaustion]
+    B -- Yes --> D{Is the BGP session Established?}
     D -- No --> E{Can the speaker reach the peer on TCP 179?}
     E -- No --> F[Check firewall rules and network connectivity]
     E -- Yes --> G[Verify ASN values in BGPPeer match the router config]
