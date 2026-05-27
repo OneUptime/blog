@@ -187,6 +187,24 @@ Here is a full deployment that shows daemon_reload in context with a multi-compo
         system: true
         shell: /usr/sbin/nologin
 
+    - name: Create service binary directories
+      ansible.builtin.file:
+        path: "/opt/services/{{ item.name }}/bin"
+        state: directory
+        owner: appuser
+        group: appuser
+        mode: '0755'
+      loop: "{{ services }}"
+
+    - name: Create service log directories
+      ansible.builtin.file:
+        path: "/var/log/services/{{ item.name }}"
+        state: directory
+        owner: appuser
+        group: appuser
+        mode: '0755'
+      loop: "{{ services }}"
+
     - name: Deploy service binaries
       ansible.builtin.copy:
         src: "build/{{ item.name }}"
