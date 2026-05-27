@@ -51,7 +51,7 @@ graph TD
 
 ## Method 1: Firewall-Based Region Isolation
 
-The safest way to simulate a regional outage is to use firewall rules to block all traffic to and from the primary region's resources. This does not actually stop the services - it just makes them unreachable.
+The safest way to simulate a regional outage for Compute Engine or GKE node resources is to use firewall rules to block traffic to and from resources that have the primary region's network tag. This does not actually stop the services - it just makes the tagged resources unreachable.
 
 ```bash
 # Create a firewall rule that blocks all ingress to the primary region
@@ -90,18 +90,21 @@ gcloud compute firewall-rules delete dr-test-block-ingress dr-test-block-egress 
 Use the global load balancer to shift all traffic away from the primary region. This tests the failover path without disrupting the primary region's services.
 
 ```bash
-# Update the backend service to set the primary region's capacity to zero
-gcloud compute backend-services update my-backend-service \
+# Update the primary region's backend to set its capacity to zero
+gcloud compute backend-services update-backend my-backend-service \
     --global \
-    --no-backends
+    --instance-group=my-ig-us-central1 \
+    --instance-group-zone=us-central1-b \
+    --capacity-scaler=0
 
-# Re-add only the secondary region's backend
-gcloud compute backend-services add-backend my-backend-service \
+# Make sure the secondary region's backend is available
+gcloud compute backend-services update-backend my-backend-service \
     --global \
     --instance-group=my-ig-us-east1 \
     --instance-group-zone=us-east1-b \
     --balancing-mode=UTILIZATION \
-    --max-utilization=0.8
+    --max-utilization=0.8 \
+    --capacity-scaler=1
 ```
 
 ## Method 3: GKE Cluster Scaling to Zero
@@ -139,7 +142,7 @@ Test the database failover by promoting the cross-region replica.
 # First, check the current replication status
 gcloud sql instances describe my-sql-replica \
     --project=my-gcp-project \
-    --format="table(name,state,replicaConfiguration.failoverTarget)"
+    --format="table(name,state,databaseReplicationEnabled,masterInstanceName)"
 
 # Promote the replica to become the primary
 # WARNING: This is a destructive operation that breaks replication
@@ -150,7 +153,7 @@ gcloud sql instances promote-replica my-sql-replica \
 # to point to the new primary database
 ```
 
-For a less disruptive test, use Cloud SQL's built-in failover if you have a high availability configuration.
+For a less disruptive zonal test, use Cloud SQL's built-in failover if you have a high availability configuration.
 
 ```bash
 # Trigger a failover within the HA configuration
@@ -252,10 +255,13 @@ gcloud container clusters get-credentials $PRIMARY_CLUSTER \
     --region=$PRIMARY_REGION --project=$PROJECT_ID
 kubectl scale deployment api-server --replicas=3 -n production
 kubectl scale deployment order-service --replicas=2 -n production
+kubectl scale deployment worker --replicas=4 -n production
 
 # Step 8: Wait for primary to recover
 echo "Step 8: Waiting for primary region recovery..."
 kubectl rollout status deployment/api-server -n production --timeout=120s
+kubectl rollout status deployment/order-service -n production --timeout=120s
+kubectl rollout status deployment/worker -n production --timeout=120s
 
 echo "=== DR Test Complete ==="
 echo "Time: $(date -u)"
@@ -271,9 +277,15 @@ During the test, measure two critical metrics.
 
 ```bash
 # Check Cloud SQL replication lag before failover
-gcloud sql instances describe my-sql-replica \
-    --project=$PROJECT_ID \
-    --format="value(replicaConfiguration.mysqlReplicaConfiguration.secondsBehindMaster)"
+gcloud sql connect my-sql-replica \
+    --user=root \
+    --project=$PROJECT_ID
+```
+
+After connecting, run:
+
+```sql
+SHOW REPLICA STATUS \G
 ```
 
 ## Common Failures Found During DR Tests
