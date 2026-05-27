@@ -14,10 +14,11 @@ This guide covers everything you need to know about configuring lifecycle rules 
 
 ## How Lifecycle Management Works
 
-Google Cloud Storage evaluates lifecycle rules once per day against every object in a bucket. When an object matches the conditions you define, GCS performs the specified action. There are two types of actions:
+Google Cloud Storage regularly evaluates lifecycle rules against objects in a bucket. When an object matches the conditions you define, GCS performs the specified action asynchronously. There are three types of actions:
 
 - **SetStorageClass** - moves objects to a different storage class
-- **Delete** - permanently removes objects
+- **Delete** - deletes objects, subject to soft delete, object versioning, holds, and retention policies
+- **AbortIncompleteMultipartUpload** - aborts incomplete multipart uploads and deletes their associated parts
 
 Each rule has conditions that determine which objects it applies to. You can combine multiple conditions within a single rule (they work as AND logic), and you can have multiple rules on a bucket (they work independently).
 
@@ -64,7 +65,7 @@ You have several conditions to work with. Understanding each one helps you build
 
 ### Age
 
-The number of days since the object was created (or since it became noncurrent, for versioned objects using `age` on noncurrent versions).
+The number of days since the object was created. For versioned objects, `age` is still measured from the original creation time; use `daysSinceNoncurrentTime` when you want to count from when an object became noncurrent.
 
 ```json
 {
@@ -100,7 +101,7 @@ Works with versioned buckets. When set to `false`, it targets noncurrent (archiv
 
 ### NumNewerVersions
 
-Also for versioned buckets. Targets noncurrent versions when there are more than N newer versions.
+Also for versioned buckets. Targets noncurrent versions when there are at least N newer versions.
 
 ```json
 {
@@ -227,7 +228,7 @@ When versioning is enabled, old versions pile up fast. This keeps costs under co
 }
 ```
 
-This deletes noncurrent versions when there are more than 5 newer versions, or when a noncurrent version is older than 90 days.
+This deletes noncurrent versions when there are at least 5 newer versions, or when a noncurrent version is older than 90 days.
 
 ### Temporary Upload Cleanup
 
@@ -345,7 +346,7 @@ resource "google_storage_bucket" "data_bucket" {
 
 ## Cost Impact Visualization
 
-Here is how lifecycle management affects storage costs over time:
+Here is how lifecycle management can affect storage costs over time. Exact storage prices vary by location and are shown here only as an example:
 
 ```mermaid
 graph LR
@@ -357,7 +358,7 @@ graph LR
 
 ## Important Things to Know
 
-**Rules are evaluated daily.** Do not expect instant transitions. There can be a delay of up to 24 hours between when an object meets a condition and when the action is performed.
+**Rules are evaluated asynchronously.** Do not expect instant transitions. There can be a lag between when an object meets a condition and when the action is performed, and your applications should not rely on lifecycle actions occurring within a specific amount of time.
 
 **Storage class transitions are one-directional.** You can move from Standard to Nearline, Nearline to Coldline, or Coldline to Archive. You cannot go the other way with lifecycle rules. To move an object to a warmer class, you need to rewrite it.
 
