@@ -8,7 +8,7 @@ Description: A comprehensive guide to implementing OAuth 2.0 authentication in A
 
 ---
 
-API keys are fine for basic identification, but when you need proper authentication and authorization, OAuth 2.0 is the standard. Apigee has built-in OAuth 2.0 policies that handle token generation, validation, and refresh without writing custom code. You can implement client credentials flow for server-to-server communication, authorization code flow for user-facing applications, and token validation for protecting endpoints.
+API keys are fine for basic identification, but when you need proper authentication and authorization, OAuth 2.0 is the standard. Apigee has built-in OAuth 2.0 policies that handle token generation, validation, refresh, and revocation without writing custom code. You can implement client credentials flow for server-to-server communication, authorization code flow for user-facing applications, and token validation for protecting endpoints.
 
 ## OAuth 2.0 Flows Supported by Apigee
 
@@ -50,7 +50,7 @@ Create a dedicated proxy for token operations:
             <Response/>
         </Flow>
 
-        <!-- Token refresh endpoint -->
+        <!-- Token refresh endpoint for grant types that issue refresh tokens -->
         <Flow name="RefreshAccessToken">
             <Condition>(proxy.pathsuffix MatchesPath "/refresh") and (request.verb = "POST")</Condition>
             <Request>
@@ -106,8 +106,9 @@ This policy generates access tokens for the Client Credentials flow:
     <!-- Token lifetime: 1 hour (3600 seconds) -->
     <ExpiresIn>3600000</ExpiresIn>
 
-    <!-- Generate a refresh token as well -->
+    <!-- Generate the token response -->
     <GenerateResponse enabled="true"/>
+    <RFCCompliantRequestResponse>true</RFCCompliantRequestResponse>
 
     <!-- Where to find the grant type in the request -->
     <GrantType>request.formparam.grant_type</GrantType>
@@ -115,6 +116,8 @@ This policy generates access tokens for the Client Credentials flow:
 ```
 
 ### Step 3 - Create the Refresh Token Policy
+
+Client Credentials tokens do not include refresh tokens. Use this policy for grant types that issue refresh tokens, such as Authorization Code.
 
 ```xml
 <!-- oauth-proxy/apiproxy/policies/RefreshAccessToken.xml -->
@@ -124,6 +127,7 @@ This policy generates access tokens for the Client Credentials flow:
     <Operation>RefreshAccessToken</Operation>
     <ExpiresIn>3600000</ExpiresIn>
     <GenerateResponse enabled="true"/>
+    <RFCCompliantRequestResponse>true</RFCCompliantRequestResponse>
     <RefreshToken>request.formparam.refresh_token</RefreshToken>
     <GrantType>request.formparam.grant_type</GrantType>
 </OAuthV2>
@@ -137,7 +141,9 @@ This policy generates access tokens for the Client Credentials flow:
 <OAuthV2 name="InvalidateAccessToken">
     <DisplayName>Invalidate Access Token</DisplayName>
     <Operation>InvalidateToken</Operation>
-    <Token type="accesstoken">request.formparam.token</Token>
+    <Tokens>
+        <Token type="accesstoken">request.formparam.token</Token>
+    </Tokens>
 </OAuthV2>
 ```
 
@@ -163,8 +169,7 @@ The response includes the access token:
 {
   "access_token": "abc123xyz...",
   "token_type": "Bearer",
-  "expires_in": 3600,
-  "refresh_token": "def456uvw..."
+  "expires_in": 3600
 }
 ```
 
@@ -181,9 +186,7 @@ Now that clients can get tokens, protect your API endpoints by validating them.
     <DisplayName>Verify Access Token</DisplayName>
     <Operation>VerifyAccessToken</Operation>
 
-    <!-- Where to find the access token in the request -->
-    <!-- Standard: Authorization: Bearer <token> -->
-    <AccessToken>request.header.Authorization</AccessToken>
+    <!-- By default, Apigee reads Authorization: Bearer <token> -->
 </OAuthV2>
 ```
 
@@ -215,7 +218,7 @@ curl "https://YOUR_APIGEE_HOST/api/users" \
 
 ## Implementing Authorization Code Flow
 
-For user-facing applications, the Authorization Code flow is more secure because it involves user consent and keeps the client secret off the browser.
+For user-facing applications, the Authorization Code flow is more secure because it is designed to work with user authentication and consent, and it keeps the client secret off the browser.
 
 ### Create the Authorization Endpoint
 
@@ -269,6 +272,7 @@ Add a token generation policy that supports authorization_code grant:
 
     <ExpiresIn>3600000</ExpiresIn>
     <GenerateResponse enabled="true"/>
+    <RFCCompliantRequestResponse>true</RFCCompliantRequestResponse>
 
     <GrantType>request.formparam.grant_type</GrantType>
     <Code>request.formparam.code</Code>
@@ -298,7 +302,7 @@ Use these in conditional flows for scope-based access control:
     <Request>
         <Step>
             <Name>CheckAdminScope</Name>
-            <Condition>NOT (oauthv2accesstoken.VerifyAccessToken.scope ~~ ".*admin.*")</Condition>
+            <Condition>NOT (oauthv2accesstoken.VerifyAccessToken.scope ~~ "(^|\\s)admin(\\s|$)")</Condition>
         </Step>
     </Request>
 </Flow>
@@ -333,7 +337,7 @@ Provide meaningful error responses when authentication fails:
 <!-- apiproxy/proxies/default.xml - FaultRules -->
 <FaultRules>
     <FaultRule name="InvalidToken">
-        <Condition>(fault.name = "InvalidAccessToken") or (fault.name = "access_token_expired")</Condition>
+        <Condition>(fault.name = "invalid_access_token") or (fault.name = "InvalidAccessToken") or (fault.name = "access_token_expired")</Condition>
         <Step>
             <Name>InvalidTokenResponse</Name>
         </Step>
