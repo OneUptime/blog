@@ -51,7 +51,7 @@ def translate_text(text, target_language, source_language=None):
 # Translate English to Spanish
 result = translate_text("Hello, how are you?", "es")
 print(f"Translation: {result['translated_text']}")
-# Output: Hola, como estas?
+# Output: Hola, ¿cómo estás?
 ```
 
 ## Building the Translation Microservice
@@ -60,12 +60,11 @@ Here is a complete FastAPI microservice that exposes translation functionality t
 
 ```python
 # main.py - Translation microservice
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 from google.cloud import translate_v2 as translate
 from typing import List, Optional
 import logging
-import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -175,7 +174,7 @@ Sometimes you just need to detect what language a text is written in.
 
 ```python
 @app.post("/detect", response_model=List[DetectionResponse])
-async def detect_language(texts: List[str] = Field(..., min_length=1, max_length=100)):
+async def detect_language(texts: List[str] = Body(..., min_length=1, max_length=100)):
     """Detect the language of one or more texts."""
     try:
         results = translate_client.detect_language(texts)
@@ -227,7 +226,6 @@ async def list_languages(display_language: str = Query(default="en", description
 For repeated translations (common in web applications), caching reduces API calls and costs.
 
 ```python
-from functools import lru_cache
 import hashlib
 
 # Simple in-memory cache for translations
@@ -283,7 +281,7 @@ The V3 API (Advanced) offers additional features like glossaries and batch docum
 ```python
 from google.cloud import translate_v3 as translate_v3
 
-def translate_with_glossary(project_id, text, target_language, glossary_id):
+def translate_with_glossary(project_id, text, source_language, target_language, glossary_id):
     """Translate using a custom glossary for domain-specific terms."""
     client = translate_v3.TranslationServiceClient()
     parent = f"projects/{project_id}/locations/us-central1"
@@ -296,6 +294,7 @@ def translate_with_glossary(project_id, text, target_language, glossary_id):
         request={
             "parent": parent,
             "contents": [text],
+            "source_language_code": source_language,
             "target_language_code": target_language,
             "glossary_config": glossary_config,
             "mime_type": "text/plain",
@@ -322,13 +321,17 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
 
 ```bash
 # Build and deploy
-gcloud builds submit --tag gcr.io/my-project/translation-service
+gcloud artifacts repositories create translation-repo \
+    --repository-format=docker \
+    --location=us-central1
+
+gcloud builds submit --tag us-central1-docker.pkg.dev/my-project/translation-repo/translation-service
 
 gcloud run deploy translation-service \
-    --image gcr.io/my-project/translation-service \
+    --image us-central1-docker.pkg.dev/my-project/translation-repo/translation-service \
     --region us-central1 \
     --memory 256Mi \
-    --max-instances 10 \
+    --max 10 \
     --allow-unauthenticated
 ```
 
