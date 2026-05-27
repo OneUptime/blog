@@ -14,7 +14,7 @@ Managing PVCs through Ansible gives you control over storage provisioning as par
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- Ansible 2.16+ with `kubernetes.core` collection
 - A Kubernetes cluster with at least one StorageClass configured
 - A valid kubeconfig
 
@@ -126,11 +126,11 @@ For different performance requirements, specify the StorageClass explicitly.
                 storage: 200Gi
 ```
 
-The `ReadWriteMany` access mode lets multiple pods mount the same volume simultaneously. This requires a storage backend that supports it, like NFS or AWS EFS. Standard block storage (EBS, GCE PD) only supports `ReadWriteOnce`.
+The `ReadWriteMany` access mode lets volumes be mounted read-write by many nodes, so pods on different nodes can use the same volume simultaneously. This requires a storage backend that supports it, like NFS or AWS EFS. Standard block storage such as Amazon EBS and Google Persistent Disk does not provide `ReadWriteMany` for a single volume; use `ReadWriteOnce` for those workloads.
 
 ## Binding a PVC to a Specific PV
 
-When you need a PVC to bind to a particular pre-existing PV, use the `volumeName` field along with label selectors.
+When you need a PVC to bind to a particular pre-existing PV, use the `volumeName` field to target it by name, or use label selectors to match a set of eligible PVs.
 
 ```yaml
 # playbook: create-pvc-specific-pv.yml
@@ -317,7 +317,7 @@ When your application outgrows its storage, you can expand the PVC if the Storag
       ignore_errors: true
 ```
 
-Important: you can only increase PVC size, never decrease it. Some storage backends (like AWS EBS) require the pod using the PVC to be restarted for the filesystem to resize. Others (like EFS) handle it transparently.
+Important: Kubernetes does not support shrinking a PVC below its current capacity. For filesystem volumes, the filesystem resize happens when a pod starts using the PVC or, when the driver and filesystem support online expansion, while the pod is running.
 
 ## Batch PVC Creation for Microservices
 
