@@ -12,22 +12,28 @@ The `say` callback plugin is one of the more entertaining Ansible callbacks. It 
 
 ## How It Works
 
-The say callback uses the `say` command on macOS or `espeak`/`spd-say` on Linux to convert playbook events to speech. When tasks complete, the callback passes status messages to the text-to-speech engine.
+The say callback uses the `say` command on macOS or `espeak` on Linux to convert playbook events to speech. When playbook events occur, the callback passes status messages to the text-to-speech engine on the controller node.
 
 ## Enabling the Say Callback
+
+The callback is in the `community.general` collection. If you use `ansible-core` instead of the full `ansible` package, install it first:
+
+```bash
+ansible-galaxy collection install community.general
+```
 
 ```ini
 # ansible.cfg - Enable the say callback
 
 [defaults]
-callback_whitelist = community.general.say
+callbacks_enabled = community.general.say
 ```
 
 Or for a single run:
 
 ```bash
 # Enable say callback for this run
-ANSIBLE_CALLBACK_WHITELIST=community.general.say ansible-playbook deploy.yml
+ANSIBLE_CALLBACKS_ENABLED=community.general.say ansible-playbook deploy.yml
 ```
 
 ## Platform Requirements
@@ -45,9 +51,6 @@ On Linux, install a text-to-speech engine:
 # Ubuntu/Debian - Install espeak
 sudo apt-get install espeak
 
-# Or install speech-dispatcher
-sudo apt-get install speech-dispatcher
-
 # Fedora/RHEL
 sudo dnf install espeak
 ```
@@ -57,50 +60,46 @@ Test that it works:
 ```bash
 # Test espeak on Linux
 espeak "Ansible is ready"
-
-# Or with speech-dispatcher
-spd-say "Ansible is ready"
 ```
 
 ## What Gets Announced
 
 The say callback announces several events:
 
-- Playbook start: "Starting playbook deploy dot yml"
-- Task completion on success: "ok on web-01"
-- Task changed: "changed on web-02"
-- Task failure: "failure on web-03"
-- Host unreachable: "unreachable host web-04"
-- Play recap: announces the summary
+- Playbook start: "Running Playbook"
+- Play start: "Starting play: deploy"
+- Task start: "Starting task: Install packages"
+- Task success, skipped tasks, and handler notifications: a short "pew" sound
+- Task failure or unreachable host: "Failure on host web-03"
+- Play recap: "Play complete"
 
 During a typical playbook run, you hear something like:
 
 ```text
-"Starting playbook site dot yml"
-"ok on web-01"
-"ok on web-02"
-"changed on web-01"
-"changed on web-02"
-"ok on web-01"
-"failure on web-03"
-"Play complete. Two hosts ok, one host failed."
+"Running Playbook"
+"Starting play: web servers"
+"Starting task: Install packages"
+"pew"
+"Starting task: Restart service"
+"Failure on host web-03"
+"Play complete"
 ```
 
 ## Controlling Verbosity
 
-With many hosts, the constant speech announcements become overwhelming. The say callback respects the standard Ansible verbosity settings, but you can also control what gets announced.
+With many hosts, the constant speech announcements become overwhelming. The built-in say callback does not expose filtering options of its own, so use a custom callback if you need finer control over what gets announced.
 
-For a quieter experience, use the callback alongside configuration that suppresses ok hosts:
+You can still reduce terminal noise from the default stdout callback:
 
 ```ini
 # ansible.cfg - Say callback with reduced noise
 [defaults]
-callback_whitelist = community.general.say
+callbacks_enabled = community.general.say
 display_ok_hosts = False
 display_skipped_hosts = False
 ```
 
-This way, the callback only speaks up for changes and failures.
+This affects the normal terminal output, but the built-in say callback still receives playbook events.
 
 ## Creating a Custom Say Callback
 
@@ -116,7 +115,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'say_failures'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def _say(self, message):
         """Use the system TTS engine to speak a message."""
@@ -158,7 +157,7 @@ Enable it:
 ```ini
 # ansible.cfg
 [defaults]
-callback_whitelist = say_failures
+callbacks_enabled = say_failures
 callback_plugins = ./callback_plugins
 ```
 
@@ -169,19 +168,24 @@ The say callback is most useful during long deployments where you want to step a
 ```bash
 #!/bin/bash
 # deploy-with-voice.sh - Deploy with voice notifications
-export ANSIBLE_CALLBACK_WHITELIST=community.general.say
-
-# On macOS, set the voice
-export SAY_VOICE="Samantha"
+export ANSIBLE_CALLBACKS_ENABLED=community.general.say
 
 echo "Starting deployment - you will hear voice notifications"
 ansible-playbook -i inventory/production deploy.yml
 
 # Final announcement
 if [ $? -eq 0 ]; then
-    say "Deployment completed successfully"
+    if command -v say >/dev/null 2>&1; then
+        say "Deployment completed successfully"
+    else
+        espeak "Deployment completed successfully"
+    fi
 else
-    say "Warning. Deployment failed. Check the terminal."
+    if command -v say >/dev/null 2>&1; then
+        say "Warning. Deployment failed. Check the terminal."
+    else
+        espeak "Warning. Deployment failed. Check the terminal."
+    fi
 fi
 ```
 
@@ -213,11 +217,14 @@ For engineers with visual impairments, the say callback provides an audio interf
 
 Use say alongside visual callbacks:
 
+The timer and profile callbacks in this example come from the `ansible.posix` collection.
+
 ```ini
 # ansible.cfg - Say with visual output
 [defaults]
-stdout_callback = yaml
-callback_whitelist = community.general.say, timer, profile_tasks
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
+callbacks_enabled = community.general.say, ansible.posix.timer, ansible.posix.profile_tasks
 ```
 
 You get full visual output on the terminal plus audio notifications. The say callback does not interfere with other output.
