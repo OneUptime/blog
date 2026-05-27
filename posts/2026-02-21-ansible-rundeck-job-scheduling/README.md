@@ -25,6 +25,14 @@ graph LR
 # roles/rundeck/tasks/main.yml
 
 ---
+- name: Add Rundeck repository signing key
+  ansible.builtin.get_url:
+    url: https://packages.rundeck.com/pagerduty/rundeck/gpgkey
+    dest: /etc/apt/trusted.gpg.d/rundeck-key.asc
+    owner: root
+    group: root
+    mode: '0644'
+
 - name: Add Rundeck repository
   ansible.builtin.apt_repository:
     repo: "deb https://packages.rundeck.com/pagerduty/rundeck/any/ any main"
@@ -43,12 +51,10 @@ graph LR
     mode: '0640'
   notify: restart rundeck
 
-- name: Install Ansible plugin for Rundeck
-  ansible.builtin.get_url:
-    url: "https://github.com/Batix/rundeck-ansible-plugin/releases/download/{{ plugin_version }}/ansible-plugin-{{ plugin_version }}.jar"
-    dest: /var/lib/rundeck/libext/ansible-plugin.jar
-    mode: '0644'
-  notify: restart rundeck
+- name: Install Ansible on the Rundeck server
+  ansible.builtin.apt:
+    name: ansible
+    state: present
 
 - name: Ensure Rundeck is running
   ansible.builtin.service:
@@ -64,7 +70,7 @@ graph LR
 ---
 - name: Create Rundeck job for deployment
   ansible.builtin.uri:
-    url: "http://{{ rundeck_host }}:4440/api/44/project/{{ project_name }}/jobs/import"
+    url: "http://{{ rundeck_host }}:4440/api/44/project/{{ project_name }}/jobs/import?dupeOption=update&uuidOption=remove"
     method: POST
     headers:
       X-Rundeck-Auth-Token: "{{ rundeck_api_token }}"
@@ -84,22 +90,23 @@ graph LR
             hour: '02'
             minute: '00'
           month: '*'
-          dayofmonth: '*'
+          dayofmonth:
+            day: '*'
     status_code: 200
 ```
 
 ## Key Takeaways
 
-Rundeck adds scheduling, approval workflows, and a web interface on top of Ansible. Install the Ansible plugin to run playbooks directly from Rundeck jobs. This gives operations teams a centralized platform for managing automated tasks with role-based access control.
+Rundeck adds scheduling, approval workflows, and a web interface on top of Ansible. Use Rundeck's built-in Ansible integration and install the Ansible binaries on the Rundeck server to run playbooks directly from Rundeck jobs. This gives operations teams a centralized platform for managing automated tasks with role-based access control.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this integration proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this integration
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -275,4 +282,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
