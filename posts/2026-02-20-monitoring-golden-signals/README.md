@@ -214,7 +214,12 @@ def check_response_validity(endpoint, response, duration, slo_seconds=1.0):
 
     # Check for implicit errors (200 but empty or malformed body)
     if status == 200:
-        body = response.json()
+        try:
+            body = response.json()
+        except ValueError:
+            record_error(endpoint, ErrorType.IMPLICIT, status, cause="malformed_response")
+            return False
+
         if body is None or "error" in body:
             record_error(endpoint, ErrorType.IMPLICIT, status, cause="bad_response")
             return False
@@ -329,7 +334,7 @@ groups:
     rules:
       # Latency: Alert when p99 latency exceeds 1 second
       - alert: HighLatency
-        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 1.0
+        expr: histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 1.0
         for: 5m
         labels:
           severity: warning
@@ -354,7 +359,7 @@ groups:
         annotations:
           summary: "Error rate exceeds 1%"
 
-      # Saturation: Alert when CPU or memory is high
+      # Saturation: Alert when CPU is high
       - alert: HighCPU
         expr: system_cpu_usage_percent > 85
         for: 10m
