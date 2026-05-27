@@ -15,7 +15,7 @@ Nextcloud is the leading open-source platform for file sharing and collaboration
 ```yaml
 # roles/nextcloud/defaults/main.yml - Nextcloud configuration
 
-nextcloud_version: "28.0.1"
+nextcloud_version: "33.0.3"
 nextcloud_domain: cloud.example.com
 nextcloud_data_dir: /var/www/nextcloud/data
 nextcloud_install_dir: /var/www/nextcloud
@@ -48,7 +48,7 @@ nextcloud_redis_enabled: true
   apt:
     name:
       - mariadb-server
-      - python3-mysqldb
+      - python3-pymysql
       - redis-server
       - nginx
       - certbot
@@ -63,6 +63,7 @@ nextcloud_redis_enabled: true
   apt:
     name:
       - "php{{ nextcloud_php_version }}-fpm"
+      - "php{{ nextcloud_php_version }}-cli"
       - "php{{ nextcloud_php_version }}-gd"
       - "php{{ nextcloud_php_version }}-mysql"
       - "php{{ nextcloud_php_version }}-curl"
@@ -78,18 +79,20 @@ nextcloud_redis_enabled: true
     state: present
 
 - name: Create MariaDB database
-  mysql_db:
+  ansible.mysql.mysql_db:
     name: "{{ nextcloud_db_name }}"
     state: present
     collation: utf8mb4_general_ci
     encoding: utf8mb4
+    login_unix_socket: /run/mysqld/mysqld.sock
 
 - name: Create MariaDB user
-  mysql_user:
+  ansible.mysql.mysql_user:
     name: "{{ nextcloud_db_user }}"
     password: "{{ nextcloud_db_password }}"
     priv: "{{ nextcloud_db_name }}.*:ALL"
     state: present
+    login_unix_socket: /run/mysqld/mysqld.sock
 
 - name: Download Nextcloud
   get_url:
@@ -172,9 +175,9 @@ nextcloud_redis_enabled: true
   args:
     chdir: "{{ nextcloud_install_dir }}"
   loop:
-    - { key: "memcache.local", value: '\\OC\\Memcache\\APCu' }
-    - { key: "memcache.distributed", value: '\\OC\\Memcache\\Redis' }
-    - { key: "memcache.locking", value: '\\OC\\Memcache\\Redis' }
+    - { key: "memcache.local", value: '\OC\Memcache\APCu' }
+    - { key: "memcache.distributed", value: '\OC\Memcache\Redis' }
+    - { key: "memcache.locking", value: '\OC\Memcache\Redis' }
     - { key: "redis host", value: "localhost" }
     - { key: "redis port", value: "6379", type: "integer" }
   when: nextcloud_redis_enabled
@@ -227,31 +230,50 @@ server {
     root {{ nextcloud_install_dir }};
 
     client_max_body_size {{ nextcloud_upload_max_size }};
+    client_body_timeout 300s;
     fastcgi_buffers 64 4K;
 
     add_header Strict-Transport-Security "max-age=15768000; includeSubDomains; preload" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Permitted-Cross-Domain-Policies "none" always;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    fastcgi_hide_header X-Powered-By;
+
+    index index.php index.html /index.php$request_uri;
 
     location = /robots.txt { allow all; log_not_found off; access_log off; }
-    location = /.well-known/carddav { return 301 /remote.php/dav/; }
-    location = /.well-known/caldav { return 301 /remote.php/dav/; }
+    location ^~ /.well-known {
+        location = /.well-known/carddav { return 301 /remote.php/dav/; }
+        location = /.well-known/caldav { return 301 /remote.php/dav/; }
+        location /.well-known/acme-challenge { try_files $uri $uri/ =404; }
+        location /.well-known/pki-validation { try_files $uri $uri/ =404; }
+        return 301 /index.php$request_uri;
+    }
 
-    location ~ ^\/(?:build|tests|config|lib|3rdparty|templates|data)\/ { deny all; }
-    location ~ ^\/(?:\.|autotest|occ|issue|indie|db_|console) { deny all; }
+    location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:$|/) { return 404; }
+    location ~ ^/(?:\.|autotest|occ|issue|indie|db_|console) { return 404; }
 
     location ~ ^\/(?:index|remote|public|cron|core\/ajax\/update|status|ocs\/v[12]|updater\/.+|ocs-provider\/.+)\.php(?:$|\/) {
         fastcgi_split_path_info ^(.+?\.php)(\/.*|)$;
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS on;
         fastcgi_param modHeadersAvailable true;
+        fastcgi_param front_controller_active true;
         fastcgi_pass php-handler;
         fastcgi_intercept_errors on;
-        fastcgi_request_buffering off;
+        fastcgi_request_buffering on;
+        fastcgi_max_temp_file_size 0;
     }
 
     location ~ ^\/(?:updater|ocs-provider)(?:$|\/) { try_files $uri/ =404; index index.php; }
-    location ~ \.(?:css|js|woff2?|svg|gif|map)$ { try_files $uri /index.php$request_uri; add_header Cache-Control "public, max-age=15778463"; }
-    location ~ \.(?:png|html|ttf|ico|jpg|jpeg|bcmap|mp4|webm)$ { try_files $uri /index.php$request_uri; }
+    location ~ \.(?:css|js|mjs|woff2?|svg|gif|map|wasm)$ { try_files $uri /index.php$request_uri; add_header Cache-Control "public, max-age=15778463"; }
+    location ~ \.(?:png|html|ttf|ico|jpg|jpeg|bcmap|mp4|webm|webp)$ { try_files $uri /index.php$request_uri; }
+    location /remote { return 301 /remote.php$request_uri; }
+    location / { try_files $uri $uri/ /index.php$request_uri; }
 }
 ```
 
