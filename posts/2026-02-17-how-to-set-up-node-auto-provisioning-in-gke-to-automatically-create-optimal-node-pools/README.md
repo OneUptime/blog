@@ -56,7 +56,7 @@ gcloud container clusters update my-cluster \
   --autoprovisioning-scopes https://www.googleapis.com/auth/cloud-platform
 ```
 
-The `min-cpu/max-cpu` and `min-memory/max-memory` set the total resource limits across all auto-provisioned node pools. These are guardrails to prevent runaway scaling.
+The `min-cpu/max-cpu` and `min-memory/max-memory` set the total resource limits across all node pools in the cluster, including manually created node pools. These are guardrails to prevent runaway scaling.
 
 ## Configuring NAP with a YAML File
 
@@ -64,37 +64,32 @@ For more detailed configuration, use a YAML config file.
 
 ```yaml
 # nap-config.yaml - Detailed NAP configuration
-autoprovisioning:
-  enabled: true
-  resourceLimits:
-    - resourceType: cpu
-      minimum: 1
-      maximum: 100
-    - resourceType: memory
-      minimum: 1
-      maximum: 400
-    # Enable GPU auto-provisioning
-    - resourceType: nvidia-tesla-t4
-      minimum: 0
-      maximum: 8
-  autoprovisioningNodePoolDefaults:
-    # Set the default machine family for auto-provisioned pools
-    # NAP picks the best size within this family
-    imageType: COS_CONTAINERD
-    # Configure boot disk
-    bootDiskKmsKey: ""
-    diskSizeGb: 100
-    diskType: pd-standard
-    # Set default service account for auto-provisioned nodes
-    serviceAccount: node-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
-    # Enable Workload Identity on auto-provisioned pools
-    management:
-      autoUpgrade: true
-      autoRepair: true
-    # Set the default upgrade strategy
-    upgradeSettings:
-      maxSurge: 1
-      maxUnavailable: 0
+resourceLimits:
+  - resourceType: cpu
+    minimum: 1
+    maximum: 100
+  - resourceType: memory
+    minimum: 1
+    maximum: 400
+  # Enable GPU auto-provisioning
+  - resourceType: nvidia-tesla-t4
+    minimum: 0
+    maximum: 8
+# Set the default image type for auto-provisioned pools
+imageType: COS_CONTAINERD
+# Configure boot disk
+diskSizeGb: 100
+diskType: pd-standard
+# Set default service account for auto-provisioned nodes
+serviceAccount: node-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
+# Enable auto-repair and auto-upgrade on auto-provisioned pools
+management:
+  autoUpgrade: true
+  autoRepair: true
+# Set the default upgrade strategy
+upgradeSettings:
+  maxSurge: 1
+  maxUnavailable: 0
 ```
 
 ```bash
@@ -116,6 +111,10 @@ kind: Pod
 metadata:
   name: ml-training
 spec:
+  nodeSelector:
+    cloud.google.com/gke-accelerator: nvidia-tesla-t4
+    cloud.google.com/gke-accelerator-count: "1"
+    cloud.google.com/gke-gpu-driver-version: default
   containers:
     - name: trainer
       image: nvidia/cuda:12.0-runtime-ubuntu22.04
@@ -135,7 +134,7 @@ spec:
 When you submit this pod, if no GPU node pool exists, NAP will:
 1. Detect the GPU requirement
 2. Create a node pool with the appropriate GPU machine type
-3. Install NVIDIA drivers automatically
+3. Install the default NVIDIA driver automatically on GKE 1.32.2-gke.1297000 and later
 4. Schedule the pod
 
 When the pod finishes and no other GPU workloads are pending, NAP scales the GPU node pool to zero.
@@ -184,10 +183,10 @@ NAP will create an n2d node pool with machines large enough to fit this pod.
 
 ## Setting Up Spot/Preemptible Nodes with NAP
 
-NAP can create node pools using Spot VMs for cost savings.
+NAP can create node pools using Spot VMs for cost savings when a workload selects Spot nodes.
 
 ```bash
-# Enable Spot VM support in NAP
+# Configure default locations and management settings for auto-provisioned pools
 gcloud container clusters update my-cluster \
   --region us-central1 \
   --enable-autoprovisioning \
@@ -246,11 +245,12 @@ gcloud container node-pools describe nap-abc123 \
   --cluster my-cluster \
   --region us-central1
 
-# View NAP events in the cluster
-kubectl get events --field-selector reason=ScaleUp,reason=ScaleDown
+# View scale-up and scale-down events in the cluster
+kubectl get events --field-selector reason=ScaleUp
+kubectl get events --field-selector reason=ScaleDown
 ```
 
-Resource Limits and Cost Control
+## Resource Limits and Cost Control
 
 The resource limits you set on NAP are your primary cost control mechanism.
 
@@ -258,11 +258,12 @@ The resource limits you set on NAP are your primary cost control mechanism.
 # Update resource limits
 gcloud container clusters update my-cluster \
   --region us-central1 \
-  --autoprovisioning-max-cpu 50 \
-  --autoprovisioning-max-memory 200
+  --enable-autoprovisioning \
+  --max-cpu 50 \
+  --max-memory 200
 ```
 
-The limits apply to the total resources across all auto-provisioned node pools. If NAP has already provisioned 50 CPUs worth of nodes and a new workload needs more, it will not create additional node pools.
+The limits apply to the total resources across all node pools in the cluster, including manually created node pools. If the cluster has already reached the 50 CPU limit and a new workload needs more, NAP will not create additional node pools.
 
 ## NAP vs. Manual Node Pools
 
