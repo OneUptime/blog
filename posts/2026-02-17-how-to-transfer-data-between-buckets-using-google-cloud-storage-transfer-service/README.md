@@ -31,8 +31,8 @@ The Storage Transfer Service uses a Google-managed service account. You need to 
 
 ```bash
 # Find the Storage Transfer Service account for your project
-
-gcloud transfer service-account --project=my-project-id
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://storagetransfer.googleapis.com/v1/googleServiceAccounts/my-project-id"
 ```
 
 This returns a service account like `project-123456789@storage-transfer-service.iam.gserviceaccount.com`.
@@ -45,10 +45,18 @@ gcloud storage buckets add-iam-policy-binding gs://source-bucket \
   --member="serviceAccount:project-123456789@storage-transfer-service.iam.gserviceaccount.com" \
   --role="roles/storage.objectViewer"
 
+gcloud storage buckets add-iam-policy-binding gs://source-bucket \
+  --member="serviceAccount:project-123456789@storage-transfer-service.iam.gserviceaccount.com" \
+  --role="roles/storage.legacyBucketReader"
+
 # Grant write access on the destination bucket
 gcloud storage buckets add-iam-policy-binding gs://destination-bucket \
   --member="serviceAccount:project-123456789@storage-transfer-service.iam.gserviceaccount.com" \
-  --role="roles/storage.objectCreator"
+  --role="roles/storage.legacyBucketWriter"
+
+gcloud storage buckets add-iam-policy-binding gs://destination-bucket \
+  --member="serviceAccount:project-123456789@storage-transfer-service.iam.gserviceaccount.com" \
+  --role="roles/storage.objectViewer"
 ```
 
 If you want the transfer to delete objects from the source after copying:
@@ -193,21 +201,38 @@ The monitor command shows real-time progress including bytes transferred, object
 
 To transfer between buckets in different projects, you need to:
 
-1. Grant the source project's transfer service account access to the destination bucket
-2. Or grant the destination project's transfer service account access to the source bucket
+1. Choose the project where you will create the transfer job
+2. Grant that project's Storage Transfer Service service account access to both buckets
 
 ```bash
 # Example: Transfer from project-a bucket to project-b bucket
 # Using project-b's transfer service account
 
 # Get project-b's transfer service account
-gcloud transfer service-account --project=project-b
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://storagetransfer.googleapis.com/v1/googleServiceAccounts/project-b"
 
 # Grant it read access on the source bucket in project-a
 gcloud storage buckets add-iam-policy-binding gs://project-a-bucket \
-  --member="serviceAccount:project-B_NUMBER@storage-transfer-service.iam.gserviceaccount.com" \
+  --member="serviceAccount:project-PROJECT_B_NUMBER@storage-transfer-service.iam.gserviceaccount.com" \
   --role="roles/storage.objectViewer" \
   --project=project-a
+
+gcloud storage buckets add-iam-policy-binding gs://project-a-bucket \
+  --member="serviceAccount:project-PROJECT_B_NUMBER@storage-transfer-service.iam.gserviceaccount.com" \
+  --role="roles/storage.legacyBucketReader" \
+  --project=project-a
+
+# Grant it write access on the destination bucket in project-b
+gcloud storage buckets add-iam-policy-binding gs://project-b-bucket \
+  --member="serviceAccount:project-PROJECT_B_NUMBER@storage-transfer-service.iam.gserviceaccount.com" \
+  --role="roles/storage.legacyBucketWriter" \
+  --project=project-b
+
+gcloud storage buckets add-iam-policy-binding gs://project-b-bucket \
+  --member="serviceAccount:project-PROJECT_B_NUMBER@storage-transfer-service.iam.gserviceaccount.com" \
+  --role="roles/storage.objectViewer" \
+  --project=project-b
 
 # Create the transfer job from project-b
 gcloud transfer jobs create \
@@ -223,7 +248,6 @@ For programmatic control over transfers:
 
 ```python
 from google.cloud import storage_transfer_v1
-from google.protobuf.duration_pb2 import Duration
 from datetime import datetime
 
 def create_transfer_job(project_id, source_bucket, dest_bucket, description):
