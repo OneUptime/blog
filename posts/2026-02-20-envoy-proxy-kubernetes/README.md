@@ -162,7 +162,7 @@ spec:
 
         # Envoy sidecar container
         - name: envoy
-          image: envoyproxy/envoy:v1.31-latest
+          image: envoyproxy/envoy:v1.37-latest
           ports:
             - containerPort: 8080
               name: envoy-http
@@ -428,7 +428,7 @@ data:
 
 ```bash
 # View Envoy admin dashboard
-kubectl port-forward deploy/web-api 9901:9901
+kubectl port-forward -n production deploy/web-api 9901:9901
 
 # Check cluster health
 curl http://localhost:9901/clusters
