@@ -8,18 +8,18 @@ Description: Configure a Cloud Composer environment with private IP networking t
 
 ---
 
-By default, Cloud Composer environments use public IPs for their internal components. That is fine for development, but most production environments need private networking. Regulatory requirements, corporate security policies, and defense-in-depth strategies all push toward keeping your orchestration layer on private IPs.
+By default, Cloud Composer environments are created as public IP environments. That is fine for development, but most production environments need private networking. Regulatory requirements, corporate security policies, and defense-in-depth strategies all push toward keeping your orchestration layer on private IPs.
 
-A private IP Cloud Composer environment ensures that the Airflow web server, database, and worker nodes communicate only over your VPC network. No public IPs are assigned to any component. This article walks through the full setup, including the networking prerequisites that you need to get right before creating the environment.
+A private IP Cloud Composer environment ensures that environment components such as the GKE cluster and Cloud SQL database use private IP connectivity. Airflow web server access is configured separately and is always protected by IAM. This article walks through the full setup, including the networking prerequisites that you need to get right before creating the environment.
 
 ## Why Private IP?
 
 Running Composer on private IPs provides several security benefits:
 
-- **No public internet exposure** - Airflow components are only reachable within your VPC
+- **No public internet exposure for managed VMs** - The managed GKE and Cloud SQL VMs are not assigned public IP addresses
 - **Compliance** - Meets requirements for SOC 2, HIPAA, PCI-DSS, and other frameworks that mandate private networking
-- **Network control** - All traffic flows through your VPC, where you can apply firewall rules, VPC Flow Logs, and network policies
-- **Reduced attack surface** - No public endpoints means fewer vectors for unauthorized access
+- **Network control** - Workload traffic that uses your VPC can be governed with firewall rules, VPC Flow Logs, and network policies
+- **Reduced attack surface** - Fewer publicly reachable infrastructure components means fewer vectors for unauthorized access
 
 ## Prerequisites: Network Configuration
 
@@ -63,7 +63,7 @@ gcloud compute networks subnets update composer-subnet \
 
 ### Configure Cloud NAT
 
-Since private IP nodes cannot access the internet directly, you need Cloud NAT for outbound connectivity (for example, to install PyPI packages):
+Since private IP nodes cannot access the internet directly, you need Cloud NAT for outbound connectivity from Composer 2 workflows that require public internet access:
 
 ```bash
 # Create a Cloud Router
@@ -105,7 +105,7 @@ With the networking in place, create the Composer environment:
 # Create a private IP Cloud Composer 3 environment
 gcloud composer environments create private-composer \
   --location=us-central1 \
-  --image-version=composer-3-airflow-2.9.3 \
+  --image-version=composer-3-airflow-2.10.5-build.23 \
   --environment-size=medium \
   --network=projects/my-project/global/networks/composer-vpc \
   --subnetwork=projects/my-project/regions/us-central1/subnetworks/composer-subnet \
@@ -118,20 +118,20 @@ For Composer 2, you also need to specify the secondary ranges:
 # Create a private IP Cloud Composer 2 environment
 gcloud composer environments create private-composer2 \
   --location=us-central1 \
-  --image-version=composer-2.9.7-airflow-2.9.3 \
+  --image-version=composer-2.16.1-airflow-2.10.5 \
   --environment-size=medium \
   --network=projects/my-project/global/networks/composer-vpc \
   --subnetwork=projects/my-project/regions/us-central1/subnetworks/composer-subnet \
   --enable-private-environment \
   --cluster-secondary-range-name=composer-pods \
   --services-secondary-range-name=composer-services \
-  --cluster-ipv4-cidr=172.16.0.0/14 \
-  --master-ipv4-cidr=172.31.0.0/28
+  --master-ipv4-cidr=172.31.0.0/28 \
+  --connection-subnetwork=172.30.0.0/28
 ```
 
 ## Step 2: Configure Web Server Access
 
-In a private IP environment, the Airflow web server is also private by default. You need to explicitly configure how users access it.
+Airflow web server access does not depend on whether the environment uses private IP networking. By default, the Airflow UI allows traffic from all source IP addresses, but it is still protected by IAM. You can restrict the allowed public source IP ranges separately.
 
 Option 1 - Allow specific IP ranges:
 
@@ -139,8 +139,8 @@ Option 1 - Allow specific IP ranges:
 # Allow access from your office network and VPN
 gcloud composer environments update private-composer \
   --location=us-central1 \
-  --web-server-allow-ip="description=Corporate Office,ip_range=203.0.113.0/24" \
-  --web-server-allow-ip="description=VPN Gateway,ip_range=198.51.100.0/24"
+  --update-web-server-allow-ip=ip_range=203.0.113.0/24,description="Corporate Office" \
+  --update-web-server-allow-ip=ip_range=198.51.100.0/24,description="VPN Gateway"
 ```
 
 Option 2 - Allow all traffic (if you have other network controls):
@@ -152,15 +152,13 @@ gcloud composer environments update private-composer \
   --web-server-allow-all
 ```
 
-Option 3 - Use Identity-Aware Proxy (IAP) for zero-trust access:
+Option 3 - Grant IAM access to authorized users:
 
 ```bash
-# Enable IAP for the web server
-# First, set up IAP on the backend service in the Cloud Console
-# Then grant IAP-secured Web App User role to authorized users
+# Grant Cloud Composer environment access to authorized users
 gcloud projects add-iam-policy-binding my-project \
   --member="group:data-engineers@mycompany.com" \
-  --role="roles/iap.httpsResourceAccessor"
+  --role="roles/composer.environmentAndStorageObjectUser"
 ```
 
 ## Step 3: Configure DNS for Private Google Access
@@ -201,9 +199,9 @@ gcloud access-context-manager policies create \
 
 # Create a service perimeter
 gcloud access-context-manager perimeters create composer-perimeter \
-  --policy=my-policy-id \
+  --policy=ACCESS_POLICY_ID \
   --title="Composer Perimeter" \
-  --resources="projects/my-project-number" \
+  --resources="projects/123456789" \
   --restricted-services="\
 composer.googleapis.com,\
 storage.googleapis.com,\
@@ -256,7 +254,7 @@ def test_bq_connectivity():
 dag = DAG(
     dag_id="connectivity_test",
     start_date=datetime(2025, 1, 1),
-    schedule_interval=None,
+    schedule=None,
     catchup=False,
 )
 
