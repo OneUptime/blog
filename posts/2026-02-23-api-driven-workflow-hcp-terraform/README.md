@@ -24,7 +24,7 @@ The API-driven workflow fits when:
 
 ## Authentication
 
-All API calls require a Bearer token. Use an organization token, team token, or user token:
+API calls require a Bearer token. Use a team token or user token for the API-driven workflow:
 
 ```bash
 # Set your API token
@@ -35,7 +35,7 @@ export TFC_TOKEN="your-api-token-here"
 # Authorization: Bearer $TFC_TOKEN
 ```
 
-Create a team token for CI/CD systems rather than using a personal user token. Team tokens inherit the team's permissions.
+Create a team token for CI/CD systems rather than using a personal user token. Team tokens inherit the team's permissions. Organization tokens can create workspaces, but they cannot create configuration versions or apply runs.
 
 ## Step 1: Create a Workspace for API-Driven Runs
 
@@ -139,15 +139,14 @@ Package your Terraform files as a tar.gz and upload them:
 
 ```bash
 # Package the Terraform configuration
-# Include all .tf files and .tfvars files
-cd /path/to/terraform/config
-tar -czf config.tar.gz *.tf *.tfvars 2>/dev/null || tar -czf config.tar.gz *.tf
+# The configuration directory must be the root of the archive
+tar -czf /tmp/config.tar.gz -C /path/to/terraform/config .
 
 # Upload to the URL from step 3
 curl \
   --header "Content-Type: application/octet-stream" \
   --request PUT \
-  --data-binary @config.tar.gz \
+  --data-binary @/tmp/config.tar.gz \
   "$UPLOAD_URL"
 ```
 
@@ -208,9 +207,11 @@ curl \
 # "apply_queued" - In the apply queue
 # "applying" - Apply is running
 # "applied" - Apply completed successfully
+# "planned_and_finished" - Plan finished with no changes to apply
 # "errored" - Run failed
 # "discarded" - Run was discarded
 # "canceled" - Run was canceled
+# "force_canceled" - Run was forcefully canceled
 ```
 
 ## Step 6: Confirm the Apply
@@ -234,16 +235,20 @@ curl \
 Retrieve the plan log for reporting:
 
 ```bash
-# Get the plan for this run
+# Get the plan ID for this run
 PLAN_ID=$(curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/runs/$RUN_ID/plan" | jq -r '.data.id')
+  "https://app.terraform.io/api/v2/runs/$RUN_ID" | jq -r '.data.relationships.plan.data.id')
 
-# Get the plan log output
-curl \
+# Get the temporary plan log URL
+LOG_URL=$(curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/plans/$PLAN_ID/log" \
-  --location
+  "https://app.terraform.io/api/v2/plans/$PLAN_ID" | jq -r '.data.attributes."log-read-url"')
+
+# Get the plan log output from the temporary URL
+curl \
+  --location \
+  "$LOG_URL"
 ```
 
 ## Complete Automation Script
@@ -327,7 +332,7 @@ while true; do
   echo "  Status: $STATUS"
 
   case $STATUS in
-    "planned")
+    "planned"|"policy_checked")
       echo "Plan completed. Confirming apply..."
       curl -s \
         --header "Authorization: Bearer $TFC_TOKEN" \
@@ -340,7 +345,11 @@ while true; do
       echo "Apply completed successfully."
       exit 0
       ;;
-    "errored"|"canceled"|"discarded")
+    "planned_and_finished")
+      echo "Plan completed with no changes to apply."
+      exit 0
+      ;;
+    "errored"|"canceled"|"discarded"|"force_canceled")
       echo "Run failed with status: $STATUS"
       exit 1
       ;;
@@ -403,11 +412,12 @@ class TerraformCloud:
             with tarfile.open(tmp.name, "w:gz") as tar:
                 tar.add(config_dir, arcname=".")
             with open(tmp.name, "rb") as f:
-                requests.put(
+                upload_resp = requests.put(
                     upload_url,
                     data=f,
                     headers={"Content-Type": "application/octet-stream"},
                 )
+                upload_resp.raise_for_status()
 
         return cv_id
 
@@ -441,25 +451,29 @@ class TerraformCloud:
                 f"{self.base_url}/runs/{run_id}",
                 headers=self.headers,
             )
+            resp.raise_for_status()
             status = resp.json()["data"]["attributes"]["status"]
             print(f"Run status: {status}")
 
-            if status == "planned" and auto_approve:
+            if status in ("planned", "policy_checked") and auto_approve:
                 self.confirm_apply(run_id)
             elif status == "applied":
                 return True
-            elif status in ("errored", "canceled", "discarded"):
+            elif status == "planned_and_finished":
+                return True
+            elif status in ("errored", "canceled", "discarded", "force_canceled"):
                 return False
 
             time.sleep(10)
 
     def confirm_apply(self, run_id):
         """Confirm an apply."""
-        requests.post(
+        resp = requests.post(
             f"{self.base_url}/runs/{run_id}/actions/apply",
             headers=self.headers,
             json={"comment": "Auto-approved"},
         )
+        resp.raise_for_status()
 
 
 # Usage
