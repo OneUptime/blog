@@ -10,13 +10,13 @@ Description: A complete guide to integrating Google Cloud Error Reporting with a
 
 When your Flask application throws an exception in production, you need to know about it fast. But scrolling through logs looking for stack traces is not a viable approach when your service handles thousands of requests per hour. Google Cloud Error Reporting automatically groups, deduplicates, and tracks errors, giving you a clear view of what is breaking and how often.
 
-Error Reporting works by analyzing stack traces from your application. It groups identical errors together, tracks their frequency over time, and alerts you when new errors appear or existing ones spike. Setting it up for a Flask application takes about 10 minutes.
+Error Reporting works by analyzing stack traces from your application. It groups similar errors together, tracks their frequency over time, and can notify you when new error groups appear or resolved errors reoccur. Setting it up for a Flask application takes about 10 minutes.
 
 ## How Error Reporting Works
 
 Error Reporting collects errors from two sources:
 
-1. **Cloud Logging**: Any log entry with severity ERROR or higher that contains a stack trace is automatically picked up by Error Reporting.
+1. **Cloud Logging**: A supported log entry with severity ERROR or higher (or no severity) that contains a supported stack trace format is automatically picked up by Error Reporting.
 2. **Error Reporting API**: You can report errors directly using the client library.
 
 For Flask applications, the most practical approach combines both: use Cloud Logging for automatic error capture and the client library for more control when needed.
@@ -86,7 +86,7 @@ The key function is `logger.exception()`. It logs the current exception with its
 
 ## Step 3: Using the Error Reporting Client Library
 
-For more control over error reporting, use the dedicated client library. This lets you add custom context and report errors without logging them.
+For more control over error reporting, use the dedicated client library. This lets you add HTTP and user context and report errors without logging them yourself.
 
 ```python
 # error_handler.py - Custom error reporting with context
@@ -111,7 +111,12 @@ def report_error(exception, context=None):
     )
 
     # Report the exception with HTTP context
-    error_client.report_exception(
+    error_client.report(
+        message=''.join(traceback.format_exception(
+            type(exception),
+            exception,
+            exception.__traceback__,
+        )),
         http_context=http_context,
         user=context.get('user_id') if context else None,
     )
@@ -127,7 +132,6 @@ import google.cloud.logging
 import logging
 from google.cloud import error_reporting
 from flask import Flask, jsonify, request, g
-import traceback
 
 # Initialize Cloud Logging
 logging_client = google.cloud.logging.Client()
@@ -206,12 +210,13 @@ def health():
 
 ## Step 5: Add Custom Error Context
 
-Error Reporting can include custom context that helps with debugging. Add user information, request metadata, or business context.
+Error Reporting can include HTTP and user context that helps with debugging. You can also add request metadata or business context to the related Cloud Logging entry.
 
 ```python
 # middleware.py - Add context to error reports
 from flask import request, g
 from google.cloud import error_reporting
+import traceback
 
 error_client = error_reporting.Client()
 
@@ -245,7 +250,12 @@ def report_with_context(exception):
     )
 
     # Report to Error Reporting
-    error_client.report_exception(
+    error_client.report(
+        message=''.join(traceback.format_exception(
+            type(exception),
+            exception,
+            exception.__traceback__,
+        )),
         http_context=http_context,
         user=context.get('user_id'),
     )
@@ -265,7 +275,7 @@ entrypoint: gunicorn -b :$PORT app:app --workers 2
 
 ### Cloud Run
 
-For Cloud Run, make sure structured logging is enabled so Error Reporting can parse the stack traces.
+For Cloud Run, make sure your application logs exceptions with a supported stack trace format or reports them through the Error Reporting client library.
 
 ```dockerfile
 FROM python:3.11-slim
@@ -286,13 +296,13 @@ gcloud run deploy my-flask-app \
 
 ## Step 7: Set Up Notifications
 
-Error Reporting can notify you when new errors appear or when error rates spike.
+Error Reporting can notify you when new error groups appear or when resolved errors reoccur. To alert on error-rate spikes, create a Cloud Monitoring alert policy.
 
 In the Cloud Console, go to **Error Reporting** and:
 
 1. Click on the notification settings (bell icon)
 2. Choose notification channels (email, Slack via Cloud Monitoring, PagerDuty)
-3. Configure when to notify: new errors only, or also when error rates increase
+3. Configure which notification channels receive Error Reporting notifications
 
 You can also set up notifications through Cloud Monitoring alert policies:
 
@@ -302,10 +312,9 @@ gcloud monitoring policies create \
   --display-name="Flask App Error Rate" \
   --condition-display-name="Error count above 50 per minute" \
   --condition-filter='resource.type="cloud_run_revision" AND metric.type="logging.googleapis.com/log_entry_count" AND metric.labels.severity="ERROR"' \
-  --condition-threshold-value=50 \
-  --condition-threshold-duration=60s \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_RATE"}'
+  --if='> 50' \
+  --duration=60s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_DELTA"}'
 ```
 
 ## Step 8: Using the Error Reporting Dashboard
