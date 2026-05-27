@@ -64,16 +64,15 @@ This level requires screen lock and disk encryption - the minimum you should enf
 ```yaml
 # basic-device-security.yaml
 # Minimum device security requirements
-conditions:
-  - devicePolicy:
-      requireScreenlock: true
-      allowedEncryptionStatuses:
-        - ENCRYPTED
+- devicePolicy:
+    requireScreenlock: true
+    allowedEncryptionStatuses:
+      - ENCRYPTED
 ```
 
 ```bash
 # Create the basic device security access level
-gcloud access-context-manager levels create basic-device-security \
+gcloud access-context-manager levels create basic_device_security \
     --policy=POLICY_ID \
     --title="Basic Device Security" \
     --basic-level-spec=basic-device-security.yaml
@@ -86,20 +85,19 @@ This level requires the device to be managed by your organization.
 ```yaml
 # managed-device.yaml
 # Device must be under organizational management
-conditions:
-  - devicePolicy:
-      requireScreenlock: true
-      requireAdminApproval: true
-      allowedEncryptionStatuses:
-        - ENCRYPTED
-      allowedDeviceManagementLevels:
-        - BASIC
-        - COMPLETE
+- devicePolicy:
+    requireScreenlock: true
+    requireAdminApproval: true
+    allowedEncryptionStatuses:
+      - ENCRYPTED
+    allowedDeviceManagementLevels:
+      - BASIC
+      - COMPLETE
 ```
 
 ```bash
 # Create the managed device access level
-gcloud access-context-manager levels create managed-device \
+gcloud access-context-manager levels create managed_device \
     --policy=POLICY_ID \
     --title="Managed Device Required" \
     --basic-level-spec=managed-device.yaml
@@ -112,24 +110,23 @@ Require specific minimum OS versions to ensure devices have recent security patc
 ```yaml
 # current-os-version.yaml
 # Require minimum OS versions for each platform
-conditions:
-  - devicePolicy:
-      requireScreenlock: true
-      allowedEncryptionStatuses:
-        - ENCRYPTED
-      osConstraints:
-        - osType: DESKTOP_MAC
-          minimumVersion: "13.0.0"
-        - osType: DESKTOP_WINDOWS
-          minimumVersion: "10.0.19045"
-        - osType: DESKTOP_CHROME_OS
-          minimumVersion: "110.0.0"
-        - osType: DESKTOP_LINUX
+- devicePolicy:
+    requireScreenlock: true
+    allowedEncryptionStatuses:
+      - ENCRYPTED
+    osConstraints:
+      - osType: DESKTOP_MAC
+        minimumVersion: "13.0.0"
+      - osType: DESKTOP_WINDOWS
+        minimumVersion: "10.0.19045"
+      - osType: DESKTOP_CHROME_OS
+        minimumVersion: "110.0.0"
+      - osType: DESKTOP_LINUX
 ```
 
 ```bash
 # Create the OS version access level
-gcloud access-context-manager levels create current-os \
+gcloud access-context-manager levels create current_os \
     --policy=POLICY_ID \
     --title="Current OS Version Required" \
     --basic-level-spec=current-os-version.yaml
@@ -142,26 +139,25 @@ For the most sensitive applications, require company-owned managed devices.
 ```yaml
 # company-owned-device.yaml
 # Only company-owned managed devices with full compliance
-conditions:
-  - devicePolicy:
-      requireScreenlock: true
-      requireAdminApproval: true
-      requireCorpOwned: true
-      allowedEncryptionStatuses:
-        - ENCRYPTED
-      allowedDeviceManagementLevels:
-        - COMPLETE
-      osConstraints:
-        - osType: DESKTOP_MAC
-          minimumVersion: "13.0.0"
-        - osType: DESKTOP_WINDOWS
-          minimumVersion: "10.0.19045"
-        - osType: DESKTOP_CHROME_OS
+- devicePolicy:
+    requireScreenlock: true
+    requireAdminApproval: true
+    requireCorpOwned: true
+    allowedEncryptionStatuses:
+      - ENCRYPTED
+    allowedDeviceManagementLevels:
+      - COMPLETE
+    osConstraints:
+      - osType: DESKTOP_MAC
+        minimumVersion: "13.0.0"
+      - osType: DESKTOP_WINDOWS
+        minimumVersion: "10.0.19045"
+      - osType: DESKTOP_CHROME_OS
 ```
 
 ```bash
 # Create the company-owned device access level
-gcloud access-context-manager levels create company-device \
+gcloud access-context-manager levels create company_device \
     --policy=POLICY_ID \
     --title="Company-Owned Managed Device" \
     --basic-level-spec=company-owned-device.yaml
@@ -178,7 +174,7 @@ gcloud iap web add-iam-policy-binding \
     --service=general-app-backend \
     --member="group:all-employees@company.com" \
     --role="roles/iap.httpsResourceAccessor" \
-    --condition="expression=accessPolicies/POLICY_ID/accessLevels/basic-device-security in request.auth.access_levels,title=require-basic-device-security" \
+    --condition="expression='accessPolicies/POLICY_ID/accessLevels/basic_device_security' in request.auth.access_levels,title=require-basic-device-security" \
     --project=my-project-id
 
 # Apply company-owned device requirement to sensitive applications
@@ -187,7 +183,7 @@ gcloud iap web add-iam-policy-binding \
     --service=sensitive-app-backend \
     --member="group:finance-team@company.com" \
     --role="roles/iap.httpsResourceAccessor" \
-    --condition="expression=accessPolicies/POLICY_ID/accessLevels/company-device in request.auth.access_levels,title=require-company-device" \
+    --condition="expression='accessPolicies/POLICY_ID/accessLevels/company_device' in request.auth.access_levels,title=require-company-device" \
     --project=my-project-id
 ```
 
