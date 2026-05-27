@@ -114,6 +114,7 @@ trusted_ca_certs:
       --non-interactive
       --agree-tos
       --email {{ letsencrypt_email }}
+      --preferred-challenges {{ letsencrypt_challenge }}
       {% if letsencrypt_staging %} --staging {% endif %}
       {% for domain in item.item.domains %} -d {{ domain }}{% endfor %}
   loop: "{{ cert_exists.results }}"
@@ -181,7 +182,7 @@ Individual certificate deployment.
     owner: root
     group: root
     mode: "{{ cert_permissions }}"
-  notify: "Reload {{ cert.services_to_reload | join(' and ') }}"
+  register: cert_copy
 
 - name: "Deploy private key for {{ cert.name }}"
   ansible.builtin.copy:
@@ -190,7 +191,7 @@ Individual certificate deployment.
     owner: root
     group: root
     mode: "{{ cert_key_permissions }}"
-  notify: "Reload {{ cert.services_to_reload | join(' and ') }}"
+  register: key_copy
 
 - name: "Deploy CA chain for {{ cert.name }}"
   ansible.builtin.copy:
@@ -200,23 +201,31 @@ Individual certificate deployment.
     group: root
     mode: "{{ cert_permissions }}"
   when: cert.chain_file is defined
-  notify: "Reload {{ cert.services_to_reload | join(' and ') }}"
+  register: chain_copy
 
 - name: "Create combined fullchain for {{ cert.name }}"
   ansible.builtin.shell:
-    cmd: >
-      cat {{ cert.cert_dest | default(cert_public_dir ~ '/' ~ cert.cert_file) }}
-      {{ cert.chain_dest | default(cert_public_dir ~ '/' ~ cert.chain_file) }}
-      > {{ cert_public_dir }}/{{ cert.name }}-fullchain.pem
+    cmd: |
+      tmpfile=$(mktemp)
+      cat {{ (cert.cert_dest | default(cert_public_dir ~ '/' ~ cert.cert_file)) | quote }} {{ (cert.chain_dest | default(cert_public_dir ~ '/' ~ cert.chain_file)) | quote }} > "$tmpfile"
+      if [ -f {{ (cert_public_dir ~ '/' ~ cert.name ~ '-fullchain.pem') | quote }} ] && cmp -s "$tmpfile" {{ (cert_public_dir ~ '/' ~ cert.name ~ '-fullchain.pem') | quote }}; then
+        rm "$tmpfile"
+        echo "UNCHANGED"
+      else
+        install -m 0644 -o root -g root "$tmpfile" {{ (cert_public_dir ~ '/' ~ cert.name ~ '-fullchain.pem') | quote }}
+        rm "$tmpfile"
+        echo "CHANGED"
+      fi
   when: cert.chain_file is defined
-  changed_when: true
+  register: fullchain_build
+  changed_when: "'CHANGED' in fullchain_build.stdout"
 
 - name: "Verify certificate and key match"
   ansible.builtin.shell:
     cmd: |
-      CERT_MOD=$(openssl x509 -noout -modulus -in {{ cert.cert_dest | default(cert_public_dir ~ '/' ~ cert.cert_file) }} | md5sum)
-      KEY_MOD=$(openssl rsa -noout -modulus -in {{ cert.key_dest | default(cert_dir ~ '/' ~ cert.key_file) }} | md5sum)
-      if [ "$CERT_MOD" = "$KEY_MOD" ]; then
+      CERT_PUB=$(openssl x509 -in {{ (cert.cert_dest | default(cert_public_dir ~ '/' ~ cert.cert_file)) | quote }} -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256)
+      KEY_PUB=$(openssl pkey -in {{ (cert.key_dest | default(cert_dir ~ '/' ~ cert.key_file)) | quote }} -pubout -outform DER | openssl dgst -sha256)
+      if [ "$CERT_PUB" = "$KEY_PUB" ]; then
         echo "MATCH"
       else
         echo "MISMATCH"
@@ -227,9 +236,20 @@ Individual certificate deployment.
 
 - name: "Verify certificate validity"
   ansible.builtin.command:
-    cmd: "openssl x509 -checkend 0 -in {{ cert.cert_dest | default(cert_public_dir ~ '/' ~ cert.cert_file) }}"
+    cmd: "openssl x509 -checkend 0 -in {{ (cert.cert_dest | default(cert_public_dir ~ '/' ~ cert.cert_file)) | quote }}"
   register: cert_valid
   changed_when: false
+
+- name: "Reload services for {{ cert.name }}"
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: reloaded
+  loop: "{{ cert.services_to_reload | default([]) }}"
+  when: >
+    cert_copy.changed or
+    key_copy.changed or
+    (chain_copy is defined and chain_copy.changed | default(false)) or
+    (fullchain_build is defined and fullchain_build.changed | default(false))
 ```
 
 ## Trust Internal CA Certificates
@@ -292,7 +312,8 @@ The nginx SSL template with modern security settings.
 # roles/nginx-ssl/templates/nginx-ssl.conf.j2
 # {{ item.name }} - Managed by Ansible
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name {{ item.domains | join(' ') }};
 
     # Certificate files
@@ -407,7 +428,8 @@ Check expiry dates across all deployed certificates.
   hosts: all
   become: yes
   roles:
-    - cert-deploy
+    - role: cert-deploy
+      tags: cert-deploy
 
 - name: Configure nginx SSL
   hosts: webservers
