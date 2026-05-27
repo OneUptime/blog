@@ -10,7 +10,7 @@ Description: Configure a high-availability Google Cloud Dataproc cluster with th
 
 A standard Dataproc cluster has a single master node. If that master goes down - hardware failure, kernel panic, network partition - your entire cluster is unavailable. Running jobs fail, new jobs cannot be submitted, and you are stuck waiting for the node to recover or creating a new cluster.
 
-For production workloads that need continuous availability, Dataproc supports high-availability (HA) mode with three master nodes. When one master fails, the remaining two continue operating. YARN, HDFS, and Hive Metastore all have built-in mechanisms for master failover, and Dataproc's HA mode activates them.
+For production workloads that need continuous availability, Dataproc supports high-availability (HA) mode with three master nodes. When one master fails, the remaining two continue operating. YARN and HDFS have built-in mechanisms for master failover, and Dataproc's HA mode activates them.
 
 ## How HA Mode Works
 
@@ -18,7 +18,9 @@ In a Dataproc HA cluster, three master nodes run simultaneously. Each Hadoop ser
 
 **HDFS NameNode** runs in an active-standby configuration. One master is the active NameNode, another is the standby. ZooKeeper coordinates failover. If the active NameNode fails, the standby automatically takes over.
 
-**YARN ResourceManager** also runs active-standby with ZooKeeper-based failover. Job submissions and resource allocation continue seamlessly when the active RM fails.
+**YARN ResourceManager** runs on all three masters with ZooKeeper-based failover. One ResourceManager is active and the others are standby. Resource allocation can continue when the active RM fails, but Dataproc Jobs API drivers are not themselves high-availability and can still be terminated if the master running the driver fails.
+
+**HDFS JournalNode** runs on all three masters and maintains the shared edit log that lets the standby NameNode take over safely.
 
 **ZooKeeper** runs on all three masters, forming a quorum. As long as 2 out of 3 ZooKeeper instances are running, the quorum holds. This is why you need an odd number (3) of masters.
 
@@ -27,17 +29,21 @@ graph TD
     subgraph Master 1
         A1[HDFS NameNode - Active]
         B1[YARN RM - Standby]
+        J1[HDFS JournalNode]
         C1[ZooKeeper]
     end
 
     subgraph Master 2
         A2[HDFS NameNode - Standby]
         B2[YARN RM - Active]
+        J2[HDFS JournalNode]
         C2[ZooKeeper]
     end
 
     subgraph Master 3
-        A3[ZooKeeper]
+        B3[YARN RM - Standby]
+        J3[HDFS JournalNode]
+        C3[ZooKeeper]
     end
 
     C1 <--> C2
@@ -57,7 +63,6 @@ graph TD
     B2 --> W2
     B2 --> W3
 
-    C3[ZooKeeper]
 ```
 
 ## Creating an HA Cluster
@@ -84,7 +89,7 @@ The `--num-masters=3` flag is what activates HA mode. You must specify exactly 3
 
 ## Master Node Sizing
 
-HA master nodes need adequate resources because they run more services than standard masters. Each master runs ZooKeeper, and two of them run NameNode and ResourceManager processes.
+HA master nodes need adequate resources because they run more services than standard masters. Each master runs ZooKeeper, JournalNode, and ResourceManager processes, and two of them run NameNode processes.
 
 For small to medium clusters (up to 20 workers), `n1-standard-4` works well. For larger clusters (20-100 workers), use `n1-standard-8` or `n1-highmem-4`. The master needs enough memory for the NameNode metadata, which grows with the number of HDFS files and blocks.
 
@@ -108,26 +113,26 @@ After the cluster is created, verify that HA services are running correctly.
 ```bash
 # SSH into the master and check HDFS NameNode status
 gcloud compute ssh ha-cluster-m-0 --zone=us-central1-a -- \
-  "hdfs haadmin -getServiceState nn0"
-# Expected output: active
+  "hdfs haadmin -getAllServiceState"
+# Expected output: one NameNode active, one standby
 
 gcloud compute ssh ha-cluster-m-0 --zone=us-central1-a -- \
-  "hdfs haadmin -getServiceState nn1"
-# Expected output: standby
+  "hdfs getconf -namenodes"
+# Expected output: ha-cluster-m-0 ha-cluster-m-1
 
 # Check YARN ResourceManager status
 gcloud compute ssh ha-cluster-m-0 --zone=us-central1-a -- \
-  "yarn rmadmin -getServiceState rm0"
-# Expected output: active
+  "yarn rmadmin -getAllServiceState"
+# Expected output: one ResourceManager active, the others standby
 
 gcloud compute ssh ha-cluster-m-0 --zone=us-central1-a -- \
-  "yarn rmadmin -getServiceState rm1"
-# Expected output: standby
+  "hadoop conf | grep yarn.resourcemanager.ha.rm-ids"
+# Expected output: the configured ResourceManager IDs
 ```
 
 ## HDFS Replication Settings
 
-In an HA cluster, HDFS replication becomes more important. The default replication factor is 2 for Dataproc, but for HA clusters you should increase it to 3 to survive both a master and a worker failure simultaneously.
+In an HA cluster, HDFS replication becomes more important. The default replication factor is 2 for Dataproc, but for HA clusters you should increase it to 3 if you store important data in HDFS and want stronger DataNode failure tolerance.
 
 ```bash
 # Set HDFS replication to 3 at cluster creation
@@ -138,21 +143,20 @@ gcloud dataproc clusters create ha-cluster \
   --properties="hdfs:dfs.replication=3"
 ```
 
-With a replication factor of 3, HDFS can tolerate the loss of any 2 data nodes without losing data.
+With a replication factor of 3 and enough healthy workers, HDFS can tolerate the loss of up to 2 DataNodes without losing data for blocks that were fully replicated before the failures.
 
 ## Configuring Spark for HA
 
-Spark jobs need to know about the HA configuration to connect to the right master nodes. Dataproc configures this automatically, but if you are connecting external applications to the cluster, you need the correct settings.
+Spark jobs need to know about the HA configuration to connect to the right master nodes. Dataproc configures this automatically on the cluster, but if you are connecting external applications to the cluster, use the Hadoop configuration files from the cluster or set the equivalent Hadoop client properties.
 
 ```bash
-# Spark properties for connecting to an HA cluster
---properties="\
-spark.hadoop.fs.defaultFS=hdfs://ha-cluster,\
-spark.yarn.resourcemanager.ha.enabled=true,\
-spark.yarn.resourcemanager.ha.rm-ids=rm0,rm1"
+# Hadoop client properties for connecting to an HA cluster
+core:fs.defaultFS=hdfs://ha-cluster
+yarn:yarn.resourcemanager.ha.enabled=true
+yarn:yarn.resourcemanager.ha.rm-ids=rm0,rm1,rm2
 ```
 
-For submitting jobs through the Dataproc API, HA is transparent. The API routes your job submission to the active master.
+For submitting jobs through the Dataproc API, the command is the same as a standard cluster. However, the job driver still runs on a master node, so Jobs API submissions are not fully high-availability if that master fails.
 
 ```bash
 # Submit a job to an HA cluster - works the same as a standard cluster
@@ -175,7 +179,7 @@ gcloud dataproc jobs submit pyspark \
   --async \
   failover-test.py
 
-# While the job is running, stop the active master
+# While the job is running, stop one master
 gcloud compute instances stop ha-cluster-m-0 \
   --zone=us-central1-a
 
@@ -185,34 +189,29 @@ gcloud compute ssh ha-cluster-m-1 --zone=us-central1-a -- \
 
 # Check that the standby NameNode became active
 gcloud compute ssh ha-cluster-m-1 --zone=us-central1-a -- \
-  "hdfs haadmin -getServiceState nn1"
-# Should now show: active
+  "hdfs haadmin -getAllServiceState"
+# Should show one active NameNode
 
 # Restart the failed master
 gcloud compute instances start ha-cluster-m-0 \
   --zone=us-central1-a
 ```
 
-The long-running job should continue executing even after the master is stopped. Some in-flight tasks on the failed master might need to be retried, but the overall job should complete successfully.
+HDFS and YARN should remain available after a single master is stopped. A long-running job submitted through the Dataproc Jobs API can still fail if its driver was running on the stopped master; to make an individual job resilient to a master failure, run the driver in a YARN container and design it to handle driver restarts.
 
 ## Hive Metastore HA
 
-If you use Hive or Spark SQL with Hive tables, the Hive Metastore also benefits from HA. In a Dataproc HA cluster, the Hive Metastore typically runs on the master nodes with a shared database backend.
+If you use Hive or Spark SQL with Hive tables, the Hive Metastore also benefits from running on the master nodes. In a Dataproc HA cluster, the Hive Metastore service runs on all masters, but the default metadata database is still tied to the cluster lifecycle.
 
-For robust Hive Metastore HA, consider using Cloud SQL as the Metastore database instead of a local database.
+For robust Hive Metastore HA, use Dataproc Metastore or Cloud SQL as the Metastore database instead of the default local database.
 
 ```bash
-# HA cluster with Cloud SQL-backed Hive Metastore
-gcloud dataproc clusters create ha-with-cloudsql \
+# HA cluster with Dataproc Metastore
+gcloud dataproc clusters create ha-with-metastore \
   --region=us-central1 \
   --num-masters=3 \
   --num-workers=6 \
-  --properties="\
-hive:javax.jdo.option.ConnectionURL=jdbc:mysql://10.0.1.5/metastore,\
-hive:javax.jdo.option.ConnectionDriverName=com.mysql.cj.jdbc.Driver,\
-hive:javax.jdo.option.ConnectionUserName=hive,\
-hive:javax.jdo.option.ConnectionPassword=HIVE_PASSWORD" \
-  --scopes=sql-admin
+  --dataproc-metastore=projects/PROJECT_ID/locations/us-central1/services/METASTORE_SERVICE
 ```
 
 ## Cost Considerations
