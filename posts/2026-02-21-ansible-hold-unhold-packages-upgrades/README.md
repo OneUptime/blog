@@ -27,7 +27,7 @@ Debian-based systems use `dpkg` selections to hold packages. Ansible provides th
     selection: hold
 ```
 
-After this, running `apt upgrade` or `apt-get dist-upgrade` will skip nginx entirely. You can verify this by running `dpkg --get-selections | grep hold`.
+After this, running `apt upgrade` or `apt-get dist-upgrade` will skip nginx entirely. You can verify this by running `dpkg --get-selections | grep '[[:space:]]hold$'`.
 
 ### Unholding a Package
 
@@ -83,7 +83,7 @@ On RHEL-based systems, the `dnf versionlock` plugin handles package holds.
   ansible.builtin.command:
     cmd: dnf versionlock add docker-ce
   register: versionlock_result
-  changed_when: "'Added' in versionlock_result.stdout"
+  changed_when: "'Adding versionlock' in versionlock_result.stdout"
 ```
 
 ### Unlocking a Package
@@ -94,7 +94,7 @@ On RHEL-based systems, the `dnf versionlock` plugin handles package holds.
   ansible.builtin.command:
     cmd: dnf versionlock delete docker-ce
   register: versionlock_delete
-  changed_when: "'Deleted' in versionlock_delete.stdout"
+  changed_when: "'Deleting versionlock' in versionlock_delete.stdout"
 ```
 
 ### Listing Locked Packages
@@ -161,7 +161,7 @@ Here is a practical playbook that manages package holds for a Kubernetes cluster
         cmd: "dnf versionlock add {{ item }}"
       loop: "{{ held_packages_rhel }}"
       register: lock_result
-      changed_when: "'Added' in lock_result.stdout"
+      changed_when: "'Adding versionlock' in lock_result.stdout"
       failed_when: false
       when: ansible_os_family == "RedHat"
 
@@ -175,7 +175,7 @@ Here is a practical playbook that manages package holds for a Kubernetes cluster
 
     - name: Show held packages (Debian)
       ansible.builtin.debug:
-        msg: "{{ dpkg_selections.stdout_lines | select('search', 'hold') | list }}"
+        msg: "{{ dpkg_selections.stdout_lines | select('search', '\\shold$') | list }}"
       when: ansible_os_family == "Debian"
 ```
 
@@ -260,7 +260,7 @@ An alternative to holding packages is APT pinning, which lets you specify which 
     mode: '0644'
 ```
 
-A pin priority of 1001 or higher forces that specific version and prevents upgrades, similar to a hold but with version specificity.
+A pin priority of 1000 or higher forces that specific version and prevents upgrades, similar to a hold but with version specificity.
 
 ## Auditing Held Packages
 
@@ -280,7 +280,7 @@ For compliance purposes, you might need to report on which packages are held acr
 
     - name: Extract held packages
       ansible.builtin.set_fact:
-        held_packages: "{{ all_selections.stdout_lines | select('search', 'hold') | map('split') | map('first') | list }}"
+        held_packages: "{{ all_selections.stdout_lines | select('search', '\\shold$') | map('split') | map('first') | list }}"
       when: ansible_os_family == "Debian"
 
     - name: Report held packages
@@ -302,7 +302,7 @@ Before performing a distribution upgrade, you should release all holds temporari
 
 - name: Parse held package names
   ansible.builtin.set_fact:
-    currently_held: "{{ all_selections.stdout_lines | select('search', 'hold') | map('split') | map('first') | list }}"
+    currently_held: "{{ all_selections.stdout_lines | select('search', '\\shold$') | map('split') | map('first') | list }}"
 
 - name: Temporarily release all holds
   ansible.builtin.dpkg_selections:
