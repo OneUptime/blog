@@ -8,7 +8,7 @@ Description: Orchestrate AWS CloudFormation stack deployments with Ansible for c
 
 ---
 
-AWS CloudFormation provisions resources using templates. Ansible has a built-in module for managing CloudFormation stacks, letting you orchestrate the full lifecycle from a single playbook: create the stack, capture outputs, then configure the created instances.
+AWS CloudFormation provisions resources using templates. Ansible has the `amazon.aws.cloudformation` module in the `amazon.aws` collection for managing CloudFormation stacks, letting you orchestrate the full lifecycle from a single playbook: create the stack, capture outputs, then configure the created instances.
 
 ## Integration Flow
 
@@ -108,20 +108,62 @@ Resources:
       CidrBlock: 10.0.1.0/24
       MapPublicIpOnLaunch: true
 
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH access to web servers
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
   WebServer:
     Type: AWS::EC2::Instance
+    DependsOn: VPCGatewayAttachment
     Properties:
       InstanceType: !Ref InstanceType
       ImageId: ami-0abcdef1234567890
       KeyName: !Ref KeyName
       SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref WebSecurityGroup
       Tags:
         - Key: Role
           Value: webserver
 
 Outputs:
   InstanceIPs:
-    Value: !GetAtt WebServer.PrivateIp
+    Value: !GetAtt WebServer.PublicIp
   VpcId:
     Value: !Ref VPC
 ```
@@ -146,6 +188,8 @@ Outputs:
         template_parameters:
           Environment: "{{ environment_name }}"
           InstanceType: "{{ new_instance_type }}"
+          KeyName:
+            use_previous_value: true
       register: changeset
 
     - name: Show proposed changes
@@ -398,4 +442,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
