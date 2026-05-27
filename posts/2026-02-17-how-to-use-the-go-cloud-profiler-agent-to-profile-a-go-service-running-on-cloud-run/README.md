@@ -17,12 +17,12 @@ The Go Cloud Profiler agent is particularly well-suited for this. It collects CP
 The Go agent collects several profile types:
 
 - **CPU** - Where your goroutines spend CPU time
-- **Heap** - Current memory allocations and what is holding onto memory
-- **Goroutine** - Number and state of goroutines
-- **Threads** - OS thread usage
+- **Heap** - Memory allocated in the heap when the profile was collected
+- **Allocated heap** - Total heap allocation activity, including memory that has already been freed
+- **Threads** - Go goroutine usage
 - **Contention** - Where goroutines are blocking on mutexes
 
-Each profile is collected for a short window (typically 10 seconds) every few minutes, so the overhead is negligible.
+Cloud Profiler coordinates collection across instances. It usually collects data for about 10 seconds, with an average rate of one profile per minute for each service, version, and zone, so the amortized overhead is low.
 
 ## Setting Up
 
@@ -32,6 +32,8 @@ Install the profiler library:
 go get cloud.google.com/go/profiler
 ```
 
+Before deploying, enable the Cloud Profiler API and make sure the Cloud Run service account has the Cloud Profiler Agent IAM role (`roles/cloudprofiler.agent`), otherwise no profile data will be uploaded.
+
 ## Basic Integration
 
 Adding the profiler to your service takes just a few lines. The key is to start it early in main, before your server starts handling requests.
@@ -40,7 +42,6 @@ Adding the profiler to your service takes just a few lines. The key is to start 
 package main
 
 import (
-    "context"
     "log"
     "net/http"
     "os"
@@ -76,8 +77,6 @@ func startProfiler() error {
         Service: os.Getenv("K_SERVICE"),
         // Version helps you compare profiles across deployments
         ServiceVersion: os.Getenv("K_REVISION"),
-        // Project ID is auto-detected on Cloud Run
-        ProjectID: os.Getenv("GOOGLE_CLOUD_PROJECT"),
         // Enable mutex profiling to find lock contention
         MutexProfiling: true,
     }
@@ -98,7 +97,7 @@ That is it for the basic setup. The profiler runs in the background, collecting 
 
 ## Profiling Specific Operations
 
-Sometimes you want to understand specific operations better. While Cloud Profiler handles continuous sampling, you can add custom labels to help filter profiles.
+Sometimes you want to understand specific operations better. While Cloud Profiler handles continuous sampling, you can add Go pprof labels to CPU and goroutine profiles so that pprof-compatible analysis tools can attribute samples to an endpoint or operation.
 
 ```go
 import (
@@ -107,15 +106,14 @@ import (
 
 // handleProcess is an HTTP handler with custom profiler labels
 func handleProcess(w http.ResponseWriter, r *http.Request) {
-    // Add custom labels that appear in the profiler UI
-    // This helps you filter profiles by endpoint or operation
+    // Add custom labels to CPU and goroutine profiles.
     labels := pprof.Labels(
         "endpoint", r.URL.Path,
         "method", r.Method,
     )
 
     pprof.Do(r.Context(), labels, func(ctx context.Context) {
-        // All CPU time spent in this function will be tagged with the labels
+        // CPU samples from this function will be tagged with the labels.
         result, err := processData(ctx)
         if err != nil {
             http.Error(w, "Processing failed", http.StatusInternalServerError)
@@ -137,7 +135,7 @@ flowchart TD
     Main[main.main - 100%] --> Server[http.Server.Serve - 95%]
     Main --> Profiler[profiler.Start - 1%]
     Server --> Handler[handleProcess - 80%]
-    Server --> TLS[tls.Handshake - 10%]
+    Server --> Decode[json.Decoder.Decode - 10%]
     Handler --> Process[processData - 60%]
     Handler --> JSON[json.Marshal - 15%]
     Process --> DB[database/sql.Query - 40%]
@@ -148,7 +146,7 @@ flowchart TD
     style DB fill:#4285F4,color:#fff
 ```
 
-The width of each block represents the percentage of total CPU time. In this example, you would see that `database/sql.Query` takes 40% of CPU time, which points to database access as the primary bottleneck.
+The width of each block represents its relative consumption of the selected metric. In a CPU profile, you would see that the `database/sql.Query` call path accounts for 40% of sampled CPU time. CPU profiles do not directly measure time spent waiting on network I/O, so use database metrics or traces alongside the profile before concluding that the database itself is the bottleneck.
 
 ## Profiling Memory Usage
 
@@ -158,6 +156,7 @@ Heap profiling is especially important for Go services on Cloud Run because memo
 package main
 
 import (
+    "log"
     "runtime"
 )
 
@@ -223,6 +222,7 @@ import (
     "image/png"
     "log"
     "net/http"
+    "os"
     "runtime/pprof"
 
     "cloud.google.com/go/profiler"
@@ -253,7 +253,7 @@ func resizeImage(ctx context.Context, w http.ResponseWriter, r *http.Request, cl
     bucket := r.URL.Query().Get("bucket")
     object := r.URL.Query().Get("object")
 
-    // Download the image - this will show up as I/O time in the profile
+    // Download the image. CPU profiles show CPU used in this path, not time spent waiting on network I/O.
     reader, err := client.Bucket(bucket).Object(object).NewReader(ctx)
     if err != nil {
         http.Error(w, "Failed to read image", http.StatusInternalServerError)
@@ -293,11 +293,11 @@ cfg := profiler.Config{
     // Enable mutex profiling to find lock contention
     MutexProfiling: true,
 
-    // Enable goroutine profiling
-    // Useful for detecting goroutine leaks
+    // Force garbage collection before collecting heap profiles
+    // This can improve allocation profile accuracy.
     AllocForceGC: true,
 
-    // Custom debug logging callback
+    // Enable detailed debug logs from the profiler agent
     DebugLogging: false,
 }
 ```
@@ -319,8 +319,8 @@ When analyzing profiles, here are the common patterns that indicate problems:
 ## Cloud Run Specific Tips
 
 - **Set memory limits appropriately** - If heap profiles show you are consistently using 200 MB, do not set the Cloud Run memory limit to 256 MB. Give yourself headroom.
-- **CPU throttling matters** - On Cloud Run, CPU is throttled when not processing requests (unless you opt out). Profiler samples during active request processing, so the data is representative.
-- **Min instances** - If you set min instances to 0, the profiler will not collect data during cold starts. Consider min instances of 1 if you need startup profiles.
+- **CPU allocation matters** - With Cloud Run's default request-based billing, CPU is allocated during startup and while the instance is processing requests. Instance-based billing keeps CPU allocated for the full instance lifecycle.
+- **Min instances** - If you set min instances to 0, your service can scale to zero when idle. Consider min instances of 1 with instance-based billing if you need profiler activity while no requests are being handled.
 
 ## Wrapping Up
 
