@@ -86,7 +86,7 @@ Create a validator that checks data against your dataclass schemas before sendin
 
 ```python
 # validator.py - Validate data against dataclass schemas
-from dataclasses import fields as dataclass_fields
+from dataclasses import MISSING, fields as dataclass_fields
 from typing import get_type_hints, get_origin, get_args, Union
 from datetime import datetime, date
 from decimal import Decimal
@@ -134,7 +134,10 @@ class SchemaValidator:
         for field_name, field_obj in dc_fields.items():
             field_type = hints[field_name]
             is_optional = self._is_optional(field_type)
-            has_default = field_obj.default is not field_obj.default_factory
+            has_default = (
+                field_obj.default is not MISSING
+                or field_obj.default_factory is not MISSING
+            )
 
             if field_name not in data:
                 if not is_optional and not has_default:
@@ -195,6 +198,8 @@ class SchemaValidator:
         elif expected_type == date:
             if isinstance(value, str):
                 return date.fromisoformat(value)
+            elif isinstance(value, datetime):
+                raise TypeError(f"Expected date, got datetime")
             elif isinstance(value, date):
                 return value
             else:
@@ -244,7 +249,8 @@ Integrate the validator into your data loading pipeline.
 from google.cloud import bigquery
 from validator import SchemaValidator, SchemaValidationError
 from schemas import UserEvent, OrderRecord
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 import json
 import logging
 
@@ -295,7 +301,7 @@ def serialize_for_bigquery(data):
         elif isinstance(value, date):
             serialized[key] = value.isoformat()
         elif isinstance(value, Decimal):
-            serialized[key] = float(value)
+            serialized[key] = str(value)
         elif value is None:
             serialized[key] = None
         else:
@@ -335,7 +341,7 @@ You can auto-generate BigQuery table schemas from your dataclass definitions.
 
 ```python
 from google.cloud import bigquery
-from dataclasses import fields as dataclass_fields
+from dataclasses import MISSING, fields as dataclass_fields
 from typing import get_type_hints, get_origin, get_args, Union
 from datetime import datetime, date
 from decimal import Decimal
@@ -372,7 +378,8 @@ def dataclass_to_bq_schema(schema_class):
         # Map Python type to BigQuery type
         bq_type = type_mapping.get(field_type, "STRING")
 
-        mode = "NULLABLE" if is_optional or f.default is not f.default_factory else "REQUIRED"
+        has_default = f.default is not MISSING or f.default_factory is not MISSING
+        mode = "NULLABLE" if is_optional or has_default else "REQUIRED"
 
         bq_fields.append(
             bigquery.SchemaField(f.name, bq_type, mode=mode)
@@ -394,6 +401,10 @@ Use the generated schema to create BigQuery tables programmatically.
 
 ```python
 from google.cloud import bigquery
+from dataclasses import fields as dataclass_fields
+from datetime import datetime, date
+from typing import get_type_hints
+from schemas import UserEvent
 
 client = bigquery.Client()
 
@@ -424,7 +435,7 @@ create_table_from_dataclass("analytics", "user_events", UserEvent)
 
 ## Using Pydantic for Validation
 
-If you prefer Pydantic over raw dataclasses, it provides even richer validation.
+If you prefer Pydantic v2 over raw dataclasses, it provides even richer validation.
 
 ```python
 from pydantic import BaseModel, Field, field_validator
