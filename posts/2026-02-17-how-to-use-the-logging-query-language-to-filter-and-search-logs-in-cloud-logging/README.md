@@ -120,20 +120,20 @@ resource.type="cloud_run_revision" AND (severity=ERROR OR severity=CRITICAL)
 ### By Resource Type
 
 ```text
-# Compute Engine instances
+-- Compute Engine instances
 
 resource.type="gce_instance"
 
-# Cloud Run services
+-- Cloud Run services
 resource.type="cloud_run_revision"
 
-# GKE containers
+-- GKE containers
 resource.type="k8s_container"
 
-# Cloud SQL databases
+-- Cloud SQL databases
 resource.type="cloudsql_database"
 
-# Cloud Functions
+-- Cloud Functions
 resource.type="cloud_function"
 ```
 
@@ -142,57 +142,57 @@ resource.type="cloud_function"
 Severity levels in order: DEFAULT, DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY.
 
 ```text
-# Exact severity
+-- Exact severity
 severity=ERROR
 
-# Severity at or above a level
+-- Severity at or above a level
 severity>=WARNING
 
-# Multiple specific severities
+-- Multiple specific severities
 severity=ERROR OR severity=CRITICAL
 ```
 
 ### By Log Name
 
 ```text
-# Specific log
+-- Specific log
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 
-# Log name contains (partial match)
+-- Log name contains (partial match)
 logName:"cloudaudit.googleapis.com"
 
-# Syslog
+-- Syslog
 logName:"syslog"
 ```
 
 ### By Timestamp
 
 ```text
-# After a specific time
+-- After a specific time
 timestamp>="2026-02-17T10:00:00Z"
 
-# Before a specific time
+-- Before a specific time
 timestamp<="2026-02-17T12:00:00Z"
 
-# Time range
+-- Time range
 timestamp>="2026-02-17T10:00:00Z" AND timestamp<="2026-02-17T12:00:00Z"
 
-# Relative time (use the time picker in the UI for this)
+-- Relative time (use the time picker in the UI for this)
 ```
 
 ### By Resource Labels
 
 ```text
-# Specific VM instance
+-- Specific VM instance
 resource.labels.instance_id="1234567890"
 
-# Specific Cloud Run service
+-- Specific Cloud Run service
 resource.labels.service_name="my-api"
 
-# Specific GKE namespace
+-- Specific GKE namespace
 resource.labels.namespace_name="production"
 
-# Specific GKE cluster
+-- Specific GKE cluster
 resource.labels.cluster_name="prod-cluster"
 ```
 
@@ -201,16 +201,16 @@ resource.labels.cluster_name="prod-cluster"
 ### Text Payload Searches
 
 ```text
-# Exact match
+-- Exact match
 textPayload="Error: connection refused"
 
-# Substring match
+-- Substring match
 textPayload:"connection refused"
 
-# Regular expression
-textPayload=~"error.*timeout.*\d+ seconds"
+-- Regular expression
+textPayload=~"error.*timeout.*\\d+ seconds"
 
-# Case-insensitive regex
+-- Case-insensitive regex
 textPayload=~"(?i)fatal error"
 ```
 
@@ -219,19 +219,19 @@ textPayload=~"(?i)fatal error"
 When your application writes structured JSON logs, you can filter on specific fields:
 
 ```text
-# Exact field value
+-- Exact field value
 jsonPayload.user_id="12345"
 
-# Numeric comparison
+-- Numeric comparison
 jsonPayload.response_time_ms>1000
 
-# Nested field
+-- Nested field
 jsonPayload.error.code="NOT_FOUND"
 
-# Substring in a JSON field
+-- Substring in a JSON field
 jsonPayload.message:"database"
 
-# Boolean field
+-- Boolean field
 jsonPayload.is_retry=true
 ```
 
@@ -240,16 +240,16 @@ jsonPayload.is_retry=true
 Audit logs use `protoPayload`:
 
 ```text
-# Specific API method
+-- Specific API method
 protoPayload.methodName="SetIamPolicy"
 
-# Specific service
+-- Specific service
 protoPayload.serviceName="compute.googleapis.com"
 
-# Specific caller
+-- Specific caller
 protoPayload.authenticationInfo.principalEmail="admin@company.com"
 
-# Failed operations
+-- Failed operations
 protoPayload.status.code!=0
 ```
 
@@ -258,23 +258,23 @@ protoPayload.status.code!=0
 For logs that include HTTP request data:
 
 ```text
-# Specific status code
+-- Specific status code
 httpRequest.status=500
 
-# Status code range
+-- Status code range
 httpRequest.status>=400
 
-# Specific URL path
+-- Specific URL path
 httpRequest.requestUrl="/api/users"
 
-# URL contains
+-- URL contains
 httpRequest.requestUrl:"/api/"
 
-# Specific HTTP method
+-- Specific HTTP method
 httpRequest.requestMethod="POST"
 
-# Slow requests (latency in seconds)
-httpRequest.latency.seconds>5
+-- Slow requests
+httpRequest.latency>"5s"
 ```
 
 ## Advanced Patterns
@@ -312,20 +312,20 @@ textPayload:"database"
 ### Using Regular Expressions for Pattern Matching
 
 ```text
-# Match IP addresses in logs
+-- Match IP addresses in logs
 textPayload=~"\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}"
 
-# Match specific error code patterns
+-- Match specific error code patterns
 jsonPayload.error_code=~"ERR-[0-9]{4}"
 
-# Match email addresses
+-- Match email addresses
 textPayload=~"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
 ```
 
 ### Excluding Noise from Search Results
 
 ```text
-# Find errors but exclude health check noise
+-- Find errors but exclude health check noise
 severity>=ERROR
 NOT httpRequest.requestUrl="/healthz"
 NOT textPayload:"health check"
@@ -371,6 +371,7 @@ Filters determine which logs increment the metric:
 
 ```bash
 gcloud logging metrics create error-count \
+  --description="Count of Cloud Run error logs" \
   --log-filter='severity>=ERROR AND resource.type="cloud_run_revision"'
 ```
 
@@ -382,7 +383,7 @@ gcloud logging metrics create error-count \
 
 3. **Prefer indexed fields**: Fields like `severity`, `resource.type`, `resource.labels`, and `logName` are indexed and search faster than content fields like `textPayload` or `jsonPayload`.
 
-4. **Use `:` instead of `=~` when possible**: The has operator (`:`) is faster than regular expressions (`=~`). Use regex only when you need pattern matching.
+4. **Use simpler searches when possible**: The has operator (`:`) is useful for substring matches, and the `SEARCH` function can be more efficient for text searches. Use regex only when you need pattern matching.
 
 5. **Avoid broad content searches**: Searching `textPayload:"error"` across all resource types and time ranges is slow. Narrow it down with resource type and severity filters first.
 
