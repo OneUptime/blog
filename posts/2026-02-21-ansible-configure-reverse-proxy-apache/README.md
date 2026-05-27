@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Apache, Reverse Proxy, DevOps, Web Server
 
-Description: Set up Apache as a reverse proxy using Ansible with mod_proxy, WebSocket support, load balancing, and SSL termination.
+Description: Set up Apache as a reverse proxy using Ansible with mod_proxy, WebSocket support, load balancing, and proxy security.
 
 ---
 
@@ -15,6 +15,7 @@ This guide covers configuring Apache as a reverse proxy with Ansible, including 
 ## Prerequisites
 
 - Ansible 2.9+ on your control node
+- The `community.general` collection if you are using a modern `ansible-core` installation
 - Ubuntu 22.04 target servers
 - Backend applications running on the servers
 
@@ -77,7 +78,7 @@ proxy_max_connections: 100
     update_cache: yes
 
 - name: Enable required Apache proxy modules
-  apache2_module:
+  community.general.apache2_module:
     name: "{{ item }}"
     state: present
   loop:
@@ -118,11 +119,12 @@ proxy_max_connections: 100
       # Global proxy settings managed by Ansible
       ProxyRequests Off
       ProxyPreserveHost On
+      ProxyAddHeaders On
 
       # Timeout for proxy connections
       ProxyTimeout {{ proxy_timeout }}
 
-      # Security: deny forward proxying
+      # Allow access to explicitly configured reverse proxy workers
       <Proxy *>
           Require all granted
       </Proxy>
@@ -162,9 +164,9 @@ proxy_max_connections: 100
     ProxyPreserveHost Off
 {% endif %}
 
-    # Forward client information to the backend
-    RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"
-    RequestHeader set X-Forwarded-For "%{REMOTE_ADDR}s"
+    # Forward client information to the backend.
+    # mod_proxy_http adds X-Forwarded-For, X-Forwarded-Host, and X-Forwarded-Server.
+    RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"
     RequestHeader set X-Forwarded-Proto "http"
 
 {% if item.websocket | default(false) %}
@@ -188,6 +190,7 @@ proxy_max_connections: 100
     <Proxy {{ item.backend_url }}>
         ProxySet connectiontimeout=5
         ProxySet timeout={{ proxy_timeout }}
+        ProxySet max={{ proxy_max_connections }}
         ProxySet keepalive=On
     </Proxy>
 
@@ -347,7 +350,7 @@ ansible-playbook -i inventory/hosts.yml playbook.yml --check --diff
 
 - name: Report proxy status
   debug:
-    msg: "{{ item.item.name }}: {{ 'OK' if item.status == 200 else 'FAILED' }}"
+    msg: "{{ item.item.name }}: {{ 'OK' if item.status in [200, 301, 302] else 'FAILED' }}"
   loop: "{{ proxy_check.results }}"
 ```
 
