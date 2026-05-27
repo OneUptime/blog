@@ -16,29 +16,30 @@ Let me walk through why BI Engine might not be accelerating your queries and how
 
 BigQuery BI Engine is an in-memory analysis service that caches data from BigQuery tables in a fast-access layer. When a query hits a table that is cached by BI Engine, the query is served from memory instead of reading from storage, which can be 10-100x faster for interactive analytics workloads.
 
-BI Engine works automatically - you create a reservation, and BigQuery decides which tables and columns to cache based on query patterns. You do not explicitly choose which tables to cache.
+BI Engine works automatically - you create a reservation, and BigQuery decides which tables and columns to cache based on query patterns. You can also configure preferred tables if you want to limit acceleration to a specific set of tables.
 
 ## Step 1 - Verify the Reservation Exists
 
 First, confirm that your BI Engine reservation is actually set up and active.
 
 ```bash
-# List BI Engine reservations
-
-bq ls --reservation --project_id=my-project --location=US --bi_reservation
-
-# Or using gcloud
-gcloud alpha bq reservations list --location=US
+# Check BI Engine capacity
+bq query --nouse_legacy_sql \
+'SELECT *
+ FROM `my-project.region-us.INFORMATION_SCHEMA.BI_CAPACITIES`;'
 ```
 
-If no reservation exists, create one.
+BI Engine has a singleton reservation per project and location. If the reservation size is 0, update it to reserve capacity.
 
 ```bash
-# Create a BI Engine reservation with 10 GB of memory
-bq update --bi_reservation --location=US --reservation_size=10000000000
+# Reserve 10 GiB of BI Engine memory
+bq --project_id=my-project update \
+  --reservation \
+  --location=US \
+  --bi_reservation_size=10
 ```
 
-The size is in bytes, so 10 GB = 10,000,000,000 bytes.
+The `--bi_reservation_size` value is in GiB.
 
 ## Step 2 - Check If BI Engine Is Being Used
 
@@ -85,9 +86,9 @@ Supported:
 Not supported or limited:
 - Complex window functions
 - ARRAY and STRUCT operations
-- User-defined functions (UDFs)
+- JavaScript and other non-SQL user-defined functions (UDFs)
 - Queries on views with complex logic
-- CROSS JOIN
+- Unsupported join patterns
 - Certain analytical functions
 
 ```sql
@@ -105,11 +106,9 @@ LIMIT 100;
 -- This complex query might not be accelerated
 SELECT
   region,
-  SUM(revenue) as total_revenue,
   PERCENTILE_CONT(revenue, 0.5) OVER (PARTITION BY region) as median_revenue
 FROM `my_dataset.sales`
-WHERE sale_date >= '2024-01-01'
-GROUP BY region;
+WHERE sale_date >= '2024-01-01';
 ```
 
 ### Reason 2 - Table Too Large for Reservation
@@ -129,25 +128,30 @@ print(f'Row count: {num_rows:,}')
 "
 ```
 
-If your table is 50 GB but your BI Engine reservation is 10 GB, only 20% of the data can be cached. Increase the reservation or partition your table and query specific partitions.
+If your workload needs more memory than the reservation provides, BI Engine might offload less recently used columns or partitions and some queries might only be partially accelerated. Increase the reservation or partition your table and query specific partitions.
 
 ```bash
 # Increase the BI Engine reservation
-bq update --bi_reservation --location=US --reservation_size=53687091200  # 50 GB
+bq --project_id=my-project update \
+  --reservation \
+  --location=US \
+  --bi_reservation_size=50
 ```
 
 ### Reason 3 - Data Not Yet Cached
 
-BI Engine populates its cache based on query access patterns. The first few queries against a table will not be accelerated because the data has not been cached yet. Subsequent queries should be faster.
+BI Engine populates its cache based on query access patterns. Data is loaded into BI Engine after a query is received, so the first run of a workload can be slower than later runs.
 
-Run a warm-up query.
+Run representative warm-up queries.
 
 ```sql
 -- Warm-up query to populate the BI Engine cache
-SELECT *
+SELECT
+  region,
+  SUM(revenue) as total_revenue
 FROM `my_dataset.frequently_queried_table`
 WHERE partition_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
-LIMIT 1;
+GROUP BY region;
 ```
 
 After this, subsequent queries on the same data should benefit from BI Engine acceleration.
@@ -165,14 +169,16 @@ print(f'Dataset location: {ds.get(\"location\", \"unknown\")}')
 "
 
 # Check reservation location
-bq ls --reservation --bi_reservation --project_id=my-project --location=US
+bq query --nouse_legacy_sql \
+'SELECT *
+ FROM `my-project.region-us.INFORMATION_SCHEMA.BI_CAPACITIES`;'
 ```
 
 ### Reason 5 - Connected Sheets or BI Tools Not Configured
 
-If you are using BI Engine with Looker, Connected Sheets, or other BI tools, the tool needs to send queries through the BigQuery API in a way that BI Engine can intercept.
+If you are using BI Engine with Looker, Connected Sheets, or other BI tools, make sure the queries run in the project and location that has the BI Engine reservation.
 
-For Looker, make sure the connection uses the BigQuery Standard SQL driver.
+For Looker, make sure the connection uses GoogleSQL for BigQuery.
 
 For Connected Sheets, BI Engine integration is automatic for supported query patterns.
 
@@ -180,14 +186,16 @@ For Connected Sheets, BI Engine integration is automatic for supported query pat
 
 ### Use Preferred Tables
 
-You can tell BI Engine which tables to prioritize for caching.
+You can tell BI Engine which tables are eligible for acceleration.
 
 ```sql
--- Specify preferred tables when creating the reservation
--- This is done through the API or Cloud Console
+ALTER BI_CAPACITY `my-project.region-us.default`
+SET OPTIONS (
+  size_gb = 10,
+  preferred_tables = [`my-project.my_dataset.sales_partitioned`]);
 ```
 
-In the Cloud Console, go to BigQuery, then BI Engine, and configure preferred tables to ensure your most important tables are cached.
+In the Cloud Console, go to BigQuery, then BI Engine, and configure preferred tables to ensure your most important tables are eligible for acceleration. When preferred tables are configured, only tables in the preferred table list can use BI Engine acceleration.
 
 ### Partition Your Tables
 
