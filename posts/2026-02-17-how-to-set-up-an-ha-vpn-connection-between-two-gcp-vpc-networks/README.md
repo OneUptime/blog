@@ -17,7 +17,7 @@ HA VPN (High Availability VPN) gives you an IPsec VPN connection with a 99.99% u
 You might ask: why not just use VPC Peering? There are a few reasons to choose HA VPN instead:
 
 - **Encryption in transit**: HA VPN encrypts all traffic between VPCs using IPsec. VPC Peering does not.
-- **Overlapping IP ranges**: VPC Peering requires non-overlapping CIDR ranges. VPN can work around this with NAT.
+- **NAT-based designs**: VPC Peering requires non-overlapping CIDR ranges. HA VPN between two VPCs also requires non-overlapping routes, but VPN-based designs can sometimes work around overlap by adding NAT outside the tunnels.
 - **Transitive routing**: VPC Peering is non-transitive. VPN with Cloud Router lets you build more flexible routing topologies.
 - **Cross-org connectivity**: HA VPN works across different GCP organizations, while peering has limitations.
 
@@ -26,9 +26,11 @@ You might ask: why not just use VPC Peering? There are a few reasons to choose H
 Before starting, make sure you have:
 
 - Two VPC networks in GCP (they can be in the same or different projects)
+- Non-overlapping primary and secondary subnet ranges in the two VPC networks
+- At least one custom mode VPC network if you are connecting two VPC networks with Cloud VPN
 - The Compute Engine API enabled in both projects
 - Appropriate IAM permissions (Compute Network Admin role)
-- Non-overlapping subnet ranges (unless you plan to use NAT)
+- HA VPN gateways deployed in the same region if you want the 99.99% availability SLA
 
 ## Step 1: Create the HA VPN Gateways
 
@@ -75,7 +77,7 @@ The ASN (Autonomous System Number) values need to be different for each router. 
 
 ## Step 3: Create the VPN Tunnels
 
-For a full 99.99% SLA, you need to create four tunnels total - two from each gateway interface to each interface on the other gateway. At minimum, you need two tunnels (one per gateway interface) connecting to the peer.
+For a full 99.99% SLA between two Google Cloud HA VPN gateways in the same region, you need to create four tunnel resources total: two tunnels on each HA VPN gateway. The tunnel on interface 0 of each gateway connects to interface 0 of the other gateway, and the tunnel on interface 1 of each gateway connects to interface 1 of the other gateway.
 
 Here is how to create two tunnels connecting interface 0 to interface 0 and interface 1 to interface 1:
 
@@ -250,4 +252,4 @@ If your tunnels are not coming up, check these common issues:
 
 Setting up HA VPN between two GCP VPCs is a reliable way to establish encrypted, dynamically-routed connectivity. The key ingredients are paired HA VPN gateways, Cloud Routers with BGP, and properly configured tunnels on both sides. Once the BGP sessions are up, routes propagate automatically, and you get failover between the redundant tunnels without any manual intervention.
 
-For production environments, always configure tunnels on both interfaces of each gateway to qualify for the 99.99% SLA. And remember to use strong, unique shared secrets for each tunnel pair.
+For production environments, deploy both HA VPN gateways in the same region and configure tunnels on both interfaces of each gateway to qualify for the 99.99% SLA. And remember to use strong, unique shared secrets for each tunnel pair.
