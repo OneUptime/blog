@@ -34,7 +34,7 @@ The triggerer is a separate process in Cloud Composer 2 that runs many triggers 
 
 ## Enabling Deferrable Operators in Cloud Composer 2
 
-Cloud Composer 2 supports deferrable operators out of the box. The triggerer runs automatically when you have deferrable tasks.
+Cloud Composer 2 supports deferrable operators when the environment has at least one triggerer instance configured.
 
 Check that your Cloud Composer 2 environment has the triggerer enabled:
 
@@ -114,7 +114,7 @@ with DAG(
         task_id="check_row_count",
         sql="""
             SELECT COUNT(*) > 0
-            FROM `my-project.analytics.daily_events`
+            FROM `my-project.analytics.daily_events${{ ds_nodash }}`
             WHERE event_date = '{{ ds }}'
         """,
         use_legacy_sql=False,
@@ -263,10 +263,10 @@ with DAG(
 
 ## Writing Custom Deferrable Operators
 
-If you need a deferrable operator for a custom service, write your own:
+If you need a deferrable operator for a custom service, write your own. In Cloud Composer 2, package custom triggers as a PyPI dependency because the `dags/` and `/plugins` folders are not synchronized to the triggerer:
 
 ```python
-# plugins/custom_operators/deferrable_api_operator.py
+# custom_operators/deferrable_api_operator.py
 # Custom deferrable operator that monitors an external API job
 from airflow.models import BaseOperator
 from airflow.triggers.base import BaseTrigger, TriggerEvent
@@ -358,18 +358,18 @@ class DeferrableAPIJobOperator(BaseOperator):
 
 ## Monitoring Deferrable Task Performance
 
-Check how much you are saving by monitoring worker utilization:
+Check deferred task state and triggerer health from Airflow and the Cloud Composer monitoring dashboard:
 
 ```bash
-# View the triggerer logs in Cloud Composer
+# List recent DAG runs so you can pick the run_id to inspect
 gcloud composer environments run my-composer-env \
   --location=us-central1 \
-  tasks list -- --all
+  dags list-runs -- --dag-id my_dag
 
-# Check how many tasks are currently deferred
+# Check task states for a specific DAG run
 gcloud composer environments run my-composer-env \
   --location=us-central1 \
-  tasks states-for-dag-run -- my_dag "2026-02-17"
+  tasks states-for-dag-run -- my_dag "scheduled__2026-02-17T00:00:00+00:00"
 ```
 
 ## Comparing Resource Usage
@@ -384,6 +384,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.models import TaskInstance
 from airflow.utils.session import provide_session
+from airflow.utils.state import TaskInstanceState
 
 @provide_session
 def report_deferred_stats(session=None, **context):
@@ -396,7 +397,7 @@ def report_deferred_stats(session=None, **context):
             TaskInstance.state,
             func.count(TaskInstance.state),
         )
-        .filter(TaskInstance.execution_date >= context["ds"])
+        .filter(TaskInstance.state == TaskInstanceState.DEFERRED)
         .group_by(TaskInstance.state)
         .all()
     )
