@@ -67,9 +67,13 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use OpenTelemetry\API\Globals;
+use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use OpenTelemetry\API\Trace\TracerInterface;
+use OpenTelemetry\SDK\Sdk;
 use OpenTelemetry\SDK\Trace\TracerProvider;
 use OpenTelemetry\SDK\Trace\SpanProcessor\BatchSpanProcessor;
+use OpenTelemetry\SDK\Trace\Sampler\ParentBased;
+use OpenTelemetry\SDK\Trace\Sampler\TraceIdRatioBasedSampler;
 use OpenTelemetry\SDK\Resource\ResourceInfo;
 use OpenTelemetry\SDK\Resource\ResourceInfoFactory;
 use OpenTelemetry\SDK\Common\Attribute\Attributes;
@@ -102,8 +106,8 @@ class OpenTelemetryServiceProvider extends ServiceProvider
             ResourceInfo::create(Attributes::create([
                 ResourceAttributes::SERVICE_NAME => config('telemetry.service_name'),
                 ResourceAttributes::SERVICE_VERSION => config('app.version', '1.0.0'),
-                ResourceAttributes::DEPLOYMENT_ENVIRONMENT => config('app.env'),
-                'host.name' => gethostname(),
+                ResourceAttributes::DEPLOYMENT_ENVIRONMENT_NAME => config('app.env'),
+                ResourceAttributes::HOST_NAME => gethostname(),
             ]))
         );
 
@@ -118,18 +122,23 @@ class OpenTelemetryServiceProvider extends ServiceProvider
         $exporter = new SpanExporter($transport);
 
         // Use batch processing for better performance
-        $spanProcessor = new BatchSpanProcessor($exporter);
+        $spanProcessor = BatchSpanProcessor::builder($exporter)->build();
 
         // Build the tracer provider
         $tracerProvider = TracerProvider::builder()
             ->setResource($resource)
             ->addSpanProcessor($spanProcessor)
+            ->setSampler(new ParentBased(
+                new TraceIdRatioBasedSampler((float) config('telemetry.sampling_rate', 1.0))
+            ))
             ->build();
 
         // Register globally so auto-instrumentation picks it up
-        Globals::registerInitializer(function () use ($tracerProvider) {
-            return $tracerProvider;
-        });
+        Sdk::builder()
+            ->setTracerProvider($tracerProvider)
+            ->setPropagator(TraceContextPropagator::getInstance())
+            ->setAutoShutdown(true)
+            ->buildAndRegisterGlobal();
     }
 }
 ```
@@ -382,8 +391,9 @@ flowchart TD
 ```bash
 # Enable OpenTelemetry
 OTEL_ENABLED=true
+OTEL_PHP_AUTOLOAD_ENABLED=true
 OTEL_SERVICE_NAME="my-laravel-api"
-OTEL_EXPORTER_OTLP_ENDPOINT="https://otel.oneuptime.com"
+OTEL_EXPORTER_OTLP_ENDPOINT="https://oneuptime.com/otlp"
 ONEUPTIME_TOKEN="your-project-token"
 OTEL_SAMPLING_RATE=0.5
 ```
