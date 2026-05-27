@@ -19,7 +19,7 @@ Pub/Sub sits between Cloud Logging and whatever you want to do with the logs. It
 - **Real-time delivery**: Logs are forwarded to Pub/Sub within seconds of being ingested by Cloud Logging
 - **Decoupled processing**: Multiple subscribers can process the same logs independently
 - **Integration flexibility**: Connect to Cloud Functions, Cloud Run, Dataflow, or external systems
-- **Buffering**: Pub/Sub holds messages for up to 31 days if your subscriber is temporarily down
+- **Buffering**: Pub/Sub retains unacknowledged messages for a subscription, with retention configurable up to 31 days
 
 Common use cases include:
 
@@ -68,7 +68,7 @@ Route only security-related logs:
 # Route audit logs and IAM-related logs
 gcloud logging sinks create pubsub-security-logs \
   pubsub.googleapis.com/projects/my-project/topics/security-logs \
-  --log-filter='logName:"cloudaudit.googleapis.com" OR logName:"iam.googleapis.com"' \
+  --log-filter='logName:"cloudaudit.googleapis.com" OR protoPayload.serviceName="iam.googleapis.com"' \
   --project=my-project
 ```
 
@@ -227,7 +227,7 @@ graph LR
     D --> G[Send Alerts]
 ```
 
-You can use the built-in Pub/Sub to BigQuery template:
+You can use the built-in Pub/Sub to BigQuery template. Make sure the BigQuery table already exists and its schema matches the JSON log entries:
 
 ```bash
 # Run a Dataflow template to stream Pub/Sub messages to BigQuery
@@ -268,6 +268,8 @@ resource "google_pubsub_topic" "log_export" {
   message_retention_duration = "604800s"  # 7 days
 }
 
+data "google_project" "current" {}
+
 # Subscription for log processing
 resource "google_pubsub_subscription" "log_processor" {
   name  = "log-processor"
@@ -290,6 +292,19 @@ resource "google_pubsub_subscription" "log_processor" {
 # Dead letter topic for failed messages
 resource "google_pubsub_topic" "dead_letter" {
   name = "log-export-dead-letter"
+}
+
+# Pub/Sub needs these roles to forward messages to the dead letter topic
+resource "google_pubsub_topic_iam_member" "dead_letter_publisher" {
+  topic  = google_pubsub_topic.dead_letter.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+resource "google_pubsub_subscription_iam_member" "dead_letter_subscriber" {
+  subscription = google_pubsub_subscription.log_processor.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 
 # Log sink to Pub/Sub
