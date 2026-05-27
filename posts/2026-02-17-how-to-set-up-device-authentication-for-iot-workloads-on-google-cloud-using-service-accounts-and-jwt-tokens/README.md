@@ -25,7 +25,7 @@ For most IoT deployments, option 3 (custom JWT with a token exchange service) of
 
 ## Prerequisites
 
-- GCP project with IAM and Pub/Sub APIs enabled
+- GCP project with IAM, IAM Service Account Credentials, and Pub/Sub APIs enabled
 - OpenSSL for certificate generation
 - Python 3.8+ on both the server and device side
 - A Cloud Run or Cloud Functions deployment for the token service
@@ -50,6 +50,16 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:iot-devices@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/pubsub.subscriber"
+
+# Create a separate service account for the token service
+gcloud iam service-accounts create iot-token-broker \
+  --display-name="IoT Token Broker"
+
+# Allow the token service to generate short-lived credentials for the device service account
+gcloud iam service-accounts add-iam-policy-binding \
+  iot-devices@YOUR_PROJECT_ID.iam.gserviceaccount.com \
+  --member="serviceAccount:iot-token-broker@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountTokenCreator"
 ```
 
 ## Step 2: Generate Device Certificates
@@ -80,19 +90,19 @@ This Cloud Function acts as your authentication server. Devices send a JWT signe
 
 import json
 import jwt
-import time
 from google.cloud import firestore
-from google.auth import credentials
-from google.oauth2 import service_account
-import google.auth.transport.requests
+from google.cloud import iam_credentials_v1
+from google.protobuf import duration_pb2
 import functions_framework
 
 # Initialize Firestore for device registry
 db = firestore.Client()
+iam_client = iam_credentials_v1.IAMCredentialsClient()
 
 # The service account whose identity devices will assume
 # This service account has the Pub/Sub permissions
 TARGET_SA_EMAIL = "iot-devices@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+JWT_AUDIENCE = "gcp-iot-auth"
 
 def get_device_public_key(device_id):
     """Retrieves the registered public key for a device from Firestore.
@@ -105,15 +115,15 @@ def get_device_public_key(device_id):
 def generate_access_token():
     """Generates a short-lived OAuth2 access token for the device service account.
     The token expires in 1 hour."""
-    # Load the service account credentials
-    sa_credentials = service_account.Credentials.from_service_account_file(
-        "service-account-key.json",
+    response = iam_client.generate_access_token(
+        name=f"projects/-/serviceAccounts/{TARGET_SA_EMAIL}",
         scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        lifetime=duration_pb2.Duration(seconds=3600),
     )
-    # Use the credentials to get an access token
-    request = google.auth.transport.requests.Request()
-    sa_credentials.refresh(request)
-    return sa_credentials.token, sa_credentials.expiry.isoformat()
+    expiry = response.expire_time
+    if hasattr(expiry, "ToDatetime"):
+        expiry = expiry.ToDatetime()
+    return response.access_token, expiry.isoformat()
 
 @functions_framework.http
 def authenticate_device(request):
@@ -125,14 +135,17 @@ def authenticate_device(request):
     """
     try:
         # Extract the device JWT from the request
-        body = request.get_json()
+        body = request.get_json(silent=True) or {}
         device_jwt = body.get("token")
 
         if not device_jwt:
             return json.dumps({"error": "Missing token"}), 400
 
-        # Decode the JWT header to get the device ID (without verification first)
-        unverified = jwt.decode(device_jwt, options={"verify_signature": False})
+        # Decode the JWT payload to get the device ID (without verification first)
+        unverified = jwt.decode(
+            device_jwt,
+            options={"verify_signature": False, "verify_aud": False},
+        )
         device_id = unverified.get("sub")
 
         if not device_id:
@@ -144,13 +157,13 @@ def authenticate_device(request):
             return json.dumps({"error": "Device not registered"}), 403
 
         # Now verify the JWT signature with the registered public key
-        payload = jwt.verify(
+        payload = jwt.decode(
             device_jwt,
             public_key_pem,
             algorithms=["ES256"],
+            audience=JWT_AUDIENCE,
             options={
-                "verify_exp": True,
-                "verify_iat": True,
+                "require": ["sub", "iat", "exp", "aud"],
             },
         )
 
@@ -182,6 +195,7 @@ gcloud functions deploy authenticate-device \
   --allow-unauthenticated \
   --region=us-central1 \
   --source=. \
+  --service-account=iot-token-broker@YOUR_PROJECT_ID.iam.gserviceaccount.com \
   --entry-point=authenticate_device
 ```
 
@@ -227,6 +241,7 @@ import jwt
 import time
 import requests
 import json
+from datetime import datetime
 
 # Device identity
 DEVICE_ID = "device-001"
@@ -276,7 +291,9 @@ class DeviceAuth:
         if response.status_code == 200:
             data = response.json()
             self.access_token = data["access_token"]
-            self.token_expiry = time.time() + 3500  # Roughly 1 hour
+            self.token_expiry = datetime.fromisoformat(
+                data["expires_at"].replace("Z", "+00:00")
+            ).timestamp()
             return self.access_token
         else:
             raise Exception(f"Auth failed: {response.text}")
@@ -310,7 +327,7 @@ def publish_telemetry(data):
 - Rotate access tokens every hour
 - Implement device revocation by removing the public key from Firestore
 - Monitor for unusual authentication patterns using Cloud Logging
-- Use VPC Service Controls to restrict Pub/Sub access to your project's network
+- Use VPC Service Controls to restrict Pub/Sub API access with a service perimeter
 
 ## Wrapping Up
 
