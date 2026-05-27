@@ -21,6 +21,12 @@ RHEL requires an active subscription for package installation. Make sure your se
 rhel-web01 ansible_host=10.0.1.10
 rhel-db01  ansible_host=10.0.1.20
 
+[web]
+rhel-web01
+
+[db]
+rhel-db01
+
 [rhel9:vars]
 ansible_user=admin
 ansible_python_interpreter=/usr/bin/python3
@@ -167,6 +173,7 @@ RHEL has SELinux enforcing by default. Never disable it; instead, configure it p
         zone: public
         service: "{{ item }}"
         permanent: true
+        immediate: true
         state: enabled
       loop:
         - ssh
@@ -178,6 +185,7 @@ RHEL has SELinux enforcing by default. Never disable it; instead, configure it p
         zone: public
         port: "{{ item }}"
         permanent: true
+        immediate: true
         state: enabled
       loop:
         - "8080/tcp"
@@ -223,9 +231,14 @@ RHEL has SELinux enforcing by default. Never disable it; instead, configure it p
         - { key: 'fs.file-max', value: '2097152' }
         - { key: 'vm.swappiness', value: '10' }
 
-    - name: Configure system-wide crypto policy
-      ansible.builtin.command: update-crypto-policies --set DEFAULT:NO-SHA1
+    - name: Check system-wide crypto policy
+      ansible.builtin.command: update-crypto-policies --show
+      register: crypto_policy
       changed_when: false
+
+    - name: Configure system-wide crypto policy
+      ansible.builtin.command: update-crypto-policies --set DEFAULT
+      when: crypto_policy.stdout != "DEFAULT"
 
     - name: Harden SSH
       ansible.builtin.lineinfile:
@@ -331,6 +344,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.posix.firewalld:
         port: "{{ item }}/tcp"
         permanent: true
+        immediate: true
         state: enabled
       loop:
         - "22"
@@ -447,4 +461,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
