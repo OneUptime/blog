@@ -14,7 +14,7 @@ I moved several ETL jobs from persistent Dataproc clusters to Serverless and the
 
 ## How Dataproc Serverless Works
 
-When you submit a batch job to Dataproc Serverless, Google allocates Spark executors from a shared pool. Your job runs in its own isolated environment with its own Spark configuration. When the job completes, all resources are released. There is no cluster to manage, no nodes to monitor, and no idle costs.
+When you submit a batch job to Dataproc Serverless, Google allocates Spark executors on managed compute infrastructure. Your job runs in its own isolated environment with its own Spark configuration. When the job completes, all resources are released. There is no cluster to manage, no nodes to monitor, and no idle costs.
 
 The trade-off is a cold start delay of about 30-60 seconds while resources are allocated. For batch jobs that run for minutes or hours, this is negligible. For interactive queries, you might still want a persistent cluster.
 
@@ -112,7 +112,7 @@ gcloud dataproc batches submit pyspark \
   gs://my-bucket/scripts/daily_etl.py \
   --region=us-central1 \
   --subnet=default \
-  --version=2.1 \
+  --version=2.3 \
   --properties="spark.executor.instances=10,spark.executor.cores=4,spark.executor.memory=8g,spark.driver.memory=4g" \
   -- --input-path=gs://my-bucket/raw/2026-02-17/ \
      --output-table=my-project.analytics.daily_summary \
@@ -144,30 +144,23 @@ spark.dynamicAllocation.maxExecutors=50" \
      --date=2026-02-17
 ```
 
-## Adding Python Dependencies
+## Adding Python Files and Dependencies
 
-If your PySpark job needs external Python packages, bundle them:
+If your PySpark job needs your own Python modules, bundle them:
 
 ```bash
-# Option 1: Use a requirements file
-# Create a requirements.txt with your dependencies
-echo "pandas==2.1.0
-pyarrow==14.0.0
-requests==2.31.0" > requirements.txt
-
-# Submit with the requirements file
+# Option 1: Use --py-files for your own .py, .egg, or .zip modules
 gcloud dataproc batches submit pyspark \
   gs://my-bucket/scripts/daily_etl.py \
   --region=us-central1 \
   --subnet=default \
   --deps-bucket=gs://my-bucket/dependencies \
   --py-files=gs://my-bucket/libs/my_utils.zip \
-  --properties="spark.pyspark.python=python3" \
-  --pip-packages="pandas==2.1.0,pyarrow==14.0.0"
+  --properties="spark.pyspark.python=python3"
 ```
 
 ```bash
-# Option 2: Use a custom container image for complex dependencies
+# Option 2: Use a custom container image for third-party packages
 # Build a custom image with all your dependencies baked in
 gcloud dataproc batches submit pyspark \
   gs://my-bucket/scripts/daily_etl.py \
@@ -183,18 +176,9 @@ You can run Spark SQL directly without writing Python:
 ```bash
 # Submit a Spark SQL batch job
 gcloud dataproc batches submit spark-sql \
+  gs://my-bucket/sql/daily_summary.sql \
   --region=us-central1 \
-  --subnet=default \
-  --query="
-    SELECT
-      DATE(timestamp) AS event_date,
-      category,
-      COUNT(*) AS event_count,
-      SUM(amount) AS total_amount
-    FROM parquet.\`gs://my-bucket/raw/2026-02-17/*.parquet\`
-    GROUP BY DATE(timestamp), category
-    ORDER BY total_amount DESC
-  "
+  --subnet=default
 ```
 
 ## Scheduling Serverless Jobs
@@ -226,7 +210,7 @@ def trigger_etl(request):
         ],
     )
     batch.runtime_config = dataproc_v1.RuntimeConfig(
-        version="2.1",
+        version="2.3",
         properties={
             "spark.executor.instances": "10",
             "spark.executor.memory": "8g",
@@ -300,14 +284,14 @@ list_recent_batches("my-project", "us-central1")
 Serverless Spark charges by the Dataproc Compute Unit (DCU) per second. Here are ways to minimize costs:
 
 ```bash
-# Use spot/preemptible executors for fault-tolerant jobs
+# Cap autoscaling for predictable costs
 gcloud dataproc batches submit pyspark \
   gs://my-bucket/scripts/daily_etl.py \
   --region=us-central1 \
   --subnet=default \
   --properties="\
-spark.dataproc.executor.spot.ratio=0.8,\
-spark.executor.instances=20" \
+spark.dynamicAllocation.minExecutors=2,\
+spark.dynamicAllocation.maxExecutors=20" \
   -- --input-path=gs://my-bucket/raw/2026-02-17/
 ```
 
@@ -327,4 +311,4 @@ spark.sql.adaptive.advisoryPartitionSizeInBytes=128m"
 
 ## Summary
 
-Dataproc Serverless removes the cluster management overhead from Spark workloads. Submit your PySpark, Spark SQL, or Spark Java jobs, and Google handles provisioning, scaling, and cleanup. The cold start adds about 30-60 seconds, which is negligible for batch jobs. Configure Spark properties for performance tuning, use custom container images for complex dependencies, and schedule jobs through Cloud Functions or Workflows. For cost optimization, enable dynamic allocation and Adaptive Query Execution, and consider spot executors for fault-tolerant workloads. The biggest win is operational - no more forgotten clusters running over the weekend.
+Dataproc Serverless removes the cluster management overhead from Spark workloads. Submit your PySpark, Spark SQL, or Spark Java jobs, and Google handles provisioning, scaling, and cleanup. The cold start adds about 30-60 seconds, which is negligible for batch jobs. Configure Spark properties for performance tuning, use custom container images for complex dependencies, and schedule jobs through Cloud Functions or Workflows. For cost optimization, enable dynamic allocation, cap maximum executors for predictable spend, and use Adaptive Query Execution. The biggest win is operational - no more forgotten clusters running over the weekend.
