@@ -37,7 +37,6 @@ Start by deploying the new model alongside the existing production model with a 
 # canary/deploy_canary.py
 
 from google.cloud import aiplatform
-import json
 
 class CanaryDeployer:
     """Manages canary deployments for ML models on Vertex AI."""
@@ -61,18 +60,23 @@ class CanaryDeployer:
         current_state = self._capture_state(endpoint)
 
         # Deploy the canary model
-        new_model.deploy(
+        canary_display_name = f"canary-{new_model.resource_name.split('/')[-1]}"
+        endpoint = new_model.deploy(
             endpoint=endpoint,
-            deployed_model_display_name=f"canary-{new_model.version_id}",
+            deployed_model_display_name=canary_display_name,
             machine_type=machine_type,
             min_replica_count=1,
             max_replica_count=3,
             traffic_percentage=initial_traffic_pct,
         )
 
+        canary_model = self._find_canary_model(endpoint, canary_display_name)
+
         deployment_info = {
             "endpoint_id": endpoint_id,
             "canary_model": new_model_resource,
+            "canary_deployed_model_id": canary_model.id,
+            "production_deployed_model_ids": list(current_state.keys()),
             "canary_traffic_pct": initial_traffic_pct,
             "previous_state": current_state,
             "status": "active",
@@ -91,6 +95,13 @@ class CanaryDeployer:
                 "model": dm.model,
             }
         return state
+
+    def _find_canary_model(self, endpoint, canary_display_name):
+        """Find the newly deployed canary model on the endpoint."""
+        for dm in endpoint.list_models():
+            if dm.display_name == canary_display_name:
+                return dm
+        raise RuntimeError("Canary model was not found after deployment")
 ```
 
 ## Step 2: Monitor Canary Health
@@ -107,9 +118,11 @@ class CanaryHealthMonitor:
     """Monitors the health of a canary deployment by comparing
     metrics against the production model."""
 
-    def __init__(self, project_id, endpoint_id):
+    def __init__(self, project_id, endpoint_id, canary_model_id, production_model_id):
         self.project_id = project_id
         self.endpoint_id = endpoint_id
+        self.canary_model_id = canary_model_id
+        self.production_model_id = production_model_id
         self.monitoring_client = monitoring_v3.MetricServiceClient()
         self.bq_client = bigquery.Client()
 
@@ -123,16 +136,16 @@ class CanaryHealthMonitor:
         })
 
         # Get error rates for both models
-        canary_errors = self._get_error_rate("canary", interval)
-        prod_errors = self._get_error_rate("production", interval)
+        canary_errors = self._get_error_rate(self.canary_model_id, interval)
+        prod_errors = self._get_error_rate(self.production_model_id, interval)
 
         # Get latency for both models
-        canary_latency = self._get_latency("canary", interval)
-        prod_latency = self._get_latency("production", interval)
+        canary_latency = self._get_latency(self.canary_model_id, interval)
+        prod_latency = self._get_latency(self.production_model_id, interval)
 
         # Get prediction accuracy if ground truth is available
-        canary_accuracy = self._get_accuracy("canary", window_minutes)
-        prod_accuracy = self._get_accuracy("production", window_minutes)
+        canary_accuracy = self._get_accuracy(self.canary_model_id, window_minutes)
+        prod_accuracy = self._get_accuracy(self.production_model_id, window_minutes)
 
         health = {
             "canary_error_rate": canary_errors,
@@ -169,14 +182,52 @@ class CanaryHealthMonitor:
 
         return health
 
-    def _get_error_rate(self, model_type, interval):
+    def _get_error_rate(self, deployed_model_id, interval):
         """Get the error rate for a specific deployed model."""
-        project_name = f"projects/{self.project_id}"
+        try:
+            errors = self._get_metric_count(
+                "aiplatform.googleapis.com/prediction/online/error_count",
+                deployed_model_id,
+                interval,
+            )
+            total = self._get_metric_count(
+                "aiplatform.googleapis.com/prediction/online/prediction_count",
+                deployed_model_id,
+                interval,
+            )
+            return errors / max(total, 1)
+        except Exception as e:
+            print(f"Error fetching metrics: {e}")
+            return 0.0
 
-        # Query error count
+    def _get_metric_count(self, metric_type, deployed_model_id, interval):
+        """Get a count metric for one deployed model."""
+        project_name = f"projects/{self.project_id}"
         filter_str = (
-            'metric.type="aiplatform.googleapis.com/prediction/online/error_count" '
-            f'AND resource.labels.endpoint_id="{self.endpoint_id}"'
+            f'metric.type="{metric_type}" '
+            f'AND resource.labels.endpoint_id="{self.endpoint_id}" '
+            f'AND metric.labels.deployed_model_id="{deployed_model_id}"'
+        )
+
+        results = self.monitoring_client.list_time_series(
+            request={
+                "name": project_name,
+                "filter": filter_str,
+                "interval": interval,
+                "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
+            }
+        )
+
+        return sum(p.value.int64_value for s in results for p in s.points)
+
+    def _get_latency(self, deployed_model_id, interval):
+        """Get p95 latency for a deployed model."""
+        project_name = f"projects/{self.project_id}"
+        filter_str = (
+            'metric.type="aiplatform.googleapis.com/prediction/online/prediction_latencies" '
+            f'AND resource.labels.endpoint_id="{self.endpoint_id}" '
+            f'AND metric.labels.deployed_model_id="{deployed_model_id}" '
+            'AND metric.labels.latency_type="total"'
         )
 
         try:
@@ -186,55 +237,49 @@ class CanaryHealthMonitor:
                     "filter": filter_str,
                     "interval": interval,
                     "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
+                    "aggregation": {
+                        "alignment_period": {"seconds": 60},
+                        "per_series_aligner": monitoring_v3.Aggregation.Aligner.ALIGN_PERCENTILE_95,
+                    },
                 }
             )
 
-            errors = sum(p.value.int64_value for s in results for p in s.points)
-
-            # Query total prediction count
-            pred_filter = (
-                'metric.type="aiplatform.googleapis.com/prediction/online/prediction_count" '
-                f'AND resource.labels.endpoint_id="{self.endpoint_id}"'
-            )
-
-            pred_results = self.monitoring_client.list_time_series(
-                request={
-                    "name": project_name,
-                    "filter": pred_filter,
-                    "interval": interval,
-                    "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
-                }
-            )
-
-            total = sum(p.value.int64_value for s in pred_results for p in s.points)
-
-            return errors / max(total, 1)
+            values = [
+                p.value.double_value
+                for series in results
+                for p in series.points
+                if p.value.double_value
+            ]
+            return max(values) if values else 0.0
         except Exception as e:
-            print(f"Error fetching metrics: {e}")
+            print(f"Error fetching latency metrics: {e}")
             return 0.0
 
-    def _get_latency(self, model_type, interval):
-        """Get p95 latency for a deployed model."""
-        # Simplified - in practice, filter by deployed_model_id
-        return 0.0  # Placeholder
-
-    def _get_accuracy(self, model_type, window_minutes):
+    def _get_accuracy(self, deployed_model_id, window_minutes):
         """Get accuracy from prediction logs joined with ground truth."""
         query = f"""
         SELECT
             ROUND(
                 COUNTIF(
-                    JSON_EXTRACT_SCALAR(p.response, '$.predictions[0].class') = g.actual_label
+                    JSON_EXTRACT_SCALAR(response_json, '$.predictions[0].class') = g.actual_label
                 ) / NULLIF(COUNT(*), 0), 4
             ) as accuracy
         FROM ml_monitoring.prediction_logs p
+        CROSS JOIN UNNEST(p.response_payload) AS response_json
         JOIN ml_monitoring.ground_truth g ON p.request_id = g.request_id
         WHERE p.logging_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {window_minutes} MINUTE)
-        AND p.deployed_model_display_name LIKE '%{model_type}%'
+        AND p.deployed_model_id = @deployed_model_id
         """
 
         try:
-            result = list(self.bq_client.query(query).result())
+            job_config = bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter(
+                        "deployed_model_id", "STRING", deployed_model_id
+                    )
+                ]
+            )
+            result = list(self.bq_client.query(query, job_config=job_config).result())
             if result and result[0]["accuracy"] is not None:
                 return float(result[0]["accuracy"])
         except Exception:
@@ -313,19 +358,19 @@ class CanaryTrafficManager:
         deployed_models = endpoint.list_models()
 
         canary_id = None
-        prod_id = None
+        prod_ids = []
 
         for dm in deployed_models:
             if "canary" in dm.display_name:
                 canary_id = dm.id
             else:
-                prod_id = dm.id
+                prod_ids.append(dm.id)
 
-        if canary_id and prod_id:
-            traffic_split = {
-                canary_id: canary_pct,
-                prod_id: 100 - canary_pct,
-            }
+        if canary_id and prod_ids:
+            prod_pct = (100 - canary_pct) // len(prod_ids)
+            traffic_split = {prod_id: prod_pct for prod_id in prod_ids}
+            traffic_split[prod_ids[0]] += (100 - canary_pct) - sum(traffic_split.values())
+            traffic_split[canary_id] = canary_pct
             endpoint.update(traffic_split=traffic_split)
             print(f"Traffic split: canary={canary_pct}%, production={100 - canary_pct}%")
 
@@ -336,11 +381,13 @@ class CanaryTrafficManager:
         for dm in deployed_models:
             if "canary" in dm.display_name:
                 # First route all traffic away
-                prod_models = {
-                    d.id: 100 for d in deployed_models if "canary" not in d.display_name
-                }
-                prod_models[dm.id] = 0
-                endpoint.update(traffic_split=prod_models)
+                prod_ids = [
+                    d.id for d in deployed_models if "canary" not in d.display_name
+                ]
+                prod_pct = 100 // len(prod_ids)
+                traffic_split = {prod_id: prod_pct for prod_id in prod_ids}
+                traffic_split[prod_ids[0]] += 100 - sum(traffic_split.values())
+                endpoint.update(traffic_split=traffic_split)
 
                 # Then undeploy the canary
                 time.sleep(60)  # Wait for traffic to drain
@@ -358,7 +405,6 @@ class CanaryTrafficManager:
                 canary_models = {
                     d.id: 100 for d in deployed_models if "canary" in d.display_name
                 }
-                canary_models[dm.id] = 0
                 endpoint.update(traffic_split=canary_models)
 
                 time.sleep(300)  # 5 minute grace period
@@ -393,7 +439,12 @@ def run_canary_deployment(
     )
 
     # Step 2: Set up health monitoring
-    monitor = CanaryHealthMonitor(project_id, endpoint_id)
+    monitor = CanaryHealthMonitor(
+        project_id,
+        endpoint_id,
+        canary_model_id=deployment["canary_deployed_model_id"],
+        production_model_id=deployment["production_deployed_model_ids"][0],
+    )
 
     # Step 3: Run progressive rollout
     manager = CanaryTrafficManager(project_id)
