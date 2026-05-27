@@ -75,7 +75,7 @@ spec:
   # Advertise Kubernetes service ClusterIPs
   serviceClusterIPs:
     - cidr: 10.96.0.0/12
-  # Advertise Kubernetes service ExternalIPs (MetalLB assigns these)
+  # Advertise Kubernetes service ExternalIPs if you use them
   serviceExternalIPs:
     - cidr: 192.168.1.200/29
   # Advertise LoadBalancer IPs
@@ -101,7 +101,7 @@ spec:
   nodeSelector: all()
 ```
 
-### Step 3: Use MetalLB in L2 Mode Only or Disable MetalLB BGP
+### Step 3: Use MetalLB for IP Allocation Only
 
 If you still want MetalLB for IP allocation, run it without BGP. MetalLB can allocate IPs while Calico handles the BGP advertisement:
 
@@ -116,16 +116,16 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - 192.168.1.200-192.168.1.210
-  # Do not auto-assign; let services request specific IPs
+    - 192.168.1.200-192.168.1.207
+  # Allow MetalLB to auto-assign IPs from this pool
   autoAssign: true
 ```
 
-Do NOT create a BGPAdvertisement resource for MetalLB. Without it, MetalLB assigns IPs but does not advertise them. Calico picks up the service IPs and advertises them via its BGP sessions.
+Do NOT create a BGPAdvertisement or L2Advertisement resource for MetalLB. Without an advertisement resource, MetalLB assigns IPs but does not advertise them. Calico picks up the service IPs and advertises them via its BGP sessions.
 
 ## Option 2: Split BGP Responsibilities
 
-If you need both Calico and MetalLB to run BGP, give them different AS numbers and peer with different routers (or different router interfaces).
+If you need both Calico and MetalLB to run BGP, use distinct BGP sessions by giving them different AS numbers and peering with different routers, different router interfaces, or different source addresses that your router is configured to accept.
 
 ```mermaid
 flowchart TD
@@ -154,7 +154,7 @@ spec:
   myASN: 64513
   # Peer with the router
   peerASN: 64514
-  # Use a different router IP or interface
+  # Use a different router IP, interface, or accepted source-address pairing
   peerAddress: 192.168.1.2
 ---
 apiVersion: metallb.io/v1beta1
@@ -187,11 +187,11 @@ spec:
 
 ## Option 3: Disable Calico BGP Entirely
 
-If you only need MetalLB for external service IPs and do not need direct pod routing from outside the cluster, disable Calico's BGP:
+If you only need MetalLB for external service IPs and do not need direct pod routing from outside the cluster, use Calico VXLAN networking and disable Calico's BGP backend:
 
 ```yaml
 # calico-config.yaml
-# Disable Calico BGP by switching to VXLAN mode.
+# Use VXLAN instead of BGP for pod networking.
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -204,7 +204,7 @@ spec:
   natOutgoing: true
 ```
 
-With Calico in VXLAN mode, it does not run a BGP speaker, so MetalLB has no conflict.
+If you use only VXLAN pools, BGP is not required for pod networking. For manifest-based Calico installations, also set the `calico_backend` setting to `vxlan` and disable the BGP readiness check so Calico does not run a BGP speaker.
 
 ## Verifying BGP Sessions
 
@@ -238,7 +238,7 @@ kubectl logs -n metallb-system -l component=speaker --tail=50 | grep -i bgp
 # For a Linux router with FRRouting:
 vtysh -c "show bgp ipv4 unicast"
 
-# You should see pod CIDRs from Calico and service IPs from MetalLB
+# You should see pod CIDRs from Calico and service IPs from the component advertising them
 ```
 
 ## Decision Matrix
@@ -259,10 +259,10 @@ flowchart TD
 
 ## Common Mistakes to Avoid
 
-1. **Same AS number** - Never give Calico and MetalLB the same AS number when both run BGP
-2. **Same peer** - Avoid peering both with the same router IP unless you use different AS numbers
+1. **Same AS number** - Do not rely on changing only the AS number to separate Calico and MetalLB sessions; make sure the router sees distinct, supported BGP peers
+2. **Same peer** - Avoid peering both with the same router IP from the same node IP unless your router is explicitly configured for distinct sessions
 3. **Forgetting serviceLoadBalancerIPs** - When using Option 1, you must configure Calico to advertise the LoadBalancer IP range
-4. **Port conflicts** - Both speakers default to TCP port 179 for BGP. Using different routers avoids this
+4. **Peer port assumptions** - BGP peers normally listen on TCP port 179. Changing routers, interfaces, source addresses, or peer ports must match the router configuration
 5. **Not testing failover** - Always test that failover works correctly when a node goes down
 
 ## Troubleshooting
