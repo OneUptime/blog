@@ -20,7 +20,7 @@ There are several Terraform testing tools available. Here is why Terratest stand
 - **Go-based** - Full programming language for assertions, not limited to HCL
 - **Retry logic** - Built-in functions for handling eventual consistency
 - **HTTP helpers** - Test HTTP endpoints created by your infrastructure
-- **Parallel tests** - Run tests concurrently with automatic resource isolation
+- **Parallel tests** - Run tests concurrently when you use unique names and isolated state
 
 ## Setting Up
 
@@ -44,8 +44,8 @@ Initialize the Go module for tests:
 cd modules/cloud-run/test
 go mod init test
 go get github.com/gruntwork-io/terratest/modules/terraform
-go get github.com/gruntwork-io/terratest/modules/gcp
 go get github.com/gruntwork-io/terratest/modules/http-helper
+go get github.com/gruntwork-io/terratest/modules/shell
 go get github.com/stretchr/testify/assert
 ```
 
@@ -63,17 +63,17 @@ import (
     "testing"
     "time"
 
-    "github.com/gruntwork-io/terratest/modules/gcp"
     httpHelper "github.com/gruntwork-io/terratest/modules/http-helper"
     "github.com/gruntwork-io/terratest/modules/random"
+    "github.com/gruntwork-io/terratest/modules/shell"
     "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/require"
 )
 
 // TestCloudRunServiceCreation verifies that the module creates a working Cloud Run service
 func TestCloudRunServiceCreation(t *testing.T) {
     t.Parallel()
+    skipIfShort(t)
 
     // Use a unique name to avoid conflicts with parallel tests
     uniqueID := random.UniqueId()
@@ -146,12 +146,11 @@ Verify that IAM bindings are applied correctly.
 // TestCloudRunIAMBindings verifies that IAM policies are set correctly
 func TestCloudRunIAMBindings(t *testing.T) {
     t.Parallel()
+    skipIfShort(t)
 
     uniqueID := random.UniqueId()
     serviceName := fmt.Sprintf("test-iam-%s", strings.ToLower(uniqueID))
     projectID := os.Getenv("GCP_PROJECT_ID")
-
-    testSA := fmt.Sprintf("serviceAccount:test-sa@%s.iam.gserviceaccount.com", projectID)
 
     terraformOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
         TerraformDir: "../",
@@ -161,7 +160,7 @@ func TestCloudRunIAMBindings(t *testing.T) {
             "service_name":           serviceName,
             "image":                  "gcr.io/cloudrun/hello",
             "allow_unauthenticated":  false,
-            "invoker_members": []string{testSA},
+            "invoker_members":        []string{"allAuthenticatedUsers"},
         },
     })
 
@@ -173,10 +172,19 @@ func TestCloudRunIAMBindings(t *testing.T) {
     serviceID := terraform.Output(t, terraformOptions, "service_id")
     assert.NotEmpty(t, serviceID)
 
-    // Use gcloud to verify IAM policy
-    // Terratest's GCP module provides helpers for this
-    policy := gcp.GetProjectPolicy(t, projectID)
-    _ = policy // In practice, you would check specific bindings
+    // Use gcloud through Terratest's shell module to verify the Cloud Run service IAM policy
+    policyOutput := shell.RunCommandAndGetOutput(t, shell.Command{
+        Command: "gcloud",
+        Args: []string{
+            "run", "services", "get-iam-policy", serviceName,
+            "--region", "us-central1",
+            "--project", projectID,
+            "--format", "json",
+        },
+    })
+
+    assert.Contains(t, policyOutput, "allAuthenticatedUsers")
+    assert.NotContains(t, policyOutput, "allUsers")
 }
 ```
 
@@ -188,6 +196,7 @@ For modules that create networking resources, verify the network configuration.
 // TestVPCConfiguration verifies that the VPC is configured correctly
 func TestVPCConfiguration(t *testing.T) {
     t.Parallel()
+    skipIfShort(t)
 
     uniqueID := random.UniqueId()
     projectID := os.Getenv("GCP_PROJECT_ID")
@@ -225,6 +234,7 @@ GKE clusters take longer to create, so these tests have longer timeouts.
 // TestGKEClusterCreation verifies the GKE Autopilot cluster module
 func TestGKEClusterCreation(t *testing.T) {
     t.Parallel()
+    skipIfShort(t)
 
     uniqueID := random.UniqueId()
     clusterName := fmt.Sprintf("test-gke-%s", strings.ToLower(uniqueID))
