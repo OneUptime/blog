@@ -8,7 +8,7 @@ Description: Learn how to switch to Cloud Run execution environment Gen2 for imp
 
 ---
 
-Cloud Run offers two execution environments: Gen1 and Gen2. Gen1 uses gVisor, a lightweight container sandbox that intercepts system calls for security. Gen2 runs containers in a full Linux environment using microVMs. While Gen1 is fine for most web applications, Gen2 offers real improvements when you need better CPU performance, full system call compatibility, or faster networking.
+Cloud Run offers two execution environments: Gen1 and Gen2. Gen1 uses gVisor, a lightweight container sandbox that intercepts system calls for security. Gen2 runs containers in a Linux microVM environment. While Gen1 is fine for most web applications, Gen2 offers real improvements when you need better CPU performance, full Linux compatibility within Cloud Run's container security model, or faster networking.
 
 This guide explains the differences, shows how to switch, and helps you decide which environment is right for your workload.
 
@@ -16,7 +16,7 @@ This guide explains the differences, shows how to switch, and helps you decide w
 
 Let me break down the practical differences:
 
-**Gen1 (default):**
+**Gen1:**
 - Uses gVisor for container sandboxing
 - Intercepts and emulates system calls
 - Some Linux system calls are not supported
@@ -25,11 +25,11 @@ Let me break down the practical differences:
 
 **Gen2:**
 - Runs on Linux microVMs
-- Full Linux kernel compatibility
+- Full Linux compatibility within Cloud Run's container security model
 - Native system call execution (no interception overhead)
 - Better CPU performance for compute-intensive work
 - Better network throughput (up to 2x for some workloads)
-- Supports all Linux system calls and features
+- Supports all Linux system calls, namespaces, and cgroups
 - Slightly slower cold starts
 
 Here is a comparison of where each shines:
@@ -47,7 +47,7 @@ graph TD
         E[Apps needing specific syscalls]
         F[High network throughput]
         G[ML inference workloads]
-        H[Apps using mmap or proc filesystem]
+        H[Apps using NFS or cgroups]
     end
 ```
 
@@ -57,7 +57,7 @@ You should consider Gen2 if your workload matches any of these scenarios:
 
 **CPU-intensive applications**: Image processing, video transcoding, data compression, or any task where raw CPU performance matters. Gen2's native system calls eliminate the overhead of gVisor's system call interception.
 
-**Applications that need specific Linux features**: Some libraries and tools rely on Linux-specific features like `/proc` filesystem, `mmap`, `io_uring`, or specific ioctl calls. These may not work or may work differently in gVisor.
+**Applications that need specific Linux features**: Some libraries and tools rely on Linux-specific features like namespaces, cgroups, NFS, or specific ioctl calls. These may not work or may work differently in gVisor.
 
 **High network throughput**: If your service transfers large amounts of data (file uploads/downloads, streaming), Gen2 provides better network performance.
 
@@ -152,7 +152,16 @@ def check_execution_environment():
     """Check which Cloud Run execution environment we are running in."""
     checks = {}
 
-    # Gen2 has full /proc access
+    # Gen2 sets this product name in the Cloud Run container sandbox
+    try:
+        with open("/sys/class/dmi/id/product_name", "r") as f:
+            product_name = f.read().strip()
+            checks["product_name"] = product_name
+            checks["looks_like_gen2"] = product_name == "Google Compute Engine"
+    except Exception as e:
+        checks["product_name"] = f"error: {e}"
+
+    # Check Linux procfs access
     try:
         with open("/proc/cpuinfo", "r") as f:
             cpuinfo = f.read()
@@ -170,15 +179,6 @@ def check_execution_environment():
             checks["proc_meminfo"] = "accessible"
     except Exception as e:
         checks["proc_meminfo"] = f"error: {e}"
-
-    # Check for full network stack
-    try:
-        import socket
-        s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
-        s.close()
-        checks["raw_sockets"] = "supported"
-    except Exception as e:
-        checks["raw_sockets"] = f"not supported: {e}"
 
     return checks
 ```
@@ -260,7 +260,7 @@ When switching to Gen2, be aware of these differences:
 
 **File system**: Gen2 provides a standard Linux filesystem. Some paths that exist in gVisor might differ slightly in Gen2, though this rarely causes issues.
 
-**Resource limits**: Memory and CPU limits work the same way in both environments, but Gen2 may use memory slightly differently due to the full Linux kernel overhead.
+**Resource limits**: Memory and CPU limits work the same way in both environments, but Gen2 may use memory slightly differently due to the microVM environment.
 
 **Container startup**: Gen2 containers should start the same way, but if your startup code probes specific system features, it might detect differences.
 
@@ -269,20 +269,20 @@ When switching to Gen2, be aware of these differences:
 Gen2 works well with other Cloud Run features:
 
 ```bash
-# Gen2 with always-on CPU and high concurrency
+# Gen2 with instance-based billing and high concurrency
 gcloud run deploy ml-inference \
   --image=us-central1-docker.pkg.dev/MY_PROJECT/my-repo/ml-model:latest \
   --region=us-central1 \
   --execution-environment=gen2 \
   --cpu=4 \
   --memory=8Gi \
-  --cpu-always-allocated \
+  --no-cpu-throttling \
   --concurrency=4 \
   --min-instances=2 \
   --max-instances=50
 ```
 
-This is a typical configuration for an ML inference service: Gen2 for native performance, multiple CPUs, always-on CPU allocation, and warm instances to handle traffic without cold starts.
+This is a typical configuration for an ML inference service: Gen2 for native performance, multiple CPUs, instance-based billing so CPU stays allocated for the instance lifecycle, and warm instances to handle traffic without cold starts.
 
 ## Switching Back to Gen1
 
@@ -299,4 +299,4 @@ The switch is seamless with no downtime. Cloud Run deploys a new revision on the
 
 ## Summary
 
-Gen2 is the better choice for CPU-intensive workloads, applications needing full Linux compatibility, and services with high network throughput requirements. The switch is a single configuration change with no code modifications. The tradeoff is slightly slower cold starts, which you can mitigate with minimum instances. For simple web APIs and lightweight services where cold start speed matters more than raw performance, Gen1 remains a solid default. Benchmark your specific workload on both environments to make an informed decision.
+Gen2 is the better choice for CPU-intensive workloads, applications needing full Linux compatibility within Cloud Run's container security model, and services with high network throughput requirements. The switch is a single configuration change with no code modifications. The tradeoff is slightly slower cold starts, which you can mitigate with minimum instances. For simple web APIs and lightweight services where cold start speed matters more than raw performance, Gen1 remains a solid choice. Benchmark your specific workload on both environments to make an informed decision.
