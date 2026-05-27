@@ -14,7 +14,7 @@ The default Ansible output works for most situations, but sometimes you need som
 
 A stdout callback replaces the entire terminal output. When you write one, you are responsible for displaying everything: play names, task names, host results, and the final recap. Only one stdout callback can be active at a time.
 
-The key difference from notification callbacks: stdout callbacks use `CALLBACK_TYPE = 'stdout'` and do not need to be whitelisted (they are set with `stdout_callback` in the config).
+The key difference from notification callbacks: stdout callbacks use `CALLBACK_TYPE = 'stdout'` and do not need to be listed in `callbacks_enabled` just to manage terminal output (they are set with `stdout_callback` in the config).
 
 ## Building a Timestamp Callback
 
@@ -292,14 +292,13 @@ class CallbackModule(DefaultCallback):
         # Call the parent method for normal output
         super().v2_runner_on_ok(result)
 
-        # Add custom behavior: warn if a task took too long
-        if hasattr(result, '_task_fields'):
-            duration = result._result.get('delta', '')
-            if duration and self._parse_duration(duration) > 60:
-                self._display.display(
-                    f"  WARNING: Task took {duration}",
-                    color='bright purple'
-                )
+        # Add custom behavior: warn if a command-style module reports a long delta
+        duration = result._result.get('delta', '')
+        if duration and self._parse_duration(duration) > 60:
+            self._display.display(
+                f"  WARNING: Command reported delta {duration}",
+                color='bright purple'
+            )
 
     @staticmethod
     def _parse_duration(delta_str):
