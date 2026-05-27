@@ -46,7 +46,7 @@ dependencies:
   - name: postgresql
     version: "15.5.0"
     repository: "https://charts.bitnami.com/bitnami"
-    # Only install if database.enabled is true
+    # Only install if postgresql.enabled is true
     condition: postgresql.enabled
 
   # Redis cache
@@ -59,7 +59,7 @@ dependencies:
   - name: prometheus
     version: "25.0.0"
     repository: "https://prometheus-community.github.io/helm-charts"
-    condition: monitoring.enabled
+    condition: metrics.enabled
     # Use an alias to avoid naming conflicts
     alias: metrics
 ```
@@ -188,7 +188,7 @@ dependencies:
   - name: redis
     version: "19.0.0"
     repository: "https://charts.bitnami.com/bitnami"
-    # Multiple conditions (first match wins)
+    # Multiple conditions (first existing boolean path wins)
     condition: redis.enabled,cache.enabled
 ```
 
@@ -270,11 +270,11 @@ Pull values from subcharts into the parent:
 ```yaml
 # Chart.yaml
 dependencies:
-  - name: postgresql
-    version: "15.5.0"
-    repository: "https://charts.bitnami.com/bitnami"
+  - name: database
+    version: "1.0.0"
+    repository: "file://../database"
     import-values:
-      # Import the "exports.connection" block from subchart
+      # Import the "exports.connection" block from a subchart that defines it
       - child: exports.connection
         parent: db
 ```
