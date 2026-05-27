@@ -16,10 +16,11 @@ In this guide, I will walk through creating MongoDB users with Ansible, covering
 
 Before diving in, make sure you have:
 
-- Ansible 2.9+ installed on your control node
+- Ansible 2.9.10+ installed on your control node
 - MongoDB 4.4+ running on target hosts
 - The `community.mongodb` Ansible collection installed
 - Python `pymongo` library on target hosts
+- `mongosh` installed on target hosts for `community.mongodb.mongodb_shell` tasks
 
 Install the required collection first.
 
@@ -179,27 +180,25 @@ Sometimes the built-in MongoDB roles are not granular enough. You might want a u
 
   tasks:
     - name: Create a custom role for the reporting service
-      community.mongodb.mongodb_shell:
+      community.mongodb.mongodb_role:
         login_user: "{{ mongodb_admin_user }}"
         login_password: "{{ vault_mongodb_admin_password }}"
         login_database: admin
-        db: webapp_db
-        eval: |
-          db.createRole({
-            role: "reportingRole",
-            privileges: [
-              {
-                resource: { db: "webapp_db", collection: "orders" },
-                actions: ["find", "aggregate"]
-              },
-              {
-                resource: { db: "webapp_db", collection: "products" },
-                actions: ["find"]
-              }
-            ],
-            roles: []
-          })
-      ignore_errors: true  # Role might already exist
+        database: webapp_db
+        name: reportingRole
+        privileges:
+          - resource:
+              db: webapp_db
+              collection: orders
+            actions:
+              - find
+          - resource:
+              db: webapp_db
+              collection: products
+            actions:
+              - find
+        roles: []
+        state: present
 
     - name: Create reporting user with the custom role
       community.mongodb.mongodb_user:
@@ -301,7 +300,7 @@ A few things I have learned the hard way when managing MongoDB users with Ansibl
 
 2. **Run user management on the primary only.** Users replicate automatically to secondaries in a replica set. If you try to create users on a secondary, it will fail.
 
-3. **Use `login_database: admin`** for authentication, even when creating users in other databases. MongoDB authenticates against the admin database by default.
+3. **Use `login_database: admin`** when your administrative login user was created in the `admin` database, even when creating users in other databases.
 
 4. **Test in a staging environment first.** A typo in roles can lock you out of your own database. Ask me how I know.
 
