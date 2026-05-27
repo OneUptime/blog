@@ -8,7 +8,7 @@ Description: Step-by-step guide to setting up Kubernetes RBAC including Roles, C
 
 ---
 
-Role-Based Access Control (RBAC) is how you control who can do what in a Kubernetes cluster. Every API request is authorized through RBAC, and getting it wrong means either locking people out of what they need or giving them access to things they should not touch. This guide covers the core RBAC primitives and shows you how to build a least-privilege access model.
+Role-Based Access Control (RBAC) is how you control who can do what in a Kubernetes cluster. In clusters that use the RBAC authorizer, API requests are checked against RBAC policy, and getting it wrong means either locking people out of what they need or giving them access to things they should not touch. This guide covers the core RBAC primitives and shows you how to build a least-privilege access model.
 
 ## RBAC Building Blocks
 
@@ -66,13 +66,13 @@ metadata:
 rules:
   # Allow reading pods and their logs
   - apiGroups: [""]
-    resources: ["pods", "pods/log", "pods/status"]
+    resources: ["pods", "pods/log"]
     verbs: ["get", "list", "watch"]
   # Allow managing deployments
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
-  # Allow reading configmaps and secrets
+  # Allow reading configmaps
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "watch"]
@@ -169,7 +169,7 @@ roleRef:
 
 ```yaml
 # role-namespace-admin.yaml
-# Full control within a namespace, but no cluster-level access.
+# Broad administrative control within a namespace, but no cluster-level access.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
