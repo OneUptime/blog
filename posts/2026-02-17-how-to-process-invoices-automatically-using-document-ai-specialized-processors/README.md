@@ -10,7 +10,7 @@ Description: Learn how to use Google Cloud Document AI specialized invoice proce
 
 Processing invoices manually is one of those tasks that feels like it should have been automated a decade ago. Someone receives an invoice, reads through it, types the vendor name, invoice number, line items, and total into an accounting system. Multiply that by hundreds or thousands of invoices per month and you have a team spending significant time on pure data entry. Document AI's specialized Invoice Processor eliminates most of that work.
 
-In this guide, I will walk you through using the pre-trained Invoice Processor to automatically extract structured data from invoices of any format.
+In this guide, I will walk you through using the pre-trained Invoice Processor to automatically extract structured data from many common invoice formats.
 
 ## What the Invoice Processor Extracts
 
@@ -27,7 +27,7 @@ The Invoice Processor is trained to recognize and extract dozens of fields commo
 - Purchase order number
 - Bank/payment details
 
-It handles invoices from different vendors, in different formats, and even in different languages. The model has been trained on millions of real invoices.
+It handles invoices from different vendors and formats, across the languages supported by the Invoice Processor.
 
 ## Setting Up the Invoice Processor
 
@@ -43,12 +43,14 @@ pip install google-cloud-documentai
 ```
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1
 
 def create_invoice_processor(project_id, location="us"):
     """Create an Invoice Processor instance."""
-    client = documentai_v1.DocumentProcessorServiceClient()
-    parent = f"projects/{project_id}/locations/{location}"
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
+    parent = client.common_location_path(project_id, location)
 
     processor = client.create_processor(
         parent=parent,
@@ -69,12 +71,14 @@ processor = create_invoice_processor("my-gcp-project")
 Send an invoice to the processor and get back structured data.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1
 
 def process_invoice(project_id, location, processor_id, file_path, mime_type):
     """Process a single invoice and extract structured fields."""
-    client = documentai_v1.DocumentProcessorServiceClient()
-    name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
+    name = client.processor_path(project_id, location, processor_id)
 
     # Read the invoice file
     with open(file_path, "rb") as f:
@@ -159,9 +163,9 @@ for i, item in enumerate(data["line_items"]):
 For production use, you want an automated pipeline that processes invoices as they arrive. Here is a Cloud Function that triggers when an invoice is uploaded to Cloud Storage.
 
 ```python
-import json
 import functions_framework
-from google.cloud import documentai_v1, storage, firestore
+from google.api_core.client_options import ClientOptions
+from google.cloud import documentai_v1, firestore
 
 # Configuration
 PROJECT_ID = "my-gcp-project"
@@ -184,14 +188,12 @@ def process_uploaded_invoice(cloud_event):
     print(f"Processing invoice: {file_name}")
 
     # Initialize clients
-    docai_client = documentai_v1.DocumentProcessorServiceClient()
+    opts = ClientOptions(api_endpoint=f"{LOCATION}-documentai.googleapis.com")
+    docai_client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
     db = firestore.Client()
 
     # Process the invoice using Document AI
-    processor_name = (
-        f"projects/{PROJECT_ID}/locations/{LOCATION}"
-        f"/processors/{PROCESSOR_ID}"
-    )
+    processor_name = docai_client.processor_path(PROJECT_ID, LOCATION, PROCESSOR_ID)
 
     gcs_document = documentai_v1.GcsDocument(
         gcs_uri=f"gs://{bucket_name}/{file_name}",
@@ -305,11 +307,15 @@ if not validation["is_valid"]:
 When you have a backlog of invoices to process, use batch mode.
 
 ```python
+from google.api_core.client_options import ClientOptions
+from google.cloud import documentai_v1
+
 def batch_process_invoices(project_id, location, processor_id,
                             input_prefix, output_uri):
     """Process a batch of invoices from Cloud Storage."""
-    client = documentai_v1.DocumentProcessorServiceClient()
-    name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
+    name = client.processor_path(project_id, location, processor_id)
 
     input_config = documentai_v1.BatchDocumentsInputConfig(
         gcs_prefix=documentai_v1.GcsPrefix(
