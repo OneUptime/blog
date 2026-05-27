@@ -54,7 +54,7 @@ SELECT
   ) * 100 AS error_rate_pct,
   -- Extract and aggregate latency if available in log payload
   APPROX_QUANTILES(
-    CAST(JSON_VALUE(json_payload, '$.latency_ms') AS FLOAT64), 100
+    SAFE_CAST(jsonPayload.latency_ms AS FLOAT64), 100
   )[OFFSET(95)] AS p95_latency_ms
 FROM
   `my_project.application_logs.all_logs`
@@ -82,8 +82,8 @@ OPTIONS(
   -- Model each service separately
   time_series_id_col='service_name',
   auto_arima=TRUE,
-  -- Detect anomalies outside the 99% confidence interval
-  confidence_level=0.99
+  -- Generate enough forecast points to cover the most recent day
+  horizon=24
 ) AS
 SELECT
   hour,
@@ -100,33 +100,39 @@ Now you can detect anomalies in recent data by comparing actual values against t
 
 ```sql
 -- Detect anomalies by checking which actual values fall outside predicted bounds
+WITH scored AS (
+  SELECT
+    d.hour,
+    d.service_name,
+    d.error_rate_pct AS actual_error_rate,
+    f.forecast_value AS expected_error_rate,
+    f.prediction_interval_lower_bound AS lower_bound,
+    f.prediction_interval_upper_bound AS upper_bound,
+    -- Flag as anomaly if the actual value is outside the confidence interval
+    CASE
+      WHEN d.error_rate_pct > f.prediction_interval_upper_bound THEN 'HIGH_ANOMALY'
+      WHEN d.error_rate_pct < f.prediction_interval_lower_bound THEN 'LOW_ANOMALY'
+      ELSE 'NORMAL'
+    END AS anomaly_status
+  FROM
+    `my_project.application_logs.hourly_metrics` d
+  JOIN
+    ML.FORECAST(
+      MODEL `my_project.application_logs.error_rate_model`,
+      STRUCT(24 AS horizon, 0.99 AS confidence_level)
+    ) f
+  ON
+    d.hour = f.forecast_timestamp
+    AND d.service_name = f.service_name
+)
 SELECT
-  d.hour,
-  d.service_name,
-  d.error_rate_pct AS actual_error_rate,
-  f.forecast_value AS expected_error_rate,
-  f.prediction_interval_lower_bound AS lower_bound,
-  f.prediction_interval_upper_bound AS upper_bound,
-  -- Flag as anomaly if the actual value is outside the confidence interval
-  CASE
-    WHEN d.error_rate_pct > f.prediction_interval_upper_bound THEN 'HIGH_ANOMALY'
-    WHEN d.error_rate_pct < f.prediction_interval_lower_bound THEN 'LOW_ANOMALY'
-    ELSE 'NORMAL'
-  END AS anomaly_status
+  *
 FROM
-  `my_project.application_logs.hourly_metrics` d
-JOIN
-  ML.EXPLAIN_FORECAST(
-    MODEL `my_project.application_logs.error_rate_model`,
-    STRUCT(24 AS horizon, 0.99 AS confidence_level)
-  ) f
-ON
-  d.hour = f.time_series_timestamp
-  AND d.service_name = f.time_series_id_col
+  scored
 WHERE
   anomaly_status != 'NORMAL'
 ORDER BY
-  d.hour DESC;
+  hour DESC;
 ```
 
 This approach works well for metrics that have predictable patterns - daily traffic cycles, weekly patterns, and so on. The model learns what normal looks like and flags deviations.
@@ -147,9 +153,9 @@ SELECT
   COUNTIF(severity = 'ERROR') AS error_count,
   COUNTIF(severity = 'WARNING') AS warning_count,
   -- Count distinct error messages as a diversity metric
-  COUNT(DISTINCT CASE WHEN severity = 'ERROR' THEN text_payload END) AS unique_errors,
-  -- Calculate the ratio of new error messages vs known ones
-  AVG(CHAR_LENGTH(COALESCE(text_payload, ''))) AS avg_message_length
+  COUNT(DISTINCT CASE WHEN severity = 'ERROR' THEN textPayload END) AS unique_errors,
+  -- Calculate the average length of log messages
+  AVG(CHAR_LENGTH(COALESCE(textPayload, ''))) AS avg_message_length
 FROM
   `my_project.application_logs.all_logs`
 WHERE
@@ -181,30 +187,32 @@ FROM
   `my_project.application_logs.log_features`;
 ```
 
-After training, you can identify anomalous time periods by looking at their distance from cluster centroids.
+After training, you can identify anomalous time periods by using BigQuery ML's anomaly detection function, which evaluates normalized distance from cluster centroids.
 
 ```sql
 -- Find data points that are far from their nearest cluster centroid
 SELECT
   hour,
   service_name,
-  CENTROID_ID AS nearest_cluster,
-  -- Distance to the nearest centroid - higher means more anomalous
-  NEAREST_CENTROIDS_DISTANCE[OFFSET(0)].DISTANCE AS centroid_distance,
+  centroid_id AS nearest_cluster,
+  -- Normalized distance to the nearest centroid - higher means more anomalous
+  normalized_distance,
   log_volume,
   error_count,
   warning_count
 FROM
-  ML.PREDICT(MODEL `my_project.application_logs.log_pattern_clusters`,
-    (SELECT * FROM `my_project.application_logs.log_features`))
--- Filter for points that are far from any cluster center
+  ML.DETECT_ANOMALIES(
+    MODEL `my_project.application_logs.log_pattern_clusters`,
+    STRUCT(0.05 AS contamination),
+    TABLE `my_project.application_logs.log_features`)
+-- Filter for points classified as anomalies
 WHERE
-  NEAREST_CENTROIDS_DISTANCE[OFFSET(0)].DISTANCE > 3.0
+  is_anomaly
 ORDER BY
-  centroid_distance DESC;
+  normalized_distance DESC;
 ```
 
-Points with a high centroid distance represent time periods where the log patterns do not match any of the learned normal clusters. These are worth investigating because they might indicate new types of failures or unusual system behavior.
+Points with a high normalized distance represent time periods where the log patterns do not match any of the learned normal clusters. These are worth investigating because they might indicate new types of failures or unusual system behavior.
 
 ## Setting Up Automated Detection
 
@@ -229,13 +237,13 @@ SELECT
 FROM
   `my_project.application_logs.hourly_metrics` d
 JOIN
-  ML.EXPLAIN_FORECAST(
+  ML.FORECAST(
     MODEL `my_project.application_logs.error_rate_model`,
-    STRUCT(1 AS horizon, 0.99 AS confidence_level)
+    STRUCT(24 AS horizon, 0.99 AS confidence_level)
   ) f
 ON
-  d.hour = f.time_series_timestamp
-  AND d.service_name = f.time_series_id_col
+  d.hour = f.forecast_timestamp
+  AND d.service_name = f.service_name
 WHERE
   d.error_rate_pct > f.prediction_interval_upper_bound;
 ```
