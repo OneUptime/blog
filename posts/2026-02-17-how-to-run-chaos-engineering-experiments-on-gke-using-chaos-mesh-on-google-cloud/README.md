@@ -12,11 +12,11 @@ You can have all the monitoring, alerting, and redundancy in the world, but unti
 
 ## What is Chaos Mesh?
 
-Chaos Mesh is a CNCF incubating project that provides a comprehensive set of failure injection tools for Kubernetes. It can simulate pod failures, network partitions, DNS errors, disk I/O problems, CPU stress, memory pressure, and more. It runs as a set of controllers and sidecars on your cluster, controlled through Kubernetes custom resources or a web dashboard.
+Chaos Mesh is a CNCF incubating project that provides a comprehensive set of failure injection tools for Kubernetes. It can simulate pod failures, network partitions, DNS errors, disk I/O problems, CPU stress, memory pressure, and more. It runs as a set of controllers, a node-level daemon, a dashboard, and optional supporting services on your cluster, controlled through Kubernetes custom resources or a web dashboard.
 
 ## Prerequisites
 
-- A GKE cluster (Standard or Autopilot)
+- A GKE Standard cluster. Chaos Mesh's default daemon requires privileged, node-level access, which GKE Autopilot blocks unless a workload is explicitly allowlisted.
 - kubectl configured
 - Helm 3 installed
 - At least one application deployed that you want to test
@@ -70,21 +70,22 @@ Let us start simple. This experiment randomly kills pods of a target deployment 
 # pod-kill-experiment.yaml
 # This kills one random pod of the target deployment every 60 seconds
 apiVersion: chaos-mesh.org/v1alpha1
-kind: PodChaos
+kind: Schedule
 metadata:
   name: pod-kill-experiment
   namespace: default
 spec:
-  action: pod-kill
-  mode: one
-  selector:
-    namespaces:
-      - default
-    labelSelectors:
-      app: my-web-service
-  scheduler:
-    cron: "*/1 * * * *"
-  duration: "30s"
+  schedule: "*/1 * * * *"
+  concurrencyPolicy: "Forbid"
+  type: "PodChaos"
+  podChaos:
+    action: pod-kill
+    mode: one
+    selector:
+      namespaces:
+        - default
+      labelSelectors:
+        app: my-web-service
 ```
 
 Apply and observe.
@@ -262,7 +263,7 @@ flowchart TD
 Safety controls are essential. Chaos Mesh provides several mechanisms.
 
 ```yaml
-# A workflow that runs multiple experiments in sequence with safety checks
+# A workflow that runs multiple experiments in sequence
 apiVersion: chaos-mesh.org/v1alpha1
 kind: Workflow
 metadata:
@@ -358,7 +359,7 @@ Always have your monitoring dashboards open during experiments. Set up specific 
 
 ```bash
 # Create an alert that fires during chaos experiments if error rate exceeds acceptable levels
-gcloud monitoring policies create --policy-from-file=- << 'EOF'
+cat > chaos-alert-policy.json << 'EOF'
 {
   "displayName": "Chaos Test Safety Net",
   "conditions": [{
@@ -377,6 +378,8 @@ gcloud monitoring policies create --policy-from-file=- << 'EOF'
   "combiner": "OR"
 }
 EOF
+
+gcloud monitoring policies create --policy-from-file=chaos-alert-policy.json
 ```
 
 ## Wrapping Up
