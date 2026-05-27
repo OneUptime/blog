@@ -20,7 +20,7 @@ HAProxy Ingress stands out for several reasons:
 - Connection draining for zero-downtime deployments
 - Native support for TCP and HTTP load balancing
 - Active health checks for backend pods
-- Dynamic configuration updates without reloads (using HAProxy's data plane API)
+- Dynamic configuration updates with graceful reloads and runtime socket updates when possible
 
 ```mermaid
 flowchart TD
@@ -90,6 +90,7 @@ helm repo update
 helm install haproxy-ingress haproxy-ingress/haproxy-ingress \
   --namespace haproxy-ingress \
   --create-namespace \
+  --set controller.ingressClassResource.enabled=true \
   --set controller.service.type=LoadBalancer \
   --set controller.service.externalTrafficPolicy=Local \
   --set controller.stats.enabled=true \
@@ -104,8 +105,8 @@ helm install haproxy-ingress haproxy-ingress/haproxy-ingress \
 kubectl get svc -n haproxy-ingress
 
 # Expected output shows an EXTERNAL-IP from the MetalLB pool
-# NAME                        TYPE           EXTERNAL-IP     PORT(S)
-# haproxy-ingress-controller  LoadBalancer   192.168.1.200   80:30080/TCP,443:30443/TCP
+# NAME              TYPE           EXTERNAL-IP     PORT(S)
+# haproxy-ingress   LoadBalancer   192.168.1.200   80:30080/TCP,443:30443/TCP
 
 # Check HAProxy pods are running
 kubectl get pods -n haproxy-ingress
@@ -202,30 +203,12 @@ curl -H "Host: web.example.com" http://192.168.1.200
 HAProxy Ingress supports graceful connection draining during deployments. When a pod is being terminated, HAProxy stops sending new connections but allows existing connections to complete:
 
 ```yaml
-# ingress-drain.yaml
-# Configure connection draining for zero-downtime deployments.
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: web-app-drain
-  namespace: default
-  annotations:
-    # Wait up to 30 seconds for existing connections to complete
-    haproxy-ingress.github.io/drain-support: "true"
-    haproxy-ingress.github.io/drain-support-redispatch: "true"
-spec:
-  ingressClassName: haproxy
-  rules:
-    - host: web.example.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: web-app
-                port:
-                  number: 80
+# haproxy-ingress-values.yaml
+# Configure drain support globally with Helm values.
+controller:
+  config:
+    drain-support: "true"
+    drain-support-redispatch: "true"
 ```
 
 ### TCP Load Balancing
@@ -233,24 +216,37 @@ spec:
 HAProxy Ingress can load balance raw TCP connections, useful for databases or other non-HTTP services:
 
 ```yaml
-# tcp-service-configmap.yaml
+# tcp-service-ingress.yaml
 # Configure TCP load balancing for a PostgreSQL service.
-apiVersion: v1
-kind: ConfigMap
+apiVersion: networking.k8s.io/v1
+kind: Ingress
 metadata:
-  name: haproxy-ingress-tcp
-  namespace: haproxy-ingress
-data:
-  # Format: "external-port": "namespace/service:port"
-  # Expose PostgreSQL on port 5432 through MetalLB
-  "5432": "database/postgresql:5432"
-  # Expose Redis on port 6379
-  "6379": "cache/redis:6379"
+  name: postgresql-tcp
+  namespace: database
+  annotations:
+    haproxy-ingress.github.io/tcp-service-port: "5432"
+spec:
+  ingressClassName: haproxy
+  defaultBackend:
+    service:
+      name: postgresql
+      port:
+        number: 5432
+```
+
+Expose the TCP port on the HAProxy Ingress Service as well:
+
+```bash
+helm upgrade haproxy-ingress haproxy-ingress/haproxy-ingress \
+  --namespace haproxy-ingress \
+  --reuse-values \
+  --set controller.service.extraPorts[0].port=5432 \
+  --set controller.service.extraPorts[0].targetPort=5432
 ```
 
 ### Backend Weight for Canary Deployments
 
-HAProxy supports weighted backends for canary deployments:
+HAProxy supports weighted backend groups for canary deployments. The example below assumes the stable and canary pods are selected by the same Service and labeled with `track=stable` and `track=canary`:
 
 ```yaml
 # canary-ingress.yaml
@@ -263,7 +259,7 @@ metadata:
   annotations:
     # Send 90% of traffic to stable, 10% to canary
     haproxy-ingress.github.io/balance-algorithm: "roundrobin"
-    haproxy-ingress.github.io/backend-server-slots-increment: "1"
+    haproxy-ingress.github.io/blue-green-balance: "track=stable=90,track=canary=10"
 spec:
   ingressClassName: haproxy
   rules:
@@ -274,7 +270,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: app-stable
+                name: app
                 port:
                   number: 80
 ```
@@ -313,10 +309,13 @@ HAProxy exposes a rich set of metrics. Enable the stats page and Prometheus endp
 
 ```bash
 # Access the HAProxy stats page
-kubectl port-forward -n haproxy-ingress svc/haproxy-ingress-controller 1936:1936
+kubectl port-forward -n haproxy-ingress svc/haproxy-ingress-stats 1936:1936
 
-# Open http://localhost:1936/metrics for Prometheus metrics
+# Access Prometheus metrics
+kubectl port-forward -n haproxy-ingress svc/haproxy-ingress-metrics 9101:9101
+
 # Open http://localhost:1936/stats for the HAProxy stats dashboard
+# Open http://localhost:9101/metrics for Prometheus metrics
 ```
 
 Key metrics for monitoring:
@@ -339,8 +338,11 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: haproxy-ingress
+      app.kubernetes.io/instance: haproxy-ingress
   endpoints:
     - port: metrics
+      interval: 15s
+    - port: ctrl-metrics
       interval: 15s
 ```
 
