@@ -10,7 +10,7 @@ Description: Step-by-step guide to configuring Cloud NAT with static IP addresse
 
 Many external APIs require you to allowlist the IP addresses that will be calling them. When your application runs on GKE, the outbound IP can come from any of your nodes, and if you are using a private cluster, your pods might not have internet access at all. Cloud NAT solves both problems by providing a managed NAT gateway with static IP addresses for your GKE pods.
 
-With Cloud NAT configured, all outbound traffic from your pods goes through the NAT gateway, appearing to external services as coming from a predictable set of static IPs. You can hand those IPs to your API partners and never worry about them changing when nodes scale up or get replaced.
+With Cloud NAT configured for your GKE subnet and pod ranges, outbound internet traffic from your pods goes through Cloud NAT, appearing to external services as coming from a predictable set of static IPs. You can hand those IPs to your API partners and never worry about them changing when nodes scale up or get replaced.
 
 ## The Architecture
 
@@ -19,13 +19,12 @@ Here is how traffic flows with Cloud NAT in front of a GKE cluster:
 ```mermaid
 graph LR
     A[GKE Pod] --> B[Node Network]
-    B --> C[Cloud Router]
-    C --> D[Cloud NAT Gateway]
-    D --> E[Static IP: 34.x.x.x]
-    E --> F[External API]
+    B --> C[Cloud NAT Gateway]
+    C --> D[Static IP: 34.x.x.x]
+    D --> E[External API]
 ```
 
-Pods send traffic through the node's network interface. The Cloud Router directs outbound traffic to the Cloud NAT gateway, which performs the address translation using your static IPs.
+Pods send traffic through the node's network interface. Cloud NAT performs the address translation using your static IPs. The Cloud Router hosts the Cloud NAT configuration, but it is not in the data path for the packets.
 
 ## Step 1: Reserve Static IP Addresses
 
@@ -37,7 +36,7 @@ First, reserve the static IP addresses that Cloud NAT will use:
 gcloud compute addresses create nat-ip-1 \
   --region us-central1
 
-# Reserve a second IP for redundancy
+# Reserve a second IP for additional NAT port capacity
 gcloud compute addresses create nat-ip-2 \
   --region us-central1
 ```
@@ -72,7 +71,9 @@ gcloud compute routers nats create my-nat \
   --router=my-router \
   --region=us-central1 \
   --nat-external-ip-pool=nat-ip-1,nat-ip-2 \
-  --nat-all-subnet-ip-ranges
+  --nat-all-subnet-ip-ranges \
+  --enable-logging \
+  --log-filter=ERRORS_ONLY
 ```
 
 The `--nat-all-subnet-ip-ranges` flag means NAT applies to all subnets in the VPC, including the secondary ranges used by GKE pods. This is the simplest configuration.
@@ -87,7 +88,9 @@ gcloud compute routers nats create my-nat \
   --router=my-router \
   --region=us-central1 \
   --nat-external-ip-pool=nat-ip-1,nat-ip-2 \
-  --nat-custom-subnet-ip-ranges=my-gke-subnet:ALL
+  --nat-custom-subnet-ip-ranges=my-gke-subnet:ALL \
+  --enable-logging \
+  --log-filter=ERRORS_ONLY
 ```
 
 The `:ALL` suffix includes both the primary and secondary IP ranges of the subnet, which is important because GKE pods use secondary ranges.
@@ -117,7 +120,7 @@ kubectl delete pod nat-test
 
 ## Tuning NAT for High-Traffic Workloads
 
-The default Cloud NAT settings work well for moderate traffic, but high-traffic workloads can exhaust NAT port mappings. Each NAT IP supports about 64,000 concurrent connections, and each VM (GKE node) gets a portion of those ports.
+The default Cloud NAT settings work well for moderate traffic, but high-traffic workloads can exhaust NAT port mappings. Each NAT IP provides about 64,000 source ports, and each VM (GKE node) gets a portion of those ports.
 
 Check the current port allocation:
 
@@ -150,11 +153,11 @@ If your pods are experiencing connection timeouts or failures to external servic
 - Timeout errors when making outbound HTTP requests
 - High `dropped_sent_packets_count` in Cloud NAT monitoring
 
-To diagnose, check NAT metrics in Cloud Monitoring:
+To diagnose, check NAT logs and metrics in Cloud Monitoring:
 
 ```bash
 # View NAT logs to check for port exhaustion
-gcloud logging read "resource.type=nat_gateway AND resource.labels.router_id=my-router" \
+gcloud logging read 'resource.type="nat_gateway" AND jsonPayload.gateway_identifiers.router_name="my-router" AND jsonPayload.gateway_identifiers.gateway_name="my-nat"' \
   --limit=20 \
   --format="table(timestamp, jsonPayload.allocation_status)"
 ```
@@ -225,7 +228,7 @@ resource "google_compute_router_nat" "nat" {
 
 ## Private Clusters and Cloud NAT
 
-If your GKE cluster is private (nodes have no external IPs), Cloud NAT is essential for any outbound internet access. Without it, your pods cannot reach external container registries, APIs, or package repositories.
+If your GKE cluster is private (nodes have no external IPs), Cloud NAT is essential for outbound internet access. Without it, your pods cannot reach public internet destinations such as external container registries, APIs, or package repositories.
 
 For private clusters, make sure the NAT configuration includes the pod IP ranges:
 
@@ -244,12 +247,13 @@ Set up alerting for NAT health to catch issues before they affect your applicati
 ```bash
 # Create an alert for NAT port allocation failures
 gcloud alpha monitoring policies create \
-  --display-name="Cloud NAT Port Exhaustion" \
-  --condition-filter='resource.type="nat_gateway" AND metric.type="router.googleapis.com/nat/port_usage"' \
-  --condition-threshold-value=0.8 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --display-name="Cloud NAT Allocation Failures" \
+  --condition-display-name="NAT allocation failed" \
+  --condition-filter='resource.type="nat_gateway" AND metric.type="router.googleapis.com/nat/nat_allocation_failed"' \
+  --duration=60s \
+  --if='> 0'
 ```
 
-Also monitor the `nat/nat_allocation_failed` metric, which fires when NAT cannot allocate ports for a VM.
+Also monitor the `nat/dropped_sent_packets_count` metric with the `OUT_OF_RESOURCES` reason to catch packets dropped when Cloud NAT runs out of available addresses or ports.
 
 Cloud NAT is one of those networking components that works silently in the background, but when it is not configured correctly, everything breaks. Take the time to set it up properly with static IPs, appropriate port allocation, and monitoring - it will save you from scrambling when an API partner asks "what IP should we allowlist?" or when connections start timing out at peak traffic.
