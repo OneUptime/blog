@@ -43,7 +43,6 @@ This playbook installs, generates, and sets the system locale:
     additional_locales:
       - en_US.UTF-8
       - en_GB.UTF-8
-      - C.UTF-8
 
   tasks:
     - name: Install locale-related packages on Debian
@@ -70,11 +69,17 @@ This playbook installs, generates, and sets the system locale:
       loop: "{{ additional_locales }}"
       when: ansible_os_family == "Debian"
 
+    - name: Get current system locale
+      ansible.builtin.command:
+        cmd: localectl status
+      register: localectl_status
+      changed_when: false
+
     - name: Set system locale
       ansible.builtin.command:
         cmd: "localectl set-locale LANG={{ system_locale }}"
       register: locale_result
-      changed_when: true
+      when: "'LANG={{ system_locale }}' not in localectl_status.stdout"
 
     - name: Configure /etc/default/locale
       ansible.builtin.copy:
@@ -83,7 +88,6 @@ This playbook installs, generates, and sets the system locale:
         content: |
           LANG={{ system_locale }}
           LANGUAGE={{ system_language }}
-          LC_ALL={{ system_locale }}
       when: ansible_os_family == "Debian"
 
     - name: Configure /etc/locale.conf for RHEL
@@ -92,7 +96,6 @@ This playbook installs, generates, and sets the system locale:
         mode: '0644'
         content: |
           LANG={{ system_locale }}
-          LC_ALL={{ system_locale }}
       when: ansible_os_family == "RedHat"
 
     - name: Set locale in environment for all users
@@ -102,7 +105,6 @@ This playbook installs, generates, and sets the system locale:
         content: |
           # System locale - managed by Ansible
           export LANG="{{ system_locale }}"
-          export LC_ALL="{{ system_locale }}"
           export LANGUAGE="{{ system_language }}"
 ```
 
@@ -122,7 +124,6 @@ This playbook configures locale generation and rebuilds locales:
     enabled_locales:
       - { locale: "en_US.UTF-8", charset: "UTF-8" }
       - { locale: "en_GB.UTF-8", charset: "UTF-8" }
-      - { locale: "C.UTF-8", charset: "UTF-8" }
       - { locale: "de_DE.UTF-8", charset: "UTF-8" }
       - { locale: "fr_FR.UTF-8", charset: "UTF-8" }
 
@@ -192,7 +193,7 @@ This playbook configures SSH to pass and accept locale environment variables:
   handlers:
     - name: Restart sshd
       ansible.builtin.systemd:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -255,7 +256,7 @@ This playbook sets locale for common applications:
       ansible.builtin.lineinfile:
         path: /etc/systemd/system.conf
         regexp: '^#?DefaultEnvironment='
-        line: 'DefaultEnvironment="LANG={{ app_locale }}" "LC_ALL={{ app_locale }}"'
+        line: 'DefaultEnvironment="LANG={{ app_locale }}"'
       notify: Reload systemd
 
   handlers:
@@ -326,10 +327,10 @@ This playbook validates locale configuration across your fleet:
 
     - name: Verify locale is available
       ansible.builtin.shell: |
-        locale -a | grep -c "{{ expected_locale | regex_replace('\\.', '\\.') }}"
+        locale -a | grep -Eiq "^{{ expected_locale | regex_replace('\\.', '\\.') | regex_replace('UTF-8$', '(UTF-8|utf8)') }}$"
       register: locale_available
       changed_when: false
-      failed_when: locale_available.stdout | int == 0
+      failed_when: locale_available.rc != 0
 ```
 
 ## Locale Configuration Hierarchy
