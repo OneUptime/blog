@@ -165,9 +165,7 @@ from redis.cluster import RedisCluster
 cluster = RedisCluster(
     host="127.0.0.1",
     port=7000,
-    decode_responses=True,
-    # Skip full cluster coverage check during development
-    skip_full_coverage_check=True
+    decode_responses=True
 )
 
 # Basic operations work the same as standalone Redis
@@ -195,11 +193,11 @@ print(f"Order data: {results}")
 Test that automatic failover works before going to production.
 
 ```bash
-# Check which node is master for a specific slot
+# List the current masters
 redis-cli -p 7000 cluster nodes | grep master
 
-# Kill one of the masters (e.g., port 7001)
-redis-cli -p 7001 DEBUG sleep 30
+# Stop one of the masters (e.g., port 7001)
+redis-cli -p 7001 shutdown nosave
 
 # Wait a few seconds, then check the cluster
 # The replica should have been promoted to master
@@ -215,6 +213,8 @@ redis-cli -p 7000 cluster info | grep cluster_state
 You can scale a Redis Cluster by adding new nodes without downtime.
 
 ```bash
+# Create configuration files as shown in Step 1 for ports 7006 and 7007 first
+
 # Start a new Redis instance on port 7006
 redis-server /opt/redis-cluster/7006/redis.conf &
 
