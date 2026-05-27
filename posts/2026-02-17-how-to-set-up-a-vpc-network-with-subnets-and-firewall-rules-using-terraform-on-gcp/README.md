@@ -36,8 +36,8 @@ resource "google_compute_network" "main" {
   routing_mode            = "REGIONAL"
   project                 = var.project_id
 
-  # Delete the default routes when the network is created
-  # We will add our own routes explicitly
+  # Keep the default internet route. Cloud NAT depends on a route
+  # whose next hop is the default internet gateway.
   delete_default_routes_on_create = false
 }
 ```
@@ -51,7 +51,7 @@ Design your subnets around your application tiers. A common pattern is separate 
 ```hcl
 # subnets.tf - Custom subnets for different application tiers
 
-# Public-facing subnet for load balancers and bastion hosts
+# Public-facing subnet for internet-facing backends and bastion hosts
 resource "google_compute_subnetwork" "public" {
   name          = "public-subnet"
   ip_cidr_range = "10.0.1.0/24"
@@ -277,12 +277,12 @@ resource "google_compute_router_nat" "main" {
 }
 ```
 
-## Private Service Connection
+## Private Services Access
 
 For managed services like Cloud SQL and Memorystore that need to connect to your VPC:
 
 ```hcl
-# private_services.tf - Private service connection for managed services
+# private_services.tf - Private services access for managed services
 
 # Reserve an IP range for Google managed services
 resource "google_compute_global_address" "private_services" {
@@ -294,7 +294,7 @@ resource "google_compute_global_address" "private_services" {
   project       = var.project_id
 }
 
-# Create the peering connection
+# Create the private services access peering connection
 resource "google_service_networking_connection" "private_services" {
   network                 = google_compute_network.main.id
   service                 = "servicenetworking.googleapis.com"
@@ -371,9 +371,9 @@ graph TB
     AppSub --> DataSub[Data Subnet<br/>10.0.3.0/24]
     AppSub --> NAT[Cloud NAT]
     NAT --> Internet
-    DataSub --> PSC[Private Service<br/>Connection]
-    PSC --> SQL[Cloud SQL]
-    PSC --> Redis[Memorystore]
+    DataSub --> PSA[Private Services<br/>Access]
+    PSA --> SQL[Cloud SQL]
+    PSA --> Redis[Memorystore]
 ```
 
 ## Best Practices
@@ -381,7 +381,7 @@ graph TB
 1. **Use custom subnets.** Auto-created subnets give you no control over IP ranges and create subnets in regions you do not use.
 2. **Enable VPC flow logs** for network visibility and security monitoring. Adjust the sampling rate based on your logging budget.
 3. **Use network tags** to target firewall rules. Never apply broad firewall rules to all instances.
-4. **Allow health check traffic.** Google's load balancers and managed services need to reach your instances for health checks.
+4. **Allow health check traffic.** Google's load balancers and autohealing managed instance groups need to reach your instances for health checks.
 5. **Use IAP tunneling** instead of bastion hosts for SSH access. It is simpler and more secure.
 6. **Enable private Google access** on all subnets so instances without external IPs can reach Google APIs.
 7. **Plan your IP ranges** before creating subnets. Changing CIDR ranges later requires destroying and recreating the subnet.
