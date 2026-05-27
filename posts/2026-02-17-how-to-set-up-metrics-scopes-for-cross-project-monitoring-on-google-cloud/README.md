@@ -10,11 +10,11 @@ Description: Learn how to configure metrics scopes in Google Cloud Monitoring to
 
 Most organizations on GCP do not run everything in a single project. You probably have separate projects for production, staging, development, shared infrastructure, and maybe per-team or per-service projects. The problem is that Cloud Monitoring is scoped to a single project by default, which means you need to switch between projects to see your full picture.
 
-Metrics scopes solve this. A metrics scope lets you aggregate monitoring data from multiple GCP projects into a single "scoping project" where you can build dashboards, create alerts, and analyze metrics across your entire organization. This post walks through setting up metrics scopes for cross-project monitoring.
+Metrics scopes solve this. A metrics scope lets you view time-series metric data from multiple GCP projects in a single "scoping project" where you can build dashboards, create alerts, and analyze metrics across your entire organization. This post walks through setting up metrics scopes for cross-project monitoring.
 
 ## What Is a Metrics Scope
 
-Every GCP project has a metrics scope. By default, a project's metrics scope contains only that project's own data. But you can add other projects (called "monitored projects") to a scoping project's metrics scope. Once added, the scoping project can see metrics, logs, and uptime check results from all its monitored projects.
+Every GCP project has a metrics scope. By default, a project's metrics scope contains only that project's own time-series data. But you can add other projects (called "monitored projects") to a scoping project's metrics scope. Once added, the scoping project can see metrics, including log-based metrics, from all its monitored projects.
 
 Think of it like this:
 
@@ -43,14 +43,11 @@ gcloud projects create ops-monitoring \
 
 # Enable the Cloud Monitoring API
 gcloud services enable monitoring.googleapis.com --project=ops-monitoring
-
-# Enable the Cloud Logging API
-gcloud services enable logging.googleapis.com --project=ops-monitoring
 ```
 
 ## Adding Monitored Projects to the Metrics Scope
 
-You can add monitored projects through the Cloud Console or the API. Here is the API approach:
+You can add monitored projects through the Cloud Console, the gcloud CLI, or the API. Here is the gcloud CLI approach:
 
 ```bash
 # Add a project to the metrics scope using the gcloud CLI
@@ -120,13 +117,13 @@ for project in projects_to_monitor:
 After adding projects, verify the configuration:
 
 ```bash
-# List all monitored projects in the metrics scope
-gcloud beta monitoring metrics-scopes list \
-  --project=ops-monitoring
-
-# You can also list from the API
+# Describe the metrics scope and list its monitored projects
 gcloud beta monitoring metrics-scopes describe \
   locations/global/metricsScopes/ops-monitoring
+
+# To see which metrics scopes include a specific monitored project
+gcloud beta monitoring metrics-scopes list \
+  projects/production-app
 ```
 
 ## Building Cross-Project Dashboards
@@ -242,11 +239,9 @@ gcloud alpha monitoring policies create \
   --display-name="Cross-Project: High CPU Alert" \
   --condition-display-name="CPU > 90% on any instance in any project" \
   --condition-filter='resource.type="gce_instance" AND metric.type="compute.googleapis.com/instance/cpu/utilization"' \
-  --condition-threshold-value=0.9 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
-  --condition-threshold-aggregation-alignment-period=60s \
-  --condition-threshold-aggregation-per-series-aligner=ALIGN_MEAN \
+  --if='> 0.9' \
+  --duration=300s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_MEAN"}' \
   --notification-channels=projects/ops-monitoring/notificationChannels/12345 \
   --project=ops-monitoring
 ```
@@ -259,21 +254,29 @@ gcloud alpha monitoring policies create \
   --display-name="Production: High CPU Alert" \
   --condition-display-name="CPU > 85% in production" \
   --condition-filter='resource.type="gce_instance" AND metric.type="compute.googleapis.com/instance/cpu/utilization" AND resource.labels.project_id="production-app"' \
-  --condition-threshold-value=0.85 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --if='> 0.85' \
+  --duration=300s \
   --notification-channels=projects/ops-monitoring/notificationChannels/12345 \
   --project=ops-monitoring
 ```
 
 ## IAM Permissions for Cross-Project Monitoring
 
-For the scoping project to access metrics from monitored projects, the right IAM permissions must be in place. When you add a project through the Console or API, the necessary permissions are usually granted automatically. But if you need to set them up manually:
+For the scoping project to access metrics from monitored projects, the right IAM permissions must be in place. To add or remove projects from a metrics scope, your account needs Monitoring Admin permissions on the scoping project and on each project you want to add or remove. A principal that only needs to view the aggregated time-series data needs Monitoring Viewer on the scoping project.
 
 ```bash
-# Grant the monitoring viewer role on the monitored project to the scoping project's service account
+# Grant a user permission to modify the metrics scope
+gcloud projects add-iam-policy-binding ops-monitoring \
+  --member="user:sre@example.com" \
+  --role="roles/monitoring.admin"
+
 gcloud projects add-iam-policy-binding production-app \
-  --member="serviceAccount:service-SCOPING_PROJECT_NUMBER@gcp-sa-monitoring-notification.iam.gserviceaccount.com" \
+  --member="user:sre@example.com" \
+  --role="roles/monitoring.admin"
+
+# Grant a team permission to view the aggregated metrics from the scoping project
+gcloud projects add-iam-policy-binding ops-monitoring \
+  --member="group:ops@example.com" \
   --role="roles/monitoring.viewer"
 ```
 
@@ -282,8 +285,8 @@ gcloud projects add-iam-policy-binding production-app \
 There are some limits to be aware of:
 
 - A metrics scope can contain up to 375 monitored projects (previously the limit was lower, but Google has expanded it)
-- Each project can only be monitored by one metrics scope at a time
-- You cannot nest metrics scopes - a scoping project cannot be a monitored project of another scoping project
+- A monitored project can belong to more than one metrics scope
+- Metrics scopes are not transitive - adding a scoping project as a monitored project does not automatically include the projects that it monitors
 
 Best practices:
 
