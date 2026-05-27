@@ -8,7 +8,7 @@ Description: Learn how to set up automated secret rotation on Google Cloud using
 
 ---
 
-Static secrets are a security risk. The longer a database password, API key, or service credential sits unchanged, the more time an attacker has to find and exploit it. Most compliance frameworks require regular credential rotation, but doing it manually is painful and error-prone. Automated secret rotation with Google Cloud Secret Manager and Cloud Functions solves this by rotating secrets on a schedule and updating all dependent services automatically.
+Static secrets are a security risk. The longer a database password, API key, or service credential sits unchanged, the more time an attacker has to find and exploit it. Most compliance frameworks require regular credential rotation, but doing it manually is painful and error-prone. Automated secret rotation with Google Cloud Secret Manager and Cloud Functions solves this by rotating secrets on a schedule and giving dependent services a consistent latest secret to read.
 
 This guide walks through building a complete automated secret rotation pipeline.
 
@@ -19,9 +19,9 @@ flowchart LR
     A[Cloud Scheduler] -->|Trigger| B[Cloud Function]
     B --> C[Generate New Secret]
     B --> D[Update Target Service]
-    B --> E[Store in Secret Manager]
     B --> F[Verify New Secret Works]
-    F -->|Success| G[Disable Old Version]
+    F -->|Success| E[Store in Secret Manager]
+    E --> G[Disable Old Version]
     F -->|Failure| H[Rollback & Alert]
 ```
 
@@ -29,8 +29,8 @@ The rotation process follows these steps:
 1. Cloud Scheduler triggers the rotation function on a schedule
 2. The function generates a new credential
 3. It updates the target service (database, API, etc.) with the new credential
-4. It stores the new credential in Secret Manager as a new version
-5. It verifies the new credential works
+4. It verifies the new credential works
+5. It stores the new credential in Secret Manager as a new version
 6. If successful, it disables the old version
 
 ## Step 1: Set Up Secret Manager
@@ -60,9 +60,9 @@ Create secrets for different services:
 
 ```bash
 # API key secret
-gcloud secrets create stripe-api-key \
+gcloud secrets create internal-api-key \
     --replication-policy=automatic \
-    --labels="service=stripe,rotation=automated" \
+    --labels="service=internal-api,rotation=automated" \
     --project=my-project
 
 # Service account key (for external services that require keys)
@@ -83,6 +83,7 @@ import functions_framework
 from google.cloud import secretmanager
 from google.cloud import sql_v1beta4
 import psycopg2
+from psycopg2 import sql
 import secrets
 import string
 import json
@@ -144,6 +145,9 @@ def rotate_database_password(secret_id, config):
     database = config.get('database')
     username = config.get('username')
 
+    if not all([instance_name, database, username]):
+        raise ValueError("instance_name, database, and username are required")
+
     # Step 1: Get the current password
     current_version = sm_client.access_secret_version(
         request={"name": f"projects/{PROJECT_ID}/secrets/{secret_id}/versions/latest"}
@@ -165,10 +169,13 @@ def rotate_database_password(secret_id, config):
         conn.autocommit = True
         cursor = conn.cursor()
 
-        # Change the password using SQL
+        # Change the password using SQL. Use composable SQL objects for
+        # dynamic identifiers and values in this utility statement.
         cursor.execute(
-            "ALTER USER %s WITH PASSWORD %s",
-            (username, new_password)
+            sql.SQL("ALTER USER {} WITH PASSWORD {}").format(
+                sql.Identifier(username),
+                sql.Literal(new_password)
+            )
         )
         cursor.close()
         conn.close()
@@ -179,15 +186,7 @@ def rotate_database_password(secret_id, config):
         logger.warning("Cannot connect with current password, using Admin API")
         update_password_via_admin_api(instance_name, username, new_password)
 
-    # Step 4: Store the new password in Secret Manager
-    sm_client.add_secret_version(
-        request={
-            "parent": f"projects/{PROJECT_ID}/secrets/{secret_id}",
-            "payload": {"data": new_password.encode("UTF-8")},
-        }
-    )
-
-    # Step 5: Verify the new password works
+    # Step 4: Verify the new password works
     try:
         verify_conn = psycopg2.connect(
             host=f'/cloudsql/{PROJECT_ID}:us-central1:{instance_name}',
@@ -203,8 +202,21 @@ def rotate_database_password(secret_id, config):
         update_password_via_admin_api(instance_name, username, current_password)
         raise RuntimeError(f"Password rotation failed, rolled back: {e}")
 
+    # Step 5: Store the new password in Secret Manager
+    try:
+        sm_client.add_secret_version(
+            request={
+                "parent": f"projects/{PROJECT_ID}/secrets/{secret_id}",
+                "payload": {"data": new_password.encode("UTF-8")},
+            }
+        )
+    except Exception as e:
+        update_password_via_admin_api(instance_name, username, current_password)
+        raise RuntimeError(f"Secret Manager update failed, rolled back: {e}")
+
     # Step 6: Disable the old version
     disable_old_versions(secret_id)
+    logger.info(f"Rotation successful for {secret_id}")
 
     return {
         'status': 'success',
@@ -215,7 +227,11 @@ def rotate_database_password(secret_id, config):
 
 
 def rotate_api_key(secret_id, config):
-    """Rotate an API key by generating a new one."""
+    """Rotate an internally issued API key by generating a new one.
+
+    For third-party API keys, call the provider's key-creation and revocation
+    APIs before storing the new value.
+    """
 
     # Step 1: Generate new API key
     new_key = generate_api_key()
@@ -230,6 +246,7 @@ def rotate_api_key(secret_id, config):
 
     # Step 3: Disable old versions
     disable_old_versions(secret_id)
+    logger.info(f"Rotation successful for {secret_id}")
 
     return {
         'status': 'success',
@@ -278,6 +295,7 @@ def disable_old_versions(secret_id):
 ```bash
 # Deploy the secret rotation Cloud Function
 gcloud functions deploy secret-rotator \
+    --gen2 \
     --runtime=python311 \
     --trigger-http \
     --entry-point=rotate_secret \
@@ -288,6 +306,12 @@ gcloud functions deploy secret-rotator \
     --no-allow-unauthenticated \
     --project=my-project
 
+# Configure the underlying Cloud Run service to connect to Cloud SQL
+gcloud run services update secret-rotator \
+    --add-cloudsql-instances=my-project:us-central1:my-db-instance \
+    --region=us-central1 \
+    --project=my-project
+
 # Grant the service account necessary permissions
 gcloud projects add-iam-policy-binding my-project \
     --role=roles/secretmanager.admin \
@@ -296,6 +320,17 @@ gcloud projects add-iam-policy-binding my-project \
 gcloud projects add-iam-policy-binding my-project \
     --role=roles/cloudsql.admin \
     --member="serviceAccount:secret-rotator@my-project.iam.gserviceaccount.com"
+
+gcloud projects add-iam-policy-binding my-project \
+    --role=roles/cloudsql.client \
+    --member="serviceAccount:secret-rotator@my-project.iam.gserviceaccount.com"
+
+# Allow Cloud Scheduler to invoke the private function
+gcloud run services add-iam-policy-binding secret-rotator \
+    --region=us-central1 \
+    --member="serviceAccount:secret-rotator@my-project.iam.gserviceaccount.com" \
+    --role=roles/run.invoker \
+    --project=my-project
 ```
 
 ## Step 4: Schedule Rotation with Cloud Scheduler
@@ -309,6 +344,7 @@ gcloud scheduler jobs create http rotate-db-password \
     --headers="Content-Type=application/json" \
     --message-body='{"secret_id": "db-password", "type": "database_password", "instance_name": "my-db-instance", "database": "myapp", "username": "app_user"}' \
     --oidc-service-account-email=secret-rotator@my-project.iam.gserviceaccount.com \
+    --location=us-central1 \
     --project=my-project
 
 # Rotate API key every 90 days
@@ -317,8 +353,9 @@ gcloud scheduler jobs create http rotate-api-key \
     --uri="https://us-central1-my-project.cloudfunctions.net/secret-rotator" \
     --http-method=POST \
     --headers="Content-Type=application/json" \
-    --message-body='{"secret_id": "stripe-api-key", "type": "api_key"}' \
+    --message-body='{"secret_id": "internal-api-key", "type": "api_key"}' \
     --oidc-service-account-email=secret-rotator@my-project.iam.gserviceaccount.com \
+    --location=us-central1 \
     --project=my-project
 ```
 
@@ -389,6 +426,9 @@ class RotationAwareConnectionPool:
 
     def _create_pool(self):
         """Create a new connection pool with the latest password."""
+        if self._pool:
+            self._pool.closeall()
+
         password = self._get_password()
         self._pool = psycopg2.pool.ThreadedConnectionPool(
             self.min_conn,
@@ -407,7 +447,10 @@ class RotationAwareConnectionPool:
             self._create_pool()
 
         try:
-            return self._pool.getconn()
+            conn = self._pool.getconn()
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            return conn
         except psycopg2.OperationalError:
             # Connection failed, likely due to password rotation
             # Refresh the pool and try again
@@ -446,7 +489,7 @@ resource "google_cloud_scheduler_job" "rotate_db" {
 
   http_target {
     http_method = "POST"
-    uri         = google_cloudfunctions2_function.rotator.url
+    uri         = google_cloudfunctions2_function.rotator.service_config[0].uri
 
     body = base64encode(jsonencode({
       secret_id     = "db-password"
@@ -474,15 +517,20 @@ resource "google_cloud_scheduler_job" "rotate_db" {
 gcloud logging metrics create secret-rotation-success \
     --project=my-project \
     --description="Successful secret rotations" \
-    --log-filter='resource.type="cloud_function" AND textPayload:"rotation successful"'
+    --log-filter='resource.type="cloud_run_revision" AND resource.labels.service_name="secret-rotator" AND textPayload:"Rotation successful"'
 
 # Alert when rotation fails
-gcloud monitoring policies create \
+gcloud logging metrics create secret-rotation-failure \
+    --project=my-project \
+    --description="Failed secret rotations" \
+    --log-filter='resource.type="cloud_run_revision" AND resource.labels.service_name="secret-rotator" AND severity>=ERROR'
+
+gcloud alpha monitoring policies create \
     --display-name="Secret Rotation Failure" \
     --condition-display-name="Rotation function error" \
-    --condition-filter='resource.type="cloud_function" AND resource.labels.function_name="secret-rotator" AND metric.type="cloudfunctions.googleapis.com/function/execution_count" AND metric.labels.status="error"' \
-    --condition-threshold-value=0 \
-    --condition-threshold-comparison=COMPARISON_GT \
+    --condition-filter='metric.type="logging.googleapis.com/user/secret-rotation-failure" AND resource.type="cloud_run_revision"' \
+    --if="> 0" \
+    --duration=60s \
     --notification-channels=projects/my-project/notificationChannels/CHANNEL_ID
 ```
 
