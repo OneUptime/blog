@@ -18,13 +18,13 @@ flowchart TD
     A --> C[Limits]
     B --> B1[Guaranteed minimum resources]
     B --> B2[Used for scheduling decisions]
-    B --> B3[Node must have this much capacity]
+    B --> B3[Node must have this much allocatable capacity]
     C --> C1[Maximum resources the container can use]
     C --> C2[Enforced by the kernel]
     C --> C3[Exceeding causes throttling or OOMKill]
 ```
 
-- **Requests** - The amount of CPU/memory guaranteed to the container. The scheduler uses this to find a node with enough capacity.
+- **Requests** - The amount of CPU/memory reserved for the container. The scheduler uses this to find a node with enough allocatable capacity.
 - **Limits** - The maximum CPU/memory a container can use. The kernel enforces this.
 
 ## CPU vs Memory: Key Differences
@@ -87,7 +87,7 @@ spec:
       image: nginx:1.27
       resources:
         requests:
-          # Memory uses binary units (powers of 1024)
+          # Memory can use binary units (powers of 1024) or decimal units
           memory: "256Mi"   # 256 mebibytes (268,435,456 bytes)
           # Other notations:
           # memory: "1Gi"   # 1 gibibyte = 1024 Mi
@@ -105,10 +105,10 @@ flowchart TD
     A[Pod QoS Classes] --> B[Guaranteed]
     A --> C[Burstable]
     A --> D[BestEffort]
-    B --> B1[Requests = Limits for ALL containers]
+    B --> B1[CPU and memory requests = limits for ALL containers]
     B --> B2[Last to be evicted under pressure]
-    C --> C1[At least one container has requests set]
-    C --> C2[Requests != Limits]
+    C --> C1[At least one container has a CPU or memory request or limit]
+    C --> C2[Does not meet Guaranteed criteria]
     C --> C3[Evicted after BestEffort pods]
     D --> D1[No requests or limits set]
     D --> D2[First to be evicted under pressure]
@@ -212,7 +212,7 @@ spec:
               cpu: "1000m"
               # Set memory limit to 1.5-2x the request
               # This gives headroom for spikes without wasting too much
-              memory: "512Mi"
+              memory: "768Mi"
 ```
 
 ## The CPU Limits Debate
@@ -254,7 +254,7 @@ spec:
           memory: "256Mi"
         limits:
           # No CPU limit - container can use all available CPU on the node
-          memory: "512Mi"   # Always set memory limits to prevent OOM
+          memory: "512Mi"   # Always set memory limits to prevent unbounded memory use
 ```
 
 The recommendation: Always set memory limits. For CPU, use limits if you need predictable performance, skip them if you want maximum throughput and can tolerate noisy-neighbor effects.
@@ -366,8 +366,8 @@ spec:
 ## Monitoring Resource Usage
 
 ```bash
-# Check for OOMKilled pods
-kubectl get pods --all-namespaces | grep OOMKilled
+# Check for containers that were last terminated by OOMKill
+kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{range .status.containerStatuses[*]}{.name}{": "}{.lastState.terminated.reason}{" "}{end}{"\n"}{end}' | grep OOMKilled
 
 # Check for pods that were evicted
 kubectl get events --field-selector reason=Evicted --all-namespaces
