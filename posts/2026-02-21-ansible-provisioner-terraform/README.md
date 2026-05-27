@@ -46,8 +46,13 @@ resource "local_file" "ansible_inventory" {
   filename = "${path.module}/../ansible/inventory/terraform.ini"
 }
 
-resource "null_resource" "ansible_provisioner" {
+resource "terraform_data" "ansible_provisioner" {
   depends_on = [local_file.ansible_inventory, aws_instance.web]
+
+  # Re-run Ansible when the inventory changes
+  triggers_replace = {
+    inventory = local_file.ansible_inventory.content
+  }
 
   provisioner "local-exec" {
     command     = "ansible-playbook -i ../ansible/inventory/terraform.ini ../ansible/playbook.yml"
@@ -55,11 +60,6 @@ resource "null_resource" "ansible_provisioner" {
     environment = {
       ANSIBLE_HOST_KEY_CHECKING = "False"
     }
-  }
-
-  # Re-run Ansible when the inventory changes
-  triggers = {
-    inventory = local_file.ansible_inventory.content
   }
 }
 ```
@@ -81,7 +81,7 @@ ${db_ip} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/deploy.pem
 
 ```hcl
 # Provisioner failures do not destroy the resource by default
-resource "null_resource" "ansible" {
+resource "terraform_data" "ansible" {
   provisioner "local-exec" {
     command    = "ansible-playbook -i inventory playbook.yml"
     on_failure = continue  # Do not fail Terraform if Ansible fails
@@ -92,9 +92,9 @@ resource "null_resource" "ansible" {
 ## Triggering Re-provisioning
 
 ```hcl
-# Use triggers to re-run Ansible when something changes
-resource "null_resource" "ansible" {
-  triggers = {
+# Use triggers_replace to re-run Ansible when something changes
+resource "terraform_data" "ansible" {
+  triggers_replace = {
     always_run = timestamp()  # Run every time
     # Or based on specific changes:
     # playbook_hash = filemd5("../ansible/playbook.yml")
@@ -108,15 +108,15 @@ resource "null_resource" "ansible" {
 
 ## Best Practices
 
-1. Use `null_resource` with explicit `depends_on` rather than inline provisioners
-2. Use `triggers` to control when Ansible re-runs
+1. Use `terraform_data` with explicit `depends_on` rather than inline provisioners
+2. Use `triggers_replace` to control when Ansible re-runs
 3. Set `ANSIBLE_HOST_KEY_CHECKING=False` for new instances
 4. Add a sleep or `wait_for_connection` to handle SSH startup delay
 5. Consider using `on_failure = continue` so Terraform does not taint resources on Ansible failures
 
 ## Summary
 
-Running Ansible through Terraform's local-exec provisioner creates a seamless workflow where infrastructure creation and configuration happen in a single `terraform apply`. Use `null_resource` with triggers for better control over when Ansible runs, and always handle the SSH readiness gap with a wait mechanism.
+Running Ansible through Terraform's local-exec provisioner creates a seamless workflow where infrastructure creation and configuration happen in a single `terraform apply`. Use `terraform_data` with `triggers_replace` for better control over when Ansible runs, and always handle the SSH readiness gap with a wait mechanism.
 
 ## Common Use Cases
 
@@ -157,7 +157,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -178,7 +178,7 @@ Here are several practical scenarios where this module proves essential in real-
       loop:
         - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
-      notify: restart sshd
+      notify: restart ssh
 
     - name: Configure firewall rules
       community.general.ufw:
@@ -196,9 +196,9 @@ Here are several practical scenarios where this module proves essential in real-
         policy: deny
 
   handlers:
-    - name: restart sshd
+    - name: restart ssh
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -301,4 +301,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
