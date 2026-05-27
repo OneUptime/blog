@@ -10,9 +10,9 @@ Description: Learn how to use Kaniko in Google Cloud Build to build Docker image
 
 Building Docker images traditionally requires a Docker daemon running with root privileges. This is a security concern in shared CI/CD environments because a privileged container can potentially access the host system. In a multi-tenant environment like a shared Kubernetes cluster or a CI/CD platform, this creates real risk.
 
-Kaniko solves this problem. It is a tool from Google that builds container images from a Dockerfile inside a container, without requiring a Docker daemon or any special privileges. It executes each Dockerfile command entirely in userspace, which makes it safe to run in environments where you cannot or should not grant root access.
+Kaniko was designed to solve this problem. It was originally developed by Google to build container images from a Dockerfile inside a container, without requiring a Docker daemon or privileged mode. It executes each Dockerfile command entirely in userspace, which makes it useful in environments where you cannot or should not expose a Docker socket to the build.
 
-Cloud Build uses Kaniko under the hood for some of its operations, but you can also use it explicitly for more control over the build process.
+Cloud Build can use Kaniko for `gcloud builds submit --tag` builds when the `builds/use_kaniko` property is enabled, but you can also use it explicitly in a build step for more control over the build process.
 
 ## Why Kaniko Instead of Docker Build
 
@@ -34,7 +34,7 @@ steps:
   - name: 'gcr.io/kaniko-project/executor:latest'
     args:
       - '--dockerfile=Dockerfile'
-      - '--context=.'
+      - '--context=dir://.'
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
 ```
 
@@ -52,13 +52,14 @@ WORKDIR /app
 
 # Install dependencies first for better layer caching
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Copy application source
 COPY . .
 
 # Build the application
 RUN npm run build
+RUN npm prune --omit=dev
 
 # Production image
 FROM node:20-alpine
@@ -87,7 +88,7 @@ steps:
   - name: 'gcr.io/kaniko-project/executor:latest'
     args:
       - '--dockerfile=Dockerfile'
-      - '--context=.'
+      - '--context=dir://.'
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
       # Enable cache layers stored in Artifact Registry
@@ -97,7 +98,7 @@ steps:
       - '--cache-ttl=72h'
 ```
 
-The `--cache=true` flag tells Kaniko to check the cache repository for existing layers before building. If a layer already exists (same Dockerfile instruction and same parent layer), Kaniko reuses it instead of rebuilding. The cached layers are stored as images in the specified cache repository.
+The `--cache=true` flag tells Kaniko to check the cache repository for existing layers before building. Kaniko caches `RUN` layers by default, and you can add `--cache-copy-layers=true` if you also want to cache `COPY` layers. The cached layers are stored as images in the specified cache repository.
 
 ## Building Multiple Images
 
@@ -111,7 +112,7 @@ steps:
     id: 'build-api'
     args:
       - '--dockerfile=services/api/Dockerfile'
-      - '--context=.'
+      - '--context=dir://.'
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/api:$SHORT_SHA'
       - '--cache=true'
       - '--cache-repo=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/api/cache'
@@ -119,9 +120,10 @@ steps:
   # Build the worker service (runs in parallel with api)
   - name: 'gcr.io/kaniko-project/executor:latest'
     id: 'build-worker'
+    waitFor: ['-']
     args:
       - '--dockerfile=services/worker/Dockerfile'
-      - '--context=.'
+      - '--context=dir://.'
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/worker:$SHORT_SHA'
       - '--cache=true'
       - '--cache-repo=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/worker/cache'
@@ -129,16 +131,13 @@ steps:
   # Build the frontend (runs in parallel)
   - name: 'gcr.io/kaniko-project/executor:latest'
     id: 'build-frontend'
+    waitFor: ['-']
     args:
       - '--dockerfile=services/frontend/Dockerfile'
-      - '--context=services/frontend'
+      - '--context=dir://services/frontend'
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/frontend:$SHORT_SHA'
       - '--cache=true'
       - '--cache-repo=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/frontend/cache'
-
-options:
-  # Allow concurrent execution
-  pool: {}
 ```
 
 ## Build Arguments and Secrets
@@ -151,7 +150,7 @@ steps:
   - name: 'gcr.io/kaniko-project/executor:latest'
     args:
       - '--dockerfile=Dockerfile'
-      - '--context=.'
+      - '--context=dir://.'
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
       # Pass build arguments
       - '--build-arg=NODE_ENV=production'
@@ -165,12 +164,16 @@ For secrets, you can use Cloud Build's secret management integration.
 ```yaml
 # cloudbuild.yaml - Kaniko with secrets from Secret Manager
 steps:
-  - name: 'gcr.io/kaniko-project/executor:latest'
+  - name: 'gcr.io/kaniko-project/executor:debug'
+    entrypoint: '/busybox/sh'
     args:
-      - '--dockerfile=Dockerfile'
-      - '--context=.'
-      - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
-      - '--build-arg=NPM_TOKEN=$$NPM_TOKEN'
+      - '-c'
+      - >-
+        /kaniko/executor
+        --dockerfile=Dockerfile
+        --context=dir://.
+        --destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA
+        --build-arg=NPM_TOKEN=$$NPM_TOKEN
     secretEnv:
       - 'NPM_TOKEN'
 
@@ -202,7 +205,7 @@ spec:
             - "--destination=us-central1-docker.pkg.dev/my-project/my-repo/my-app:v1"
             - "--cache=true"
             - "--cache-repo=us-central1-docker.pkg.dev/my-project/my-repo/my-app/cache"
-          # No privileged flag needed - Kaniko runs as a regular container
+          # No privileged flag needed - Kaniko does not require privileged mode
           volumeMounts:
             - name: kaniko-secret
               mountPath: /kaniko/.docker/
@@ -215,7 +218,7 @@ spec:
   backoffLimit: 3
 ```
 
-Notice there is no `privileged: true` in the security context. This is the whole point of Kaniko. It runs as a regular unprivileged container and still builds Docker images.
+Notice there is no `privileged: true` in the security context. This is the whole point of Kaniko. It can build Docker images without privileged mode or a Docker daemon.
 
 ## Kaniko vs Docker Build Performance
 
@@ -240,15 +243,15 @@ steps:
   - name: 'gcr.io/kaniko-project/executor:latest'
     args:
       - '--dockerfile=Dockerfile'
-      - '--context=.'
+      - '--context=dir://.'
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
       - '--reproducible'       # Strip timestamps for reproducible builds
-      - '--snapshot-mode=redo'  # More accurate file tracking
+      - '--snapshot-mode=redo'  # Faster file tracking; use the default "full" mode for the most robust snapshots
       - '--cache=true'
       - '--cache-repo=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app/cache'
 ```
 
-The `--reproducible` flag strips file timestamps so that building the same source produces the same image digest. This is useful for supply chain security and build verification.
+The `--reproducible` flag strips timestamps out of the built image to help make repeated builds of the same source produce the same image digest. This is useful for supply chain security and build verification.
 
 ## Common Issues and Solutions
 
@@ -268,4 +271,4 @@ node_modules
 
 ## Wrapping Up
 
-Kaniko gives you a way to build Docker images without the security implications of running a Docker daemon. In Cloud Build, it is a drop-in replacement for Docker builds with the added benefit of remote layer caching. Whether you are running builds in Cloud Build or directly in GKE, Kaniko lets you build images safely in any environment without privileged access.
+Kaniko gives you a way to build Docker images without the security implications of running a Docker daemon. In Cloud Build, it is a drop-in replacement for many Docker builds with the added benefit of remote layer caching. Whether you are running builds in Cloud Build or directly in GKE, Kaniko lets you build images without privileged mode or Docker socket access.
