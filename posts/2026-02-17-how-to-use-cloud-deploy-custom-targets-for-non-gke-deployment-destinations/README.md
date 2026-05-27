@@ -8,7 +8,7 @@ Description: Learn how to use Cloud Deploy custom targets to deploy applications
 
 ---
 
-Google Cloud Deploy natively supports GKE clusters and Cloud Run services as deployment destinations. But what if you need to deploy to a VM fleet, an on-premises server, a third-party platform, or some other custom infrastructure? That is where custom targets come in. Custom targets let you extend Cloud Deploy to work with any deployment destination by defining your own render and deploy logic.
+Google Cloud Deploy natively supports GKE clusters, GKE Enterprise clusters, and Cloud Run services as deployment destinations. But what if you need to deploy to a VM fleet, an on-premises server, a third-party platform, or some other custom infrastructure? That is where custom targets come in. Custom targets let you extend Cloud Deploy to work with any deployment destination by defining your own render and deploy logic.
 
 This guide walks through setting up custom targets for non-standard deployment scenarios.
 
@@ -65,9 +65,10 @@ description: Production VM fleet
 customTarget:
   customTargetType: vm-deploy
 deployParameters:
-  instance-group: my-prod-instance-group
-  zone: us-central1-a
-  project: my-project
+  customTarget/instanceGroup: my-prod-instance-group
+  customTarget/zone: us-central1-a
+  customTarget/project: my-project
+  customTarget/image: us-central1-docker.pkg.dev/my-project/my-repo/vm-app:latest
 ```
 
 ```bash
@@ -100,33 +101,46 @@ customActions:
     args: ["-c", "/deploy.sh"]
 ```
 
-The render script processes your configuration and writes the output to the path specified by Cloud Deploy.
+The render script processes your configuration and uploads the output to the Cloud Storage path specified by Cloud Deploy.
 
 ```bash
 #!/bin/sh
 # render.sh - Renders VM deployment configuration
 # Cloud Deploy provides these environment variables:
-# CLOUD_DEPLOY_OUTPUT_PATH - where to write rendered artifacts
+# CLOUD_DEPLOY_OUTPUT_GCS_PATH - where to upload rendered artifacts
 # CLOUD_DEPLOY_RELEASE - the release name
 # CLOUD_DEPLOY_TARGET - the target name
 
 echo "Rendering configuration for target: $CLOUD_DEPLOY_TARGET"
 
-# Create the output directory
-mkdir -p "$CLOUD_DEPLOY_OUTPUT_PATH"
+# Create a local working directory
+WORK_DIR="$(mktemp -d)"
+CONFIG_FILE="$WORK_DIR/deploy-config.json"
+RESULTS_FILE="$WORK_DIR/results.json"
 
 # Generate the deployment configuration
 # In this example, we produce a startup script and instance template config
-cat > "$CLOUD_DEPLOY_OUTPUT_PATH/deploy-config.json" << EOF
+cat > "$CONFIG_FILE" << EOF
 {
-  "instanceGroup": "$CLOUD_DEPLOY_project",
-  "image": "$CLOUD_DEPLOY_IMAGE",
+  "instanceGroup": "$CLOUD_DEPLOY_customTarget_instanceGroup",
+  "image": "$CLOUD_DEPLOY_customTarget_image",
   "version": "$CLOUD_DEPLOY_RELEASE",
-  "startupScript": "#!/bin/bash\ndocker pull $CLOUD_DEPLOY_IMAGE\ndocker run -d -p 8080:8080 $CLOUD_DEPLOY_IMAGE"
+  "startupScript": "#!/bin/bash\ndocker pull $CLOUD_DEPLOY_customTarget_image\ndocker run -d -p 8080:8080 $CLOUD_DEPLOY_customTarget_image"
 }
 EOF
 
-echo "Render complete. Output written to $CLOUD_DEPLOY_OUTPUT_PATH"
+gcloud storage cp "$CONFIG_FILE" "$CLOUD_DEPLOY_OUTPUT_GCS_PATH/deploy-config.json"
+
+cat > "$RESULTS_FILE" << EOF
+{
+  "resultStatus": "SUCCEEDED",
+  "manifestFile": "$CLOUD_DEPLOY_OUTPUT_GCS_PATH/deploy-config.json"
+}
+EOF
+
+gcloud storage cp "$RESULTS_FILE" "$CLOUD_DEPLOY_OUTPUT_GCS_PATH/results.json"
+
+echo "Render complete. Output uploaded to $CLOUD_DEPLOY_OUTPUT_GCS_PATH"
 ```
 
 ## Implementing the Deploy Action
@@ -136,17 +150,24 @@ The deploy action receives the rendered artifacts and performs the actual deploy
 ```bash
 #!/bin/sh
 # deploy.sh - Deploys to VM instance group
-# CLOUD_DEPLOY_INPUT_PATH contains the rendered artifacts
+# CLOUD_DEPLOY_INPUT_GCS_PATH contains the rendered artifacts
+# CLOUD_DEPLOY_OUTPUT_GCS_PATH is where to upload deploy results
 # Deploy parameters from the target are available as environment variables
 
 echo "Starting deployment to VM fleet"
 
-# Read the rendered configuration
-CONFIG_FILE="$CLOUD_DEPLOY_INPUT_PATH/deploy-config.json"
+# Download and read the rendered configuration
+WORK_DIR="$(mktemp -d)"
+CONFIG_FILE="$WORK_DIR/deploy-config.json"
+RESULTS_FILE="$WORK_DIR/results.json"
+gcloud storage cp "$CLOUD_DEPLOY_INPUT_GCS_PATH/deploy-config.json" "$CONFIG_FILE"
 
 # Extract values from the config
 INSTANCE_GROUP=$(cat "$CONFIG_FILE" | jq -r '.instanceGroup')
 IMAGE=$(cat "$CONFIG_FILE" | jq -r '.image')
+ZONE="$CLOUD_DEPLOY_customTarget_zone"
+PROJECT="${CLOUD_DEPLOY_customTarget_project:-$CLOUD_DEPLOY_PROJECT_ID}"
+MAX_SURGE="${CLOUD_DEPLOY_customTarget_maxSurge:-3}"
 
 # Use gcloud to update the instance group with the new image
 echo "Updating instance template with new image: $IMAGE"
@@ -155,18 +176,14 @@ echo "Updating instance template with new image: $IMAGE"
 TEMPLATE_NAME="app-template-$(date +%s)"
 gcloud compute instance-templates create-with-container "$TEMPLATE_NAME" \
   --container-image="$IMAGE" \
-  --region=us-central1
-
-# Update the managed instance group to use the new template
-gcloud compute instance-groups managed set-instance-template "$INSTANCE_GROUP" \
-  --template="$TEMPLATE_NAME" \
-  --zone="$CLOUD_DEPLOY_zone"
+  --project="$PROJECT"
 
 # Start a rolling update
 gcloud compute instance-groups managed rolling-action start-update "$INSTANCE_GROUP" \
   --version="template=$TEMPLATE_NAME" \
-  --zone="$CLOUD_DEPLOY_zone" \
-  --max-surge=3 \
+  --zone="$ZONE" \
+  --project="$PROJECT" \
+  --max-surge="$MAX_SURGE" \
   --max-unavailable=0
 
 echo "Rolling update started for instance group $INSTANCE_GROUP"
@@ -174,7 +191,16 @@ echo "Rolling update started for instance group $INSTANCE_GROUP"
 # Wait for the update to complete
 gcloud compute instance-groups managed wait-until "$INSTANCE_GROUP" \
   --version-target-reached \
-  --zone="$CLOUD_DEPLOY_zone"
+  --zone="$ZONE" \
+  --project="$PROJECT"
+
+cat > "$RESULTS_FILE" << EOF
+{
+  "resultStatus": "SUCCEEDED"
+}
+EOF
+
+gcloud storage cp "$RESULTS_FILE" "$CLOUD_DEPLOY_OUTPUT_GCS_PATH/results.json"
 
 echo "Deployment complete"
 ```
@@ -239,7 +265,7 @@ Custom targets open up many possibilities. Here are some real-world examples:
 - Updating AWS Lambda functions or ECS services from GCP
 - Deploying Terraform configurations
 - Updating Firebase hosting or Firestore rules
-- Deploying to edge devices via IoT Core
+- Deploying to edge devices through a custom device management workflow
 
 The pattern is always the same: define a CustomTargetType, implement render and deploy containers, and plug them into your pipeline.
 
@@ -256,11 +282,12 @@ metadata:
 customTarget:
   customTargetType: vm-deploy
 deployParameters:
-  instance-group: staging-instance-group
-  zone: us-central1-b
-  max-surge: "1"
+  customTarget/instanceGroup: staging-instance-group
+  customTarget/zone: us-central1-b
+  customTarget/image: us-central1-docker.pkg.dev/my-project/my-repo/vm-app:latest
+  customTarget/maxSurge: "1"
 ```
 
 ## Summary
 
-Custom targets extend Cloud Deploy beyond GKE and Cloud Run to support any deployment destination. By implementing render and deploy actions as containers, you maintain full control over how your application gets deployed while benefiting from Cloud Deploy's pipeline management, approval workflows, and release tracking. If you can script a deployment, you can make it a Cloud Deploy custom target.
+Custom targets extend Cloud Deploy beyond its built-in target types to support any deployment destination. By implementing render and deploy actions as containers, you maintain full control over how your application gets deployed while benefiting from Cloud Deploy's pipeline management, approval workflows, and release tracking. If you can script a deployment, you can make it a Cloud Deploy custom target.
