@@ -71,7 +71,7 @@ collection.create_index(
 # 2. db.users.find({"status": "active"})
 # 3. db.users.find({"status": "active", "created_at": {"$gte": date}})
 
-# But NOT this query (status is not the prefix):
+# But not this query efficiently, because status is not the prefix:
 # db.users.find({"created_at": {"$gte": date}})
 ```
 
@@ -152,11 +152,11 @@ db.logs.create_index(
 )
 
 # Insert a session - it will be auto-deleted after 24 hours
-from datetime import datetime
+from datetime import datetime, timezone
 db.sessions.insert_one({
     "session_id": "abc123",
     "user_id": "u456",
-    "created_at": datetime.utcnow()  # TTL is calculated from this field
+    "created_at": datetime.now(timezone.utc)  # TTL is calculated from this field
 })
 ```
 
@@ -225,7 +225,7 @@ def analyze_query(collection, query, sort=None):
 # Analyze a query
 analyze_query(
     collection,
-    {"status": "active", "created_at": {"$gte": datetime(2026, 1, 1)}},
+    {"status": "active", "created_at": {"$gte": datetime(2026, 1, 1, tzinfo=timezone.utc)}},
     sort=[("created_at", -1)]
 )
 ```
@@ -258,7 +258,7 @@ def find_missing_indexes(db):
 
     # After running your application for a while, check the profile
     slow_queries = db.system.profile.find(
-        {"op": {"$in": ["query", "find"]}},
+        {"$or": [{"op": "query"}, {"op": "command", "command.find": {"$exists": True}}]},
     ).sort("millis", -1).limit(20)
 
     for query in slow_queries:
@@ -274,7 +274,7 @@ def find_missing_indexes(db):
 
 ## Common Indexing Mistakes
 
-1. **Too many indexes**: Each index slows down writes. A collection should rarely have more than 10 indexes.
+1. **Too many indexes**: Each index slows down writes. Add indexes for real query patterns, and remember that MongoDB limits a single collection to 64 indexes.
 
 2. **Indexing low-cardinality fields alone**: An index on a boolean field like `is_active` has only two distinct values. Pair it with another field in a compound index.
 
