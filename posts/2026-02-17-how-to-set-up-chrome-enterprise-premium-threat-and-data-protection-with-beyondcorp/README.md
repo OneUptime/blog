@@ -33,14 +33,10 @@ These features work directly in the Chrome browser, providing visibility and con
 - Chrome Enterprise Premium license
 - Endpoint Verification deployed
 
-```bash
-# Enable the required APIs
+Most of the setup happens in the Google Admin console. If you plan to automate Chrome policy management through the Chrome Policy API, enable it in your Google Cloud project:
 
-gcloud services enable \
-  beyondcorp.googleapis.com \
-  chromepolicy.googleapis.com \
-  dlp.googleapis.com \
-  --project=my-project-id
+```bash
+gcloud services enable chromepolicy.googleapis.com --project=my-project-id
 ```
 
 ## Step 1: Enable Chrome Enterprise Premium
@@ -60,9 +56,9 @@ Set up real-time threat protection for browsing and downloads.
 
 In the Google Admin console:
 
-1. Go to Security, then Access and data control, then Rules
-2. Click "Create rule"
-3. Choose "Threat protection"
+1. Go to Rules, then Create rule, then Data protection
+2. Turn on For Google Chrome
+3. Create rules for Chrome events and malware or sensitive data detections
 
 Configure the following settings:
 
@@ -80,6 +76,7 @@ You can configure these through Chrome management policies as well.
   "SafeBrowsingProxiedRealTimeChecksAllowed": true,
   "PasswordProtectionWarningTrigger": 1,
   "PasswordProtectionLoginURLs": ["https://accounts.google.com"],
+  "SendFilesForMalwareCheck": 2,
   "DelayDeliveryUntilVerdict": 1
 }
 ```
@@ -134,23 +131,51 @@ Enable deep content inspection for uploaded and downloaded files.
 
 In the Admin console:
 
-1. Go to Security, then Access and data control, then Chrome Enterprise Premium
-2. Enable "Content inspection"
-3. Configure the inspection settings
+1. Go to Devices, then Chrome, then Settings
+2. Go to Chrome Enterprise Connectors
+3. Enable Upload content analysis, Download content analysis, Bulk text content analysis, and Print content analysis as needed
+4. Configure the inspection settings
 
 Content inspection scans the actual content of files, not just their names or types. This catches sensitive data hidden in documents, spreadsheets, and archives.
 
 ```json
 {
-  "ContentAnalysisEnabled": true,
-  "OnFileAttachedEnabled": true,
-  "OnFileDownloadedEnabled": true,
-  "OnBulkDataEntryEnabled": true,
-  "OnPrintEnabled": true
+  "OnFileAttachedEnterpriseConnector": [
+    {
+      "service_provider": "google",
+      "enable": [{ "url_list": ["*"], "tags": ["dlp", "malware"] }],
+      "block_until_verdict": 1,
+      "default_action": "block"
+    }
+  ],
+  "OnFileDownloadedEnterpriseConnector": [
+    {
+      "service_provider": "google",
+      "enable": [{ "url_list": ["*"], "tags": ["dlp", "malware"] }],
+      "block_until_verdict": 1,
+      "default_action": "block"
+    }
+  ],
+  "OnBulkDataEntryEnterpriseConnector": [
+    {
+      "service_provider": "google",
+      "enable": [{ "url_list": ["*"], "tags": ["dlp"] }],
+      "block_until_verdict": 1,
+      "default_action": "block"
+    }
+  ],
+  "OnPrintEnterpriseConnector": [
+    {
+      "service_provider": "google",
+      "enable": [{ "url_list": ["*"], "tags": ["dlp"] }],
+      "block_until_verdict": 1,
+      "default_action": "block"
+    }
+  ]
 }
 ```
 
-The scanning happens locally through a connector or via Google's cloud-based inspection service, depending on your configuration.
+The scanning happens through the configured Chrome Enterprise connector. For Google's Chrome Enterprise Premium service, content gathered in Chrome is uploaded to Google Cloud for analysis. For partner DLP integrations, Chrome can also connect to a local content analysis agent.
 
 ## Step 5: Set Up URL Filtering
 
@@ -185,21 +210,19 @@ Action: Block upload only (browsing allowed)
 
 For highly sensitive applications, prevent printing and screenshots.
 
-```json
-{
-  "PrintingAllowedForUrls": [
-    "https://docs.google.com/*",
-    "https://internal.company.com/*"
-  ],
-  "PrintingBlockedForUrls": [
-    "https://hr-portal.company.com/*",
-    "https://finance.company.com/*"
-  ],
-  "ScreenCaptureAllowed": false,
-  "ScreenCaptureAllowedByOrigins": [
-    "https://docs.google.com"
-  ]
-}
+```text
+Print protection:
+  Rule name: Block printing from finance apps
+  Apps: Chrome
+  Trigger: Print
+  URLs: https://finance.company.com/*
+  Content condition: Any sensitive data
+  Action: Block
+
+Screenshot prevention:
+  Setting: Enable screenshot prevention, except for these URLs
+  Exceptions:
+    - https://docs.google.com
 ```
 
 ## Step 7: Integrate with BeyondCorp Access Policies
@@ -239,37 +262,31 @@ In the Admin console, go to Security, then Security investigation tool. Here you
 - Track data exfiltration attempts
 - Investigate individual user activity
 
-You can also forward these events to Cloud Logging for integration with your SIEM.
+You can also forward these events to a SIEM by using Chrome Enterprise reporting connectors, including Google Cloud Pub/Sub, Google Security Operations, Splunk, CrowdStrike, and Palo Alto Networks.
 
-```bash
-# View Chrome Enterprise Premium security events in Cloud Logging
-gcloud logging read \
-  'resource.type="chrome_enterprise_premium" AND
-   severity>=WARNING' \
-  --project=my-project-id \
-  --limit=20 \
-  --format="table(timestamp,jsonPayload.eventType,jsonPayload.userEmail,jsonPayload.action)"
+```text
+Google Cloud Pub/Sub connector:
+  Topic full path: projects/my-project-id/topics/chrome-security-events
+  Required publisher: cloud-pub-sub-publisher@chrome-reporting.iam.gserviceaccount.com
+  Event reporting: Enable Chrome threat and data protection events
 ```
 
 ## Step 9: Create Alerts for Security Events
 
 Set up notifications for critical security events.
 
-```bash
-# Alert on blocked malware downloads
-gcloud monitoring alerting policies create \
-  --display-name="Chrome Malware Detection" \
-  --condition-display-name="Malware download blocked" \
-  --condition-filter='resource.type="chrome_enterprise_premium" AND jsonPayload.eventType="MALWARE_DETECTED"' \
-  --notification-channels=CHANNEL_ID \
-  --project=my-project-id
+```text
+Alert name: Chrome Malware Detection
+Data source: Chrome log events
+Condition: Event is Malware transfer
+Action: Send notification to the security operations group
 ```
 
 ## Rollout Strategy
 
 Rolling out Chrome Enterprise Premium should be gradual:
 
-1. **Week 1-2**: Enable in monitor-only mode. Log violations but do not block anything.
+1. **Week 1-2**: Enable in audit mode. Log violations but do not block anything.
 2. **Week 3-4**: Review logs to identify false positives and adjust rules.
 3. **Week 5-6**: Enable "warn" mode for DLP rules. Users see warnings but can proceed with justification.
 4. **Week 7-8**: Switch to "block" mode for high-confidence rules.
