@@ -12,7 +12,7 @@ Sometimes your application needs something to happen before it starts. Maybe a d
 
 ## How Init Containers Work
 
-Init containers run before app containers and must complete successfully. If an init container fails, Kubernetes restarts it until it succeeds (respecting the restart policy). App containers do not start until all init containers have completed.
+Init containers run before app containers and must complete successfully. If an init container fails, Kubernetes restarts it until it succeeds unless the Pod has `restartPolicy: Never`, in which case Kubernetes treats the Pod as failed. App containers do not start until all init containers have completed.
 
 ```mermaid
 sequenceDiagram
@@ -33,7 +33,7 @@ Key differences from regular containers:
 
 - Init containers run sequentially, one at a time.
 - Init containers must exit with code 0 to succeed.
-- Init containers do not support readiness probes (they are not long-running).
+- Init containers do not support lifecycle hooks, liveness probes, readiness probes, or startup probes.
 - Init containers can use different images from the app container.
 - Init containers share volumes with the app container.
 
@@ -209,7 +209,7 @@ flowchart TD
 
 Resource Management
 
-Init containers can have their own resource requests and limits. Kubernetes takes the maximum of init container resources and the sum of app container resources when scheduling.
+Init containers can have their own resource requests and limits. For each resource type, Kubernetes schedules the Pod using the higher of the largest init container request or limit and the sum of the app container requests or limits.
 
 ```yaml
 # init-resources.yaml
