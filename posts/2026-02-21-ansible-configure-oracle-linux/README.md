@@ -17,7 +17,7 @@ Key differences from RHEL:
 - `ansible_distribution` returns "OracleLinux"
 - Free to download and use without a subscription
 - UEK kernel option (optimized for Oracle workloads)
-- Oracle-specific repositories (ol9_baseos, ol9_appstream, ol9_UEKR7)
+- Oracle-specific repositories (ol9_baseos_latest, ol9_appstream, ol9_UEKR7 or ol9_UEKR8 depending on the kernel stream)
 - No subscription management needed
 - EPEL-compatible packages available through Oracle repos
 
@@ -215,7 +215,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -239,19 +239,21 @@ Here are several practical scenarios where this module proves essential in real-
       notify: restart sshd
 
     - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
+      ansible.posix.firewalld:
+        service: "{{ item }}"
+        permanent: true
+        state: enabled
+        immediate: true
       loop:
-        - "22"
-        - "80"
-        - "443"
+        - ssh
+        - http
+        - https
 
     - name: Enable firewall
-      community.general.ufw:
-        state: enabled
-        policy: deny
+      ansible.builtin.systemd:
+        name: firewalld
+        enabled: true
+        state: started
 
   handlers:
     - name: restart sshd
@@ -359,4 +361,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
