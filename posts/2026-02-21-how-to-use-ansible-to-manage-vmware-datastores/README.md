@@ -191,20 +191,19 @@ Before removing or performing maintenance on a datastore, migrate VMs off of it 
     target_datastore: "vmfs-new-01"
 
   tasks:
-    # Find all VMs on the source datastore
-    - name: Get VMs on the source datastore
-      community.vmware.vmware_datastore_info:
-        datacenter: "DC01"
-        name: "{{ source_datastore }}"
-      register: ds_info
+    # Find all VMs and filter by datastore before migrating
+    - name: Get virtual machine information
+      community.vmware.vmware_vm_info:
+        vm_type: vm
+      register: vm_info
 
     # Migrate each VM's storage to the new datastore
     - name: Storage vMotion VMs to the new datastore
       community.vmware.vmware_vmotion:
-        vm_name: "{{ item }}"
+        vm_name: "{{ item.guest_name }}"
         destination_datastore: "{{ target_datastore }}"
-      loop: "{{ ds_info.datastores[0].virtual_machines | default([]) }}"
-      when: ds_info.datastores[0].virtual_machines is defined
+      loop: "{{ vm_info.virtual_machines }}"
+      when: source_datastore in (item.datastore_url | default([]) | map(attribute='name') | list)
 ```
 
 ## Unmounting and Removing Datastores
@@ -297,11 +296,13 @@ When you need to mount a new datastore on every host in a cluster, get the host 
 ```yaml
 # mount-on-all-hosts.yml
 - name: Get all hosts in the cluster
-  community.vmware.vmware_host_info:
+  vmware.vmware.cluster_info:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: false
+    datacenter: "DC01"
+    cluster_name: "Production"
   register: host_info
 
 - name: Mount NFS datastore on every host
@@ -310,13 +311,13 @@ When you need to mount a new datastore on every host in a cluster, get the host 
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: false
-    esxi_hostname: "{{ item.key }}"
+    esxi_hostname: "{{ item.name }}"
     datastore_name: "nfs-new-share"
     datastore_type: nfs
     nfs_server: "nfs-server.example.com"
     nfs_path: "/exports/vmware/newshare"
     state: present
-  loop: "{{ host_info.hosts | dict2items }}"
+  loop: "{{ host_info.clusters['Production'].hosts }}"
 ```
 
 Datastore management is infrastructure work that directly impacts VM availability and performance. Automating it with Ansible means you can provision storage consistently, monitor capacity proactively, and perform migrations without the risk of manual errors. Build monitoring into your regular automation workflows and you will catch space issues long before they become outages.
