@@ -8,9 +8,9 @@ Description: Learn how to set up a Google Cloud external HTTPS load balancer wit
 
 ---
 
-Load balancers on GCP involve a surprising number of resources. A single HTTPS load balancer requires a forwarding rule, a target proxy, a URL map, backend services, health checks, SSL certificates, and a static IP address. Setting this up through the Console is tedious and error-prone. Setting it up with Terraform means you can create it once, version control it, and replicate it across environments.
+Load balancers on GCP involve a surprising number of resources. A single HTTPS load balancer typically requires a forwarding rule, a target proxy, a URL map, backend services, SSL certificates, and a static IP address. VM and zonal NEG backends also require health checks. Setting this up through the Console is tedious and error-prone. Setting it up with Terraform means you can create it once, version control it, and replicate it across environments.
 
-This guide walks through creating an external HTTPS load balancer with Terraform, from the simplest possible setup to a production-ready configuration with CDN and custom headers.
+This guide walks through creating an external HTTPS load balancer with Terraform, from the simplest possible setup to a production-ready configuration with CDN and security policies.
 
 ## Understanding the GCP Load Balancer Architecture
 
@@ -118,6 +118,26 @@ resource "google_compute_backend_service" "web" {
   log_config {
     enable      = true
     sample_rate = 1.0
+  }
+}
+```
+
+For VM instance group backends, also allow traffic from Google Front Ends and health check probes to reach the backend port:
+
+```hcl
+# firewall.tf - Allow load balancer and health check traffic to backend VMs
+resource "google_compute_firewall" "allow_lb_health_checks" {
+  name    = "allow-lb-health-checks"
+  project = var.project_id
+  network = google_compute_network.main.name
+
+  direction     = "INGRESS"
+  source_ranges = ["35.191.0.0/16", "130.211.0.0/22"]
+  target_tags   = ["web-backend"]
+
+  allow {
+    protocol = "tcp"
+    ports    = ["8080"]
   }
 }
 ```
