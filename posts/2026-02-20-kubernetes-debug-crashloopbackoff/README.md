@@ -8,16 +8,16 @@ Description: A systematic guide to debugging CrashLoopBackOff errors in Kubernet
 
 ---
 
-CrashLoopBackOff is one of the most common and frustrating errors in Kubernetes. It means your container starts, crashes, and Kubernetes keeps restarting it with increasing delays. This guide walks you through a systematic approach to diagnosing and fixing it.
+CrashLoopBackOff is one of the most common and frustrating errors in Kubernetes. It means your container starts, exits or crashes, and Kubernetes keeps restarting it with increasing delays. This guide walks you through a systematic approach to diagnosing and fixing it.
 
 ## What Is CrashLoopBackOff?
 
-When a container in a pod crashes repeatedly, Kubernetes applies an exponential backoff delay before restarting it. The delay starts at 10 seconds and doubles each time up to a maximum of 5 minutes.
+When a container in a pod exits repeatedly and its restart policy causes Kubernetes to restart it, Kubernetes applies an exponential backoff delay before restarting it again. By default, the delay starts at 10 seconds and doubles each time up to a maximum of 5 minutes.
 
 ```mermaid
 graph TD
     A[Container Starts] --> B{Container Exits}
-    B -->|Exit Code != 0| C[CrashLoopBackOff]
+    B -->|Restarted repeatedly| C[CrashLoopBackOff]
     C --> D[Wait 10s]
     D --> E[Restart Container]
     E --> F{Container Exits Again?}
@@ -36,7 +36,7 @@ There are several reasons why a container might crash:
 1. Application errors or unhandled exceptions
 2. Missing configuration or environment variables
 3. Failed dependency connections (database, API)
-4. Insufficient memory or CPU
+4. Memory limits or CPU throttling
 5. Incorrect command or entrypoint
 6. Missing files or volumes
 7. Permission errors
@@ -186,7 +186,7 @@ containers:
 - name: my-app
   image: my-app:latest
   # Override command to sleep so you can exec into the container
-  command: ["/bin/sh", "-c", "sleep infinity"]
+  command: ["/bin/sh", "-c", "sleep 3600"]
 ```
 
 Then exec into the running container:
@@ -217,10 +217,10 @@ For containers that crash too quickly, use ephemeral debug containers.
 
 ```bash
 # Attach a debug container to a running pod
-kubectl debug -it your-pod-name --image=busybox --target=my-app
+kubectl debug -it your-pod-name -n your-namespace --image=busybox --target=my-app
 
 # Create a copy of the pod with a different command
-kubectl debug your-pod-name -it --copy-to=debug-pod --container=my-app -- /bin/sh
+kubectl debug your-pod-name -n your-namespace -it --copy-to=debug-pod --container=my-app -- /bin/sh
 ```
 
 ## Prevention Best Practices
