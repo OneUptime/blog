@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, Testing, JUnit, Mockito
 
-Description: Learn how to write unit tests and integration tests for Spring Boot applications using JUnit 5, Mockito, and TestContainers.
+Description: Learn how to write unit tests and integration tests for Spring Boot applications using JUnit 5, Mockito, and Testcontainers.
 
 ---
 
-A solid testing strategy is essential for maintaining Spring Boot applications. Unit tests verify individual components in isolation, while integration tests validate that components work together correctly. This guide covers both approaches using JUnit 5, Mockito, and TestContainers.
+A solid testing strategy is essential for maintaining Spring Boot applications. Unit tests verify individual components in isolation, while integration tests validate that components work together correctly. This guide covers both approaches using JUnit 5, Mockito, and Testcontainers.
 
 ## Testing Pyramid
 
@@ -39,19 +39,17 @@ Add the required testing libraries to your project.
         <scope>test</scope>
     </dependency>
 
-    <!-- TestContainers for integration tests with real databases -->
+    <!-- Testcontainers for integration tests with real databases -->
     <dependency>
         <groupId>org.testcontainers</groupId>
         <artifactId>junit-jupiter</artifactId>
-        <version>1.20.4</version>
         <scope>test</scope>
     </dependency>
 
-    <!-- PostgreSQL TestContainer -->
+    <!-- PostgreSQL Testcontainers module -->
     <dependency>
         <groupId>org.testcontainers</groupId>
         <artifactId>postgresql</artifactId>
-        <version>1.20.4</version>
         <scope>test</scope>
     </dependency>
 
@@ -152,9 +150,9 @@ class ProductServiceTest {
 }
 ```
 
-## Integration Testing with TestContainers
+## Integration Testing with Testcontainers
 
-Use TestContainers to run integration tests against a real database.
+Use Testcontainers to run integration tests against a real database.
 
 ```java
 // ProductIntegrationTest.java - Tests with a real PostgreSQL database
@@ -246,7 +244,7 @@ class ProductControllerTest {
     private MockMvc mockMvc;
 
     // Mock the service layer
-    @MockBean
+    @MockitoBean
     private ProductService productService;
 
     @Autowired
@@ -340,6 +338,6 @@ class OrderIntegrationTest {
 
 ## Conclusion
 
-A comprehensive testing strategy combines fast unit tests for business logic, MockMvc tests for the web layer, and TestContainers-based integration tests for end-to-end validation. This approach catches bugs at every level while keeping the test suite fast enough to run frequently.
+A comprehensive testing strategy combines fast unit tests for business logic, MockMvc tests for the web layer, and Testcontainers-based integration tests for end-to-end validation. This approach catches bugs at every level while keeping the test suite fast enough to run frequently.
 
 When your tested code reaches production, [OneUptime](https://oneuptime.com) continues the quality assurance process by monitoring endpoint availability, tracking error rates, and alerting your team when issues arise that tests could not predict.
