@@ -47,7 +47,7 @@ ansible-galaxy collection install servicenow.itsm
       Version: {{ app_version }}
       Environment: {{ environment_name }}
     assignment_group: "{{ snow_assignment_group }}"
-    category: Software
+    category: software
     priority: moderate
   register: change_request
 
@@ -99,6 +99,7 @@ ansible-galaxy collection install servicenow.itsm
       password: "{{ snow_password }}"
     sys_id: "{{ change_request.record.sys_id }}"
     state: closed
+    assignment_group: "{{ snow_assignment_group }}"
     close_code: successful
     close_notes: "Deployment completed successfully. All health checks passed."
 ```
@@ -290,4 +291,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
