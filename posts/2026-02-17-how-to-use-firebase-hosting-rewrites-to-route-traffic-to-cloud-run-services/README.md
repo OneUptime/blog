@@ -37,7 +37,7 @@ WORKDIR /app
 
 # Copy package files and install dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
@@ -256,7 +256,7 @@ app.get("/api/me", authenticateUser, async (req, res) => {
 
 ## Handling Authentication
 
-When Firebase Hosting proxies to Cloud Run, it passes through cookies and headers. If your frontend uses Firebase Auth, you can verify the ID token in your Cloud Run service.
+When Firebase Hosting proxies to Cloud Run, it passes through request headers. Cookies are generally stripped from incoming requests, except for the specially named `__session` cookie. If your frontend uses Firebase Auth, you can send the ID token in the `Authorization` header and verify it in your Cloud Run service.
 
 This middleware verifies Firebase Auth tokens in your Cloud Run service:
 
@@ -323,14 +323,9 @@ async function apiRequest(path, options = {}) {
 
 Firebase Hosting provides free SSL for your custom domain. When you add a custom domain to Firebase Hosting, the SSL certificate covers all traffic, including the proxied Cloud Run requests.
 
-```bash
-# Add a custom domain
-firebase hosting:channel:deploy production --project YOUR_PROJECT_ID
+Add the custom domain from the Firebase Hosting page in the Firebase console, then follow the DNS records that Firebase gives you. Your existing `firebase.json` rewrites apply to the custom domain after it is connected.
 
-# Or configure in firebase.json
-```
-
-This means your Cloud Run service does not need its own public URL or SSL certificate when accessed through Firebase Hosting. It can even be configured to only accept internal traffic if you want to lock it down.
+This means your Cloud Run service does not need a separate custom domain or SSL certificate when accessed through Firebase Hosting. If you need to block direct access to the generated `run.app` URL, use Cloud Run ingress controls and verify that Firebase Hosting can still reach the service.
 
 ## Monitoring the Setup
 
@@ -344,7 +339,7 @@ curl -I https://your-domain.web.app/
 curl https://your-domain.web.app/api/health
 
 # Test with authentication
-TOKEN=$(firebase auth:export --format=json | jq -r '.[0].localId')
+TOKEN="PASTE_FIREBASE_ID_TOKEN_FROM_A_SIGNED_IN_CLIENT"
 curl -H "Authorization: Bearer $TOKEN" https://your-domain.web.app/api/me
 ```
 
