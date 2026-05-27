@@ -85,7 +85,7 @@ monitored_services:
 
 # Alert settings
 service_alert_slack_webhook: "{{ vault_slack_webhook | default('') }}"
-service_alert_slack_channel: "#service-alerts"
+service_auto_restart_enabled: true
 ```
 
 ## Service Availability Playbook
@@ -127,17 +127,17 @@ service_alert_slack_channel: "#service-alerts"
   hosts: localhost
   gather_facts: no
   tasks:
+    - name: Initialize unhealthy host list
+      ansible.builtin.set_fact:
+        unhealthy_hosts: []
+
     - name: Identify hosts with service issues
       ansible.builtin.set_fact:
-        unhealthy_hosts: >-
-          {% set results = [] %}
-          {% for host in groups['all'] %}
-          {% set issues = hostvars[host].service_results | default([]) | selectattr('status', 'ne', 'OK') | list %}
-          {% if issues | length > 0 %}
-          {% set _ = results.append({'host': host, 'issues': issues}) %}
-          {% endif %}
-          {% endfor %}
-          {{ results }}
+        unhealthy_hosts: "{{ unhealthy_hosts + [{'host': item, 'issues': host_issues}] }}"
+      loop: "{{ groups['all'] }}"
+      vars:
+        host_issues: "{{ hostvars[item].service_results | default([]) | selectattr('status', 'ne', 'OK') | list }}"
+      when: host_issues | length > 0
 
     - name: Send Slack alert for service issues
       ansible.builtin.uri:
@@ -145,7 +145,6 @@ service_alert_slack_channel: "#service-alerts"
         method: POST
         body_format: json
         body:
-          channel: "{{ service_alert_slack_channel }}"
           text: |
             *Service Availability Alert*
             {% for entry in unhealthy_hosts %}
@@ -172,6 +171,10 @@ service_alert_slack_channel: "#service-alerts"
   changed_when: false
   ignore_errors: yes
 
+- name: Initialize service check state
+  ansible.builtin.set_fact:
+    service_can_check: "{{ process_check.rc == 0 }}"
+
 - name: "Attempt restart of {{ service.name }} if process is not running"
   block:
     - name: "Restart {{ service.name }}"
@@ -179,6 +182,9 @@ service_alert_slack_channel: "#service-alerts"
         name: "{{ service.name }}"
         state: restarted
       register: restart_result
+      retries: "{{ service.max_restart_attempts | default(1) }}"
+      delay: 5
+      until: restart_result is success
 
     - name: "Wait for {{ service.name }} to come up"
       ansible.builtin.wait_for:
@@ -189,23 +195,26 @@ service_alert_slack_channel: "#service-alerts"
     - name: Record successful restart
       ansible.builtin.set_fact:
         service_results: "{{ service_results + [{'name': service.name, 'status': 'WARNING', 'message': 'Was down, successfully restarted'}] }}"
+        service_can_check: true
       when: restart_wait is success
 
   rescue:
     - name: Record failed restart
       ansible.builtin.set_fact:
         service_results: "{{ service_results + [{'name': service.name, 'status': 'CRITICAL', 'message': 'Process not running, restart failed'}] }}"
+        service_can_check: false
 
   when:
     - process_check.rc != 0
     - service.auto_restart | default(false) | bool
+    - service_auto_restart_enabled | default(true) | bool
 
 - name: "Record process not running (no auto-restart)"
   ansible.builtin.set_fact:
     service_results: "{{ service_results + [{'name': service.name, 'status': 'CRITICAL', 'message': 'Process not running'}] }}"
   when:
     - process_check.rc != 0
-    - not (service.auto_restart | default(false) | bool)
+    - not ((service.auto_restart | default(false) | bool) and (service_auto_restart_enabled | default(true) | bool))
 
 # Step 2: Check if the port is listening
 - name: "Check if {{ service.name }} port {{ service.port }} is open"
@@ -215,13 +224,13 @@ service_alert_slack_channel: "#service-alerts"
     state: started
   register: port_check
   ignore_errors: yes
-  when: process_check.rc == 0
+  when: service_can_check | bool
 
 - name: "Record port check failure for {{ service.name }}"
   ansible.builtin.set_fact:
     service_results: "{{ service_results + [{'name': service.name, 'status': 'CRITICAL', 'message': 'Port ' ~ service.port ~ ' not listening'}] }}"
   when:
-    - process_check.rc == 0
+    - service_can_check | bool
     - port_check is failed
 
 # Step 3: Check health endpoint (HTTP)
@@ -231,10 +240,15 @@ service_alert_slack_channel: "#service-alerts"
     method: GET
     status_code: "{{ service.health_expected_status | default(200) }}"
     timeout: 10
+    return_content: "{{ service.health_expected_body is defined }}"
   register: health_http
+  failed_when: >-
+    (health_http.status | default(0)) != (service.health_expected_status | default(200))
+    or
+    (service.health_expected_body is defined and service.health_expected_body not in (health_http.content | default('')))
   ignore_errors: yes
   when:
-    - process_check.rc == 0
+    - service_can_check | bool
     - port_check is success
     - service.health_url is defined
 
@@ -251,9 +265,13 @@ service_alert_slack_channel: "#service-alerts"
     cmd: "{{ service.health_command }}"
   register: health_cmd
   changed_when: false
+  failed_when: >-
+    health_cmd.rc != 0
+    or
+    (service.health_expected_output is defined and service.health_expected_output not in (health_cmd.stdout | default('')))
   ignore_errors: yes
   when:
-    - process_check.rc == 0
+    - service_can_check | bool
     - port_check is success
     - service.health_command is defined
 
@@ -277,7 +295,7 @@ service_alert_slack_channel: "#service-alerts"
     loop_var: dep
   ignore_errors: yes
   when:
-    - process_check.rc == 0
+    - service_can_check | bool
     - service.dependencies is defined
 
 - name: "Record dependency failures"
@@ -292,10 +310,11 @@ service_alert_slack_channel: "#service-alerts"
   ansible.builtin.set_fact:
     service_results: "{{ service_results + [{'name': service.name, 'status': 'OK', 'message': 'All checks passed'}] }}"
   when:
-    - process_check.rc == 0
+    - service_can_check | bool
     - port_check is success
-    - (health_http is success or service.health_url is not defined)
-    - (health_cmd is success or service.health_command is not defined)
+    - (service.health_url is not defined or health_http is success)
+    - (service.health_command is not defined or health_cmd is success)
+    - (dep_checks is not defined or (dep_checks.results | default([]) | selectattr('failed', 'equalto', true) | list | length == 0))
 ```
 
 ## Running the Monitor
@@ -307,8 +326,8 @@ ansible-playbook -i inventory/hosts.ini service-monitor.yml
 # Check only web servers
 ansible-playbook -i inventory/hosts.ini service-monitor.yml --limit webservers
 
-# Disable auto-restart (dry run mode)
-ansible-playbook -i inventory/hosts.ini service-monitor.yml -e '{"monitored_services": []}' --check
+# Disable auto-restart for this run
+ansible-playbook -i inventory/hosts.ini service-monitor.yml -e service_auto_restart_enabled=false
 
 # Run with verbose output for debugging
 ansible-playbook -i inventory/hosts.ini service-monitor.yml -v
