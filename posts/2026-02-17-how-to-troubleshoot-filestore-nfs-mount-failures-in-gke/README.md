@@ -87,7 +87,7 @@ The access mode, capacity, and storageClassName must match between the PV and PV
 
 ## Problem 2 - Connection Timed Out
 
-This is a networking problem. The GKE node cannot reach the Filestore IP on port 2049.
+This is a networking problem. The GKE node cannot reach the Filestore IP on the required NFS ports. For NFSv4.1, the required server port is TCP 2049. For NFSv3, firewall rules can also affect TCP ports 111, 2046, 2050, and 4045.
 
 First, verify the Filestore instance is running and get its IP:
 
@@ -98,12 +98,12 @@ gcloud filestore instances describe my-filestore \
   --format="yaml(state,networks[0].ipAddresses)"
 ```
 
-Then test connectivity from a GKE node. Deploy a debug pod:
+Then test connectivity from inside the cluster. Deploy a debug pod:
 
 ```bash
 # Run a debug pod to test network connectivity
 kubectl run nfs-debug --image=busybox --rm -it --restart=Never -- \
-  sh -c "nc -zv FILESTORE_IP 2049 -w 5"
+  sh -c "nc -zvw 5 FILESTORE_IP 2049"
 ```
 
 If the connection times out:
@@ -117,7 +117,7 @@ gcloud container clusters describe my-cluster \
   --format="value(network)"
 ```
 
-2. **Check firewall rules** - Are there rules blocking TCP port 2049?
+2. **Check firewall rules** - Are there rules blocking the required NFS ports?
 
 ```bash
 # List firewall rules that might block NFS
@@ -126,7 +126,7 @@ gcloud compute firewall-rules list \
   --format="table(name,direction,action,sourceRanges,destinationRanges)"
 ```
 
-3. **Check cluster networking mode** - VPC-native clusters route pod traffic through the VPC, while routes-based clusters may have routing issues.
+3. **Check cluster networking mode** - VPC-native clusters are recommended and are the default for new GKE clusters. Routes-based clusters use custom static routes, so route and firewall source ranges are worth checking when troubleshooting connectivity.
 
 ```bash
 # Check if the cluster is VPC-native
@@ -135,7 +135,7 @@ gcloud container clusters describe my-cluster \
   --format="value(ipAllocationPolicy.useIpAliases)"
 ```
 
-If the value is `True`, it is VPC-native and should work. If `False`, you may need to set up additional routes.
+If the value is `True`, it is VPC-native. If `False`, inspect the VPC routes that GKE created for the cluster and make sure firewall rules allow the relevant node or Pod source ranges. If you configured Filestore IP-based access rules, use the GKE node primary IP range rather than the Pod IP range.
 
 ## Problem 3 - Access Denied by Server
 
@@ -182,23 +182,27 @@ If the CSI driver itself is having issues, check its logs:
 kubectl logs -n kube-system -l app=gcp-filestore-csi-driver \
   -c gcp-filestore-driver --tail=100
 
-# Get logs from the CSI node plugin on a specific node
-kubectl logs -n kube-system -l app=gcp-filestore-csi-driver \
+# Get logs from the CSI node plugin pod running on a specific node
+kubectl get pods -n kube-system \
+  --field-selector spec.nodeName=NODE_NAME \
+  -l app=gcp-filestore-csi-driver -o name
+
+kubectl logs -n kube-system POD_NAME \
   -c gcp-filestore-driver --tail=100
 ```
 
 Common CSI driver errors include:
 
-- **Permission denied to Filestore API** - The GKE service account needs the `roles/file.editor` role
+- **Permission denied to Filestore API** - The identity used by the CSI driver needs permissions such as `file.instances.create`; managed GKE normally grants these through the Kubernetes Engine service agent, while custom or self-managed setups may need a role such as `roles/file.editor`
 - **Quota exceeded** - You have hit the Filestore instance limit for your project
 - **Invalid parameters** - The StorageClass parameters are wrong
 
 Fix permission issues:
 
 ```bash
-# Grant the GKE service account Filestore editor role
+# Grant the CSI controller Kubernetes service account Filestore editor role
 gcloud projects add-iam-policy-binding my-project \
-  --member="serviceAccount:my-project.svc.id.goog[kube-system/filestore-csi-controller-sa]" \
+  --member="principal://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/my-project.svc.id.goog/subject/ns/kube-system/sa/filestore-csi-controller-sa" \
   --role="roles/file.editor"
 ```
 
@@ -224,7 +228,7 @@ When you hit an NFS mount failure in GKE, work through this list:
 2. Check PVC status with `kubectl describe pvc`
 3. Verify the Filestore instance is READY
 4. Test network connectivity from inside the cluster
-5. Verify firewall rules allow TCP 2049
+5. Verify firewall rules allow the required NFS ports
 6. Check NFS path matches the Filestore share name
 7. Check CSI driver pod logs for errors
 8. Verify IAM permissions for the CSI driver service account
