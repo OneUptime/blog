@@ -83,6 +83,10 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member "serviceAccount:my-app-gsa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
   --role "roles/bigquery.dataEditor"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member "serviceAccount:my-app-gsa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role "roles/bigquery.jobUser"
 ```
 
 ## Step 3: Create the Kubernetes Service Account
@@ -165,8 +169,10 @@ kubectl apply -f deployment.yaml
 kubectl run test-wi \
   --rm -i --tty \
   --image google/cloud-sdk:slim \
-  --serviceaccount my-app-ksa \
+  --restart Never \
   --namespace default \
+  --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"my-app-ksa"}}' \
+  --command \
   -- /bin/bash
 
 # Inside the pod, check which identity you are using
@@ -210,6 +216,7 @@ The real power shows when you have multiple applications that need different per
 ```bash
 # Application 1: needs Storage read access
 gcloud iam service-accounts create reader-gsa
+kubectl create serviceaccount reader-ksa --namespace default
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member "serviceAccount:reader-gsa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
   --role "roles/storage.objectViewer"
@@ -217,9 +224,13 @@ gcloud iam service-accounts add-iam-policy-binding \
   reader-gsa@YOUR_PROJECT_ID.iam.gserviceaccount.com \
   --role roles/iam.workloadIdentityUser \
   --member "serviceAccount:YOUR_PROJECT_ID.svc.id.goog[default/reader-ksa]"
+kubectl annotate serviceaccount reader-ksa \
+  --namespace default \
+  iam.gke.io/gcp-service-account=reader-gsa@YOUR_PROJECT_ID.iam.gserviceaccount.com
 
 # Application 2: needs Pub/Sub publish access
 gcloud iam service-accounts create publisher-gsa
+kubectl create serviceaccount publisher-ksa --namespace default
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member "serviceAccount:publisher-gsa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
   --role "roles/pubsub.publisher"
@@ -227,6 +238,9 @@ gcloud iam service-accounts add-iam-policy-binding \
   publisher-gsa@YOUR_PROJECT_ID.iam.gserviceaccount.com \
   --role roles/iam.workloadIdentityUser \
   --member "serviceAccount:YOUR_PROJECT_ID.svc.id.goog[default/publisher-ksa]"
+kubectl annotate serviceaccount publisher-ksa \
+  --namespace default \
+  iam.gke.io/gcp-service-account=publisher-gsa@YOUR_PROJECT_ID.iam.gserviceaccount.com
 ```
 
 Each application can only access what it needs. If one is compromised, the attacker only gets the permissions bound to that specific service account.
