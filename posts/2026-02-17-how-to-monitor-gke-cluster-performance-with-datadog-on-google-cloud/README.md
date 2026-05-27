@@ -54,6 +54,7 @@ datadog:
   # Your Datadog API key - store this in a Kubernetes secret in production
   apiKey: "YOUR_DATADOG_API_KEY"
   appKey: "YOUR_DATADOG_APP_KEY"
+  clusterName: "my-gke-cluster"
 
   # Enable log collection from containers
   logs:
@@ -125,7 +126,7 @@ kubectl get pods -n datadog -o wide
 kubectl get deployment -n datadog
 
 # View agent logs to confirm it is reporting to Datadog
-kubectl logs -n datadog -l app=datadog-agent --tail=50
+kubectl logs -n datadog -l app=datadog-agent -c agent --tail=50
 ```
 
 You should see log lines indicating successful connection to the Datadog intake API. Within a few minutes, your GKE hosts and containers will appear in the Datadog Infrastructure view.
@@ -136,7 +137,7 @@ The Datadog Agent auto-discovers services running in your cluster, but some GKE 
 
 ### Monitoring the GKE Control Plane
 
-GKE manages the control plane for you, so you cannot install an agent on master nodes. However, you can monitor control plane metrics through the GCP integration.
+GKE manages the control plane for you, so you cannot install an agent on master nodes. However, after enabling GKE control plane metrics in Cloud Monitoring, you can monitor those metrics through the GCP integration.
 
 ```bash
 # In the Datadog UI, go to Integrations > Google Cloud Platform
@@ -150,7 +151,13 @@ curl -X POST "https://api.datadoghq.com/api/v1/integration/gcp" \
   "type": "service_account",
   "project_id": "your-gcp-project",
   "private_key_id": "key-id",
-  "client_email": "datadog@your-project.iam.gserviceaccount.com"
+  "private_key": "-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY\n-----END PRIVATE KEY-----\n",
+  "client_email": "datadog@your-project.iam.gserviceaccount.com",
+  "client_id": "service-account-client-id",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://accounts.google.com/o/oauth2/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/datadog%40your-project.iam.gserviceaccount.com"
 }
 EOF
 ```
@@ -195,7 +202,7 @@ Once data flows into Datadog, focus on these metrics for GKE cluster health.
 
 For node-level health, watch `kubernetes.cpu.usage.total`, `kubernetes.memory.usage`, and `kubernetes.filesystem.usage_pct`. Set alerts when nodes approach resource limits.
 
-For pod-level issues, monitor `kubernetes.containers.restarts` (catches crash loops), `kubernetes_state.pod.status_phase` (catches stuck pods), and `kubernetes.containers.state.waiting` with reason `OOMKilled`.
+For pod-level issues, monitor `kubernetes.containers.restarts` (catches crash loops), `kubernetes_state.pod.status_phase` (catches stuck pods), and `kubernetes_state.container.status_report.count.terminated` with reason `OOMKilled`.
 
 For cluster autoscaler behavior, track `kubernetes_state.node.count` and `kubernetes_state.deployment.replicas_available` versus `replicas_desired`.
 
@@ -214,7 +221,7 @@ resource "datadog_dashboard" "gke_overview" {
     query_value_definition {
       title = "Running Pods"
       request {
-        q          = "sum:kubernetes.pods.running{cluster_name:my-gke-cluster}"
+        q          = "sum:kubernetes.pods.running{kube_cluster_name:my-gke-cluster}"
         aggregator = "last"
       }
     }
@@ -224,7 +231,7 @@ resource "datadog_dashboard" "gke_overview" {
     timeseries_definition {
       title = "CPU Usage by Node"
       request {
-        q            = "avg:kubernetes.cpu.usage.total{cluster_name:my-gke-cluster} by {host}"
+        q            = "avg:kubernetes.cpu.usage.total{kube_cluster_name:my-gke-cluster} by {host}"
         display_type = "line"
       }
     }
@@ -234,7 +241,7 @@ resource "datadog_dashboard" "gke_overview" {
     timeseries_definition {
       title = "Memory Usage by Namespace"
       request {
-        q            = "sum:kubernetes.memory.usage{cluster_name:my-gke-cluster} by {kube_namespace}"
+        q            = "sum:kubernetes.memory.usage{kube_cluster_name:my-gke-cluster} by {kube_namespace}"
         display_type = "area"
       }
     }
@@ -251,7 +258,7 @@ Create monitors for the scenarios that actually wake you up at night.
 # Alerts when any pod restarts more than 5 times in 10 minutes
 name: "GKE Pod Crash Loop Detected"
 type: "metric alert"
-query: "sum(last_10m):sum:kubernetes.containers.restarts{cluster_name:my-gke-cluster} by {pod_name} > 5"
+query: "sum(last_10m):sum:kubernetes.containers.restarts{kube_cluster_name:my-gke-cluster} by {pod_name,kube_namespace} > 5"
 message: |
   Pod {{pod_name.name}} is crash-looping in the GKE cluster.
   Check logs with: kubectl logs {{pod_name.name}} -n {{kube_namespace.name}}
