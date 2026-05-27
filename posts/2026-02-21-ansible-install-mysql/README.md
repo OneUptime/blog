@@ -22,6 +22,8 @@ roles/mysql_install/
     debian.yml
     redhat.yml
     secure.yml
+  templates/
+    root-my.cnf.j2
   handlers/main.yml
 ```
 
@@ -40,6 +42,11 @@ mysql_datadir: "/var/lib/mysql"
 mysql_socket: "/var/run/mysqld/mysqld.sock"
 mysql_pid_file: "/var/run/mysqld/mysqld.pid"
 mysql_service_name: "mysql"
+mysql_apt_config_version: "0.8.39-1"
+mysql_apt_repo_series: "mysql-8.0"
+mysql_yum_repo_rpm_urls:
+  "8": "https://dev.mysql.com/get/mysql84-community-release-el8-3.noarch.rpm"
+  "9": "https://dev.mysql.com/get/mysql84-community-release-el9-4.noarch.rpm"
 ```
 
 ## Main Task File
@@ -77,6 +84,7 @@ mysql_service_name: "mysql"
 - name: Install prerequisite packages
   apt:
     name:
+      - debconf
       - gnupg2
       - python3-mysqldb
       - python3-pymysql
@@ -85,9 +93,16 @@ mysql_service_name: "mysql"
 
 - name: Download MySQL APT repository config
   get_url:
-    url: "https://dev.mysql.com/get/mysql-apt-config_0.8.29-1_all.deb"
+    url: "https://dev.mysql.com/get/mysql-apt-config_{{ mysql_apt_config_version }}_all.deb"
     dest: /tmp/mysql-apt-config.deb
     mode: '0644'
+
+- name: Select MySQL release series for the APT repository
+  debconf:
+    name: mysql-apt-config
+    question: mysql-apt-config/select-server
+    value: "{{ mysql_apt_repo_series }}"
+    vtype: select
 
 - name: Install MySQL APT repository
   apt:
@@ -124,6 +139,7 @@ mysql_service_name: "mysql"
 - name: Install prerequisite packages
   dnf:
     name:
+      - dnf-plugins-core
       - python3-PyMySQL
     state: present
 
@@ -131,12 +147,23 @@ mysql_service_name: "mysql"
   command: dnf module disable mysql -y
   changed_when: false
   ignore_errors: true
+  when: ansible_distribution_major_version == "8"
 
 - name: Install MySQL repository RPM
   dnf:
-    name: "https://dev.mysql.com/get/mysql80-community-release-el{{ ansible_distribution_major_version }}-7.noarch.rpm"
+    name: "{{ mysql_yum_repo_rpm_urls[ansible_distribution_major_version] }}"
     state: present
     disable_gpg_check: true
+
+- name: Disable the MySQL 8.4 repository
+  command: dnf config-manager --disable mysql-8.4-lts-community
+  changed_when: false
+  when: mysql_version == "8.0"
+
+- name: Enable the MySQL 8.0 repository
+  command: dnf config-manager --enable mysql80-community
+  changed_when: false
+  when: mysql_version == "8.0"
 
 - name: Install MySQL server
   dnf:
@@ -148,6 +175,7 @@ mysql_service_name: "mysql"
 - name: Set MySQL service name for RHEL
   set_fact:
     mysql_service_name: mysqld
+    mysql_socket: /var/lib/mysql/mysql.sock
 
 - name: Start MySQL to generate initial password
   systemd:
@@ -177,10 +205,28 @@ mysql_service_name: "mysql"
     name: root
     host: localhost
     password: "{{ mysql_root_password }}"
+    check_implicit_admin: true
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
     login_unix_socket: "{{ mysql_socket }}"
     state: present
   no_log: true
-  ignore_errors: true
+  when: mysql_initial_password is not defined or mysql_initial_password | length == 0
+
+- name: Set root password from temporary RHEL password
+  command:
+    argv:
+      - mysqladmin
+      - --connect-expired-password
+      - -u
+      - root
+      - "-p{{ mysql_initial_password }}"
+      - password
+      - "{{ mysql_root_password }}"
+  no_log: true
+  when:
+    - mysql_initial_password is defined
+    - mysql_initial_password | length > 0
 
 - name: Create .my.cnf for root user
   template:
@@ -216,7 +262,7 @@ mysql_service_name: "mysql"
   ignore_errors: true
 ```
 
-Here is the .my.cnf template for passwordless root access from the CLI.
+Here is the .my.cnf template for root access from the CLI without typing the password each time.
 
 ```ini
 # roles/mysql_install/templates/root-my.cnf.j2
@@ -255,7 +301,6 @@ socket={{ mysql_socket }}
     - role: mysql_install
       vars:
         mysql_version: "8.0"
-        mysql_bind_address: "0.0.0.0"
 ```
 
 ```bash
@@ -278,10 +323,10 @@ flowchart TD
     E --> H[Start MySQL Service]
     G --> H
     H --> I[Set Root Password]
-    I --> J[Remove Anonymous Users]
-    J --> K[Remove Test Database]
-    K --> L[Remove Remote Root]
-    L --> M[Create .my.cnf]
+    I --> J[Create .my.cnf]
+    J --> K[Remove Anonymous Users]
+    K --> L[Remove Test Database]
+    L --> M[Remove Remote Root]
     M --> N[Installation Complete]
 ```
 
