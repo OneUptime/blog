@@ -26,12 +26,12 @@ graph TD
 
 ## CIS Benchmark Implementation
 
-The CIS (Center for Internet Security) benchmarks define security configurations. Here is how to implement them as Ansible tasks:
+The CIS (Center for Internet Security) benchmarks define security configurations. Here is how to implement a CIS-style baseline as Ansible tasks:
 
 ```yaml
 # roles/cis_baseline/tasks/main.yml
 
-# CIS Level 1 Server Benchmark for Ubuntu 22.04
+# Example baseline tasks for Ubuntu 22.04
 ---
 - name: "CIS 1.1.1 - Disable unused filesystems"
   ansible.builtin.template:
@@ -48,51 +48,49 @@ The CIS (Center for Internet Security) benchmarks define security configurations
     mode: '0400'
   tags: [cis, cis-1.4.1]
 
-- name: "CIS 3.4.1 - Ensure TCP wrappers installed"
-  ansible.builtin.apt:
-    name: tcpd
-    state: present
-  tags: [cis, cis-3.4.1]
+- name: "SSH - Ensure permissions on sshd_config"
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: '0600'
+  tags: [cis, ssh]
 
-- name: "CIS 5.2.1 - Ensure SSH Protocol is set to 2"
+- name: "SSH - Ensure LogLevel is set to INFO"
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
-    regexp: '^Protocol'
-    line: 'Protocol 2'
-  notify: restart sshd
-  tags: [cis, cis-5.2.1, ssh]
-
-- name: "CIS 5.2.2 - Ensure SSH LogLevel is set to INFO"
-  ansible.builtin.lineinfile:
-    path: /etc/ssh/sshd_config
-    regexp: '^LogLevel'
+    regexp: '^\s*#?\s*LogLevel\s+'
     line: 'LogLevel INFO'
+    validate: /usr/sbin/sshd -t -f %s
   notify: restart sshd
-  tags: [cis, cis-5.2.2, ssh]
+  tags: [cis, ssh]
 
-- name: "CIS 5.2.3 - Set SSH MaxAuthTries to 4"
+- name: "SSH - Set MaxAuthTries to 4"
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
-    regexp: '^MaxAuthTries'
+    regexp: '^\s*#?\s*MaxAuthTries\s+'
     line: 'MaxAuthTries 4'
+    validate: /usr/sbin/sshd -t -f %s
   notify: restart sshd
-  tags: [cis, cis-5.2.3, ssh]
+  tags: [cis, ssh]
 
-- name: "CIS 5.2.5 - Disable SSH root login"
+- name: "SSH - Disable root login"
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
-    regexp: '^PermitRootLogin'
+    regexp: '^\s*#?\s*PermitRootLogin\s+'
     line: 'PermitRootLogin no'
+    validate: /usr/sbin/sshd -t -f %s
   notify: restart sshd
-  tags: [cis, cis-5.2.5, ssh]
+  tags: [cis, ssh]
 
-- name: "CIS 5.2.8 - Disable SSH empty passwords"
+- name: "SSH - Disable empty passwords"
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
-    regexp: '^PermitEmptyPasswords'
+    regexp: '^\s*#?\s*PermitEmptyPasswords\s+'
     line: 'PermitEmptyPasswords no'
+    validate: /usr/sbin/sshd -t -f %s
   notify: restart sshd
-  tags: [cis, cis-5.2.8, ssh]
+  tags: [cis, ssh]
 
 - name: "CIS 5.4.1.1 - Ensure password expiration is 365 days"
   ansible.builtin.lineinfile:
@@ -134,22 +132,14 @@ Run compliance checks without making changes:
     - name: Run CIS baseline in check mode
       ansible.builtin.include_role:
         name: cis_baseline
-      check_mode: true
-      register: cis_results
-
-    - name: Collect compliance status
-      ansible.builtin.set_fact:
-        compliance_status:
-          host: "{{ inventory_hostname }}"
-          compliant: "{{ not cis_results.changed | default(false) }}"
-          findings: "{{ cis_results.results | default([]) | selectattr('changed', 'equalto', true) | list }}"
+        apply:
+          check_mode: true
 
     - name: Report findings
       ansible.builtin.debug:
         msg: |
           Host: {{ inventory_hostname }}
-          Status: {{ 'COMPLIANT' if compliance_status.compliant else 'NON-COMPLIANT' }}
-          Findings: {{ compliance_status.findings | length }}
+          Findings: Review changed tasks in the check-mode output
 ```
 
 ## Compliance Reporting
@@ -163,6 +153,19 @@ Generate detailed compliance reports:
 - name: Generate compliance report
   hosts: all
   become: true
+  vars:
+    approved_services:
+      - cron.service
+      - dbus.service
+      - ssh.service
+      - systemd-journald.service
+      - systemd-logind.service
+    expected_file_permissions:
+      /etc/passwd: '0644'
+      /etc/shadow: '0640'
+      /etc/group: '0644'
+      /etc/gshadow: '0640'
+      /boot/grub/grub.cfg: '0400'
 
   tasks:
     - name: Check SSH configuration compliance
@@ -172,14 +175,9 @@ Generate detailed compliance reports:
 
     - name: Check file permissions
       ansible.builtin.stat:
-        path: "{{ item }}"
+        path: "{{ item.key }}"
       register: file_perms
-      loop:
-        - /etc/passwd
-        - /etc/shadow
-        - /etc/group
-        - /etc/gshadow
-        - /boot/grub/grub.cfg
+      loop: "{{ expected_file_permissions | dict2items }}"
 
     - name: Check for unnecessary services
       ansible.builtin.service_facts:
@@ -193,12 +191,20 @@ Generate detailed compliance reports:
              | difference(approved_services)
              | list }}
 
+    - name: Identify file permission findings
+      ansible.builtin.set_fact:
+        file_permission_findings: >-
+          {{ file_permission_findings | default([])
+             + ([item.item.key] if (not item.stat.exists | default(false) or item.stat.mode != item.item.value) else []) }}
+      loop: "{{ file_perms.results }}"
+
     - name: Compile host compliance data
       ansible.builtin.set_fact:
         host_compliance:
           hostname: "{{ inventory_hostname }}"
-          ssh_root_login: "{{ 'no' in sshd_config.stdout }}"
-          file_permissions_ok: "{{ file_perms.results | selectattr('stat.mode', 'defined') | list | length == file_perms.results | length }}"
+          ssh_root_login: "{{ (sshd_config.stdout_lines | select('match', '^permitrootlogin\\s+no$') | list | length) > 0 }}"
+          file_permissions_ok: "{{ file_permission_findings | default([]) | length == 0 }}"
+          file_permission_findings: "{{ file_permission_findings | default([]) }}"
           unauthorized_services: "{{ unauthorized_services }}"
           timestamp: "{{ ansible_date_time.iso8601 }}"
 
@@ -206,6 +212,12 @@ Generate detailed compliance reports:
   hosts: localhost
   connection: local
   tasks:
+    - name: Ensure report directory exists
+      ansible.builtin.file:
+        path: ./reports
+        state: directory
+        mode: '0755'
+
     - name: Generate HTML compliance report
       ansible.builtin.template:
         src: compliance-report.html.j2
@@ -218,7 +230,8 @@ Generate detailed compliance reports:
         to: compliance@example.com
         subject: "Compliance Report - {{ ansible_date_time.date }}"
         body: "See attached compliance report."
-        attach: "./reports/compliance-{{ ansible_date_time.date }}.html"
+        attach:
+          - "./reports/compliance-{{ ansible_date_time.date }}.html"
 ```
 
 ## Automated Remediation
@@ -237,17 +250,15 @@ When violations are found, fix them:
     - name: Apply CIS baseline (full remediation)
       ansible.builtin.include_role:
         name: cis_baseline
-      diff: true
-      register: remediation_result
+        apply:
+          diff: true
 
-    - name: Log remediation actions
+    - name: Log remediation run
       ansible.builtin.lineinfile:
         path: /var/log/compliance-remediation.log
-        line: "{{ ansible_date_time.iso8601 }} - {{ item.invocation.module_name | default('unknown') }} - {{ item.item | default('') }}"
+        line: "{{ ansible_date_time.iso8601 }} - cis_baseline remediation completed"
         create: true
         mode: '0644'
-      loop: "{{ remediation_result.results | default([]) | selectattr('changed', 'equalto', true) | list }}"
-      when: remediation_result.changed | default(false)
 ```
 
 ## Schedule Continuous Compliance
