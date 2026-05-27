@@ -15,7 +15,7 @@ Mattermost is an open-source alternative to Slack that you can host on your own 
 ```yaml
 # roles/mattermost/defaults/main.yml - Mattermost configuration
 
-mattermost_version: "9.3.0"
+mattermost_version: "11.7.1"
 mattermost_domain: chat.example.com
 mattermost_port: 8065
 mattermost_data_dir: /opt/mattermost/data
@@ -53,21 +53,41 @@ mattermost_max_file_size: 52428800
     state: present
     update_cache: yes
 
-- name: Create PostgreSQL database
-  become_user: postgres
-  postgresql_db:
-    name: "{{ mattermost_db_name }}"
-    encoding: UTF-8
-    state: present
-
 - name: Create PostgreSQL user
   become_user: postgres
-  postgresql_user:
+  community.postgresql.postgresql_user:
     name: "{{ mattermost_db_user }}"
     password: "{{ mattermost_db_password }}"
-    db: "{{ mattermost_db_name }}"
-    priv: ALL
     state: present
+
+- name: Create PostgreSQL database
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ mattermost_db_name }}"
+    owner: "{{ mattermost_db_user }}"
+    encoding: UTF8
+    lc_collate: en_US.UTF-8
+    lc_ctype: en_US.UTF-8
+    template: template0
+    state: present
+
+- name: Grant Mattermost schema privileges
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    login_db: "{{ mattermost_db_name }}"
+    type: schema
+    objs: public
+    privs: USAGE,CREATE
+    roles: "{{ mattermost_db_user }}"
+    state: present
+
+- name: Set public schema owner
+  become_user: postgres
+  community.postgresql.postgresql_owner:
+    login_db: "{{ mattermost_db_name }}"
+    obj_name: public
+    obj_type: schema
+    new_owner: "{{ mattermost_db_user }}"
 
 - name: Create mattermost system user
   user:
@@ -231,9 +251,9 @@ server {
       BACKUP_DIR="/opt/mattermost-backups/$(date +%Y%m%d)"
       mkdir -p "$BACKUP_DIR"
       # Database backup
-      pg_dump -U {{ mattermost_db_user }} {{ mattermost_db_name }} > "$BACKUP_DIR/db.sql"
+      PGPASSWORD={{ mattermost_db_password | quote }} pg_dump -h localhost -U {{ mattermost_db_user }} {{ mattermost_db_name }} > "$BACKUP_DIR/db.sql"
       # Data directory backup
-      tar czf "$BACKUP_DIR/data.tar.gz" -C /opt/mattermost data/
+      tar czf "$BACKUP_DIR/data.tar.gz" -C "{{ mattermost_data_dir | dirname }}" "{{ mattermost_data_dir | basename }}/"
       # Config backup
       cp /opt/mattermost/config/config.json "$BACKUP_DIR/"
       # Cleanup old backups
@@ -321,7 +341,7 @@ Here are several practical scenarios where this module proves essential in real-
       loop:
         - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
-      notify: restart sshd
+      notify: restart ssh
 
     - name: Configure firewall rules
       community.general.ufw:
@@ -339,9 +359,9 @@ Here are several practical scenarios where this module proves essential in real-
         policy: deny
 
   handlers:
-    - name: restart sshd
+    - name: restart ssh
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -444,4 +464,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
