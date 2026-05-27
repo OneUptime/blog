@@ -38,7 +38,7 @@ Before setting up peering, verify these conditions:
 
 1. **No overlapping IP ranges**: The primary and secondary subnet ranges in both networks must not overlap. Check this before proceeding.
 2. **Appropriate IAM permissions**: You need `compute.networks.addPeering` on both networks, typically granted through `roles/compute.networkAdmin`.
-3. **Custom mode VPCs**: Auto mode VPCs use the same predefined ranges and will always overlap with each other.
+3. **Custom mode VPCs**: Two auto mode VPCs cannot be peered because their predefined subnet ranges overlap. A custom mode VPC can peer with an auto mode VPC only if the custom mode VPC does not use subnet ranges within `10.128.0.0/9`.
 
 ```bash
 # Check subnets in Project A
@@ -112,14 +112,15 @@ Both should show `ACTIVE` state.
 Check that subnet routes from the peer network are visible:
 
 ```bash
-# List routes in Project A - should include routes to Project B's subnets
-gcloud compute routes list \
+# List routes imported into Project A from Project B
+gcloud compute networks peerings list-routes peer-a-to-b \
   --project=project-a \
-  --filter="network=network-a AND nextHopPeering:*" \
-  --format="table(name, destRange, nextHopPeering, priority)"
+  --network=network-a \
+  --region=us-central1 \
+  --direction=INCOMING
 ```
 
-You should see routes for Project B's subnet ranges with `nextHopPeering` pointing to the peering connection.
+You should see routes for Project B's subnet ranges. Subnet and static routes are global and are shown for all regions; dynamic routes are shown for the region you specify.
 
 ## Step 5: Configure Firewall Rules
 
@@ -171,6 +172,18 @@ gcloud compute instances create test-vm-b \
   --no-address
 ```
 
+If you use IAP to SSH into a VM without an external IP address, allow IAP TCP forwarding to the SSH port in the VM's network:
+
+```bash
+gcloud compute firewall-rules create allow-ssh-from-iap \
+  --project=project-a \
+  --network=network-a \
+  --direction=INGRESS \
+  --action=ALLOW \
+  --rules=tcp:22 \
+  --source-ranges=35.235.240.0/20
+```
+
 ```bash
 # SSH into VM A and ping VM B
 gcloud compute ssh test-vm-a --project=project-a --zone=us-central1-a --tunnel-through-iap
@@ -214,8 +227,8 @@ gcloud compute networks peerings update peer-a-to-b \
 Be aware of these limits:
 
 - Each VPC can have up to 25 peering connections (can be increased with a quota request)
-- The total number of VM instances across all peered networks cannot exceed 15,500 (configurable)
-- Maximum peered group size limit applies to the aggregate of all directly peered networks
+- Per-peering group quotas apply to resources such as subnet ranges and static or dynamic routes across directly peered networks
+- Google Cloud no longer enforces the deprecated instances-per-peering-group quota; VM instance limits are enforced per VPC network
 
 Check your current usage:
 
@@ -224,7 +237,7 @@ Check your current usage:
 gcloud compute networks peerings list \
   --project=project-a \
   --network=network-a \
-  --format="table(name, state)" | wc -l
+  --format="value(name)" | wc -l
 ```
 
 ## Deleting a Peering Connection
