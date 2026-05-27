@@ -24,7 +24,7 @@ type error interface {
 }
 ```
 
-Every function that can fail returns an error as its last return value. The caller must check and handle it.
+Functions that can fail commonly return an error as their last return value. The caller should check and handle it.
 
 ## Pattern 1: Simple Error Checking
 
@@ -93,6 +93,7 @@ func main() {
     // Sentinel errors from the standard library work the same way
     reader := strings.NewReader("hello")
     buf := make([]byte, 10)
+    _, err = reader.Read(buf)
     _, err = reader.Read(buf)
     if errors.Is(err, io.EOF) {
         fmt.Println("Reached end of input")
@@ -163,7 +164,7 @@ import (
     "os"
 )
 
-// loadConfig reads and parses a configuration file
+// loadConfig reads a configuration file
 func loadConfig(path string) ([]byte, error) {
     // Wrap the original error with context using %w
     data, err := os.ReadFile(path)
