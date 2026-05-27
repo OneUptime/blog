@@ -77,7 +77,7 @@ This shows all login events. Look at the source IPs and geolocations. If you see
 Next, check what the user did after logging in. This query finds all actions taken by the user in the last 24 hours.
 
 ```text
-principal.user.email_addresses = "suspect@company.com" AND metadata.event_timestamp.seconds > timestamp_sub(now(), "24h")
+principal.user.email_addresses = "suspect@company.com" AND metadata.event_timestamp.seconds > timestamp.current_seconds() - 86400
 ```
 
 Look for privilege escalation attempts.
@@ -106,10 +106,10 @@ Filter for external destinations to focus on outbound traffic.
 principal.ip = "10.0.1.50" AND metadata.event_type = "NETWORK_CONNECTION" AND NOT target.ip = /^10\./ AND NOT target.ip = /^172\.(1[6-9]|2[0-9]|3[01])\./ AND NOT target.ip = /^192\.168\./
 ```
 
-Look for connections to known-bad indicators. If you have threat intel feeds in Chronicle, they automatically enrich matching events.
+Look for connections to known-bad indicators. If Applied Threat Intelligence is enabled, Google SecOps evaluates event data against Mandiant threat intelligence and generates alerts for matching IoCs. You can also search explicitly for indicators you already know about.
 
 ```text
-principal.ip = "10.0.1.50" AND security_result.category_details = "THREAT_INTEL_MATCH"
+principal.ip = "10.0.1.50" AND (target.ip = "203.0.113.50" OR target.domain.name = "malicious.example" OR target.url = "http://malicious.example/path")
 ```
 
 Check for data exfiltration patterns - large volumes of data being sent outbound.
@@ -147,14 +147,14 @@ target.hostname = "compromised-server" AND metadata.event_type = "PROCESS_LAUNCH
 Narrow your search to specific time ranges for focused investigation.
 
 ```text
-principal.user.email_addresses = "suspect@company.com" AND metadata.event_timestamp.seconds > timestamp("2026-02-17T10:00:00Z") AND metadata.event_timestamp.seconds < timestamp("2026-02-17T12:00:00Z")
+principal.user.email_addresses = "suspect@company.com" AND metadata.event_timestamp.seconds > timestamp.as_unix_seconds("2026-02-17 10:00:00") AND metadata.event_timestamp.seconds < timestamp.as_unix_seconds("2026-02-17 12:00:00")
 ```
 
 ### Counting and Aggregating
 
-Use the statistics view in Chronicle to aggregate results. The search UI lets you group by fields to spot patterns.
+Use the Pivot Table in Chronicle to aggregate results. The search UI lets you group by fields to spot patterns.
 
-For example, searching for all login failures and then grouping by `principal.ip` in the statistics panel quickly shows you which IPs are generating the most failed logins.
+For example, searching for all login failures and then grouping by `principal.ip` in the Pivot Table quickly shows you which IPs are generating the most failed logins.
 
 ```text
 metadata.event_type = "USER_LOGIN" AND security_result.action = "BLOCK"
