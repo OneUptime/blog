@@ -66,8 +66,10 @@ gh-ost \
   --allow-on-master \
   --execute
 
-# For PostgreSQL, use pg_repack or native features
-# PostgreSQL supports many ALTERs without full table locks
+# For PostgreSQL, use native features for schema changes and pg_repack
+# for online table or index repacking
+# This fast ADD COLUMN form still takes an ACCESS EXCLUSIVE lock briefly,
+# but does not rewrite the whole table for a non-volatile default
 psql -c "ALTER TABLE orders ADD COLUMN status_code INT DEFAULT 0;"
 ```
 
@@ -100,11 +102,11 @@ CREATE TABLE user_audit_log (
 );
 ```
 
-```yaml
+```properties
 # Flyway configuration - flyway.conf
 flyway.url=jdbc:postgresql://localhost:5432/myapp
 flyway.user=migration_user
-flyway.password=${DB_MIGRATION_PASSWORD}
+# Supply the password as FLYWAY_PASSWORD in the environment
 flyway.locations=filesystem:./migrations
 flyway.baselineOnMigrate=true
 flyway.outOfOrder=false
@@ -184,7 +186,7 @@ graph LR
 
 import psycopg2
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +208,7 @@ class MigrationRollbackManager:
                 """INSERT INTO migration_history
                    (version, applied_at, rollback_sql, status)
                    VALUES (%s, %s, %s, 'applied')""",
-                (version, datetime.utcnow(), rollback_sql)
+                (version, datetime.now(timezone.utc), rollback_sql)
             )
 
             # Commit both the migration and the history record
