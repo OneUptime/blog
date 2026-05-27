@@ -349,7 +349,7 @@ resource "google_project_iam_member" "workload_roles" {
   member  = "serviceAccount:${google_service_account.workload_sa[each.value.sa].email}"
 }
 
-# Bind Kubernetes service accounts to GCP service accounts
+# Allow Kubernetes service accounts to impersonate GCP service accounts
 resource "google_service_account_iam_member" "workload_identity" {
   for_each = var.workload_service_accounts
 
@@ -357,6 +357,14 @@ resource "google_service_account_iam_member" "workload_identity" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[${each.value.namespace}/${each.value.k8s_sa}]"
 }
+```
+
+After the IAM binding is created, annotate each Kubernetes service account so GKE can link it to the GCP service account:
+
+```bash
+kubectl annotate serviceaccount api-service \
+  --namespace default \
+  iam.gke.io/gcp-service-account=api-service@my-production-project.iam.gserviceaccount.com
 ```
 
 ## Outputs
