@@ -146,22 +146,23 @@ service cloud.firestore {
 
     // Admin can read and write everything
     match /{document=**} {
-      allow read, write: if request.auth.token.role == "admin";
+      allow read, write: if request.auth != null
+                         && request.auth.token.role == "admin";
     }
 
-    // Editors can read all posts and write their own
-    match /posts/{postId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth.token.role in ["admin", "editor"];
-      allow update: if request.auth.token.role in ["admin", "editor"]
-                    && resource.data.authorUid == request.auth.uid;
-      allow delete: if request.auth.token.role == "admin";
-    }
-
-    // Viewers can only read published posts
+    // Editors can read all posts and write their own; viewers can read published posts
     match /posts/{postId} {
       allow read: if request.auth != null
-                  && resource.data.published == true;
+                  && (request.auth.token.role in ["admin", "editor"]
+                      || (request.auth.token.role == "viewer"
+                          && resource.data.published == true));
+      allow create: if request.auth != null
+                    && request.auth.token.role in ["admin", "editor"];
+      allow update: if request.auth != null
+                    && request.auth.token.role in ["admin", "editor"]
+                    && resource.data.authorUid == request.auth.uid;
+      allow delete: if request.auth != null
+                    && request.auth.token.role == "admin";
     }
   }
 }
@@ -238,17 +239,22 @@ await admin.firestore().doc(`userMeta/${uid}`).set({
 
 ```javascript
 // On the client side, listen for role changes
+import { getAuth } from "firebase/auth";
 import { getFirestore, doc, onSnapshot } from "firebase/firestore";
 
 const db = getFirestore();
 const auth = getAuth();
+const user = auth.currentUser;
 
-onSnapshot(doc(db, "userMeta", auth.currentUser.uid), (snapshot) => {
-  if (snapshot.exists()) {
-    // Force token refresh when role metadata changes
-    auth.currentUser.getIdToken(true);
-  }
-});
+if (user) {
+  onSnapshot(doc(db, "userMeta", user.uid), (snapshot) => {
+    const currentUser = auth.currentUser;
+    if (snapshot.exists() && currentUser) {
+      // Force token refresh when role metadata changes
+      currentUser.getIdToken(true);
+    }
+  });
+}
 ```
 
 ## Testing Your RBAC Setup
