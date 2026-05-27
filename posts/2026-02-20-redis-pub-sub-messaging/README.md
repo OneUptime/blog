@@ -150,6 +150,9 @@ graph TD
 ## Real-World Use Case: Chat Room
 
 ```python
+import redis
+import json
+import time
 import threading
 
 class ChatRoom:
@@ -212,6 +215,7 @@ For non-blocking applications, use the async Redis client.
 
 ```python
 import asyncio
+import json
 import redis.asyncio as aioredis
 
 async def async_subscriber(channel: str):
@@ -285,4 +289,4 @@ Use Streams for: task queues, event sourcing, reliable message processing.
 
 Redis Pub/Sub is a lightweight, fast way to broadcast messages between services in real time. It works well for notifications, chat systems, and cache invalidation. Just remember that it is fire-and-forget with no persistence or delivery guarantees. For reliable message processing, pair it with Redis Streams or a dedicated message broker.
 
-To monitor your Redis Pub/Sub channels, track subscriber counts, and alert on message delivery failures, [OneUptime](https://oneuptime.com) provides end-to-end observability for your messaging infrastructure with metrics, logs, and incident management in a single open-source platform.
+To monitor your Redis Pub/Sub channels, track subscriber counts, and alert on connection or subscriber failures, [OneUptime](https://oneuptime.com) provides end-to-end observability for your messaging infrastructure with metrics, logs, and incident management in a single open-source platform.
