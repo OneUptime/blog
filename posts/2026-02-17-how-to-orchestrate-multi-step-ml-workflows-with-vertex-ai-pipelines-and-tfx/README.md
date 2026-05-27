@@ -23,9 +23,9 @@ graph LR
     C --> D[Model Training]
     D --> E[Model Evaluation]
     E --> F{Better than Prod?}
-    F -->|Yes| G[Push to Registry]
+    F -->|Yes| G[Push Model]
     F -->|No| H[Stop]
-    G --> I[Deploy to Endpoint]
+    G --> I[Serve the Model]
 ```
 
 TFX provides standard components for each of these stages. Vertex AI Pipelines handles the orchestration, scheduling, and infrastructure.
@@ -37,9 +37,9 @@ Before building a pipeline, install the required packages and configure your GCP
 This sets up the required dependencies:
 
 ```bash
-# Install TFX and the Vertex AI pipeline runner
+# Install TFX and the Vertex AI SDK
 
-pip install tfx[kfp] google-cloud-aiplatform kfp
+pip install tfx google-cloud-aiplatform
 
 # Set your GCP project
 export PROJECT_ID="your-project-id"
@@ -54,8 +54,8 @@ A TFX pipeline is defined as a Python function that creates component instances 
 This code defines a complete TFX pipeline for a tabular classification task:
 
 ```python
-import tfx
-from tfx.components import (
+from tfx import v1 as tfx
+from tfx.v1.components import (
     CsvExampleGen,
     StatisticsGen,
     SchemaGen,
@@ -65,11 +65,11 @@ from tfx.components import (
     Evaluator,
     Pusher
 )
-from tfx.proto import trainer_pb2, pusher_pb2, example_gen_pb2
-from tfx.dsl.components.common import resolver
-from tfx.dsl.experimental import latest_blessed_model_resolver
-from tfx.types import Channel
-from tfx.types.standard_artifacts import Model, ModelBlessing
+from tfx.v1.dsl import Channel, Resolver
+from tfx.v1.dsl.experimental import LatestBlessedModelStrategy
+from tfx.v1.proto import trainer_pb2, pusher_pb2, example_gen_pb2
+from tfx.v1.types.standard_artifacts import Model, ModelBlessing
+import tensorflow_model_analysis as tfma
 
 def create_pipeline(
     pipeline_name: str,
@@ -121,17 +121,46 @@ def create_pipeline(
     )
 
     # Step 7: Resolve the latest blessed model for comparison
-    model_resolver = resolver.Resolver(
-        strategy_class=latest_blessed_model_resolver.LatestBlessedModelResolver,
+    model_resolver = Resolver(
+        strategy_class=LatestBlessedModelStrategy,
         model=Channel(type=Model),
         model_blessing=Channel(type=ModelBlessing)
     ).with_id("latest_blessed_model_resolver")
+
+    eval_config = tfma.EvalConfig(
+        model_specs=[
+            tfma.ModelSpec(
+                signature_name="serving_default",
+                label_key="is_churned",
+                preprocessing_function_names=["transform_features"]
+            )
+        ],
+        metrics_specs=[
+            tfma.MetricsSpec(metrics=[
+                tfma.MetricConfig(class_name="ExampleCount"),
+                tfma.MetricConfig(
+                    class_name="BinaryAccuracy",
+                    threshold=tfma.MetricThreshold(
+                        value_threshold=tfma.GenericValueThreshold(
+                            lower_bound={"value": 0.5}
+                        ),
+                        change_threshold=tfma.GenericChangeThreshold(
+                            direction=tfma.MetricDirection.HIGHER_IS_BETTER,
+                            absolute={"value": -1e-10}
+                        )
+                    )
+                )
+            ])
+        ],
+        slicing_specs=[tfma.SlicingSpec()]
+    )
 
     # Step 8: Evaluate the model against the baseline
     evaluator = Evaluator(
         examples=example_gen.outputs["examples"],
         model=trainer.outputs["model"],
         baseline_model=model_resolver.outputs["model"],
+        eval_config=eval_config
     )
 
     # Step 9: Push the model if it passed evaluation
@@ -174,7 +203,8 @@ Here is a simplified module file:
 
 import tensorflow as tf
 import tensorflow_transform as tft
-from tfx.components.trainer.fn_args_utils import FnArgs
+from tfx.v1.components import FnArgs
+from tfx_bsl.public import tfxio
 
 # Feature keys
 NUMERICAL_FEATURES = ["age", "income", "credit_score"]
@@ -204,13 +234,24 @@ def preprocessing_fn(inputs):
 
 def run_fn(fn_args: FnArgs):
     """Training function called by the Trainer component."""
+    tf_transform_output = tft.TFTransformOutput(fn_args.transform_output)
 
     # Load transformed data
-    train_dataset = _input_fn(fn_args.train_files, fn_args.data_accessor, 64)
-    eval_dataset = _input_fn(fn_args.eval_files, fn_args.data_accessor, 64)
+    train_dataset = _input_fn(
+        fn_args.train_files,
+        fn_args.data_accessor,
+        tf_transform_output,
+        64
+    )
+    eval_dataset = _input_fn(
+        fn_args.eval_files,
+        fn_args.data_accessor,
+        tf_transform_output,
+        64
+    )
 
     # Build the model
-    model = _build_model()
+    model = _build_model(tf_transform_output)
 
     # Train
     model.fit(
@@ -220,22 +261,43 @@ def run_fn(fn_args: FnArgs):
         validation_steps=fn_args.eval_steps
     )
 
-    # Save the model with the transform graph signature
-    model.save(fn_args.serving_model_dir)
+    # Export the model with signatures for serving and evaluation
+    _export_serving_model(tf_transform_output, model, fn_args.serving_model_dir)
 
-def _build_model():
+def _input_fn(file_pattern, data_accessor, tf_transform_output, batch_size):
+    """Creates a batched dataset from transformed examples."""
+    return data_accessor.tf_dataset_factory(
+        file_pattern,
+        tfxio.TensorFlowDatasetOptions(batch_size=batch_size, label_key=LABEL_KEY),
+        tf_transform_output.transformed_metadata.schema
+    )
+
+def _build_model(tf_transform_output):
     """Build a simple Keras model for binary classification."""
-    inputs = []
+    feature_spec = tf_transform_output.transformed_feature_spec().copy()
+    feature_spec.pop(LABEL_KEY)
+
+    inputs = {}
     encoded_features = []
 
     for feature in NUMERICAL_FEATURES:
-        inp = tf.keras.layers.Input(shape=(1,), name=feature)
-        inputs.append(inp)
+        spec = feature_spec[feature]
+        inp = tf.keras.layers.Input(
+            shape=spec.shape or (1,),
+            name=feature,
+            dtype=spec.dtype
+        )
+        inputs[feature] = inp
         encoded_features.append(inp)
 
     for feature in CATEGORICAL_FEATURES:
-        inp = tf.keras.layers.Input(shape=(1,), name=feature, dtype=tf.int64)
-        inputs.append(inp)
+        spec = feature_spec[feature]
+        inp = tf.keras.layers.Input(
+            shape=spec.shape or (1,),
+            name=feature,
+            dtype=spec.dtype
+        )
+        inputs[feature] = inp
         embedding = tf.keras.layers.Embedding(101, 16)(inp)
         embedding = tf.keras.layers.Flatten()(embedding)
         encoded_features.append(embedding)
@@ -251,6 +313,51 @@ def _build_model():
     model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
 
     return model
+
+def _get_tf_examples_serving_signature(model, tf_transform_output):
+    """Returns a serving signature that accepts serialized tf.Examples."""
+    model.tft_layer_inference = tf_transform_output.transform_features_layer()
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[None], dtype=tf.string, name="examples")
+    ])
+    def serve_tf_examples_fn(serialized_tf_examples):
+        raw_feature_spec = tf_transform_output.raw_feature_spec()
+        raw_feature_spec.pop(LABEL_KEY)
+        raw_features = tf.io.parse_example(serialized_tf_examples, raw_feature_spec)
+        transformed_features = model.tft_layer_inference(raw_features)
+        return {"outputs": model(transformed_features)}
+
+    return serve_tf_examples_fn
+
+def _get_transform_features_signature(model, tf_transform_output):
+    """Returns the transform signature used by TFMA Evaluator."""
+    model.tft_layer_eval = tf_transform_output.transform_features_layer()
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[None], dtype=tf.string, name="examples")
+    ])
+    def transform_features_fn(serialized_tf_examples):
+        raw_feature_spec = tf_transform_output.raw_feature_spec()
+        raw_features = tf.io.parse_example(serialized_tf_examples, raw_feature_spec)
+        return model.tft_layer_eval(raw_features)
+
+    return transform_features_fn
+
+def _export_serving_model(tf_transform_output, model, output_dir):
+    """Exports a SavedModel for serving and TFMA evaluation."""
+    model.tft_layer = tf_transform_output.transform_features_layer()
+    signatures = {
+        "serving_default": _get_tf_examples_serving_signature(
+            model,
+            tf_transform_output
+        ),
+        "transform_features": _get_transform_features_signature(
+            model,
+            tf_transform_output
+        )
+    }
+    tf.saved_model.save(model, output_dir, signatures=signatures)
 ```
 
 ## Running on Vertex AI Pipelines
@@ -260,7 +367,7 @@ With the pipeline defined, you compile and submit it to Vertex AI Pipelines for 
 This code compiles and runs the pipeline:
 
 ```python
-from tfx.orchestration.kubeflow.v2 import kubeflow_v2_dag_runner
+from tfx import v1 as tfx
 
 # Define the pipeline
 pipeline = create_pipeline(
@@ -272,8 +379,8 @@ pipeline = create_pipeline(
 )
 
 # Compile the pipeline to a JSON spec
-runner = kubeflow_v2_dag_runner.KubeflowV2DagRunner(
-    config=kubeflow_v2_dag_runner.KubeflowV2DagRunnerConfig(),
+runner = tfx.orchestration.experimental.KubeflowV2DagRunner(
+    config=tfx.orchestration.experimental.KubeflowV2DagRunnerConfig(),
     output_filename="churn_pipeline.json"
 )
 runner.run(pipeline)
