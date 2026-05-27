@@ -23,7 +23,7 @@ The retry behavior follows this sequence:
 3. Retry
 4. If it fails again, double the wait time (up to `max_doublings` times)
 5. After `max_doublings`, the wait time increases linearly up to `max_backoff`
-6. Continue until `max_retry_attempts` is reached or the retry window expires
+6. Continue according to `max_retry_attempts` and, if configured, `max_retry_duration`
 
 ```mermaid
 flowchart TD
@@ -49,10 +49,11 @@ Here are the parameters you can configure:
 | Parameter | Description | Default | Range |
 |-----------|-------------|---------|-------|
 | `max-retry-attempts` | Total number of retry attempts | 0 (no retries) | 0-5 |
-| `min-backoff` | Initial delay between retries | 5s | 0s-3600s |
-| `max-backoff` | Maximum delay between retries | 3600s | 0s-3600s |
-| `max-doublings` | Number of times backoff doubles | 16 | 0-20 |
-| `attempt-deadline` | Timeout for each individual attempt | 180s | 15s-1800s |
+| `max-retry-duration` | Time limit for retrying a failed job | 0s (unlimited) | Duration string |
+| `min-backoff` | Initial delay between retries | 5s | Duration string |
+| `max-backoff` | Maximum delay between retries | 3600s | Duration string |
+| `max-doublings` | Number of times backoff doubles before increasing linearly | 5 | Integer |
+| `attempt-deadline` | Timeout for each individual attempt | 180s for HTTP targets | HTTP targets: 15s-1800s; App Engine targets have different limits; ignored for Pub/Sub |
 
 ## Creating a Job with Retry Configuration
 
@@ -80,7 +81,7 @@ With these settings, if the first attempt fails, the retry schedule looks like t
 - Attempt 1: Immediate (at scheduled time)
 - Attempt 2: 10 seconds later (min_backoff)
 - Attempt 3: 20 seconds after attempt 2 (doubled)
-- Attempt 4: 40 seconds after attempt 3 (doubled again, since max_doublings=3 means 3 doublings)
+- Attempt 4: 40 seconds after attempt 3 (the third retry interval; with more retries, max_doublings=3 would allow the interval to double once more to 80 seconds)
 
 Total time from first attempt to last retry: about 70 seconds.
 
@@ -100,11 +101,11 @@ Let me walk through how the backoff intervals are calculated in detail.
 # Retry 3: 40s   (10 x 2^2) - doubling 2
 # Retry 4: 80s   (10 x 2^3) - doubling 3
 # Retry 5: 160s  (10 x 2^4) - doubling 4 (max_doublings reached)
-# Retry 6: 240s  (160 + 80) - linear increase after max_doublings
-# Retry 7: 300s  (300, capped at max_backoff) - linear capped
+# Retry 6: 300s  (160 + 160, capped at max_backoff) - linear capped
+# Retry 7: 300s  (max_backoff) - capped
 ```
 
-After `max_doublings` is exhausted, the backoff increases linearly by the last doubled increment until it hits `max_backoff`.
+After `max_doublings` is exhausted, the backoff increases linearly by `2^max_doublings * min_backoff` until it hits `max_backoff`.
 
 ## Configuration Profiles for Different Scenarios
 
@@ -127,7 +128,7 @@ gcloud scheduler jobs create http health-check \
   --time-zone="UTC"
 ```
 
-Retry intervals: 5s, 10s, 20s, 30s, 30s. All retries complete within about 2 minutes.
+Retry intervals: 5s, 10s, 20s, 30s, 30s. The wait intervals add up to about 95 seconds, not counting time spent in each attempt.
 
 ### Patient Retries for Heavy Operations
 
@@ -148,7 +149,7 @@ gcloud scheduler jobs create http data-export \
   --time-zone="UTC"
 ```
 
-Retry intervals: 30s, 60s, 120s, 240s, 480s. Total retry window is about 15 minutes, giving a slow service plenty of time to recover.
+Retry intervals: 30s, 60s, 120s, 240s, 480s. The wait intervals add up to about 15.5 minutes, not counting time spent in each attempt, giving a slow service plenty of time to recover.
 
 ### Minimal Retries for Idempotent Tasks
 
@@ -200,14 +201,12 @@ If the deadline is too short, you will see failures even when your target is act
 
 ## What Counts as a Failure?
 
-For HTTP targets, Cloud Scheduler considers these as failures:
+For HTTP targets, Cloud Scheduler acknowledges response codes in the 200-299 range as success. It considers these as failures:
 
-- HTTP status codes 4xx (except 429) and 5xx
+- HTTP status codes outside the 200-299 range, including 4xx, 429, and 5xx
 - Connection timeouts (no response within attempt deadline)
 - DNS resolution failures
 - Connection refused
-
-HTTP 429 (Too Many Requests) is treated specially - Cloud Scheduler respects the `Retry-After` header if present.
 
 A 2xx response is always considered a success. Even a 200 response with an error message in the body counts as success from Cloud Scheduler's perspective - it does not inspect the response body.
 
@@ -232,7 +231,7 @@ gcloud logging read \
 
 **Set retries greater than zero for production jobs.** The default of 0 retries means any transient failure results in a missed execution. For most production workloads, 3-5 retries is reasonable.
 
-**Match the attempt deadline to your target's response time.** If your Cloud Function has a 300-second timeout, set the attempt deadline to at least 300 seconds.
+**Match the attempt deadline to your target's response time.** If your Cloud Function has a 300-second timeout, set the attempt deadline to at least 300 seconds, within Cloud Scheduler's allowed range for the target type.
 
 **Use longer backoff for external dependencies.** If your target calls third-party APIs, those services may need time to recover. A 30-second minimum backoff gives them breathing room.
 
