@@ -38,7 +38,7 @@ Note that enabling the interactive serial console on a running VM does not requi
 
 ## Viewing Serial Port Output (Read-Only)
 
-Even without enabling the interactive console, you can always read the serial port output. This is often enough to diagnose the problem.
+Even without enabling the interactive console, you can read the serial port output while the VM is running. This is often enough to diagnose the problem.
 
 ```bash
 # Get the serial port output from a VM
@@ -46,7 +46,7 @@ gcloud compute instances get-serial-port-output my-broken-vm \
     --zone=us-central1-a
 ```
 
-This dumps all the boot messages and system output. Scroll through it to find error messages. Common things to look for:
+This dumps the recent boot messages and system output retained for that serial port. Scroll through it to find error messages. Common things to look for:
 
 - Kernel panic messages
 - Filesystem check failures
@@ -73,7 +73,7 @@ gcloud compute connect-to-serial-port my-broken-vm \
     --zone=us-central1-a
 ```
 
-You will see the VM's console output, and if a login prompt is available, you can log in with your credentials. On Linux VMs with OS Login enabled, your OS Login credentials work here too.
+You will see the VM's console output, and if a login prompt is available, you can log in with credentials that the guest OS accepts. Google-supplied Linux images are not configured for password-based local logins by default, so you might need to set a local password before using the login prompt.
 
 To disconnect from the serial console, press `~.` (tilde followed by period).
 
@@ -156,7 +156,7 @@ gcloud compute instances stop my-broken-vm --zone=us-central1-a
 
 # Detach the boot disk
 gcloud compute instances detach-disk my-broken-vm \
-    --disk=my-broken-vm \
+    --disk=BOOT_DISK_NAME \
     --zone=us-central1-a
 
 # Create a rescue VM
@@ -168,7 +168,7 @@ gcloud compute instances create rescue-vm \
 
 # Attach the broken disk as a secondary disk
 gcloud compute instances attach-disk rescue-vm \
-    --disk=my-broken-vm \
+    --disk=BOOT_DISK_NAME \
     --zone=us-central1-a
 
 # SSH into the rescue VM and fix the filesystem
@@ -179,11 +179,11 @@ Inside the rescue VM:
 
 ```bash
 # Run a filesystem check on the broken disk
-sudo fsck /dev/sdb1
+sudo fsck /dev/disk/by-id/google-BOOT_DISK_NAME-part1
 
 # Mount the disk and inspect/fix files
 sudo mkdir /mnt/broken
-sudo mount /dev/sdb1 /mnt/broken
+sudo mount /dev/disk/by-id/google-BOOT_DISK_NAME-part1 /mnt/broken
 # ... fix whatever is wrong ...
 sudo umount /mnt/broken
 ```
@@ -228,10 +228,10 @@ Once enabled, serial port output goes to Cloud Logging where you can search, ale
 
 ## Security Considerations
 
-The interactive serial console provides root-level access to your VM, so treat it with appropriate caution:
+The interactive serial console provides powerful out-of-band access to your VM, so treat it with appropriate caution:
 
 1. **Do not enable it project-wide in production** unless you have a good reason. Enable it on specific instances when needed.
-2. **Use IAM to control access**: The `roles/compute.instanceAdmin` role is needed to connect to the serial console.
+2. **Use IAM to control access**: Enabling interactive access requires metadata permissions such as `compute.instances.setMetadata` on the VM or `compute.projects.setCommonInstanceMetadata` on the project. Connecting with `gcloud` also depends on SSH key access because the serial console authenticates users with SSH keys.
 3. **Disable it after debugging**: Once you have fixed the issue, disable the interactive serial console.
 
 ```bash
