@@ -66,8 +66,8 @@ graph LR
     comment: |
       Deployment completed.
       Status: {{ deploy_status }}
-      Servers updated: {{ ansible_play_hosts | length }}
-      Duration: {{ deploy_duration }} seconds
+      Servers updated: {{ servers_updated | default(ansible_play_hosts | length) }}
+      Duration: {{ deploy_duration | default('not recorded') }}
 ```
 
 ## Transitioning Tickets
@@ -82,7 +82,7 @@ graph LR
     password: "{{ jira_api_token }}"
     issue: "{{ jira_ticket_key }}"
     operation: transition
-    status: Done
+    status: "{{ jira_success_transition | default('Done') }}"
   when: deploy_status == 'success'
 
 - name: Transition ticket to Failed
@@ -92,7 +92,7 @@ graph LR
     password: "{{ jira_api_token }}"
     issue: "{{ jira_ticket_key }}"
     operation: transition
-    status: Blocked
+    status: "{{ jira_failure_transition | default('Blocked') }}"
   when: deploy_status == 'failed'
 ```
 
@@ -108,17 +108,27 @@ graph LR
     - name: Create change ticket
       ansible.builtin.include_tasks: tasks/jira-create.yml
 
+    - name: Store ticket key
+      ansible.builtin.set_fact:
+        jira_ticket_key: "{{ jira_ticket.meta.key }}"
+
 - name: Run deployment
   hosts: app_servers
   become: true
   roles:
     - app_deploy
 
-- name: Close ticket
+- name: Update and close ticket
   hosts: localhost
   connection: local
+  vars:
+    deploy_status: success
+    servers_updated: "{{ groups['app_servers'] | default([]) | length }}"
   tasks:
-    - name: Update and close JIRA ticket
+    - name: Add deployment results to JIRA ticket
+      ansible.builtin.include_tasks: tasks/jira-update.yml
+
+    - name: Close JIRA ticket
       ansible.builtin.include_tasks: tasks/jira-transition.yml
 ```
 
@@ -165,7 +175,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -309,4 +319,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
