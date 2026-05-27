@@ -8,7 +8,7 @@ Description: Learn how to use Google Cloud Service Directory to register, discov
 
 ---
 
-In a microservices architecture, knowing where services are running is half the battle. IP addresses change, instances scale up and down, and services move across environments. Hardcoding endpoints is a recipe for outages. Google Cloud Service Directory provides a managed service registry where you can register your services with their endpoints and metadata, then discover them using either DNS or direct API calls.
+In a microservices architecture, knowing where services are running is half the battle. IP addresses change, instances scale up and down, and services move across environments. Hardcoding endpoints is a recipe for outages. Google Cloud Service Directory provides a managed service registry where you can register your services with their endpoints and annotations, then discover them using either DNS or direct API calls.
 
 This post covers how to set up Service Directory, register services, and integrate service discovery into your applications.
 
@@ -57,7 +57,7 @@ Once you have a namespace, you can register services and their endpoints.
 gcloud service-directory services create user-api \
     --namespace=production \
     --location=us-central1 \
-    --metadata=version=v2.1,team=platform
+    --annotations=version=v2.1,team=platform
 
 # Add an endpoint to the service
 gcloud service-directory endpoints create user-api-instance-1 \
@@ -66,7 +66,7 @@ gcloud service-directory endpoints create user-api-instance-1 \
     --location=us-central1 \
     --address=10.0.1.15 \
     --port=8080 \
-    --metadata=zone=us-central1-a,weight=50
+    --annotations=zone=us-central1-a,weight=50
 
 # Add a second endpoint for redundancy
 gcloud service-directory endpoints create user-api-instance-2 \
@@ -75,10 +75,10 @@ gcloud service-directory endpoints create user-api-instance-2 \
     --location=us-central1 \
     --address=10.0.1.16 \
     --port=8080 \
-    --metadata=zone=us-central1-b,weight=50
+    --annotations=zone=us-central1-b,weight=50
 ```
 
-Each endpoint has an address, port, and optional metadata. The metadata is free-form key-value pairs that you can use for routing decisions, canary deployments, or any other purpose.
+Each endpoint has an address, port, and optional annotations. The annotations are free-form key-value pairs that you can use for routing decisions, canary deployments, or any other purpose.
 
 ## Registering Services Programmatically
 
@@ -97,7 +97,7 @@ namespace_path = client.namespace_path(
 
 # Register a new service
 service = servicedirectory_v1.Service()
-service.metadata = {"version": "v3.0", "team": "payments"}
+service.annotations = {"version": "v3.0", "team": "payments"}
 
 created_service = client.create_service(
     parent=namespace_path,
@@ -110,7 +110,7 @@ print(f"Created service: {created_service.name}")
 endpoint = servicedirectory_v1.Endpoint()
 endpoint.address = "10.0.2.20"
 endpoint.port = 443
-endpoint.metadata = {"zone": "us-central1-a"}
+endpoint.annotations = {"zone": "us-central1-a"}
 
 created_endpoint = client.create_endpoint(
     parent=created_service.name,
@@ -143,10 +143,10 @@ response = lookup_client.resolve_service(request=request)
 for endpoint in response.service.endpoints:
     print(f"Endpoint: {endpoint.name}")
     print(f"  Address: {endpoint.address}:{endpoint.port}")
-    print(f"  Metadata: {endpoint.metadata}")
+    print(f"  Annotations: {endpoint.annotations}")
 ```
 
-This API call returns all endpoints registered under the service, along with their metadata. Your application can then implement client-side load balancing, pick endpoints based on metadata (like zone affinity), or fall back to secondary endpoints if primary ones are unhealthy.
+This API call returns all endpoints registered under the service, along with their annotations. Your application can then implement client-side load balancing, pick endpoints based on annotations (like zone affinity), or fall back to secondary endpoints if primary ones are unhealthy.
 
 ## Discovering Services via DNS
 
@@ -157,8 +157,8 @@ The DNS integration is where Service Directory really shines for brownfield appl
 gcloud dns managed-zones create sd-production \
     --dns-name="production.internal." \
     --visibility=private \
-    --networks=my-vpc \
-    --service-directory-namespace=projects/my-project/locations/us-central1/namespaces/production \
+    --networks=https://www.googleapis.com/compute/v1/projects/my-project/global/networks/my-vpc \
+    --service-directory-namespace=https://servicedirectory.googleapis.com/v1/projects/my-project/locations/us-central1/namespaces/production \
     --description="DNS zone backed by Service Directory production namespace"
 ```
 
@@ -166,11 +166,11 @@ Now any VM in your VPC can discover services using regular DNS:
 
 ```bash
 # Query the service using dig
-dig user-api.production.internal SRV
+dig _user-api._tcp.user-api.production.internal SRV
 
 # This returns SRV records with the endpoints:
-# user-api.production.internal. 300 IN SRV 0 0 8080 user-api-instance-1.user-api.production.internal.
-# user-api.production.internal. 300 IN SRV 0 0 8080 user-api-instance-2.user-api.production.internal.
+# _user-api._tcp.user-api.production.internal. 300 IN SRV 0 0 8080 user-api-instance-1.user-api.production.internal.
+# _user-api._tcp.user-api.production.internal. 300 IN SRV 0 0 8080 user-api-instance-2.user-api.production.internal.
 
 # You can also query A records
 dig user-api.production.internal A
@@ -208,7 +208,7 @@ def register_pod():
     endpoint = servicedirectory_v1.Endpoint()
     endpoint.address = pod_ip
     endpoint.port = port
-    endpoint.metadata = {
+    endpoint.annotations = {
         "pod": pod_name,
         "version": os.environ.get("APP_VERSION", "unknown")
     }
@@ -239,7 +239,7 @@ Service Directory does not perform health checks on its own. This is an importan
 
 ## IAM and Access Control
 
-Control who can register and discover services using IAM roles:
+Control who can register and discover services through the API using IAM roles. DNS queries are controlled by the VPC networks attached to the Service Directory DNS zone, not by per-query IAM checks.
 
 ```bash
 # Grant a service account the ability to register services
