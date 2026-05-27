@@ -156,7 +156,7 @@ flowchart TD
 
 In this layout:
 - Cache pods are co-located with web-app pods (pod affinity)
-- Database pods are spread across different nodes and zones (pod anti-affinity)
+- Database pods are spread across different nodes and prefer different zones (pod anti-affinity)
 
 ## Step 3: Topology Spread Constraints
 
@@ -204,7 +204,7 @@ spec:
 ```
 
 Key parameters:
-- `maxSkew` - Maximum difference in pod count between any two topology domains
+- `maxSkew` - Maximum permitted skew between the number of matching pods in a topology domain and the global minimum for `DoNotSchedule`; with `ScheduleAnyway`, the scheduler prefers domains that reduce skew
 - `topologyKey` - The node label that defines topology domains
 - `whenUnsatisfiable` - `DoNotSchedule` (hard) or `ScheduleAnyway` (soft)
 
@@ -335,7 +335,7 @@ kubectl describe pod <pod-name> | grep -A 20 Events
 # See pod distribution across nodes
 kubectl get pods -l app=web-app -o wide
 
-# Check pod distribution across zones
+# Map pods to nodes before checking zone labels
 kubectl get pods -l app=web-app -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.nodeName}{"\n"}{end}'
 
 # View node labels to understand topology domains
