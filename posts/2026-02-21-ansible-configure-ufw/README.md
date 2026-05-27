@@ -8,7 +8,7 @@ Description: Automate UFW firewall configuration across Ubuntu and Debian server
 
 ---
 
-UFW (Uncomplicated Firewall) is the default firewall management tool on Ubuntu and Debian systems. It provides a simpler interface to iptables, making it the standard choice for teams that want effective firewall rules without wrestling with iptables syntax. Managing UFW manually on each server works for small environments, but as your fleet grows, Ansible becomes essential for keeping firewall rules consistent and auditable.
+UFW (Uncomplicated Firewall) is the default firewall configuration tool on Ubuntu and is also available on Debian systems. It provides a simpler interface to iptables/nftables, making it a common choice for teams that want effective firewall rules without wrestling with low-level firewall syntax. Managing UFW manually on each server works for small environments, but as your fleet grows, Ansible becomes essential for keeping firewall rules consistent and auditable.
 
 In this guide, I will walk through configuring UFW across your server fleet using Ansible. We will cover role-based rule definitions (web servers get different rules than database servers), rate limiting, and logging configuration.
 
@@ -62,18 +62,20 @@ ufw_global_rules:
   - rule: allow
     port: 22
     proto: tcp
-    from_ip: "{{ ansible_default_ipv4.network }}/{{ ansible_default_ipv4.netmask }}"
+    from_ip: "{{ ansible_default_ipv4.network }}/{{ ansible_default_ipv4.prefix }}"
     comment: "SSH from local subnet"
 
-  # Allow ICMP for monitoring
-  - rule: allow
-    proto: icmp
-    comment: "Allow ping"
-
-# Rate limiting for SSH (even from allowed subnets)
+# Rate limiting for SSH from trusted subnets
 ufw_rate_limit:
   - port: 22
     proto: tcp
+    from_ip: "{{ admin_subnet }}"
+    comment: "Rate limit SSH from admin subnet"
+
+  - port: 22
+    proto: tcp
+    from_ip: "{{ ansible_default_ipv4.network }}/{{ ansible_default_ipv4.prefix }}"
+    comment: "Rate limit SSH from local subnet"
 ```
 
 Web server specific rules.
@@ -165,6 +167,16 @@ ufw_role_rules:
     direction: routed
     policy: "{{ ufw_default_forward }}"
 
+# Rate limiting must be added before broader allow rules for the same port.
+- name: Apply rate limiting rules
+  community.general.ufw:
+    rule: limit
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+    from_ip: "{{ item.from_ip | default('any') }}"
+    comment: "{{ item.comment | default(omit) }}"
+  loop: "{{ ufw_rate_limit | default([]) }}"
+
 # Apply global rules that every server gets
 - name: Apply global firewall rules
   community.general.ufw:
@@ -197,14 +209,6 @@ ufw_role_rules:
     to_ip: "{{ item.to_ip | default('any') }}"
     comment: "{{ item.comment | default(omit) }}"
   loop: "{{ ufw_host_rules | default([]) }}"
-
-# Rate limiting
-- name: Apply rate limiting rules
-  community.general.ufw:
-    rule: limit
-    port: "{{ item.port }}"
-    proto: "{{ item.proto }}"
-  loop: "{{ ufw_rate_limit | default([]) }}"
 
 # Configure logging
 - name: Set UFW logging level
@@ -240,6 +244,11 @@ When rules change, you need to remove outdated ones. This task resets and reappl
 - name: Configure UFW firewall
   hosts: all
   become: yes
+  pre_tasks:
+    - name: Reset UFW before applying rules when requested
+      community.general.ufw:
+        state: reset
+      when: ufw_reset | default(false) | bool
   roles:
     - ufw
 ```
