@@ -23,7 +23,7 @@ Let me show this with a Python application using SQLAlchemy, but the approach wo
 
 pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-cloud-trace
 pip install opentelemetry-instrumentation-sqlalchemy
-pip install sqlalchemy pg8000
+pip install sqlalchemy pg8000 flask
 ```
 
 ```python
@@ -61,6 +61,10 @@ def create_traced_engine():
         engine=engine,
         # Include the SQL statement in the span (be careful with sensitive data)
         enable_commenter=True,
+        commenter_options={
+            "opentelemetry_values": True,
+            "db_framework": True,
+        },
     )
 
     return engine
@@ -175,6 +179,7 @@ Cloud SQL Insights supports application tags, which let you correlate database q
 
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
+# Configure these options when you instrument the engine in db_tracing.py
 # The enable_commenter option adds OTel context as SQL comments
 # This creates a link between Cloud Trace spans and Cloud SQL Insights
 SQLAlchemyInstrumentor().instrument(
@@ -183,7 +188,6 @@ SQLAlchemyInstrumentor().instrument(
     commenter_options={
         "opentelemetry_values": True,  # Include trace_id and span_id
         "db_framework": True,          # Include ORM framework name
-        "route": True,                 # Include the HTTP route
     },
 )
 ```
@@ -193,28 +197,33 @@ When this is enabled, your SQL queries will have comments appended automatically
 ```sql
 -- The actual query sent to the database looks like this:
 SELECT * FROM users WHERE id = 42
-/*traceparent='00-abc123-def456-01',route='/users/42'*/
+/*traceparent='00-03afa25236b8cd948fa853d67038ac79-405ff022e8247c46-01',db_framework='sqlalchemy%3A2.0.0'*/
 ```
 
-Cloud SQL Insights can then group queries by route and link them to specific traces.
+Cloud SQL Insights can then group queries by supported application tags and use the trace context to connect database activity with specific traces.
 
 ## Step 4: Query Performance Dashboard
 
 Build a dashboard that combines application-level traces with Cloud SQL Insights data.
 
 ```text
-# MQL query for Cloud SQL query latency
-fetch cloudsql_database::cloudsql.googleapis.com/database/postgresql/insights/aggregate/execution_time
-| group_by [metric.querystring], percentile(val(), 95)
-| every 5m
-| top 10
+# PromQL query for Cloud SQL per-query P95 latency
+topk(10,
+  histogram_quantile(0.95,
+    sum by (querystring, le) (
+      rate({"cloudsql.googleapis.com/database/postgresql/insights/perquery/latencies_bucket",
+            monitored_resource="cloudsql_instance_database"}[5m])
+    )
+  )
+)
 ```
 
 ```text
-# MQL query for Cloud SQL active queries
-fetch cloudsql_database::cloudsql.googleapis.com/database/postgresql/num_backends
-| group_by [resource.database_id], mean(val())
-| every 1m
+# PromQL query for Cloud SQL active connections
+avg by (database_id) (
+  {"cloudsql.googleapis.com/database/postgresql/num_backends",
+   monitored_resource="cloudsql_database"}
+)
 ```
 
 ## Trace Visualization
@@ -301,9 +310,9 @@ gcloud monitoring policies create --policy-from-file=- << 'EOF'
   "conditions": [{
     "displayName": "P95 query time above 500ms",
     "conditionThreshold": {
-      "filter": "metric.type=\"cloudsql.googleapis.com/database/postgresql/insights/aggregate/execution_time\" resource.type=\"cloudsql_database\"",
+      "filter": "metric.type=\"cloudsql.googleapis.com/database/postgresql/insights/perquery/latencies\" resource.type=\"cloudsql_instance_database\"",
       "comparison": "COMPARISON_GT",
-      "thresholdValue": 0.5,
+      "thresholdValue": 500000,
       "duration": "300s",
       "aggregations": [{
         "alignmentPeriod": "60s",
