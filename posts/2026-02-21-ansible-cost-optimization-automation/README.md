@@ -36,6 +36,10 @@ graph TD
   connection: local
 
   tasks:
+    - name: Set snapshot cutoff date
+      ansible.builtin.set_fact:
+        snapshot_cutoff: "{{ '%Y-%m-%dT%H:%M:%S+00:00' | strftime((ansible_date_time.epoch | int) - (90 * 24 * 60 * 60), utc=true) }}"
+
     - name: Find unattached EBS volumes
       amazon.aws.ec2_vol_info:
         filters:
@@ -59,7 +63,7 @@ graph TD
 
     - name: Report unused EIPs
       ansible.builtin.debug:
-        msg: "Found {{ unused_eips | length }} unused EIPs (cost: ${{ unused_eips | length * 3.65 }}/month each)"
+        msg: "Found {{ unused_eips | length }} unused EIPs (estimated idle IP cost: ${{ unused_eips | length * 3.65 }}/month)"
 
     - name: Find old snapshots (older than 90 days)
       amazon.aws.ec2_snapshot_info:
@@ -69,7 +73,7 @@ graph TD
 
     - name: Identify old snapshots
       ansible.builtin.set_fact:
-        old_snapshots: "{{ all_snapshots.snapshots | selectattr('start_time', 'lt', (ansible_date_time.date | to_datetime - 'P90D' | to_datetime).isoformat()) | list }}"
+        old_snapshots: "{{ all_snapshots.snapshots | selectattr('start_time', 'lt', snapshot_cutoff) | list }}"
 
     - name: Generate cost report
       ansible.builtin.template:
@@ -91,6 +95,31 @@ graph TD
     dry_run: true  # Set to false to actually delete
 
   tasks:
+    - name: Set volume cutoff date
+      ansible.builtin.set_fact:
+        volume_cutoff: "{{ '%Y-%m-%dT%H:%M:%S+00:00' | strftime((ansible_date_time.epoch | int) - (30 * 24 * 60 * 60), utc=true) }}"
+
+    - name: Find unattached EBS volumes
+      amazon.aws.ec2_vol_info:
+        filters:
+          status: available
+      register: unattached_volumes
+
+    - name: Find unused Elastic IPs
+      amazon.aws.ec2_eip_info:
+      register: all_eips
+
+    - name: Identify unattached EIPs
+      ansible.builtin.set_fact:
+        unused_eips: "{{ all_eips.addresses | selectattr('association_id', 'undefined') | list }}"
+
+    - name: Find running development instances
+      amazon.aws.ec2_instance_info:
+        filters:
+          "tag:Environment": dev
+          instance-state-name: running
+      register: dev_instances_running
+
     - name: Delete unattached EBS volumes older than 30 days
       amazon.aws.ec2_vol:
         id: "{{ item.id }}"
@@ -98,7 +127,7 @@ graph TD
       loop: "{{ unattached_volumes.volumes }}"
       when:
         - not dry_run
-        - item.create_time < (ansible_date_time.date | to_datetime('%Y-%m-%d') - 'P30D' | to_datetime).isoformat()
+        - item.create_time < volume_cutoff
 
     - name: Release unused Elastic IPs
       amazon.aws.ec2_eip:
@@ -111,7 +140,7 @@ graph TD
       amazon.aws.ec2_instance:
         instance_ids: "{{ item.instance_id }}"
         state: stopped
-      loop: "{{ dev_instances_running }}"
+      loop: "{{ dev_instances_running.instances }}"
       when:
         - not dry_run
         - ansible_date_time.hour | int > 20 or ansible_date_time.hour | int < 7
@@ -128,7 +157,7 @@ graph TD
   connection: local
 
   tasks:
-    - name: Get CloudWatch CPU metrics for all instances
+    - name: Get existing CloudWatch CPU alarms
       amazon.aws.cloudwatch_metric_alarm_info:
         alarm_names: []
       register: alarms
@@ -142,9 +171,15 @@ graph TD
           query: "avg_over_time(instance:cpu_utilization:avg[14d])"
       register: cpu_data
 
+    - name: Initialize oversized instance list
+      ansible.builtin.set_fact:
+        oversized: []
+
     - name: Identify oversized instances (avg CPU < 20%)
       ansible.builtin.set_fact:
-        oversized: "{{ cpu_data.json.data.result | selectattr('value.1', 'lt', '20') | list }}"
+        oversized: "{{ oversized + [item] }}"
+      loop: "{{ cpu_data.json.data.result }}"
+      when: item.value[1] | float < 20
 
     - name: Generate recommendations
       ansible.builtin.debug:
@@ -177,13 +212,15 @@ Enforce tagging policies to track costs:
       amazon.aws.ec2_instance_info:
       register: all_instances
 
+    - name: Initialize untagged instance list
+      ansible.builtin.set_fact:
+        untagged_instances: []
+
     - name: Identify untagged instances
       ansible.builtin.set_fact:
-        untagged_instances: >-
-          {{ all_instances.instances
-             | selectattr('state.name', 'equalto', 'running')
-             | rejectattr('tags.Environment', 'defined')
-             | list }}
+        untagged_instances: "{{ untagged_instances + [item] }}"
+      loop: "{{ all_instances.instances | selectattr('state.name', 'equalto', 'running') | list }}"
+      when: (required_tags | difference((item.tags | default({})).keys())) | length > 0
 
     - name: Report untagged instances
       ansible.builtin.debug:
