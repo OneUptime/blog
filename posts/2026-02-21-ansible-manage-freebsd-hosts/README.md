@@ -64,8 +64,9 @@ Note: `ansible_python_interpreter` must point to `/usr/local/bin/python3` on Fre
         state: present
 
     - name: Upgrade all packages
-      ansible.builtin.command: pkg upgrade -y
-      changed_when: true
+      community.general.pkgng:
+        name: "*"
+        state: latest
 
     - name: Install essential packages
       community.general.pkgng:
@@ -81,7 +82,7 @@ Note: `ansible_python_interpreter` must point to `/usr/local/bin/python3` on Fre
           - sudo
           - bash
           - python3
-          - py39-pip
+          - py311-pip
           - chrony
         state: present
 
@@ -124,9 +125,9 @@ Note: `ansible_python_interpreter` must point to `/usr/local/bin/python3` on Fre
           block in all
           pass out all
 
-          pass in on egress proto tcp to port 22
-          pass in on egress proto tcp to port { 80, 443 }
-          pass in on egress proto icmp
+          pass in proto tcp to port 22
+          pass in proto tcp to port { 80, 443 }
+          pass in inet proto icmp
         dest: /etc/pf.conf
         mode: '0600'
       notify: reload pf
@@ -152,7 +153,7 @@ Note: `ansible_python_interpreter` must point to `/usr/local/bin/python3` on Fre
         name: "{{ item.key }}"
         value: "{{ item.value }}"
         sysctl_set: true
-        reload: true
+        reload: false
       loop:
         - { key: 'kern.ipc.somaxconn', value: '65535' }
         - { key: 'net.inet.tcp.msl', value: '5000' }
@@ -182,7 +183,7 @@ Here are several practical scenarios where this module proves essential in real-
 # Complete workflow incorporating this module
 
 - name: Infrastructure provisioning
-  hosts: all
+  hosts: freebsd
   become: true
   gather_facts: true
   tasks:
@@ -201,7 +202,7 @@ Here are several practical scenarios where this module proves essential in real-
           running {{ ansible_distribution }} {{ ansible_distribution_version }}
 
     - name: Install required packages
-      ansible.builtin.package:
+      community.general.pkgng:
         name:
           - curl
           - wget
@@ -212,18 +213,19 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
       ansible.builtin.hostname:
         name: "{{ inventory_hostname }}"
+        use: freebsd
 
     - name: Update /etc/hosts
       ansible.builtin.lineinfile:
         path: /etc/hosts
-        regexp: '^127\.0\.1\.1'
-        line: "127.0.1.1 {{ inventory_hostname }}"
+        regexp: '^127\.0\.0\.1'
+        line: "127.0.0.1 localhost {{ inventory_hostname }}"
 
     - name: Configure SSH hardening
       ansible.builtin.lineinfile:
@@ -231,26 +233,33 @@ Here are several practical scenarios where this module proves essential in real-
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
     - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
-      loop:
-        - "22"
-        - "80"
-        - "443"
+      ansible.builtin.copy:
+        dest: /etc/pf.conf
+        mode: '0600'
+        content: |
+          set skip on lo0
+
+          block in all
+          pass out all
+
+          pass in proto tcp to port { 22, 80, 443 }
+      notify: reload pf
 
     - name: Enable firewall
-      community.general.ufw:
-        state: enabled
-        policy: deny
+      ansible.builtin.lineinfile:
+        path: /etc/rc.conf
+        regexp: '^pf_enable='
+        line: 'pf_enable="YES"'
 
   handlers:
+    - name: reload pf
+      ansible.builtin.command: pfctl -f /etc/pf.conf
+
     - name: restart sshd
       ansible.builtin.service:
         name: sshd
@@ -333,10 +342,10 @@ Here are several practical scenarios where this module proves essential in real-
   tasks:
     - name: Create scan script
       ansible.builtin.copy:
-        dest: /opt/scripts/compliance_scan.sh
+        dest: /usr/local/sbin/compliance_scan.sh
         mode: '0755'
         content: |
-          #!/bin/bash
+          #!/bin/sh
           cd /opt/ansible
           ansible-playbook playbooks/validate.yml -i inventory/ > /var/log/compliance_scan.log 2>&1
           EXIT_CODE=$?
@@ -353,7 +362,6 @@ Here are several practical scenarios where this module proves essential in real-
         minute: "0"
         hour: "3"
         weekday: "1"
-        job: "/opt/scripts/compliance_scan.sh"
-        user: ansible
+        job: "/usr/local/sbin/compliance_scan.sh"
+        user: root
 ```
-
