@@ -143,7 +143,7 @@ Predefined roles often include more permissions than you need. Custom roles let 
 # custom-roles.tf - Custom roles with minimal permissions
 
 # Custom role for the web app's Cloud Storage access
-# Only allows uploading to a specific bucket, not all buckets
+# Grants only the object permissions the app needs
 resource "google_project_iam_custom_role" "web_storage" {
   project     = var.project_id
   role_id     = "webAppStorage"
@@ -167,7 +167,7 @@ resource "google_project_iam_member" "web_app_storage_custom" {
 
   condition {
     title      = "restrict-to-upload-bucket"
-    expression = "resource.name.startsWith('projects/_/buckets/${var.upload_bucket_name}')"
+    expression = "resource.name.startsWith('projects/_/buckets/${var.upload_bucket_name}/objects/')"
   }
 }
 ```
@@ -294,9 +294,18 @@ gcloud asset search-all-iam-policies \
   --query="policy:web-app@my-project.iam.gserviceaccount.com" \
   --format="table(resource, policy.bindings.role)"
 
-# Check if a service account has been using specific permissions
-# using Policy Analyzer
-gcloud access-context-manager policies list --organization=YOUR_ORG_ID
+# Check for unused or excessive IAM grants using IAM role recommendations
+gcloud recommender recommendations list \
+  --location=global \
+  --recommender=google.iam.policy.Recommender \
+  --project=YOUR_PROJECT_ID \
+  --format=json
+
+# Check recent authentication activity for a specific service account
+gcloud policy-intelligence query-activity \
+  --activity-type=serviceAccountLastAuthentication \
+  --project=YOUR_PROJECT_ID \
+  --query-filter='activities.full_resource_name="//iam.googleapis.com/projects/YOUR_PROJECT_ID/serviceAccounts/web-app@YOUR_PROJECT_ID.iam.gserviceaccount.com"'
 ```
 
 ## Key Rotation
@@ -309,8 +318,8 @@ If you must use service account keys (try to avoid them), rotate them regularly:
 resource "google_service_account_key" "external_service" {
   service_account_id = google_service_account.external_connector.name
 
-  # Keys are base64-encoded JSON
-  # Store in Secret Manager, not in Terraform state
+  # The private_key attribute is a base64-encoded JSON key.
+  # Terraform stores it in state, so protect your state backend carefully.
 }
 
 # Store the key in Secret Manager for secure access
@@ -322,10 +331,21 @@ resource "google_secret_manager_secret" "sa_key" {
     auto {}
   }
 
-  # Rotation reminder
+  topics {
+    name = "projects/${var.project_id}/topics/${var.rotation_topic_id}"
+  }
+
+  # Rotation notification schedule
   rotation {
+    next_rotation_time = var.next_key_rotation_time
     rotation_period = "7776000s"  # 90 days
   }
+}
+
+resource "google_secret_manager_secret_version" "sa_key" {
+  # secret_data is also stored in Terraform state.
+  secret      = google_secret_manager_secret.sa_key.id
+  secret_data = base64decode(google_service_account_key.external_service.private_key)
 }
 ```
 
