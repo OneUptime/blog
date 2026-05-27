@@ -52,14 +52,14 @@ phpIPAM is an open-source IP Address Management tool. Ansible can interact with 
 ---
 - name: Find IP address record
   ansible.builtin.uri:
-    url: "https://{{ phpipam_host }}/api/{{ phpipam_app }}/addresses/search/{{ target_ip }}/"
+    url: "https://{{ phpipam_host }}/api/{{ phpipam_app }}/addresses/{{ target_ip }}/{{ subnet_id }}/"
     headers:
       token: "{{ phpipam_token }}"
   register: ip_record
 
 - name: Release IP address
   ansible.builtin.uri:
-    url: "https://{{ phpipam_host }}/api/{{ phpipam_app }}/addresses/{{ ip_record.json.data[0].id }}/"
+    url: "https://{{ phpipam_host }}/api/{{ phpipam_app }}/addresses/{{ ip_record.json.data.id }}/"
     method: DELETE
     headers:
       token: "{{ phpipam_token }}"
@@ -72,12 +72,12 @@ phpIPAM integration with Ansible automates IP address management during server p
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this integration proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this integration
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -109,7 +109,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -191,7 +191,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with Ansible
 - name: Robust task execution
   hosts: all
   tasks:
@@ -253,4 +253,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
