@@ -97,7 +97,7 @@ A common pattern is to process each tenant separately and then union the results
     SELECT
         '{{ tenant.id }}' AS tenant_id,
         '{{ tenant.name }}' AS tenant_name,
-        *
+        * EXCEPT (tenant_id)
     FROM {{ ref(base_model) }}
     WHERE tenant_id = '{{ tenant.id }}'
     {% if not loop.last %}
@@ -190,20 +190,24 @@ For data isolation, you might want each tenant to have their own BigQuery view:
 
 {% macro create_tenant_view(tenant_id, source_table, view_name) %}
 
+{% set tenant_dataset = tenant_id | replace('-', '_') ~ '_views' %}
+
 {% set sql %}
-    CREATE OR REPLACE VIEW `{{ target.project }}.{{ tenant_id }}_views.{{ view_name }}` AS
+    CREATE OR REPLACE VIEW `{{ target.project }}.{{ tenant_dataset }}.{{ view_name }}` AS
     SELECT *
     FROM `{{ target.project }}.{{ target.schema }}.{{ source_table }}`
     WHERE tenant_id = '{{ tenant_id }}'
 {% endset %}
 
-{% do run_query(sql) %}
-{{ log("Created view for tenant: " ~ tenant_id, info=True) }}
+{% if flags.WHICH == 'run-operation' %}
+    {% do run_query(sql) %}
+    {{ log("Created view for tenant: " ~ tenant_id, info=True) }}
+{% endif %}
 
 {% endmacro %}
 ```
 
-Run it for all tenants using a hook or run-operation:
+Run it for all tenants using run-operation:
 
 ```sql
 -- macros/create_all_tenant_views.sql
@@ -216,7 +220,7 @@ Run it for all tenants using a hook or run-operation:
 
 {% for tenant in tenants %}
     {% for table in tables %}
-        {{ create_tenant_view(tenant.id, 'fct_' ~ table, table) }}
+        {% do create_tenant_view(tenant.id, 'fct_' ~ table, table) %}
     {% endfor %}
 {% endfor %}
 
@@ -235,9 +239,9 @@ Combine macros with incremental models for efficient tenant-specific processing:
 
 {% if is_incremental() %}
     AND {{ timestamp_column }} > (
-        SELECT COALESCE(
-            MAX({{ timestamp_column }}),
-            TIMESTAMP('2020-01-01')
+        SELECT TIMESTAMP_SUB(
+            COALESCE(MAX({{ timestamp_column }}), TIMESTAMP('2020-01-01')),
+            INTERVAL {{ lookback_hours }} HOUR
         )
         FROM {{ this }}
         WHERE tenant_id = '{{ tenant_id }}'
@@ -331,7 +335,7 @@ WHEN NOT MATCHED THEN
     INSERT ROW
 {% endmacro %}
 
--- Generate partition pruning hints
+-- Generate partition pruning predicates
 {% macro bq_partition_hint(partition_column, days_back=7) %}
     {{ partition_column }} >= DATE_SUB(CURRENT_DATE(), INTERVAL {{ days_back }} DAY)
 {% endmacro %}
