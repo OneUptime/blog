@@ -8,7 +8,7 @@ Description: Configure Ansible max_fail_percentage to automatically stop playboo
 
 ---
 
-The `max_fail_percentage` directive tells Ansible to abort a play when the percentage of failed hosts exceeds a threshold you define. This is a safety net for rolling updates and large-scale deployments. Instead of blindly pushing a bad deploy to your entire fleet, Ansible stops when too many hosts fail, limiting the blast radius.
+The `max_fail_percentage` directive tells Ansible to abort a play when the percentage of failed hosts in the current batch exceeds a threshold you define. This is a safety net for rolling updates and large-scale deployments. Instead of blindly pushing a bad deploy to your entire fleet, Ansible stops when too many hosts fail, limiting the blast radius.
 
 ## Basic Usage
 
@@ -45,7 +45,7 @@ With 20 hosts and `max_fail_percentage: 25`, the play aborts if more than 5 host
 
 ## How It Works
 
-Ansible evaluates the failure percentage after each task completes across all hosts. If the cumulative failure count exceeds the threshold, the play stops immediately. Hosts that have already succeeded keep their changes, but no further tasks run on any host.
+Ansible evaluates the failure percentage after each task completes across the current batch of hosts. If the failed host count exceeds the threshold, the play stops. Hosts that have already succeeded keep their changes, but no further tasks run on any host.
 
 ```text
 20 hosts, max_fail_percentage: 25 (threshold: 5 hosts)
@@ -58,7 +58,7 @@ Task 2: Deploy config
 
 Task 3: Restart service
   1 more fails -> total 6 failed (30% > 25% - ABORT)
-  "PLAY ABORTED: max_fail_percentage (25%) exceeded"
+  Ansible aborts the rest of the play.
 ```
 
 ## max_fail_percentage with serial
@@ -108,9 +108,7 @@ With `serial: 5` and `max_fail_percentage: 20`:
 - If more than 1 host in a batch fails (20% of 5 = 1), the entire play stops
 - No further batches are processed
 
-This gives you two levels of protection:
-1. Per-batch: stop if too many hosts in the current batch fail
-2. Total: stop before the bad deploy reaches more hosts
+This stops the rollout when too many hosts fail in the current batch, so no further batches are processed.
 
 ## Calculating the Threshold
 
@@ -145,7 +143,7 @@ Setting it to 0 means that literally any failure will stop the play. But there i
       command: /opt/db/apply-patch.sh
 ```
 
-For absolute zero tolerance, use `any_errors_fatal: true` instead, which provides stricter behavior.
+For the clearest zero-tolerance intent, use `any_errors_fatal: true` instead. It finishes the failing task on the current batch, then stops the play on all hosts.
 
 ## Practical Example: Blue-Green Deployment
 
@@ -201,11 +199,11 @@ These two settings serve different purposes:
   max_fail_percentage: 25
   # Allows up to 25% of hosts to fail before stopping
 
-# any_errors_fatal: stop on the first failure anywhere
+# any_errors_fatal: stop the play after the first failed task finishes on the current batch
 - name: Strict play
   hosts: all
   any_errors_fatal: true
-  # Any single failure stops the entire play immediately
+  # Any single unhandled failure stops the entire play after the task completes on the batch
 ```
 
 Use `max_fail_percentage` when some failures are expected (network glitches, transient errors) and you only want to stop when the failure count suggests a systemic problem.
@@ -214,14 +212,14 @@ Use `any_errors_fatal` when any failure is unacceptable (database migrations, co
 
 ## Combining Both Settings
 
-You can use both together. `any_errors_fatal` takes precedence:
+You can use both together. `any_errors_fatal` is stricter:
 
 ```yaml
 - name: Strict rolling update
   hosts: webservers
   serial: 5
   max_fail_percentage: 20
-  any_errors_fatal: true  # This overrides max_fail_percentage
+  any_errors_fatal: true  # This makes any unhandled failure stop the play
 
   tasks:
     - name: Deploy
@@ -229,11 +227,11 @@ You can use both together. `any_errors_fatal` takes precedence:
         name: deploy
 ```
 
-In this case, `any_errors_fatal` wins and any single failure stops the play. To get different behavior per task, set `any_errors_fatal` at the task level instead.
+In this case, any single unhandled failure stops the play after the task finishes on the current batch. To get different behavior per task, set `any_errors_fatal` at the task or block level instead.
 
 ## Reporting on Failure Threshold
 
-Use a rescue block to take action when the threshold is hit:
+Use a rescue block to take action on hosts that fail before the threshold stops the play:
 
 ```yaml
 - name: Deploy with reporting
