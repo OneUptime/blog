@@ -131,22 +131,21 @@ synthetic_latency_threshold_ms: 5000
       - curl
       - jq
       - bc
-      - chromium-browser
       - nodejs
       - npm
     state: present
     update_cache: yes
 
 - name: Install Playwright globally
-  ansible.builtin.npm:
+  community.general.npm:
     name: playwright
     global: yes
   environment:
     PLAYWRIGHT_BROWSERS_PATH: /opt/playwright-browsers
 
-- name: Install Playwright browsers
+- name: Install Playwright browsers and system dependencies
   ansible.builtin.command:
-    cmd: npx playwright install chromium
+    cmd: npx playwright install --with-deps chromium
   environment:
     PLAYWRIGHT_BROWSERS_PATH: /opt/playwright-browsers
   args:
@@ -172,6 +171,7 @@ synthetic_latency_threshold_ms: 5000
     group: synthetic
     mode: '0755'
   loop: "{{ synthetic_checks }}"
+  tags: checks
 
 - name: Deploy the check runner wrapper
   ansible.builtin.template:
@@ -180,6 +180,7 @@ synthetic_latency_threshold_ms: 5000
     owner: synthetic
     group: synthetic
     mode: '0755'
+  tags: checks
 
 - name: Deploy metrics pusher script
   ansible.builtin.template:
@@ -188,6 +189,7 @@ synthetic_latency_threshold_ms: 5000
     owner: synthetic
     group: synthetic
     mode: '0755'
+  tags: checks
 
 - name: Set up cron jobs for each check
   ansible.builtin.cron:
@@ -411,31 +413,29 @@ const { chromium } = require('playwright');
 
     // Navigate to homepage and wait for full load
     const response = await page.goto('https://www.example.com', {
-      waitUntil: 'networkidle',
+      waitUntil: 'load',
       timeout: 30000
     });
 
     // Verify HTTP status
     if (response.status() !== 200) {
-      console.error(`FAIL: Homepage returned status ${response.status()}`);
-      process.exit(1);
+      throw new Error(`Homepage returned status ${response.status()}`);
     }
 
     // Verify key elements are present
     const title = await page.title();
     if (!title.includes('Example')) {
-      console.error(`FAIL: Unexpected page title: ${title}`);
-      process.exit(1);
+      throw new Error(`Unexpected page title: ${title}`);
     }
 
     // Check that the main navigation loaded
-    const navVisible = await page.isVisible('nav.main-nav');
-    if (!navVisible) {
-      console.error('FAIL: Main navigation not visible');
-      process.exit(1);
+    try {
+      await page.waitForSelector('nav.main-nav', { state: 'visible', timeout: 10000 });
+    } catch {
+      throw new Error('Main navigation not visible');
     }
 
-    // Measure Core Web Vitals
+    // Measure navigation timing metrics
     const metrics = await page.evaluate(() => {
       return JSON.stringify(performance.getEntriesByType('navigation')[0]);
     });
@@ -444,11 +444,10 @@ const { chromium } = require('playwright');
     console.log(`DOM Interactive: ${nav.domInteractive - nav.startTime}ms`);
 
     console.log('SUCCESS: Homepage loaded correctly');
-    process.exit(0);
 
   } catch (error) {
     console.error(`FAIL: ${error.message}`);
-    process.exit(1);
+    process.exitCode = 1;
   } finally {
     await browser.close();
   }
@@ -489,7 +488,7 @@ ansible-playbook -i inventory/hosts.ini site.yml
 ansible-playbook -i inventory/hosts.ini site.yml --tags checks
 
 # Test a specific check manually on a probe
-ansible -i inventory/hosts.ini probe-us-east -m command -a "/opt/synthetic-checks/run-check.sh api_health api-health.sh 30" --become-user synthetic
+ansible -i inventory/hosts.ini probe-us-east -m command -a "/opt/synthetic-checks/run-check.sh api_health api-health.sh 30" --become --become-user synthetic
 ```
 
 ## Wrapping Up
