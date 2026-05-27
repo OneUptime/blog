@@ -12,7 +12,7 @@ If you run MetalLB in Layer 2 mode, you may have hit a situation where the leade
 
 ## How L2 Leader Election Works
 
-MetalLB uses a **memberlist-based** leader election in Layer 2 mode. Each `speaker` pod runs on every node. For each LoadBalancer service, one speaker wins the election and becomes the leader. That leader responds to ARP (IPv4) or NDP (IPv6) requests for the service's external IP.
+MetalLB uses a **stateless hash-based** leader selection in Layer 2 mode. Each `speaker` pod runs on every node, and memberlist is used to decide which speakers are currently active. For each LoadBalancer service, the speakers compute the same sorted `node + VIP` hash list, and the first eligible speaker becomes the announcer. That speaker responds to ARP (IPv4) or NDP (IPv6) requests for the service's external IP.
 
 ```mermaid
 sequenceDiagram
@@ -36,7 +36,7 @@ Confirm you are seeing leader bouncing before investigating further:
 
 - **Intermittent connectivity** - the service works for a few seconds, drops, then works again.
 - **ARP flapping** - your switch logs show the MAC for the service IP changing repeatedly.
-- **Frequent leader change events** - speaker logs show transitions every few seconds.
+- **Frequent announcer changes** - MetalLB service events or `ServiceL2Status` show the announcing node changing repeatedly.
 - **Gratuitous ARP storms** - each new leader sends a gratuitous ARP, and switches may rate-limit them.
 
 ```mermaid
@@ -52,26 +52,39 @@ graph TD
     style A fill:#ff6b6b,color:#fff
 ```
 
-## Checking Speaker Logs
+## Checking Status and Speaker Logs
 
-Tail the speaker logs to confirm leadership is unstable:
+Watch the MetalLB `ServiceL2Status` resources to confirm the L2 announcer is unstable:
 
 ```bash
-# Tail logs from all speaker pods and filter for leader changes
-
-kubectl logs -n metallb-system -l app=metallb,component=speaker \
-  --all-containers --follow | grep -i "leader"
+# Watch the nodes currently receiving traffic for L2 LoadBalancer services
+kubectl get servicel2statuses -n metallb-system -w
 ```
 
-Healthy output shows a single election at startup. Unhealthy output looks like rapid transitions:
+You can also inspect events on the affected Service:
+
+```bash
+# Show MetalLB events that identify the announcing node
+kubectl describe svc <service-name> -n <service-namespace> | grep -A 10 "Events"
+```
+
+For deeper troubleshooting, tail the speaker logs and look for announce, withdraw, and memberlist messages:
+
+```bash
+kubectl logs -n metallb-system -l app=metallb,component=speaker \
+  --all-containers --follow | grep -Ei "announce|withdraw|memberlist"
+```
+
+Healthy output shows a stable allocated node for the service. Unhealthy status output looks like rapid changes:
 
 ```text
-{"event":"leaderChanged","ip":"192.168.1.100","new":"node-a","old":"node-b","ts":"2026-02-20T10:00:01Z"}
-{"event":"leaderChanged","ip":"192.168.1.100","new":"node-b","old":"node-a","ts":"2026-02-20T10:00:04Z"}
-{"event":"leaderChanged","ip":"192.168.1.100","new":"node-c","old":"node-b","ts":"2026-02-20T10:00:07Z"}
+NAME       ALLOCATED NODE   SERVICE NAME   SERVICE NAMESPACE
+l2-r8jwb   node-a           web            default
+l2-r8jwb   node-b           web            default
+l2-r8jwb   node-c           web            default
 ```
 
-If leadership changes every few seconds, you have a bouncing problem.
+If the announcer changes every few seconds, you have a bouncing problem.
 
 ## Common Causes and Fixes
 
@@ -113,7 +126,7 @@ spec:
 
 ### 2. Network Connectivity Issues Between Nodes
 
-Memberlist relies on TCP and UDP between speaker pods. Network partitions, firewall rules, or packet loss between nodes cause members to lose contact and re-elect.
+Memberlist relies on TCP and UDP between speakers on the nodes. Network partitions, firewall rules, or packet loss between nodes cause members to lose contact and re-elect.
 
 ```bash
 # Check for packet loss between nodes from inside a speaker pod
@@ -124,7 +137,9 @@ kubectl exec -n metallb-system <speaker-pod-on-node-a> -- \
 **Fix**: Open port 7946 (TCP and UDP) between all nodes. If you use network policies, add an allow rule:
 
 ```yaml
-# Allow MetalLB speaker pods to communicate on the memberlist port
+# Allow MetalLB speaker pods to communicate on the memberlist port.
+# Speaker pods normally use hostNetwork, so also verify node firewalls,
+# security groups, or CNI host-network policy if those control node traffic.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -193,28 +208,28 @@ spec:
         metallb-speaker: "active"
 ```
 
-### 5. Clock Skew Between Nodes
+### 5. Nodes Becoming Ineligible to Announce
 
-Memberlist uses timestamps for protocol operations. Significant clock drift causes members to misinterpret message timing, leading to false failure detections.
+MetalLB only considers eligible nodes when calculating the L2 announcer. If nodes repeatedly become `NotReady`, lose matching labels, lose active local endpoints for services using `externalTrafficPolicy: Local`, or carry the `node.kubernetes.io/exclude-from-external-load-balancers` label, the candidate set changes and the announcer may move.
 
 ```bash
-# Check time on each node - look for differences greater than a few seconds
-for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  echo "--- $node ---"
-  kubectl debug node/$node -it --image=busybox -- date -u 2>/dev/null
-done
+# Check node readiness and labels that affect LoadBalancer announcements
+kubectl get nodes --show-labels
 
-# Fix: enable NTP on all nodes
-sudo timedatectl set-ntp true
+# Check whether the service requires local endpoints on the announcing node
+kubectl get svc <service-name> -n <service-namespace> \
+  -o jsonpath='{.spec.externalTrafficPolicy}{"\n"}'
 ```
+
+**Fix**: Stabilize node readiness and labels. If the excluded-load-balancers label is present on nodes that should announce services, either remove the label where appropriate or configure the speaker with `--ignore-exclude-lb`.
 
 ## Verifying the Fix
 
-After applying your fix, confirm leadership has stabilized:
+After applying your fix, confirm the announcer has stabilized:
 
 ```bash
-# Watch for leader changes - you should see none after initial election
-kubectl logs -n metallb-system -l component=speaker --follow | grep -i "leader"
+# Watch the L2 status - the allocated node should stay stable
+kubectl get servicel2statuses -n metallb-system -w
 
 # Confirm the service IP's MAC address stays constant
 arp -a | grep "192.168.1.100"
@@ -231,10 +246,10 @@ flowchart TD
     G -->|Yes| H[Open port 7946]
     G -->|No| I{Node Churn?}
     I -->|Yes| J[Use stable nodeSelectors]
-    I -->|No| K{Clock Skew?}
-    K -->|Yes| L[Enable NTP sync]
+    I -->|No| K{Nodes Ineligible?}
+    K -->|Yes| L[Stabilize readiness and labels]
     K -->|No| M[Engage MetalLB community]
-    D --> N[Verify: stable leader in logs]
+    D --> N[Verify: stable ServiceL2Status]
     F --> N
     H --> N
     J --> N
