@@ -29,8 +29,8 @@ npm init -y
 # Install the Functions Framework and TypeScript dependencies
 npm install @google-cloud/functions-framework
 
-# Install TypeScript and types as dev dependencies
-npm install --save-dev typescript @types/node
+# Install TypeScript, Jest, and types as dev dependencies
+npm install --save-dev typescript @types/node@^22 @types/express jest@^29.7.0 ts-jest@^29.4.11 @types/jest@^29.5.12
 ```
 
 ## TypeScript Configuration
@@ -304,6 +304,13 @@ function processPdf(file: StorageObjectData): void {
 }
 ```
 
+Export the event handlers from `src/index.ts` so the deployed entry points can be loaded from `dist/index.js`.
+
+```typescript
+export { processOrder } from './pubsub-handler';
+export { processUpload } from './storage-handler';
+```
+
 ## Package.json Configuration
 
 Configure the build scripts and entry point.
@@ -315,21 +322,32 @@ Configure the build scripts and entry point.
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "gcp-build": "",
     "start": "functions-framework --target=createUser --source=dist",
     "dev": "tsc --watch & functions-framework --target=createUser --source=dist",
     "test": "jest",
-    "deploy:http": "npm run build && gcloud functions deploy create-user --gen2 --runtime=nodejs20 --region=us-central1 --source=. --entry-point=createUser --trigger-http --allow-unauthenticated",
-    "deploy:pubsub": "npm run build && gcloud functions deploy process-order --gen2 --runtime=nodejs20 --region=us-central1 --source=. --entry-point=processOrder --trigger-topic=order-events"
+    "deploy:http": "npm run build && gcloud functions deploy create-user --gen2 --runtime=nodejs22 --region=us-central1 --source=. --entry-point=createUser --trigger-http --allow-unauthenticated",
+    "deploy:pubsub": "npm run build && gcloud functions deploy process-order --gen2 --runtime=nodejs22 --region=us-central1 --source=. --entry-point=processOrder --trigger-topic=order-events"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node"
   },
   "dependencies": {
     "@google-cloud/functions-framework": "^3.3.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
-    "@types/node": "^20.11.5"
+    "@types/node": "^22.0.0",
+    "@types/express": "^4.17.21",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.11",
+    "@types/jest": "^29.5.12"
   }
 }
 ```
+
+The empty `gcp-build` script prevents Cloud Build from running `npm run build` again after `.gcloudignore` excludes the TypeScript source files.
 
 ## Local Development and Testing
 
@@ -431,7 +449,7 @@ npm run build
 # Deploy an HTTP function
 gcloud functions deploy create-user \
     --gen2 \
-    --runtime=nodejs20 \
+    --runtime=nodejs22 \
     --region=us-central1 \
     --source=. \
     --entry-point=createUser \
@@ -444,7 +462,7 @@ gcloud functions deploy create-user \
 # Deploy a Pub/Sub triggered function
 gcloud functions deploy process-order \
     --gen2 \
-    --runtime=nodejs20 \
+    --runtime=nodejs22 \
     --region=us-central1 \
     --source=. \
     --entry-point=processOrder \
@@ -456,7 +474,7 @@ gcloud functions deploy process-order \
 # Deploy a Cloud Storage triggered function
 gcloud functions deploy process-upload \
     --gen2 \
-    --runtime=nodejs20 \
+    --runtime=nodejs22 \
     --region=us-central1 \
     --source=. \
     --entry-point=processUpload \
