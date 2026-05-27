@@ -50,6 +50,7 @@ First, install the required system packages:
           - python3-pip
           - python3-venv
           - python3-dev
+          - git
           - gcc
           - libpq-dev
           - libssl-dev
@@ -86,17 +87,33 @@ First, install the required system packages:
       become_user: "{{ app_user }}"
       notify: restart application
 
-    - name: Create virtual environment
-      ansible.builtin.pip:
-        virtualenv: "{{ app_dir }}/venv"
-        virtualenv_command: python3 -m venv
-        name: pip
-        state: latest
+    - name: Download Poetry installer
+      ansible.builtin.get_url:
+        url: https://install.python-poetry.org
+        dest: /tmp/install-poetry.py
+        mode: '0755'
 
-    - name: Install application dependencies
-      ansible.builtin.pip:
-        virtualenv: "{{ app_dir }}/venv"
-        requirements: "{{ app_dir }}/src/requirements.txt"
+    - name: Install Poetry
+      ansible.builtin.command:
+        cmd: python3 /tmp/install-poetry.py
+        creates: "{{ app_dir }}/poetry/bin/poetry"
+      environment:
+        POETRY_HOME: "{{ app_dir }}/poetry"
+
+    - name: Configure Poetry to create the virtual environment in the project
+      ansible.builtin.command:
+        cmd: "{{ app_dir }}/poetry/bin/poetry config virtualenvs.in-project true --local"
+        chdir: "{{ app_dir }}/src"
+      become_user: "{{ app_user }}"
+      changed_when: false
+
+    - name: Install locked Poetry dependencies
+      ansible.builtin.command:
+        cmd: "{{ app_dir }}/poetry/bin/poetry sync --only main"
+        chdir: "{{ app_dir }}/src"
+      become_user: "{{ app_user }}"
+      register: poetry_sync
+      changed_when: "'No dependencies to install or update' not in poetry_sync.stdout"
       notify: restart application
 
     - name: Deploy environment configuration
@@ -124,7 +141,7 @@ First, install the required system packages:
           Group={{ app_user }}
           WorkingDirectory={{ app_dir }}/src
           EnvironmentFile={{ app_dir }}/.env
-          ExecStart={{ app_dir }}/venv/bin/python -m {{ app_name }}.main
+          ExecStart={{ app_dir }}/src/.venv/bin/python -m {{ app_name }}.main
           Restart=always
           RestartSec=5
 
@@ -229,16 +246,16 @@ ansible-playbook -i inventory/hosts deploy.yml --limit app01
 
 ## Summary
 
-This playbook provides a complete deployment pipeline: system preparation, code deployment, virtual environment management, service configuration, and reverse proxy setup. Each task is idempotent and can be run repeatedly. Extend it with additional steps like database migrations, cache warming, or load balancer integration based on your specific application requirements.
+This playbook provides a complete deployment pipeline: system preparation, code deployment, Poetry dependency synchronization, service configuration, and reverse proxy setup. Each task is idempotent and can be run repeatedly. Extend it with additional steps like database migrations, cache warming, or load balancer integration based on your specific application requirements.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these Ansible patterns prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -352,7 +369,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with Ansible
 - name: Robust task execution
   hosts: all
   tasks:
@@ -414,4 +431,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
