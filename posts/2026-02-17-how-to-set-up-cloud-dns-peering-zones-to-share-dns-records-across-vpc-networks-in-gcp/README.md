@@ -43,7 +43,7 @@ The shared services VPC is the "target" network, and the consumer VPCs create DN
 - The Cloud DNS API enabled in all relevant projects
 - The `dns.admin` role in the project creating the peering zone
 - The `dns.peer` role in the project that owns the target network
-- If cross-project, the VPC network's self-link URL
+- If using Terraform, the VPC network's self-link URL
 
 ## Step 1: Set Up the Target Zone
 
@@ -79,6 +79,8 @@ gcloud dns record-sets create api.internal.example.com. \
 
 In the consumer project, create a peering zone that targets the shared services VPC network. The peering zone tells Cloud DNS: "For queries matching this DNS name, forward them to the target network for resolution."
 
+For cross-project peering, make sure the IAM permission in Step 3 is in place before running this command.
+
 ```bash
 # Create a DNS peering zone in Project A that peers with the shared services VPC
 gcloud dns managed-zones create internal-peering-zone \
@@ -109,20 +111,28 @@ gcloud dns managed-zones create internal-peering-zone \
 
 ## Step 3: Set Up IAM Permissions
 
-For cross-project DNS peering, the consumer project's service account needs the `dns.peer` role on the target project. This grants permission to peer with the target network's DNS configuration.
+For cross-project DNS peering, the IAM principal that creates the peering zone needs the `dns.peer` role on the target project. This can be your active user account or a service account in the consumer project. The role grants permission to peer with the target network's DNS configuration.
 
 ```bash
-# Grant the DNS Peer role to the consumer project's Cloud DNS service account
+# Grant the DNS Peer role to the service account that creates the peering zone
 gcloud projects add-iam-policy-binding shared-services-project \
-    --member="serviceAccount:service-CONSUMER_PROJECT_NUMBER@gcp-sa-dns.iam.gserviceaccount.com" \
+    --member="serviceAccount:dns-peering@project-a.iam.gserviceaccount.com" \
     --role="roles/dns.peer"
 ```
 
-Replace `CONSUMER_PROJECT_NUMBER` with the numeric project number (not the project ID) of the consumer project.
+Replace `dns-peering@project-a.iam.gserviceaccount.com` with the service account you use to create the peering zone. If you create the zone with your own user credentials instead, grant the role to your user account.
 
 ```bash
-# Find the project number if you do not know it
-gcloud projects describe project-a --format="value(projectNumber)"
+# Create the peering zone as that service account
+gcloud dns managed-zones create internal-peering-zone \
+    --dns-name=internal.example.com. \
+    --description="DNS peering to shared services" \
+    --visibility=private \
+    --networks=project-a-vpc \
+    --target-project=shared-services-project \
+    --target-network=shared-services-vpc \
+    --project=project-a \
+    --account=dns-peering@project-a.iam.gserviceaccount.com
 ```
 
 ## Step 4: Verify DNS Resolution
@@ -186,7 +196,7 @@ resource "google_dns_managed_zone" "internal_peering" {
 resource "google_project_iam_member" "dns_peer" {
   project = "shared-services-project"
   role    = "roles/dns.peer"
-  member  = "serviceAccount:service-${data.google_project.project_a.number}@gcp-sa-dns.iam.gserviceaccount.com"
+  member  = "serviceAccount:dns-peering@project-a.iam.gserviceaccount.com"
 }
 ```
 
@@ -194,13 +204,13 @@ resource "google_project_iam_member" "dns_peer" {
 
 There are a few things to be aware of with DNS peering:
 
-**No transitive peering.** If VPC A peers to VPC B, and VPC B peers to VPC C, VPC A cannot resolve names through VPC C. Each peering relationship is direct.
+**Limited transitive peering.** If VPC A peers to VPC B, and VPC B peers to VPC C, VPC A can resolve names through VPC C, but Cloud DNS supports only a single transitive hop. Do not design chains longer than three VPC networks.
 
 **One direction at a time.** DNS peering is unidirectional. If you need VMs in both VPCs to resolve each other's private zones, you need peering zones in both directions.
 
 **Zone priority.** If a consumer VPC has its own private zone for the same DNS name, the local zone takes priority over the peering zone. This can be useful for overrides but can also cause confusion.
 
-**No peering to peering.** You cannot chain DNS peering. The target network must directly host the zone or forwarding configuration - it cannot itself be peering to another network for that DNS name.
+**Peering chains are limited.** The target network can itself use a peering zone for that DNS name, but only for the single transitive hop that Cloud DNS supports. For larger topologies, create direct peering zones from each consumer network to the network that can resolve the name.
 
 ## Common Patterns
 
@@ -220,7 +230,7 @@ Use DNS peering to give staging and production environments access to shared DNS
 
 **Queries return NXDOMAIN**: Check that the peering zone DNS name matches the target private zone's DNS name. Verify IAM permissions for cross-project peering.
 
-**Permission denied**: Make sure the `dns.peer` role is granted to the correct service account. The format is `service-PROJECT_NUMBER@gcp-sa-dns.iam.gserviceaccount.com`.
+**Permission denied**: Make sure the `dns.peer` role is granted on the target project to the user account or service account that creates the peering zone.
 
 **Records not updating**: DNS peering does not cache records at the peering side. If records are stale, the issue is likely on the target side. Check the target zone's records directly.
 
