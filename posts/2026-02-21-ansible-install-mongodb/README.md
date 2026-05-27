@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, MongoDB, Database, NoSQL
 
-Description: Automate MongoDB installation on Ubuntu and RHEL systems using Ansible with official repository setup and initial security configuration.
+Description: Automate MongoDB installation on Ubuntu, Debian, and RHEL systems using Ansible with official repository setup and initial security configuration.
 
 ---
 
 MongoDB is the go-to document database for applications that need flexible schemas and horizontal scaling. Installing it correctly means adding the official MongoDB repository (the distribution packages are often outdated), configuring the storage engine, and setting up authentication. Doing this manually on every server is tedious and inconsistent. Ansible handles all of it in a repeatable, idempotent way.
 
-This post covers a complete Ansible role for installing MongoDB Community Edition from the official repositories on both Debian and RHEL-based systems.
+This post covers a complete Ansible role for installing MongoDB Community Edition from the official repositories on Ubuntu, Debian, and RHEL-based systems.
 
 ## Role Structure
 
@@ -106,16 +106,35 @@ mongodb_wiredtiger_cache_size_gb: ""
     state: present
     update_cache: true
 
-- name: Add MongoDB GPG key
-  apt_key:
-    url: "https://www.mongodb.org/static/pgp/server-{{ mongodb_version }}.asc"
-    state: present
+- name: Ensure APT keyring directory exists
+  file:
+    path: /usr/share/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
 
-- name: Add MongoDB APT repository
+- name: Add MongoDB GPG key
+  get_url:
+    url: "https://www.mongodb.org/static/pgp/server-{{ mongodb_version }}.asc"
+    dest: "/usr/share/keyrings/mongodb-server-{{ mongodb_version }}.asc"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Add MongoDB APT repository for Ubuntu
   apt_repository:
-    repo: "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu {{ ansible_distribution_release }}/mongodb-org/{{ mongodb_version }} multiverse"
+    repo: "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-{{ mongodb_version }}.asc ] https://repo.mongodb.org/apt/ubuntu {{ ansible_distribution_release }}/mongodb-org/{{ mongodb_version }} multiverse"
     state: present
     filename: mongodb-org
+  when: ansible_distribution == "Ubuntu"
+
+- name: Add MongoDB APT repository for Debian
+  apt_repository:
+    repo: "deb [ signed-by=/usr/share/keyrings/mongodb-server-{{ mongodb_version }}.asc ] https://repo.mongodb.org/apt/debian {{ ansible_distribution_release }}/mongodb-org/{{ mongodb_version }} main"
+    state: present
+    filename: mongodb-org
+  when: ansible_distribution == "Debian"
 
 - name: Install MongoDB packages
   apt:
@@ -164,9 +183,11 @@ mongodb_wiredtiger_cache_size_gb: ""
   dnf:
     name:
       - mongodb-org
+      - mongodb-org-database
       - mongodb-org-server
-      - mongodb-org-shell
+      - mongodb-org-mongos
       - mongodb-org-tools
+      - mongodb-org-database-tools-extra
       - mongodb-mongosh
     state: present
 
@@ -245,7 +266,7 @@ replication:
   changed_when: false
   failed_when: false
 
-- name: Create admin user (auth disabled initially)
+- name: Create admin user (using localhost exception)
   command: >
     mongosh --quiet --eval "
     db.getSiblingDB('admin').createUser({
@@ -372,12 +393,12 @@ After the admin user is created, add application-specific users.
 
 ## WiredTiger Cache Sizing
 
-MongoDB's WiredTiger storage engine uses an internal cache. By default, it takes 50% of available RAM minus 1GB. For dedicated database servers, this is usually fine. For shared servers, you should set it explicitly.
+MongoDB's WiredTiger storage engine uses an internal cache. By default, it uses the larger of 50% of available RAM minus 1GB or 256MB. For dedicated database servers, this is usually fine. For shared servers, you should set it explicitly.
 
 ```yaml
 # Set WiredTiger cache based on available RAM
-# For a server with 16GB RAM dedicated to MongoDB
-mongodb_wiredtiger_cache_size_gb: 10
+# For a server with 16GB RAM dedicated to MongoDB, leave the default or set a value near the default
+mongodb_wiredtiger_cache_size_gb: 7
 
 # For a shared server with 16GB RAM running other services
 mongodb_wiredtiger_cache_size_gb: 4
@@ -410,4 +431,4 @@ mongodb_wiredtiger_cache_size_gb: 4
 
 ## Conclusion
 
-Installing MongoDB with Ansible gives you a reproducible, secure database setup across all your servers. The role handles both Debian and RHEL families, adds the official MongoDB repository for the latest stable version, and optionally sets up authentication with an admin user. Pin the package version to prevent accidental upgrades during routine system updates. From here, you can build on this foundation with replica set configuration, sharding setup, and application user management.
+Installing MongoDB with Ansible gives you a reproducible, secure database setup across all your servers. The role handles both Debian and RHEL families, adds the official MongoDB repository for the selected release series, and optionally sets up authentication with an admin user. Pin the package version to prevent accidental upgrades during routine system updates. From here, you can build on this foundation with replica set configuration, sharding setup, and application user management.
