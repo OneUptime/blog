@@ -36,20 +36,24 @@ flowchart TD
 Before you begin:
 
 - You need a GCP project with billing enabled
-- Cloud Armor API must be enabled
-- You should have an existing external passthrough network load balancer (or be ready to create one)
-- Your account needs the `compute.securityAdmin` role or equivalent permissions
+- Compute Engine API must be enabled, and Network Security API must be enabled for monitoring network edge policy metrics
+- You should have an existing external passthrough network load balancer with a regional backend service (or be ready to create one)
+- Your account needs permissions to manage Cloud Armor security policies and network edge security services, such as `compute.securityAdmin` plus the required Cloud Armor Enterprise enrollment permissions
 - Advanced Network DDoS Protection requires enrollment in Cloud Armor Enterprise
 
 ## Step 1: Enable Cloud Armor Enterprise
 
-Advanced Network DDoS Protection requires a Cloud Armor Enterprise subscription. Enable it at the project level:
+Advanced Network DDoS Protection requires a Cloud Armor Enterprise subscription. Enroll the project in Cloud Armor Enterprise Paygo, or enroll it in Cloud Armor Enterprise Annual after subscribing the billing account:
 
 ```bash
-# Enable Cloud Armor Enterprise for the project
+# Enroll the project in Cloud Armor Enterprise Paygo
+gcloud compute project-info update \
+  --cloud-armor-tier=CA_ENTERPRISE_PAYGO \
+  --project=your-project-id
 
-gcloud compute security-policies create enterprise-policy \
-  --type=CLOUD_ARMOR_NETWORK \
+# Or enroll the project in Cloud Armor Enterprise Annual
+gcloud compute project-info update \
+  --cloud-armor-tier=CA_ENTERPRISE_ANNUAL \
   --project=your-project-id
 ```
 
@@ -59,7 +63,7 @@ You can verify the enrollment status:
 # Check Cloud Armor Enterprise enrollment
 gcloud compute project-info describe \
   --project=your-project-id \
-  --format="value(securityPolicyConfig)"
+  --format="value(cloudArmorTier)"
 ```
 
 ## Step 2: Create a Network Security Policy
@@ -89,16 +93,23 @@ gcloud compute security-policies update network-ddos-policy \
   --project=your-project-id
 ```
 
-This turns on traffic profiling and adaptive threshold detection for any resources attached to this policy.
+This turns on traffic profiling and adaptive threshold detection for the region where the policy is attached through a network edge security service.
 
 ## Step 4: Add Network Filtering Rules
 
-You can add rules to the network security policy to filter traffic at the network layer:
+The security policy used to enable Advanced Network DDoS Protection cannot have custom rules added after it is created. If you also want allow and deny rules, create a separate network edge security policy for traffic filtering and attach that policy to your load balancer's regional backend service:
 
 ```bash
+# Create a separate network edge security policy for custom filtering rules
+gcloud compute security-policies create network-filtering-policy \
+  --type=CLOUD_ARMOR_NETWORK \
+  --region=us-central1 \
+  --description="Network edge filtering for passthrough LB" \
+  --project=your-project-id
+
 # Allow traffic from specific IP ranges
 gcloud compute security-policies rules create 1000 \
-  --security-policy=network-ddos-policy \
+  --security-policy=network-filtering-policy \
   --region=us-central1 \
   --network-src-ip-ranges="203.0.113.0/24,198.51.100.0/24" \
   --network-dest-ports="443,8443" \
@@ -108,7 +119,7 @@ gcloud compute security-policies rules create 1000 \
 
 # Block traffic from known bad IP ranges
 gcloud compute security-policies rules create 2000 \
-  --security-policy=network-ddos-policy \
+  --security-policy=network-filtering-policy \
   --region=us-central1 \
   --network-src-ip-ranges="192.0.2.0/24" \
   --action=deny \
@@ -116,27 +127,36 @@ gcloud compute security-policies rules create 2000 \
 
 # Set default rule to allow (after DDoS filtering)
 gcloud compute security-policies rules update 2147483647 \
-  --security-policy=network-ddos-policy \
+  --security-policy=network-filtering-policy \
   --region=us-central1 \
   --action=allow \
   --description="Default allow after DDoS mitigation"
 ```
 
-## Step 5: Attach the Policy to Your Forwarding Rule
-
-The policy needs to be attached to the forwarding rule of your external passthrough load balancer:
+Attach the filtering policy to the backend service used by your external passthrough load balancer:
 
 ```bash
-# List forwarding rules to find the right one
-gcloud compute forwarding-rules list \
+# List regional backend services to find the right one
+gcloud compute backend-services list \
   --filter="loadBalancingScheme=EXTERNAL" \
   --project=your-project-id
 
-# Attach the security policy to the forwarding rule
-gcloud compute forwarding-rules update your-forwarding-rule \
+# Attach the filtering policy to the backend service
+gcloud compute backend-services update your-backend-service \
   --region=us-central1 \
+  --security-policy=network-filtering-policy \
+  --project=your-project-id
+```
+
+## Step 5: Create the Network Edge Security Service
+
+The Advanced Network DDoS Protection policy is enabled for the region by attaching it to a network edge security service. This protects applicable external passthrough Network Load Balancers, protocol forwarding rules, and VMs with public IP addresses in that region:
+
+```bash
+# Create a network edge security service for the region
+gcloud compute network-edge-security-services create network-ddos-service \
   --security-policy=network-ddos-policy \
-  --security-policy-region=us-central1 \
+  --region=us-central1 \
   --project=your-project-id
 ```
 
@@ -161,7 +181,7 @@ Set up monitoring to get visibility into DDoS attack detection and mitigation:
 ```bash
 # View DDoS attack logs
 gcloud logging read \
-  'resource.type="networksecurity.googleapis.com/SecurityPolicy" AND jsonPayload.ddosAttackEvent!=""' \
+  'resource.type="network_security_policy" AND jsonPayload.mitigationType:*' \
   --project=your-project-id \
   --limit=20 \
   --format=json
@@ -169,18 +189,18 @@ gcloud logging read \
 
 For real-time visibility, set up a Cloud Monitoring dashboard with the following metrics:
 
-- `compute.googleapis.com/security_policy/matched_packet_count` - packets matched by policy rules
-- `compute.googleapis.com/security_policy/dropped_packet_count` - packets dropped by DDoS mitigation
+- `networksecurity.googleapis.com/l3/external/packet_count` - packets matched by network edge security policy rules
+- `networksecurity.googleapis.com/dos/ingress_packets_count` - ingress packets broken down by allowed or dropped status
 - Network throughput to your forwarding rules
 
 ```bash
-# Create an alert for detected DDoS attacks
+# Create an alert for dropped packets during DDoS mitigation
 gcloud alpha monitoring policies create \
   --display-name="DDoS Attack Detected" \
-  --condition-display-name="Network DDoS attack in progress" \
-  --condition-filter='resource.type="networksecurity.googleapis.com/SecurityPolicy" AND metric.type="networksecurity.googleapis.com/security_policy/dropped_packet_count"' \
-  --condition-threshold-value=10000 \
-  --condition-threshold-duration=60s \
+  --condition-display-name="DDoS dropped packets detected" \
+  --condition-filter='resource.type="networksecurity.googleapis.com/ProtectedEndpoint" AND metric.type="networksecurity.googleapis.com/dos/ingress_packets_count" AND metric.labels.drop_status="dropped"' \
+  --if="> 10000" \
+  --duration=60s \
   --notification-channels=your-channel-id
 ```
 
@@ -191,7 +211,7 @@ If your passthrough load balancer handles specific protocols, you can create tar
 ```bash
 # For a game server - allow UDP on game ports, block everything else
 gcloud compute security-policies rules create 1000 \
-  --security-policy=network-ddos-policy \
+  --security-policy=network-filtering-policy \
   --region=us-central1 \
   --network-dest-ports="27015-27030" \
   --network-ip-protocols="udp" \
@@ -200,7 +220,7 @@ gcloud compute security-policies rules create 1000 \
 
 # Block UDP on non-game ports to prevent amplification abuse
 gcloud compute security-policies rules create 1100 \
-  --security-policy=network-ddos-policy \
+  --security-policy=network-filtering-policy \
   --region=us-central1 \
   --network-ip-protocols="udp" \
   --action=deny \
@@ -215,26 +235,33 @@ When an attack is detected, Advanced Network DDoS Protection automatically appli
 # List active DDoS mitigations
 gcloud compute security-policies describe network-ddos-policy \
   --region=us-central1 \
-  --format="yaml(ddosProtectionConfig, adaptiveProtectionConfig)" \
+  --format="yaml(name,region,ddosProtectionConfig)" \
   --project=your-project-id
 ```
 
-During an active attack, you may want to add temporary rules to further restrict traffic:
+During an active attack, you may want to add temporary rules to further restrict traffic. For example, if you want to allow only traffic from your primary market, add a high-priority allow rule and change the default rule to deny while the emergency restriction is in place:
 
 ```bash
 # Emergency rule to only allow traffic from your primary market
 gcloud compute security-policies rules create 100 \
-  --security-policy=network-ddos-policy \
+  --security-policy=network-filtering-policy \
   --region=us-central1 \
   --network-src-ip-ranges="0.0.0.0/0" \
   --network-src-region-codes="US,CA" \
   --action=allow \
   --description="Emergency: restrict to US/CA traffic only during attack"
+
+# Deny traffic that does not match the emergency allow rule
+gcloud compute security-policies rules update 2147483647 \
+  --security-policy=network-filtering-policy \
+  --region=us-central1 \
+  --action=deny \
+  --description="Emergency default deny during attack"
 ```
 
 ## Cost Considerations
 
-Advanced Network DDoS Protection is part of Cloud Armor Enterprise, which has a subscription fee. There are also per-resource charges for each forwarding rule that has a network security policy attached. Factor this into your budget, especially if you have many forwarding rules. For most production workloads facing real DDoS risk, the cost is justified by the protection and telemetry you get.
+Advanced Network DDoS Protection is part of Cloud Armor Enterprise, which has Paygo and Annual enrollment options. Factor this into your budget, especially if you enable protection across multiple production regions. For most production workloads facing real DDoS risk, the cost is justified by the protection and telemetry you get.
 
 ## Key Differences from HTTP(S) DDoS Protection
 
@@ -243,7 +270,7 @@ Keep these distinctions in mind:
 - Network policies operate at layers 3 and 4, not layer 7
 - No WAF rules, header inspection, or path matching
 - Rules are regional, not global
-- Policies attach to forwarding rules, not backend services
+- Advanced Network DDoS policies attach through a regional network edge security service, while custom network edge filtering policies attach to regional backend services or VM network interfaces
 - Traffic profiling is automatic and continuous
 
 ## Wrapping Up
