@@ -31,7 +31,7 @@ stateDiagram-v2
     Established --> Idle: Error/Notification
 ```
 
-If your session is stuck in **Active** or **Connect**, the TCP connection to port 179 is failing. If it reaches **OpenSent** but drops back, there is a parameter mismatch in the BGP OPEN message.
+If your session is stuck in **Active** or **Connect**, the TCP connection to the BGP peer is not completing or is being retried. If it reaches **OpenSent** but drops back, there is often a parameter mismatch in the BGP OPEN message.
 
 ## Step 1: Check the Current Session State
 
@@ -44,13 +44,16 @@ SPEAKER_POD=$(kubectl get pods -n metallb-system \
   -l component=speaker \
   -o jsonpath='{.items[0].metadata.name}')
 
-# Check BGP session summary
-kubectl exec -n metallb-system $SPEAKER_POD -- \
+# On MetalLB 0.16 and later, FRR-K8s is the default BGP backend
+kubectl get bgpsessionstates -A -o wide
+
+# In deprecated FRR mode, check BGP session summary from the FRR container
+kubectl exec -n metallb-system $SPEAKER_POD -c frr -- \
   vtysh -c "show bgp summary"
 
 # Get detailed neighbor information
-kubectl exec -n metallb-system $SPEAKER_POD -- \
-  vtysh -c "show bgp neighbors 10.0.0.1"
+kubectl exec -n metallb-system $SPEAKER_POD -c frr -- \
+  vtysh -c "show bgp neighbor 10.0.0.1"
 ```
 
 The output will show the session state and the last error or notification received.
@@ -141,8 +144,8 @@ spec:
 
 Common ASN mistakes:
 - Swapping myASN and peerASN
-- Using 2-byte ASN format when the router expects 4-byte
-- Using a public ASN when you meant to use a private one (64512-65534)
+- Using the wrong textual representation for a 4-byte ASN on the router
+- Using a public ASN when you meant to use a private one (64512-65534 or 4200000000-4294967294)
 
 ## Step 5: Check Node Selector Configuration
 
@@ -215,8 +218,8 @@ spec:
 
 ```bash
 # Check negotiated timers on the established session
-kubectl exec -n metallb-system $SPEAKER_POD -- \
-  vtysh -c "show bgp neighbors 10.0.0.1" | grep -A2 "timer"
+kubectl exec -n metallb-system $SPEAKER_POD -c frr -- \
+  vtysh -c "show bgp neighbor 10.0.0.1" | grep -A2 "timer"
 ```
 
 ## Step 8: Examine MetalLB Speaker Logs
@@ -231,8 +234,12 @@ kubectl logs -n metallb-system $SPEAKER_POD -c speaker --tail=100
 kubectl logs -n metallb-system $SPEAKER_POD -c speaker | \
   grep -i "bgp\|peer\|session\|error\|failed"
 
-# Check the FRR container logs separately
+# In deprecated FRR mode, check the FRR container logs separately
 kubectl logs -n metallb-system $SPEAKER_POD -c frr --tail=50
+
+# In the default FRR-K8s mode, check FRR-K8s status and logs
+kubectl get frrnodestates -A
+kubectl logs -n frr-k8s-system -l app=frr-k8s --tail=50
 
 # Check for events in the metallb-system namespace
 kubectl get events -n metallb-system --sort-by='.lastTimestamp'
