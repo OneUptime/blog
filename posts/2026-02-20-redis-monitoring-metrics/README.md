@@ -65,7 +65,7 @@ import redis
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
-def get_redis_metrics() -> dict:
+def get_redis_metrics(r: redis.Redis) -> dict:
     """
     Collect key Redis metrics from the INFO command.
     Returns a dictionary of metric name to value.
@@ -78,6 +78,7 @@ def get_redis_metrics() -> dict:
         "used_memory_peak_bytes": info["used_memory_peak"],
         "used_memory_rss_bytes": info["used_memory_rss"],
         "mem_fragmentation_ratio": info["mem_fragmentation_ratio"],
+        "mem_fragmentation_bytes": info["mem_fragmentation_bytes"],
         "maxmemory_bytes": info.get("maxmemory", 0),
 
         # Performance metrics
@@ -127,8 +128,6 @@ The Redis Exporter for Prometheus is the standard way to collect Redis metrics i
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   redis:
     image: redis:7-alpine
@@ -206,12 +205,12 @@ def check_memory_health(metrics: dict) -> list:
     if frag > 1.5:
         warnings.append(
             f"WARNING: Memory fragmentation ratio is {frag}. "
-            f"Consider restarting Redis to reclaim memory."
+            f"Check allocator metrics or MEMORY DOCTOR."
         )
     elif frag < 1.0:
         warnings.append(
             f"CRITICAL: Fragmentation ratio below 1.0 ({frag}). "
-            f"Redis is swapping to disk."
+            f"Redis memory may be swapped by the operating system."
         )
 
     # Check evictions
@@ -232,6 +231,7 @@ def measure_latency(r: redis.Redis, samples: int = 100) -> dict:
     Measure Redis command latency by running PING commands.
     Returns min, max, avg, and p99 latency in milliseconds.
     """
+    import math
     import time
 
     latencies = []
@@ -248,8 +248,11 @@ def measure_latency(r: redis.Redis, samples: int = 100) -> dict:
         "min_ms": round(latencies[0], 3),
         "max_ms": round(latencies[-1], 3),
         "avg_ms": round(sum(latencies) / len(latencies), 3),
-        # 99th percentile
-        "p99_ms": round(latencies[int(len(latencies) * 0.99)], 3),
+        # 99th percentile using the nearest-rank method
+        "p99_ms": round(
+            latencies[min(len(latencies) - 1, math.ceil(len(latencies) * 0.99) - 1)],
+            3,
+        ),
     }
 ```
 
@@ -338,7 +341,7 @@ def redis_health_check(host: str = "localhost", port: int = 6379) -> dict:
     except redis.ConnectionError:
         return {"status": "DOWN", "error": "Cannot connect to Redis"}
 
-    metrics = get_redis_metrics()
+    metrics = get_redis_metrics(r)
     hit_rate = calculate_hit_rate(r.info())
     latency = measure_latency(r)
     warnings = check_memory_health(metrics)
