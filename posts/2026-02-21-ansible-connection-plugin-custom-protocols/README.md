@@ -8,13 +8,13 @@ Description: Write a custom Ansible connection plugin to manage devices that use
 
 ---
 
-Connection plugins tell Ansible how to communicate with remote hosts. The built-in options cover SSH, WinRM, Docker, and local execution. But if you manage devices that speak a proprietary protocol, communicate over a REST API, or need a custom transport layer, you need a custom connection plugin.
+Connection plugins tell Ansible how to communicate with remote hosts. Ansible and its collections provide options for SSH, WinRM/PSRP, Docker, and local execution. But if you manage devices that speak a proprietary protocol, communicate over a REST API, or need a custom transport layer, you need a custom connection plugin.
 
 This guide builds a connection plugin that communicates with devices through a REST API. This is a common pattern for network devices, IoT gateways, and appliances that do not support SSH.
 
 ## Connection Plugin Interface
 
-Every connection plugin must implement four methods:
+Every connection plugin must set a transport name and implement five methods:
 
 1. `_connect()` - Establish the connection
 2. `exec_command(cmd)` - Execute a command remotely
@@ -42,11 +42,13 @@ DOCUMENTATION = """
     options:
       host:
         description: Target host address.
+        type: string
+        default: inventory_hostname
         vars:
           - name: ansible_host
       port:
         description: API port number.
-        type: int
+        type: integer
         default: 443
         vars:
           - name: ansible_port
@@ -55,37 +57,37 @@ DOCUMENTATION = """
             key: port
       api_path:
         description: Base path for the API (e.g., /api/v1).
-        type: str
+        type: string
         default: /api/v1
         vars:
           - name: ansible_rest_api_path
       api_token:
         description: Authentication token.
-        type: str
+        type: string
         vars:
           - name: ansible_rest_api_token
         env:
           - name: ANSIBLE_REST_API_TOKEN
       use_ssl:
         description: Use HTTPS for the connection.
-        type: bool
+        type: boolean
         default: true
         vars:
           - name: ansible_rest_use_ssl
       verify_ssl:
         description: Verify SSL certificates.
-        type: bool
+        type: boolean
         default: true
         vars:
           - name: ansible_rest_verify_ssl
 """
 
 import json
-import os
 import base64
-import tempfile
+from urllib.parse import urlencode
 
 from ansible.errors import AnsibleConnectionFailure, AnsibleError
+from ansible.module_utils.common.text.converters import to_native
 from ansible.plugins.connection import ConnectionBase
 from ansible.module_utils.urls import open_url
 from ansible.utils.display import Display
@@ -151,7 +153,7 @@ class Connection(ConnectionBase):
             raise AnsibleConnectionFailure(
                 "Cannot connect to REST API at %s: %s. "
                 "Check that the device is reachable and the API is enabled."
-                % (self._base_url, str(e))
+                % (self._base_url, to_native(e))
             )
 
         self._connected = True
@@ -195,7 +197,7 @@ class Connection(ConnectionBase):
 
         except Exception as e:
             raise AnsibleConnectionFailure(
-                "Command execution failed via REST API: %s" % str(e)
+                "Command execution failed via REST API: %s" % to_native(e)
             )
 
     def put_file(self, in_path, out_path):
@@ -226,7 +228,7 @@ class Connection(ConnectionBase):
             )
         except Exception as e:
             raise AnsibleError(
-                "File upload failed for %s: %s" % (out_path, str(e))
+                "File upload failed for %s: %s" % (out_path, to_native(e))
             )
 
     def fetch_file(self, in_path, out_path):
@@ -235,7 +237,7 @@ class Connection(ConnectionBase):
 
         display.vvv("REST API: downloading %s to %s" % (in_path, out_path))
 
-        url = '%s/files?path=%s' % (self._base_url, in_path)
+        url = '%s/files?%s' % (self._base_url, urlencode({'path': in_path}))
 
         try:
             verify_ssl = self.get_option('verify_ssl')
@@ -253,7 +255,7 @@ class Connection(ConnectionBase):
                 f.write(file_data)
         except Exception as e:
             raise AnsibleError(
-                "File download failed for %s: %s" % (in_path, str(e))
+                "File download failed for %s: %s" % (in_path, to_native(e))
             )
 
     def close(self):
@@ -323,4 +325,4 @@ Run commands on the devices:
 
 ## Summary
 
-Custom connection plugins let Ansible manage devices that do not support SSH or WinRM. The four methods you must implement (`_connect`, `exec_command`, `put_file`, `fetch_file`) map cleanly to any transport protocol. REST APIs are the most common use case, but the same pattern works for NETCONF, gRPC, serial connections, or proprietary protocols. The connection plugin is transparent to modules, so standard Ansible modules work without modification.
+Custom connection plugins let Ansible manage devices that do not support SSH or WinRM. The five methods you must implement (`_connect`, `exec_command`, `put_file`, `fetch_file`, and `close`) map cleanly to any transport protocol. REST APIs are a common use case, but the same pattern works for NETCONF, gRPC, serial connections, or proprietary protocols. The connection plugin is transparent to modules that only need command execution or file transfer; modules that expect a POSIX shell or Python on the managed node need the API to emulate those operations or need matching custom modules/action plugins.
