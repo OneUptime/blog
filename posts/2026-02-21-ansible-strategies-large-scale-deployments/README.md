@@ -31,7 +31,7 @@ Start with the right `ansible.cfg`:
 # Increase forks based on control node capacity
 forks = 50
 
-# Use the free strategy for independent tasks
+# Use the linear strategy by default; override per play when needed
 strategy = linear
 
 # Reduce fact gathering overhead
@@ -41,12 +41,12 @@ fact_caching_connection = /tmp/ansible-facts-cache
 fact_caching_timeout = 86400
 
 # Reduce output noise
-stdout_callback = dense
+stdout_callback = community.general.dense
 display_skipped_hosts = false
 display_ok_hosts = false
 
 # Callbacks for monitoring
-callback_whitelist = timer, profile_tasks, profile_roles
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles
 
 [ssh_connection]
 # Enable pipelining (major performance improvement)
@@ -143,8 +143,8 @@ Gathering facts on 5,000 hosts takes significant time. Use fact caching:
 # ansible.cfg - Fact caching with Redis
 [defaults]
 gathering = smart
-fact_caching = redis
-fact_caching_connection = redis:6379:0
+fact_caching = community.general.redis
+fact_caching_connection = redis:6379:0:
 fact_caching_timeout = 86400  # 24 hours
 ```
 
@@ -219,8 +219,8 @@ Use the dense callback for manageable output:
 ```ini
 # ansible.cfg - Output for large runs
 [defaults]
-stdout_callback = dense
-callback_whitelist = timer, profile_tasks, profile_roles
+stdout_callback = community.general.dense
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles
 show_custom_stats = true
 ```
 
@@ -267,25 +267,15 @@ At scale, some percentage of hosts will always fail. Plan for it:
             name: deploy
       rescue:
         - name: Record failure
-          set_stats:
-            data:
-              failed_hosts: ["{{ inventory_hostname }}"]
-            aggregate: true
+          group_by:
+            key: deployment_failed
 
 # Recovery play for failed hosts
 - name: Retry failed hosts
-  hosts: webservers
+  hosts: deployment_failed
   serial: 5
 
   tasks:
-    - name: Check if this host needs recovery
-      set_fact:
-        needs_recovery: "{{ inventory_hostname in (ansible_stats.aggregated.failed_hosts | default([])) }}"
-
-    - name: Skip healthy hosts
-      meta: end_host
-      when: not needs_recovery
-
     - name: Retry deployment
       include_role:
         name: deploy
@@ -321,9 +311,9 @@ echo "Completed with $FAILED failures out of $(echo $GROUPS | wc -w) groups"
 exit $FAILED
 ```
 
-## Using AWX/Tower for Scale
+## Using AWX/Automation Controller for Scale
 
-For consistent large-scale operations, use AWX or Ansible Tower:
+For consistent large-scale operations, use AWX or Red Hat Ansible Automation Platform controller:
 
 - Job templates with predefined inventory and credentials
 - Workflow templates that chain multiple playbooks
