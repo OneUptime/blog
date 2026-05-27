@@ -58,11 +58,11 @@ const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http')
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // Define which service this telemetry belongs to
-const resource = new Resource({
+const resource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'node-api',
     [ATTR_SERVICE_VERSION]: process.env.npm_package_version || '1.0.0',
     'deployment.environment': process.env.NODE_ENV || 'development',
@@ -91,7 +91,7 @@ const metricReader = new PeriodicExportingMetricReader({
 const sdk = new NodeSDK({
     resource,
     traceExporter,
-    metricReader,
+    metricReaders: [metricReader],
     instrumentations: [
         getNodeAutoInstrumentations({
             // Customize which auto-instrumentations are enabled
@@ -340,8 +340,10 @@ processors:
 
 exporters:
   otlphttp:
-    endpoint: "https://otlp.oneuptime.com"
+    endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
+      Content-Type: "application/json"
       x-oneuptime-token: "your-project-token"
 
 service:
