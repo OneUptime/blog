@@ -12,26 +12,24 @@ Keeping an analytical data warehouse in sync with operational databases is one o
 
 ## What Is Cloud Data Fusion Replication?
 
-Cloud Data Fusion Replication is a feature available in the Enterprise edition that provides continuous, low-latency data replication from operational databases to BigQuery. Unlike batch pipelines that run on a schedule, replication jobs run continuously - they read the database transaction log and apply inserts, updates, and deletes to BigQuery as they happen.
+Cloud Data Fusion Replication is an accelerator available for Cloud Data Fusion instances in version 6.3.0 or later. It provides continuous, low-latency data replication from operational databases to BigQuery. Unlike batch pipelines that run on a schedule, replication jobs run continuously - they read the database transaction log and apply inserts, updates, and deletes to BigQuery as they happen.
 
 The supported source databases include:
 
 - MySQL
-- PostgreSQL
 - SQL Server
 - Oracle
-- Cloud SQL (MySQL and PostgreSQL)
 
-The target is always BigQuery.
+Cloud-hosted MySQL sources, such as Cloud SQL for MySQL, can also be used when the required connectivity and CDC settings are in place. The supported target is BigQuery.
 
 ## Prerequisites
 
 Before you begin, make sure you have the following in place:
 
-- A Cloud Data Fusion Enterprise instance (Replication is not available in the Basic or Developer editions)
-- A source database with binary logging or equivalent change tracking enabled
+- A Cloud Data Fusion instance running version 6.3.0 or later with the Replication accelerator enabled
+- A source database with binary logging or the required change tracking solution enabled
 - Network connectivity between your Data Fusion instance and the source database
-- BigQuery dataset created for the replicated tables
+- BigQuery access for the replicated datasets and tables
 - Appropriate IAM permissions for the Data Fusion service account
 
 ### Enabling Binary Logging on MySQL
@@ -41,12 +39,14 @@ If your source is MySQL, you need to make sure binary logging is enabled. For Cl
 ```sql
 -- Check if binary logging is enabled on your MySQL instance
 SHOW VARIABLES LIKE 'log_bin';
+SHOW VARIABLES LIKE 'binlog_format';
+SHOW VARIABLES LIKE 'binlog_row_image';
 
--- For Cloud SQL, enable binary logging through the console or gcloud
--- This requires a restart of the database instance
+-- Cloud Data Fusion Replication expects row-based binlogs
+-- with full row images.
 ```
 
-For Cloud SQL MySQL, go to the instance configuration in the GCP Console and enable "Binary logging" under the Backups section. Note that this requires a database restart.
+For self-managed MySQL, configure the server with a unique `server-id`, `log_bin`, `binlog_format=ROW`, and `binlog_row_image=FULL`. For Cloud SQL for MySQL, enable binary logging for the instance and verify that the `binlog_row_image` flag is set to `full`.
 
 ### Setting Up a Replication User
 
@@ -54,13 +54,10 @@ Create a dedicated database user for replication with the minimum required privi
 
 ```sql
 -- Create a replication user with the necessary privileges for CDC
-CREATE USER 'cdf_replication'@'%' IDENTIFIED BY 'your-secure-password';
+CREATE USER 'cdf_replication'@'%' IDENTIFIED WITH mysql_native_password BY 'your-secure-password';
 
 -- Grant replication privileges
 GRANT SELECT, RELOAD, SHOW DATABASES, REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'cdf_replication'@'%';
-
--- For specific table access
-GRANT SELECT ON your_database.* TO 'cdf_replication'@'%';
 
 FLUSH PRIVILEGES;
 ```
@@ -104,7 +101,7 @@ The loading interval is an important setting. A shorter interval means lower lat
 
 Under advanced settings, you can configure:
 
-**Table Name Prefix** - Add a prefix to all replicated table names in BigQuery. Useful if you are replicating from multiple databases into the same dataset.
+**Staging Table Prefix** - Add a prefix to temporary staging tables that Data Fusion creates before merging changes into the final BigQuery tables.
 
 **Soft Delete Handling** - When a row is deleted in the source database, you can choose to:
 - Hard delete: Remove the row from BigQuery
@@ -132,10 +129,10 @@ graph LR
 
 Data Fusion adds metadata columns to each replicated table in BigQuery:
 
-- `_sequence_num` - The sequence number of the change event
-- `_op` - The operation type (INSERT, UPDATE, DELETE)
-- `_source_timestamp` - When the change occurred in the source database
-- `_is_deleted` - Whether the row has been soft-deleted (if soft deletes are enabled)
+- `_sequence_num` - Used to make replication resilient to duplicate or missed events
+- `_is_deleted` - Whether the row has been soft-deleted, when soft deletes are enabled or required by the source
+- `_row_id` - Used by source plugins that support row identifiers
+- `_source_timestamp` and `_sort` - Used for ordering with sources that generate unordered CDC streams
 
 ## Starting and Monitoring the Replication Job
 
