@@ -47,9 +47,10 @@ ssl-apache/
 server_name: www.example.com
 server_admin: admin@example.com
 document_root: /var/www/html
-ssl_cert_path: /etc/ssl/certs/example.com.crt
+ssl_cert_path: /etc/ssl/certs/example.com-fullchain.crt
 ssl_key_path: /etc/ssl/private/example.com.key
-ssl_chain_path: /etc/ssl/certs/example.com-chain.crt
+ssl_cert_local: files/example.com-fullchain.crt
+ssl_key_local: files/example.com.key
 enable_hsts: true
 hsts_max_age: 31536000
 app_backend_port: 8000
@@ -112,6 +113,7 @@ use_proxy: true
     owner: root
     group: root
     mode: '0644'
+  when: not (use_self_signed | default(false))
   notify: restart apache
 
 - name: Deploy SSL private key
@@ -121,16 +123,19 @@ use_proxy: true
     owner: root
     group: root
     mode: '0600'
+  when: not (use_self_signed | default(false))
   notify: restart apache
 
-- name: Deploy SSL certificate chain
-  copy:
-    src: "{{ ssl_chain_local }}"
-    dest: "{{ ssl_chain_path }}"
-    owner: root
-    group: root
-    mode: '0644'
-  when: ssl_chain_local is defined
+- name: Generate self-signed SSL certificate for development
+  command: >
+    openssl req -x509 -noenc -days 365
+    -newkey rsa:2048
+    -keyout {{ ssl_key_path }}
+    -out {{ ssl_cert_path }}
+    -subj "/CN={{ server_name }}/O=Development/C=US"
+  args:
+    creates: "{{ ssl_cert_path }}"
+  when: use_self_signed | default(false)
   notify: restart apache
 
 - name: Deploy SSL hardening configuration
@@ -223,9 +228,6 @@ SSLSessionTickets off
     SSLEngine on
     SSLCertificateFile {{ ssl_cert_path }}
     SSLCertificateKeyFile {{ ssl_key_path }}
-{% if ssl_chain_path is defined %}
-    SSLCertificateChainFile {{ ssl_chain_path }}
-{% endif %}
 
 {% if enable_hsts %}
     # HTTP Strict Transport Security header
@@ -293,7 +295,7 @@ For development environments, generate self-signed certificates directly on the 
 # Generate a self-signed certificate for development
 - name: Generate self-signed SSL certificate for development
   command: >
-    openssl req -x509 -nodes -days 365
+    openssl req -x509 -noenc -days 365
     -newkey rsa:2048
     -keyout {{ ssl_key_path }}
     -out {{ ssl_cert_path }}
