@@ -21,8 +21,7 @@ Every time you deploy to Cloud Run - whether by updating the container image, ch
 
 gcloud run revisions list \
     --service=my-service \
-    --region=us-central1 \
-    --format="table(REVISION, ACTIVE, SERVICE_URL)"
+    --region=us-central1
 ```
 
 By default, when you deploy a new revision, Cloud Run routes 100% of traffic to it immediately. The old revisions still exist but receive no traffic.
@@ -36,9 +35,9 @@ The fastest way to roll back is to redirect all traffic to the previous revision
 gcloud run revisions list \
     --service=my-service \
     --region=us-central1 \
-    --sort-by="~creationTimestamp" \
+    --sort-by="~metadata.creationTimestamp" \
     --limit=5 \
-    --format="table(REVISION, ACTIVE, DEPLOYED)"
+    --format="table(metadata.name:label=REVISION,metadata.creationTimestamp:label=DEPLOYED)"
 ```
 
 The output will show your revisions in order. The second one in the list is typically your previous stable revision.
@@ -82,7 +81,7 @@ The best way to handle rollbacks is to avoid needing them by deploying gradually
 ```bash
 # Deploy without routing traffic (the --no-traffic flag)
 gcloud run deploy my-service \
-    --image=gcr.io/my-project/my-service:v2 \
+    --image=us-central1-docker.pkg.dev/my-project/my-repo/my-service:v2 \
     --no-traffic \
     --region=us-central1
 ```
@@ -136,20 +135,20 @@ Here is a shell script that deploys, monitors, and rolls back if necessary.
 ```bash
 #!/bin/bash
 # deploy-with-rollback.sh
-# Deploys a new revision, monitors error rate, rolls back if needed
+# Deploys a new revision, monitors 5xx errors, rolls back if needed
 
 SERVICE="my-service"
 REGION="us-central1"
 NEW_IMAGE="$1"
-ERROR_THRESHOLD=5  # Percentage of 5xx errors that triggers rollback
+ERROR_THRESHOLD=5  # Number of 5xx log entries that triggers rollback
 
 # Get the current stable revision before deploying
 STABLE_REVISION=$(gcloud run revisions list \
     --service=$SERVICE \
     --region=$REGION \
-    --sort-by="~creationTimestamp" \
+    --sort-by="~metadata.creationTimestamp" \
     --limit=1 \
-    --format="value(REVISION)")
+    --format="value(metadata.name)")
 
 echo "Current stable revision: $STABLE_REVISION"
 
@@ -166,15 +165,15 @@ gcloud run services update-traffic $SERVICE \
 echo "Canary deployed with 10% traffic. Monitoring for 5 minutes..."
 sleep 300
 
-# Check error rate (simplified - use Cloud Monitoring API for production)
-ERROR_RATE=$(gcloud logging read \
+# Check recent 5xx errors (simplified - use Cloud Monitoring API for production)
+ERROR_COUNT=$(gcloud logging read \
     "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"$SERVICE\" AND httpRequest.status>=500" \
     --project=my-project \
     --freshness=5m \
     --format="value(httpRequest.status)" | wc -l)
 
-if [ "$ERROR_RATE" -gt "$ERROR_THRESHOLD" ]; then
-    echo "Error rate too high ($ERROR_RATE errors). Rolling back..."
+if [ "$ERROR_COUNT" -gt "$ERROR_THRESHOLD" ]; then
+    echo "Error count too high ($ERROR_COUNT errors). Rolling back..."
     gcloud run services update-traffic $SERVICE \
         --to-revisions=$STABLE_REVISION=100 \
         --region=$REGION
@@ -197,21 +196,22 @@ If you are using Cloud Build, integrate rollback capability into your pipeline.
 steps:
   # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/my-service:$SHORT_SHA', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-service:$SHORT_SHA', '.']
 
-  # Push the image to Container Registry
+  # Push the image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/my-service:$SHORT_SHA']
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-service:$SHORT_SHA']
 
-  # Deploy without traffic
+  # Deploy without traffic and create a tag for smoke tests
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     args:
       - 'gcloud'
       - 'run'
       - 'deploy'
       - 'my-service'
-      - '--image=gcr.io/$PROJECT_ID/my-service:$SHORT_SHA'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-service:$SHORT_SHA'
       - '--no-traffic'
+      - '--tag=canary'
       - '--region=us-central1'
 
   # Run smoke tests against the new revision
@@ -242,8 +242,8 @@ Over time, you will accumulate many revisions. While they do not cost anything w
 gcloud run revisions list \
     --service=my-service \
     --region=us-central1 \
-    --sort-by="~creationTimestamp" \
-    --format="value(REVISION)" | tail -n +6 | while read revision; do
+    --sort-by="~metadata.creationTimestamp" \
+    --format="value(metadata.name)" | tail -n +6 | while read revision; do
     echo "Deleting $revision"
     gcloud run revisions delete "$revision" --region=us-central1 --quiet
 done
