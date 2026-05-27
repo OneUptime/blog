@@ -82,7 +82,7 @@ Use the `until` filter to only remove resources older than a certain age:
         networks: false
         volumes: false
 
-    - name: Remove images not used in the last 7 days
+    - name: Remove images created more than 7 days ago
       community.docker.docker_prune:
         images: true
         images_filters:
@@ -109,7 +109,7 @@ Labels let you protect important resources from pruning. Tag resources you want 
       community.docker.docker_prune:
         images: true
         images_filters:
-          label!: "keep=true"
+          "label!": "keep=true"
         containers: false
         networks: false
         volumes: false
@@ -120,13 +120,13 @@ Labels let you protect important resources from pruning. Tag resources you want 
         msg: "Removed {{ image_prune.images | default([]) | length }} images, reclaimed {{ image_prune.images_space_reclaimed | default(0) | human_readable }}"
 ```
 
-When you deploy containers, add the `keep` label to images you want to protect:
+When you build images, add the `keep` label to images you want to protect:
 
 ```yaml
-    - name: Deploy protected container
-      community.docker.docker_container:
-        name: critical-service
-        image: myapp:latest
+    - name: Build protected image
+      community.docker.docker_image_build:
+        name: myapp:latest
+        path: /srv/myapp
         labels:
           keep: "true"
           environment: "production"
@@ -149,6 +149,7 @@ Sometimes you need more control over what gets cleaned up. Here are playbooks fo
     - name: Get list of all containers
       community.docker.docker_host_info:
         containers: true
+        containers_all: true
       register: docker_info
 
     - name: Count running vs stopped
@@ -172,7 +173,7 @@ Sometimes you need more control over what gets cleaned up. Here are playbooks fo
 
 ### Pruning Dangling Images
 
-Dangling images are layers that are no longer referenced by any tagged image. They are safe to remove:
+Dangling images are untagged images that are not referenced by any container. They are safe to remove:
 
 ```yaml
 # prune_dangling.yml - Remove dangling images only
@@ -230,7 +231,7 @@ Be careful with volume pruning. Volumes often contain database data. Only prune 
       community.docker.docker_prune:
         volumes: true
         volumes_filters:
-          label!: "persistent=true"
+          "label!": "persistent=true"
         containers: false
         images: false
         networks: false
@@ -248,6 +249,12 @@ Set up a cron job to run cleanup regularly:
   become: true
 
   tasks:
+    - name: Create cleanup script directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create cleanup script
       ansible.builtin.copy:
         dest: /opt/scripts/docker-cleanup.sh
@@ -342,6 +349,8 @@ CI/CD servers accumulate huge amounts of build cache:
     - name: Prune build cache older than 7 days
       community.docker.docker_prune:
         builder_cache: true
+        builder_cache_filters:
+          until: "168h"
         containers: false
         images: false
         networks: false
