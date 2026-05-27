@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, Nginx, Ingresses, Load Balancing
 
-Description: Step-by-step guide to deploying MetalLB with the Nginx Ingress Controller for production-ready bare-metal ingress.
+Description: Step-by-step guide to deploying MetalLB with the Nginx Ingress Controller for bare-metal ingress.
 
 ---
 
 On cloud-managed Kubernetes, the Nginx Ingress Controller gets an external IP automatically from the cloud provider's load balancer. On bare metal, there is no cloud load balancer. MetalLB fills this gap by assigning an IP from a local pool to your Nginx Ingress Controller's LoadBalancer service.
 
-This post walks you through deploying both MetalLB and the Nginx Ingress Controller on a bare-metal Kubernetes cluster.
+This post walks you through deploying both MetalLB and the Nginx Ingress Controller on a bare-metal Kubernetes cluster. Ingress NGINX was retired by the Kubernetes project in March 2026, so use this guide for existing or legacy deployments and plan new production deployments around Gateway API or another maintained ingress controller.
 
 ## Architecture
 
@@ -37,9 +37,9 @@ MetalLB advertises the VIP (Virtual IP) at the network level, and Nginx handles 
 Install MetalLB using the official manifests:
 
 ```bash
-# Install MetalLB v0.14.x
+# Install MetalLB v0.16.x
 
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.0/config/manifests/metallb-native.yaml
 
 # Wait for MetalLB pods to be ready
 kubectl wait --namespace metallb-system \
@@ -98,8 +98,7 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
   --create-namespace \
   --set controller.service.type=LoadBalancer \
   --set controller.service.externalTrafficPolicy=Local \
-  --set controller.metrics.enabled=true \
-  --set controller.metrics.serviceMonitor.enabled=true
+  --set controller.metrics.enabled=true
 ```
 
 The `externalTrafficPolicy=Local` setting preserves the client's source IP address, which is important for logging and access control.
@@ -120,7 +119,7 @@ kubectl get svc -n ingress-nginx
 Test connectivity:
 
 ```bash
-# Test that the Nginx default backend responds
+# Test that the Nginx Ingress Controller responds
 curl -v http://192.168.1.200
 
 # You should get a 404 response from Nginx (expected when no Ingress rules exist)
@@ -212,14 +211,15 @@ sequenceDiagram
     participant Client
     participant Network as Network Switch
     participant MLB as MetalLB Speaker
+    participant Node as Node owning VIP
     participant NIC as Nginx Ingress
     participant Svc as K8s Service
     participant Pod as Application Pod
 
     Client->>Network: ARP: Who has 192.168.1.200?
     MLB->>Network: ARP Reply: It is me (Node X MAC)
-    Client->>MLB: HTTP GET hello.example.com
-    MLB->>NIC: Forward to Nginx (NodePort or direct)
+    Client->>Node: HTTP GET hello.example.com
+    Node->>NIC: Forward via the LoadBalancer service
     NIC->>NIC: Match Ingress rule by Host header
     NIC->>Svc: Route to hello-app service
     Svc->>Pod: Forward to healthy pod
@@ -236,6 +236,7 @@ For production, run multiple replicas of the Nginx Ingress Controller:
 # Scale Nginx Ingress to 3 replicas for HA
 helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
+  --reuse-values \
   --set controller.replicaCount=3 \
   --set controller.service.type=LoadBalancer \
   --set controller.service.externalTrafficPolicy=Local
@@ -254,7 +255,7 @@ metadata:
   namespace: ingress-nginx
   annotations:
     # Request a specific IP from MetalLB
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.200"
+    metallb.io/loadBalancerIPs: "192.168.1.200"
 spec:
   type: LoadBalancer
   # ... rest of the service spec
@@ -297,7 +298,7 @@ spec:
 Enable Prometheus metrics for the Nginx Ingress Controller to track request rates, error rates, and latency:
 
 ```bash
-# The metrics are already enabled if you used the Helm flags above
+# The metrics service is enabled if you used the Helm flags above
 # Verify metrics are exposed
 kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller-metrics 10254:10254
 
@@ -325,6 +326,6 @@ kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx  # Check l
 
 ## Summary
 
-MetalLB and the Nginx Ingress Controller together provide a production-ready ingress solution for bare-metal Kubernetes. MetalLB handles the Layer 2 or BGP IP advertisement, and Nginx handles HTTP routing, TLS termination, and traffic management.
+MetalLB and the Nginx Ingress Controller together provide an ingress solution for bare-metal Kubernetes. MetalLB handles the Layer 2 or BGP IP advertisement, and Nginx handles HTTP routing, TLS termination, and traffic management.
 
 To monitor the health and performance of your Nginx Ingress endpoints exposed via MetalLB, check out [OneUptime](https://oneuptime.com). OneUptime can monitor your HTTP endpoints, track response times, and alert your team when services become unreachable or slow.
