@@ -8,13 +8,13 @@ Description: Learn how to diagnose and fix ICMP connectivity problems between GC
 
 ---
 
-You SSH into a VM, try to ping another instance, and nothing comes back. ICMP connectivity issues are one of the most common networking problems in GCP, and they are also one of the most frequently misunderstood. Unlike TCP or UDP, ICMP traffic is blocked by default in GCP, which catches many people off guard when they first start working with the platform.
+You SSH into a VM, try to ping another instance, and nothing comes back. ICMP connectivity issues are one of the most common networking problems in GCP, and they are also one of the most frequently misunderstood. In custom VPC networks, ingress ICMP traffic is blocked unless you create a firewall rule that allows it, which catches many people off guard when they first start working with the platform.
 
 In this post, I will walk through diagnosing ICMP issues using Network Intelligence Center, from running connectivity tests to identifying the specific firewall rules or routes that are blocking your ping.
 
-## Why ICMP Fails by Default in GCP
+## Why ICMP Fails Without an Allow Rule
 
-GCP's default VPC comes with an implied deny-all ingress firewall rule. While some default rules are created that allow SSH (port 22) and RDP (port 3389), ICMP is not always included. If you deleted the `default-allow-icmp` rule or are working in a custom VPC, ICMP traffic will be blocked.
+Every GCP VPC comes with an implied deny-all ingress firewall rule. The default VPC network is also pre-populated with rules such as `default-allow-ssh`, `default-allow-rdp`, `default-allow-internal`, and `default-allow-icmp`. If you deleted the `default-allow-icmp` rule or are working in a custom VPC without an ICMP allow rule, ICMP traffic will be blocked.
 
 The first step is to check whether the basic ICMP firewall rule exists:
 
@@ -121,7 +121,7 @@ gcloud compute networks peerings list \
 
 ## Debugging ICMP to External Addresses
 
-Pinging external addresses (like 8.8.8.8) from a VM that has no external IP requires Cloud NAT. Without it, the response packets have no way to get back to your VM.
+Pinging external addresses (like 8.8.8.8) from a VM that has no external IP requires Cloud NAT or another supported path that provides internet egress. Without NAT or an external IP address, the VM's packets cannot be source NATed for internet destinations, so replies cannot be delivered back to the VM.
 
 ```bash
 # Test ICMP connectivity from a VM to an external IP
@@ -197,10 +197,10 @@ The implied deny rule does not show up in `gcloud compute firewall-rules list`. 
 
 Network tags matter. If your allow-icmp rule targets specific tags, make sure the destination VM has those tags applied.
 
-ICMP type filtering is supported. You can create rules that allow only specific ICMP types (like echo request/reply) rather than all ICMP traffic:
+ICMP type filtering is not supported in VPC firewall rules. You can allow the ICMP protocol, but you cannot create a VPC firewall rule that allows only specific ICMP types or codes:
 
 ```bash
-# Allow only ping (echo request and echo reply) between tagged instances
+# Allow ICMP between tagged instances
 gcloud compute firewall-rules create allow-ping-only \
   --network=my-vpc \
   --allow=icmp \
@@ -210,8 +210,8 @@ gcloud compute firewall-rules create allow-ping-only \
   --project=my-project
 ```
 
-GCP does not support ICMP redirect messages. If your application depends on ICMP redirects for path optimization, it will not work in GCP.
+Do not rely on ICMP redirects for path optimization in Google Cloud VPC designs. Use VPC routes, Cloud Router, or your hybrid routing configuration to control the path explicitly.
 
 ## Summary
 
-ICMP troubleshooting in GCP comes down to three things: checking firewall rules (since ICMP is denied by default), verifying routes exist between source and destination, and confirming NAT is configured for instances without external IPs. Network Intelligence Center connectivity tests let you diagnose all of these with a single command, showing you exactly where in the path the traffic is being dropped. Start with the connectivity test, read the trace, and fix the specific component that is blocking traffic.
+ICMP troubleshooting in GCP comes down to three things: checking firewall rules, verifying routes exist between source and destination, and confirming NAT is configured for instances without external IPs that need internet egress. Network Intelligence Center connectivity tests let you diagnose all of these with a single command, showing you exactly where in the path the traffic is being dropped. Start with the connectivity test, read the trace, and fix the specific component that is blocking traffic.
