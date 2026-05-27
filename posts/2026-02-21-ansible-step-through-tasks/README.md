@@ -45,14 +45,21 @@ Let us work with a playbook that sets up a monitoring agent.
   become: yes
 
   tasks:
-    - name: Add monitoring repository GPG key
-      apt_key:
-        url: https://packages.monitoring.example.com/gpg.key
+    - name: Ensure deb822 repository support is available
+      apt:
+        name: python3-debian
         state: present
+        update_cache: yes
 
     - name: Add monitoring apt repository
-      apt_repository:
-        repo: "deb https://packages.monitoring.example.com/apt stable main"
+      deb822_repository:
+        name: monitoring
+        types: deb
+        uris: https://packages.monitoring.example.com/apt
+        suites: stable
+        components:
+          - main
+        signed_by: https://packages.monitoring.example.com/gpg.key
         state: present
 
     - name: Install monitoring agent
@@ -111,8 +118,8 @@ Perform task: TASK: Gathering Facts (N)o/(y)es/(c)ontinue: y
 
 ok: [web01]
 
-TASK [Add monitoring repository GPG key] **************************************
-Perform task: TASK: Add monitoring repository GPG key (N)o/(y)es/(c)ontinue: y
+TASK [Ensure deb822 repository support is available] **************************
+Perform task: TASK: Ensure deb822 repository support is available (N)o/(y)es/(c)ontinue: y
 
 changed: [web01]
 
@@ -258,6 +265,7 @@ fatal: [web01]: FAILED! => {"msg": "AnsibleUndefinedVariable: 'app_port' is unde
 [web01] TASK: Template that might fail (debug)> p task_vars['app_port']
 ***KeyError: 'app_port'
 [web01] TASK: Template that might fail (debug)> task_vars['app_port'] = 8080
+[web01] TASK: Template that might fail (debug)> update_task
 [web01] TASK: Template that might fail (debug)> redo
 changed: [web01]
 ```
