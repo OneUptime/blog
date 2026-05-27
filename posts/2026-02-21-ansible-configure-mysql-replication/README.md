@@ -74,13 +74,13 @@ The source server needs binary logging and a unique server ID.
     block: |
       [mysqld]
       # Server identification
-      server-id = 1
+      server-id = {{ mysql_server_id }}
 
       # Binary logging
       log_bin = /var/log/mysql/mysql-bin
       binlog_format = ROW
       binlog_row_image = FULL
-      expire_logs_days = 7
+      binlog_expire_logs_seconds = 604800
       max_binlog_size = 100M
 
       # GTID configuration
@@ -98,7 +98,7 @@ The source server needs binary logging and a unique server ID.
   notify: restart mysql
 
 - name: Create replication user
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: "{{ mysql_replication_user }}"
     password: "{{ mysql_replication_password }}"
     host: "10.0.2.%"
@@ -108,7 +108,7 @@ The source server needs binary logging and a unique server ID.
   no_log: true
 
 - name: Flush privileges
-  community.mysql.mysql_query:
+  ansible.mysql.mysql_query:
     query: "FLUSH PRIVILEGES"
     login_unix_socket: "{{ mysql_socket }}"
 ```
@@ -167,20 +167,20 @@ Each replica needs a unique server ID and GTID configuration.
     timeout: 30
 
 - name: Stop any existing replication
-  community.mysql.mysql_query:
-    query: "STOP REPLICA"
+  ansible.mysql.mysql_replication:
+    mode: stopreplica
     login_unix_socket: "{{ mysql_socket }}"
   ignore_errors: true
 
 - name: Reset replica state
-  community.mysql.mysql_query:
-    query: "RESET REPLICA ALL"
+  ansible.mysql.mysql_replication:
+    mode: resetreplicaall
     login_unix_socket: "{{ mysql_socket }}"
   ignore_errors: true
 
 - name: Configure replication channel
-  community.mysql.mysql_replication:
-    mode: changeprimary
+  ansible.mysql.mysql_replication:
+    mode: changereplication
     primary_host: "{{ hostvars[groups['mysql_source'][0]].ansible_host }}"
     primary_port: 3306
     primary_user: "{{ mysql_replication_user }}"
@@ -190,12 +190,12 @@ Each replica needs a unique server ID and GTID configuration.
   no_log: true
 
 - name: Start replication
-  community.mysql.mysql_replication:
+  ansible.mysql.mysql_replication:
     mode: startreplica
     login_unix_socket: "{{ mysql_socket }}"
 
 - name: Verify replication is running
-  community.mysql.mysql_replication:
+  ansible.mysql.mysql_replication:
     mode: getreplica
     login_unix_socket: "{{ mysql_socket }}"
   register: replica_status
@@ -203,13 +203,13 @@ Each replica needs a unique server ID and GTID configuration.
 - name: Check that replication IO thread is running
   assert:
     that:
-      - replica_status.Slave_IO_Running == "Yes" or replica_status.Replica_IO_Running == "Yes"
+      - replica_status.get('Replica_IO_Running', replica_status.get('Slave_IO_Running', 'No')) == "Yes"
     fail_msg: "Replication IO thread is not running on {{ inventory_hostname }}"
 
 - name: Check that replication SQL thread is running
   assert:
     that:
-      - replica_status.Slave_SQL_Running == "Yes" or replica_status.Replica_SQL_Running == "Yes"
+      - replica_status.get('Replica_SQL_Running', replica_status.get('Slave_SQL_Running', 'No')) == "Yes"
     fail_msg: "Replication SQL thread is not running on {{ inventory_hostname }}"
 ```
 
@@ -270,6 +270,14 @@ For fresh replicas, you need to copy data from the source first. Here is how to 
   hosts: mysql_source
   become: true
   tasks:
+    - name: Remove any old dump files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/source_dump.sql
+        - /tmp/source_dump.sql.gz
+
     - name: Create consistent dump for replica initialization
       command: >
         mysqldump --all-databases
@@ -280,13 +288,9 @@ For fresh replicas, you need to copy data from the source first. Here is how to 
         --set-gtid-purged=ON
         --source-data=2
         --result-file=/tmp/source_dump.sql
-      args:
-        creates: /tmp/source_dump.sql
 
     - name: Compress the dump
       command: gzip -f /tmp/source_dump.sql
-      args:
-        creates: /tmp/source_dump.sql.gz
 
 - name: Transfer and load dump on replicas
   hosts: mysql_replicas
@@ -302,11 +306,25 @@ For fresh replicas, you need to copy data from the source first. Here is how to 
     - name: Decompress the dump
       command: gunzip -f /tmp/source_dump.sql.gz
 
+    - name: Allow local import on the replica
+      ansible.mysql.mysql_query:
+        query:
+          - "SET GLOBAL super_read_only = OFF"
+          - "SET GLOBAL read_only = OFF"
+        login_unix_socket: "{{ mysql_socket }}"
+
     - name: Import dump into replica
-      community.mysql.mysql_db:
+      ansible.mysql.mysql_db:
         name: all
         state: import
         target: /tmp/source_dump.sql
+        login_unix_socket: "{{ mysql_socket }}"
+
+    - name: Restore replica read-only mode
+      ansible.mysql.mysql_query:
+        query:
+          - "SET GLOBAL read_only = ON"
+          - "SET GLOBAL super_read_only = ON"
         login_unix_socket: "{{ mysql_socket }}"
 
     - name: Clean up dump file
@@ -327,7 +345,7 @@ For fresh replicas, you need to copy data from the source first. Here is how to 
 
   tasks:
     - name: Get replica status
-      community.mysql.mysql_replication:
+      ansible.mysql.mysql_replication:
         mode: getreplica
         login_unix_socket: "{{ mysql_socket }}"
       register: repl_status
@@ -335,15 +353,15 @@ For fresh replicas, you need to copy data from the source first. Here is how to 
     - name: Display replication status
       debug:
         msg:
-          - "IO Thread: {{ repl_status.Slave_IO_Running | default(repl_status.Replica_IO_Running) }}"
-          - "SQL Thread: {{ repl_status.Slave_SQL_Running | default(repl_status.Replica_SQL_Running) }}"
-          - "Seconds Behind Source: {{ repl_status.Seconds_Behind_Master | default(repl_status.Seconds_Behind_Source) | default('N/A') }}"
-          - "Last Error: {{ repl_status.Last_Error | default(repl_status.Last_SQL_Error) | default('None') }}"
+          - "IO Thread: {{ repl_status.get('Replica_IO_Running', repl_status.get('Slave_IO_Running', 'N/A')) }}"
+          - "SQL Thread: {{ repl_status.get('Replica_SQL_Running', repl_status.get('Slave_SQL_Running', 'N/A')) }}"
+          - "Seconds Behind Source: {{ repl_status.get('Seconds_Behind_Source', repl_status.get('Seconds_Behind_Master', 'N/A')) }}"
+          - "Last Error: {{ repl_status.get('Last_Error', repl_status.get('Last_SQL_Error', 'None')) }}"
 
     - name: Alert if replication lag is too high
       assert:
         that:
-          - (repl_status.Seconds_Behind_Master | default(repl_status.Seconds_Behind_Source) | default(0)) | int < 60
+          - (repl_status.get('Seconds_Behind_Source', repl_status.get('Seconds_Behind_Master', 0))) | int < 60
         fail_msg: "Replication lag on {{ inventory_hostname }} exceeds 60 seconds"
 ```
 
