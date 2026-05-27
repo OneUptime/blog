@@ -70,7 +70,7 @@ spec:
       operator: "Equal"
       value: "gpu"
       effect: "NoSchedule"
-  # Also use node affinity to prefer GPU nodes
+  # Also use node affinity to require GPU nodes
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -227,7 +227,7 @@ spec:
           operator: "Exists"
           effect: "NoExecute"
           tolerationSeconds: 60
-        # Tolerate memory pressure on node (pod will not be evicted)
+        # Allow scheduling onto nodes with memory pressure
         - key: "node.kubernetes.io/memory-pressure"
           operator: "Exists"
           effect: "NoSchedule"
@@ -250,7 +250,7 @@ DaemonSets often need to run on every node, including tainted ones. Add broad to
 
 ```yaml
 # daemonset-logging.yaml
-# Logging agent DaemonSet that runs on ALL nodes including tainted ones
+# Logging agent DaemonSet that can run on tainted nodes
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -266,7 +266,7 @@ spec:
         app: log-collector
     spec:
       tolerations:
-        # Tolerate all taints so this runs on every node
+        # Tolerate all taints so taints do not block this DaemonSet
         - operator: "Exists"
       containers:
         - name: collector
