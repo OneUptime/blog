@@ -43,6 +43,7 @@ kubectl get pods -n keda
 # You should see:
 # keda-operator
 # keda-metrics-apiserver
+# keda-admission-webhooks
 ```
 
 ## Step 2: Scale Based on RabbitMQ Queue Length
@@ -104,7 +105,7 @@ spec:
       metadata:
         protocol: amqp
         queueName: orders          # Name of the queue to monitor
-        mode: QueueLength          # Scale based on total queue length
+        mode: QueueLength          # Scale based on queue length
         value: "5"                 # Target 5 messages per pod
       authenticationRef:
         name: rabbitmq-auth        # Reference to authentication
@@ -151,14 +152,14 @@ spec:
 
 ```mermaid
 flowchart TD
-    A[KEDA Operator polls event source] --> B{Messages in queue?}
-    B -->|Zero messages| C{Current replicas > 0?}
+    A[KEDA Operator polls event source] --> B{Trigger active?}
+    B -->|Inactive| C{Current replicas > 0?}
     C -->|Yes and cooldown passed| D[Scale to 0]
     C -->|No| E[Stay at 0]
-    B -->|Has messages| F{Current replicas = 0?}
+    B -->|Active| F{Current replicas = 0?}
     F -->|Yes| G[Scale to 1 immediately]
     F -->|No| H[Calculate desired replicas]
-    H --> I[desired = ceil messages / threshold]
+    H --> I[desired = ceil metric / threshold]
     I --> J{Desired > maxReplicas?}
     J -->|Yes| K[Cap at maxReplicas]
     J -->|No| L[Scale to desired]
@@ -233,7 +234,7 @@ KEDA can also create Kubernetes Jobs for one-shot processing.
 
 ```yaml
 # scaled-job.yaml
-# KEDA ScaledJob creates a Job per message in the queue
+# KEDA ScaledJob creates Jobs based on queue depth
 apiVersion: keda.sh/v1alpha1
 kind: ScaledJob
 metadata:
@@ -258,7 +259,7 @@ spec:
       metadata:
         queueName: emails
         mode: QueueLength
-        value: "1"                 # One job per message
+        value: "1"                 # Target one queued message per job
       authenticationRef:
         name: rabbitmq-auth
 ```
