@@ -25,13 +25,17 @@ Start with a structured rubric definition that covers multiple quality dimension
 Here is how to create a basic rubric:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
 import json
+from google import genai
+from google.genai.types import GenerateContentConfig, HttpOptions
 
-# Initialize Vertex AI
-
-vertexai.init(project="your-project-id", location="us-central1")
+# Initialize the Google Gen AI SDK for Vertex AI
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+    http_options=HttpOptions(api_version="v1")
+)
 
 # Define a rubric for technical documentation evaluation
 tech_doc_rubric = {
@@ -93,14 +97,17 @@ Create an evaluator that uses the rubric to score LLM outputs.
 class RubricEvaluator:
     """Evaluate LLM outputs using structured rubrics."""
 
-    def __init__(self, model_name="gemini-2.0-flash"):
-        self.judge = GenerativeModel(
-            model_name,
-            system_instruction=(
+    def __init__(self, client, model_name="gemini-2.5-flash"):
+        self.client = client
+        self.model_name = model_name
+        self.config = GenerateContentConfig(
+            system_instruction=[
                 "You are an expert evaluator. Score outputs precisely "
                 "according to the rubric provided. Be strict and consistent. "
                 "Always provide specific evidence for your scores."
-            )
+            ],
+            response_mime_type="application/json",
+            temperature=0.1
         )
 
     def evaluate(self, rubric, prompt, response):
@@ -136,12 +143,10 @@ Respond in JSON format:
     "overall_assessment": "brief summary"
 }}"""
 
-        result = self.judge.generate_content(
-            eval_prompt,
-            generation_config=GenerationConfig(
-                response_mime_type="application/json",
-                temperature=0.1
-            )
+        result = self.client.models.generate_content(
+            model=self.model_name,
+            contents=eval_prompt,
+            config=self.config
         )
 
         return json.loads(result.text)
@@ -157,7 +162,7 @@ Respond in JSON format:
         return text
 
 # Usage
-evaluator = RubricEvaluator()
+evaluator = RubricEvaluator(client)
 
 result = evaluator.evaluate(
     rubric=tech_doc_rubric,
