@@ -16,18 +16,18 @@ Setting up a Windows node pool is not complicated, but there are some nuances yo
 
 Before creating a Windows node pool, your cluster needs a few things in place:
 
-- The cluster must be running GKE version 1.16 or later
+- The cluster must be running GKE version 1.16.8-gke.9 or later, and containerd Windows node images require GKE version 1.21.1-gke.2200 or later
 - You need at least one Linux node pool (the default pool) for system components
 - The cluster must use VPC-native networking (alias IPs)
 
-Windows nodes cannot run Kubernetes system components like kube-proxy and kube-dns. Those always run on Linux nodes. The Windows node pool is exclusively for your Windows application workloads.
+GKE requires at least one Linux node pool for critical cluster add-ons. Use the Windows node pool for your Windows application workloads.
 
 ## Creating a Cluster with Windows Support
 
-If you are creating a new cluster, enable Windows node support from the start:
+If you are creating a new cluster, make sure it uses VPC-native networking from the start:
 
 ```bash
-# Create a GKE cluster with the Windows node support addon
+# Create a GKE cluster that can use Windows node pools
 
 gcloud container clusters create my-cluster \
   --zone us-central1-a \
@@ -44,12 +44,13 @@ gcloud container node-pools create windows-pool \
   --cluster=my-cluster \
   --zone=us-central1-a \
   --image-type=WINDOWS_LTSC_CONTAINERD \
+  --windows-os-version=ltsc2022 \
   --num-nodes=2 \
   --machine-type=e2-standard-4 \
   --no-enable-autoupgrade
 ```
 
-The `--image-type=WINDOWS_LTSC_CONTAINERD` flag specifies Windows Server Long Term Servicing Channel with containerd as the runtime. You can also use `WINDOWS_SAC_CONTAINERD` for the Semi-Annual Channel if you need newer Windows features.
+The `--image-type=WINDOWS_LTSC_CONTAINERD` flag specifies Windows Server Long Term Servicing Channel with containerd as the runtime. The `--windows-os-version=ltsc2022` flag selects Windows Server 2022; without it, GKE defaults LTSC node pools to Windows Server 2019.
 
 ## Adding a Windows Pool to an Existing Cluster
 
@@ -61,6 +62,7 @@ gcloud container node-pools create windows-pool \
   --cluster=my-cluster \
   --zone=us-central1-a \
   --image-type=WINDOWS_LTSC_CONTAINERD \
+  --windows-os-version=ltsc2022 \
   --num-nodes=2 \
   --machine-type=e2-standard-4 \
   --scopes="https://www.googleapis.com/auth/cloud-platform"
@@ -73,7 +75,7 @@ Verify the Windows nodes are ready:
 kubectl get nodes -o wide
 ```
 
-Windows nodes will show `Windows` in the OS column and have a taint applied automatically.
+Windows nodes will show Windows Server in the OS-IMAGE column and have a taint applied automatically.
 
 ## Understanding Windows Node Taints
 
@@ -217,8 +219,8 @@ kubectl get nodes -l kubernetes.io/os=windows \
 
 Use the matching base image in your Dockerfile. Here is a quick reference:
 
-- WINDOWS_LTSC_CONTAINERD nodes use `windowsservercore-ltsc2022`
-- WINDOWS_SAC_CONTAINERD nodes use the corresponding SAC version
+- WINDOWS_LTSC_CONTAINERD nodes with `--windows-os-version=ltsc2022` use `windowsservercore-ltsc2022`
+- WINDOWS_LTSC_CONTAINERD nodes without `--windows-os-version` default to Windows Server 2019 and use `windowsservercore-ltsc2019`
 
 ## Scaling the Windows Node Pool
 
@@ -241,14 +243,25 @@ Be aware that Windows node startup can take 5-10 minutes, so aggressive autoscal
 Windows containers on GKE have some networking and storage limitations:
 
 - Host networking is not supported
-- Persistent volumes work, but only ReadWriteOnce with PD CSI driver
-- Node port ranges are limited
-- Some Linux-specific features like init containers work but have caveats
+- Persistent volumes work, but Compute Engine persistent disks for Windows must use NTFS
+- Windows nodes do not support all GKE networking features, such as NodeLocal DNSCache and full GKE Dataplane V2 support
+- Some Linux-specific Pod fields, such as `hostPID`, `hostIPC`, Linux security context fields, and memory-backed `emptyDir` volumes, are not supported
 
 For persistent storage:
 
 ```yaml
-# windows-pvc.yaml - PVC for a Windows container workload
+# windows-storage.yaml - StorageClass and PVC for a Windows container workload
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: windows-standard-rwo
+provisioner: pd.csi.storage.gke.io
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  type: pd-balanced
+  csi.storage.k8s.io/fstype: NTFS
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -256,7 +269,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: standard-rwo
+  storageClassName: windows-standard-rwo
   resources:
     requests:
       storage: 50Gi
