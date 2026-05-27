@@ -15,8 +15,8 @@ MediaWiki is the software that powers Wikipedia, and it works just as well for i
 ```yaml
 # roles/mediawiki/defaults/main.yml - MediaWiki configuration
 
-mediawiki_version: "1.41"
-mediawiki_minor: "1.41.0"
+mediawiki_version: "1.45"
+mediawiki_minor: "1.45.3"
 mediawiki_domain: wiki.example.com
 mediawiki_name: "Company Wiki"
 mediawiki_install_dir: /var/www/mediawiki
@@ -69,17 +69,19 @@ mediawiki_extensions:
     update_cache: yes
 
 - name: Create MariaDB database for MediaWiki
-  mysql_db:
+  ansible.mysql.mysql_db:
     name: "{{ mediawiki_db_name }}"
     state: present
     collation: utf8mb4_general_ci
+    login_unix_socket: /run/mysqld/mysqld.sock
 
 - name: Create MariaDB user
-  mysql_user:
+  ansible.mysql.mysql_user:
     name: "{{ mediawiki_db_user }}"
     password: "{{ mediawiki_db_password }}"
     priv: "{{ mediawiki_db_name }}.*:ALL"
     state: present
+    login_unix_socket: /run/mysqld/mysqld.sock
 
 - name: Download MediaWiki
   get_url:
@@ -111,7 +113,7 @@ mediawiki_extensions:
 - name: Run MediaWiki installer
   become_user: www-data
   command: >
-    php maintenance/install.php
+    php maintenance/run.php install
     --dbtype {{ mediawiki_db_type }}
     --dbname {{ mediawiki_db_name }}
     --dbuser {{ mediawiki_db_user }}
@@ -195,6 +197,7 @@ server {
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         fastcgi_pass unix:/run/php/php{{ mediawiki_php_version }}-fpm.sock;
+        try_files $uri @rewrite;
     }
 
     location ~* \.(js|css|png|jpg|jpeg|gif|ico)$ {
@@ -205,6 +208,10 @@ server {
 
     location = /_.gif { expires max; empty_gif; }
     location ^~ /cache/ { deny all; }
+    location ^~ /maintenance/ { deny all; }
+    location ^~ /includes/ { deny all; }
+    location ^~ /vendor/ { deny all; }
+    location ~* (LocalSettings\.php|composer\.(json|lock)) { deny all; }
     location /dumps { root {{ mediawiki_install_dir }}/local; autoindex on; }
 }
 ```
@@ -238,7 +245,7 @@ server {
       mysqldump {{ mediawiki_db_name }} > "$BACKUP_DIR/database.sql"
       tar czf "$BACKUP_DIR/images.tar.gz" -C {{ mediawiki_install_dir }} images/
       cp {{ mediawiki_install_dir }}/LocalSettings.php "$BACKUP_DIR/"
-      find /opt/mediawiki-backups -maxdepth 1 -mtime +14 -type d -exec rm -rf {} +
+      find /opt/mediawiki-backups -mindepth 1 -maxdepth 1 -mtime +14 -type d -exec rm -rf {} +
     dest: /usr/local/bin/mediawiki-backup.sh
     mode: '0755'
 
@@ -254,6 +261,7 @@ server {
 
 ```bash
 # Deploy MediaWiki
+ansible-galaxy collection install ansible.mysql community.general
 ansible-playbook -i inventory/hosts.ini playbook.yml --ask-vault-pass
 ```
 
@@ -263,7 +271,7 @@ This playbook deploys a complete MediaWiki instance ready for your team to start
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this role proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
@@ -297,10 +305,11 @@ Here are several practical scenarios where this module proves essential in real-
           - vim
           - htop
           - jq
+          - ufw
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -444,4 +453,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
