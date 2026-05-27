@@ -16,11 +16,11 @@ This guide covers the key metrics to watch, how to build monitoring dashboards, 
 
 Datastream exposes several metrics through Cloud Monitoring. These are the ones that matter most:
 
-**Total latency** (`datastream.googleapis.com/stream/total_latency`) - The end-to-end time from when a change happens in the source database to when it appears in the destination. This is your primary health indicator.
+**Total latency** (`datastream.googleapis.com/stream/total_latencies`) - The end-to-end time from when a change happens in the source database to when it appears in the destination. This is your primary health indicator.
 
 **Throughput events** (`datastream.googleapis.com/stream/event_count`) - The number of CDC events processed per time period. A sudden drop in throughput can indicate source database issues or stream problems.
 
-**Freshness lag** (`datastream.googleapis.com/stream/data_freshness`) - How stale the data in the destination is compared to the source. This is similar to total latency but measured from the destination's perspective.
+**Freshness lag** (`datastream.googleapis.com/stream/freshness`) - How far behind Datastream is compared to the source. This is calculated from when the change occurred in the source database until Datastream reads it.
 
 **Unsupported events** (`datastream.googleapis.com/stream/unsupported_event_count`) - Events that Datastream could not process. These usually indicate schema issues or unsupported data types.
 
@@ -49,7 +49,7 @@ Here is the dashboard configuration JSON:
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "metric.type=\"datastream.googleapis.com/stream/total_latency\" resource.type=\"datastream.googleapis.com/Stream\"",
+                  "filter": "metric.type=\"datastream.googleapis.com/stream/total_latencies\" resource.type=\"datastream.googleapis.com/Stream\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_PERCENTILE_99"
@@ -112,7 +112,7 @@ Here is the dashboard configuration JSON:
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "metric.type=\"datastream.googleapis.com/stream/data_freshness\" resource.type=\"datastream.googleapis.com/Stream\"",
+                  "filter": "metric.type=\"datastream.googleapis.com/stream/freshness\" resource.type=\"datastream.googleapis.com/Stream\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_MAX"
@@ -140,12 +140,10 @@ Create an alert for high replication lag:
 gcloud alpha monitoring policies create \
   --display-name="Datastream High Replication Lag" \
   --condition-display-name="Lag exceeds 5 minutes" \
-  --condition-filter='metric.type="datastream.googleapis.com/stream/total_latency" resource.type="datastream.googleapis.com/Stream"' \
-  --condition-threshold-value=300 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
-  --condition-threshold-aggregations-alignment-period=60s \
-  --condition-threshold-aggregations-per-series-aligner=ALIGN_MAX \
+  --condition-filter='metric.type="datastream.googleapis.com/stream/total_latencies" resource.type="datastream.googleapis.com/Stream"' \
+  --if="> 300" \
+  --duration=300s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_PERCENTILE_99"}' \
   --notification-channels=projects/my-project/notificationChannels/CHANNEL_ID \
   --combiner=OR
 ```
@@ -161,14 +159,14 @@ resource "google_monitoring_alert_policy" "datastream_lag" {
   conditions {
     display_name = "Total latency exceeds 5 minutes"
     condition_threshold {
-      filter          = "metric.type=\"datastream.googleapis.com/stream/total_latency\" AND resource.type=\"datastream.googleapis.com/Stream\""
+      filter          = "metric.type=\"datastream.googleapis.com/stream/total_latencies\" AND resource.type=\"datastream.googleapis.com/Stream\""
       comparison      = "COMPARISON_GT"
       threshold_value = 300
       duration        = "300s"
 
       aggregations {
         alignment_period   = "60s"
-        per_series_aligner = "ALIGN_MAX"
+        per_series_aligner = "ALIGN_PERCENTILE_99"
       }
     }
   }
@@ -180,13 +178,13 @@ resource "google_monitoring_alert_policy" "datastream_lag" {
   }
 }
 
-# Alert for zero throughput (stream may be stuck)
+# Alert for missing throughput data (stream may be stuck)
 resource "google_monitoring_alert_policy" "datastream_throughput" {
-  display_name = "Datastream Zero Throughput Alert"
+  display_name = "Datastream Missing Throughput Data Alert"
   combiner     = "OR"
 
   conditions {
-    display_name = "No events processed for 10 minutes"
+    display_name = "No event_count data for 10 minutes"
     condition_absent {
       filter   = "metric.type=\"datastream.googleapis.com/stream/event_count\" AND resource.type=\"datastream.googleapis.com/Stream\""
       duration = "600s"
@@ -227,13 +225,13 @@ resource "google_monitoring_alert_policy" "datastream_unsupported" {
 
 ## Querying Metrics with MQL
 
-For ad-hoc investigation, Monitoring Query Language (MQL) gives you flexible querying:
+For ad-hoc investigation, Monitoring Query Language (MQL) gives you flexible querying. MQL is no longer Google's recommended language for new dashboards and alerts, but existing MQL queries still work and you can still run them in Metrics Explorer:
 
 ```text
-# Check average latency per stream over the last hour
+# Check average freshness lag per stream over the last hour
 fetch datastream.googleapis.com/Stream
-| metric 'datastream.googleapis.com/stream/total_latency'
-| align mean_aligner(1m)
+| metric 'datastream.googleapis.com/stream/freshness'
+| align mean(1m)
 | every 1m
 | group_by [resource.stream_id], [mean(val())]
 ```
@@ -255,10 +253,10 @@ Cloud Monitoring metrics tell you about the stream itself, but you should also m
 -- Check the freshness of replicated data per table
 SELECT
   'orders' AS table_name,
-  MAX(datastream_metadata.source_timestamp) AS latest_source_ts,
+  TIMESTAMP_MILLIS(MAX(datastream_metadata.source_timestamp)) AS latest_source_ts,
   TIMESTAMP_DIFF(
     CURRENT_TIMESTAMP(),
-    MAX(datastream_metadata.source_timestamp),
+    TIMESTAMP_MILLIS(MAX(datastream_metadata.source_timestamp)),
     SECOND
   ) AS lag_seconds
 FROM `my-project.replicated.orders`
@@ -267,10 +265,10 @@ UNION ALL
 
 SELECT
   'customers' AS table_name,
-  MAX(datastream_metadata.source_timestamp) AS latest_source_ts,
+  TIMESTAMP_MILLIS(MAX(datastream_metadata.source_timestamp)) AS latest_source_ts,
   TIMESTAMP_DIFF(
     CURRENT_TIMESTAMP(),
-    MAX(datastream_metadata.source_timestamp),
+    TIMESTAMP_MILLIS(MAX(datastream_metadata.source_timestamp)),
     SECOND
   ) AS lag_seconds
 FROM `my-project.replicated.customers`
@@ -291,8 +289,8 @@ SELECT
   CURRENT_TIMESTAMP() AS check_timestamp
 FROM (
   SELECT 'orders' AS table_name,
-    MAX(datastream_metadata.source_timestamp) AS latest_source_ts,
-    TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(datastream_metadata.source_timestamp), SECOND) AS lag_seconds
+    TIMESTAMP_MILLIS(MAX(datastream_metadata.source_timestamp)) AS latest_source_ts,
+    TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), TIMESTAMP_MILLIS(MAX(datastream_metadata.source_timestamp)), SECOND) AS lag_seconds
   FROM `my-project.replicated.orders`
 )
 ```
@@ -305,7 +303,7 @@ For MySQL, check binary log position:
 
 ```sql
 -- Check MySQL replication status
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 SHOW BINARY LOGS;
 ```
 
@@ -353,4 +351,4 @@ After monitoring many Datastream deployments, here are the patterns I see most o
 
 ## Wrapping Up
 
-Monitoring is not optional for production Datastream deployments. At a minimum, you need alerts for high replication lag, zero throughput, and unsupported events. A monitoring dashboard gives you the visual context to understand trends, and BigQuery-side freshness checks provide an independent verification that data is actually flowing correctly. Set up your monitoring before you go to production, not after the first incident.
+Monitoring is not optional for production Datastream deployments. At a minimum, you need alerts for high replication lag, missing throughput data, and unsupported events. A monitoring dashboard gives you the visual context to understand trends, and BigQuery-side freshness checks provide an independent verification that data is actually flowing correctly. Set up your monitoring before you go to production, not after the first incident.
