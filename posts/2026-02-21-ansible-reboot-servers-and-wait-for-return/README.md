@@ -31,7 +31,7 @@ The simplest approach uses the built-in reboot module:
       ansible.builtin.reboot:
         msg: "Ansible-initiated reboot"
         reboot_timeout: 600
-        pre_reboot_delay: 5
+        pre_reboot_delay: 60
         post_reboot_delay: 30
         connect_timeout: 5
         test_command: uptime
@@ -140,7 +140,7 @@ For production systems, you need a more careful approach that validates services
 
     # Stop application gracefully before reboot
     - name: Stop application service
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: myapp
         state: stopped
 
@@ -150,7 +150,7 @@ For production systems, you need a more careful approach that validates services
       ansible.builtin.reboot:
         msg: "Scheduled maintenance reboot"
         reboot_timeout: 600
-        pre_reboot_delay: 10
+        pre_reboot_delay: 60
         post_reboot_delay: 60
         connect_timeout: 10
         test_command: "systemctl is-system-running --wait"
@@ -158,14 +158,14 @@ For production systems, you need a more careful approach that validates services
   post_tasks:
     # Wait for key services to be running
     - name: Wait for essential services
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}"
+        state: started
       register: service_status
       until: service_status.status.ActiveState == "active"
       retries: 30
       delay: 10
       loop:
-        - network
         - sshd
         - myapp
 
@@ -173,14 +173,14 @@ For production systems, you need a more careful approach that validates services
     - name: Wait for application port
       ansible.builtin.wait_for:
         port: 8080
-        host: "{{ ansible_host }}"
+        host: "{{ ansible_host | default(inventory_hostname) }}"
         timeout: 120
       delegate_to: localhost
 
     # Verify application health endpoint
     - name: Check application health
       ansible.builtin.uri:
-        url: "http://{{ ansible_host }}:8080/health"
+        url: "http://{{ ansible_host | default(inventory_hostname) }}:8080/health"
         status_code: 200
         timeout: 10
       register: health_check
@@ -204,7 +204,7 @@ For production systems, you need a more careful approach that validates services
     # Final verification
     - name: Verify server is serving traffic
       ansible.builtin.uri:
-        url: "http://{{ ansible_host }}:8080/"
+        url: "http://{{ ansible_host | default(inventory_hostname) }}:8080/"
         status_code: 200
       delegate_to: localhost
       register: final_check
@@ -314,9 +314,9 @@ When the reboot is triggered by a configuration change, using a handler is the c
   serial: 2
 
   tasks:
-    # Make a kernel parameter change that requires a reboot
+    # Tune a runtime kernel parameter
     - name: Set kernel parameter
-      ansible.builtin.sysctl:
+      ansible.posix.sysctl:
         name: vm.swappiness
         value: "10"
         state: present
@@ -329,13 +329,14 @@ When the reboot is triggered by a configuration change, using a handler is the c
         path: /etc/default/grub
         regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
         line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet transparent_hugepage=never"'
+      when: ansible_os_family == "RedHat"
       notify:
         - rebuild grub
         - reboot server
 
     # Install a new kernel
     - name: Update kernel
-      ansible.builtin.yum:
+      ansible.builtin.dnf:
         name: kernel
         state: latest
       register: kernel_update
@@ -346,6 +347,7 @@ When the reboot is triggered by a configuration change, using a handler is the c
     - name: rebuild grub
       ansible.builtin.command:
         cmd: grub2-mkconfig -o /boot/grub2/grub.cfg
+      when: ansible_os_family == "RedHat"
 
     - name: reboot server
       ansible.builtin.reboot:
