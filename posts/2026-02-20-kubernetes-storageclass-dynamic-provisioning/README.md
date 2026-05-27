@@ -8,7 +8,7 @@ Description: Learn how to use StorageClass for dynamic volume provisioning in Ku
 
 ---
 
-Manually creating Persistent Volumes for every workload does not scale. Kubernetes StorageClass enables dynamic provisioning, where PVs are created automatically when a PVC is submitted. This eliminates the need for administrators to pre-provision storage and lets developers self-serve.
+Manually creating Persistent Volumes for every workload does not scale. Kubernetes StorageClass enables dynamic provisioning, where PVs are created automatically for PVCs based on the configured binding mode. This eliminates the need for administrators to pre-provision storage and lets developers self-serve.
 
 ## What Is a StorageClass?
 
@@ -75,6 +75,12 @@ parameters:
   type: pd-ssd
   # Replicate across zones for high availability
   replication-type: regional-pd
+allowedTopologies:
+  - matchLabelExpressions:
+      - key: topology.gke.io/zone
+        values:
+          - us-central1-a
+          - us-central1-b
 ```
 
 ## StorageClass for Local NFS
@@ -105,7 +111,7 @@ The `volumeBindingMode` controls when volume binding and provisioning occurs.
 | Immediate | Volume is provisioned as soon as the PVC is created |
 | WaitForFirstConsumer | Volume provisioning is delayed until a pod using the PVC is scheduled |
 
-`WaitForFirstConsumer` is almost always the right choice. It ensures the volume is created in the same availability zone as the pod, avoiding cross-zone mounting failures.
+`WaitForFirstConsumer` is usually the right choice for topology-constrained storage. When the CSI driver supports topology, it lets Kubernetes provision the volume in a zone that satisfies the pod's scheduling constraints, avoiding cross-zone mounting failures.
 
 ```mermaid
 sequenceDiagram
@@ -135,7 +141,7 @@ Mark a StorageClass as default so PVCs without a `storageClassName` use it autom
 ```bash
 # Set gp3-ssd as the default StorageClass
 kubectl annotate storageclass gp3-ssd \
-  storageclass.kubernetes.io/is-default-class=true
+  storageclass.kubernetes.io/is-default-class=true --overwrite
 
 # Remove default from the old StorageClass
 kubectl annotate storageclass old-default \
@@ -145,7 +151,7 @@ kubectl annotate storageclass old-default \
 kubectl get storageclass
 ```
 
-Only one StorageClass should be marked as default. If multiple are marked default, PVCs without an explicit class will fail.
+Only one StorageClass should be marked as default. If multiple are marked default, Kubernetes uses the most recently created default StorageClass for PVCs without an explicit class.
 
 ## Using StorageClass in PVCs
 
