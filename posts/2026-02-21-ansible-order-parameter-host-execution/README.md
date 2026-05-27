@@ -8,13 +8,13 @@ Description: Learn how to control the order in which Ansible processes hosts usi
 
 ---
 
-By default, Ansible processes hosts in the order they appear in your inventory file. But sometimes you need a different order. Maybe you want to process hosts alphabetically for consistent output. Maybe you want a random order to avoid always hitting the same server first. Or maybe you want to reverse the order for a specific reason. The `order` parameter at the play level gives you this control.
+By default, Ansible processes hosts in the order returned by the compiled inventory for the host selection. In simple static inventories, this often matches the order in your inventory file, but that is not guaranteed for every inventory source or host pattern. Sometimes you need a different order. Maybe you want to process hosts alphabetically for consistent output. Maybe you want a random order to avoid always hitting the same server first. Or maybe you want to reverse the order for a specific reason. The `order` parameter at the play level gives you this control.
 
 ## Available Order Options
 
 The `order` parameter accepts five values:
 
-- **inventory** (default): Process hosts in the order they appear in the inventory
+- **inventory** (default): Process hosts in the order returned by the compiled inventory
 - **sorted**: Process hosts in alphabetical order by name
 - **reverse_sorted**: Process hosts in reverse alphabetical order
 - **reverse_inventory**: Process hosts in reverse inventory order
@@ -46,7 +46,7 @@ Set the `order` parameter at the play level.
 
 ## Inventory Order (Default)
 
-With the default `inventory` order, hosts run in the sequence they are listed.
+With the default `inventory` order, hosts run in the order returned by the inventory selection. For a simple static inventory like this, that typically matches the sequence listed in the file.
 
 ```ini
 # inventory.ini
@@ -69,7 +69,7 @@ web-beta
         msg: "{{ inventory_hostname }}"
 ```
 
-Output order: `web-gamma`, `web-alpha`, `web-beta` (exactly as listed in the inventory).
+Output order for this simple static inventory: `web-gamma`, `web-alpha`, `web-beta`.
 
 ## Sorted Order
 
@@ -188,7 +188,7 @@ For compliance reporting or auditing, having hosts processed in a predictable or
 
 ### Canary-First with Inventory Order
 
-Structure your inventory so canary hosts are listed first, then use inventory order to ensure they get updated before the rest.
+For a simple static inventory, structure your inventory so canary hosts are listed first, then use inventory order so they are selected before the rest.
 
 ```ini
 # inventory.ini - canary hosts listed first
