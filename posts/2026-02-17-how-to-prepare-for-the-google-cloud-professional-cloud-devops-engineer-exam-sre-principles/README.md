@@ -41,24 +41,30 @@ An SLA is a contract with consequences. If you violate the SLA, there are penalt
 ### Setting Up SLOs in Cloud Monitoring
 
 ```bash
-# Create an SLO for a Cloud Run service
+# Create an SLO for a Cloud Run service by using the Cloud Monitoring API
 
-# This monitors the availability of HTTP requests
-gcloud monitoring slos create \
-  --service=my-cloud-run-service \
-  --display-name="Availability SLO" \
-  --goal=0.999 \
-  --rolling-period-days=28 \
-  --request-based-sli \
-  --good-total-ratio-filter='
-    metric.type="run.googleapis.com/request_count"
-    resource.type="cloud_run_revision"
-    metric.labels.response_code_class!="5xx"
-  ' \
-  --total-ratio-filter='
-    metric.type="run.googleapis.com/request_count"
-    resource.type="cloud_run_revision"
-  '
+PROJECT_ID=my-project
+SERVICE_ID=my-cloud-run-service
+ACCESS_TOKEN=$(gcloud auth print-access-token)
+
+curl --http1.1 \
+  --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+  --header "Content-Type: application/json" \
+  --request POST \
+  --data '{
+    "displayName": "Availability SLO",
+    "goal": 0.999,
+    "rollingPeriod": "2419200s",
+    "serviceLevelIndicator": {
+      "requestBased": {
+        "goodTotalRatio": {
+          "goodServiceFilter": "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\" AND metric.labels.response_code_class!=\"5xx\"",
+          "totalServiceFilter": "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\""
+        }
+      }
+    }
+  }' \
+  "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/services/${SERVICE_ID}/serviceLevelObjectives"
 ```
 
 ## Error Budgets
@@ -82,16 +88,32 @@ When the error budget is consumed:
 ### Creating Error Budget Alerts
 
 ```bash
-# Alert when error budget consumption reaches 50%
-gcloud monitoring policies create \
-  --display-name="Error Budget 50% Consumed" \
-  --condition-display-name="Error budget burn rate high" \
-  --condition-filter='
-    select_slo_burn_rate("projects/my-project/services/my-service/serviceLevelObjectives/my-slo")
-  ' \
-  --condition-threshold-value=2 \
-  --condition-comparison=COMPARISON_GT \
-  --notification-channels=CHANNEL_ID
+# Alert when the error budget burn rate is more than 2x over a 1-hour lookback
+PROJECT_ID=my-project
+SERVICE_ID=my-service
+SLO_ID=my-slo
+NOTIFICATION_CHANNEL="projects/my-project/notificationChannels/CHANNEL_ID"
+ACCESS_TOKEN=$(gcloud auth print-access-token)
+
+curl --http1.1 \
+  --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+  --header "Content-Type: application/json" \
+  --request POST \
+  --data "{
+    \"displayName\": \"Error Budget Burn Rate High\",
+    \"combiner\": \"AND\",
+    \"conditions\": [{
+      \"displayName\": \"Error budget burn rate high\",
+      \"conditionThreshold\": {
+        \"filter\": \"select_slo_burn_rate(\\\"projects/${PROJECT_ID}/services/${SERVICE_ID}/serviceLevelObjectives/${SLO_ID}\\\", \\\"60m\\\")\",
+        \"comparison\": \"COMPARISON_GT\",
+        \"thresholdValue\": 2,
+        \"duration\": \"0s\"
+      }
+    }],
+    \"notificationChannels\": [\"${NOTIFICATION_CHANNEL}\"]
+  }" \
+  "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/alertPolicies"
 ```
 
 ## Toil
@@ -110,11 +132,12 @@ Examples of toil:
 # auto_remediation.py - Cloud Function that auto-remediates known issues
 # Triggered by Cloud Monitoring alert via Pub/Sub
 from google.cloud import compute_v1
+import base64
 import json
 
 def auto_remediate(event, context):
     """Automatically handle known alert conditions."""
-    alert_data = json.loads(event['data'])
+    alert_data = json.loads(base64.b64decode(event['data']).decode('utf-8'))
     incident = alert_data.get('incident', {})
     policy_name = incident.get('policy_name', '')
 
@@ -159,6 +182,12 @@ conditions:
       aggregations:
         - alignmentPeriod: 300s
           perSeriesAligner: ALIGN_RATE
+      denominatorFilter: >
+        resource.type="cloud_run_revision" AND
+        metric.type="run.googleapis.com/request_count"
+      denominatorAggregations:
+        - alignmentPeriod: 300s
+          perSeriesAligner: ALIGN_RATE
       comparison: COMPARISON_GT
       thresholdValue: 0.01
       duration: 300s
@@ -197,19 +226,19 @@ Know these by heart - the exam references them:
 ### Setting Up Monitoring on GCP
 
 ```bash
-# Create a dashboard with the four golden signals
+# Create a dashboard with latency and traffic
 gcloud monitoring dashboards create --config-from-file=- << 'EOF'
 {
   "displayName": "Golden Signals Dashboard",
   "gridLayout": {
     "widgets": [
       {
-        "title": "Latency (p50, p95, p99)",
+        "title": "Latency (p99)",
         "xyChart": {
           "dataSets": [{
             "timeSeriesQuery": {
               "timeSeriesFilter": {
-                "filter": "metric.type=\"run.googleapis.com/request_latencies\" resource.type=\"cloud_run_revision\"",
+                "filter": "metric.type=\"run.googleapis.com/request_latencies\" AND resource.type=\"cloud_run_revision\"",
                 "aggregation": {
                   "alignmentPeriod": "60s",
                   "perSeriesAligner": "ALIGN_PERCENTILE_99"
@@ -225,7 +254,7 @@ gcloud monitoring dashboards create --config-from-file=- << 'EOF'
           "dataSets": [{
             "timeSeriesQuery": {
               "timeSeriesFilter": {
-                "filter": "metric.type=\"run.googleapis.com/request_count\" resource.type=\"cloud_run_revision\"",
+                "filter": "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\"",
                 "aggregation": {
                   "alignmentPeriod": "60s",
                   "perSeriesAligner": "ALIGN_RATE"
@@ -279,20 +308,19 @@ def process_order(order_id):
 # Use structured logging for better filtering and analysis
 import google.cloud.logging
 import logging
-import json
 
 # Set up Cloud Logging client
 client = google.cloud.logging.Client()
 client.setup_logging()
 
 # Log structured data
-logging.info(json.dumps({
+logging.info('Order processed successfully', extra={'json_fields': {
     'message': 'Order processed successfully',
     'order_id': 'ord-12345',
     'processing_time_ms': 234,
     'items_count': 3,
     'severity': 'INFO',
-}))
+}})
 ```
 
 ## Capacity Planning
