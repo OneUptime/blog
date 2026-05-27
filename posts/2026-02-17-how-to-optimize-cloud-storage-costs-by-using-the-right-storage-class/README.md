@@ -19,28 +19,28 @@ Google Cloud Storage offers four storage classes, each optimized for different a
 ### Standard Storage
 - **Best for**: Frequently accessed data, hot data
 - **Minimum storage duration**: None
-- **Storage cost**: ~$0.020 per GB/month (us-central1)
+- **Storage cost**: ~$0.022 per GB/month (us-central1)
 - **Retrieval cost**: Free
 - **Use cases**: Active application data, websites, streaming media, data being actively processed
 
 ### Nearline Storage
 - **Best for**: Data accessed less than once a month
 - **Minimum storage duration**: 30 days
-- **Storage cost**: ~$0.010 per GB/month
+- **Storage cost**: ~$0.011 per GB/month
 - **Retrieval cost**: $0.01 per GB
 - **Use cases**: Monthly backups, infrequently accessed data, disaster recovery data
 
 ### Coldline Storage
 - **Best for**: Data accessed less than once a quarter
 - **Minimum storage duration**: 90 days
-- **Storage cost**: ~$0.004 per GB/month
+- **Storage cost**: ~$0.0044 per GB/month
 - **Retrieval cost**: $0.02 per GB
 - **Use cases**: Quarterly reports, regulatory archives, older backups
 
 ### Archive Storage
 - **Best for**: Data accessed less than once a year
 - **Minimum storage duration**: 365 days
-- **Storage cost**: ~$0.0012 per GB/month
+- **Storage cost**: ~$0.0014 per GB/month
 - **Retrieval cost**: $0.05 per GB
 - **Use cases**: Long-term archives, compliance data, legal holds
 
@@ -50,16 +50,16 @@ Let us look at what 10 TB of data costs per month in each class:
 
 | Storage Class | Monthly Cost | Annual Cost |
 |--------------|-------------|-------------|
-| Standard | $200 | $2,400 |
-| Nearline | $100 | $1,200 |
-| Coldline | $40 | $480 |
-| Archive | $12 | $144 |
+| Standard | $220 | $2,640 |
+| Nearline | $110 | $1,320 |
+| Coldline | $44 | $528 |
+| Archive | $14 | $168 |
 
-That is a 16x difference between Standard and Archive. If you have 10 TB of logs or backups sitting in Standard storage that nobody accesses, you are overpaying by nearly $2,256 per year.
+That is roughly a 16x difference between Standard and Archive. If you have 10 TB of logs or backups sitting in Standard storage that nobody accesses, you are overpaying by nearly $2,472 per year.
 
 ## How to Choose the Right Storage Class
 
-The decision comes down to two factors: how often you access the data and how quickly you need it.
+The decision comes down to access frequency, expected storage duration, and whether retrieval and operation charges are acceptable.
 
 Here is a decision flow:
 
@@ -175,7 +175,7 @@ Before optimizing, you need to understand what you have. Use the Storage Insight
 SELECT
   sku.description,
   SUM(cost) AS total_cost,
-  SUM(usage.amount_in_pricing_units) AS total_usage_gb
+  SUM(usage.amount_in_pricing_units) AS total_usage_in_pricing_units
 FROM
   `my-project.billing_export.gcp_billing_export_v1_*`
 WHERE
@@ -190,7 +190,7 @@ ORDER BY
 You can also check bucket sizes and storage classes:
 
 ```bash
-# List bucket sizes with storage class breakdown
+# List object sizes in a bucket
 gcloud storage ls --long --readable-sizes gs://my-bucket/
 
 # Get detailed bucket metadata including storage class
@@ -206,16 +206,16 @@ Storage class is not the only cost lever. Location type also affects pricing:
 - **Dual-region**: Data replicated across two specific regions. Better availability.
 - **Multi-region**: Data replicated across multiple regions in a continent. Highest availability.
 
-Multi-region storage costs about 20% more than regional. If your data does not need geo-redundancy, stick with regional to save money.
+For Standard storage in US locations, multi-region storage costs about 18% more than regional storage; for colder classes, the gap can be much larger. If your data does not need geo-redundancy, stick with regional to save money.
 
 ```bash
 # Create a regional bucket (cheaper)
 gcloud storage buckets create gs://my-regional-bucket \
   --location=us-central1
 
-# Create a dual-region bucket (for specific geo-redundancy)
+# Create a predefined dual-region bucket (us-central1 + us-east1)
 gcloud storage buckets create gs://my-dual-region-bucket \
-  --location=us-central1+us-east1
+  --location=nam4
 
 # Create a multi-region bucket (most expensive, highest availability)
 gcloud storage buckets create gs://my-multi-region-bucket \
@@ -233,7 +233,7 @@ gcloud storage buckets create gs://my-autoclass-bucket \
   --enable-autoclass
 ```
 
-Autoclass starts objects in Standard and moves them to Nearline, Coldline, or Archive as access frequency decreases. When an object is accessed again, it moves back to Standard. There is no retrieval fee when Autoclass transitions an object back to a hotter tier.
+Autoclass starts objects in Standard and moves eligible objects to Nearline by default as access frequency decreases. If you configure Archive as the terminal storage class, objects can continue through Coldline to Archive. When an object's data is accessed again, it moves back to Standard. Retrieval fees do not apply for objects in Autoclass buckets, although transitions from Coldline or Archive back to warmer classes can incur Class A operation charges.
 
 The trade-off is that Autoclass charges a small management fee and may not be as cost-effective as well-tuned manual lifecycle rules. But for teams that do not want to manage this, it is a solid option.
 
