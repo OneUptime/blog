@@ -25,11 +25,11 @@ Cloud Functions automatically reports several metrics to Cloud Monitoring. Here 
 
 For Gen 2 functions (running on Cloud Run), you also get:
 
-- **run.googleapis.com/container/request_latencies** - Request latency distribution
-- **run.googleapis.com/container/request_count** - Request count with status codes
+- **run.googleapis.com/request_latencies** - Request latency distribution
+- **run.googleapis.com/request_count** - Request count with status codes
 - **run.googleapis.com/container/instance_count** - Active instance count
-- **run.googleapis.com/container/memory/utilization** - Memory utilization ratio
-- **run.googleapis.com/container/cpu/utilization** - CPU utilization ratio
+- **run.googleapis.com/container/memory/utilizations** - Memory utilization distribution
+- **run.googleapis.com/container/cpu/utilizations** - CPU utilization distribution
 
 ## Setting Up Alerting Policies
 
@@ -47,18 +47,24 @@ documentation:
   mimeType: "text/markdown"
 conditions:
   - displayName: "Error rate > 5%"
-    conditionMonitoringQueryLanguage:
-      query: |
-        fetch cloud_function
-        | metric 'cloudfunctions.googleapis.com/function/execution_count'
-        | align rate(5m)
-        | every 1m
-        | group_by [resource.function_name],
-            [total: aggregate(val()),
-             errors: aggregate(val(), filter(metric.status != 'ok'))]
-        | map [error_rate: if(total > 0, errors / total * 100, 0)]
-        | condition error_rate > 5
+    conditionThreshold:
+      filter: 'resource.type = "cloud_function" AND metric.type = "cloudfunctions.googleapis.com/function/execution_count" AND metric.labels.status != "ok"'
+      denominatorFilter: 'resource.type = "cloud_function" AND metric.type = "cloudfunctions.googleapis.com/function/execution_count"'
+      comparison: COMPARISON_GT
+      thresholdValue: 0.05
       duration: 300s
+      aggregations:
+        - alignmentPeriod: 300s
+          perSeriesAligner: ALIGN_RATE
+          crossSeriesReducer: REDUCE_SUM
+          groupByFields:
+            - resource.label.function_name
+      denominatorAggregations:
+        - alignmentPeriod: 300s
+          perSeriesAligner: ALIGN_RATE
+          crossSeriesReducer: REDUCE_SUM
+          groupByFields:
+            - resource.label.function_name
       trigger:
         count: 1
 combiner: OR
@@ -69,7 +75,7 @@ notificationChannels:
 YAMLEOF
 
 # Create the alert policy
-gcloud monitoring policies create --from-file=error-rate-alert.yaml
+gcloud monitoring policies create --policy-from-file=error-rate-alert.yaml
 ```
 
 ### Alert on Slow Execution Times
@@ -77,16 +83,33 @@ gcloud monitoring policies create --from-file=error-rate-alert.yaml
 Create an alert when p95 execution time exceeds your SLA:
 
 ```bash
-# Alert on slow p95 execution times using gcloud
-gcloud monitoring policies create \
-  --display-name="Cloud Function Slow Execution" \
-  --condition-display-name="p95 latency > 3 seconds" \
-  --condition-filter='resource.type = "cloud_function" AND metric.type = "cloudfunctions.googleapis.com/function/execution_times"' \
-  --condition-threshold-value=3000 \
-  --condition-threshold-duration=300s \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
-  --combiner=OR
+# Alert on slow p95 execution times. Cloud Functions execution_times is reported in nanoseconds.
+cat > slow-execution-alert.yaml << 'YAMLEOF'
+displayName: "Cloud Function Slow Execution"
+documentation:
+  content: "The p95 execution time has exceeded 3 seconds over the last 5 minutes."
+  mimeType: "text/markdown"
+conditions:
+  - displayName: "p95 latency > 3 seconds"
+    conditionThreshold:
+      filter: 'resource.type = "cloud_function" AND metric.type = "cloudfunctions.googleapis.com/function/execution_times"'
+      comparison: COMPARISON_GT
+      thresholdValue: 3000000000
+      duration: 300s
+      aggregations:
+        - alignmentPeriod: 300s
+          perSeriesAligner: ALIGN_PERCENTILE_95
+          crossSeriesReducer: REDUCE_MAX
+          groupByFields:
+            - resource.label.function_name
+      trigger:
+        count: 1
+combiner: OR
+notificationChannels:
+  - projects/my-project/notificationChannels/CHANNEL_ID
+YAMLEOF
+
+gcloud monitoring policies create --policy-from-file=slow-execution-alert.yaml
 ```
 
 ### Alert on High Memory Usage
@@ -102,7 +125,7 @@ documentation:
 conditions:
   - displayName: "Memory utilization > 80%"
     conditionThreshold:
-      filter: 'resource.type = "cloud_run_revision" AND metric.type = "run.googleapis.com/container/memory/utilization"'
+      filter: 'resource.type = "cloud_run_revision" AND metric.type = "run.googleapis.com/container/memory/utilizations"'
       comparison: COMPARISON_GT
       thresholdValue: 0.8
       duration: 300s
@@ -119,7 +142,7 @@ notificationChannels:
   - projects/my-project/notificationChannels/CHANNEL_ID
 YAMLEOF
 
-gcloud monitoring policies create --from-file=memory-alert.yaml
+gcloud monitoring policies create --policy-from-file=memory-alert.yaml
 ```
 
 ## Setting Up Notification Channels
@@ -128,25 +151,25 @@ Before creating alerts, set up where notifications should go:
 
 ```bash
 # Create an email notification channel
-gcloud monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="Team Email" \
   --type=email \
   --channel-labels="email_address=team@example.com"
 
 # Create a Slack notification channel
-gcloud monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="Alerts Slack Channel" \
   --type=slack \
   --channel-labels="channel_name=#alerts,auth_token=xoxb-your-token"
 
 # Create a PagerDuty notification channel
-gcloud monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="PagerDuty" \
   --type=pagerduty \
   --channel-labels="service_key=YOUR_PAGERDUTY_SERVICE_KEY"
 
 # List all notification channels to get their IDs
-gcloud monitoring channels list
+gcloud beta monitoring channels list
 ```
 
 ## Custom Metrics
@@ -161,7 +184,7 @@ const functions = require('@google-cloud/functions-framework');
 const monitoring = require('@google-cloud/monitoring');
 
 const metricsClient = new monitoring.MetricServiceClient();
-const projectId = process.env.GCP_PROJECT;
+const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT;
 
 // Report a custom metric to Cloud Monitoring
 async function reportMetric(metricType, value, labels = {}) {
@@ -238,13 +261,19 @@ Before reporting custom metrics, create the metric descriptor:
 
 ```bash
 # Create a custom metric descriptor using the API
-gcloud monitoring metrics-descriptors create \
-  custom.googleapis.com/orders/processing_time_ms \
-  --type=custom.googleapis.com/orders/processing_time_ms \
-  --metric-kind=gauge \
-  --value-type=double \
-  --description="Order processing time in milliseconds" \
-  --display-name="Order Processing Time"
+PROJECT_ID="my-project"
+
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/metricDescriptors" \
+  -d '{
+    "type": "custom.googleapis.com/orders/processing_time_ms",
+    "metricKind": "GAUGE",
+    "valueType": "DOUBLE",
+    "description": "Order processing time in milliseconds",
+    "displayName": "Order Processing Time"
+  }'
 ```
 
 ## Building a Monitoring Dashboard
@@ -278,7 +307,7 @@ cat > dashboard.json << 'JSONEOF'
         }
       },
       {
-        "title": "Execution Time (p50, p95, p99)",
+        "title": "Execution Time (p95)",
         "xyChart": {
           "dataSets": [{
             "timeSeriesQuery": {
@@ -294,7 +323,7 @@ cat > dashboard.json << 'JSONEOF'
         }
       },
       {
-        "title": "Error Rate by Function",
+        "title": "Error Count by Function",
         "xyChart": {
           "dataSets": [{
             "timeSeriesQuery": {
@@ -346,23 +375,33 @@ Create metrics from log patterns for more specific alerting:
 # Create a metric that counts specific error types from logs
 gcloud logging metrics create payment-processing-errors \
   --description="Count of payment processing failures" \
-  --filter='resource.type="cloud_function"
+  --log-filter='resource.type="cloud_function"
     AND resource.labels.function_name="process-payment"
     AND severity>=ERROR
-    AND jsonPayload.errorType="PaymentError"' \
-  --metric-kind=delta \
-  --value-type=int64
+    AND jsonPayload.errorType="PaymentError"'
 
 # Create an alert on this log-based metric
-gcloud monitoring policies create \
-  --display-name="Payment Processing Errors" \
-  --condition-display-name="Payment errors > 5 in 10 minutes" \
-  --condition-filter='metric.type = "logging.googleapis.com/user/payment-processing-errors"' \
-  --condition-threshold-value=5 \
-  --condition-threshold-duration=600s \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
-  --combiner=OR
+cat > payment-processing-alert.yaml << 'YAMLEOF'
+displayName: "Payment Processing Errors"
+conditions:
+  - displayName: "Payment errors > 5 in 10 minutes"
+    conditionThreshold:
+      filter: 'resource.type = "cloud_function" AND metric.type = "logging.googleapis.com/user/payment-processing-errors"'
+      comparison: COMPARISON_GT
+      thresholdValue: 5
+      duration: 600s
+      aggregations:
+        - alignmentPeriod: 600s
+          perSeriesAligner: ALIGN_DELTA
+          crossSeriesReducer: REDUCE_SUM
+      trigger:
+        count: 1
+combiner: OR
+notificationChannels:
+  - projects/my-project/notificationChannels/CHANNEL_ID
+YAMLEOF
+
+gcloud monitoring policies create --policy-from-file=payment-processing-alert.yaml
 ```
 
 ## Uptime Checks for HTTP Functions
@@ -371,16 +410,15 @@ For HTTP-triggered functions, create uptime checks to monitor availability:
 
 ```bash
 # Create an uptime check for an HTTP Cloud Function
-gcloud monitoring uptime create my-api-health \
-  --display-name="API Function Health Check" \
+gcloud monitoring uptime create "API Function Health Check" \
   --resource-type=uptime-url \
-  --monitored-resource-labels="host=my-api-abc123-uc.a.run.app" \
-  --http-request-method=GET \
-  --http-request-path="/health" \
-  --period=60 \
+  --resource-labels="host=my-api-abc123-uc.a.run.app,project_id=my-project" \
+  --request-method=GET \
+  --path="/health" \
+  --period=60s \
   --timeout=10s \
-  --content-matchers-content="ok" \
-  --content-matchers-matcher=CONTAINS_STRING
+  --matcher-content="ok" \
+  --matcher-type=CONTAINS_STRING
 ```
 
 Make sure your function has a health check endpoint:
@@ -421,14 +459,24 @@ resource "google_monitoring_alert_policy" "function_error_rate" {
     display_name = "Error rate exceeds threshold"
 
     condition_threshold {
-      filter          = "resource.type = \"cloud_function\" AND metric.type = \"cloudfunctions.googleapis.com/function/execution_count\" AND metric.labels.status != \"ok\""
-      duration        = "300s"
-      comparison      = "COMPARISON_GT"
-      threshold_value = 0.05
+      filter             = "resource.type = \"cloud_function\" AND metric.type = \"cloudfunctions.googleapis.com/function/execution_count\" AND metric.labels.status != \"ok\""
+      denominator_filter = "resource.type = \"cloud_function\" AND metric.type = \"cloudfunctions.googleapis.com/function/execution_count\""
+      duration           = "300s"
+      comparison         = "COMPARISON_GT"
+      threshold_value    = 0.05
 
       aggregations {
-        alignment_period   = "300s"
-        per_series_aligner = "ALIGN_RATE"
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.function_name"]
+      }
+
+      denominator_aggregations {
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.function_name"]
       }
 
       trigger {
