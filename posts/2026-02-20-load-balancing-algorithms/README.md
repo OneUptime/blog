@@ -108,7 +108,7 @@ class WeightedRoundRobinBalancer:
         return server
 
 
-# Usage: Server 1 has 2x capacity of servers 2 and 3
+# Usage: Server 1 has 2x capacity of server 2 and 4x capacity of server 3
 balancer = WeightedRoundRobinBalancer([
     ("10.0.0.1", 4),  # Large server - gets 4 out of 7 requests
     ("10.0.0.2", 2),  # Medium server - gets 2 out of 7 requests
@@ -175,7 +175,7 @@ balancer.release_server(server)
 
 ## IP Hash
 
-Uses a hash of the client's IP address to determine which server handles the request. The same client always reaches the same server.
+Uses a hash of the client's IP address to determine which server handles the request. The same client reaches the same server as long as the server pool is unchanged and the selected server is available.
 
 ```python
 # ip_hash.py
@@ -203,7 +203,7 @@ print(balancer.get_server("192.168.1.101"))  # Might be different
 ```
 
 **Pros:** Simple session affinity without cookies.
-**Cons:** Uneven distribution if IP ranges cluster, breaks with NAT.
+**Cons:** Uneven distribution if IP ranges cluster, can skew traffic behind NAT or proxies.
 **Best for:** Legacy applications that need session stickiness without application changes.
 
 ## Consistent Hashing
@@ -304,23 +304,23 @@ quadrantChart
 | Round-Robin | None | Good over time | No impact | Stateless APIs |
 | Weighted RR | None | Proportional | Manual weight adjustment | Mixed server sizes |
 | Least Connections | Per-connection | Excellent | Automatic | Variable workloads |
-| IP Hash | None | Depends on IPs | Reshuffles all | Session affinity |
+| IP Hash | None | Depends on IPs | Many remapped | Session affinity |
 | Consistent Hash | None | Good with vnodes | Minimal remapping | Caches, databases |
 
 ## Health Checks
 
-No load balancing algorithm works well without health checks to remove failed servers.
+No load balancing algorithm works well without health checks or passive failure detection to remove failed servers.
 
 ```nginx
 # nginx.conf
-# Load balancing with health checks
+# Load balancing with passive failure detection
 upstream backend {
     # Least connections algorithm
     least_conn;
 
-    # Backend servers with health check parameters
-    # max_fails: number of failures before marking unhealthy
-    # fail_timeout: how long to wait before retrying a failed server
+    # Backend servers with passive failure parameters
+    # max_fails: number of unsuccessful attempts within fail_timeout before marking unavailable
+    # fail_timeout: failure-counting window and time before retrying an unavailable server
     server 10.0.0.1:8080 max_fails=3 fail_timeout=30s;
     server 10.0.0.2:8080 max_fails=3 fail_timeout=30s;
     server 10.0.0.3:8080 max_fails=3 fail_timeout=30s;
@@ -340,25 +340,20 @@ server {
 }
 ```
 
-## Health Check Flow
+## Passive Failure Flow
 
 ```mermaid
 flowchart TD
-    A[Load Balancer] --> B[Health Check Loop]
-    B --> C[Probe Server 1: GET /health]
-    B --> D[Probe Server 2: GET /health]
-    B --> E[Probe Server 3: GET /health]
-    C --> F{200 OK?}
-    D --> G{200 OK?}
-    E --> H{200 OK?}
-    F -->|Yes| I[Keep in pool]
-    F -->|No| J[Remove from pool]
-    G -->|Yes| I
-    G -->|No| J
-    H -->|Yes| I
-    H -->|No| J
-    J --> K[Retry after fail_timeout]
-    K --> B
+    A[Client Request] --> B[Load Balancer]
+    B --> C[Forward to selected backend]
+    C --> D{Request succeeds?}
+    D -->|Yes| E[Keep server in pool]
+    D -->|No| F[Count unsuccessful attempt]
+    F --> G{max_fails reached within fail_timeout?}
+    G -->|No| E
+    G -->|Yes| H[Temporarily skip server]
+    H --> I[Retry after fail_timeout]
+    I --> E
 ```
 
 ## Conclusion
