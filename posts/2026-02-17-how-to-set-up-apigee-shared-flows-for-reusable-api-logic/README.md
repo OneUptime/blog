@@ -36,7 +36,6 @@ security-shared-flow/
     policies/
       VerifyAPIKey.xml
       SpikeArrest.xml
-      AssignSecurityHeaders.xml
     sharedflows/
       default.xml
     security-shared-flow.xml
@@ -47,8 +46,8 @@ security-shared-flow/
 The main descriptor file:
 
 ```xml
-<!-- security-shared-flow/sharedflowbundle/security-shared-flow.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- security-shared-flow/sharedflowbundle/security-shared-flow.xml -->
 <SharedFlowBundle revision="1" name="security-shared-flow">
     <Description>Common security policies for all API proxies</Description>
     <DisplayName>Security Shared Flow</DisplayName>
@@ -58,7 +57,6 @@ The main descriptor file:
     <Policies>
         <Policy>VerifyAPIKey</Policy>
         <Policy>SpikeArrest</Policy>
-        <Policy>AssignSecurityHeaders</Policy>
     </Policies>
 </SharedFlowBundle>
 ```
@@ -68,8 +66,8 @@ The main descriptor file:
 Define the order in which policies execute:
 
 ```xml
-<!-- security-shared-flow/sharedflowbundle/sharedflows/default.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- security-shared-flow/sharedflowbundle/sharedflows/default.xml -->
 <SharedFlow name="default">
     <!-- Step 1: Rate limiting (no auth needed) -->
     <Step>
@@ -79,12 +77,6 @@ Define the order in which policies execute:
     <!-- Step 2: API key verification -->
     <Step>
         <Name>VerifyAPIKey</Name>
-    </Step>
-
-    <!-- Step 3: Add security response headers -->
-    <Step>
-        <Name>AssignSecurityHeaders</Name>
-        <Condition>request.verb != "OPTIONS"</Condition>
     </Step>
 </SharedFlow>
 ```
@@ -96,8 +88,8 @@ Define each policy just as you would in a regular proxy.
 SpikeArrest policy:
 
 ```xml
-<!-- security-shared-flow/sharedflowbundle/policies/SpikeArrest.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- security-shared-flow/sharedflowbundle/policies/SpikeArrest.xml -->
 <SpikeArrest name="SpikeArrest">
     <DisplayName>Global Spike Arrest</DisplayName>
     <Rate>100ps</Rate>
@@ -107,33 +99,12 @@ SpikeArrest policy:
 API key verification:
 
 ```xml
-<!-- security-shared-flow/sharedflowbundle/policies/VerifyAPIKey.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- security-shared-flow/sharedflowbundle/policies/VerifyAPIKey.xml -->
 <VerifyAPIKey name="VerifyAPIKey">
     <DisplayName>Verify API Key</DisplayName>
     <APIKey ref="request.header.x-api-key"/>
 </VerifyAPIKey>
-```
-
-Security headers:
-
-```xml
-<!-- security-shared-flow/sharedflowbundle/policies/AssignSecurityHeaders.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<AssignMessage name="AssignSecurityHeaders">
-    <DisplayName>Assign Security Headers</DisplayName>
-    <AssignTo createNew="false" transport="http" type="response"/>
-    <Set>
-        <Headers>
-            <Header name="Strict-Transport-Security">max-age=31536000; includeSubDomains</Header>
-            <Header name="X-Content-Type-Options">nosniff</Header>
-            <Header name="X-Frame-Options">DENY</Header>
-            <Header name="X-XSS-Protection">1; mode=block</Header>
-            <Header name="Content-Security-Policy">default-src 'self'</Header>
-        </Headers>
-    </Set>
-    <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
-</AssignMessage>
 ```
 
 ## Deploying the Shared Flow
@@ -151,8 +122,7 @@ cd ..
 curl -X POST \
   "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/sharedflows?name=security-shared-flow&action=import" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/octet-stream" \
-  --data-binary @security-shared-flow.zip
+  -F "file=@security-shared-flow.zip"
 
 # Deploy to the environment
 curl -X POST \
@@ -167,8 +137,8 @@ Use the FlowCallout policy to invoke a shared flow from within your API proxy.
 Create a FlowCallout policy:
 
 ```xml
-<!-- your-api/apiproxy/policies/CallSecurityFlow.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- your-api/apiproxy/policies/CallSecurityFlow.xml -->
 <FlowCallout name="CallSecurityFlow">
     <DisplayName>Call Security Shared Flow</DisplayName>
     <SharedFlowBundle>security-shared-flow</SharedFlowBundle>
@@ -200,8 +170,8 @@ Now every request to this proxy goes through the shared security flow first.
 Another common shared flow handles request and response logging.
 
 ```xml
-<!-- logging-shared-flow/sharedflowbundle/sharedflows/default.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- logging-shared-flow/sharedflowbundle/sharedflows/default.xml -->
 <SharedFlow name="default">
     <Step>
         <Name>ExtractLogData</Name>
@@ -215,8 +185,8 @@ Another common shared flow handles request and response logging.
 Extract relevant data for logging:
 
 ```xml
-<!-- logging-shared-flow/sharedflowbundle/policies/ExtractLogData.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- logging-shared-flow/sharedflowbundle/policies/ExtractLogData.xml -->
 <AssignMessage name="ExtractLogData">
     <DisplayName>Extract Log Data</DisplayName>
     <AssignVariable>
@@ -228,7 +198,7 @@ Extract relevant data for logging:
     "path": "{proxy.pathsuffix}",
     "clientIp": "{client.ip}",
     "statusCode": "{response.status.code}",
-    "latencyMs": "{target.received.end.timestamp - target.sent.start.timestamp}",
+    "targetResponseStartedAt": "{target.received.start.timestamp}",
     "clientId": "{client_id}",
     "userAgent": "{request.header.user-agent}"
 }</Template>
@@ -239,8 +209,8 @@ Extract relevant data for logging:
 Send logs to Cloud Logging via a ServiceCallout or use the MessageLogging policy:
 
 ```xml
-<!-- logging-shared-flow/sharedflowbundle/policies/LogToCloudLogging.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- logging-shared-flow/sharedflowbundle/policies/LogToCloudLogging.xml -->
 <MessageLogging name="LogToCloudLogging">
     <DisplayName>Log to Cloud Logging</DisplayName>
     <CloudLogging>
@@ -265,56 +235,27 @@ Send logs to Cloud Logging via a ServiceCallout or use the MessageLogging policy
 CORS handling is another perfect candidate for a shared flow:
 
 ```xml
-<!-- cors-shared-flow/sharedflowbundle/sharedflows/default.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- cors-shared-flow/sharedflowbundle/sharedflows/default.xml -->
 <SharedFlow name="default">
-    <!-- Handle OPTIONS preflight requests -->
     <Step>
-        <Name>CORSPreflightResponse</Name>
-        <Condition>request.verb = "OPTIONS"</Condition>
-    </Step>
-
-    <!-- Add CORS headers to all non-OPTIONS responses -->
-    <Step>
-        <Name>AddCORSHeaders</Name>
-        <Condition>request.verb != "OPTIONS"</Condition>
+        <Name>AddCORS</Name>
     </Step>
 </SharedFlow>
 ```
 
 ```xml
-<!-- cors-shared-flow/sharedflowbundle/policies/CORSPreflightResponse.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<AssignMessage name="CORSPreflightResponse">
-    <DisplayName>CORS Preflight Response</DisplayName>
-    <AssignTo createNew="false" transport="http" type="response"/>
-    <Set>
-        <StatusCode>200</StatusCode>
-        <Headers>
-            <Header name="Access-Control-Allow-Origin">{request.header.origin}</Header>
-            <Header name="Access-Control-Allow-Methods">GET, POST, PUT, DELETE, OPTIONS</Header>
-            <Header name="Access-Control-Allow-Headers">Content-Type, Authorization, x-api-key</Header>
-            <Header name="Access-Control-Max-Age">86400</Header>
-        </Headers>
-    </Set>
+<!-- cors-shared-flow/sharedflowbundle/policies/AddCORS.xml -->
+<CORS continueOnError="false" enabled="true" name="AddCORS">
+    <DisplayName>Add CORS</DisplayName>
+    <AllowOrigins>{request.header.origin}</AllowOrigins>
+    <AllowMethods>GET, POST, PUT, DELETE, OPTIONS</AllowMethods>
+    <AllowHeaders>Content-Type, Authorization, x-api-key</AllowHeaders>
+    <MaxAge>86400</MaxAge>
+    <GeneratePreflightResponse>true</GeneratePreflightResponse>
     <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
-</AssignMessage>
-```
-
-```xml
-<!-- cors-shared-flow/sharedflowbundle/policies/AddCORSHeaders.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<AssignMessage name="AddCORSHeaders">
-    <DisplayName>Add CORS Headers</DisplayName>
-    <AssignTo createNew="false" transport="http" type="response"/>
-    <Set>
-        <Headers>
-            <Header name="Access-Control-Allow-Origin">{request.header.origin}</Header>
-            <Header name="Access-Control-Allow-Methods">GET, POST, PUT, DELETE</Header>
-        </Headers>
-    </Set>
-    <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
-</AssignMessage>
+</CORS>
 ```
 
 ## Using Multiple Shared Flows in One Proxy
