@@ -160,9 +160,7 @@ Storage driver settings have a major impact on performance:
   vars:
     storage_config:
       storage-driver: overlay2
-      storage-opts:
-        - "overlay2.override_kernel_check=true"
-      data-root: "/mnt/docker-data"  # Move Docker data to a dedicated disk
+      data-root: "/mnt/docker-data"  # Move Docker daemon data to a dedicated disk
 
   tasks:
     - name: Create Docker data directory
@@ -275,6 +273,12 @@ Apply security-related daemon settings:
         src: files/seccomp-default.json
         dest: /etc/docker/seccomp-default.json
         mode: '0644'
+
+    - name: Read current daemon.json
+      ansible.builtin.slurp:
+        src: /etc/docker/daemon.json
+      register: current_config
+      ignore_errors: true
 
     - name: Merge security settings into daemon.json
       ansible.builtin.copy:
