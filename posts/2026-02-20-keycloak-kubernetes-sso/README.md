@@ -31,7 +31,7 @@ graph TD
 
 ## Prerequisites
 
-Before you start, make sure you have a running Kubernetes cluster (version 1.25 or later), kubectl configured, Helm 3 installed, and a PostgreSQL database available (or you can deploy one alongside Keycloak).
+Before you start, make sure you have a running Kubernetes cluster (version 1.25 or later), kubectl configured, and a PostgreSQL database available (or you can deploy one alongside Keycloak).
 
 ## Step 1: Create a Namespace and Secrets
 
@@ -96,6 +96,9 @@ spec:
                 secretKeyRef:
                   name: keycloak-db
                   key: db-password
+            # Store database files in a subdirectory of the mounted volume
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
@@ -145,19 +148,22 @@ spec:
     spec:
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:24.0
+          image: quay.io/keycloak/keycloak:26.6.2
           args: ["start"]
           ports:
-            - containerPort: 8080
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9000
           env:
             # Admin username from secret
-            - name: KEYCLOAK_ADMIN
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: keycloak-admin
                   key: username
             # Admin password from secret
-            - name: KEYCLOAK_ADMIN_PASSWORD
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: keycloak-admin
@@ -187,22 +193,25 @@ spec:
               value: "true"
             # Set the hostname for Keycloak
             - name: KC_HOSTNAME
-              value: "keycloak.example.com"
-            # Enable proxy edge mode for TLS termination at ingress
-            - name: KC_PROXY
-              value: "edge"
+              value: "https://keycloak.example.com"
+            # Enable HTTP behind an ingress that terminates TLS
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            # Trust X-Forwarded-* headers from the ingress controller
+            - name: KC_PROXY_HEADERS
+              value: "xforwarded"
           # Readiness probe to check Keycloak health
           readinessProbe:
             httpGet:
               path: /health/ready
-              port: 8080
+              port: management
             initialDelaySeconds: 30
             periodSeconds: 10
           # Liveness probe for automatic restart on failure
           livenessProbe:
             httpGet:
               path: /health/live
-              port: 8080
+              port: management
             initialDelaySeconds: 60
             periodSeconds: 30
           resources:
@@ -372,23 +381,21 @@ if __name__ == "__main__":
 
 ## High Availability Considerations
 
-When running Keycloak in production with multiple replicas, you need distributed caching. Keycloak uses Infinispan internally for session caching. In Kubernetes, enable JGroups DNS_PING for cluster discovery:
+When running Keycloak in production with multiple replicas, you need distributed caching. Keycloak uses Infinispan internally for session caching. In Kubernetes, use the default `jdbc-ping` transport stack for cluster discovery through the configured database:
 
 ```yaml
 # Add these environment variables to the Keycloak deployment
-# for automatic cluster member discovery via DNS
+# for distributed cache cluster discovery via the database
 - name: KC_CACHE
   value: "ispn"
 - name: KC_CACHE_STACK
-  value: "kubernetes"
-- name: JAVA_OPTS_APPEND
-  value: "-Djgroups.dns.query=keycloak-service.keycloak.svc.cluster.local"
+  value: "jdbc-ping"
 ```
 
 This ensures that all Keycloak pods discover each other and share session data, so users remain logged in regardless of which pod handles their request.
 
 ## Monitoring and Observability
 
-Keycloak exposes Prometheus-compatible metrics at `/metrics` when `KC_METRICS_ENABLED` is set to `true`. You can scrape these metrics to track login success rates, token issuance counts, and session durations.
+Keycloak exposes Prometheus-compatible metrics at `/metrics` on the management port when `KC_METRICS_ENABLED` is set to `true`. You can scrape these metrics to track login success rates, token issuance counts, and session durations.
 
-For comprehensive monitoring of your Keycloak deployment and the applications that depend on it, consider using [OneUptime](https://oneuptime.com). OneUptime provides uptime monitoring, alerting, and incident management so you can detect authentication outages before they impact your users. You can set up HTTP monitors to check Keycloak's health endpoints and receive alerts through Slack, email, or PagerDuty when something goes wrong.
+For comprehensive monitoring of your Keycloak deployment and the applications that depend on it, consider using [OneUptime](https://oneuptime.com). OneUptime provides uptime monitoring, alerting, and incident management so you can detect authentication outages before they impact your users. You can set up internal HTTP monitors to check Keycloak's management health endpoints and receive alerts through Slack, email, or PagerDuty when something goes wrong.
