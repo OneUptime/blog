@@ -8,7 +8,7 @@ Description: Set up the ARA callback plugin to record and browse Ansible playboo
 
 ---
 
-ARA (Ansible Run Analysis) is an open-source project that records Ansible playbook runs and provides a web interface to browse the results. The ARA callback plugin captures every detail of your playbook executions: tasks, results, host facts, files, and timing data. You get a searchable, browsable history of every Ansible run instead of scrolling through terminal output or log files.
+ARA (ARA Records Ansible) is an open-source project that records Ansible playbook runs and provides a web interface to browse the results. The ARA callback plugin captures playbook execution data such as tasks, results, host facts, files, and timing data. You get a searchable, browsable history of every Ansible run instead of scrolling through terminal output or log files.
 
 ## What ARA Gives You
 
@@ -62,17 +62,22 @@ For a permanent setup:
 [defaults]
 # The callback plugin path from ARA
 callback_plugins = /path/to/ara/plugins/callback
+# Optional: enable ARA's action and lookup plugins for ara_label, ara_record, and related helpers
+action_plugins = /path/to/ara/plugins/action
+lookup_plugins = /path/to/ara/plugins/lookup
 
 # Or let ARA tell you the path
-# Run: python3 -m ara.setup.callback_plugins
+# Run: python3 -m ara.setup.ansible
 
 [ara]
 # API client type: offline (SQLite) or http (ARA server)
 api_client = offline
+```
 
-# Database location for offline mode
-api_server = http://localhost:8000
-database = /var/lib/ara/ansible.sqlite
+To change the default SQLite database location for offline mode, use the API server setting:
+
+```bash
+export ARA_DATABASE_NAME=/var/lib/ara/ansible.sqlite
 ```
 
 Get the correct callback path:
@@ -82,8 +87,11 @@ Get the correct callback path:
 python3 -m ara.setup.callback_plugins
 # Output: /usr/lib/python3/dist-packages/ara/plugins/callback
 
-# Find ARA action plugins path (also needed)
+# Find ARA action plugins path
 python3 -m ara.setup.action_plugins
+
+# Find ARA lookup plugins path
+python3 -m ara.setup.lookup_plugins
 ```
 
 ## ARA Server Mode
@@ -118,8 +126,12 @@ For production, run ARA with gunicorn and nginx:
 # Install gunicorn
 pip install gunicorn
 
+# Configure Django settings for the ARA API server
+export ARA_BASE_DIR=/var/lib/ara
+export ARA_ALLOWED_HOSTS='["ara.example.com"]'
+
 # Run ARA with gunicorn
-gunicorn --workers 4 --bind 0.0.0.0:8000 ara.server.wsgi
+gunicorn --workers 4 --bind 0.0.0.0:8000 ara.server.wsgi:application
 ```
 
 Nginx configuration:
@@ -138,7 +150,7 @@ server {
     }
 
     location /static/ {
-        alias /var/lib/ara/static/;
+        alias /var/lib/ara/www/static/;
     }
 }
 ```
