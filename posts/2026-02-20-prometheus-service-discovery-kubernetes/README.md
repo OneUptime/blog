@@ -26,15 +26,15 @@ Prometheus watches the Kubernetes API for changes to pods, services, endpoints, 
 
 ## Kubernetes SD Roles
 
-Prometheus supports five Kubernetes service discovery roles:
+Prometheus supports six Kubernetes service discovery roles:
 
 | Role | Discovers | Use Case |
 |------|-----------|----------|
 | `pod` | Individual pods | Application metrics |
 | `service` | Kubernetes services | Service-level probing |
-| `endpoints` | Endpoints behind services | Most common for app metrics |
+| `endpoints` | Endpoints behind services | Common for app metrics, but deprecated in newer Kubernetes clusters |
 | `endpointslice` | EndpointSlice objects | Preferred over endpoints in newer clusters |
-| `node` | Cluster nodes | Node-level metrics (node-exporter) |
+| `node` | Cluster nodes | Kubelet and node-level metrics |
 | `ingress` | Ingress resources | Blackbox probing of URLs |
 
 ## Basic Configuration
@@ -124,7 +124,7 @@ spec:
 
 ## Endpoints Role
 
-The endpoints role discovers targets through Kubernetes Service endpoints. This is the most common approach:
+The endpoints role discovers targets through Kubernetes Service endpoints. This is a common approach, although newer Kubernetes clusters should prefer the `endpointslice` role:
 
 ```yaml
 scrape_configs:
@@ -182,11 +182,12 @@ scrape_configs:
       - role: node
     scheme: https
     tls_config:
-      # Use the service account token for auth
       ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    # Use the service account token for auth
+    authorization:
+      credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
     relabel_configs:
-      # Replace the target address with the kubelet metrics endpoint
+      # Copy Kubernetes node labels onto the scraped metrics
       - action: labelmap
         regex: __meta_kubernetes_node_label_(.+)
 ```
@@ -257,6 +258,10 @@ rules:
       - endpoints
       - pods
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources:
+      - endpointslices
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["networking.k8s.io"]
     resources:
       - ingresses
@@ -288,12 +293,15 @@ curl -s http://prometheus:9090/api/v1/targets | jq '.data.activeTargets[] | {
   labels: .labels
 }'
 
-# Check service discovery results before relabeling
-curl -s http://prometheus:9090/api/v1/targets/metadata
+# Check discovered labels before relabeling
+curl -s 'http://prometheus:9090/api/v1/targets?state=active' | jq '.data.activeTargets[] | {
+  scrapePool: .scrapePool,
+  discoveredLabels: .discoveredLabels
+}'
 ```
 
 ## Conclusion
 
-Kubernetes service discovery makes Prometheus a natural fit for dynamic container environments. By combining the right SD role with annotation-based relabeling, you get automatic target discovery without maintaining static configuration files. Start with the pod or endpoints role and add annotation-based filtering to control which workloads get scraped.
+Kubernetes service discovery makes Prometheus a natural fit for dynamic container environments. By combining the right SD role with annotation-based relabeling, you get automatic target discovery without maintaining static configuration files. Start with the pod, endpointslice, or endpoints role and add annotation-based filtering to control which workloads get scraped.
 
 For a monitoring platform that handles service discovery, metrics collection, and alerting out of the box, check out [OneUptime](https://oneuptime.com). OneUptime supports Prometheus metrics ingestion and provides dashboards, alerting, and incident management in a single platform.
