@@ -76,7 +76,8 @@ app.post('/upload', (req, res) => {
   });
 
   let uploadResult = null;
-  let hadError = false;
+  let uploadError = null;
+  const uploadPromises = [];
 
   // Handle file stream from the multipart request
   busboy.on('file', (fieldname, fileStream, info) => {
@@ -104,40 +105,59 @@ app.post('/upload', (req, res) => {
 
     // Pipe the incoming file stream directly to Cloud Storage
     // No buffering - data flows from client to GCS in small chunks
-    fileStream.pipe(writeStream);
-
-    // Handle the file stream limit being reached
-    fileStream.on('limit', () => {
-      hadError = true;
-      writeStream.destroy();
-      gcsFile.delete().catch(() => {});
-      res.status(413).json({ error: 'File too large' });
-    });
-
-    // Handle write stream errors
-    writeStream.on('error', (error) => {
-      hadError = true;
-      console.error('Upload stream error:', error);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Upload failed' });
-      }
-    });
-
-    // Handle successful upload completion
-    writeStream.on('finish', () => {
-      uploadResult = {
-        filename: destFileName,
-        originalName: filename,
-        contentType: mimeType,
-        bucket: BUCKET_NAME,
-        url: `gs://${BUCKET_NAME}/${destFileName}`,
+    const uploadPromise = new Promise((resolve) => {
+      let settled = false;
+      const done = (error, result = null) => {
+        if (settled) return;
+        settled = true;
+        if (error) {
+          uploadError = error;
+        }
+        resolve(result);
       };
+
+      fileStream.pipe(writeStream);
+
+      // Handle the file stream limit being reached
+      fileStream.on('limit', () => {
+        done(new Error('File too large'));
+        writeStream.destroy();
+        gcsFile.delete({ ignoreNotFound: true }).catch(() => {});
+      });
+
+      // Handle write stream errors
+      writeStream.on('error', (error) => {
+        done(error);
+      });
+
+      // Handle successful upload completion
+      writeStream.on('finish', () => {
+        uploadResult = {
+          filename: destFileName,
+          originalName: filename,
+          contentType: mimeType,
+          bucket: BUCKET_NAME,
+          url: `gs://${BUCKET_NAME}/${destFileName}`,
+        };
+        done(null, uploadResult);
+      });
     });
+
+    uploadPromises.push(uploadPromise);
   });
 
   // Handle busboy completion (all parts parsed)
-  busboy.on('finish', () => {
-    if (hadError) return;
+  busboy.on('finish', async () => {
+    await Promise.all(uploadPromises);
+
+    if (uploadError) {
+      console.error('Upload stream error:', uploadError);
+      if (!res.headersSent) {
+        const status = uploadError.message === 'File too large' ? 413 : 500;
+        res.status(status).json({ error: uploadError.message === 'File too large' ? 'File too large' : 'Upload failed' });
+      }
+      return;
+    }
 
     if (uploadResult) {
       console.log('Upload complete:', uploadResult.filename);
@@ -177,13 +197,14 @@ app.post('/upload-multiple', (req, res) => {
     },
   });
 
-  const uploads = [];
   const uploadPromises = [];
+  const uploadErrors = [];
 
   busboy.on('file', (fieldname, fileStream, info) => {
     const { filename, mimeType } = info;
     const uniqueId = crypto.randomBytes(8).toString('hex');
-    const destFileName = `uploads/${uniqueId}-${filename}`;
+    const extension = path.extname(filename);
+    const destFileName = `uploads/${uniqueId}${extension}`;
 
     const gcsFile = bucket.file(destFileName);
     const writeStream = gcsFile.createWriteStream({
@@ -192,31 +213,49 @@ app.post('/upload-multiple', (req, res) => {
     });
 
     // Track each upload as a promise
-    const uploadPromise = new Promise((resolve, reject) => {
+    const uploadPromise = new Promise((resolve) => {
+      let settled = false;
+      const done = (error, result = null) => {
+        if (settled) return;
+        settled = true;
+        if (error) {
+          uploadErrors.push(error);
+        }
+        resolve(result);
+      };
+
       fileStream.pipe(writeStream);
 
+      fileStream.on('limit', () => {
+        done(new Error(`${filename} is too large`));
+        writeStream.destroy();
+        gcsFile.delete({ ignoreNotFound: true }).catch(() => {});
+      });
+
       writeStream.on('finish', () => {
-        resolve({
+        done(null, {
           filename: destFileName,
           originalName: filename,
           contentType: mimeType,
         });
       });
 
-      writeStream.on('error', reject);
+      writeStream.on('error', done);
     });
 
     uploadPromises.push(uploadPromise);
   });
 
   busboy.on('finish', async () => {
-    try {
-      const results = await Promise.all(uploadPromises);
-      res.json({ uploads: results });
-    } catch (error) {
-      console.error('Multi-upload failed:', error);
-      res.status(500).json({ error: 'One or more uploads failed' });
+    const results = (await Promise.all(uploadPromises)).filter(Boolean);
+
+    if (uploadErrors.length > 0) {
+      console.error('Multi-upload failed:', uploadErrors[0]);
+      const status = uploadErrors.some((error) => error.message.includes('too large')) ? 413 : 500;
+      return res.status(status).json({ error: 'One or more uploads failed' });
     }
+
+    res.json({ uploads: results });
   });
 
   req.pipe(busboy);
@@ -251,7 +290,8 @@ function createProgressTracker(totalSize, onProgress) {
 
 // Usage in the upload handler
 busboy.on('file', (fieldname, fileStream, info) => {
-  const totalSize = parseInt(req.headers['content-length'] || '0');
+  // content-length is the whole multipart request size, so this is approximate.
+  const totalSize = parseInt(req.headers['content-length'] || '0', 10);
 
   const progressTracker = createProgressTracker(totalSize, (progress) => {
     console.log(`Upload progress: ${progress.bytesUploaded} bytes (${progress.percent}%)`);
