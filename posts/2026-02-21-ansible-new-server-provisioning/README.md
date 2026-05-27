@@ -62,7 +62,7 @@ provision_firewall_rules:
 
 # Monitoring agent
 provision_monitoring_enabled: true
-provision_node_exporter_version: "1.7.0"
+provision_node_exporter_version: "1.11.1"
 ```
 
 ## Main Tasks
@@ -146,7 +146,7 @@ provision_node_exporter_version: "1.7.0"
     dest: /etc/ssh/sshd_config
     mode: '0600'
     validate: "sshd -t -f %s"
-  notify: restart sshd
+  notify: restart ssh
 
 - name: Configure UFW firewall
   include_tasks: firewall.yml
@@ -244,9 +244,9 @@ provision_node_exporter_version: "1.7.0"
 ```yaml
 # roles/provision/handlers/main.yml
 ---
-- name: restart sshd
+- name: restart ssh
   systemd:
-    name: sshd
+    name: ssh
     state: restarted
 
 - name: restart ntp
