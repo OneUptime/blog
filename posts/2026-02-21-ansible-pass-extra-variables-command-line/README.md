@@ -53,14 +53,14 @@ Pass multiple variables in a single `-e` flag by separating them with spaces ins
 ansible-playbook -i inventory.ini deploy.yml -e "app_version=2.4.1 deploy_env=production max_workers=8"
 ```
 
-You can also use multiple `-e` flags. This is cleaner when values contain spaces.
+You can also use multiple `-e` flags. Use JSON or YAML syntax when values contain spaces.
 
 ```bash
 # Multiple -e flags for clarity
 ansible-playbook -i inventory.ini deploy.yml \
   -e "app_version=2.4.1" \
   -e "deploy_env=production" \
-  -e "deploy_message=Deploying hotfix for ticket JIRA-1234"
+  -e '{"deploy_message": "Deploying hotfix for ticket JIRA-1234"}'
 ```
 
 ## Passing JSON Data
@@ -233,7 +233,7 @@ ansible-playbook -i production.ini deploy.yml \
         line: "log_level={{ 'DEBUG' if enable_debug_logging | bool else 'INFO' }}"
 ```
 
-Note the `| bool` filter. When you pass variables on the command line, they come in as strings. The string "false" is truthy in Python/Jinja2 (any non-empty string is truthy). The `| bool` filter properly converts string values like "true", "false", "yes", "no" to actual booleans.
+Note the `| bool` filter. When you pass variables with key-value syntax on the command line, they come in as strings. The string "false" is truthy in Python/Jinja2 (any non-empty string is truthy). The `| bool` filter properly converts string values like "true", "false", "yes", "no" to actual booleans.
 
 ### Dynamic Host Selection
 
