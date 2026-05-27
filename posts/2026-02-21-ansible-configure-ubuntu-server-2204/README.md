@@ -48,9 +48,9 @@ This playbook handles the initial setup tasks every Ubuntu server needs:
       - "1.ubuntu.pool.ntp.org"
     admin_users:
       - name: deployer
-        ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... deployer@myorg"
+        ssh_key: "{{ lookup('file', 'files/deployer.pub') }}"
       - name: sysadmin
-        ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... sysadmin@myorg"
+        ssh_key: "{{ lookup('file', 'files/sysadmin.pub') }}"
 
   tasks:
     - name: Set the system hostname
@@ -95,7 +95,7 @@ This playbook handles the initial setup tasks every Ubuntu server needs:
 
 ## NTP Configuration with Chrony
 
-Ubuntu 22.04 uses chrony for time synchronization:
+This playbook installs and configures chrony for time synchronization:
 
 ```yaml
     - name: Configure chrony NTP
@@ -171,7 +171,6 @@ logdir /var/log/chrony
         - { regexp: '^#?MaxAuthTries', line: 'MaxAuthTries 3' }
         - { regexp: '^#?ClientAliveInterval', line: 'ClientAliveInterval 300' }
         - { regexp: '^#?ClientAliveCountMax', line: 'ClientAliveCountMax 2' }
-        - { regexp: '^#?Protocol', line: 'Protocol 2' }
       notify: restart sshd
 ```
 
