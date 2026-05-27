@@ -46,6 +46,17 @@ gcloud storage buckets create gs://my-project-data-errors \
   --location=us-central1
 
 # Set lifecycle rules to auto-delete processed files after 30 days
+cat > lifecycle-30d.json <<'EOF'
+{
+  "rule": [
+    {
+      "action": {"type": "Delete"},
+      "condition": {"age": 30}
+    }
+  ]
+}
+EOF
+
 gcloud storage buckets update gs://my-project-data-processed \
   --lifecycle-file=lifecycle-30d.json
 ```
@@ -140,7 +151,12 @@ functions.cloudEvent('processDataFile', async (cloudEvent) => {
   } catch (error) {
     console.error(`Error processing ${filePath}:`, error);
 
-    // Move the file to the error bucket with error metadata
+    // Throw transient errors so Eventarc can retry them when --retry is enabled
+    if (isTransientError(error)) {
+      throw error;
+    }
+
+    // Move permanently failed files to the error bucket with error metadata
     try {
       await moveFile(sourceBucket, filePath, ERROR_BUCKET, {
         errorMessage: error.message,
@@ -151,10 +167,6 @@ functions.cloudEvent('processDataFile', async (cloudEvent) => {
       console.error(`Failed to move file to error bucket:`, moveError);
     }
 
-    // Throw to trigger retry for transient errors
-    if (isTransientError(error)) {
-      throw error;
-    }
     // For permanent errors (bad data), we already moved the file - do not retry
   }
 });
@@ -198,9 +210,13 @@ async function moveFile(sourceBucket, filePath, destBucketName, metadata = {}) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const destPath = `${timestamp}/${filePath}`;
 
-  // Copy to destination with metadata
+  const customMetadata = Object.fromEntries(
+    Object.entries(metadata).map(([key, value]) => [key, String(value)])
+  );
+
+  // Copy to destination with custom metadata
   await sourceBucket.file(filePath).copy(destBucket.file(destPath), {
-    metadata: { metadata }
+    metadata: customMetadata
   });
 
   // Delete from source
@@ -238,7 +254,7 @@ The package.json:
 # Deploy the ETL function
 gcloud functions deploy process-data-file \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --source=. \
   --entry-point=processDataFile \
@@ -247,7 +263,8 @@ gcloud functions deploy process-data-file \
   --memory=1Gi \
   --timeout=300s \
   --set-env-vars="PROCESSED_BUCKET=my-project-data-processed,ERROR_BUCKET=my-project-data-errors,BQ_DATASET=raw_data,BQ_TABLE=events" \
-  --max-instances=10
+  --max-instances=10 \
+  --retry
 ```
 
 ## Processing JSON Files
@@ -312,29 +329,32 @@ async function processLargeFile(bucket, filePath) {
 
   let batch = [];
   const batchSize = 1000;
+  let rowIndex = 0;
 
   // Transform stream that batches records and sends them to BigQuery
   const batcher = new Transform({
     objectMode: true,
-    async transform(record, encoding, callback) {
-      const transformed = transformRecord(record, filePath, 0);
-      if (transformed) {
-        batch.push(transformed);
-      }
+    transform(record, encoding, callback) {
+      (async () => {
+        const transformed = transformRecord(record, filePath, rowIndex++);
+        if (transformed) {
+          batch.push(transformed);
+        }
 
-      // Flush batch when it reaches the target size
-      if (batch.length >= batchSize) {
-        await loadIntoBigQuery(batch);
-        batch = [];
-      }
-      callback();
+        // Flush batch when it reaches the target size
+        if (batch.length >= batchSize) {
+          await loadIntoBigQuery(batch);
+          batch = [];
+        }
+      })().then(() => callback(), callback);
     },
-    async flush(callback) {
-      // Flush remaining records
-      if (batch.length > 0) {
-        await loadIntoBigQuery(batch);
-      }
-      callback();
+    flush(callback) {
+      (async () => {
+        // Flush remaining records
+        if (batch.length > 0) {
+          await loadIntoBigQuery(batch);
+        }
+      })().then(() => callback(), callback);
     }
   });
 
