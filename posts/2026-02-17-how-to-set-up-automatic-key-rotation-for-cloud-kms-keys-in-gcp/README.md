@@ -8,7 +8,7 @@ Description: A step-by-step guide to configuring automatic key rotation for Clou
 
 ---
 
-Key rotation is a fundamental security practice. Even if a key has not been compromised, rotating it limits the amount of data encrypted under any single key version and reduces the window of exposure if the key is eventually compromised. Most compliance frameworks - PCI DSS, HIPAA, SOC 2 - require regular key rotation.
+Key rotation is a fundamental security practice. Even if a key has not been compromised, rotating it limits the amount of data encrypted under any single key version and reduces the window of exposure if the key is eventually compromised. Many compliance frameworks - PCI DSS, HIPAA, SOC 2 - require documented key management processes, including cryptoperiods and rotation procedures where appropriate.
 
 Cloud KMS makes rotation straightforward for symmetric encryption keys. You set a rotation schedule, and KMS automatically creates new key versions on that schedule. The new version becomes the primary version used for all new encryption operations. Old versions remain available for decryption, so existing ciphertext continues to work without any changes to your application.
 
@@ -45,13 +45,13 @@ gcloud kms keys create app-encryption-key \
   --location=us-central1 \
   --purpose=encryption \
   --rotation-period=7776000s \
-  --next-rotation-time="2026-05-17T00:00:00Z" \
+  --next-rotation-time="2026-09-01T00:00:00Z" \
   --project=my-project-id
 ```
 
 Parameters:
-- `rotation-period` - how often to rotate, in seconds (minimum 1 day = 86400s)
-- `next-rotation-time` - when the first automatic rotation should happen (ISO 8601 format)
+- `rotation-period` - how often to rotate, in seconds (minimum 1 day = 86400s; maximum 100 years)
+- `next-rotation-time` - when the first automatic rotation should happen (ISO 8601 format; omit this flag to schedule the first rotation one rotation period after key creation)
 
 Common rotation periods:
 - 30 days: `2592000s`
@@ -69,7 +69,7 @@ gcloud kms keys update app-encryption-key \
   --keyring=my-app-keyring \
   --location=us-central1 \
   --rotation-period=7776000s \
-  --next-rotation-time="2026-03-17T00:00:00Z" \
+  --next-rotation-time="2026-09-01T00:00:00Z" \
   --project=my-project-id
 ```
 
@@ -156,10 +156,10 @@ gcloud kms keys versions disable 1 \
 
 ### Scheduling Version Destruction
 
-For versions you are certain will never be needed again, schedule them for destruction. There is a mandatory 24-hour waiting period before the destruction is final:
+For versions you are certain will never be needed again, schedule them for destruction. Cloud KMS does not destroy key material immediately. The key version remains scheduled for destruction for the key's configured duration before destruction is final; the default duration is 30 days:
 
 ```bash
-# Schedule a key version for destruction (24-hour grace period)
+# Schedule a key version for destruction
 gcloud kms keys versions destroy 1 \
   --key=app-encryption-key \
   --keyring=my-app-keyring \
@@ -167,7 +167,7 @@ gcloud kms keys versions destroy 1 \
   --project=my-project-id
 ```
 
-During the 24-hour window, you can restore the version:
+During the scheduled destruction period, you can restore the version:
 
 ```bash
 # Cancel destruction during the grace period
@@ -225,8 +225,8 @@ For large-scale re-encryption (like a database full of encrypted fields), batch 
 Many GCP services support CMEK (Customer-Managed Encryption Keys). When you rotate the KMS key used by these services, the behavior varies:
 
 - **Cloud Storage**: Objects encrypted with old versions can still be read. New objects use the new version. You can re-encrypt by rewriting objects.
-- **BigQuery**: Tables encrypted with old versions continue working. New writes use the new version.
-- **Cloud SQL**: Existing backups remain encrypted with old versions. The instance uses the new version for new encryptions.
+- **BigQuery**: Existing tables are not automatically re-encrypted when the Cloud KMS key rotates. New tables created after rotation use the latest key version, and existing tables can be updated with the same Cloud KMS key to use the most recent version.
+- **Cloud SQL**: Existing backups remain encrypted with their original key versions. Backups created after the Cloud KMS key rotates use the current primary key version, and existing CMEK-enabled instances or replicas can be re-encrypted with the latest primary version.
 - **Secret Manager**: Existing secret versions remain encrypted with their original key version. New versions use the primary.
 
 ## Monitoring Key Rotation
@@ -252,8 +252,8 @@ Create a Cloud Monitoring alert for key age. If no new version has been created 
 
 Different compliance frameworks have different rotation requirements:
 
-- **PCI DSS**: Requires annual cryptographic key rotation at minimum
-- **NIST**: Recommends rotation based on the amount of data encrypted, typically annually
+- **PCI DSS**: Requires a defined cryptoperiod for each key type and a process for changing keys at the end of the defined cryptoperiod
+- **NIST**: Recommends defining cryptoperiods based on factors such as the algorithm, key length, usage, and amount of data protected
 - **HIPAA**: Requires a key management process but does not specify a period
 - **SOC 2**: Requires documented key management procedures including rotation
 
@@ -261,7 +261,7 @@ Cloud KMS rotation provides an auditable record of when keys were rotated, which
 
 ## Best Practices
 
-Set rotation periods that match your compliance requirements. If you are subject to PCI DSS, rotate at least annually. For sensitive data, consider 90-day rotation.
+Set rotation periods that match your compliance requirements and documented cryptoperiods. For sensitive data, consider 90-day rotation.
 
 Never destroy key versions until you are absolutely certain no data encrypted with that version still exists. If in doubt, disable the version instead of destroying it.
 
