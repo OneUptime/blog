@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Deploy, GKE, Deployment Approvals, CI/CD, DevOps
 
-Description: Step-by-step guide to configuring Cloud Deploy delivery pipelines with approval gates, promotion workflows, and automated rollback for GKE deployments.
+Description: Step-by-step guide to configuring Cloud Deploy delivery pipelines with approval gates, promotion workflows, and rollback for GKE deployments.
 
 ---
 
@@ -22,7 +22,7 @@ Here is what the complete flow looks like:
 flowchart LR
     A[Cloud Build] -->|Creates Release| B[Cloud Deploy]
     B --> C[Dev Target]
-    C -->|Auto-promote| D[Staging Target]
+    C -->|Promote| D[Staging Target]
     D -->|Requires Approval| E[Production Target]
     E -->|Verify| F[Running in Prod]
 
@@ -32,7 +32,7 @@ flowchart LR
 
 ## Step 1: Create Your GKE Targets
 
-First, define the target environments. Each target represents a GKE cluster and namespace:
+First, define the target environments. Each target represents a GKE cluster; namespaces are selected by the rendered Kubernetes manifests:
 
 ```yaml
 # targets/dev.yaml - Development target definition
@@ -49,6 +49,7 @@ executionConfigs:
   - usages:
       - RENDER
       - DEPLOY
+      - VERIFY
     serviceAccount: cloud-deploy-sa@my-project.iam.gserviceaccount.com
 ```
 
@@ -66,6 +67,7 @@ executionConfigs:
   - usages:
       - RENDER
       - DEPLOY
+      - VERIFY
     serviceAccount: cloud-deploy-sa@my-project.iam.gserviceaccount.com
 ```
 
@@ -84,6 +86,9 @@ executionConfigs:
   - usages:
       - RENDER
       - DEPLOY
+      - PREDEPLOY
+      - VERIFY
+      - POSTDEPLOY
     serviceAccount: cloud-deploy-sa@my-project.iam.gserviceaccount.com
 ```
 
@@ -218,6 +223,29 @@ profiles:
               done
               echo "Smoke test failed"
               exit 1
+        executionMode:
+          kubernetesCluster: {}
+customActions:
+  - name: pre-deploy-check
+    containers:
+      - name: pre-deploy-check
+        image: gcr.io/cloud-builders/kubectl
+        command: ["/bin/sh"]
+        args:
+          - "-c"
+          - |
+            kubectl get namespace production
+  - name: post-deploy-smoke-test
+    containers:
+      - name: post-deploy-smoke-test
+        image: curlimages/curl
+        command: ["/bin/sh"]
+        args:
+          - "-c"
+          - |
+            curl -sf http://myapp.production.svc.cluster.local/healthz
+    executionMode:
+      kubernetesCluster: {}
 ```
 
 ## Step 4: Configure IAM for Approvals
@@ -242,11 +270,28 @@ The Cloud Deploy service account also needs permissions:
 # Grant Cloud Deploy SA the necessary roles
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:cloud-deploy-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/clouddeploy.jobRunner"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:cloud-deploy-sa@my-project.iam.gserviceaccount.com" \
   --role="roles/container.developer"
 
 gcloud iam service-accounts add-iam-policy-binding \
   cloud-deploy-sa@my-project.iam.gserviceaccount.com \
-  --member="serviceAccount:$(gcloud projects describe my-project --format='value(projectNumber)')@gcp-sa-clouddeploy.iam.gserviceaccount.com" \
+  --member="serviceAccount:service-$(gcloud projects describe my-project --format='value(projectNumber)')@gcp-sa-clouddeploy.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+```
+
+The service account that runs Cloud Build also needs permission to create releases and to act as the Cloud Deploy execution service account:
+
+```bash
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:CLOUD_BUILD_SERVICE_ACCOUNT_EMAIL" \
+  --role="roles/clouddeploy.releaser"
+
+gcloud iam service-accounts add-iam-policy-binding \
+  cloud-deploy-sa@my-project.iam.gserviceaccount.com \
+  --member="serviceAccount:CLOUD_BUILD_SERVICE_ACCOUNT_EMAIL" \
   --role="roles/iam.serviceAccountUser"
 ```
 
@@ -324,8 +369,9 @@ gcloud deploy rollouts approve prod-target-rollout-001 \
 Set up Pub/Sub notifications so approvers get alerted when a deployment needs their attention:
 
 ```bash
-# Cloud Deploy automatically publishes to the clouddeploy-approvals topic
-# Create a subscription for email notifications
+# Create the approval notifications topic, then subscribe your notification service
+gcloud pubsub topics create clouddeploy-approvals
+
 gcloud pubsub subscriptions create approval-notifications \
   --topic=clouddeploy-approvals \
   --push-endpoint=https://your-notification-service.run.app/notify
@@ -336,30 +382,32 @@ You can also use Cloud Functions to process these events:
 ```python
 # cloud_function.py - Sends Slack notifications for pending approvals
 import functions_framework
-import json
+import os
 import requests
 
 @functions_framework.cloud_event
 def notify_approval(cloud_event):
     """Triggered by Pub/Sub message from Cloud Deploy."""
-    data = json.loads(cloud_event.data["message"]["data"])
+    attributes = cloud_event.data["message"].get("attributes", {})
 
     # Check if this is an approval-needed event
-    if data.get("approvalState") == "NEEDS_APPROVAL":
-        pipeline = data.get("deliveryPipeline", "unknown")
-        release = data.get("release", "unknown")
+    if attributes.get("Action") == "Required":
+        pipeline = attributes.get("DeliveryPipelineId", "unknown")
+        release = attributes.get("ReleaseId", "unknown")
+        rollout = attributes.get("RolloutId", "unknown")
 
         # Send Slack notification
         slack_message = {
-            "text": f"Deployment approval needed for {release} in pipeline {pipeline}. "
+            "text": f"Deployment approval needed for rollout {rollout} "
+                    f"from release {release} in pipeline {pipeline}. "
                     f"Review and approve at: https://console.cloud.google.com/deploy"
         }
-        requests.post(SLACK_WEBHOOK_URL, json=slack_message)
+        requests.post(os.environ["SLACK_WEBHOOK_URL"], json=slack_message, timeout=10)
 ```
 
-## Step 8: Automated Rollback
+## Step 8: Rollback
 
-If a deployment fails verification, you can configure automatic rollback or trigger it manually:
+If a deployment fails verification, Cloud Deploy marks the rollout as failed. You can then trigger a rollback manually:
 
 ```bash
 # Roll back to the previous release
@@ -368,7 +416,7 @@ gcloud deploy targets rollback prod-target \
   --region=us-central1
 
 # Or roll back to a specific release
-gcloud deploy rollouts create rollback-001 \
+gcloud deploy targets rollback prod-target \
   --delivery-pipeline=myapp-pipeline \
   --release=release-previous \
   --region=us-central1 \
