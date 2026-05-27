@@ -38,13 +38,19 @@ lowercaseOutputName: true
 lowercaseOutputLabelNames: true
 
 rules:
-  # Broker throughput metrics
-  - pattern: "kafka.server<type=BrokerTopicMetrics, name=(MessagesInPerSec|BytesInPerSec|BytesOutPerSec), topic=(.+)><>(Count|OneMinuteRate)"
+  # Broker throughput counters
+  - pattern: "kafka.server<type=BrokerTopicMetrics, name=(MessagesInPerSec|BytesInPerSec|BytesOutPerSec), topic=(.+)><>Count"
     name: "kafka_server_broker_topic_metrics_$1"
+    type: COUNTER
+    labels:
+      topic: "$2"
+
+  # Broker throughput one-minute rates
+  - pattern: "kafka.server<type=BrokerTopicMetrics, name=(MessagesInPerSec|BytesInPerSec|BytesOutPerSec), topic=(.+)><>OneMinuteRate"
+    name: "kafka_server_broker_topic_metrics_$1_one_minute_rate"
     type: GAUGE
     labels:
       topic: "$2"
-      aggregate: "$3"
 
   # Under-replicated partitions (critical health indicator)
   - pattern: "kafka.server<type=ReplicaManager, name=UnderReplicatedPartitions><>Value"
@@ -64,9 +70,9 @@ rules:
       request: "$1"
       quantile: "$2"
 
-  # Consumer group lag
+  # Replica fetcher lag (leader/follower replication lag)
   - pattern: "kafka.server<type=FetcherLagMetrics, name=ConsumerLag, clientId=(.+), topic=(.+), partition=(.+)><>Value"
-    name: "kafka_consumer_lag"
+    name: "kafka_server_fetcher_lag"
     type: GAUGE
     labels:
       client_id: "$1"
@@ -191,7 +197,7 @@ graph TD
       "title": "Messages In Per Second",
       "targets": [
         {
-          "expr": "sum(rate(kafka_server_broker_topic_metrics_messagesinpersec_count[5m])) by (topic)",
+          "expr": "sum(rate(kafka_server_broker_topic_metrics_messagesinpersec_total[5m])) by (topic)",
           "legendFormat": "{{topic}}"
         }
       ]
