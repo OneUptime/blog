@@ -24,7 +24,7 @@ flowchart LR
     D --> G[Database]
 ```
 
-Each arrow in this diagram would be a span. Together, all the spans form a single trace.
+Each operation in this diagram would be represented by a span. Together, all the spans form a single trace.
 
 ## Trace and Span Structure
 
@@ -97,7 +97,7 @@ def process_order(order_id: str) -> dict:
         # Add attributes to the span
         # Attributes are key-value metadata
         span.set_attribute("order.id", order_id)
-        span.set_attribute("service.name", "order-service")
+        span.set_attribute("order.workflow", "checkout")
 
         # Validate the order (child span)
         validate_order(order_id)
@@ -144,7 +144,7 @@ def update_inventory(order_id: str) -> None:
 ## Creating Spans in Node.js
 
 ```javascript
-// Install: npm install @opentelemetry/api @opentelemetry/sdk-trace-node
+// Install: npm install @opentelemetry/api @opentelemetry/sdk-trace-node @opentelemetry/sdk-trace-base
 
 const { trace, SpanStatusCode } = require("@opentelemetry/api");
 const {
@@ -156,10 +156,11 @@ const {
 } = require("@opentelemetry/sdk-trace-base");
 
 // Set up the tracer provider
-const provider = new NodeTracerProvider();
-provider.addSpanProcessor(
-  new BatchSpanProcessor(new ConsoleSpanExporter())
-);
+const provider = new NodeTracerProvider({
+  spanProcessors: [
+    new BatchSpanProcessor(new ConsoleSpanExporter()),
+  ],
+});
 provider.register();
 
 // Get a tracer instance
@@ -174,8 +175,8 @@ async function processOrder(orderId) {
 
       // Child span for database query
       await tracer.startActiveSpan("db_query", async (dbSpan) => {
-        dbSpan.setAttribute("db.system", "postgresql");
-        dbSpan.setAttribute("db.statement", "SELECT * FROM orders WHERE id = $1");
+        dbSpan.setAttribute("db.system.name", "postgresql");
+        dbSpan.setAttribute("db.query.text", "SELECT * FROM orders WHERE id = $1");
         // ... query logic ...
         dbSpan.end();
       });
@@ -240,7 +241,7 @@ When a request crosses service boundaries (HTTP, gRPC, message queues), the trac
 
 ```text
 # W3C traceparent header format
-traceparent: 00-<trace-id>-<parent-span-id>-<trace-flags>
+traceparent: 00-<trace-id>-<parent-id>-<trace-flags>
 
 # Example
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
@@ -248,7 +249,7 @@ traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 
 ```python
 # Python: automatic propagation with instrumentation
-# Install: pip install opentelemetry-instrumentation-requests
+# Install: pip install requests opentelemetry-instrumentation-requests
 
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 import requests
@@ -275,19 +276,18 @@ Use semantic conventions for common attribute names:
 
 ```python
 # HTTP attributes
-span.set_attribute("http.method", "POST")
-span.set_attribute("http.url", "https://api.example.com/orders")
-span.set_attribute("http.status_code", 200)
+span.set_attribute("http.request.method", "POST")
+span.set_attribute("url.full", "https://api.example.com/orders")
+span.set_attribute("http.response.status_code", 200)
 
 # Database attributes
-span.set_attribute("db.system", "postgresql")
-span.set_attribute("db.name", "orders")
-span.set_attribute("db.statement", "SELECT * FROM orders WHERE id = $1")
+span.set_attribute("db.system.name", "postgresql")
+span.set_attribute("db.namespace", "orders")
+span.set_attribute("db.query.text", "SELECT * FROM orders WHERE id = $1")
 
 # RPC attributes
-span.set_attribute("rpc.system", "grpc")
-span.set_attribute("rpc.service", "PaymentService")
-span.set_attribute("rpc.method", "Charge")
+span.set_attribute("rpc.system.name", "grpc")
+span.set_attribute("rpc.method", "PaymentService/Charge")
 
 # Custom business attributes
 span.set_attribute("order.id", "12345")
