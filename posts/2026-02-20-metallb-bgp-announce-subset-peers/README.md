@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, BGP, Peer, BGPAdvertisement
 
-Description: Learn how to selectively announce MetalLB service routes to specific BGP peers using peer selectors in BGPAdvertisement resources.
+Description: Learn how to selectively announce MetalLB service routes to specific BGP peers using the peers field in BGPAdvertisement resources.
 
 ---
 
@@ -92,7 +92,8 @@ metadata:
   name: public-pool
   namespace: metallb-system
 spec:
-  # External IPs routable from the internet.
+  # Example public prefix. Replace this with an address block allocated to you
+  # and routed by your upstream network.
   addresses:
     - 203.0.113.0/28
 
@@ -230,7 +231,7 @@ kubectl get bgppeer -n metallb-system
 
 1. **Wrong peer name**: The values in the `peers` list must exactly match the `metadata.name` of your BGPPeer resources. A typo means the route is never announced to that peer.
 2. **Missing peer**: If a peer name in the list does not correspond to any existing BGPPeer, MetalLB will silently skip it. No error is raised.
-3. **Overlapping advertisements**: If two advertisements cover the same pool and point to the same peer, the route is announced once. However, conflicting settings (different aggregation lengths) can cause unpredictable behavior.
+3. **Overlapping advertisements**: If two advertisements cover the same pool and point to the same peer, MetalLB may advertise both the per-service prefix and any configured aggregate prefix. Make sure that is what you intend.
 4. **No default advertisement**: If every BGPAdvertisement has a `peers` field, and a new BGPPeer is added later, no existing advertisements will send routes to it automatically.
 
 ### Cleaning Up
@@ -239,7 +240,7 @@ Remove all resources:
 
 ```bash
 # Delete advertisements, peers, and pools.
-kubectl delete bgpadvertisement public-advert internal-advert -n metallb-system
+kubectl delete bgpadvertisement public-advert internal-advert shared-services -n metallb-system
 kubectl delete bgppeer internet-router internal-router -n metallb-system
 kubectl delete ipaddresspool public-pool internal-pool -n metallb-system
 ```
