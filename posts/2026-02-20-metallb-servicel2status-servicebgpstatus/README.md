@@ -8,7 +8,7 @@ Description: Learn how to read and interpret MetalLB ServiceL2Status and Service
 
 ---
 
-MetalLB v0.14 introduced `ServiceL2Status` and `ServiceBGPStatus` custom resources that give you detailed visibility into how each service is being advertised. These resources replace the need to dig through speaker logs and make monitoring much simpler.
+MetalLB added `ServiceL2Status` in v0.14.6 and `ServiceBGPStatus` in v0.15.0 to give you detailed visibility into how each service is being advertised. These resources reduce the need to dig through speaker logs and make monitoring much simpler.
 
 ## What Are These Status Resources?
 
@@ -19,7 +19,7 @@ flowchart TD
     A[MetalLB Speaker] -->|Creates/Updates| B[ServiceL2Status]
     A -->|Creates/Updates| C[ServiceBGPStatus]
     B --> D[Shows which node advertises via ARP/NDP]
-    C --> E[Shows BGP session and route info]
+    C --> E[Shows which BGP peers are configured for advertisement]
     D --> F[kubectl get servicel2status]
     E --> G[kubectl get servicebgpstatus]
 ```
@@ -31,23 +31,22 @@ The `ServiceL2Status` resource shows the current L2 advertisement state for a se
 ### Listing L2 Status Resources
 
 ```bash
-# List all ServiceL2Status resources across all namespaces
-
-kubectl get servicel2status -A
+# List all ServiceL2Status resources in the MetalLB namespace
+kubectl get servicel2statuses -n metallb-system
 ```
 
 Example output:
 
 ```text
-NAMESPACE   NAME                   SERVICE      NODE       IPS
-default     my-service-l2-status   my-service   worker-1   ["192.168.1.100"]
+NAME       ALLOCATED NODE   SERVICE NAME   SERVICE NAMESPACE
+l2-r8jwb   worker-1         my-service     default
 ```
 
 ### Inspecting a Specific L2 Status
 
 ```bash
 # Get detailed information about a specific L2 status resource
-kubectl get servicel2status my-service-l2-status -n default -o yaml
+kubectl get servicel2status l2-r8jwb -n metallb-system -o yaml
 ```
 
 The output looks like this:
@@ -56,76 +55,62 @@ The output looks like this:
 apiVersion: metallb.io/v1beta1
 kind: ServiceL2Status
 metadata:
-  name: my-service-l2-status
-  namespace: default
+  name: l2-r8jwb
+  namespace: metallb-system
   # Labels link this status back to the parent service
   labels:
+    metallb.io/node: worker-1
     metallb.io/service-name: my-service
     metallb.io/service-namespace: default
-spec:
-  # The service this status belongs to
-  serviceName: my-service
-  serviceNamespace: default
 status:
   # The node currently announcing this service via L2
   node: worker-1
+  # The service this status belongs to
+  serviceName: my-service
+  serviceNamespace: default
   # The interfaces used for ARP/NDP announcements
   interfaces:
     - name: eth0
-  # The IP addresses being advertised
-  ips:
-    - "192.168.1.100"
 ```
 
 ## ServiceBGPStatus
 
-The `ServiceBGPStatus` resource shows BGP advertisement state, including which peers are receiving route announcements and the session health.
+The `ServiceBGPStatus` resource shows BGP advertisement intent, including which peers a service is configured to be advertised to from each relevant node. The actual route advertisement still depends on the corresponding BGP session state.
 
 ### Listing BGP Status Resources
 
 ```bash
-# List all ServiceBGPStatus resources in the cluster
-kubectl get servicebgpstatus -A
+# List all ServiceBGPStatus resources in the MetalLB namespace
+kubectl get servicebgpstatuses -n metallb-system
 ```
 
 ### Inspecting a BGP Status
 
 ```bash
 # View detailed BGP advertisement status for a service
-kubectl get servicebgpstatus my-service-bgp-status -n default -o yaml
+kubectl get servicebgpstatus bgp-82jzt -n metallb-system -o yaml
 ```
 
 ```yaml
 apiVersion: metallb.io/v1beta1
 kind: ServiceBGPStatus
 metadata:
-  name: my-service-bgp-status
-  namespace: default
+  name: bgp-82jzt
+  namespace: metallb-system
   labels:
+    metallb.io/node: worker-1
     metallb.io/service-name: my-service
     metallb.io/service-namespace: default
-spec:
+status:
+  # The node configured to advertise this service via BGP
+  node: worker-1
+  # The service this status belongs to
   serviceName: my-service
   serviceNamespace: default
-status:
-  # Each node advertising this service via BGP
-  nodes:
-    - name: worker-1
-      # BGP peers receiving the route
-      peers:
-        - address: 10.0.0.1
-          # Whether the route was successfully advertised
-          advertised: true
-          # BGP session state
-          sessionState: established
-        - address: 10.0.0.2
-          advertised: true
-          sessionState: established
-    - name: worker-2
-      peers:
-        - address: 10.0.0.1
-          advertised: true
-          sessionState: established
+  # BGP peers the service is configured to be advertised to
+  peers:
+    - 10.0.0.1
+    - 10.0.0.2
 ```
 
 ## Comparing L2 and BGP Status
@@ -151,7 +136,7 @@ flowchart LR
 | Nodes | Single active node | Multiple nodes |
 | Protocol | ARP (IPv4) / NDP (IPv6) | BGP sessions |
 | Failover | Node re-election | Router ECMP |
-| Key field | `status.node` | `status.nodes[].peers` |
+| Key field | `status.node` | `status.node`, `status.peers` |
 
 ## Using Status Resources for Health Checks
 
@@ -162,7 +147,7 @@ You can build health checks around these status resources.
 ```bash
 # Verify that an L2 service has a node assigned to announce it
 # If this returns empty, the service is not being advertised
-NODE=$(kubectl get servicel2status -n default \
+NODE=$(kubectl get servicel2status -n metallb-system \
   -l metallb.io/service-name=my-service \
   -o jsonpath='{.items[0].status.node}')
 
@@ -173,29 +158,30 @@ else
 fi
 ```
 
-### Check if BGP Routes Are Advertised
+### Check if BGP Advertisement Intent Exists
 
 ```bash
-# Verify that BGP routes are being advertised to all peers
-# This checks for any peers where advertised is false
-kubectl get servicebgpstatus -n default \
+# Verify that MetalLB has BGP status objects for the service
+COUNT=$(kubectl get servicebgpstatuses -n metallb-system \
   -l metallb.io/service-name=my-service \
-  -o json | jq '
-    .items[].status.nodes[].peers[] |
-    select(.advertised == false) |
-    "ALERT: Route not advertised to \(.address)"
-  '
+  -o json | jq '.items | length')
+
+if [ "$COUNT" -eq 0 ]; then
+  echo "WARNING: No BGP status objects found for my-service"
+else
+  echo "OK: my-service has BGP status on $COUNT node(s)"
+fi
 ```
 
 ### Monitor BGP Session State
 
 ```bash
-# Check for any BGP sessions that are not in established state
-kubectl get servicebgpstatus -A -o json | jq -r '
-  .items[].status.nodes[] as $node |
-  $node.peers[] |
-  select(.sessionState != "established") |
-  "ALERT: BGP session to \(.address) on node \($node.name) is \(.sessionState)"
+# List the peers each service is configured to advertise to.
+# Use MetalLB BGP metrics, logs, or BGPSessionState in FRR-K8s mode
+# to verify whether each session is established.
+kubectl get servicebgpstatuses -n metallb-system -o json | jq -r '
+  .items[] |
+  "Service \(.status.serviceNamespace)/\(.status.serviceName) on node \(.status.node) is configured for peers: \(.status.peers | join(", "))"
 '
 ```
 
@@ -205,7 +191,7 @@ kubectl get servicebgpstatus -A -o json | jq -r '
 stateDiagram-v2
     [*] --> Created: Service gets LoadBalancer IP
     Created --> Updated: Node change or failover
-    Updated --> Updated: Peer state changes
+    Updated --> Updated: Advertisement intent changes
     Updated --> Deleted: Service deleted or IP released
     Deleted --> [*]
 ```
@@ -213,7 +199,7 @@ stateDiagram-v2
 The status resources are automatically managed by MetalLB:
 
 - **Created** when MetalLB starts advertising a service
-- **Updated** when the advertising node changes (L2 failover) or BGP peer states change
+- **Updated** when the advertising node changes (L2 failover) or the BGP advertisement intent changes
 - **Deleted** when the service is deleted or loses its LoadBalancer IP
 
 ## Querying with Labels
@@ -226,8 +212,12 @@ kubectl get servicel2status -A \
   -l metallb.io/service-namespace=production
 
 # Find the status for a specific service by name
-kubectl get servicel2status -A \
+kubectl get servicel2status -n metallb-system \
   -l metallb.io/service-name=my-api
+
+# Find the BGP status for a specific service on a specific node
+kubectl get servicebgpstatuses -n metallb-system \
+  -l metallb.io/service-name=my-api,metallb.io/node=worker-1
 ```
 
 ## Watching for Changes
@@ -236,10 +226,10 @@ Monitor status changes in real time:
 
 ```bash
 # Watch for L2 status changes - useful during failover testing
-kubectl get servicel2status -A --watch
+kubectl get servicel2status -n metallb-system --watch
 
 # Watch BGP status changes - useful during BGP peer maintenance
-kubectl get servicebgpstatus -A --watch
+kubectl get servicebgpstatus -n metallb-system --watch
 ```
 
 ## Monitoring with OneUptime
