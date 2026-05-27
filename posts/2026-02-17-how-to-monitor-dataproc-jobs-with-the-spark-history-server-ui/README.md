@@ -28,7 +28,8 @@ If the component gateway is not enabled on your cluster, you can enable it durin
 
 gcloud dataproc clusters create monitoring-cluster \
   --region=us-central1 \
-  --image-version=2.1-debian11 \
+  --zone=us-central1-a \
+  --image-version=2.2-debian12 \
   --enable-component-gateway \
   --num-workers=3
 ```
@@ -111,13 +112,13 @@ Look for:
 
 ## Configuring Event Logging for Persistent History
 
-By default, Spark writes event logs to HDFS on the cluster. If you want history to persist after cluster deletion, configure logging to GCS:
+By default, Dataproc writes Spark job history files to the cluster temp bucket in Cloud Storage. If you want history to persist in a specific location after cluster deletion, configure logging to your own GCS bucket:
 
 ```bash
 # Create a cluster with persistent Spark event logs in GCS
 gcloud dataproc clusters create persistent-history-cluster \
   --region=us-central1 \
-  --image-version=2.1-debian11 \
+  --image-version=2.2-debian12 \
   --enable-component-gateway \
   --properties="\
 spark:spark.eventLog.enabled=true,\
