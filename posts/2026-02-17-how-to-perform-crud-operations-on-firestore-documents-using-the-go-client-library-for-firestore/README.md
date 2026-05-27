@@ -299,29 +299,24 @@ func DeleteField(ctx context.Context, client *firestore.Client,
 
 ## Batch Operations
 
-Batch writes let you perform multiple operations atomically:
+The Go client's older `WriteBatch` API is deprecated. Use a transaction when multiple writes must be committed atomically:
 
 ```go
-// BatchCreateProducts creates multiple products in a single atomic operation
-func BatchCreateProducts(ctx context.Context, client *firestore.Client,
+// CreateProductsAtomically creates multiple products in a single atomic operation
+func CreateProductsAtomically(ctx context.Context, client *firestore.Client,
     products []Product) error {
 
-    batch := client.Batch()
-
-    for _, product := range products {
-        product.CreatedAt = time.Now()
-        product.UpdatedAt = time.Now()
-        ref := client.Collection("products").NewDoc()
-        batch.Set(ref, product)
-    }
-
-    // Commit all operations atomically
-    _, err := batch.Commit(ctx)
-    if err != nil {
-        return fmt.Errorf("batch create failed: %w", err)
-    }
-
-    return nil
+    return client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+        for _, product := range products {
+            product.CreatedAt = time.Now()
+            product.UpdatedAt = time.Now()
+            ref := client.Collection("products").NewDoc()
+            if err := tx.Set(ref, product); err != nil {
+                return fmt.Errorf("failed to queue product create: %w", err)
+            }
+        }
+        return nil
+    })
 }
 ```
 
@@ -355,13 +350,17 @@ func TransferStock(ctx context.Context, client *firestore.Client,
         toStock := toDoc.Data()["stock_count"].(int64)
 
         // Update both documents
-        tx.Update(client.Collection("products").Doc(fromID), []firestore.Update{
+        if err := tx.Update(client.Collection("products").Doc(fromID), []firestore.Update{
             {Path: "stock_count", Value: fromStock - int64(quantity)},
-        })
+        }); err != nil {
+            return fmt.Errorf("failed to update source product: %w", err)
+        }
 
-        tx.Update(client.Collection("products").Doc(toID), []firestore.Update{
+        if err := tx.Update(client.Collection("products").Doc(toID), []firestore.Update{
             {Path: "stock_count", Value: toStock + int64(quantity)},
-        })
+        }); err != nil {
+            return fmt.Errorf("failed to update destination product: %w", err)
+        }
 
         return nil
     })
@@ -403,4 +402,4 @@ func (h *Handler) handleCreateProduct(w http.ResponseWriter, r *http.Request) {
 
 ## Wrapping Up
 
-The Go Firestore client library provides a clean, typed interface for document operations. Use `Add` for auto-generated IDs, `Set` for replacing documents, `Update` for partial updates, and `Delete` for removal. Batch writes give you atomic multi-document operations, and transactions ensure read-write consistency. The struct-based mapping with `firestore` tags makes it natural to work with Go types. For production applications, always handle the `not found` case on reads and use transactions when you need to read then write based on the current state of a document.
+The Go Firestore client library provides a clean, typed interface for document operations. Use `Add` for auto-generated IDs, `Set` for replacing documents, `Update` for partial updates, and `Delete` for removal. Transactions give you atomic multi-document operations and ensure read-write consistency. The struct-based mapping with `firestore` tags makes it natural to work with Go types. For production applications, always handle the `not found` case on reads and use transactions when you need to read then write based on the current state of a document.
