@@ -36,7 +36,7 @@ graph TB
     SIG1 -->|Below threshold| CRIT
     SIG2 -->|High drift| WARN
     SIG3 -->|Above SLA| CRIT
-    SIG4 -->|Above 1%| CRIT
+    SIG4 -->|Above threshold| CRIT
     SIG5 -->|Significant shift| WARN
     SIG6 -->|Missing features| CRIT
 
@@ -77,7 +77,10 @@ def setup_notification_channels(project_id):
     slack_channel = monitoring_v3.NotificationChannel(
         type_="slack",
         display_name="ML Alerts Slack Channel",
-        labels={"channel_name": "#ml-alerts"},
+        labels={
+            "channel_name": "#ml-alerts",
+            "auth_token": "YOUR_SLACK_AUTH_TOKEN",
+        },
     )
     channels["slack"] = client.create_notification_channel(
         name=project_name, notification_channel=slack_channel
@@ -96,27 +99,27 @@ def setup_notification_channels(project_id):
     for name, channel in channels.items():
         print(f"Created {name} channel: {channel.name}")
 
-    return channels
+    return {name: channel.name for name, channel in channels.items()}
 ```
 
-## Step 2: Create Error Rate Alerts
+## Step 2: Create Error Count Alerts
 
 The most basic alert - if your model endpoint is throwing errors, you need to know immediately.
 
 ```python
-# alerting/error_rate_alert.py
+# alerting/error_count_alert.py
 from google.cloud import monitoring_v3
 
-def create_error_rate_alert(project_id, endpoint_id, notification_channels):
-    """Alert when the prediction endpoint error rate exceeds threshold."""
+def create_error_count_alert(project_id, endpoint_id, notification_channels):
+    """Alert when the prediction endpoint error count exceeds threshold."""
     client = monitoring_v3.AlertPolicyServiceClient()
 
     alert = monitoring_v3.AlertPolicy(
-        display_name=f"ML Endpoint Error Rate - {endpoint_id}",
+        display_name=f"ML Endpoint Error Count - {endpoint_id}",
         documentation=monitoring_v3.AlertPolicy.Documentation(
             content=(
-                "## Prediction Endpoint Error Rate Alert\n\n"
-                "The prediction endpoint error rate has exceeded the threshold.\n\n"
+                "## Prediction Endpoint Error Count Alert\n\n"
+                "The prediction endpoint error count has exceeded the threshold.\n\n"
                 "**Immediate Actions:**\n"
                 "1. Check endpoint logs in Cloud Logging\n"
                 "2. Verify the model is still deployed\n"
@@ -127,7 +130,7 @@ def create_error_rate_alert(project_id, endpoint_id, notification_channels):
         ),
         conditions=[
             monitoring_v3.AlertPolicy.Condition(
-                display_name="Error rate above 1%",
+                display_name="More than 10 errors in 5 minutes",
                 condition_threshold=monitoring_v3.AlertPolicy.Condition.MetricThreshold(
                     filter=(
                         'metric.type="aiplatform.googleapis.com/prediction/online/error_count"'
@@ -145,6 +148,7 @@ def create_error_rate_alert(project_id, endpoint_id, notification_channels):
                 ),
             ),
         ],
+        combiner=monitoring_v3.AlertPolicy.ConditionCombinerType.OR,
         notification_channels=[
             notification_channels["pagerduty"],
             notification_channels["slack"],
@@ -157,7 +161,7 @@ def create_error_rate_alert(project_id, endpoint_id, notification_channels):
     result = client.create_alert_policy(
         name=f"projects/{project_id}", alert_policy=alert
     )
-    print(f"Error rate alert created: {result.name}")
+    print(f"Error count alert created: {result.name}")
     return result
 ```
 
@@ -181,8 +185,9 @@ def create_latency_alerts(project_id, endpoint_id, notification_channels):
                 display_name="P95 latency above 500ms",
                 condition_threshold=monitoring_v3.AlertPolicy.Condition.MetricThreshold(
                     filter=(
-                        'metric.type="aiplatform.googleapis.com/prediction/online/response_latencies"'
+                        'metric.type="aiplatform.googleapis.com/prediction/online/prediction_latencies"'
                         f' AND resource.labels.endpoint_id="{endpoint_id}"'
+                        ' AND metric.labels.latency_type="total"'
                     ),
                     comparison=monitoring_v3.ComparisonType.COMPARISON_GT,
                     threshold_value=500,
@@ -196,6 +201,7 @@ def create_latency_alerts(project_id, endpoint_id, notification_channels):
                 ),
             ),
         ],
+        combiner=monitoring_v3.AlertPolicy.ConditionCombinerType.OR,
         notification_channels=[notification_channels["slack"]],
     )
 
@@ -211,8 +217,9 @@ def create_latency_alerts(project_id, endpoint_id, notification_channels):
                 display_name="P95 latency above 2000ms",
                 condition_threshold=monitoring_v3.AlertPolicy.Condition.MetricThreshold(
                     filter=(
-                        'metric.type="aiplatform.googleapis.com/prediction/online/response_latencies"'
+                        'metric.type="aiplatform.googleapis.com/prediction/online/prediction_latencies"'
                         f' AND resource.labels.endpoint_id="{endpoint_id}"'
+                        ' AND metric.labels.latency_type="total"'
                     ),
                     comparison=monitoring_v3.ComparisonType.COMPARISON_GT,
                     threshold_value=2000,
@@ -226,10 +233,15 @@ def create_latency_alerts(project_id, endpoint_id, notification_channels):
                 ),
             ),
         ],
+        combiner=monitoring_v3.AlertPolicy.ConditionCombinerType.OR,
         notification_channels=[
             notification_channels["pagerduty"],
             notification_channels["slack"],
         ],
+    )
+
+    client.create_alert_policy(
+        name=f"projects/{project_id}", alert_policy=critical_alert
     )
 
     print("Latency alerts created (warning + critical)")
@@ -316,7 +328,7 @@ class AccuracyMonitor:
         GROUP BY predicted_class
         """
 
-        results = self.bq_client.query(query).result()
+        results = list(self.bq_client.query(query).result())
         total = sum(row["count"] for row in results)
 
         for row in results:
@@ -389,6 +401,7 @@ def create_accuracy_drop_alert(project_id, model_id, notification_channels):
                 ),
             ),
         ],
+        combiner=monitoring_v3.AlertPolicy.ConditionCombinerType.OR,
         notification_channels=[
             notification_channels["pagerduty"],
             notification_channels["slack"],
@@ -448,6 +461,7 @@ def create_drift_alert(project_id, notification_channels):
                 ),
             ),
         ],
+        combiner=monitoring_v3.AlertPolicy.ConditionCombinerType.OR,
         notification_channels=[
             notification_channels["slack"],
             notification_channels["email"],
@@ -489,6 +503,7 @@ def report_model_metrics(request):
 gcloud functions deploy report-model-metrics \
   --gen2 \
   --runtime python310 \
+  --entry-point report_model_metrics \
   --trigger-http \
   --region us-central1 \
   --service-account ml-monitoring-sa@my-project.iam.gserviceaccount.com
