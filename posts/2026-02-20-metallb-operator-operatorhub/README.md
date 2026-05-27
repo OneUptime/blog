@@ -67,7 +67,7 @@ If OLM is not installed, grab the latest release and apply it:
 ```bash
 # Install OLM into your cluster
 # This creates the olm namespace and deploys the OLM components
-curl -sL https://github.com/operator-framework/operator-lifecycle-manager/releases/download/v0.28.0/install.sh | bash -s v0.28.0
+curl -sL https://github.com/operator-framework/operator-lifecycle-manager/releases/download/v0.42.0/install.sh | bash -s v0.42.0
 ```
 
 Verify that OLM pods are running:
@@ -90,7 +90,7 @@ The `operatorhubio-catalog` pod pulls operator metadata from OperatorHub.io, mak
 
 ### Step 2: Create a Namespace for MetalLB
 
-The MetalLB Operator expects to run in a specific namespace. Create it before subscribing:
+The MetalLB custom resource must live in the `metallb-system` namespace. Create it before subscribing:
 
 ```yaml
 # metallb-namespace.yaml
@@ -117,15 +117,13 @@ An OperatorGroup defines the scope of operators installed in a namespace. For Me
 ```yaml
 # metallb-operatorgroup.yaml
 # OperatorGroup controls which namespaces the operator can manage
+# Omitting targetNamespaces and selector creates a global OperatorGroup
+# This is required because LoadBalancer services can exist anywhere
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:
   name: metallb-operatorgroup
   namespace: metallb-system
-spec:
-  # Empty targetNamespaces means the operator watches all namespaces
-  # This is required because LoadBalancer services can exist anywhere
-  targetNamespaces: []
 ```
 
 Apply it:
@@ -148,8 +146,8 @@ metadata:
   namespace: metallb-system
 spec:
   # The channel determines which version stream to follow
-  # "stable" gets you tested, production-ready releases
-  channel: stable
+  # The OperatorHub community package currently publishes this operator on "beta"
+  channel: beta
   # Must match the operator's package name in the catalog
   name: metallb-operator
   # Points to the OperatorHub.io catalog that OLM set up
@@ -185,7 +183,7 @@ Expected output:
 
 ```text
 NAME                                  DISPLAY            VERSION   PHASE
-metallb-operator.v0.14.9              MetalLB Operator   0.14.9    Succeeded
+metallb-operator.v0.14.0              MetalLB Operator   0.14.0    Succeeded
 ```
 
 ### Step 5: Deploy MetalLB
@@ -330,7 +328,7 @@ You also need to configure BGP peers - these are the routers MetalLB will talk t
 ```yaml
 # bgp-peer.yaml
 # Defines the BGP router that MetalLB should peer with
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
   name: router-peer
@@ -339,9 +337,9 @@ spec:
   # Your router's IP address
   peerAddress: 10.0.0.1
   # Your router's ASN (Autonomous System Number)
-  peerASN: 64501
+  peerASN: 64513
   # The ASN MetalLB will use - pick a private ASN (64512-65534)
-  myASN: 64500
+  myASN: 64512
   # Optional: restrict which nodes peer with this router
   # nodeSelectors:
   # - matchLabels:
@@ -411,7 +409,7 @@ metadata:
 spec:
   type: LoadBalancer
   # To request an IP from a specific pool, add this annotation:
-  # metallb.universe.tf/address-pool: production-pool
+  # metallb.io/address-pool: production-pool
   selector:
     app: nginx-test
   ports:
@@ -470,6 +468,8 @@ kubectl delete -f test-service.yaml
 
 # Remove advertisements and IP pools
 kubectl delete -f l2-advertisement.yaml
+kubectl delete -f bgp-advertisement.yaml
+kubectl delete -f bgp-peer.yaml
 kubectl delete -f ip-address-pool.yaml
 
 # Remove the MetalLB instance
@@ -478,7 +478,7 @@ kubectl delete -f metallb-instance.yaml
 # Remove the operator subscription
 kubectl delete -f metallb-subscription.yaml
 
-# The CSV will be cleaned up automatically, but you can force it
+# Delete the CSV to remove the operator resources created by OLM
 kubectl delete csv -n metallb-system --all
 ```
 
