@@ -98,14 +98,25 @@ Install Grafana and configure it through provisioning files.
 ```yaml
 # roles/grafana/tasks/main.yml
 ---
+- name: Create APT keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
 - name: Add Grafana GPG key
-  ansible.builtin.apt_key:
-    url: https://apt.grafana.com/gpg.key
-    state: present
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg-full.key
+    dest: /etc/apt/keyrings/grafana.asc
+    owner: root
+    group: root
+    mode: '0644'
 
 - name: Add Grafana repository
   ansible.builtin.apt_repository:
-    repo: "deb https://apt.grafana.com stable main"
+    repo: "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main"
     state: present
 
 - name: Install Grafana
@@ -160,7 +171,7 @@ Install Grafana and configure it through provisioning files.
     owner: grafana
     group: grafana
     mode: '0644'
-  notify: Restart Grafana
+  tags: dashboards
 
 - name: Start and enable Grafana
   ansible.builtin.service:
@@ -375,7 +386,7 @@ For more dynamic dashboard management, use the Grafana API through Ansible.
     method: POST
     body_format: json
     body:
-      dashboard: "{{ lookup('file', item) | from_json }}"
+      dashboard: "{{ (lookup('file', item) | from_json).dashboard }}"
       overwrite: true
       folderId: 0
     headers:
