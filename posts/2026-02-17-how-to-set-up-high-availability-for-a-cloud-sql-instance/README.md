@@ -15,13 +15,13 @@ Database downtime is the kind of problem that wakes you up at 3 AM. High availab
 Cloud SQL high availability uses a regional configuration. When you enable HA, Google creates two instances:
 
 1. **Primary instance** - Serves all read and write traffic
-2. **Standby instance** - Sits in a different zone in the same region, receives synchronous replication from the primary
+2. **Standby instance** - Sits in a different zone in the same region, ready to serve data after failover
 
-The key word here is "synchronous." Every write to the primary must be acknowledged by the standby before it is committed. This means:
+The key word here is "synchronous." Every write to the primary is replicated to persistent disks in both zones before it is committed. This means:
 
 - Zero data loss during failover (RPO = 0)
 - Slightly higher write latency compared to a non-HA instance
-- Automatic failover typically completes in about 60-120 seconds
+- Automatic failover typically makes the instance unavailable for about 60 seconds, though the duration can vary by environment
 
 ```mermaid
 graph TD
@@ -47,7 +47,7 @@ gcloud sql instances create myapp-db \
     --region=us-central1 \
     --availability-type=REGIONAL \
     --storage-type=SSD \
-    --storage-size=100GB \
+    --storage-size=100 \
     --storage-auto-increase \
     --backup-start-time=02:00 \
     --enable-point-in-time-recovery \
@@ -101,7 +101,7 @@ gcloud sql instances patch myapp-db \
     --availability-type=REGIONAL
 ```
 
-Be aware that this operation causes a brief outage while the standby is provisioned and initial sync completes. Plan to do this during a maintenance window.
+Be aware that this operation restarts the instance. It typically takes a few minutes, but instances with large disks or heavy load can take longer. Plan to do this during a maintenance window.
 
 ## What Triggers Failover
 
@@ -131,7 +131,7 @@ During a failover event, here is the sequence:
 4. A new standby is created in the original primary's zone
 5. Synchronous replication resumes from the new primary to the new standby
 
-The failover typically takes 60-120 seconds. During this time:
+Failover typically makes the instance unavailable for about 60 seconds, though the duration can vary by environment. During this time:
 
 - Existing connections are dropped
 - New connections are refused
@@ -204,36 +204,32 @@ Set up monitoring to track your HA instance's health:
 ```bash
 # Check the current state of your instance
 gcloud sql instances describe myapp-db \
-    --format="json(state, settings.availabilityType, failoverReplica)"
+    --format="json(state, settings.availabilityType, gceZone, secondaryGceZone)"
 ```
 
 Key Cloud Monitoring metrics to watch:
 
-- `database/replication/replica_lag` - Should be near zero for HA
+- `database/available_for_failover` - Should be greater than zero when failover is available
+- `database/auto_failover_request_count` - Tracks automatic failover requests
 - `database/instance_state` - Tracks if the instance is running
-- `database/uptime` - Resets after a failover
+- `database/up` - Indicates whether the database server is up
 
-Create an alert policy for replication lag:
+Create an alert policy for failover availability:
 
 ```bash
-# Create an alerting policy for replication lag
+# Create an alerting policy when failover is not available
 gcloud monitoring policies create \
     --notification-channels=projects/my-project/notificationChannels/12345 \
-    --display-name="Cloud SQL HA Replication Lag" \
-    --condition-display-name="Replication lag > 5s" \
-    --condition-filter='resource.type = "cloudsql_database" AND metric.type = "cloudsql.googleapis.com/database/replication/replica_lag"' \
-    --condition-threshold-value=5 \
-    --condition-threshold-duration=60s
+    --display-name="Cloud SQL HA Failover Availability" \
+    --condition-display-name="Failover unavailable" \
+    --condition-filter='resource.type = "cloudsql_database" AND metric.type = "cloudsql.googleapis.com/database/available_for_failover"' \
+    --if="< 1" \
+    --duration=60s
 ```
 
 ## Cost Impact
 
-High availability roughly doubles your instance cost because you are running two instances. For a `db-custom-4-16384` instance:
-
-- Without HA: ~$300/month
-- With HA: ~$600/month
-
-Storage costs are also doubled since the standby maintains its own copy of the data.
+High availability roughly doubles your instance cost because the HA price includes the extra CPU, RAM, and storage used for the standby. For a `db-custom-4-16384` instance, use the Google Cloud pricing page or Pricing Calculator for the current regional price, then expect the HA configuration to cost about twice the standalone configuration.
 
 This is a significant cost increase, so consider whether every database needs HA. Development and staging environments usually do not. But for production databases where downtime has a real business cost, HA pays for itself the first time it saves you from an outage.
 
@@ -271,4 +267,4 @@ watch -n 5 "gcloud sql instances describe myapp-db --format='value(state)'"
 
 ## Summary
 
-High availability in Cloud SQL is straightforward to enable but requires thoughtful application design to take full advantage of. Enable it with `--availability-type=REGIONAL`, implement retry logic in your application, monitor replication lag, and test failover before you need it for real. The cost is roughly double, but for production databases, the protection against zone-level failures is worth every penny.
+High availability in Cloud SQL is straightforward to enable but requires thoughtful application design to take full advantage of. Enable it with `--availability-type=REGIONAL`, implement retry logic in your application, monitor failover availability, and test failover before you need it for real. The cost is roughly double, but for production databases, the protection against zone-level failures is worth every penny.
