@@ -34,7 +34,7 @@ flowchart TD
 
 ## Strategy 1: Cloud CDN for Internet Egress
 
-If you serve static content, APIs, or media to end users, Cloud CDN can cache responses at over 150 edge locations worldwide. Cache hits are served from the edge and cost significantly less than origin egress.
+If you serve static content, APIs, or media to end users, Cloud CDN can cache responses at more than 100 cache locations worldwide. Cache hits are served from the edge, reduce load on your origin, and can lower data transfer costs depending on destination and volume.
 
 ### Set Up Cloud CDN with a Cloud Storage Backend
 
@@ -98,10 +98,10 @@ gcloud compute backend-services update my-backend-service \
 The higher your cache hit rate, the more you save on egress:
 
 ```bash
-# Check your CDN cache hit rate
+# Check backend health
 gcloud compute backend-services get-health my-backend-service --global
 
-# View CDN metrics in Cloud Monitoring
+# View request metrics in Cloud Monitoring; group by the cache_result label for cache hit rate
 gcloud monitoring metrics list --filter='metric.type="loadbalancing.googleapis.com/https/request_count"'
 ```
 
@@ -137,19 +137,19 @@ def get_profile():
 
 ### CDN Cost Savings Example
 
-Here is a rough calculation. Say you serve 10 TB per month of content to users:
+Here is a rough calculation. Say you serve 100 TB per month of content to users in North America:
 
 | Scenario | Egress Cost |
 |----------|------------|
-| No CDN (all from origin) | ~$850/month (at $0.085/GB) |
-| 80% CDN cache hit rate | ~$170 origin egress + ~$64 CDN egress = ~$234/month |
-| Savings | ~$616/month (72% reduction) |
+| No CDN (all from origin) | ~$8,500/month (at $0.085/GB) |
+| Cloud CDN with 80% cache hit rate | ~$5,750 CDN cache data transfer + ~$200 cache fill = ~$5,950/month |
+| Savings | ~$2,550/month (30% reduction) |
 
-CDN cache egress is charged at $0.02-0.08/GB depending on region, significantly less than standard internet egress.
+CDN cache data transfer is charged at $0.02-$0.20/GiB depending on region and monthly usage tier, plus cache fill and request charges. For small volumes, Cloud CDN can be close to standard internet egress rates; the biggest savings usually come from higher-volume tiers and reduced origin traffic.
 
 ## Strategy 2: Private Google Access
 
-Private Google Access (PGA) allows VM instances without external IP addresses to access Google APIs and services through Google's internal network instead of the internet. This eliminates egress charges for accessing services like Cloud Storage, BigQuery, and Artifact Registry.
+Private Google Access (PGA) allows VM instances without external IP addresses to access Google APIs and services through Google's network instead of requiring external IP addresses or Cloud NAT. It can avoid internet-facing paths for services like Cloud Storage, BigQuery, and Artifact Registry, but data transfer charges still follow Google Cloud's VM-to-Google-service pricing; same-region access is often free, while cross-region access can still be charged.
 
 ### Enable Private Google Access on Subnets
 
@@ -194,13 +194,15 @@ gcloud dns record-sets create "private.googleapis.com." \
 Common scenarios where PGA saves money:
 
 ```bash
-# Without PGA: GKE pods pulling images from gcr.io/Artifact Registry
-# go through the internet = egress charges
-# With PGA: Same traffic stays on Google's network = no egress charges
+# Without PGA: private GKE nodes might need Cloud NAT or external IPs
+# to pull images from gcr.io or Artifact Registry.
+# With PGA: private nodes can reach supported Google API endpoints
+# without external IPs; regional data transfer pricing still applies.
 
 # Without PGA: Dataflow workers reading from Cloud Storage
-# through public IPs = egress charges for cross-region reads
-# With PGA: Internal routing = reduced or eliminated egress
+# might require external IPs or NAT when workers have only internal IPs.
+# With PGA: workers can reach Google APIs privately, but cross-region
+# reads can still incur data transfer charges.
 ```
 
 ## Strategy 3: VPC Network Peering and Interconnect
@@ -215,8 +217,11 @@ For high-volume data transfers between your on-premises network and GCP, or betw
 # Create a Dedicated Interconnect (requires physical cross-connect)
 gcloud compute interconnects create my-interconnect \
   --interconnect-type=DEDICATED \
+  --link-type=LINK_TYPE_ETHERNET_10G_LR \
+  --requested-link-count=1 \
   --admin-enabled \
   --customer-name="My Company" \
+  --noc-contact-email=noc@example.com \
   --location=iad-zone1-1
 ```
 
@@ -224,7 +229,8 @@ For GCP-to-GCP traffic between projects or VPCs:
 
 ```bash
 # Set up VPC Network Peering between projects
-# Peered VPC traffic within the same region is free
+# Peered VPC traffic in the same zone is free when using internal IPs;
+# traffic between zones in the same region is charged at the inter-zone rate.
 gcloud compute networks peerings create project-a-to-b \
   --network=project-a-vpc \
   --peer-project=project-b \
@@ -260,7 +266,7 @@ ORDER BY monthly_cost DESC
 
 ## Strategy 5: Use Cloud Storage Transfer Service for Large Moves
 
-For large data transfers between regions, Cloud Storage Transfer Service can be cheaper than moving data through your application:
+For large data transfers between regions, Cloud Storage Transfer Service can be more reliable and easier to operate than moving data through your application. You still pay applicable Cloud Storage network and operation charges, but the service handles retries and incremental transfers for you:
 
 ```bash
 # Create a transfer job to replicate data between regions
@@ -293,7 +299,7 @@ ORDER BY week DESC, weekly_cost DESC;
 
 ## Quick Win Checklist
 
-1. Enable Private Google Access on all subnets - this costs nothing and immediately eliminates egress charges for Google API traffic from private instances.
+1. Enable Private Google Access on all subnets that host private instances - this costs nothing and lets those instances reach supported Google APIs without external IPs or Cloud NAT.
 
 2. Enable Cloud CDN on any public-facing load balancer serving cacheable content - even a modest cache hit rate saves money.
 
