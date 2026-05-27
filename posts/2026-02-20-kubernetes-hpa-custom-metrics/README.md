@@ -131,7 +131,8 @@ spec:
   selector:
     app: queue-app
   ports:
-    - port: 80
+    - name: http-metrics
+      port: 80
       targetPort: 8080
 ```
 
@@ -148,13 +149,13 @@ metadata:
   name: queue-app-monitor
   namespace: default
   labels:
-    release: prometheus  # Must match the Prometheus Helm release label
+    release: prometheus  # Useful when Prometheus selects ServiceMonitors by release label
 spec:
   selector:
     matchLabels:
       app: queue-app
   endpoints:
-    - port: "80"
+    - port: http-metrics
       path: /metrics
       interval: 15s  # Scrape every 15 seconds
 ```
