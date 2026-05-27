@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Gcloud CLI, SCP, File Transfer, Compute Engine
 
-Description: Learn how to transfer files and directories between your local machine and GCP Compute Engine instances using gcloud scp, including IAP tunneling and batch transfers.
+Description: Learn how to transfer files and directories between your local machine and GCP Compute Engine instances using `gcloud compute scp`, including IAP tunneling and batch transfers.
 
 ---
 
-Moving files between your local machine and a GCP VM is something you end up doing constantly - deploying configuration files, pulling logs, uploading data for processing. The gcloud scp command wraps the standard SCP protocol with GCP-specific features like automatic key management and IAP tunneling, making it the easiest way to transfer files to and from Compute Engine instances.
+Moving files between your local machine and a GCP VM is something you end up doing constantly - deploying configuration files, pulling logs, uploading data for processing. The `gcloud compute scp` command wraps the standard SCP protocol with GCP-specific features like automatic key management and IAP tunneling, making it the easiest way to transfer files to and from Compute Engine instances.
 
-This post covers the different ways to use gcloud scp, from simple file copies to recursive directory transfers and transfers through IAP for instances without public IPs.
+This post covers the different ways to use `gcloud compute scp`, from simple file copies to recursive directory transfers and transfers through IAP for instances without public IPs.
 
 ## Basic File Transfer
 
@@ -146,7 +146,7 @@ gcloud compute ssh my-instance \
 
 ## Transfer Between Two VMs
 
-gcloud scp does not directly support VM-to-VM transfers. You have two options:
+`gcloud compute scp` does not directly support VM-to-VM transfers. You have three options:
 
 ### Option 1: Through your local machine
 
@@ -202,11 +202,11 @@ gcloud compute scp --compress ./large-log.txt my-instance:~/large-log.txt \
 If you do not want to saturate the network:
 
 ```bash
-# Limit bandwidth to 10 MB/s using SSH options
+# Limit bandwidth to 10 MB/s using scp options
 gcloud compute scp ./big-file.dat my-instance:~/big-file.dat \
   --zone=us-central1-a \
   --project=my-project \
-  -- -l 80000  # bandwidth limit in Kbit/s (80000 Kbit/s = 10 MB/s)
+  --scp-flag="-l 80000"  # bandwidth limit in Kbit/s (80000 Kbit/s = 10 MB/s)
 ```
 
 ### Use Cloud Storage for Large Files
@@ -245,20 +245,23 @@ gcloud compute ssh my-instance \
 
 ### Transfer Interrupted
 
-For unreliable connections, use rsync instead of SCP since it can resume:
+For unreliable connections, use Cloud Storage as an intermediary since `gcloud storage cp` supports resumable uploads:
 
 ```bash
-# Use gcloud compute rsync for resumable transfers
-gcloud compute scp --recurse ./large-dir/ my-instance:~/large-dir/ \
+# Use Cloud Storage for resumable upload to an intermediary bucket
+gcloud storage cp ./large-file.dat gs://my-bucket/transfers/
+
+gcloud compute ssh my-instance \
   --zone=us-central1-a \
-  --project=my-project
+  --project=my-project \
+  --command="gcloud storage cp gs://my-bucket/transfers/large-file.dat ~/"
 ```
 
 Alternatively, split the transfer into smaller chunks.
 
 ### Slow Transfer Through IAP
 
-IAP tunneling adds overhead. For large transfers through IAP, consider setting up a Cloud NAT temporarily or using Cloud Storage as an intermediary:
+IAP tunneling adds overhead. For large transfers through IAP, consider using Cloud Storage as an intermediary, with Private Google Access or Cloud NAT for VM egress if needed:
 
 ```bash
 # Check IAP tunnel bandwidth
@@ -305,4 +308,4 @@ done
 
 ## Summary
 
-The gcloud scp command is the go-to tool for file transfers with Compute Engine instances. It handles SSH key management automatically, supports IAP tunneling for private instances, and works with both files and directories. For large transfers, consider Cloud Storage as an intermediary for better performance and resumability. For automated deployments, combine gcloud scp with gcloud ssh in scripts using the `--quiet` flag.
+The `gcloud compute scp` command is the go-to tool for file transfers with Compute Engine instances. It handles SSH key management automatically, supports IAP tunneling for private instances, and works with both files and directories. For large transfers, consider Cloud Storage as an intermediary for better performance and resumability. For automated deployments, combine `gcloud compute scp` with `gcloud compute ssh` in scripts using the `--quiet` flag.
