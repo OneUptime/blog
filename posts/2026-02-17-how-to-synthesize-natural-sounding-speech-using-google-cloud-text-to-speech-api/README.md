@@ -18,7 +18,7 @@ Cloud Text-to-Speech provides:
 
 - **Standard voices**: Good quality, lower cost. These use parametric synthesis.
 - **WaveNet voices**: Higher quality using DeepMind's WaveNet technology. They sound more natural but cost more.
-- **Neural2 voices**: Google's latest neural network models. Best quality available.
+- **Neural2 voices**: High-quality neural network models for natural-sounding speech.
 - **Studio voices**: Premium voices designed for professional media production.
 
 The API supports over 40 languages and hundreds of voice variants. You can control pitch, speaking rate, volume, and use SSML markup for fine-grained control over pronunciation.
@@ -141,10 +141,10 @@ def synthesize_with_custom_params(text, output_path, speed=1.0, pitch=0.0, volum
 
     audio_config = texttospeech.AudioConfig(
         audio_encoding=texttospeech.AudioEncoding.MP3,
-        speaking_rate=speed,      # 0.25 to 4.0 (1.0 is normal)
+        speaking_rate=speed,      # 0.25 to 2.0 (1.0 is normal)
         pitch=pitch,              # -20.0 to 20.0 semitones
         volume_gain_db=volume,    # -96.0 to 16.0 dB
-        sample_rate_hertz=24000,  # Higher = better quality
+        sample_rate_hertz=24000,  # Request 24 kHz output
     )
 
     response = client.synthesize_speech(
@@ -289,31 +289,35 @@ batch_synthesize(ivr_messages, "ivr_audio")
 Generate the same content in multiple languages:
 
 ```python
+import os
+
 from google.cloud import texttospeech
 
 def synthesize_multilingual(text_by_language, output_dir):
     """Generate speech in multiple languages."""
     client = texttospeech.TextToSpeechClient()
+    os.makedirs(output_dir, exist_ok=True)
 
     # Map languages to recommended Neural2 voices
     voice_map = {
         "en-US": "en-US-Neural2-D",
-        "es-ES": "es-ES-Neural2-B",
-        "fr-FR": "fr-FR-Neural2-B",
-        "de-DE": "de-DE-Neural2-B",
+        "es-ES": "es-ES-Neural2-E",
+        "fr-FR": "fr-FR-Neural2-F",
+        "de-DE": "de-DE-Neural2-G",
         "ja-JP": "ja-JP-Neural2-B",
         "pt-BR": "pt-BR-Neural2-B",
     }
 
     for lang_code, text in text_by_language.items():
-        voice_name = voice_map.get(lang_code, f"{lang_code}-Standard-A")
+        voice_name = voice_map.get(lang_code)
 
         synthesis_input = texttospeech.SynthesisInput(text=text)
 
-        voice = texttospeech.VoiceSelectionParams(
-            language_code=lang_code,
-            name=voice_name,
-        )
+        voice_params = {"language_code": lang_code}
+        if voice_name:
+            voice_params["name"] = voice_name
+
+        voice = texttospeech.VoiceSelectionParams(**voice_params)
 
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.MP3,
@@ -325,7 +329,7 @@ def synthesize_multilingual(text_by_language, output_dir):
             audio_config=audio_config,
         )
 
-        output_path = f"{output_dir}/greeting_{lang_code}.mp3"
+        output_path = os.path.join(output_dir, f"greeting_{lang_code}.mp3")
         with open(output_path, "wb") as out:
             out.write(response.audio_content)
 
