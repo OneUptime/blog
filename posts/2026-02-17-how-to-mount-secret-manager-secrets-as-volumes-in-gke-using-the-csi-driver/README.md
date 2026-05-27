@@ -10,16 +10,16 @@ Description: Step-by-step guide to installing and configuring the Secret Manager
 
 Kubernetes has its own Secret resource, but it has well-known limitations. Secrets are stored in etcd with base64 encoding (not encryption by default), they are accessible to anyone with RBAC permissions on the namespace, and managing them across environments is painful. Teams often end up with secrets scattered across kubectl commands, Helm values files, and CI/CD variable stores.
 
-The Secrets Store CSI Driver bridges Kubernetes and external secret managers. For GKE, Google provides a provider plugin that connects the CSI driver to Secret Manager. This lets your pods mount secrets from Secret Manager as files in the container filesystem, using the same Secret Manager access controls and audit logging you use for everything else.
+The Secrets Store CSI Driver bridges Kubernetes and external secret managers. For GKE, Google provides the Secret Manager add-on, which is derived from the open source Secrets Store CSI Driver and the Google Secret Manager provider. This lets your pods mount secrets from Secret Manager as files in the container filesystem, using the same Secret Manager access controls and audit logging you use for everything else.
 
 ## How It Works
 
-The CSI driver runs as a DaemonSet on your GKE nodes. When a pod references a `SecretProviderClass`, the driver intercepts the volume mount request and fetches the specified secrets from Secret Manager. The secrets are written as files in the pod's filesystem. If configured, the driver can also sync the secrets into native Kubernetes Secrets for use as environment variables.
+The CSI driver runs on your GKE nodes. When a pod references a `SecretProviderClass`, the driver intercepts the volume mount request and fetches the specified secrets from Secret Manager. The secrets are written as files in the pod's filesystem. If configured separately, Secret Manager can also sync the secrets into native Kubernetes Secrets for use as environment variables.
 
 ```mermaid
 flowchart TD
     A[Pod requests volume mount] --> B[CSI Driver on Node]
-    B --> C[GCP Secret Manager Provider]
+    B --> C[GKE Secret Manager Provider]
     C --> D[Secret Manager API]
     D --> E[Return secret data]
     E --> F[Write files to pod volume]
@@ -31,9 +31,9 @@ flowchart TD
 
 ## Prerequisites
 
-- A GKE cluster (Standard or Autopilot) running version 1.25 or later
-- Workload Identity enabled on the cluster
-- Secret Manager API enabled
+- A GKE cluster (Standard or Autopilot) running version 1.27.14-gke.1042001 or later
+- Workload Identity Federation for GKE enabled on the cluster
+- Secret Manager and Google Kubernetes Engine APIs enabled
 - Secrets stored in Secret Manager
 
 ## Step 1 - Enable the CSI Driver on Your Cluster
@@ -60,49 +60,43 @@ gcloud container clusters create my-cluster \
   --project=my-project-id
 ```
 
-For GKE Autopilot clusters, the CSI driver is available automatically starting from version 1.25.
-
-## Step 2 - Set Up Workload Identity
-
-The CSI driver uses Workload Identity to authenticate with Secret Manager. You need a Kubernetes service account linked to a GCP service account that has access to your secrets.
-
-Create the GCP service account:
+For new GKE Autopilot clusters, enable the add-on at creation time:
 
 ```bash
-# Create a GCP service account for the workload
-gcloud iam service-accounts create app-secrets-reader \
-  --display-name="App Secrets Reader" \
-  --project=my-project-id
-
-# Grant it access to the secrets
-gcloud secrets add-iam-policy-binding db-password \
-  --member="serviceAccount:app-secrets-reader@my-project-id.iam.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor" \
-  --project=my-project-id
-
-gcloud secrets add-iam-policy-binding api-key \
-  --member="serviceAccount:app-secrets-reader@my-project-id.iam.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor" \
+# Create a new Autopilot cluster with the CSI driver enabled
+gcloud container clusters create-auto my-cluster \
+  --region=us-central1 \
+  --enable-secret-manager \
   --project=my-project-id
 ```
 
-Create the Kubernetes service account and bind it:
+## Step 2 - Set Up Workload Identity
+
+The CSI driver uses Workload Identity Federation for GKE to authenticate with Secret Manager. You need a Kubernetes service account that has access to your secrets.
+
+Create the Kubernetes service account:
 
 ```bash
 # Create the Kubernetes service account
 kubectl create serviceaccount app-sa --namespace=my-namespace
-
-# Bind it to the GCP service account
-gcloud iam service-accounts add-iam-policy-binding \
-  app-secrets-reader@my-project-id.iam.gserviceaccount.com \
-  --member="serviceAccount:my-project-id.svc.id.goog[my-namespace/app-sa]" \
-  --role="roles/iam.workloadIdentityUser"
-
-# Annotate the Kubernetes SA with the GCP SA email
-kubectl annotate serviceaccount app-sa \
-  --namespace=my-namespace \
-  iam.gke.io/gcp-service-account=app-secrets-reader@my-project-id.iam.gserviceaccount.com
 ```
+
+Grant the Kubernetes service account access to the secrets:
+
+```bash
+# Grant it access to the secrets
+gcloud secrets add-iam-policy-binding db-password \
+  --member="principal://iam.googleapis.com/projects/123456789012/locations/global/workloadIdentityPools/my-project-id.svc.id.goog/subject/ns/my-namespace/sa/app-sa" \
+  --role="roles/secretmanager.secretAccessor" \
+  --project=my-project-id
+
+gcloud secrets add-iam-policy-binding api-key \
+  --member="principal://iam.googleapis.com/projects/123456789012/locations/global/workloadIdentityPools/my-project-id.svc.id.goog/subject/ns/my-namespace/sa/app-sa" \
+  --role="roles/secretmanager.secretAccessor" \
+  --project=my-project-id
+```
+
+Replace `123456789012` with your Google Cloud project number.
 
 ## Step 3 - Create a SecretProviderClass
 
@@ -117,7 +111,7 @@ metadata:
   name: app-secrets
   namespace: my-namespace
 spec:
-  provider: gcp
+  provider: gke
   parameters:
     secrets: |
       - resourceName: "projects/my-project-id/secrets/db-password/versions/latest"
@@ -161,7 +155,7 @@ spec:
       labels:
         app: my-app
     spec:
-      serviceAccountName: app-sa  # The SA with Workload Identity binding
+      serviceAccountName: app-sa  # The SA with Secret Manager IAM access
       containers:
         - name: app
           image: us-docker.pkg.dev/my-project-id/my-repo/my-app:latest
@@ -172,7 +166,7 @@ spec:
       volumes:
         - name: secrets-volume
           csi:
-            driver: secrets-store.csi.k8s.io
+            driver: secrets-store-gke.csi.k8s.io
             readOnly: true
             volumeAttributes:
               secretProviderClass: app-secrets
@@ -188,32 +182,54 @@ After deployment, the secrets are available as files inside the container:
 
 ## Step 5 - Optional: Sync to Kubernetes Secrets
 
-If your application reads secrets from environment variables rather than files, you can configure the CSI driver to sync the fetched secrets into native Kubernetes Secrets. Then reference those in your pod's env spec:
+If your application reads secrets from environment variables rather than files, you can enable Secret Manager's secret synchronization feature and use a `SecretSync` resource to sync Secret Manager secrets into native Kubernetes Secrets. Then reference those in your pod's env spec:
+
+```bash
+# Enable secret synchronization on an existing cluster
+gcloud container clusters update my-cluster \
+  --region=us-central1 \
+  --enable-secret-sync \
+  --project=my-project-id
+```
 
 ```yaml
 # secret-provider-class-with-sync.yaml
-# Syncs Secret Manager secrets to native Kubernetes Secrets
+# Defines which Secret Manager secrets can be synchronized
 apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
 metadata:
   name: app-secrets-with-sync
   namespace: my-namespace
 spec:
-  provider: gcp
+  provider: gke
   parameters:
     secrets: |
       - resourceName: "projects/my-project-id/secrets/db-password/versions/latest"
         path: "db-password"
       - resourceName: "projects/my-project-id/secrets/api-key/versions/latest"
         path: "api-key"
-  secretObjects:
-    - secretName: app-k8s-secrets
-      type: Opaque
-      data:
-        - objectName: db-password
-          key: DB_PASSWORD
-        - objectName: api-key
-          key: API_KEY
+```
+
+Apply the `SecretProviderClass`, then create a `SecretSync` resource:
+
+```yaml
+# secret-sync.yaml
+# Syncs Secret Manager secrets to a native Kubernetes Secret
+apiVersion: secret-sync.gke.io/v1
+kind: SecretSync
+metadata:
+  name: app-k8s-secrets
+  namespace: my-namespace
+spec:
+  serviceAccountName: app-sa
+  secretProviderClassName: app-secrets-with-sync
+  secretObject:
+    type: Opaque
+    data:
+      - sourcePath: "db-password"
+        targetKey: "DB_PASSWORD"
+      - sourcePath: "api-key"
+        targetKey: "API_KEY"
 ```
 
 Then reference the synced Kubernetes Secret in your deployment:
@@ -251,20 +267,9 @@ spec:
                 secretKeyRef:
                   name: app-k8s-secrets
                   key: API_KEY
-          volumeMounts:
-            - name: secrets-volume
-              mountPath: /secrets
-              readOnly: true
-      volumes:
-        - name: secrets-volume
-          csi:
-            driver: secrets-store.csi.k8s.io
-            readOnly: true
-            volumeAttributes:
-              secretProviderClass: app-secrets-with-sync
 ```
 
-Note that the volume mount is still required even when using `secretObjects` sync. The CSI driver only fetches secrets when the volume is mounted.
+The Secret Manager add-on doesn't support the open source Secrets Store CSI Driver `secretObjects` sync feature. Use `SecretSync` when you need Kubernetes Secrets.
 
 ## Secret Rotation
 
@@ -274,22 +279,21 @@ The CSI driver supports auto-rotation. When enabled, it periodically checks for 
 # Enable rotation on the cluster (check interval in seconds)
 gcloud container clusters update my-cluster \
   --region=us-central1 \
-  --secret-manager-rotation-interval=60s \
+  --enable-secret-manager \
+  --enable-secret-manager-rotation \
+  --secret-manager-rotation-interval=120s \
   --project=my-project-id
 ```
 
-After enabling rotation, when a new version is added to a secret in Secret Manager, the mounted file is updated within the rotation interval. Your application needs to handle re-reading the file, as the environment variable (if synced) is not updated dynamically - only the file mount is.
+After enabling rotation, when a new version is added to a secret in Secret Manager, the mounted file is updated within the rotation interval. Secret Manager add-on auto-rotation requires GKE version 1.32.2-gke.1059000 or later, and the minimum rotation interval is `120s`. Your application needs to handle re-reading the file, as environment variables that came from Kubernetes Secrets are not updated dynamically.
 
 ## Troubleshooting
 
 If secrets are not mounting, check the following:
 
 ```bash
-# Verify the CSI driver pods are running
-kubectl get pods -n kube-system -l app=secrets-store-csi-driver
-
-# Check the provider pods
-kubectl get pods -n kube-system -l app=secrets-store-provider-gcp
+# Verify the Secret Manager add-on is enabled
+gcloud container clusters describe my-cluster --region=us-central1 | grep secretManagerConfig -A 4
 
 # Look at events on the pod for mount errors
 kubectl describe pod my-app-pod -n my-namespace
@@ -298,6 +302,6 @@ kubectl describe pod my-app-pod -n my-namespace
 kubectl run test-wi --image=google/cloud-sdk:slim --serviceaccount=app-sa -n my-namespace -- gcloud auth list
 ```
 
-Common issues include missing IAM bindings on the GCP service account, incorrect Workload Identity annotation on the Kubernetes service account, and typos in the secret resource names.
+Common issues include missing IAM bindings for the Kubernetes service account principal, Workload Identity Federation not being enabled on the cluster, and typos in the secret resource names.
 
 The CSI driver approach is the cleanest way to integrate Secret Manager with GKE workloads. It keeps your pod specs free of sensitive values, leverages Workload Identity for authentication, and provides a clear audit trail through Secret Manager. Once you have the driver set up, adding new secrets to a deployment is just a matter of updating the SecretProviderClass and the volume mount.
