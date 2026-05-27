@@ -27,10 +27,14 @@ Start by creating a data exchange. This is the container where you will publish 
 ```bash
 # Create a data exchange for sharing analytics data
 
-gcloud bigquery analytics-hub data-exchanges create analytics_exchange \
-  --location=us \
-  --display-name="Company Analytics Data Exchange" \
-  --description="Internal data exchange for sharing analytics datasets across teams"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://analyticshub.googleapis.com/v1/projects/my-project/locations/us/dataExchanges?dataExchangeId=analytics_exchange" \
+  -d '{
+    "displayName": "Company Analytics Data Exchange",
+    "description": "Internal data exchange for sharing analytics datasets across teams"
+  }'
 ```
 
 You can also create exchanges through the BigQuery console under Analytics Hub.
@@ -41,13 +45,18 @@ To publish data, create a listing within the exchange that points to a BigQuery 
 
 ```bash
 # Create a listing that publishes the sales_analytics dataset
-gcloud bigquery analytics-hub listings create sales_data_listing \
-  --data-exchange=analytics_exchange \
-  --location=us \
-  --display-name="Sales Analytics Data" \
-  --description="Daily sales metrics, product performance, and customer analytics" \
-  --primary-contact="data-team@company.com" \
-  --bigquery-dataset="projects/my-project/datasets/sales_analytics"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://analyticshub.googleapis.com/v1/projects/my-project/locations/us/dataExchanges/analytics_exchange/listings?listingId=sales_data_listing" \
+  -d '{
+    "displayName": "Sales Analytics Data",
+    "description": "Daily sales metrics, product performance, and customer analytics",
+    "primaryContact": "data-team@company.com",
+    "bigqueryDataset": {
+      "dataset": "projects/my-project/datasets/sales_analytics"
+    }
+  }'
 ```
 
 You can also do this in SQL by setting up the dataset and permissions, then creating the listing through the API or console.
@@ -89,26 +98,50 @@ GROUP BY product_id, product_name, category;
 You can control who can see and subscribe to your listings:
 
 ```bash
-# Grant a specific team the ability to subscribe to the listing
-gcloud bigquery analytics-hub listings add-iam-policy-binding \
-  sales_data_listing \
-  --data-exchange=analytics_exchange \
-  --location=us \
-  --member="group:marketing-analytics@company.com" \
-  --role="roles/analyticshub.subscriber"
+# Write an updated IAM policy that grants a specific team the ability to subscribe
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://analyticshub.googleapis.com/v1/projects/my-project/locations/us/dataExchanges/analytics_exchange/listings/sales_data_listing:setIamPolicy" \
+  -d '{
+    "policy": {
+      "bindings": [
+        {
+          "role": "roles/analyticshub.subscriber",
+          "members": ["group:marketing-analytics@company.com"]
+        }
+      ]
+    }
+  }'
 ```
+
+When using `setIamPolicy`, start from the listing's current IAM policy and add or remove the binding you need so you do not accidentally replace unrelated access.
 
 For public listings (sharing with external organizations):
 
 ```bash
 # Make a listing available to all authenticated users
-gcloud bigquery analytics-hub listings add-iam-policy-binding \
-  public_weather_data \
-  --data-exchange=public_exchange \
-  --location=us \
-  --member="allAuthenticatedUsers" \
-  --role="roles/analyticshub.viewer"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://analyticshub.googleapis.com/v1/projects/my-project/locations/us/dataExchanges/public_exchange/listings/public_weather_data:setIamPolicy" \
+  -d '{
+    "policy": {
+      "bindings": [
+        {
+          "role": "roles/analyticshub.viewer",
+          "members": ["allAuthenticatedUsers"]
+        },
+        {
+          "role": "roles/analyticshub.subscriber",
+          "members": ["allAuthenticatedUsers"]
+        }
+      ]
+    }
+  }'
 ```
+
+For public discovery, also enable public discoverability on the exchange or listing and grant the appropriate viewer permissions to `allUsers` or `allAuthenticatedUsers`.
 
 ## Subscribing to a Listing
 
@@ -116,10 +149,19 @@ When a subscriber wants to access shared data, they create a subscription that c
 
 ```bash
 # Subscribe to a listing - creates a linked dataset in the subscriber's project
-gcloud bigquery analytics-hub listings subscribe sales_data_listing \
-  --data-exchange=analytics_exchange \
-  --location=us \
-  --destination-dataset="projects/subscriber-project/datasets/shared_sales_data"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://analyticshub.googleapis.com/v1/projects/my-project/locations/us/dataExchanges/analytics_exchange/listings/sales_data_listing:subscribe" \
+  -d '{
+    "destinationDataset": {
+      "datasetReference": {
+        "projectId": "subscriber-project",
+        "datasetId": "shared_sales_data"
+      },
+      "location": "us"
+    }
+  }'
 ```
 
 After subscribing, the linked dataset appears in the subscriber's project:
@@ -141,24 +183,33 @@ ORDER BY total_revenue DESC;
 Analytics Hub truly shines for cross-organization data sharing. A data provider can publish datasets that customers, partners, or the public can subscribe to:
 
 ```bash
-# Create a public exchange for commercial data products
-gcloud bigquery analytics-hub data-exchanges create commercial_data_exchange \
-  --location=us \
-  --display-name="Acme Data Products" \
-  --description="Commercial datasets available for subscription"
+# Create an exchange for commercial data products
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://analyticshub.googleapis.com/v1/projects/acme-data/locations/us/dataExchanges?dataExchangeId=commercial_data_exchange" \
+  -d '{
+    "displayName": "Acme Data Products",
+    "description": "Commercial datasets available for subscription"
+  }'
 
 # Publish a listing for a commercial dataset
-gcloud bigquery analytics-hub listings create market_trends \
-  --data-exchange=commercial_data_exchange \
-  --location=us \
-  --display-name="Market Trends Dataset" \
-  --description="Daily market trend indicators across 50 sectors" \
-  --primary-contact="data-products@acme.com" \
-  --documentation="https://docs.acme.com/market-trends" \
-  --bigquery-dataset="projects/acme-data/datasets/market_trends_public"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://analyticshub.googleapis.com/v1/projects/acme-data/locations/us/dataExchanges/commercial_data_exchange/listings?listingId=market_trends" \
+  -d '{
+    "displayName": "Market Trends Dataset",
+    "description": "Daily market trend indicators across 50 sectors",
+    "primaryContact": "data-products@acme.com",
+    "documentation": "https://docs.acme.com/market-trends",
+    "bigqueryDataset": {
+      "dataset": "projects/acme-data/datasets/market_trends_public"
+    }
+  }'
 ```
 
-External subscribers from different organizations can browse the exchange and subscribe just like internal users.
+External subscribers from different organizations can browse the exchange and subscribe just like internal users when they have the required access.
 
 ## Listing Configuration Options
 
@@ -167,17 +218,26 @@ When creating a listing, you have several configuration options:
 ```bash
 # Create a listing with restricted subscription
 # Only subscribers you approve can access the data
-gcloud bigquery analytics-hub listings create restricted_dataset \
-  --data-exchange=analytics_exchange \
-  --location=us \
-  --display-name="Restricted Financial Data" \
-  --description="Financial performance metrics - requires approval" \
-  --request-access-email="data-access@company.com" \
-  --bigquery-dataset="projects/my-project/datasets/financial_metrics" \
-  --restricted-export-config
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://analyticshub.googleapis.com/v1/projects/my-project/locations/us/dataExchanges/analytics_exchange/listings?listingId=restricted_dataset" \
+  -d '{
+    "displayName": "Restricted Financial Data",
+    "description": "Financial performance metrics - requires approval",
+    "requestAccess": "data-access@company.com",
+    "bigqueryDataset": {
+      "dataset": "projects/my-project/datasets/financial_metrics",
+      "restrictedExportPolicy": {
+        "enabled": true,
+        "restrictDirectTableAccess": true,
+        "restrictQueryResult": true
+      }
+    }
+  }'
 ```
 
-The `--restricted-export-config` flag prevents subscribers from exporting data out of BigQuery, adding an extra layer of data governance.
+The restricted export policy prevents subscribers from exporting data out of BigQuery, adding an extra layer of data governance.
 
 ## Monitoring Subscriptions
 
@@ -185,9 +245,9 @@ As a publisher, you want to know who is using your shared data:
 
 ```bash
 # List all subscriptions to your listings
-gcloud bigquery analytics-hub listings list-subscriptions sales_data_listing \
-  --data-exchange=analytics_exchange \
-  --location=us
+curl -X GET \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://analyticshub.googleapis.com/v1/projects/my-project/locations/us/dataExchanges/analytics_exchange/listings/sales_data_listing:listSubscriptions"
 ```
 
 You can also query Cloud Audit Logs to track how subscribers are accessing the data:
@@ -212,18 +272,10 @@ One of the biggest advantages of Analytics Hub is that updates are automatic. Wh
 ```sql
 -- Publisher updates data as part of normal ETL
 -- Subscribers automatically see the new data - no action needed
-INSERT INTO `my_project.sales_analytics.daily_metrics`
-SELECT
-  CURRENT_DATE() AS order_date,
-  product_category,
-  region,
-  COUNT(DISTINCT order_id),
-  COUNT(DISTINCT customer_id),
-  SUM(revenue),
-  AVG(order_value)
-FROM `my_project.internal_sales.orders`
-WHERE DATE(order_timestamp) = CURRENT_DATE()
-GROUP BY product_category, region;
+INSERT INTO `my_project.internal_sales.orders`
+  (order_id, customer_id, order_date, order_timestamp, product_category, region, revenue, order_value)
+VALUES
+  (1001, 501, CURRENT_DATE(), CURRENT_TIMESTAMP(), 'Software', 'North America', 250.00, 250.00);
 ```
 
 ## Revoking Access
@@ -232,24 +284,33 @@ If you need to stop sharing data with a subscriber:
 
 ```bash
 # Revoke a subscription
-gcloud bigquery analytics-hub subscriptions delete \
-  projects/subscriber-project/locations/us/subscriptions/subscription-id
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://analyticshub.googleapis.com/v1/projects/subscriber-project/locations/us/subscriptions/subscription-id:revoke"
 
-# Or remove the subscriber's IAM permissions on the listing
-gcloud bigquery analytics-hub listings remove-iam-policy-binding \
-  sales_data_listing \
-  --data-exchange=analytics_exchange \
-  --location=us \
-  --member="group:former-partner@external.com" \
-  --role="roles/analyticshub.subscriber"
+# Or write an updated listing policy without the subscriber's IAM binding
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://analyticshub.googleapis.com/v1/projects/my-project/locations/us/dataExchanges/analytics_exchange/listings/sales_data_listing:setIamPolicy" \
+  -d '{
+    "policy": {
+      "bindings": [
+        {
+          "role": "roles/analyticshub.subscriber",
+          "members": ["group:current-partner@external.com"]
+        }
+      ]
+    }
+  }'
 ```
 
 ## Best Practices
 
-Publish views rather than raw tables. Views let you control exactly what data is exposed and add computed columns or filters without affecting the underlying tables. They also let you change the underlying schema without breaking subscribers.
+Publish views rather than raw tables. Views let you control exactly what data is exposed and add computed columns or filters without affecting the underlying tables. They also let you change the underlying schema without breaking subscribers, as long as the view schema stays compatible.
 
 Add comprehensive documentation to your listings. Include data dictionaries, update schedules, known limitations, and contact information. Good documentation reduces support burden and increases subscriber confidence.
 
-Use restricted export when sharing sensitive data outside your organization. This prevents subscribers from exporting data to external destinations, keeping it within BigQuery's security perimeter.
+Use restricted export when sharing sensitive data outside your organization. This restricts subscribers from exporting data out of BigQuery linked datasets, keeping it within BigQuery's security perimeter.
 
 Analytics Hub transforms data sharing from a manual, error-prone process into a managed, governed, and efficient one. Whether you are sharing data within a large organization or building a commercial data product, it provides the infrastructure to do it right.
