@@ -61,14 +61,15 @@ from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 resource = Resource.create({
     SERVICE_NAME: 'order-service',
     'cloud.provider': 'gcp',
-    'cloud.project': 'project-backend',  # Track the source project
+    'gcp.source_project': 'project-backend',  # Track the source project
 })
 
 provider = TracerProvider(resource=resource)
 
 # Export to the central monitoring project, not the local project
 exporter = CloudTraceSpanExporter(
-    project_id='project-central'  # All traces go here
+    project_id='project-central',  # All traces go here
+    resource_regex=r'gcp\.source_project',
 )
 
 provider.add_span_processor(BatchSpanProcessor(exporter))
@@ -139,7 +140,7 @@ processors:
   attributes:
     actions:
       - key: gcp.source_project
-        value: "${SOURCE_PROJECT_ID}"
+        value: "${env:SOURCE_PROJECT_ID}"
         action: upsert
 
   # Batch for efficiency
@@ -151,9 +152,6 @@ exporters:
   # Send all traces to the central project
   googlecloud:
     project: project-central
-    trace:
-      batch:
-        max_batch_items: 200
 
 service:
   pipelines:
@@ -206,27 +204,18 @@ spec:
             name: otel-collector-config
 ```
 
-## Approach 3: Trace Sinks (GCP Native)
+## Approach 3: Trace Scopes (GCP Native)
 
-Google Cloud supports trace sinks that can forward traces from one project to another. This is a GCP-native approach that does not require changes to your application code:
+Google Cloud supports trace scopes that let Trace Explorer search trace data stored in multiple projects from a single project. This is a GCP-native approach that does not require changes to your application code, but it queries traces where they are stored instead of copying them into a central Cloud Trace project.
 
-```bash
-# Create a trace sink that forwards all traces to the central project
-gcloud alpha trace sinks create cross-project-sink \
-  --destination=projects/project-central/traces \
-  --project=project-backend
+Create a trace scope in the Google Cloud console:
 
-# Create sinks for each source project
-gcloud alpha trace sinks create cross-project-sink \
-  --destination=projects/project-central/traces \
-  --project=project-frontend
+1. Go to Monitoring > Settings in the project you want to use for central viewing.
+2. Open the Trace Scopes tab and click Create trace scope.
+3. Add the projects that store trace data, such as `project-frontend`, `project-backend`, and `project-shared`.
+4. Set the new trace scope as the default if you want Trace Explorer to search those projects automatically.
 
-gcloud alpha trace sinks create cross-project-sink \
-  --destination=projects/project-central/traces \
-  --project=project-shared
-```
-
-The advantage of trace sinks is that traces still appear in the source project's Cloud Trace (for team-level debugging), and they also get copied to the central project (for cross-project analysis).
+The advantage of trace scopes is that traces still live in the source projects for team-level debugging, and you can view them together from a central project when you have IAM access to the searched projects. If you need to export trace data, Cloud Trace sinks export spans to BigQuery datasets; they do not copy traces into another Cloud Trace project.
 
 ## Ensuring Context Propagation Across Projects
 
@@ -257,7 +246,7 @@ When Service A in Project Alpha calls Service B in Project Beta:
 
 ## Adding Source Project Context
 
-To identify which project each span came from, add the source project as a span attribute:
+To identify which project each span came from, add the source project as a resource attribute:
 
 ```python
 # Add project context to all spans from this service
@@ -265,13 +254,13 @@ from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 
 resource = Resource.create({
     SERVICE_NAME: 'order-service',
-    'gcp.project_id': 'project-backend',
+    'gcp.source_project': 'project-backend',
     'deployment.environment': 'production',
     'team.name': 'backend-team',
 })
 ```
 
-This metadata shows up in Cloud Trace and lets you filter spans by source project.
+For the Python Cloud Trace exporter, pass `resource_regex=r'gcp\.source_project|deployment\.environment|team\.name'` if you want these resource attributes added to exported spans as Cloud Trace labels. This metadata shows up in Cloud Trace and lets you filter spans by source project.
 
 ## Querying Cross-Project Traces
 
@@ -279,22 +268,26 @@ Once traces are aggregated in the central project, you can query them normally:
 
 ```python
 # Search for traces spanning multiple projects
-from google.cloud import trace_v2
+from google.cloud import trace_v1
 
-client = trace_v2.TraceServiceClient()
+client = trace_v1.TraceServiceClient()
 
 # List traces in the central project
 # These include spans from all source projects
-request = trace_v2.ListTracesRequest(
+request = trace_v1.ListTracesRequest(
     project_id='project-central',
-    filter='rootSpan.name:"checkout" spanName:"auth-service"',
+    view=trace_v1.ListTracesRequest.ViewType.COMPLETE,
+    filter='root:checkout span:auth-service',
 )
 
 for trace in client.list_traces(request=request):
     print(f"Trace: {trace.trace_id}")
     for span in trace.spans:
-        project = span.attributes.get('gcp.project_id', 'unknown')
-        print(f"  [{project}] {span.display_name} - {span.duration_ms}ms")
+        project = span.labels.get('gcp.source_project', 'unknown')
+        duration_ms = (
+            span.end_time.ToDatetime() - span.start_time.ToDatetime()
+        ).total_seconds() * 1000
+        print(f"  [{project}] {span.name} - {duration_ms:.1f}ms")
 ```
 
 ## Monitoring Cross-Project Trace Health
@@ -303,25 +296,34 @@ Build a check that verifies traces are properly connected across projects:
 
 ```python
 # Health check: verify cross-project traces are complete
+from datetime import datetime, timedelta, timezone
+from google.cloud import trace_v1
+
+
 def check_trace_completeness(project_id, time_range_hours=1):
     """Check if recent traces have spans from multiple projects."""
-    client = trace_v2.TraceServiceClient()
+    client = trace_v1.TraceServiceClient()
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(hours=time_range_hours)
 
     # Sample recent traces
     traces_checked = 0
     complete_traces = 0
 
     for trace_data in client.list_traces(
-        request={
-            'project_id': project_id,
-            'filter': 'rootSpan.name:"api-gateway"',
-        }
+        request=trace_v1.ListTracesRequest(
+            project_id=project_id,
+            view=trace_v1.ListTracesRequest.ViewType.COMPLETE,
+            filter='root:api-gateway',
+            start_time=start_time,
+            end_time=end_time,
+        )
     ):
         traces_checked += 1
         projects_seen = set()
 
         for span in trace_data.spans:
-            project = span.attributes.get('gcp.project_id', '')
+            project = span.labels.get('gcp.source_project', '')
             if project:
                 projects_seen.add(project)
 
@@ -347,7 +349,7 @@ def check_trace_completeness(project_id, time_range_hours=1):
 When sending all traces to a central project, be aware of the cost implications:
 
 - You pay for trace ingestion in the central project
-- If you also keep traces in the source projects (via trace sinks), you pay twice
+- If you also keep traces in the source projects while exporting a sampled copy to the central project, you pay for both ingestions
 - Consider sampling to reduce costs while maintaining visibility
 
 A common pattern is:
@@ -357,7 +359,7 @@ A common pattern is:
 
 ## Best Practices
 
-1. **Pick one approach and stick with it.** Mixing centralized export and trace sinks creates confusion about where to look.
+1. **Pick one approach and stick with it.** Mixing centralized export and trace scopes creates confusion about where to look.
 
 2. **Always include source project in span attributes.** When all traces are in one bucket, you need to know where each span came from.
 
