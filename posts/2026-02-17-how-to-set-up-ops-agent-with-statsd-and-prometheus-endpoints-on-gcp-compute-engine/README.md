@@ -8,13 +8,13 @@ Description: A step-by-step guide to configuring the Google Cloud Ops Agent on C
 
 ---
 
-The Google Cloud Ops Agent is the recommended way to collect metrics and logs from Compute Engine instances. Out of the box, it collects system metrics like CPU, memory, and disk usage. But most applications expose their own custom metrics through StatsD or Prometheus endpoints, and the Ops Agent can collect those too.
+The Google Cloud Ops Agent is the recommended way to collect metrics and logs from Compute Engine instances. Out of the box, it collects system metrics like CPU, memory, and disk usage. But most applications expose their own custom metrics through StatsD or Prometheus endpoints. The Ops Agent can scrape Prometheus endpoints directly, and StatsD metrics can be collected by running a StatsD-to-Prometheus exporter and scraping it with the Ops Agent.
 
-This post walks through setting up the Ops Agent to scrape both StatsD metrics and Prometheus endpoints on a Compute Engine instance, and send everything to Google Cloud Monitoring where you can dashboard and alert on it.
+This post walks through setting up the Ops Agent to scrape both a StatsD exporter and Prometheus endpoints on a Compute Engine instance, and send everything to Google Cloud Monitoring where you can dashboard and alert on it.
 
 ## What Is the Ops Agent
 
-The Ops Agent is a unified agent that replaces the older Monitoring and Logging agents. It is based on Fluent Bit for logs and the OpenTelemetry Collector for metrics. The key advantage is a single agent configuration file that handles both logs and metrics, with support for many input formats including StatsD and Prometheus.
+The Ops Agent is a unified agent that replaces the older Monitoring and Logging agents. It is based on Fluent Bit for logs and the OpenTelemetry Collector for metrics. The key advantage is a single agent configuration file that handles both logs and metrics, with support for Prometheus metric scraping and many built-in third-party integrations.
 
 ## Installing the Ops Agent
 
@@ -27,19 +27,27 @@ curl -sSO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
 sudo bash add-google-cloud-ops-agent-repo.sh --also-install
 
 # Verify the agent is running
-sudo systemctl status google-cloud-ops-agent
+sudo systemctl status "google-cloud-ops-agent*"
 
-# Check the agent version
-sudo /opt/google-cloud-ops-agent/libexec/google_cloud_ops_agent_diagnostics -version
+# Check the agent version on Debian or Ubuntu
+dpkg-query --show --showformat '${Package} ${Version} ${Architecture} ${Status}\n' google-cloud-ops-agent
 ```
 
-The default configuration collects system metrics (CPU, memory, disk, network) and system logs (syslog, auth logs). We need to add custom configurations for StatsD and Prometheus.
+The default configuration collects system metrics (CPU, memory, disk, network) and Linux syslog files. We need to add custom configurations for StatsD and Prometheus.
 
 ## Setting Up StatsD Collection
 
-StatsD is a simple UDP-based protocol for sending application metrics. Many application frameworks have StatsD client libraries built in. The Ops Agent can act as a StatsD receiver, accepting metrics over UDP and forwarding them to Cloud Monitoring.
+StatsD is a simple UDP-based protocol for sending application metrics. Many application frameworks have StatsD client libraries built in. The Ops Agent does not provide a native StatsD receiver, so run `statsd_exporter` on the VM to accept StatsD metrics and expose them as Prometheus metrics.
 
-Edit the Ops Agent configuration file to add a StatsD receiver:
+Start `statsd_exporter` so it listens for StatsD metrics on UDP port 8125 and exposes Prometheus metrics on port 9102:
+
+```bash
+statsd_exporter \
+  --statsd.listen-udp=127.0.0.1:8125 \
+  --web.listen-address=127.0.0.1:9102
+```
+
+Then edit the Ops Agent configuration file to scrape the exporter:
 
 ```yaml
 # /etc/google-cloud-ops-agent/config.yaml
@@ -50,20 +58,25 @@ metrics:
       type: hostmetrics
       collection_interval: 60s
 
-    # StatsD receiver - listens for UDP metrics
-    statsd:
-      type: statsd
-      collection_interval: 30s
-      # The UDP port to listen on for StatsD metrics
-      listen_address: 0.0.0.0
-      listen_port: 8125
+    # Scrape statsd_exporter, which receives StatsD metrics and exposes /metrics
+    statsd_exporter:
+      type: prometheus
+      config:
+        scrape_configs:
+          - job_name: "statsd-exporter"
+            scrape_interval: 30s
+            static_configs:
+              - targets:
+                  - "127.0.0.1:9102"
 
   service:
     pipelines:
       default_pipeline:
         receivers:
           - hostmetrics
-          - statsd
+      statsd_pipeline:
+        receivers:
+          - statsd_exporter
 
 logging:
   receivers:
@@ -107,7 +120,7 @@ Here is a Python example of sending StatsD metrics from your application:
 ```python
 import statsd
 
-# Create a StatsD client pointing to the local Ops Agent
+# Create a StatsD client pointing to the local statsd_exporter
 client = statsd.StatsClient(host="127.0.0.1", port=8125, prefix="myapp")
 
 # Increment a counter
@@ -119,9 +132,12 @@ client.gauge("active_connections", 42)
 # Record a timing
 client.timing("db.query_time", 125)  # 125 milliseconds
 
+def process_request():
+    # Your code here
+    pass
+
 # Use a timer context manager
 with client.timer("api.response_time"):
-    # Your code here
     process_request()
 ```
 
@@ -139,16 +155,19 @@ metrics:
       type: hostmetrics
       collection_interval: 60s
 
-    statsd:
-      type: statsd
-      collection_interval: 30s
-      listen_address: 0.0.0.0
-      listen_port: 8125
+    statsd_exporter:
+      type: prometheus
+      config:
+        scrape_configs:
+          - job_name: "statsd-exporter"
+            scrape_interval: 30s
+            static_configs:
+              - targets:
+                  - "127.0.0.1:9102"
 
     # Prometheus scraper - scrapes metrics from HTTP endpoints
     prometheus:
       type: prometheus
-      collection_interval: 30s
       config:
         scrape_configs:
           - job_name: "my-application"
@@ -176,7 +195,11 @@ metrics:
       default_pipeline:
         receivers:
           - hostmetrics
-          - statsd
+      statsd_pipeline:
+        receivers:
+          - statsd_exporter
+      prometheus_pipeline:
+        receivers:
           - prometheus
 
 logging:
@@ -272,12 +295,13 @@ After the agent is collecting metrics, verify they appear in Cloud Monitoring:
 
 ```bash
 # List custom metrics that have been created
-gcloud monitoring metrics-descriptors list \
-  --project=my-project \
-  --filter='metric.type = starts_with("workload.googleapis.com")'
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --get \
+  --data-urlencode 'filter=metric.type = starts_with("prometheus.googleapis.com")' \
+  "https://monitoring.googleapis.com/v3/projects/my-project/metricDescriptors"
 ```
 
-StatsD metrics appear under the `workload.googleapis.com/` prefix, while Prometheus metrics appear under `prometheus.googleapis.com/` or `workload.googleapis.com/` depending on the configuration.
+Metrics collected by the Prometheus receiver, including metrics from `statsd_exporter`, appear under the `prometheus.googleapis.com/` prefix.
 
 You can also check in the Cloud Console by navigating to Monitoring, then Metrics Explorer, and searching for your metric names.
 
@@ -298,15 +322,13 @@ Create alerting policies on your custom metrics just like you would for built-in
 
 ```bash
 # Alert when error rate from StatsD counter exceeds threshold
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="High Error Rate (Custom Metric)" \
   --condition-display-name="Error count > 100/min" \
-  --condition-filter='metric.type="workload.googleapis.com/myapp.errors.total"' \
-  --condition-threshold-value=100 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
-  --condition-threshold-aggregation-alignment-period=60s \
-  --condition-threshold-aggregation-per-series-aligner=ALIGN_RATE \
+  --condition-filter='metric.type="prometheus.googleapis.com/myapp_errors_total/counter"' \
+  --if='> 100' \
+  --duration=300s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_RATE"}' \
   --notification-channels=projects/my-project/notificationChannels/12345 \
   --project=my-project
 ```
@@ -315,12 +337,12 @@ gcloud alpha monitoring policies create \
 
 If metrics are not showing up in Cloud Monitoring, check these common issues:
 
-1. **Agent not running**: Run `sudo systemctl status google-cloud-ops-agent`
+1. **Agent not running**: Run `sudo systemctl status "google-cloud-ops-agent*"`
 2. **Configuration syntax error**: Check logs with `sudo journalctl -u google-cloud-ops-agent -n 100`
-3. **Firewall blocking**: Make sure the Compute Engine instance has the Cloud Monitoring API scope enabled
+3. **Authorization problem**: Make sure the Cloud Monitoring API is enabled and the VM service account has permission to write metrics, such as the Monitoring Metric Writer role
 4. **Prometheus endpoint not reachable**: Test with `curl http://localhost:9090/metrics`
-5. **StatsD port conflict**: Verify no other process is listening on port 8125
+5. **StatsD exporter not reachable**: Verify `statsd_exporter` is listening on UDP port 8125 and exposing `http://127.0.0.1:9102/metrics`
 
 ## Summary
 
-The Ops Agent turns your Compute Engine instances into full observability endpoints. By configuring StatsD and Prometheus receivers, you can collect application-specific metrics alongside system metrics, all through a single agent. The metrics flow into Cloud Monitoring where you can build dashboards, set up alerts, and integrate with the rest of your GCP observability stack. Start with the default system metrics, add StatsD for quick counter and gauge metrics, and use Prometheus for more structured application metrics.
+The Ops Agent turns your Compute Engine instances into full observability endpoints. By configuring Prometheus receivers for both your application and a StatsD exporter, you can collect application-specific metrics alongside system metrics. The metrics flow into Cloud Monitoring where you can build dashboards, set up alerts, and integrate with the rest of your GCP observability stack. Start with the default system metrics, add StatsD through `statsd_exporter` for quick counter and gauge metrics, and use Prometheus for more structured application metrics.
