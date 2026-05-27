@@ -56,11 +56,23 @@ This playbook deploys a static resolv.conf and locks it:
         enabled: false
       failed_when: false
 
-    - name: Remove symlink if resolv.conf is a symlink
+    - name: Check current resolv.conf
+      ansible.builtin.stat:
+        path: /etc/resolv.conf
+      register: resolv_conf_stat
+
+    - name: Remove immutable flag if resolv.conf was locked
+      ansible.builtin.file:
+        path: /etc/resolv.conf
+        attributes: -i
+      failed_when: false
+      when: resolv_conf_stat.stat.exists
+
+    - name: Remove resolv.conf if it is a symlink
       ansible.builtin.file:
         path: /etc/resolv.conf
         state: absent
-      when: ansible_facts['resolv_conf'] is defined or true
+      when: resolv_conf_stat.stat.islnk | default(false)
 
     - name: Deploy static resolv.conf
       ansible.builtin.copy:
@@ -68,6 +80,7 @@ This playbook deploys a static resolv.conf and locks it:
         owner: root
         group: root
         mode: '0644'
+        attributes: +i
         content: |
           # DNS configuration - managed by Ansible
           # Do not edit manually
@@ -80,11 +93,6 @@ This playbook deploys a static resolv.conf and locks it:
           {% if dns_options | length > 0 %}
           options {{ dns_options | join(' ') }}
           {% endif %}
-
-    - name: Make resolv.conf immutable to prevent overwriting
-      ansible.builtin.command:
-        cmd: chattr +i /etc/resolv.conf
-      changed_when: true
 
     - name: Prevent DHCP from overwriting resolv.conf
       ansible.builtin.copy:
@@ -189,20 +197,14 @@ This playbook configures per-interface DNS using systemd-resolved:
         dns_domains: "~storage.internal"
 
   tasks:
-    - name: Create network override directory for each interface
-      ansible.builtin.file:
-        path: "/etc/systemd/network/{{ item.interface }}.network.d"
-        state: directory
-        mode: '0755'
-      loop: "{{ interface_dns }}"
-      loop_control:
-        label: "{{ item.interface }}"
-
     - name: Configure DNS per interface via networkd
       ansible.builtin.copy:
-        dest: "/etc/systemd/network/{{ item.interface }}.network.d/dns.conf"
+        dest: "/etc/systemd/network/10-{{ item.interface }}.network"
         mode: '0644'
         content: |
+          [Match]
+          Name={{ item.interface }}
+
           [Network]
           DNS={{ item.dns_servers }}
           Domains={{ item.dns_domains }}
@@ -253,8 +255,14 @@ This playbook configures nsswitch.conf for proper DNS resolution order:
       ansible.builtin.lineinfile:
         path: /etc/nsswitch.conf
         regexp: '^hosts:'
-        line: "hosts:          files dns myhostname"
+        line: "hosts:          files resolve [!UNAVAIL=return] dns myhostname"
         backup: true
+
+    - name: Ensure systemd-resolved NSS module is available
+      ansible.builtin.package:
+        name: libnss-resolve
+        state: present
+      when: ansible_os_family == "Debian"
 
     - name: Ensure myhostname is available via NSS
       ansible.builtin.package:
