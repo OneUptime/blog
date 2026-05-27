@@ -46,18 +46,19 @@ Here is a playbook that rotates a PostgreSQL password without downtime:
   tasks:
     - name: Generate secure password
       ansible.builtin.set_fact:
-        new_db_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+        new_db_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) }}"
 
     - name: Store new password in vault
       ansible.builtin.command:
         cmd: >
-          vault kv put secret/database/{{ db_name }}
+          vault kv put -mount=secret database/{{ db_name }}
           password={{ new_db_password }}
           previous_password={{ current_db_password }}
           rotated_at={{ ansible_date_time.iso8601 }}
       environment:
         VAULT_ADDR: "{{ vault_addr }}"
         VAULT_TOKEN: "{{ vault_token }}"
+      no_log: true
 
 - name: Update database password
   hosts: db_primary
@@ -66,17 +67,17 @@ Here is a playbook that rotates a PostgreSQL password without downtime:
     - name: Change PostgreSQL user password
       community.postgresql.postgresql_user:
         name: "{{ db_user }}"
-        password: "{{ new_db_password }}"
+        password: "{{ hostvars['localhost'].new_db_password }}"
         login_host: localhost
         login_user: postgres
       no_log: true
 
     - name: Verify new password works
       community.postgresql.postgresql_ping:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         login_host: localhost
         login_user: "{{ db_user }}"
-        login_password: "{{ new_db_password }}"
+        login_password: "{{ hostvars['localhost'].new_db_password }}"
 
 - name: Update application configuration
   hosts: app_servers
@@ -87,7 +88,7 @@ Here is a playbook that rotates a PostgreSQL password without downtime:
       ansible.builtin.lineinfile:
         path: "{{ app_config_dir }}/database.yml"
         regexp: 'password:'
-        line: "  password: {{ new_db_password }}"
+        line: "  password: {{ hostvars['localhost'].new_db_password }}"
         mode: '0640'
       no_log: true
       notify: restart application
@@ -103,6 +104,11 @@ Here is a playbook that rotates a PostgreSQL password without downtime:
       delay: 3
       register: health
       until: health.status == 200
+  handlers:
+    - name: restart application
+      ansible.builtin.service:
+        name: "{{ app_service }}"
+        state: restarted
 
 - name: Verify rotation success
   hosts: app_servers
@@ -126,11 +132,9 @@ For services that use API keys, rotation often means supporting both old and new
 # playbooks/rotate-api-keys.yml
 # Rotate API keys with dual-key transition period
 ---
-- name: Rotate API keys for external services
-  hosts: app_servers
-  become: true
-  serial: 1
-
+- name: Generate new API key
+  hosts: localhost
+  connection: local
   tasks:
     - name: Generate new API key
       ansible.builtin.uri:
@@ -144,10 +148,14 @@ For services that use API keys, rotation often means supporting both old and new
           permissions: "{{ api_key_permissions }}"
         status_code: 201
       register: new_key
-      delegate_to: localhost
-      run_once: true
       no_log: true
 
+- name: Rotate API keys for external services
+  hosts: app_servers
+  become: true
+  serial: 1
+
+  tasks:
     - name: Update API key in application config
       ansible.builtin.template:
         src: api_keys.yml.j2
@@ -155,7 +163,7 @@ For services that use API keys, rotation often means supporting both old and new
         owner: "{{ app_user }}"
         mode: '0640'
       vars:
-        api_key: "{{ new_key.json.key }}"
+        api_key: "{{ hostvars['localhost'].new_key.json.key }}"
       no_log: true
       notify: restart application
 
@@ -171,16 +179,24 @@ For services that use API keys, rotation often means supporting both old and new
       register: svc_health
       until: svc_health.status == 200
 
-    - name: Revoke old API key after all servers updated
+  handlers:
+    - name: restart application
+      ansible.builtin.service:
+        name: "{{ app_service }}"
+        state: restarted
+
+- name: Revoke old API key after all servers updated
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Revoke old API key
       ansible.builtin.uri:
         url: "https://api.{{ service_name }}.com/v1/api-keys/{{ old_api_key_id }}"
         method: DELETE
         headers:
           Authorization: "Bearer {{ admin_token }}"
         status_code: [200, 204]
-      delegate_to: localhost
-      run_once: true
-      when: inventory_hostname == ansible_play_hosts_all[-1]
+      no_log: true
 ```
 
 ## TLS Certificate Rotation
@@ -232,14 +248,14 @@ Automating certificate renewal and deployment:
 
     - name: Deploy new certificate
       ansible.builtin.copy:
-        content: "{{ new_cert.content | b64decode }}"
+        content: "{{ hostvars['localhost'].new_cert.content | b64decode }}"
         dest: "/etc/ssl/certs/{{ domain_name }}.pem"
         owner: root
         mode: '0644'
 
     - name: Deploy new private key
       ansible.builtin.copy:
-        content: "{{ new_key.content | b64decode }}"
+        content: "{{ hostvars['localhost'].new_key.content | b64decode }}"
         dest: "/etc/ssl/private/{{ domain_name }}.key"
         owner: root
         mode: '0600'
@@ -285,6 +301,7 @@ Automating certificate renewal and deployment:
       community.crypto.openssh_keypair:
         path: "/tmp/new_deploy_key"
         type: ed25519
+        mode: '0600'
         comment: "deploy@{{ ansible_date_time.date }}"
       register: new_ssh_key
 
@@ -325,7 +342,7 @@ Automating certificate renewal and deployment:
     - name: Store private key in vault
       ansible.builtin.command:
         cmd: >
-          vault kv put secret/ssh/deploy
+          vault kv put -mount=secret ssh/deploy
           private_key=@/tmp/new_deploy_key
           public_key=@/tmp/new_deploy_key.pub
       no_log: true
@@ -357,7 +374,7 @@ Set up automatic rotation on a schedule:
     - rotate-api-keys.yml
     - rotate-tls-certificates.yml
 
-- name: Schedule database password rotation (every 90 days)
+- name: Schedule database password rotation (quarterly)
   ansible.builtin.cron:
     name: "Rotate database passwords"
     day: "1"
@@ -367,7 +384,7 @@ Set up automatic rotation on a schedule:
     job: >
       /usr/local/bin/ansible-playbook
       /opt/ansible/playbooks/rotate-db-password.yml
-      -e @/opt/ansible/vault-pass
+      --vault-password-file /opt/ansible/vault-pass
       >> /var/log/secrets-rotation.log 2>&1
     user: ansible
 
