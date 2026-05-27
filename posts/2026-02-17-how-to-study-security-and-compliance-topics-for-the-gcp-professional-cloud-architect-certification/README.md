@@ -45,8 +45,10 @@ gsutil kms authorize -p my-project -k \
 
 gsutil mb -l us-central1 \
   -b on \
-  --default-kms-key=projects/my-project/locations/us-central1/keyRings/my-keyring/cryptoKeys/my-key \
   gs://encrypted-bucket
+
+gcloud storage buckets update gs://encrypted-bucket \
+  --default-encryption-key=projects/my-project/locations/us-central1/keyRings/my-keyring/cryptoKeys/my-key
 ```
 
 ### Encryption in Transit
@@ -55,7 +57,7 @@ All GCP service-to-service communication is encrypted. For customer-facing traff
 
 - **HTTPS with Google-managed certificates**: Free, auto-renewed SSL certificates for HTTP(S) load balancers.
 - **HTTPS with customer-managed certificates**: Bring your own certificates for specific compliance requirements.
-- **mTLS**: Mutual TLS between services using Anthos Service Mesh or Certificate Authority Service.
+- **mTLS**: Mutual TLS between services using Cloud Service Mesh or Certificate Authority Service.
 
 ## Identity and Access Management (Advanced)
 
@@ -71,15 +73,15 @@ gcloud resource-manager org-policies set-policy policy.yaml \
   --organization=123456789
 
 # Example policy.yaml content:
-# constraint: constraints/compute.locations
+# constraint: constraints/gcp.resourceLocations
 # listPolicy:
 #   allowedValues:
-#     - us-central1
-#     - us-east1
+#     - in:us-central1-locations
+#     - in:us-east1-locations
 ```
 
 Common organization policy constraints:
-- `compute.locations`: Restrict resource creation to specific regions
+- `gcp.resourceLocations`: Restrict resource creation to specific regions
 - `iam.allowedPolicyMemberDomains`: Restrict IAM members to specific domains
 - `compute.requireOsLogin`: Enforce OS Login for SSH access
 - `storage.uniformBucketLevelAccess`: Require uniform access control on buckets
@@ -155,6 +157,8 @@ gcloud compute security-policies rules create 2000 \
   --action=rate-based-ban \
   --rate-limit-threshold-count=100 \
   --rate-limit-threshold-interval-sec=60 \
+  --ban-threshold-count=1000 \
+  --ban-threshold-interval-sec=600 \
   --ban-duration-sec=600
 
 # Apply to a backend service
@@ -215,7 +219,7 @@ The exam tests your awareness of compliance, not deep regulatory knowledge. Know
 
 **GDPR (Data Protection)**:
 - Data residency controls with organization policies
-- Cloud DLP for discovering and classifying sensitive data
+- Sensitive Data Protection for discovering and classifying sensitive data
 - Data deletion capabilities
 - Encryption at rest and in transit
 
@@ -225,13 +229,15 @@ For compliance requirements around data location:
 
 ```bash
 # Use organization policy to restrict data to specific regions
-gcloud resource-manager org-policies set-policy \
-  --organization=123456789 << EOF
+cat > policy.yaml << EOF
 constraint: constraints/gcp.resourceLocations
 listPolicy:
   allowedValues:
     - in:europe-locations
 EOF
+
+gcloud resource-manager org-policies set-policy policy.yaml \
+  --organization=123456789
 ```
 
 ## Secret Management
@@ -259,7 +265,7 @@ gcloud secrets add-iam-policy-binding db-password \
 
 1. **Default to the most restrictive option**: If two answers both solve the problem, pick the one with tighter security controls.
 2. **Avoid service account keys**: Any answer involving downloading key files is usually wrong. Prefer Workload Identity, attached service accounts, or Workload Identity Federation.
-3. **Know the depth of defense layers**: Network (firewall, Cloud Armor), Identity (IAM, IAP), Data (encryption, DLP), Application (vulnerability scanning).
+3. **Know the depth of defense layers**: Network (firewall, Cloud Armor), Identity (IAM, IAP), Data (encryption, Sensitive Data Protection), Application (vulnerability scanning).
 4. **VPC Service Controls come up frequently**: If the question mentions preventing data exfiltration or data loss prevention at the infrastructure level, VPC Service Controls is likely the answer.
 5. **CMEK is the default compliance answer**: When a question mentions key management requirements or regulatory compliance, CMEK with Cloud KMS is almost always correct.
 
