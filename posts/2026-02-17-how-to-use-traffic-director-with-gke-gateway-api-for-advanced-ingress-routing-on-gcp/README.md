@@ -1,26 +1,26 @@
-# How to Use Traffic Director with GKE Gateway API for Advanced Ingress Routing
+# How to Use GKE Gateway API for Advanced Ingress Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Traffic Director, Gateway API, GKE, Ingress Routing, Google Cloud
+Tags: GCP, Gateway API, GKE, Ingress Routing, Google Cloud
 
-Description: Set up Traffic Director with the GKE Gateway API for advanced ingress routing including path-based routing, header matching, and traffic splitting on GCP.
+Description: Set up the GKE Gateway API for advanced ingress routing including path-based routing, header matching, and traffic splitting on GCP.
 
 ---
 
-The Kubernetes Gateway API is the successor to the Ingress resource, and on GKE, it integrates directly with Traffic Director to give you advanced routing capabilities that Ingress never supported. While Ingress gives you basic host and path routing, the Gateway API adds header matching, query parameter routing, traffic splitting, request mirroring, URL rewrites, and more.
+The Kubernetes Gateway API is the successor to the Ingress resource, and on GKE, it is implemented by the GKE Gateway controller using Cloud Load Balancing. While Ingress gives you basic host and path routing, the Gateway API adds header matching, query parameter routing, traffic splitting, request mirroring, URL rewrites, and more.
 
-This guide shows you how to set up the GKE Gateway API with Traffic Director and configure advanced routing patterns.
+This guide shows you how to set up the GKE Gateway API and configure advanced routing patterns.
 
 ## Why Gateway API Over Ingress
 
 The traditional Kubernetes Ingress resource has served its purpose, but it has real limitations. Different ingress controllers interpret the same Ingress spec differently. Advanced routing requires non-standard annotations that are controller-specific. There is no standard way to do traffic splitting or header-based routing.
 
-The Gateway API solves these problems with a richer, more expressive resource model. On GKE, the Gateway API is implemented by Traffic Director, which means you get Google's global load balancing infrastructure and Envoy-based traffic management.
+The Gateway API solves these problems with a richer, more expressive resource model. On GKE, the Gateway API is implemented by the Google-hosted GKE Gateway controller, which means you get Google Cloud load balancing infrastructure and managed traffic configuration.
 
 ## Prerequisites
 
-You need a GKE cluster version 1.24 or later with the Gateway API enabled.
+You need a GKE Standard cluster version 1.29.3 or later for the `gateway.networking.k8s.io/v1` manifests in this guide, with the Gateway API enabled. Older supported GKE versions can use the `v1beta1` Gateway API resources instead.
 
 ```bash
 # Create a GKE cluster with Gateway API support
@@ -31,6 +31,9 @@ gcloud container clusters create gateway-cluster \
   --machine-type=e2-standard-4 \
   --gateway-api=standard \
   --project=my-project
+
+# Create the namespace used by the examples
+kubectl create namespace production
 
 # Verify Gateway API CRDs are installed
 kubectl get crd | grep gateway
@@ -44,7 +47,7 @@ The Gateway resource defines the entry point for traffic. On GKE, you choose a G
 
 ```yaml
 # gateway.yaml
-# Internal gateway using Traffic Director for service mesh routing
+# Internal gateway using the GKE Gateway controller
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -53,7 +56,7 @@ metadata:
 spec:
   # GKE provides several GatewayClasses
   # gke-l7-rilb: Regional internal HTTP(S) load balancer
-  # gke-l7-gxlb: Global external HTTP(S) load balancer
+  # gke-l7-global-external-managed: Global external Application Load Balancer
   # gke-l7-regional-external-managed: Regional external HTTP(S) load balancer
   gatewayClassName: gke-l7-rilb
   listeners:
@@ -69,6 +72,7 @@ spec:
       tls:
         mode: Terminate
         certificateRefs:
+          # A Kubernetes TLS Secret in the same namespace
           - name: my-tls-cert
       allowedRoutes:
         namespaces:
@@ -379,7 +383,7 @@ spec:
           responseHeaderModifier:
             add:
               - name: X-Served-By
-                value: "traffic-director"
+                value: "gke-gateway"
       backendRefs:
         - name: api-v1
           port: 8080
@@ -462,4 +466,4 @@ spec:
     name: api-v1
 ```
 
-The GKE Gateway API with Traffic Director gives you a powerful, Kubernetes-native way to manage advanced ingress routing. The declarative resource model makes routing rules version-controlled and auditable, while Traffic Director handles the heavy lifting of configuring load balancers and Envoy proxies behind the scenes.
+The GKE Gateway API gives you a powerful, Kubernetes-native way to manage advanced ingress routing. The declarative resource model makes routing rules version-controlled and auditable, while the GKE Gateway controller handles the heavy lifting of configuring Google Cloud load balancers behind the scenes.
