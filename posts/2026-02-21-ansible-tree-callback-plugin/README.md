@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback Plugins, Logging, Reporting
 
-Description: Use the Ansible tree callback plugin to save per-host task results as individual JSON files in a directory tree for later analysis and auditing.
+Description: Use the Ansible tree callback plugin to save each host's latest task result as an individual JSON file in a directory tree for later analysis and auditing.
 
 ---
 
-The `tree` callback plugin writes the results of each host's playbook run to individual JSON files in a directory structure. Instead of just seeing output scroll by in the terminal, you get a persistent record of what happened on each host saved to disk. This is valuable for auditing, post-run analysis, and integrating Ansible results into other tools.
+The `tree` callback plugin writes host results to individual JSON files in a directory structure. Instead of just seeing output scroll by in the terminal, you get a persistent record of the latest saved event for each host on disk. This is valuable for auditing, post-run analysis, and integrating Ansible results into other tools. In current ansible-core releases, the tree callback is deprecated and scheduled for removal in ansible-core 2.23, so use it only when it fits an existing workflow.
 
 ## How the Tree Callback Works
 
-When enabled, the tree callback creates a file for each host after the playbook run completes. Each file contains the JSON results of all tasks that ran on that host. The files are saved to a configurable directory, with each file named after the host.
+When enabled, the tree callback creates a file for each host as task events occur. The files are saved to a configurable directory, with each file named after the host.
 
 The result is a directory that looks like this:
 
@@ -25,7 +25,7 @@ tree_output/
   db-02
 ```
 
-Each file contains the JSON result of the last task that ran on that host (or all results depending on the version).
+Each file contains the JSON result of the latest successful, failed, or unreachable task event saved for that host. Because each host file is rewritten as new events arrive, it is not a complete log of every task result.
 
 ## Enabling the Tree Callback
 
@@ -38,7 +38,7 @@ The tree callback is a notification callback, not a stdout callback. This means 
 # Keep your preferred stdout callback
 stdout_callback = default
 # Enable tree as an additional callback
-callback_whitelist = tree
+callbacks_enabled = ansible.builtin.tree
 
 [callback_tree]
 directory = ./ansible_tree_output
@@ -48,8 +48,8 @@ The environment variable approach:
 
 ```bash
 # Enable tree callback via environment variables
-export ANSIBLE_CALLBACK_WHITELIST=tree
-export ANSIBLE_CALLBACK_TREE_DIRECTORY=./ansible_tree_output
+export ANSIBLE_CALLBACKS_ENABLED=ansible.builtin.tree
+export ANSIBLE_CALLBACK_TREE_DIR=./ansible_tree_output
 ```
 
 ## Configuring the Output Directory
@@ -69,7 +69,7 @@ Make sure the directory exists and Ansible has write permissions:
 mkdir -p /var/log/ansible/tree
 ```
 
-If the directory does not exist, the tree callback will create it automatically in most versions.
+If the directory does not exist, the tree callback creates it automatically when it can.
 
 ## Examining the Output
 
@@ -175,7 +175,7 @@ If you need to prove that specific configurations were applied to specific hosts
         var: compliance_results
 ```
 
-After running, the tree output for each host contains the compliance check results that you can archive and reference later.
+After running, the tree output for each host contains the latest saved task result. In this playbook, the final `debug` task includes the compliance check results, so that is the value you can archive and reference later.
 
 ## Integrating Tree Output with Monitoring
 
@@ -228,11 +228,11 @@ If you use AWX, the tree callback can supplement AWX's built-in logging by writi
 ```ini
 # ansible.cfg for AWX projects
 [defaults]
-callback_whitelist = tree
+callbacks_enabled = ansible.builtin.tree
 
 [callback_tree]
 # Write to a shared NFS mount that other tools can access
-directory = /mnt/shared/ansible-results/{{ lookup('pipe', 'date +%Y-%m-%d_%H%M%S') }}
+directory = /mnt/shared/ansible-results/latest
 ```
 
 ## Rotating Tree Output
@@ -246,8 +246,8 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 TREE_DIR="/var/log/ansible/tree/${TIMESTAMP}"
 mkdir -p "$TREE_DIR"
 
-export ANSIBLE_CALLBACK_WHITELIST=tree
-export ANSIBLE_CALLBACK_TREE_DIRECTORY="$TREE_DIR"
+export ANSIBLE_CALLBACKS_ENABLED=ansible.builtin.tree
+export ANSIBLE_CALLBACK_TREE_DIR="$TREE_DIR"
 
 ansible-playbook -i inventory site.yml
 
@@ -259,13 +259,14 @@ find /var/log/ansible/tree -maxdepth 1 -type d -mtime +30 -exec rm -rf {} \;
 
 ## Combining Tree with Other Callbacks
 
-Since tree is a notification callback, it works alongside any stdout callback and other notification callbacks:
+Since tree is a notification callback, it works alongside the stdout callback and other enabled callbacks:
 
 ```ini
 # ansible.cfg - Tree with other callbacks
 [defaults]
-stdout_callback = yaml
-callback_whitelist = tree, timer, profile_tasks
+stdout_callback = default
+callback_result_format = yaml
+callbacks_enabled = ansible.builtin.tree, ansible.posix.timer, ansible.posix.profile_tasks
 
 [callback_tree]
 directory = ./tree_results
@@ -273,4 +274,4 @@ directory = ./tree_results
 
 You get your preferred terminal output plus persistent per-host files.
 
-The tree callback is an underappreciated tool for anyone who needs to keep records of what Ansible did to each host. It does not change your workflow or output format. It just quietly saves results to disk where you can analyze them later. For compliance-focused environments, it is close to essential.
+The tree callback is an underappreciated tool for anyone who needs to keep per-host result snapshots from Ansible runs. It does not change your workflow or output format. It just quietly saves results to disk where you can analyze them later. For compliance-focused environments, it can be useful when the final saved task contains the evidence you need.
