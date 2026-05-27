@@ -8,7 +8,7 @@ Description: Learn how to use Network Topology in GCP Network Intelligence Cente
 
 ---
 
-Understanding the actual topology of a cloud network gets harder as you add more VPCs, subnets, peering connections, VPNs, and load balancers. Documentation goes stale quickly, and diagrams drawn six months ago rarely match reality. Network Topology in Network Intelligence Center solves this by generating a real-time, interactive visualization of your GCP network infrastructure.
+Understanding the actual topology of a cloud network gets harder as you add more VPCs, subnets, peering connections, VPNs, and load balancers. Documentation goes stale quickly, and diagrams drawn six months ago rarely match reality. Network Topology in Network Intelligence Center solves this by generating an interactive visualization of your GCP network infrastructure and its associated metrics.
 
 In this post, I will show you how to use Network Topology to explore your network, understand traffic flows, and catch issues you might not have noticed otherwise.
 
@@ -24,11 +24,11 @@ Network Topology creates an automatically generated map of your GCP network reso
 - Traffic volume and bandwidth between resources
 - Cross-region and cross-project traffic flows
 
-The topology is generated from your actual configuration and traffic data, so it always reflects the current state of your network.
+The topology is generated from your actual configuration and traffic data, so it reflects the resources and communication relationships that existed during the selected hourly segment.
 
-## Enabling Network Topology
+## Enabling VPC Flow Logs
 
-Network Topology requires VPC Flow Logs to be enabled on the subnets you want to visualize. Without flow logs, you will see the infrastructure but not the traffic flows.
+Network Topology does not require additional setup before you can open the graph in the Google Cloud console. VPC Flow Logs are useful when you want to look up detailed flow records for specific traffic paths or use the generated BigQuery queries from the topology details pane.
 
 ```bash
 # Enable VPC Flow Logs on a specific subnet
@@ -36,9 +36,9 @@ Network Topology requires VPC Flow Logs to be enabled on the subnets you want to
 gcloud compute networks subnets update my-subnet \
   --region=us-central1 \
   --enable-flow-logs \
-  --logging-aggregation-interval=INTERVAL_5_SEC \
+  --logging-aggregation-interval=interval-5-sec \
   --logging-flow-sampling=0.5 \
-  --logging-metadata=INCLUDE_ALL_METADATA \
+  --logging-metadata=include-all \
   --project=my-project
 ```
 
@@ -78,10 +78,9 @@ You can zoom in and out to different levels of detail. At the highest level, you
 
 The lines between resources represent traffic flows. Thicker lines indicate higher bandwidth. You can click on any line to see details about the traffic:
 
-- Total bytes transferred
-- Packets per second
-- Protocol breakdown
-- Source and destination ports
+- Ingress and egress traffic charts
+- Throughput values for the selected hourly segment
+- Supported metrics such as latency or packet loss where available
 
 This is incredibly useful for understanding which services communicate with each other and how much bandwidth they use. It can reveal unexpected traffic patterns, like a service that is sending far more data than expected or traffic flowing through an unexpected path.
 
@@ -91,19 +90,19 @@ Here are some real scenarios where Network Topology has helped me catch problems
 
 ### Finding Asymmetric Routing
 
-When traffic takes different paths in each direction, it can cause performance issues and confuse stateful firewalls. In the topology view, you can trace the path from Service A to Service B and compare it with the return path. If they are different, you have asymmetric routing.
+When traffic takes different paths in each direction, it can cause performance issues and confuse stateful firewalls. In the topology view, you can compare the visible communication relationships from Service A to Service B with the return traffic. If you need to trace the exact packet path, use Connectivity Tests alongside Network Topology.
 
 ### Identifying Single Points of Failure
 
-Look for resources that serve as the sole connection point between two parts of your network. A single VPN tunnel, a single NAT gateway, or a single load balancer without redundancy shows up clearly in the topology view.
+Look for resources that serve as the sole connection point between two parts of your network. A single VPN tunnel, Cloud Interconnect attachment, or load balancer backend path can show up clearly in the topology view.
 
 ### Spotting Unused Resources
 
-Resources with no traffic lines going to them are potentially unused. These could be forgotten VMs, unused load balancers, or services that have been decommissioned but not cleaned up.
+Resources that you expect to see but that do not appear in a selected hourly segment might not have communicated with any other entity during that hour. These could be forgotten VMs, unused load balancers, or services that have been decommissioned but not cleaned up.
 
 ## Exporting Topology Data
 
-While the visual tool is great for exploration, sometimes you need the data in a structured format. You can query the underlying data through the Monitoring API.
+While the visual tool is great for exploration, sometimes you need the data in a structured format. You can query VPC Flow Logs in Cloud Logging or use Cloud Monitoring metrics directly.
 
 ```bash
 # Query VPC flow data to understand traffic between subnets
@@ -122,7 +121,7 @@ For a summary of traffic between VPCs:
 gcloud monitoring time-series list \
   --project=my-project \
   --filter='metric.type="networking.googleapis.com/vm_flow/egress_bytes_count"' \
-  --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+  --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
   --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --format="table(metric.labels,points.value)"
 ```
@@ -133,23 +132,27 @@ The topology can get overwhelming in large environments. Use filters to focus on
 
 - **Filter by VPC**: Show only resources in a specific VPC
 - **Filter by region**: Focus on a particular geographic area
-- **Filter by traffic**: Show only connections with traffic above a certain threshold
+- **Filter by traffic type**: Focus on traffic categories such as cross-zonal, internet, or hybrid egress
 - **Filter by resource type**: Show only VMs, only load balancers, etc.
 
-In the Console, these filters are available in the left sidebar of the topology view. You can also toggle different resource types on and off.
+In the Console, these filters are available in the View options panel of the topology view. You can also toggle different hierarchies and resource types on and off.
 
 ## Network Topology and Multi-Project Environments
 
 If you use a shared VPC or have VPC peering across projects, Network Topology can show cross-project traffic. You need to have the appropriate permissions in each project.
 
 ```bash
-# Grant the necessary role for cross-project topology viewing
+# Grant the necessary roles for topology viewing
 gcloud projects add-iam-policy-binding shared-vpc-host-project \
   --member="user:admin@example.com" \
-  --role="roles/compute.networkViewer"
+  --role="roles/networkmanagement.viewer"
+
+gcloud projects add-iam-policy-binding shared-vpc-host-project \
+  --member="user:admin@example.com" \
+  --role="roles/monitoring.viewer"
 ```
 
-When viewing a shared VPC host project, the topology shows all service projects and their resources that are connected to the shared VPC, giving you a complete picture of the network.
+To see multiple projects in one graph, configure a Cloud Monitoring metrics scope that includes the relevant host and service projects. With the correct scope and permissions, the topology can show entities and communication across the shared VPC.
 
 ## Comparing Topology Over Time
 
@@ -173,4 +176,4 @@ Document your expected topology and compare it with the actual topology. Any dif
 
 ## Summary
 
-Network Topology in Network Intelligence Center gives you a live, accurate picture of your GCP network. It shows you not just what resources exist, but how they communicate. Use it for troubleshooting, architecture reviews, security validation, and capacity planning. Combined with the other Network Intelligence Center tools, it provides comprehensive visibility into your cloud network.
+Network Topology in Network Intelligence Center gives you an accurate picture of your GCP network for the selected time segment. It shows you not just what resources exist, but how they communicate. Use it for troubleshooting, architecture reviews, security validation, and capacity planning. Combined with the other Network Intelligence Center tools, it provides comprehensive visibility into your cloud network.
