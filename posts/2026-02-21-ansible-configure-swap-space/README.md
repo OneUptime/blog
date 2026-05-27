@@ -14,7 +14,7 @@ Swap space is that part of your disk that Linux uses as overflow when physical R
 
 There are two ways to provide swap space:
 
-- **Swap file**: Easier to create and resize, lives on an existing filesystem. Works on most modern kernels (4.0+).
+- **Swap file**: Easier to create and resize, lives on an existing filesystem. Works on most regular Linux filesystems, though copy-on-write filesystems like Btrfs have extra requirements.
 - **Swap partition**: Slightly better performance, dedicated partition. Harder to resize but no filesystem overhead.
 
 For most use cases today, swap files are the way to go. Swap partitions make sense for high-performance database servers where every bit of I/O latency matters.
@@ -105,12 +105,13 @@ This playbook creates a swap file and activates it:
 
 ## Understanding Swappiness
 
-The `vm.swappiness` parameter controls how aggressively the kernel swaps memory pages to disk. It ranges from 0 to 100:
+The `vm.swappiness` parameter controls the kernel's balance between swapping anonymous memory and reclaiming filesystem cache. On current Linux kernels, it ranges from 0 to 200:
 
 - **0**: The kernel avoids swapping almost entirely (still swaps to prevent OOM)
 - **10**: Good for database servers and performance-sensitive workloads
 - **60**: Default on most distributions, balanced approach
-- **100**: Aggressive swapping, rarely what you want
+- **100**: Treat swap I/O and filesystem paging as having equal cost
+- **Above 100**: Useful mainly when swap is faster than filesystem I/O, such as zram or zswap
 
 Here is how to set swappiness based on the server role:
 
@@ -152,19 +153,13 @@ This playbook creates a swap partition on a dedicated disk:
       changed_when: false
       failed_when: false
 
-    - name: Create GPT partition table on swap disk
-      community.general.parted:
-        device: "{{ swap_disk }}"
-        label: gpt
-        state: present
-      when: blkid_check.rc != 0
-
     - name: Create swap partition spanning entire disk
       community.general.parted:
         device: "{{ swap_disk }}"
+        label: gpt
         number: 1
         name: swap
-        part_start: 0%
+        part_start: 1MiB
         part_end: 100%
         state: present
       when: blkid_check.rc != 0
@@ -174,11 +169,15 @@ This playbook creates a swap partition on a dedicated disk:
         cmd: "mkswap -L {{ swap_label }} {{ swap_partition }}"
       when: blkid_check.rc != 0 or 'swap' not in blkid_check.stdout
 
+    - name: Check active swap devices
+      ansible.builtin.command: swapon --show=NAME --noheadings
+      register: active_swap
+      changed_when: false
+
     - name: Enable swap partition
       ansible.builtin.command:
         cmd: "swapon {{ swap_partition }}"
-      when: blkid_check.rc != 0
-      failed_when: false
+      when: swap_partition not in active_swap.stdout
 
     - name: Add swap partition to fstab
       ansible.posix.mount:
@@ -207,14 +206,14 @@ This playbook configures multiple swap sources with different priorities:
         cmd: "swapon -p 100 /dev/sdb1"
       register: swapon_part
       changed_when: swapon_part.rc == 0
-      failed_when: false
+      failed_when: swapon_part.rc != 0 and 'already active' not in swapon_part.stderr
 
     - name: Ensure swap file is active with lower priority
       ansible.builtin.command:
         cmd: "swapon -p 10 /swapfile"
       register: swapon_file
       changed_when: swapon_file.rc == 0
-      failed_when: false
+      failed_when: swapon_file.rc != 0 and 'already active' not in swapon_file.stderr
 
     - name: Configure fstab with priorities
       ansible.builtin.blockinfile:
@@ -271,33 +270,43 @@ This playbook resizes an existing swap file:
     - name: Disable current swap file
       ansible.builtin.command:
         cmd: "swapoff {{ swap_file_path }}"
-      when: current_size_mb | int < new_size_mb | int
+      when:
+        - current_swap_file.stat.exists
+        - current_size_mb | int < new_size_mb | int
 
     - name: Resize swap file
       ansible.builtin.command:
         cmd: "dd if=/dev/zero of={{ swap_file_path }} bs=1M count={{ new_size_mb }}"
-      when: current_size_mb | int < new_size_mb | int
+      when:
+        - current_swap_file.stat.exists
+        - current_size_mb | int < new_size_mb | int
 
     - name: Set permissions on resized swap file
       ansible.builtin.file:
         path: "{{ swap_file_path }}"
         mode: '0600'
-      when: current_size_mb | int < new_size_mb | int
+      when:
+        - current_swap_file.stat.exists
+        - current_size_mb | int < new_size_mb | int
 
     - name: Reformat as swap
       ansible.builtin.command:
         cmd: "mkswap {{ swap_file_path }}"
-      when: current_size_mb | int < new_size_mb | int
+      when:
+        - current_swap_file.stat.exists
+        - current_size_mb | int < new_size_mb | int
 
     - name: Re-enable swap
       ansible.builtin.command:
         cmd: "swapon {{ swap_file_path }}"
-      when: current_size_mb | int < new_size_mb | int
+      when:
+        - current_swap_file.stat.exists
+        - current_size_mb | int < new_size_mb | int
 ```
 
 ## Removing Swap (For Kubernetes Nodes)
 
-Kubernetes requires swap to be disabled. Here is how to handle that.
+Kubernetes still defaults to rejecting swap on Linux nodes unless kubelet is configured for swap support. Here is how to handle clusters where you want swap disabled.
 
 This playbook disables and removes swap for Kubernetes nodes:
 
