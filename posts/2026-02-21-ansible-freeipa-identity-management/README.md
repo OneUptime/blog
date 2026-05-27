@@ -13,28 +13,23 @@ FreeIPA provides centralized identity, authentication, and authorization for Lin
 ## Installing FreeIPA Server
 
 ```yaml
-# roles/freeipa_server/tasks/main.yml
+# playbooks/freeipa-server.yml
 
 ---
-- name: Install FreeIPA server packages
-  ansible.builtin.apt:
-    name:
-      - freeipa-server
-      - freeipa-server-dns
-    state: present
-
-- name: Run FreeIPA server installation
-  ansible.builtin.command:
-    cmd: >
-      ipa-server-install
-      --realm={{ ipa_realm }}
-      --domain={{ ipa_domain }}
-      --ds-password={{ ipa_ds_password }}
-      --admin-password={{ ipa_admin_password }}
-      --setup-dns
-      --forwarder={{ dns_forwarder }}
-      --unattended
-    creates: /etc/ipa/default.conf
+- name: Configure FreeIPA server
+  hosts: ipaserver
+  become: true
+  vars:
+    ipaserver_domain: "{{ ipa_domain }}"
+    ipaserver_realm: "{{ ipa_realm }}"
+    ipadm_password: "{{ ipa_ds_password }}"
+    ipaadmin_password: "{{ ipa_admin_password }}"
+    ipaserver_setup_dns: true
+    ipaserver_forwarders:
+      - "{{ dns_forwarder }}"
+  roles:
+    - role: freeipa.ansible_freeipa.ipaserver
+      state: present
   no_log: true
 ```
 
@@ -67,25 +62,22 @@ FreeIPA provides centralized identity, authentication, and authorization for Lin
 ## Enrolling Clients
 
 ```yaml
-# roles/freeipa_client/tasks/main.yml
+# playbooks/freeipa-client.yml
 ---
-- name: Install FreeIPA client
-  ansible.builtin.apt:
-    name: freeipa-client
-    state: present
-
-- name: Enroll in FreeIPA domain
-  ansible.builtin.command:
-    cmd: >
-      ipa-client-install
-      --server={{ ipa_server }}
-      --domain={{ ipa_domain }}
-      --realm={{ ipa_realm }}
-      --principal=admin
-      --password={{ ipa_admin_password }}
-      --mkhomedir
-      --unattended
-    creates: /etc/ipa/default.conf
+- name: Enroll FreeIPA clients
+  hosts: ipaclients
+  become: true
+  vars:
+    ipaclient_servers:
+      - "{{ ipa_server }}"
+    ipaclient_domain: "{{ ipa_domain }}"
+    ipaclient_realm: "{{ ipa_realm }}"
+    ipaadmin_principal: admin
+    ipaadmin_password: "{{ ipa_admin_password }}"
+    ipaclient_mkhomedir: true
+  roles:
+    - role: freeipa.ansible_freeipa.ipaclient
+      state: present
   no_log: true
 ```
 
@@ -95,12 +87,12 @@ FreeIPA with Ansible provides automated identity management for Linux environmen
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these Ansible patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete infrastructure provisioning workflow
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -132,7 +124,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -214,7 +206,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling pattern
 - name: Robust task execution
   hosts: all
   tasks:
@@ -276,4 +268,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
