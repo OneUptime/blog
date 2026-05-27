@@ -48,7 +48,7 @@ Vagrant.configure("2") do |config|
   end
 
   # Sync project directory
-  config.vm.synced_folder ".", "/vagrant", type: "nfs"
+  config.vm.synced_folder ".", "/vagrant"
 
   # Ansible provisioner
   config.vm.provision "ansible" do |ansible|
@@ -218,7 +218,7 @@ Then package it:
 
 ```bash
 vagrant package --output myteam-dev-box.box
-vagrant box add myteam/dev myteam-dev-box.box
+vagrant box add myteam-dev-box.box --name myteam/dev
 ```
 
 ## Key Takeaways
@@ -227,7 +227,7 @@ Vagrant with Ansible gives you production-like development environments on your 
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this setup proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
@@ -264,7 +264,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -408,4 +408,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
