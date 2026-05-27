@@ -35,7 +35,7 @@ Install the SDK and initialize it in your app:
 
 ```javascript
 // Install via npm
-// npm install firebase @firebase/performance
+// npm install firebase
 
 // src/firebase.js - Initialize Firebase with Performance Monitoring
 import { initializeApp } from "firebase/app";
@@ -59,7 +59,7 @@ const perf = getPerformance(app);
 export { app, perf };
 ```
 
-That is it for basic setup. Firebase Performance automatically captures page load metrics, network request traces, and screen rendering times. No additional code needed for the basics.
+That is it for basic setup. Firebase Performance automatically captures page load metrics and network request traces for web apps. No additional code needed for the basics.
 
 ## Adding Custom Traces
 
@@ -89,12 +89,12 @@ export async function measureCheckout(checkoutFn) {
     // Add a custom metric
     checkoutTrace.putMetric("items_purchased", result.itemCount);
 
-    checkoutTrace.stop();
     return result;
   } catch (error) {
-    checkoutTrace.putAttribute("error", error.message);
-    checkoutTrace.stop();
+    checkoutTrace.putAttribute("error_type", error.name || "Error");
     throw error;
+  } finally {
+    checkoutTrace.stop();
   }
 }
 
@@ -104,11 +104,14 @@ export async function measureSearch(query) {
   searchTrace.putAttribute("query_length", query.length.toString());
 
   searchTrace.start();
-  const results = await performSearch(query);
-  searchTrace.putMetric("result_count", results.length);
-  searchTrace.stop();
+  try {
+    const results = await performSearch(query);
+    searchTrace.putMetric("result_count", results.length);
 
-  return results;
+    return results;
+  } finally {
+    searchTrace.stop();
+  }
 }
 ```
 
@@ -128,7 +131,11 @@ import * as functions from "firebase-functions";
 const monitoring = require("@google-cloud/monitoring");
 
 const client = new monitoring.MetricServiceClient();
-const projectId = process.env.GCLOUD_PROJECT;
+const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
+
+if (!projectId) {
+  throw new Error("GCLOUD_PROJECT or GOOGLE_CLOUD_PROJECT must be set");
+}
 
 // Write a custom metric to Cloud Monitoring
 async function writeCustomMetric(
@@ -200,7 +207,7 @@ export const processOrder = functions.firestore
 
 ## Creating a Unified Dashboard
 
-Google Cloud Monitoring dashboards can display both built-in and custom metrics. Create a dashboard that shows server and client health together.
+Google Cloud Monitoring dashboards can display both built-in and custom Cloud Monitoring metrics. Use them for server-side and backend application health, while using the Firebase console for Firebase Performance Monitoring's client-side metrics.
 
 You can create dashboards via the API or the Console. Here is a gcloud command to create one from a JSON definition:
 
@@ -274,14 +281,15 @@ Configure alerts in Cloud Monitoring to catch performance regressions early.
 This command creates an alert policy for Cloud Function latency:
 
 ```bash
-# Create an alert for high function execution time
-gcloud alpha monitoring policies create \
+# Create an alert for high function execution time.
+# The Cloud Functions execution_times metric is reported in nanoseconds, so 5s is 5000000000.
+gcloud monitoring policies create \
   --display-name="High Function Latency" \
   --condition-display-name="Execution time > 5s" \
   --condition-filter='resource.type="cloud_function" AND metric.type="cloudfunctions.googleapis.com/function/execution_times"' \
-  --condition-threshold-value=5000 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --aggregation='{"alignmentPeriod":"300s","perSeriesAligner":"ALIGN_PERCENTILE_95"}' \
+  --if='> 5000000000' \
+  --duration=300s \
   --notification-channels=YOUR_CHANNEL_ID \
   --combiner=OR
 ```
@@ -294,10 +302,14 @@ One effective approach is adding a trace ID to both your client traces and serve
 
 ```javascript
 // Client side - add trace ID to custom traces and API requests
+// npm install uuid
+import { trace } from "firebase/performance";
 import { v4 as uuidv4 } from "uuid";
+import { perf } from "./firebase";
 
 async function fetchWithTracing(url, options = {}) {
   const traceId = uuidv4();
+  const endpointPath = new URL(url, window.location.origin).pathname;
 
   // Add trace ID to the request header
   const headers = {
@@ -308,14 +320,17 @@ async function fetchWithTracing(url, options = {}) {
   // Create a Firebase Performance trace with the same ID
   const networkTrace = trace(perf, "api_call");
   networkTrace.putAttribute("trace_id", traceId);
-  networkTrace.putAttribute("endpoint", url);
+  networkTrace.putAttribute("endpoint_path", endpointPath);
 
   networkTrace.start();
-  const response = await fetch(url, { ...options, headers });
-  networkTrace.putMetric("response_size", parseInt(response.headers.get("content-length") || "0"));
-  networkTrace.stop();
+  try {
+    const response = await fetch(url, { ...options, headers });
+    networkTrace.putMetric("response_size", parseInt(response.headers.get("content-length") || "0"));
 
-  return response;
+    return response;
+  } finally {
+    networkTrace.stop();
+  }
 }
 ```
 
