@@ -14,9 +14,10 @@ This guide covers creating different types of Kubernetes Secrets with Ansible, i
 
 ## Prerequisites
 
-- Ansible 2.12+
+- ansible-core 2.16+
 - `kubernetes.core` collection installed
-- Python `kubernetes` library
+- Python 3.9+
+- Python `kubernetes`, `PyYAML`, and `jsonpatch` libraries
 - A valid kubeconfig
 - Ansible Vault set up (optional, but strongly recommended)
 
@@ -24,7 +25,7 @@ This guide covers creating different types of Kubernetes Secrets with Ansible, i
 # Install the required pieces
 
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes
+pip install kubernetes PyYAML jsonpatch
 ```
 
 ## Creating Opaque Secrets
@@ -319,10 +320,10 @@ The `force: true` parameter ensures the secret is fully replaced rather than mer
 
 ## Cleaning Up Unused Secrets
 
-Over time, orphaned secrets accumulate. This task finds and removes secrets that are not referenced by any pod.
+Over time, orphaned secrets accumulate. This task lists managed secrets in a namespace so you can review them before removing anything unused.
 
 ```yaml
-# task: list all secrets and flag those not in use
+# task: list all managed secrets for review
 - name: Get all secrets in the namespace
   kubernetes.core.k8s_info:
     kind: Secret
@@ -341,4 +342,4 @@ Over time, orphaned secrets accumulate. This task finds and removes secrets that
 
 ## Summary
 
-Managing Kubernetes Secrets through Ansible, especially with Ansible Vault integration, gives you a secure and repeatable workflow. Your secrets are encrypted in your repository, decrypted only at deployment time, and applied consistently across environments. The `no_log` directive and Vault encryption together ensure that sensitive values never leak into logs or console output. Whether you are managing database credentials, TLS certificates, or registry pull secrets, Ansible has you covered with a single consistent interface.
+Managing Kubernetes Secrets through Ansible, especially with Ansible Vault integration, gives you a secure and repeatable workflow. Your secrets are encrypted in your repository, decrypted only at deployment time, and applied consistently across environments. The `no_log` directive and Vault encryption together help keep sensitive values out of logs and console output. Whether you are managing database credentials, TLS certificates, or registry pull secrets, Ansible has you covered with a single consistent interface.
