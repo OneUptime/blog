@@ -8,7 +8,7 @@ Description: Learn how to configure Binary Authorization for Cloud Run to ensure
 
 ---
 
-Anyone with deploy permissions can push any container image to your Cloud Run service. That image could come from anywhere - an untested branch, a compromised build pipeline, or a developer's laptop. Binary Authorization stops this by requiring that container images are cryptographically signed before Cloud Run will run them.
+Anyone with deploy permissions can deploy any container image to your Cloud Run service. That image could come from anywhere - an untested branch, a compromised build pipeline, or a developer's laptop. Binary Authorization stops this by requiring that container images are cryptographically signed before Cloud Run will run them.
 
 This is a supply chain security measure. It ensures that only images that passed through your approved build and review process can be deployed. If an image is not signed by an authorized attestor, Cloud Run rejects the deployment.
 
@@ -63,14 +63,17 @@ gcloud kms keys create attestor-key \
   --default-algorithm=ec-sign-p256-sha256
 ```
 
-## Step 2: Create a Container Analysis Note
+## Step 2: Create an Artifact Analysis Note
 
-Attestations are stored as Container Analysis notes. Create a note for your attestor:
+Each attestor uses an Artifact Analysis note to store trusted metadata. Each attestation is stored as an occurrence of that note. Create a note for your attestor:
 
 ```bash
+PROJECT_ID=$(gcloud config get-value project)
+
 # Create the note payload
-cat > /tmp/note.json << 'EOF'
+cat > /tmp/note.json << EOF
 {
+  "name": "projects/${PROJECT_ID}/notes/build-attestor-note",
   "attestation": {
     "hint": {
       "human_readable_name": "Build Pipeline Attestor"
@@ -80,13 +83,39 @@ cat > /tmp/note.json << 'EOF'
 EOF
 
 # Create the Container Analysis note
-PROJECT_ID=$(gcloud config get-value project)
-
 curl -X POST \
   "https://containeranalysis.googleapis.com/v1/projects/${PROJECT_ID}/notes/?noteId=build-attestor-note" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
+  -H "x-goog-user-project: ${PROJECT_ID}" \
   --data-binary @/tmp/note.json
+
+# Grant the Binary Authorization service agent access to note occurrences
+PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format="value(projectNumber)")
+ATTESTOR_SERVICE_ACCOUNT="service-${PROJECT_NUMBER}@gcp-sa-binaryauthorization.iam.gserviceaccount.com"
+
+cat > /tmp/note-iam.json << EOF
+{
+  "resource": "projects/${PROJECT_ID}/notes/build-attestor-note",
+  "policy": {
+    "bindings": [
+      {
+        "role": "roles/containeranalysis.notes.occurrences.viewer",
+        "members": [
+          "serviceAccount:${ATTESTOR_SERVICE_ACCOUNT}"
+        ]
+      }
+    ]
+  }
+}
+EOF
+
+curl -X POST \
+  "https://containeranalysis.googleapis.com/v1/projects/${PROJECT_ID}/notes/build-attestor-note:setIamPolicy" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -H "x-goog-user-project: ${PROJECT_ID}" \
+  --data-binary @/tmp/note-iam.json
 ```
 
 ## Step 3: Create an Attestor
@@ -163,7 +192,7 @@ gcloud run deploy my-secure-service \
   --binary-authorization=default
 ```
 
-Note that you must use an image digest (sha256), not a tag. Binary Authorization verifies the exact image content, and tags are mutable.
+Use an image digest (sha256) rather than a tag when deploying. Binary Authorization verifies the exact image content, and tags are mutable.
 
 To update an existing service:
 
@@ -177,6 +206,30 @@ gcloud run services update my-secure-service \
 ## Step 6: Create Attestations in Your Build Pipeline
 
 Now you need to sign images as part of your build process. Here is how to do it in Cloud Build:
+
+First, grant the Cloud Build service account the roles it needs to read the attestor, sign with Cloud KMS, and attach occurrences to the note:
+
+```bash
+PROJECT_ID=$(gcloud config get-value project)
+PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format="value(projectNumber)")
+CLOUD_BUILD_SERVICE_ACCOUNT="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${CLOUD_BUILD_SERVICE_ACCOUNT}" \
+  --role="roles/binaryauthorization.attestorsViewer"
+
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${CLOUD_BUILD_SERVICE_ACCOUNT}" \
+  --role="roles/cloudkms.signerVerifier"
+
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${CLOUD_BUILD_SERVICE_ACCOUNT}" \
+  --role="roles/containeranalysis.notes.attacher"
+
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${CLOUD_BUILD_SERVICE_ACCOUNT}" \
+  --role="roles/containeranalysis.occurrences.editor"
+```
 
 ```yaml
 # cloudbuild.yaml - Build, scan, sign, and deploy
@@ -220,7 +273,7 @@ steps:
         FULL_IMAGE="us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app@$IMAGE_DIGEST"
 
         # Create the attestation using the KMS key
-        gcloud container binauthz attestations sign-and-create \
+        gcloud beta container binauthz attestations sign-and-create \
           --artifact-url=$FULL_IMAGE \
           --attestor=build-pipeline-attestor \
           --attestor-project=$PROJECT_ID \
@@ -278,13 +331,14 @@ Check the audit logs for violations:
 # Look for Binary Authorization violations in audit logs
 gcloud logging read '
   resource.type="cloud_run_revision"
-  AND protoPayload.serviceName="binaryauthorization.googleapis.com"
+  AND logName:"cloudaudit.googleapis.com%2Fsystem_event"
+  AND "dry run"
 ' --limit=10 --format="json"
 ```
 
 ## Exempting Specific Images
 
-Sometimes you need to allow certain images without attestation (system images, base images, etc.):
+Sometimes you need to allow certain images without attestation (system images, shared trusted images, etc.):
 
 ```yaml
 # policy.yaml with exemptions
