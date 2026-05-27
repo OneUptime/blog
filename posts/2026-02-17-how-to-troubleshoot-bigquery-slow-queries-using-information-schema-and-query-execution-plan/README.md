@@ -38,7 +38,7 @@ ORDER BY duration_seconds DESC
 LIMIT 20;
 ```
 
-This tells you which queries are consuming the most time. The `avg_slots_used` column is particularly useful - a query that runs for 60 seconds with 10 average slots is very different from one that runs for 60 seconds with 1000 average slots. The first is likely waiting on something; the second is doing a lot of work.
+This tells you which queries are consuming the most time. The `avg_slots_used` column is particularly useful - a query that runs for 60 seconds with 10 average slots is very different from one that runs for 60 seconds with 1000 average slots. The first may be bottlenecked by scheduling, I/O, external services, or a serial part of the plan; the second is doing a lot of parallel work.
 
 ### Identify Resource-Heavy Queries
 
@@ -81,12 +81,12 @@ ORDER BY day DESC;
 
 ## Reading the Query Execution Plan
 
-Once you have identified a slow query, the execution plan shows exactly what BigQuery did to run it. You can access it in the Cloud Console by clicking on "Execution Details" after a query completes, or via the API.
+Once you have identified a slow query, the execution plan shows exactly what BigQuery did to run it. You can access it in the Cloud Console by opening the completed job and selecting the "Execution graph" tab, or via the API.
 
 ```bash
 # Get the execution plan for a specific job
 
-bq show -j --format=prettyjson <job-id> | python3 -c "
+bq show -j --format=prettyjson JOB_ID | python3 -c "
 import json, sys
 job = json.load(sys.stdin)
 stages = job.get('statistics', {}).get('query', {}).get('queryPlan', [])
@@ -111,7 +111,7 @@ Each stage in the execution plan represents a phase of query processing. Here is
 
 **shuffleOutputBytes**: Data transferred between stages. High shuffle output means data is being redistributed across slots, which is expensive.
 
-**waitMsAvg**: Average time slots spent waiting. High wait times indicate slot contention - your query is waiting for compute resources.
+**waitMsAvg**: Average time a stage shard spent waiting to be scheduled. High wait times can point to scheduling delays; use `JOBS_TIMELINE` and `period_estimated_runnable_units` to confirm slot contention.
 
 ## Common Slow Query Patterns and Fixes
 
@@ -120,7 +120,7 @@ Each stage in the execution plan represents a phase of query processing. Here is
 The execution plan shows a stage reading all partitions when it should only read a few.
 
 ```sql
--- Slow: EXTRACT does not enable partition pruning
+-- Slow: wrapping the partitioning column can prevent partition pruning
 SELECT * FROM `my_dataset.events`
 WHERE EXTRACT(DATE FROM event_timestamp) = '2024-06-15';
 
