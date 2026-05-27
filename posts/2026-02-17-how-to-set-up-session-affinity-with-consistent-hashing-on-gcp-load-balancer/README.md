@@ -62,6 +62,8 @@ gcloud compute backend-services create my-cookie-backend \
   --health-checks=my-health-check \
   --session-affinity=GENERATED_COOKIE \
   --affinity-cookie-ttl=3600 \
+  --locality-lb-policy=RING_HASH \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
   --global \
   --project=my-project
 ```
@@ -79,8 +81,10 @@ gcloud compute backend-services create my-consistent-hash-backend \
   --port-name=http \
   --health-checks=my-health-check \
   --session-affinity=HTTP_COOKIE \
-  --consistent-hash-http-cookie-name=SESSIONID \
-  --consistent-hash-http-cookie-ttl=86400 \
+  --affinity-cookie-name=SESSIONID \
+  --affinity-cookie-ttl=86400 \
+  --locality-lb-policy=RING_HASH \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
   --global \
   --project=my-project
 ```
@@ -91,16 +95,21 @@ This configuration hashes the `SESSIONID` cookie value. If the cookie does not e
 
 Route based on a custom HTTP header, useful for API clients that send a user identifier.
 
-```bash
-# Create a backend service with header-based consistent hashing
-gcloud compute backend-services create my-header-hash-backend \
-  --protocol=HTTP \
-  --port-name=http \
-  --health-checks=my-health-check \
-  --session-affinity=HEADER_FIELD \
-  --consistent-hash-http-header-name=X-User-ID \
-  --global \
-  --project=my-project
+```json
+{
+  "name": "my-header-hash-backend",
+  "protocol": "HTTP",
+  "portName": "http",
+  "healthChecks": [
+    "projects/my-project/global/healthChecks/my-health-check"
+  ],
+  "sessionAffinity": "HEADER_FIELD",
+  "localityLbPolicy": "RING_HASH",
+  "loadBalancingScheme": "EXTERNAL_MANAGED",
+  "consistentHash": {
+    "httpHeaderName": "X-User-ID"
+  }
+}
 ```
 
 All requests with the same `X-User-ID` header value will go to the same backend. If the header is missing, requests get distributed normally without affinity.
@@ -109,15 +118,16 @@ All requests with the same `X-User-ID` header value will go to the same backend.
 
 The minimum ring size controls how many virtual nodes each backend gets on the consistent hash ring. A larger ring size means more even distribution but uses more memory.
 
-```bash
-# Set a custom minimum ring size for more even distribution
-gcloud compute backend-services update my-consistent-hash-backend \
-  --consistent-hash-minimum-ring-size=1024 \
-  --global \
-  --project=my-project
+```json
+{
+  "localityLbPolicy": "RING_HASH",
+  "consistentHash": {
+    "minimumRingSize": "1024"
+  }
+}
 ```
 
-The default ring size is 1024. For workloads with many backends (more than 50), increase this to 10240 or higher to avoid uneven distribution.
+The default ring size is 1024. To tune the minimum ring size directly, update the backend service with Terraform or the Compute Engine API's `consistentHash.minimumRingSize` field.
 
 ## Terraform Configuration
 
@@ -131,6 +141,8 @@ resource "google_compute_backend_service" "cookie_affinity" {
   port_name             = "http"
   health_checks         = [google_compute_health_check.default.id]
   session_affinity      = "HTTP_COOKIE"
+  locality_lb_policy    = "RING_HASH"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
   project               = "my-project"
 
   consistent_hash {
@@ -152,12 +164,14 @@ resource "google_compute_backend_service" "cookie_affinity" {
 
 # Backend service with header-based consistent hashing
 resource "google_compute_backend_service" "header_affinity" {
-  name             = "header-affinity-backend"
-  protocol         = "HTTP"
-  port_name        = "http"
-  health_checks    = [google_compute_health_check.default.id]
-  session_affinity = "HEADER_FIELD"
-  project          = "my-project"
+  name                  = "header-affinity-backend"
+  protocol              = "HTTP"
+  port_name             = "http"
+  health_checks         = [google_compute_health_check.default.id]
+  session_affinity      = "HEADER_FIELD"
+  locality_lb_policy    = "RING_HASH"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  project               = "my-project"
 
   consistent_hash {
     http_header_name  = "X-User-ID"
@@ -179,10 +193,6 @@ resource "google_compute_region_backend_service" "ip_affinity" {
   session_affinity = "CLIENT_IP"
   region           = "us-central1"
   project          = "my-project"
-
-  consistent_hash {
-    minimum_ring_size = 1024
-  }
 
   backend {
     group = google_compute_instance_group_manager.default.instance_group
@@ -229,8 +239,8 @@ Check how evenly sessions are distributed across backends.
 # View backend utilization in Cloud Monitoring
 gcloud monitoring time-series list \
   --project=my-project \
-  --filter='metric.type="loadbalancing.googleapis.com/https/backend_request_count" AND resource.labels.backend_service_name="my-consistent-hash-backend"' \
-  --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)
+  --filter='metric.type="loadbalancing.googleapis.com/https/backend_request_count" AND resource.type="https_lb_rule" AND resource.labels.backend_target_name="my-consistent-hash-backend"' \
+  --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
 ```
 
 If you see significant imbalance, consider:
