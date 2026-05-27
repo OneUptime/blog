@@ -20,7 +20,7 @@ graph LR
     Publisher -.->|Invalid message| Rejected["Rejected<br/>(publish fails)"]
     Topic --> Sub["orders-subscription"]
     Sub -->|Process success| Consumer["Consumer App"]
-    Sub -->|Process fails 5x| DLT["orders-dlq<br/>(dead letter topic)"]
+    Sub -->|Repeated delivery failures| DLT["orders-dlq<br/>(dead letter topic)"]
     DLT --> DLSub["orders-dlq-subscription"]
     DLSub --> Monitor["Monitor / Replay"]
 ```
@@ -118,7 +118,7 @@ The `encoding` field determines whether messages are validated as JSON or binary
 
 ## Setting Up the Dead Letter Topic
 
-The dead letter queue is just another Pub/Sub topic. Messages that fail processing get forwarded here automatically:
+The dead letter queue is just another Pub/Sub topic. Messages that repeatedly fail delivery get forwarded here on a best-effort basis:
 
 ```hcl
 # dlq.tf - Dead letter topic and its subscription
@@ -188,7 +188,7 @@ resource "google_pubsub_subscription" "orders" {
     maximum_backoff = "600s"
   }
 
-  # Dead letter policy - forward to DLQ after 5 failed attempts
+  # Dead letter policy - forward to DLQ after approximately 5 delivery attempts
   dead_letter_policy {
     dead_letter_topic     = google_pubsub_topic.orders_dlq.id
     max_delivery_attempts = 5
@@ -258,7 +258,7 @@ data "google_project" "current" {
 }
 ```
 
-The IAM setup for dead letter queues is the part most people forget. Without granting the Pub/Sub service agent permission to publish to the DLQ topic and subscribe to the source subscription, dead letter forwarding silently fails.
+The IAM setup for dead letter queues is the part most people forget. Without granting the Pub/Sub service agent permission to publish to the DLQ topic and subscribe to the source subscription, Pub/Sub cannot correctly forward dead letter messages or count delivery attempts for the policy.
 
 ## Push Subscription Alternative
 
@@ -282,9 +282,9 @@ resource "google_pubsub_subscription" "orders_push" {
       service_account_email = google_service_account.orders_subscriber.email
     }
 
-    # Custom attributes added to the HTTP request
+    # Push endpoint configuration; x-goog-version controls the push message format
     attributes = {
-      x-custom-header = "orders-processor"
+      x-goog-version = "v1"
     }
   }
 
