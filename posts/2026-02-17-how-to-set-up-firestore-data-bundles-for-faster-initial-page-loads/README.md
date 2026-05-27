@@ -14,7 +14,7 @@ This can shave hundreds of milliseconds off your initial page load, and for cont
 
 ## How Data Bundles Work
 
-A data bundle is a serialized snapshot of one or more Firestore queries. You generate it server-side using the Admin SDK, store it somewhere fast (like Cloud Storage behind a CDN), and load it client-side into the Firestore SDK's cache. Once loaded, any queries that match the bundled data will be served from the local cache immediately.
+A data bundle is a serialized snapshot of one or more Firestore queries. You generate it server-side using the Admin SDK, store it somewhere fast (like Cloud Storage behind a CDN), and load it client-side into the Firestore SDK's cache. Once loaded, named queries from the bundle can be read from the local cache immediately.
 
 ```mermaid
 sequenceDiagram
@@ -31,7 +31,7 @@ sequenceDiagram
     Client->>Storage: Fetch bundle (fast, from CDN)
     Storage-->>Client: Bundle data
     Client->>Client: Load bundle into local cache
-    Client->>Client: Queries served from cache instantly
+    Client->>Client: Named queries read from cache instantly
     Note over Client: Later queries go to Firestore for fresh data
 ```
 
@@ -95,7 +95,7 @@ On the client, you fetch the bundle from your CDN and load it into the Firestore
 ```javascript
 // Load a Firestore data bundle from the CDN into the local cache
 // This should run early in your app's initialization
-import { loadBundle, namedQuery, getDocs } from 'firebase/firestore';
+import { loadBundle } from 'firebase/firestore';
 
 async function loadContentBundle() {
   // Fetch the bundle from your CDN or Cloud Storage
@@ -117,20 +117,20 @@ async function loadContentBundle() {
 
 ## Querying Bundled Data
 
-Once the bundle is loaded, you can use named queries to access the data. These queries are served from the local cache, so they are instant.
+Once the bundle is loaded, you can use named queries to access the data. Read those named queries from the local cache to avoid a fresh server request.
 
 ```javascript
 // Use named queries from the loaded bundle
 // These resolve from the local cache without hitting Firestore servers
-import { namedQuery, getDocs } from 'firebase/firestore';
+import { namedQuery, getDocsFromCache } from 'firebase/firestore';
 
 async function getPopularPosts() {
   // Get the named query from the bundle
   const query = await namedQuery(db, 'popular-posts');
 
   if (query) {
-    // Execute the query - it resolves from the cache
-    const snapshot = await getDocs(query);
+    // Execute the query against the local cache
+    const snapshot = await getDocsFromCache(query);
     const posts = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -203,7 +203,7 @@ The best time to load a bundle is as early as possible in your app's lifecycle. 
 // Load the bundle during app initialization
 // Run this before rendering any components that need the data
 import { initializeApp } from 'firebase/app';
-import { getFirestore, loadBundle, namedQuery, getDocs } from 'firebase/firestore';
+import { getFirestore, loadBundle, namedQuery, getDocsFromCache } from 'firebase/firestore';
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
@@ -224,10 +224,10 @@ async function initApp() {
     new Promise(resolve => setTimeout(resolve, 3000))  // 3-second timeout
   ]);
 
-  // Now queries will use cached bundle data if available
+  // Now read the named query from the cache if available
   const postsQuery = await namedQuery(db, 'popular-posts');
   if (postsQuery) {
-    const snapshot = await getDocs(postsQuery);
+    const snapshot = await getDocsFromCache(postsQuery);
     renderPosts(snapshot);
   }
 }
