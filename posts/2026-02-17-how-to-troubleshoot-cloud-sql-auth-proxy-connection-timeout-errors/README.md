@@ -141,7 +141,8 @@ Test basic connectivity:
 # Test if you can reach the Cloud SQL Admin API
 curl -s -o /dev/null -w "%{http_code}" https://sqladmin.googleapis.com/
 
-# The proxy communicates via the API, so this should return 200 or 401
+# The proxy communicates via this API, so any HTTP response confirms DNS/TLS reachability.
+# For example, the root endpoint often returns 404 even when it is reachable.
 ```
 
 ### Private IP Issues
@@ -232,7 +233,7 @@ If the instance is in maintenance, wait for it to complete. If suspended, check 
 If the proxy connects but your application gets timeouts, the instance might be out of connections:
 
 ```bash
-# Check current connections
+# Check the instance tier for connection-capacity context
 gcloud sql instances describe my-instance \
     --format="json(settings.tier)"
 ```
@@ -266,11 +267,11 @@ cloud-sql-proxy --version
 
 # Download the latest version
 curl -o cloud-sql-proxy \
-    https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.linux.amd64
+    https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.22.0/cloud-sql-proxy.linux.amd64
 chmod +x cloud-sql-proxy
 ```
 
-Always use the v2 proxy (v2.x.x). The v1 proxy is deprecated.
+Prefer the current v2 proxy (v2.x.x) unless you have a specific reason to remain on v1, and keep whichever major version you run up to date.
 
 ## Step 10: Application-Side Timeouts
 
