@@ -14,9 +14,9 @@ If you are running network-intensive workloads on Compute Engine - think data re
 
 Compute Engine instances have two levels of network performance:
 
-**Default (Tier 0)**: Network bandwidth scales with vCPU count, up to a maximum that varies by machine type. A general-purpose instance with 16 vCPUs typically gets up to 32 Gbps egress.
+**Default (Tier 0)**: Network bandwidth scales with vCPU count, up to a maximum that varies by machine type. A general-purpose instance with 16 vCPUs can get up to 32 Gbps egress, depending on the machine series.
 
-**Tier 1 (per-VM networking)**: Available on select machine types with 46 or more vCPUs. Provides up to 100 Gbps egress bandwidth per instance. This is a significant jump from the default tier.
+**Tier 1 (per-VM networking)**: Available on select larger machine types. It requires gVNIC for VM instances and can provide up to 100 Gbps or 200 Gbps egress bandwidth per instance, depending on the machine series and size. This is a significant jump from the default tier.
 
 The key insight is that Tier 1 is not just about raw bandwidth - it also provides higher packet-per-second (PPS) rates and more consistent performance under load.
 
@@ -26,20 +26,20 @@ Tier 1 networking is available on these machine families with sufficient vCPU co
 
 | Machine Family | Min vCPUs for Tier 1 | Max Bandwidth |
 |---|---|---|
-| C2 | 60 vCPUs | 100 Gbps |
-| C2D | 56 vCPUs | 100 Gbps |
-| C3 | 46 vCPUs | 100 Gbps |
-| N2 | 46 vCPUs | 100 Gbps |
-| N2D | 48 vCPUs | 100 Gbps |
+| C2 | 30 vCPUs | 100 Gbps |
+| C2D | 32 vCPUs | 100 Gbps |
+| C3 | 44 vCPUs | 200 Gbps |
+| N2 | 32 vCPUs | 100 Gbps |
+| N2D | 32 vCPUs | 100 Gbps |
 
-Check the bandwidth for your current machine type:
+Check the vCPU count for your current machine type, then compare it with the machine family's network bandwidth table:
 
 ```bash
-# Describe a machine type to see its network performance
+# Describe a machine type to see its vCPU count
 
 gcloud compute machine-types describe c3-standard-88 \
     --zone=us-central1-a \
-    --format="json(name, guestCpus, memoryMb, maximumPersistentDisksSizeGb)"
+    --format="json(name, guestCpus, memoryMb)"
 ```
 
 ## Step 2: Enable Tier 1 Networking on an Instance
@@ -52,21 +52,21 @@ gcloud compute instances create high-throughput-vm \
     --zone=us-central1-a \
     --machine-type=c3-standard-88 \
     --network-performance-configs=total-egress-bandwidth-tier=TIER_1 \
-    --network-interface=network=your-vpc,subnet=your-subnet \
+    --network-interface=network=your-vpc,subnet=your-subnet,nic-type=GVNIC \
     --image-family=ubuntu-2204-lts \
     --image-project=ubuntu-os-cloud
 ```
 
 The `total-egress-bandwidth-tier=TIER_1` setting is the key. Without it, even a large instance uses default tier networking.
 
-For existing instances, you cannot change the networking tier. You need to create a new instance with the correct configuration. If you are using instance templates (which you should be for production), update the template:
+For existing instances that already use a gVNIC interface, you can change the networking tier by exporting the instance configuration, updating `networkPerformanceConfig.totalEgressBandwidthTier`, and applying it with a restart. If the instance was created with VirtIO, you need to create a new instance with gVNIC. If you are using instance templates (which you should be for production), update the template:
 
 ```bash
 # Create an instance template with Tier 1 networking
 gcloud compute instance-templates create high-throughput-template \
     --machine-type=n2-standard-64 \
     --network-performance-configs=total-egress-bandwidth-tier=TIER_1 \
-    --network-interface=network=your-vpc,subnet=your-subnet \
+    --network-interface=network=your-vpc,subnet=your-subnet,nic-type=GVNIC \
     --image-family=ubuntu-2204-lts \
     --image-project=ubuntu-os-cloud \
     --boot-disk-type=pd-ssd \
@@ -85,9 +85,9 @@ gcloud compute networks update your-vpc \
     --mtu=8896
 ```
 
-Note: Changing the VPC MTU requires all instances in the network to be updated. Existing connections might be disrupted during the change.
+Note: Do not change the VPC MTU while VMs are running. Stop the VMs in the network, update the MTU, then start them again so their interfaces use the same MTU.
 
-Then configure the instance's network interface to use jumbo frames. On Linux, this is done at the OS level:
+Then verify that the instance's network interface uses jumbo frames. Public Linux images receive the VPC MTU through DHCP when they start, but custom images or manually configured systems might need an OS-level change:
 
 ```bash
 # Set the MTU on the network interface inside the VM
@@ -167,7 +167,7 @@ net.core.netdev_max_backlog = 250000
 # Enable TCP window scaling
 net.ipv4.tcp_window_scaling = 1
 
-# Enable BBR congestion control for better throughput
+# Enable BBR congestion control for workloads that benefit from it
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
 EOF
@@ -176,7 +176,7 @@ EOF
 sudo sysctl -p
 ```
 
-BBR (Bottleneck Bandwidth and Round-Trip) congestion control is particularly effective on Google Cloud's network and can significantly improve throughput compared to the default CUBIC algorithm.
+BBR (Bottleneck Bandwidth and Round-Trip) congestion control can improve throughput for some workloads compared to the default CUBIC algorithm. Test it with your application before rolling it out broadly.
 
 ## Step 6: Use Multiple Network Interfaces
 
@@ -188,8 +188,8 @@ gcloud compute instances create multi-nic-vm \
     --zone=us-central1-a \
     --machine-type=c3-standard-88 \
     --network-performance-configs=total-egress-bandwidth-tier=TIER_1 \
-    --network-interface=network=vpc-1,subnet=subnet-1 \
-    --network-interface=network=vpc-2,subnet=subnet-2 \
+    --network-interface=network=vpc-1,subnet=subnet-1,nic-type=GVNIC \
+    --network-interface=network=vpc-2,subnet=subnet-2,nic-type=GVNIC \
     --image-family=ubuntu-2204-lts \
     --image-project=ubuntu-os-cloud
 ```
@@ -203,22 +203,22 @@ If you need maximum throughput between specific instances, use a placement polic
 ```bash
 # Create a compact placement policy
 gcloud compute resource-policies create group-placement high-throughput-group \
-    --collocation=COLLOCATED \
-    --vm-count=4 \
+    --collocation=collocated \
     --region=us-central1
 
 # Create instances with the placement policy
 gcloud compute instances create vm-1 \
     --zone=us-central1-a \
-    --machine-type=c3-standard-88 \
+    --machine-type=n2-standard-80 \
+    --maintenance-policy=MIGRATE \
     --network-performance-configs=total-egress-bandwidth-tier=TIER_1 \
     --resource-policies=high-throughput-group \
-    --network-interface=network=your-vpc,subnet=your-subnet \
+    --network-interface=network=your-vpc,subnet=your-subnet,nic-type=GVNIC \
     --image-family=ubuntu-2204-lts \
     --image-project=ubuntu-os-cloud
 ```
 
-Collocated instances are placed on the same physical rack or cluster, reducing network hops and providing the lowest possible latency and highest throughput.
+Compact placement policies ask Compute Engine to place instances physically close to each other, reducing network hops and improving latency-sensitive traffic.
 
 ## Step 8: Monitor Network Performance
 
@@ -227,7 +227,7 @@ Set up monitoring to track your actual network usage:
 ```bash
 # View network metrics for an instance
 gcloud monitoring time-series list \
-    --filter='metric.type="compute.googleapis.com/instance/network/sent_bytes_count" AND resource.labels.instance_id="INSTANCE_ID"' \
+    --filter='resource.type="gce_instance" AND metric.type="compute.googleapis.com/instance/network/sent_bytes_count" AND resource.labels.instance_id="INSTANCE_ID"' \
     --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
 ```
 
