@@ -21,25 +21,25 @@ A strategy plugin is a Python class that inherits from `StrategyBase`. Its main 
 
 ## Minimal Strategy Plugin
 
-Here is the simplest possible strategy plugin that runs tasks one host at a time:
+Here is the simplest possible strategy plugin: it delegates to the built-in linear strategy and adds a small amount of logging.
 
 ```python
-# strategy_plugins/one_at_a_time.py - Run all tasks on one host before the next
+# strategy_plugins/logged_linear.py - Linear strategy with custom logging
 
-from ansible.plugins.strategy import StrategyBase
 from ansible.plugins.strategy.linear import StrategyModule as LinearStrategy
 
 
 class StrategyModule(LinearStrategy):
-    """Run the entire play on one host at a time."""
+    """Run the normal linear strategy with custom debug output."""
 
-    def __init__(self, tqm):
-        super().__init__(tqm)
-        # Override forks to 1
-        self._tqm._options.forks = 1
+    def run(self, iterator, play_context):
+        self._display.v("logged_linear strategy: starting")
+        result = super().run(iterator, play_context)
+        self._display.v(f"logged_linear strategy: complete, result={result}")
+        return result
 ```
 
-This extends the linear strategy but forces forks to 1, so only one host runs at a time.
+This extends the linear strategy without changing its scheduling behavior. If you want to run the entire play on one host before moving to the next, use the play-level `serial: 1` keyword instead of a custom strategy.
 
 ## Understanding the Strategy Base Class
 
@@ -77,7 +77,6 @@ Here is a more practical example: a strategy that monitors failure rates and sto
 # strategy_plugins/circuit_breaker.py
 from ansible.plugins.strategy.linear import StrategyModule as LinearStrategy
 from ansible.errors import AnsibleError
-import time
 
 
 DOCUMENTATION = '''
@@ -86,7 +85,7 @@ DOCUMENTATION = '''
     description:
         - Extends linear strategy with automatic circuit breaking
         - Monitors failure rate over a sliding window
-        - Pauses execution when failure rate exceeds threshold
+        - Stops execution when failure rate exceeds threshold
     options:
         failure_threshold:
             description: Maximum failure percentage before tripping
@@ -139,15 +138,15 @@ class StrategyModule(LinearStrategy):
 
         # Track success/failure in the sliding window
         for result in results:
-            if hasattr(result, '_result'):
-                if result.is_failed():
-                    self._failure_window.append('failed')
-                else:
-                    self._failure_window.append('ok')
+            if result.utr.failed or result.utr.unreachable:
+                self._failure_window.append('failed')
+            else:
+                self._failure_window.append('ok')
 
         # Check circuit breaker
         if self._check_circuit():
             self._circuit_open = True
+            raise AnsibleError("Circuit breaker tripped; stopping play execution")
 
         return results
 ```
@@ -173,37 +172,41 @@ DOCUMENTATION = '''
 class StrategyModule(LinearStrategy):
     """Process hosts sorted by weight variable."""
 
-    def _get_host_weight(self, host, variable_manager, loader):
+    def _get_host_weight(self, play, host):
         """Get the weight for a host from its variables."""
-        host_vars = variable_manager.get_vars(host=host)
-        return host_vars.get('priority_weight', 0)
+        host_vars = self._variable_manager.get_vars(
+            play=play,
+            host=host,
+            _hosts=self._hosts_cache,
+            _hosts_all=self._hosts_cache_all,
+        )
+        return int(host_vars.get('priority_weight', 0))
 
-    def run(self, iterator, play_context):
-        """Override run to sort hosts by weight."""
-        # Sort hosts by weight (highest first)
-        all_hosts = self._inventory.get_hosts(iterator._play.hosts)
-        variable_manager = iterator._play._variable_manager
-        loader = iterator._play._loader
-
-        sorted_hosts = sorted(
-            all_hosts,
-            key=lambda h: self._get_host_weight(h, variable_manager, loader),
+    def _set_hosts_cache(self, play, refresh=True):
+        """Override host cache setup to sort hosts by weight."""
+        super()._set_hosts_cache(play, refresh)
+        hosts_by_name = {
+            host.name: host
+            for host in self._inventory.get_hosts(play.hosts, order=play.order)
+        }
+        self._hosts_cache.sort(
+            key=lambda name: self._get_host_weight(play, hosts_by_name[name]),
             reverse=True,
         )
 
-        # Update the iterator's host list
-        # Note: This is simplified; real implementation needs more care
+    def run(self, iterator, play_context):
+        """Run with hosts sorted by weight."""
+        result = super().run(iterator, play_context)
         self._display.display(
             f"Host execution order (by weight): "
-            f"{[h.get_name() for h in sorted_hosts]}"
+            f"{self._hosts_cache}"
         )
-
-        return super().run(iterator, play_context)
+        return result
 ```
 
 Use it with host variables:
 
-```yaml
+```ini
 # inventory
 [webservers]
 web-canary priority_weight=100   # Processed first (canary)
@@ -279,7 +282,10 @@ Add display messages to track execution flow:
 ```python
 def run(self, iterator, play_context):
     self._display.v("Custom strategy: starting execution")
-    self._display.vv(f"Custom strategy: {len(self._hosts_left)} hosts remaining")
+    self._set_hosts_cache(iterator._play)
+    self._display.vv(
+        f"Custom strategy: {len(self.get_hosts_left(iterator))} hosts remaining"
+    )
     result = super().run(iterator, play_context)
     self._display.v(f"Custom strategy: execution complete, result={result}")
     return result
