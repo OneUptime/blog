@@ -18,9 +18,9 @@ This is especially useful when you are dealing with data from sources that do no
 
 ## Getting Started with the Wrangler
 
-To open the Wrangler, navigate to your Cloud Data Fusion instance in the GCP Console and click on the "Wrangler" tab. You can load data from various sources:
+To open the Wrangler, navigate to your Cloud Data Fusion instance in the Google Cloud console, click "View Instance" to open the Cloud Data Fusion Studio interface, and then click "Wrangler." You can load data from various sources:
 
-- Upload a file (CSV, JSON, Excel)
+- Use a Cloud Storage connection for files such as CSV, JSON, or Excel
 - Connect to a database
 - Browse GCS buckets
 - Pull from BigQuery tables
@@ -29,7 +29,7 @@ For this walkthrough, let's say you have a CSV file with customer records that n
 
 ## Loading Your Data
 
-Once you are in the Wrangler, click "Add Connection" or upload a file directly. After you select your data source, the Wrangler will show you a preview of the first several hundred rows in a tabular format. Each column is displayed with its inferred data type, and you can immediately start spotting issues.
+Once you are in the Wrangler, create or select a connection to your data source. After you select your data source, the Wrangler will show you a preview of the data, typically the first 1,000 rows, in a tabular format. Each column is displayed with its inferred data type, and you can immediately start spotting issues.
 
 Common problems you will notice right away include null values, inconsistent date formats, mixed-case strings, and columns that contain data that should be split into multiple fields.
 
@@ -42,31 +42,27 @@ The power of the Wrangler comes from its directive system. You can either use th
 To standardize a column with inconsistent casing, click the column header dropdown and select "Uppercase" or "Lowercase." This generates a directive like:
 
 ```text
-// Convert the customer_name column to lowercase for consistency
-lowercase customer_name
+lowercase :customer_name
 ```
 
 To trim whitespace from string fields:
 
 ```text
-// Remove leading and trailing spaces from the email column
-trim email
+trim :email
 ```
 
 ### Handling Missing Values
 
-The Wrangler lets you filter or fill null values. If you want to fill null values in a numeric column with a default:
+The Wrangler lets you filter or fill null values. If you want to fill null values in a revenue field before converting it to a numeric type:
 
 ```text
-// Replace null values in the revenue column with 0
-fill-null-or-empty revenue '0'
+fill-null-or-empty :revenue '0'
 ```
 
 To drop rows where a critical field is missing:
 
 ```text
-// Remove rows where the customer_id column is empty
-filter-rows-on condition-if-matched customer_id =~ '^\s*$'
+filter-rows-on empty-or-null-columns :customer_id
 ```
 
 ### Parsing and Splitting Columns
@@ -74,15 +70,13 @@ filter-rows-on condition-if-matched customer_id =~ '^\s*$'
 If you have a column that contains combined data - say a full address in a single field - you can split it:
 
 ```text
-// Split the address column on commas into separate fields
-split-to-columns address ','
+split-to-columns :address ','
 ```
 
-For dates that arrive in a non-standard format, you can parse them:
+For date strings that arrive in a non-standard format, you can parse them:
 
 ```text
-// Parse the order_date column from a custom format to a standard date
-parse-as-datetime order_date "MM/dd/yyyy"
+parse-as-simple-date :order_date 'MM/dd/yyyy'
 ```
 
 ### Type Conversions
@@ -90,8 +84,7 @@ parse-as-datetime order_date "MM/dd/yyyy"
 The Wrangler often infers types incorrectly, especially when reading from CSV files. You can explicitly set column types:
 
 ```text
-// Convert the amount column from string to decimal
-set-type amount decimal
+set-type :amount decimal
 ```
 
 ### Renaming and Dropping Columns
@@ -99,15 +92,13 @@ set-type amount decimal
 To rename a column for clarity:
 
 ```text
-// Rename the cryptic column name to something readable
-rename col_7 shipping_cost
+rename :col_7 :shipping_cost
 ```
 
 To drop columns you do not need:
 
 ```text
-// Remove the internal_notes column before loading to BigQuery
-drop internal_notes
+drop :internal_notes
 ```
 
 ## Working with the Directive Recipe
@@ -139,7 +130,7 @@ Once your data looks clean, you can convert your Wrangler work directly into a D
 - A Wrangler transform node containing all your directives
 - A placeholder sink node where you can configure the destination (BigQuery, GCS, or another target)
 
-The pipeline YAML that gets generated will include your Wrangler directives as a configuration property on the transform node, so everything you did interactively is preserved.
+The pipeline configuration that gets generated will include your Wrangler directives as a configuration property on the transform node, so everything you did interactively is preserved. If you export the pipeline, Cloud Data Fusion exports the configuration as JSON.
 
 ## Advanced Wrangler Techniques
 
@@ -148,8 +139,7 @@ The pipeline YAML that gets generated will include your Wrangler directives as a
 You can apply transformations conditionally using the `set-column` directive with expressions:
 
 ```text
-// Set a new column based on a condition - categorize orders by size
-set-column order_category exp:{order_amount > 1000 ? 'large' : 'small'}
+set-column :order_category exp:{order_amount > 1000 ? 'large' : 'small'}
 ```
 
 ### Merging Columns
@@ -157,8 +147,7 @@ set-column order_category exp:{order_amount > 1000 ? 'large' : 'small'}
 To combine multiple columns into one:
 
 ```text
-// Merge first_name and last_name into a full_name column
-merge first_name last_name full_name ' '
+merge :first_name :last_name :full_name ' '
 ```
 
 ### Using Custom Expressions
@@ -166,13 +155,12 @@ merge first_name last_name full_name ' '
 The Wrangler supports JEXL expressions for more advanced logic:
 
 ```text
-// Calculate a discount column based on customer tier
-set-column discount exp:{tier == 'gold' ? amount * 0.2 : amount * 0.1}
+set-column :discount exp:{tier == 'gold' ? amount * 0.2 : amount * 0.1}
 ```
 
 ## Tips for Getting the Most Out of the Wrangler
 
-First, always start with a representative sample of your data. If you only preview the first 100 rows and your data has edge cases in row 5,000, you might miss them.
+First, always start with a representative sample of your data. Wrangler applies transformations to sample data in the preview before the pipeline runs the logic on the full dataset, so if your sample does not include edge cases from later in the source data, you might miss them.
 
 Second, keep your directive recipes version-controlled. Export them and save them alongside your pipeline definitions in Git. This makes it easy to review changes and roll back if a transformation introduces problems.
 
