@@ -1,14 +1,14 @@
-# How to Use Ansible Module Development with Python
+# How to Use Ansible for Python Application Deployment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Module, Development, Plugin
+Tags: Ansible, Python, Deployment, Automation, Playbook
 
-Description: Write custom Ansible modules in Python with proper argument handling, check mode support, and documentation integration.
+Description: Deploy Python applications with Ansible playbooks, service management, reverse proxy configuration, and operational automation.
 
 ---
 
-Custom Ansible modules let you extend automation capabilities in production environments. This guide walks through the complete process with practical Ansible playbooks and working code examples.
+Ansible playbooks let you extend automation capabilities in production environments. This guide walks through the complete process with practical Ansible playbooks and working code examples.
 
 ## Prerequisites
 
@@ -229,16 +229,16 @@ ansible-playbook -i inventory/hosts deploy.yml --limit app01
 
 ## Summary
 
-This playbook provides a complete deployment pipeline: system preparation, code deployment, virtual environment management, service configuration, and reverse proxy setup. Each task is idempotent and can be run repeatedly. Extend it with additional steps like database migrations, cache warming, or load balancer integration based on your specific application requirements.
+This playbook provides a complete deployment pipeline: system preparation, code deployment, virtual environment management, service configuration, and reverse proxy setup. It uses idempotent Ansible modules where possible and can be run repeatedly. Extend it with additional steps like database migrations, cache warming, or load balancer integration based on your specific application requirements.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -267,10 +267,11 @@ Here are several practical scenarios where this module proves essential in real-
           - vim
           - htop
           - jq
+          - ufw
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -352,7 +353,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -414,4 +415,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
