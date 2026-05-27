@@ -4,28 +4,28 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback, Configuration, DevOps, Monitoring
 
-Description: Configure the Ansible callback whitelist to enable timer, profiling, logging, and notification plugins for better playbook visibility.
+Description: Configure Ansible callbacks to enable timer, profiling, logging, and notification plugins for better playbook visibility.
 
 ---
 
-Ansible callback plugins hook into playbook events and can do useful things like display task execution times, format output differently, send notifications, or log results to external systems. Most callback plugins are disabled by default and need to be explicitly enabled through the callback whitelist. This guide shows you which callback plugins are available, how to enable them, and practical configurations for common use cases.
+Ansible callback plugins hook into playbook events and can do useful things like display task execution times, format output differently, send notifications, or log results to external systems. Most callback plugins are disabled by default and need to be explicitly enabled. This guide shows you which callback plugins are available, how to enable them, and practical configurations for common use cases.
 
 ## What is the Callback Whitelist?
 
-The `callback_whitelist` setting in ansible.cfg specifies which callback plugins should be active during a playbook run. Only certain types of callbacks need whitelisting. There are two categories:
+The `callbacks_enabled` setting in ansible.cfg specifies which callback plugins should be active during a playbook run. In older Ansible releases this setting was named `callback_whitelist`. Only certain types of callbacks need enabling. There are two categories:
 
-- **stdout callbacks**: Control how output is displayed. Only one can be active at a time, set via `stdout_callback`. These do not need to be whitelisted.
-- **notification/aggregate callbacks**: Run alongside the stdout callback and perform additional actions. These must be whitelisted.
+- **stdout callbacks**: Control how output is displayed. Only one can be active at a time, set via `stdout_callback`. These do not need to be enabled through `callbacks_enabled`.
+- **notification/aggregate callbacks**: Run alongside the stdout callback and perform additional actions. These must be enabled.
 
 ```ini
 # ansible.cfg
 
 [defaults]
 # This sets the output format (only one at a time)
-stdout_callback = yaml
+stdout_callback = default
 
 # These additional callbacks run in parallel with stdout output
-callback_whitelist = timer, profile_tasks, profile_roles
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles
 ```
 
 ## Enabling the Callback Whitelist
@@ -35,23 +35,33 @@ callback_whitelist = timer, profile_tasks, profile_roles
 ```ini
 # ansible.cfg
 [defaults]
-callback_whitelist = timer, profile_tasks, profile_roles, log_plays
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles, community.general.log_plays
 ```
 
 ### Via Environment Variable
 
+For older Ansible releases, use the legacy environment variable:
+
 ```bash
-# Enable callbacks via environment variable
+# Enable callbacks via environment variable in older Ansible releases
 export ANSIBLE_CALLBACK_WHITELIST=timer,profile_tasks
 ansible-playbook deploy.yml
 ```
 
-Note: In newer versions of Ansible (2.15+), the setting has been renamed to `callbacks_enabled`, but `callback_whitelist` still works as an alias:
+For Ansible 2.11 and newer, use the current environment variable:
+
+```bash
+# Enable callbacks via environment variable
+export ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer,ansible.posix.profile_tasks
+ansible-playbook deploy.yml
+```
+
+Note: In Ansible 2.11 and newer, the setting is named `callbacks_enabled`. Older releases used `callback_whitelist`:
 
 ```ini
-# ansible.cfg - newer syntax
+# ansible.cfg - current syntax
 [defaults]
-callbacks_enabled = timer, profile_tasks, profile_roles
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles
 ```
 
 ## Essential Callback Plugins
@@ -61,7 +71,7 @@ callbacks_enabled = timer, profile_tasks, profile_roles
 Shows the total playbook execution time at the end of the run.
 
 ```ini
-callback_whitelist = timer
+callbacks_enabled = ansible.posix.timer
 ```
 
 Output:
@@ -79,13 +89,13 @@ Playbook run took 0 days, 0 hours, 2 minutes, 34 seconds
 Shows how long each task took to execute. This is invaluable for identifying slow tasks and optimization opportunities.
 
 ```ini
-callback_whitelist = profile_tasks
+callbacks_enabled = ansible.posix.profile_tasks
 ```
 
 Output:
 
 ```text
-Wednesday 21 February 2026  10:30:00 +0000 (0:00:45.123)   0:02:34.567 *******
+Saturday 21 February 2026  10:30:00 +0000 (0:00:45.123)   0:02:34.567 *******
 ===============================================================================
 Install packages ------------------------------------------- 45.12s
 Restart nginx ---------------------------------------------- 12.34s
@@ -99,7 +109,7 @@ Check service status --------------------------------------- 2.10s
 Shows execution time per role, which is useful for large playbooks with many roles.
 
 ```ini
-callback_whitelist = profile_roles
+callbacks_enabled = ansible.posix.profile_roles
 ```
 
 Output:
@@ -117,15 +127,15 @@ firewall ----------------------------------------------------- 8.34s
 Logs task results to per-host files in `/var/log/ansible/hosts/`. Each host gets its own file with a timestamped record of every task that ran against it.
 
 ```ini
-callback_whitelist = log_plays
+callbacks_enabled = community.general.log_plays
 ```
 
 ### mail
 
-Sends an email when a playbook finishes or when a task fails.
+Sends an email for playbook failure events.
 
 ```ini
-callback_whitelist = mail
+callbacks_enabled = community.general.mail
 ```
 
 Configure mail settings in ansible.cfg:
@@ -143,7 +153,7 @@ smtpport = 587
 Sends notifications to a Slack channel.
 
 ```ini
-callback_whitelist = slack
+callbacks_enabled = community.general.slack
 ```
 
 Set the webhook URL:
@@ -159,11 +169,11 @@ You can enable multiple callback plugins at once. Here is a practical production
 ```ini
 # ansible.cfg - production configuration
 [defaults]
-# YAML output for readability
-stdout_callback = yaml
+# Default output for readability
+stdout_callback = default
 
 # Enable timing, profiling, and logging
-callback_whitelist = timer, profile_tasks, profile_roles, log_plays
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles, community.general.log_plays
 
 # Custom callback plugins directory
 callback_plugins = ./callback_plugins
@@ -175,10 +185,10 @@ And here is a CI/CD-focused configuration:
 # ansible.cfg - CI/CD configuration
 [defaults]
 # JSON output for machine parsing
-stdout_callback = json
+stdout_callback = ansible.posix.json
 
 # Enable timing for performance tracking
-callback_whitelist = timer, profile_tasks
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 ```
 
 ## Listing Available Callback Plugins
@@ -194,20 +204,19 @@ To get detailed documentation for a specific callback:
 
 ```bash
 # Get detailed info about the profile_tasks callback
-ansible-doc -t callback profile_tasks
+ansible-doc -t callback ansible.posix.profile_tasks
 ```
 
 Typical output of the list command includes plugins like:
 
 ```text
 ansible.builtin.default     Default output
-ansible.builtin.json        JSON output
-ansible.builtin.log_plays   Log playbook results per host
 ansible.builtin.minimal     Minimal output
-ansible.builtin.profile_roles  Profile role execution times
-ansible.builtin.profile_tasks  Profile task execution times
-ansible.builtin.timer       Show playbook run duration
-ansible.builtin.yaml        YAML output
+ansible.posix.json          JSON output
+ansible.posix.profile_roles Profile role execution times
+ansible.posix.profile_tasks Profile task execution times
+ansible.posix.timer         Show playbook run duration
+community.general.log_plays Log playbook results per host
 community.general.slack     Send notifications to Slack
 community.general.logstash  Send logs to Logstash
 ```
@@ -222,7 +231,7 @@ If the built-in callbacks do not meet your needs, write your own. Here is a prac
 import json
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from ansible.plugins.callback import CallbackBase
 
 
@@ -231,7 +240,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'aggregate'
     CALLBACK_NAME = 'run_summary'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super().__init__()
@@ -274,7 +283,7 @@ class CallbackModule(CallbackBase):
 
         summary = {
             'playbook': self.playbook_name,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'duration_seconds': round(duration, 2),
             'results': self.task_results,
             'failed_tasks': self.failed_tasks,
@@ -284,7 +293,7 @@ class CallbackModule(CallbackBase):
         summary_dir = 'logs/summaries'
         os.makedirs(summary_dir, exist_ok=True)
 
-        filename = "run-{}.json".format(datetime.utcnow().strftime('%Y%m%d-%H%M%S'))
+        filename = "run-{}.json".format(datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S'))
         filepath = os.path.join(summary_dir, filename)
 
         with open(filepath, 'w') as f:
@@ -298,7 +307,7 @@ Enable it:
 ```ini
 # ansible.cfg
 [defaults]
-callback_whitelist = run_summary, timer, profile_tasks
+callbacks_enabled = run_summary, ansible.posix.timer, ansible.posix.profile_tasks
 callback_plugins = ./callback_plugins
 ```
 
@@ -306,15 +315,21 @@ callback_plugins = ./callback_plugins
 
 **Callback not running**
 
-Make sure the plugin name is spelled correctly in the whitelist and that the plugin type supports whitelisting. Stdout callbacks should be set with `stdout_callback`, not `callback_whitelist`.
+Make sure the plugin name is spelled correctly in `callbacks_enabled` and that the plugin type supports enabling. Stdout callbacks should be set with `stdout_callback`, not `callbacks_enabled`.
 
 **"callback plugin not found"**
 
 If you are using a community callback, install the required collection first:
 
 ```bash
-# Install community.general for Slack, Logstash, and other callbacks
+# Install community.general for Slack, Logstash, mail, log_plays, and other callbacks
 ansible-galaxy collection install community.general
+```
+
+For the timer and profiling callbacks, install the `ansible.posix` collection if it is not already available:
+
+```bash
+ansible-galaxy collection install ansible.posix
 ```
 
 **Custom callback not loading**
@@ -327,4 +342,4 @@ ansible-playbook -vvvv deploy.yml 2>&1 | grep -i callback
 
 ## Summary
 
-The callback whitelist is how you unlock Ansible's observability features. At minimum, enable `timer` and `profile_tasks` for every project so you always know how long things take. Add `log_plays` for audit trails, and consider notification callbacks (Slack, email) for production deployments. For more advanced use cases, writing custom callback plugins is straightforward and gives you complete control over how playbook events are processed and reported.
+Enabling callbacks is how you unlock Ansible's observability features. At minimum, enable `ansible.posix.timer` and `ansible.posix.profile_tasks` for every project so you always know how long things take. Add `community.general.log_plays` for audit trails, and consider notification callbacks (Slack, email) for production deployments. For more advanced use cases, writing custom callback plugins is straightforward and gives you complete control over how playbook events are processed and reported.
