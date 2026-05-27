@@ -67,51 +67,51 @@ Understanding record types is fundamental to managing DNS correctly.
 
 # This is the most common record type
 dig +short example.com A
-# Output: 93.184.216.34
+# Example output: 203.0.113.10
 
 # AAAA Record - Maps a hostname to an IPv6 address
 dig +short example.com AAAA
-# Output: 2606:2800:220:1:248:1893:25c8:1946
+# Example output: 2001:db8::10
 
 # CNAME Record - Alias that points to another hostname
-# IMPORTANT: CNAMEs cannot coexist with other records for the same name
+# IMPORTANT: CNAMEs cannot coexist with ordinary records for the same name
 # IMPORTANT: CNAMEs cannot be used at the zone apex (naked domain)
 dig +short www.example.com CNAME
-# Output: example.com.
+# Example output if the record exists: example.com.
 
 # MX Record - Mail exchange servers with priority
 # Lower priority number = higher preference
 dig +short example.com MX
-# Output: 10 mail1.example.com.
+# Example output: 10 mail1.example.com.
 #         20 mail2.example.com.
 
 # TXT Record - Text data used for verification and policies
 # Common uses: SPF, DKIM, DMARC, domain verification
 dig +short example.com TXT
-# Output: "v=spf1 include:_spf.google.com ~all"
+# Example output: "v=spf1 include:_spf.google.com ~all"
 
 # NS Record - Authoritative name servers for a domain
 dig +short example.com NS
-# Output: ns1.example.com.
+# Example output: ns1.example.com.
 #         ns2.example.com.
 
 # SOA Record - Start of Authority with zone metadata
 dig +short example.com SOA
-# Contains: primary NS, admin email, serial, refresh, retry, expire, minimum TTL
+# Contains: primary NS, admin email, serial, refresh, retry, expire, negative caching TTL
 
 # SRV Record - Service location with port and priority
 # Format: _service._protocol.domain
 dig +short _http._tcp.example.com SRV
-# Output: 10 60 80 web.example.com.
+# Example output if the record exists: 10 60 80 web.example.com.
 
 # PTR Record - Reverse DNS (IP to hostname)
 dig +short -x 93.184.216.34
-# Output: example.com.
+# Example output if reverse DNS is configured: example.com.
 
 # CAA Record - Certificate Authority Authorization
 # Controls which CAs can issue certificates for your domain
 dig +short example.com CAA
-# Output: 0 issue "letsencrypt.org"
+# Example output: 0 issue "letsencrypt.org"
 ```
 
 ## TTL and Caching
@@ -163,14 +163,15 @@ $TTL 300
                 3600        ; Refresh interval (1 hour)
                 900         ; Retry interval (15 minutes)
                 604800      ; Expire time (7 days)
-                300         ; Minimum TTL (5 minutes)
+                300         ; Negative caching TTL (5 minutes)
             )
 
 ; Name servers for this zone
 @       IN  NS    ns1.example.com.
 @       IN  NS    ns2.example.com.
 
-; A records for the name servers themselves (glue records)
+; A records for the name servers themselves
+; Matching glue records must also exist in the parent zone for in-bailiwick name servers
 ns1     IN  A     203.0.113.1
 ns2     IN  A     203.0.113.2
 
@@ -218,7 +219,8 @@ mail2   IN  A     203.0.113.41
 
 ```text
 ; Route 90% of traffic to stable, 10% to canary
-; Using weighted routing (supported by Route53, Cloudflare, etc.)
+; Weights are provider-specific routing metadata, not standard DNS zone-file syntax
+; Supported by providers such as Route53 and Cloudflare
 api     IN  A     10.0.1.10  ; weight: 90
 api     IN  A     10.0.2.10  ; weight: 10
 ```
@@ -264,7 +266,7 @@ done
 dig example.com SOA +short
 
 # Problem: CNAME and other records conflicting
-# CNAMEs cannot coexist with any other record type
+# CNAMEs cannot coexist with ordinary records at the same name
 # This is INVALID:
 # example.com  IN  CNAME  other.com.
 # example.com  IN  MX     10 mail.example.com.
@@ -274,20 +276,20 @@ dig example.com SOA +short
 # Measure DNS lookup time
 dig example.com | grep "Query time"
 
-# Check if DNSSEC validation is causing delays
+# Request DNSSEC records and inspect response size/validation flags
 dig +dnssec example.com
 
-# Check for DNS amplification or misconfiguration
-dig +short example.com ANY
+# Avoid relying on ANY queries; many authoritative servers return minimal responses
+dig example.com A
 ```
 
 ## DNS Security Basics
 
 ```bash
-# DNSSEC - Verify a domain has DNSSEC enabled
+# DNSSEC - Request DNSSEC records and look for RRSIG records or an AD flag from a validating resolver
 dig +dnssec example.com
 
-# Check DNSSEC chain of trust
+# Inspect DNSSEC chain of trust
 dig +trace +dnssec example.com
 
 # CAA Records - Restrict which CAs can issue certificates
@@ -323,7 +325,7 @@ resolvectl query example.com
 sudo resolvectl flush-caches
 
 # Check if a specific application is using the expected resolver
-strace -e trace=network -p <PID> 2>&1 | grep -i dns
+strace -e trace=%network -p <PID> 2>&1 | grep -i dns
 ```
 
 ## Conclusion
