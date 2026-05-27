@@ -36,19 +36,19 @@ Each version is split into small segments (typically 2-6 seconds). The video pla
 
 gcloud services enable transcoder.googleapis.com
 
-# Install the client library
-pip install google-cloud-video-transcoder
+# Install the client libraries
+pip install google-cloud-video-transcoder functions-framework
 
 # Create storage buckets for input and output
-gsutil mb -l us-central1 gs://your-video-input-bucket
-gsutil mb -l us-central1 gs://your-video-output-bucket
+gcloud storage buckets create gs://your-video-input-bucket --location=us-central1
+gcloud storage buckets create gs://your-video-output-bucket --location=us-central1
 ```
 
 ## Step 1: Upload a Source Video
 
 ```bash
 # Upload your source video to Cloud Storage
-gsutil cp my-video.mp4 gs://your-video-input-bucket/sources/
+gcloud storage cp my-video.mp4 gs://your-video-input-bucket/sources/
 ```
 
 ## Step 2: Create a Basic Transcoding Job
@@ -146,6 +146,7 @@ def create_abr_job(project_id, location, input_uri, output_uri):
     mux_1080.elementary_streams = ["video-1080p", "audio-aac"]
     mux_1080.segment_settings = types.SegmentSettings()
     mux_1080.segment_settings.segment_duration = "4s"
+    mux_1080.segment_settings.individual_segments = True
 
     mux_720 = types.MuxStream()
     mux_720.key = "hls-720p"
@@ -153,6 +154,7 @@ def create_abr_job(project_id, location, input_uri, output_uri):
     mux_720.elementary_streams = ["video-720p", "audio-aac"]
     mux_720.segment_settings = types.SegmentSettings()
     mux_720.segment_settings.segment_duration = "4s"
+    mux_720.segment_settings.individual_segments = True
 
     mux_480 = types.MuxStream()
     mux_480.key = "hls-480p"
@@ -160,6 +162,7 @@ def create_abr_job(project_id, location, input_uri, output_uri):
     mux_480.elementary_streams = ["video-480p", "audio-aac"]
     mux_480.segment_settings = types.SegmentSettings()
     mux_480.segment_settings.segment_duration = "4s"
+    mux_480.segment_settings.individual_segments = True
 
     job_config.mux_streams = [mux_1080, mux_720, mux_480]
 
@@ -222,10 +225,12 @@ Once transcoding completes, the output bucket contains all the HLS segments and 
 
 ```bash
 # List the output files
-gsutil ls gs://your-video-output-bucket/output/my-video/
+gcloud storage ls gs://your-video-output-bucket/output/my-video/
 
-# Make the output publicly readable (or use signed URLs)
-gsutil -m acl ch -r -u AllUsers:R gs://your-video-output-bucket/output/my-video/
+# Make the output bucket publicly readable (or use signed URLs)
+gcloud storage buckets add-iam-policy-binding gs://your-video-output-bucket \
+  --member=allUsers \
+  --role=roles/storage.objectViewer
 
 # The master playlist URL would be:
 # https://storage.googleapis.com/your-video-output-bucket/output/my-video/master.m3u8
@@ -237,9 +242,10 @@ Set up automatic transcoding when new videos are uploaded:
 
 ```bash
 # Enable notifications on the input bucket
-gsutil notification create -t video-upload-notifications \
-  -f json -e OBJECT_FINALIZE \
-  gs://your-video-input-bucket
+gcloud storage buckets notifications create gs://your-video-input-bucket \
+  --topic=video-upload-notifications \
+  --event-types=OBJECT_FINALIZE \
+  --payload-format=json
 ```
 
 Create a Cloud Function that triggers transcoding:
@@ -247,14 +253,19 @@ Create a Cloud Function that triggers transcoding:
 ```python
 # auto_transcode/main.py - Automatically transcodes uploaded videos
 
+import base64
 import json
+
 import functions_framework
+
+from transcode import create_abr_job
 
 @functions_framework.cloud_event
 def auto_transcode(cloud_event):
     """Triggers transcoding when a new video is uploaded to the input bucket."""
 
-    data = cloud_event.data
+    message = cloud_event.data["message"]
+    data = json.loads(base64.b64decode(message["data"]).decode("utf-8"))
     bucket = data["bucket"]
     name = data["name"]
 
@@ -283,12 +294,12 @@ def auto_transcode(cloud_event):
 
 Transcoder API charges based on the output duration and resolution:
 
-- SD output (up to 720p): a few cents per minute
-- HD output (up to 1080p): slightly more per minute
+- SD output (less than 1280x720): a few cents per minute
+- HD output (1280x720 through 1920x1080): slightly more per minute
 - 4K output: the most expensive tier
 
 Each output rendition is charged separately, so a job producing three quality levels costs roughly three times a single-rendition job. For high-volume use cases, consider using job templates to standardize configurations and avoid re-encoding the same content.
 
 ## Wrapping Up
 
-Transcoder API takes the heavy lifting out of video encoding. You define the quality ladder, submit the job, and get production-ready HLS or DASH output in your Cloud Storage bucket. Combined with Cloud CDN for delivery, you have a complete video streaming infrastructure without managing any encoding servers. The API handles codec selection, bitrate optimization, and manifest generation, so you can focus on the application layer.
+Transcoder API takes the heavy lifting out of video encoding. You define the quality ladder, submit the job, and get production-ready HLS or DASH output in your Cloud Storage bucket. Combined with Cloud CDN for delivery, you have a complete video streaming infrastructure without managing any encoding servers. The API handles encoding, packaging, and manifest generation, so you can focus on the application layer.
