@@ -8,15 +8,15 @@ Description: Learn how to stream index updates to Vertex AI Vector Search to kee
 
 ---
 
-A product catalog changes throughout the day. New items get listed, prices update, items go out of stock. If your recommendation system relies on vector search but only rebuilds the index once a day, your users see stale results for hours. Streaming index updates solve this by letting you add, update, and remove vectors from a deployed index without rebuilding the entire thing.
+A product catalog changes throughout the day. New items get listed, prices update, items go out of stock. If your recommendation system relies on vector search but only rebuilds the index once a day, your users see stale results for hours. Streaming index updates solve this by letting you add, update, and remove vectors from an index without rebuilding the entire thing.
 
-Vertex AI Vector Search supports two types of updates: batch updates that rebuild the index from scratch and streaming updates that modify the index incrementally. This guide focuses on the streaming approach for keeping your index fresh in near-real-time.
+Vertex AI Vector Search supports two index update methods: batch updates that use files in Cloud Storage and streaming updates that modify the index incrementally through the API. This guide focuses on the streaming approach for keeping your index fresh in near-real-time.
 
 ## Batch vs Streaming Updates
 
-Batch updates are the simpler approach. You upload a new set of vectors to GCS and trigger an index rebuild. The problem is that rebuilding a large index takes minutes to hours, and during that time your index serves the old data.
+Batch updates are the simpler approach. You upload a new set of vectors to Cloud Storage and trigger an index update or complete overwrite. The problem is that rebuilding a large index takes minutes to hours, and during that time your index serves the old data.
 
-Streaming updates let you insert, update, or delete individual vectors from a deployed index. Changes become searchable within seconds. The trade-off is slightly lower recall compared to a freshly built batch index, because the streaming updates use an append-based structure that gets compacted periodically.
+Streaming updates let you insert, update, or delete individual vectors from an index. Changes are directly applied to deployed indexes in memory and become searchable after a short delay. The trade-off is that compaction is handled automatically over time to improve query performance and reliability, and streaming updates have their own update costs.
 
 ```mermaid
 graph TD
@@ -26,8 +26,8 @@ graph TD
     end
 
     subgraph "Streaming Update Flow"
-        A2[New/Updated Vector] --> B2[Upsert to Deployed Index]
-        B2 --> C2["Searchable in Seconds"]
+        A2[New/Updated Vector] --> B2[Upsert to Index]
+        B2 --> C2["Searchable After a Short Delay"]
     end
 ```
 
@@ -81,7 +81,7 @@ print(f"Deployed to: {endpoint.resource_name}")
 
 To add or update vectors in the index, use the upsert operation. If a vector with the same ID already exists, it gets replaced.
 
-This code upserts vectors to the deployed index:
+This code upserts vectors to the index:
 
 ```python
 from google.cloud import aiplatform_v1
@@ -211,7 +211,6 @@ This Cloud Function processes product update events and updates the index:
 import functions_framework
 import json
 import base64
-import numpy as np
 from google.cloud import aiplatform_v1
 
 # Initialize the client once
@@ -229,7 +228,7 @@ def get_embedding_model():
     global embedding_model
     if embedding_model is None:
         from sentence_transformers import SentenceTransformer
-        embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        embedding_model = SentenceTransformer("all-mpnet-base-v2")
     return embedding_model
 
 @functions_framework.cloud_event
@@ -287,7 +286,7 @@ def process_product_event(cloud_event):
 
 ## Batch Upserts for Efficiency
 
-When processing many updates, batch them together rather than making individual API calls. The upsert API accepts up to 10,000 datapoints per call.
+When processing many updates, batch them together rather than making individual API calls. Vertex AI applies throughput quotas based on the amount of data included in each upsert, so keep batches large enough for throughput but small enough to retry reliably.
 
 This code batches updates for better throughput:
 
@@ -295,8 +294,8 @@ This code batches updates for better throughput:
 def batch_upsert(project_id, location, index_id, vectors, batch_size=1000):
     """Upsert vectors in batches for better throughput.
 
-    The API accepts up to 10,000 datapoints per call,
-    but 1,000 per batch is a good balance of throughput and reliability.
+    1,000 per batch is a practical starting point for balancing throughput
+    and retry size. Tune this for your vector size and project quotas.
     """
     client = aiplatform_v1.IndexServiceClient(
         client_options={"api_endpoint": f"{location}-aiplatform.googleapis.com"}
@@ -352,34 +351,29 @@ def check_index_stats(project_id, location, index_id):
 
 ## Periodic Index Compaction
 
-Streaming updates create an append-based structure that can fragment over time. Schedule periodic batch rebuilds to compact the index and maintain optimal search quality.
+Streaming updates are compacted automatically by Vertex AI. If the oldest uncompacted data is five days old, compaction is always triggered. You can still use a complete overwrite when you want to replace all index contents from Cloud Storage.
 
 ```python
-def schedule_compaction(project_id, location, index_id, vectors_gcs_uri):
-    """Trigger a batch update to compact the streaming index.
+from google.cloud import aiplatform
 
-    Run this weekly or when recall metrics degrade.
+def complete_overwrite_index(project_id, location, index_id, vectors_gcs_uri):
+    """Replace all data in an existing Vector Search index.
+
+    Use this when you want the index contents to match a complete dataset
+    in Cloud Storage.
     """
-    client = aiplatform_v1.IndexServiceClient(
-        client_options={"api_endpoint": f"{location}-aiplatform.googleapis.com"}
-    )
+    aiplatform.init(project=project_id, location=location)
 
     index_name = f"projects/{project_id}/locations/{location}/indexes/{index_id}"
+    index = aiplatform.MatchingEngineIndex(index_name=index_name)
 
-    # Export current vectors to GCS, then rebuild
-    # This replaces the fragmented streaming data with a clean batch index
-    operation = client.update_index(
-        index=aiplatform_v1.Index(
-            name=index_name,
-            metadata={
-                "contentsDeltaUri": vectors_gcs_uri,
-                "isCompleteOverwrite": True  # Replace all data
-            }
-        )
+    updated_index = index.update_embeddings(
+        contents_delta_uri=vectors_gcs_uri,
+        is_complete_overwrite=True
     )
 
-    print(f"Compaction started: {operation.operation.name}")
-    return operation
+    print(f"Complete overwrite finished: {updated_index.resource_name}")
+    return updated_index
 ```
 
-Streaming index updates let you keep your vector search results fresh without the latency of full index rebuilds. The combination of real-time upserts for individual changes and periodic batch compaction for index health gives you the best of both worlds - fresh results and optimal search quality.
+Streaming index updates let you keep your vector search results fresh without the latency of full index rebuilds. The combination of real-time upserts for individual changes and Vertex AI's automatic compaction gives you the best of both worlds - fresh results and maintained query performance.
