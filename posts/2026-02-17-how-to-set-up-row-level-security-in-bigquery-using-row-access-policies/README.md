@@ -14,9 +14,9 @@ In this post, I will show you how to create and manage row access policies, hand
 
 ## How Row Access Policies Work
 
-A row access policy is a filter expression attached to a table that BigQuery evaluates for every query. The filter uses the identity of the user running the query to determine which rows are visible. If a user does not match any row access policy, they see zero rows. If they match one or more policies, they see the union of rows allowed by all matching policies.
+A row access policy is a filter expression attached to a table that BigQuery evaluates for every query. The filter can use the identity of the user running the query to determine which rows are visible. Users must still have regular table access, and they must be included in the grantee list of a row access policy to query filtered data. If they match one or more policies, they see the union of rows allowed by all matching policies.
 
-Row access policies are transparent to the user. The query runs normally and returns results - it just silently excludes rows the user is not authorized to see. There is no error or indication that data was filtered, which makes it suitable for scenarios where you do not want users to even know about data they cannot access.
+Row access policies are mostly transparent to the user. The query runs normally and returns results - it excludes rows the user is not authorized to see. In the Google Cloud console, BigQuery displays a notice that results might be filtered by a row access policy.
 
 ## Creating a Basic Row Access Policy
 
@@ -26,7 +26,7 @@ Here is a simple example. Say you have a sales table with a region column, and y
 -- Create a row access policy that restricts rows based on user group
 CREATE ROW ACCESS POLICY region_filter
 ON `my_project.sales.transactions`
--- Grant access to the filter function
+-- Grant filtered data access to this group
 GRANT TO ("group:sales-us@mycompany.com")
 -- Only show rows where region is 'US'
 FILTER USING (region = 'US');
@@ -134,14 +134,9 @@ FILTER USING (TRUE);
 
 When multiple row access policies exist on a table, a user sees rows that match any of the policies they are granted access to. The policies are combined with OR logic.
 
-```sql
--- List all row access policies on a table
-SELECT
-  *
-FROM
-  `my_project.sales`.INFORMATION_SCHEMA.ROW_ACCESS_POLICIES
-WHERE
-  table_name = 'transactions';
+```bash
+# List all row access policies on a table
+bq ls --row_access_policies my_project:sales.transactions
 ```
 
 To remove a policy that is no longer needed:
@@ -155,15 +150,17 @@ ON `my_project.sales.transactions`;
 DROP ALL ROW ACCESS POLICIES ON `my_project.sales.transactions`;
 ```
 
+If the policy you want to drop is the last row access policy on the table, use `DROP ALL ROW ACCESS POLICIES` instead of `DROP ROW ACCESS POLICY`.
+
 ## Important Behavior to Know
 
 There are several important behaviors to understand about row access policies.
 
-Once any row access policy exists on a table, all users are affected. Users who do not match any policy see zero rows. This means you must create a policy for every group that needs access, including admins and service accounts.
+Once any row access policy exists on a table, all users are affected. Users who are not included in a policy's grantee list are denied filtered data access. This means you must create a policy for every group that needs access, including admins and service accounts, and use a `TRUE` filter for groups that should retain full-table access.
 
-Row access policies apply to all query types, including SELECT, DML (INSERT, UPDATE, DELETE), and EXPORT. A user cannot modify or export rows they cannot see.
+Row access policies apply when users query protected table data, including SELECT queries and read portions of DML statements such as UPDATE, DELETE, and MERGE. Keep write permissions separate from filtered read access, because users with write permissions can still insert data into a table.
 
-Row access policies do not apply to table owners. The user who owns the table (or has bigquery.admin role at the project level) can always see all rows. This is a safety mechanism to prevent lockout.
+BigQuery Admin and BigQuery Data Owner roles can create, update, list, and delete row access policies, but they do not automatically bypass the filters when querying protected data. Add admins or service accounts to a `TRUE` filter policy if they need full-table read access.
 
 Performance impact is usually minimal. BigQuery evaluates the filter at query time, and for simple conditions (like equality checks on a column), the impact is negligible. For policies that involve subqueries against mapping tables, the mapping table should be small for best performance.
 
@@ -211,14 +208,15 @@ FROM `my_project.sales.transactions`;
 
 ## Auditing Row Access Policy Usage
 
-Track how row access policies affect queries using INFORMATION_SCHEMA.
+Track recent query jobs against protected tables using INFORMATION_SCHEMA. BigQuery hides some job statistics for queries over tables with row-level security, so use this together with job details or audit logs when you need exact confirmation that row-level security was applied.
 
 ```sql
--- Check which jobs were affected by row access policies
+-- Check recent jobs that referenced the protected table
 SELECT
   job_id,
   user_email,
   creation_time,
+  total_bytes_billed,
   referenced_tables,
   query
 FROM
