@@ -290,6 +290,10 @@ def safe_translate(text, target_language):
         print(f"Quota exceeded: {e}")
         return text
 
+    except exceptions.Forbidden as e:
+        print(f"Quota or permission error: {e}")
+        return text
+
     except exceptions.ServiceUnavailable as e:
         print(f"Service unavailable: {e}")
         return text
@@ -308,7 +312,7 @@ The Translation Basic API charges $20 per million characters. Here are some tips
 - Skip translation when the source language matches the target language.
 - For very high volumes, consider the Advanced API which offers batch processing through Cloud Storage.
 
-The default quota is 600,000 characters per minute. Request an increase if you need more.
+The default quota is 6,000,000 characters per minute. Request an increase if you need more.
 
 ## Wrapping Up
 
