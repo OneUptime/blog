@@ -42,7 +42,7 @@ flowchart TD
 
 ## Strategy 1: Static IP Range Partitioning
 
-The simplest approach is to divide your available IP range into non-overlapping segments and assign one segment to each cluster. This requires upfront planning but eliminates conflicts entirely.
+The simplest approach is to divide your available IP range into non-overlapping segments and assign one segment to each cluster. This requires upfront planning but prevents MetalLB from assigning overlapping addresses.
 
 ### Planning the Partition
 
@@ -132,7 +132,8 @@ If you prefer working with CIDR notation, split a larger subnet into smaller blo
 
 ```yaml
 # Using /26 subnets to partition a /24 network
-# Each /26 provides 62 usable host addresses
+# Each /26 contains 64 addresses; reserve gateways or other infrastructure
+# addresses according to your network design before assigning the pool.
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
@@ -140,7 +141,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    # First /26 block: 192.168.1.1 - 192.168.1.62
+    # First /26 block: 192.168.1.0 - 192.168.1.63
     - 192.168.1.0/26
 ---
 apiVersion: metallb.io/v1beta1
@@ -150,13 +151,13 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    # Second /26 block: 192.168.1.65 - 192.168.1.126
+    # Second /26 block: 192.168.1.64 - 192.168.1.127
     - 192.168.1.64/26
 ```
 
 ## Strategy 3: BGP with Per-Cluster ASN
 
-When using BGP mode, assign each cluster its own ASN (Autonomous System Number). This lets your upstream routers distinguish announcements from different clusters:
+When using BGP mode, assign each cluster its own ASN (Autonomous System Number). This lets your upstream routers distinguish announcements from different clusters for routing policy and troubleshooting. It does not replace non-overlapping address pools; two clusters must still not advertise the same service IP unless you intentionally designed that routing behavior.
 
 ```mermaid
 flowchart LR
@@ -227,21 +228,26 @@ Even with careful planning, mistakes happen. Use this script to scan for duplica
 ```bash
 #!/bin/bash
 # detect-ip-conflicts.sh
-# Scans the network for duplicate MAC addresses on the same IP
+# Scans the network for more than one MAC address answering for the same IP
 # Run this from a machine on the shared network segment
 
 SUBNET="192.168.1"
+INTERFACE="${INTERFACE:-eth0}"
 
 echo "Scanning for IP conflicts in ${SUBNET}.0/24..."
 
 for i in $(seq 1 254); do
     IP="${SUBNET}.${i}"
-    # Send ARP request and capture responses
-    arping -c 2 -w 1 -I eth0 "$IP" 2>/dev/null | grep -q "Received 2"
-    if [ $? -eq 0 ]; then
-        # Multiple responses indicate a conflict
+    # Keep requests as broadcasts so every owner of the IP can answer.
+    RESPONSES=$(arping -b -c 3 -w 2 -I "$INTERFACE" "$IP" 2>/dev/null || true)
+    MACS=$(printf "%s\n" "$RESPONSES" \
+      | awk -F'[][]' '/reply from/ {print $2}' \
+      | sort -u)
+    MAC_COUNT=$(printf "%s\n" "$MACS" | sed '/^$/d' | wc -l)
+
+    if [ "$MAC_COUNT" -gt 1 ]; then
         echo "CONFLICT DETECTED: ${IP}"
-        arping -c 2 -w 1 -I eth0 "$IP" 2>/dev/null
+        printf "%s\n" "$MACS"
     fi
 done
 
@@ -257,28 +263,47 @@ Track how many IPs each cluster has consumed to avoid exhaustion:
 # check-pool-usage.sh
 # Reports MetalLB IP pool utilization for a given cluster
 
-# Count services with assigned external IPs
-USED=$(kubectl get svc -A \
-  -o jsonpath='{.items[?(@.spec.type=="LoadBalancer")].status.loadBalancer.ingress[0].ip}' \
-  | tr ' ' '\n' | sort -u | wc -l)
+# Count unique IPv4 LoadBalancer addresses currently assigned
+USED=$(kubectl get svc -A -o json \
+  | jq -r '.items[]
+      | select(.spec.type == "LoadBalancer")
+      | .status.loadBalancer.ingress[]?.ip
+      | select(test("^[0-9.]+$"))' \
+  | sort -u \
+  | wc -l)
 
 # Count total IPs in the pool
 TOTAL=$(kubectl get ipaddresspool -n metallb-system -o json \
   | jq -r '.items[].spec.addresses[]' \
-  | while read range; do
-      # Parse start and end of range
-      START=$(echo "$range" | cut -d'-' -f1 | awk -F. '{print $4}')
-      END=$(echo "$range" | cut -d'-' -f2 | awk -F. '{print $4}')
-      echo $(( END - START + 1 ))
-    done \
-  | paste -sd+ | bc)
+  | python3 -c '
+import ipaddress
+import sys
+
+total = 0
+for line in sys.stdin:
+    value = line.strip()
+    if not value:
+        continue
+    if "-" in value:
+        start, end = [ipaddress.ip_address(part.strip()) for part in value.split("-", 1)]
+        total += int(end) - int(start) + 1
+    elif "/" in value:
+        total += ipaddress.ip_network(value, strict=False).num_addresses
+    else:
+        total += 1
+
+print(total)
+')
 
 echo "Pool usage: ${USED} / ${TOTAL} IPs assigned"
 
 # Alert if usage exceeds 80%
 THRESHOLD=80
-PERCENT=$(( USED * 100 / TOTAL ))
-if [ "$PERCENT" -ge "$THRESHOLD" ]; then
+if [ "$TOTAL" -gt 0 ]; then
+  PERCENT=$(( USED * 100 / TOTAL ))
+fi
+
+if [ "${PERCENT:-0}" -ge "$THRESHOLD" ]; then
     echo "WARNING: Pool usage at ${PERCENT}% - consider expanding the range"
 fi
 ```
