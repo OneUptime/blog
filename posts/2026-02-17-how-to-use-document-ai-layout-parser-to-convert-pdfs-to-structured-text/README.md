@@ -18,7 +18,7 @@ The Layout Parser is a specialized Document AI processor that focuses on underst
 
 - **Headings and titles** at different levels
 - **Paragraphs** as distinct text blocks
-- **Lists** (bulleted and numbered)
+- **Lists** for supported file types; PDF lists may be represented as text blocks
 - **Tables** with rows and columns
 - **Page headers and footers**
 - **Reading order** across complex layouts including multi-column pages
@@ -37,12 +37,14 @@ pip install google-cloud-documentai
 ```
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1
 
 def create_layout_parser(project_id, location="us"):
     """Create a Layout Parser processor in Document AI."""
-    client = documentai_v1.DocumentProcessorServiceClient()
-    parent = f"projects/{project_id}/locations/{location}"
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
+    parent = client.common_location_path(project_id, location)
 
     processor = client.create_processor(
         parent=parent,
@@ -61,12 +63,14 @@ def create_layout_parser(project_id, location="us"):
 Send your PDF to the Layout Parser and get back the structured document.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1
 
 def parse_pdf_layout(project_id, location, processor_id, file_path):
     """Process a PDF with the Layout Parser to get structured text."""
-    client = documentai_v1.DocumentProcessorServiceClient()
-    name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
+    name = client.processor_path(project_id, location, processor_id)
 
     # Read the PDF file
     with open(file_path, "rb") as f:
@@ -86,7 +90,7 @@ def parse_pdf_layout(project_id, location, processor_id, file_path):
     document = result.document
 
     print(f"Pages: {len(document.pages)}")
-    print(f"Total text length: {len(document.text)} characters")
+    print(f"Layout blocks: {len(document.document_layout.blocks)}")
 
     return document
 
@@ -103,117 +107,114 @@ The real power of the Layout Parser is in the structured elements it identifies.
 ```python
 def extract_layout_elements(document):
     """Walk through all layout elements identified by the parser."""
-    for page_num, page in enumerate(document.pages):
-        print(f"\n{'='*60}")
-        print(f"PAGE {page_num + 1}")
-        print(f"{'='*60}")
+    for block in document.document_layout.blocks:
+        print_layout_block(block)
 
-        # Extract headings/titles
-        if page.blocks:
-            print(f"\nBlocks: {len(page.blocks)}")
+def print_layout_block(block, indent=0):
+    """Print a DocumentLayoutBlock and any nested child blocks."""
+    prefix = "  " * indent
+    block_type = block._pb.WhichOneof("block")
 
-        # Extract paragraphs with their reading order
-        if page.paragraphs:
-            print(f"Paragraphs: {len(page.paragraphs)}")
-            for i, para in enumerate(page.paragraphs):
-                text = get_text(para.layout, document.text)
-                # Only show first 100 chars of each paragraph
-                print(f"  [{i}] {text[:100]}...")
+    if block_type == "text_block":
+        text_block = block.text_block
+        page_start = block.page_span.page_start
+        print(f"{prefix}{text_block.type_} (page {page_start}): "
+              f"{text_block.text[:100]}...")
+        for child in text_block.blocks:
+            print_layout_block(child, indent + 1)
 
-        # Extract detected languages
-        if page.detected_languages:
-            for lang in page.detected_languages:
-                print(f"Language: {lang.language_code} "
-                      f"(confidence: {lang.confidence:.2f})")
+    elif block_type == "table_block":
+        table = block.table_block
+        row_count = len(table.header_rows) + len(table.body_rows)
+        print(f"{prefix}table ({row_count} rows): {table.caption}")
 
-def get_text(layout, full_text):
-    """Get the text content for a layout element."""
-    text = ""
-    if layout.text_anchor and layout.text_anchor.text_segments:
-        for segment in layout.text_anchor.text_segments:
-            start = int(segment.start_index) if segment.start_index else 0
-            end = int(segment.end_index)
-            text += full_text[start:end]
-    return text.strip()
+    elif block_type == "list_block":
+        list_block = block.list_block
+        print(f"{prefix}{list_block.type_} list "
+              f"({len(list_block.list_entries)} items)")
+        for entry in list_block.list_entries:
+            for child in entry.blocks:
+                print_layout_block(child, indent + 1)
 
 extract_layout_elements(document)
 ```
 
 ## Converting to Markdown
 
-One of the most practical uses of the Layout Parser is converting PDFs to Markdown. Since the parser identifies headings, paragraphs, lists, and tables, you can map each to Markdown syntax.
+One of the most practical uses of the Layout Parser is converting PDFs to Markdown. Since the parser identifies headings, paragraphs, and tables, you can map each to Markdown syntax.
 
 ```python
 def pdf_to_markdown(document):
     """Convert a Document AI parsed document to Markdown format."""
     markdown_lines = []
 
-    for page_num, page in enumerate(document.pages):
-        if page_num > 0:
-            markdown_lines.append("\n---\n")  # Page break
-
-        # Process visual elements in reading order
-        # The layout parser provides elements with bounding boxes
-        # We sort by vertical position to maintain reading order
-        elements = []
-
-        # Collect all elements with their positions
-        for block in page.blocks:
-            text = get_text(block.layout, document.text)
-            y_pos = get_y_position(block.layout)
-            elements.append(("block", text, y_pos, block.layout))
-
-        for para in page.paragraphs:
-            text = get_text(para.layout, document.text)
-            y_pos = get_y_position(para.layout)
-            elements.append(("paragraph", text, y_pos, para.layout))
-
-        # Sort elements by vertical position (top to bottom)
-        elements.sort(key=lambda e: e[2])
-
-        # Convert each element to Markdown
-        seen_text = set()
-        for elem_type, text, y_pos, layout in elements:
-            if not text or text in seen_text:
-                continue
-            seen_text.add(text)
-
-            # Use font size and style cues to determine heading level
-            # Larger text or bold text at the top of a page is likely a heading
-            if is_heading(layout, page):
-                level = determine_heading_level(layout, page)
-                markdown_lines.append(f"\n{'#' * level} {text}\n")
-            else:
-                markdown_lines.append(f"\n{text}\n")
-
-        # Handle tables separately
-        for table in page.tables:
-            markdown_lines.append(table_to_markdown(table, document.text))
+    for block in document.document_layout.blocks:
+        markdown_lines.extend(block_to_markdown(block))
 
     return "\n".join(markdown_lines)
 
-def get_y_position(layout):
-    """Get the top Y coordinate of a layout element."""
-    if layout.bounding_poly and layout.bounding_poly.vertices:
-        return layout.bounding_poly.vertices[0].y
-    return 0
+def block_to_markdown(block):
+    """Convert a DocumentLayoutBlock to Markdown lines."""
+    block_type = block._pb.WhichOneof("block")
 
-def is_heading(layout, page):
-    """Heuristic to determine if a text block is a heading."""
-    text = ""
-    if layout.text_anchor:
-        for segment in layout.text_anchor.text_segments:
-            pass
-    # Use confidence and position as signals
-    # Headings are typically short, high confidence, at certain positions
-    return False  # Simplified - implement heuristics based on your docs
+    if block_type == "text_block":
+        text_block = block.text_block
+        text = text_block.text.strip()
+        lines = []
 
-def determine_heading_level(layout, page):
-    """Determine the heading level based on font size and position."""
-    # In practice, you would analyze detected font sizes
-    return 2  # Default to h2
+        if text_block.type_.startswith("heading-"):
+            level = int(text_block.type_.split("-")[1])
+            lines.append(f"\n{'#' * level} {text}\n")
+        elif text_block.type_ == "subtitle":
+            lines.append(f"\n## {text}\n")
+        elif text_block.type_ not in ("header", "footer"):
+            lines.append(f"\n{text}\n")
 
-def table_to_markdown(table, full_text):
+        for child in text_block.blocks:
+            lines.extend(block_to_markdown(child))
+
+        return lines
+
+    if block_type == "table_block":
+        return [table_to_markdown(block.table_block)]
+
+    if block_type == "list_block":
+        return list_to_markdown(block.list_block)
+
+    return []
+
+def block_text(block):
+    """Extract text recursively from a layout block."""
+    block_type = block._pb.WhichOneof("block")
+
+    if block_type == "text_block":
+        child_text = " ".join(block_text(child)
+                              for child in block.text_block.blocks)
+        return " ".join(part for part in [block.text_block.text, child_text]
+                        if part).strip()
+
+    if block_type == "list_block":
+        return " ".join(
+            block_text(child)
+            for entry in block.list_block.list_entries
+            for child in entry.blocks
+        ).strip()
+
+    return ""
+
+def list_to_markdown(list_block):
+    """Convert a detected list block to Markdown list syntax."""
+    lines = []
+    ordered = list_block.type_ == "ordered"
+
+    for index, entry in enumerate(list_block.list_entries, start=1):
+        marker = f"{index}." if ordered else "-"
+        item_text = " ".join(block_text(child) for child in entry.blocks)
+        lines.append(f"{marker} {item_text.strip()}")
+
+    return ["\n" + "\n".join(lines) + "\n"]
+
+def table_to_markdown(table):
     """Convert a detected table to Markdown table syntax."""
     lines = []
 
@@ -221,7 +222,7 @@ def table_to_markdown(table, full_text):
     for header_row in table.header_rows:
         cells = []
         for cell in header_row.cells:
-            cell_text = get_text(cell.layout, full_text)
+            cell_text = " ".join(block_text(block) for block in cell.blocks)
             cells.append(cell_text)
         lines.append("| " + " | ".join(cells) + " |")
         # Add separator after header
@@ -231,7 +232,7 @@ def table_to_markdown(table, full_text):
     for body_row in table.body_rows:
         cells = []
         for cell in body_row.cells:
-            cell_text = get_text(cell.layout, full_text)
+            cell_text = " ".join(block_text(block) for block in cell.blocks)
             cells.append(cell_text)
         lines.append("| " + " | ".join(cells) + " |")
 
@@ -240,45 +241,14 @@ def table_to_markdown(table, full_text):
 
 ## Handling Multi-Column Layouts
 
-Multi-column documents (like research papers and newspapers) are particularly challenging. The Layout Parser handles these by detecting column boundaries and establishing the correct reading order.
+Multi-column documents (like research papers and newspapers) are particularly challenging. The Layout Parser returns `document.document_layout.blocks` in document order, so you usually do not need to split a page into columns yourself.
 
 ```python
-def extract_with_column_awareness(document):
-    """Extract text while respecting multi-column layout."""
-    for page in document.pages:
-        # Group paragraphs by their horizontal position
-        left_column = []
-        right_column = []
-
-        page_width = page.dimension.width
-
-        for para in page.paragraphs:
-            text = get_text(para.layout, document.text)
-            if not text:
-                continue
-
-            # Determine which column the paragraph belongs to
-            x_pos = para.layout.bounding_poly.vertices[0].x
-            midpoint = page_width / 2
-
-            if x_pos < midpoint:
-                y_pos = para.layout.bounding_poly.vertices[0].y
-                left_column.append((y_pos, text))
-            else:
-                y_pos = para.layout.bounding_poly.vertices[0].y
-                right_column.append((y_pos, text))
-
-        # Sort each column by vertical position
-        left_column.sort(key=lambda x: x[0])
-        right_column.sort(key=lambda x: x[0])
-
-        # Read left column first, then right column
-        print("--- Left Column ---")
-        for _, text in left_column:
-            print(text)
-
-        print("\n--- Right Column ---")
-        for _, text in right_column:
+def extract_in_layout_order(document):
+    """Extract text in the reading order returned by Layout Parser."""
+    for block in document.document_layout.blocks:
+        text = block_text(block)
+        if text:
             print(text)
 ```
 
@@ -287,13 +257,15 @@ def extract_with_column_awareness(document):
 For processing large numbers of PDFs, use the batch API.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1
 
 def batch_parse_pdfs(project_id, location, processor_id,
                       input_gcs_prefix, output_gcs_uri):
     """Process multiple PDFs in batch mode."""
-    client = documentai_v1.DocumentProcessorServiceClient()
-    name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
+    name = client.processor_path(project_id, location, processor_id)
 
     # Input configuration - all PDFs in the GCS prefix
     input_config = documentai_v1.BatchDocumentsInputConfig(
@@ -336,10 +308,10 @@ batch_parse_pdfs(
 
 Keep these in mind when working with the Layout Parser:
 
-- **File size limits**: Synchronous processing supports files up to 20MB. Use batch processing for larger files.
-- **Page limits**: Synchronous API handles up to 15 pages. Use batch for longer documents.
-- **Processing time**: Expect 2-5 seconds per page for synchronous requests.
-- **Cost**: Each page processed counts toward your billing. Batch processing is more cost-effective for high volumes.
+- **File size limits**: Synchronous processing supports files up to 40MB. Use batch processing for larger files, up to 1GB per batch request.
+- **Page limits**: Synchronous API handles up to 15 pages for PDF files. Use batch for longer documents, up to 500 pages per PDF file.
+- **Processing time**: Synchronous processing is best for short documents; batch jobs are asynchronous and are better suited to larger workloads.
+- **Cost**: Each page processed counts toward your billing, so filter inputs and page ranges where possible.
 
 ## Wrapping Up
 
