@@ -118,9 +118,9 @@ END WHILE;
 
 The `@@row_count` system variable holds the number of rows affected by the last DML statement. This is useful for logging and validation.
 
-## LOOP with BREAK and CONTINUE
+## LOOP with BREAK and LEAVE
 
-For more flexible loops, use LOOP with BREAK and CONTINUE:
+For more flexible loops, use LOOP with BREAK or its synonym LEAVE:
 
 ```sql
 -- Process batches until no more data
@@ -134,7 +134,13 @@ LOOP
   UPDATE `my_project.staging.queue`
   SET status = 'processing', batch_id = batch_num
   WHERE status = 'pending'
-  LIMIT 1000;
+    AND record_id IN (
+      SELECT record_id
+      FROM `my_project.staging.queue`
+      WHERE status = 'pending'
+      ORDER BY record_id
+      LIMIT 1000
+    );
 
   SET rows_processed = @@row_count;
 
@@ -270,9 +276,9 @@ DECLARE tables_processed INT64 DEFAULT 0;
 
 -- Step 1: Validate incoming data
 BEGIN
-  SET step_name = 'validation';
-
   DECLARE invalid_count INT64;
+
+  SET step_name = 'validation';
   SET invalid_count = (
     SELECT COUNT(*)
     FROM `my_project.staging.incoming`
