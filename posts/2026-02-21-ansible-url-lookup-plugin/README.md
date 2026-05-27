@@ -12,7 +12,7 @@ There are plenty of situations where your Ansible playbook needs to grab data fr
 
 ## What the url Lookup Does
 
-The `url` lookup plugin fetches content from a URL and returns it as a string. It supports HTTP and HTTPS, basic authentication, custom headers, and various other options you would expect from an HTTP client.
+The `url` lookup plugin fetches content from a URL and returns it as lines by default. Set `split_lines=false` when you need the response as a single string. It supports HTTP and HTTPS, basic authentication, custom headers, and various other options you would expect from an HTTP client.
 
 ## Basic Usage
 
@@ -36,17 +36,17 @@ This playbook fetches a public IP address from an API:
 
 Most modern APIs return JSON. You can parse the response with the `from_json` filter.
 
-This example fetches release information from a GitHub API:
+This example fetches tag information from a GitHub API:
 
 ```yaml
 # playbook.yml - Fetch and parse JSON from an API
 ---
-- name: Get latest release info
+- name: Get latest tag info
   hosts: localhost
   tasks:
-    - name: Fetch latest Nginx release info
+    - name: Fetch latest Nginx tag info
       ansible.builtin.set_fact:
-        release_info: "{{ lookup('url', 'https://api.github.com/repos/nginx/nginx/tags', headers={'Accept': 'application/json'}) | from_json }}"
+        release_info: "{{ lookup('url', 'https://api.github.com/repos/nginx/nginx/tags', headers={'Accept': 'application/json'}, split_lines=false) | from_json }}"
 
     - name: Show latest tag
       ansible.builtin.debug:
@@ -70,12 +70,12 @@ This playbook accesses an authenticated API:
     # Basic authentication
     - name: Fetch from basic auth endpoint
       ansible.builtin.debug:
-        msg: "{{ lookup('url', 'https://api.example.com/config', username='admin', password='secret') }}"
+        msg: "{{ lookup('url', 'https://api.example.com/config', username='admin', password='secret', split_lines=false) }}"
 
     # Bearer token authentication via headers
     - name: Fetch from token-authenticated API
       ansible.builtin.set_fact:
-        api_response: "{{ lookup('url', 'https://api.example.com/settings', headers={'Authorization': 'Bearer ' + api_token}) | from_json }}"
+        api_response: "{{ lookup('url', 'https://api.example.com/settings', headers={'Authorization': 'Bearer ' + api_token}, split_lines=false) | from_json }}"
 
     - name: Use the API response
       ansible.builtin.debug:
@@ -104,15 +104,15 @@ Here is a playbook showing the most useful parameters:
       ansible.builtin.debug:
         msg: "{{ lookup('url', 'https://slow-api.example.com/data', timeout=30) }}"
 
-    # Split response by lines
-    - name: Get response as list of lines
+    # Return the response as a single string instead of a list of lines
+    - name: Get response as a single string
       ansible.builtin.debug:
-        msg: "{{ lookup('url', 'https://example.com/list.txt', split_lines=true) }}"
+        msg: "{{ lookup('url', 'https://example.com/list.txt', split_lines=false) }}"
 
-    # Use client certificates for mTLS
-    - name: Fetch with client certificate
+    # Use a custom CA bundle
+    - name: Fetch with custom CA bundle
       ansible.builtin.debug:
-        msg: "{{ lookup('url', 'https://secure.example.com/data', client_cert='/etc/ssl/client.pem', client_key='/etc/ssl/client.key') }}"
+        msg: "{{ lookup('url', 'https://secure.example.com/data', ca_path='/etc/ssl/certs/internal-ca.pem') }}"
 ```
 
 Key parameters include:
@@ -121,10 +121,10 @@ Key parameters include:
 - **username/password**: Basic auth credentials
 - **headers**: Dictionary of HTTP headers to send
 - **timeout**: Request timeout in seconds
-- **split_lines**: Return result as a list of lines instead of a single string
-- **client_cert/client_key**: Client certificate for mutual TLS
+- **split_lines**: Return result as a list of lines (default: `true`) or as a single string when set to `false`
+- **ca_path**: Path to a custom CA certificate bundle
 - **use_proxy**: Whether to use the system proxy (default: `true`)
-- **force**: Always fetch, ignore cache (default: `false`)
+- **force**: Send a `Cache-Control: no-cache` request header (default: `false`)
 
 ## Practical Example: Dynamic Inventory Configuration
 
@@ -140,7 +140,7 @@ Say you have a config API that returns per-environment settings:
   vars:
     env: "{{ target_env | default('staging') }}"
     config_url: "https://config.internal.example.com/api/v1/config/{{ env }}"
-    app_config: "{{ lookup('url', config_url, headers={'X-Api-Key': vault_config_api_key}) | from_json }}"
+    app_config: "{{ lookup('url', config_url, headers={'X-Api-Key': vault_config_api_key}, split_lines=false) | from_json }}"
   tasks:
     - name: Display fetched configuration
       ansible.builtin.debug:
@@ -171,14 +171,14 @@ This playbook fetches and deploys an Nginx configuration:
   tasks:
     - name: Fetch the latest Nginx config template
       ansible.builtin.copy:
-        content: "{{ lookup('url', 'https://configs.internal.example.com/nginx/default.conf') }}"
+        content: "{{ lookup('url', 'https://configs.internal.example.com/nginx/default.conf', split_lines=false) }}"
         dest: /etc/nginx/conf.d/default.conf
         mode: '0644'
       notify: reload nginx
 
     - name: Fetch SSL parameters
       ansible.builtin.copy:
-        content: "{{ lookup('url', 'https://configs.internal.example.com/nginx/ssl-params.conf') }}"
+        content: "{{ lookup('url', 'https://configs.internal.example.com/nginx/ssl-params.conf', split_lines=false) }}"
         dest: /etc/nginx/snippets/ssl-params.conf
         mode: '0644'
       notify: reload nginx
@@ -197,7 +197,7 @@ This example queries Consul for healthy service instances:
   hosts: loadbalancers
   vars:
     consul_url: "http://consul.internal.example.com:8500"
-    backend_services: "{{ lookup('url', consul_url + '/v1/health/service/webapp?passing=true') | from_json }}"
+    backend_services: "{{ lookup('url', consul_url + '/v1/health/service/webapp?passing=true', split_lines=false) | from_json }}"
   tasks:
     - name: Show discovered backends
       ansible.builtin.debug:
@@ -213,7 +213,7 @@ This example queries Consul for healthy service instances:
 
 ## Error Handling
 
-The url lookup will fail the play if the request fails. Use `default` filter or `ignore_errors` to handle failures gracefully.
+The url lookup will fail the play if the request fails. Use `errors='ignore'` with the `default` filter, or use `block` and `rescue`, to handle failures gracefully.
 
 This playbook handles HTTP errors:
 
@@ -226,14 +226,14 @@ This playbook handles HTTP errors:
     # Method 1: Use the default filter
     - name: Fetch with fallback value
       ansible.builtin.set_fact:
-        api_data: "{{ lookup('url', 'https://possibly-down.example.com/config', errors='ignore') | default('{}', true) | from_json }}"
+        api_data: "{{ lookup('url', 'https://possibly-down.example.com/config', split_lines=false, errors='ignore') | default('{}', true) | from_json }}"
 
     # Method 2: Use block/rescue
     - name: Try to fetch critical data
       block:
         - name: Fetch configuration
           ansible.builtin.set_fact:
-            remote_config: "{{ lookup('url', 'https://config-api.example.com/v1/settings') | from_json }}"
+            remote_config: "{{ lookup('url', 'https://config-api.example.com/v1/settings', split_lines=false) | from_json }}"
       rescue:
         - name: Use local fallback config
           ansible.builtin.set_fact:
@@ -251,7 +251,7 @@ A few things to keep in mind when using the url lookup:
 
 2. **Validate SSL certificates**: Only set `validate_certs=false` for development environments with self-signed certs. In production, always validate.
 
-3. **Be cautious with untrusted content**: The content returned by the url lookup is a string. If you use it in a template or pass it to a shell command, it could be a vector for injection attacks. Sanitize untrusted content.
+3. **Be cautious with untrusted content**: The content returned by the url lookup comes from the remote HTTP response. If you use it in a template or pass it to a shell command, it could be a vector for injection attacks. Sanitize untrusted content.
 
 4. **Rate limiting**: If you call an API inside a loop across many hosts, you might hit rate limits. Consider fetching once on localhost and distributing the result with `set_fact` and `delegate_to`.
 
