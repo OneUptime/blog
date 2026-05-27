@@ -187,15 +187,29 @@ Use it in your application:
 ```python
 # main.py - Using secrets in your application
 from secrets_loader import get_secret, get_secret_or_env
+import os
 import sqlalchemy
 
 # Load database configuration
 db_password = get_secret_or_env("DB_PASSWORD", "DB_PASSWORD")
 db_user = os.environ.get("DB_USER", "app")
 db_name = os.environ.get("DB_NAME", "myapp")
+db_host = os.environ.get("DB_HOST", "localhost")
 
 # Build connection string with the secret password
-connection_string = f"postgresql://{db_user}:{db_password}@/{db_name}"
+connection_args = {
+    "drivername": "postgresql",
+    "username": db_user,
+    "password": db_password,
+    "database": db_name,
+}
+if db_host.startswith("/cloudsql/"):
+    connection_args["drivername"] = "postgresql+pg8000"
+    connection_args["query"] = {"unix_sock": f"{db_host}/.s.PGSQL.5432"}
+else:
+    connection_args["host"] = db_host
+
+connection_string = sqlalchemy.engine.URL.create(**connection_args)
 
 # Create database engine
 engine = sqlalchemy.create_engine(connection_string)
@@ -247,7 +261,13 @@ module.exports = { getSecret };
 
 ## Loading Secrets During Warmup
 
-The best time to load secrets is during the warmup phase, so they are ready before user requests arrive:
+If you enable App Engine warmup requests, the warmup phase is a good time to load secrets so they are ready before user requests arrive:
+
+```yaml
+# app.yaml
+inbound_services:
+- warmup
+```
 
 ```python
 # Warmup handler that pre-loads secrets
@@ -263,6 +283,8 @@ def warmup():
 
     return "Warmup complete", 200
 ```
+
+Warmup requests are best effort and are not guaranteed for every instance startup, so your request path should still be able to load a secret if the cache is empty.
 
 ## Secret Versioning
 
@@ -280,7 +302,7 @@ gcloud secrets versions disable 1 \
   --project=your-project-id
 ```
 
-When you access a secret with version `latest`, you always get the most recent enabled version. Your application picks up the new secret value on the next cold start or when the cache expires.
+When you access a secret with version `latest`, you get the latest version of the secret. With the in-memory cache shown above, your application picks up the new secret value on the next cold start, instance restart, or after you clear or refresh the cache.
 
 ## Per-Environment Configuration Pattern
 
@@ -329,6 +351,7 @@ Load it with a library like `python-dotenv`:
 
 ```python
 # Load .env file for local development only
+import os
 from dotenv import load_dotenv
 if os.environ.get("APP_ENV") != "production":
     load_dotenv()
