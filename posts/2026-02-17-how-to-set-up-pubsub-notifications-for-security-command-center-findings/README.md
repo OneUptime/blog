@@ -20,6 +20,7 @@ Before we start, make sure you have:
 
 - A GCP project with Security Command Center enabled (Standard or Premium tier)
 - The `roles/securitycenter.admin` or `roles/securitycenter.notificationConfigEditor` role on your account
+- Pub/Sub Admin (`roles/pubsub.admin`) on the topic you will use
 - A Pub/Sub topic (or we will create one)
 - The `gcloud` CLI installed and authenticated
 
@@ -46,29 +47,29 @@ gcloud pubsub subscriptions create scc-findings-sub \
   --ack-deadline=60
 ```
 
-If you plan to push to a webhook (like a Cloud Function or Slack integration), you can create a push subscription instead:
+If you plan to push to a webhook (like a Cloud Run service or HTTP function endpoint that accepts Pub/Sub push requests), you can create a push subscription instead:
 
 ```bash
-# Create a push subscription that forwards to a Cloud Function endpoint
+# Create a push subscription that forwards to an HTTPS endpoint
 gcloud pubsub subscriptions create scc-findings-push \
   --topic=scc-findings-notifications \
-  --push-endpoint=https://us-central1-my-project-id.cloudfunctions.net/process-scc-finding \
+  --push-endpoint=https://scc-processor-abc123-uc.a.run.app/process-scc-finding \
   --project=my-project-id
 ```
 
-## Step 3: Grant SCC Permission to Publish
+## Step 3: Confirm SCC Permission to Publish
 
-Security Command Center needs permission to publish messages to your topic. You need to grant the SCC service account the `pubsub.publisher` role.
+Security Command Center needs permission to publish messages to your topic. When you create your first notification config, Google Cloud creates the SCC notification service account and automatically grants the required service-agent role on the topic if your account has Pub/Sub Admin permissions.
 
 ```bash
 # Get your organization ID first
 gcloud organizations list
+```
 
-# Grant the SCC service account publisher access to the topic
-gcloud pubsub topics add-iam-policy-binding scc-findings-notifications \
-  --member="serviceAccount:service-org-ORGANIZATION_ID@security-center-api.iam.gserviceaccount.com" \
-  --role="roles/pubsub.publisher" \
-  --project=my-project-id
+The service account uses this format:
+
+```text
+service-org-ORGANIZATION_ID@gcp-sa-scc-notification.iam.gserviceaccount.com
 ```
 
 Replace `ORGANIZATION_ID` with your actual organization ID number.
@@ -80,7 +81,8 @@ Now comes the key part - creating the notification config in SCC that links find
 ```bash
 # Create a notification config that sends ALL findings to the topic
 gcloud scc notifications create scc-all-findings \
-  --organization=ORGANIZATION_ID \
+  --organization=organizations/ORGANIZATION_ID \
+  --location=global \
   --pubsub-topic=projects/my-project-id/topics/scc-findings-notifications \
   --filter=""
 ```
@@ -94,7 +96,8 @@ In most cases, you do not want a notification for every single finding. You prob
 ```bash
 # Only notify on HIGH and CRITICAL severity findings
 gcloud scc notifications create scc-critical-findings \
-  --organization=ORGANIZATION_ID \
+  --organization=organizations/ORGANIZATION_ID \
+  --location=global \
   --pubsub-topic=projects/my-project-id/topics/scc-findings-notifications \
   --filter='severity="HIGH" OR severity="CRITICAL"'
 ```
@@ -104,7 +107,8 @@ You can also filter by category, source, or state:
 ```bash
 # Only notify on active findings from a specific source
 gcloud scc notifications create scc-filtered-findings \
-  --organization=ORGANIZATION_ID \
+  --organization=organizations/ORGANIZATION_ID \
+  --location=global \
   --pubsub-topic=projects/my-project-id/topics/scc-findings-notifications \
   --filter='state="ACTIVE" AND category="OPEN_FIREWALL"'
 ```
@@ -116,11 +120,13 @@ Let us confirm the notification config was created correctly.
 ```bash
 # List all notification configs for your organization
 gcloud scc notifications list \
-  --organization=ORGANIZATION_ID
+  --organization=organizations/ORGANIZATION_ID \
+  --location=global
 
 # Describe a specific notification config
 gcloud scc notifications describe scc-critical-findings \
-  --organization=ORGANIZATION_ID
+  --organization=organizations/ORGANIZATION_ID \
+  --location=global
 ```
 
 ## Step 7: Test with a Pull Subscription
@@ -202,13 +208,15 @@ You can have up to 500 notification configs per organization. A common pattern i
 ```bash
 # Network team notifications
 gcloud scc notifications create network-findings \
-  --organization=ORGANIZATION_ID \
+  --organization=organizations/ORGANIZATION_ID \
+  --location=global \
   --pubsub-topic=projects/my-project-id/topics/network-scc-findings \
   --filter='category="OPEN_FIREWALL" OR category="OPEN_SSH_PORT" OR category="OPEN_RDP_PORT"'
 
 # IAM team notifications
 gcloud scc notifications create iam-findings \
-  --organization=ORGANIZATION_ID \
+  --organization=organizations/ORGANIZATION_ID \
+  --location=global \
   --pubsub-topic=projects/my-project-id/topics/iam-scc-findings \
   --filter='category="MFA_NOT_ENFORCED" OR category="ADMIN_SERVICE_ACCOUNT"'
 ```
@@ -217,9 +225,9 @@ gcloud scc notifications create iam-findings \
 
 There are a few things that trip people up when setting this up:
 
-1. The SCC service account name follows a specific pattern. If you get permission denied errors, double-check the service account email format.
+1. The SCC notification service account name follows a specific pattern. If you use VPC Service Controls or check IAM manually, double-check the service account email format.
 
-2. Notification configs are organization-level resources. You need org-level permissions, not just project-level.
+2. Notification configs can be organization-, folder-, or project-level resources. Use the same parent and location when you create, list, describe, or delete them.
 
 3. Pub/Sub message ordering is not guaranteed. Do not assume findings arrive in chronological order.
 
@@ -232,7 +240,8 @@ If you need to remove a notification config:
 ```bash
 # Delete a notification config
 gcloud scc notifications delete scc-all-findings \
-  --organization=ORGANIZATION_ID
+  --organization=organizations/ORGANIZATION_ID \
+  --location=global
 ```
 
 ## Wrapping Up
