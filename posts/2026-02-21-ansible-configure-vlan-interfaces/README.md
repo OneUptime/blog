@@ -12,7 +12,7 @@ VLANs (Virtual LANs) let you segment network traffic at Layer 2 without adding p
 
 ## Prerequisites
 
-- Ansible 2.9+ on your control node
+- Ansible on your control node with the `community.general` collection installed
 - Linux target hosts with the `8021q` kernel module available
 - A physical network switch configured with VLAN trunking on the ports connected to your servers
 - Root or sudo access
@@ -68,27 +68,26 @@ On systems running NetworkManager, the `nmcli` module handles VLAN interfaces na
       - vlan_id: 200
         parent: eth0
         ip: 10.200.0.10/24
-        gateway: ""
         conn_name: vlan200-management
       - vlan_id: 300
         parent: eth0
-        ip: 10.300.0.10/24
-        gateway: ""
+        ip: 10.30.0.10/24
         conn_name: vlan300-storage
   tasks:
     - name: Create VLAN interfaces
       community.general.nmcli:
         conn_name: "{{ item.conn_name }}"
+        ifname: "{{ item.parent }}.{{ item.vlan_id }}"
         type: vlan
         vlanid: "{{ item.vlan_id }}"
         vlandev: "{{ item.parent }}"
         ip4: "{{ item.ip }}"
-        gw4: "{{ item.gateway | default(omit) }}"
+        gw4: "{{ item.gateway | default(omit, true) }}"
         state: present
         autoconnect: true
       loop: "{{ vlans }}"
 
-    - name: Verify VLAN interfaces are up
+    - name: Verify VLAN interfaces exist
       ansible.builtin.command: "ip link show {{ item.parent }}.{{ item.vlan_id }}"
       loop: "{{ vlans }}"
       register: vlan_status
@@ -126,7 +125,7 @@ On Ubuntu Server 18.04+, netplan is the default network configuration tool. You 
           - 10.200.0.10/24
       - id: 300
         addresses:
-          - 10.300.0.10/24
+          - 10.30.0.10/24
   tasks:
     - name: Deploy netplan VLAN configuration
       ansible.builtin.template:
@@ -236,10 +235,12 @@ When running VLANs, you might need to adjust the MTU. VLAN tagging adds 4 bytes 
     - name: Create storage VLAN with jumbo frame MTU
       community.general.nmcli:
         conn_name: storage-vlan
+        ifname: eth0.300
         type: vlan
         vlanid: 300
         vlandev: eth0
         ip4: 10.30.0.10/24
+        mtu: 9000
         state: present
         autoconnect: true
 
@@ -248,9 +249,14 @@ When running VLANs, you might need to adjust the MTU. VLAN tagging adds 4 bytes 
       changed_when: true
 
     - name: Make MTU persistent via nmcli
-      ansible.builtin.command: >
-        nmcli connection modify storage-vlan 802-3-ethernet.mtu 9000
-      changed_when: true
+      community.general.nmcli:
+        conn_name: storage-vlan
+        ifname: eth0.300
+        type: vlan
+        vlanid: 300
+        vlandev: eth0
+        mtu: 9000
+        state: present
 ```
 
 ## Per-Host VLAN Configuration
@@ -262,13 +268,13 @@ In production, each server typically has different IP addresses but the same VLA
 vlan_ips:
   100: 10.100.0.11/24
   200: 10.200.0.11/24
-  300: 10.300.0.11/24
+  300: 10.30.0.11/24
 
 # host_vars/server02.yml
 vlan_ips:
   100: 10.100.0.12/24
   200: 10.200.0.12/24
-  300: 10.300.0.12/24
+  300: 10.30.0.12/24
 ```
 
 ```yaml
@@ -281,6 +287,7 @@ vlan_ips:
     - name: Create VLAN interfaces with host-specific IPs
       community.general.nmcli:
         conn_name: "vlan{{ item.key }}"
+        ifname: "eth0.{{ item.key }}"
         type: vlan
         vlanid: "{{ item.key }}"
         vlandev: eth0
@@ -297,7 +304,7 @@ graph TD
     A[Physical Switch - Trunk Port] --> B[eth0 - Physical Interface]
     B --> C[eth0.100 - VLAN 100<br/>Production: 10.100.0.0/24]
     B --> D[eth0.200 - VLAN 200<br/>Management: 10.200.0.0/24]
-    B --> E[eth0.300 - VLAN 300<br/>Storage: 10.300.0.0/24]
+    B --> E[eth0.300 - VLAN 300<br/>Storage: 10.30.0.0/24]
     C --> F[Application Traffic]
     D --> G[SSH / Monitoring]
     E --> H[NFS / iSCSI]
@@ -313,6 +320,11 @@ After creating VLANs, verify they are working:
 - name: Verify VLAN configuration
   hosts: all
   become: true
+  vars:
+    vlan_ping_targets:
+      100: 10.100.0.1
+      200: 10.200.0.1
+      300: 10.30.0.1
   tasks:
     - name: List all VLAN interfaces
       ansible.builtin.command: ip -d link show type vlan
@@ -329,11 +341,8 @@ After creating VLANs, verify they are working:
       changed_when: false
 
     - name: Check connectivity on each VLAN
-      ansible.builtin.command: "ping -c 2 -I eth0.{{ item }} {{ item | regex_replace('^(\\d+)$', '10.\\1.0.1') }}"
-      loop:
-        - 100
-        - 200
-        - 300
+      ansible.builtin.command: "ping -c 2 -I eth0.{{ item.key }} {{ item.value }}"
+      loop: "{{ vlan_ping_targets | dict2items }}"
       register: ping_results
       changed_when: false
       ignore_errors: true
