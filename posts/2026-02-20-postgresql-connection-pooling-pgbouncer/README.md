@@ -95,7 +95,8 @@ auth_type = scram-sha-256
 auth_file = /etc/pgbouncer/userlist.txt
 
 ; Alternatively, query PostgreSQL for authentication
-; auth_query = SELECT usename, passwd FROM pg_shadow WHERE usename=$1
+; auth_user = pgbouncer_auth
+; auth_query = SELECT rolname, CASE WHEN rolvaliduntil < now() THEN NULL ELSE rolpassword END FROM pg_authid WHERE rolname=$1 AND rolcanlogin
 
 ; Pool mode (most important setting)
 ; session    = connection assigned for the entire client session (safest)
@@ -154,8 +155,8 @@ stats_users = pgbouncer_stats
 # SELECT usename, passwd FROM pg_shadow WHERE usename = 'myapp_user';
 
 "myapp_user" "SCRAM-SHA-256$4096:salt$stored_key:server_key"
-"pgbouncer_admin" "admin_password_hash"
-"pgbouncer_stats" "stats_password_hash"
+"pgbouncer_admin" "SCRAM-SHA-256$4096:salt$stored_key:server_key"
+"pgbouncer_stats" "SCRAM-SHA-256$4096:salt$stored_key:server_key"
 ```
 
 ## Pool Modes Explained
@@ -183,7 +184,7 @@ graph TD
 ```ini
 ; Session mode:
 ; - Compatible with all PostgreSQL features
-; - Use when you need: PREPARE/EXECUTE, LISTEN/NOTIFY, SET commands
+; - Use when you need: SQL PREPARE/EXECUTE, LISTEN, SET commands
 ; - Least efficient pooling
 pool_mode = session
 
@@ -254,9 +255,9 @@ SHOW DNS_HOSTS;
 Key metrics to watch:
 
 ```text
-cl_active   - clients currently executing a query (using a server connection)
+cl_active   - clients linked to server connections or idle with no queries waiting
 cl_waiting  - clients waiting for a server connection (pool exhausted)
-sv_active   - server connections currently in use
+sv_active   - server connections currently linked to a client
 sv_idle     - server connections available in the pool
 ```
 
@@ -282,8 +283,8 @@ conn_string = (
     "password=secret"
 )
 
-# In transaction mode, disable prepared statements
-# because they are session-level features
+# In transaction mode, disable SQL-level prepared statements
+# or use PgBouncer protocol-level prepared statement tracking
 conn = psycopg2.connect(conn_string)
 conn.autocommit = False
 ```
@@ -322,14 +323,14 @@ fi
 ### Prepared Statements in Transaction Mode
 
 ```ini
-; If your application uses prepared statements and you run in transaction mode,
-; you will get errors. There are two solutions:
+; If your application uses SQL-level PREPARE/EXECUTE and you run in
+; transaction mode, you will get errors. There are two solutions:
 
-; Solution 1: Disable prepared statements in your application
+; Solution 1: Disable SQL-level prepared statements in your application
 ; (framework-specific, usually a connection parameter)
 
-; Solution 2: Enable prepared statement tracking in PgBouncer
-; This is available in PgBouncer 1.21+
+; Solution 2: Use protocol-level named prepared statements and enable
+; prepared statement tracking in PgBouncer. This is available in PgBouncer 1.21+.
 max_prepared_statements = 100
 ```
 
