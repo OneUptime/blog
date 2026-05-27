@@ -32,7 +32,7 @@ Define fail2ban settings and jail configurations as Ansible variables.
 ```yaml
 # group_vars/all.yml
 
-fail2ban_version: "latest"
+fail2ban_package_state: "latest"
 
 # Default settings applied to all jails
 fail2ban_default_bantime: 3600     # 1 hour ban
@@ -70,7 +70,8 @@ fail2ban_jails:
     maxretry: 10
     bantime: 86400
     findtime: 60
-    filter: sshd-ddos
+    filter: sshd
+    mode: ddos
 
   - name: nginx-http-auth
     enabled: "{{ 'true' if 'webservers' in group_names else 'false' }}"
@@ -124,7 +125,7 @@ fail2ban_custom_filters:
 - name: Install fail2ban
   ansible.builtin.package:
     name: fail2ban
-    state: "{{ fail2ban_version }}"
+    state: "{{ fail2ban_package_state }}"
   notify: Enable fail2ban
 
 - name: Create fail2ban local configuration directory
@@ -221,6 +222,9 @@ bantime = {{ item.bantime | default(fail2ban_default_bantime) }}
 findtime = {{ item.findtime | default(fail2ban_default_findtime) }}
 {% if item.filter is defined %}
 filter = {{ item.filter }}
+{% endif %}
+{% if item.mode is defined %}
+mode = {{ item.mode }}
 {% endif %}
 {% if item.action is defined %}
 action = {{ item.action }}
@@ -340,7 +344,8 @@ Deploy a check that reports on fail2ban status and currently banned IPs.
       ansible.builtin.command:
         cmd: "fail2ban-client status {{ item.name }}"
       register: jail_statuses
-      loop: "{{ fail2ban_jails | selectattr('enabled', 'equalto', true) | list }}"
+      loop: "{{ fail2ban_jails }}"
+      when: item.enabled | bool
       changed_when: false
       ignore_errors: yes
 
@@ -348,7 +353,9 @@ Deploy a check that reports on fail2ban status and currently banned IPs.
       ansible.builtin.debug:
         msg: "{{ item.stdout }}"
       loop: "{{ jail_statuses.results }}"
-      when: item.rc == 0
+      when:
+        - not item.skipped | default(false)
+        - item.rc == 0
 ```
 
 ## Running the Playbook
