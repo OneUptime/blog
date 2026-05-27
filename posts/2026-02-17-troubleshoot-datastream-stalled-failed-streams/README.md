@@ -47,14 +47,14 @@ This is the sneakiest failure mode. The stream status says everything is fine, b
 -- See when the last data arrived for each replicated table
 SELECT
   'orders' AS table_name,
-  MAX(datastream_metadata.source_timestamp) AS latest_event,
-  TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(datastream_metadata.source_timestamp), MINUTE) AS lag_minutes
+  MAX(TIMESTAMP_MILLIS(datastream_metadata.source_timestamp)) AS latest_event,
+  TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(TIMESTAMP_MILLIS(datastream_metadata.source_timestamp)), MINUTE) AS lag_minutes
 FROM `my-project.replicated.orders`
 UNION ALL
 SELECT
   'customers',
-  MAX(datastream_metadata.source_timestamp),
-  TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(datastream_metadata.source_timestamp), MINUTE)
+  MAX(TIMESTAMP_MILLIS(datastream_metadata.source_timestamp)),
+  TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(TIMESTAMP_MILLIS(datastream_metadata.source_timestamp)), MINUTE)
 FROM `my-project.replicated.customers`
 ```
 
@@ -158,7 +158,7 @@ The stream is running but falling behind. Lag keeps increasing.
 ```bash
 # Check current lag metrics
 gcloud monitoring metrics list \
-  --filter='metric.type = starts_with("datastream.googleapis.com/stream/total_latency")'
+  --filter='metric.type = starts_with("datastream.googleapis.com/stream/total_latencies")'
 ```
 
 **Common causes:**
@@ -167,10 +167,10 @@ gcloud monitoring metrics list \
 
 2. **Large transactions.** Datastream processes transactions atomically. A single transaction that modifies millions of rows creates a processing bottleneck.
 
-3. **BigQuery quota limits.** Datastream's writes might be hitting BigQuery streaming insert quotas.
+3. **BigQuery quota or throughput limits.** Datastream's writes might be hitting BigQuery limits.
 
 ```bash
-# Check BigQuery quota usage
+# List BigQuery quota metrics
 gcloud alpha services quota list \
   --service=bigquery.googleapis.com \
   --consumer=projects/my-project \
@@ -206,7 +206,7 @@ FROM information_schema.role_table_grants
 WHERE table_name = 'my_table';
 ```
 
-3. **Table lacks a primary key.** Datastream requires a primary key for CDC on some database types. Tables without primary keys may be skipped silently.
+3. **Primary key issues.** For BigQuery merge mode, Datastream needs a primary key to merge changes into the destination table. Tables without primary keys are written in append-only mode, and tables with unsupported primary key types are not replicated.
 
 ```sql
 -- MySQL: Check if the table has a primary key
@@ -256,8 +256,8 @@ If you lost some CDC events but do not want to do a full re-backfill, you can pa
 ```sql
 -- Identify the gap period
 SELECT
-  MIN(datastream_metadata.source_timestamp) AS first_event,
-  MAX(datastream_metadata.source_timestamp) AS last_event
+  MIN(TIMESTAMP_MILLIS(datastream_metadata.source_timestamp)) AS first_event,
+  MAX(TIMESTAMP_MILLIS(datastream_metadata.source_timestamp)) AS last_event
 FROM `my-project.replicated.orders`;
 
 -- Then export the missing data range from the source database
@@ -269,14 +269,13 @@ FROM `my-project.replicated.orders`;
 Set up these safeguards to catch issues before they become incidents:
 
 ```bash
-# Alert on stream state changes
-gcloud alpha monitoring policies create \
-  --display-name="Datastream Stream State Alert" \
-  --condition-display-name="Stream not running" \
-  --condition-filter='metric.type="datastream.googleapis.com/stream/event_count" resource.type="datastream.googleapis.com/Stream"' \
-  --condition-threshold-comparison=COMPARISON_LT \
-  --condition-threshold-value=1 \
-  --condition-threshold-duration=600s \
+# Alert on high data freshness lag
+gcloud monitoring policies create \
+  --display-name="Datastream Freshness Alert" \
+  --condition-display-name="Freshness over 10 minutes" \
+  --condition-filter='resource.type="datastream.googleapis.com/Stream" AND metric.type="datastream.googleapis.com/stream/freshness"' \
+  --if="> 600" \
+  --duration=600s \
   --notification-channels=projects/my-project/notificationChannels/CHANNEL_ID
 ```
 
@@ -295,8 +294,8 @@ SELECT
   END AS status
 FROM (
   SELECT 'orders' AS table_name,
-    MAX(datastream_metadata.source_timestamp) AS latest_event,
-    TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(datastream_metadata.source_timestamp), MINUTE) AS lag_minutes
+    MAX(TIMESTAMP_MILLIS(datastream_metadata.source_timestamp)) AS latest_event,
+    TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(TIMESTAMP_MILLIS(datastream_metadata.source_timestamp)), MINUTE) AS lag_minutes
   FROM `my-project.replicated.orders`
 )
 ```
