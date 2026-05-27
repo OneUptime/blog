@@ -130,7 +130,7 @@ DB_PORT="{{ item.port }}"
 DB_USER="{{ item.user }}"
 BACKUP_DIR="{{ backup_base_dir }}/${DB_NAME}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_FILE="${BACKUP_DIR}/${DB_NAME}_${TIMESTAMP}.sql"
+BACKUP_FILE="${BACKUP_DIR}/${DB_NAME}_${TIMESTAMP}.dump"
 RETENTION_DAYS={{ backup_retention_days }}
 
 export PGPASSWORD="{{ item.password }}"
@@ -139,20 +139,15 @@ echo "[$(date)] Starting backup of ${DB_NAME}"
 
 # Create the dump
 pg_dump -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" \
-  --format=custom --compress=9 \
-  "${DB_NAME}" > "${BACKUP_FILE}.dump"
-
-{% if backup_compress %}
-# Compress the backup
-gzip "${BACKUP_FILE}.dump"
-BACKUP_FILE="${BACKUP_FILE}.dump.gz"
-{% else %}
-BACKUP_FILE="${BACKUP_FILE}.dump"
-{% endif %}
+  --format=custom \
+  --compress={{ 9 if backup_compress else 0 }} \
+  --file="${BACKUP_FILE}" \
+  "${DB_NAME}"
 
 {% if backup_encryption_enabled %}
 # Encrypt the backup
-gpg --batch --yes --symmetric --cipher-algo AES256 \
+gpg --batch --yes --pinentry-mode loopback \
+  --symmetric --cipher-algo AES256 \
   --passphrase "{{ backup_encryption_key }}" \
   "${BACKUP_FILE}"
 rm -f "${BACKUP_FILE}"
@@ -203,7 +198,8 @@ BACKUP_FILE="${BACKUP_FILE}.gz"
 {% endif %}
 
 {% if backup_encryption_enabled %}
-gpg --batch --yes --symmetric --cipher-algo AES256 \
+gpg --batch --yes --pinentry-mode loopback \
+  --symmetric --cipher-algo AES256 \
   --passphrase "{{ backup_encryption_key }}" \
   "${BACKUP_FILE}"
 rm -f "${BACKUP_FILE}"
@@ -225,7 +221,7 @@ echo "[$(date)] Backup complete: ${BACKUP_FILE} (${BACKUP_SIZE})"
 ```bash
 #!/bin/bash
 # roles/db_backup/templates/verify_backup.sh.j2
-# Verify that recent backups exist and are valid
+# Verify that recent backups exist and are not stale
 
 ERRORS=0
 {% for db in backup_databases %}
