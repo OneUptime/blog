@@ -19,7 +19,7 @@ Molecule needs a driver to create test instances. The Docker driver is the most 
 ```bash
 # Install Molecule with the Docker driver and Testinfra verifier
 
-pip install "molecule[docker]" molecule-plugins pytest-testinfra ansible
+pip install "molecule-plugins[docker]" pytest-testinfra ansible
 ```
 
 ## Initializing Molecule for a Role
@@ -48,14 +48,14 @@ driver:
   name: docker
 platforms:
   - name: ubuntu-test
-    image: ubuntu:22.04
+    image: geerlingguy/docker-ubuntu2204-ansible:latest
     pre_build_image: true
-    command: /bin/systemd
+    command: /lib/systemd/systemd
     privileged: true
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
   - name: rocky-test
-    image: rockylinux:9
+    image: geerlingguy/docker-rockylinux9-ansible:latest
     pre_build_image: true
     command: /usr/sbin/init
     privileged: true
@@ -148,7 +148,7 @@ cd roles/nginx_setup
 molecule test
 ```
 
-This runs the full sequence: dependency, lint, cleanup, destroy, syntax, create, prepare, converge, idempotence, side_effect, verify, cleanup, destroy.
+This runs the full sequence: dependency, cleanup, destroy, syntax, create, prepare, converge, idempotence, side_effect, verify, cleanup, destroy.
 
 For faster iteration during development, run individual steps.
 
@@ -206,7 +206,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install "molecule[docker]" molecule-plugins pytest-testinfra ansible
+          pip install "molecule-plugins[docker]" pytest-testinfra ansible
 
       - name: Run Molecule tests
         run: |
@@ -235,8 +235,9 @@ molecule_test:
     - docker:dind
   variables:
     DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
-    - pip install "molecule[docker]" molecule-plugins pytest-testinfra ansible
+    - pip install "molecule-plugins[docker]" pytest-testinfra ansible
   script:
     - |
       for role in roles/*/; do
@@ -259,14 +260,20 @@ Molecule has a built-in idempotency check. It runs your role twice and verifies 
 ```yaml
 # molecule.yml - idempotency is enabled by default in the test sequence
 # You can also configure it explicitly
-provisioner:
-  name: ansible
-  config_options:
-    defaults:
-      callbacks_enabled: profile_tasks
-  playbooks:
-    converge: converge.yml
-    verify: verify.yml
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - side_effect
+    - verify
+    - cleanup
+    - destroy
 ```
 
 If the idempotency check fails, it means your role makes changes on every run. Common causes include using `command` or `shell` modules without `creates` or `changed_when` guards.
@@ -299,15 +306,11 @@ Molecule is designed for roles, but you can test entire playbooks too. Create a 
 # Test a full deployment playbook in an isolated environment
 ---
 - name: Test full deployment
-  hosts: all
-  become: true
+  import_playbook: ../../playbooks/deploy.yml
   vars:
     app_version: "test-123"
     env_name: "test"
     db_host: "localhost"
-  tasks:
-    - name: Run the deployment playbook
-      include_tasks: ../../playbooks/deploy.yml
 ```
 
 ## Conclusion
