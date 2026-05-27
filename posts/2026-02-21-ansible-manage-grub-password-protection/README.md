@@ -8,9 +8,9 @@ Description: Secure your Linux server boot process by configuring GRUB password 
 
 ---
 
-The GRUB bootloader is the first thing that runs when a Linux server starts. Without password protection, anyone with physical access or console access (IPMI, iLO, iDRAC, cloud serial console) can modify boot parameters, boot into single-user mode, and gain root access without knowing any passwords. This is a well-known security issue that compliance frameworks like CIS Benchmarks, PCI-DSS, and STIG all require you to address.
+The GRUB bootloader is one of the first configurable components that runs after system firmware when a Linux server starts. Without password protection, anyone with physical access or console access (IPMI, iLO, iDRAC, cloud serial console) may be able to modify boot parameters, boot into single-user mode, and gain root access without knowing any passwords. This is a well-known security issue that many hardening baselines, including CIS Benchmarks and STIG, require you to address.
 
-Setting a GRUB password ensures that boot parameters cannot be modified and recovery mode cannot be accessed without proper authentication. Ansible makes this configuration consistent and auditable across your entire fleet.
+Setting a GRUB password helps ensure that boot parameters cannot be modified and recovery mode cannot be accessed without proper authentication. Ansible makes this configuration consistent and auditable across your entire fleet.
 
 ## Understanding GRUB Security
 
@@ -48,12 +48,14 @@ flowchart TD
   vars:
     grub_superuser: "bootadmin"
     grub_password: "{{ vault_grub_password }}"
+    grub_mkpasswd_cmd: "{{ 'grub2-mkpasswd-pbkdf2' if ansible_os_family == 'RedHat' else 'grub-mkpasswd-pbkdf2' }}"
 
   tasks:
     # Generate the GRUB password hash
     - name: Generate GRUB password hash
       ansible.builtin.shell:
-        cmd: "echo -e '{{ grub_password }}\n{{ grub_password }}' | grub2-mkpasswd-pbkdf2 | grep 'PBKDF2' | awk '{print $NF}'"
+        cmd: "{{ grub_mkpasswd_cmd }} | grep 'PBKDF2' | awk '{print $NF}'"
+        stdin: "{{ grub_password }}\n{{ grub_password }}"
       register: grub_hash
       changed_when: false
       no_log: true
@@ -90,20 +92,22 @@ flowchart TD
       notify: rebuild grub config
 
   handlers:
-    - name: rebuild grub config
+    - name: rebuild grub config redhat
       ansible.builtin.command:
         cmd: grub2-mkconfig -o /boot/grub2/grub.cfg
       when: ansible_os_family == "RedHat"
+      listen: rebuild grub config
 
     - name: rebuild grub config debian
       ansible.builtin.command:
         cmd: update-grub
       when: ansible_os_family == "Debian"
+      listen: rebuild grub config
 ```
 
 ## Handling UEFI and Legacy BIOS
 
-The GRUB configuration path differs between UEFI and legacy BIOS systems:
+The GRUB configuration path differs between UEFI and legacy BIOS systems on Red Hat systems. Debian and Ubuntu normally regenerate `/boot/grub/grub.cfg` with `update-grub`:
 
 ```yaml
 # grub-password-multiboot.yml - Handle both UEFI and BIOS systems
@@ -115,6 +119,7 @@ The GRUB configuration path differs between UEFI and legacy BIOS systems:
   vars:
     grub_superuser: "bootadmin"
     grub_password: "{{ vault_grub_password }}"
+    grub_mkpasswd_cmd: "{{ 'grub2-mkpasswd-pbkdf2' if ansible_os_family == 'RedHat' else 'grub-mkpasswd-pbkdf2' }}"
 
   tasks:
     # Detect boot mode
@@ -130,13 +135,14 @@ The GRUB configuration path differs between UEFI and legacy BIOS systems:
 
     - name: Set GRUB config path (Debian)
       ansible.builtin.set_fact:
-        grub_cfg_path: "{{ '/boot/efi/EFI/ubuntu/grub.cfg' if efi_check.stat.exists else '/boot/grub/grub.cfg' }}"
+        grub_cfg_path: /boot/grub/grub.cfg
       when: ansible_os_family == "Debian"
 
     # Generate password hash
     - name: Generate GRUB password hash
       ansible.builtin.shell:
-        cmd: "echo -e '{{ grub_password }}\n{{ grub_password }}' | grub2-mkpasswd-pbkdf2 2>/dev/null | grep 'PBKDF2' | awk '{print $NF}'"
+        cmd: "{{ grub_mkpasswd_cmd }} 2>/dev/null | grep 'PBKDF2' | awk '{print $NF}'"
+        stdin: "{{ grub_password }}\n{{ grub_password }}"
       register: grub_hash
       changed_when: false
       no_log: true
@@ -157,13 +163,12 @@ The GRUB configuration path differs between UEFI and legacy BIOS systems:
       no_log: true
 
     # Set unrestricted flag on default menu entries
-    - name: Configure unrestricted default boot (RedHat)
+    - name: Configure unrestricted default boot
       ansible.builtin.lineinfile:
         path: /etc/grub.d/10_linux
         regexp: "^CLASS="
         line: 'CLASS="--class gnu-linux --class gnu --class os --unrestricted"'
         backup: true
-      when: ansible_os_family == "RedHat"
 
     # Rebuild GRUB configuration
     - name: Rebuild GRUB config (RedHat)
@@ -179,7 +184,7 @@ The GRUB configuration path differs between UEFI and legacy BIOS systems:
     # Verify the password was set
     - name: Verify GRUB password is configured
       ansible.builtin.shell:
-        cmd: "grep -c 'password_pbkdf2' {{ grub_cfg_path }}"
+        cmd: "grep -c 'password_pbkdf2' {{ grub_cfg_path }} || true"
       register: password_check
       changed_when: false
 
@@ -209,21 +214,21 @@ For compliance checks, audit GRUB password configuration across the fleet:
     # Check if password hash is in generated config
     - name: Check for password in GRUB config
       ansible.builtin.shell:
-        cmd: "grep -l 'password_pbkdf2' /boot/grub2/grub.cfg /boot/efi/EFI/*/grub.cfg 2>/dev/null || echo 'NOT FOUND'"
+        cmd: "grep -l 'password_pbkdf2' /boot/grub2/grub.cfg /boot/grub/grub.cfg /boot/efi/EFI/*/grub.cfg 2>/dev/null || echo 'NOT FOUND'"
       register: grub_password_check
       changed_when: false
 
     # Check if superuser is set
     - name: Check for superuser in GRUB config
       ansible.builtin.shell:
-        cmd: "grep 'set superusers' /boot/grub2/grub.cfg /boot/efi/EFI/*/grub.cfg 2>/dev/null || echo 'NOT FOUND'"
+        cmd: "grep 'set superusers' /boot/grub2/grub.cfg /boot/grub/grub.cfg /boot/efi/EFI/*/grub.cfg 2>/dev/null || echo 'NOT FOUND'"
       register: superuser_check
       changed_when: false
 
     # Check GRUB config file permissions
     - name: Check GRUB config permissions
       ansible.builtin.stat:
-        path: /boot/grub2/grub.cfg
+        path: "{{ '/boot/grub2/grub.cfg' if ansible_os_family == 'RedHat' else '/boot/grub/grub.cfg' }}"
       register: grub_cfg_perms
       failed_when: false
 
@@ -248,13 +253,18 @@ For compliance checks, audit GRUB password configuration across the fleet:
     # Fix permissions on GRUB config (should be 0600 or 0644)
     - name: Set correct permissions on GRUB config
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: "{{ '/boot/grub2/grub.cfg' if ansible_os_family == 'RedHat' else '/boot/grub/grub.cfg' }}"
         owner: root
         group: root
         mode: '0600'
-      loop:
-        - /boot/grub2/grub.cfg
-        - /etc/grub.d/01_users
+      failed_when: false
+
+    - name: Set correct permissions on 01_users
+      ansible.builtin.file:
+        path: /etc/grub.d/01_users
+        owner: root
+        group: root
+        mode: '0755'
       failed_when: false
 ```
 
@@ -273,12 +283,14 @@ When you need to rotate the GRUB password:
   vars:
     grub_superuser: "bootadmin"
     grub_new_password: "{{ vault_grub_new_password }}"
+    grub_mkpasswd_cmd: "{{ 'grub2-mkpasswd-pbkdf2' if ansible_os_family == 'RedHat' else 'grub-mkpasswd-pbkdf2' }}"
 
   tasks:
     # Generate new password hash
     - name: Generate new GRUB password hash
       ansible.builtin.shell:
-        cmd: "echo -e '{{ grub_new_password }}\n{{ grub_new_password }}' | grub2-mkpasswd-pbkdf2 | grep 'PBKDF2' | awk '{print $NF}'"
+        cmd: "{{ grub_mkpasswd_cmd }} | grep 'PBKDF2' | awk '{print $NF}'"
+        stdin: "{{ grub_new_password }}\n{{ grub_new_password }}"
       register: new_hash
       changed_when: false
       no_log: true
@@ -303,6 +315,11 @@ When you need to rotate the GRUB password:
       ansible.builtin.command:
         cmd: grub2-mkconfig -o /boot/grub2/grub.cfg
       when: ansible_os_family == "RedHat"
+
+    - name: Rebuild GRUB configuration (Debian)
+      ansible.builtin.command:
+        cmd: update-grub
+      when: ansible_os_family == "Debian"
 
     # Log the password change
     - name: Log password rotation
@@ -342,6 +359,11 @@ If you need to remove the GRUB password temporarily (handle with care):
         cmd: grub2-mkconfig -o /boot/grub2/grub.cfg
       when: ansible_os_family == "RedHat"
 
+    - name: Rebuild GRUB configuration (Debian)
+      ansible.builtin.command:
+        cmd: update-grub
+      when: ansible_os_family == "Debian"
+
     - name: Log password removal
       ansible.builtin.lineinfile:
         path: /var/log/grub-password-changes.log
@@ -372,4 +394,4 @@ From securing bootloaders in production environments:
 
 7. Remember that GRUB password does not protect against booting from external media. Physical security (locked server rooms, BIOS boot order settings, BIOS passwords) is also necessary for a complete boot security strategy.
 
-GRUB password protection is a basic security control that compliance frameworks consistently require. With Ansible managing it, you can be confident that every server in your fleet has consistent boot protection.
+GRUB password protection is a basic security control that many hardening baselines include. With Ansible managing it, you can be confident that every server in your fleet has consistent boot protection.
