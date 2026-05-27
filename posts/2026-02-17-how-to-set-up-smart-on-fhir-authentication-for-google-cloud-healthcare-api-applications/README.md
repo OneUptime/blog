@@ -10,7 +10,7 @@ Description: Set up SMART on FHIR authentication for Google Cloud Healthcare API
 
 SMART on FHIR (Substitutable Medical Applications, Reusable Technologies) is the standard way to handle authentication and authorization in healthcare applications. It builds on OAuth 2.0 and adds healthcare-specific scoping so that apps can request access to specific types of clinical data. If you are building a patient-facing app, a clinical decision support tool, or any application that needs to interact with EHR data through FHIR, implementing SMART on FHIR authentication is not just good practice - it is usually required.
 
-Google Cloud Healthcare API supports SMART on FHIR out of the box. In this post, I will walk through setting up the authentication flow, configuring scopes, and building a working client application.
+Google Cloud Healthcare API supports SMART on FHIR access enforcement, but the authorization server runs outside the Healthcare API. In this post, I will walk through setting up the authentication flow, configuring scopes, and building a working client application that talks to the Healthcare API through SMARTProxy or a similar trusted proxy.
 
 ## How SMART on FHIR Works
 
@@ -40,34 +40,32 @@ You will need:
 
 - A Google Cloud project with Healthcare API enabled
 - A FHIR store with some test data
-- A registered OAuth 2.0 client in Google Cloud
+- A registered client in your SMART authorization server
+- SMARTProxy or a similar proxy in front of the FHIR store
 - Node.js or Python for the client application
 
-## Step 1: Configure the FHIR Store for SMART Access
+## Step 1: Configure a Proxy for SMART Access
 
-First, you need to set up consent enforcement on your FHIR store so that SMART scopes are actually enforced.
+First, put SMARTProxy or a similar trusted proxy in front of your FHIR store. The Cloud Healthcare API enforces SMART scopes and patient context from `X-Authorization-*` headers, and the proxy is responsible for validating the SMART access token and forwarding the scope and launch context to the Healthcare API.
 
-This command updates the FHIR store to enable SMART access control:
+You do not need to update the FHIR store itself for SMART on FHIR access. Configure the proxy to call your FHIR store and use a Google Cloud service account:
 
 ```bash
-# Update FHIR store with SMART enforcement configuration
+# Create a service account for the SMART proxy
 
-curl -X PATCH \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/json" \
-  "https://healthcare.googleapis.com/v1beta1/projects/MY_PROJECT/locations/us-central1/datasets/my-dataset/fhirStores/my-fhir-store?updateMask=validationConfig" \
-  -d '{
-    "validationConfig": {
-      "enabledImplementationGuides": [
-        "http://hl7.org/fhir/smart-app-launch"
-      ]
-    }
-  }'
+gcloud iam service-accounts create smart-fhir-proxy \
+  --display-name="SMART on FHIR Proxy"
+
+# Grant the proxy read access to the FHIR store.
+# Use roles/healthcare.fhirResourceEditor instead if your SMART apps need write access.
+gcloud projects add-iam-policy-binding MY_PROJECT \
+  --member="serviceAccount:smart-fhir-proxy@MY_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/healthcare.fhirResourceReader"
 ```
 
-## Step 2: Set Up the OAuth 2.0 Consent Screen and Credentials
+## Step 2: Set Up the SMART Authorization Server and Client
 
-Configure the OAuth consent screen in Google Cloud Console and create OAuth 2.0 credentials. For SMART on FHIR, you will want to register the SMART-specific scopes.
+Configure your SMART authorization server and register the client application. The Cloud Healthcare API does not mint SMART access tokens itself. Your authorization server grants SMART scopes and patient context, and the proxy validates the token before calling the Healthcare API.
 
 These are the common SMART on FHIR scopes you will work with:
 
@@ -91,21 +89,7 @@ openid
 fhirUser
 ```
 
-Create OAuth credentials using the gcloud CLI:
-
-```bash
-# Create an OAuth 2.0 client ID for a web application
-# Note: You'll need to do this in Cloud Console for full SMART support
-# But here's how to set up the service account for backend access
-
-gcloud iam service-accounts create smart-fhir-app \
-  --display-name="SMART on FHIR Application"
-
-# Grant the service account access to the FHIR store
-gcloud projects add-iam-policy-binding MY_PROJECT \
-  --member="serviceAccount:smart-fhir-app@MY_PROJECT.iam.gserviceaccount.com" \
-  --role="roles/healthcare.fhirResourceReader"
-```
+Register the redirect URI, client type, and allowed scopes in your SMART authorization server. If you use a public client, use the authorization code flow with PKCE. If you use a confidential web application, store the client secret only on the server side.
 
 ## Step 3: Implement the SMART Discovery Endpoint
 
@@ -117,12 +101,14 @@ This Node.js Express handler serves the SMART configuration document:
 const express = require('express');
 const app = express();
 
+const SMART_AUTH_BASE = 'https://auth.example.com';
+
 // Serve the SMART configuration endpoint
 // This tells client apps where to authenticate and what scopes are supported
 app.get('/fhir/.well-known/smart-configuration', (req, res) => {
   res.json({
-    authorization_endpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-    token_endpoint: 'https://oauth2.googleapis.com/token',
+    authorization_endpoint: `${SMART_AUTH_BASE}/authorize`,
+    token_endpoint: `${SMART_AUTH_BASE}/token`,
     token_endpoint_auth_methods_supported: [
       'client_secret_basic',
       'client_secret_post',
@@ -175,11 +161,11 @@ app.get('/fhir/metadata', (req, res) => {
           extension: [
             {
               url: 'authorize',
-              valueUri: 'https://accounts.google.com/o/oauth2/v2/auth'
+              valueUri: `${SMART_AUTH_BASE}/authorize`
             },
             {
               url: 'token',
-              valueUri: 'https://oauth2.googleapis.com/token'
+              valueUri: `${SMART_AUTH_BASE}/token`
             }
           ]
         }],
@@ -214,7 +200,8 @@ import json
 CLIENT_ID = "your-oauth-client-id"
 CLIENT_SECRET = "your-oauth-client-secret"
 REDIRECT_URI = "http://localhost:8080/callback"
-FHIR_BASE = "https://healthcare.googleapis.com/v1/projects/MY_PROJECT/locations/us-central1/datasets/my-dataset/fhirStores/my-fhir-store/fhir"
+FHIR_BASE = "https://smart-proxy.example.com/fhir"
+SMART_CONFIG = f"{FHIR_BASE}/.well-known/smart-configuration"
 
 # SMART scopes to request
 SCOPES = "openid fhirUser launch/patient patient/Patient.read patient/Observation.read"
@@ -235,6 +222,9 @@ class CallbackHandler(BaseHTTPRequestHandler):
 
 def authenticate():
     """Runs the SMART standalone launch flow."""
+    smart_config = requests.get(SMART_CONFIG).json()
+    authorization_endpoint = smart_config["authorization_endpoint"]
+    token_endpoint = smart_config["token_endpoint"]
 
     # Build the authorization URL with SMART scopes
     auth_params = urlencode({
@@ -246,7 +236,7 @@ def authenticate():
         "state": "random-state-value"
     })
 
-    auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{auth_params}"
+    auth_url = f"{authorization_endpoint}?{auth_params}"
 
     # Open the browser for user authentication
     webbrowser.open(auth_url)
@@ -257,7 +247,7 @@ def authenticate():
 
     # Exchange the authorization code for an access token
     token_response = requests.post(
-        "https://oauth2.googleapis.com/token",
+        token_endpoint,
         data={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -267,6 +257,7 @@ def authenticate():
         }
     )
 
+    token_response.raise_for_status()
     return token_response.json()
 
 def fetch_patient_data(access_token, patient_id):
@@ -291,46 +282,45 @@ def fetch_patient_data(access_token, patient_id):
 tokens = authenticate()
 print(f"Access token received. Expires in {tokens.get('expires_in')} seconds.")
 
-# Fetch patient data
-patient, obs = fetch_patient_data(tokens["access_token"], "example-patient-id")
+# Fetch patient data. SMART standalone launch usually returns the selected
+# patient context in the token response.
+patient_id = tokens.get("patient", "example-patient-id")
+patient, obs = fetch_patient_data(tokens["access_token"], patient_id)
 print(json.dumps(patient, indent=2))
 ```
 
 ## Step 5: Enforce SMART Scopes on the Server Side
 
-On the server side, you need to validate that the access token's scopes match the requested resource. This middleware checks SMART scopes before proxying requests to the Healthcare API.
+On the server side, the proxy validates the SMART access token and forwards the granted scopes and patient context to the Healthcare API. The Healthcare API then enforces access against the requested FHIR resources.
 
-This Express middleware validates SMART scopes against the requested FHIR resource:
+This Express middleware shows the important proxy step after token validation:
 
 ```javascript
-// Middleware to enforce SMART on FHIR scopes
-function enforceSMARTScopes(req, res, next) {
-  const token = req.headers.authorization;
-  const scopes = req.tokenScopes || [];
+// Middleware to forward SMART on FHIR authorization context
+function addSMARTHeaders(req, res, next) {
+  // Assume earlier middleware verified the JWT signature, issuer, audience,
+  // expiration, and client registration.
+  const tokenClaims = req.smartTokenClaims;
 
-  // Extract resource type from the FHIR URL path
-  const pathParts = req.path.split('/');
-  const resourceType = pathParts[2]; // e.g., /fhir/Patient/123
-
-  // Determine required scope based on HTTP method
-  const action = req.method === 'GET' ? 'read' : 'write';
-
-  // Check for matching patient-level or user-level scope
-  const requiredPatientScope = `patient/${resourceType}.${action}`;
-  const requiredUserScope = `user/${resourceType}.${action}`;
-
-  const hasAccess = scopes.includes(requiredPatientScope)
-    || scopes.includes(requiredUserScope);
-
-  if (!hasAccess) {
+  if (!tokenClaims || !tokenClaims.scope) {
     return res.status(403).json({
       resourceType: 'OperationOutcome',
       issue: [{
         severity: 'error',
         code: 'forbidden',
-        diagnostics: `Insufficient scope. Required: ${requiredPatientScope} or ${requiredUserScope}`
+        diagnostics: 'Missing SMART authorization scope'
       }]
     });
+  }
+
+  req.healthcareHeaders = {
+    'X-Authorization-Scope': tokenClaims.scope,
+    'X-Authorization-Subject': tokenClaims.sub,
+    'X-Authorization-Issuer': tokenClaims.iss
+  };
+
+  if (tokenClaims.patient) {
+    req.healthcareHeaders['X-Authorization-Patient'] = tokenClaims.patient;
   }
 
   next();
@@ -339,4 +329,4 @@ function enforceSMARTScopes(req, res, next) {
 
 ## Summary
 
-Setting up SMART on FHIR with Google Cloud Healthcare API involves configuring the OAuth flow, serving the SMART discovery endpoints, building a client that handles the authorization dance, and enforcing scopes on the server side. The Healthcare API handles the FHIR data storage and retrieval, while you layer the SMART authentication on top. This gives you a standards-compliant setup that third-party healthcare apps can integrate with, which is increasingly a regulatory requirement for health IT systems.
+Setting up SMART on FHIR with Google Cloud Healthcare API involves configuring an external SMART authorization server, serving the SMART discovery endpoints, building a client that handles the authorization dance, and forwarding validated SMART scopes and patient context through a trusted proxy. The Healthcare API handles the FHIR data storage, retrieval, and SMART access enforcement, while you layer token issuance and validation on top. This gives you a standards-compliant setup that third-party healthcare apps can integrate with, which is increasingly a regulatory requirement for health IT systems.
