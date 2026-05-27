@@ -57,8 +57,8 @@ spec:
     spec:
       containers:
         - name: frontend
-          # Pin image tags to specific digests for reproducibility
-          image: registry.example.com/frontend:v2.4.1
+          # Pin image references to specific digests for reproducibility
+          image: registry.example.com/frontend@sha256:3a335d7d8a452970c5b4054ad7118ff134b3a6b50a2bb6d0c07c746e8986b2
           ports:
             - containerPort: 8080
           resources:
@@ -186,11 +186,11 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../../base/frontend
-patchesStrategicMerge:
-  # Override replicas for production workload
-  - replicas-patch.yaml
   # Add horizontal pod autoscaler in production
   - hpa.yaml
+patches:
+  # Override replicas for production workload
+  - path: replicas-patch.yaml
 ```
 
 ## Handling Secrets in GitOps
