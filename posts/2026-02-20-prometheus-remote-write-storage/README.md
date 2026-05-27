@@ -114,16 +114,18 @@ spec:
       containers:
         # Prometheus container
         - name: prometheus
-          image: prom/prometheus:v2.51.0
+          image: prom/prometheus:v3.11.3
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
-            # Keep local data for 2 hours
+            # Keep local data for at least 3 block durations
             # Thanos sidecar handles long-term storage
-            - "--storage.tsdb.retention.time=2h"
+            - "--storage.tsdb.retention.time=6h"
             # Required for Thanos sidecar to read blocks
             - "--storage.tsdb.min-block-duration=2h"
             - "--storage.tsdb.max-block-duration=2h"
+            # Required for Thanos sidecar to read Prometheus metadata
+            - "--web.enable-admin-api"
             - "--web.enable-lifecycle"
           volumeMounts:
             - name: prometheus-data
@@ -131,7 +133,7 @@ spec:
 
         # Thanos sidecar container
         - name: thanos-sidecar
-          image: thanosio/thanos:v0.34.0
+          image: thanosio/thanos:v0.41.0
           args:
             - "sidecar"
             - "--tsdb.path=/prometheus"
@@ -162,8 +164,8 @@ config:
   bucket: "thanos-metrics"
   endpoint: "s3.amazonaws.com"
   region: "us-east-1"
-  access_key: "${AWS_ACCESS_KEY_ID}"
-  secret_key: "${AWS_SECRET_ACCESS_KEY}"
+  access_key: "<AWS_ACCESS_KEY_ID>"
+  secret_key: "<AWS_SECRET_ACCESS_KEY>"
 ```
 
 ## Remote Write to Cortex or Mimir
@@ -215,10 +217,10 @@ Key queue parameters:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `capacity` | 2500 | Per-shard buffer size in samples |
-| `max_shards` | 200 | Maximum parallel senders |
+| `capacity` | 10000 | Per-shard buffer size in samples |
+| `max_shards` | 50 | Maximum parallel senders |
 | `min_shards` | 1 | Minimum parallel senders |
-| `max_samples_per_send` | 500 | Batch size per HTTP request |
+| `max_samples_per_send` | 2000 | Batch size per HTTP request |
 | `batch_send_deadline` | 5s | Maximum wait before sending a partial batch |
 | `min_backoff` | 30ms | Initial retry backoff |
 | `max_backoff` | 5s | Maximum retry backoff |
@@ -266,17 +268,16 @@ Prometheus exposes metrics about its own remote write pipeline:
 
 ```promql
 # Remote write samples pending in the queue
-prometheus_remote_storage_pending_samples
+prometheus_remote_storage_samples_pending
 
-# Rate of samples successfully sent
-rate(prometheus_remote_storage_succeeded_samples_total[5m])
+# Rate of samples sent
+rate(prometheus_remote_storage_samples_total[5m])
 
 # Rate of failed samples
-rate(prometheus_remote_storage_failed_samples_total[5m])
+rate(prometheus_remote_storage_samples_failed_total[5m])
 
 # Highest timestamp successfully sent
-prometheus_remote_storage_highest_timestamp_in_seconds
-- prometheus_remote_storage_queue_highest_sent_timestamp_seconds
+prometheus_remote_storage_queue_highest_sent_timestamp_seconds
 ```
 
 ## Conclusion
