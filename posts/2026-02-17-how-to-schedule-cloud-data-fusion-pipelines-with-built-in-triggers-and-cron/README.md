@@ -25,16 +25,16 @@ Both options are configured through the Data Fusion UI after you deploy a pipeli
 
 After deploying your pipeline, navigate to the pipeline detail page. Click the "Schedule" button in the top toolbar. This opens the scheduling configuration dialog.
 
-You will see a dropdown that lets you choose between:
+You can use either the Basic or Advanced tab to define your schedule:
 
-- **Every X minutes/hours/days** - Simple interval-based scheduling
-- **Custom cron** - Full cron expression for precise control
+- **Basic** - Simple frequency-based scheduling, such as every 5 minutes or every 30 days
+- **Advanced** - Cron syntax for precise control
 
 For a simple daily schedule, select "Every 1 day" and set the start time. For example, if you want your pipeline to run every day at 2:00 AM UTC, set the interval to 1 day and the start time to 02:00.
 
 ### Using Cron Expressions
 
-For more complex schedules, switch to the custom cron option. Cloud Data Fusion uses standard 5-field cron syntax:
+For more complex schedules, switch to the Advanced tab. Cloud Data Fusion uses 5-field cron syntax, but in the day-of-week field, `1` is Sunday:
 
 ```text
 # Cron expression format
@@ -49,10 +49,10 @@ Here are some common cron expressions for data pipeline scheduling:
 0 3 * * *
 
 # Run every Monday at 6 AM UTC
-0 6 * * 1
+0 6 * * 2
 
 # Run every hour on weekdays
-0 * * * 1-5
+0 * * * 2-6
 
 # Run at midnight on the first day of every month
 0 0 1 * *
@@ -68,34 +68,21 @@ When entering a cron expression, the UI shows a human-readable preview of when t
 
 ### Configuring the Schedule via REST API
 
-If you prefer programmatic configuration, you can use the Cloud Data Fusion REST API to set up schedules. Here is an example using curl:
+If you prefer programmatic configuration, you can include the schedule in the pipeline configuration when deploying or updating a batch pipeline, and then enable the schedule with the Cloud Data Fusion REST API. After setting `AUTH_TOKEN` and `CDAP_ENDPOINT`, here is an example using curl:
 
 ```bash
-# Create a schedule for a deployed pipeline using the CDAP REST API
+# In your full pipeline deployment JSON, set config.schedule to the cron expression.
+# Then deploy or update the batch pipeline.
 curl -X PUT \
-  "https://<CDAP_ENDPOINT>/v3/namespaces/default/apps/<PIPELINE_NAME>/schedules/dataPipelineSchedule" \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "${CDAP_ENDPOINT}/v3/namespaces/default/apps/<PIPELINE_NAME>" \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "dataPipelineSchedule",
-    "description": "Daily schedule at 3 AM",
-    "program": {
-      "programName": "DataPipelineWorkflow",
-      "programType": "Workflow"
-    },
-    "properties": {},
-    "trigger": {
-      "cronExpression": "0 3 * * *",
-      "type": "TIME"
-    },
-    "constraints": [
-      {
-        "maxConcurrency": 1,
-        "type": "CONCURRENCY",
-        "waitUntilMet": false
-      }
-    ]
-  }'
+  -d @pipeline.json
+
+# Enable the schedule for the deployed batch pipeline
+curl -X POST \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  "${CDAP_ENDPOINT}/v3/namespaces/default/apps/<PIPELINE_NAME>/schedules/dataPipelineSchedule/enable"
 ```
 
 This is especially useful when you need to manage schedules across multiple pipelines or environments using infrastructure-as-code practices.
@@ -106,15 +93,15 @@ Pipeline triggers let you chain pipelines together so that one starts automatica
 
 ### Configuring a Pipeline Trigger
 
-On the pipeline detail page, click "Schedule" and then switch to the "Pipeline Triggers" tab. Click "Set a trigger" and you will see a list of all deployed pipelines in your namespace.
+On the deployed downstream pipeline page, click "Inbound triggers" on the left side of the page. You will see a list of available upstream pipelines in your namespace.
 
 Select the upstream pipeline that should trigger this one. You can choose to trigger on:
 
-- **Succeeded** - The upstream pipeline completed successfully
-- **Failed** - The upstream pipeline failed
-- **Killed** - The upstream pipeline was manually stopped
+- **Succeeds** - The upstream pipeline completed successfully
+- **Fails** - The upstream pipeline failed
+- **Stops** - The upstream pipeline was stopped
 
-For most production use cases, you will trigger on "Succeeded" only. This way, if the upstream pipeline fails, the downstream pipeline does not attempt to process incomplete data.
+For most production use cases, you will trigger on "Succeeds" only. This way, if the upstream pipeline fails, the downstream pipeline does not attempt to process incomplete data.
 
 ### Building a Pipeline Chain
 
@@ -131,12 +118,12 @@ Each pipeline in the chain has a trigger configured to start when the previous o
 
 ## Managing Concurrency
 
-An important setting that people often overlook is concurrency control. By default, Cloud Data Fusion allows only one concurrent run of a scheduled pipeline. This means if a pipeline run takes longer than the scheduled interval, the next run will be skipped or queued.
+An important setting that people often overlook is concurrency control. Cloud Data Fusion lets you set a maximum number of concurrent runs for a scheduled pipeline. This means if a pipeline reaches its concurrency limit, the scheduled run will not run.
 
 You can configure this in the schedule settings:
 
-- **Max Concurrent Runs: 1** - Only one instance runs at a time. If the previous run is still going, the new trigger is skipped.
-- **Max Concurrent Runs: N** - Allow up to N instances to run simultaneously. Use this carefully - you need to make sure your source and sink can handle concurrent access.
+- **Max Concurrent Runs: 1** - Only one instance runs at a time. If the previous run is still going, the new scheduled run does not run.
+- **Max Concurrent Runs: N** - Allow up to N instances to run simultaneously, up to the Cloud Data Fusion limit of 10. Use this carefully - you need to make sure your source and sink can handle concurrent access.
 
 For most batch ETL pipelines, keeping concurrency at 1 is the safest choice. If a run takes longer than expected, it is better to skip the next trigger than to have two runs competing for the same resources.
 
@@ -177,9 +164,9 @@ Set up alerting for failed runs using Cloud Monitoring. Create an alert policy t
 
 ## Pausing and Resuming Schedules
 
-If you need to temporarily stop a pipeline from running on schedule - maybe during a maintenance window or while you deploy changes - you can suspend the schedule without deleting it. Click the "Suspend" button on the schedule configuration page.
+If you need to temporarily stop a pipeline from running on schedule - maybe during a maintenance window or while you deploy changes - you can suspend the schedule without deleting the pipeline. Click "Unschedule" on the pipeline page.
 
-To restart it, click "Resume." The pipeline will pick up from the next scheduled trigger time as if nothing happened. Runs that were skipped during the suspension period are not retroactively executed.
+To restart it, start the schedule again from the pipeline page. The pipeline will pick up from the next scheduled trigger time as if nothing happened. Runs that were skipped during the suspension period are not retroactively executed.
 
 ## Best Practices for Production Scheduling
 
