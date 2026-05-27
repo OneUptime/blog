@@ -84,14 +84,7 @@ gcloud compute instance-groups managed create backend-mig \
     --zone=us-central1-a
 ```
 
-Set the named port so the load balancer knows which port to send traffic to:
-
-```bash
-# Configure the named port for the instance group
-gcloud compute instance-groups set-named-ports backend-mig \
-    --named-ports=http:8080 \
-    --zone=us-central1-a
-```
+Internal passthrough Network Load Balancers do not use named ports. The forwarding rule's protocol and port determine where traffic is sent, so the backend service can use this instance group directly.
 
 ## Step 3: Create a Health Check
 
@@ -100,6 +93,7 @@ The load balancer uses a health check to determine which instances can receive t
 ```bash
 # Create a health check for the backend service
 gcloud compute health-checks create http backend-health-check \
+    --region=us-central1 \
     --port=8080 \
     --request-path=/health \
     --check-interval=10s \
@@ -118,6 +112,7 @@ gcloud compute backend-services create backend-service \
     --load-balancing-scheme=INTERNAL \
     --protocol=TCP \
     --health-checks=backend-health-check \
+    --health-checks-region=us-central1 \
     --region=us-central1
 ```
 
@@ -144,7 +139,8 @@ gcloud compute forwarding-rules create backend-forwarding-rule \
     --region=us-central1 \
     --ip-protocol=TCP \
     --ports=8080 \
-    --backend-service=backend-service
+    --backend-service=backend-service \
+    --backend-service-region=us-central1
 ```
 
 You can also specify a particular IP address:
@@ -159,6 +155,7 @@ gcloud compute forwarding-rules create backend-forwarding-rule \
     --ip-protocol=TCP \
     --ports=8080 \
     --backend-service=backend-service \
+    --backend-service-region=us-central1 \
     --address=10.128.0.100
 ```
 
@@ -197,7 +194,7 @@ gcloud compute forwarding-rules describe backend-forwarding-rule \
     --format="value(IPAddress)"
 ```
 
-From any VM in the same VPC, test the load balancer:
+From a VM in the same region and VPC with firewall access to the backends, test the load balancer:
 
 ```bash
 # From a frontend VM, test the internal load balancer
@@ -211,7 +208,7 @@ curl http://10.128.0.100:8080
 # Response from backend-mig-zzzz
 ```
 
-You should see responses from different backend instances as traffic is distributed.
+After several new connections, you should see responses from different backend instances as traffic is distributed. A single client might hit the same backend more often than you expect because backend selection uses a packet hash.
 
 ## Complete Terraform Configuration
 
@@ -253,16 +250,12 @@ resource "google_compute_instance_group_manager" "backend" {
   version {
     instance_template = google_compute_instance_template.backend.id
   }
-
-  named_port {
-    name = "http"
-    port = 8080
-  }
 }
 
-# Health check
-resource "google_compute_health_check" "backend" {
+# Regional health check
+resource "google_compute_region_health_check" "backend" {
   name               = "backend-health-check"
+  region             = "us-central1"
   check_interval_sec = 10
   timeout_sec        = 5
   healthy_threshold  = 2
@@ -280,7 +273,7 @@ resource "google_compute_region_backend_service" "backend" {
   region                = "us-central1"
   load_balancing_scheme = "INTERNAL"
   protocol              = "TCP"
-  health_checks         = [google_compute_health_check.backend.id]
+  health_checks         = [google_compute_region_health_check.backend.id]
 
   backend {
     group = google_compute_instance_group_manager.backend.instance_group
@@ -339,10 +332,11 @@ gcloud compute backend-services update backend-service \
 ```
 
 Options include:
-- **NONE**: No session affinity (default, best for stateless services)
+- **NONE**: Default 5-tuple or 3-tuple hashing, which is best for stateless services
 - **CLIENT_IP**: Route based on client IP address
 - **CLIENT_IP_PROTO**: Route based on client IP and protocol
 - **CLIENT_IP_PORT_PROTO**: Route based on client IP, port, and protocol
+- **CLIENT_IP_NO_DESTINATION**: Route based only on client IP address
 
 ## Multi-Zone Setup
 
