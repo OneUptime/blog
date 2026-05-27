@@ -17,19 +17,34 @@ This post covers setting up the BigQuery client, running queries, and properly i
 Add the BigQuery client library to your project. If you are using Maven:
 
 ```xml
-<!-- Google Cloud BigQuery client library -->
-<dependency>
-    <groupId>com.google.cloud</groupId>
-    <artifactId>google-cloud-bigquery</artifactId>
-    <version>2.38.0</version>
-</dependency>
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>libraries-bom</artifactId>
+            <version>26.72.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
+<dependencies>
+    <!-- Google Cloud BigQuery client library -->
+    <dependency>
+        <groupId>com.google.cloud</groupId>
+        <artifactId>google-cloud-bigquery</artifactId>
+    </dependency>
+</dependencies>
 ```
 
 For Gradle:
 
 ```groovy
+implementation platform('com.google.cloud:libraries-bom:26.72.0')
+
 // BigQuery client library dependency
-implementation 'com.google.cloud:google-cloud-bigquery:2.38.0'
+implementation 'com.google.cloud:google-cloud-bigquery'
 ```
 
 ## Creating the BigQuery Client
@@ -79,7 +94,7 @@ The `bigquery.query()` method is synchronous - it submits the query job and wait
 
 ## Understanding TableResult Pagination
 
-`TableResult` implements `Iterable<FieldValueList>`, so you can loop over it directly. But here is the important part: BigQuery returns results in pages. Each page contains a subset of the total rows, and you fetch pages on demand.
+`TableResult` implements `Page<FieldValueList>`, so you can read the current page with `getValues()` or iterate through all pages with `iterateAll()`. But here is the important part: BigQuery returns results in pages. Each page contains a subset of the total rows, and you fetch pages on demand.
 
 When you iterate with a for-each loop, the client handles page fetching automatically:
 
@@ -148,7 +163,7 @@ private void processRow(FieldValueList row) {
 
 ## Controlling Page Size
 
-You can set the page size in the query configuration to control how many rows are returned per page:
+You can pass a query results option to control how many rows are returned per page:
 
 ```java
 // Set a custom page size for result pagination
@@ -169,12 +184,16 @@ A smaller page size means more API calls but less memory usage per page. A large
 
 ## Parameterized Queries
 
-Always use parameterized queries to prevent SQL injection and improve query caching:
+Use parameterized queries to safely pass user input as query values:
 
 ```java
 // Parameterized query to safely pass user input
 public TableResult queryWithParameters(String datasetName, String minDate, long minCount)
         throws InterruptedException {
+
+    if (!datasetName.matches("[A-Za-z0-9_]+")) {
+        throw new IllegalArgumentException("Invalid dataset name");
+    }
 
     String sql = "SELECT name, event_count, last_seen "
             + "FROM `my-project." + datasetName + ".events` "
@@ -183,7 +202,8 @@ public TableResult queryWithParameters(String datasetName, String minDate, long 
 
     QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(sql)
             .setUseLegacySql(false)
-            // Add named parameters to prevent SQL injection
+            // Add named parameters for values. Identifiers such as dataset names
+            // cannot be query parameters, so validate them separately.
             .addNamedParameter("minDate", QueryParameterValue.string(minDate))
             .addNamedParameter("minCount", QueryParameterValue.int64(minCount))
             .build();
@@ -244,10 +264,10 @@ public TableResult asyncQuery(String sql) throws InterruptedException {
     // Submit the query job
     Job queryJob = bigquery.create(JobInfo.newBuilder(queryConfig).setJobId(jobId).build());
 
-    // Wait for the job to complete, polling every 5 seconds
+    // Wait for the job to complete, using retry options for polling
     queryJob = queryJob.waitFor(
-            RetryOption.initialRetryDelay(Duration.ofSeconds(1)),
-            RetryOption.totalTimeout(Duration.ofMinutes(10)));
+            RetryOption.initialRetryDelayDuration(Duration.ofSeconds(1)),
+            RetryOption.totalTimeoutDuration(Duration.ofMinutes(10)));
 
     if (queryJob == null) {
         throw new RuntimeException("Job no longer exists");
