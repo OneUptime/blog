@@ -77,7 +77,6 @@ import os
 import time
 import json
 from google.cloud import pubsub_v1
-from google.api_core import retry
 
 # Environment variables set by Cloud Run Jobs
 TASK_INDEX = int(os.environ.get("CLOUD_RUN_TASK_INDEX", 0))
@@ -200,12 +199,18 @@ CMD ["python", "worker.py"]
 And requirements:
 
 ```text
-google-cloud-pubsub==2.19.0
+google-cloud-pubsub==2.33.0
 ```
 
 ## Step 3: Build and Push the Image
 
 ```bash
+# Create an Artifact Registry Docker repository if it does not already exist
+gcloud artifacts repositories create cloud-run-images \
+  --repository-format=docker \
+  --location=us-central1 \
+  --description="Cloud Run container images"
+
 # Build and push using Cloud Build
 gcloud builds submit \
   --tag us-central1-docker.pkg.dev/$(gcloud config get-value project)/cloud-run-images/pubsub-worker:latest
@@ -216,6 +221,15 @@ gcloud builds submit \
 Now create the job with parallel task execution:
 
 ```bash
+# Create a service account for the job
+gcloud iam service-accounts create pubsub-worker-sa \
+  --display-name="Pub/Sub Worker Job"
+
+# Grant it permission to consume messages from the subscription
+gcloud pubsub subscriptions add-iam-policy-binding work-items-sub \
+  --member="serviceAccount:pubsub-worker-sa@$(gcloud config get-value project).iam.gserviceaccount.com" \
+  --role="roles/pubsub.subscriber"
+
 # Create a Cloud Run Job with 10 parallel tasks
 gcloud run jobs create process-queue \
   --image=us-central1-docker.pkg.dev/$(gcloud config get-value project)/cloud-run-images/pubsub-worker:latest \
@@ -224,6 +238,7 @@ gcloud run jobs create process-queue \
   --parallelism=10 \
   --task-timeout=30m \
   --set-env-vars="PROJECT_ID=$(gcloud config get-value project),SUBSCRIPTION_ID=work-items-sub" \
+  --service-account="pubsub-worker-sa@$(gcloud config get-value project).iam.gserviceaccount.com" \
   --cpu=1 \
   --memory=512Mi \
   --max-retries=3
@@ -272,7 +287,7 @@ gcloud run jobs executions describe \
 gcloud logging read "resource.type=cloud_run_job \
   AND resource.labels.job_name=process-queue" \
   --limit=50 \
-  --format="table(timestamp, labels.run_googleapis_com/task_index, textPayload)"
+  --format="table(timestamp, labels.task_index, textPayload)"
 ```
 
 ## Scheduling the Job
@@ -294,7 +309,7 @@ gcloud run jobs add-iam-policy-binding process-queue \
 gcloud scheduler jobs create http process-queue-schedule \
   --location=us-central1 \
   --schedule="0 * * * *" \
-  --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$(gcloud config get-value project)/jobs/process-queue:run" \
+  --uri="https://run.googleapis.com/v2/projects/$(gcloud config get-value project)/locations/us-central1/jobs/process-queue:run" \
   --http-method=POST \
   --oauth-service-account-email="job-scheduler-sa@$(gcloud config get-value project).iam.gserviceaccount.com"
 ```
@@ -305,17 +320,20 @@ The number of parallel tasks you choose depends on your workload:
 
 - **Message volume**: If you have 10,000 messages, 10 tasks with each processing 1,000 is reasonable
 - **Processing time per message**: If each message takes 10 seconds, 10 parallel tasks can process 1 message/second each
-- **Pub/Sub throughput**: A single subscription can deliver around 100 MB/s, so you are unlikely to hit this limit
+- **Pub/Sub throughput**: Pull subscriber throughput quotas are regional and range from hundreds of MB/s to several GB/s by default, so you are unlikely to hit this limit for small jobs
 - **Downstream dependencies**: If each task writes to a database, make sure the database can handle the concurrent load
 
-You can dynamically adjust task count when executing:
+You can adjust task count and parallelism before executing:
 
 ```bash
-# Override task count at execution time
-gcloud run jobs execute process-queue \
+# Update the job's task count and parallelism
+gcloud run jobs update process-queue \
   --region=us-central1 \
   --tasks=50 \
   --parallelism=50
+
+# Execute the updated job
+gcloud run jobs execute process-queue --region=us-central1
 ```
 
 ## Error Handling Best Practices
@@ -334,6 +352,17 @@ gcloud pubsub topics create work-items-dlq
 gcloud pubsub subscriptions update work-items-sub \
   --dead-letter-topic=work-items-dlq \
   --max-delivery-attempts=5
+
+# Allow Pub/Sub to publish dead-letter messages and acknowledge forwarded messages
+PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format="value(projectNumber)")
+
+gcloud pubsub topics add-iam-policy-binding work-items-dlq \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+  --role="roles/pubsub.publisher"
+
+gcloud pubsub subscriptions add-iam-policy-binding work-items-sub \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+  --role="roles/pubsub.subscriber"
 ```
 
 ## Summary
