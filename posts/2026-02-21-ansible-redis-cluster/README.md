@@ -8,13 +8,13 @@ Description: Complete guide to deploying a Redis Cluster with automatic sharding
 
 ---
 
-Redis Cluster is the built-in way to horizontally scale Redis. Unlike Redis Sentinel, which provides high availability for a single dataset, Redis Cluster shards your data across multiple nodes. Each node handles a subset of the 16384 hash slots, and the cluster automatically distributes keys across them. Setting up a Redis Cluster by hand involves creating six or more Redis instances, then running `redis-cli --cluster create` with the right arguments. With Ansible, you can automate the entire thing.
+Redis Cluster is the built-in way to horizontally scale Redis. Unlike Redis Sentinel, which provides high availability for a single dataset, Redis Cluster shards your data across multiple nodes. Each node handles a subset of the 16384 hash slots, and the cluster automatically distributes keys across them. Setting up a highly available Redis Cluster by hand usually involves creating six or more Redis instances, then running `redis-cli --cluster create` with the right arguments. With Ansible, you can automate the entire thing.
 
 This guide covers deploying a six-node Redis Cluster (three masters, three replicas) using Ansible.
 
 ## Cluster Architecture
 
-A minimum Redis Cluster requires six nodes: three masters and three replicas. Each master gets a replica for failover.
+A highly available Redis Cluster deployment commonly uses six nodes: three masters and three replicas. Each master gets a replica for failover.
 
 ```mermaid
 flowchart TD
@@ -76,23 +76,23 @@ redis_cluster_bus_port=16379
           - lsb-release
           - curl
           - gpg
+          - python3-debian
         state: present
         update_cache: true
 
-    - name: Add Redis GPG key
-      ansible.builtin.apt_key:
-        url: https://packages.redis.io/gpg
-        state: present
-
     - name: Add Redis APT repository
-      ansible.builtin.apt_repository:
-        repo: "deb https://packages.redis.io/deb {{ ansible_distribution_release }} main"
+      ansible.builtin.deb822_repository:
+        name: redis
+        types: deb
+        uris: https://packages.redis.io/deb
+        suites: "{{ ansible_distribution_release }}"
+        components: main
+        signed_by: https://packages.redis.io/gpg
         state: present
-        filename: redis
 
-    - name: Install redis-server
+    - name: Install Redis
       ansible.builtin.apt:
-        name: redis-server
+        name: redis
         state: present
         update_cache: true
 ```
@@ -276,19 +276,21 @@ After creation, verify that the cluster is healthy and all slots are assigned.
 
 ## Adding Nodes to an Existing Cluster
 
-As your data grows, you may need to add more shards. Here is how to add a new master and replica to an existing cluster.
+As your data grows, you may need to add more shards. Here is how to add a new master and a replica for that master to an existing cluster.
 
 ```yaml
 # playbooks/add-cluster-node.yml
 ---
-- name: Add a new node to the Redis Cluster
+- name: Add new nodes to the Redis Cluster
   hosts: redis_cluster_nodes[0]
   become: true
   vars_files:
     - ../vault/redis-secrets.yml
   vars:
-    new_node_ip: "10.0.3.16"
-    new_node_port: 6379
+    new_master_ip: "10.0.3.16"
+    new_master_port: 6379
+    new_replica_ip: "10.0.3.17"
+    new_replica_port: 6379
     existing_node: "{{ ansible_host }}:{{ redis_cluster_port }}"
 
   tasks:
@@ -296,7 +298,7 @@ As your data grows, you may need to add more shards. Here is how to add a new ma
       ansible.builtin.command:
         cmd: >
           redis-cli -a {{ redis_password }}
-          --cluster add-node {{ new_node_ip }}:{{ new_node_port }}
+          --cluster add-node {{ new_master_ip }}:{{ new_master_port }}
           {{ existing_node }}
       changed_when: true
       no_log: true
@@ -305,15 +307,42 @@ As your data grows, you may need to add more shards. Here is how to add a new ma
       ansible.builtin.pause:
         seconds: 10
 
+    - name: Get cluster nodes after adding the master
+      ansible.builtin.command:
+        cmd: redis-cli -a {{ redis_password }} cluster nodes
+      register: cluster_nodes_after_add
+      changed_when: false
+      no_log: true
+
+    - name: Find the new master node ID
+      ansible.builtin.set_fact:
+        new_master_id: >-
+          {{
+            cluster_nodes_after_add.stdout
+            | regex_search('(?m)^([0-9a-f]{40}) ' ~ new_master_ip ~ ':' ~ new_master_port ~ '@', '\\1')
+            | first
+          }}
+
     - name: Reshard slots to the new node
       ansible.builtin.command:
         cmd: >
           redis-cli -a {{ redis_password }}
           --cluster reshard {{ existing_node }}
           --cluster-from all
-          --cluster-to {{ new_node_id }}
+          --cluster-to {{ new_master_id }}
           --cluster-slots 4096
           --cluster-yes
+      changed_when: true
+      no_log: true
+
+    - name: Add the new replica to the new master
+      ansible.builtin.command:
+        cmd: >
+          redis-cli -a {{ redis_password }}
+          --cluster add-node {{ new_replica_ip }}:{{ new_replica_port }}
+          {{ existing_node }}
+          --cluster-slave
+          --cluster-master-id {{ new_master_id }}
       changed_when: true
       no_log: true
 ```
