@@ -51,7 +51,7 @@ Install the required testing tools:
 ```bash
 # Install testing tools
 
-pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest testinfra
+pip install ansible molecule molecule-docker ansible-lint yamllint pytest pytest-testinfra
 ```
 
 ## Writing Tests
@@ -185,9 +185,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install ansible molecule molecule-docker
-      - run: molecule test
-        env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
+      - run: molecule test -- --limit ${{ matrix.distro }}
 ```
 
 ### GitLab CI
@@ -208,9 +206,16 @@ lint:
 
 molecule:
   stage: test
-  image: docker:latest
+  image: docker:27-cli
   services:
-    - docker:dind
+    - docker:27-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - apk add --no-cache python3 py3-pip py3-virtualenv
+    - python3 -m venv .venv
+    - . .venv/bin/activate
   script:
     - pip install ansible molecule molecule-docker
     - molecule test
@@ -266,12 +271,12 @@ Testing Ansible code requires multiple layers: linting for style and best practi
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where continuous testing proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating continuous testing
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -303,7 +308,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -344,7 +349,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -385,7 +390,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with continuous testing
 - name: Robust task execution
   hosts: all
   tasks:
@@ -447,4 +452,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
