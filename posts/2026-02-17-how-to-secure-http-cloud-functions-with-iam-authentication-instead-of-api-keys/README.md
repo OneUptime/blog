@@ -8,16 +8,16 @@ Description: Learn how to secure HTTP-triggered Google Cloud Functions using IAM
 
 ---
 
-When you deploy an HTTP Cloud Function, it is publicly accessible by default unless you explicitly lock it down. Many developers reach for API keys as the first line of defense - embedding a secret key in the request and checking it in the function code. This works but it has serious drawbacks: keys get leaked in code repos, they are hard to rotate, there is no granular access control, and there is no audit trail.
+When you deploy an HTTP Cloud Function and allow unauthenticated invocation, it is publicly accessible unless you explicitly lock it down. Many developers reach for API keys as the first line of defense - embedding a secret key in the request and checking it in the function code. This works but it has serious drawbacks: keys get leaked in code repos, they are hard to rotate, there is no granular access control, and there is no audit trail.
 
 IAM authentication is the better approach. Google Cloud Functions has built-in support for requiring IAM authentication on HTTP endpoints. Only callers with the right IAM role can invoke the function, and every call is logged. Let me show you how to set this up.
 
 ## Removing Public Access
 
-By default, when you deploy a Gen 2 function with `--allow-unauthenticated`, anyone can call it. For a secured function, omit that flag:
+When you deploy a Gen 2 function with `--allow-unauthenticated`, anyone can call it. For a secured function, use `--no-allow-unauthenticated`:
 
 ```bash
-# Deploy WITHOUT --allow-unauthenticated to require authentication
+# Deploy with --no-allow-unauthenticated to require authentication
 
 gcloud functions deploy my-secure-api \
   --gen2 \
@@ -26,6 +26,7 @@ gcloud functions deploy my-secure-api \
   --source=. \
   --entry-point=handler \
   --trigger-http \
+  --no-allow-unauthenticated \
   --memory=256Mi
 ```
 
@@ -126,7 +127,7 @@ functions.http('caller', async (req, res) => {
 
 ### From a GCE Instance or GKE Pod
 
-The same approach works from Compute Engine and GKE, as long as the instance/pod has a service account with the invoker role:
+The same approach works from Compute Engine and from GKE pods using Workload Identity Federation for GKE, as long as the Google service account has the invoker role:
 
 ```javascript
 // Calling from a GCE instance or GKE pod
@@ -159,13 +160,15 @@ curl -H "Authorization: Bearer ${TOKEN}" \
 Or in code:
 
 ```javascript
-// Local development: use Application Default Credentials
+// Local development: use service account credentials or service account impersonation with ADC
 const { GoogleAuth } = require('google-auth-library');
 
 async function callFromLocal() {
   const targetUrl = 'https://my-secure-api-abc123-uc.a.run.app';
 
-  // Uses your gcloud credentials (from gcloud auth application-default login)
+  // Uses ADC backed by a service account or service account impersonation.
+  // Plain user ADC from gcloud auth application-default login is not enough
+  // to mint an audience-bound ID token in every environment.
   const auth = new GoogleAuth();
   const client = await auth.getIdTokenClient(targetUrl);
   const response = await client.request({ url: targetUrl });
