@@ -8,14 +8,14 @@ Description: Build a custom Ansible vars plugin that loads variables from extern
 
 ---
 
-Vars plugins inject variables into your Ansible runs from external sources. Unlike lookup plugins (which you call explicitly), vars plugins run automatically during inventory loading and variable resolution. This makes them perfect for pulling configuration from systems like Consul, etcd, AWS SSM Parameter Store, or any key-value store without changing your playbooks.
+Vars plugins inject variables into your Ansible runs from external sources. Unlike lookup plugins (which you call explicitly), enabled vars plugins run automatically when Ansible resolves variables, and can also be staged to run during inventory loading. This makes them perfect for pulling configuration from systems like Consul, etcd, AWS SSM Parameter Store, or any key-value store without changing your playbooks.
 
 ## How Vars Plugins Work
 
-Ansible calls vars plugins at two points:
+Modern vars plugins implement a `get_vars(loader, path, entities)` method:
 
-1. **get_host_vars(host)** - Called for each host in the inventory to load host-specific variables
-2. **get_group_vars(group)** - Called for each group to load group-specific variables
+1. **entities** - A host or group, or a list of hosts and groups, that needs variables
+2. **path** - The inventory source directory or playbook directory Ansible is loading variables relative to
 
 The plugin returns a dictionary that gets merged into the host or group variables.
 
@@ -23,7 +23,7 @@ The plugin returns a dictionary that gets merged into the host or group variable
 
 This plugin pulls variables from Consul's KV store based on the host name and group membership.
 
-Create `plugins/vars/consul_vars.py`:
+Create `vars_plugins/consul_vars.py`:
 
 ```python
 # consul_vars.py - Vars plugin that loads variables from Consul KV
@@ -45,7 +45,7 @@ DOCUMENTATION = """
         env:
           - name: CONSUL_HTTP_ADDR
         ini:
-          - section: consul_vars
+          - section: vars_consul_vars
             key: url
       consul_token:
         description: Consul ACL token.
@@ -53,7 +53,7 @@ DOCUMENTATION = """
         env:
           - name: CONSUL_HTTP_TOKEN
         ini:
-          - section: consul_vars
+          - section: vars_consul_vars
             key: token
       kv_prefix:
         description: Prefix for Ansible variables in Consul KV.
@@ -62,18 +62,17 @@ DOCUMENTATION = """
         env:
           - name: CONSUL_ANSIBLE_PREFIX
         ini:
-          - section: consul_vars
+          - section: vars_consul_vars
             key: prefix
       stage:
-        description: Stage for vars plugin execution (inventory or task).
-        type: str
-        default: inventory
-        choices:
-          - inventory
-          - task
+        description: Stage for vars plugin execution.
         ini:
-          - section: consul_vars
+          - section: vars_consul_vars
             key: stage
+        env:
+          - name: ANSIBLE_VARS_PLUGIN_STAGE
+    extends_documentation_fragment:
+      - vars_plugin_staging
 """
 
 import json
@@ -93,6 +92,9 @@ class VarsModule(BaseVarsPlugin):
     def get_vars(self, loader, path, entities, cache=True):
         """Load variables for the given entities (hosts or groups)."""
         super(VarsModule, self).get_vars(loader, path, entities)
+
+        if not isinstance(entities, list):
+            entities = [entities]
 
         data = {}
         for entity in entities:
@@ -212,7 +214,7 @@ Configure `ansible.cfg`:
 [defaults]
 vars_plugins_enabled = host_group_vars,consul_vars
 
-[consul_vars]
+[vars_consul_vars]
 url = http://consul.internal.myorg.com:8500
 prefix = ansible
 stage = inventory
@@ -261,6 +263,8 @@ import json
 import boto3
 from ansible.plugins.vars import BaseVarsPlugin
 from ansible.utils.display import Display
+from ansible.inventory.host import Host
+from ansible.inventory.group import Group
 
 display = Display()
 
@@ -272,6 +276,9 @@ class VarsModule(BaseVarsPlugin):
 
     def get_vars(self, loader, path, entities, cache=True):
         super(VarsModule, self).get_vars(loader, path, entities)
+
+        if not isinstance(entities, list):
+            entities = [entities]
 
         data = {}
         ssm = boto3.client('ssm')
@@ -309,9 +316,10 @@ class VarsModule(BaseVarsPlugin):
 Vars plugins run for every host in your inventory. For large inventories, this means many API calls. Implement caching to reduce the load:
 
 ```python
-_cache = {}
-
 def _fetch_vars(self, var_type, name):
+    if not hasattr(self, '_cache'):
+        self._cache = {}
+
     cache_key = '%s/%s' % (var_type, name)
     if cache_key in self._cache:
         return self._cache[cache_key]
@@ -323,4 +331,4 @@ def _fetch_vars(self, var_type, name):
 
 ## Summary
 
-Vars plugins automatically inject variables from external sources without any changes to your playbooks. They run during inventory processing and feed data into the normal variable resolution system. This makes them ideal for pulling configuration from key-value stores like Consul, etcd, or AWS SSM Parameter Store. The plugin pattern is simple: implement `get_vars()`, distinguish between hosts and groups, and return a dictionary. Add caching for production use with large inventories.
+Vars plugins automatically inject variables from external sources without any changes to your playbooks. They run during variable resolution, or during inventory processing when staged that way, and feed data into the normal variable resolution system. This makes them ideal for pulling configuration from key-value stores like Consul, etcd, or AWS SSM Parameter Store. The plugin pattern is simple: implement `get_vars()`, distinguish between hosts and groups, and return a dictionary. Add caching for production use with large inventories.
