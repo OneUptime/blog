@@ -18,14 +18,14 @@ Test plugins are different from filter plugins. Filters transform data (e.g., `v
 
 ## Plugin File Structure
 
-Test plugins go into a `test_plugins/` directory either in your project root or inside an Ansible collection. Here is the basic layout:
+Test plugins go into a `test_plugins/` directory adjacent to your playbook, inside a role, in a configured test plugin path, or inside an Ansible collection. Here is the basic layout:
 
 ```text
 my_project/
-  test_plugins/
-    network_tests.py
   playbooks/
     validate_network.yml
+    test_plugins/
+      network_tests.py
 ```
 
 Or inside a collection:
@@ -44,7 +44,7 @@ collections/
 
 Let us start with a simple test plugin that checks whether a string is a valid IPv4 address.
 
-Create the file `test_plugins/network_tests.py`:
+Create the file `playbooks/test_plugins/network_tests.py`:
 
 ```python
 # network_tests.py - Custom test plugin for network validation
@@ -71,7 +71,7 @@ def is_valid_cidr(value):
 
 
 def is_private_ip(value):
-    """Test whether an IP address is in a private range."""
+    """Test whether an IP address is considered private by ipaddress."""
     try:
         addr = ipaddress.ip_address(value)
         return addr.is_private
@@ -105,7 +105,7 @@ The key piece is the `TestModule` class with a `tests()` method. This method ret
 
 ## Using Your Custom Tests in Playbooks
 
-Now you can use these tests in any playbook within the same project.
+Now you can use these tests in any playbook in that playbook directory.
 
 This playbook validates network configuration variables before applying them:
 
@@ -136,7 +136,7 @@ This playbook validates network configuration variables before applying them:
 
     - name: Check if server IP is private
       ansible.builtin.debug:
-        msg: "Server IP is {{ 'private' if server_ip is private_ip else 'public' }}"
+        msg: "Server IP is {{ 'private' if server_ip is private_ip else 'not private' }}"
 
     - name: Validate application port
       ansible.builtin.assert:
@@ -154,7 +154,7 @@ This playbook validates network configuration variables before applying them:
 
 Here is a test plugin for validating semantic version strings and comparing them.
 
-Create `test_plugins/version_tests.py`:
+Create `playbooks/test_plugins/version_tests.py`:
 
 ```python
 # version_tests.py - Test plugin for semantic version validation
@@ -164,8 +164,9 @@ SEMVER_PATTERN = re.compile(
     r'^(?P<major>0|[1-9]\d*)'
     r'\.(?P<minor>0|[1-9]\d*)'
     r'\.(?P<patch>0|[1-9]\d*)'
-    r'(?:-(?P<prerelease>[0-9A-Za-z\-.]+))?'
-    r'(?:\+(?P<build>[0-9A-Za-z\-.]+))?$'
+    r'(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)'
+    r'(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?'
+    r'(?:\+(?P<build>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$'
 )
 
 
@@ -279,7 +280,7 @@ Usage in a playbook:
 - name: Check memory threshold
   ansible.builtin.debug:
     msg: "Memory usage is within acceptable range"
-  when: ansible_memfree_mb is in_range(512, 32768)
+  when: ansible_facts.memfree_mb is in_range(512, 32768)
 ```
 
 ## Handling Edge Cases
@@ -287,15 +288,18 @@ Usage in a playbook:
 Your test functions should be robust. Always handle `None` values, wrong types, and unexpected input gracefully. A test plugin should never throw an unhandled exception. It should return `False` for invalid input.
 
 ```python
+import re
+
+
 def is_valid_hostname(value):
     """Test whether a string is a valid hostname per RFC 1123."""
     if not isinstance(value, str) or not value:
         return False
-    if len(value) > 253:
-        return False
     # Remove trailing dot if present
     if value.endswith('.'):
         value = value[:-1]
+    if len(value) > 253:
+        return False
     labels = value.split('.')
     hostname_re = re.compile(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$')
     return all(hostname_re.match(label) for label in labels)
@@ -307,7 +311,7 @@ Before shipping a test plugin, test it locally. You can run the Python functions
 
 ```python
 # test_network_tests.py - Unit tests for the network test plugin
-from network_tests import is_valid_ipv4, is_valid_cidr, is_private_ip
+from playbooks.test_plugins.network_tests import is_valid_ipv4, is_valid_cidr, is_private_ip
 
 assert is_valid_ipv4("192.168.1.1") == True
 assert is_valid_ipv4("999.999.999.999") == False
@@ -326,9 +330,9 @@ print("All tests passed")
 Run it with:
 
 ```bash
-python test_network_tests.py
+python3 test_network_tests.py
 ```
 
 ## Summary
 
-Custom test plugins give you a clean way to encapsulate validation logic as reusable Jinja2 tests. They keep your playbooks readable and your conditionals short. The pattern is straightforward: write Python functions that return booleans, put them in a `TestModule` class, and drop the file into `test_plugins/` or into your collection's `plugins/test/` directory. Once you start using them, you will find they dramatically reduce the complexity of your `when` clauses and `assert` blocks.
+Custom test plugins give you a clean way to encapsulate validation logic as reusable Jinja2 tests. They keep your playbooks readable and your conditionals short. The pattern is straightforward: write Python functions that return booleans, put them in a `TestModule` class, and drop the file into a `test_plugins/` directory next to your playbook or into your collection's `plugins/test/` directory. Once you start using them, you will find they dramatically reduce the complexity of your `when` clauses and `assert` blocks.
