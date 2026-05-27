@@ -82,9 +82,9 @@ steps:
       # Tag with commit SHA for traceability
       - '-t'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
-      # Tag with branch name for easy reference
+      # Tag with a stable channel name for easy reference
       - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$BRANCH_NAME'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:dev'
       # Tag with build number
       - '-t'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:build-$BUILD_ID'
@@ -92,7 +92,7 @@ steps:
 
 images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$BRANCH_NAME'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:dev'
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:build-$BUILD_ID'
 ```
 
@@ -130,7 +130,7 @@ gcloud artifacts docker tags add \
 ### Deleting Tags
 
 ```bash
-# Remove a tag (the image itself remains if other tags point to it)
+# Remove a tag (the image version remains, but may become untagged)
 gcloud artifacts docker tags delete \
   us-central1-docker.pkg.dev/my-project/my-repo/my-app:old-tag \
   --project=my-project
@@ -234,13 +234,13 @@ gcloud artifacts docker tags add \
   us-central1-docker.pkg.dev/my-project/my-repo/my-app:production
 ```
 
-Your GKE deployments reference the environment tag (`staging` or `production`), and promoting is just a tag operation - no re-push needed.
+Your GKE deployments reference the environment tag (`staging` or `production`), and promoting is just a tag operation - no re-push needed. Use this pattern only for repositories where those environment tags are intentionally mutable. In repositories with immutable tags enabled, deploy by digest or by a unique release tag instead.
 
 ## Best Practices
 
 1. **Never rely solely on `latest`**. It is ambiguous and you cannot tell what version is actually running. Always have a specific version tag alongside it.
 
-2. **Use immutable tags for production**. This prevents accidental overwrites and gives you confidence in reproducibility.
+2. **Use immutable tags for production release repositories**. This prevents accidental overwrites and gives you confidence in reproducibility, but it also means you cannot move tags like `production` from one digest to another.
 
 3. **Include the git SHA in at least one tag**. This makes it easy to trace a running image back to the exact source code that produced it.
 
