@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud SQL, High Availability, Failover, Database, Disaster Recovery
 
-Description: How to diagnose and resolve Cloud SQL high availability failover failures, including stuck failovers, split-brain scenarios, and recovery procedures.
+Description: How to diagnose and resolve Cloud SQL high availability failover failures, including stuck failovers, application reconnect issues, and recovery procedures.
 
 ---
 
@@ -12,9 +12,9 @@ You configured Cloud SQL with high availability expecting that if the primary go
 
 ## How Cloud SQL HA Failover Works
 
-Cloud SQL high availability uses a regional instance configuration with a primary and standby in different zones within the same region. When the primary becomes unhealthy, Cloud SQL automatically fails over to the standby. The standby gets promoted to primary and takes over the same IP address.
+Cloud SQL high availability uses a regional instance configuration with a primary and standby in different zones within the same region. Writes are synchronously replicated to regional persistent disks in both zones before a transaction is reported as committed. When the primary becomes unhealthy, Cloud SQL automatically fails over to the standby. The standby becomes the primary and serves traffic through the same shared static IP address.
 
-The expected failover time is typically 60-120 seconds, though it can be longer depending on the workload.
+The expected failover downtime is about 60 seconds, though it can differ depending on the Cloud SQL environment.
 
 ## Checking Failover Status
 
@@ -23,7 +23,7 @@ The expected failover time is typically 60-120 seconds, though it can be longer 
 
 gcloud sql instances describe my-instance \
     --project=my-project \
-    --format="json(state, settings.availabilityType, failoverReplica, gceZone, secondaryGceZone)"
+    --format="json(state, settings.availabilityType, gceZone, secondaryGceZone)"
 ```
 
 Check the operations log for failover events:
@@ -56,9 +56,9 @@ gcloud sql operations list \
 
 If a failover has been running for more than 10 minutes, it is likely stuck. Common causes:
 
-- Large uncommitted transactions that need to be replayed on the standby
-- Excessive WAL (PostgreSQL) or binary log (MySQL) that the standby has not yet applied
-- Network issues between zones preventing the standby from catching up
+- The primary instance is not in a normal operating state, such as during maintenance or another long-running Cloud SQL operation
+- The secondary zone or standby instance is unhealthy, which blocks failover until Cloud SQL repairs it
+- Crash recovery or workload pressure is making the instance take longer to become available again
 
 There is not much you can do to speed up a stuck failover except wait. If it has been stuck for over 30 minutes, contact Google Cloud support.
 
@@ -77,7 +77,7 @@ The IP address should stay the same after failover. If your application cannot c
 
 ```bash
 # Test connectivity to the instance
-gcloud sql connect my-instance --user=root --project=my-project
+gcloud sql connect my-instance --user=DB_USER --project=my-project
 ```
 
 Common connection issues after failover:
@@ -105,19 +105,20 @@ engine = create_engine(
 
 ### Scenario 3: Failover Completed But Data Appears Missing
 
-Because Cloud SQL HA uses semi-synchronous replication (MySQL) or synchronous replication (PostgreSQL), there should be no data loss during failover. However, if replication was lagging at the time of failover, you might see what appears to be missing data.
+Because current Cloud SQL HA uses synchronous replication to regional persistent disks, committed transactions should not be lost during failover. However, transactions that were in progress when existing connections were closed can be rolled back, and applications that read from separate read replicas might briefly see stale data.
 
-Check if there was replication lag before the failover:
+If the missing data was observed through a read replica, check whether that replica had replication lag around the time of failover:
 
 ```bash
-# Check Cloud Monitoring for replication lag around the time of failover
+# Check Cloud Monitoring for read replica lag around the time of failover
 gcloud monitoring time-series list \
-    --filter='resource.type="cloudsql_database" AND resource.labels.database_id="my-project:my-instance" AND metric.type="cloudsql.googleapis.com/database/replication/replica_lag"' \
-    --interval-start-time=$(date -u -v-2H +%Y-%m-%dT%H:%M:%SZ) \
+    --project=my-project \
+    --filter='resource.type="cloudsql_database" AND resource.labels.database_id="my-project:my-replica" AND metric.type="cloudsql.googleapis.com/database/replication/replica_lag"' \
+    --interval-start-time=$(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ) \
     --format="table(points.value.doubleValue, points.interval.endTime)"
 ```
 
-For MySQL, semi-synchronous replication can fall back to asynchronous mode under heavy load, which means the standby might be slightly behind.
+For the primary HA instance itself, look for application errors or rolled-back transactions around the time existing connections were closed.
 
 ### Scenario 4: Failover Keeps Triggering Repeatedly
 
@@ -163,7 +164,7 @@ gcloud sql instances failover my-instance \
 During the test, monitor:
 - How long the failover takes
 - Whether your application reconnects automatically
-- Whether any data was lost or transactions were rolled back
+- Whether any in-flight transactions were rolled back
 
 ## Ensuring Your Application Handles Failovers
 
@@ -198,8 +199,8 @@ flowchart TD
     A --> E[Enable pool_pre_ping]
     A --> F[Set up monitoring alerts]
     A --> G[Document recovery procedure]
-    C --> H{Failover < 2 min?}
-    H -->|No| I[Investigate - check instance sizing and replication lag]
+    C --> H{Failover near 60s?}
+    H -->|No| I[Investigate - check instance state and workload pressure]
     H -->|Yes| J[Document actual failover time]
 ```
 
@@ -208,7 +209,7 @@ flowchart TD
 - Always test failover before you need it in production
 - Configure your application's connection pool with `pool_pre_ping` or equivalent health checks
 - Implement retry logic with exponential backoff for database connections
-- Monitor replication lag continuously - high lag means longer failovers
+- Monitor read replica lag separately if your application reads from replicas
 - Keep your instance properly sized to avoid resource-related cascading failovers
 - Check the operations log for detailed failure information when failovers do not complete
 
