@@ -8,7 +8,7 @@ Description: Deploy a complete ELK centralized logging stack with Elasticsearch,
 
 ---
 
-When your infrastructure grows beyond a handful of servers, grepping through individual log files stops being a viable troubleshooting strategy. You need a centralized logging stack that collects, indexes, and lets you search logs from all your systems in one place. The ELK stack (Elasticsearch, Logstash, Kibana) is the most popular open-source solution for this, and Ansible is the right tool to deploy and manage it consistently.
+When your infrastructure grows beyond a handful of servers, grepping through individual log files stops being a viable troubleshooting strategy. You need a centralized logging stack that collects, indexes, and lets you search logs from all your systems in one place. The ELK stack (Elasticsearch, Logstash, Kibana) is a widely used solution for this, and Ansible is the right tool to deploy and manage it consistently.
 
 This guide covers deploying a complete centralized logging stack with Ansible. We will set up Elasticsearch for storage and search, Logstash for log processing, Kibana for visualization, and Filebeat on all servers as the log shipper.
 
@@ -28,7 +28,7 @@ graph LR
 ```yaml
 # roles/elk/defaults/main.yml - ELK stack configuration
 
-elk_version: "8.11"
+elk_version: "8.x"
 elasticsearch_heap_size: "1g"
 elasticsearch_cluster_name: logging
 elasticsearch_data_dir: /var/lib/elasticsearch
@@ -50,16 +50,22 @@ elasticsearch_index_retention_days: 30
 ```yaml
 # roles/elk/tasks/elasticsearch.yml - Deploy Elasticsearch
 ---
-- name: Add Elastic GPG key
-  apt_key:
-    url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+- name: Install deb822 repository dependency
+  apt:
+    name: python3-debian
     state: present
+    update_cache: yes
 
 - name: Add Elastic repository
-  apt_repository:
-    repo: "deb https://artifacts.elastic.co/packages/{{ elk_version }}/apt stable main"
+  deb822_repository:
+    name: elastic
+    types: deb
+    uris: "https://artifacts.elastic.co/packages/{{ elk_version }}/apt"
+    suites: stable
+    components:
+      - main
+    signed_by: https://artifacts.elastic.co/GPG-KEY-elasticsearch
     state: present
-    filename: elastic
 
 - name: Install Elasticsearch
   apt:
@@ -77,8 +83,10 @@ elasticsearch_index_retention_days: 30
   notify: restart elasticsearch
 
 - name: Configure Elasticsearch JVM heap size
-  template:
-    src: jvm.options.j2
+  copy:
+    content: |
+      -Xms{{ elasticsearch_heap_size }}
+      -Xmx{{ elasticsearch_heap_size }}
     dest: /etc/elasticsearch/jvm.options.d/heap.options
     owner: root
     group: elasticsearch
@@ -190,8 +198,10 @@ filter {
       match => { "message" => '%{IPORHOST:remote_addr} - %{DATA:remote_user} \[%{HTTPDATE:time_local}\] "%{WORD:method} %{DATA:request} HTTP/%{NUMBER:http_version}" %{NUMBER:status} %{NUMBER:body_bytes_sent} "%{DATA:http_referer}" "%{DATA:http_user_agent}"' }
     }
     mutate {
-      convert => { "status" => "integer" }
-      convert => { "body_bytes_sent" => "integer" }
+      convert => {
+        "status" => "integer"
+        "body_bytes_sent" => "integer"
+      }
     }
   }
 
@@ -207,6 +217,7 @@ output {
   elasticsearch {
     hosts => ["http://localhost:{{ elasticsearch_http_port }}"]
     index => "logs-%{[fields][log_type]}-%{+YYYY.MM.dd}"
+    ilm_enabled => false
   }
 }
 ```
@@ -246,16 +257,37 @@ output {
   delay: 10
 ```
 
+## Kibana Configuration Template
+
+```yaml
+# roles/elk/templates/kibana.yml.j2
+server.name: "{{ kibana_server_name }}"
+server.host: "0.0.0.0"
+server.port: {{ kibana_port }}
+elasticsearch.hosts: ["http://localhost:{{ elasticsearch_http_port }}"]
+```
+
 ## Filebeat Client Tasks
 
 ```yaml
 # roles/filebeat/tasks/main.yml - Deploy Filebeat on all servers
 ---
-- name: Add Elastic repository
-  apt_repository:
-    repo: "deb https://artifacts.elastic.co/packages/{{ elk_version }}/apt stable main"
+- name: Install deb822 repository dependency
+  apt:
+    name: python3-debian
     state: present
-    filename: elastic
+    update_cache: yes
+
+- name: Add Elastic repository
+  deb822_repository:
+    name: elastic
+    types: deb
+    uris: "https://artifacts.elastic.co/packages/{{ elk_version }}/apt"
+    suites: stable
+    components:
+      - main
+    signed_by: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    state: present
 
 - name: Install Filebeat
   apt:
@@ -272,11 +304,6 @@ output {
     mode: '0600'
   notify: restart filebeat
 
-- name: Enable Filebeat system module
-  command: filebeat modules enable system
-  args:
-    creates: /etc/filebeat/modules.d/system.yml
-
 - name: Start and enable Filebeat
   systemd:
     name: filebeat
@@ -289,7 +316,8 @@ output {
 ```yaml
 # roles/filebeat/templates/filebeat.yml.j2 - Filebeat shipper config
 filebeat.inputs:
-  - type: log
+  - type: filestream
+    id: syslog
     enabled: true
     paths:
       - /var/log/syslog
@@ -297,14 +325,16 @@ filebeat.inputs:
     fields:
       log_type: syslog
 
-  - type: log
+  - type: filestream
+    id: nginx-access
     enabled: true
     paths:
       - /var/log/nginx/access.log
     fields:
       log_type: nginx_access
 
-  - type: log
+  - type: filestream
+    id: nginx-error
     enabled: true
     paths:
       - /var/log/nginx/error.log
@@ -357,15 +387,23 @@ processors:
     body:
       policy:
         phases:
-          hot:
-            actions:
-              rollover:
-                max_size: "10gb"
-                max_age: "1d"
           delete:
             min_age: "{{ elasticsearch_index_retention_days }}d"
             actions:
               delete: {}
+    status_code: [200, 201]
+
+- name: Apply ILM policy to new log indices
+  uri:
+    url: "http://localhost:{{ elasticsearch_http_port }}/_index_template/logs-template"
+    method: PUT
+    body_format: json
+    body:
+      index_patterns:
+        - "logs-*"
+      template:
+        settings:
+          index.lifecycle.name: logs-retention
     status_code: [200, 201]
 ```
 
@@ -378,4 +416,4 @@ ansible-playbook -i inventory/hosts.ini playbook.yml
 
 ## Summary
 
-This Ansible-managed ELK stack gives you a production-ready centralized logging solution. Elasticsearch stores and indexes the logs, Logstash processes and enriches them, Kibana provides visualization and search, and Filebeat ships logs from every server in your fleet. The entire stack is defined in code, meaning you can replicate it across environments, roll back configuration changes, and scale individual components as your log volume grows.
+This Ansible-managed ELK stack gives you a repeatable starting point for centralized logging. Elasticsearch stores and indexes the logs, Logstash processes and enriches them, Kibana provides visualization and search, and Filebeat ships logs from every server in your fleet. The entire stack is defined in code, meaning you can replicate it across environments and roll back configuration changes.
