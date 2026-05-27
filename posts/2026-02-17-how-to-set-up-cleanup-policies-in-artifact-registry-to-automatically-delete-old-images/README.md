@@ -25,7 +25,7 @@ Cleanup policies are defined as JSON and applied to a repository. Here is a basi
 ```json
 [
   {
-    "id": "delete-old-images",
+    "name": "delete-old-images",
     "action": {
       "type": "Delete"
     },
@@ -46,7 +46,7 @@ Apply it to your repository:
 cat > cleanup-policy.json << 'EOF'
 [
   {
-    "id": "delete-old-images",
+    "name": "delete-old-images",
     "action": {
       "type": "Delete"
     },
@@ -61,6 +61,7 @@ EOF
 gcloud artifacts repositories set-cleanup-policies my-docker-repo \
   --location=us-central1 \
   --policy=cleanup-policy.json \
+  --no-dry-run \
   --project=my-project
 ```
 
@@ -71,21 +72,22 @@ You probably do not want to delete all old images. Production images tagged with
 ```json
 [
   {
-    "id": "delete-untagged-images",
+    "name": "delete-untagged-images",
     "action": {
       "type": "Delete"
     },
     "condition": {
-      "tagState": "UNTAGGED",
+      "tagState": "untagged",
       "olderThan": "604800s"
     }
   },
   {
-    "id": "delete-dev-images",
+    "name": "delete-dev-images",
     "action": {
       "type": "Delete"
     },
     "condition": {
+      "tagState": "tagged",
       "tagPrefixes": ["dev-", "feature-", "pr-"],
       "olderThan": "1209600s"
     }
@@ -105,16 +107,17 @@ Instead of just deleting, you can use "Keep" policies to protect certain images 
 ```json
 [
   {
-    "id": "keep-production-images",
+    "name": "keep-production-images",
     "action": {
       "type": "Keep"
     },
     "condition": {
+      "tagState": "tagged",
       "tagPrefixes": ["v", "release-", "prod-"]
     }
   },
   {
-    "id": "keep-recent-images",
+    "name": "keep-recent-images",
     "action": {
       "type": "Keep"
     },
@@ -123,7 +126,7 @@ Instead of just deleting, you can use "Keep" policies to protect certain images 
     }
   },
   {
-    "id": "delete-everything-else",
+    "name": "delete-everything-else",
     "action": {
       "type": "Delete"
     },
@@ -140,7 +143,7 @@ This policy:
 2. Always keeps the 10 most recent versions of each image
 3. Deletes everything else older than 7 days
 
-The order matters - keep policies are evaluated first, and anything protected by a keep policy will not be deleted.
+Keep policies take precedence when an image matches both a keep policy and a delete policy, so anything protected by a keep policy will not be deleted.
 
 ## Version Count-Based Cleanup
 
@@ -149,7 +152,7 @@ If you want to keep a fixed number of versions regardless of age:
 ```json
 [
   {
-    "id": "keep-latest-versions",
+    "name": "keep-latest-versions",
     "action": {
       "type": "Keep"
     },
@@ -159,7 +162,7 @@ If you want to keep a fixed number of versions regardless of age:
     }
   },
   {
-    "id": "delete-old-versions",
+    "name": "delete-old-versions",
     "action": {
       "type": "Delete"
     },
@@ -181,17 +184,18 @@ Here are the commands for managing cleanup policies:
 gcloud artifacts repositories set-cleanup-policies my-docker-repo \
   --location=us-central1 \
   --policy=cleanup-policy.json \
+  --no-dry-run \
   --project=my-project
 
 # View current cleanup policies
-gcloud artifacts repositories describe my-docker-repo \
+gcloud artifacts repositories list-cleanup-policies my-docker-repo \
   --location=us-central1 \
   --project=my-project
 
-# Delete all cleanup policies from a repository
+# Delete selected cleanup policies from a repository
 gcloud artifacts repositories delete-cleanup-policies my-docker-repo \
   --location=us-central1 \
-  --policy-names="delete-old-images,keep-production-images" \
+  --policynames="delete-old-images,keep-production-images" \
   --project=my-project
 ```
 
@@ -225,6 +229,7 @@ resource "google_artifact_registry_repository" "docker_repo" {
     action = "DELETE"
 
     condition {
+      tag_state    = "TAGGED"
       tag_prefixes = ["dev-", "feature-"]
       older_than   = "1209600s"
     }
@@ -236,6 +241,7 @@ resource "google_artifact_registry_repository" "docker_repo" {
     action = "KEEP"
 
     condition {
+      tag_state    = "TAGGED"
       tag_prefixes = ["v", "release-"]
     }
   }
@@ -259,12 +265,12 @@ After setting up cleanup policies, monitor what gets deleted:
 ```bash
 # Check Cloud Audit Logs for cleanup activity
 gcloud logging read \
-  'resource.type="audited_resource" AND protoPayload.methodName="google.devtools.artifactregistry.v1.ArtifactRegistry.DeleteVersion"' \
+  'resource.type="audited_resource" AND protoPayload.methodName="google.devtools.artifactregistry.v1.ArtifactRegistry.BatchDeleteVersions"' \
   --project=my-project \
   --limit=20
 ```
 
-You can also set up alerts in Cloud Monitoring to track storage usage over time and verify that cleanup is working as expected.
+Artifact Registry cleanup activity is recorded in Data Access audit logs, so make sure Data Write audit logging is enabled for Artifact Registry. You can also set up alerts in Cloud Monitoring to track storage usage over time and verify that cleanup is working as expected.
 
 ## Practical Cleanup Strategy
 
@@ -279,27 +285,27 @@ Based on what has worked well for me, here is a cleanup strategy that balances c
 ```json
 [
   {
-    "id": "keep-releases",
+    "name": "keep-releases",
     "action": { "type": "Keep" },
-    "condition": { "tagPrefixes": ["v"] }
+    "condition": { "tagState": "tagged", "tagPrefixes": ["v"] }
   },
   {
-    "id": "keep-recent",
+    "name": "keep-recent",
     "action": { "type": "Keep" },
     "mostRecentVersions": { "keepCount": 10 }
   },
   {
-    "id": "delete-untagged",
+    "name": "delete-untagged",
     "action": { "type": "Delete" },
-    "condition": { "tagState": "UNTAGGED", "olderThan": "259200s" }
+    "condition": { "tagState": "untagged", "olderThan": "259200s" }
   },
   {
-    "id": "delete-feature-branches",
+    "name": "delete-feature-branches",
     "action": { "type": "Delete" },
-    "condition": { "tagPrefixes": ["feature-", "pr-"], "olderThan": "604800s" }
+    "condition": { "tagState": "tagged", "tagPrefixes": ["feature-", "pr-"], "olderThan": "604800s" }
   },
   {
-    "id": "delete-old",
+    "name": "delete-old",
     "action": { "type": "Delete" },
     "condition": { "olderThan": "2592000s" }
   }
