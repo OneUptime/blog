@@ -82,9 +82,9 @@ vips:
 Install MetalLB using the official manifests:
 
 ```bash
-# Install MetalLB v0.14.x
+# Install MetalLB v0.16.x
 # This creates the metallb-system namespace and deploys controller + speakers
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.0/config/manifests/metallb-native.yaml
 
 # Wait for all MetalLB pods to be ready
 kubectl wait --namespace metallb-system \
@@ -143,16 +143,16 @@ sequenceDiagram
 
     Admin->>Admin: Verify MetalLB is running
     Admin->>Keepalived: Stop Keepalived on backup nodes
-    Admin->>Admin: Create LoadBalancer services with specific IPs
     Admin->>Keepalived: Stop Keepalived on master node
-    Admin->>MetalLB: MetalLB claims the released IPs
+    Admin->>Admin: Create LoadBalancer services with specific IPs
+    Admin->>MetalLB: MetalLB assigns and announces the IPs
     Admin->>DNS: Verify DNS still resolves correctly
     Admin->>Admin: Test connectivity end to end
 ```
 
 ## Step 5: Create LoadBalancer Services
 
-For each Keepalived VIP, create a corresponding LoadBalancer service with the `loadBalancerIP` field set to the same address:
+For each Keepalived VIP, create a corresponding LoadBalancer service with the `metallb.io/loadBalancerIPs` annotation set to the same address:
 
 ```yaml
 # svc-web-frontend.yaml
@@ -164,11 +164,11 @@ metadata:
   namespace: production
   annotations:
     # Optional: pin to a specific MetalLB pool
-    metallb.universe.tf/address-pool: production-pool
+    metallb.io/address-pool: production-pool
+    # Request the exact IP previously managed by Keepalived
+    metallb.io/loadBalancerIPs: "192.168.1.100"
 spec:
   type: LoadBalancer
-  # Request the exact IP previously managed by Keepalived
-  loadBalancerIP: "192.168.1.100"
   ports:
     - name: http
       port: 80
@@ -188,15 +188,15 @@ Run the cutover during your maintenance window:
 ssh backup-node-1 "sudo systemctl stop keepalived"
 ssh backup-node-2 "sudo systemctl stop keepalived"
 
-# Step 6b: Apply MetalLB services (they will pend until IPs are free)
+# Step 6b: Stop Keepalived on master node to release IPs
+ssh master-node "sudo systemctl stop keepalived"
+
+# Step 6c: Apply MetalLB services after the VIPs are released
 kubectl apply -f svc-web-frontend.yaml
 kubectl apply -f svc-api-gateway.yaml
 kubectl apply -f svc-monitoring-ingress.yaml
 
-# Step 6c: Stop Keepalived on master node to release IPs
-ssh master-node "sudo systemctl stop keepalived"
-
-# Step 6d: Verify MetalLB has claimed the IPs
+# Step 6d: Verify MetalLB has assigned the IPs
 kubectl get svc -A -o wide | grep LoadBalancer
 ```
 
