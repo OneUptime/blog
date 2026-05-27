@@ -82,14 +82,13 @@ The ping module accepts a `data` parameter. By default it returns "pong", but yo
 
 ## ICMP Ping Using command Module
 
-For actual network-layer connectivity testing (ICMP ping), use the command module:
+For actual network-layer connectivity testing (ICMP ping) on Linux targets, use the command module to run the system `ping` binary. Adjust the flags if your managed nodes use a different operating system:
 
 ```yaml
 # icmp_ping.yml - Test ICMP connectivity between hosts
 ---
 - name: Test ICMP network connectivity
   hosts: all
-  become: true
   vars:
     targets:
       - name: Gateway
@@ -174,7 +173,6 @@ Here is a more complete diagnostic playbook that tests multiple layers of connec
 ---
 - name: Network connectivity diagnostics
   hosts: all
-  become: true
   gather_facts: true
   vars:
     gateway: "{{ ansible_default_ipv4.gateway }}"
