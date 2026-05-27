@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Jenkins, CI/CD, DevOps, Automation
 
-Description: Learn how to automate the complete setup of a Jenkins CI/CD pipeline server using Ansible playbooks with plugins, security, and pipelines.
+Description: Learn how to automate the setup of a Jenkins CI/CD pipeline server using Ansible playbooks with plugins, security, and pipeline job templates.
 
 ---
 
 Setting up Jenkins manually is one of those tasks that starts simple and quickly turns into a multi-hour ordeal. You install Java, add the Jenkins repo, install Jenkins, wait for it to start, grab the initial admin password, click through the setup wizard, install plugins one by one, configure credentials, and then realize you need to do it all again on a staging server. Ansible takes all that pain away by letting you codify the entire process into a repeatable playbook.
 
-In this guide, I will walk you through setting up a production-ready Jenkins server using Ansible. We will cover everything from the base installation to configuring plugins, creating pipeline jobs, and securing the instance.
+In this guide, I will walk you through setting up a production-ready Jenkins server using Ansible. We will cover everything from the base installation to configuring plugins, creating a seed job template, and securing the instance.
 
 ## Prerequisites
 
-You need a control machine with Ansible 2.12+ installed and a target Ubuntu 22.04 server with SSH access. The target server should have at least 2 GB of RAM and 2 CPU cores for a reasonable Jenkins experience.
+You need a control machine with Ansible 2.12+ installed and a target Ubuntu 24.04 server with SSH access. The target server should have at least 2 GB of RAM and 2 CPU cores for a reasonable Jenkins experience.
 
 ## Project Structure
 
@@ -31,7 +31,6 @@ jenkins-setup/
         plugins.yml
         security.yml
       templates/
-        jenkins.yaml.j2
         seed-job.xml.j2
       handlers/
         main.yml
@@ -57,7 +56,6 @@ Set sensible defaults for your Jenkins configuration:
 
 ```yaml
 # roles/jenkins/defaults/main.yml - Default variables for Jenkins role
-jenkins_version: "2.426.3"
 jenkins_port: 8080
 jenkins_home: /var/lib/jenkins
 jenkins_admin_user: admin
@@ -88,23 +86,33 @@ The main task file handles Java and Jenkins installation:
 - name: Install required system packages
   apt:
     name:
-      - apt-transport-https
       - ca-certificates
       - curl
       - gnupg
       - fontconfig
-      - openjdk-17-jre
+      - openjdk-21-jre
     state: present
     update_cache: yes
 
+- name: Create APT keyring directory
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
 - name: Add Jenkins GPG key
-  apt_key:
-    url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
-    state: present
+  get_url:
+    url: https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
+    dest: /etc/apt/keyrings/jenkins-keyring.asc
+    owner: root
+    group: root
+    mode: '0644'
 
 - name: Add Jenkins repository
   apt_repository:
-    repo: "deb https://pkg.jenkins.io/debian-stable binary/"
+    repo: "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/"
     state: present
     filename: jenkins
 
@@ -113,21 +121,37 @@ The main task file handles Java and Jenkins installation:
     name: jenkins
     state: present
     update_cache: yes
+    policy_rc_d: 101
 
-- name: Configure Jenkins default options
-  template:
-    src: jenkins.yaml.j2
-    dest: /etc/default/jenkins
+- name: Include security configuration tasks
+  include_tasks: security.yml
+
+- name: Create Jenkins systemd override directory
+  file:
+    path: /etc/systemd/system/jenkins.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Configure Jenkins systemd options
+  copy:
+    content: |
+      [Service]
+      Environment="JAVA_OPTS={{ jenkins_java_opts }} -Djenkins.install.runSetupWizard=false"
+      Environment="JENKINS_PORT={{ jenkins_port }}"
+    dest: /etc/systemd/system/jenkins.service.d/override.conf
     owner: root
     group: root
     mode: '0644'
-  notify: restart jenkins
+  notify: daemon-reload and restart jenkins
 
 - name: Ensure Jenkins is started and enabled
   systemd:
     name: jenkins
     state: started
     enabled: yes
+    daemon_reload: yes
 
 - name: Wait for Jenkins to fully start up
   uri:
@@ -138,17 +162,13 @@ The main task file handles Java and Jenkins installation:
   retries: 30
   delay: 10
 
-- name: Read initial admin password
-  slurp:
-    src: "{{ jenkins_home }}/secrets/initialAdminPassword"
-  register: jenkins_initial_password
-  ignore_errors: yes
+- name: Remove Jenkins security bootstrap hook
+  file:
+    path: "{{ jenkins_home }}/init.groovy.d/basic-security.groovy"
+    state: absent
 
 - name: Include plugin installation tasks
   include_tasks: plugins.yml
-
-- name: Include security configuration tasks
-  include_tasks: security.yml
 ```
 
 ## Plugin Installation
@@ -168,7 +188,7 @@ Install plugins using the Jenkins CLI:
   command: >
     java -jar /tmp/jenkins-cli.jar
     -s http://localhost:{{ jenkins_port }}/
-    -auth {{ jenkins_admin_user }}:{{ jenkins_initial_password.content | b64decode | trim }}
+    -auth {{ jenkins_admin_user }}:{{ jenkins_admin_password }}
     install-plugin {{ item }}
   loop: "{{ jenkins_plugins }}"
   register: plugin_result
@@ -192,42 +212,43 @@ Install plugins using the Jenkins CLI:
 
 ## Security Configuration
 
-Lock down Jenkins with proper security settings:
+Lock down Jenkins with proper security settings before the first startup:
 
 ```yaml
-# roles/jenkins/tasks/security.yml - Configure Jenkins security
+# roles/jenkins/tasks/security.yml - Bootstrap Jenkins security
 ---
-- name: Create Jenkins admin user via Groovy script
-  uri:
-    url: "http://localhost:{{ jenkins_port }}/scriptText"
-    method: POST
-    body_format: form-urlencoded
-    body:
-      script: |
+- name: Create Jenkins init hook directory
+  file:
+    path: "{{ jenkins_home }}/init.groovy.d"
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: '0750'
+
+- name: Create Jenkins admin user via init hook
+  copy:
+    dest: "{{ jenkins_home }}/init.groovy.d/basic-security.groovy"
+    owner: jenkins
+    group: jenkins
+    mode: '0600'
+    content: |
         import jenkins.model.*
         import hudson.security.*
 
-        def instance = Jenkins.getInstance()
-        def hudsonRealm = new HudsonPrivateSecurityRealm(false)
-        hudsonRealm.createAccount('{{ jenkins_admin_user }}', '{{ jenkins_admin_password }}')
-        instance.setSecurityRealm(hudsonRealm)
+        def instance = Jenkins.get()
+        def hudsonRealm = instance.getSecurityRealm() instanceof HudsonPrivateSecurityRealm ?
+          instance.getSecurityRealm() :
+          new HudsonPrivateSecurityRealm(false)
+
+        if (hudsonRealm.getAllUsers().find { it.getId() == '{{ jenkins_admin_user }}' } == null) {
+          hudsonRealm.createAccount('{{ jenkins_admin_user }}', '{{ jenkins_admin_password }}')
+        }
 
         def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
         strategy.setAllowAnonymousRead(false)
+        instance.setSecurityRealm(hudsonRealm)
         instance.setAuthorizationStrategy(strategy)
         instance.save()
-    user: "{{ jenkins_admin_user }}"
-    password: "{{ jenkins_initial_password.content | b64decode | trim }}"
-    force_basic_auth: yes
-    status_code: 200
-
-- name: Disable Jenkins setup wizard
-  lineinfile:
-    path: "{{ jenkins_home }}/jenkins.install.InstallUtil.lastExecVersion"
-    line: "{{ jenkins_version }}"
-    create: yes
-    owner: jenkins
-    group: jenkins
 ```
 
 ## Seed Job Template
@@ -235,8 +256,8 @@ Lock down Jenkins with proper security settings:
 Create a pipeline seed job that bootstraps other jobs:
 
 ```xml
-<!-- roles/jenkins/templates/seed-job.xml.j2 - Job DSL seed job configuration -->
 <?xml version='1.1' encoding='UTF-8'?>
+<!-- roles/jenkins/templates/seed-job.xml.j2 - Job DSL seed job configuration -->
 <project>
   <description>Seed job that creates all pipeline jobs from DSL</description>
   <builders>
@@ -260,6 +281,17 @@ Define handlers for restarting Jenkins:
 - name: restart jenkins
   systemd:
     name: jenkins
+    state: restarted
+
+- name: daemon-reload and restart jenkins
+  systemd:
+    name: jenkins
+    state: restarted
+    daemon_reload: yes
+
+- name: restart nginx
+  systemd:
+    name: nginx
     state: restarted
 ```
 
@@ -315,13 +347,24 @@ For production use, you will want Nginx in front of Jenkins:
         ssl_certificate_key /etc/letsencrypt/live/{{ jenkins_hostname }}/privkey.pem;
         location / {
           proxy_pass http://jenkins;
+          proxy_http_version 1.1;
+          proxy_request_buffering off;
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header Connection "upgrade";
+          proxy_set_header Upgrade $http_upgrade;
         }
       }
     dest: /etc/nginx/sites-available/jenkins
+  notify: restart nginx
+
+- name: Enable Jenkins Nginx site
+  file:
+    src: /etc/nginx/sites-available/jenkins
+    dest: /etc/nginx/sites-enabled/jenkins
+    state: link
   notify: restart nginx
 ```
 
@@ -342,7 +385,7 @@ After the playbook completes, you can verify Jenkins is working:
 
 - name: Display Jenkins version
   debug:
-    msg: "Jenkins {{ jenkins_info.json.hudson_version }} is running with {{ jenkins_info.json.numExecutors }} executors"
+    msg: "Jenkins {{ jenkins_info.x_jenkins }} is running with {{ jenkins_info.json.numExecutors }} executors"
 ```
 
 ## Summary
