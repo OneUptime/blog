@@ -57,6 +57,15 @@ const express = require('express');
 const app = express();
 const port = process.env.PORT || 8080;
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Health check endpoint
 app.get('/healthz', (req, res) => {
   res.status(200).send('ok');
@@ -75,7 +84,7 @@ app.get('/api/products', (req, res) => {
 
 // Server-side rendered page
 app.get('/ssr/:page', (req, res) => {
-  const page = req.params.page;
+  const page = escapeHtml(req.params.page);
   const timestamp = new Date().toISOString();
 
   // Dynamic HTML generated on the server
@@ -108,13 +117,13 @@ Create the Dockerfile:
 
 ```dockerfile
 # Dockerfile for the Cloud Run service
-FROM node:20-slim
+FROM node:24-slim
 
 WORKDIR /app
 
 # Copy package files and install dependencies
-COPY package.json package-lock.json ./
-RUN npm ci --only=production
+COPY package*.json ./
+RUN npm install --omit=dev
 
 # Copy application code
 COPY server.js .
@@ -319,16 +328,15 @@ The `s-maxage` directive controls CDN caching specifically, while `max-age` cont
 ## Setting Up a Custom Domain
 
 ```bash
-# Add a custom domain to Firebase Hosting
-firebase hosting:channel:deploy live
+# Deploy your Hosting site before connecting the domain
+firebase deploy --only hosting
 
-# Or configure in firebase.json and deploy
 # Then in the Firebase Console, go to Hosting > Add custom domain
 ```
 
 Follow the prompts in the Firebase Console to:
 1. Verify domain ownership
-2. Add the required DNS records (A and AAAA records)
+2. Add the DNS records shown by the setup wizard
 3. Wait for SSL certificate provisioning
 
 ## Multiple Cloud Run Services
@@ -417,7 +425,7 @@ If requests are not reaching Cloud Run:
 
 4. **Use preview channels for staging** - Test your full stack in a preview channel before deploying to the live site.
 
-5. **Monitor Cloud Run costs** - Every request to a dynamic route invokes your Cloud Run service. Monitor usage to avoid unexpected bills.
+5. **Monitor Cloud Run costs** - Every uncached request to a dynamic route invokes your Cloud Run service. Monitor usage to avoid unexpected bills.
 
 ## Wrapping Up
 
