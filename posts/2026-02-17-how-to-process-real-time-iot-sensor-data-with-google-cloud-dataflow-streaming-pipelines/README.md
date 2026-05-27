@@ -10,7 +10,7 @@ Description: Process IoT sensor data in real time using Google Cloud Dataflow st
 
 When you have thousands of sensors sending data every few seconds, you need a processing layer that can handle the volume, apply transformations in real time, and route the results to the right destinations. Google Cloud Dataflow, built on Apache Beam, is designed for exactly this kind of work.
 
-In this guide, I will show you how to build a Dataflow streaming pipeline that reads IoT sensor data from Pub/Sub, applies windowed aggregations, detects anomalies, and writes results to both BigQuery and Cloud Storage.
+In this guide, I will show you how to build a Dataflow streaming pipeline that reads IoT sensor data from Pub/Sub, applies windowed aggregations, detects anomalies, and writes results to BigQuery and Pub/Sub.
 
 ## Why Dataflow for IoT Streaming
 
@@ -20,13 +20,13 @@ For IoT workloads, the key features are:
 
 - Autoscaling based on message backlog
 - Built-in windowing for time-based aggregations
-- Exactly-once processing semantics
+- Exactly-once processing semantics by default for records as they move through the pipeline
 - Native Pub/Sub and BigQuery connectors
 
 ## Prerequisites
 
 - GCP project with Dataflow, Pub/Sub, BigQuery, and Cloud Storage APIs enabled
-- Python 3.8+ with Apache Beam SDK installed
+- Python 3.9+ with Apache Beam SDK installed
 - A Pub/Sub topic receiving IoT sensor data
 - A GCS bucket for Dataflow staging files
 
@@ -35,7 +35,7 @@ Install the required packages:
 ```bash
 # Install Apache Beam with GCP extras for Dataflow support
 
-pip install apache-beam[gcp]==2.53.0
+pip install apache-beam[gcp]==2.73.0
 ```
 
 ## Step 1: Define the Data Schema
@@ -79,10 +79,9 @@ Here is the complete pipeline that handles parsing, windowing, aggregation, and 
 ```python
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
-from apache_beam.transforms.window import FixedWindows, SlidingWindows
-from apache_beam.transforms.trigger import AfterWatermark, AfterProcessingTime, AccumulationMode
+from apache_beam.transforms.window import FixedWindows
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ParseSensorMessage(beam.DoFn):
     """Parses raw Pub/Sub messages into structured sensor readings.
@@ -102,22 +101,26 @@ class ParseSensorMessage(beam.DoFn):
                 if field not in data:
                     raise ValueError(f"Missing required field: {field}")
 
-            yield beam.pvalue.TaggedOutput(self.VALID_OUTPUT, {
+            event_time = data["timestamp"] / 1000
+            reading = {
                 "device_id": data["device_id"],
                 "sensor_type": data["sensor_type"],
                 "value": float(data["value"]),
                 "unit": data.get("unit", ""),
-                "timestamp": datetime.utcfromtimestamp(
-                    data["timestamp"] / 1000
+                "timestamp": datetime.fromtimestamp(
+                    event_time, tz=timezone.utc
                 ).isoformat(),
-                "ingested_at": datetime.utcnow().isoformat(),
-            })
+                "ingested_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+            # Assign the sensor event time so fixed windows group by reading time.
+            yield beam.window.TimestampedValue(reading, event_time)
         except Exception as e:
             # Route bad messages to the dead letter output
             yield beam.pvalue.TaggedOutput(self.DEAD_LETTER, {
                 "raw_message": str(element),
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             })
 
 
@@ -219,11 +222,7 @@ def run():
                 lambda x: (f"{x['device_id']}|{x['sensor_type']}", x["value"])
             )
             | "Window" >> beam.WindowInto(
-                FixedWindows(60),  # 60-second windows
-                trigger=AfterWatermark(
-                    early=AfterProcessingTime(30)  # Emit early results every 30s
-                ),
-                accumulation_mode=AccumulationMode.DISCARDING,
+                FixedWindows(60),  # 60-second event-time windows
             )
             | "GroupByKey" >> beam.GroupByKey()
             | "Aggregate" >> beam.ParDo(ComputeAggregations())
@@ -266,11 +265,10 @@ python pipeline.py \
   --runner=DataflowRunner \
   --streaming \
   --max_num_workers=10 \
-  --autoscaling_algorithm=THROUGHPUT_BASED \
-  --experiments=enable_streaming_engine
+  --autoscaling_algorithm=THROUGHPUT_BASED
 ```
 
-The `enable_streaming_engine` experiment offloads shuffle operations to the Dataflow service instead of running them on worker VMs, which reduces costs and improves performance.
+For Python 3 pipelines using Apache Beam 2.73.0, Streaming Engine is enabled by default when the Dataflow workers are in the same region as the job and customer-managed encryption keys are not used. Streaming Engine offloads shuffle operations to the Dataflow service instead of running them on worker VMs, which can reduce costs and improve performance.
 
 ## Step 4: Monitor the Pipeline
 
@@ -285,13 +283,13 @@ Set up alerts on system lag to catch processing delays:
 
 ```bash
 # Create an alert policy for high pipeline lag (over 5 minutes)
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --notification-channels=YOUR_CHANNEL_ID \
   --display-name="Dataflow Pipeline Lag Alert" \
   --condition-display-name="System lag over 5 minutes" \
   --condition-filter='resource.type="dataflow_job" AND metric.type="dataflow.googleapis.com/job/system_lag"' \
-  --condition-threshold-value=300 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --if='> 300' \
+  --duration=60s
 ```
 
 ## Windowing Strategies
@@ -304,4 +302,4 @@ The pipeline above uses fixed 60-second windows, but depending on your use case,
 
 ## Wrapping Up
 
-Dataflow streaming pipelines give you a declarative way to process IoT sensor data at any scale. The combination of Pub/Sub for ingestion, Beam windowing for time-based aggregations, and BigQuery for storage means you can build a complete real-time analytics system without managing any infrastructure. The autoscaling takes care of traffic spikes, and the exactly-once processing guarantees mean you do not lose data or double-count readings.
+Dataflow streaming pipelines give you a declarative way to process IoT sensor data at any scale. The combination of Pub/Sub for ingestion, Beam windowing for time-based aggregations, and BigQuery for storage means you can build a complete real-time analytics system without managing any infrastructure. The autoscaling takes care of traffic spikes, and Dataflow's default exactly-once streaming mode helps prevent dropped or duplicated records as data moves through the pipeline.
