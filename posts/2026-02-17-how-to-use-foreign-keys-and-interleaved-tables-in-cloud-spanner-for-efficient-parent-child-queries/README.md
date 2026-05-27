@@ -8,7 +8,7 @@ Description: Understand the difference between foreign keys and interleaved tabl
 
 ---
 
-Cloud Spanner gives you two ways to model parent-child relationships between tables: traditional foreign keys and interleaved tables. Both enforce referential integrity, but they have very different performance characteristics. Choosing the right one can make or break your query performance at scale.
+Cloud Spanner gives you two ways to model parent-child relationships between tables: traditional foreign keys and interleaved tables. Enforced foreign keys and `INTERLEAVE IN PARENT` relationships both enforce parent-child constraints, but they have very different performance characteristics. Choosing the right one can make or break your query performance at scale.
 
 If you are coming from a traditional relational database background, foreign keys feel familiar. Interleaved tables, on the other hand, are unique to Spanner and take advantage of its distributed architecture. Let us dig into both, see how they work, and figure out when to pick each one.
 
@@ -43,7 +43,7 @@ The key thing to understand is that Spanner may store Customers and Orders data 
 
 ## Interleaved Tables: Co-located Data
 
-Interleaved tables are Spanner's way of physically co-locating parent and child data. When you interleave a child table into a parent, Spanner stores the child rows alongside their parent row in the same split. This means that reading a parent and all its children requires touching only a single node, even in a massive distributed cluster.
+Interleaved tables are Spanner's way of physically co-locating parent and child data. When you interleave a child table into a parent, Spanner usually stores the child rows alongside their parent row in the same split. This means that reading a parent and its children can minimize storage access and network traffic, even in a massive distributed cluster.
 
 Here is the same schema using interleaving:
 
@@ -97,7 +97,7 @@ With interleaving, the storage layout changes to this:
     [Customer-B, Order-002, "2026-01-16", 149.99]
 ```
 
-This co-location is the performance win. Fetching a customer and all their orders is a single-split read.
+This co-location is the performance win. Fetching a customer and all their orders is usually a localized range read.
 
 ## Multi-Level Interleaving
 
@@ -130,7 +130,7 @@ CREATE TABLE LineItems (
   INTERLEAVE IN PARENT Orders ON DELETE CASCADE;
 ```
 
-Now a single customer, all their orders, and all line items for those orders are stored together. A query like "give me customer A's complete order history with line items" reads from a single location.
+Now a single customer, all their orders, and all line items for those orders are stored together when the hierarchy fits in the same split. A query like "give me customer A's complete order history with line items" can read with much less cross-split work.
 
 ## Querying Interleaved Tables
 
@@ -156,7 +156,7 @@ You can also read a specific range of a hierarchy efficiently:
 
 ```sql
 -- Read all orders for a specific customer without joining the parent table
--- This is a simple range scan within a single split
+-- This reads the customer's order key range; ORDER BY may still require sorting
 SELECT OrderId, OrderDate, TotalAmount
 FROM Orders
 WHERE CustomerId = 'customer-123'
@@ -171,7 +171,7 @@ Use interleaved tables when you frequently read parents and children together, w
 
 Use foreign keys when the relationship is many-to-many, when you frequently query the child table independently of the parent, when child rows might reference different parents over time, or when the child table is very large relative to the parent. Good examples include products referenced by many orders, tags applied across different entities, and lookup tables shared by multiple other tables.
 
-You can also combine both approaches. Use interleaving for the primary hierarchy and foreign keys for cross-cutting references:
+You can also combine both approaches. Use interleaving for the primary hierarchy and foreign keys for cross-cutting references, but avoid modeling the same parent-child relationship with both:
 
 ```sql
 -- Products table stands alone (not interleaved)
@@ -195,7 +195,7 @@ CREATE TABLE LineItems (
 
 ## Size Considerations
 
-There is a practical limit to interleaving. Spanner has a maximum split size (currently around 4GB). If a single parent row plus all its interleaved children exceeds this limit, Spanner will have trouble managing the data. For most use cases this is not a problem, but if you have a parent with millions of child rows, you should think carefully about whether interleaving is appropriate.
+There is a practical limit to interleaving. Spanner has a split size limit, and it can also add split boundaries when a hotspot is detected in child rows. If a single parent row plus all its interleaved children grows very large, Spanner might need to split within that hierarchy, reducing the locality benefit. For most use cases this is not a problem, but if you have a parent with millions of child rows, you should think carefully about whether interleaving is appropriate.
 
 ## Wrapping Up
 
