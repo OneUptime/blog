@@ -17,7 +17,7 @@ This guide covers setting up PM2 with Ansible for single and multiple Node.js ap
 - Automatic process restart on crash
 - Cluster mode for multi-core utilization
 - Zero-downtime reloads
-- Built-in log rotation
+- Log rotation through the pm2-logrotate module
 - Process monitoring dashboard
 - Startup script generation for system reboots
 
@@ -45,7 +45,7 @@ pm2-setup/
 ```yaml
 # group_vars/all.yml
 
-node_version: "20"
+node_version: "24"
 app_user: nodeapp
 app_group: nodeapp
 
@@ -92,6 +92,27 @@ pm2_apps:
 ```yaml
 # roles/pm2/tasks/main.yml
 ---
+- name: Create application group
+  group:
+    name: "{{ app_group }}"
+    state: present
+
+- name: Create application user
+  user:
+    name: "{{ app_user }}"
+    group: "{{ app_group }}"
+    home: "/home/{{ app_user }}"
+    shell: /bin/bash
+    create_home: yes
+
+- name: Create log directory
+  file:
+    path: "/home/{{ app_user }}/logs"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0755'
+
 - name: Install Node.js repository
   shell: "curl -fsSL https://deb.nodesource.com/setup_{{ node_version }}.x | bash -"
   args:
@@ -126,19 +147,6 @@ pm2_apps:
   become_user: "{{ app_user }}"
   changed_when: false
 
-- name: Create application group
-  group:
-    name: "{{ app_group }}"
-    state: present
-
-- name: Create application user
-  user:
-    name: "{{ app_user }}"
-    group: "{{ app_group }}"
-    home: "/home/{{ app_user }}"
-    shell: /bin/bash
-    create_home: yes
-
 - name: Clone or update application repositories
   git:
     repo: "{{ item.repo }}"
@@ -167,10 +175,10 @@ pm2_apps:
   notify: reload pm2 apps
 
 - name: Start all PM2 applications
-  command: pm2 start /home/{{ app_user }}/ecosystem.config.js
+  command: pm2 startOrReload /home/{{ app_user }}/ecosystem.config.js --update-env
   become_user: "{{ app_user }}"
   register: pm2_start
-  changed_when: "'started' in pm2_start.stdout or 'restarted' in pm2_start.stdout"
+  changed_when: "'online' in pm2_start.stdout or 'reload' in pm2_start.stdout"
 
 - name: Save PM2 process list for persistence
   command: pm2 save
@@ -180,12 +188,7 @@ pm2_apps:
 - name: Generate PM2 startup script for system boot
   command: "pm2 startup systemd -u {{ app_user }} --hp /home/{{ app_user }}"
   register: pm2_startup
-  changed_when: "'already' not in pm2_startup.stdout"
-
-- name: Execute the PM2 startup command
-  command: "{{ pm2_startup.stdout_lines[-1] }}"
-  when: pm2_startup.changed and pm2_startup.stdout_lines | length > 0
-  ignore_errors: yes
+  changed_when: "'already' not in (pm2_startup.stdout + pm2_startup.stderr)"
 
 - name: Verify all PM2 processes are running
   command: pm2 jlist
@@ -207,28 +210,28 @@ module.exports = {
   apps: [
 {% for app in pm2_apps %}
     {
-      name: '{{ app.name }}',
-      script: '{{ app.script }}',
-      cwd: '{{ app.app_dir }}',
-      instances: '{{ app.instances | default(1) }}',
-      exec_mode: '{{ app.exec_mode | default("fork") }}',
-      max_memory_restart: '{{ app.max_memory_restart | default("500M") }}',
+      name: {{ app.name | to_json }},
+      script: {{ app.script | to_json }},
+      cwd: {{ app.app_dir | to_json }},
+      instances: {{ app.instances | default(1) | to_json }},
+      exec_mode: {{ app.exec_mode | default("fork") | to_json }},
+      max_memory_restart: {{ app.max_memory_restart | default("500M") | to_json }},
       watch: false,
       autorestart: true,
       max_restarts: 10,
       restart_delay: 4000,
 {% if app.cron_restart is defined %}
-      cron_restart: '{{ app.cron_restart }}',
+      cron_restart: {{ app.cron_restart | to_json }},
 {% endif %}
       // Environment variables
       env: {
 {% for key, value in (app.env | default({})).items() %}
-        {{ key }}: '{{ value }}',
+        {{ key | to_json }}: {{ value | string | to_json }},
 {% endfor %}
       },
       // Log configuration
-      error_file: '/home/{{ app_user }}/logs/{{ app.name }}-error.log',
-      out_file: '/home/{{ app_user }}/logs/{{ app.name }}-out.log',
+      error_file: {{ ('/home/' ~ app_user ~ '/logs/' ~ app.name ~ '-error.log') | to_json }},
+      out_file: {{ ('/home/' ~ app_user ~ '/logs/' ~ app.name ~ '-out.log') | to_json }},
       merge_logs: true,
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },
@@ -243,7 +246,7 @@ module.exports = {
 # roles/pm2/handlers/main.yml
 ---
 - name: reload pm2 apps
-  command: pm2 reload ecosystem.config.js
+  command: pm2 startOrReload ecosystem.config.js --update-env
   args:
     chdir: "/home/{{ app_user }}"
   become_user: "{{ app_user }}"
@@ -257,14 +260,6 @@ module.exports = {
 - name: Set Up PM2 for Node.js Applications
   hosts: all
   become: yes
-  pre_tasks:
-    - name: Create log directory
-      file:
-        path: "/home/{{ app_user }}/logs"
-        state: directory
-        owner: "{{ app_user }}"
-        group: "{{ app_group }}"
-        mode: '0755'
   roles:
     - pm2
 ```
@@ -284,6 +279,7 @@ PM2 supports zero-downtime reloads in cluster mode. When you deploy new code:
   become_user: "{{ app_user }}"
   loop: "{{ pm2_apps }}"
   register: code_update
+  tags: deploy
 
 - name: Install updated dependencies
   npm:
@@ -292,15 +288,17 @@ PM2 supports zero-downtime reloads in cluster mode. When you deploy new code:
   become_user: "{{ app_user }}"
   loop: "{{ code_update.results }}"
   when: item.changed
+  tags: deploy
 
-- name: Gracefully reload applications (zero-downtime)
-  command: "pm2 reload {{ item.item.name }}"
+- name: Reload or restart changed applications
+  command: "pm2 {{ 'reload' if (item.item.exec_mode | default('fork')) == 'cluster' else 'restart' }} {{ item.item.name }} --update-env"
   become_user: "{{ app_user }}"
   loop: "{{ code_update.results }}"
   when: item.changed
+  tags: deploy
 ```
 
-The `pm2 reload` command in cluster mode starts new workers before killing old ones, so there is no downtime.
+The `pm2 reload` command can provide zero-downtime reloads for networked applications in cluster mode. Applications running in fork mode are restarted instead.
 
 ## Monitoring PM2
 
