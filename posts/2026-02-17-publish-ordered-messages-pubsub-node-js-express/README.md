@@ -10,7 +10,7 @@ Description: Learn how to publish ordered messages to Google Cloud Pub/Sub from 
 
 Google Cloud Pub/Sub is a fully managed messaging service that handles millions of messages per second. By default, Pub/Sub does not guarantee message ordering - messages can arrive at subscribers in any order. But many use cases require strict ordering: financial transactions, event sourcing, change data capture, and log processing all need messages delivered in sequence.
 
-Pub/Sub solves this with ordering keys. When you publish messages with the same ordering key, Pub/Sub guarantees they will be delivered to subscribers in the order they were published. In this post, I will show you how to set this up in a Node.js Express application.
+Pub/Sub solves this with ordering keys. When you publish messages with the same ordering key to the same region, Pub/Sub guarantees they will be delivered to subscribers in the order that the Pub/Sub service receives them. In this post, I will show you how to set this up in a Node.js Express application.
 
 ## How Ordering Keys Work
 
@@ -30,34 +30,34 @@ npm init -y
 npm install express @google-cloud/pubsub
 ```
 
-## Creating a Topic with Message Ordering Enabled
+## Creating a Topic and Ordered Subscription
 
-Before you can publish ordered messages, your topic must have message ordering enabled. You can do this through the console or programmatically.
+Before you can receive ordered messages, the subscription must have message ordering enabled. The topic itself does not store an ordering setting.
 
 ```javascript
-// create-topic.js - Create a topic with ordering enabled
+// create-topic.js - Create a topic
 const { PubSub } = require('@google-cloud/pubsub');
 
 const pubsub = new PubSub({ projectId: 'your-project-id' });
 
-async function createOrderedTopic(topicName) {
-  const [topic] = await pubsub.createTopic({
-    name: topicName,
-    // Enable message ordering on the topic
-    messageOrderingEnabled: true,
-  });
+async function createTopic(topicName) {
+  const [topic] = await pubsub.createTopic(topicName);
 
-  console.log(`Topic ${topic.name} created with ordering enabled`);
+  console.log(`Topic ${topic.name} created`);
   return topic;
 }
 
-createOrderedTopic('order-events');
+createTopic('order-events');
 ```
 
 You also need a subscription with ordering enabled.
 
 ```javascript
 // create-subscription.js - Create subscription with ordering
+const { PubSub } = require('@google-cloud/pubsub');
+
+const pubsub = new PubSub({ projectId: 'your-project-id' });
+
 async function createOrderedSubscription(topicName, subscriptionName) {
   const [subscription] = await pubsub
     .topic(topicName)
@@ -87,8 +87,7 @@ app.use(express.json());
 
 const pubsub = new PubSub({ projectId: 'your-project-id' });
 const topic = pubsub.topic('order-events', {
-  // Required: enable message ordering on the topic object
-  enableMessageOrdering: true,
+  // Required: enable ordering on this publisher
   messageOrdering: true,
 });
 
@@ -142,7 +141,6 @@ const { PubSub } = require('@google-cloud/pubsub');
 
 const pubsub = new PubSub({ projectId: 'your-project-id' });
 const topic = pubsub.topic('order-events', {
-  enableMessageOrdering: true,
   messageOrdering: true,
 });
 
@@ -191,7 +189,6 @@ Pub/Sub batches messages for efficiency. With ordering keys, batching interacts 
 ```javascript
 // Configure batching for better throughput while maintaining order
 const topic = pubsub.topic('order-events', {
-  enableMessageOrdering: true,
   messageOrdering: true,
   batching: {
     maxMessages: 100,         // Batch up to 100 messages
@@ -279,6 +276,6 @@ curl -X POST http://localhost:3000/orders/ORD-001/events \
   -d '{"eventType": "order.delivered", "payload": {}}'
 ```
 
-All three events for ORD-001 will arrive at the subscriber in exactly the order they were published.
+All three events for ORD-001 will arrive at the subscriber in the order that Pub/Sub receives them.
 
 Ordered messaging in Pub/Sub is a powerful feature when you need it, but it does come with trade-offs in throughput and complexity around failure handling. Use it when ordering matters for your use case, choose your ordering keys carefully, and always handle the resume-after-failure pattern in your publisher code.
