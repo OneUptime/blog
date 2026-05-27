@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Dataplex, Data Catalog, Data Lineage, Data Governance, BigQuery
+Tags: GCP, Dataplex, Knowledge Catalog, Data Lineage, Data Governance, BigQuery
 
-Description: Learn how to track data lineage across your GCP data pipelines using Dataplex and Data Catalog to understand where data comes from and how it flows through your systems.
+Description: Learn how to track data lineage across your GCP data pipelines using Dataplex and Knowledge Catalog to understand where data comes from and how it flows through your systems.
 
 ---
 
-When something goes wrong with a report, the first question is always "where did this data come from?" Data lineage gives you the answer by tracking how data flows through your pipeline - from source to final output. On GCP, Data Catalog and Dataplex work together to provide automatic and custom lineage tracking across BigQuery, Cloud Storage, Dataflow, and other services. Here is how to set it up.
+When something goes wrong with a report, the first question is always "where did this data come from?" Data lineage gives you the answer by tracking how data flows through your pipeline - from source to final output. On GCP, the Data Lineage API and Dataplex Universal Catalog (now called Knowledge Catalog) work together to provide automatic and custom lineage tracking across BigQuery, Cloud Storage, Dataflow, and other services. Here is how to set it up.
 
 ## What Data Lineage Tracks
 
@@ -36,15 +36,11 @@ flowchart LR
 
 ## Step 1: Enable Data Lineage API
 
-Data lineage is built into the Data Catalog API. Enable it:
+Data lineage is provided by the Data Lineage API and displayed through Dataplex Universal Catalog. Enable both APIs in the project where you record and view lineage:
 
 ```bash
-# Enable the Data Lineage API
-
-gcloud services enable datalineage.googleapis.com
-
-# Also make sure Data Catalog is enabled
-gcloud services enable datacatalog.googleapis.com
+# Enable the Data Lineage API and Dataplex API
+gcloud services enable datalineage.googleapis.com dataplex.googleapis.com
 ```
 
 ## Step 2: Automatic Lineage from BigQuery
@@ -66,13 +62,15 @@ WHERE order_id IS NOT NULL;
 ```
 
 BigQuery also tracks lineage for:
+- Copy jobs
+- Load jobs from Cloud Storage URIs
 - MERGE statements
 - INSERT INTO ... SELECT queries
 - CREATE TABLE AS SELECT
 - Scheduled queries
-- Materialized views
+- CREATE VIEW and CREATE MATERIALIZED VIEW statements
 
-You can view this lineage in the BigQuery console under the "Lineage" tab of any table, or query it programmatically.
+You can view this lineage in the BigQuery console under the "Lineage" tab of any table, or query it programmatically. BigQuery lineage can take up to 24 hours to appear after a job completes.
 
 ## Step 3: View Lineage Programmatically
 
@@ -87,10 +85,7 @@ def get_table_lineage(project_id, dataset_id, table_id):
     client = datacatalog_lineage_v1.LineageClient()
 
     # Construct the fully qualified table name
-    target = (
-        f"//bigquery.googleapis.com/projects/{project_id}"
-        f"/datasets/{dataset_id}/tables/{table_id}"
-    )
+    target = f"bigquery:{project_id}.{dataset_id}.{table_id}"
 
     # Search for lineage links where this table is the target (upstream)
     print(f"\nUpstream sources for {table_id}:")
@@ -134,11 +129,12 @@ get_table_lineage('my-project', 'silver', 'orders')
 
 ## Step 4: Add Custom Lineage for External Processes
 
-Some data flows happen outside of BigQuery - for example, a Python script that reads from an API and writes to Cloud Storage, or a Dataflow job. For these, you can create custom lineage events:
+Some data flows happen outside of BigQuery - for example, a Python script that reads from an API and writes to Cloud Storage, or a pipeline that does not report lineage automatically. For these, you can create custom lineage events:
 
 ```python
 # custom_lineage.py - Record custom lineage for processes outside BigQuery
 from google.cloud import datacatalog_lineage_v1
+from google.protobuf import struct_pb2
 from google.protobuf import timestamp_pb2
 import time
 
@@ -157,10 +153,10 @@ def create_custom_lineage(
     process = datacatalog_lineage_v1.Process(
         display_name=process_name,
         attributes={
-            "pipeline": datacatalog_lineage_v1.types.struct_pb2.Value(
+            "pipeline": struct_pb2.Value(
                 string_value="daily_etl"
             ),
-            "owner": datacatalog_lineage_v1.types.struct_pb2.Value(
+            "owner": struct_pb2.Value(
                 string_value="data-engineering-team"
             ),
         }
@@ -216,53 +212,69 @@ create_custom_lineage(
     project_id='my-project',
     location='us-central1',
     process_name='orders_ingestion_pipeline',
-    source_table='//storage.googleapis.com/projects/my-project/buckets/raw-data/objects/orders/',
-    target_table='//bigquery.googleapis.com/projects/my-project/datasets/raw/tables/orders'
+    source_table='gcs:raw-data.orders',
+    target_table='bigquery:my-project.raw.orders'
 )
 ```
 
-## Step 5: Lineage with Data Catalog Tags
+## Step 5: Lineage with Catalog Aspects
 
-Enrich your lineage information by tagging tables with metadata in Data Catalog:
+Enrich your lineage information by adding metadata aspects to entries in Dataplex Universal Catalog:
 
 ```python
-# tag_lineage_metadata.py - Add pipeline metadata to Data Catalog entries
-from google.cloud import datacatalog_v1
+# tag_lineage_metadata.py - Add pipeline metadata to catalog entries
+from google.cloud import dataplex_v1
+from google.protobuf import struct_pb2
 
-def tag_table_with_lineage_info(project_id, dataset_id, table_id, pipeline_info):
-    """Tag a BigQuery table with lineage metadata."""
-    client = datacatalog_v1.DataCatalogClient()
+def tag_table_with_lineage_info(project_id, location, entry_name, pipeline_info):
+    """Attach a lineage metadata aspect to a catalog entry."""
+    client = dataplex_v1.CatalogServiceClient()
 
-    # Look up the table entry
-    resource = (
-        f"//bigquery.googleapis.com/projects/{project_id}"
-        f"/datasets/{dataset_id}/tables/{table_id}"
+    aspect_type = (
+        f"projects/{project_id}/locations/{location}"
+        f"/aspectTypes/pipeline_lineage"
     )
-    entry = client.lookup_entry(request={"linked_resource": resource})
+    aspect_key = f"{project_id}.{location}.pipeline_lineage"
 
-    # Create a tag with pipeline lineage information
-    tag = datacatalog_v1.Tag()
-    tag.template = f"projects/{project_id}/locations/us-central1/tagTemplates/pipeline_lineage"
-    tag.fields["source_system"] = datacatalog_v1.TagField(
-        string_value=pipeline_info["source_system"]
-    )
-    tag.fields["pipeline_name"] = datacatalog_v1.TagField(
-        string_value=pipeline_info["pipeline_name"]
-    )
-    tag.fields["refresh_frequency"] = datacatalog_v1.TagField(
-        string_value=pipeline_info["refresh_frequency"]
-    )
-    tag.fields["last_successful_run"] = datacatalog_v1.TagField(
-        string_value=pipeline_info["last_successful_run"]
+    entry = dataplex_v1.Entry(
+        name=entry_name,
+        aspects={
+            aspect_key: dataplex_v1.Aspect(
+                aspect_type=aspect_type,
+                data=struct_pb2.Struct(
+                    fields={
+                        "source_system": struct_pb2.Value(
+                            string_value=pipeline_info["source_system"]
+                        ),
+                        "pipeline_name": struct_pb2.Value(
+                            string_value=pipeline_info["pipeline_name"]
+                        ),
+                        "refresh_frequency": struct_pb2.Value(
+                            string_value=pipeline_info["refresh_frequency"]
+                        ),
+                        "last_successful_run": struct_pb2.Value(
+                            string_value=pipeline_info["last_successful_run"]
+                        ),
+                    }
+                ),
+            )
+        },
     )
 
-    created_tag = client.create_tag(parent=entry.name, tag=tag)
-    return created_tag
+    return client.update_entry(
+        entry=entry,
+        update_mask={"paths": ["aspects"]},
+        aspect_keys=[aspect_key],
+    )
 
 
-# Tag the silver orders table with lineage info
+# Attach lineage info to the silver orders catalog entry.
+# The pipeline_lineage aspect type must already exist.
 tag_table_with_lineage_info(
-    'my-project', 'silver', 'orders',
+    project_id='my-project',
+    location='us-central1',
+    entry_name='projects/my-project/locations/us-central1/entryGroups/@bigquery/entries/my-project.silver.orders',
+    pipeline_info=
     {
         "source_system": "cloud-sql-production",
         "pipeline_name": "orders_bronze_to_silver",
@@ -311,7 +323,7 @@ def check_downstream_impact(project_id, location, table_fqn):
 
 
 # Before modifying a table, check what depends on it
-source_table = "//bigquery.googleapis.com/projects/my-project/datasets/silver/tables/orders"
+source_table = "bigquery:my-project.silver.orders"
 impacted = check_downstream_impact('my-project', 'us-central1', source_table)
 
 print(f"\nTables impacted by changes to silver.orders:")
