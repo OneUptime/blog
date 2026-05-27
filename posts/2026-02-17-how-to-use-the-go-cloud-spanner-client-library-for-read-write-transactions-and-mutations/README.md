@@ -34,6 +34,8 @@ gcloud spanner databases create testdb --instance=test-instance \
     Email STRING(256) NOT NULL,
     Name STRING(256),
     Balance INT64 NOT NULL DEFAULT (0),
+    Active BOOL NOT NULL DEFAULT (TRUE),
+    LastLogin TIMESTAMP,
     CreatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true)
   ) PRIMARY KEY (UserID)"
 ```
@@ -72,7 +74,7 @@ func createSpannerClient(ctx context.Context) (*spanner.Client, error) {
 Spanner offers two ways to write data:
 
 - **Mutations** - Programmatic data modification operations. They are applied atomically at commit time. Good for simple insert, update, and delete operations.
-- **DML (Data Manipulation Language)** - SQL-based writes executed within read-write transactions. Better when your write logic depends on read results.
+- **DML (Data Manipulation Language)** - SQL-based writes executed within read-write transactions. Better for set-based updates and writes that are easier to express in SQL.
 
 ## Working with Mutations
 
@@ -106,6 +108,12 @@ func insertUser(ctx context.Context, client *spanner.Client, userID, email, name
 For inserting multiple rows at once, batch your mutations together.
 
 ```go
+type User struct {
+    ID    string
+    Email string
+    Name  string
+}
+
 // batchInsertUsers inserts multiple users in a single atomic operation
 func batchInsertUsers(ctx context.Context, client *spanner.Client, users []User) error {
     var mutations []*spanner.Mutation
@@ -200,7 +208,7 @@ func transferBalance(ctx context.Context, client *spanner.Client, fromID, toID s
         }
 
         // Apply both balance changes atomically using buffer write
-        txn.BufferWrite([]*spanner.Mutation{
+        if err := txn.BufferWrite([]*spanner.Mutation{
             spanner.Update("Users",
                 []string{"UserID", "Balance"},
                 []interface{}{fromID, fromBalance - amount},
@@ -209,7 +217,9 @@ func transferBalance(ctx context.Context, client *spanner.Client, fromID, toID s
                 []string{"UserID", "Balance"},
                 []interface{}{toID, toBalance + amount},
             ),
-        })
+        }); err != nil {
+            return err
+        }
 
         return nil
     })
@@ -287,7 +297,7 @@ sequenceDiagram
 
 ## Important Rules for Read-Write Transactions
 
-1. **Keep them short** - Spanner aborts transactions that run too long (the default deadline is 60 seconds). Do not do external I/O inside a transaction.
+1. **Keep them short** - Spanner can abort transactions that run for too long or stay inactive for too long. Set an explicit context timeout for the whole transaction; the official Go samples commonly use 60 seconds. Do not do external I/O inside a transaction.
 
 2. **Expect retries** - Your transaction function can be called multiple times. Do not send emails, enqueue messages, or write to external systems from inside the function.
 
