@@ -60,7 +60,7 @@ return [
             'driver' => 'redis',
             'connection' => 'default',
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => 90,        // Retry if job takes longer than 90 seconds
+            'retry_after' => 150,       // Retry if a reserved job is not finished after 150 seconds
             'block_for' => 5,           // Block for 5 seconds when polling for jobs
             'after_commit' => true,     // Only dispatch after database transaction commits
         ],
@@ -70,7 +70,7 @@ return [
             'driver' => 'database',
             'table' => 'jobs',
             'queue' => 'default',
-            'retry_after' => 90,
+            'retry_after' => 150,
             'after_commit' => true,
         ],
     ],
@@ -191,15 +191,16 @@ class ProcessOrder implements ShouldQueue
 
 namespace App\Http\Controllers;
 
-use App\Jobs\ProcessOrder;
 use App\Jobs\GenerateInvoice;
+use App\Jobs\ProcessOrder;
+use App\Jobs\SendFollowUpSurvey;
+use App\Http\Requests\StoreOrderRequest;
 use App\Models\Order;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class OrderController extends Controller
 {
-    public function store(Request $request): JsonResponse
+    public function store(StoreOrderRequest $request): JsonResponse
     {
         $order = Order::create($request->validated());
 
@@ -306,14 +307,22 @@ class ChargePayment implements ShouldQueue
 
 Process groups of jobs together and track their progress:
 
+```bash
+php artisan make:queue-batches-table
+php artisan migrate
+```
+
+Jobs added to the batch should use the `Illuminate\Bus\Batchable` trait.
+
 ```php
 <?php
 // app/Http/Controllers/ReportController.php
 
 namespace App\Http\Controllers;
 
-use App\Jobs\ProcessReportChunk;
 use App\Jobs\MergeReportChunks;
+use App\Jobs\ProcessReportChunk;
+use App\Models\Order;
 use Illuminate\Bus\Batch;
 use Illuminate\Support\Facades\Bus;
 
