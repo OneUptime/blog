@@ -51,7 +51,7 @@ main:
         args:
           projectId: "my-gcp-project"
           body:
-            query: "SELECT COUNT(*) as total FROM `my-dataset.my-table` WHERE date = CURRENT_DATE()"
+            query: "SELECT COUNT(*) as total FROM `my_dataset.my_table` WHERE date = CURRENT_DATE()"
             useLegacySql: false
         result: query_result
 
@@ -79,7 +79,7 @@ main:
           auth:
             type: OAuth2
           body:
-            query: "SELECT COUNT(*) as total FROM `my-dataset.my-table`"
+            query: "SELECT COUNT(*) as total FROM `my_dataset.my_table`"
             useLegacySql: false
         result: query_result
 ```
@@ -156,7 +156,7 @@ main:
         args:
           name: ${created_doc.name}
           updateMask:
-            fieldPaths: ["status"]
+            fieldPaths: "status"
           body:
             fields:
               status:
@@ -234,9 +234,10 @@ main:
         call: googleapis.storage.v1.objects.copy
         args:
           sourceBucket: "my-data-bucket"
-          sourceObject: ${args.source_file}
+          sourceObject: ${text.url_encode(args.source_file)}
           destinationBucket: "my-archive-bucket"
-          destinationObject: ${"archive/" + args.source_file}
+          destinationObject: ${text.url_encode("archive/" + args.source_file)}
+          body: {}
         result: copy_result
 
     - return_result:
@@ -297,7 +298,7 @@ main:
                   Content-Type: "application/json"
                 body: ${base64.encode(json.encode(args.task_data))}
               # Schedule for 30 seconds from now
-              scheduleTime: ${time.format(sys.now() + duration.value(30, "SECONDS"))}
+              scheduleTime: ${time.format(sys.now() + 30)}
         result: task_result
 
     - return_task:
@@ -374,7 +375,7 @@ main:
                 args:
                   name: ${doc.name}
                   updateMask:
-                    fieldPaths: ["status"]
+                    fieldPaths: "status"
                   body:
                     fields:
                       status:
