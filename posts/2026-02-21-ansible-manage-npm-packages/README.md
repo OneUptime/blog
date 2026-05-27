@@ -273,10 +273,10 @@ To update a package to the latest version, use `state: latest`.
 
 ## Handling npm Cache
 
-npm's cache can sometimes cause issues. You can clear it as part of your deployment.
+npm's cache is integrity-checked and usually does not need to be cleared. If you need to reclaim disk space, you can clear it as part of your deployment.
 
 ```yaml
-# Clear npm cache (useful when troubleshooting installation issues)
+# Clear npm cache to reclaim disk space
 - name: Clear npm cache
   ansible.builtin.command:
     cmd: npm cache clean --force
@@ -301,7 +301,7 @@ You can configure npm settings that affect how packages are installed.
   changed_when: true
 ```
 
-Disabling audit and fund messages speeds up installations and removes noise from your deployment logs.
+Disabling audit checks can reduce install work, and disabling fund messages removes noise from your deployment logs.
 
 ## Wrapping Up
 
