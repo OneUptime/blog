@@ -38,6 +38,7 @@ IAP authenticates you, checks your permissions, and then creates a tunnel from y
 - The VM does not need a public IP address
 - The `gcloud` CLI installed on your local machine
 - Your user account needs IAP tunnel access
+- Your user account also needs the Compute Engine permissions required by `gcloud compute ssh` or `gcloud compute scp`
 
 ## Step 1: Remove Public IPs (If Present)
 
@@ -95,16 +96,20 @@ If you want all VMs in the network to be accessible via IAP, omit the `--target-
 
 ## Step 3: Grant IAP Tunnel Access
 
-Users need the `roles/iap.tunnelResourceAccessor` role to use IAP TCP forwarding.
+Users need the `roles/iap.tunnelResourceAccessor` role to use IAP TCP forwarding. If they are using `gcloud compute ssh` or `gcloud compute scp`, they also need Compute Engine permissions such as `roles/compute.instanceAdmin.v1` or an equivalent custom role.
 
 ```bash
-# Grant a user permission to use IAP tunnels
+# Grant a user permission to use IAP tunnels and SSH with gcloud
 gcloud projects add-iam-policy-binding my-project-id \
     --member="user:developer@company.com" \
     --role="roles/iap.tunnelResourceAccessor"
+
+gcloud projects add-iam-policy-binding my-project-id \
+    --member="user:developer@company.com" \
+    --role="roles/compute.instanceAdmin.v1"
 ```
 
-For more granular control, you can grant this at the instance level.
+For more granular IAP control, you can grant the tunnel role at the instance level. The other Compute Engine permissions still need to be granted on the project.
 
 ```bash
 # Grant tunnel access to a specific VM only
@@ -169,7 +174,7 @@ If you prefer using the native `ssh` command instead of `gcloud compute ssh`, yo
 cat >> ~/.ssh/config << 'EOF'
 
 # SSH to GCP VMs via IAP
-Host gcp-*
+Host my-private-vm
     ProxyCommand gcloud compute start-iap-tunnel %h 22 --listen-on-stdin --zone=us-central1-a --project=my-project-id
     User your-username
 EOF
@@ -179,7 +184,7 @@ Now you can use standard SSH tools.
 
 ```bash
 # SSH using the standard ssh command
-ssh gcp-my-private-vm
+ssh my-private-vm
 ```
 
 ## SCP File Transfer via IAP
