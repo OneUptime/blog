@@ -33,22 +33,18 @@ Before you can promote a secondary, you need to have one running. Here is how to
 ```bash
 # Create a secondary cluster in us-east1 that replicates from the primary in us-central1
 
-gcloud alloydb clusters create my-secondary-cluster \
+gcloud alloydb clusters create-secondary my-secondary-cluster \
   --region=us-east1 \
-  --cluster-type=SECONDARY \
-  --primary-cluster=projects/my-project/locations/us-central1/clusters/my-primary-cluster \
-  --network=projects/my-project/global/networks/my-vpc
+  --primary-cluster=projects/my-project/locations/us-central1/clusters/my-primary-cluster
 ```
 
 After the cluster is created, add a secondary instance:
 
 ```bash
 # Create a secondary instance in the secondary cluster
-gcloud alloydb instances create secondary-instance \
+gcloud alloydb instances create-secondary secondary-instance \
   --cluster=my-secondary-cluster \
-  --region=us-east1 \
-  --instance-type=SECONDARY \
-  --cpu-count=4
+  --region=us-east1
 ```
 
 The secondary instance is read-only. It receives replicated data from the primary and can serve read traffic, but it cannot accept writes until you promote it.
@@ -68,12 +64,12 @@ Set up alerts so you know if replication lag exceeds acceptable thresholds:
 
 ```bash
 # Create a Cloud Monitoring alert for high replication lag
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="AlloyDB Replication Lag Alert" \
   --condition-display-name="Replication lag exceeds 30 seconds" \
-  --condition-filter='resource.type="alloydb.googleapis.com/Instance" AND metric.type="alloydb.googleapis.com/database/replication/replica_lag"' \
-  --condition-threshold-value=30 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --condition-filter='resource.type="alloydb.googleapis.com/Instance" AND metric.type="alloydb.googleapis.com/instance/postgres/replication/maximum_secondary_lag"' \
+  --if="> 30000" \
+  --duration=60s \
   --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -86,7 +82,7 @@ When a regional outage hits and you need to promote the secondary cluster, here 
 Before promoting, verify that the primary region is actually down and not just experiencing a brief hiccup. Check the Google Cloud Status Dashboard and try to reach your primary cluster:
 
 ```bash
-# Try to connect to the primary - if this times out, the region is likely down
+# Try to reach the primary cluster - if this times out, the region might be down
 gcloud alloydb clusters describe my-primary-cluster \
   --region=us-central1 \
   --format="yaml(state)"
@@ -108,7 +104,7 @@ gcloud alloydb clusters promote my-secondary-cluster \
 This operation typically takes a few minutes. During promotion, AlloyDB:
 
 1. Stops accepting replicated data from the old primary
-2. Applies any remaining WAL records
+2. Finishes promoting the secondary instance from the data it has already received
 3. Converts the secondary instance to a read-write primary instance
 4. Makes the cluster fully operational for writes
 
@@ -133,7 +129,7 @@ gcloud alloydb instances describe secondary-instance \
 
 Your application needs to connect to the new primary. How you handle this depends on your architecture:
 
-If you are using Private Service Connect or Private IP, you will need to update your connection string to point to the new cluster's IP:
+If you are using Private IP, you will need to update your connection string to point to the new cluster's IP:
 
 ```bash
 # Get the new primary's IP address
@@ -179,11 +175,9 @@ To set up a new secondary pointing back:
 
 ```bash
 # Create a new secondary in the original region for future DR
-gcloud alloydb clusters create my-new-secondary \
+gcloud alloydb clusters create-secondary my-new-secondary \
   --region=us-central1 \
-  --cluster-type=SECONDARY \
-  --primary-cluster=projects/my-project/locations/us-east1/clusters/my-secondary-cluster \
-  --network=projects/my-project/global/networks/my-vpc
+  --primary-cluster=projects/my-project/locations/us-east1/clusters/my-secondary-cluster
 ```
 
 ## Runbook Template
