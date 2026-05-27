@@ -25,7 +25,7 @@ flowchart LR
     end
 ```
 
-## Pattern 1: Append-Only with Ingestion Time Partitioning
+## Pattern 1: Append-Only with Event-Time Partitioning
 
 The simplest incremental pattern appends new data without checking for duplicates. This works when your source data is append-only (like events or logs):
 
@@ -75,7 +75,8 @@ Set up the schedule:
 bq query --use_legacy_sql=false \
   --schedule="every 1 hours" \
   --display_name="Hourly Event Load" \
-  --destination_table="" \
+  --project_id="my-project" \
+  --target_dataset="analytics" \
   "$(cat incremental_events.sql)"
 ```
 
@@ -106,6 +107,7 @@ The incremental MERGE query:
 -- Scheduled query: Incremental MERGE with watermark tracking
 -- Step 1: Get the watermark for this table
 DECLARE last_watermark TIMESTAMP;
+DECLARE load_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP();
 SET last_watermark = (
   SELECT last_loaded_at
   FROM `my-project.analytics._load_watermarks`
@@ -116,10 +118,16 @@ SET last_watermark = (
 MERGE INTO `my-project.analytics.orders` AS target
 USING (
   -- Only process records updated since the last watermark
-  SELECT *
-  FROM `my-project.staging.orders_staging`
-  WHERE updated_at > last_watermark
-    AND updated_at <= CURRENT_TIMESTAMP()
+  SELECT * EXCEPT (row_num)
+  FROM (
+    SELECT
+      *,
+      ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY updated_at DESC) AS row_num
+    FROM `my-project.staging.orders_staging`
+    WHERE updated_at > last_watermark
+      AND updated_at <= load_timestamp
+  )
+  WHERE row_num = 1
 ) AS source
 ON target.order_id = source.order_id
 
@@ -140,9 +148,9 @@ WHEN NOT MATCHED THEN
 
 -- Step 3: Update the watermark
 UPDATE `my-project.analytics._load_watermarks`
-SET last_loaded_at = CURRENT_TIMESTAMP(),
+SET last_loaded_at = load_timestamp,
     rows_loaded = @@row_count,
-    updated_at = CURRENT_TIMESTAMP()
+    updated_at = load_timestamp
 WHERE table_name = 'orders';
 ```
 
@@ -165,21 +173,18 @@ USING (
   WHERE DATE(event_timestamp) = CURRENT_DATE()
   GROUP BY 1, 2
 ) AS source
-ON target.metric_date = source.metric_date AND target.event_type = source.event_type
+ON FALSE
 
-WHEN MATCHED THEN
-  UPDATE SET
-    event_count = source.event_count,
-    unique_users = source.unique_users,
-    avg_duration = source.avg_duration
-
-WHEN NOT MATCHED THEN
+WHEN NOT MATCHED BY TARGET THEN
   INSERT (metric_date, event_type, event_count, unique_users, avg_duration)
   VALUES (source.metric_date, source.event_type, source.event_count,
-          source.unique_users, source.avg_duration);
+          source.unique_users, source.avg_duration)
+
+WHEN NOT MATCHED BY SOURCE AND target.metric_date = CURRENT_DATE() THEN
+  DELETE;
 ```
 
-A simpler alternative using partition decorators:
+A simpler alternative using DELETE and INSERT:
 
 ```sql
 -- Delete and replace a specific partition
