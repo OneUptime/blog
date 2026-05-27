@@ -44,7 +44,8 @@ sudo systemctl enable iscsid
 sudo systemctl start iscsid
 
 # Install on RHEL/CentOS
-sudo yum install -y iscsi-initiator-utils
+sudo yum --setopt=tsflags=noscripts install -y iscsi-initiator-utils
+echo "InitiatorName=$(/sbin/iscsi-iname)" | sudo tee /etc/iscsi/initiatorname.iscsi
 sudo systemctl enable iscsid
 sudo systemctl start iscsid
 
@@ -129,7 +130,7 @@ metadata:
   namespace: default
 spec:
   accessModes:
-    - ReadWriteOnce                        # Block storage is RWO
+    - ReadWriteOnce                        # Typical Longhorn block volume access mode
   storageClassName: longhorn               # Use the Longhorn StorageClass
   resources:
     requests:
@@ -188,8 +189,8 @@ provisioner: driver.longhorn.io
 allowVolumeExpansion: true
 reclaimPolicy: Retain
 parameters:
-  numberOfReplicas: "3"
-  dataLocality: "strict-local"             # Keep a replica on the pod's node
+  numberOfReplicas: "1"                    # strict-local requires a single replica
+  dataLocality: "strict-local"             # Keep the replica on the pod's node
   fsType: "ext4"
 ```
 
@@ -276,21 +277,17 @@ Longhorn supports disaster recovery volumes that continuously sync from a backup
 # dr-volume.yaml
 # Create a DR volume on the standby cluster
 # This volume pulls backup data from the remote target
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiVersion: longhorn.io/v1beta2
+kind: Volume
 metadata:
   name: app-data-dr
-  namespace: default
-  annotations:
-    # Restore from the latest backup
-    longhorn.io/from-backup: "s3://longhorn-backups@us-east-1/?backup=backup-abc123&volume=app-data"
+  namespace: longhorn-system
 spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: longhorn
-  resources:
-    requests:
-      storage: 10Gi
+  size: "10737418240"                      # 10 GiB in bytes
+  accessMode: rwo
+  numberOfReplicas: 3
+  fromBackup: "s3://longhorn-backups@us-east-1?backup=backup-abc123&volume=app-data"
+  Standby: true                            # Keep the volume in DR standby mode
 ```
 
 ## Node Maintenance
@@ -299,14 +296,14 @@ spec:
 # Cordon a node to prevent new replicas from being scheduled
 kubectl cordon worker-3
 
-# Drain Longhorn replicas from a node before maintenance
-# The replicas will be rebuilt on other nodes
+# Drain workloads before maintenance
+# Longhorn handles engine migration and replica eviction according to the Node Drain Policy
 kubectl drain worker-3 --ignore-daemonsets --delete-emptydir-data
 
 # After maintenance, uncordon the node
 kubectl uncordon worker-3
 
-# Longhorn will automatically rebalance replicas
+# Longhorn will re-enable replica scheduling on the node
 ```
 
 ## Monitoring Longhorn
