@@ -312,13 +312,6 @@ cis_cron_allow_users:
 # roles/cis-access/tasks/main.yml
 ---
 # 5.2 - SSH Server Configuration
-- name: "5.2.1 - Set SSH Protocol to 2"
-  ansible.builtin.lineinfile:
-    path: /etc/ssh/sshd_config
-    regexp: '^#?Protocol'
-    line: 'Protocol 2'
-  notify: Restart sshd
-
 - name: "5.2.2 - Set SSH MaxAuthTries"
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
@@ -368,20 +361,20 @@ cis_cron_allow_users:
     line: "LoginGraceTime {{ cis_ssh_login_grace_time }}"
   notify: Restart sshd
 
-# 5.3 - Password policies
-- name: "5.3.1 - Set password expiration"
+# 5.3 - Password policy defaults for newly created accounts
+- name: "5.3.1 - Set default password expiration"
   ansible.builtin.lineinfile:
     path: /etc/login.defs
     regexp: '^PASS_MAX_DAYS'
     line: "PASS_MAX_DAYS {{ cis_password_max_days }}"
 
-- name: "5.3.2 - Set minimum password age"
+- name: "5.3.2 - Set default minimum password age"
   ansible.builtin.lineinfile:
     path: /etc/login.defs
     regexp: '^PASS_MIN_DAYS'
     line: "PASS_MIN_DAYS {{ cis_password_min_days }}"
 
-- name: "5.3.3 - Set password warning age"
+- name: "5.3.3 - Set default password warning age"
   ansible.builtin.lineinfile:
     path: /etc/login.defs
     regexp: '^PASS_WARN_AGE'
@@ -389,9 +382,9 @@ cis_cron_allow_users:
 
 # 5.4 - Restrict cron access
 - name: "5.4.1 - Restrict cron to allowed users"
-  ansible.builtin.template:
-    src: cron.allow.j2
+  ansible.builtin.copy:
     dest: /etc/cron.allow
+    content: "{{ cis_cron_allow_users | join('\n') }}\n"
     owner: root
     group: root
     mode: '0600'
@@ -434,7 +427,7 @@ cis_cron_allow_users:
 ---
 - name: Restart sshd
   ansible.builtin.service:
-    name: sshd
+    name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
     state: restarted
 ```
 
@@ -449,16 +442,22 @@ cis_cron_allow_users:
   roles:
     - role: cis-filesystem
       when: cis_filesystem_enabled | bool
+      tags: cis-filesystem
     - role: cis-services
       when: cis_services_enabled | bool
+      tags: cis-services
     - role: cis-network
       when: cis_network_enabled | bool
+      tags: cis-network
     - role: cis-logging
       when: cis_logging_enabled | bool
+      tags: cis-logging
     - role: cis-access
       when: cis_access_enabled | bool
+      tags: cis-access
     - role: cis-audit
       when: cis_audit_enabled | bool
+      tags: cis-audit
 ```
 
 ## Running the Hardening
