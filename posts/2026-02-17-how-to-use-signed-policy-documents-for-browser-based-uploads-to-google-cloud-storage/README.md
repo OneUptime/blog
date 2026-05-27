@@ -8,7 +8,7 @@ Description: Learn how to use signed policy documents for secure browser-based u
 
 ---
 
-Signed URLs are great for simple browser uploads, but they have a limitation: the backend must know the exact object name and content type upfront. Signed policy documents offer more flexibility. They let you define a set of constraints - maximum file size, allowed content types, key prefix - and the browser can upload any file that meets those constraints. This is particularly useful for user-facing upload forms where you want to allow uploads but enforce rules.
+Signed URLs are great for simple browser uploads, but they have a limitation: the backend must sign a specific object name and any request headers you want to require, such as `Content-Type`. Signed policy documents offer more flexibility. They let you define a set of constraints - maximum file size, allowed content types, key prefix - and the browser can upload any file that meets those constraints. This is particularly useful for user-facing upload forms where you want to allow uploads but enforce rules.
 
 This guide covers how to create and use signed policy documents for secure browser uploads to Google Cloud Storage.
 
@@ -68,6 +68,7 @@ Here is a complete backend implementation:
 import datetime
 import json
 
+from google.oauth2 import service_account
 from google.cloud import storage
 
 
@@ -85,14 +86,17 @@ def generate_signed_policy(
     Args:
         bucket_name: Target GCS bucket
         key_prefix: Required prefix for the uploaded object name
-        allowed_content_types: List of allowed MIME types
+        allowed_content_types: List containing one exact MIME type
         max_size_bytes: Maximum upload size in bytes
         expiration_minutes: How long the policy is valid
         service_account_file: Path to service account JSON key
     """
 
-    # Create a client from a service account key file
-    client = storage.Client.from_service_account_json(service_account_file)
+    # Create signing credentials from a service account key file
+    credentials = service_account.Credentials.from_service_account_file(
+        service_account_file
+    )
+    client = storage.Client(credentials=credentials)
 
     expiration = datetime.datetime.utcnow() + datetime.timedelta(
         minutes=expiration_minutes
@@ -108,8 +112,9 @@ def generate_signed_policy(
     if allowed_content_types and len(allowed_content_types) == 1:
         conditions.append({"Content-Type": allowed_content_types[0]})
     elif allowed_content_types:
-        # Use starts-with for multiple types sharing a prefix
-        conditions.append(["starts-with", "$Content-Type", ""])
+        raise ValueError(
+            "Use a single exact content type or a shared prefix condition."
+        )
 
     fields = {}
     if allowed_content_types:
@@ -122,7 +127,7 @@ def generate_signed_policy(
         expiration=expiration,
         conditions=conditions,
         fields=fields,
-        credentials=client._credentials,
+        credentials=credentials,
     )
 
     return policy
@@ -149,13 +154,17 @@ Here is a shorter helper that uses the same `client.generate_signed_post_policy_
 ```python
 import datetime
 
+from google.oauth2 import service_account
 from google.cloud import storage
 
 
 def create_upload_policy(bucket_name, blob_prefix, max_size_mb=10,
                          service_account_file="service-account-key.json"):
     """Create a signed POST policy for browser-based uploads."""
-    client = storage.Client.from_service_account_json(service_account_file)
+    credentials = service_account.Credentials.from_service_account_file(
+        service_account_file
+    )
+    client = storage.Client(credentials=credentials)
 
     expiration = datetime.datetime.utcnow() + datetime.timedelta(minutes=30)
 
@@ -172,7 +181,7 @@ def create_upload_policy(bucket_name, blob_prefix, max_size_mb=10,
         expiration=expiration,
         conditions=conditions,
         fields={"Content-Type": "image/jpeg"},
-        credentials=client._credentials,
+        credentials=credentials,
     )
 ```
 
@@ -246,7 +255,7 @@ The simplest way to use a signed policy is with a standard HTML form:
   <input type="hidden" name="x-goog-signature" value="">
 
   <!-- The actual file input -->
-  <input type="file" name="file" accept="image/jpeg">
+  <input id="fileInput" type="file" name="file" accept="image/jpeg">
   <button type="submit">Upload</button>
 </form>
 ```
@@ -333,13 +342,13 @@ Here are all the conditions you can use:
 ```json
 {
   "conditions": [
-    ["starts-with", "$Content-Type", ""],
+    {"Content-Type": "image/png"},
     ["content-length-range", 0, 52428800]
   ]
 }
 ```
 
-Then validate the content type in your backend before generating the policy.
+Then validate the requested content type in your backend and generate a separate policy for the selected type.
 
 ### Restrict to a User's Directory
 
