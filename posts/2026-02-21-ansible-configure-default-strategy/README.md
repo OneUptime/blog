@@ -36,7 +36,7 @@ The available built-in strategies are:
 - `linear` - run each task on all hosts before the next task (default)
 - `free` - let each host proceed through tasks independently
 - `host_pinned` - like free, but each worker stays with one host
-- `debug` - interactive debugger on failure
+- `debug` - run tasks in an interactive debug session
 
 ## Per-Playbook via Environment Variable
 
@@ -163,12 +163,11 @@ strategy_plugins = ./strategy_plugins:/opt/ansible/strategy_plugins
 strategy = my_custom_strategy
 ```
 
-Ansible searches for strategy plugins in this order:
+Ansible searches for strategy plugins in these common locations:
 
-1. Paths listed in `strategy_plugins` setting
-2. `strategy_plugins/` directory in the playbook directory
-3. `~/.ansible/plugins/strategy/`
-4. Built-in Ansible strategy plugins
+1. Paths listed in the `strategy_plugins` setting, or the default plugin path if you do not override it
+2. A `strategy_plugins/` directory adjacent to the playbook or inside a role
+3. Built-in Ansible strategy plugins
 
 ## Common Configuration Patterns
 
@@ -258,6 +257,8 @@ forks = 10  # Max 10 concurrent operations
   command: /opt/heavy-operation.sh
   throttle: 3  # Max 3 hosts at once, regardless of forks
 ```
+
+**max_fail_percentage**: Only works with the linear strategy or linear-derived strategies.
 
 ## Troubleshooting Strategy Issues
 
