@@ -18,8 +18,8 @@ When your error rate spikes at 2:15 PM, you want to know: did someone deploy som
 
 You need:
 
-- A Grafana instance (version 5.0 or later)
-- A Grafana API key with Editor or Admin role
+- A Grafana instance with the Annotations HTTP API enabled
+- A Grafana service account token, or a legacy API key, with permission to create annotations
 - The `community.grafana` Ansible collection
 
 ```bash
@@ -30,34 +30,34 @@ ansible-galaxy collection install community.grafana
 # The collection includes the grafana_annotations callback
 ```
 
-## Creating a Grafana API Key
+## Creating a Grafana Service Account Token
 
-In Grafana, go to Configuration > API Keys and create a key:
+In Grafana, create a service account token for Ansible:
 
-1. Click "Add API key"
-2. Set a name like "ansible-annotations"
-3. Set the role to "Editor" (minimum required)
-4. Set an expiration if desired
-5. Copy the key
+1. Go to Administration > Users and access > Service accounts
+2. Create a service account named "ansible-annotations"
+3. Assign a role or RBAC permissions that can create annotations
+4. Add a service account token
+5. Copy the token
 
 ## Enabling the Callback
 
 ```ini
 # ansible.cfg - Enable Grafana annotations
 [defaults]
-callback_whitelist = community.grafana.grafana
+callbacks_enabled = community.grafana.grafana_annotations
 
-[callback_grafana]
-grafana_url = https://grafana.example.com
-grafana_api_key = {{ lookup('env', 'GRAFANA_API_KEY') }}
+[callback_grafana_annotations]
+grafana_url = https://grafana.example.com/api/annotations
+grafana_api_key = your-service-account-token
 ```
 
 Environment variables:
 
 ```bash
 # Configure via environment
-export ANSIBLE_CALLBACK_WHITELIST=community.grafana.grafana
-export GRAFANA_URL=https://grafana.example.com
+export ANSIBLE_CALLBACKS_ENABLED=community.grafana.grafana_annotations
+export GRAFANA_URL=https://grafana.example.com/api/annotations
 export GRAFANA_API_KEY=eyJrIjoiYWJjMTIz...
 ```
 
@@ -68,29 +68,30 @@ The full set of options:
 ```ini
 # ansible.cfg - Full Grafana callback configuration
 [defaults]
-callback_whitelist = community.grafana.grafana
+callbacks_enabled = community.grafana.grafana_annotations
 
-[callback_grafana]
-# Required: Grafana server URL
-grafana_url = https://grafana.example.com
+[callback_grafana_annotations]
+# Required: Grafana annotations API URL
+grafana_url = https://grafana.example.com/api/annotations
 
-# Required: API key for authentication
-grafana_api_key = {{ lookup('env', 'GRAFANA_API_KEY') }}
+# Required unless using Basic auth: service account token or legacy API key
+grafana_api_key = your-service-account-token
 
-# Optional: Dashboard ID to annotate (annotates all dashboards if not set)
-grafana_dashboard_id = *
+# Optional: Basic auth username and password, ignored when grafana_api_key is set
+grafana_user = ansible
+grafana_password = ansible
 
-# Optional: Panel ID to annotate
-grafana_panel_id = *
+# Optional: Numeric dashboard ID to annotate for stats and failure annotations
+grafana_dashboard_id = 12
 
-# Optional: Annotation tags
-grafana_tags = ansible, deployment
+# Optional: Panel IDs to annotate
+grafana_panel_ids = 4, 8
+
+# Optional: HTTP User-Agent
+http_agent = Ansible (grafana_annotations callback)
 
 # Optional: Verify SSL certificate
 validate_grafana_certs = true
-
-# Optional: HTTP timeout
-http_timeout = 10
 ```
 
 ## What Annotations Look Like
@@ -98,8 +99,9 @@ http_timeout = 10
 When a playbook runs, the callback creates annotations with this information:
 
 - **Start annotation**: Created when the playbook begins, tagged with the playbook name
-- **End annotation**: Created when the playbook finishes, includes the result (success/failure)
-- **Tags**: `ansible`, playbook name, and `success` or `failure`
+- **Stats annotation**: Created when the playbook finishes, includes the result (`OK` or `FAILED`)
+- **Failure annotation**: Created when a task fails
+- **Tags**: `ansible`, an event tag such as `ansible_event_start`, `ansible_report`, or `ansible_event_failure`, the playbook name, and the Ansible control node hostname
 
 On your Grafana dashboard, these appear as vertical dashed lines with hover text showing the playbook name and result.
 
@@ -109,24 +111,25 @@ By default, annotations are global and appear on all dashboards. To target a spe
 
 ```ini
 # ansible.cfg - Annotate a specific dashboard
-[callback_grafana]
-grafana_url = https://grafana.example.com
-grafana_api_key = {{ lookup('env', 'GRAFANA_API_KEY') }}
-# Get the dashboard ID from the URL: grafana.example.com/d/abc123
-grafana_dashboard_id = abc123
+[callback_grafana_annotations]
+grafana_url = https://grafana.example.com/api/annotations
+grafana_api_key = your-service-account-token
+# Use the numeric dashboard ID, not the dashboard UID from /d/<uid>
+grafana_dashboard_id = 12
 ```
 
-For multiple dashboards, you cannot set multiple IDs directly. Instead, use annotation tags and configure your Grafana dashboard panels to filter by tag:
+For multiple panels on that dashboard, provide a comma-separated list of panel IDs:
 
 ```ini
-# ansible.cfg - Use tags for dashboard filtering
-[callback_grafana]
-grafana_url = https://grafana.example.com
-grafana_api_key = {{ lookup('env', 'GRAFANA_API_KEY') }}
-grafana_tags = ansible, production-deploy
+# ansible.cfg - Annotate specific panels
+[callback_grafana_annotations]
+grafana_url = https://grafana.example.com/api/annotations
+grafana_api_key = your-service-account-token
+grafana_dashboard_id = 12
+grafana_panel_ids = 4, 8
 ```
 
-In Grafana, configure your dashboard's annotation queries to filter by the `production-deploy` tag.
+The callback does not provide an option for custom annotation tags. To route annotations by tag, create them directly with the Grafana HTTP API instead.
 
 ## Setting Up Grafana Dashboard Annotations
 
@@ -143,56 +146,60 @@ In your Grafana dashboard:
 
 Now Ansible deployments appear on all panels in that dashboard.
 
-## Different Tags for Different Environments
+## Different Dashboards for Different Environments
 
 Route annotations to different dashboards by environment:
 
 ```bash
 #!/bin/bash
-# deploy.sh - Set Grafana tags based on environment
+# deploy.sh - Set Grafana dashboard based on environment
 ENV=$1
 
-export ANSIBLE_CALLBACK_WHITELIST=community.grafana.grafana
-export GRAFANA_URL=https://grafana.example.com
+export ANSIBLE_CALLBACKS_ENABLED=community.grafana.grafana_annotations
+export GRAFANA_URL=https://grafana.example.com/api/annotations
 export GRAFANA_API_KEY=$GRAFANA_KEY
 
 case $ENV in
     production)
-        export GRAFANA_TAGS="ansible,production"
+        export GRAFANA_DASHBOARD_ID=12
         ;;
     staging)
-        export GRAFANA_TAGS="ansible,staging"
+        export GRAFANA_DASHBOARD_ID=34
         ;;
 esac
 
 ansible-playbook -i "inventory/$ENV" deploy.yml
 ```
 
-Then in Grafana, your production dashboard filters annotations by `production` tag, and your staging dashboard filters by `staging` tag.
+Then the callback creates stats and failure annotations on the numeric dashboard ID selected for the environment.
 
 ## Annotation Content
 
 The annotation body includes:
 
 ```text
-Playbook: deploy.yml
-Hosts: web-01, web-02, web-03
-Started: 2026-02-21 10:15:00
-Finished: 2026-02-21 10:18:30
-Duration: 3m 30s
-Status: Success
-Changed: 6
-Failures: 0
+Playbook deploy.yml
+Duration: 210.0
+Status: OK
+
+From 'ansible-control'
+By user 'deploy'
+
+Result:
+{"web-01": {"ok": 12, "failures": 0, "changed": 2, "unreachable": 0, "skipped": 1, "rescued": 0, "ignored": 0}}
 ```
 
 For failures:
 
 ```text
-Playbook: deploy.yml
-Status: FAILED
-Failed hosts: web-03
-Failed task: Deploy application
-Error: Could not find release file
+Playbook deploy.yml Failure !
+
+From 'ansible-control'
+By user 'deploy'
+
+'Deploy application' failed on web-03
+
+debug: {"msg": "Could not find release file"}
 ```
 
 ## Combining with Other Callbacks
@@ -202,13 +209,11 @@ The grafana_annotations callback is a notification type, so it works alongside e
 ```ini
 # ansible.cfg - Grafana with full callback stack
 [defaults]
-stdout_callback = yaml
-callback_whitelist = community.grafana.grafana, timer, profile_tasks, junit
+callbacks_enabled = community.grafana.grafana_annotations, ansible.posix.timer, ansible.posix.profile_tasks, ansible.builtin.junit
 
-[callback_grafana]
-grafana_url = https://grafana.example.com
-grafana_api_key = {{ lookup('env', 'GRAFANA_API_KEY') }}
-grafana_tags = ansible
+[callback_grafana_annotations]
+grafana_url = https://grafana.example.com/api/annotations
+grafana_api_key = your-service-account-token
 
 [callback_junit]
 output_dir = ./junit-results
@@ -286,7 +291,7 @@ curl -s -o /dev/null -w "%{http_code}" \
 ```
 
 Common issues:
-- API key does not have Editor role
+- The service account token does not have permission to create annotations
 - Firewall blocking the Ansible control node from reaching Grafana
 - SSL certificate issues (try `validate_grafana_certs = false` to test)
 - Dashboard annotation query not configured to show the right tags
