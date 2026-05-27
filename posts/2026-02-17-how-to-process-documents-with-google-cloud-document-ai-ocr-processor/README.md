@@ -8,7 +8,7 @@ Description: Learn how to use Google Cloud Document AI OCR Processor to extract 
 
 ---
 
-Dealing with scanned documents, PDFs, and images that contain text is a common headache. Traditional OCR tools often produce messy output that requires significant cleanup. Google Cloud Document AI takes a different approach - it combines optical character recognition with machine learning to not only extract text but also understand the document's structure, including paragraphs, tables, and form fields.
+Dealing with scanned documents, PDFs, and images that contain text is a common headache. Traditional OCR tools often produce messy output that requires significant cleanup. Google Cloud Document AI takes a different approach - it combines optical character recognition with machine learning to not only extract text but also understand the document's layout, including blocks, paragraphs, lines, words, and optional OCR add-ons such as checkbox detection.
 
 In this guide, I will walk you through setting up and using the Document AI OCR Processor to extract text from various document types.
 
@@ -17,13 +17,12 @@ In this guide, I will walk you through setting up and using the Document AI OCR 
 Standard OCR just converts pixel patterns to characters. Document AI goes further:
 
 - It preserves document layout and structure
-- It identifies paragraphs, headings, and blocks
-- It detects tables and their cell contents
-- It recognizes form fields and checkboxes
+- It identifies blocks, paragraphs, lines, and words
+- It can detect symbols and checkboxes when the relevant OCR options are enabled
 - It provides confidence scores for each detected element
 - It supports over 200 languages
 
-The OCR Processor is the general-purpose processor in Document AI. It works on any document type without needing specialized training.
+The OCR Processor is the general-purpose processor in Document AI. It works on many common document formats without needing specialized training. For structured table and form-field extraction, use the Form Parser processor or another specialized processor.
 
 ## Setting Up Document AI
 
@@ -42,10 +41,12 @@ You need to create a processor instance. You can do this through the console or 
 
 ```python
 from google.cloud import documentai_v1
+from google.api_core.client_options import ClientOptions
 
 def create_ocr_processor(project_id, location="us"):
     """Create a new OCR processor in Document AI."""
-    client = documentai_v1.DocumentProcessorServiceClient()
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
 
     # The parent resource where the processor will be created
     parent = f"projects/{project_id}/locations/{location}"
@@ -72,10 +73,12 @@ Here is how to send a document to the OCR Processor and get the extracted text.
 
 ```python
 from google.cloud import documentai_v1
+from google.api_core.client_options import ClientOptions
 
 def process_document(project_id, location, processor_id, file_path, mime_type):
     """Process a single document with the OCR processor."""
-    client = documentai_v1.DocumentProcessorServiceClient()
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
 
     # Build the processor resource name
     name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
@@ -142,9 +145,8 @@ def explore_document_structure(document):
         # Lines detected on this page
         print(f"Lines found: {len(page.lines)}")
 
-        # Tables detected on this page
-        if page.tables:
-            print(f"Tables found: {len(page.tables)}")
+        # Tokens are the word-level OCR output
+        print(f"Tokens found: {len(page.tokens)}")
 
 def get_text_from_layout(layout, full_text):
     """Extract text corresponding to a layout element using text anchors."""
@@ -165,10 +167,12 @@ For production workflows, documents usually live in Cloud Storage rather than on
 
 ```python
 from google.cloud import documentai_v1
+from google.api_core.client_options import ClientOptions
 
 def process_from_gcs(project_id, location, processor_id, gcs_uri, mime_type):
     """Process a document stored in Google Cloud Storage."""
-    client = documentai_v1.DocumentProcessorServiceClient()
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
 
     name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
 
@@ -202,12 +206,13 @@ When you have many documents to process, use the batch processing API to handle 
 
 ```python
 from google.cloud import documentai_v1
-import time
+from google.api_core.client_options import ClientOptions
 
 def batch_process_documents(project_id, location, processor_id,
                              gcs_input_uri, gcs_output_uri):
     """Process multiple documents in batch mode."""
-    client = documentai_v1.DocumentProcessorServiceClient()
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
 
     name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
 
