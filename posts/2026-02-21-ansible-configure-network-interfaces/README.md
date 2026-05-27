@@ -14,18 +14,19 @@ Managing network interfaces across a fleet of servers by hand is painful and err
 
 Before diving in, make sure you have:
 
-- Ansible 2.9 or later installed on your control node
+- Ansible installed on your control node
+- The `community.general` collection installed for the `nmcli` examples
 - SSH access to target hosts
 - Root or sudo privileges on target hosts
 - A basic understanding of Linux networking concepts (IP addresses, subnets, gateways)
 
 ## Understanding Network Configuration on Linux
 
-Linux systems typically manage network interfaces through one of several backends: NetworkManager (common on RHEL/CentOS/Fedora), systemd-networkd (common on Ubuntu Server), or plain ifupdown config files. Ansible has modules that work with each of these, but the most versatile approach uses the `nmcli` module for NetworkManager or template-based approaches for other systems.
+Linux systems typically manage network interfaces through one of several backends: NetworkManager (common on RHEL/CentOS/Fedora), systemd-networkd (common on Ubuntu Server), or plain ifupdown config files. Ansible can automate each of these, but the most versatile approach uses the `nmcli` module for NetworkManager or template-based approaches for other systems.
 
 ## Using the nmcli Module
 
-The `ansible.builtin.nmcli` module is the go-to choice for systems running NetworkManager. It wraps the `nmcli` command-line tool and lets you manage connections declaratively.
+The `community.general.nmcli` module is the go-to choice for systems running NetworkManager. It wraps the `nmcli` command-line tool and lets you manage connections declaratively.
 
 Here is a playbook that configures a static IP address on an Ethernet interface:
 
@@ -55,7 +56,7 @@ Here is a playbook that configures a static IP address on an Ethernet interface:
     - name: Bring up the connection
       community.general.nmcli:
         conn_name: eth0-static
-        state: present
+        state: up
         autoconnect: true
 ```
 
@@ -100,13 +101,11 @@ Production servers often have multiple NICs. You might have one for public traff
       - conn_name: private-backend
         ifname: eth1
         ip4: "{{ private_ip }}/16"
-        gw4: ""
         dns4: []
         autoconnect: true
       - conn_name: management
         ifname: eth2
         ip4: "{{ mgmt_ip }}/24"
-        gw4: ""
         dns4: []
         autoconnect: true
   tasks:
@@ -116,7 +115,7 @@ Production servers often have multiple NICs. You might have one for public traff
         ifname: "{{ item.ifname }}"
         type: ethernet
         ip4: "{{ item.ip4 }}"
-        gw4: "{{ item.gw4 | default(omit) }}"
+        gw4: "{{ item.gw4 | default(omit, true) }}"
         dns4: "{{ item.dns4 | default(omit) }}"
         state: present
         autoconnect: "{{ item.autoconnect }}"
@@ -221,6 +220,17 @@ Beyond interface-level DNS settings, you may want to manage `/etc/resolv.conf` d
         mode: '0644'
 ```
 
+The corresponding Jinja2 template:
+
+```jinja2
+# templates/resolv.conf.j2 - Resolver configuration
+# Managed by Ansible - do not edit manually
+search {{ dns_search_domains | join(' ') }}
+{% for nameserver in dns_nameservers %}
+nameserver {{ nameserver }}
+{% endfor %}
+```
+
 ## Verifying Network Configuration
 
 After applying changes, you should verify them. Here is a task that gathers and displays the resulting network state:
@@ -281,7 +291,8 @@ One real concern with network configuration changes is losing connectivity to th
 
     - name: Schedule automatic rollback in 5 minutes
       ansible.builtin.command: >
-        at now + 5 minutes -f /usr/local/bin/network-rollback.sh
+        at -f /usr/local/bin/network-rollback.sh now + 5 minutes
+      register: rollback_job
       changed_when: true
 
     - name: Apply new network configuration
@@ -291,13 +302,19 @@ One real concern with network configuration changes is losing connectivity to th
         mode: '0644'
       notify: Restart networking
 
+    - name: Restart networking now
+      ansible.builtin.meta: flush_handlers
+
     - name: Wait for network to come back
       ansible.builtin.wait_for_connection:
         delay: 5
         timeout: 60
 
     - name: Cancel the rollback since we are still connected
-      ansible.builtin.command: atrm $(atq | awk '{print $1}')
+      ansible.builtin.command:
+        argv:
+          - atrm
+          - "{{ rollback_job.stderr | regex_search('job\\s+(\\d+)', '\\1') | first }}"
       changed_when: true
 
   handlers:
