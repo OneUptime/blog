@@ -8,13 +8,13 @@ Description: Learn how to integrate automated security scanning into your CI/CD 
 
 ---
 
-Finding a critical vulnerability in production is expensive - in engineering time, in incident response, and sometimes in customer trust. Finding it during your CI/CD pipeline costs almost nothing. Container Analysis on GCP automatically scans your container images for known vulnerabilities, and when you integrate it into Cloud Build, every image gets scanned before it can reach production.
+Finding a critical vulnerability in production is expensive - in engineering time, in incident response, and sometimes in customer trust. Finding it during your CI/CD pipeline costs almost nothing. Artifact Analysis on GCP automatically scans your container images for known vulnerabilities, and when you integrate it into Cloud Build, every image gets scanned before it can reach production.
 
 In this post, I will show you how to set up automated security scanning that catches vulnerabilities early, enforces policies on severity thresholds, and gives your team visibility into your security posture.
 
 ## How Container Analysis Works
 
-When you push a container image to Artifact Registry or Container Registry, Container Analysis automatically scans it for known vulnerabilities by checking the OS packages and language dependencies against public vulnerability databases (CVE). The scan results are stored as occurrences that you can query programmatically.
+When you push a container image to Artifact Registry, Artifact Analysis automatically scans it for known vulnerabilities by checking the OS packages and language dependencies against public vulnerability databases (CVE). The scan results are stored as occurrences that you can query programmatically.
 
 ```mermaid
 graph LR
@@ -34,33 +34,37 @@ Enable the required APIs:
 # Enable Container Analysis and related APIs
 
 gcloud services enable \
+  cloudbuild.googleapis.com \
   containeranalysis.googleapis.com \
   containerscanning.googleapis.com \
+  ondemandscanning.googleapis.com \
   artifactregistry.googleapis.com
 
 # Verify scanning is active
 gcloud artifacts settings describe --project=my-project
 ```
 
-Container scanning is enabled by default for Artifact Registry. If you need to explicitly enable it:
+The Cloud Build service account needs the On-Demand Scanning Admin role (`roles/ondemandscanning.admin`) and Artifact Registry Writer role (`roles/artifactregistry.writer`) to run the scan and push the image.
+
+Container scanning is enabled by default for Docker repositories in Artifact Registry after you enable the Container Scanning API. If you disabled scanning on a repository and need to allow it again:
 
 ```bash
-# Enable vulnerability scanning for Artifact Registry
-gcloud artifacts settings update \
+# Allow vulnerability scanning on an Artifact Registry repository
+gcloud artifacts repositories update app-images \
   --project=my-project \
-  --scanning=on \
-  --scanning-level=STANDARD
+  --location=us-central1 \
+  --allow-vulnerability-scanning
 ```
 
 ## Step 2: Create a Cloud Build Pipeline with Security Gates
 
-Here is a Cloud Build configuration that builds an image, waits for the vulnerability scan, and enforces a security policy before deployment:
+Here is a Cloud Build configuration that builds an image, runs a vulnerability scan, and enforces a security policy before deployment:
 
 ```yaml
 # cloudbuild.yaml
 steps:
   # Step 1: Run SAST (Static Application Security Testing)
-  - name: 'node:20'
+  - name: 'node:24'
     entrypoint: 'bash'
     args:
       - '-c'
@@ -80,8 +84,8 @@ steps:
       - |
         # Install and run gitleaks for secret detection
         apt-get update && apt-get install -y wget
-        wget -q https://github.com/gitleaks/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz
-        tar -xzf gitleaks_8.18.0_linux_x64.tar.gz
+        wget -q https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+        tar -xzf gitleaks_8.30.1_linux_x64.tar.gz
 
         echo "Scanning for secrets in source code..."
         ./gitleaks detect --source=. --verbose --exit-code=1
@@ -112,67 +116,42 @@ steps:
     id: 'push'
     waitFor: ['build']
 
-  # Step 5: Wait for vulnerability scan to complete
-  - name: 'gcr.io/cloud-builders/gcloud'
+  # Step 5: Run an on-demand vulnerability scan
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         IMAGE="$_REGISTRY/$PROJECT_ID/app-images/my-app:$SHORT_SHA"
-        echo "Waiting for vulnerability scan on $IMAGE"
+        echo "Running vulnerability scan on $IMAGE"
 
-        MAX_ATTEMPTS=30
-        ATTEMPT=0
-
-        while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-          ATTEMPT=$((ATTEMPT + 1))
-          echo "Check $ATTEMPT of $MAX_ATTEMPTS..."
-
-          # Try to get scan results
-          RESULT=$(gcloud artifacts docker images describe $IMAGE \
-            --format='json(image_summary.vulnerabilities)' 2>/dev/null)
-
-          if [ $? -eq 0 ] && [ -n "$RESULT" ]; then
-            echo "Scan complete"
-            echo "$RESULT" | jq .
-            break
-          fi
-
-          sleep 10
-        done
-
-        if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
-          echo "WARNING: Scan did not complete within timeout"
-          # Decide whether to fail or proceed with a warning
-        fi
-    id: 'wait-scan'
+        gcloud artifacts docker images scan "$IMAGE" \
+          --remote \
+          --location=$_SCAN_LOCATION \
+          --format='value(response.scan)' > /workspace/scan_id.txt
+    id: 'scan'
     waitFor: ['push']
 
   # Step 6: Enforce vulnerability policy
-  - name: 'gcr.io/cloud-builders/gcloud'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        IMAGE="$_REGISTRY/$PROJECT_ID/app-images/my-app:$SHORT_SHA"
+        apt-get update && apt-get install -y jq
 
-        # Get the image digest
-        DIGEST=$(gcloud artifacts docker images describe $IMAGE \
-          --format='value(image_summary.digest)')
+        SCAN_ID=$(cat /workspace/scan_id.txt)
+        echo "Checking vulnerabilities from scan: $SCAN_ID"
 
-        FULL_IMAGE="$_REGISTRY/$PROJECT_ID/app-images/my-app@$DIGEST"
-
-        echo "Checking vulnerabilities for: $FULL_IMAGE"
-
-        # Query vulnerability occurrences
-        VULNS=$(gcloud artifacts docker images describe $IMAGE \
-          --show-package-vulnerability \
+        # Query on-demand scan vulnerability occurrences
+        VULNS=$(gcloud artifacts docker images list-vulnerabilities "$SCAN_ID" \
+          --location=$_SCAN_LOCATION \
           --format=json 2>/dev/null)
 
         # Count by severity
-        CRITICAL=$(echo "$VULNS" | jq '[.package_vulnerability[]? | select(.vulnerability.effectiveSeverity == "CRITICAL")] | length')
-        HIGH=$(echo "$VULNS" | jq '[.package_vulnerability[]? | select(.vulnerability.effectiveSeverity == "HIGH")] | length')
-        MEDIUM=$(echo "$VULNS" | jq '[.package_vulnerability[]? | select(.vulnerability.effectiveSeverity == "MEDIUM")] | length')
+        CRITICAL=$(echo "$VULNS" | jq '[.[]? | select(.vulnerability.effectiveSeverity == "CRITICAL")] | length')
+        HIGH=$(echo "$VULNS" | jq '[.[]? | select(.vulnerability.effectiveSeverity == "HIGH")] | length')
+        MEDIUM=$(echo "$VULNS" | jq '[.[]? | select(.vulnerability.effectiveSeverity == "MEDIUM")] | length')
 
         echo "Vulnerability Summary:"
         echo "  Critical: $CRITICAL"
@@ -186,7 +165,7 @@ steps:
           echo "Critical vulnerabilities must be fixed before deployment"
 
           # List the critical vulnerabilities
-          echo "$VULNS" | jq -r '.package_vulnerability[] | select(.vulnerability.effectiveSeverity == "CRITICAL") | "  - \(.vulnerability.shortDescription // "Unknown") in \(.vulnerability.packageIssue[0].affectedPackage // "unknown package")"'
+          echo "$VULNS" | jq -r '.[] | select(.vulnerability.effectiveSeverity == "CRITICAL") | "  - \(.vulnerability.shortDescription // "Unknown") in \(.vulnerability.packageIssue[0].affectedPackage // "unknown package")"'
 
           exit 1
         fi
@@ -200,7 +179,7 @@ steps:
         echo ""
         echo "Security gate passed"
     id: 'security-gate'
-    waitFor: ['wait-scan']
+    waitFor: ['scan']
 
   # Step 7: Deploy only if security gate passes
   - name: 'gcr.io/cloud-builders/gcloud'
@@ -216,6 +195,7 @@ steps:
 
 substitutions:
   _REGISTRY: us-central1-docker.pkg.dev
+  _SCAN_LOCATION: us
 
 options:
   machineType: 'E2_HIGHCPU_8'
@@ -227,7 +207,7 @@ Your Dockerfile itself should follow security best practices. Here is a scan-fri
 
 ```dockerfile
 # Use a specific version, not "latest" - this helps track vulnerabilities
-FROM node:20.11.0-slim AS builder
+FROM node:24.14.0-slim AS builder
 
 # Create a non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
@@ -238,13 +218,13 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install only production dependencies
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy application code
 COPY src/ ./src/
 
 # Final stage - minimal runtime image
-FROM node:20.11.0-slim
+FROM node:24.14.0-slim
 
 # Import the non-root user from builder
 RUN groupadd -r appuser && useradd -r -g appuser appuser
@@ -261,7 +241,7 @@ USER appuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s \
-  CMD curl -f http://localhost:8080/health || exit 1
+  CMD node -e "require('http').get('http://127.0.0.1:8080/health', res => process.exit(res.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
 
 EXPOSE 8080
 CMD ["node", "src/server.js"]
@@ -276,7 +256,7 @@ Vulnerability databases are updated constantly. An image that was clean last wee
 # Triggered on a daily schedule
 
 from google.cloud import artifactregistry_v1
-from google.cloud import monitoring_v3
+from google.cloud.devtools import containeranalysis_v1
 import json
 
 def check_vulnerabilities(request):
@@ -284,7 +264,8 @@ def check_vulnerabilities(request):
     Daily check for new vulnerabilities in deployed images.
     Reports metrics and alerts on new critical findings.
     """
-    client = artifactregistry_v1.ArtifactRegistryClient()
+    artifact_client = artifactregistry_v1.ArtifactRegistryClient()
+    analysis_client = containeranalysis_v1.ContainerAnalysisClient()
     project = 'my-project'
     location = 'us-central1'
     repository = 'app-images'
@@ -292,16 +273,23 @@ def check_vulnerabilities(request):
     # List all images in the repository
     parent = f'projects/{project}/locations/{location}/repositories/{repository}'
 
-    images = client.list_docker_images(request={'parent': parent})
+    images = list(artifact_client.list_docker_images(request={'parent': parent}))
 
     results = []
     for image in images:
         # Get vulnerability scan results for each image
-        vulns = get_vulnerabilities(image.uri)
+        resource_url = f'https://{image.uri}'
+        filter_expression = f'kind="VULNERABILITY" AND resourceUrl="{resource_url}"'
+        vulns = list(analysis_client.get_grafeas_client().list_occurrences(
+            request={
+                'parent': f'projects/{project}',
+                'filter': filter_expression
+            }
+        ))
 
         critical_count = sum(
             1 for v in vulns
-            if v.get('severity') == 'CRITICAL'
+            if v.vulnerability.effective_severity.name == 'CRITICAL'
         )
 
         if critical_count > 0:
@@ -312,10 +300,10 @@ def check_vulnerabilities(request):
             })
 
     if results:
-        # Send alert for images with new critical vulnerabilities
-        send_alert(results)
+        # Publish these results to Cloud Monitoring, Pub/Sub, or your alerting system.
+        print(json.dumps(results))
 
-    return json.dumps({'scanned': len(list(images)), 'alerts': len(results)})
+    return json.dumps({'scanned': len(images), 'alerts': len(results)})
 ```
 
 Schedule this function to run daily:
@@ -404,8 +392,8 @@ Integrate waiver checking into the security gate:
 WAIVED_CVES=$(cat security-waivers.yaml | yq '.waivers[].cve')
 
 # Filter out waived CVEs from the vulnerability count
-UNWAIVED_CRITICAL=$(echo "$VULNS" | jq --argjson waivers "$(echo $WAIVED_CVES | jq -R -s 'split("\n") | map(select(length > 0))')" \
-  '[.package_vulnerability[] | select(.vulnerability.effectiveSeverity == "CRITICAL") | select(.vulnerability.shortDescription as $cve | $waivers | index($cve) | not)] | length')
+UNWAIVED_CRITICAL=$(echo "$VULNS" | jq --argjson waivers "$(printf '%s\n' "$WAIVED_CVES" | jq -R -s 'split("\n") | map(select(length > 0))')" \
+  '[.[] | select(.vulnerability.effectiveSeverity == "CRITICAL") | select(.vulnerability.shortDescription as $cve | $waivers | index($cve) | not)] | length')
 ```
 
 ## Wrapping Up
