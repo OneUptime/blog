@@ -37,7 +37,7 @@ ALTER TABLE Users ADD COLUMN Preferences JSON;
 
 ## Inserting JSON Data
 
-When inserting JSON data, you pass it as a JSON string. Spanner parses and validates it on insert:
+When inserting JSON data in SQL, you can use a JSON literal. Spanner parses and validates it on insert:
 
 ```sql
 -- Insert an event with a JSON metadata payload
@@ -195,44 +195,35 @@ This pattern is extremely useful. You keep the flexibility of JSON for the full 
 
 ## Updating JSON Fields
 
-Spanner does not support partial updates to JSON columns - you need to replace the entire JSON value. If your application needs to update a single field within a JSON document, read the current value first, modify it in your application code, then write the whole thing back.
+Spanner supports JSON mutator functions such as JSON_SET and JSON_REMOVE, which return a new JSON value with the requested change. You still update the JSON column value, but you do not need to read the document into your application just to change a single path.
 
 ```sql
--- Replace the entire JSON value
--- There is no way to update just one field within the JSON in Spanner SQL
+-- Update one field inside the JSON value
 UPDATE Events
-SET Metadata = JSON '{"product_id": "prod-123", "quantity": 3, "price": 29.99, "currency": "USD", "tags": ["electronics", "sale"]}'
+SET Metadata = JSON_SET(Metadata, '$.quantity', 3)
 WHERE EventId = 'evt-001';
 ```
 
 In application code using the Spanner client library, this looks more natural:
 
 ```python
-# Python example: read-modify-write a JSON field
+# Python example: update a JSON field with DML
 
 from google.cloud import spanner
-import json
+from google.cloud.spanner_v1 import param_types
 
 instance = spanner.Client().instance('my-instance')
 database = instance.database('my-database')
 
 def update_json_field(transaction):
-    # Read the current JSON value
-    results = transaction.read(
-        table='Events',
-        columns=['EventId', 'Metadata'],
-        keyset=spanner.KeySet(keys=[['evt-001']])
-    )
-    row = list(results)[0]
-
-    # Parse, modify, and write back the full JSON
-    metadata = json.loads(row[1])
-    metadata['quantity'] = 3  # Update just the quantity
-
-    transaction.update(
-        table='Events',
-        columns=['EventId', 'Metadata'],
-        values=[['evt-001', json.dumps(metadata)]]
+    transaction.execute_update(
+        """
+        UPDATE Events
+        SET Metadata = JSON_SET(Metadata, '$.quantity', @quantity)
+        WHERE EventId = @event_id
+        """,
+        params={'event_id': 'evt-001', 'quantity': 3},
+        param_types={'event_id': param_types.STRING, 'quantity': param_types.INT64},
     )
 
 database.run_in_transaction(update_json_field)
