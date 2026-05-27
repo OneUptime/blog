@@ -8,7 +8,7 @@ Description: Learn how to use Docker multi-stage builds to create smaller, more 
 
 ---
 
-A typical Node.js Docker image built the naive way can be over 1 GB. The same application built with multi-stage builds can be under 100 MB. Smaller images mean faster pulls, less storage cost, reduced attack surface, and quicker container startup.
+A typical Node.js Docker image built the naive way can be over 1 GB. The same application built with multi-stage builds can be much smaller, especially when paired with slim, Alpine, or distroless runtime images. Smaller images mean faster pulls, less storage cost, reduced attack surface, and quicker cold starts when the image needs to be pulled.
 
 This guide shows you how to use multi-stage builds for real-world applications in multiple languages.
 
@@ -49,7 +49,7 @@ graph LR
         E --> F[Built App]
     end
 
-    subgraph "Multi-Stage: ~90 MB"
+    subgraph "Multi-Stage: much smaller"
         G[Alpine + Node.js] --> H[Production deps]
         H --> I[Built App]
     end
@@ -72,7 +72,7 @@ graph TD
 
 ```dockerfile
 # Stage 1: Install dependencies
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 
 # Copy only package files first for better cache utilization
@@ -82,7 +82,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # Stage 2: Build the application
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 # Copy dependencies from the deps stage
@@ -95,7 +95,7 @@ COPY . .
 RUN npm run build
 
 # Stage 3: Production image
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 
 # Set NODE_ENV to production
@@ -104,7 +104,7 @@ ENV NODE_ENV=production
 # Create a non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-# Copy only the production dependencies
+# Copy dependencies, then prune to production dependencies
 COPY --from=deps /app/node_modules ./node_modules
 
 # Copy only the built output
@@ -112,7 +112,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
 
 # Remove devDependencies from node_modules
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 # Switch to non-root user
 USER appuser
@@ -126,11 +126,11 @@ CMD ["node", "dist/index.js"]
 
 ## Go Multi-Stage Build
 
-Go produces static binaries, making it ideal for tiny images:
+Go can produce static binaries, making it ideal for tiny images:
 
 ```dockerfile
 # Stage 1: Build the Go binary
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 
 # Download dependencies first for cache efficiency
@@ -164,7 +164,7 @@ EXPOSE 8080
 ENTRYPOINT ["/server"]
 ```
 
-The final image is typically 10-15 MB because `scratch` contains absolutely nothing except your binary.
+The final image is typically 10-15 MB because `scratch` starts empty and contains only the files you copy into it, such as your binary and certificate bundle.
 
 ## Python Multi-Stage Build
 
@@ -255,7 +255,7 @@ ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
 ```mermaid
 graph LR
     subgraph "Node.js"
-        A1["Single: 1.2 GB"] -.-> A2["Multi-stage: 90 MB"]
+        A1["Single: 1.2 GB"] -.-> A2["Multi-stage: much smaller"]
     end
     subgraph "Go"
         B1["Single: 800 MB"] -.-> B2["Multi-stage: 12 MB"]
@@ -279,7 +279,7 @@ docker build -t myapp:naive -f Dockerfile.naive .
 
 # Check image sizes
 docker images | grep myapp
-# myapp   optimized   abc123   90MB
+# myapp   optimized   abc123   220MB
 # myapp   naive       def456   1.2GB
 
 # Inspect the layers of the optimized image
@@ -293,12 +293,12 @@ dive myapp:optimized
 
 ```bash
 # Use Alpine-based images when possible
-FROM node:20-alpine    # ~180 MB base
+FROM node:24-alpine    # much smaller than the full Node.js image
 # Instead of
-FROM node:20           # ~1 GB base
+FROM node:24           # larger full Node.js image
 
 # Use distroless for even smaller images
-FROM gcr.io/distroless/nodejs20-debian12
+FROM gcr.io/distroless/nodejs24-debian13
 
 # Use scratch for Go static binaries
 FROM scratch           # 0 MB base
