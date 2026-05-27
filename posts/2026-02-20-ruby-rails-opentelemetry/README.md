@@ -40,14 +40,7 @@ gem 'opentelemetry-sdk'
 gem 'opentelemetry-exporter-otlp'
 
 # Auto-instrumentation for Rails and common libraries
-gem 'opentelemetry-instrumentation-rails'
-gem 'opentelemetry-instrumentation-active_record'
-gem 'opentelemetry-instrumentation-action_pack'
-gem 'opentelemetry-instrumentation-active_job'
-gem 'opentelemetry-instrumentation-pg'
-gem 'opentelemetry-instrumentation-redis'
-gem 'opentelemetry-instrumentation-net_http'
-gem 'opentelemetry-instrumentation-faraday'
+gem 'opentelemetry-instrumentation-all'
 ```
 
 ```bash
@@ -63,21 +56,21 @@ Create an initializer to configure OpenTelemetry when Rails boots:
 # config/initializers/opentelemetry.rb
 require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
-require 'opentelemetry/instrumentation/rails'
+require 'opentelemetry/instrumentation/all'
 
 OpenTelemetry::SDK.configure do |c|
   # Set the service name that will appear in your tracing backend
   c.service_name = ENV.fetch('OTEL_SERVICE_NAME', 'my-rails-api')
 
   # Set the service version for tracking deployments
-  c.service_version = ENV.fetch('APP_VERSION', '1.0.0')
+  c.service_version = ENV.fetch('OTEL_SERVICE_VERSION', ENV.fetch('APP_VERSION', '1.0.0'))
 
   # Configure the OTLP exporter to send traces
   c.add_span_processor(
     OpenTelemetry::SDK::Trace::Export::BatchSpanProcessor.new(
       OpenTelemetry::Exporter::OTLP::Exporter.new(
         # The endpoint of your OpenTelemetry Collector
-        endpoint: ENV.fetch('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://localhost:4318/v1/traces'),
+        endpoint: ENV.fetch('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'http://localhost:4318/v1/traces'),
         # Optional headers for authentication
         headers: { 'x-oneuptime-token' => ENV.fetch('ONEUPTIME_TOKEN', '') }
       )
@@ -237,14 +230,14 @@ class InventoryClient
 
     tracer.in_span('inventory.check_stock', attributes: {
       'product.id' => product_id.to_s,
-      'http.method' => 'GET',
-      'http.url' => "#{BASE_URL}/api/stock/#{product_id}"
+      'http.request.method' => 'GET',
+      'url.full' => "#{BASE_URL}/api/stock/#{product_id}"
     }) do |span|
       # Net::HTTP instrumentation automatically injects trace headers
       uri = URI("#{BASE_URL}/api/stock/#{product_id}")
       response = Net::HTTP.get_response(uri)
 
-      span.set_attribute('http.status_code', response.code.to_i)
+      span.set_attribute('http.response.status_code', response.code.to_i)
 
       JSON.parse(response.body)
     end
@@ -273,8 +266,8 @@ Set these environment variables in production:
 export OTEL_SERVICE_NAME="my-rails-api"
 export OTEL_SERVICE_VERSION="1.2.0"
 
-# Collector endpoint
-export OTEL_EXPORTER_OTLP_ENDPOINT="https://otel.oneuptime.com"
+# Collector endpoint for traces
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="https://otlp.oneuptime.com/v1/traces"
 
 # Authentication token
 export ONEUPTIME_TOKEN="your-project-token"
@@ -290,8 +283,11 @@ Add deployment metadata to all spans:
 
 ```ruby
 # config/initializers/opentelemetry.rb
+require 'securerandom'
+require 'socket'
+
 resource = OpenTelemetry::SDK::Resources::Resource.create(
-  'deployment.environment' => ENV.fetch('RAILS_ENV', 'development'),
+  'deployment.environment.name' => ENV.fetch('RAILS_ENV', 'development'),
   'host.name' => Socket.gethostname,
   'service.namespace' => 'ecommerce',
   'service.instance.id' => SecureRandom.uuid
