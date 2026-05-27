@@ -98,6 +98,11 @@ variable "instance_type" {
   type        = string
 }
 
+variable "db_instance_class" {
+  description = "RDS DB instance class"
+  type        = string
+}
+
 variable "replicas" {
   description = "Number of application replicas"
   type        = number
@@ -120,6 +125,7 @@ Create a `.tfvars` file for each environment.
 ```hcl
 # environments/dev.tfvars
 instance_type     = "t3.small"
+db_instance_class = "db.t3.small"
 replicas          = 1
 enable_monitoring = false
 domain_name       = "dev.example.com"
@@ -128,6 +134,7 @@ domain_name       = "dev.example.com"
 ```hcl
 # environments/staging.tfvars
 instance_type     = "t3.medium"
+db_instance_class = "db.t3.medium"
 replicas          = 2
 enable_monitoring = true
 domain_name       = "staging.example.com"
@@ -136,6 +143,7 @@ domain_name       = "staging.example.com"
 ```hcl
 # environments/prod.tfvars
 instance_type     = "t3.xlarge"
+db_instance_class = "db.t3.xlarge"
 replicas          = 3
 enable_monitoring = true
 domain_name       = "app.example.com"
@@ -188,7 +196,7 @@ resource "aws_s3_bucket" "assets" {
 # Database identifier includes environment
 resource "aws_db_instance" "main" {
   identifier     = "${terraform.workspace}-main-db"
-  instance_class = var.instance_type
+  instance_class = var.db_instance_class
   engine         = "postgresql"
   engine_version = "15"
 
@@ -203,7 +211,7 @@ resource "aws_db_instance" "main" {
 
 ## Remote Backend with Workspaces
 
-When using a remote backend, each workspace gets its own state file automatically.
+When using the S3 backend, each non-default workspace gets its own state path automatically.
 
 ```hcl
 # backend.tf
@@ -212,14 +220,15 @@ terraform {
   backend "s3" {
     bucket = "my-company-terraform-state"
 
-    # The workspace name is appended to the key automatically
+    # Non-default workspaces use <workspace_key_prefix>/<workspace>/<key>
     # dev  -> env:/dev/web-app/terraform.tfstate
     # prod -> env:/prod/web-app/terraform.tfstate
+    # default -> web-app/terraform.tfstate
     key = "web-app/terraform.tfstate"
 
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
   }
 }
 ```
