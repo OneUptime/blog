@@ -63,7 +63,7 @@ server-id = 1
 # Recommended: expire binary logs after 7 days
 expire_logs_days = 7
 
-# If using GTID-based replication (recommended)
+# If using GTID-based replication
 gtid_mode = ON
 enforce_gtid_consistency = ON
 ```
@@ -77,11 +77,13 @@ Create a replication user:
 CREATE USER 'dms_replication'@'%' IDENTIFIED BY 'strong_password_here';
 
 -- Grant required privileges
-GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'dms_replication'@'%';
-GRANT SELECT ON *.* TO 'dms_replication'@'%';
+GRANT REPLICATION SLAVE, REPLICATION CLIENT, SELECT, SHOW VIEW, TRIGGER, RELOAD, EXECUTE ON *.* TO 'dms_replication'@'%';
 
 -- If migrating specific databases only
--- GRANT SELECT ON my_database.* TO 'dms_replication'@'%';
+-- GRANT SELECT, SHOW VIEW, TRIGGER ON my_database.* TO 'dms_replication'@'%';
+
+-- If migrating from Amazon RDS or Amazon Aurora
+-- GRANT LOCK TABLES ON *.* TO 'dms_replication'@'%';
 
 FLUSH PRIVILEGES;
 ```
@@ -90,14 +92,13 @@ FLUSH PRIVILEGES;
 
 ```bash
 # Create a connection profile for the source MySQL database
-gcloud database-migration connection-profiles create mysql-source \
+gcloud database-migration connection-profiles create mysql mysql-source \
   --region=us-central1 \
   --display-name="Source MySQL Server" \
-  --provider=MYSQL \
-  --mysql-host=203.0.113.10 \
-  --mysql-port=3306 \
-  --mysql-username=dms_replication \
-  --mysql-password=strong_password_here \
+  --host=203.0.113.10 \
+  --port=3306 \
+  --username=dms_replication \
+  --password=strong_password_here \
   --project=PROJECT_ID
 ```
 
@@ -105,14 +106,13 @@ If your source is on AWS RDS:
 
 ```bash
 # Connection profile for AWS RDS MySQL
-gcloud database-migration connection-profiles create rds-mysql-source \
+gcloud database-migration connection-profiles create mysql rds-mysql-source \
   --region=us-central1 \
   --display-name="AWS RDS MySQL Source" \
-  --provider=MYSQL \
-  --mysql-host=mydb.cluster-xyz.us-east-1.rds.amazonaws.com \
-  --mysql-port=3306 \
-  --mysql-username=dms_replication \
-  --mysql-password=strong_password_here \
+  --host=mydb.cluster-xyz.us-east-1.rds.amazonaws.com \
+  --port=3306 \
+  --username=dms_replication \
+  --password=strong_password_here \
   --project=PROJECT_ID
 ```
 
@@ -120,17 +120,17 @@ For secure connections, add SSL configuration:
 
 ```bash
 # Add SSL certificates for encrypted replication
-gcloud database-migration connection-profiles create secure-mysql-source \
+gcloud database-migration connection-profiles create mysql secure-mysql-source \
   --region=us-central1 \
   --display-name="Secure MySQL Source" \
-  --provider=MYSQL \
-  --mysql-host=203.0.113.10 \
-  --mysql-port=3306 \
-  --mysql-username=dms_replication \
-  --mysql-password=strong_password_here \
-  --mysql-ssl-ca=ca-cert.pem \
-  --mysql-ssl-cert=client-cert.pem \
-  --mysql-ssl-key=client-key.pem \
+  --host=203.0.113.10 \
+  --port=3306 \
+  --username=dms_replication \
+  --password=strong_password_here \
+  --ssl-type=SERVER_CLIENT \
+  --ca-certificate=ca-cert.pem \
+  --client-certificate=client-cert.pem \
+  --private-key=client-key.pem \
   --project=PROJECT_ID
 ```
 
@@ -145,7 +145,7 @@ gcloud sql instances create mysql-destination \
   --tier=db-custom-4-16384 \
   --region=us-central1 \
   --storage-type=SSD \
-  --storage-size=100GB \
+  --storage-size=100 \
   --storage-auto-increase \
   --availability-type=REGIONAL \
   --backup-start-time=02:00 \
@@ -158,10 +158,9 @@ Create a connection profile for the destination:
 
 ```bash
 # Create a connection profile for the Cloud SQL destination
-gcloud database-migration connection-profiles create mysql-destination \
+gcloud database-migration connection-profiles create mysql mysql-destination \
   --region=us-central1 \
   --display-name="Cloud SQL Destination" \
-  --provider=CLOUDSQL \
   --cloudsql-instance=mysql-destination \
   --project=PROJECT_ID
 ```
@@ -180,6 +179,15 @@ gcloud database-migration migration-jobs create mysql-migration \
 ```
 
 The `--type=CONTINUOUS` flag enables CDC (Change Data Capture), which keeps replicating changes from the source until you promote.
+
+Because this example uses an existing Cloud SQL instance, demote the destination so DMS can use it as a replica during the migration:
+
+```bash
+# Demote the destination Cloud SQL instance for the migration
+gcloud database-migration migration-jobs demote-destination mysql-migration \
+  --region=us-central1 \
+  --project=PROJECT_ID
+```
 
 Verify the migration job and start it:
 
@@ -219,14 +227,10 @@ The migration goes through these phases:
 - `PROMOTE_IN_PROGRESS`: Cutover happening
 - `COMPLETED`: Migration finished
 
-For large databases, the full dump phase can take hours or days. Monitor the progress:
+For large databases, the full dump phase can take hours or days. To check replication lag during CDC, connect to the destination instance and inspect `Seconds_Behind_Master`:
 
-```bash
-# Check replication lag
-gcloud database-migration migration-jobs describe mysql-migration \
-  --region=us-central1 \
-  --format="get(durationSinceLastVpcPeering)" \
-  --project=PROJECT_ID
+```sql
+SHOW SLAVE STATUS\G
 ```
 
 ## Step 6: Validate Before Cutover
@@ -271,12 +275,7 @@ gcloud database-migration migration-jobs promote mysql-migration \
   --project=PROJECT_ID
 ```
 
-The promotion process:
-
-1. Stops accepting new writes on the source (brief pause)
-2. Waits for remaining changes to replicate
-3. Promotes Cloud SQL to a standalone primary instance
-4. The Cloud SQL instance becomes read-write
+The promotion process stops replication to the destination and promotes Cloud SQL to a standalone primary instance. Stop application writes to the source before promoting, wait for the remaining changes to replicate, and then promote the job.
 
 **Important**: Update your application's database connection string to point to the Cloud SQL instance immediately after promotion.
 
