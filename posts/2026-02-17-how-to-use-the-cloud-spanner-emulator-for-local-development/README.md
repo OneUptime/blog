@@ -39,7 +39,7 @@ gcloud emulators spanner start
 
 The emulator listens on two ports:
 - gRPC port: 9010 (for Spanner API calls)
-- REST port: 9020 (for admin operations)
+- REST port: 9020 (for REST requests and `gcloud` CLI access)
 
 You can customize the ports if needed:
 
@@ -84,20 +84,23 @@ To point your application at the emulator instead of the real Spanner service, s
 export SPANNER_EMULATOR_HOST=localhost:9010
 ```
 
-When this environment variable is set, all Spanner client libraries automatically connect to the emulator instead of the real service. No code changes needed.
+When this environment variable is set, supported Spanner client libraries automatically connect to the emulator instead of the real service. No code changes needed for Python, Go, Java, Node.js, PHP, Ruby, or C++ clients.
 
 ## Creating an Instance and Database on the Emulator
 
 The emulator starts empty. You need to create an instance and database just like you would with real Spanner, but the operations are instant:
 
 ```bash
-# Make sure the emulator host is set
+# Make sure client libraries and gcloud use the emulator
 export SPANNER_EMULATOR_HOST=localhost:9010
+gcloud config set auth/disable_credentials true
+gcloud config set project test-project
+gcloud config set api_endpoint_overrides/spanner http://localhost:9020/
 
 # Create an instance (configuration does not matter for the emulator)
 gcloud spanner instances create test-instance \
     --config=emulator-config \
-    --display-name="Test Instance" \
+    --description="Test Instance" \
     --nodes=1
 
 # Create a database with your schema
@@ -107,7 +110,7 @@ gcloud spanner databases create test-db \
         UserId STRING(36) NOT NULL,
         Email STRING(256) NOT NULL,
         DisplayName STRING(128),
-        CreatedAt TIMESTAMP NOT NULL
+        CreatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true)
     ) PRIMARY KEY (UserId)'
 ```
 
@@ -121,6 +124,9 @@ For team consistency, create a setup script that initializes the emulator with y
 
 # Set the emulator host
 export SPANNER_EMULATOR_HOST=localhost:9010
+gcloud config set auth/disable_credentials true
+gcloud config set project test-project
+gcloud config set api_endpoint_overrides/spanner http://localhost:9020/
 
 # Wait for the emulator to be ready
 echo "Waiting for Spanner emulator..."
@@ -135,7 +141,7 @@ done
 # Create instance
 gcloud spanner instances create dev-instance \
     --config=emulator-config \
-    --display-name="Dev Instance" \
+    --description="Dev Instance" \
     --nodes=1
 
 # Create database with full schema
@@ -252,7 +258,6 @@ import (
     "testing"
 
     "cloud.google.com/go/spanner"
-    "google.golang.org/api/iterator"
 )
 
 func TestInsertAndReadUser(t *testing.T) {
