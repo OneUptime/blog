@@ -4,11 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Deployment Manager, Python Templates, Infrastructure as Code, Cloud Automation
 
-Description: Learn how to use Python templates in Google Cloud Deployment Manager for dynamic resource generation with complex logic, API calls, and programmatic infrastructure definitions.
+Description: Learn how to use Python templates in Google Cloud Deployment Manager for dynamic resource generation with complex logic and programmatic infrastructure definitions.
 
 ---
 
-Jinja templates are great for parameterized configurations, but they hit a wall when you need real programming logic - loops with complex conditions, string manipulation, mathematical calculations, or dynamic resource generation based on runtime inputs. Python templates give you the full power of the Python language while still producing the same YAML resource definitions that Deployment Manager expects.
+Jinja templates are great for parameterized configurations, but they hit a wall when you need real programming logic - loops with complex conditions, string manipulation, mathematical calculations, or dynamic resource generation based on input properties. Python templates give you the full power of the Python language while still producing the same YAML resource definitions that Deployment Manager expects.
+
+Note: Google Cloud Deployment Manager support was discontinued on March 31, 2026. Use this guide for maintaining existing templates or understanding historical Deployment Manager configurations, and migrate active deployments to Infrastructure Manager or another supported infrastructure-as-code tool.
 
 This guide covers how to write Python templates, when to use them over Jinja, and patterns for building sophisticated infrastructure configurations.
 
@@ -279,17 +281,24 @@ def GenerateConfig(context):
     # Create firewall rules
     for rule_config in props.get('firewallRules', []):
         rule_name = '{}-{}'.format(prefix, rule_config['name'])
+        direction = rule_config.get('direction', 'INGRESS')
         rule = {
             'name': rule_name,
             'type': 'compute.v1.firewall',
             'properties': {
                 'network': '$(ref.{}.selfLink)'.format(vpc_name),
                 'priority': rule_config.get('priority', 1000),
-                'direction': rule_config.get('direction', 'INGRESS'),
-                'allowed': _build_allowed(rule_config['allowed']),
-                'sourceRanges': rule_config.get('sourceRanges', [])
+                'direction': direction,
+                'allowed': _build_allowed(rule_config['allowed'])
             }
         }
+
+        if direction == 'EGRESS':
+            rule['properties']['destinationRanges'] = rule_config.get(
+                'destinationRanges', [])
+        else:
+            rule['properties']['sourceRanges'] = rule_config.get(
+                'sourceRanges', [])
 
         if 'targetTags' in rule_config:
             rule['properties']['targetTags'] = rule_config['targetTags']
@@ -497,6 +506,7 @@ You can also test your templates locally.
 # test_template.py
 # Local testing script for Deployment Manager templates
 import json
+import importlib.util
 
 # Mock the context object
 class MockContext:
@@ -515,9 +525,14 @@ class MockContext:
         }
 
 # Import and test your template
-from multi_zone_instances import GenerateConfig
+spec = importlib.util.spec_from_file_location(
+    'multi_zone_instances',
+    'multi-zone-instances.py'
+)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
 
-result = GenerateConfig(MockContext())
+result = module.GenerateConfig(MockContext())
 print(json.dumps(result, indent=2))
 ```
 
@@ -526,4 +541,4 @@ print(json.dumps(result, indent=2))
 python test_template.py
 ```
 
-Python templates unlock the full potential of Deployment Manager for complex infrastructure configurations. They let you write real code to generate your infrastructure definitions, making it possible to handle dynamic, data-driven deployments that would be impractical with static YAML or Jinja templates.
+For existing or historical Deployment Manager configurations, Python templates unlock the full potential of complex infrastructure configurations. They let you write real code to generate your infrastructure definitions, making it possible to handle dynamic, data-driven deployments that would be impractical with static YAML or Jinja templates.
