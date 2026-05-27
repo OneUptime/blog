@@ -93,7 +93,6 @@ class BecomeModule(BecomeBase):
         'pamsudo: ticket required',
         'pamsudo: session expired',
     )
-    success = ('pamsudo: session established',)
 
     def build_become_command(self, cmd, shell):
         super(BecomeModule, self).build_become_command(cmd, shell)
@@ -123,7 +122,7 @@ class BecomeModule(BecomeBase):
         if self.get_option('become_pass'):
             become_cmd += ' -S'
 
-        become_cmd += ' -- %s' % cmd
+        become_cmd += ' -- %s' % self._build_success_command(cmd, shell)
 
         return become_cmd
 ```
@@ -145,8 +144,8 @@ DOCUMENTATION = """
     description:
         - Retrieves a temporary password from a credential vault
           and uses it with sudo for privilege escalation.
-        - Credentials are checked out for the duration of the play
-          and checked back in when done.
+        - Credentials are checked out from the vault and cached
+          by the plugin instance.
     options:
       become_user:
         description: User to escalate to.
@@ -200,7 +199,6 @@ class BecomeModule(BecomeBase):
 
     prompt = '[sudo] password for'
     fail = ('Sorry, try again', 'sudo: 3 incorrect password attempts')
-    success = ()
 
     _jit_password = None
     _checkout_id = None
@@ -218,9 +216,10 @@ class BecomeModule(BecomeBase):
         become_user = self.get_option('become_user') or 'root'
 
         # Standard sudo command, password will be supplied by Ansible
-        become_cmd = 'sudo -H -S -n'
+        self.prompt = '[sudo via ansible, key=%s] password:' % self._id
+        become_cmd = 'sudo -H -S -p %s' % shlex_quote(self.prompt)
         become_cmd += ' -u %s' % shlex_quote(become_user)
-        become_cmd += ' %s' % cmd
+        become_cmd += ' %s' % self._build_success_command(cmd, shell)
 
         return become_cmd
 
@@ -337,6 +336,7 @@ ansible_become_password: "{{ vault_pamsudo_password }}"
         name: '*'
         state: latest
         security: true
+      register: yum_result
 
     - name: Reboot if needed
       ansible.builtin.reboot:
@@ -363,4 +363,4 @@ When Ansible detects a failure pattern, it reports a clear authentication failur
 
 ## Summary
 
-Custom become plugins let Ansible integrate with enterprise PAM tools, credential vaults, and any privilege escalation system. The plugin interface is straightforward: override `build_become_command()` to construct the escalation command, set `prompt`/`fail`/`success` patterns for interactive authentication, and use plugin options for configuration. Whether you need audit trails with change ticket tracking, just-in-time credentials from a vault, or integration with commercial PAM products, the become plugin system handles it cleanly.
+Custom become plugins let Ansible integrate with enterprise PAM tools, credential vaults, and any privilege escalation system. The plugin interface is straightforward: override `build_become_command()` to construct the escalation command, use `_build_success_command()` so Ansible can detect successful privilege escalation, set `prompt`/`fail` patterns for interactive authentication, and use plugin options for configuration. Whether you need audit trails with change ticket tracking, just-in-time credentials from a vault, or integration with commercial PAM products, the become plugin system handles it cleanly.
