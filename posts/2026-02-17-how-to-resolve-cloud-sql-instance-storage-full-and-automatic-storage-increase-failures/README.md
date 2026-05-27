@@ -40,17 +40,21 @@ Also check from Cloud Monitoring:
 
 ```bash
 # Get current disk usage percentage
-gcloud monitoring time-series list \
-    --filter='resource.type="cloudsql_database" AND resource.labels.database_id="my-project:my-instance" AND metric.type="cloudsql.googleapis.com/database/disk/utilization"' \
-    --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
-    --format="table(points.value.doubleValue)"
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+START_TIME=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+
+curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    --get "https://monitoring.googleapis.com/v3/projects/my-project/timeSeries" \
+    --data-urlencode 'filter=resource.type="cloudsql_database" AND resource.labels.database_id="my-project:my-instance" AND metric.type="cloudsql.googleapis.com/database/disk/utilization"' \
+    --data-urlencode "interval.startTime=${START_TIME}" \
+    --data-urlencode "interval.endTime=${END_TIME}"
 ```
 
 ## Step 2: Why Automatic Storage Increase Failed
 
 Cloud SQL has an automatic storage increase feature, but it can fail for several reasons:
 
-1. **Storage auto-resize is disabled** - it is not on by default for all instances
+1. **Storage auto-resize is disabled** - it might have been turned off
 2. **Auto-resize limit reached** - you may have set a maximum limit that has been hit
 3. **Storage increase too slow** - the disk was filling faster than the automatic increase could keep up
 4. **Maximum storage size reached** - Cloud SQL has a maximum disk size (currently 64 TB)
@@ -75,13 +79,13 @@ If there is a limit that was reached, increase or remove it:
 
 ```bash
 # Remove the auto-resize limit (allow unlimited growth)
-gcloud sql instances patch my-instance \
+gcloud beta sql instances patch my-instance \
     --storage-auto-increase \
     --storage-auto-increase-limit=0 \
     --project=my-project
 
 # Or set a higher limit (in GB)
-gcloud sql instances patch my-instance \
+gcloud beta sql instances patch my-instance \
     --storage-auto-increase \
     --storage-auto-increase-limit=500 \
     --project=my-project
@@ -98,7 +102,7 @@ gcloud sql instances patch my-instance \
     --project=my-project
 ```
 
-Important: Cloud SQL storage increases are permanent. You cannot shrink the disk later. So increase by a reasonable amount, not the maximum.
+Important: Cloud SQL storage increases can permanently increase storage cost. Cloud SQL supports manual storage shrink for many instances, but it has requirements, limitations, and downtime. So increase by a reasonable amount, not the maximum.
 
 ## Step 4: Find What Is Consuming All the Storage
 
@@ -144,12 +148,12 @@ ORDER BY pg_database_size(datname) DESC;
 SELECT
   schemaname,
   tablename,
-  pg_size_pretty(pg_total_relation_size(schemaname || '.' || tablename)) AS total_size,
-  pg_size_pretty(pg_relation_size(schemaname || '.' || tablename)) AS table_size,
-  pg_size_pretty(pg_indexes_size(schemaname || '.' || tablename::regclass)) AS index_size
+  pg_size_pretty(pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS total_size,
+  pg_size_pretty(pg_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS table_size,
+  pg_size_pretty(pg_indexes_size(format('%I.%I', schemaname, tablename)::regclass)) AS index_size
 FROM pg_tables
 WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
-ORDER BY pg_total_relation_size(schemaname || '.' || tablename) DESC
+ORDER BY pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass) DESC
 LIMIT 20;
 ```
 
@@ -219,8 +223,7 @@ gcloud alpha monitoring policies create \
     --display-name="Cloud SQL Disk Usage High" \
     --condition-display-name="Disk usage > 80%" \
     --condition-filter='resource.type="cloudsql_database" AND metric.type="cloudsql.googleapis.com/database/disk/utilization"' \
-    --condition-threshold-value=0.8 \
-    --condition-threshold-comparison=COMPARISON_GT \
+    --if="> 0.8" \
     --duration="300s" \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
