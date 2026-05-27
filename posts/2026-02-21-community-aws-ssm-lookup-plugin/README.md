@@ -1,23 +1,23 @@
-# How to Use the community.aws.aws_ssm Lookup Plugin
+# How to Use the amazon.aws.ssm_parameter Lookup Plugin
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, AWS, SSM Parameter Store, Secrets Management
 
-Description: Learn how to use the community.aws.aws_ssm lookup plugin to fetch parameters and secrets from AWS Systems Manager Parameter Store in Ansible.
+Description: Learn how to use the amazon.aws.ssm_parameter lookup plugin to fetch parameters and secrets from AWS Systems Manager Parameter Store in Ansible.
 
 ---
 
-AWS Systems Manager Parameter Store is a free, simple way to store configuration data and secrets in AWS. Instead of hardcoding database passwords, API keys, or configuration values in your playbooks, you can store them in Parameter Store and fetch them at runtime. The `community.aws.aws_ssm` lookup plugin makes this straightforward by letting you read SSM parameters directly within your Ansible variables and tasks.
+AWS Systems Manager Parameter Store provides a standard tier at no additional charge, giving you a simple way to store configuration data and secrets in AWS. Instead of hardcoding database passwords, API keys, or configuration values in your playbooks, you can store them in Parameter Store and fetch them at runtime. The `amazon.aws.ssm_parameter` lookup plugin makes this straightforward by letting you read SSM parameters directly within your Ansible variables and tasks.
 
 ## Prerequisites
 
 You need the AWS collection and the boto3 Python library installed.
 
 ```bash
-# Install the community.aws collection
+# Install the amazon.aws collection
 
-ansible-galaxy collection install community.aws
+ansible-galaxy collection install amazon.aws
 
 # Install boto3 and botocore
 pip install boto3 botocore
@@ -38,11 +38,13 @@ This playbook fetches a database password:
   hosts: appservers
   tasks:
     - name: Get database password from SSM
+      ansible.builtin.set_fact:
+        db_password: "{{ lookup('amazon.aws.ssm_parameter', '/myapp/production/db_password') }}"
+      no_log: true
+
+    - name: Confirm database password was retrieved
       ansible.builtin.debug:
         msg: "DB password retrieved successfully"
-      vars:
-        db_password: "{{ lookup('community.aws.aws_ssm', '/myapp/production/db_password') }}"
-      no_log: true
 ```
 
 ## Storing Parameters in SSM
@@ -87,13 +89,13 @@ SSM supports three parameter types: String, SecureString, and StringList.
   hosts: appservers
   vars:
     # Read a plain String parameter
-    db_host: "{{ lookup('community.aws.aws_ssm', '/myapp/production/db_host') }}"
+    db_host: "{{ lookup('amazon.aws.ssm_parameter', '/myapp/production/db_host') }}"
 
     # Read a SecureString parameter (automatically decrypted)
-    db_password: "{{ lookup('community.aws.aws_ssm', '/myapp/production/db_password') }}"
+    db_password: "{{ lookup('amazon.aws.ssm_parameter', '/myapp/production/db_password') }}"
 
     # Read a StringList parameter
-    allowed_origins: "{{ lookup('community.aws.aws_ssm', '/myapp/production/allowed_origins') }}"
+    allowed_origins: "{{ lookup('amazon.aws.ssm_parameter', '/myapp/production/allowed_origins') }}"
   tasks:
     - name: Show retrieved configuration
       ansible.builtin.debug:
@@ -113,7 +115,7 @@ SSM supports three parameter types: String, SecureString, and StringList.
 
 ## Reading Multiple Parameters
 
-You can fetch multiple parameters in a single lookup call.
+You can fetch multiple parameters in a single lookup expression.
 
 ```yaml
 # playbook.yml - Read multiple SSM parameters
@@ -123,7 +125,7 @@ You can fetch multiple parameters in a single lookup call.
   tasks:
     - name: Get multiple parameters at once
       ansible.builtin.set_fact:
-        ssm_params: "{{ lookup('community.aws.aws_ssm', '/myapp/production/db_host', '/myapp/production/db_port', '/myapp/production/db_name') }}"
+        ssm_params: "{{ query('amazon.aws.ssm_parameter', '/myapp/production/db_host', '/myapp/production/db_port', '/myapp/production/db_name') }}"
 
     - name: Show parameters
       ansible.builtin.debug:
@@ -144,7 +146,7 @@ SSM supports hierarchical parameter organization. You can read all parameters un
   tasks:
     - name: Get all parameters for the environment
       ansible.builtin.set_fact:
-        app_params: "{{ lookup('community.aws.aws_ssm', '/myapp/' + env + '/', bypath=true, recursive=true) }}"
+        app_params: "{{ lookup('amazon.aws.ssm_parameter', '/myapp/' + env + '/', bypath=true, recursive=true) }}"
 
     - name: Display fetched parameters (names only)
       ansible.builtin.debug:
@@ -188,17 +190,17 @@ The SSM parameter hierarchy:
     ssm_prefix: "/myapp/{{ env }}"
 
     # Individual parameter lookups for critical values
-    db_host: "{{ lookup('community.aws.aws_ssm', ssm_prefix + '/database/host') }}"
-    db_port: "{{ lookup('community.aws.aws_ssm', ssm_prefix + '/database/port') }}"
-    db_name: "{{ lookup('community.aws.aws_ssm', ssm_prefix + '/database/name') }}"
-    db_user: "{{ lookup('community.aws.aws_ssm', ssm_prefix + '/database/username') }}"
-    db_pass: "{{ lookup('community.aws.aws_ssm', ssm_prefix + '/database/password') }}"
-    redis_host: "{{ lookup('community.aws.aws_ssm', ssm_prefix + '/redis/host') }}"
-    redis_port: "{{ lookup('community.aws.aws_ssm', ssm_prefix + '/redis/port') }}"
-    redis_pass: "{{ lookup('community.aws.aws_ssm', ssm_prefix + '/redis/password') }}"
-    app_secret: "{{ lookup('community.aws.aws_ssm', ssm_prefix + '/app/secret_key') }}"
-    log_level: "{{ lookup('community.aws.aws_ssm', ssm_prefix + '/app/log_level') }}"
-    worker_count: "{{ lookup('community.aws.aws_ssm', ssm_prefix + '/app/workers') }}"
+    db_host: "{{ lookup('amazon.aws.ssm_parameter', ssm_prefix + '/database/host') }}"
+    db_port: "{{ lookup('amazon.aws.ssm_parameter', ssm_prefix + '/database/port') }}"
+    db_name: "{{ lookup('amazon.aws.ssm_parameter', ssm_prefix + '/database/name') }}"
+    db_user: "{{ lookup('amazon.aws.ssm_parameter', ssm_prefix + '/database/username') }}"
+    db_pass: "{{ lookup('amazon.aws.ssm_parameter', ssm_prefix + '/database/password') }}"
+    redis_host: "{{ lookup('amazon.aws.ssm_parameter', ssm_prefix + '/redis/host') }}"
+    redis_port: "{{ lookup('amazon.aws.ssm_parameter', ssm_prefix + '/redis/port') }}"
+    redis_pass: "{{ lookup('amazon.aws.ssm_parameter', ssm_prefix + '/redis/password') }}"
+    app_secret: "{{ lookup('amazon.aws.ssm_parameter', ssm_prefix + '/app/secret_key') }}"
+    log_level: "{{ lookup('amazon.aws.ssm_parameter', ssm_prefix + '/app/log_level') }}"
+    worker_count: "{{ lookup('amazon.aws.ssm_parameter', ssm_prefix + '/app/workers') }}"
   tasks:
     - name: Template application configuration
       ansible.builtin.template:
@@ -232,11 +234,11 @@ If your SSM parameters are in a specific region:
   tasks:
     - name: Read from us-east-1
       ansible.builtin.set_fact:
-        east_config: "{{ lookup('community.aws.aws_ssm', '/myapp/config', region='us-east-1') }}"
+        east_config: "{{ lookup('amazon.aws.ssm_parameter', '/myapp/config', region='us-east-1') }}"
 
     - name: Read from eu-west-1
       ansible.builtin.set_fact:
-        eu_config: "{{ lookup('community.aws.aws_ssm', '/myapp/config', region='eu-west-1') }}"
+        eu_config: "{{ lookup('amazon.aws.ssm_parameter', '/myapp/config', region='eu-west-1') }}"
 ```
 
 ## Using with AWS Profiles
@@ -251,11 +253,11 @@ For multi-account setups, specify the AWS profile:
   tasks:
     - name: Read from production account
       ansible.builtin.set_fact:
-        prod_params: "{{ lookup('community.aws.aws_ssm', '/myapp/database/host', profile='production') }}"
+        prod_params: "{{ lookup('amazon.aws.ssm_parameter', '/myapp/database/host', profile='production') }}"
 
     - name: Read from staging account
       ansible.builtin.set_fact:
-        staging_params: "{{ lookup('community.aws.aws_ssm', '/myapp/database/host', profile='staging') }}"
+        staging_params: "{{ lookup('amazon.aws.ssm_parameter', '/myapp/database/host', profile='staging') }}"
 ```
 
 ## Error Handling
@@ -271,7 +273,7 @@ Handle missing parameters and connectivity issues:
     # Use on_missing to control behavior for missing params
     - name: Fetch with graceful handling of missing params
       ansible.builtin.set_fact:
-        optional_setting: "{{ lookup('community.aws.aws_ssm', '/myapp/optional/setting', on_missing='skip') | default('default_value') }}"
+        optional_setting: "{{ lookup('amazon.aws.ssm_parameter', '/myapp/optional/setting', on_missing='skip') | default('default_value', true) }}"
 
     # Block/rescue for connection failures
     - name: Fetch critical parameters
@@ -279,8 +281,8 @@ Handle missing parameters and connectivity issues:
         - name: Get database config from SSM
           ansible.builtin.set_fact:
             db_config:
-              host: "{{ lookup('community.aws.aws_ssm', '/myapp/production/database/host') }}"
-              password: "{{ lookup('community.aws.aws_ssm', '/myapp/production/database/password') }}"
+              host: "{{ lookup('amazon.aws.ssm_parameter', '/myapp/production/database/host') }}"
+              password: "{{ lookup('amazon.aws.ssm_parameter', '/myapp/production/database/password') }}"
           no_log: true
       rescue:
         - name: SSM fetch failed
@@ -336,10 +338,10 @@ The `kms:Decrypt` permission is only needed if you are reading SecureString para
 
 3. **Cache lookups**: Each SSM lookup makes an API call. If you use the same parameter in multiple places, fetch it once with `set_fact` and reuse the variable.
 
-4. **Rate limits**: AWS SSM has API rate limits. If you are fetching many parameters, use `bypath` to get them in a single API call instead of individual lookups.
+4. **Rate limits**: AWS SSM has API rate limits. If you are fetching many parameters under the same hierarchy, use `bypath` to retrieve them with one lookup expression instead of many individual lookups.
 
 5. **no_log**: Always set `no_log: true` when handling SecureString values to keep them out of Ansible output.
 
 6. **Parameter versioning**: SSM supports parameter versions. By default, the latest version is returned. You can request specific versions if needed.
 
-The `community.aws.aws_ssm` lookup plugin makes AWS Parameter Store a natural extension of your Ansible workflow. It is simpler than setting up HashiCorp Vault for AWS-only environments and integrates seamlessly with IAM for access control.
+The `amazon.aws.ssm_parameter` lookup plugin makes AWS Parameter Store a natural extension of your Ansible workflow. It is simpler than setting up HashiCorp Vault for AWS-only environments and integrates seamlessly with IAM for access control.
