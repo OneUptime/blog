@@ -8,7 +8,7 @@ Description: A practical guide to building a hub-and-spoke network topology in G
 
 ---
 
-As your GCP footprint grows, you end up with multiple VPC networks that need to communicate. VPC peering works for simple setups, but it is non-transitive and the connection limit caps at 25 per network. For larger environments, you need a hub-and-spoke topology where a central hub provides connectivity between all spoke networks.
+As your GCP footprint grows, you end up with multiple VPC networks that need to communicate. VPC peering works for simple setups, but it is non-transitive and has per-network peering quotas. For larger environments, you need a hub-and-spoke topology where a central hub provides connectivity between all spoke networks.
 
 Network Connectivity Center (NCC) is Google's managed service for building this topology. It provides transitive connectivity, supports VPC spokes, VPN spokes, and Interconnect spokes, and handles route exchange automatically.
 
@@ -34,7 +34,7 @@ Before setting up NCC:
 
 1. Non-overlapping IP ranges across all spoke networks
 2. Network Connectivity Center API enabled
-3. Appropriate IAM roles (networkconnectivity.admin)
+3. Appropriate IAM roles, such as Hub & Spoke Admin (`roles/networkconnectivity.hubAdmin`) and Spoke Admin (`roles/networkconnectivity.spokeAdmin`)
 
 ```bash
 # Enable the required APIs
@@ -71,7 +71,7 @@ Each VPC network that needs connectivity becomes a spoke. Let us add three VPC n
 gcloud network-connectivity spokes linked-vpc-network create spoke-production \
   --hub=transit-hub \
   --vpc-network=projects/my-project/global/networks/production-vpc \
-  --location=global \
+  --global \
   --description="Production VPC spoke" \
   --labels=env=production
 ```
@@ -81,7 +81,7 @@ gcloud network-connectivity spokes linked-vpc-network create spoke-production \
 gcloud network-connectivity spokes linked-vpc-network create spoke-staging \
   --hub=transit-hub \
   --vpc-network=projects/my-project/global/networks/staging-vpc \
-  --location=global \
+  --global \
   --description="Staging VPC spoke" \
   --labels=env=staging
 ```
@@ -91,27 +91,27 @@ gcloud network-connectivity spokes linked-vpc-network create spoke-staging \
 gcloud network-connectivity spokes linked-vpc-network create spoke-dev \
   --hub=transit-hub \
   --vpc-network=projects/my-project/global/networks/dev-vpc \
-  --location=global \
+  --global \
   --description="Development VPC spoke" \
   --labels=env=development
 ```
 
 ## Step 3: Verify Route Exchange
 
-Once spokes are connected, NCC automatically exchanges routes between them. Verify that routes from other spokes appear:
+Once spokes are connected, NCC automatically exchanges routes between them. Verify that routes from other spokes appear in the hub route table:
 
 ```bash
-# Check routes in the production VPC - should see staging and dev routes
-gcloud compute routes list \
-  --project=my-project \
-  --filter="network=production-vpc AND description:NCC" \
-  --format="table(name, destRange, nextHopHub, priority)"
+# Check hub routes - should see production, staging, and dev subnet routes
+gcloud network-connectivity hubs route-tables routes list \
+  --hub=transit-hub \
+  --route_table=default-route-table \
+  --format="table(ipCidrRange, type, spoke, nextHopVpcNetwork.uri, priority)"
 ```
 
 ```bash
 # List spokes and their status
-gcloud network-connectivity spokes list \
-  --hub=transit-hub \
+gcloud network-connectivity hubs list-spokes transit-hub \
+  --spoke-locations=global \
   --format="table(name, linkedVpcNetwork.uri, state)"
 ```
 
@@ -133,14 +133,28 @@ gcloud compute vpn-gateways create ncc-vpn-gw \
   --network=transit-vpc \
   --region=us-central1
 
+# Create an external VPN gateway for the on-premises peer
+gcloud compute external-vpn-gateways create onprem-vpn-gw \
+  --interfaces=0=203.0.113.10,1=203.0.113.11
+
 # Create VPN tunnels (simplified - you need two for HA)
 gcloud compute vpn-tunnels create tunnel-0 \
   --region=us-central1 \
   --vpn-gateway=ncc-vpn-gw \
-  --peer-gcp-gateway=onprem-vpn-gw \
+  --peer-external-gateway=onprem-vpn-gw \
+  --peer-external-gateway-interface=0 \
   --shared-secret=my-secret \
   --router=ncc-router \
-  --vpn-gateway-interface=0
+  --interface=0
+
+# Create a Cloud Router interface for the tunnel
+gcloud compute routers add-interface ncc-router \
+  --region=us-central1 \
+  --interface-name=tunnel-0-iface \
+  --vpn-tunnel=tunnel-0 \
+  --vpn-tunnel-region=us-central1 \
+  --ip-address=169.254.0.1 \
+  --mask-length=30
 
 # Configure BGP sessions on Cloud Router
 gcloud compute routers add-bgp-peer ncc-router \
@@ -160,6 +174,7 @@ gcloud network-connectivity spokes linked-vpn-tunnels create spoke-onprem \
   --vpn-tunnels=projects/my-project/regions/us-central1/vpnTunnels/tunnel-0,projects/my-project/regions/us-central1/vpnTunnels/tunnel-1 \
   --region=us-central1 \
   --site-to-site-data-transfer \
+  --include-import-ranges=ALL_IPV4_RANGES \
   --description="On-premises connectivity via HA VPN"
 ```
 
@@ -190,8 +205,7 @@ You might not want every subnet in a spoke to be reachable from other spokes. NC
 ```bash
 # Update a spoke to exclude specific subnets from route export
 gcloud network-connectivity spokes linked-vpc-network update spoke-dev \
-  --hub=transit-hub \
-  --location=global \
+  --global \
   --exclude-export-ranges=10.30.100.0/24,10.30.200.0/24
 ```
 
@@ -207,8 +221,9 @@ gcloud network-connectivity hubs describe transit-hub \
   --format=yaml
 
 # List all spokes and their status
-gcloud network-connectivity spokes list \
-  --hub=transit-hub \
+gcloud network-connectivity hubs list-spokes transit-hub \
+  --spoke-locations=global,us-central1 \
+  --view=detailed \
   --format="table(name, spokeType, state, linkedVpcNetwork.uri, linkedVpnTunnels.uris)"
 ```
 
@@ -216,9 +231,10 @@ Set up monitoring alerts for spoke connectivity issues:
 
 ```bash
 # Check hub routing table
-gcloud network-connectivity hubs list-routes transit-hub \
-  --spoke=spoke-production \
-  --format="table(destRange, type, nextHopVpcNetwork)"
+gcloud network-connectivity hubs route-tables routes list \
+  --hub=transit-hub \
+  --route_table=default-route-table \
+  --format="table(ipCidrRange, type, spoke, nextHopVpcNetwork.uri)"
 ```
 
 ## Cross-Project Hub Configuration
@@ -230,18 +246,18 @@ NCC hubs can connect VPCs from different projects. The VPC spoke creation refere
 gcloud network-connectivity spokes linked-vpc-network create spoke-team-b \
   --hub=transit-hub \
   --vpc-network=projects/team-b-project/global/networks/team-b-vpc \
-  --location=global \
+  --global \
   --description="Team B VPC from separate project"
 ```
 
-The project hosting the VPC needs to grant the NCC service account appropriate permissions.
+The project hosting the VPC needs the appropriate spoke permissions, and cross-project spokes might need to be accepted or auto-accepted by the hub administrator.
 
 ## NCC vs. VPC Peering: When to Choose Which
 
 | Criteria | VPC Peering | NCC Hub-and-Spoke |
 |----------|------------|-------------------|
 | Transitive connectivity | No | Yes |
-| Max connections | 25 per VPC | Higher limits |
+| Max connections | Per-network quota | Higher limits |
 | Route management | Automatic subnet routes | Managed by hub |
 | On-premises integration | Separate VPN/Interconnect | Unified through hub |
 | Cost | Free | NCC pricing applies |
@@ -256,7 +272,7 @@ To disconnect a network from the hub:
 ```bash
 # Remove a spoke from the hub
 gcloud network-connectivity spokes delete spoke-dev \
-  --location=global --quiet
+  --global --quiet
 ```
 
 Routes from the removed spoke are automatically withdrawn from all other spokes.
