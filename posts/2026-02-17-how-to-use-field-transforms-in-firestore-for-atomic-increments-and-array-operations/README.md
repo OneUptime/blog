@@ -237,7 +237,7 @@ const cartRef = doc(db, 'carts', 'cart-user-123');
 // Add an item to the cart
 async function addToCart(product) {
   await updateDoc(cartRef, {
-    // Add the product to the items array (no duplicates by product ID)
+    // Add the product to the items array (no duplicate identical item objects)
     items: arrayUnion({
       productId: product.id,
       name: product.name,
@@ -256,6 +256,7 @@ async function addToCart(product) {
 // Remove an item from the cart
 async function removeFromCart(product) {
   await updateDoc(cartRef, {
+    // Remove the matching item object from the items array
     items: arrayRemove({
       productId: product.id,
       name: product.name,
