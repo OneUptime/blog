@@ -47,7 +47,7 @@ The file path is resolved relative to the Ansible playbook directory. You can us
 
 ## Reading Multiple Files
 
-The file lookup can read multiple files at once by passing a comma-separated list or by using it in a loop:
+The file lookup can read multiple files at once by passing multiple terms or by using it in a loop:
 
 ```yaml
 # multiple_files.yml - Read multiple files with file lookup
@@ -163,15 +163,17 @@ By default, the file lookup raises an error if the file does not exist. You can 
   tasks:
     - name: Read optional config file
       ansible.builtin.set_fact:
-        custom_config: "{{ lookup('file', 'files/custom.conf', errors='ignore') | default('# No custom configuration') }}"
+        custom_config: "{{ lookup('file', 'files/custom.conf', errors='ignore') | default('# No custom configuration', true) }}"
 
     - name: Show config content
       ansible.builtin.debug:
         msg: "Custom config: {{ custom_config }}"
 
     - name: Read required file with clear error
-      ansible.builtin.set_fact:
-        required_content: "{{ lookup('file', 'files/required.conf') }}"
+      block:
+        - name: Read required file
+          ansible.builtin.set_fact:
+            required_content: "{{ lookup('file', 'files/required.conf') }}"
       rescue:
         - name: Fail with helpful message
           ansible.builtin.fail:
@@ -180,7 +182,7 @@ By default, the file lookup raises an error if the file does not exist. You can 
 
 ## Reading JSON and YAML Files
 
-The file lookup returns raw string content. To parse structured data, combine it with the `from_json` or `from_yaml` filters:
+The file lookup returns string content. By default, it strips trailing whitespace from the file content. To parse structured data, combine it with the `from_json` or `from_yaml` filters:
 
 ```yaml
 # parse_structured_data.yml - Read and parse JSON/YAML files
@@ -242,11 +244,11 @@ Ansible looks for files in a specific order based on the file search path:
 - name: Demonstrate file search paths
   hosts: all
   tasks:
-    # Ansible searches in this order:
-    # 1. files/ directory relative to the playbook
-    # 2. files/ directory relative to the role
-    # 3. The playbook directory itself
-    # 4. The role directory itself
+    # Ansible searches from the most specific task context to the most general:
+    # 1. The current role's files/ directory, then the role directory
+    # 2. Parent roles, if the current role was included or imported
+    # 3. The current task file's files/ directory, then the task file directory
+    # 4. The current play file's files/ directory, then the play file directory
 
     - name: This looks in files/ first, then playbook dir
       ansible.builtin.debug:
