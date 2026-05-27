@@ -8,7 +8,7 @@ Description: Learn why MetalLB may not advertise from control-plane nodes due to
 
 ---
 
-In many Kubernetes clusters, especially single-node or small clusters, the control-plane nodes also need to run MetalLB speakers to advertise LoadBalancer IPs. By default, control-plane nodes have taints that prevent workloads from scheduling on them, including MetalLB speaker pods. This post explains the problem and multiple ways to fix it.
+In many Kubernetes clusters, especially single-node or small clusters, the control-plane nodes also need to run MetalLB speakers to advertise LoadBalancer IPs. Control-plane nodes often have taints that prevent workloads from scheduling on them. Current official MetalLB manifests and Helm chart defaults include control-plane tolerations for the speaker, but custom, older, or modified installs can still miss them. This post explains the problem and multiple ways to fix it.
 
 ## The Problem
 
@@ -18,7 +18,7 @@ Control-plane nodes typically have this taint:
 node-role.kubernetes.io/control-plane:NoSchedule
 ```
 
-This taint prevents any pod that does not have a matching toleration from being scheduled on the node. Since MetalLB speaker pods are DaemonSet pods, they need to run on every node that should advertise IPs.
+This taint prevents any pod that does not have a matching toleration from being scheduled on the node. Since MetalLB speaker pods are DaemonSet pods, they need to run on every node that should be eligible to advertise IPs.
 
 ```mermaid
 flowchart TD
@@ -37,10 +37,13 @@ flowchart TD
 ```bash
 # List speaker pods and the nodes they are running on
 
+kubectl get pods -n metallb-system -l app.kubernetes.io/component=speaker -o wide
+
+# Some manifest-based installs use this older label instead
 kubectl get pods -n metallb-system -l component=speaker -o wide
 ```
 
-If you see speaker pods on worker nodes but not on control-plane nodes, the taint is blocking scheduling.
+If you see speaker pods on worker nodes but not on control-plane nodes, a missing toleration may be blocking scheduling.
 
 ```bash
 # List control-plane nodes
@@ -53,8 +56,10 @@ kubectl describe node <control-plane-node> | grep -A 5 Taints
 ### Check DaemonSet Status
 
 ```bash
-# Check if the DaemonSet has desired pods matching available nodes
+# Check if the DaemonSet has desired pods matching available nodes.
+# Helm installs commonly use metallb-speaker; manifest installs commonly use speaker.
 kubectl get daemonset -n metallb-system speaker
+kubectl get daemonset -n metallb-system metallb-speaker
 
 # A mismatch between DESIRED and CURRENT indicates scheduling issues
 # DESIRED  CURRENT  READY  UP-TO-DATE  AVAILABLE  NODE SELECTOR
@@ -67,7 +72,7 @@ If DESIRED is less than the total number of nodes, or CURRENT is less than DESIR
 
 In a single-node cluster, if the speaker cannot run on the control-plane node, MetalLB cannot advertise any IPs at all.
 
-In multi-node clusters, if the control-plane node is selected as the L2 announcer (based on node conditions and ordering), but the speaker is not running there, the service becomes unreachable until MetalLB fails over to a worker node.
+In multi-node clusters, MetalLB L2 mode elects an announcer from the active, eligible speakers. If your `L2Advertisement` node selectors or service settings leave only control-plane nodes eligible, and the speaker is not running there, there may be no node available to advertise the IP.
 
 ```mermaid
 flowchart LR
@@ -80,7 +85,7 @@ flowchart LR
 
 ## Fix 1: Add Tolerations to the MetalLB Speaker DaemonSet
 
-If you installed MetalLB via Helm, add tolerations in your values file:
+If you installed MetalLB via Helm and your speaker chart values do not already tolerate control-plane nodes, add tolerations in your values file:
 
 ```yaml
 # helm-values.yaml
@@ -107,18 +112,28 @@ helm upgrade metallb metallb/metallb \
 If you installed MetalLB via manifests, patch the DaemonSet directly:
 
 ```bash
-# Patch the speaker DaemonSet to add control-plane tolerations
-kubectl patch daemonset speaker -n metallb-system --type=json -p='[
-  {
-    "op": "add",
-    "path": "/spec/template/spec/tolerations/-",
-    "value": {
-      "key": "node-role.kubernetes.io/control-plane",
-      "operator": "Exists",
-      "effect": "NoSchedule"
+# Patch the speaker DaemonSet to add control-plane tolerations.
+# Use speaker for manifest installs or metallb-speaker for Helm installs.
+kubectl patch daemonset speaker -n metallb-system --type=strategic -p='{
+  "spec": {
+    "template": {
+      "spec": {
+        "tolerations": [
+          {
+            "key": "node-role.kubernetes.io/control-plane",
+            "operator": "Exists",
+            "effect": "NoSchedule"
+          },
+          {
+            "key": "node-role.kubernetes.io/master",
+            "operator": "Exists",
+            "effect": "NoSchedule"
+          }
+        ]
+      }
     }
   }
-]'
+}'
 ```
 
 ## Fix 2: Remove the Taint from Control-Plane Nodes
@@ -140,7 +155,7 @@ Note the trailing `-` which removes the taint.
 
 ## Fix 3: Use Node Selectors in Advertisements
 
-If you do not want MetalLB to advertise from control-plane nodes, explicitly restrict advertisements to worker nodes:
+If you do not want MetalLB to advertise from control-plane nodes, explicitly restrict advertisements to worker nodes. The example below assumes your worker nodes are labeled `node-role.kubernetes.io/worker`; if they are not, use a label that actually exists on your worker nodes.
 
 ```yaml
 # l2advertisement.yaml
@@ -165,10 +180,14 @@ After applying any fix, verify that the speaker pods are running on all expected
 
 ```bash
 # Verify speaker pods are now running on control-plane nodes
+kubectl get pods -n metallb-system -l app.kubernetes.io/component=speaker -o wide
+
+# Or, for manifest-based installs using the older label:
 kubectl get pods -n metallb-system -l component=speaker -o wide
 
 # Check that the DaemonSet counts match
 kubectl get daemonset -n metallb-system speaker
+kubectl get daemonset -n metallb-system metallb-speaker
 ```
 
 Test that services get IPs and are reachable:
@@ -193,14 +212,14 @@ kubectl delete deployment test-web
 
 ### MicroK8s
 
-MicroK8s single-node clusters have the control-plane taint. When you enable MetalLB:
+When you enable the MicroK8s MetalLB addon:
 
 ```bash
 # Enable MetalLB addon in MicroK8s
 microk8s enable metallb:192.168.1.200-192.168.1.250
 ```
 
-MicroK8s automatically adds the correct tolerations. If you installed MetalLB manually, you need to add them yourself.
+MicroK8s deploys MetalLB through its addon. If you installed MetalLB manually and your speaker DaemonSet lacks tolerations, add them yourself.
 
 ### k3s
 
