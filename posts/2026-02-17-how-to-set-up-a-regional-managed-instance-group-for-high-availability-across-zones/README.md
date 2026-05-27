@@ -14,7 +14,7 @@ I have used regional MIGs for production workloads where downtime was not an opt
 
 ## Understanding Regional vs Zonal MIGs
 
-A zonal MIG runs all its instances in a single zone. If that zone goes down, every instance goes with it. A regional MIG distributes instances across up to three zones in a region. Google handles the distribution automatically, and you can configure how instances are spread.
+A zonal MIG runs all its instances in a single zone. If that zone goes down, every instance goes with it. A regional MIG distributes instances across multiple zones in a region. By default, Compute Engine selects three zones, but you can explicitly specify a different number of zones when you create the group. Google handles the distribution automatically, and you can configure how instances are spread.
 
 Here is the flow at a high level:
 
@@ -101,18 +101,19 @@ This creates 6 instances distributed across the three specified zones - roughly 
 
 ## Step 4: Configure Distribution Policy
 
-By default, a regional MIG uses an even distribution policy. You can change this behavior depending on your needs.
+By default, a regional MIG uses an `EVEN` target distribution shape. You can change this behavior depending on your needs.
 
-The even distribution (default) tries to keep the same number of instances in each zone:
+The even distribution (default) tries to keep the same number of instances in each zone. You can make that explicit like this:
 
 ```bash
-# Set the distribution policy to EVEN (default behavior)
+# Set the target distribution shape to EVEN (default behavior)
 gcloud compute instance-groups managed update web-server-mig \
   --region=us-central1 \
-  --instance-redistribution-type=PROACTIVE
+  --target-distribution-shape=even \
+  --instance-redistribution-type=proactive
 ```
 
-With `PROACTIVE` redistribution, the MIG automatically moves instances between zones to maintain even distribution. If you set it to `NONE`, the MIG will not rebalance - it will only place new instances in zones that need them when scaling up.
+With `proactive` redistribution, the MIG automatically deletes and recreates instances as needed to maintain even distribution. If you set it to `none`, the MIG will not rebalance - it will only place new instances in zones that need them when scaling up.
 
 ## Step 5: Set Up Autoscaling
 
@@ -153,8 +154,7 @@ gcloud compute instance-groups managed rolling-action start-update web-server-mi
   --region=us-central1 \
   --type=proactive \
   --max-surge=3 \
-  --max-unavailable=0 \
-  --min-ready=60
+  --max-unavailable=0
 ```
 
 This configuration creates up to 3 extra instances during the update (`--max-surge=3`) while keeping zero instances unavailable (`--max-unavailable=0`). The result is a zero-downtime rolling update.
@@ -163,12 +163,31 @@ This configuration creates up to 3 extra instances during the update (`--max-sur
 
 A regional MIG by itself just runs instances. To actually serve traffic, connect it to a load balancer.
 
-First, create a backend service:
+First, set a named port on the MIG and allow load balancer health checks to reach your instances:
+
+```bash
+# Tell the load balancer which backend port is serving HTTP
+gcloud compute instance-groups managed set-named-ports web-server-mig \
+  --region=us-central1 \
+  --named-ports=http:80
+
+# Allow Google Cloud health check systems to reach the backend VMs
+gcloud compute firewall-rules create allow-web-health-checks \
+  --network=default \
+  --action=allow \
+  --direction=ingress \
+  --source-ranges=130.211.0.0/22,35.191.0.0/16 \
+  --target-tags=health-check \
+  --rules=tcp:80
+```
+
+Then create a backend service:
 
 ```bash
 # Create a backend service that uses the MIG
 gcloud compute backend-services create web-backend \
   --protocol=HTTP \
+  --port-name=http \
   --health-checks=web-server-health-check \
   --global
 
