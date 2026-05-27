@@ -42,7 +42,7 @@ ansible_python_interpreter=/usr/bin/python3
     app_name: myapp
     app_dir: /opt/{{ app_name }}
     app_user: www-data
-    python_version: "3.11"
+    python_interpreter: python3
 
   tasks:
     - name: Install system dependencies
@@ -68,10 +68,15 @@ ansible_python_interpreter=/usr/bin/python3
     - name: Create virtual environment
       ansible.builtin.pip:
         virtualenv: "{{ app_dir }}/venv"
-        virtualenv_command: python3 -m venv
+        virtualenv_command: "{{ python_interpreter }} -m venv"
         name: pip
-        state: latest
+        state: present
       become_user: "{{ app_user }}"
+
+    - name: Check for application requirements file
+      ansible.builtin.stat:
+        path: "{{ app_dir }}/requirements.txt"
+      register: requirements_file
 
     - name: Install application dependencies
       ansible.builtin.pip:
@@ -79,6 +84,16 @@ ansible_python_interpreter=/usr/bin/python3
         requirements: "{{ app_dir }}/requirements.txt"
       become_user: "{{ app_user }}"
       when: requirements_file.stat.exists | default(false)
+
+    - name: Install Python testing tools
+      ansible.builtin.pip:
+        virtualenv: "{{ app_dir }}/venv"
+        name:
+          - pytest
+          - tox
+          - coverage
+        state: present
+      become_user: "{{ app_user }}"
 ```
 
 ## Configuration Tasks
@@ -102,7 +117,7 @@ ansible_python_interpreter=/usr/bin/python3
         - restart application
 
     - name: Enable and start application
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ app_name }}"
         enabled: true
         state: started
@@ -148,11 +163,11 @@ WantedBy=multi-user.target
 ```yaml
   handlers:
     - name: reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
 
     - name: restart application
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ app_name }}"
         state: restarted
 ```
@@ -172,7 +187,7 @@ ansible-playbook -i inventory/hosts playbook.yml --limit app01
 
 ## Summary
 
-This playbook automates the complete setup process, from installing system dependencies through configuring the application service. Every step is idempotent, meaning you can run it repeatedly without side effects. Extend it with additional tasks for your specific needs like database migrations, static file collection, or load balancer registration.
+This playbook automates the complete setup process, from installing system dependencies through configuring the application service. The declarative package, file, template, service, and pip tasks are idempotent, meaning you can run the playbook repeatedly and Ansible will only make changes when the target state differs. Extend it with additional tasks for your specific needs like database migrations, static file collection, or load balancer registration.
 
 ## Common Use Cases
 
@@ -213,7 +228,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -357,4 +372,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
