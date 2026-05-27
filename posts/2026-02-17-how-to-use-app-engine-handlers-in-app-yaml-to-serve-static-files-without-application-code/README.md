@@ -8,17 +8,16 @@ Description: Configure App Engine handlers in app.yaml to serve static files dir
 
 ---
 
-App Engine can serve static files - HTML, CSS, JavaScript, images, fonts - directly from Google's infrastructure without involving your application code at all. When you configure static file handlers in `app.yaml`, those files are uploaded to a separate storage system and served by Google's edge servers. Your application instances never see these requests, which means faster responses for users and lower costs for you.
+App Engine can serve static files - HTML, CSS, JavaScript, images, fonts - directly from Google's infrastructure without involving your application code at all. When you configure static file handlers in `app.yaml`, those files are uploaded and handled separately from application files. Your application instances never see these requests, which means faster responses for users and lower costs for you.
 
 In this post, I will cover how to configure static file handlers, set caching headers, handle different file types, and structure your project for optimal static file serving.
 
 ## How Static File Serving Works
 
-When you deploy an App Engine application, files matching your static handler patterns are extracted from your deployment and stored separately. They are served by Google's CDN-like infrastructure, which means:
+When you deploy an App Engine application, files matching your static handler patterns are extracted from your deployment and stored separately. They are served directly by App Engine infrastructure, which means:
 
 - Requests for static files do not hit your application instances
 - No instance hours are consumed for static file requests
-- Files are served from locations close to the user
 - Response times are consistently fast
 
 This is fundamentally different from serving static files through your application framework (like Flask's `static_folder` or Express's `static` middleware). With framework-based serving, every static file request goes through your WSGI/HTTP server, consuming instance resources.
@@ -167,8 +166,8 @@ handlers:
       Cache-Control: "public, max-age=31536000, immutable"
 
   # HTML files - do not cache (or cache briefly)
-  - url: /.*\.html
-    static_files: build/\1.html
+  - url: /(.*\.html)
+    static_files: build/\1
     upload: build/.*\.html
     http_headers:
       Cache-Control: "no-cache, no-store, must-revalidate"
@@ -251,6 +250,7 @@ If your entire application is static (no backend), you can serve it entirely thr
 ```yaml
 # app.yaml - Fully static website
 runtime: python312
+entrypoint: gunicorn -b :$PORT main:app
 
 handlers:
   # CSS files
@@ -287,26 +287,28 @@ handlers:
     upload: www/(.*)
 ```
 
-You still need a minimal `main.py` for the deployment to work, but it never handles requests:
+For Python, static handlers must be paired with either an `entrypoint` or at least one `script: auto` handler for the deployment to work. With the `entrypoint` above, you still need a minimal `main.py`, but it never handles requests:
 
 ```python
 # main.py - Minimal app (never actually serves requests)
 # All requests are handled by static file handlers in app.yaml
-from flask import Flask
-app = Flask(__name__)
+def app(environ, start_response):
+    start_response("404 Not Found", [("Content-Type", "text/plain")])
+    return [b"Not Found"]
 ```
+
+If you specify the Gunicorn `entrypoint` explicitly, add `gunicorn` to your `requirements.txt`.
 
 ## Limits and Considerations
 
 A few things to keep in mind:
 
 - Static files have a maximum size of 32MB each
-- The total size of all static files cannot exceed 1GB per deployment
-- Static files count toward your deployment size (which has a 500MB limit for Standard)
+- App Engine has a maximum of 10,000 total application and static files, with 1,000 files per directory
+- Code and static data storage is free for the first 1GB, then billed per GB per month
 - Handler order matters - put more specific patterns before general ones
-- You can have up to 100 URL handlers in `app.yaml`
 
-If you have many large static files, consider serving them from Cloud Storage instead, which does not have these limits.
+If you have many large static files, consider serving them from Cloud Storage instead, which has different limits and supports objects up to 5 TiB.
 
 ## Comparing with Cloud Storage
 
@@ -318,11 +320,12 @@ App Engine Static Handlers:
   + Deployed together with your application code
   + No additional service to manage
   - 32MB per file limit
-  - 1GB total static file limit
+  - 10,000 total application and static file limit
+  - Code and static data storage billed after the first 1GB
   - Files update only on deployment
 
 Cloud Storage + Cloud CDN:
-  + No file size or total size limits
+  + Much larger object size limit (5 TiB per object)
   + Files can be updated independently of application deployment
   + More CDN configuration options
   - Separate service to manage
@@ -334,4 +337,4 @@ For most applications, App Engine's built-in static file serving is sufficient. 
 
 ## Summary
 
-App Engine static file handlers let you serve HTML, CSS, JavaScript, images, and other assets without involving your application code. Configure them in `app.yaml` using `static_dir` for directories and `static_files` for individual files. Set appropriate cache headers for different file types - long cache times for hashed assets, short or no cache for HTML. The files are served from Google's edge infrastructure, which means fast responses and zero instance cost for static requests. For most web applications, this is the simplest and most cost-effective way to serve static content.
+App Engine static file handlers let you serve HTML, CSS, JavaScript, images, and other assets without involving your application code. Configure them in `app.yaml` using `static_dir` for directories and `static_files` for individual files. Set appropriate cache headers for different file types - long cache times for hashed assets, short or no cache for HTML. The files are served directly by App Engine infrastructure, which means fast responses and zero instance cost for static requests. For most web applications, this is the simplest and most cost-effective way to serve static content.
