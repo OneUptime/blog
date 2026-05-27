@@ -8,7 +8,7 @@ Description: Learn how to configure MetalLB BGP peering through a VRF (Virtual R
 
 ---
 
-In multi-tenant data centers or environments with overlapping IP spaces, you often need to run BGP sessions inside a VRF (Virtual Routing and Forwarding) instance rather than the default routing table. MetalLB supports VRF-based peering when running in FRR mode. This lets you isolate MetalLB's BGP traffic from the node's main routing table and peer through a dedicated network segment.
+In multi-tenant data centers or environments with overlapping IP spaces, you often need to run BGP sessions inside a VRF (Virtual Routing and Forwarding) instance rather than the default routing table. MetalLB supports VRF-based peering when running in an FRR-based mode (FRR-K8s or FRR mode). This lets you isolate MetalLB's BGP traffic from the node's main routing table and peer through a dedicated network segment.
 
 This guide walks through setting up a Linux VRF on your Kubernetes nodes, configuring MetalLB to peer through it, and verifying that routes are advertised in the correct routing domain.
 
@@ -33,8 +33,8 @@ MetalLB can peer through any VRF that exists on the node. The BGP session, route
 
 ### Prerequisites
 
-- MetalLB installed in FRR mode (VRF support requires FRR)
-- Linux kernel 4.15 or later (for full VRF support)
+- MetalLB installed in an FRR-based mode (FRR-K8s or FRR mode)
+- Linux kernel 4.8 or later with iproute2 4.7 or later (for VRF/l3mdev support)
 - A network interface on each node connected to the VRF's network segment
 - An upstream router expecting BGP sessions inside the VRF
 - kubectl access to the cluster
@@ -102,7 +102,7 @@ Before configuring MetalLB, confirm that the node can reach the upstream router 
 
 ```bash
 # Ping the upstream router from within the VRF
-# The -I flag binds the ping to the VRF device
+# ip vrf exec runs the ping command in the VRF context
 sudo ip vrf exec metallb-vrf ping -c 3 10.10.0.1
 
 # Check the VRF routing table
@@ -276,7 +276,7 @@ metadata:
   name: vrf-test-svc
   annotations:
     # Pin this service to the VRF pool
-    metallb.universe.tf/address-pool: vrf-pool
+    metallb.io/address-pool: vrf-pool
 spec:
   type: LoadBalancer
   selector:
