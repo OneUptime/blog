@@ -98,8 +98,8 @@ class nginx {
 ---
 - name: Disable Puppet management of migrated component
   ansible.builtin.lineinfile:
-    path: /etc/puppet/puppet.conf
-    regexp: "^\s*{{ item }}"
+    path: /etc/puppetlabs/code/environments/production/manifests/site.pp
+    regexp: '^\s*include\s+{{ item }}\s*$'
     state: absent
   loop: "{{ migrated_puppet_classes }}"
   notify: restart puppet
@@ -134,8 +134,10 @@ class nginx {
         state: absent
       loop:
         - /etc/puppet
+        - /etc/puppetlabs
         - /opt/puppetlabs
         - /var/log/puppet
+        - /var/log/puppetlabs
 ```
 
 ## Key Takeaways
@@ -181,7 +183,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -222,7 +224,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -276,6 +278,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -300,6 +303,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -323,6 +332,5 @@ Here are several practical scenarios where this module proves essential in real-
         hour: "3"
         weekday: "1"
         job: "/opt/scripts/compliance_scan.sh"
-        user: ansible
+        user: root
 ```
-
