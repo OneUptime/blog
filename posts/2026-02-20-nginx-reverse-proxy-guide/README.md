@@ -69,8 +69,8 @@ When you have multiple instances of a service, use an `upstream` block to distri
 # Define a pool of backend servers for the API service
 
 upstream api_backends {
-    # Round-robin is the default load balancing method
-    # Each request goes to the next server in order
+    # Weighted round-robin is the default load balancing method
+    # Requests are distributed according to each server's weight
 
     server 10.0.1.10:8001 weight=3;   # Receives 3x the traffic
     server 10.0.1.11:8001 weight=2;   # Receives 2x the traffic
@@ -188,9 +188,9 @@ graph TD
     B -->|/notifications/*| E[Notification Service]
 ```
 
-## Health Checks and Failover
+## Passive Health Checks and Failover
 
-Configure Nginx to detect unhealthy backends and stop sending traffic to them.
+Configure Nginx to detect failed requests to backends and temporarily stop sending traffic to unavailable servers.
 
 ```nginx
 upstream api_backends {
@@ -225,7 +225,7 @@ server {
 }
 ```
 
-If a backend fails 3 times within 30 seconds, Nginx marks it as unavailable and routes traffic to the remaining servers. After 30 seconds, Nginx will try the failed server again.
+If Nginx has 3 unsuccessful attempts to communicate with a backend within 30 seconds, it marks the backend as unavailable and routes traffic to the remaining servers. After 30 seconds, Nginx will try the failed server again. Active health checks, where Nginx sends separate probe requests to backends, require NGINX Plus.
 
 ## Buffering and Timeouts
 
