@@ -65,17 +65,12 @@ spec:
           volumeMounts:
             - name: varlog
               mountPath: /var/log
-            - name: containers
-              mountPath: /var/lib/docker/containers
-              readOnly: true
       volumes:
         # Host path volumes to access node-level log files
+        # including Kubernetes container logs under /var/log/pods
         - name: varlog
           hostPath:
             path: /var/log
-        - name: containers
-          hostPath:
-            path: /var/lib/docker/containers
 ```
 
 ## Targeting Specific Nodes
@@ -122,7 +117,7 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
               - matchExpressions:
-                  # Run only on Linux nodes in the us-east-1 zone
+                  # Run only on Linux nodes in selected us-east-1 zones
                   - key: kubernetes.io/os
                     operator: In
                     values:
@@ -273,7 +268,7 @@ spec:
 
 ## Priority and Preemption
 
-DaemonSet pods that provide critical node services should use a high priority class so they are not evicted when the node is under resource pressure.
+DaemonSet pods that provide critical node services should use a high priority class so they are less likely to be evicted before lower-priority pods when the node is under resource pressure.
 
 ```yaml
 # priority-class.yaml
