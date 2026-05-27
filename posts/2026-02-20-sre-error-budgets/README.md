@@ -48,7 +48,6 @@ The error budget is simply 100% minus the SLO target. For example:
 # based on its SLO and observed performance.
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 
 
 @dataclass
@@ -73,7 +72,7 @@ class ErrorBudget:
     def budget_consumed(self) -> float:
         """Percentage of error budget consumed."""
         if self.allowed_failures == 0:
-            return 100.0
+            return 0.0 if self.failed_requests == 0 else 100.0
         return (self.failed_requests / self.allowed_failures) * 100.0
 
     @property
@@ -110,7 +109,7 @@ budget = ErrorBudget(
     failed_requests=3_500
 )
 
-print(f"Error Budget: {budget.error_budget_fraction * 100}%")
+print(f"Error Budget: {budget.error_budget_fraction * 100:.3f}%")
 print(f"Allowed Failures: {budget.allowed_failures:,}")
 print(f"Actual Failures: {budget.failed_requests:,}")
 print(f"Budget Consumed: {budget.budget_consumed:.1f}%")
