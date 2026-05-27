@@ -30,7 +30,7 @@ module_args = dict(
     tags=dict(type='list', elements='str', default=[]),
     # Dictionary
     config=dict(type='dict', default={}),
-    # Path (validated)
+    # Path (expanded)
     path=dict(type='path'),
     # Password (sensitive)
     password=dict(type='str', no_log=True),
@@ -40,6 +40,17 @@ module_args = dict(
 ## Complex Validation
 
 ```python
+module_args = dict(
+    state=dict(type='str', default='present', choices=['present', 'absent']),
+    name=dict(type='str'),
+    id=dict(type='str'),
+    config=dict(type='dict'),
+    force=dict(type='bool'),
+    safe_mode=dict(type='bool'),
+    username=dict(type='str'),
+    password=dict(type='str', no_log=True),
+)
+
 module = AnsibleModule(
     argument_spec=module_args,
     # If state=present, name and config are required
