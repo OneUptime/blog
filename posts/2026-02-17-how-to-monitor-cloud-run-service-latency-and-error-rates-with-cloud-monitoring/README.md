@@ -15,10 +15,10 @@ Cloud Run is one of the easiest ways to deploy containers on GCP, but "easy to d
 Cloud Run automatically sends metrics to Cloud Monitoring without any additional configuration. The key request-related metrics are:
 
 - `run.googleapis.com/request_count` - Total number of requests, labeled by response code
-- `run.googleapis.com/request_latencies` - Request latency distribution in milliseconds
+- `run.googleapis.com/request_latencies` - Request latency distribution in milliseconds, measured after the request reaches a running container
 - `run.googleapis.com/container/instance_count` - Number of running container instances
-- `run.googleapis.com/container/cpu/utilization` - CPU utilization of container instances
-- `run.googleapis.com/container/memory/utilization` - Memory utilization
+- `run.googleapis.com/container/cpu/utilizations` - CPU utilization distribution across container instances
+- `run.googleapis.com/container/memory/utilizations` - Memory utilization distribution across container instances
 
 For latency and error rate monitoring, the first two metrics are what we care about most.
 
@@ -26,7 +26,7 @@ For latency and error rate monitoring, the first two metrics are what we care ab
 
 ### Setting Up a Latency Dashboard
 
-Navigate to **Monitoring** > **Dashboards** > **Create Dashboard** and add a new chart. Use this MQL query to visualize p50, p95, and p99 latency:
+Navigate to **Monitoring** > **Dashboards** > **Create Dashboard** and add a new chart with the query builder or PromQL. MQL is no longer recommended for new Cloud Monitoring assets in the console, but existing MQL charts still work and you can still create MQL dashboards through the Cloud Monitoring API. If you are maintaining an MQL chart, use this query to visualize p50 latency:
 
 ```text
 # P50 latency for Cloud Run service
@@ -82,6 +82,7 @@ Here is an alerting policy that fires when p95 latency exceeds 2 seconds:
           {
             "alignmentPeriod": "60s",
             "perSeriesAligner": "ALIGN_PERCENTILE_95",
+            "crossSeriesReducer": "REDUCE_PERCENTILE_95",
             "groupByFields": ["resource.labels.service_name"]
           }
         ]
@@ -95,14 +96,14 @@ Apply with:
 
 ```bash
 # Create the latency alert for Cloud Run
-gcloud alpha monitoring policies create --policy-from-file=cloudrun-latency-alert.json
+gcloud monitoring policies create --policy-from-file=cloudrun-latency-alert.json
 ```
 
 ## Monitoring Error Rates
 
 ### Understanding Error Rate Calculation
 
-Error rate is the ratio of failed requests (5xx responses) to total requests. You can calculate this in Cloud Monitoring using ratio-based alerting or MQL.
+Error rate is the ratio of failed requests (5xx responses) to total requests. You can calculate this in Cloud Monitoring using ratio-based alerting or an existing/API-managed MQL chart.
 
 Here is an MQL query that calculates the error rate:
 
@@ -110,16 +111,9 @@ Here is an MQL query that calculates the error rate:
 # Error rate calculation: 5xx responses divided by total requests
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_count'
-| group_by [service_name, response_code_class],
-    [val: sum(value.request_count)]
+| group_by [service_name],
+    [error_rate: sum(if(response_code_class = '5xx', val(), 0)) / sum(val())]
 | every 1m
-| {
-    filter response_code_class = '5xx'
-  ;
-    ident
-  }
-| group_by [service_name], [num: sum(val), den: sum(val)]
-| ratio
 ```
 
 ### Creating an Error Rate Alert
@@ -142,6 +136,7 @@ For the alerting policy, you can use a metric ratio condition. Here is the JSON:
           {
             "alignmentPeriod": "60s",
             "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM",
             "groupByFields": ["resource.labels.service_name"]
           }
         ],
@@ -150,6 +145,7 @@ For the alerting policy, you can use a metric ratio condition. Here is the JSON:
           {
             "alignmentPeriod": "60s",
             "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM",
             "groupByFields": ["resource.labels.service_name"]
           }
         ]
@@ -167,19 +163,18 @@ Cloud Monitoring supports Service Level Objectives (SLOs) for Cloud Run. SLOs le
 
 ### Creating a Latency SLO
 
-Here is how to create an SLO that targets 99 percent of requests completing within 1 second:
+Here is how to create an SLO that targets 99 percent of requests completing within 1 second using the Cloud Monitoring API:
 
 ```bash
-# Create a latency SLO for a Cloud Run service
-gcloud monitoring slos create \
-  --project=my-project \
-  --service=my-cloud-run-service \
-  --display-name="Latency SLO - 99% under 1s" \
-  --goal=0.99 \
-  --rolling-period-days=28
+# Create a latency SLO for a monitored service
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d @request-latency-slo.json \
+  "https://monitoring.googleapis.com/v3/projects/my-project/services/my-cloud-run-service/serviceLevelObjectives?serviceLevelObjectiveId=latency-slo"
 ```
 
-You can also define this via the API with more control over the SLI definition:
+The request body looks like this:
 
 ```json
 {
@@ -240,14 +235,14 @@ graph TD
     A --> F[Row 5: SLO Error Budget Remaining]
 ```
 
-For the cold start metric, use this query:
+For container startup latency, use this query:
 
 ```text
-# Count of container startup events (cold starts)
+# P95 container startup latency
 fetch cloud_run_revision
 | metric 'run.googleapis.com/container/startup_latencies'
 | group_by [service_name],
-    [val: count(value.startup_latencies)]
+    [val: percentile(value.startup_latencies, 95)]
 | every 5m
 ```
 
@@ -273,6 +268,8 @@ resource "google_monitoring_alert_policy" "cloudrun_latency" {
       aggregations {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_PERCENTILE_95"
+        cross_series_reducer = "REDUCE_PERCENTILE_95"
+        group_by_fields      = ["resource.labels.service_name"]
       }
     }
   }
