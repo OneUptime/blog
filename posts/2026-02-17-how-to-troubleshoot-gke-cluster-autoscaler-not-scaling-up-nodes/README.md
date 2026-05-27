@@ -112,7 +112,7 @@ Also check events:
 
 ```bash
 # Look for autoscaler events in the cluster
-kubectl get events --all-namespaces --field-selector reason=ScaleUp
+kubectl get events --all-namespaces --field-selector reason=TriggeredScaleUp
 kubectl get events --all-namespaces --field-selector reason=NotTriggerScaleUp
 ```
 
@@ -168,7 +168,7 @@ spec:
 
 The autoscaler simulates scheduling on a new node. If the pod's resource requests exceed what a single node can offer (after accounting for system reservations), no scale-up will happen.
 
-For example, if your node pool uses e2-standard-2 machines (2 vCPU, 8GB RAM) and the pod requests 6GB of memory, there is not enough allocatable memory on a single node (GKE reserves about 1.5-2GB for system components).
+For example, if your node pool uses e2-standard-2 machines (2 vCPU, 8GB RAM) and the pod requests 7GiB of memory, there is not enough allocatable memory on a single node (GKE reserves about 1.5-2GiB for system components).
 
 ```bash
 # Check the allocatable resources on existing nodes
@@ -236,7 +236,7 @@ For workloads that need faster scale-up:
 ```bash
 # Switch to balanced profile for more responsive scaling
 gcloud container clusters update your-cluster \
-  --autoscaling-profile optimize-utilization \
+  --autoscaling-profile balanced \
   --zone us-central1-a
 ```
 
