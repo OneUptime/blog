@@ -103,16 +103,46 @@ webserver_group: www
 firewall_tool: firewalld
 ```
 
+```yaml
+# roles/webserver/vars/Archlinux.yml
+webserver_package: apache
+webserver_service: httpd
+webserver_config_dir: /etc/httpd
+webserver_main_config: /etc/httpd/conf/httpd.conf
+webserver_sites_dir: /etc/httpd/conf/extra
+webserver_log_dir: /var/log/httpd
+webserver_user: http
+webserver_group: http
+firewall_tool: firewalld
+```
+
+```yaml
+# roles/webserver/vars/Alpine.yml
+webserver_package: apache2
+webserver_service: apache2
+webserver_config_dir: /etc/apache2
+webserver_main_config: /etc/apache2/httpd.conf
+webserver_sites_dir: /etc/apache2/conf.d
+webserver_log_dir: /var/log/apache2
+webserver_user: apache
+webserver_group: apache
+firewall_tool: none
+```
+
 ### tasks/main.yml
 
 ```yaml
 # roles/webserver/tasks/main.yml
 - name: Load OS-specific variables
-  ansible.builtin.include_vars: "{{ item }}"
-  with_first_found:
-    - "{{ ansible_distribution }}_{{ ansible_distribution_major_version }}.yml"
-    - "{{ ansible_distribution }}.yml"
-    - "{{ ansible_os_family }}.yml"
+  ansible.builtin.include_vars: "{{ lookup('ansible.builtin.first_found', params) }}"
+  vars:
+    params:
+      files:
+        - "{{ ansible_distribution }}_{{ ansible_distribution_major_version }}.yml"
+        - "{{ ansible_distribution }}.yml"
+        - "{{ ansible_os_family }}.yml"
+      paths:
+        - vars
 
 - name: Install web server
   ansible.builtin.include_tasks: install.yml
@@ -161,8 +191,9 @@ firewall_tool: firewalld
 
 - name: Enable site (Debian only)
   ansible.builtin.command: "a2ensite {{ webserver_server_name }}"
+  args:
+    creates: "/etc/apache2/sites-enabled/{{ webserver_server_name }}.conf"
   when: ansible_os_family == "Debian"
-  changed_when: true
   notify: restart webserver
 ```
 
@@ -185,7 +216,7 @@ firewall_tool: firewalld
         port: "{{ webserver_ssl_port }}"
         proto: tcp
 
-- name: Configure firewalld (RHEL/SUSE)
+- name: Configure firewalld (RHEL/SUSE/Arch)
   when: firewall_tool == "firewalld"
   block:
     - name: Allow HTTP
@@ -238,7 +269,7 @@ firewall_tool: firewalld
     state: started
 
 # Not portable: only works with systemd
-- ansible.builtin.systemd:
+- ansible.builtin.systemd_service:
     name: some-service
     state: started
 ```
@@ -287,20 +318,23 @@ platforms:
 
 ## Summary
 
-Distribution-agnostic playbooks combine three techniques: OS detection through Ansible facts, variable mapping files per distribution, and portable modules (`package`, `service`). Put distribution-specific values in variable files, never in tasks. Use `with_first_found` for graceful fallbacks. Use `ansible.builtin.package` and `ansible.builtin.service` for maximum portability. This approach lets you maintain a single codebase that works across Debian, RHEL, SUSE, Arch, and Alpine.
+Distribution-agnostic playbooks combine three techniques: OS detection through Ansible facts, variable mapping files per distribution, and portable modules (`package`, `service`). Put distribution-specific values in variable files, never in tasks. Use the `first_found` lookup for graceful fallbacks. Use `ansible.builtin.package` and `ansible.builtin.service` for maximum portability. This approach lets you maintain a single codebase that works across Debian, RHEL, SUSE, Arch, and Alpine.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
   gather_facts: true
+  vars:
+    ssh_service_name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
+    firewall_tool: "{{ 'ufw' if ansible_os_family == 'Debian' else 'firewalld' }}"
   tasks:
     - name: Gather system information
       ansible.builtin.setup:
@@ -328,7 +362,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -340,6 +374,7 @@ Here are several practical scenarios where this module proves essential in real-
         path: /etc/hosts
         regexp: '^127\.0\.1\.1'
         line: "127.0.1.1 {{ inventory_hostname }}"
+      when: ansible_os_family == "Debian"
 
     - name: Configure SSH hardening
       ansible.builtin.lineinfile:
@@ -347,29 +382,43 @@ Here are several practical scenarios where this module proves essential in real-
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
-    - name: Configure firewall rules
+    - name: Configure UFW firewall rules
       community.general.ufw:
         rule: allow
         port: "{{ item }}"
         proto: tcp
+      when: firewall_tool == "ufw"
       loop:
         - "22"
         - "80"
         - "443"
 
-    - name: Enable firewall
+    - name: Enable UFW firewall
       community.general.ufw:
         state: enabled
         policy: deny
+      when: firewall_tool == "ufw"
+
+    - name: Configure firewalld firewall rules
+      ansible.posix.firewalld:
+        service: "{{ item }}"
+        permanent: true
+        state: enabled
+        immediate: true
+      when: firewall_tool == "firewalld"
+      loop:
+        - ssh
+        - http
+        - https
 
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
@@ -410,7 +459,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -452,7 +501,7 @@ Here are several practical scenarios where this module proves essential in real-
         dest: /opt/scripts/compliance_scan.sh
         mode: '0755'
         content: |
-          #!/bin/bash
+          #!/bin/sh
           cd /opt/ansible
           ansible-playbook playbooks/validate.yml -i inventory/ > /var/log/compliance_scan.log 2>&1
           EXIT_CODE=$?
@@ -472,4 +521,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
