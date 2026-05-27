@@ -26,7 +26,7 @@ The impact on availability depends on your tier:
 | Basic | Brief downtime | Brief downtime |
 | Standard | Minimal disruption | Minimal disruption |
 
-Standard Tier instances use replication to minimize disruption during scaling. The replica is scaled first, then a failover happens to the scaled replica, then the old primary is scaled.
+Standard Tier instances use replication and automatic failover to minimize disruption during scaling, but applications should still be prepared for a short connection reset.
 
 ## Checking Current Size and Usage
 
@@ -213,8 +213,8 @@ gcloud monitoring policies create \
   --display-name="Redis High Memory Usage" \
   --condition-display-name="Memory above 80%" \
   --condition-filter='resource.type="redis_instance" AND metric.type="redis.googleapis.com/stats/memory/usage_ratio"' \
-  --condition-threshold-value=0.8 \
-  --condition-comparison=COMPARISON_GT \
+  --if='> 0.8' \
+  --duration=60s \
   --notification-channels=YOUR_CHANNEL_ID
 
 # Alert when memory usage drops below 30%
@@ -222,8 +222,8 @@ gcloud monitoring policies create \
   --display-name="Redis Low Memory Usage" \
   --condition-display-name="Memory below 30%" \
   --condition-filter='resource.type="redis_instance" AND metric.type="redis.googleapis.com/stats/memory/usage_ratio"' \
-  --condition-threshold-value=0.3 \
-  --condition-comparison=COMPARISON_LT \
+  --if='< 0.3' \
+  --duration=60s \
   --notification-channels=YOUR_CHANNEL_ID
 ```
 
@@ -243,7 +243,7 @@ During scaling:
 
 **Basic Tier:** Your Redis instance briefly goes offline. All connections are dropped. Applications need to reconnect after the scaling completes.
 
-**Standard Tier:** The process uses the replication mechanism. One of the nodes is scaled first, then a failover happens. Impact is similar to a failover - brief connection disruption of 30-60 seconds.
+**Standard Tier:** The process uses replication and failover to preserve availability, but applications can still see a short connection reset of a couple minutes or less.
 
 Prepare your applications for the disruption:
 
@@ -293,16 +293,16 @@ class ResilientRedisClient:
 
 Scaling directly affects your bill:
 
-- Memorystore is billed per GB-hour
+- Memorystore is billed in 1-second increments based on provisioned capacity in GiB
 - Scaling up doubles your cost if you double the size
-- Standard Tier costs roughly 2x the per-GB rate (primary + replica)
+- Standard Tier uses its own per-GiB rate, and read replicas add node-based charges when enabled
 
 For a Standard Tier instance:
-- 2 GB = ~$140/month
-- 5 GB = ~$350/month
-- 10 GB = ~$700/month
+- 2 GB = ~$93/month
+- 5 GB = ~$197/month
+- 10 GB = ~$394/month
 
-These are approximate US region prices. Check the pricing calculator for exact figures.
+These are approximate us-central1 prices based on current on-demand rates and 730 hours per month. Check the pricing calculator for exact figures.
 
 ## Wrapping Up
 
