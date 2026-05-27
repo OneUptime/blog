@@ -55,7 +55,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT ON TABLES TO datastream_user;
 ```
 
-## Step 3: Create a Publication
+## Step 3: Create a Publication and Replication Slot
 
 A publication defines which tables to replicate. You can replicate all tables or specific ones:
 
@@ -79,6 +79,13 @@ SELECT * FROM pg_publication;
 
 -- Check which tables are in the publication
 SELECT * FROM pg_publication_tables WHERE pubname = 'datastream_pub';
+```
+
+Create a logical replication slot using the `pgoutput` plugin. The slot name must match the one you provide when you create the Datastream stream:
+
+```sql
+-- Create the replication slot for this stream
+SELECT pg_create_logical_replication_slot('datastream_slot', 'pgoutput');
 ```
 
 ## Step 4: Configure Network Connectivity
@@ -161,7 +168,7 @@ gcloud datastream streams create pg-to-bq-stream \
   --bigquery-destination-config='{
     "dataFreshness": "300s",
     "singleTargetDataset": {
-      "datasetId": "projects/my-project/datasets/replicated_data"
+      "datasetId": "my-project:replicated_data"
     }
   }' \
   --backfill-all
@@ -169,8 +176,8 @@ gcloud datastream streams create pg-to-bq-stream \
 
 Key configuration options:
 
-- **dataFreshness**: How often BigQuery tables are updated (300s = 5 minutes)
-- **singleTargetDataset**: All tables go into one BigQuery dataset
+- **dataFreshness**: The maximum staleness limit Datastream sets on the BigQuery tables (300s = 5 minutes)
+- **singleTargetDataset**: All tables go into one BigQuery dataset, with table names in the `<schema>_<table>` format
 - **backfill-all**: Performs an initial backfill of existing data
 
 ## Step 8: Start the Stream
@@ -227,30 +234,30 @@ Datastream creates tables in BigQuery with additional metadata columns:
 -- Datastream adds metadata columns for tracking changes
 SELECT
   datastream_metadata.uuid,           -- Unique event ID
-  datastream_metadata.source_timestamp, -- When the change happened in PostgreSQL
+  TIMESTAMP_MILLIS(datastream_metadata.source_timestamp) AS source_timestamp, -- When the change happened in PostgreSQL
   -- Your original columns
   order_id,
   customer_id,
   order_date,
   total,
   status
-FROM `my_project.replicated_data.orders`
+FROM `my-project.replicated_data.public_orders`
 WHERE order_date >= CURRENT_DATE()
 ORDER BY datastream_metadata.source_timestamp DESC;
 ```
 
-For tables with updates and deletes, Datastream uses a merge approach in BigQuery to maintain the current state of each row.
+By default, Datastream uses merge mode in BigQuery for tables with primary keys to maintain the current state of each row. Tables without primary keys are append-only.
 
 ## Handling Schema Changes
 
-When you alter a table in PostgreSQL (add columns, change types), Datastream handles it automatically:
+When you add a column to the end of a PostgreSQL table, Datastream can detect the schema change and update the BigQuery table:
 
 ```sql
 -- Add a column to the source table
 ALTER TABLE orders ADD COLUMN discount_amount DECIMAL(10,2);
 ```
 
-Datastream detects the schema change and updates the BigQuery table accordingly. New columns appear automatically. However, some schema changes like dropping columns or changing data types may require intervention.
+New columns appear automatically. However, some schema changes like dropping columns, adding columns to the middle of a table, reordering columns, or changing data types may cause downstream errors or data corruption and require intervention.
 
 ## Optimizing the BigQuery Tables
 
@@ -259,11 +266,11 @@ The replicated tables use BigQuery's default settings. For better query performa
 ```sql
 -- After initial replication, optimize the BigQuery table
 -- Create a clustered copy for better query performance
-CREATE OR REPLACE TABLE `my_project.warehouse.orders`
+CREATE OR REPLACE TABLE `my-project.warehouse.orders`
 PARTITION BY DATE(order_date)
 CLUSTER BY customer_id, status
 AS
-SELECT * FROM `my_project.replicated_data.orders`;
+SELECT * FROM `my-project.replicated_data.public_orders`;
 ```
 
 For ongoing optimization, create a scheduled query or Dataform pipeline that transforms the replicated data into an optimized format.
@@ -278,8 +285,8 @@ gcloud monitoring policies create \
   --display-name="Datastream Replication Lag Alert" \
   --condition-display-name="High replication lag" \
   --condition-filter='resource.type="datastream.googleapis.com/Stream" AND metric.type="datastream.googleapis.com/stream/freshness"' \
-  --condition-threshold-value=600 \
-  --condition-threshold-duration=300s \
+  --if='> 600' \
+  --duration=300s \
   --notification-channels="projects/my-project/notificationChannels/123"
 ```
 
@@ -297,6 +304,6 @@ FROM pg_replication_slots;
 
 **Large initial backfill**: For large tables, the initial backfill can take hours. Datastream handles this in the background without blocking your production database, but monitor the progress in the console.
 
-**Unsupported column types**: Some PostgreSQL types (arrays, custom types, hstore) may not map cleanly to BigQuery. Check Datastream's documentation for type mappings and handle conversions in a downstream transformation layer.
+**Unsupported column types**: Some PostgreSQL types are unsupported or partially supported. For example, hstore values are replaced with `NULL`, geometric and range types are unsupported, and arrays of unsupported or user-defined types are ignored. Check Datastream's documentation for type mappings and handle conversions in a downstream transformation layer.
 
 Logical replication from Cloud SQL PostgreSQL to BigQuery through Datastream gives you near-real-time analytics without building and maintaining custom ETL pipelines. Once set up, it runs continuously with minimal maintenance, keeping your BigQuery warehouse in sync with your operational database.
