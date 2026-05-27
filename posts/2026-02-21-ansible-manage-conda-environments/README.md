@@ -8,7 +8,7 @@ Description: Automate Conda environment creation and package management on remot
 
 ---
 
-Conda is the standard package manager for data science on remote servers. This guide provides practical Ansible playbooks for this common automation task.
+Conda is a widely used package and environment manager for data science on remote servers. This guide provides practical Ansible playbooks for this common automation task.
 
 ## Overview
 
@@ -16,7 +16,7 @@ Managing Python environments across multiple servers manually is tedious and err
 
 ## Prerequisites
 
-Ensure your target hosts have SSH access and a base Python installation:
+Ensure your target hosts have SSH access, a base Python installation for Ansible, and an existing Conda installation:
 
 ```ini
 # inventory/hosts
@@ -42,6 +42,9 @@ ansible_python_interpreter=/usr/bin/python3
     app_name: myapp
     app_dir: /opt/{{ app_name }}
     app_user: www-data
+    conda_executable: /opt/conda/bin/conda
+    conda_env_prefix: "{{ app_dir }}/conda-env"
+    conda_environment_file: "{{ app_dir }}/environment.yml"
     python_version: "3.11"
 
   tasks:
@@ -49,9 +52,6 @@ ansible_python_interpreter=/usr/bin/python3
       ansible.builtin.package:
         name:
           - python3
-          - python3-pip
-          - python3-venv
-          - python3-dev
           - build-essential
           - libssl-dev
           - libffi-dev
@@ -65,20 +65,55 @@ ansible_python_interpreter=/usr/bin/python3
         group: "{{ app_user }}"
         mode: '0755'
 
-    - name: Create virtual environment
-      ansible.builtin.pip:
-        virtualenv: "{{ app_dir }}/venv"
-        virtualenv_command: python3 -m venv
-        name: pip
-        state: latest
-      become_user: "{{ app_user }}"
+    - name: Deploy Conda environment file
+      ansible.builtin.template:
+        src: environment.yml.j2
+        dest: "{{ conda_environment_file }}"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0644'
 
-    - name: Install application dependencies
-      ansible.builtin.pip:
-        virtualenv: "{{ app_dir }}/venv"
-        requirements: "{{ app_dir }}/requirements.txt"
+    - name: Check whether Conda environment exists
+      ansible.builtin.command:
+        argv:
+          - "{{ conda_executable }}"
+          - run
+          - --prefix
+          - "{{ conda_env_prefix }}"
+          - python
+          - --version
+      register: conda_env_check
+      changed_when: false
+      failed_when: false
+
+    - name: Create Conda environment
+      ansible.builtin.command:
+        argv:
+          - "{{ conda_executable }}"
+          - env
+          - create
+          - --prefix
+          - "{{ conda_env_prefix }}"
+          - --file
+          - "{{ conda_environment_file }}"
+          - --yes
+        creates: "{{ conda_env_prefix }}/conda-meta/history"
       become_user: "{{ app_user }}"
-      when: requirements_file.stat.exists | default(false)
+      when: conda_env_check.rc != 0
+
+    - name: Update Conda environment
+      ansible.builtin.command:
+        argv:
+          - "{{ conda_executable }}"
+          - env
+          - update
+          - --prefix
+          - "{{ conda_env_prefix }}"
+          - --file
+          - "{{ conda_environment_file }}"
+          - --prune
+      become_user: "{{ app_user }}"
+      when: conda_env_check.rc == 0
 ```
 
 ## Configuration Tasks
@@ -121,7 +156,7 @@ Type=simple
 User={{ app_user }}
 Group={{ app_user }}
 WorkingDirectory={{ app_dir }}
-ExecStart={{ app_dir }}/venv/bin/python -m {{ app_name }}
+ExecStart={{ conda_env_prefix }}/bin/python -m {{ app_name }}
 Restart=always
 RestartSec=5
 Environment=PYTHONPATH={{ app_dir }}
@@ -160,7 +195,7 @@ WantedBy=multi-user.target
 ## Running the Playbook
 
 ```bash
-# Dry run first
+# Preview module-managed changes first
 ansible-playbook -i inventory/hosts playbook.yml --check --diff
 
 # Apply changes
@@ -172,16 +207,16 @@ ansible-playbook -i inventory/hosts playbook.yml --limit app01
 
 ## Summary
 
-This playbook automates the complete setup process, from installing system dependencies through configuring the application service. Every step is idempotent, meaning you can run it repeatedly without side effects. Extend it with additional tasks for your specific needs like database migrations, static file collection, or load balancer registration.
+This playbook automates the complete setup process, from installing system dependencies through configuring the application service. It uses idempotent Ansible modules where possible and guards environment creation so you can run it repeatedly without recreating the Conda environment. Extend it with additional tasks for your specific needs like database migrations, static file collection, or load balancer registration.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these Ansible patterns prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these Ansible patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -295,7 +330,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with Ansible
 - name: Robust task execution
   hosts: all
   tasks:
@@ -332,9 +367,19 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        owner: ansible
+        group: ansible
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
+        owner: ansible
+        group: ansible
         mode: '0755'
         content: |
           #!/bin/bash
@@ -357,4 +402,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
