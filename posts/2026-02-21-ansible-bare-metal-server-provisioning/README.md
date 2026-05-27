@@ -49,7 +49,7 @@ all:
           ipmi_password: "{{ vault_ipmi_password }}"
           mac_address: "aa:bb:cc:dd:ee:02"
           server_role: database
-          raid_config: raid10
+          raid_config: raid1
           os_version: ubuntu-2204
 ```
 
@@ -114,6 +114,15 @@ Set up the PXE boot server that provisions new machines:
       - nginx
     state: present
 
+- name: Create PXE content directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /srv/tftp
+    - /var/www/html/autoinstall
+
 - name: Configure dnsmasq for PXE
   ansible.builtin.template:
     src: dnsmasq-pxe.conf.j2
@@ -123,13 +132,13 @@ Set up the PXE boot server that provisions new machines:
 
 - name: Download Ubuntu installer
   ansible.builtin.get_url:
-    url: "https://releases.ubuntu.com/22.04/ubuntu-22.04-live-server-amd64.iso"
-    dest: /srv/tftp/ubuntu-22.04.iso
+    url: "https://releases.ubuntu.com/22.04/ubuntu-22.04.5-live-server-amd64.iso"
+    dest: /srv/tftp/ubuntu-22.04.5.iso
     mode: '0644'
 
 - name: Mount installer ISO
   ansible.posix.mount:
-    src: /srv/tftp/ubuntu-22.04.iso
+    src: /srv/tftp/ubuntu-22.04.5.iso
     path: /srv/tftp/ubuntu-22.04
     fstype: iso9660
     opts: loop,ro
@@ -138,7 +147,7 @@ Set up the PXE boot server that provisions new machines:
 - name: Deploy per-server autoinstall configs
   ansible.builtin.template:
     src: autoinstall.yml.j2
-    dest: "/srv/www/autoinstall/{{ item }}.yml"
+    dest: "/var/www/html/autoinstall/{{ item }}.yml"
     mode: '0644'
   loop: "{{ groups['bare_metal'] }}"
 ```
@@ -147,7 +156,7 @@ The autoinstall template for Ubuntu:
 
 ```yaml
 # roles/pxe_server/templates/autoinstall.yml.j2
-# Ubuntu autoinstall configuration for {{ inventory_hostname }}
+# Ubuntu autoinstall configuration for {{ item }}
 #cloud-config
 autoinstall:
   version: 1
@@ -164,22 +173,50 @@ autoinstall:
         nameservers:
           addresses: {{ dns_servers | to_json }}
   storage:
+    version: 1
 {% if hostvars[item].raid_config == 'raid1' %}
     config:
       - id: disk0
         type: disk
         ptable: gpt
         path: /dev/sda
-        grub_device: true
       - id: disk1
         type: disk
         ptable: gpt
         path: /dev/sdb
+      - id: disk0-esp
+        type: partition
+        device: disk0
+        size: 538M
+        flag: boot
+        grub_device: true
+      - id: disk1-esp
+        type: partition
+        device: disk1
+        size: 538M
+        flag: boot
+      - id: disk0-root
+        type: partition
+        device: disk0
+        size: -1
+      - id: disk1-root
+        type: partition
+        device: disk1
+        size: -1
       - id: md0
         type: raid
         name: md0
         raidlevel: 1
-        devices: [disk0, disk1]
+        ptable: gpt
+        devices: [disk0-root, disk1-root]
+      - id: disk0-esp-format
+        type: format
+        volume: disk0-esp
+        fstype: fat32
+      - id: disk0-esp-mount
+        type: mount
+        device: disk0-esp-format
+        path: /boot/efi
       - id: md0-part1
         type: partition
         device: md0
@@ -196,7 +233,7 @@ autoinstall:
   identity:
     hostname: {{ item }}
     username: deploy
-    password: {{ deploy_password_hash }}
+    password: "{{ deploy_password_hash }}"
   ssh:
     install-server: true
     authorized-keys:
@@ -263,7 +300,7 @@ After the OS is installed, run the base configuration:
     name:
       - lm-sensors
       - smartmontools
-      - megacli
+      - mdadm
     state: present
 
 - name: Run sensors detection
