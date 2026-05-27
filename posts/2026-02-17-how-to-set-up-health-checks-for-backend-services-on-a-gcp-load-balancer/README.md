@@ -17,10 +17,10 @@ This guide covers all the health check types available in GCP, how to configure 
 GCP health checks work by sending periodic probes from a set of dedicated IP ranges to your backend instances. Each probe checks a specific protocol, port, and path. Based on the responses, the health check system marks each instance as healthy or unhealthy.
 
 Key details:
-- Health check probes come from the IP ranges `130.211.0.0/22` and `35.191.0.0/16`
+- Health check probes come from documented Google Cloud prober ranges, commonly including `130.211.0.0/22` and `35.191.0.0/16` for IPv4
 - Each instance is probed independently
 - The health check system is distributed, so multiple probers check each instance simultaneously
-- Probes are sent from the same region as the backend (for regional health checks) or from multiple regions (for global health checks)
+- Health check scope depends on the load balancer type, and global health checks can specify source regions for supported use cases
 
 ## Types of Health Checks
 
@@ -30,10 +30,11 @@ GCP supports several health check protocols:
 |----------|----------|
 | HTTP | Web servers, REST APIs |
 | HTTPS | Encrypted web services |
-| HTTP/2 | gRPC or HTTP/2 backends |
+| HTTP/2 | HTTP/2 backends |
 | TCP | Any TCP service |
 | SSL | TLS-encrypted TCP services |
 | gRPC | gRPC services implementing the gRPC health checking protocol |
+| gRPC with TLS | TLS-encrypted gRPC services implementing the gRPC health checking protocol |
 
 ## Creating an HTTP Health Check
 
@@ -61,7 +62,7 @@ Let me break down each parameter:
 - `--healthy-threshold=2`: Number of consecutive successful probes to mark healthy
 - `--unhealthy-threshold=3`: Number of consecutive failed probes to mark unhealthy
 
-A response with a status code in the 200 range is considered successful. Anything else (including 3xx redirects) counts as a failure.
+A response with an HTTP `200 OK` status code is considered successful. Anything else (including 3xx redirects) counts as a failure.
 
 ## Creating an HTTPS Health Check
 
@@ -127,7 +128,7 @@ The gRPC health check calls the `grpc.health.v1.Health/Check` RPC method on your
 
 ## Using Named Ports
 
-Instead of hardcoding port numbers, you can use named ports. This is especially useful with instance groups where different instances might serve on different ports.
+Instead of hardcoding port numbers, you can use named ports. This is especially useful with instance groups because the health check can follow the same named port that the backend service uses for serving traffic.
 
 First, set a named port on your instance group:
 
@@ -244,7 +245,7 @@ This returns the health status of each instance in each instance group attached 
 
 When all backends show as unhealthy, work through this checklist:
 
-1. **Firewall rules**: Make sure you allow traffic from `130.211.0.0/22` and `35.191.0.0/16` on the health check port
+1. **Firewall rules**: Make sure you allow traffic from the health check probe ranges on the health check port. For many load balancers, the IPv4 ranges include `130.211.0.0/22` and `35.191.0.0/16`; some load balancer types use additional ranges, so check the documentation for your load balancer.
 
 ```bash
 # Create a firewall rule allowing health check probes
