@@ -89,7 +89,7 @@ SELECT cron.schedule_in_database(
   'create-next-month-partition',
   '0 0 1 * *',                      -- midnight on the 1st of each month
   $$
-    DO $$
+    DO $do$
     DECLARE
       partition_name TEXT;
       start_date DATE;
@@ -105,7 +105,7 @@ SELECT cron.schedule_in_database(
         'CREATE TABLE IF NOT EXISTS %I PARTITION OF events FOR VALUES FROM (%L) TO (%L)',
         partition_name, start_date, end_date
       );
-    END $$;
+    END $do$;
   $$,
   'myapp'
 );
@@ -125,7 +125,7 @@ SELECT cron.schedule_in_database(
 );
 ```
 
-The `CONCURRENTLY` keyword is important here - it allows reads on the materialized view while the refresh is happening. Without it, the view would be locked during the refresh.
+The `CONCURRENTLY` keyword is important here - it allows reads on the materialized view while the refresh is happening. Without it, the view would be locked during the refresh. PostgreSQL requires the materialized view to already be populated and to have at least one suitable `UNIQUE` index before you can use `CONCURRENTLY`.
 
 ### Purging Old Audit Logs
 
@@ -176,7 +176,7 @@ ORDER BY d.start_time DESC
 LIMIT 20;
 ```
 
-The `status` column will show either `succeeded` or `failed`. If a job fails, the `return_message` column contains the error details.
+The `status` column will show values such as `running`, `succeeded`, or `failed`. If a job fails, the `return_message` column contains the error details.
 
 Over time, the `cron.job_run_details` table can grow large. It is a good idea to schedule a job that cleans it up:
 
@@ -217,11 +217,11 @@ There are a few gotchas worth knowing about when using pg_cron on Cloud SQL.
 
 First, all schedules are in UTC. There is no way to set a different timezone for the cron expressions. Plan your schedules accordingly.
 
-Second, pg_cron uses a single background worker process. If you schedule many jobs at the same time (say, all at midnight), they will run sequentially, not in parallel. Stagger your job schedules to avoid bottlenecks.
+Second, pg_cron can run multiple jobs in parallel, but Cloud SQL runs pg_cron in background worker mode. If you schedule many jobs at the same time, they are limited by available PostgreSQL background workers, including settings such as `max_worker_processes`. Stagger your job schedules to avoid bottlenecks.
 
-Third, long-running jobs can overlap with the next scheduled run. pg_cron does not prevent this by default. If a job takes longer than the interval between runs, you could end up with multiple instances of the same job running simultaneously. For critical jobs, add a lock check at the beginning of your SQL.
+Third, pg_cron does not run multiple instances of the same job at the same time. If a job takes longer than the interval between runs, the next run is queued and starts after the current run completes. For critical jobs, still design the SQL to be safe to retry.
 
-Fourth, Cloud SQL has a maximum number of database flags and connections. Each pg_cron job uses a connection when it runs, so factor that into your connection pool planning.
+Fourth, Cloud SQL has a maximum number of database flags and PostgreSQL background workers. Each running pg_cron job consumes worker capacity, so factor that into your maintenance scheduling and instance configuration.
 
 ## Wrapping Up
 
