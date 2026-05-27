@@ -234,7 +234,7 @@ Make sure the node IAM role or IRSA has permissions to modify Route53 hosted zon
 helm install external-dns external-dns/external-dns \
   --namespace external-dns \
   --set provider.name=google \
-  --set google.project=my-gcp-project \
+  --set extraArgs.google-project=my-gcp-project \
   --set policy=sync \
   --set sources[0]=service \
   --set domainFilters[0]=example.com
