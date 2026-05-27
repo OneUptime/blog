@@ -75,7 +75,7 @@ Now define the contextual conditions you want to enforce. Let us create several 
 First, an access level for corporate network access:
 
 ```yaml
-# corporate-network.yaml
+# corporate_network.yaml
 # Allow access from known corporate IP ranges
 - ipSubnetworks:
     - 198.51.100.0/24
@@ -84,16 +84,16 @@ First, an access level for corporate network access:
 
 ```bash
 # Create the corporate network access level
-gcloud access-context-manager levels create corporate-network \
+gcloud access-context-manager levels create corporate_network \
   --policy=POLICY_ID \
   --title="Corporate Network" \
-  --basic-level-spec=corporate-network.yaml
+  --basic-level-spec=corporate_network.yaml
 ```
 
 Next, an access level that requires managed devices with specific security posture:
 
 ```yaml
-# managed-device.yaml
+# managed_device.yaml
 # Require company-managed devices with disk encryption and screen lock
 - devicePolicy:
     requireScreenlock: true
@@ -110,10 +110,10 @@ Next, an access level that requires managed devices with specific security postu
 
 ```bash
 # Create the managed device access level
-gcloud access-context-manager levels create managed-device \
+gcloud access-context-manager levels create managed_device \
   --policy=POLICY_ID \
   --title="Managed Device" \
-  --basic-level-spec=managed-device.yaml
+  --basic-level-spec=managed_device.yaml
 ```
 
 ## Step 3: Create a Combined Access Level
@@ -121,32 +121,27 @@ gcloud access-context-manager levels create managed-device \
 For true zero trust, you often want to combine multiple conditions. You can create a composite access level that requires other access levels to be met:
 
 ```yaml
-# zero-trust-combined.yaml
+# zero_trust_combined.yaml
 # Both conditions must be met: managed device AND corporate network
-- devicePolicy:
-    requireScreenlock: true
-    requireCorpOwned: true
-    allowedEncryptionStatuses:
-      - ENCRYPTED
-  ipSubnetworks:
-    - 198.51.100.0/24
-    - 203.0.113.0/24
+- requiredAccessLevels:
+    - accessPolicies/POLICY_ID/accessLevels/managed_device
+    - accessPolicies/POLICY_ID/accessLevels/corporate_network
 ```
 
 Or you can use a custom access level with CEL (Common Expression Language) for more flexibility:
 
 ```bash
 # Create a custom access level using CEL expression
-gcloud access-context-manager levels create zero-trust-full \
+gcloud access-context-manager levels create zero_trust_full \
   --policy=POLICY_ID \
   --title="Full Zero Trust" \
-  --custom-level-spec=zero-trust-cel.yaml
+  --custom-level-spec=zero_trust_cel.yaml
 ```
 
-Where `zero-trust-cel.yaml` contains:
+Where `zero_trust_cel.yaml` contains:
 
 ```yaml
-# zero-trust-cel.yaml
+# zero_trust_cel.yaml
 # CEL expression requiring both managed device and approved location
 expression: "device.is_corp_owned_device && device.encryption_status == DeviceEncryptionStatus.ENCRYPTED && origin.region_code in ['US', 'CA']"
 ```
@@ -163,7 +158,7 @@ gcloud iap web add-iam-policy-binding \
   --resource-type=app-engine \
   --member="group:engineering@example.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --condition="expression=accessPolicies/POLICY_ID/accessLevels/managed-device in request.auth.access_levels,title=require-managed-device"
+  --condition='expression="accessPolicies/POLICY_ID/accessLevels/managed_device" in request.auth.access_levels,title=require_managed_device'
 ```
 
 For a backend service on Compute Engine:
@@ -175,12 +170,12 @@ gcloud iap web add-iam-policy-binding \
   --service=my-backend-service \
   --member="group:engineering@example.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --condition="expression=accessPolicies/POLICY_ID/accessLevels/zero-trust-full in request.auth.access_levels,title=zero-trust-required"
+  --condition='expression="accessPolicies/POLICY_ID/accessLevels/zero_trust_full" in request.auth.access_levels,title=zero_trust_required'
 ```
 
 ## Step 5: Configure BeyondCorp Endpoint Verification
 
-For device-based access levels to work, you need endpoint verification installed on client machines. This is a Chrome extension that reports device attributes to GCP.
+For device-based access levels to work, you need Endpoint Verification installed on client machines. This is a Chrome extension, with a helper app on supported desktop platforms, that reports device attributes to GCP.
 
 Install Endpoint Verification through Google Workspace admin console or deploy it via your MDM solution. Once installed, it reports device attributes like:
 
@@ -188,7 +183,7 @@ Install Endpoint Verification through Google Workspace admin console or deploy i
 - Disk encryption status
 - Screen lock enabled
 - Corporate ownership
-- Presence of specific security software
+- Third-party device posture signals, when integrated
 
 These attributes are what Access Context Manager evaluates when checking device policy conditions.
 
@@ -206,7 +201,7 @@ gcloud iap web add-iam-policy-binding \
   --service=internal-wiki \
   --member="group:all-employees@example.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --condition="expression=accessPolicies/POLICY_ID/accessLevels/managed-device in request.auth.access_levels,title=tier2-standard"
+  --condition='expression="accessPolicies/POLICY_ID/accessLevels/managed_device" in request.auth.access_levels,title=tier2_standard'
 
 # Tier 3: High - managed device AND corporate network
 gcloud iap web add-iam-policy-binding \
@@ -214,7 +209,7 @@ gcloud iap web add-iam-policy-binding \
   --service=admin-dashboard \
   --member="group:ops-team@example.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --condition="expression=accessPolicies/POLICY_ID/accessLevels/zero-trust-full in request.auth.access_levels,title=tier3-high"
+  --condition='expression="accessPolicies/POLICY_ID/accessLevels/zero_trust_full" in request.auth.access_levels,title=tier3_high'
 ```
 
 ## Terraform Configuration
@@ -246,8 +241,8 @@ resource "google_iap_web_iam_member" "iap_access" {
   member  = "group:engineering@example.com"
 
   condition {
-    title      = "require-managed-device"
-    expression = "${google_access_context_manager_access_level.managed_device.name} in request.auth.access_levels"
+    title      = "require_managed_device"
+    expression = "\"${google_access_context_manager_access_level.managed_device.name}\" in request.auth.access_levels"
   }
 }
 ```
