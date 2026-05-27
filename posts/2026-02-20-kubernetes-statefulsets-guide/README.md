@@ -139,10 +139,10 @@ Your application can connect to a specific replica using its DNS name. This is c
 
 ```python
 # connect_to_primary.py
-# Connect to the primary MySQL instance using its stable DNS name.
+# Connect to a configured primary MySQL instance using its stable DNS name.
 import mysql.connector
 
-# The primary is always mysql-0
+# This assumes your cluster bootstrapping or failover process makes mysql-0 primary.
 connection = mysql.connector.connect(
     host="mysql-0.mysql.default.svc.cluster.local",
     port=3306,
@@ -237,7 +237,7 @@ flowchart TD
     F --> G[Data Intact]
 ```
 
-To clean up PVCs when scaling down, use the `persistentVolumeClaimRetentionPolicy` field (Kubernetes 1.27+):
+To clean up PVCs when scaling down, use the `persistentVolumeClaimRetentionPolicy` field (available as beta in Kubernetes 1.27 and stable in Kubernetes 1.32):
 
 ```yaml
 # pvc-retention.yaml
@@ -262,17 +262,16 @@ spec:
       containers:
         - name: mysql
           image: mysql:8.0
-          # Readiness: is the database accepting connections?
+          # Readiness: can the database run an authenticated query?
           readinessProbe:
             exec:
               command:
-                - mysqladmin
-                - ping
-                - -h
-                - localhost
+                - sh
+                - -c
+                - MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -h 127.0.0.1 -uroot -e "SELECT 1"
             initialDelaySeconds: 30
             periodSeconds: 10
-          # Liveness: is the process still alive?
+          # Liveness: is the server process running?
           livenessProbe:
             exec:
               command:
