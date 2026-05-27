@@ -158,7 +158,6 @@ Here is a complete example deploying an application with all secrets from Credst
         owner: myapp
         group: myapp
       no_log: true
-      notify: restart myapp
 
     - name: Template environment file
       ansible.builtin.copy:
@@ -194,7 +193,7 @@ credstash put myapp.db_password "secret_value" environment=production app=myapp
   tasks:
     - name: Get secret with context
       ansible.builtin.set_fact:
-        db_password: "{{ lookup('community.general.credstash', 'myapp.db_password', context={'environment': env, 'app': 'myapp'}) }}"
+        db_password: "{{ lookup('community.general.credstash', 'myapp.db_password', environment=env, app='myapp') }}"
       no_log: true
 
     - name: Deploy configuration
@@ -263,7 +262,6 @@ credstash put "staging.myapp.api_key" "pk_test_yyy"
         dest: /etc/myapp/config.yml
         mode: '0600'
       no_log: true
-      notify: restart myapp
 ```
 
 ## SSL Certificate Deployment
@@ -271,9 +269,9 @@ credstash put "staging.myapp.api_key" "pk_test_yyy"
 Store and deploy certificates and keys via Credstash:
 
 ```bash
-# Store certificate and key (base64 encode if multiline)
-credstash put "myapp.ssl_cert" "$(cat server.crt)"
-credstash put "myapp.ssl_key" "$(cat server.key)"
+# Store certificate and key from files
+credstash put "myapp.ssl_cert" @server.crt
+credstash put "myapp.ssl_key" @server.key
 ```
 
 ```yaml
@@ -294,7 +292,6 @@ credstash put "myapp.ssl_key" "$(cat server.key)"
         dest: /etc/ssl/private/myapp.key
         mode: '0600'
       no_log: true
-      notify: reload nginx
 ```
 
 ## Error Handling
@@ -354,10 +351,10 @@ The IAM role or user running Ansible needs these permissions:
 
 ## Credstash vs SSM Parameter Store
 
-Both are AWS-native secret stores. Here is when to use each:
+Both store secrets using AWS services. Here is when to use each:
 
 - **Credstash**: Simpler API, supports encryption contexts, good for teams already using it. No native AWS console UI.
-- **SSM Parameter Store**: Built into AWS, has a console UI, supports IAM resource-based policies, integrates natively with ECS/Lambda/CloudFormation. Free tier for standard parameters.
+- **SSM Parameter Store**: Built into AWS, has a console UI, supports IAM-based access control and advanced-parameter sharing across accounts through AWS RAM, integrates natively with ECS/Lambda/CloudFormation. Free tier for standard parameters.
 
 For new projects, SSM Parameter Store is generally the better choice since it is a first-party AWS service with broader integration support. But if your team already has secrets in Credstash, this lookup plugin lets you keep using them seamlessly with Ansible.
 
