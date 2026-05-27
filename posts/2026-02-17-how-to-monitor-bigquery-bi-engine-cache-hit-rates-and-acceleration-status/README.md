@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, BI Engine, Monitoring, Performance, Dashboard
 
-Description: Learn how to monitor BigQuery BI Engine cache hit rates, track acceleration status, and optimize memory reservations for dashboard performance.
+Description: Learn how to monitor BigQuery BI Engine acceleration rates, track acceleration status, and optimize memory reservations for dashboard performance.
 
 ---
 
@@ -14,7 +14,7 @@ In this post, I will cover the key metrics to track, the queries you can run to 
 
 ## Understanding BI Engine Acceleration Modes
 
-When a query runs against BigQuery with a BI Engine reservation active, the query can be processed in one of three modes. Full acceleration means BI Engine handled the entire query using its in-memory engine. This gives you the best performance. Partial acceleration means BI Engine could accelerate some parts of the query but had to fall back to standard BigQuery processing for others. You still get some benefit, but not the full sub-second experience. Disabled means BI Engine could not accelerate the query at all, typically because the query uses unsupported operations or the data is not cached.
+When a query runs against BigQuery with BI Engine acceleration active, the query can be reported in one of four acceleration modes. `FULL_QUERY` means BI Engine handled the entire query using its in-memory engine. This gives you the best performance. `FULL_INPUT` means all input stages were accelerated, but later query processing might still use the BigQuery execution engine. `PARTIAL_INPUT` means BI Engine could accelerate some input stages but had to fall back to standard BigQuery processing for others. You still get some benefit, but not the full sub-second experience. `BI_ENGINE_DISABLED` means BI Engine acceleration was disabled for the query, typically because the query uses unsupported operations, no reservation is available, or the input is too large.
 
 Understanding which mode your queries are running in is the foundation of BI Engine monitoring.
 
@@ -32,7 +32,7 @@ SELECT
   creation_time,
   total_bytes_processed,
   -- BI Engine specific fields
-  bi_engine_statistics.bi_engine_mode AS acceleration_mode,
+  bi_engine_statistics.acceleration_mode AS acceleration_mode,
   -- Check for reasons why acceleration might be limited
   bi_engine_statistics.bi_engine_reasons AS acceleration_reasons
 FROM
@@ -45,11 +45,11 @@ ORDER BY
 LIMIT 100;
 ```
 
-The `bi_engine_reasons` field is particularly useful when acceleration mode is PARTIAL or DISABLED. It tells you exactly why BI Engine could not fully accelerate the query, such as unsupported SQL features, insufficient memory, or unsupported data types.
+The `bi_engine_reasons` field is particularly useful when acceleration mode is `PARTIAL_INPUT` or `BI_ENGINE_DISABLED`. It tells you why BI Engine could not fully accelerate the query, such as insufficient reservation memory, unsupported SQL text, or input that is too large.
 
-## Calculating Cache Hit Rates
+## Calculating Acceleration Rates
 
-To get an overall picture of how well BI Engine is performing, calculate the proportion of queries that are fully accelerated.
+To get an overall picture of how well BI Engine is performing, calculate the proportion of queries that are fully accelerated. This is different from the BigQuery `cache_hit` field, which refers to the query results cache.
 
 ```sql
 -- Calculate BI Engine acceleration rates over the last 7 days
@@ -57,14 +57,16 @@ SELECT
   DATE(creation_time) AS query_date,
   COUNT(*) AS total_queries,
   -- Count fully accelerated queries
-  COUNTIF(bi_engine_statistics.bi_engine_mode = 'FULL') AS fully_accelerated,
+  COUNTIF(bi_engine_statistics.acceleration_mode = 'FULL_QUERY') AS fully_accelerated,
+  -- Count queries where all input stages were accelerated
+  COUNTIF(bi_engine_statistics.acceleration_mode = 'FULL_INPUT') AS fully_accelerated_inputs,
   -- Count partially accelerated queries
-  COUNTIF(bi_engine_statistics.bi_engine_mode = 'PARTIAL') AS partially_accelerated,
+  COUNTIF(bi_engine_statistics.acceleration_mode = 'PARTIAL_INPUT') AS partially_accelerated,
   -- Count queries where BI Engine was disabled
-  COUNTIF(bi_engine_statistics.bi_engine_mode = 'DISABLED') AS not_accelerated,
+  COUNTIF(bi_engine_statistics.acceleration_mode = 'BI_ENGINE_DISABLED') AS not_accelerated,
   -- Calculate the full acceleration rate as a percentage
   ROUND(
-    COUNTIF(bi_engine_statistics.bi_engine_mode = 'FULL') * 100.0 / COUNT(*),
+    SAFE_DIVIDE(COUNTIF(bi_engine_statistics.acceleration_mode = 'FULL_QUERY') * 100.0, COUNT(*)),
     2
   ) AS full_acceleration_pct
 FROM
@@ -95,45 +97,34 @@ FROM
   UNNEST(bi_engine_statistics.bi_engine_reasons) AS reason
 WHERE
   creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-  AND bi_engine_statistics.bi_engine_mode != 'FULL'
+  AND bi_engine_statistics.acceleration_mode != 'FULL_QUERY'
 GROUP BY
   reason_code, reason_message
 ORDER BY
   occurrence_count DESC;
 ```
 
-Common reasons include insufficient reservation size (the cache is too small for the queried data), unsupported SQL operations (like certain window functions or complex joins), and unsupported input types. Each reason suggests a different fix - increase the reservation, simplify the query, or pre-aggregate the data.
+Common reasons include insufficient reservation size (the reservation does not have enough memory), unsupported SQL text, and input that is too large. Each reason suggests a different fix - increase the reservation, simplify the query, or pre-aggregate the data.
 
 ## Monitoring Memory Utilization
 
 Understanding how much of your BI Engine reservation is actually being used helps with right-sizing.
 
 ```sql
--- Check BI Engine reservation utilization over time
+-- Check the current BI Engine reservation size
 SELECT
-  TIMESTAMP_TRUNC(creation_time, HOUR) AS hour,
-  -- Total bytes that BI Engine processed
-  SUM(total_bytes_processed) AS total_bytes_processed,
-  -- Average bytes per query
-  AVG(total_bytes_processed) AS avg_bytes_per_query,
-  -- Number of queries processed
-  COUNT(*) AS query_count
+  project_id,
+  bi_capacity_name,
+  size / 1024.0 / 1024.0 / 1024.0 AS size_gib,
+  preferred_tables
 FROM
-  `region-us-central1`.INFORMATION_SCHEMA.JOBS
-WHERE
-  creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
-  AND bi_engine_statistics IS NOT NULL
-  AND bi_engine_statistics.bi_engine_mode = 'FULL'
-GROUP BY
-  hour
-ORDER BY
-  hour;
+  `region-us-central1`.INFORMATION_SCHEMA.BI_CAPACITIES;
 ```
 
-You can also check the reservation itself through the API.
+For actual utilization over time, use the Cloud Monitoring metrics `bigquerybiengine.googleapis.com/reservation/used_bytes` and `bigquerybiengine.googleapis.com/reservation/total_bytes`. You can also check the reservation itself through the API.
 
 ```bash
-# Check current BI Engine reservation details including utilization
+# Check current BI Engine reservation details
 
 curl -s \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
@@ -148,7 +139,7 @@ To quantify the value BI Engine is providing, compare query latencies between ac
 ```sql
 -- Compare query performance with and without BI Engine acceleration
 SELECT
-  bi_engine_statistics.bi_engine_mode AS acceleration_mode,
+  bi_engine_statistics.acceleration_mode AS acceleration_mode,
   COUNT(*) AS query_count,
   -- Median query duration in seconds
   APPROX_QUANTILES(
@@ -173,7 +164,7 @@ This gives you concrete numbers showing the latency difference between fully acc
 
 ## Setting Up Cloud Monitoring Alerts
 
-For proactive monitoring, you can set up alerts in Cloud Monitoring that trigger when BI Engine acceleration rates drop below a threshold.
+For proactive monitoring, you can set up alerts in Cloud Monitoring that trigger when BI Engine acceleration rates drop below a threshold or reservation utilization exceeds a threshold.
 
 First, create a scheduled query that writes acceleration metrics to a table.
 
@@ -185,7 +176,7 @@ SELECT
   CURRENT_TIMESTAMP() AS check_time,
   COUNT(*) AS total_queries,
   ROUND(
-    COUNTIF(bi_engine_statistics.bi_engine_mode = 'FULL') * 100.0 / COUNT(*),
+    SAFE_DIVIDE(COUNTIF(bi_engine_statistics.acceleration_mode = 'FULL_QUERY') * 100.0, COUNT(*)),
     2
   ) AS full_acceleration_pct,
   NULL AS reservation_size_gb  -- Populated separately
@@ -196,24 +187,16 @@ WHERE
   AND bi_engine_statistics IS NOT NULL;
 ```
 
-Then create a Cloud Monitoring alert based on a log-based metric or a custom metric exported from this table.
+Then create a Cloud Monitoring alert based on a custom metric exported from this table. You can also alert directly on built-in BI Engine reservation metrics when you want to catch capacity pressure.
 
 ```bash
-# Create a log-based metric for BI Engine non-acceleration events
-gcloud logging metrics create bi-engine-not-accelerated \
-  --description="Count of queries not accelerated by BI Engine" \
-  --log-filter='resource.type="bigquery_resource" AND jsonPayload.serviceData.jobCompletedEvent.job.jobStatistics.biEngineStatistics.biEngineMode!="FULL"'
-```
-
-```bash
-# Create an alert policy that fires when too many queries miss acceleration
-gcloud alpha monitoring policies create \
-  --display-name="BI Engine Acceleration Drop" \
-  --condition-display-name="Low acceleration rate" \
-  --condition-filter='metric.type="logging.googleapis.com/user/bi-engine-not-accelerated"' \
-  --condition-threshold-value=50 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=3600s \
+# Create an alert policy that fires when BI Engine reservation usage is high
+gcloud monitoring policies create \
+  --display-name="BI Engine Reservation Usage High" \
+  --condition-display-name="High reservation usage" \
+  --condition-filter='metric.type="bigquerybiengine.googleapis.com/reservation/used_bytes" AND resource.type="bigquery_project"' \
+  --if='> 200000000000' \
+  --duration=3600s \
   --notification-channels=CHANNEL_ID
 ```
 
