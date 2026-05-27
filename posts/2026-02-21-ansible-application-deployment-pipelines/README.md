@@ -94,6 +94,14 @@ app_max_fail_percentage: 0
     owner: "{{ app_user }}"
     group: "{{ app_group }}"
 
+- name: Ensure release configuration directory exists
+  file:
+    path: "{{ app_releases_dir }}/{{ release_timestamp }}/config"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0755'
+
 - name: Link shared configuration
   file:
     src: "{{ app_shared_dir }}/config/{{ item }}"
@@ -164,6 +172,16 @@ app_max_fail_percentage: 0
 ```yaml
 # roles/deploy/tasks/rollback.yml - Automatic rollback on failure
 ---
+- name: Check for previous release record
+  stat:
+    path: "{{ app_base_dir }}/.previous_release"
+  register: previous_release_record
+
+- name: Fail when no previous release is available
+  fail:
+    msg: "Deployment of version {{ app_version }} failed, and no previous release is available for rollback."
+  when: not previous_release_record.stat.exists
+
 - name: Read previous release path
   slurp:
     src: "{{ app_base_dir }}/.previous_release"
