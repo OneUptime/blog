@@ -240,7 +240,7 @@ func transferFunds(ctx context.Context, client *spanner.Client, fromID, toID str
         }
 
         // Write the updated balances
-        txn.BufferWrite([]*spanner.Mutation{
+        return txn.BufferWrite([]*spanner.Mutation{
             spanner.Update("Accounts",
                 []string{"AccountId", "Balance"},
                 []interface{}{fromID, fromBalance - amount}),
@@ -248,8 +248,6 @@ func transferFunds(ctx context.Context, client *spanner.Client, fromID, toID str
                 []string{"AccountId", "Balance"},
                 []interface{}{toID, toBalance + amount}),
         })
-
-        return nil
     })
 
     return err
@@ -312,7 +310,6 @@ Handle Spanner-specific errors properly:
 
 ```go
 import "google.golang.org/grpc/codes"
-import "google.golang.org/grpc/status"
 
 func getUser(ctx context.Context, client *spanner.Client, userID string) (*User, error) {
     row, err := client.Single().ReadRow(ctx, "Users",
@@ -339,17 +336,16 @@ func getUser(ctx context.Context, client *spanner.Client, userID string) (*User,
 For production deployments, configure the client with appropriate settings:
 
 ```go
-// Configure the client with custom session pool settings
+import "google.golang.org/api/option"
+
+// Configure the client with labels and a custom gRPC connection pool.
 config := spanner.ClientConfig{
-    SessionPoolConfig: spanner.SessionPoolConfig{
-        MinOpened: 10,           // Minimum number of sessions to keep open
-        MaxOpened: 100,          // Maximum number of concurrent sessions
-        MaxBurst:  10,           // Maximum number of sessions created at once
-        WriteSessions: 0.2,     // 20% of sessions are prepared for writes
+    SessionLabels: map[string]string{
+        "service": "orders-api",
     },
 }
 
-client, err := spanner.NewClientWithConfig(ctx, dbPath, config)
+client, err := spanner.NewClientWithConfig(ctx, dbPath, config, option.WithGRPCConnectionPool(4))
 ```
 
 ## Wrapping Up
