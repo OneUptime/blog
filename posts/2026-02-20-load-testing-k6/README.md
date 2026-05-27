@@ -326,10 +326,10 @@ jobs:
 
       - name: Install k6
         run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D68
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
-          sudo apt-get update && sudo apt-get install k6
+          sudo apt-get update
+          sudo apt-get install k6
 
       - name: Run load test
         run: k6 run --out json=results.json tests/load/scenario_test.js
@@ -347,7 +347,9 @@ jobs:
      scenarios: (100.00%) 1 scenario, 50 max VUs, 4m0s max duration
                 default: Up to 50 VUs for 3m30s
 
-     checks.....................: 98.50%  4925 out of 5000
+     checks_total...............: 5000    23.8/s
+     checks_succeeded...........: 98.50%  4925 out of 5000
+     checks_failed..............: 1.50%   75 out of 5000
      http_req_blocked...........: avg=2.1ms   p(95)=8.2ms
      http_req_connecting........: avg=1.8ms   p(95)=7.1ms
      http_req_duration..........: avg=125ms   p(95)=340ms
@@ -367,7 +369,7 @@ Key metrics to watch:
 - **http_req_duration p(95)**: 95th percentile response time
 - **http_req_failed**: Error rate
 - **http_reqs**: Total throughput (requests per second)
-- **checks**: Percentage of checks that passed
+- **checks_succeeded**: Percentage of checks that passed
 
 ## Summary
 
