@@ -8,7 +8,7 @@ Description: Learn how to use stale reads in Cloud Spanner to reduce read latenc
 
 ---
 
-Every strong read in Cloud Spanner needs to check that it is seeing the most up-to-date committed data. In a multi-region deployment, this means coordinating with the leader region, which adds latency. Stale reads offer an alternative: you tell Spanner that you are okay reading data that might be a few seconds old, and in return, Spanner can serve the read from the nearest replica without waiting for the latest data. In this post, I will show you when stale reads make sense and how to use them effectively.
+Every strong read in Cloud Spanner needs to check that it is seeing the most up-to-date committed data. In a multi-region deployment, this typically means coordinating with the leader region, which adds latency. Stale reads offer an alternative: you tell Spanner that you are okay reading data that might be a few seconds old, and in return, Spanner can often serve the read from a nearby replica without waiting for the latest data. In this post, I will show you when stale reads make sense and how to use them effectively.
 
 ## How Strong Reads Work
 
@@ -19,7 +19,7 @@ To understand why stale reads are faster, you first need to understand strong re
 3. The replica waits until it has all data up to that timestamp
 4. The replica returns the results
 
-That coordination with the leader adds latency, especially if the leader is in a different region. For a nam-eur-asia1 multi-region configuration, the leader might be in the US while your reader is in Europe. Each strong read requires a cross-continent round trip.
+That coordination with the leader adds latency, especially if the leader is in a different region. For a nam-eur-asia1 multi-region configuration, the leader might be in the US while your reader is in Europe. A strong read can require a cross-continent round trip.
 
 ## How Stale Reads Work
 
@@ -28,7 +28,7 @@ With a stale read, you specify how old the data can be. Spanner then:
 1. Your request arrives at the nearest replica
 2. The replica checks its local timestamp
 3. If the replica has data that satisfies your staleness bound, it returns immediately
-4. No coordination with the leader is needed
+4. Leader coordination usually is not needed, especially with a sufficient exact-staleness window
 
 This eliminates the cross-region round trip, which can save 100-300ms per read in multi-region configurations.
 
@@ -48,7 +48,7 @@ client = spanner.Client()
 instance = client.instance("my-instance")
 database = instance.database("my-database")
 
-# Read data that is at most 15 seconds old
+# Read data that is exactly 15 seconds stale
 
 staleness = datetime.timedelta(seconds=15)
 with database.snapshot(exact_staleness=staleness) as snapshot:
@@ -61,9 +61,9 @@ with database.snapshot(exact_staleness=staleness) as snapshot:
         print(row)
 ```
 
-### Min Read Timestamp (Bounded Staleness)
+### Bounded Staleness
 
-You specify a minimum timestamp. Spanner returns data that is at least as fresh as that timestamp:
+You specify a maximum staleness duration or a minimum timestamp. Spanner chooses the newest timestamp within that bound that can be served by a nearby replica without blocking:
 
 ```python
 # Read data that was current as of a specific time
@@ -82,12 +82,12 @@ with database.snapshot(min_read_timestamp=min_timestamp) as snapshot:
 
 ```go
 func getProductStale(ctx context.Context, client *spanner.Client, productID string) (*Product, error) {
-    // Create a read with 10-second staleness tolerance
+    // Create a read with 10-second exact staleness
     ro := client.ReadOnlyTransaction().WithTimestampBound(
         spanner.ExactStaleness(10 * time.Second))
     defer ro.Close()
 
-    // Read the product - served from the nearest replica without leader check
+    // Read the product - can be served from a nearby replica without a leader check
     row, err := ro.ReadRow(ctx, "Products",
         spanner.Key{productID},
         []string{"ProductId", "Name", "Price", "StockCount"})
@@ -111,22 +111,20 @@ public Product getProductStale(String productId) {
     // Create a read with 15-second staleness
     TimestampBound bound = TimestampBound.ofExactStaleness(15, TimeUnit.SECONDS);
 
-    try (ReadOnlyTransaction txn = dbClient.singleUseReadOnlyTransaction(bound)) {
-        Struct row = txn.readRow("Products",
-            Key.of(productId),
-            Arrays.asList("ProductId", "Name", "Price", "StockCount"));
+    Struct row = dbClient.singleUse(bound).readRow("Products",
+        Key.of(productId),
+        Arrays.asList("ProductId", "Name", "Price", "StockCount"));
 
-        if (row == null) {
-            return null;
-        }
-
-        return new Product(
-            row.getString("ProductId"),
-            row.getString("Name"),
-            row.getDouble("Price"),
-            row.getLong("StockCount")
-        );
+    if (row == null) {
+        return null;
     }
+
+    return new Product(
+        row.getString("ProductId"),
+        row.getString("Name"),
+        row.getDouble("Price"),
+        row.getLong("StockCount")
+    );
 }
 ```
 
@@ -156,7 +154,7 @@ graph LR
     A[0 seconds - Strong Read] -->|Highest latency| B[Full leader coordination]
     C[1-5 seconds] -->|Good latency improvement| D[Very fresh data]
     E[10-15 seconds] -->|Best latency improvement| F[Slightly stale but usually fine]
-    G[60+ seconds] -->|No additional benefit| H[Unnecessarily stale]
+    G[60+ seconds] -->|Little additional benefit| H[Unnecessarily stale]
 ```
 
 In practice, 10-15 seconds is the sweet spot for most applications. Going beyond 15 seconds rarely provides additional latency improvement because replicas are usually caught up within a few seconds.
@@ -166,6 +164,9 @@ In practice, 10-15 seconds is the sweet spot for most applications. Going beyond
 Here is a quick benchmark to compare strong vs stale reads:
 
 ```python
+from google.cloud import spanner
+import datetime
+import math
 import time
 
 def benchmark_reads(database, user_id, iterations=100):
@@ -199,8 +200,9 @@ def benchmark_reads(database, user_id, iterations=100):
     # Report results
     avg_strong = sum(strong_times) / len(strong_times) * 1000
     avg_stale = sum(stale_times) / len(stale_times) * 1000
-    p99_strong = sorted(strong_times)[int(iterations * 0.99)] * 1000
-    p99_stale = sorted(stale_times)[int(iterations * 0.99)] * 1000
+    p99_index = max(0, math.ceil(iterations * 0.99) - 1)
+    p99_strong = sorted(strong_times)[p99_index] * 1000
+    p99_stale = sorted(stale_times)[p99_index] * 1000
 
     print(f"Strong reads - avg: {avg_strong:.1f}ms, p99: {p99_strong:.1f}ms")
     print(f"Stale reads  - avg: {avg_stale:.1f}ms, p99: {p99_stale:.1f}ms")
@@ -251,4 +253,4 @@ class UserService:
 
 ## Wrapping Up
 
-Stale reads are one of the simplest performance optimizations you can make with Cloud Spanner, especially for multi-region deployments. A 10-15 second staleness window eliminates cross-region coordination for reads, cutting latency from tens of milliseconds to single-digit milliseconds. The key is identifying which reads in your application actually need perfect freshness (usually fewer than you think) and using stale reads for everything else. It is a low-risk, high-reward optimization that you can adopt incrementally, one query at a time.
+Stale reads are one of the simplest performance optimizations you can make with Cloud Spanner, especially for multi-region deployments. A 10-15 second staleness window can eliminate cross-region coordination for reads, cutting latency from tens of milliseconds to single-digit milliseconds. The key is identifying which reads in your application actually need perfect freshness (usually fewer than you think) and using stale reads for everything else. It is a low-risk, high-reward optimization that you can adopt incrementally, one query at a time.
