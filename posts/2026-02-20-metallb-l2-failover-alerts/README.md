@@ -8,13 +8,13 @@ Description: Learn how to set up Prometheus alerts for MetalLB Layer 2 leader no
 
 ---
 
-MetalLB in Layer 2 mode elects a single leader node to handle traffic for each LoadBalancer service IP. When that leader node goes down, a failover occurs and a new leader is elected. During this transition, there is a brief disruption in traffic. Monitoring these failover events is critical for understanding service availability and diagnosing intermittent connectivity issues.
+MetalLB in Layer 2 mode elects a single leader node to handle traffic for each LoadBalancer service IP. When that leader node goes down, a failover occurs and a new leader is selected. During this transition, there may be a brief disruption in traffic. Monitoring these failover events is critical for understanding service availability and diagnosing intermittent connectivity issues.
 
 This post walks you through setting up Prometheus alerts that fire whenever a MetalLB L2 leader failover happens.
 
 ## How MetalLB L2 Leader Election Works
 
-In Layer 2 mode, MetalLB uses memberlist to elect a single speaker pod as the leader for each service IP. That speaker responds to ARP (IPv4) or NDP (IPv6) requests for the IP. If the leader node becomes unreachable, another speaker takes over.
+In Layer 2 mode, each MetalLB speaker independently computes which node should announce each service IP from the active speakers and the service's eligible announcers. That speaker responds to ARP (IPv4) or NDP (IPv6) requests for the IP. If the leader node becomes unreachable, another speaker takes over.
 
 ```mermaid
 sequenceDiagram
@@ -35,10 +35,9 @@ The failover is usually fast, but it is not instant. Clients that have cached th
 
 ## MetalLB Prometheus Metrics
 
-MetalLB speaker pods expose metrics on port 7472 by default. The key metrics for failover detection are:
+MetalLB speaker pods expose Prometheus metrics. In current MetalLB manifests, the speaker metrics Service uses the `metricshttps` port on 9120. The key metric for failover detection is:
 
-- `metallb_layer2_announcements` - Number of L2 announcements per service
-- `metallb_speaker_announced` - Whether this speaker is currently announcing a service
+- `metallb_speaker_announced` - Services being announced from this node, labeled by `service`, `protocol`, `node`, and `ip`
 
 First, make sure MetalLB metrics are being scraped. Create a ServiceMonitor if you are using the Prometheus Operator:
 
@@ -49,20 +48,26 @@ First, make sure MetalLB metrics are being scraped. Create a ServiceMonitor if y
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: metallb-speaker
+  name: speaker-monitor
   namespace: metallb-system
   labels:
-    app: metallb
+    component: speaker
 spec:
   selector:
     matchLabels:
-      app: metallb
-      component: speaker
+      name: speaker-monitor-service
+  namespaceSelector:
+    matchNames:
+      - metallb-system
+  jobLabel: component
   endpoints:
-    # MetalLB speakers expose metrics on port 7472
-    - port: monitoring
-      interval: 15s
-      path: /metrics
+    # Current MetalLB manifests expose speaker metrics over HTTPS on port 9120.
+    - port: metricshttps
+      interval: 30s
+      scheme: https
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tlsConfig:
+        insecureSkipVerify: true
 ```
 
 Apply the ServiceMonitor:
@@ -84,20 +89,20 @@ kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090
 curl -s 'http://localhost:9090/api/v1/query?query=metallb_speaker_announced' | jq .
 ```
 
-You should see results with labels like `service`, `node`, and `ip`.
+You should see results with labels like `service`, `protocol`, `node`, and `ip`.
 
 ## Detecting Failover Events
 
-A failover event can be detected when the `metallb_speaker_announced` metric changes its `node` label for a given service. We can track this by alerting on changes in the announcing speaker.
+A failover event can be detected when the current `metallb_speaker_announced` series for a service IP has a different `node` label than it had a few minutes ago. We can track this by alerting when a current announcer was not the announcer at the offset time.
 
 The following PromQL expression detects when a service's announcing speaker has changed in the last 5 minutes:
 
 ```promql
 # This expression finds services where the announcing speaker
 # changed within the last 5 minutes, indicating a failover.
-changes(
-  metallb_speaker_announced{value="true"}[5m]
-) > 0
+metallb_speaker_announced{protocol="layer2"}
+unless on (service, ip, node)
+metallb_speaker_announced{protocol="layer2"} offset 5m
 ```
 
 ## Creating Prometheus Alert Rules
@@ -122,9 +127,9 @@ spec:
         # Alert when a failover event is detected
         - alert: MetalLBL2LeaderFailover
           expr: |
-            changes(
-              metallb_speaker_announced{value="true"}[5m]
-            ) > 0
+            metallb_speaker_announced{protocol="layer2"}
+            unless on (service, ip, node)
+            metallb_speaker_announced{protocol="layer2"} offset 5m
           for: 0m
           labels:
             severity: warning
@@ -132,30 +137,27 @@ spec:
             summary: "MetalLB L2 leader failover detected"
             description: >
               The announcing speaker for service {{ $labels.service }}
-              in namespace {{ $labels.namespace }} has changed.
+              and IP {{ $labels.ip }} is now node {{ $labels.node }}.
               This indicates a leader node failover occurred.
 
-        # Alert when no speaker is announcing a service
+        # Alert when no speaker is announcing any L2 service
         - alert: MetalLBNoSpeakerAnnouncing
           expr: |
-            count by (service, namespace) (
-              metallb_speaker_announced{value="true"}
-            ) == 0
+            absent(metallb_speaker_announced{protocol="layer2"})
           for: 1m
           labels:
             severity: critical
           annotations:
-            summary: "No MetalLB speaker announcing service"
+            summary: "No MetalLB speaker announcing L2 services"
             description: >
-              No speaker is currently announcing service
-              {{ $labels.service }} in namespace {{ $labels.namespace }}.
-              The LoadBalancer IP is unreachable.
+              No MetalLB speaker is currently announcing any Layer 2
+              LoadBalancer service. Layer 2 LoadBalancer IPs may be unreachable.
 
-        # Alert when repeated failovers happen in a short window
+        # Alert when a service IP has been announced from several nodes in a short window
         - alert: MetalLBFrequentFailovers
           expr: |
-            changes(
-              metallb_speaker_announced{value="true"}[30m]
+            count by (service, ip) (
+              count_over_time(metallb_speaker_announced{protocol="layer2"}[30m])
             ) > 3
           for: 0m
           labels:
@@ -163,8 +165,8 @@ spec:
           annotations:
             summary: "Frequent MetalLB L2 failovers detected"
             description: >
-              Service {{ $labels.service }} has experienced more than
-              3 leader failovers in the last 30 minutes. This may
+              Service {{ $labels.service }} IP {{ $labels.ip }} has been
+              announced from more than 3 nodes in the last 30 minutes. This may
               indicate a flapping node or network instability.
 ```
 
@@ -198,15 +200,15 @@ To make sure these alerts reach your on-call team, configure an Alertmanager rou
 route:
   receiver: default
   routes:
-    - match:
-        alertname: MetalLBL2LeaderFailover
+    - matchers:
+        - alertname="MetalLBL2LeaderFailover"
       receiver: infra-team
       group_wait: 10s
       group_interval: 5m
       repeat_interval: 1h
 
-    - match:
-        alertname: MetalLBNoSpeakerAnnouncing
+    - matchers:
+        - alertname="MetalLBNoSpeakerAnnouncing"
       receiver: infra-team-critical
       group_wait: 0s
       repeat_interval: 5m
@@ -232,8 +234,8 @@ receivers:
 You can simulate a failover by cordoning and draining the node that currently holds the leader role:
 
 ```bash
-# Find which node is the current leader for a service IP
-kubectl get events -n metallb-system --field-selector reason=nodeAssigned
+# Find which node is currently announcing each L2 service
+kubectl get servicel2statuses -n metallb-system
 
 # Cordon and drain that node to trigger a failover
 kubectl cordon <leader-node>
@@ -253,7 +255,9 @@ Create a Grafana panel to visualize failover history over time:
 ```promql
 # Use this query in a Grafana time series panel
 # to show failover events as spikes on a timeline.
-changes(metallb_speaker_announced{value="true"}[5m])
+metallb_speaker_announced{protocol="layer2"}
+unless on (service, ip, node)
+metallb_speaker_announced{protocol="layer2"} offset 5m
 ```
 
 Set the panel type to "State timeline" or "Bar gauge" so each failover event is clearly visible.
