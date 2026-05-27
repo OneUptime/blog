@@ -47,9 +47,9 @@ This playbook installs LVM2 on target hosts:
         state: present
       when: ansible_os_family == "RedHat"
 
-    - name: Ensure lvm2-lvmetad service is running
+    - name: Ensure LVM monitoring service is running when available
       ansible.builtin.systemd:
-        name: lvm2-lvmetad
+        name: lvm2-monitor
         state: started
         enabled: true
       failed_when: false
@@ -87,7 +87,7 @@ This playbook creates physical volumes on specified disks:
         size: 100g
         fstype: xfs
         mount: /var/lib/database
-        mount_opts: defaults,noatime,nobarrier
+        mount_opts: defaults,noatime
 
   tasks:
     - name: Create physical volumes
@@ -103,13 +103,9 @@ This task creates physical volumes individually for more control:
 
 ```yaml
     - name: Initialize physical volumes individually
-      ansible.builtin.command:
-        cmd: "pvcreate {{ item }}"
-        creates: "{{ item }}"
+      community.general.lvm_pv:
+        device: "{{ item }}"
       loop: "{{ lvm_physical_disks }}"
-      register: pv_result
-      changed_when: "'Physical volume' in pv_result.stdout | default('')"
-      failed_when: pv_result.rc != 0 and 'already' not in pv_result.stderr | default('')
 ```
 
 ## Creating Volume Groups
@@ -127,7 +123,7 @@ This task creates a volume group from the physical volumes:
         state: present
 ```
 
-The `pesize` parameter sets the Physical Extent size in megabytes. The default is 4MB, but I typically use 32MB for better performance on large volumes.
+The `pesize` parameter sets the Physical Extent size in megabytes. The default is 4MB, but I typically use 32MB on very large volume groups to reduce the number of extents LVM needs to track.
 
 ## Creating Logical Volumes
 
@@ -251,23 +247,13 @@ This playbook adds a new physical disk to an existing volume group:
         msg: "Disk {{ new_disk }} not found"
       when: not disk_check.stat.exists
 
-    - name: Check if disk is already part of a VG
-      ansible.builtin.command:
-        cmd: "pvs {{ new_disk }}"
-      register: pv_check
-      changed_when: false
-      failed_when: false
-
-    - name: Initialize new disk as physical volume
-      ansible.builtin.command:
-        cmd: "pvcreate {{ new_disk }}"
-      when: pv_check.rc != 0
-
     - name: Extend volume group with new disk
-      ansible.builtin.command:
-        cmd: "vgextend {{ target_vg }} {{ new_disk }}"
-      when: pv_check.rc != 0
-      register: vg_extend
+      community.general.lvg:
+        vg: "{{ target_vg }}"
+        pvs:
+          - "{{ new_disk }}"
+        remove_extra_pvs: false
+        state: present
 
     - name: Display updated VG info
       ansible.builtin.command:
@@ -376,10 +362,9 @@ This playbook checks LVM utilization and alerts on high usage:
   hosts: storage_servers
   become: true
   tasks:
-    - name: Get LV usage percentages
+    - name: Get mounted LVM filesystem usage percentages
       ansible.builtin.shell: |
-        lvs --noheadings -o lv_name,data_percent,vg_name 2>/dev/null | \
-        awk '{if ($2+0 > 80) print $3"/"$1": "$2"% used"}'
+        df -P | awk '$1 ~ "^/dev/(mapper/|[^/]+/)" && int($5) > 80 {print $1" mounted on "$6": "$5" used"}'
       register: lv_usage
       changed_when: false
 
