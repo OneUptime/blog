@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Application Default Credentials, ADC, Authentication, Local Development
 
-Description: Learn how to set up and manage GCP Application Default Credentials for local development, including user credentials, service accounts, and workload identity federation.
+Description: Learn how to set up and manage GCP Application Default Credentials for local development, including user credentials, service account keys, and service account impersonation.
 
 ---
 
@@ -121,7 +121,7 @@ gcloud iam service-accounts add-iam-policy-binding \
   --role="roles/iam.serviceAccountTokenCreator"
 ```
 
-This gives you the exact same permissions as the service account without downloading any key files.
+This gives supported client libraries the exact same permissions as the service account without downloading any key files.
 
 ## Scoping Credentials with Quotas
 
@@ -136,7 +136,7 @@ Or during login:
 
 ```bash
 # Set quota project during ADC login
-gcloud auth application-default login --client-id-file=client_id.json
+gcloud auth application-default login --project=my-project
 ```
 
 ## Working with Multiple Projects
@@ -144,10 +144,9 @@ gcloud auth application-default login --client-id-file=client_id.json
 If you work on multiple GCP projects, you need to manage different credential configurations:
 
 ```bash
-# Check which project your ADC is configured for
-gcloud auth application-default print-access-token 2>/dev/null | \
-  cut -d. -f2 | base64 -d 2>/dev/null | python3 -m json.tool 2>/dev/null | \
-  grep -i project
+# Check the quota project in your local ADC file
+python3 -m json.tool ~/.config/gcloud/application_default_credentials.json | \
+  grep quota_project_id
 ```
 
 For quick project switching, use environment variables:
@@ -181,12 +180,9 @@ If this returns a token, your ADC is set up. You can also check which account is
 
 ```bash
 # Check which identity the ADC credentials represent
-gcloud auth application-default print-access-token 2>&1 | head -1
-
-# For more detail, decode the token
-gcloud auth application-default print-access-token | \
-  python3 -c "import sys,json,base64; token=sys.stdin.read().strip().split('.')[1]; \
-  token+='='*(4-len(token)%4); print(json.dumps(json.loads(base64.urlsafe_b64decode(token)),indent=2))" 2>/dev/null
+curl -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "access_token=$(gcloud auth application-default print-access-token)" \
+  https://www.googleapis.com/oauth2/v1/tokeninfo
 ```
 
 ## Revoking Credentials
