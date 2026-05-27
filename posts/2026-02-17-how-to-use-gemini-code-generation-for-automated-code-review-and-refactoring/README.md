@@ -19,17 +19,22 @@ The key to good code reviews is a well-crafted system instruction that defines y
 This code configures a model for code review:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+from google import genai
+from google.genai.types import GenerateContentConfig, HttpOptions
 
 # Initialize Vertex AI
 
-vertexai.init(project="your-project-id", location="us-central1")
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="global",
+    http_options=HttpOptions(api_version="v1"),
+)
 
 # Configure a model specifically for code review
-code_reviewer = GenerativeModel(
-    "gemini-2.0-flash",
-    system_instruction="""You are a senior software engineer conducting code reviews.
+MODEL_ID = "gemini-2.5-flash"
+
+CODE_REVIEW_SYSTEM_INSTRUCTION = """You are a senior software engineer conducting code reviews.
 
 Review Style:
 - Be specific and actionable in your feedback
@@ -46,6 +51,9 @@ Review Checklist:
 5. Best practices for the specific language/framework
 6. Test coverage gaps
 """
+
+code_review_config = GenerateContentConfig(
+    system_instruction=CODE_REVIEW_SYSTEM_INSTRUCTION
 )
 ```
 
@@ -53,14 +61,14 @@ Review Checklist:
 
 Pass a code diff or a code file to the model for review.
 
-```python
+````python
 def review_code(code, language="python", context=""):
     """Review a code snippet and return structured feedback."""
     prompt = f"""Review this {language} code:
 
 ```{language}
 {code}
-```bash
+```
 
 {f"Context: {context}" if context else ""}
 
@@ -71,7 +79,11 @@ Provide your review in this format:
 4. Overall assessment
 """
 
-    response = code_reviewer.generate_content(prompt)
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=prompt,
+        config=code_review_config,
+    )
     return response.text
 
 ## Example: review a Python function
@@ -91,20 +103,20 @@ review = review_code(
     context="This function is called from a web API endpoint"
 )
 print(review)
-```text
+````
 
 ## Reviewing Git Diffs
 
 In practice, you review changes, not entire files. Here is how to review a git diff:
 
-```python
+````python
 def review_diff(diff_text, pr_description=""):
     """Review a git diff for issues and improvements."""
     prompt = f"""Review this code change (git diff format):
 
 ```diff
 {diff_text}
-```bash
+```
 
 {"PR Description: " + pr_description if pr_description else ""}
 
@@ -116,7 +128,11 @@ Focus on:
 5. Would you approve this PR? Why or why not?
 """
 
-    response = code_reviewer.generate_content(prompt)
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=prompt,
+        config=code_review_config,
+    )
     return response.text
 
 ## Example diff
@@ -140,13 +156,13 @@ review = review_diff(
     pr_description="Add endpoint to delete user and their sessions"
 )
 print(review)
-```text
+````
 
 ## Automated Refactoring Suggestions
 
 Beyond finding issues, Gemini can suggest concrete refactors with working code.
 
-```python
+````python
 def suggest_refactoring(code, language="python", goals=None):
     """Suggest refactoring improvements with working code."""
     goal_text = ""
@@ -158,7 +174,7 @@ def suggest_refactoring(code, language="python", goals=None):
 Original code:
 ```{language}
 {code}
-```bash
+```
 
 {goal_text}
 
@@ -168,7 +184,11 @@ For each refactoring:
 3. Note any behavioral differences
 """
 
-    response = code_reviewer.generate_content(prompt)
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=prompt,
+        config=code_review_config,
+    )
     return response.text
 
 ## Example: refactor a messy function
@@ -207,7 +227,7 @@ refactoring = suggest_refactoring(
     ]
 )
 print(refactoring)
-```text
+````
 
 ## Batch Code Review Pipeline
 
@@ -220,7 +240,7 @@ class CodeReviewPipeline:
     """Automated code review pipeline for a codebase."""
 
     def __init__(self):
-        self.reviewer = code_reviewer
+        self.client = client
         self.results = []
 
     def review_file(self, file_path):
@@ -296,8 +316,7 @@ print(report)
 Create a specialized reviewer focused on security vulnerabilities.
 
 ```python
-security_reviewer = GenerativeModel(
-    "gemini-2.0-flash",
+security_review_config = GenerateContentConfig(
     system_instruction="""You are a security-focused code reviewer.
 
 Focus exclusively on security issues:
@@ -322,8 +341,10 @@ For each finding:
 
 def security_review(code, language="python"):
     """Run a security-focused review on code."""
-    response = security_reviewer.generate_content(
-        f"Perform a security review of this {language} code:\n\n```{language}\n{code}\n```"
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=f"Perform a security review of this {language} code:\n\n```{language}\n{code}\n```",
+        config=security_review_config,
     )
     return response.text
 ```
@@ -332,14 +353,14 @@ def security_review(code, language="python"):
 
 Gemini can also generate test cases for code that lacks coverage.
 
-```python
+````python
 def generate_tests(code, language="python", framework="pytest"):
     """Generate unit tests for a given code snippet."""
     prompt = f"""Generate comprehensive unit tests for this {language} code using {framework}.
 
 ```{language}
 {code}
-```bash
+```
 
 Requirements:
 - Cover all public functions and methods
@@ -349,7 +370,11 @@ Requirements:
 - Add comments explaining the test strategy
 """
 
-    response = code_reviewer.generate_content(prompt)
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=prompt,
+        config=code_review_config,
+    )
     return response.text
 
 ## Generate tests for a function
@@ -375,11 +400,8 @@ def calculate_shipping(weight_kg, distance_km, express=False):
 
 tests = generate_tests(code)
 print(tests)
-```text
+````
 
 ## Wrapping Up
 
 Automated code review with Gemini does not replace human reviewers - it augments them. The model catches pattern-level issues consistently, suggests refactors with working code, and can run security scans across entire codebases. Use it as a first pass before human review to catch the easy stuff, so human reviewers can focus on architecture and design decisions. Monitor your automated review pipeline's accuracy and usefulness with tools like OneUptime, and refine your system instructions based on team feedback.
-
-```bash
-```
