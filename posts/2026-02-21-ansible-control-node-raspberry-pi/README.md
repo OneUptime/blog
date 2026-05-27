@@ -78,15 +78,7 @@ echo 'source ~/ansible-env/bin/activate' >> ~/.bashrc
 sudo apt install -y ansible
 ```
 
-For a newer version via PPA:
-
-```bash
-sudo apt install -y software-properties-common
-sudo add-apt-repository --yes --update ppa:ansible/ansible
-sudo apt install -y ansible
-```
-
-Note: PPAs may not be available for the ARM architecture. If the PPA does not work, use the pip method instead.
+Ubuntu PPAs are not a good fit for Raspberry Pi OS, which is based on Debian. If you need a newer Ansible version than the default apt repositories provide, use the pip method instead.
 
 ## Project Structure on the Pi
 
@@ -104,11 +96,12 @@ Create the ansible.cfg:
 # ~/ansible/ansible.cfg
 [defaults]
 inventory = inventory/hosts.ini
-remote_user = pi
+remote_user = your_user
 private_key_file = ~/.ssh/ansible_key
 host_key_checking = False
 retry_files_enabled = False
-stdout_callback = yaml
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
 forks = 10
 gathering = smart
 fact_caching = jsonfile
@@ -116,7 +109,7 @@ fact_caching_connection = /tmp/ansible_facts
 fact_caching_timeout = 7200
 
 # Performance matters on a Pi - enable these
-callback_whitelist = timer, profile_tasks
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 
 [privilege_escalation]
 become = True
@@ -135,8 +128,8 @@ ssh_args = -o ControlMaster=auto -o ControlPersist=600s -o PreferredAuthenticati
 ssh-keygen -t ed25519 -f ~/.ssh/ansible_key -C "ansible-pi" -N ""
 
 # Copy the key to your managed hosts
-ssh-copy-id -i ~/.ssh/ansible_key.pub pi@192.168.1.10
-ssh-copy-id -i ~/.ssh/ansible_key.pub pi@192.168.1.11
+ssh-copy-id -i ~/.ssh/ansible_key.pub your_user@192.168.1.10
+ssh-copy-id -i ~/.ssh/ansible_key.pub your_user@192.168.1.11
 ```
 
 ## Create Your Inventory
@@ -261,10 +254,12 @@ Here is a practical playbook for keeping your homelab up to date:
       when: reboot_required.stat.exists
 
     - name: Ensure NTP is configured
-      ansible.builtin.template:
-        src: ../templates/timesyncd.conf.j2
+      ansible.builtin.copy:
         dest: /etc/systemd/timesyncd.conf
         mode: '0644'
+        content: |
+          [Time]
+          NTP={{ ntp_server }}
       notify: restart timesyncd
 
     - name: Clean up old packages
@@ -293,13 +288,13 @@ Add entries for regular maintenance:
 
 ```cron
 # Run maintenance at 3 AM every Sunday
-0 3 * * 0 source ~/ansible-env/bin/activate && cd ~/ansible && ansible-playbook playbooks/maintenance.yml >> /var/log/ansible-cron.log 2>&1
+0 3 * * 0 /bin/bash -lc 'source "$HOME/ansible-env/bin/activate" && cd "$HOME/ansible" && ansible-playbook playbooks/maintenance.yml >> "$HOME/ansible/ansible-cron.log" 2>&1'
 
 # Run monitoring checks every 15 minutes
-*/15 * * * * source ~/ansible-env/bin/activate && cd ~/ansible && ansible-playbook playbooks/health-check.yml >> /var/log/ansible-health.log 2>&1
+*/15 * * * * /bin/bash -lc 'source "$HOME/ansible-env/bin/activate" && cd "$HOME/ansible" && ansible-playbook playbooks/health-check.yml >> "$HOME/ansible/ansible-health.log" 2>&1'
 
 # Run backup playbook daily at 2 AM
-0 2 * * * source ~/ansible-env/bin/activate && cd ~/ansible && ansible-playbook playbooks/backup.yml >> /var/log/ansible-backup.log 2>&1
+0 2 * * * /bin/bash -lc 'source "$HOME/ansible-env/bin/activate" && cd "$HOME/ansible" && ansible-playbook playbooks/backup.yml >> "$HOME/ansible/ansible-backup.log" 2>&1'
 ```
 
 ## Monitoring the Pi Control Node
