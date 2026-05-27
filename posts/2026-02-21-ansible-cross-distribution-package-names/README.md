@@ -91,6 +91,24 @@ pkg_dev_tools:
   - patterns-devel-base-devel_basis
 ```
 
+Create `vars/packages_archlinux.yml`:
+
+```yaml
+# vars/packages_archlinux.yml
+pkg_web_server: apache
+pkg_web_service: httpd
+pkg_firewall: nftables
+pkg_ntp: chrony
+pkg_dns_utils: bind
+pkg_net_tools: net-tools
+pkg_editor: vim
+pkg_python3: python
+pkg_pip: python-pip
+pkg_selinux_utils: ""
+pkg_dev_tools:
+  - base-devel
+```
+
 Load the right file based on the OS:
 
 ```yaml
@@ -284,7 +302,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -428,4 +446,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
