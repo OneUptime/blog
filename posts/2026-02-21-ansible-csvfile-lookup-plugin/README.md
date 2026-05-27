@@ -331,7 +331,7 @@ The csvfile lookup searches only the first column by default for the key. It ret
   connection: local
   tasks:
     - name: Read entire CSV as structured data
-      ansible.builtin.read_csv:
+      community.general.read_csv:
         path: files/servers.csv
       register: csv_data
 
@@ -346,6 +346,6 @@ The csvfile lookup searches only the first column by default for the key. It ret
       loop: "{{ csv_data.list | selectattr('role', 'equalto', 'webserver') | list }}"
 ```
 
-The `read_csv` module (available since Ansible 2.8) is often a better choice when you need to process multiple rows or filter data. Use the `csvfile` lookup when you need simple key-value lookups, especially when the CSV serves as a configuration database and you just need one value at a time.
+The `read_csv` module (introduced in Ansible 2.8 and now available as `community.general.read_csv`) is often a better choice when you need to process multiple rows or filter data. Use the `csvfile` lookup when you need simple key-value lookups, especially when the CSV serves as a configuration database and you just need one value at a time.
 
 CSV files are a practical and widely understood data format. The csvfile lookup bridges the gap between your spreadsheets and your automation, letting operations teams maintain familiar CSV files while Ansible uses them to drive infrastructure configuration.
