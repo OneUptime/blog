@@ -14,12 +14,15 @@ Ansible provides URL utilities that handle authentication patterns without exter
 
 ```python
 from ansible.module_utils.urls import open_url
-import base64
 
 def get_with_basic_auth(url, username, password):
-    credentials = base64.b64encode(f'{username}:{password}'.encode()).decode()
-    headers = {'Authorization': f'Basic {credentials}'}
-    response = open_url(url, headers=headers, method='GET')
+    response = open_url(
+        url,
+        url_username=username,
+        url_password=password,
+        force_basic_auth=True,
+        method='GET',
+    )
     return response.read()
 ```
 
@@ -50,6 +53,8 @@ module_args.update(dict(
 ## fetch_url Helper
 
 ```python
+import json
+from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.urls import fetch_url
 
 def run_module():
@@ -70,4 +75,4 @@ def run_module():
 
 ## Key Takeaways
 
-Use fetch_url for authenticated requests in modules since it handles proxy settings, SSL verification, and connection pooling. Use url_argument_spec to add standard URL parameters. Use open_url for simpler cases without the full module integration.
+Use fetch_url for authenticated requests in modules since it handles module URL parameters, proxy settings, and SSL verification. Use url_argument_spec to add standard URL parameters. Use open_url for simpler cases without the full module integration.
