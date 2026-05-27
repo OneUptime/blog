@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Kubernetes, Ingresses, Networking, DevOps
 
-Description: Step-by-step guide to creating Kubernetes Ingress resources with Ansible, covering path-based routing, TLS termination, and multiple ingress controllers.
+Description: Step-by-step guide to creating Kubernetes Ingress resources with Ansible, covering path-based routing, TLS termination, and multi-service routing.
 
 ---
 
@@ -49,10 +49,9 @@ The simplest Ingress maps a hostname to a backend service. This example assumes 
           metadata:
             name: web-frontend-ingress
             namespace: production
-            annotations:
-              # Tell Kubernetes which ingress controller should handle this
-              kubernetes.io/ingress.class: nginx
           spec:
+            # Tell Kubernetes which ingress controller should handle this
+            ingressClassName: nginx
             rules:
               - host: app.example.com
                 http:
@@ -106,13 +105,13 @@ Production Ingress resources should terminate TLS. You reference a Kubernetes Se
             name: secure-ingress
             namespace: production
             annotations:
-              kubernetes.io/ingress.class: nginx
               # Force redirect HTTP traffic to HTTPS
               nginx.ingress.kubernetes.io/ssl-redirect: "true"
               # Enable HSTS
               nginx.ingress.kubernetes.io/hsts: "true"
               nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
           spec:
+            ingressClassName: nginx
             tls:
               - hosts:
                   - app.example.com
@@ -167,10 +166,11 @@ A single hostname can route to different backend services based on the URL path.
             name: multi-service-ingress
             namespace: production
             annotations:
-              kubernetes.io/ingress.class: nginx
+              nginx.ingress.kubernetes.io/use-regex: "true"
               # Rewrite the URL path before forwarding to the backend
               nginx.ingress.kubernetes.io/rewrite-target: /$2
           spec:
+            ingressClassName: nginx
             tls:
               - hosts:
                   - example.com
@@ -202,7 +202,7 @@ A single hostname can route to different backend services based on the URL path.
                             number: 80
 ```
 
-The `rewrite-target` annotation with `/$2` strips the path prefix before forwarding. So a request to `/api/users` arrives at the api-service as `/users`. The order of paths matters because the Ingress controller evaluates them top to bottom.
+The `use-regex` annotation enables regular-expression paths, and the `rewrite-target` annotation with `/$2` strips the path prefix before forwarding. So a request to `/api/users` arrives at the api-service as `/users`. Kubernetes gives the longest matching path priority, and ingress-nginx sorts regular-expression paths by descending length before writing them to the NGINX configuration.
 
 ## Using cert-manager for Automatic TLS
 
@@ -228,11 +228,11 @@ If you have cert-manager installed, you can get automatic Let's Encrypt certific
             name: auto-tls-ingress
             namespace: production
             annotations:
-              kubernetes.io/ingress.class: nginx
               # cert-manager will see this annotation and provision a certificate
               cert-manager.io/cluster-issuer: letsencrypt-prod
               nginx.ingress.kubernetes.io/ssl-redirect: "true"
           spec:
+            ingressClassName: nginx
             tls:
               - hosts:
                   - app.example.com
@@ -296,10 +296,10 @@ For teams managing many services, a data-driven approach avoids repetitive YAML.
             name: "{{ item.name }}-ingress"
             namespace: production
             annotations:
-              kubernetes.io/ingress.class: nginx
               cert-manager.io/cluster-issuer: letsencrypt-prod
               nginx.ingress.kubernetes.io/ssl-redirect: "true"
           spec:
+            ingressClassName: nginx
             tls:
               - hosts:
                   - "{{ item.host }}"
@@ -314,7 +314,7 @@ For teams managing many services, a data-driven approach avoids repetitive YAML.
                         service:
                           name: "{{ item.service }}"
                           port:
-                            number: "{{ item.port }}"
+                            number: "{{ item.port | int }}"
       loop: "{{ ingress_routes }}"
       loop_control:
         label: "{{ item.name }} -> {{ item.host }}"
@@ -336,7 +336,6 @@ Nginx Ingress controller supports a rich set of annotations for traffic manageme
         name: rate-limited-api
         namespace: production
         annotations:
-          kubernetes.io/ingress.class: nginx
           # Rate limit to 10 requests per second per IP
           nginx.ingress.kubernetes.io/limit-rps: "10"
           nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
@@ -351,6 +350,7 @@ Nginx Ingress controller supports a rich set of annotations for traffic manageme
           nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
           nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
       spec:
+        ingressClassName: nginx
         rules:
           - host: api.example.com
             http:
@@ -381,7 +381,7 @@ After deploying, confirm the Ingress was created and has an address assigned.
   ansible.builtin.debug:
     msg: >
       Ingress {{ ingress_info.resources[0].metadata.name }} is available at
-      {{ ingress_info.resources[0].status.loadBalancer.ingress[0].ip | default(ingress_info.resources[0].status.loadBalancer.ingress[0].hostname, true) | default('pending') }}
+      {{ ((ingress_info.resources[0].status.loadBalancer.ingress | default([]) | first | default({})).ip | default((ingress_info.resources[0].status.loadBalancer.ingress | default([]) | first | default({})).hostname, true) | default('pending', true)) }}
 ```
 
 ## Summary
