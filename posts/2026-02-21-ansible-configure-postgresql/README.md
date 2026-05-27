@@ -195,7 +195,7 @@ lc_time = 'en_US.UTF-8'
     backup: true
   notify: reload postgresql
 
-- name: Verify PostgreSQL configuration is valid
+- name: Check PostgreSQL cluster status
   become: true
   become_user: postgres
   command: "pg_lscluster {{ postgresql_version }} main"
@@ -231,8 +231,8 @@ Different servers have different hardware. Use inventory variables to tune Postg
 ---
 postgresql_shared_buffers: "8GB"
 postgresql_effective_cache_size: "24GB"
-postgresql_work_mem: "32MB"
-postgresql_maintenance_work_mem: "512MB"
+postgresql_work_mem: "40MB"
+postgresql_maintenance_work_mem: "2GB"
 postgresql_max_connections: 200
 postgresql_random_page_cost: 1.1
 postgresql_effective_io_concurrency: 200
@@ -280,7 +280,7 @@ graph TD
 For a server with 32GB of RAM:
 - `shared_buffers` = 8GB
 - `effective_cache_size` = 24GB
-- `work_mem` = 32MB (assuming 200 connections)
+- `work_mem` = 40MB (assuming 200 connections)
 - `maintenance_work_mem` = 2GB
 
 ## Running Configuration Changes
