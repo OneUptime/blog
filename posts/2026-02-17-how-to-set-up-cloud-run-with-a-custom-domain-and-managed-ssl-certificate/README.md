@@ -14,7 +14,7 @@ Let me walk through the process, including the DNS configuration that trips peop
 
 ## Option 1: Cloud Run Domain Mapping (Simplest)
 
-Cloud Run has a built-in domain mapping feature that handles everything for you - DNS verification, SSL certificate provisioning, and routing.
+Cloud Run has a built-in domain mapping feature that handles certificate provisioning and routing after you verify ownership and add the DNS records. The feature is in Preview with limited regional availability, so use the load balancer approach for production services.
 
 ### Step 1: Verify Domain Ownership
 
@@ -23,12 +23,12 @@ Before you can map a domain, Google needs to verify you own it. If you have not 
 ```bash
 # Initiate domain verification (opens a browser for verification)
 
-gcloud domains verify api.example.com
+gcloud domains verify example.com
 ```
 
 This opens the Search Console where you can verify ownership through DNS TXT records, HTML file upload, or other methods.
 
-If the domain is already managed in Cloud DNS within the same project, it may already be verified.
+For a subdomain like `api.example.com`, verify the base domain `example.com`.
 
 ### Step 2: Create the Domain Mapping
 
@@ -36,7 +36,7 @@ Map your custom domain to the Cloud Run service:
 
 ```bash
 # Create a domain mapping for the Cloud Run service
-gcloud run domain-mappings create \
+gcloud beta run domain-mappings create \
   --service=my-service \
   --domain=api.example.com \
   --region=us-central1
@@ -46,7 +46,7 @@ After creating the mapping, get the DNS records you need to configure:
 
 ```bash
 # Get the required DNS records for the domain mapping
-gcloud run domain-mappings describe \
+gcloud beta run domain-mappings describe \
   --domain=api.example.com \
   --region=us-central1 \
   --format="yaml(status.resourceRecords)"
@@ -103,7 +103,7 @@ Check the certificate status:
 
 ```bash
 # Check the status of the domain mapping and SSL certificate
-gcloud run domain-mappings describe \
+gcloud beta run domain-mappings describe \
   --domain=api.example.com \
   --region=us-central1 \
   --format="yaml(status)"
@@ -152,6 +152,7 @@ gcloud compute network-endpoint-groups create my-service-neg \
 ```bash
 # Create a backend service using the serverless NEG
 gcloud compute backend-services create my-service-backend \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
   --global
 
 # Add the NEG as a backend
@@ -166,6 +167,7 @@ gcloud compute backend-services add-backend my-service-backend \
 ```bash
 # Create a URL map
 gcloud compute url-maps create my-service-url-map \
+  --global \
   --default-service=my-service-backend
 
 # Create a managed SSL certificate
@@ -179,8 +181,11 @@ gcloud compute ssl-certificates create my-service-cert \
 ```bash
 # Create an HTTPS target proxy with the SSL certificate
 gcloud compute target-https-proxies create my-service-https-proxy \
+  --global \
   --url-map=my-service-url-map \
-  --ssl-certificates=my-service-cert
+  --global-url-map \
+  --ssl-certificates=my-service-cert \
+  --global-ssl-certificates
 
 # Create a forwarding rule for HTTPS traffic
 gcloud compute forwarding-rules create my-service-https-rule \
@@ -196,7 +201,7 @@ Always redirect HTTP traffic to HTTPS:
 
 ```bash
 # Create a URL map that redirects HTTP to HTTPS
-gcloud compute url-maps import my-service-http-redirect << 'EOF'
+gcloud compute url-maps import my-service-http-redirect --global << 'EOF'
 name: my-service-http-redirect
 defaultUrlRedirect:
   httpsRedirect: true
@@ -205,7 +210,9 @@ EOF
 
 # Create an HTTP target proxy
 gcloud compute target-http-proxies create my-service-http-proxy \
-  --url-map=my-service-http-redirect
+  --global \
+  --url-map=my-service-http-redirect \
+  --global-url-map
 
 # Create a forwarding rule for HTTP traffic
 gcloud compute forwarding-rules create my-service-http-rule \
@@ -257,28 +264,28 @@ dig api.example.com CAA
 
 Add a CAA record allowing Google if needed:
 ```bash
-# Allow Google to issue certificates for your domain
+# Allow Google-managed certificates to be issued for your domain
 gcloud dns record-sets create example.com \
   --zone=my-dns-zone \
   --type=CAA \
   --ttl=300 \
-  --rrdatas='0 issue "pki.goog"'
+  --rrdatas='0 issue "pki.goog",0 issue "letsencrypt.org"'
 ```
 
 3. **Domain not verified** - Re-run domain verification:
 ```bash
-gcloud domains verify api.example.com
+gcloud domains verify example.com
 ```
 
 ## Choosing Between the Two Options
 
-The domain mapping approach (Option 1) is simpler and works well for most use cases. Choose the load balancer approach (Option 2) when you need:
+The domain mapping approach (Option 1) is simpler for non-production services in supported regions. Choose the load balancer approach (Option 2) when you need:
 
 - Cloud CDN for global edge caching
 - Cloud Armor for WAF and DDoS protection
 - Multiple backend services behind one domain
 - Header-based or path-based routing
-- Custom health checks
+- Production-ready custom domain support
 
 Both options give you automatic SSL certificate renewal. Google handles certificate lifecycle management, so you never have to worry about certificates expiring.
 
