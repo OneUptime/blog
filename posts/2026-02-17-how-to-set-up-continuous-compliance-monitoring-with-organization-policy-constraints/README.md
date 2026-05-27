@@ -50,9 +50,9 @@ gcloud resource-manager org-policies enable-enforce \
   --organization=ORG_ID
 
 # Disable external IP addresses on VMs (force private networking)
-gcloud resource-manager org-policies enable-enforce \
-  constraints/compute.vmExternalIpAccess \
-  --organization=ORG_ID
+gcloud resource-manager org-policies set-policy \
+  --organization=ORG_ID \
+  external-ip-policy.yaml
 
 # Require OS Login for SSH access (enforces IAM-based access)
 gcloud resource-manager org-policies enable-enforce \
@@ -71,7 +71,7 @@ gcloud resource-manager org-policies set-policy \
 
 # Disable public access to Cloud Storage buckets
 gcloud resource-manager org-policies enable-enforce \
-  constraints/storage.uniformBucketLevelAccess \
+  constraints/storage.publicAccessPrevention \
   --organization=ORG_ID
 ```
 
@@ -84,6 +84,15 @@ listPolicy:
   allowedValues:
     - "in:us-locations"
     - "in:eu-locations"
+```
+
+The external IP policy denies external IP assignment to all VM instances:
+
+```yaml
+# external-ip-policy.yaml
+constraint: constraints/compute.vmExternalIpAccess
+listPolicy:
+  allValues: DENY
 ```
 
 ## Step 3: Create Custom Organization Policy Constraints
@@ -99,7 +108,7 @@ resourceTypes:
 methodTypes:
   - CREATE
   - UPDATE
-condition: "resource.labels.exists(l, l == 'data-classification')"
+condition: "'data-classification' in resource.labels"
 actionType: ALLOW
 displayName: "Require data classification label"
 description: "All Cloud Storage buckets must have a data-classification label"
@@ -125,13 +134,27 @@ gcloud org-policies set-custom-constraint custom-constraint-require-labels.yaml
 gcloud org-policies set-custom-constraint custom-constraint-require-cmek.yaml
 
 # Apply enforcement policies for the custom constraints
-gcloud resource-manager org-policies enable-enforce \
-  custom.storage.requireClassificationLabel \
-  --organization=ORG_ID
+gcloud org-policies set-policy policy-require-labels.yaml
 
-gcloud resource-manager org-policies enable-enforce \
-  custom.bigquery.requireCMEK \
-  --organization=ORG_ID
+gcloud org-policies set-policy policy-require-cmek.yaml
+```
+
+The enforcement policy files turn on the custom constraints:
+
+```yaml
+# policy-require-labels.yaml
+name: organizations/ORG_ID/policies/custom.storage.requireClassificationLabel
+spec:
+  rules:
+    - enforce: true
+```
+
+```yaml
+# policy-require-cmek.yaml
+name: organizations/ORG_ID/policies/custom.bigquery.requireCMEK
+spec:
+  rules:
+    - enforce: true
 ```
 
 ## Step 4: Set Up Security Command Center for Drift Detection
@@ -139,13 +162,14 @@ gcloud resource-manager org-policies enable-enforce \
 Security Command Center continuously scans your environment for compliance violations and misconfigurations.
 
 ```bash
-# Enable Security Command Center Premium (required for compliance features)
-gcloud scc settings update \
+# Enable Security Health Analytics in Security Command Center
+gcloud alpha scc settings services enable \
   --organization=ORG_ID \
-  --enable-modules=SECURITY_HEALTH_ANALYTICS
+  --service=security-health-analytics
 
 # List current findings (misconfigurations and violations)
-gcloud scc findings list ORG_ID \
+gcloud scc findings list organizations/ORG_ID \
+  --location=global \
   --source="-" \
   --filter='category="PUBLIC_BUCKET_ACL" OR category="OPEN_FIREWALL" OR category="MFA_NOT_ENFORCED"' \
   --format="table(finding.category,finding.resourceName,finding.state,finding.severity)"
@@ -156,6 +180,7 @@ gcloud scc findings list ORG_ID \
 When a compliance violation is detected, trigger automatic remediation through Cloud Functions.
 
 ```python
+import base64
 import json
 from google.cloud import compute_v1
 from google.cloud import storage
@@ -163,14 +188,15 @@ from google.cloud import storage
 def remediate_scc_finding(event, context):
     """Auto-remediate Security Command Center findings."""
     # Parse the SCC notification
-    finding = json.loads(event["data"])
+    message_data = base64.b64decode(event["data"]).decode("utf-8")
+    finding = json.loads(message_data)
     category = finding.get("finding", {}).get("category", "")
     resource_name = finding.get("finding", {}).get("resourceName", "")
 
     remediation_map = {
         "PUBLIC_BUCKET_ACL": remediate_public_bucket,
         "OPEN_FIREWALL": remediate_open_firewall,
-        "OPEN_SSH_PORT": remediate_open_ssh,
+        "OPEN_SSH_PORT": remediate_open_firewall,
     }
 
     handler = remediation_map.get(category)
@@ -230,26 +256,28 @@ def remediate_open_firewall(resource_name, finding):
 Build a dashboard that shows real-time compliance status across your organization.
 
 ```python
-from google.cloud import securitycenter
+import datetime
+
 from google.cloud import bigquery
+from google.cloud import securitycenter_v2
 
 def generate_compliance_dashboard_data(org_id):
     """Generate compliance status data for dashboard."""
-    scc_client = securitycenter.SecurityCenterClient()
+    scc_client = securitycenter_v2.SecurityCenterClient()
     org_name = f"organizations/{org_id}"
 
     # Count findings by category and severity
     findings_summary = {}
 
-    request = securitycenter.ListFindingsRequest(
-        parent=f"{org_name}/sources/-",
+    request = securitycenter_v2.ListFindingsRequest(
+        parent=f"{org_name}/sources/-/locations/global",
         filter='state="ACTIVE"',
     )
 
     for finding_result in scc_client.list_findings(request=request):
         finding = finding_result.finding
         category = finding.category
-        severity = str(finding.severity)
+        severity = finding.severity.name
 
         if category not in findings_summary:
             findings_summary[category] = {
