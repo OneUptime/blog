@@ -19,11 +19,11 @@ The standard practice for servers is to set them all to UTC. Here is why:
 - Database timestamps are unambiguous
 - Compliance frameworks often require UTC for audit logs
 
-The only exception I make is for servers that run user-facing applications where local time display is handled at the application level, not the OS level.
+For user-facing applications, keep the OS on UTC and handle local time display at the application level.
 
 ## Setting Timezone with the timezone Module
 
-Ansible has a built-in module for this, and it works across all major Linux distributions.
+Ansible has a module for this in the `community.general` collection, and it works across all major Linux distributions. If you install only `ansible-core`, install the collection first with `ansible-galaxy collection install community.general`.
 
 This playbook sets the timezone to UTC on all servers:
 
@@ -83,6 +83,8 @@ This playbook applies the timezone from group variables:
 - name: Configure Regional Timezones
   hosts: all
   become: true
+  vars:
+    cron_service_name: "{{ 'crond' if ansible_os_family == 'RedHat' else 'cron' }}"
   tasks:
     - name: Verify the requested timezone is valid
       ansible.builtin.command:
@@ -102,22 +104,22 @@ This playbook applies the timezone from group variables:
       notify: Restart cron
 
     - name: Restart rsyslog to pick up timezone change
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: rsyslog
         state: restarted
       failed_when: false
 
   handlers:
     - name: Restart cron
-      ansible.builtin.systemd:
-        name: cron
+      ansible.builtin.systemd_service:
+        name: "{{ cron_service_name }}"
         state: restarted
       failed_when: false
 ```
 
 ## Handling the Hardware Clock
 
-Linux systems have two clocks: the system clock (software, managed by the kernel) and the hardware clock (RTC, on the motherboard). They need to agree on whether they store time as UTC or local time.
+Linux systems have two clocks: the system clock (software, managed by the kernel) and the hardware clock (RTC, on the motherboard). The system clock is kept as a timezone-independent Unix timestamp; the RTC setting controls whether the hardware clock is interpreted as UTC or local time.
 
 This playbook configures the hardware clock to use UTC:
 
@@ -204,17 +206,17 @@ This playbook configures timezone settings for common applications:
 
   handlers:
     - name: Restart php-fpm
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: php8.1-fpm
         state: restarted
 
     - name: Restart mysql
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: mysql
         state: restarted
 
     - name: Restart postgresql
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: postgresql
         state: restarted
 ```
