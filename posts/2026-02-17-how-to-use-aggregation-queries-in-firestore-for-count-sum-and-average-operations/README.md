@@ -31,7 +31,7 @@ With aggregation queries, you get the count without downloading any documents:
 const snapshot = await db.collection('orders').count().get();
 const count = snapshot.data().count;
 console.log(`Total orders: ${count}`);
-// Billed as a single aggregation read, regardless of collection size
+// Billed based on the index entries scanned, not the documents returned
 ```
 
 ## Count Queries
@@ -114,15 +114,19 @@ With the Admin SDK:
 # Python Admin SDK: sum the quantity field for a specific product
 
 from google.cloud import firestore
-from google.cloud.firestore_v1.aggregation import SumAggregation
+from google.cloud.firestore_v1 import aggregation
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 db = firestore.Client()
 
 # Build the query for a specific product's order items
-query = db.collection('order_items').where('product_id', '==', 'prod-123')
+query = db.collection('order_items').where(
+    filter=FieldFilter('product_id', '==', 'prod-123')
+)
 
 # Create the aggregation query with a sum on the quantity field
-aggregation_query = query.sum('quantity', alias='total_sold')
+aggregation_query = aggregation.AggregationQuery(query)
+aggregation_query.sum('quantity', alias='total_sold')
 results = aggregation_query.get()
 
 for result in results:
@@ -156,7 +160,7 @@ You can run multiple aggregations in a single query, which is more efficient tha
 
 ```javascript
 // Run count, sum, and average in a single aggregation query
-// This is billed as one operation, not three
+// This returns all three aggregate values in one request
 const { getAggregateFromServer, count, sum, average, query, where, collection } = require('firebase/firestore');
 
 const ordersQuery = query(
@@ -179,6 +183,8 @@ console.log(`Avg Order: $${data.avgOrderValue}`);
 ```
 
 This is significantly more efficient than running three separate aggregation queries. All three results come back in a single round trip.
+
+When you combine aggregations, keep in mind that Firestore includes only documents that contain all fields used by the aggregations. This can matter if some matching documents do not have the numeric field you are summing or averaging.
 
 ## Aggregations on Subcollections
 
