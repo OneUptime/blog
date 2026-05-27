@@ -82,7 +82,7 @@ If this succeeds, you are done. Try your original command again and it should wo
 
 ### You Do Not Have Permission
 
-Linking a billing account requires the `billing.resourceAssociations.create` permission on the billing account AND `resourcemanager.projects.createBillingAssignment` on the project.
+Linking a billing account requires the `billing.resourceAssociations.create` permission on the billing account AND `resourcemanager.projects.createBillingAssignment` on the project. Google's documented predefined roles for enabling billing also include permissions to view the project, billing account association, and service usage policy.
 
 The error looks like:
 
@@ -101,7 +101,7 @@ gcloud billing accounts add-iam-policy-binding 0X0X0X-0X0X0X-0X0X0X \
     --role="roles/billing.user"
 ```
 
-The `roles/billing.user` role is the minimum needed to link projects to billing accounts. It does not give access to view or modify the billing account itself.
+The `roles/billing.user` role provides the billing account permission needed to link projects, but you also need the right project-side role, such as Project Billing Manager or Project Owner. If you are using the Cloud Console, you may also need Billing Account Viewer so the account is visible in billing screens. Billing Account User does not grant cost viewing or payment management access.
 
 ### The Billing Account Is Closed or Suspended
 
@@ -120,27 +120,28 @@ Common reasons a billing account gets suspended:
 
 To reopen a suspended billing account, go to the Cloud Console billing section and update your payment method or resolve any outstanding issues.
 
-### Organization Policy Restrictions
+### IAM or Organization Policy Restrictions
 
-Enterprise organizations often restrict which billing accounts can be used with which projects:
+Enterprise organizations often restrict who can be granted access to billing resources. For example, a domain restricted sharing policy can block granting billing roles to users outside an approved domain:
 
 ```bash
-# Check for billing-related org policies
+# Check for a domain restriction org policy
 gcloud resource-manager org-policies describe \
-    constraints/billing.restrictBillingAccountUsage \
+    iam.allowedPolicyMemberDomains \
     --project=my-new-project 2>/dev/null
 ```
 
-If an org policy is restricting billing account usage, you need to work with your organization admin to either update the policy or use an approved billing account.
+If an IAM or org policy is blocking the required billing access, you need to work with your organization admin to update the policy or use an approved account.
 
 ## The Free Tier Trap
 
 If you signed up for GCP with the free trial, there is a subtlety. The free trial creates a billing account with credits, but it has restrictions. Some services or configurations are not available until you upgrade to a paid account.
 
 ```bash
-# Check if your billing account is a free trial
+# Check whether your billing account is open.
+# Free trial status is shown in the Cloud Console billing pages.
 gcloud billing accounts describe 0X0X0X-0X0X0X-0X0X0X \
-    --format="value(open, masterBillingAccount)"
+    --format="value(open)"
 ```
 
 To upgrade from the free trial:
@@ -158,8 +159,8 @@ graph TD
     A[403 Billing Error] --> B{Is billing linked to project?}
     B -->|No| C{Do you have a billing account?}
     C -->|No| D[Create billing account in Console]
-    C -->|Yes| E{Do you have billing.user role?}
-    E -->|No| F[Request billing.user from admin]
+    C -->|Yes| E{Do you have billing and project roles?}
+    E -->|No| F[Request billing.user and project billing access]
     E -->|Yes| G[Link billing to project]
     B -->|Yes| H{Is billing account OPEN?}
     H -->|No| I[Fix payment method / contact support]
@@ -202,9 +203,9 @@ gcloud billing budgets create \
     --billing-account=0X0X0X-0X0X0X-0X0X0X \
     --display-name="Project Budget" \
     --budget-amount=1000 \
-    --threshold-rules=percent=0.5 \
-    --threshold-rules=percent=0.9 \
-    --threshold-rules=percent=1.0 \
+    --threshold-rule=percent=0.5 \
+    --threshold-rule=percent=0.9 \
+    --threshold-rule=percent=1.0 \
     --filter-projects="projects/my-new-project"
 ```
 
@@ -216,6 +217,6 @@ Nine times out of ten, the fix for a 403 billing error on a new GCP project is:
 2. Find your billing account: `gcloud billing accounts list`
 3. Link it: `gcloud billing projects link PROJECT_ID --billing-account=ACCOUNT_ID`
 
-If step 3 fails, it is a permissions issue. Get `roles/billing.user` on the billing account from your billing admin.
+If step 3 fails, it is usually a permissions issue. Get `roles/billing.user` on the billing account from your billing admin, and make sure you also have project-side permission to assign billing.
 
 The error message could be clearer, but once you know the pattern, it takes about 30 seconds to fix. Make sure to include billing account linking in your project setup automation so you never have to deal with this manually again.
