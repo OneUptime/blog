@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud SQL, PostgreSQL, Pg_repack, Schema Migration, Zero Downtime, Database
 
-Description: Learn how to use pg_repack on Cloud SQL PostgreSQL to perform table reorganization and schema changes without locking tables or causing application downtime.
+Description: Learn how to use pg_repack on Cloud SQL PostgreSQL to perform table reorganization and post-migration cleanup without extended table locks or application downtime.
 
 ---
 
-Schema migrations on production databases are stressful. Adding a column with a default value, reorganizing a table to remove bloat, or changing a primary key - these operations can lock tables for minutes or hours on large datasets. During that lock, your application cannot read or write to the affected table. Users see errors or timeouts.
+Schema migrations on production databases are stressful. Adding a column with a default value, reorganizing a table to remove bloat, or changing a primary key - these operations can lock tables for minutes or hours on large datasets if they are done with blocking DDL. During that lock, your application cannot read or write to the affected table. Users see errors or timeouts.
 
 pg_repack is a PostgreSQL extension that reorganizes tables online, without holding exclusive locks for extended periods. It works by creating a shadow copy of the table, replaying changes, and swapping the tables in a brief lock at the end. Cloud SQL for PostgreSQL supports pg_repack, making zero-downtime table maintenance practical.
 
@@ -18,7 +18,7 @@ pg_repack can:
 - Remove table bloat without VACUUM FULL's table-level lock
 - Rebuild tables to reclaim disk space
 - Reorganize table data according to a clustered index
-- Change the table's storage parameters
+- Rebuild or relocate bloated indexes
 
 Here is how it works under the hood:
 
@@ -29,7 +29,7 @@ sequenceDiagram
     participant ST as Shadow Table
     participant Trigger as Log Trigger
 
-    Note over OT,ST: Phase 1: Create shadow table and trigger
+    Note over OT,ST: Phase 1: Brief setup lock, then create shadow table and trigger
     OT->>Trigger: Install trigger to capture changes
     OT->>ST: Copy existing rows to shadow table
 
@@ -42,7 +42,7 @@ sequenceDiagram
     Note over OT,ST: Phase 4: Drop old table
 ```
 
-The critical point is that the table-level exclusive lock only happens during the swap, which takes milliseconds.
+The critical point is that pg_repack only needs table-level exclusive locks briefly during initial setup and the final swap-and-drop phase. During the main copy and catch-up work, normal reads and writes can continue.
 
 ## Prerequisites
 
@@ -50,7 +50,7 @@ Before using pg_repack on Cloud SQL, you need:
 
 - Cloud SQL for PostgreSQL (version 10 or later)
 - The `pg_repack` extension installed
-- Superuser-equivalent permissions (Cloud SQL admin)
+- A user with the `cloudsqlsuperuser` role, or the table owner using `--no-superuser-check`
 - The `pg_repack` client installed on a machine that can connect to the instance
 
 ## Step 1: Install the Extension
@@ -62,7 +62,7 @@ Connect to your database and create the extension.
 CREATE EXTENSION IF NOT EXISTS pg_repack;
 
 -- Verify it is installed
-SELECT * FROM pg_available_extensions WHERE name = 'pg_repack';
+SELECT extname, extversion FROM pg_extension WHERE extname = 'pg_repack';
 ```
 
 ## Step 2: Install the pg_repack Client
@@ -73,7 +73,7 @@ The pg_repack client runs on your local machine or a Compute Engine VM and conne
 # On Debian/Ubuntu
 
 sudo apt-get update
-sudo apt-get install -y postgresql-client pg-repack
+sudo apt-get install -y postgresql-client postgresql-16-repack
 
 # On macOS with Homebrew
 brew install pg_repack
@@ -92,12 +92,12 @@ CREATE EXTENSION IF NOT EXISTS pgstattuple;
 
 SELECT
   schemaname || '.' || tablename AS table_name,
-  pg_size_pretty(pg_total_relation_size(quote_ident(tablename)::regclass)) AS total_size,
-  (pgstattuple(quote_ident(tablename)::regclass)).dead_tuple_percent AS dead_pct,
-  (pgstattuple(quote_ident(tablename)::regclass)).free_percent AS free_pct
+  pg_size_pretty(pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS total_size,
+  (pgstattuple(format('%I.%I', schemaname, tablename)::regclass)).dead_tuple_percent AS dead_pct,
+  (pgstattuple(format('%I.%I', schemaname, tablename)::regclass)).free_percent AS free_pct
 FROM pg_tables
 WHERE schemaname = 'public'
-ORDER BY pg_total_relation_size(quote_ident(tablename)::regclass) DESC
+ORDER BY pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass) DESC
 LIMIT 10;
 ```
 
@@ -127,11 +127,11 @@ Run pg_repack from the command line, targeting your Cloud SQL instance.
 # Repack a single table to remove bloat
 pg_repack -h CLOUD_SQL_IP -U postgres -d mydb --table public.events --no-superuser-check
 
-# Repack with verbose output to see progress
-pg_repack -h CLOUD_SQL_IP -U postgres -d mydb --table public.events --no-superuser-check -v
+# Repack and echo SQL sent to the server
+pg_repack -h CLOUD_SQL_IP -U postgres -d mydb --table public.events --no-superuser-check --echo
 
-# Repack all bloated tables in the database
-pg_repack -h CLOUD_SQL_IP -U postgres -d mydb --all-tables --no-superuser-check
+# Repack all eligible tables in the database
+pg_repack -h CLOUD_SQL_IP -U postgres -d mydb --no-superuser-check
 ```
 
 The `--no-superuser-check` flag is needed on Cloud SQL because the `postgres` user is not a true superuser.
@@ -164,9 +164,9 @@ pg_repack -h CLOUD_SQL_IP -U postgres -d mydb \
 
 This is faster than repacking the entire table and still reduces index bloat significantly.
 
-## Using pg_repack for Schema Changes
+## Using pg_repack After Schema Changes
 
-Beyond bloat removal, pg_repack helps with schema changes that would normally require long-running locks.
+Beyond bloat removal, pg_repack helps clean up after schema changes that generate bloat or need table reordering. It does not replace `ALTER TABLE` for changing constraints or column definitions.
 
 ### Changing a Primary Key
 
@@ -177,10 +177,20 @@ ALTER TABLE events ADD PRIMARY KEY (new_id_column);
 -- Table is locked throughout - could be minutes on a large table
 ```
 
-With pg_repack, the table remains accessible:
+Instead, if the new key column is already `NOT NULL`, build the new unique index concurrently, then use a brief `ALTER TABLE` to attach it as the primary key. After that, pg_repack can optionally reorder the table by the new key:
+
+```sql
+-- Build the supporting unique index without blocking writes
+CREATE UNIQUE INDEX CONCURRENTLY events_new_id_idx ON events (new_id_column);
+
+-- Attach the index as the primary key in a short lock
+ALTER TABLE events
+  DROP CONSTRAINT events_pkey,
+  ADD CONSTRAINT events_pkey PRIMARY KEY USING INDEX events_new_id_idx;
+```
 
 ```bash
-# Rebuild the table with a new clustering key
+# Optionally reorder the table by the new key after the primary key change
 pg_repack -h CLOUD_SQL_IP -U postgres -d mydb \
   --table public.events \
   --order-by="new_id_column" \
@@ -200,7 +210,10 @@ UPDATE events SET processed_at = created_at WHERE processed_at IS NULL AND id BE
 UPDATE events SET processed_at = created_at WHERE processed_at IS NULL AND id BETWEEN 100001 AND 200000;
 -- Continue in batches...
 
--- Step 3: Repack to clean up dead tuples from the updates
+```
+
+```bash
+# Step 3: Repack to clean up dead tuples from the updates
 pg_repack -h CLOUD_SQL_IP -U postgres -d mydb --table public.events --no-superuser-check
 ```
 
@@ -276,8 +289,9 @@ WHERE xact_start < now() - interval '1 hour'
 If you have read replicas, the repack operation generates significant WAL. Monitor replica lag during the operation:
 
 ```bash
-# Check replica lag on Cloud SQL
-gcloud sql instances describe MY_REPLICA --format="value(replicaConfiguration.mysqlReplicaConfiguration)"
+# Check replay lag from the PostgreSQL read replica
+psql -h REPLICA_IP -U postgres -d mydb \
+  -c "SELECT now() - pg_last_xact_replay_timestamp() AS replica_lag;"
 ```
 
 ## Automating Regular Repacks
@@ -287,7 +301,7 @@ For tables that accumulate bloat regularly, schedule periodic repacks:
 ```bash
 # Cron job to repack bloated tables weekly
 # Run from a Compute Engine VM with access to Cloud SQL
-0 2 * * 0 pg_repack -h CLOUD_SQL_IP -U postgres -d mydb --all-tables --no-superuser-check >> /var/log/pg_repack.log 2>&1
+0 2 * * 0 pg_repack -h CLOUD_SQL_IP -U postgres -d mydb --no-superuser-check >> /var/log/pg_repack.log 2>&1
 ```
 
 ## Wrapping Up
