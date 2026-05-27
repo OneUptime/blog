@@ -53,18 +53,24 @@ Use cases include:
 MetalLB must be running in FRR-K8s mode to support prefix reception. Check your installation:
 
 ```bash
-# Check MetalLB speaker pods and their mode
+# Check MetalLB speaker pods
 
 kubectl get pods -n metallb-system -l component=speaker -o wide
 
-# Verify that the FRR-K8s containers are running inside the speaker pods
-kubectl get pods -n metallb-system -l component=speaker \
+# Verify that the FRR-K8s pods are running
+kubectl get pods -n metallb-system -l app=frr-k8s -o wide
+
+# Verify that the FRRConfiguration CRD is installed
+kubectl get crd frrconfigurations.frrk8s.metallb.io
+
+# Check the containers in an FRR-K8s pod
+kubectl get pods -n metallb-system -l app=frr-k8s \
   -o jsonpath='{.items[0].spec.containers[*].name}'
 
-# You should see containers like: speaker, frr, frr-metrics, reloader
+# You should see containers like: controller, frr, frr-metrics, frr-status, reloader
 ```
 
-If you see the `frr` container, MetalLB is running in FRR mode and can receive prefixes.
+If the `frr-k8s` pods and `FRRConfiguration` CRD are present, MetalLB is running in FRR-K8s mode and can receive prefixes through FRR-K8s configuration.
 
 ## Step 2: Configure the BGPPeer to Allow Receiving
 
@@ -153,12 +159,16 @@ kubectl apply -f frrconfiguration-receive.yaml
 # Wait for FRR to process the new config
 sleep 5
 
+# Get one FRR-K8s pod
+FRR_POD=$(kubectl get pods -n metallb-system -l app=frr-k8s \
+  -o jsonpath='{.items[0].metadata.name}')
+
 # Check received routes from the peer
-kubectl exec -n metallb-system <speaker-pod> -- \
+kubectl exec -n metallb-system "$FRR_POD" -c frr -- \
   vtysh -c "show bgp ipv4 unicast neighbors 10.0.0.1 received-routes"
 
-# Check the local routing table for learned routes
-kubectl exec -n metallb-system <speaker-pod> -- \
+# Check the FRR routing table for learned routes
+kubectl exec -n metallb-system "$FRR_POD" -c frr -- \
   vtysh -c "show ip route bgp"
 ```
 
@@ -270,22 +280,25 @@ spec:
 
 ```bash
 # Full diagnostic sequence for route reception issues
-# Run these inside the speaker pod's FRR container
+# Run these in an FRR-K8s pod's frr container
+
+FRR_POD=$(kubectl get pods -n metallb-system -l app=frr-k8s \
+  -o jsonpath='{.items[0].metadata.name}')
 
 # 1. Verify session is established
-kubectl exec -n metallb-system <speaker-pod> -- \
+kubectl exec -n metallb-system "$FRR_POD" -c frr -- \
   vtysh -c "show bgp summary"
 
 # 2. Check what routes are being received (before filtering)
-kubectl exec -n metallb-system <speaker-pod> -- \
+kubectl exec -n metallb-system "$FRR_POD" -c frr -- \
   vtysh -c "show bgp ipv4 unicast neighbors 10.0.0.1 received-routes"
 
 # 3. Check what routes passed the filter
-kubectl exec -n metallb-system <speaker-pod> -- \
+kubectl exec -n metallb-system "$FRR_POD" -c frr -- \
   vtysh -c "show bgp ipv4 unicast neighbors 10.0.0.1 routes"
 
 # 4. Verify routes in the kernel
-kubectl exec -n metallb-system <speaker-pod> -- \
+kubectl exec -n metallb-system "$FRR_POD" -c frr -- \
   vtysh -c "show ip route bgp"
 ```
 
