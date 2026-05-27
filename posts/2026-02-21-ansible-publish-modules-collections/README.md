@@ -36,7 +36,8 @@ readme: README.md
 authors:
   - Your Name
 description: My custom Ansible collection
-license: GPL-3.0-or-later
+license:
+  - GPL-3.0-or-later
 tags:
   - infrastructure
   - automation
