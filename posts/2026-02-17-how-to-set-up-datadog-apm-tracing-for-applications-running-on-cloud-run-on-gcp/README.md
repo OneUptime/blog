@@ -16,33 +16,31 @@ On GKE, you deploy the Datadog Agent as a DaemonSet that runs on every node. You
 
 There are two approaches to solve this:
 
-1. Run the Datadog Agent as a sidecar container in your Cloud Run service (supported since Cloud Run added multi-container support).
-2. Send traces directly to the Datadog intake API from your application using agentless mode.
+1. Run Datadog's `serverless-init` sidecar container in your Cloud Run service (supported since Cloud Run added multi-container support).
+2. Use Datadog's in-container instrumentation, which wraps your application container with `serverless-init`.
 
-The sidecar approach is preferred because it handles batching, sampling, and retry logic for you. The agentless approach adds latency to your requests since each trace has to be sent synchronously.
+The sidecar approach is preferred when you have multiple containers in a single service, want stricter isolation between Datadog and your application container, or are running performance-sensitive workloads. The in-container approach is simpler and has lower cost overhead because it does not add a second Cloud Run container.
 
-## Setting Up the Datadog Agent Sidecar
+## Setting Up the Datadog Sidecar
 
-Cloud Run supports multi-container deployments where you can run the Datadog Agent alongside your application container. Here is how to set it up.
+Cloud Run supports multi-container deployments where you can run Datadog's `serverless-init` sidecar alongside your application container. Here is how to set it up.
 
 First, create a Cloud Run service definition that includes both containers.
 
 ```yaml
 # cloud-run-service.yaml
 
-# Deploys app container with Datadog Agent sidecar for APM tracing
+# Deploys app container with Datadog serverless-init sidecar for APM tracing
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: my-traced-app
-  annotations:
-    run.googleapis.com/launch-stage: BETA
 spec:
   template:
     metadata:
       annotations:
         # Allow the sidecar to start before the main container
-        run.googleapis.com/container-dependencies: '{"my-app":["datadog-agent"]}'
+        run.googleapis.com/container-dependencies: '{"my-app":["datadog-sidecar"]}'
     spec:
       containers:
         # Your application container
@@ -56,6 +54,8 @@ spec:
               value: "localhost"
             - name: DD_TRACE_AGENT_PORT
               value: "8126"
+            - name: DD_TRACE_ENABLED
+              value: "true"
             - name: DD_ENV
               value: "production"
             - name: DD_SERVICE
@@ -66,26 +66,41 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "1"
+          startupProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
 
-        # Datadog Agent sidecar container
-        - name: datadog-agent
-          image: gcr.io/datadoghq/agent:latest
+        # Datadog serverless-init sidecar container
+        - name: datadog-sidecar
+          image: gcr.io/datadoghq/serverless-init:1
           env:
             - name: DD_API_KEY
               value: "YOUR_DATADOG_API_KEY"
-            - name: DD_APM_ENABLED
-              value: "true"
-            - name: DD_APM_NON_LOCAL_TRAFFIC
-              value: "true"
-            # Disable features not needed in sidecar mode
-            - name: DD_PROCESS_AGENT_ENABLED
-              value: "false"
+            - name: DD_SITE
+              value: "datadoghq.com"
+            - name: DD_ENV
+              value: "production"
+            - name: DD_SERVICE
+              value: "my-traced-app"
+            - name: DD_VERSION
+              value: "1.0.0"
+            - name: DD_HEALTH_PORT
+              value: "12345"
             - name: DD_LOG_LEVEL
               value: "warn"
           resources:
             limits:
-              memory: "256Mi"
-              cpu: "0.5"
+              memory: "512Mi"
+              cpu: "1"
+          startupProbe:
+            tcpSocket:
+              port: 12345
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
 ```
 
 Deploy this service using gcloud.
@@ -98,7 +113,7 @@ gcloud run services replace cloud-run-service.yaml \
 
 ## Instrumenting Your Application
 
-The Datadog Agent handles transport, but your application code needs to generate traces. Here is how to instrument applications in common languages.
+The Datadog sidecar handles transport, but your application code needs to generate traces. Here is how to instrument applications in common languages.
 
 ### Python with ddtrace
 
@@ -114,13 +129,16 @@ import os
 # Patch all supported libraries (requests, flask, sqlalchemy, etc.)
 patch_all()
 
-# Configure the tracer - it reads DD_AGENT_HOST and DD_TRACE_AGENT_PORT from env
+# Configure the tracer with the local sidecar address
 tracer.configure(
     hostname=os.getenv("DD_AGENT_HOST", "localhost"),
     port=int(os.getenv("DD_TRACE_AGENT_PORT", 8126)),
 )
 
 app = Flask(__name__)
+
+def fetch_users_from_db():
+    return [{"id": 1, "name": "Ada"}]
 
 @app.route("/api/users")
 def get_users():
@@ -168,9 +186,7 @@ const tracer = require('dd-trace').init({
   version: process.env.DD_VERSION || '1.0.0',
   // Send traces to the sidecar agent
   hostname: process.env.DD_AGENT_HOST || 'localhost',
-  port: parseInt(process.env.DD_TRACE_AGENT_PORT) || 8126,
-  // Enable runtime metrics
-  runtimeMetrics: true,
+  port: parseInt(process.env.DD_TRACE_AGENT_PORT, 10) || 8126,
 });
 
 module.exports = tracer;
@@ -183,6 +199,10 @@ require('./tracing');
 
 const express = require('express');
 const app = express();
+
+async function fetchData() {
+  return { status: 'ok' };
+}
 
 app.get('/api/data', async (req, res) => {
   // Express routes are automatically traced
@@ -207,14 +227,14 @@ echo -n "YOUR_DATADOG_API_KEY" | gcloud secrets create datadog-api-key \
 
 # Grant the Cloud Run service account access to the secret
 gcloud secrets add-iam-policy-binding datadog-api-key \
-  --member="serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+  --member="serviceAccount:YOUR_CLOUD_RUN_SERVICE_ACCOUNT_EMAIL" \
   --role="roles/secretmanager.secretAccessor"
 ```
 
 Then reference the secret in your Cloud Run service.
 
 ```yaml
-# Updated env section for the Datadog Agent container
+# Updated env section for the Datadog sidecar container
 env:
   - name: DD_API_KEY
     valueFrom:
@@ -258,8 +278,8 @@ tracer.set_tags({
 
 ## Performance Considerations
 
-The Datadog Agent sidecar adds about 100-200MB of memory overhead to each Cloud Run instance. Factor this into your memory limits. If you are running memory-constrained workloads, the agentless approach might make more sense despite its drawbacks.
+The Datadog sidecar adds memory and CPU overhead to each Cloud Run instance. Datadog's current sidecar examples allocate 512Mi of memory and 1 vCPU to the `serverless-init` container, so factor that into your Cloud Run limits. If you are running memory-constrained workloads, the in-container approach might make more sense despite its tradeoffs.
 
-Also consider that Cloud Run instances scale to zero. When a new instance starts, both your application and the Datadog Agent need to initialize. Monitor cold-start times to make sure the sidecar does not add unacceptable latency.
+Also consider that Cloud Run instances scale to zero. When a new instance starts, both your application and the Datadog sidecar need to initialize. Monitor cold-start times to make sure the sidecar does not add unacceptable latency.
 
 Datadog APM on Cloud Run gives you the same distributed tracing experience you get on traditional infrastructure, just with a slightly different deployment model. The sidecar approach keeps the architecture clean, and the automatic instrumentation libraries mean you get value with minimal code changes.
