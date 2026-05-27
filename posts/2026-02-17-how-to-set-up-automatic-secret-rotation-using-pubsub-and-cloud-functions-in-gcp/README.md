@@ -51,7 +51,20 @@ Create a topic that will receive rotation notifications from Secret Manager:
 # Create the Pub/Sub topic for rotation events
 gcloud pubsub topics create secret-rotation-events \
   --project=my-project-id
+
+# Create the Secret Manager service agent
+gcloud beta services identity create \
+  --service="secretmanager.googleapis.com" \
+  --project=my-project-id
+
+# Grant Secret Manager permission to publish notifications
+gcloud pubsub topics add-iam-policy-binding secret-rotation-events \
+  --member="serviceAccount:service-PROJECT_NUMBER@gcp-sa-secretmanager.iam.gserviceaccount.com" \
+  --role="roles/pubsub.publisher" \
+  --project=my-project-id
 ```
+
+Replace `PROJECT_NUMBER` with your numeric Google Cloud project number. Secret Manager uses this service agent to publish event notifications to Pub/Sub.
 
 ## Step 2 - Create the Secret with Rotation Configuration
 
@@ -109,6 +122,7 @@ import os
 import secrets
 import string
 import base64
+import time
 
 from google.cloud import secretmanager
 from googleapiclient import discovery
@@ -141,7 +155,21 @@ def update_cloud_sql_password(new_password):
         body=body,
     )
     response = request.execute()
-    print(f"Updated Cloud SQL user password: {response.get('status', 'unknown')}")
+    operation_name = response["name"]
+
+    # Cloud SQL user updates return a long-running operation.
+    while True:
+        operation = service.operations().get(
+            project=PROJECT_ID,
+            operation=operation_name,
+        ).execute()
+
+        if operation.get("status") == "DONE":
+            if "error" in operation:
+                raise RuntimeError(f"Cloud SQL password update failed: {operation['error']}")
+            print("Updated Cloud SQL user password")
+            return
+        time.sleep(2)
 
 def store_new_secret_version(new_password):
     """Store the new password as a new version in Secret Manager."""
@@ -183,15 +211,18 @@ def disable_old_versions():
 def rotate_secret(cloud_event):
     """Handle the rotation event from Pub/Sub."""
     # Parse the Pub/Sub message
-    data = base64.b64decode(cloud_event.data.get("message", {}).get("data", ""))
-    message = json.loads(data) if data else {}
+    message = cloud_event.data.get("message", {})
+    attributes = message.get("attributes", {})
+    data = base64.b64decode(message.get("data", ""))
+    secret_metadata = json.loads(data) if data else {}
 
-    event_type = message.get("eventType", "")
-    secret_name = message.get("name", "")
+    event_type = attributes.get("eventType", "")
+    secret_name = attributes.get("secretId", secret_metadata.get("name", ""))
+    expected_secret_name = f"projects/{PROJECT_ID}/secrets/{SECRET_ID}"
 
     # Only process SECRET_ROTATE events for our secret
-    if "SECRET_ROTATE" not in event_type:
-        print(f"Ignoring event type: {event_type}")
+    if event_type != "SECRET_ROTATE" or secret_name != expected_secret_name:
+        print(f"Ignoring event type {event_type} for secret {secret_name}")
         return "Skipped"
 
     print(f"Processing rotation for: {secret_name}")
@@ -246,7 +277,8 @@ You can trigger a test rotation manually by publishing a message to the Pub/Sub 
 ```bash
 # Simulate a rotation event by publishing to the topic
 gcloud pubsub topics publish secret-rotation-events \
-  --message='{"eventType":"SECRET_ROTATE","name":"projects/my-project-id/secrets/db-password"}' \
+  --message='{"name":"projects/my-project-id/secrets/db-password"}' \
+  --attribute="eventType=SECRET_ROTATE,secretId=projects/my-project-id/secrets/db-password" \
   --project=my-project-id
 
 # Check the function logs
@@ -314,7 +346,7 @@ Set up alerts for rotation failures. If a rotation fails, the old password keeps
 
 ```bash
 # Create a log-based alert for rotation errors
-gcloud logging read 'resource.type="cloud_function" AND resource.labels.function_name="rotate-db-password" AND severity>=ERROR' \
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="rotate-db-password" AND severity>=ERROR' \
   --project=my-project-id \
   --limit=5
 ```
