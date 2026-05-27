@@ -40,7 +40,7 @@ You can also check the response headers:
 ```bash
 # Check if the 403 response includes IAP headers
 
-curl -v -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+curl -v -H "Authorization: Bearer $(gcloud auth print-identity-token --audiences=CLIENT_ID)" \
     https://my-app.company.com/ 2>&1 | grep -i "x-goog"
 ```
 
@@ -80,8 +80,10 @@ If access is granted through a Google Group, verify the user is actually in that
 # Check if the user is in the group (requires admin access)
 gcloud identity groups memberships search-transitive-memberships \
     --group-email="authorized-users@company.com" \
-    --member-email="affected-user@company.com"
+    --format="table(preferredMemberKey[0].id, relationType)"
 ```
+
+Then look for `affected-user@company.com` in the returned transitive members.
 
 Common issues with group-based access:
 - User was removed from the group
@@ -109,12 +111,12 @@ Look for bindings with `condition` blocks. Common conditions that fail:
 
 ## Step 5: Check the Audit Logs
 
-Cloud Audit Logs contain detailed information about IAP authorization decisions, including why access was denied.
+Cloud Audit Logs contain detailed information about IAP authorization decisions, including why access was denied, when Data Access audit logs are enabled for IAP.
 
 ```bash
 # Search for IAP authorization failures in audit logs
 gcloud logging read \
-    'resource.type="iap_web" AND protoPayload.methodName="AuthorizeUser" AND severity>=WARNING' \
+    'resource.type="iap_web" AND protoPayload.serviceName="iap.googleapis.com" AND protoPayload.methodName="AuthorizeUser" AND protoPayload.authorizationInfo.granted=false' \
     --limit=20 \
     --project=my-project-id \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.status.message)"
@@ -131,7 +133,7 @@ For more detailed information:
 ```bash
 # Get full audit log details for a specific denial
 gcloud logging read \
-    'resource.type="iap_web" AND protoPayload.authenticationInfo.principalEmail="affected-user@company.com" AND severity>=WARNING' \
+    'resource.type="iap_web" AND protoPayload.serviceName="iap.googleapis.com" AND protoPayload.authenticationInfo.principalEmail="affected-user@company.com" AND protoPayload.authorizationInfo.granted=false' \
     --limit=5 \
     --project=my-project-id \
     --format=json
@@ -159,12 +161,7 @@ For external users, verify:
 1. The app is published (not in testing mode) or the user is a test user
 2. The user type matches (internal vs external)
 
-```bash
-# Check the IAP brand configuration
-gcloud iap oauth-brands list --project=my-project-id
-```
-
-If the brand is set to "Internal" and the user is outside your organization, they will get a 403.
+The old `gcloud iap oauth-brands` commands are deprecated and the IAP OAuth Admin APIs were scheduled to shut down in March 2026. Check the OAuth consent screen and the IAP application's OAuth configuration in the Google Cloud console instead. If the application uses the Google-managed OAuth client, browser access is limited to users inside the same organization. To allow users outside the organization, configure a custom OAuth client for IAP.
 
 ## Step 8: Verify the Backend Service Configuration
 
@@ -208,7 +205,7 @@ Check for recent IAM changes:
 ```bash
 # View recent IAM changes in audit logs
 gcloud logging read \
-    'protoPayload.methodName="SetIamPolicy" AND resource.type="iap_web"' \
+    'protoPayload.methodName:"SetIamPolicy" AND resource.type="iap_web"' \
     --limit=10 \
     --project=my-project-id \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail)"
@@ -226,7 +223,7 @@ If a user has multiple Google accounts, they might authenticate with the wrong o
 ### Scenario 5: Service Account Getting 403
 
 For programmatic access, make sure:
-- The service account has `iap.httpsResourceAccessor`
+- The service account has `roles/iap.httpsResourceAccessor`
 - You are sending an ID token (not an access token)
 - The token audience matches the IAP OAuth client ID
 
@@ -265,18 +262,18 @@ gcloud iap web get-iam-policy \
 echo ""
 echo "=== Checking recent auth failures ==="
 gcloud logging read \
-    "resource.type=\"iap_web\" AND protoPayload.authenticationInfo.principalEmail=\"$USER_EMAIL\" AND severity>=WARNING" \
+    "resource.type=\"iap_web\" AND protoPayload.serviceName=\"iap.googleapis.com\" AND protoPayload.authenticationInfo.principalEmail=\"$USER_EMAIL\" AND protoPayload.authorizationInfo.granted=false" \
     --limit=5 --project="$PROJECT" \
     --format="table(timestamp, protoPayload.status.message)"
 
 echo ""
 echo "=== Checking recent IAM changes ==="
 gcloud logging read \
-    "protoPayload.methodName=\"SetIamPolicy\" AND resource.type=\"iap_web\"" \
+    "protoPayload.methodName:\"SetIamPolicy\" AND resource.type=\"iap_web\"" \
     --limit=5 --project="$PROJECT" \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail)"
 ```
 
 ## Summary
 
-When you hit a 403 on an IAP-protected application, work through this checklist: verify the IAM binding exists, check group membership, examine access level conditions, review audit logs, and verify the OAuth consent screen configuration. In most cases, the fix is adding the missing `iap.httpsResourceAccessor` role. For persistent issues, the audit logs are your best friend - they show exactly why IAP denied the request. Keep the diagnostic script handy for quick troubleshooting.
+When you hit a 403 on an IAP-protected application, work through this checklist: verify the IAM binding exists, check group membership, examine access level conditions, review audit logs, and verify the OAuth consent screen configuration. In most cases, the fix is adding the missing `roles/iap.httpsResourceAccessor` role. For persistent issues, the audit logs are your best friend - they show exactly why IAP denied the request. Keep the diagnostic script handy for quick troubleshooting.
