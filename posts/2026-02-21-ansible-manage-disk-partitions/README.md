@@ -37,6 +37,7 @@ This playbook collects information about all block devices on your servers:
       ansible.builtin.command: lsblk -d -n -o NAME,SIZE,TYPE,MOUNTPOINT
       register: block_devices
       changed_when: false
+      check_mode: false
 
     - name: Display available disks
       ansible.builtin.debug:
@@ -46,10 +47,11 @@ This playbook collects information about all block devices on your servers:
       ansible.builtin.command: fdisk -l /dev/{{ item }}
       register: fdisk_info
       changed_when: false
+      check_mode: false
       loop: "{{ block_devices.stdout_lines | map('split') | selectattr('2', 'equalto', 'disk') | map('first') | list }}"
       failed_when: false
 
-    - name: Find unpartitioned disks (no partition table)
+    - name: Find disks with no partitions
       ansible.builtin.shell: |
         # List disks that have no partitions
         for disk in $(lsblk -d -n -o NAME,TYPE | awk '$2=="disk"{print $1}'); do
@@ -60,10 +62,11 @@ This playbook collects information about all block devices on your servers:
         done
       register: unpartitioned_disks
       changed_when: false
+      check_mode: false
 
     - name: Show unpartitioned disks
       ansible.builtin.debug:
-        msg: "Unpartitioned disks: {{ unpartitioned_disks.stdout_lines }}"
+        msg: "Disks with no partitions: {{ unpartitioned_disks.stdout_lines }}"
 ```
 
 ## Creating Partitions with the parted Module
@@ -102,6 +105,7 @@ This playbook creates a GPT partition table and a single partition on a data dis
       ansible.builtin.command: "lsblk -n -o NAME {{ data_disk }}"
       register: existing_parts
       changed_when: false
+      check_mode: false
 
     - name: Create GPT partition table and partitions
       community.general.parted:
@@ -166,15 +170,10 @@ This playbook creates multiple partitions with specific sizes for security compl
         fstype: ext4
 
   tasks:
-    - name: Create GPT label on target disk
-      community.general.parted:
-        device: "{{ target_disk }}"
-        label: gpt
-        state: present
-
     - name: Create each partition
       community.general.parted:
         device: "{{ target_disk }}"
+        label: gpt
         number: "{{ item.number }}"
         name: "{{ item.name }}"
         part_start: "{{ item.start }}"
@@ -267,16 +266,10 @@ This playbook prepares disks for LVM by creating LVM-flagged partitions:
       - /dev/sdc
 
   tasks:
-    - name: Create GPT label on each LVM disk
-      community.general.parted:
-        device: "{{ item }}"
-        label: gpt
-        state: present
-      loop: "{{ lvm_disks }}"
-
     - name: Create single partition spanning entire disk for LVM
       community.general.parted:
         device: "{{ item }}"
+        label: gpt
         number: 1
         name: "lvm_{{ item | basename }}"
         part_start: 0%
@@ -290,6 +283,7 @@ This playbook prepares disks for LVM by creating LVM-flagged partitions:
       ansible.builtin.command: "parted {{ item }} print"
       register: parted_output
       changed_when: false
+      check_mode: false
       loop: "{{ lvm_disks }}"
 
     - name: Display partition tables
@@ -341,6 +335,7 @@ This playbook validates the partition layout against your intended configuration
         lsblk -b -n -o SIZE "{{ item.device }}"
       register: partition_sizes
       changed_when: false
+      check_mode: false
       loop: "{{ expected_partitions }}"
       loop_control:
         label: "{{ item.device }}"
