@@ -14,19 +14,21 @@ This guide covers creating HPAs with Ansible for CPU-based scaling, memory-based
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
-- A Kubernetes cluster with metrics-server installed
+- Ansible-core 2.16+ with `kubernetes.core` collection
+- Python 3.9+ with the Kubernetes Python client 24.2.0+
+- A Kubernetes cluster with metrics-server installed for CPU and memory resource metrics
+- A Kubernetes metrics adapter, such as Prometheus Adapter, for custom metrics
 - A valid kubeconfig
 - Deployments with resource requests defined (required for percentage-based scaling)
 
 ```bash
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes
+pip install "kubernetes>=24.2.0"
 ```
 
 ## Verifying metrics-server
 
-HPA needs metrics-server to read CPU and memory usage. Check if it is running:
+HPA needs metrics-server to read CPU and memory resource metrics. Check if it is running:
 
 ```yaml
 # task: verify metrics-server is running in the cluster
@@ -42,7 +44,7 @@ HPA needs metrics-server to read CPU and memory usage. Check if it is running:
   ansible.builtin.assert:
     that:
       - metrics_server.resources | length > 0
-      - metrics_server.resources[0].status.readyReplicas >= 1
+      - metrics_server.resources[0].status.readyReplicas | default(0) | int >= 1
     fail_msg: "metrics-server is not running. HPA will not work without it."
     success_msg: "metrics-server is running"
 ```
@@ -323,7 +325,7 @@ Check whether your HPAs are working correctly and what the current scaling state
         msg: >
           {{ item.metadata.name }}:
           {{ item.status.currentReplicas | default('?') }}/{{ item.spec.maxReplicas }} replicas |
-          Current metrics: {{ item.status.currentMetrics | default([]) | map(attribute='resource') | map(attribute='current') | list }}
+          Current metrics: {{ item.status.currentMetrics | default([]) }}
       loop: "{{ hpa_list.resources }}"
       loop_control:
         label: "{{ item.metadata.name }}"
