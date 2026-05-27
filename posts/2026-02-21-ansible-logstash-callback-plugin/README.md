@@ -14,9 +14,9 @@ The `logstash` callback plugin sends Ansible playbook events directly to a Logst
 
 You need:
 
-- A Logstash instance with a TCP or UDP input configured
+- A Logstash instance with a TCP input configured
 - The `community.general` Ansible collection
-- Python's `python-logstash` or `python-logstash-async` library
+- Python's `python-logstash` library
 
 ```bash
 # Install the required Python library
@@ -32,7 +32,7 @@ ansible-galaxy collection install community.general
 ```ini
 # ansible.cfg - Enable the logstash callback
 [defaults]
-callback_whitelist = community.general.logstash
+callbacks_enabled = community.general.logstash
 
 [callback_logstash]
 server = logstash.example.com
@@ -45,7 +45,7 @@ Environment variable configuration:
 
 ```bash
 # Configure via environment
-export ANSIBLE_CALLBACK_WHITELIST=community.general.logstash
+export ANSIBLE_CALLBACKS_ENABLED=community.general.logstash
 export LOGSTASH_SERVER=logstash.example.com
 export LOGSTASH_PORT=5000
 export LOGSTASH_TYPE=ansible
@@ -60,7 +60,7 @@ Configure Logstash to receive Ansible events:
 input {
   tcp {
     port => 5000
-    codec => json_lines
+    codec => json
     type => "ansible"
     tags => ["ansible"]
   }
@@ -68,23 +68,11 @@ input {
 
 filter {
   if [type] == "ansible" {
-    # Parse the Ansible-specific fields
-    date {
-      match => ["ansible_timestamp", "ISO8601"]
-      target => "@timestamp"
-    }
-
     # Add useful derived fields
     if [status] == "FAILED" {
       mutate { add_tag => ["failure"] }
     }
 
-    # Clean up the message for readability
-    mutate {
-      rename => { "ansible_host" => "target_host" }
-      rename => { "ansible_task" => "task_name" }
-      rename => { "ansible_playbook" => "playbook_name" }
-    }
   }
 }
 
@@ -108,18 +96,13 @@ The logstash callback sends structured JSON events for each Ansible action. A ty
   "@timestamp": "2026-02-21T10:15:30.000Z",
   "type": "ansible",
   "ansible_type": "task",
-  "ansible_playbook": "deploy.yml",
-  "ansible_play": "Configure web servers",
+  "ansible_play_name": "Configure web servers",
   "ansible_task": "Install nginx",
   "ansible_host": "web-01",
   "status": "OK",
-  "ansible_result": {
-    "changed": false,
-    "msg": "package already installed"
-  },
+  "ansible_result": "{\"changed\": false, \"msg\": \"package already installed\"}",
   "ansible_changed": false,
-  "session": "abc123-def456",
-  "ansible_forks": 5
+  "session": "abc123-def456"
 }
 ```
 
@@ -128,11 +111,7 @@ For failures, additional fields include the error message:
 ```json
 {
   "status": "FAILED",
-  "ansible_result": {
-    "changed": false,
-    "msg": "No package matching 'nginx' found",
-    "rc": 100
-  }
+  "ansible_result": "{\"changed\": false, \"msg\": \"No package matching 'nginx' found\", \"rc\": 100}"
 }
 ```
 
@@ -146,21 +125,19 @@ Create an index template for Ansible data to optimize storage and search:
   "template": {
     "settings": {
       "number_of_shards": 1,
-      "number_of_replicas": 1,
-      "index.lifecycle.name": "ansible-policy",
-      "index.lifecycle.rollover_alias": "ansible"
+      "number_of_replicas": 1
     },
     "mappings": {
       "properties": {
         "@timestamp": { "type": "date" },
         "ansible_playbook": { "type": "keyword" },
-        "ansible_play": { "type": "keyword" },
+        "ansible_play_name": { "type": "keyword" },
         "ansible_task": { "type": "keyword" },
         "ansible_host": { "type": "keyword" },
         "status": { "type": "keyword" },
         "ansible_changed": { "type": "boolean" },
         "session": { "type": "keyword" },
-        "ansible_result": { "type": "object", "enabled": false }
+        "ansible_result": { "type": "text", "index": false }
       }
     }
   }
@@ -171,7 +148,7 @@ Push this template to Elasticsearch:
 
 ```bash
 # Create the index template
-curl -X PUT "elasticsearch:9200/_index_template/ansible" \
+curl -X PUT "http://elasticsearch:9200/_index_template/ansible" \
   -H 'Content-Type: application/json' \
   -d @ansible-template.json
 ```
@@ -180,23 +157,23 @@ curl -X PUT "elasticsearch:9200/_index_template/ansible" \
 
 Once events flow into Elasticsearch, build a Kibana dashboard. Here are useful visualizations:
 
-Create an index pattern for `ansible-*`, then build these:
+Create a data view for `ansible-*`, then build these:
 
 **Playbook Run Status Over Time:**
 - Visualization type: Area chart
 - Y-axis: Count
 - X-axis: @timestamp (Date Histogram)
-- Split series: status.keyword
+- Split series: status
 
 **Top Failed Tasks:**
 - Visualization type: Data Table
 - Metric: Count
-- Buckets: ansible_task.keyword (Terms, descending)
+- Buckets: ansible_task (Terms, descending)
 - Filter: status: "FAILED"
 
 **Host Activity Heatmap:**
 - Visualization type: Heatmap
-- Y-axis: ansible_host.keyword
+- Y-axis: ansible_host
 - X-axis: @timestamp (Date Histogram)
 - Value: Count
 
@@ -224,11 +201,17 @@ Add more intelligence to your Logstash pipeline:
 filter {
   if [type] == "ansible" {
     # Calculate task duration if available
-    if [ansible_result][start] and [ansible_result][end] {
+    json {
+      source => "ansible_result"
+      target => "ansible_result_json"
+    }
+
+    if [ansible_result_json][start] and [ansible_result_json][end] {
       ruby {
         code => "
-          start_time = Time.parse(event.get('[ansible_result][start]'))
-          end_time = Time.parse(event.get('[ansible_result][end]'))
+          require 'time'
+          start_time = Time.parse(event.get('[ansible_result_json][start]'))
+          end_time = Time.parse(event.get('[ansible_result_json][end]'))
           event.set('task_duration_seconds', (end_time - start_time).round(2))
         "
       }
@@ -305,17 +288,17 @@ The logstash callback works as a notification alongside your preferred output:
 ```ini
 # ansible.cfg - Logstash with other callbacks
 [defaults]
-stdout_callback = yaml
-callback_whitelist = community.general.logstash, timer, profile_tasks
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
+callbacks_enabled = community.general.logstash, ansible.posix.timer, ansible.posix.profile_tasks
 ```
 
 ## Performance Considerations
 
 The logstash callback sends a network request for each event. For large playbooks with many hosts, this can add up. Tips for managing the load:
 
-- Use TCP transport (more reliable than UDP)
+- Use the callback's TCP transport with a local or nearby Logstash endpoint
 - Configure Logstash with a persistent queue to handle bursts
-- Consider using the async logstash library: `pip install python-logstash-async`
 - For very large inventories, use the logstash callback on critical playbooks only
 
 The logstash callback turns Ansible from a "fire and forget" tool into one that builds a searchable, visualizable history of every action across your infrastructure. If you already run an ELK stack, adding the logstash callback is one of the highest-value integrations you can make.
