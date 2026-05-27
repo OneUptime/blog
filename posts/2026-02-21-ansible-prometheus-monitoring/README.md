@@ -127,7 +127,7 @@ scrape_configs:
   - job_name: 'node'
     static_configs:
 {% for host in groups['all'] %}
-      - targets: ['{{ hostvars[host].ansible_host }}:9100']
+      - targets: ['{{ hostvars[host].ansible_host | default(host) }}:9100']
         labels:
           instance: '{{ host }}'
           role: '{{ hostvars[host].server_role | default("unknown") }}'
@@ -136,7 +136,7 @@ scrape_configs:
   - job_name: 'app'
     static_configs:
 {% for host in groups.get('app_servers', []) %}
-      - targets: ['{{ hostvars[host].ansible_host }}:{{ app_metrics_port | default(9090) }}']
+      - targets: ['{{ hostvars[host].ansible_host | default(host) }}:{{ app_metrics_port | default(9090) }}']
         labels:
           instance: '{{ host }}'
 {% endfor %}
@@ -148,6 +148,12 @@ scrape_configs:
 # roles/node_exporter/tasks/main.yml
 # Install node_exporter on all monitored hosts
 ---
+- name: Create prometheus user
+  ansible.builtin.user:
+    name: prometheus
+    system: true
+    shell: /bin/false
+
 - name: Download node_exporter
   ansible.builtin.get_url:
     url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
@@ -407,4 +413,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
