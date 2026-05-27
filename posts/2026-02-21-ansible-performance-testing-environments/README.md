@@ -49,7 +49,7 @@ compute:
     ami: "{{ production_ami }}"
   db_servers:
     count: 2
-    instance_type: r6g.2xlarge  # Same as production
+    instance_type: db.r6g.2xlarge  # Same as production
     storage_size: 500  # Same as production
 
 monitoring:
@@ -90,12 +90,11 @@ data:
     - name: Create RDS instance matching production specs
       amazon.aws.rds_instance:
         id: "perf-{{ db_name }}"
-        instance_type: "{{ compute.db_servers.instance_type }}"
-        engine: postgresql
+        db_instance_class: "{{ compute.db_servers.instance_type }}"
+        engine: postgres
         engine_version: "15"
         allocated_storage: "{{ compute.db_servers.storage_size }}"
         storage_type: gp3
-        storage_iops: 3000
         db_name: "{{ db_name }}"
         master_username: "{{ db_admin_user }}"
         master_user_password: "{{ db_admin_password }}"
@@ -147,8 +146,26 @@ Performance tests need realistic data volumes:
   register: data_check
   ignore_errors: true
 
-- name: Create sanitized production dump
-  ansible.builtin.command:
+- name: Decide whether to seed data
+  ansible.builtin.set_fact:
+    should_seed_data: "{{ data_check is failed or ((data_check.query_result | default([{'row_count': 0}]) | first).row_count | int < 1000) }}"
+
+- name: Set temporary sanitization database name
+  ansible.builtin.set_fact:
+    sanitize_db_name: "perf_seed_sanitize"
+  when: should_seed_data
+
+- name: Create temporary sanitization database
+  community.postgresql.postgresql_db:
+    name: "{{ sanitize_db_name }}"
+    login_host: "{{ sanitize_db_host }}"
+    login_user: "{{ db_admin_user }}"
+    login_password: "{{ db_admin_password }}"
+    state: present
+  when: should_seed_data
+
+- name: Create production dump for anonymization
+  ansible.builtin.shell:
     cmd: >
       pg_dump -h {{ prod_db_host }} -U {{ prod_db_user }}
       --no-owner --no-privileges
@@ -156,28 +173,25 @@ Performance tests need realistic data volumes:
       {{ prod_db_name }}
       | gzip > /tmp/prod_dump.sql.gz
   delegate_to: "{{ prod_db_bastion }}"
-  when: data_check.query_result[0].row_count | int < 1000
+  environment:
+    PGPASSWORD: "{{ prod_db_password }}"
+  when: should_seed_data
   no_log: true
 
-- name: Transfer dump to performance database host
-  ansible.builtin.copy:
-    src: /tmp/prod_dump.sql.gz
-    dest: /tmp/prod_dump.sql.gz
-    mode: '0600'
-  when: data_check.query_result[0].row_count | int < 1000
-
-- name: Restore data to performance database
+- name: Restore production dump into sanitization database
   ansible.builtin.shell: |
     gunzip -c /tmp/prod_dump.sql.gz | \
-    psql -h {{ perf_db_host }} -U {{ db_admin_user }} {{ db_name }}
+    psql -h {{ sanitize_db_host }} -U {{ db_admin_user }} {{ sanitize_db_name }}
+  delegate_to: "{{ prod_db_bastion }}"
   environment:
     PGPASSWORD: "{{ db_admin_password }}"
-  when: data_check.query_result[0].row_count | int < 1000
+  when: should_seed_data
+  no_log: true
 
-- name: Anonymize personal data
+- name: Anonymize personal data in sanitization database
   community.postgresql.postgresql_query:
-    db: "{{ db_name }}"
-    login_host: "{{ perf_db_host }}"
+    db: "{{ sanitize_db_name }}"
+    login_host: "{{ sanitize_db_host }}"
     login_user: "{{ db_admin_user }}"
     login_password: "{{ db_admin_password }}"
     query: |
@@ -189,11 +203,77 @@ Performance tests need realistic data volumes:
       UPDATE payment_methods SET
         card_number = '4111111111111111',
         card_holder = 'TEST USER';
+  when: should_seed_data
+  no_log: true
 
-- name: Clean up dump file
-  ansible.builtin.file:
-    path: /tmp/prod_dump.sql.gz
+- name: Create sanitized dump
+  ansible.builtin.shell:
+    cmd: >
+      pg_dump -h {{ sanitize_db_host }} -U {{ db_admin_user }}
+      --no-owner --no-privileges
+      {{ sanitize_db_name }}
+      | gzip > /tmp/sanitized_dump.sql.gz
+  delegate_to: "{{ prod_db_bastion }}"
+  environment:
+    PGPASSWORD: "{{ db_admin_password }}"
+  when: should_seed_data
+  no_log: true
+
+- name: Fetch sanitized dump from production bastion
+  ansible.builtin.fetch:
+    src: /tmp/sanitized_dump.sql.gz
+    dest: /tmp/sanitized_dump.sql.gz
+    flat: true
+  delegate_to: "{{ prod_db_bastion }}"
+  when: should_seed_data
+  no_log: true
+
+- name: Transfer dump to performance database host
+  ansible.builtin.copy:
+    src: /tmp/sanitized_dump.sql.gz
+    dest: /tmp/sanitized_dump.sql.gz
+    mode: '0600'
+  when: should_seed_data
+
+- name: Restore sanitized data to performance database
+  ansible.builtin.shell: |
+    gunzip -c /tmp/sanitized_dump.sql.gz | \
+    psql -h {{ perf_db_host }} -U {{ db_admin_user }} {{ db_name }}
+  environment:
+    PGPASSWORD: "{{ db_admin_password }}"
+  when: should_seed_data
+
+- name: Drop temporary sanitization database
+  community.postgresql.postgresql_db:
+    name: "{{ sanitize_db_name }}"
+    login_host: "{{ sanitize_db_host }}"
+    login_user: "{{ db_admin_user }}"
+    login_password: "{{ db_admin_password }}"
     state: absent
+  when: should_seed_data
+
+- name: Clean up performance host dump file
+  ansible.builtin.file:
+    path: /tmp/sanitized_dump.sql.gz
+    state: absent
+  when: should_seed_data
+
+- name: Clean up production bastion dump file
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/prod_dump.sql.gz
+    - /tmp/sanitized_dump.sql.gz
+  delegate_to: "{{ prod_db_bastion }}"
+  when: should_seed_data
+
+- name: Clean up controller dump file
+  ansible.builtin.file:
+    path: /tmp/sanitized_dump.sql.gz
+    state: absent
+  delegate_to: localhost
+  when: should_seed_data
 ```
 
 ## Setting Up Performance Monitoring
