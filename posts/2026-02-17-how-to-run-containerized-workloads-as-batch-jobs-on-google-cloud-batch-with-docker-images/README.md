@@ -160,8 +160,13 @@ gcloud auth configure-docker us-central1-docker.pkg.dev
 # Build the image
 docker build -t us-central1-docker.pkg.dev/MY_PROJECT/batch-images/data-processor:v1 .
 
+# Set up local Application Default Credentials for the GCS client
+gcloud auth application-default login
+
 # Test locally first
 docker run \
+  -v "$HOME/.config/gcloud/application_default_credentials.json:/tmp/adc.json:ro" \
+  -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/adc.json \
   -e BATCH_TASK_INDEX=0 \
   -e BATCH_TASK_COUNT=1 \
   -e INPUT_BUCKET=my-test-bucket \
@@ -283,7 +288,7 @@ def create_multi_container_job(project_id, region, job_name):
     process_runnable = batch_v1.Runnable()
     process_runnable.container = batch_v1.Runnable.Container()
     process_runnable.container.image_uri = (
-        "us-central1-docker.pkg.dev/MY_PROJECT/batch-images/data-processor:v1"
+        "us-central1-docker.pkg.dev/MY_PROJECT/batch-images/file-processor:v1"
     )
     process_runnable.container.commands = [
         "python", "process.py",
@@ -309,12 +314,6 @@ def create_multi_container_job(project_id, region, job_name):
         cpu_milli=4000, memory_mib=8192
     )
     task.max_retry_count = 2
-
-    # Configure shared volume between containers
-    volume = batch_v1.Volume()
-    volume.device_name = "share"
-    volume.mount_path = "/mnt/share"
-    task.volumes = [volume]
 
     group = batch_v1.TaskGroup()
     group.task_spec = task
