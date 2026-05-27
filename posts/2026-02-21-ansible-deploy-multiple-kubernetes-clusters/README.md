@@ -14,13 +14,13 @@ This guide covers strategies for targeting multiple clusters from a single playb
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- Ansible 2.16+ with `kubernetes.core` collection
 - kubeconfig files for each cluster
-- Python `kubernetes` library
+- Python `kubernetes` library 24.2.0+, PyYAML, and jsonpatch
 
 ```bash
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes
+pip install "kubernetes>=24.2.0" PyYAML jsonpatch
 ```
 
 ## Strategy 1: Multiple kubeconfig Contexts
@@ -255,7 +255,6 @@ For zero-downtime multi-cluster deployments, update one cluster at a time and ve
   hosts: localhost
   connection: local
   gather_facts: false
-  serial: 1
 
   vars:
     app_name: web-api
@@ -272,10 +271,13 @@ For zero-downtime multi-cluster deployments, update one cluster at a time and ve
         replicas: 3
 
   tasks:
-    - name: Deploy to cluster {{ item.name }}
+    - name: Deploy to cluster {{ item.name }} and wait for rollout
       kubernetes.core.k8s:
         state: present
         context: "{{ item.context }}"
+        wait: true
+        wait_sleep: 10
+        wait_timeout: 300
         definition:
           apiVersion: apps/v1
           kind: Deployment
@@ -295,22 +297,6 @@ For zero-downtime multi-cluster deployments, update one cluster at a time and ve
                 containers:
                   - name: "{{ app_name }}"
                     image: "{{ app_image }}"
-      loop: "{{ clusters }}"
-      loop_control:
-        label: "{{ item.name }}"
-
-    - name: Wait for readiness on cluster {{ item.name }}
-      kubernetes.core.k8s_info:
-        kind: Deployment
-        name: "{{ app_name }}"
-        namespace: production
-        context: "{{ item.context }}"
-      register: deploy_status
-      until:
-        - deploy_status.resources[0].status.readyReplicas is defined
-        - deploy_status.resources[0].status.readyReplicas == item.replicas
-      retries: 30
-      delay: 10
       loop: "{{ clusters }}"
       loop_control:
         label: "{{ item.name }}"
