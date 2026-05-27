@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Window, PowerShell, Module Development
+Tags: Ansible, Windows, PowerShell, Module Development
 
 Description: Write custom Ansible modules in PowerShell for managing Windows systems with proper argument handling.
 
@@ -24,6 +24,7 @@ $spec = @{
         state = @{ type = 'str'; default = 'present'; choices = @('present', 'absent') }
         value = @{ type = 'str' }
     }
+    required_if = @(,@('state', 'present', @('value')))
     supports_check_mode = $true
 }
 
@@ -33,21 +34,29 @@ $name = $module.Params.name
 $state = $module.Params.state
 $value = $module.Params.value
 
-# Check current state
+$registryPath = "HKLM:\SOFTWARE\MyApp"
 
-$current = Get-ItemProperty -Path "HKLM:\SOFTWARE\MyApp" -Name $name -ErrorAction SilentlyContinue
+# Check current state
+$current = if (Test-Path -Path $registryPath) {
+    Get-ItemProperty -Path $registryPath -Name $name -ErrorAction SilentlyContinue
+} else {
+    $null
+}
 
 if ($state -eq 'present') {
     if ($null -eq $current -or $current.$name -ne $value) {
         if (-not $module.CheckMode) {
-            Set-ItemProperty -Path "HKLM:\SOFTWARE\MyApp" -Name $name -Value $value
+            if (-not (Test-Path -Path $registryPath)) {
+                New-Item -Path $registryPath | Out-Null
+            }
+            Set-ItemProperty -Path $registryPath -Name $name -Value $value
         }
         $module.Result.changed = $true
     }
 } elseif ($state -eq 'absent') {
     if ($null -ne $current) {
         if (-not $module.CheckMode) {
-            Remove-ItemProperty -Path "HKLM:\SOFTWARE\MyApp" -Name $name
+            Remove-ItemProperty -Path $registryPath -Name $name
         }
         $module.Result.changed = $true
     }
@@ -65,10 +74,23 @@ Windows modules use a companion Python file for documentation:
 DOCUMENTATION = r"""
 module: win_my_module
 short_description: Manage Windows registry settings
+description:
+    - Manage registry values under HKLM:\SOFTWARE\MyApp.
 options:
     name:
-        description: Registry value name
+        description:
+            - Registry value name.
         required: true
+        type: str
+    state:
+        description:
+            - Whether the registry value should exist.
+        type: str
+        default: present
+        choices: [present, absent]
+    value:
+        description:
+            - Registry value data. Required when state is present.
         type: str
 """
 ```
