@@ -204,7 +204,7 @@ The `assert` module is perfect for checking business logic and relationships bet
       ansible.builtin.assert:
         that:
           - all_ips | unique | length == all_ips | length
-        fail_msg: "Duplicate IP addresses found: {{ all_ips | difference(all_ips | unique) }}"
+        fail_msg: "Duplicate IP addresses found in: {{ all_ips }}"
         success_msg: "No duplicate IP addresses"
 
     # Check: VLAN IDs are in valid range
@@ -247,7 +247,7 @@ Network data often includes IP addresses that need thorough validation.
     - name: Validate IP addresses
       ansible.builtin.assert:
         that:
-          - item.ip | ansible.utils.ipaddr('address')
+          - item.ip | ansible.utils.ipaddr('host/prefix')
         fail_msg: "Invalid IP address on {{ item.name }}: {{ item.ip }}"
         success_msg: "{{ item.name }}: {{ item.ip }} is valid"
       loop: "{{ interfaces }}"
@@ -353,13 +353,13 @@ After pushing configuration, validate that the device state matches expectations
     - name: Validate interface descriptions
       ansible.builtin.assert:
         that:
-          - actual_item.description == item.description
+          - actual_item | length > 0
+          - (actual_item.description | default('')) == item.description
         fail_msg: "Interface {{ item.name }}: description mismatch (wanted '{{ item.description }}', got '{{ actual_item.description | default('none') }}')"
         success_msg: "Interface {{ item.name }}: description matches"
       loop: "{{ desired_interfaces | default([]) }}"
       vars:
         actual_item: "{{ actual_interfaces.gathered | selectattr('name', 'equalto', item.name) | first | default({}) }}"
-      when: actual_item | length > 0
       ignore_errors: true
 
     # Validate VLANs exist
