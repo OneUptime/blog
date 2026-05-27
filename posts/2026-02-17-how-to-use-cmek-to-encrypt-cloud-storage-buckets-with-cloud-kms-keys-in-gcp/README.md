@@ -10,7 +10,7 @@ Description: Learn how to encrypt Cloud Storage buckets using Customer-Managed E
 
 When you store data in Google Cloud Storage, it is encrypted at rest by default using Google-managed keys. That works fine for many use cases, but some organizations need more control. Maybe your compliance team requires that encryption keys live in a specific region, or you need the ability to rotate and revoke keys on your own schedule. That is where Customer-Managed Encryption Keys (CMEK) come in.
 
-With CMEK, you create and manage your own encryption keys in Cloud KMS, and then tell Cloud Storage to use those keys instead of the default Google-managed ones. You still get the convenience of server-side encryption, but you hold the keys.
+With CMEK, you create and manage your own encryption keys in Cloud KMS, and then tell Cloud Storage to use those keys instead of the default Google-managed ones. You still get the convenience of server-side encryption, but you control the key lifecycle and access permissions.
 
 In this post, I will walk through setting up CMEK for Cloud Storage buckets from scratch.
 
@@ -55,7 +55,7 @@ The `--rotation-period` flag sets automatic key rotation every 90 days. Google w
 
 ## Step 3: Grant Cloud Storage Permission to Use the Key
 
-Cloud Storage uses a service account to read and write objects. That service account needs permission to use your KMS key. First, find the service account email.
+Cloud Storage uses a service agent to perform Cloud KMS operations for your project. That service agent needs permission to use your KMS key. First, find the service account email.
 
 ```bash
 # Get the Cloud Storage service account for your project
@@ -175,7 +175,7 @@ If you want all objects encrypted with the latest key version, you need to rewri
 
 ## What Happens When You Disable or Destroy a Key
 
-This is the nuclear option. If you disable a key version, any object encrypted with that version becomes unreadable. If you destroy it, the data is permanently inaccessible after the scheduled destruction period (24 hours by default).
+This is the nuclear option. If you disable a key version, any object encrypted with that version becomes unreadable. If you destroy it, the data is permanently inaccessible after the scheduled destruction period (30 days by default).
 
 Before disabling or destroying keys, make sure no critical data depends on them. Cloud KMS has a scheduled destruction delay specifically to prevent accidental data loss.
 
@@ -188,7 +188,7 @@ Before disabling or destroying keys, make sure no critical data depends on them.
 
 ## Monitoring CMEK Usage
 
-You can monitor key usage through Cloud Audit Logs. Every time Cloud Storage uses your key to encrypt or decrypt an object, it generates a log entry.
+You can monitor key usage through Cloud Audit Logs. When Data Access audit logs are enabled for Cloud KMS, Cloud Storage encryption and decryption operations with your key generate log entries.
 
 ```bash
 # View recent Cloud KMS data access logs for your key
