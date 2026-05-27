@@ -29,13 +29,14 @@ The metrics pipeline has three layers:
 
 ## Metric Instruments
 
-OpenTelemetry defines six metric instruments:
+OpenTelemetry defines seven metric instruments:
 
 | Instrument | Sync/Async | Monotonic | Use Case |
 |------------|-----------|-----------|----------|
 | Counter | Sync | Yes | Count events that only go up |
 | UpDownCounter | Sync | No | Track values that go up and down |
 | Histogram | Sync | N/A | Measure distributions (latency, size) |
+| Gauge | Sync | No | Record non-additive current values when they change |
 | Observable Counter | Async | Yes | Observe monotonic totals on demand |
 | Observable UpDownCounter | Async | No | Observe fluctuating values on demand |
 | Observable Gauge | Async | No | Observe current values on demand |
@@ -49,9 +50,13 @@ flowchart TD
     C -->|yes| D[Counter]
     C -->|no, observe total| E[Observable Counter]
     B -->|no| F{Is it a current value?}
-    F -->|yes| G{Do you record changes?}
-    G -->|yes| H[UpDownCounter]
-    G -->|no, observe current| I[Observable Gauge]
+    F -->|yes| G{Is it additive across instances?}
+    G -->|yes| O{Do you record changes?}
+    O -->|yes| H[UpDownCounter]
+    O -->|no, observe current| P[Observable UpDownCounter]
+    G -->|no| M{Do you record changes?}
+    M -->|yes| N[Gauge]
+    M -->|no, observe current| I[Observable Gauge]
     F -->|no| J{Do you need distribution?}
     J -->|yes| K[Histogram]
     J -->|no| L[UpDownCounter]
@@ -175,16 +180,16 @@ queue_depth = meter.create_up_down_counter(
 )
 
 
-def on_connection_open(client_ip: str) -> None:
+def on_connection_open(listener_name: str) -> None:
     """Called when a new connection is opened."""
     # Increment by 1
-    active_connections.add(1, {"client.ip": client_ip})
+    active_connections.add(1, {"listener.name": listener_name})
 
 
-def on_connection_close(client_ip: str) -> None:
+def on_connection_close(listener_name: str) -> None:
     """Called when a connection is closed."""
     # Decrement by 1
-    active_connections.add(-1, {"client.ip": client_ip})
+    active_connections.add(-1, {"listener.name": listener_name})
 
 
 def enqueue_item(queue_name: str) -> None:
@@ -290,7 +295,7 @@ provider = MeterProvider(
 
 ## Observable (Async) Instruments
 
-Observable instruments are called by the SDK at collection time, rather than being recorded inline. Use them when you want to observe a current state.
+Observable instruments are called by the SDK at collection time, rather than being recorded inline. Use them when you want to observe a current state or cumulative total.
 
 ```python
 import psutil
@@ -356,8 +361,10 @@ request_counter.add(1, {
 | Track queue size | UpDownCounter |
 | Measure request latency | Histogram |
 | Measure payload size | Histogram |
+| Record current fan speed changes | Gauge |
 | Report current CPU usage | Observable Gauge |
 | Report current memory usage | Observable Gauge |
+| Report current queue size from a callback | Observable UpDownCounter |
 | Report total bytes sent (from OS counter) | Observable Counter |
 
 ## Conclusion
