@@ -63,18 +63,20 @@ The service agent is: `service-PROJECT_NUMBER@compute-system.iam.gserviceaccount
 
 ### Google Kubernetes Engine
 
-GKE uses the Compute Engine service agent for node disks, plus its own service agent.
+For CMEK-protected node boot disks and attached Persistent Disks, GKE uses the Compute Engine service agent:
 
-The GKE service agent is: `service-PROJECT_NUMBER@container-engine-robot.iam.gserviceaccount.com`
+`service-PROJECT_NUMBER@compute-system.iam.gserviceaccount.com`
 
 ### Cloud SQL
 
 ```bash
-# Get the Cloud SQL service account email
-gcloud sql instances describe my-instance \
-    --format="value(serviceAccountEmailAddress)" \
+# Create or retrieve the Cloud SQL service identity
+gcloud beta services identity create \
+    --service=sqladmin.googleapis.com \
     --project=my-project-id
 ```
+
+Output format: `service-PROJECT_NUMBER@gcp-sa-cloud-sql.iam.gserviceaccount.com`
 
 ### Pub/Sub
 
@@ -159,11 +161,11 @@ Some organizations have policies that restrict which keys can be used.
 
 ```bash
 # Check for org policies related to CMEK
-gcloud resource-manager org-policies describe \
+gcloud org-policies describe \
     constraints/gcp.restrictNonCmekServices \
     --project=my-project-id
 
-gcloud resource-manager org-policies describe \
+gcloud org-policies describe \
     constraints/gcp.restrictCmekCryptoKeyProjects \
     --project=my-project-id
 ```
@@ -187,7 +189,7 @@ gcloud storage buckets describe gs://my-bucket \
     --format="value(location)"
 ```
 
-These must be compatible. Regional keys work with regional buckets in the same region. Multi-regional keys work with multi-regional buckets.
+These must be compatible. For Cloud Storage, the Cloud KMS key ring must be in the same location as the bucket's data location. Regional keys work with buckets in the same region, and multi-region or dual-region buckets need a matching Cloud KMS location code.
 
 ### Scenario 5: Key is Disabled or Destroyed
 
@@ -237,8 +239,8 @@ Here is a cheat sheet of service agent email formats, where `N` is your project 
 | Cloud Storage | `service-N@gs-project-accounts.iam.gserviceaccount.com` |
 | BigQuery | `bq-N@bigquery-encryption.iam.gserviceaccount.com` |
 | Compute Engine | `service-N@compute-system.iam.gserviceaccount.com` |
-| GKE | `service-N@container-engine-robot.iam.gserviceaccount.com` |
-| Cloud SQL | varies per instance |
+| GKE node and Persistent Disk CMEK | `service-N@compute-system.iam.gserviceaccount.com` |
+| Cloud SQL | `service-N@gcp-sa-cloud-sql.iam.gserviceaccount.com` |
 | Pub/Sub | `service-N@gcp-sa-pubsub.iam.gserviceaccount.com` |
 | Dataflow | `service-N@dataflow-service-producer-prod.iam.gserviceaccount.com` |
 | Artifact Registry | `service-N@gcp-sa-artifactregistry.iam.gserviceaccount.com` |
