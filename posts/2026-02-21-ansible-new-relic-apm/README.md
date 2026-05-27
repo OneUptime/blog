@@ -28,15 +28,23 @@ graph TD
 # roles/newrelic_infra/tasks/main.yml
 
 ---
+- name: Ensure APT keyring directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
 - name: Add New Relic GPG key
-  ansible.builtin.apt_key:
+  ansible.builtin.get_url:
     url: https://download.newrelic.com/infrastructure_agent/gpg/newrelic-infra.gpg
-    state: present
+    dest: /etc/apt/keyrings/newrelic-infra.asc
+    mode: '0644'
 
 - name: Add New Relic repository
   ansible.builtin.apt_repository:
-    repo: "deb https://download.newrelic.com/infrastructure_agent/linux/apt {{ ansible_distribution_release }} main"
+    repo: "deb [signed-by=/etc/apt/keyrings/newrelic-infra.asc] https://download.newrelic.com/infrastructure_agent/linux/apt {{ ansible_distribution_release }} main"
     state: present
+    filename: newrelic-infra
 
 - name: Install New Relic infrastructure agent
   ansible.builtin.apt:
@@ -90,15 +98,19 @@ log:
     creates: "{{ app_config_dir }}/newrelic.ini"
 
 - name: Configure APM settings
-  ansible.builtin.lineinfile:
+  community.general.ini_file:
     path: "{{ app_config_dir }}/newrelic.ini"
-    regexp: "{{ item.regexp }}"
-    line: "{{ item.line }}"
+    section: newrelic
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+    mode: '0640'
   loop:
-    - { regexp: '^app_name', line: "app_name = {{ app_name }} ({{ environment_name }})" }
-    - { regexp: '^log_file', line: "log_file = /var/log/newrelic/python-agent.log" }
+    - { option: app_name, value: "{{ app_name }} ({{ environment_name }})" }
+    - { option: log_file, value: /var/log/newrelic/python-agent.log }
   notify: restart application
 ```
+
+Start the Python application with `NEW_RELIC_CONFIG_FILE={{ app_config_dir }}/newrelic.ini {{ app_venv_path }}/bin/newrelic-admin run-program ...` or initialize the agent from your application code so the agent actually loads.
 
 ## Deploying APM Agent for Java
 
@@ -124,6 +136,8 @@ log:
     mode: '0640'
   notify: restart application
 ```
+
+Add `-javaagent:{{ app_dir }}/newrelic/newrelic.jar` to the application's JVM options or service definition so the Java agent is included when the JVM starts.
 
 ## Key Takeaways
 
@@ -168,7 +182,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -312,4 +326,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
