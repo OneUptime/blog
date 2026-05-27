@@ -48,10 +48,11 @@ from opentelemetry import trace
 tracer = trace.get_tracer("ai-agent")
 
 with tracer.start_as_current_span("agent.plan") as span:
-    span.set_attribute("llm.model", "gpt-4")
-    span.set_attribute("llm.tokens.input", input_tokens)
-    span.set_attribute("llm.tokens.output", output_tokens)
-    span.set_attribute("llm.tokens.cost_usd", calculated_cost)
+    span.set_attribute("gen_ai.provider.name", "openai")
+    span.set_attribute("gen_ai.request.model", "gpt-4")
+    span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
+    span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
+    span.set_attribute("app.llm.cost_usd", calculated_cost)
     
     # Your agent planning logic here
     plan = agent.plan(user_query)
@@ -91,7 +92,7 @@ Standard alerting rules don't work for agents. You need:
 
 The good news: OpenTelemetry has emerging support for LLM observability. The [Semantic Conventions for GenAI](https://opentelemetry.io/docs/specs/semconv/gen-ai/) are being actively developed, covering:
 
-- `gen_ai.system` - The AI system (openai, anthropic, etc.)
+- `gen_ai.provider.name` - The AI provider (openai, anthropic, etc.)
 - `gen_ai.request.model` - The model used
 - `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` - Token counts
 - `gen_ai.response.finish_reasons` - Why the generation stopped
