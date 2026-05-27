@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Multi-OS, Cross-Platform, Best Practice, Testing
 
-Description: Develop and test Ansible playbooks that work across Linux, FreeBSD, macOS, and Windows using a structured multi-OS development workflow.
+Description: Develop and test Ansible playbooks that work across Linux, FreeBSD, and macOS using a structured multi-OS development workflow.
 
 ---
 
-Managing a heterogeneous fleet that includes Debian, RHEL, SUSE, FreeBSD, macOS, and possibly Windows requires a disciplined approach to playbook development. This guide covers the complete workflow for building, organizing, and testing multi-OS Ansible playbooks.
+Managing a heterogeneous fleet that includes Debian, RHEL, SUSE, FreeBSD, and macOS requires a disciplined approach to playbook development. This guide covers the complete workflow for building, organizing, and testing multi-OS Ansible playbooks.
 
 ## Architecture for Multi-OS Playbooks
 
@@ -202,7 +202,7 @@ common_firewall_tool: ""
   notify: restart ssh
 
 - name: Start NTP service (systemd)
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ common_ntp_service }}"
     enabled: true
     state: started
@@ -283,12 +283,12 @@ Multi-OS playbook development requires a systematic approach: OS detection throu
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this approach proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this approach
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -320,7 +320,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -402,7 +402,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this approach
 - name: Robust task execution
   hosts: all
   tasks:
@@ -464,4 +464,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
