@@ -84,6 +84,17 @@ spec:
             limits:
               cpu: "500m"      # Hard cap at 500 millicores
               memory: "256Mi"  # Hard cap at 256 MiB
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-app
+spec:
+  selector:
+    app: web-app
+  ports:
+    - port: 80
+      targetPort: 80
 ```
 
 Apply this deployment:
@@ -197,7 +208,7 @@ flowchart TD
 
 ## Step 4: Test the Autoscaler
 
-Generate load to see HPA in action:
+Generate request traffic and watch how the HPA reports current metrics. A static nginx deployment might not consume enough CPU or memory to trigger scaling in every cluster, but this verifies that the Service and metrics path are working.
 
 ```bash
 # Run a load generator pod that sends continuous requests
