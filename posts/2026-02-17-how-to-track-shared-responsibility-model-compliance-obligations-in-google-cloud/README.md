@@ -111,6 +111,16 @@ CREATE TABLE `compliance_tracking.service_obligations` (
     owner_email STRING
 );
 
+CREATE TABLE `compliance_tracking.automated_findings` (
+    check_type STRING,
+    resource STRING,
+    status STRING,
+    detail STRING,
+    obligation STRING,
+    framework STRING,
+    timestamp TIMESTAMP
+);
+
 -- Insert obligations for Compute Engine
 INSERT INTO `compliance_tracking.service_obligations` VALUES
 ('Compute Engine', 'OS Patching', 'customer', 'Apply security patches within 30 days of release', 'SOC 2', 'implemented', 'gs://evidence/os-patching/', CURRENT_DATE(), DATE_ADD(CURRENT_DATE(), INTERVAL 90 DAY), 'platform-team@company.com'),
@@ -128,10 +138,9 @@ Create a Cloud Function that verifies your obligations are being met:
 # Runs weekly via Cloud Scheduler
 
 import functions_framework
-from google.cloud import asset_v1
 from google.cloud import compute_v1
 from google.cloud import bigquery
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 import json
 
 @functions_framework.http
@@ -174,9 +183,11 @@ def check_vm_encryption():
             zone=zone
         )
         for disk in client.list(request=request):
-            has_cmek = disk.disk_encryption_key is not None
+            has_cmek = bool(
+                disk.disk_encryption_key and disk.disk_encryption_key.kms_key_name
+            )
             findings.append({
-                'check': 'vm_disk_encryption',
+                'check_type': 'vm_disk_encryption',
                 'resource': disk.self_link,
                 'status': 'PASS' if has_cmek else 'FAIL',
                 'detail': 'CMEK enabled' if has_cmek else 'Using default encryption - CMEK required',
@@ -197,18 +208,23 @@ def check_firewall_rules():
         # Check for 0.0.0.0/0 source range on non-HTTP ports
         if rule.source_ranges and '0.0.0.0/0' in rule.source_ranges:
             for allowed in rule.allowed:
-                if allowed.ports and not set(allowed.ports).issubset({'80', '443'}):
+                is_public_http_only = (
+                    allowed.i_p_protocol.lower() == 'tcp'
+                    and allowed.ports
+                    and set(allowed.ports).issubset({'80', '443'})
+                )
+                if not is_public_http_only:
                     findings.append({
-                        'check': 'firewall_least_privilege',
+                        'check_type': 'firewall_least_privilege',
                         'resource': rule.name,
                         'status': 'FAIL',
-                        'detail': f'Rule allows 0.0.0.0/0 access to ports: {allowed.ports}',
+                        'detail': f'Rule allows 0.0.0.0/0 access to {allowed.i_p_protocol}:{allowed.ports or "all"}',
                         'obligation': 'customer',
                         'framework': 'SOC 2'
                     })
                 else:
                     findings.append({
-                        'check': 'firewall_least_privilege',
+                        'check_type': 'firewall_least_privilege',
                         'resource': rule.name,
                         'status': 'PASS',
                         'detail': 'Rule allows public access only to HTTP/HTTPS',
@@ -243,7 +259,7 @@ def store_findings(findings):
 
     rows = [{
         **f,
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
     } for f in findings]
 
     errors = client.insert_rows_json(table_id, rows)
@@ -265,7 +281,7 @@ SELECT
     COUNTIF(next_review_date < CURRENT_DATE()) as overdue_reviews
 FROM `compliance_tracking.service_obligations`
 GROUP BY service_name, responsible_party, implementation_status
-ORDER BY service_name
+ORDER BY service_name;
 
 -- Query for automated compliance check trends
 SELECT
@@ -277,7 +293,7 @@ SELECT
 FROM `compliance_tracking.automated_findings`
 WHERE timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
 GROUP BY check_date, check_type
-ORDER BY check_date DESC
+ORDER BY check_date DESC;
 ```
 
 ### Step 4: Set Up Review Workflows
@@ -306,10 +322,11 @@ Google publishes compliance reports and certifications that document their side 
 # Access Google's compliance reports through the Compliance Reports Manager
 # Available at: https://cloud.google.com/security/compliance/compliance-reports-manager
 
-# Use the Compliance Reports API to programmatically access reports
+# For Assured Workloads environments, list active compliance violations
 gcloud assured workloads violations list \
     --organization=123456789 \
-    --location=global
+    --location=LOCATION \
+    --workload=WORKLOAD_ID
 ```
 
 Key Google compliance documents to reference:
