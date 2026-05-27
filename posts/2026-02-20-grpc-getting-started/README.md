@@ -12,12 +12,12 @@ gRPC is a high-performance RPC framework built on HTTP/2 and Protocol Buffers. I
 
 ## Why gRPC Over REST
 
-REST uses JSON over HTTP/1.1, which is human-readable but comes with overhead. gRPC uses binary serialization (Protocol Buffers) over HTTP/2, which is faster and more compact.
+REST APIs commonly use JSON over HTTP, which is human-readable but comes with overhead. gRPC uses binary serialization (Protocol Buffers) over HTTP/2, which is often faster and more compact for service-to-service communication.
 
 ```mermaid
 graph LR
     subgraph REST
-        A[Client] -->|JSON over HTTP/1.1| B[Server]
+        A[Client] -->|JSON over HTTP| B[Server]
     end
     subgraph gRPC
         C[Client] -->|Protobuf over HTTP/2| D[Server]
@@ -27,18 +27,18 @@ graph LR
 Key differences:
 
 - **Serialization**: JSON (text) vs Protocol Buffers (binary)
-- **Transport**: HTTP/1.1 vs HTTP/2 with multiplexing
-- **Contract**: OpenAPI spec (optional) vs .proto files (required)
-- **Streaming**: Not native in REST vs built-in bidirectional streaming
+- **Transport**: HTTP vs HTTP/2 with multiplexing
+- **Contract**: OpenAPI spec (optional) vs .proto files (typical and required for protobuf-based gRPC)
+- **Streaming**: REST does not define RPC streaming semantics vs built-in gRPC streaming
 - **Code generation**: Optional in REST vs first-class in gRPC
 
 ## Protocol Buffers Basics
 
-Protocol Buffers (protobuf) is the interface definition language used by gRPC. You define your data structures and services in `.proto` files.
+Protocol Buffers (protobuf) is the default interface definition language used by gRPC. You define your data structures and services in `.proto` files.
 
 ```protobuf
 // user.proto
-// Define the syntax version - proto3 is the current standard
+// Define the syntax version - proto3 is commonly used with gRPC
 syntax = "proto3";
 
 // Package prevents naming conflicts between projects
@@ -96,6 +96,28 @@ syntax = "proto3";
 package user.v1;
 
 import "user.proto";
+
+message CreateUserRequest {
+  string name = 1;
+  string email = 2;
+  UserRole role = 3;
+}
+
+message CreateUserResponse {
+  User user = 1;
+}
+
+message UploadUsersResponse {
+  int32 created_count = 1;
+}
+
+message SyncRequest {
+  User user = 1;
+}
+
+message SyncResponse {
+  User user = 1;
+}
 
 // The UserService defines all RPC methods for user management
 service UserService {
@@ -238,7 +260,7 @@ import (
 
 func main() {
 	// Establish a connection to the gRPC server
-	conn, err := grpc.Dial(
+	conn, err := grpc.NewClient(
 		"localhost:50051",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
@@ -371,11 +393,13 @@ grpcServer := grpc.NewServer(
 # Then generate Go code from your .proto files
 
 protoc \
+  --proto_path=proto/user/v1 \
   --go_out=. \
   --go_opt=paths=source_relative \
   --go-grpc_out=. \
   --go-grpc_opt=paths=source_relative \
-  proto/user/v1/*.proto
+  proto/user/v1/user.proto \
+  proto/user/v1/user_service.proto
 ```
 
 ## Summary
