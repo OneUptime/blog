@@ -10,7 +10,7 @@ Description: A step-by-step guide to setting up Google Cloud Workstation cluster
 
 Setting up development environments for a team is one of those things that sounds easy until you actually try to do it at scale. Every developer has slightly different tool versions, different OS preferences, and inevitably someone's local setup breaks in a way that costs half a day to debug. Google Cloud Workstations solves this by giving each developer a consistent, cloud-based development environment that is managed centrally but feels like a local machine.
 
-Cloud Workstations runs on GKE under the hood, but you do not need to think about Kubernetes at all. You set up a cluster (the infrastructure layer), create a configuration (the environment template), and then developers launch individual workstations from that configuration. Let me walk through each step.
+Cloud Workstations runs workstations on ephemeral Compute Engine VMs, but you do not need to manage those VMs directly. You set up a cluster (the regional management and networking layer), create a configuration (the environment template), and then developers launch individual workstations from that configuration. Let me walk through each step.
 
 ## Understanding the Architecture
 
@@ -41,13 +41,12 @@ gcloud workstations clusters create dev-cluster \
     --project=my-project \
     --region=us-central1 \
     --network=projects/my-project/global/networks/default \
-    --subnetwork=projects/my-project/regions/us-central1/subnetworks/default \
-    --domain=workstations.example.com
+    --subnetwork=projects/my-project/regions/us-central1/subnetworks/default
 ```
 
-A few notes on this command. The network and subnetwork determine what your developers can access from their workstations. If your databases, APIs, and other services are on a specific VPC, point the cluster there. The domain is optional but useful if you want custom DNS for the workstation URLs.
+A few notes on this command. The network and subnetwork determine what your developers can access from their workstations. If your databases, APIs, and other services are on a specific VPC, point the cluster there. By default, workstation URLs use the `cloudworkstations.dev` domain. If you want a custom domain, create a private cluster with `--domain` and `--enable-private-endpoint`, then set up the required load balancer and DNS records.
 
-Cluster creation takes 10-15 minutes because it is provisioning GKE infrastructure behind the scenes.
+Cluster creation can take up to 20 minutes because it is provisioning the regional Cloud Workstations infrastructure.
 
 ```bash
 # Check cluster creation status
@@ -163,27 +162,44 @@ Developers access their workstation through a browser at the provided URL. They 
 Control who can access what with IAM roles:
 
 ```bash
-# Grant a developer the ability to use workstations (but not create configs)
+# Grant a developer runtime access to workstations (but not create configs)
 gcloud projects add-iam-policy-binding my-project \
     --member="user:alice@example.com" \
     --role="roles/workstations.user"
+
+# Grant the operation viewer role that developers also need on the project
+gcloud projects add-iam-policy-binding my-project \
+    --member="user:alice@example.com" \
+    --role="roles/workstations.operationViewer"
+
+# Grant a developer the ability to create workstations from configurations
+gcloud projects add-iam-policy-binding my-project \
+    --member="user:alice@example.com" \
+    --role="roles/workstations.workstationCreator"
 
 # Grant a team lead the ability to manage configurations
 gcloud projects add-iam-policy-binding my-project \
     --member="user:lead@example.com" \
     --role="roles/workstations.admin"
 
-# Grant a developer access to a specific workstation
-gcloud workstations add-iam-policy-binding alice-ws \
+# Grant a developer access to a specific workstation by editing its IAM policy
+gcloud workstations get-iam-policy alice-ws \
     --project=my-project \
     --region=us-central1 \
     --cluster=dev-cluster \
     --config=backend-config \
-    --member="user:alice@example.com" \
-    --role="roles/workstations.user"
+    --format=json > alice-ws-policy.json
+
+# Add user:alice@example.com with roles/workstations.user in alice-ws-policy.json, then apply it
+gcloud workstations set-iam-policy alice-ws \
+    --project=my-project \
+    --region=us-central1 \
+    --cluster=dev-cluster \
+    --config=backend-config \
+    alice-ws-policy.json
 ```
 
-The `workstations.user` role lets someone start, stop, and use workstations. The `workstations.admin` role adds the ability to create and modify clusters, configurations, and workstations.
+The `workstations.user` role lets someone start, stop, and use workstations when paired with the `workstations.operationViewer` role on the project. The `workstations.workstationCreator` role lets someone create workstations from existing configurations. The `workstations.admin` role adds the ability to create and modify clusters, configurations, and workstations.
 
 ## Managing Costs
 
