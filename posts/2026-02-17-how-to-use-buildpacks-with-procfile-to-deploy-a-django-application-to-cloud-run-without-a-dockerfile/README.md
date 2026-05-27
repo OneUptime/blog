@@ -32,7 +32,7 @@ my-django-app/
     urls.py
   requirements.txt
   Procfile
-  runtime.txt
+  .python-version
 ```
 
 Here is a simple view.
@@ -82,12 +82,12 @@ web: gunicorn myproject.wsgi --bind 0.0.0.0:$PORT --workers 2 --threads 4 --time
 
 Buildpacks reads this file and uses the `web` process type as the container's entrypoint. The `$PORT` variable is provided by Cloud Run at runtime.
 
-## The runtime.txt File
+## The .python-version File
 
 This file tells Buildpacks which Python version to use.
 
 ```text
-python-3.12.1
+3.12
 ```
 
 ## The requirements.txt File
@@ -127,6 +127,7 @@ ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
 INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.auth',
+    'django.contrib.staticfiles',
     'myapp',
 ]
 
@@ -147,7 +148,14 @@ DATABASES = {
 # Static files with WhiteNoise
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 # Cloud Run specific settings
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -174,7 +182,7 @@ Cloud Build automatically uses Buildpacks to build the image. The Buildpack dete
 
 ## Running Database Migrations
 
-Cloud Run does not have a built-in way to run one-off commands like migrations. You have a few options.
+Cloud Run services do not run one-off commands like migrations as part of a normal service deployment. You have a few options.
 
 **Option 1: Run migrations on startup.** Create a custom entrypoint script.
 
@@ -220,11 +228,6 @@ steps:
     env:
       - 'DATABASE_URL=postgres://...'
 
-  # Collect static files
-  - name: 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/django-app:$SHORT_SHA'
-    entrypoint: 'python'
-    args: ['manage.py', 'collectstatic', '--noinput']
-
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'gcloud'
@@ -241,18 +244,11 @@ steps:
 
 For production Django on Cloud Run, WhiteNoise is the simplest solution. It serves static files directly from your Python process without needing Nginx or a CDN.
 
-Make sure to collect static files as part of your build. You can do this with a `bin/post_compile` script that Buildpacks will run after installing dependencies.
+Make sure to collect static files before serving traffic. For local static files served by WhiteNoise, run `collectstatic` before starting Gunicorn so the generated files are present in the running Cloud Run instance.
 
-```bash
-#!/bin/bash
-# bin/post_compile - Runs after pip install during Buildpacks build
-python manage.py collectstatic --noinput
-```
-
-Make the script executable.
-
-```bash
-chmod +x bin/post_compile
+```text
+# Procfile - Collect static files before starting the server
+web: python manage.py collectstatic --noinput && gunicorn myproject.wsgi --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120
 ```
 
 ## Connecting to Cloud SQL
@@ -264,9 +260,8 @@ For database connectivity, use the Cloud SQL Auth Proxy built into Cloud Run.
 gcloud run deploy django-app \
     --source=. \
     --region=us-central1 \
-    --set-env-vars="DATABASE_URL=postgres://user:password@/dbname" \
     --add-cloudsql-instances=my-project:us-central1:my-db-instance \
-    --set-env-vars="INSTANCE_UNIX_SOCKET=/cloudsql/my-project:us-central1:my-db-instance"
+    --set-env-vars="DB_NAME=dbname,DB_USER=user,DB_PASSWORD=password,INSTANCE_UNIX_SOCKET=/cloudsql/my-project:us-central1:my-db-instance"
 ```
 
 Update your Django settings to use the Cloud SQL socket.
@@ -295,7 +290,7 @@ Before deploying, you can test the Buildpacks build locally.
 # Build locally using pack CLI
 pack build django-app \
     --builder=gcr.io/buildpacks/builder:v1 \
-    --env GOOGLE_RUNTIME_VERSION=3.12
+    --env GOOGLE_PYTHON_VERSION=3.12
 
 # Run locally
 docker run -p 8080:8080 \
@@ -307,4 +302,4 @@ docker run -p 8080:8080 \
 
 ## Wrapping Up
 
-Deploying Django to Cloud Run with Buildpacks and a Procfile is the lowest-friction path to production. You do not need to write a Dockerfile, figure out base images, or manage Python installation in containers. The Procfile gives you control over how gunicorn runs, and the runtime.txt file pins your Python version. For most Django applications, this is all you need to get from code to production.
+Deploying Django to Cloud Run with Buildpacks and a Procfile is the lowest-friction path to production. You do not need to write a Dockerfile, figure out base images, or manage Python installation in containers. The Procfile gives you control over how gunicorn runs, and the .python-version file pins your Python version. For most Django applications, this is all you need to get from code to production.
