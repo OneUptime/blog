@@ -8,7 +8,7 @@ Description: Use the Ansible debug strategy to pause playbook execution on task 
 
 ---
 
-The `debug` strategy is Ansible's interactive debugger. When a task fails, instead of moving on or stopping the playbook, Ansible drops you into an interactive prompt where you can inspect variables, modify the task, re-run it, or continue execution. It is like a breakpoint debugger for your infrastructure code.
+The `debug` strategy is Ansible's interactive debugger. When a task fails, Ansible drops you into an interactive prompt where you can inspect variables, modify the task, re-run it, or continue execution. It is like a breakpoint debugger for your infrastructure code.
 
 ## Enabling the Debug Strategy
 
@@ -44,6 +44,8 @@ You can also enable it with an environment variable:
 ANSIBLE_STRATEGY=debug ansible-playbook site.yml
 ```
 
+In current Ansible versions, the `debug` strategy is the backwards-compatible way to enable the task debugger, and the Ansible docs note that this method may be removed in a future release. For new playbooks, you can also use the `debugger` keyword or the global `enable_task_debugger` setting shown later in this guide.
+
 ## What Happens on Failure
 
 When a task fails with the debug strategy, Ansible pauses and presents a debug prompt:
@@ -66,15 +68,15 @@ The debugger supports these commands:
 (debug) p task           # Print the task definition
 (debug) p task.args      # Print the task arguments
 (debug) p result         # Print the task result (including error)
-(debug) p vars           # Print all available variables
+(debug) p task_vars      # Print all available task variables
 (debug) p host           # Print the current host
-(debug) p task_vars      # Print task-specific variables
 
 (debug) task.args['src'] = 'templates/app.conf.j2'  # Modify task arguments
-(debug) vars['app_port'] = 8080                       # Set a variable
+(debug) task_vars['app_port'] = 8080                  # Set a task variable
+(debug) update_task                                    # Recreate the task after changing task variables
 
-(debug) redo             # Re-run the task with current args/vars
-(debug) continue         # Continue to the next task (skip this failure)
+(debug) redo             # Re-run the task with current args/task_vars
+(debug) continue         # Continue executing, starting with the next task
 (debug) quit             # Quit the playbook
 ```
 
@@ -125,12 +127,13 @@ Debug the issue:
 (debug) p task.args
 {'src': 'app.conf.j2', 'dest': '/opt/myapp/config.yml'}
 
-(debug) p vars['app_version']
+(debug) p task_vars['app_version']
 '2.5.1'
 
 # The error says 'app_vesion' (typo) is undefined
 # We can set the misspelled variable as a workaround to continue
 (debug) task_vars['app_vesion'] = task_vars['app_version']
+(debug) update_task
 
 # Re-run the task with the fix
 (debug) redo
@@ -147,18 +150,18 @@ Of course, the real fix is to correct the typo in your template file, but the de
 The debugger is excellent for understanding what variables are available:
 
 ```text
-(debug) p vars.keys()
+(debug) p task_vars.keys()
 dict_keys(['ansible_hostname', 'ansible_os_family', 'inventory_hostname',
            'app_version', 'app_port', 'ansible_facts', ...])
 
-(debug) p vars['ansible_hostname']
+(debug) p task_vars['ansible_hostname']
 'web-01'
 
-(debug) p vars['ansible_os_family']
+(debug) p task_vars['ansible_os_family']
 'Debian'
 
 # Check a specific fact
-(debug) p vars['ansible_facts']['os_family']
+(debug) p task_vars['ansible_facts']['os_family']
 'Debian'
 
 # Check the full result of the failed task
@@ -249,6 +252,20 @@ The `debugger` keyword options:
 - `on_unreachable` - invoke when host is unreachable
 - `on_skipped` - invoke when task is skipped
 
+You can also enable the task debugger globally without changing the strategy:
+
+```ini
+# ansible.cfg
+[defaults]
+enable_task_debugger = True
+```
+
+Or with an environment variable:
+
+```bash
+ANSIBLE_ENABLE_TASK_DEBUGGER=True ansible-playbook site.yml
+```
+
 ## Using Debug Strategy in Roles
 
 When debugging a role, the debugger shows the role context:
@@ -268,7 +285,7 @@ Debugger invoked
 You can inspect role variables:
 
 ```text
-(debug) p vars['webserver_port']
+(debug) p task_vars['webserver_port']
 80
 ```
 
@@ -283,12 +300,13 @@ The debug strategy has some limitations:
 
 ## Tips for Effective Debugging
 
-Start with `p result._result` to see the exact error. Then inspect the relevant variables with `p vars['variable_name']`. If the fix is a simple argument change, modify and `redo`. If the issue requires code changes, `quit` the debugger, fix the code, and re-run the playbook.
+Start with `p result._result` to see the exact error. Then inspect the relevant variables with `p task_vars['variable_name']`. If the fix is a simple argument change, modify and `redo`. If the issue requires code changes, `quit` the debugger, fix the code, and re-run the playbook.
 
-For template debugging, you can render the template manually:
+For template debugging, inspect the template task arguments and the variables used by the template:
 
 ```text
-(debug) p lookup('template', 'app.conf.j2')
+(debug) p task.args
+(debug) p task_vars['app_version']
 ```
 
 The debug strategy is one of those tools that you forget about until you really need it. When a playbook fails in a way you do not understand, dropping into the interactive debugger and inspecting the actual state of variables and task arguments is often faster than adding debug tasks and re-running the whole playbook.
