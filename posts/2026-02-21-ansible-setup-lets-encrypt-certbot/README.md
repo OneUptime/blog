@@ -51,10 +51,12 @@ domains:
   - www.example.com
   - example.com
 web_server: nginx  # or "apache"
+web_server_service: "{{ 'apache2' if web_server == 'apache' else web_server }}"
 app_backend: "http://127.0.0.1:8000"
 certbot_auto_renew: true
 certbot_renew_hour: 3
 certbot_renew_minute: 30
+certbot_test: false
 ```
 
 ## Main Tasks
@@ -75,6 +77,10 @@ certbot_renew_minute: 30
     path: "/etc/letsencrypt/live/{{ domains[0] }}/fullchain.pem"
   register: cert_exists
 
+- name: Set web server service name
+  set_fact:
+    certbot_web_service: "{{ web_server_service | default('apache2' if web_server == 'apache' else web_server) }}"
+
 - name: Include Nginx-specific tasks
   include_tasks: nginx.yml
   when: web_server == "nginx"
@@ -88,7 +94,7 @@ certbot_renew_minute: 30
     name: "Certbot renewal"
     hour: "{{ certbot_renew_hour }}"
     minute: "{{ certbot_renew_minute }}"
-    job: "certbot renew --quiet --deploy-hook 'systemctl reload {{ web_server }}'"
+    job: "certbot renew --quiet --deploy-hook 'systemctl reload {{ certbot_web_service }}'"
     user: root
   when: certbot_auto_renew
 
@@ -97,6 +103,17 @@ certbot_renew_minute: 30
     src: renewal-hook.sh.j2
     dest: /etc/letsencrypt/renewal-hooks/deploy/reload-webserver.sh
     mode: '0755'
+
+- name: Test certificate renewal dry run
+  command: certbot renew --dry-run
+  register: renewal_test
+  changed_when: false
+  when: certbot_test
+
+- name: Display renewal test results
+  debug:
+    msg: "{{ renewal_test.stdout_lines }}"
+  when: certbot_test
 
 - name: Verify certificate is valid
   command: "certbot certificates"
@@ -309,10 +326,10 @@ server {
 # This script runs after each successful certificate renewal
 
 # Reload the web server to pick up the new certificate
-systemctl reload {{ web_server }}
+systemctl reload {{ certbot_web_service }}
 
 # Log the renewal event
-echo "$(date): Certificate renewed and {{ web_server }} reloaded" >> /var/log/certbot-renewal.log
+echo "$(date): Certificate renewed and {{ certbot_web_service }} reloaded" >> /var/log/certbot-renewal.log
 
 # Optional: send notification
 # curl -s -X POST "https://hooks.slack.com/services/YOUR/WEBHOOK/URL" \
