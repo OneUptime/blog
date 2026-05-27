@@ -26,7 +26,7 @@ graph LR
     C --> G[Stuck Here?]
 ```
 
-The key transition is from **Queued** to **Running**. This happens when a Celery worker picks up the task from the message queue. If tasks are stuck in Queued, something is preventing workers from picking them up.
+The key transition is from **Queued** to **Running**. For Celery-backed tasks, this happens when a worker picks up the task from the message queue. If tasks are stuck in Queued, something is preventing workers from picking them up.
 
 ## Cause 1: Not Enough Workers
 
@@ -43,10 +43,10 @@ gcloud composer environments describe my-composer-env \
   --location=us-central1 \
   --format="yaml(config.workloadsConfig.worker)"
 
-# Check active tasks and concurrency
+# Check that Celery workers are visible to Airflow
 gcloud composer environments run my-composer-env \
   --location=us-central1 \
-  celery inspect active
+  celery list-workers
 ```
 
 In the Airflow UI, go to **Admin** > **Pools** and check the default pool. If slots are fully utilized, tasks will queue.
@@ -149,20 +149,20 @@ core-max_active_runs_per_dag=5"
 
 ## Cause 4: Celery Broker Issues
 
-Cloud Composer uses Redis or RabbitMQ as the Celery broker. If the broker is unhealthy, tasks cannot be dispatched to workers.
+Cloud Composer manages the Celery broker used by Airflow. If the broker is unhealthy or overloaded, tasks cannot be dispatched to workers.
 
 ### Diagnosis
 
 Check if the broker is responding:
 
 ```bash
-# Ping the Celery workers
+# Check that Celery workers are visible to Airflow
 gcloud composer environments run my-composer-env \
   --location=us-central1 \
-  celery inspect ping
+  celery list-workers
 ```
 
-If workers do not respond, the broker may be down or overloaded.
+If workers do not appear, the broker may be unhealthy, overloaded, or unable to communicate with the workers.
 
 Check Cloud Logging for broker-related errors:
 
@@ -176,13 +176,7 @@ gcloud logging read 'resource.type="cloud_composer_environment" AND textPayload=
 
 ### Fix
 
-If the broker is overloaded, reduce the message rate by lowering concurrency or adding more workers. For persistent broker issues, you may need to restart the environment:
-
-```bash
-# Restart the Airflow components
-gcloud composer environments restart-web-server my-composer-env \
-  --location=us-central1
-```
+If the broker is overloaded, reduce the message rate by lowering concurrency, increasing worker capacity, or reducing the number of tasks queued at once. For persistent broker issues, check Cloud Composer environment health and Cloud Logging; the broker is managed by Cloud Composer, so restarting only the web server will not restart workers or the broker.
 
 ## Cause 5: Worker Pods Not Scaling Up
 
@@ -194,16 +188,18 @@ Check if worker pods are pending:
 
 ```bash
 # For Composer 2, check the GKE cluster
-CLUSTER_NAME=$(gcloud composer environments describe my-composer-env \
+CLUSTER_RESOURCE=$(gcloud composer environments describe my-composer-env \
   --location=us-central1 \
   --format="value(config.gkeCluster)")
+CLUSTER_ID=${CLUSTER_RESOURCE##*/}
 
 # Get the cluster credentials
-gcloud container clusters get-credentials $CLUSTER_NAME \
+gcloud container clusters get-credentials $CLUSTER_ID \
+  --project=my-project \
   --region=us-central1
 
 # Check pod status
-kubectl get pods -n composer-user-workloads -o wide | grep worker
+kubectl get pods --all-namespaces -o wide | grep airflow-worker
 ```
 
 ### Fix
@@ -299,10 +295,10 @@ gcloud composer environments run my-composer-env \
   --location=us-central1 \
   pools list
 
-echo "=== Worker Ping ==="
+echo "=== Celery Workers ==="
 gcloud composer environments run my-composer-env \
   --location=us-central1 \
-  celery inspect ping
+  celery list-workers
 
 echo "=== Environment Config ==="
 gcloud composer environments describe my-composer-env \
@@ -319,6 +315,7 @@ Set up monitoring to catch queueing issues before they impact your pipelines:
 gcloud monitoring policies create --policy-from-file=- << 'EOF'
 {
   "displayName": "Composer Tasks Queued Alert",
+  "combiner": "OR",
   "conditions": [{
     "displayName": "Tasks queued > 20 for 15 minutes",
     "conditionThreshold": {
