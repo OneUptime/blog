@@ -23,28 +23,35 @@ This does not mean you should always dump everything in. Token usage affects cos
 The simplest approach is reading document text and including it in your prompt. Here is how to analyze a text document:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part
+from google import genai
+from google.genai.types import HttpOptions
 
 # Initialize Vertex AI
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="global",
+    http_options=HttpOptions(api_version="v1"),
+)
 
-vertexai.init(project="your-project-id", location="us-central1")
-
-model = GenerativeModel("gemini-2.0-flash")
+model_id = "gemini-2.0-flash"
 
 # Read a large document from a local file
 with open("quarterly_report.txt", "r") as f:
     document_text = f.read()
 
 # Ask the model to analyze the document
-response = model.generate_content([
-    f"Here is a quarterly financial report:\n\n{document_text}",
-    "\n\nPlease provide a structured summary with these sections: "
-    "1) Key financial highlights, "
-    "2) Revenue trends, "
-    "3) Notable risks mentioned, "
-    "4) Forward-looking statements."
-])
+response = client.models.generate_content(
+    model=model_id,
+    contents=[
+        f"Here is a quarterly financial report:\n\n{document_text}",
+        "\n\nPlease provide a structured summary with these sections: "
+        "1) Key financial highlights, "
+        "2) Revenue trends, "
+        "3) Notable risks mentioned, "
+        "4) Forward-looking statements."
+    ],
+)
 
 print(response.text)
 ```
@@ -56,27 +63,30 @@ Gemini can process PDF files natively through the API. You do not need to extrac
 This code sends a PDF for analysis:
 
 ```python
-import base64
+from google.genai.types import Part
 
 # Load a PDF file and send it directly to Gemini
 with open("annual_report.pdf", "rb") as f:
     pdf_bytes = f.read()
 
 # Create a Part from the PDF bytes
-pdf_part = Part.from_data(
+pdf_part = Part.from_bytes(
     data=pdf_bytes,
     mime_type="application/pdf"
 )
 
 # Ask specific questions about the PDF content
-response = model.generate_content([
-    pdf_part,
-    "Analyze this annual report and answer the following questions:\n"
-    "1. What was the total revenue for the fiscal year?\n"
-    "2. Which business segment showed the highest growth?\n"
-    "3. What are the top 3 risk factors mentioned?\n"
-    "4. Summarize the CEO's letter in 3 bullet points."
-])
+response = client.models.generate_content(
+    model=model_id,
+    contents=[
+        pdf_part,
+        "Analyze this annual report and answer the following questions:\n"
+        "1. What was the total revenue for the fiscal year?\n"
+        "2. Which business segment showed the highest growth?\n"
+        "3. What are the top 3 risk factors mentioned?\n"
+        "4. Summarize the CEO's letter in 3 bullet points."
+    ],
+)
 
 print(response.text)
 ```
@@ -107,7 +117,7 @@ Compare the four quarterly reports above and provide:
 4. An overall assessment of the year's trajectory
 """
 
-response = model.generate_content(prompt)
+response = client.models.generate_content(model=model_id, contents=prompt)
 print(response.text)
 ```
 
@@ -118,42 +128,43 @@ For repeatable analysis, you want structured output. Gemini can generate JSON su
 This code extracts structured data from a document:
 
 ```python
-from vertexai.generative_models import GenerationConfig
-
 # Configure the model to output valid JSON
-generation_config = GenerationConfig(
-    response_mime_type="application/json",
-    response_schema={
-        "type": "object",
+generation_config = {
+    "response_mime_type": "application/json",
+    "response_schema": {
+        "type": "OBJECT",
         "properties": {
-            "title": {"type": "string"},
-            "executive_summary": {"type": "string"},
+            "title": {"type": "STRING"},
+            "executive_summary": {"type": "STRING"},
             "key_metrics": {
-                "type": "array",
+                "type": "ARRAY",
                 "items": {
-                    "type": "object",
+                    "type": "OBJECT",
                     "properties": {
-                        "metric_name": {"type": "string"},
-                        "value": {"type": "string"},
-                        "trend": {"type": "string", "enum": ["up", "down", "flat"]}
-                    }
+                        "metric_name": {"type": "STRING"},
+                        "value": {"type": "STRING"},
+                        "trend": {"type": "STRING", "enum": ["up", "down", "flat"]}
+                    },
+                    "required": ["metric_name", "value", "trend"],
                 }
             },
             "risks": {
-                "type": "array",
-                "items": {"type": "string"}
+                "type": "ARRAY",
+                "items": {"type": "STRING"}
             },
             "action_items": {
-                "type": "array",
-                "items": {"type": "string"}
+                "type": "ARRAY",
+                "items": {"type": "STRING"}
             }
-        }
+        },
+        "required": ["title", "executive_summary", "key_metrics", "risks", "action_items"],
     }
-)
+}
 
-response = model.generate_content(
-    [document_text, "\n\nExtract a structured summary from this document."],
-    generation_config=generation_config
+response = client.models.generate_content(
+    model=model_id,
+    contents=[document_text, "\n\nExtract a structured summary from this document."],
+    config=generation_config,
 )
 
 import json
@@ -184,23 +195,27 @@ def chunk_text(text, chunk_size=100000):
         chunks.append(current_chunk)
     return chunks
 
-def map_reduce_summarize(text, model):
+def map_reduce_summarize(text, client, model_id):
     """Summarize a very large document using map-reduce."""
     chunks = chunk_text(text)
 
     # Map phase - summarize each chunk
     chunk_summaries = []
     for i, chunk in enumerate(chunks):
-        response = model.generate_content(
-            f"Summarize this section (part {i+1} of {len(chunks)}):\n\n{chunk}"
+        response = client.models.generate_content(
+            model=model_id,
+            contents=f"Summarize this section (part {i+1} of {len(chunks)}):\n\n{chunk}",
         )
         chunk_summaries.append(response.text)
 
     # Reduce phase - combine summaries into a final summary
     combined = "\n\n---\n\n".join(chunk_summaries)
-    final_response = model.generate_content(
-        f"Here are summaries of different sections of a document:\n\n{combined}"
-        "\n\nCombine these into a single coherent summary that captures all key points."
+    final_response = client.models.generate_content(
+        model=model_id,
+        contents=(
+            f"Here are summaries of different sections of a document:\n\n{combined}"
+            "\n\nCombine these into a single coherent summary that captures all key points."
+        ),
     )
     return final_response.text
 ```
@@ -211,7 +226,7 @@ A common pattern is loading a document once and then asking multiple questions a
 
 ```python
 # Load the document into a chat session for interactive QA
-chat = model.start_chat()
+chat = client.chats.create(model=model_id)
 
 # First message includes the full document
 with open("technical_spec.txt", "r") as f:
@@ -244,18 +259,18 @@ Before sending large documents, check token counts to estimate costs and ensure 
 # Count tokens before sending to estimate costs
 content_to_send = [document_text, "\n\nSummarize this document."]
 
-token_count = model.count_tokens(content_to_send)
+token_count = client.models.count_tokens(model=model_id, contents=content_to_send)
 print(f"Input tokens: {token_count.total_tokens}")
-print(f"Estimated cost: ${token_count.total_tokens * 0.000000075:.4f}")
+print("Estimate cost from the current Vertex AI pricing page for your model and region.")
 
 # Only proceed if within budget
 MAX_TOKENS = 500000
 if token_count.total_tokens <= MAX_TOKENS:
-    response = model.generate_content(content_to_send)
+    response = client.models.generate_content(model=model_id, contents=content_to_send)
     print(response.text)
 else:
     print(f"Document too large ({token_count.total_tokens} tokens). Using chunked approach.")
-    result = map_reduce_summarize(document_text, model)
+    result = map_reduce_summarize(document_text, client, model_id)
     print(result)
 ```
 
