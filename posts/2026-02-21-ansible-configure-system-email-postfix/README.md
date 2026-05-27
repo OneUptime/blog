@@ -141,7 +141,7 @@ The main.cf template:
 # Basic settings
 myhostname = {{ postfix_hostname }}
 mydomain = {{ postfix_domain }}
-myorigin = $mydomain
+myorigin = {{ postfix_origin }}
 mydestination = $myhostname, localhost.$mydomain, localhost
 mynetworks = {{ postfix_networks | join(', ') }}
 
@@ -166,7 +166,11 @@ append_dot_mydomain = no
 # TLS settings for outbound mail
 smtp_tls_security_level = may
 smtp_tls_loglevel = 1
+{% if ansible_os_family == "Debian" %}
+smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
+{% else %}
 smtp_tls_CAfile = /etc/pki/tls/certs/ca-bundle.crt
+{% endif %}
 
 # Header checks to clean outbound mail
 header_size_limit = 4096000
@@ -223,7 +227,7 @@ Most servers should not send email directly to the internet. Instead, they shoul
           smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
           smtp_sasl_security_options = noanonymous
           smtp_sasl_tls_security_options = noanonymous
-          smtp_use_tls = yes
+          smtp_tls_security_level = encrypt
       notify: restart postfix
 
     # Create SASL password file
@@ -259,11 +263,6 @@ Most servers should not send email directly to the internet. Instead, they shoul
       notify: rebuild generic db
 
   handlers:
-    - name: restart postfix
-      ansible.builtin.systemd:
-        name: postfix
-        state: restarted
-
     - name: rebuild sasl db
       ansible.builtin.command:
         cmd: postmap /etc/postfix/sasl_passwd
@@ -271,6 +270,11 @@ Most servers should not send email directly to the internet. Instead, they shoul
     - name: rebuild generic db
       ansible.builtin.command:
         cmd: postmap /etc/postfix/generic
+
+    - name: restart postfix
+      ansible.builtin.systemd:
+        name: postfix
+        state: restarted
 ```
 
 ## Email Flow Architecture
@@ -469,7 +473,7 @@ If your servers send email directly (not through a relay), you need proper DNS r
 
 From years of managing Postfix on production servers:
 
-1. Always set `inet_interfaces = loopback-only` on servers that should not accept inbound email. This is the default for most servers and prevents your machine from being an open relay.
+1. Always set `inet_interfaces = loopback-only` on servers that should not accept inbound email. The upstream Postfix default is `all`, so setting this explicitly prevents your machine from accepting remote SMTP connections.
 
 2. Configure sender address rewriting. Emails from `root@ip-172-31-42-15.ec2.internal` will be rejected by most mail services. Rewrite them to a proper domain that has SPF records.
 
