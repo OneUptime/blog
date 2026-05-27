@@ -136,7 +136,7 @@ const unsubscribe = firestore.collection('orders').onSnapshot((snapshot) => {
 
 ## Error Handling and Reconnection
 
-Firestore listeners automatically handle temporary network interruptions. When the connection drops, the library will attempt to reconnect and replay any missed changes. However, some errors are permanent - for example, if the user's permissions change or the collection is deleted.
+Firestore listeners automatically handle temporary network interruptions. When the connection drops, the library will attempt to reconnect and deliver the current query state after it reconnects. However, some errors are permanent - for example, if the service account loses the required IAM permissions or the database is unavailable.
 
 ```javascript
 // Robust listener with error handling
@@ -152,7 +152,7 @@ function startListener() {
 
       // For permission errors, do not retry
       if (error.code === 7) {
-        console.error('Permission denied. Check your Firestore rules.');
+        console.error('Permission denied. Check the service account IAM permissions.');
         return;
       }
 
@@ -243,7 +243,7 @@ const unsubscribe = orderRef.onSnapshot((docSnapshot) => {
 There are a few things to keep in mind when using Firestore listeners in production:
 
 - Each active listener maintains an open gRPC stream to Firestore. If you are running hundreds of listeners, you will use significant memory and network resources.
-- Firestore charges for document reads on listener connections. Every document in the initial snapshot counts as a read, and every changed document in subsequent updates counts as a read.
+- Firestore charges for document reads on listener connections. Every document in the initial snapshot counts as a read, and every document added or updated in subsequent updates counts as a read. A document removed from a query because it changed is also charged as a read, but a document removed because it was deleted is not. Depending on the query, index entry reads can also be billed.
 - On Cloud Run, keep in mind that instances can be shut down at any time. You need proper SIGTERM handling to clean up listeners.
 - Consider using Pub/Sub or Firestore triggers (Cloud Functions) instead of direct listeners if you need to fan out updates to many consumers.
 
