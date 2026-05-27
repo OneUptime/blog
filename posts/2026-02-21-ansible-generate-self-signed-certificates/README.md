@@ -17,14 +17,13 @@ Ansible solves both problems. You can generate self-signed certificates with con
 ```mermaid
 graph TD
     A[Ansible Controller] --> B[Generate Root CA]
-    B --> C[Generate Intermediate CA]
-    C --> D[Sign Server Certificates]
-    D --> E[Deploy to Servers]
+    B --> C[Sign Server Certificates]
+    C --> D[Deploy to Servers]
     A --> F[Deploy CA Trust]
     F --> G[All Clients Trust CA]
-    E --> H[Internal Web Services]
-    E --> I[Database TLS]
-    E --> J[Inter-Service mTLS]
+    D --> H[Internal Web Services]
+    D --> I[Database TLS]
+    D --> J[Inter-Service mTLS]
 ```
 
 ## Variables
@@ -157,10 +156,32 @@ First, create an internal Certificate Authority on the Ansible controller.
   delegate_to: localhost
   when: not ca_key_stat.stat.exists
 
+- name: Generate CA CSR
+  community.crypto.openssl_csr:
+    path: "{{ ca_dir }}/csr/ca.csr"
+    privatekey_path: "{{ ca_dir }}/private/ca.key"
+    country_name: "{{ ca_country }}"
+    state_or_province_name: "{{ ca_state }}"
+    locality_name: "{{ ca_locality }}"
+    organization_name: "{{ ca_organization }}"
+    organizational_unit_name: "{{ ca_organizational_unit }}"
+    common_name: "{{ ca_common_name }}"
+    basic_constraints:
+      - CA:TRUE
+    basic_constraints_critical: true
+    key_usage:
+      - keyCertSign
+      - cRLSign
+    key_usage_critical: true
+    mode: '0644'
+  delegate_to: localhost
+  when: not ca_key_stat.stat.exists
+
 - name: Generate CA certificate
   community.crypto.x509_certificate:
     path: "{{ ca_dir }}/certs/ca.crt"
     privatekey_path: "{{ ca_dir }}/private/ca.key"
+    csr_path: "{{ ca_dir }}/csr/ca.csr"
     provider: selfsigned
     selfsigned_not_after: "+{{ ca_validity_days }}d"
     mode: '0644'
@@ -250,7 +271,12 @@ Generate certificates for each service signed by our internal CA.
   loop: "{{ self_signed_certs }}"
   loop_control:
     loop_var: cert_spec
-  delegate_to: localhost
+
+- name: Generate client certificates
+  ansible.builtin.include_tasks: generate-client-cert.yml
+  loop: "{{ mtls_client_certs | default([]) }}"
+  loop_control:
+    loop_var: client_cert
 ```
 
 Individual certificate generation.
@@ -293,12 +319,12 @@ Individual certificate generation.
     mode: '0644'
 
 - name: "Create fullchain for {{ cert_spec.common_name }}"
-  ansible.builtin.shell:
-    cmd: >
-      cat {{ cert_output_dir }}/{{ cert_spec.common_name }}.crt
-      {{ ca_dir }}/certs/ca.crt
-      > {{ cert_output_dir }}/{{ cert_spec.common_name }}-fullchain.crt
-  changed_when: true
+  ansible.builtin.copy:
+    dest: "{{ cert_output_dir }}/{{ cert_spec.common_name }}-fullchain.crt"
+    content: |
+      {{ lookup('file', cert_output_dir ~ '/' ~ cert_spec.common_name ~ '.crt') }}
+      {{ lookup('file', ca_dir ~ '/certs/ca.crt') }}
+    mode: '0644'
 
 - name: "Verify the generated certificate"
   ansible.builtin.command:
@@ -368,6 +394,8 @@ Individual certificate generation.
     mode: '0644'
   notify: Update CA trust store
   when: ansible_os_family == "Debian"
+  tags:
+    - deploy
 
 - name: Deploy CA certificate on RHEL
   ansible.builtin.copy:
@@ -378,13 +406,21 @@ Individual certificate generation.
     mode: '0644'
   notify: Update CA trust store RHEL
   when: ansible_os_family == "RedHat"
+  tags:
+    - deploy
 
 - name: Deploy server certificates
-  ansible.builtin.include_tasks: deploy-cert.yml
+  ansible.builtin.include_tasks:
+    file: deploy-cert.yml
+    apply:
+      tags:
+        - deploy
   loop: "{{ self_signed_certs }}"
   loop_control:
     loop_var: cert_spec
   when: cert_spec.deploy_to in group_names or cert_spec.deploy_to == 'all'
+  tags:
+    - deploy
 ```
 
 ```yaml
@@ -413,7 +449,7 @@ Individual certificate generation.
     owner: root
     group: root
     mode: '0644'
-  notify: "Reload services"
+  register: cert_copy_result
 
 - name: "Deploy private key for {{ cert_spec.common_name }}"
   ansible.builtin.copy:
@@ -422,7 +458,7 @@ Individual certificate generation.
     owner: root
     group: root
     mode: '0600'
-  notify: "Reload services"
+  register: key_copy_result
 
 - name: "Deploy CA chain"
   ansible.builtin.copy:
@@ -431,6 +467,13 @@ Individual certificate generation.
     owner: root
     group: root
     mode: '0644'
+
+- name: "Reload services for {{ cert_spec.common_name }}"
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: reloaded
+  loop: "{{ cert_spec.services_to_reload | default([]) }}"
+  when: cert_copy_result.changed or key_copy_result.changed
 ```
 
 ## Quick Self-Signed Certificate (No CA)
@@ -447,10 +490,21 @@ For quick development setups where you just need a certificate and do not want t
     mode: '0600'
   loop: "{{ quick_certs | default([]) }}"
 
+- name: "Generate CSR for {{ item.common_name }}"
+  community.crypto.openssl_csr:
+    path: "{{ item.key_dest }}.csr"
+    privatekey_path: "{{ item.key_dest }}"
+    common_name: "{{ item.common_name }}"
+    subject_alt_name: >-
+      {{ (item.san_dns | default([item.common_name]) | map('regex_replace', '^', 'DNS:') | list)
+         + (item.san_ip | default([]) | map('regex_replace', '^', 'IP:') | list) }}
+  loop: "{{ quick_certs | default([]) }}"
+
 - name: "Generate self-signed certificate for {{ item.common_name }}"
   community.crypto.x509_certificate:
     path: "{{ item.cert_dest }}"
     privatekey_path: "{{ item.key_dest }}"
+    csr_path: "{{ item.key_dest }}.csr"
     provider: selfsigned
     selfsigned_not_after: "+365d"
     mode: '0644'
@@ -463,6 +517,10 @@ Usage in your variables.
 # For quick development certs
 quick_certs:
   - common_name: localhost
+    san_dns:
+      - localhost
+    san_ip:
+      - 127.0.0.1
     cert_dest: /etc/ssl/certs/localhost.crt
     key_dest: /etc/ssl/private/localhost.key
 ```
@@ -479,13 +537,6 @@ quick_certs:
 - name: Update CA trust store RHEL
   ansible.builtin.command:
     cmd: update-ca-trust
-
-- name: Reload services
-  ansible.builtin.service:
-    name: "{{ item }}"
-    state: reloaded
-  loop: "{{ cert_spec.services_to_reload | default([]) }}"
-  ignore_errors: yes
 ```
 
 ## Main Playbook
