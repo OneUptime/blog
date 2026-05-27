@@ -109,7 +109,7 @@ Check the current status:
 ```bash
 # Check if uniform bucket-level access is enabled
 gcloud storage buckets describe gs://my-data-bucket \
-  --format="json(iamConfiguration)"
+  --format="default(uniform_bucket_level_access)"
 ```
 
 ## Working with ACLs
@@ -133,10 +133,11 @@ gcloud storage objects update gs://my-bucket/private/secret.txt \
 Available predefined ACLs:
 - `private` - owner only
 - `publicRead` - owner has full control, everyone can read
-- `publicReadWrite` - everyone can read and write
+- `publicReadWrite` - bucket owner has full control, everyone can read and write (buckets only)
 - `authenticatedRead` - any authenticated Google user can read
-- `bucketOwnerRead` - bucket owner can read
-- `bucketOwnerFullControl` - bucket owner has full control
+- `bucketOwnerRead` - object owner has full control, bucket owner can read (objects only)
+- `bucketOwnerFullControl` - object and bucket owners have full control (objects only)
+- `projectPrivate` - project team permissions based on project roles
 
 ### Setting ACLs on Upload
 
