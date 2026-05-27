@@ -46,7 +46,7 @@ Back in GCP, create a notification channel that connects to your PagerDuty servi
 ```bash
 # Create a PagerDuty notification channel
 
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="PagerDuty - Payment Service" \
   --type=pagerduty \
   --channel-labels=service_key=YOUR_PAGERDUTY_INTEGRATION_KEY \
@@ -59,7 +59,7 @@ To verify the channel was created, list your channels:
 
 ```bash
 # List all notification channels to find the channel ID
-gcloud alpha monitoring channels list \
+gcloud beta monitoring channels list \
   --project=my-project-id \
   --format="table(name, displayName, type)"
 ```
@@ -74,34 +74,93 @@ Here is a critical-severity alert for a complete service outage:
 
 ```bash
 # Critical alert: service is completely down
-gcloud alpha monitoring policies create \
-  --display-name="CRITICAL - Payment Service Down" \
-  --condition-display-name="Zero successful requests for 5 minutes" \
-  --condition-filter='resource.type="cloud_run_revision" AND resource.labels.service_name="payment-service" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="2xx"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_LT \
-  --condition-threshold-duration=300s \
-  --condition-threshold-aggregation-alignment-period=60s \
-  --condition-threshold-aggregation-per-series-aligner=ALIGN_RATE \
-  --notification-channels=projects/my-project-id/notificationChannels/CRITICAL_CHANNEL_ID \
-  --documentation-content="CRITICAL: Payment service is down. Runbook: https://wiki/runbooks/payment-down" \
-  --severity=CRITICAL
+gcloud monitoring policies create \
+  --project=my-project-id \
+  --policy='{
+    "displayName": "CRITICAL - Payment Service Down",
+    "combiner": "OR",
+    "severity": "CRITICAL",
+    "notificationChannels": [
+      "projects/my-project-id/notificationChannels/CRITICAL_CHANNEL_ID"
+    ],
+    "documentation": {
+      "content": "CRITICAL: Payment service is down. Runbook: https://wiki/runbooks/payment-down",
+      "mimeType": "text/markdown"
+    },
+    "conditions": [
+      {
+        "displayName": "Successful request rate below 0.01/sec for 5 minutes",
+        "conditionThreshold": {
+          "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"payment-service\" AND metric.type=\"run.googleapis.com/request_count\" AND metric.labels.response_code_class=\"2xx\"",
+          "aggregations": [
+            {
+              "alignmentPeriod": "60s",
+              "perSeriesAligner": "ALIGN_RATE",
+              "crossSeriesReducer": "REDUCE_SUM",
+              "groupByFields": ["resource.labels.service_name"]
+            }
+          ],
+          "comparison": "COMPARISON_LT",
+          "thresholdValue": 0.01,
+          "duration": "300s",
+          "trigger": {
+            "count": 1
+          }
+        }
+      }
+    ]
+  }'
 ```
 
 And a warning-level alert for degraded performance:
 
 ```bash
 # Warning alert: elevated error rate
-gcloud alpha monitoring policies create \
-  --display-name="WARNING - Payment Service Error Rate High" \
-  --condition-display-name="Error rate > 5% for 10 minutes" \
-  --condition-filter='resource.type="cloud_run_revision" AND resource.labels.service_name="payment-service" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="5xx"' \
-  --condition-threshold-value=0.05 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=600s \
-  --notification-channels=projects/my-project-id/notificationChannels/WARNING_CHANNEL_ID \
-  --documentation-content="WARNING: Payment service error rate elevated. Check logs." \
-  --severity=WARNING
+gcloud monitoring policies create \
+  --project=my-project-id \
+  --policy='{
+    "displayName": "WARNING - Payment Service Error Rate High",
+    "combiner": "OR",
+    "severity": "WARNING",
+    "notificationChannels": [
+      "projects/my-project-id/notificationChannels/WARNING_CHANNEL_ID"
+    ],
+    "documentation": {
+      "content": "WARNING: Payment service error rate elevated. Check logs.",
+      "mimeType": "text/markdown"
+    },
+    "conditions": [
+      {
+        "displayName": "Error rate > 5% for 10 minutes",
+        "conditionThreshold": {
+          "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"payment-service\" AND metric.type=\"run.googleapis.com/request_count\" AND metric.labels.response_code_class=\"5xx\"",
+          "denominatorFilter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"payment-service\" AND metric.type=\"run.googleapis.com/request_count\"",
+          "aggregations": [
+            {
+              "alignmentPeriod": "60s",
+              "perSeriesAligner": "ALIGN_RATE",
+              "crossSeriesReducer": "REDUCE_SUM",
+              "groupByFields": ["resource.labels.service_name"]
+            }
+          ],
+          "denominatorAggregations": [
+            {
+              "alignmentPeriod": "60s",
+              "perSeriesAligner": "ALIGN_RATE",
+              "crossSeriesReducer": "REDUCE_SUM",
+              "groupByFields": ["resource.labels.service_name"]
+            }
+          ],
+          "comparison": "COMPARISON_GT",
+          "thresholdValue": 0.05,
+          "duration": "600s",
+          "trigger": {
+            "count": 1
+          }
+        }
+      }
+    ]
+  }'
 ```
 
 ## Step 4: Configure PagerDuty Escalation Rules
@@ -121,7 +180,7 @@ In PagerDuty, go to your service and set up Event Orchestration rules:
             "label": "Critical Severity",
             "conditions": [
               {
-                "expression": "event.custom_details.severity matches 'CRITICAL'"
+                "expression": "event.severity matches 'critical'"
               }
             ],
             "actions": {
@@ -135,7 +194,7 @@ In PagerDuty, go to your service and set up Event Orchestration rules:
             "label": "Warning Severity",
             "conditions": [
               {
-                "expression": "event.custom_details.severity matches 'WARNING'"
+                "expression": "event.severity matches 'warning'"
               }
             ],
             "actions": {
