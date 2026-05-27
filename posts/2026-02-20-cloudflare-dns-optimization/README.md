@@ -219,16 +219,16 @@ curl -X POST \
 ## Step 5: Enable Performance Optimizations
 
 ```bash
-# Enable Auto Minify for HTML, CSS, and JS
+# Auto Minify is deprecated; turn it off if it is still enabled
 curl -X PATCH \
   "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/settings/minify" \
   -H "Authorization: Bearer $API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "value": {
-      "css": "on",
-      "html": "on",
-      "js": "on"
+      "css": "off",
+      "html": "off",
+      "js": "off"
     }
   }'
 
@@ -274,7 +274,7 @@ curl -X POST \
         "expression": "(http.request.uri.path eq \"/api/login\")",
         "action": "block",
         "ratelimit": {
-          "characteristics": ["ip.src"],
+          "characteristics": ["cf.colo.id", "ip.src"],
           "period": 60,
           "requests_per_period": 5,
           "mitigation_timeout": 600
@@ -295,7 +295,7 @@ graph LR
     end
     subgraph "With Cloudflare"
         A2[User] -->|~10ms| B2[Cloudflare Edge]
-        B2 -->|Cache Hit: 0ms| C2[Response]
+        B2 -->|Cache Hit: Edge response| C2[Response]
         B2 -->|Cache Miss: ~150ms| D2[Origin Server]
     end
 ```
