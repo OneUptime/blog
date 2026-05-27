@@ -33,13 +33,15 @@ The cycle is continuous. Edge devices send inference results and raw data back t
 
 - GCP project with Vertex AI, Cloud Storage, and Pub/Sub APIs enabled
 - Coral Edge TPU device (USB Accelerator or Dev Board)
-- Python 3.8+ with the Vertex AI SDK
+- Python 3.8 or 3.9 for the edge device, matching PyCoral's supported Python versions
+- Edge TPU runtime and compiler installed
 - Training data in Cloud Storage
 
 ```bash
 # Install required packages
 
-pip install google-cloud-aiplatform tensorflow pycoral
+python3 -m pip install google-cloud-aiplatform google-cloud-storage google-cloud-pubsub tensorflow
+python3 -m pip install --extra-index-url https://google-coral.github.io/py-repo/ pycoral~=2.0
 ```
 
 ## Step 1: Prepare Training Data
@@ -99,7 +101,8 @@ import os
 
 def build_model(input_shape, num_classes):
     """Builds a lightweight CNN suitable for Edge TPU deployment.
-    The model uses only operations supported by the Edge TPU compiler."""
+    Confirm the compiled model report before deploying to ensure the
+    performance-critical operations are mapped to the Edge TPU."""
 
     model = tf.keras.Sequential([
         # Reshape 1D sensor data into a format suitable for Conv1D
@@ -176,7 +179,6 @@ model = job.run(
     model_display_name="vibration-classifier-v1",
     replica_count=1,
     machine_type="n1-standard-4",
-    args=["--epochs=50"],
 )
 print(f"Model trained: {model.resource_name}")
 ```
@@ -203,8 +205,10 @@ def convert_to_edgetpu(saved_model_path, output_path):
 
     def representative_dataset():
         """Provides calibration data for quantization.
-        Uses 200 random samples to calibrate INT8 ranges."""
+        Uses 200 representative samples with the same range and shape
+        as the sensor data used for training."""
         for _ in range(200):
+            # Replace this with real calibration samples from your validation set.
             sample = np.random.rand(1, 128).astype(np.float32)
             yield [sample]
 
@@ -286,7 +290,7 @@ class EdgeInferenceService:
         # Scale to uint8 range using the model's quantization parameters
         scale = self.input_details["quantization"][0]
         zero_point = self.input_details["quantization"][1]
-        quantized = (data / scale + zero_point).astype(np.uint8)
+        quantized = np.clip(np.round(data / scale + zero_point), 0, 255).astype(np.uint8)
 
         return quantized.reshape(self.input_details["shape"])
 
