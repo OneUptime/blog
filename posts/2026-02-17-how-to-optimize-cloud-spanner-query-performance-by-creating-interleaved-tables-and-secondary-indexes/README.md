@@ -8,17 +8,17 @@ Description: A practical guide to using interleaved tables and secondary indexes
 
 ---
 
-Cloud Spanner is Google's globally distributed relational database, and it handles scale in ways that traditional databases simply cannot. But Spanner's distributed nature means you need to think differently about data layout. Two of the most powerful tools for query optimization in Spanner are interleaved tables and secondary indexes. Used correctly, they can dramatically reduce latency by ensuring related data lives close together physically, even across a distributed system.
+Cloud Spanner is Google's globally distributed relational database, and it handles scale in ways that traditional databases simply cannot. But Spanner's distributed nature means you need to think differently about data layout. Two of the most powerful tools for query optimization in Spanner are interleaved tables and secondary indexes. Used correctly, they can dramatically reduce latency by helping related data live close together physically, even across a distributed system.
 
 ## How Spanner Stores Data
 
 Before diving into optimization techniques, it helps to understand how Spanner organizes data. Spanner stores rows sorted by their primary key. Rows with similar primary keys end up on the same split (Spanner's unit of data distribution). When you query data that spans multiple splits, Spanner needs to coordinate across servers, which adds latency.
 
-This is where interleaved tables come in. They let you co-locate parent and child rows on the same split so that queries joining them are fast.
+This is where interleaved tables come in. They let you co-locate parent and child rows along the primary key dimension so that queries joining them can be fast.
 
 ## What Are Interleaved Tables
 
-Interleaving is a way to physically nest child table rows within their parent rows. Instead of storing all Singer rows in one place and all Album rows in another, interleaving stores each Singer's Albums right next to the Singer row. A query that fetches a Singer and their Albums hits a single split instead of potentially reaching across the network.
+Interleaving is a way to physically nest child table rows within their parent rows. Instead of treating Singer rows and Album rows as unrelated top-level tables, interleaving stores each Singer's Albums with the Singer row. A query that fetches a Singer and their Albums can often be served locally instead of potentially reaching across the network.
 
 Here is a standard (non-interleaved) table structure:
 
@@ -74,7 +74,7 @@ Interleaving makes sense when you frequently query parent and child data togethe
 - Accounts and their transactions
 - Documents and their sections
 
-Interleaving does NOT make sense when child rows are frequently queried independently of their parent, when the child table is very large relative to the parent (causing hot splits), or when you need to move child rows between parents.
+Interleaving does NOT make sense when child rows are frequently queried independently of their parent, when a parent can have a very large or high-write child row set, or when you need to move child rows between parents.
 
 ## Multi-Level Interleaving
 
@@ -96,7 +96,7 @@ CREATE TABLE Albums (
   INTERLEAVE IN PARENT Singers ON DELETE CASCADE;
 
 -- Level 3: Songs interleaved in Albums
--- All three levels are co-located on the same split
+-- The hierarchy is stored together along the primary key dimension
 CREATE TABLE Songs (
   SingerId INT64 NOT NULL,
   AlbumId  INT64 NOT NULL,
@@ -107,7 +107,7 @@ CREATE TABLE Songs (
   INTERLEAVE IN PARENT Albums ON DELETE CASCADE;
 ```
 
-A query fetching a Singer with all their Albums and Songs touches a single split - that is the power of interleaving.
+A query fetching a Singer with all their Albums and Songs can usually be served with local joins - that is the power of interleaving.
 
 ## Creating Secondary Indexes
 
@@ -130,8 +130,8 @@ By default, a secondary index only stores the indexed columns and the primary ke
 -- Create a covering index that includes AlbumTitle
 -- This means queries filtering by ReleaseDate that also need AlbumTitle
 -- can be served entirely from the index without a back-join
-CREATE INDEX AlbumsByReleaseDate ON Albums(ReleaseDate)
-  STORING (AlbumTitle, SingerId);
+CREATE INDEX AlbumsByReleaseDateCovering ON Albums(ReleaseDate)
+  STORING (AlbumTitle);
 ```
 
 The `STORING` clause adds columns to the index without making them part of the index key. This is particularly impactful for queries that return a small number of non-key columns.
@@ -144,11 +144,11 @@ Here is where things get really interesting. You can interleave an index in a ta
 -- Create an index on Songs that is interleaved in the Singers table
 -- This is useful when you query songs filtered by properties
 -- but always scoped to a specific singer
-CREATE INDEX SongsBySingerAndDuration ON Songs(SingerId, Duration)
+CREATE INDEX SongsBySingerAndDuration ON Songs(SingerId, Duration),
   INTERLEAVE IN Singers;
 ```
 
-An interleaved index is most useful when your queries always filter by the parent key. If you query songs by duration without filtering by SingerId, a non-interleaved index would be better because it stores all entries together regardless of parent.
+An interleaved index is most useful when your queries always filter by the parent key. If you query songs by duration without filtering by SingerId, a non-interleaved index on `Duration` would be better because it supports database-wide lookups by duration.
 
 ## NULL-Filtered Indexes
 
@@ -167,16 +167,16 @@ CREATE NULL_FILTERED INDEX AlbumsByReleaseDateNonNull
 Use Spanner's query execution plans to understand whether your indexes and interleaving are being used:
 
 ```sql
--- Use EXPLAIN to see the query execution plan
+-- Use Spanner Studio's Explain action or a client query mode that returns
+-- the query plan for this query.
 -- Look for "Index Scan" vs "Table Scan" and check for back-joins
-EXPLAIN
 SELECT a.AlbumTitle, a.ReleaseDate
 FROM Albums a
 WHERE a.SingerId = 1
 ORDER BY a.ReleaseDate;
 ```
 
-In the Google Cloud Console, the Query Statistics dashboard shows you the most expensive queries, their execution patterns, and which indexes they use. Check this regularly to identify optimization opportunities.
+In the Google Cloud console, the Query insights page and Spanner's query statistics tables help you find expensive queries and review sampled execution plans. Check this regularly to identify optimization opportunities.
 
 ## Best Practices for Index Design
 
