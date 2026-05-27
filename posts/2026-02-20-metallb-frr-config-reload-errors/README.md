@@ -8,11 +8,11 @@ Description: Learn how to diagnose and fix MetalLB FRR configuration reload erro
 
 ---
 
-MetalLB uses FRR (Free Range Routing) as its BGP backend in modern versions. When you update MetalLB configuration - adding new BGP peers, changing IP pools, or modifying advertisements - MetalLB generates a new FRR configuration and reloads FRR. If the generated configuration is invalid, FRR rejects the reload, and your BGP sessions stop updating. This guide covers how to identify, diagnose, and fix these reload errors.
+MetalLB can use FRR (Free Range Routing) as its BGP backend. Current MetalLB releases default to FRR-K8s, while the older direct FRR mode is deprecated but still supported. In direct FRR mode, when you update MetalLB configuration - adding new BGP peers, changing IP pools, or modifying advertisements - MetalLB generates a new FRR configuration and reloads FRR. If the generated configuration is invalid, FRR rejects the reload, and your BGP sessions stop updating. This guide covers how to identify, diagnose, and fix these reload errors in direct FRR mode.
 
 ## How MetalLB and FRR Work Together
 
-MetalLB does not speak BGP directly. Instead, it generates an FRR configuration file and tells FRR to reload it. The flow looks like this:
+In direct FRR mode, MetalLB does not speak BGP directly. Instead, it generates an FRR configuration file and tells FRR to reload it. The flow looks like this:
 
 ```mermaid
 sequenceDiagram
@@ -41,6 +41,8 @@ When the reload fails, FRR continues running with the old configuration. This me
 The first sign of a reload error is usually that a new LoadBalancer service does not become reachable externally, even though it has an IP assigned.
 
 ### Check Speaker Logs
+
+These commands apply to the deprecated direct FRR mode. If you are using the current default FRR-K8s mode, check the FRR-K8s pod logs and `FRRNodeState` resources instead.
 
 ```bash
 # Search for FRR reload errors in the speaker logs
@@ -81,7 +83,7 @@ kubectl logs -n metallb-system \
 ### Inspect the Generated FRR Configuration
 
 ```bash
-# Extract the current FRR configuration from the speaker pod
+# Extract the generated FRR configuration from the speaker pod
 # This is the configuration that MetalLB generated and tried to apply
 SPEAKER_POD=$(kubectl get pods -n metallb-system \
   -l component=speaker \
@@ -89,8 +91,8 @@ SPEAKER_POD=$(kubectl get pods -n metallb-system \
 
 # Read the generated FRR configuration file
 kubectl exec -n metallb-system "$SPEAKER_POD" \
-  -c frr \
-  -- cat /etc/frr/frr.conf
+  -c reloader \
+  -- cat /etc/frr_reloader/frr.conf
 
 # Compare with the running FRR configuration
 # If these differ, a reload has failed
@@ -101,25 +103,23 @@ kubectl exec -n metallb-system "$SPEAKER_POD" \
 
 ## Common FRR Configuration Errors
 
-### Error 1: Duplicate Router ID
+### Error 1: Inconsistent Router ID
 
-If two speaker pods on different nodes generate the same router ID, FRR will reject the configuration.
+In direct FRR mode, MetalLB cannot configure different router IDs for different peers in the same speaker pod. If you override `routerID`, use the same value for all `BGPPeer` resources that apply to the same node, or limit peer resources with `nodeSelectors`.
 
 ```bash
 # Check the router ID in the FRR configuration
 kubectl exec -n metallb-system "$SPEAKER_POD" \
-  -c frr \
-  -- grep "router-id" /etc/frr/frr.conf
+  -c reloader \
+  -- grep "router-id" /etc/frr_reloader/frr.conf
 
-# The router ID should be unique per node
-# MetalLB typically uses the node's IP as the router ID
+# The router ID should be consistent across peers in one generated FRR config
 ```
 
-Fix this by ensuring each node has a unique IP address and that MetalLB can detect it:
+Fix this by setting a consistent `routerID`, or by scoping node-specific peers with `nodeSelectors`:
 
 ```yaml
 # bgppeer.yaml
-# Explicitly set the router ID if auto-detection fails
 apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
@@ -129,8 +129,7 @@ spec:
   myASN: 64512
   peerASN: 64513
   peerAddress: 10.0.0.1
-  # The routerID is automatically set per-node
-  # If you need to override, use node-specific BGPPeer resources
+  routerID: 10.0.0.10
 ```
 
 ### Error 2: Invalid ASN Ranges
@@ -165,11 +164,21 @@ spec:
 
 ### Error 3: Address Family Mismatch
 
-Announcing IPv6 prefixes over an IPv4-only BGP session or vice versa causes FRR reload failures.
+By default, MetalLB separates IPv4 and IPv6 route exchanges by session address family. If you need to advertise IPv4 prefixes over IPv6 sessions, or IPv6 prefixes over IPv4 sessions, configure the peer with `dualStackAddressFamily: true`.
 
 ```yaml
-# Correct dual-stack BGP advertisement
-# Make sure your BGPPeer supports the address families you advertise
+# BGPPeer that allows exchanging both address families on the session
+apiVersion: metallb.io/v1beta2
+kind: BGPPeer
+metadata:
+  name: dual-stack-peer
+  namespace: metallb-system
+spec:
+  myASN: 64512
+  peerASN: 64513
+  peerAddress: 2001:db8::1
+  dualStackAddressFamily: true
+---
 apiVersion: metallb.io/v1beta1
 kind: BGPAdvertisement
 metadata:
@@ -177,31 +186,21 @@ metadata:
   namespace: metallb-system
 spec:
   ipAddressPools:
-    - ipv4-pool   # Only advertise IPv4 pools over IPv4 peers
+    - ipv4-pool
+    - ipv6-pool
   peers:
-    - ipv4-peer   # This peer must support IPv4
----
-apiVersion: metallb.io/v1beta1
-kind: BGPAdvertisement
-metadata:
-  name: ipv6-advert
-  namespace: metallb-system
-spec:
-  ipAddressPools:
-    - ipv6-pool   # Only advertise IPv6 pools over IPv6 peers
-  peers:
-    - ipv6-peer   # This peer must support IPv6
+    - dual-stack-peer
 ```
 
 ```mermaid
 flowchart TD
-    A[FRR Reload Error] --> B{Error Type?}
-    B -->|Duplicate Router ID| C[Check node IPs are unique]
+    A[FRR or BGP Error] --> B{Error Type?}
+    B -->|Inconsistent Router ID| C[Check routerID values per node]
     B -->|Invalid ASN| D[Verify ASN ranges]
     B -->|Address Family| E[Match pools to peer families]
     B -->|Syntax Error| F[Check generated frr.conf]
     B -->|Permission Denied| G[Check FRR container security context]
-    C --> H[Fix node configuration]
+    C --> H[Update routerID or nodeSelectors]
     D --> I[Update BGPPeer resource]
     E --> J[Separate IPv4 and IPv6 advertisements]
     F --> K[Report bug with config dump]
@@ -231,6 +230,6 @@ kubectl logs -n metallb-system \
 
 FRR configuration reload errors are one of the most common causes of MetalLB BGP issues. The root cause is almost always a mismatch between what MetalLB tries to configure and what FRR accepts. By inspecting the generated FRR configuration, comparing it to the running configuration, and checking the FRR container logs, you can quickly identify and fix the problem.
 
-The most important debugging step is extracting the generated `/etc/frr/frr.conf` and comparing it to `show running-config`. If they differ, a reload has failed, and the FRR logs will tell you why.
+The most important debugging step is extracting the generated `/etc/frr_reloader/frr.conf` and comparing it to `show running-config`. If they differ, a reload has failed, and the FRR logs will tell you why.
 
 To catch FRR reload failures before they impact production traffic, set up monitoring with [OneUptime](https://oneuptime.com). OneUptime can monitor your BGP-exposed services and alert you when they become unreachable, giving you early warning of FRR configuration issues that need attention.
