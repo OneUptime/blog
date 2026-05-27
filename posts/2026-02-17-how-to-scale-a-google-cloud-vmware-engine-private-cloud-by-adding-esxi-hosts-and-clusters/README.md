@@ -8,7 +8,7 @@ Description: Scale your Google Cloud VMware Engine private cloud by adding ESXi 
 
 ---
 
-One of the key advantages of running VMware workloads on Google Cloud VMware Engine (GCVE) is the ability to scale compute resources on demand. Unlike on-premises environments where scaling means ordering hardware, waiting weeks for delivery, and racking servers, GCVE lets you add ESXi hosts to an existing cluster or create entirely new clusters within minutes.
+One of the key advantages of running VMware workloads on Google Cloud VMware Engine (GCVE) is the ability to scale compute resources on demand. Unlike on-premises environments where scaling means ordering hardware, waiting weeks for delivery, and racking servers, GCVE lets you add ESXi hosts to an existing cluster or create entirely new clusters without procuring and installing hardware.
 
 This guide covers the practical steps and considerations for scaling your GCVE private cloud, including when to add hosts versus when to create new clusters.
 
@@ -16,7 +16,7 @@ This guide covers the practical steps and considerations for scaling your GCVE p
 
 GCVE gives you two ways to scale:
 
-**Vertical scaling within a cluster**: Add more ESXi hosts to an existing cluster. Each host adds CPU, memory, and storage to the shared resource pool. A cluster can have between 3 and 16 hosts.
+**Vertical scaling within a cluster**: Add more ESXi hosts to an existing cluster. Each host adds CPU, memory, and storage to the shared resource pool. A standard cluster that meets SLA requirements can have between 3 and 32 hosts.
 
 **Horizontal scaling with new clusters**: Add a new cluster to your private cloud. A private cloud can have multiple clusters, each serving different workloads or environments.
 
@@ -59,16 +59,16 @@ gcloud vmware private-clouds describe my-gcve-cloud \
 gcloud vmware private-clouds clusters update management-cluster \
   --private-cloud=my-gcve-cloud \
   --location=us-central1 \
-  --node-type-config=type=standard-72,count=4  # Increase from 3 to 4
+  --update-nodes-config=type=standard-72,count=4  # Increase from 3 to 4
 
 # For custom node types, specify the appropriate type
 gcloud vmware private-clouds clusters update management-cluster \
   --private-cloud=my-gcve-cloud \
   --location=us-central1 \
-  --node-type-config=type=standard-72,count=5  # Scale to 5 hosts
+  --update-nodes-config=type=standard-72,count=5  # Scale to 5 hosts
 ```
 
-You can also use the REST API for automation.
+You can also use the Python client library for automation.
 
 ```python
 # scale_cluster.py - Programmatically add hosts to a cluster
@@ -94,14 +94,15 @@ def add_hosts_to_cluster(project_id, location, private_cloud, cluster_name, targ
     print(f"Scaling cluster from {current_count} to {target_count} hosts")
 
     # Update the node count
-    cluster.node_type_configs["standard-72"].node_count = target_count
+    request = vmwareengine_v1.UpdateClusterRequest()
+    request.cluster = vmwareengine_v1.Cluster()
+    request.cluster.name = cluster_path
+    request.cluster.node_type_configs = {
+        "standard-72": vmwareengine_v1.NodeTypeConfig(node_count=target_count)
+    }
+    request.update_mask = "nodeTypeConfigs.*.nodeCount"
 
-    update_mask = {"paths": ["node_type_configs"]}
-
-    operation = client.update_cluster(
-        cluster=cluster,
-        update_mask=update_mask,
-    )
+    operation = client.update_cluster(request)
 
     # Wait for the operation to complete
     result = operation.result()
@@ -160,7 +161,7 @@ def create_new_cluster(project_id, location, private_cloud, cluster_name, node_c
         cluster_id=cluster_name,
     )
 
-    print(f"Creating cluster {cluster_name}. This takes approximately 30 minutes.")
+    print(f"Creating cluster {cluster_name}. This long-running operation may take over an hour.")
     result = operation.result()
     print(f"Cluster created: {result.name}")
     return result
@@ -178,119 +179,17 @@ create_new_cluster(
 
 ## Auto-Scaling with Monitoring
 
-While GCVE does not have built-in auto-scaling, you can build your own using Cloud Monitoring and Cloud Functions.
-
-```python
-# autoscale_monitor.py - Monitor cluster utilization and scale as needed
-import functions_framework
-from google.cloud import monitoring_v3
-from google.cloud import vmwareengine_v1
-import logging
-from datetime import datetime, timedelta
-
-logger = logging.getLogger(__name__)
-
-# Scaling thresholds
-SCALE_UP_CPU_THRESHOLD = 80  # Scale up when average CPU exceeds 80%
-SCALE_DOWN_CPU_THRESHOLD = 30  # Scale down when average CPU drops below 30%
-MIN_HOSTS = 3
-MAX_HOSTS = 12
-COOLDOWN_MINUTES = 30
-
-
-@functions_framework.http
-def check_and_scale(request):
-    """Check cluster utilization and scale if needed."""
-    # Get current CPU utilization from vCenter metrics via Cloud Monitoring
-    avg_cpu = get_cluster_cpu_utilization()
-    current_hosts = get_current_host_count()
-
-    logger.info(f"Current state: {current_hosts} hosts, {avg_cpu}% CPU utilization")
-
-    if avg_cpu > SCALE_UP_CPU_THRESHOLD and current_hosts < MAX_HOSTS:
-        new_count = min(current_hosts + 1, MAX_HOSTS)
-        logger.info(f"Scaling up from {current_hosts} to {new_count} hosts")
-        scale_cluster(new_count)
-        return {"action": "scale_up", "new_count": new_count}, 200
-
-    elif avg_cpu < SCALE_DOWN_CPU_THRESHOLD and current_hosts > MIN_HOSTS:
-        new_count = max(current_hosts - 1, MIN_HOSTS)
-        logger.info(f"Scaling down from {current_hosts} to {new_count} hosts")
-        scale_cluster(new_count)
-        return {"action": "scale_down", "new_count": new_count}, 200
-
-    return {"action": "no_change", "hosts": current_hosts, "cpu": avg_cpu}, 200
-
-
-def get_cluster_cpu_utilization():
-    """Query Cloud Monitoring for average CPU utilization."""
-    client = monitoring_v3.MetricServiceClient()
-    project_path = f"projects/my-project"
-
-    now = datetime.utcnow()
-    interval = monitoring_v3.TimeInterval(
-        start_time={"seconds": int((now - timedelta(minutes=15)).timestamp())},
-        end_time={"seconds": int(now.timestamp())},
-    )
-
-    # Query for VMware cluster CPU metrics
-    results = client.list_time_series(
-        request={
-            "name": project_path,
-            "filter": 'metric.type = "vmwareengine.googleapis.com/cluster/cpu/utilization"',
-            "interval": interval,
-            "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
-        }
-    )
-
-    values = []
-    for series in results:
-        for point in series.points:
-            values.append(point.value.double_value)
-
-    return sum(values) / len(values) if values else 0
-
-
-def get_current_host_count():
-    """Get the current number of hosts in the cluster."""
-    client = vmwareengine_v1.VmwareEngineClient()
-    cluster_path = (
-        "projects/my-project/locations/us-central1"
-        "/privateClouds/my-gcve-cloud/clusters/management-cluster"
-    )
-    cluster = client.get_cluster(name=cluster_path)
-    return cluster.node_type_configs["standard-72"].node_count
-
-
-def scale_cluster(target_count):
-    """Scale the cluster to the target host count."""
-    client = vmwareengine_v1.VmwareEngineClient()
-    cluster_path = (
-        "projects/my-project/locations/us-central1"
-        "/privateClouds/my-gcve-cloud/clusters/management-cluster"
-    )
-
-    cluster = client.get_cluster(name=cluster_path)
-    cluster.node_type_configs["standard-72"].node_count = target_count
-
-    operation = client.update_cluster(
-        cluster=cluster,
-        update_mask={"paths": ["node_type_configs"]},
-    )
-
-    logger.info(f"Scaling operation started: {operation.operation.name}")
-```
-
-Schedule the scaling monitor.
+GCVE has built-in autoscale that can expand or shrink a cluster based on CPU, memory, and storage utilization thresholds. You can configure autoscale on a cluster instead of building a separate Cloud Functions workflow.
 
 ```bash
-# Check cluster utilization every 15 minutes
-gcloud scheduler jobs create http gcve-autoscale-check \
+# Enable autoscale for a cluster using CPU thresholds
+gcloud vmware private-clouds clusters update management-cluster \
+  --private-cloud=my-gcve-cloud \
   --location=us-central1 \
-  --schedule="*/15 * * * *" \
-  --uri="https://us-central1-YOUR_PROJECT.cloudfunctions.net/gcve-autoscaler" \
-  --http-method=POST \
-  --oidc-service-account-email=gcve-scaler@YOUR_PROJECT.iam.gserviceaccount.com
+  --autoscaling-min-cluster-node-count=3 \
+  --autoscaling-max-cluster-node-count=12 \
+  --autoscaling-cool-down-period=1800s \
+  --update-autoscaling-policy=name=cpu-policy,node-type-id=standard-72,scale-out-size=1,cpu-thresholds-scale-out=80,cpu-thresholds-scale-in=30,min-node-count=3,max-node-count=12
 ```
 
 ## Removing Hosts
@@ -302,7 +201,7 @@ When scaling down, hosts are removed from the cluster. vSAN rebalances data acro
 gcloud vmware private-clouds clusters update management-cluster \
   --private-cloud=my-gcve-cloud \
   --location=us-central1 \
-  --node-type-config=type=standard-72,count=3  # Reduce from more hosts to 3
+  --update-nodes-config=type=standard-72,count=3  # Reduce from more hosts to 3
 
 # Monitor the vSAN rebalance operation in vCenter
 # This takes time as data is redistributed
@@ -312,4 +211,4 @@ Make sure you have enough storage capacity on the remaining hosts before removin
 
 ## Wrapping Up
 
-Scaling a GCVE private cloud is straightforward compared to on-premises infrastructure. Adding hosts takes minutes instead of weeks, and creating new clusters gives you workload isolation when you need it. By combining GCVE scaling APIs with Cloud Monitoring and Cloud Functions, you can build an auto-scaling system that adjusts capacity based on actual demand. The key is planning your node types and cluster layout to match your workload characteristics and maintaining enough headroom for vSAN storage rebalancing during scale operations.
+Scaling a GCVE private cloud is straightforward compared to on-premises infrastructure. Adding hosts avoids hardware procurement cycles, and creating new clusters gives you workload isolation when you need it. By combining GCVE scaling APIs or built-in autoscale with cluster metrics, you can adjust capacity based on actual demand. The key is planning your node types and cluster layout to match your workload characteristics and maintaining enough headroom for vSAN storage rebalancing during scale operations.
