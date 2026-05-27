@@ -50,36 +50,36 @@ While Google's recommendations are helpful, you should also do your own analysis
 
 ### Using Cloud Monitoring
 
-Cloud Monitoring collects CPU, memory, and disk metrics for all your VMs. You can build a dashboard or run MQL queries to find underutilized instances.
+Cloud Monitoring collects CPU utilization metrics for your VMs, and the Ops Agent adds more detailed memory, disk, network, and process metrics. You can build a dashboard or run PromQL queries to find underutilized instances.
 
-Here is a Monitoring Query Language (MQL) query to find VMs with average CPU utilization below 20% over the past 30 days:
+Here is a PromQL query to find VMs with average CPU utilization below 20% over the past 30 days:
 
 ```text
-fetch gce_instance
-| metric 'compute.googleapis.com/instance/cpu/utilization'
-| group_by [resource.instance_id], 30d, [avg_utilization: mean(val())]
-| filter avg_utilization < 0.2
+avg by (instance_id, instance_name) (
+  avg_over_time({"compute.googleapis.com/instance/cpu/utilization", monitored_resource="gce_instance"}[30d])
+) < 0.2
 ```
 
 ### Using BigQuery with Billing Export
 
-If you have billing export enabled, you can correlate cost data with utilization:
+If you have detailed billing export enabled, you can identify high-cost instances and then compare them with utilization data from Cloud Monitoring:
 
 ```sql
--- Find VMs with high cost but low utilization
--- Requires billing export and monitoring metrics export
+-- Find high-cost Compute Engine VMs
+-- Requires detailed billing export
 SELECT
-  labels.value AS instance_name,
-  SUM(cost) AS monthly_cost,
-  AVG(usage.amount_in_pricing_units) AS avg_usage
+  resource.name AS instance_name,
+  resource.global_name AS instance_resource,
+  SUM(cost) AS monthly_cost
 FROM
-  `my-project.billing_export.gcp_billing_export_v1_*`
+  `my-project.billing_export.gcp_billing_export_resource_v1_*`
 WHERE
   service.description = 'Compute Engine'
   AND sku.description LIKE '%Instance Core%'
   AND usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY
-  instance_name
+  instance_name,
+  instance_resource
 HAVING
   monthly_cost > 50
 ORDER BY
@@ -136,7 +136,7 @@ gcloud compute instances start my-vm --zone=us-central1-a
 
 ### Automate Rightsizing with a Script
 
-For multiple VMs, you can script the process. This script applies rightsizing recommendations automatically:
+For multiple VMs, you can script the process. This script prints rightsizing recommendations and asks before applying each change:
 
 ```bash
 #!/bin/bash
@@ -160,6 +160,11 @@ echo "$RECOMMENDATIONS" | jq -r '.[] | .content.operationGroups[0].operations[0]
   INSTANCE_NAME=$(basename "$RESOURCE")
 
   echo "Resizing $INSTANCE_NAME to $NEW_TYPE"
+  read -r -p "Stop and resize $INSTANCE_NAME? [y/N] " CONFIRM
+  if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+    echo "Skipping $INSTANCE_NAME"
+    continue
+  fi
 
   # Stop, resize, start
   gcloud compute instances stop "$INSTANCE_NAME" --zone="$ZONE" --quiet
