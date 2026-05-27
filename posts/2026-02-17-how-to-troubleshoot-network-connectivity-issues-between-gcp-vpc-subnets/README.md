@@ -82,7 +82,7 @@ gcloud compute firewall-rules create allow-app-traffic \
 
 ## Step 2: Check Routes
 
-Within a single VPC, GCP automatically creates subnet routes so that traffic between subnets is routed correctly. But custom routes or route priorities can override this behavior.
+Within a single VPC, GCP automatically creates subnet routes so that traffic between subnets is routed correctly. Custom static and dynamic routes cannot override local subnet routes for the same or more specific destination range, but policy-based routes, missing peering routes, or routes to network appliances can still affect the path.
 
 ```bash
 # List all routes in the VPC
@@ -93,7 +93,7 @@ gcloud compute routes list \
 
 Look for:
 - Missing subnet routes (these should exist automatically)
-- Custom routes with a higher priority that might be diverting traffic
+- Policy-based routes or custom routes for other destination ranges that might be diverting traffic
 - Routes pointing to a network appliance that might be dropping packets
 
 ```bash
@@ -116,8 +116,9 @@ gcloud compute networks peerings list \
 
 Key things to verify in peering:
 - The peering state should be ACTIVE
-- `exchangeSubnetRoutes` should be true
+- Private IPv4 subnet routes are exchanged automatically when the peering is ACTIVE
 - Both sides of the peering must be configured
+- If you need custom static or dynamic routes, the exporting side must export them and the importing side must import them
 
 ```bash
 # Check peering details for route exchange
@@ -126,7 +127,7 @@ gcloud compute networks peerings list \
     --format="yaml"
 ```
 
-If routes are not being exchanged, update the peering:
+If custom routes are not being exchanged, update the peering on the relevant side:
 
 ```bash
 # Update peering to export and import custom routes
@@ -170,17 +171,17 @@ If you have VPC Flow Logs enabled, they show you actual traffic patterns and can
 gcloud compute networks subnets update subnet-a \
     --region=us-central1 \
     --enable-flow-logs \
-    --logging-flow-log-interval=INTERVAL_5_SEC
+    --logging-aggregation-interval=interval-5-sec
 
 # Query flow logs in Cloud Logging
 gcloud logging read \
     'resource.type="gce_subnetwork" AND jsonPayload.connection.dest_ip="10.0.2.5"' \
     --project=my-project \
     --limit=10 \
-    --format="table(jsonPayload.connection.src_ip, jsonPayload.connection.dest_ip, jsonPayload.connection.dest_port, jsonPayload.disposition)"
+    --format="table(jsonPayload.connection.src_ip, jsonPayload.connection.dest_ip, jsonPayload.connection.dest_port, jsonPayload.packets_sent, jsonPayload.bytes_sent)"
 ```
 
-The `disposition` field in flow logs tells you whether traffic was ALLOWED or DENIED.
+The flow log record shows the connection tuple plus packet and byte counts for observed traffic. If expected traffic never appears, use Connectivity Tests and firewall rule logging to confirm whether it is being denied before it becomes an observed flow.
 
 ## Step 6: Check for Network Tags Mismatch
 
@@ -222,7 +223,7 @@ graph TD
     D --> J{Peering state ACTIVE?}
     J -->|No| K[Fix peering configuration]
     J -->|Yes| L{Routes exchanged?}
-    L -->|No| M[Enable route exchange in peering]
+    L -->|No| M[Enable custom route import and export if needed]
     L -->|Yes| C
     I --> N[Run Connectivity Test]
     N --> O[Check VPC Flow Logs]
@@ -235,6 +236,6 @@ A few things that consistently catch people:
 1. **Default deny on ingress** - Unlike some other cloud providers, GCP does not automatically allow traffic between subnets in the same VPC. You need explicit firewall rules.
 2. **Firewall rule priority** - Lower numbers mean higher priority. A deny rule with priority 100 will override an allow rule with priority 1000.
 3. **Hierarchical firewall policies** - Organization or folder-level firewall policies can override project-level rules.
-4. **Private Google Access** - If a VM has no external IP, it cannot reach Google APIs unless Private Google Access is enabled on the subnet.
+4. **Private Google Access** - If a VM has no external IP, enable Private Google Access on the subnet when it needs to reach Google APIs and services through its internal IP address.
 
 Always work through these checks systematically. Network debugging is tedious but methodical - if you check firewall rules, routes, peering, and tags in order, you will find the issue.
