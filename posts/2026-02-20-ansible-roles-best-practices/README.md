@@ -40,12 +40,12 @@ graph TD
 
 ## Creating a Role Skeleton
 
-Use `ansible-galaxy init` to create the standard structure.
+Use `ansible-galaxy role init` to create the standard structure.
 
 ```bash
 # Create a new role with the standard directory layout
 
-ansible-galaxy init roles/nginx
+ansible-galaxy role init nginx --init-path roles
 
 # The generated structure:
 # roles/nginx/
@@ -138,15 +138,25 @@ Break large task files into smaller ones and include them from `main.yml`.
 # roles/nginx/tasks/install.yml
 # Handles nginx package installation
 ---
-- name: Add official nginx apt signing key
-  ansible.builtin.apt_key:
-    url: https://nginx.org/keys/nginx_signing.key
+- name: Install apt repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - python3-debian
     state: present
+    update_cache: true
   when: nginx_use_official_repo
 
 - name: Add official nginx repository
-  ansible.builtin.apt_repository:
-    repo: "deb https://nginx.org/packages/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} nginx"
+  ansible.builtin.deb822_repository:
+    name: nginx
+    types:
+      - deb
+    uris: "https://nginx.org/packages/{{ ansible_distribution | lower }}"
+    suites: "{{ ansible_distribution_release }}"
+    components:
+      - nginx
+    signed_by: https://nginx.org/keys/nginx_signing.key
     state: present
   when: nginx_use_official_repo
 
@@ -179,23 +189,22 @@ Break large task files into smaller ones and include them from `main.yml`.
   notify: reload nginx
 ```
 
-## Best Practice 3: Write Idempotent Handlers
+## Best Practice 3: Use Handlers for Change-Triggered Actions
 
-Handlers should only run when notified and should be idempotent.
+Handlers should only run when notified. Use idempotent service states like `started` for steady-state tasks, and reserve `reloaded` or `restarted` for handlers that are intentionally triggered by a change.
 
 ```yaml
 # roles/nginx/handlers/main.yml
 # Handlers are triggered by notify directives in tasks
 ---
 - name: reload nginx
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ nginx_service_name }}"
     state: reloaded
-  # Only reload if nginx is already running
   listen: "reload nginx"
 
 - name: restart nginx
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ nginx_service_name }}"
     state: restarted
   listen: "restart nginx"
@@ -257,16 +266,19 @@ Understanding variable precedence prevents unexpected behavior.
 ```mermaid
 flowchart TD
     A[Extra Vars - CLI] -->|Highest Priority| Z[Final Value]
-    B[Task vars] --> Z
-    C[Block vars] --> Z
-    D[Role vars - vars/main.yml] --> Z
-    E[Play vars] --> Z
-    F[Host vars] --> Z
-    G[Group vars] --> Z
-    H[Role defaults - defaults/main.yml] -->|Lowest Priority| Z
+    B[Role and include params] --> Z
+    C[Registered vars and set_facts] --> Z
+    D[include_vars] --> Z
+    E[Task vars] --> Z
+    F[Block vars] --> Z
+    G[Role vars - vars/main.yml] --> Z
+    H[Play vars] --> Z
+    I[Host vars] --> Z
+    J[Group vars] --> Z
+    K[Role defaults - defaults/main.yml] -->|Lowest Priority| Z
 
     style A fill:#ff6b6b
-    style H fill:#69db7c
+    style K fill:#69db7c
 ```
 
 ## Best Practice 5: Define Role Metadata and Dependencies
@@ -279,7 +291,7 @@ galaxy_info:
   author: your-team
   description: Installs and configures nginx web server
   license: MIT
-  min_ansible_version: "2.14"
+  min_ansible_version: "2.15"
   platforms:
     - name: Ubuntu
       versions:
@@ -335,11 +347,21 @@ platforms:
     image: ubuntu:22.04
     pre_build_image: true
     command: /sbin/init
+    tmpfs:
+      - /run
+      - /tmp
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
     privileged: true
   - name: debian-bookworm
     image: debian:bookworm
     pre_build_image: true
     command: /sbin/init
+    tmpfs:
+      - /run
+      - /tmp
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
     privileged: true
 provisioner:
   name: ansible
