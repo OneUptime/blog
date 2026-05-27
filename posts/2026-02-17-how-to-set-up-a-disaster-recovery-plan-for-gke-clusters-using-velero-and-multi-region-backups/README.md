@@ -29,24 +29,44 @@ gcloud iam service-accounts create velero-sa \
 
 # Grant the necessary permissions
 PROJECT_ID=$(gcloud config get-value project)
+SERVICE_ACCOUNT_EMAIL=velero-sa@${PROJECT_ID}.iam.gserviceaccount.com
+BUCKET=my-project-velero-backups
 
 # Storage permissions for the backup bucket
-gsutil iam ch serviceAccount:velero-sa@${PROJECT_ID}.iam.gserviceaccount.com:roles/storage.objectAdmin \
-  gs://my-project-velero-backups
+gsutil iam ch serviceAccount:${SERVICE_ACCOUNT_EMAIL}:objectAdmin \
+  gs://${BUCKET}
 
-# Compute permissions for snapshot management
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:velero-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/compute.storageAdmin"
+# Project permissions for snapshots, backup metadata, and signed URLs
+ROLE_PERMISSIONS=(
+  compute.disks.get
+  compute.disks.create
+  compute.disks.createSnapshot
+  compute.projects.get
+  compute.snapshots.get
+  compute.snapshots.create
+  compute.snapshots.useReadOnly
+  compute.snapshots.delete
+  compute.snapshots.setLabels
+  compute.zones.get
+  storage.objects.create
+  storage.objects.delete
+  storage.objects.get
+  storage.objects.list
+  iam.serviceAccounts.signBlob
+)
 
-# GKE permissions
+gcloud iam roles create velero.server \
+  --project ${PROJECT_ID} \
+  --title "Velero Server" \
+  --permissions "$(IFS=","; echo "${ROLE_PERMISSIONS[*]}")"
+
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:velero-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/iam.serviceAccountUser"
+  --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
+  --role="projects/${PROJECT_ID}/roles/velero.server"
 
 # Create a key file for Velero
 gcloud iam service-accounts keys create velero-credentials.json \
-  --iam-account=velero-sa@${PROJECT_ID}.iam.gserviceaccount.com
+  --iam-account=${SERVICE_ACCOUNT_EMAIL}
 ```
 
 Install Velero using the CLI.
@@ -58,10 +78,9 @@ brew install velero  # or download from GitHub releases
 # Install Velero on the GKE cluster with the GCP plugin
 velero install \
   --provider gcp \
-  --plugins velero/velero-plugin-for-gcp:v1.9.0 \
-  --bucket my-project-velero-backups \
+  --plugins velero/velero-plugin-for-gcp:v1.13.0 \
+  --bucket ${BUCKET} \
   --secret-file ./velero-credentials.json \
-  --backup-location-config serviceAccount=velero-sa@${PROJECT_ID}.iam.gserviceaccount.com \
   --snapshot-location-config project=${PROJECT_ID} \
   --use-node-agent
 
@@ -142,13 +161,12 @@ gcloud transfer jobs create \
 velero backup-location create dr-location \
   --provider gcp \
   --bucket my-project-velero-backups-dr \
-  --config serviceAccount=velero-sa@${PROJECT_ID}.iam.gserviceaccount.com \
   --access-mode ReadOnly
 ```
 
 ## Backup Hooks for Application Consistency
 
-Use Velero backup hooks to ensure application-consistent backups. For databases, you want to flush writes and create a consistent snapshot.
+Use Velero backup hooks to improve application consistency. For databases, use application-specific commands to quiesce writes or create a consistent dump before the backup.
 
 ```yaml
 # deployment-with-backup-hooks.yaml
@@ -157,15 +175,6 @@ kind: Deployment
 metadata:
   name: postgres-app
   namespace: production
-  annotations:
-    # Pre-backup hook: flush PostgreSQL WAL before snapshot
-    backup.velero.io/backup-volumes: data
-    pre.hook.backup.velero.io/container: postgres
-    pre.hook.backup.velero.io/command: '["/bin/bash", "-c", "pg_dump -U postgres mydb > /var/lib/postgresql/data/backup.sql && sync"]'
-    pre.hook.backup.velero.io/timeout: 120s
-    # Post-backup hook: clean up the dump file
-    post.hook.backup.velero.io/container: postgres
-    post.hook.backup.velero.io/command: '["/bin/bash", "-c", "rm -f /var/lib/postgresql/data/backup.sql"]'
 spec:
   replicas: 1
   selector:
@@ -175,6 +184,14 @@ spec:
     metadata:
       labels:
         app: postgres-app
+      annotations:
+        # Pre-backup hook: create a PostgreSQL logical dump before backup
+        pre.hook.backup.velero.io/container: postgres
+        pre.hook.backup.velero.io/command: '["/bin/bash", "-c", "pg_dump -U postgres mydb > /var/lib/postgresql/data/backup.sql && sync"]'
+        pre.hook.backup.velero.io/timeout: 120s
+        # Post-backup hook: clean up the dump file
+        post.hook.backup.velero.io/container: postgres
+        post.hook.backup.velero.io/command: '["/bin/bash", "-c", "rm -f /var/lib/postgresql/data/backup.sql"]'
     spec:
       containers:
         - name: postgres
@@ -230,10 +247,9 @@ gcloud container clusters create recovery-cluster \
 # Install Velero on the recovery cluster, pointing to the DR bucket
 velero install \
   --provider gcp \
-  --plugins velero/velero-plugin-for-gcp:v1.9.0 \
+  --plugins velero/velero-plugin-for-gcp:v1.13.0 \
   --bucket my-project-velero-backups-dr \
   --secret-file ./velero-credentials.json \
-  --backup-location-config serviceAccount=velero-sa@${PROJECT_ID}.iam.gserviceaccount.com \
   --snapshot-location-config project=${PROJECT_ID}
 
 # Wait for Velero to discover the backups
@@ -270,7 +286,7 @@ spec:
           serviceAccountName: velero
           containers:
             - name: dr-test
-              image: bitnami/kubectl:latest
+              image: your-registry/dr-test-tools:latest # includes kubectl, velero, and jq
               command:
                 - /bin/bash
                 - -c
