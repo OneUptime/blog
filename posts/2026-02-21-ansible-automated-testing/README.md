@@ -35,14 +35,14 @@ Install Molecule with Docker support:
 ```bash
 # Install molecule with the Docker driver
 
-pip install molecule molecule-docker ansible-lint
+pip install molecule "molecule-plugins[docker]" ansible-lint pytest-testinfra
 ```
 
 Initialize a new role with Molecule testing:
 
 ```bash
 # Create a new role with built-in Molecule tests
-molecule init role my_nginx --driver-name docker
+molecule init role acme.my_nginx --driver-name docker
 ```
 
 Or add Molecule to an existing role:
@@ -64,7 +64,7 @@ The `molecule.yml` file defines your test environment:
 dependency:
   name: galaxy
   options:
-    requirements-file: requirements.yml
+    role-file: requirements.yml
 
 driver:
   name: docker
@@ -141,7 +141,18 @@ Testinfra lets you write Python tests that verify the state of your test instanc
 ```python
 # roles/nginx/molecule/default/tests/test_default.py
 # Verify that the nginx role configured everything correctly
-import pytest
+def nginx_vhost_path(host):
+    """Return the vhost path for the target distribution."""
+    if host.system_info.distribution in ("debian", "ubuntu"):
+        return "/etc/nginx/sites-enabled/testserver.conf"
+    return "/etc/nginx/conf.d/testserver.conf"
+
+
+def nginx_user(host):
+    """Return the default nginx worker user for the target distribution."""
+    if host.system_info.distribution in ("debian", "ubuntu"):
+        return "www-data"
+    return "nginx"
 
 
 def test_nginx_is_installed(host):
@@ -180,7 +191,7 @@ def test_nginx_config_file(host):
 
 def test_vhost_config(host):
     """Virtual host configuration should be in place."""
-    vhost = host.file("/etc/nginx/sites-enabled/testserver.conf")
+    vhost = host.file(nginx_vhost_path(host))
     assert vhost.exists
     assert vhost.contains("listen 8080")
     assert vhost.contains("server_name testserver")
@@ -191,7 +202,7 @@ def test_document_root(host):
     docroot = host.file("/var/www/testserver")
     assert docroot.exists
     assert docroot.is_directory
-    assert docroot.user == "www-data"
+    assert docroot.user == nginx_user(host)
 ```
 
 ## Running Molecule Tests
@@ -204,18 +215,17 @@ molecule test
 
 # This runs these steps in order:
 # 1. dependency - install role dependencies
-# 2. lint - run ansible-lint
-# 3. cleanup - clean previous test artifacts
-# 4. destroy - remove old test instances
-# 5. syntax - check playbook syntax
-# 6. create - create test instances
-# 7. prepare - run preparation tasks
-# 8. converge - apply the role
-# 9. idempotence - run again to verify idempotency
-# 10. side_effect - run side effect playbook
-# 11. verify - run testinfra tests
-# 12. cleanup - clean up
-# 13. destroy - destroy test instances
+# 2. cleanup - clean previous test artifacts
+# 3. destroy - remove old test instances
+# 4. syntax - check playbook syntax
+# 5. create - create test instances
+# 6. prepare - run preparation tasks
+# 7. converge - apply the role
+# 8. idempotence - run again to verify idempotency
+# 9. side_effect - run side effect playbook
+# 10. verify - run testinfra tests
+# 11. cleanup - clean up
+# 12. destroy - destroy test instances
 ```
 
 During development, you can run individual steps:
@@ -265,9 +275,8 @@ exclude_paths:
   - .github/
 
 enable_list:
-  - fqcn-builtins
-  - no-changed-when
-  - no-handler
+  - no-log-password
+  - name[prefix]
 
 skip_list:
   - yaml[line-length]
@@ -322,7 +331,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install molecule molecule-docker ansible
+        run: pip install molecule "molecule-plugins[docker]" ansible pytest-testinfra
       - name: Run Molecule tests
         run: molecule test
         working-directory: roles/${{ matrix.role }}
