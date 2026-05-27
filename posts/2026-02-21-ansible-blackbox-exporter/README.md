@@ -158,7 +158,7 @@ blackbox_icmp_targets:
   ansible.builtin.get_url:
     url: "https://github.com/prometheus/blackbox_exporter/releases/download/v{{ blackbox_version }}/blackbox_exporter-{{ blackbox_version }}.linux-amd64.tar.gz"
     dest: /tmp/blackbox_exporter.tar.gz
-    checksum: "sha256:{{ blackbox_checksum | default(omit) }}"
+    checksum: "{{ ('sha256:' ~ blackbox_checksum) if (blackbox_checksum is defined) else omit }}"
 
 - name: Extract Blackbox Exporter
   ansible.builtin.unarchive:
@@ -218,15 +218,15 @@ modules:
 {% if value is mapping %}
       {{ key }}:
 {% for k, v in value.items() %}
-        {{ k }}: {{ v }}
+        {{ k }}: {{ v | to_json }}
 {% endfor %}
 {% elif value is iterable and value is not string %}
       {{ key }}:
 {% for item in value %}
-        - {{ item }}
+        - {{ item | to_json }}
 {% endfor %}
 {% else %}
-      {{ key }}: {{ value }}
+      {{ key }}: {{ value | to_json }}
 {% endif %}
 {% endfor %}
 {% endif %}
@@ -236,10 +236,10 @@ modules:
 {% if value is mapping %}
       {{ key }}:
 {% for k, v in value.items() %}
-        {{ k }}: {{ v }}
+        {{ k }}: {{ v | to_json }}
 {% endfor %}
 {% else %}
-      {{ key }}: {{ value }}
+      {{ key }}: {{ value | to_json }}
 {% endif %}
 {% endfor %}
 {% endif %}
@@ -249,17 +249,17 @@ modules:
 {% if value is iterable and value is not string %}
       {{ key }}:
 {% for item in value %}
-        - {{ item }}
+        - {{ item | to_json }}
 {% endfor %}
 {% else %}
-      {{ key }}: "{{ value }}"
+      {{ key }}: {{ value | to_json }}
 {% endif %}
 {% endfor %}
 {% endif %}
 {% if config.icmp is defined %}
     icmp:
 {% for key, value in config.icmp.items() %}
-      {{ key }}: {{ value }}
+      {{ key }}: {{ value | to_json }}
 {% endfor %}
 {% endif %}
 {% endfor %}
@@ -325,16 +325,19 @@ Generate the Prometheus scrape configs that use Blackbox Exporter for probing.
 # TCP probes
 - job_name: 'blackbox_tcp'
   metrics_path: /probe
-  params:
-    module: [tcp_connect]
   static_configs:
-    - targets:
 {% for target in blackbox_tcp_targets %}
-        - {{ target.host }}  # {{ target.name }}
+    - targets:
+        - {{ target.host }}
+      labels:
+        target_name: "{{ target.name }}"
+        module: "{{ target.module | default('tcp_connect') }}"
 {% endfor %}
   relabel_configs:
     - source_labels: [__address__]
       target_label: __param_target
+    - source_labels: [module]
+      target_label: __param_module
     - source_labels: [__param_target]
       target_label: instance
     - target_label: __address__
@@ -466,8 +469,8 @@ ansible-playbook -i inventory/hosts.ini site.yml
 # Verify the deployment
 ansible-playbook -i inventory/hosts.ini verify-blackbox.yml
 
-# Update targets without restarting (Prometheus reload)
-ansible-playbook -i inventory/hosts.ini site.yml --tags targets
+# Update targets after changing group_vars/monitoring.yml
+ansible-playbook -i inventory/hosts.ini site.yml
 ```
 
 ## Wrapping Up
