@@ -49,7 +49,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "name": "payment-service-url",
-    "value": "https://payments.internal.example.com/v2"
+    "value": "payments.internal.example.com/v2"
   }'
 
 # Add an API key for a third-party service
@@ -119,11 +119,11 @@ This policy reads the payment service URL from the KVM:
 
 ```xml
 <!-- apiproxy/policies/LookupBackendConfig.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <KeyValueMapOperations name="LookupBackendConfig"
     mapIdentifier="backend-config">
     <DisplayName>Lookup Backend Config</DisplayName>
     <Scope>environment</Scope>
+    <ExpiryTimeInSecs>300</ExpiryTimeInSecs>
 
     <!-- Read the payment service URL -->
     <Get assignTo="config.payment.url">
@@ -163,7 +163,6 @@ Use the backend URL from KVM for a ServiceCallout:
 
 ```xml
 <!-- apiproxy/policies/CallPaymentService.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <ServiceCallout name="CallPaymentService">
     <DisplayName>Call Payment Service</DisplayName>
     <Request clearPayload="true" variable="paymentRequest">
@@ -175,7 +174,7 @@ Use the backend URL from KVM for a ServiceCallout:
     <Response>paymentResponse</Response>
     <!-- URL comes from the KVM lookup -->
     <HTTPTargetConnection>
-        <URL>{config.payment.url}</URL>
+        <URL>https://{config.payment.url}</URL>
     </HTTPTargetConnection>
 </ServiceCallout>
 ```
@@ -184,7 +183,6 @@ Add the third-party API key to outbound requests:
 
 ```xml
 <!-- apiproxy/policies/AddMapsKey.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <AssignMessage name="AddMapsKey">
     <DisplayName>Add Maps API Key</DisplayName>
     <AssignTo createNew="false" transport="http" type="request"/>
@@ -201,13 +199,10 @@ Use the SpikeArrest rate from KVM:
 
 ```xml
 <!-- apiproxy/policies/DynamicSpikeArrest.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <SpikeArrest name="DynamicSpikeArrest">
     <DisplayName>Dynamic Spike Arrest</DisplayName>
     <!-- Rate comes from KVM via flow variable -->
-    <Rate ref="config.spike.arrest.rate">
-        <Rate>30ps</Rate> <!-- Fallback if KVM lookup fails -->
-    </Rate>
+    <Rate ref="config.spike.arrest.rate">30ps</Rate> <!-- Fallback if KVM lookup fails -->
 </SpikeArrest>
 ```
 
@@ -241,7 +236,6 @@ You can also write values to KVMs at runtime. This is useful for caching results
 
 ```xml
 <!-- apiproxy/policies/StoreTokenInKVM.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <KeyValueMapOperations name="StoreTokenInKVM"
     mapIdentifier="token-cache">
     <DisplayName>Store Token in KVM</DisplayName>
@@ -269,7 +263,6 @@ Remove entries when they are no longer needed:
 
 ```xml
 <!-- apiproxy/policies/DeleteExpiredToken.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <KeyValueMapOperations name="DeleteExpiredToken"
     mapIdentifier="token-cache">
     <DisplayName>Delete Expired Token</DisplayName>
@@ -295,7 +288,7 @@ curl -X PUT \
   -H "Content-Type: application/json" \
   -d '{
     "name": "payment-service-url",
-    "value": "https://new-payments.internal.example.com/v3"
+    "value": "new-payments.internal.example.com/v3"
   }'
 
 # List all entries in a KVM
@@ -323,21 +316,21 @@ curl -X POST \
   "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/dev/keyvaluemaps/backend-config/entries" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
-  -d '{"name": "payment-service-url", "value": "https://payments-dev.example.com"}'
+  -d '{"name": "payment-service-url", "value": "payments-dev.example.com"}'
 
 # Staging environment: backend config
 curl -X POST \
   "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/staging/keyvaluemaps/backend-config/entries" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
-  -d '{"name": "payment-service-url", "value": "https://payments-staging.example.com"}'
+  -d '{"name": "payment-service-url", "value": "payments-staging.example.com"}'
 
 # Prod environment: backend config
 curl -X POST \
   "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/prod/keyvaluemaps/backend-config/entries" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
-  -d '{"name": "payment-service-url", "value": "https://payments.example.com"}'
+  -d '{"name": "payment-service-url", "value": "payments.example.com"}'
 ```
 
 The proxy uses `<Scope>environment</Scope>` in the KVM policy, so it automatically reads the right value based on where it is deployed.
@@ -346,7 +339,7 @@ The proxy uses `<Scope>environment</Scope>` in the KVM policy, so it automatical
 
 1. **Use encrypted KVMs for sensitive data.** API keys, passwords, and tokens should always be in encrypted KVMs.
 
-2. **Keep KVM lookups in the PreFlow.** Read configuration once at the start of the request, not in multiple places.
+2. **Keep KVM lookups in the PreFlow.** Read configuration once at the start of the request, not in multiple places. Use `<ExpiryTimeInSecs>` to control how frequently Apigee refreshes cached KVM values.
 
 3. **Always set fallback values.** If a KVM lookup fails, your proxy should not break. Use default values in the policies that consume KVM variables.
 
@@ -356,4 +349,4 @@ The proxy uses `<Scope>environment</Scope>` in the KVM policy, so it automatical
 
 ## Summary
 
-Apigee Key Value Maps provide runtime configuration that decouples your proxy logic from environment-specific values. Store backend URLs, third-party API keys, feature flags, and rate limit settings in KVMs, then read them into flow variables using the KeyValueMapOperations policy. The same proxy code works across all environments because the KVM values are environment-specific. Updates take effect immediately without redeployment, making KVMs essential for any proxy that needs to adapt to changing conditions.
+Apigee Key Value Maps provide runtime configuration that decouples your proxy logic from environment-specific values. Store backend URLs, third-party API keys, feature flags, and rate limit settings in KVMs, then read them into flow variables using the KeyValueMapOperations policy. The same proxy code works across all environments because the KVM values are environment-specific. Updates take effect after the KVM cache refreshes without redeployment, making KVMs essential for any proxy that needs to adapt to changing conditions.
