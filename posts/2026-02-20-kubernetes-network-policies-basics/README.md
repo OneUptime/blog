@@ -35,10 +35,10 @@ graph TD
 
 You need a CNI plugin that supports Network Policies. Not all CNI plugins do. Calico, Cilium, and Weave support them. Flannel alone does not.
 
-Check if your cluster supports Network Policies:
+Check for common Network Policy-capable CNI plugins:
 
 ```bash
-# Check which CNI plugin is installed
+# Check whether a common Network Policy-capable CNI plugin is installed
 
 kubectl get pods -n kube-system | grep -E "calico|cilium|weave"
 
@@ -199,7 +199,7 @@ kubectl label namespace monitoring name=monitoring
 
 ## Using CIDR Blocks
 
-CIDR blocks let you allow or deny traffic to specific IP ranges. This is useful for external services.
+CIDR blocks let you allow traffic to specific IP ranges and exclude smaller ranges from that allowance. This is useful for external services.
 
 ```yaml
 # allow-external-api.yaml
