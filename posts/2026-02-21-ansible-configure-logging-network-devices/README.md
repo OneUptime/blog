@@ -53,7 +53,7 @@ logging_config:
 
   # Rate limiting
   rate_limit: true
-  rate_limit_except_severity: critical
+  rate_limit_except_severity: 2
 
   # Log discriminators (filter noise)
   suppress_messages:
@@ -155,7 +155,7 @@ On busy networks, rate limiting prevents log storms from overwhelming your syslo
       cisco.ios.ios_config:
         lines:
           - logging rate-limit console 10
-          - logging rate-limit all 100 except critical
+          - "logging rate-limit all 100 except {{ logging_config.rate_limit_except_severity }}"
       when: logging_config.rate_limit
 
     # Configure log discriminators to suppress noisy messages
@@ -168,7 +168,7 @@ On busy networks, rate limiting prevents log storms from overwhelming your syslo
     - name: Apply discriminator to syslog servers
       cisco.ios.ios_config:
         lines:
-          - "logging host {{ item.address }} discriminator SUPPRESS_NOISE"
+          - "logging host {{ item.address }} discriminator SUPPRESS_NOISE transport {{ item.transport }} port {{ item.port }}"
       loop: "{{ logging_config.servers }}"
 ```
 
@@ -199,15 +199,25 @@ Different platforms have different logging syntax. Handle multi-vendor environme
   hosts: nxos_devices
   gather_facts: false
   connection: network_cli
+  vars:
+    severity_map:
+      emergencies: 0
+      alerts: 1
+      critical: 2
+      errors: 3
+      warnings: 4
+      notifications: 5
+      informational: 6
+      debugging: 7
 
   tasks:
     - name: NX-OS syslog configuration
       cisco.nxos.nxos_config:
         lines:
-          - "logging server {{ item.address }} {{ item.severity | default('6') }} use-vrf management"
+          - "logging server {{ item.address }} {{ severity_map[item.severity | default('informational')] }} use-vrf management"
           - logging timestamp milliseconds
           - "logging source-interface {{ logging_config.source_interface }}"
-          - "logging level local6 {{ logging_config.buffer_severity }}"
+          - "logging level local6 {{ severity_map[logging_config.buffer_severity | default('informational')] }}"
       loop: "{{ logging_config.servers }}"
 
 - name: Configure logging on Arista EOS
@@ -222,7 +232,7 @@ Different platforms have different logging syntax. Handle multi-vendor environme
           - "logging host {{ item.address }}"
           - "logging trap {{ item.severity }}"
           - "logging buffered {{ logging_config.buffer_size }}"
-          - "logging source-interface {{ logging_config.source_interface }}"
+          - "logging vrf default local-interface {{ logging_config.source_interface }}"
           - logging format timestamp traditional timezone
       loop: "{{ logging_config.servers }}"
 ```
@@ -310,7 +320,7 @@ After deploying logging, verify it is working.
     - name: Check local log buffer
       cisco.ios.ios_command:
         commands:
-          - "show logging | tail 20"
+          - show logging
       register: recent_logs
 
     - name: Display recent logs
@@ -355,7 +365,7 @@ Check that all devices meet your logging standards.
 
     - name: Calculate compliance score
       ansible.builtin.set_fact:
-        log_score: "{{ ((logging_compliance.values() | select('equalto', true) | list | length - 1) / (logging_compliance | length - 1) * 100) | round(0) }}"
+        log_score: "{{ ((logging_compliance.values() | select('equalto', true) | list | length) / (logging_compliance | length - 1) * 100) | round(0) }}"
 
     - name: Report logging compliance
       ansible.builtin.debug:
