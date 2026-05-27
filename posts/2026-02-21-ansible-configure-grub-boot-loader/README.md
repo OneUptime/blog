@@ -8,7 +8,7 @@ Description: Automate GRUB bootloader configuration across your Linux servers us
 
 ---
 
-GRUB (GRand Unified Bootloader) is the first thing that runs when your Linux server boots. Misconfigure it, and your server might not come back up after a reboot. That is why most people are afraid to touch it. But there are legitimate reasons to modify GRUB settings: adding kernel parameters for performance tuning, changing the default boot entry, setting a boot timeout, or securing the bootloader with a password. Ansible takes the fear out of GRUB management by making changes repeatable and consistent.
+GRUB (GRand Unified Bootloader) is one of the first pieces of software your firmware loads when your Linux server boots. Misconfigure it, and your server might not come back up after a reboot. That is why most people are afraid to touch it. But there are legitimate reasons to modify GRUB settings: adding kernel parameters for performance tuning, changing the default boot entry, setting a boot timeout, or securing the bootloader with a password. Ansible takes the fear out of GRUB management by making changes repeatable and consistent.
 
 ## GRUB Configuration Basics
 
@@ -16,9 +16,9 @@ GRUB2 (which is what modern Linux uses) has its configuration split across sever
 
 - `/etc/default/grub` - Main configuration variables (this is what you edit)
 - `/etc/grub.d/` - Scripts that generate the final config
-- `/boot/grub/grub.cfg` - Generated config (never edit this directly)
+- `/boot/grub/grub.cfg` on Debian/Ubuntu or `/boot/grub2/grub.cfg` on RHEL - Generated config (never edit this directly)
 
-You modify `/etc/default/grub` and then run `update-grub` (Debian) or `grub2-mkconfig` (RHEL) to regenerate the final config.
+You modify `/etc/default/grub` and then run `update-grub` (Debian/Ubuntu) or `grub2-mkconfig` (RHEL) to regenerate the final config.
 
 ## Modifying Kernel Boot Parameters
 
@@ -51,17 +51,17 @@ This playbook manages kernel boot parameters through GRUB:
     - name: Parse current GRUB_CMDLINE_LINUX
       ansible.builtin.set_fact:
         current_cmdline: >-
-          {{ (current_grub.content | b64decode) | regex_search('GRUB_CMDLINE_LINUX="([^"]*)"', '\1') | first | default('') }}
+          {{ ((current_grub.content | b64decode) | regex_findall('^GRUB_CMDLINE_LINUX="([^"]*)"', multiline=True) | first) | default('') }}
 
     - name: Build new GRUB_CMDLINE_LINUX
       ansible.builtin.set_fact:
         new_cmdline: >-
-          {% set params = current_cmdline.split() %}
+          {% set ns = namespace(params=current_cmdline.split()) %}
           {% for addition in grub_cmdline_additions %}
           {% set key = addition.split('=')[0] %}
-          {% set params = params | reject('match', key ~ '=.*') | list %}
+          {% set ns.params = ns.params | reject('match', '^' ~ key ~ '(=.*)?$') | list %}
           {% endfor %}
-          {{ (params + grub_cmdline_additions) | join(' ') }}
+          {{ (ns.params + grub_cmdline_additions) | join(' ') }}
 
     - name: Update GRUB_CMDLINE_LINUX
       ansible.builtin.lineinfile:
@@ -76,6 +76,7 @@ This playbook manages kernel boot parameters through GRUB:
         path: /etc/default/grub
         regexp: '^GRUB_TIMEOUT='
         line: 'GRUB_TIMEOUT={{ grub_timeout }}'
+        backup: true
       notify: Update GRUB
 
     - name: Set default boot entry
@@ -83,12 +84,13 @@ This playbook manages kernel boot parameters through GRUB:
         path: /etc/default/grub
         regexp: '^GRUB_DEFAULT='
         line: 'GRUB_DEFAULT={{ grub_default }}'
+        backup: true
       notify: Update GRUB
 
   handlers:
     - name: Update GRUB
       ansible.builtin.command:
-        cmd: "{{ 'update-grub' if ansible_os_family == 'Debian' else 'grub2-mkconfig -o /boot/grub2/grub.cfg' }}"
+        cmd: "{{ 'update-grub' if ansible_os_family == 'Debian' else 'grub2-mkconfig -o /boot/grub2/grub.cfg --update-bls-cmdline' }}"
 ```
 
 ## Adding Kernel Parameters for Specific Use Cases
@@ -116,12 +118,10 @@ Parameters for Kubernetes nodes:
 ```yaml
 # group_vars/k8s_nodes.yml
 grub_cmdline_additions:
-  # Enable cgroup v2
-  - "systemd.unified_cgroup_hierarchy=1"
   # Enable user namespaces
   - "user_namespace.enable=1"
-  # Reserve memory for system overhead
-  - "cgroup.memory=nokmem"
+  # Disable kernel memory accounting for cgroup v1 on older kernels
+  # - "cgroup.memory=nokmem"
 ```
 
 ## Securing GRUB with a Password
@@ -143,44 +143,47 @@ This playbook sets a GRUB bootloader password:
 
   tasks:
     - name: Generate GRUB password hash
-      ansible.builtin.shell: |
-        echo -e "{{ grub_password }}\n{{ grub_password }}" | grub-mkpasswd-pbkdf2 | grep "PBKDF2" | awk '{print $NF}'
-      register: grub_password_hash
+      ansible.builtin.command: grub-mkpasswd-pbkdf2
+      args:
+        stdin: "{{ grub_password }}\n{{ grub_password }}"
+      register: grub_mkpasswd
       changed_when: false
+      no_log: true
+
+    - name: Extract GRUB password hash
+      ansible.builtin.set_fact:
+        grub_password_hash: "{{ grub_mkpasswd.stdout | regex_search('grub\\.pbkdf2\\.sha512\\.[^\\s]+') }}"
       no_log: true
 
     - name: Create GRUB superuser configuration on Debian
       ansible.builtin.copy:
         dest: /etc/grub.d/01_users
         mode: '0755'
+        backup: true
         content: |
           #!/bin/sh
           cat << EOF
           set superusers="{{ grub_superuser }}"
-          password_pbkdf2 {{ grub_superuser }} {{ grub_password_hash.stdout }}
+          password_pbkdf2 {{ grub_superuser }} {{ grub_password_hash }}
           EOF
       notify: Update GRUB
       when: ansible_os_family == "Debian"
 
-    - name: Create GRUB superuser configuration on RHEL
-      ansible.builtin.copy:
-        dest: /etc/grub.d/01_users
-        mode: '0755'
-        content: |
-          #!/bin/sh
-          cat << EOF
-          set superusers="{{ grub_superuser }}"
-          password_pbkdf2 {{ grub_superuser }} {{ grub_password_hash.stdout }}
-          EOF
+    - name: Set GRUB password on RHEL
+      ansible.builtin.command: grub2-setpassword
+      args:
+        stdin: "{{ grub_password }}\n{{ grub_password }}"
+      changed_when: true
+      no_log: true
       notify: Update GRUB RHEL
       when: ansible_os_family == "RedHat"
 
     - name: Allow normal boot without password (restrict editing only)
-      ansible.builtin.lineinfile:
+      ansible.builtin.replace:
         path: /etc/grub.d/10_linux
-        regexp: '(menuentry.*) \{'
-        backrefs: true
-        line: '\1 --unrestricted {'
+        regexp: '^(menuentry(?!.*--unrestricted).*) \{'
+        replace: '\1 --unrestricted {'
+        backup: true
       notify: Update GRUB
       when: ansible_os_family == "Debian"
 
@@ -212,6 +215,7 @@ This playbook enables serial console output in GRUB:
         block: |
           GRUB_TERMINAL="console serial"
           GRUB_SERIAL_COMMAND="serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1"
+        backup: true
       notify: Update GRUB
 
     - name: Add serial console to kernel parameters
@@ -219,12 +223,13 @@ This playbook enables serial console output in GRUB:
         path: /etc/default/grub
         regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
         line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet console=tty0 console=ttyS0,115200n8"'
+        backup: true
       notify: Update GRUB
 
   handlers:
     - name: Update GRUB
       ansible.builtin.command:
-        cmd: "{{ 'update-grub' if ansible_os_family == 'Debian' else 'grub2-mkconfig -o /boot/grub2/grub.cfg' }}"
+        cmd: "{{ 'update-grub' if ansible_os_family == 'Debian' else 'grub2-mkconfig -o /boot/grub2/grub.cfg --update-bls-cmdline' }}"
 ```
 
 ## Managing Default Kernel Version
@@ -264,15 +269,9 @@ This playbook sets a specific kernel as the default boot entry:
         path: /etc/default/grub
         regexp: '^GRUB_DEFAULT='
         line: 'GRUB_DEFAULT="Advanced options for Ubuntu>Ubuntu, with Linux {{ target_kernel }}"'
+        backup: true
       notify: Update GRUB
       when: kernel_entry.stdout != ""
-
-    - name: Enable GRUB saved default for persistent selection
-      ansible.builtin.lineinfile:
-        path: /etc/default/grub
-        regexp: '^GRUB_SAVEDEFAULT='
-        line: 'GRUB_SAVEDEFAULT=true'
-      notify: Update GRUB
 
   handlers:
     - name: Update GRUB
@@ -283,8 +282,8 @@ This playbook sets a specific kernel as the default boot entry:
 
 ```mermaid
 graph TD
-    A[BIOS/UEFI] --> B[GRUB Stage 1]
-    B --> C[GRUB Stage 2]
+    A[BIOS/UEFI] --> B[GRUB EFI binary or boot image]
+    B --> C[GRUB core image and modules]
     C --> D[Read grub.cfg]
     D --> E{Password Protected?}
     E -->|Yes, editing| F[Require Password]
@@ -299,7 +298,7 @@ graph TD
 
 GRUB changes can make your server unbootable. Follow these rules:
 
-1. **Always create backups**: The playbooks above include `backup: true` on lineinfile tasks. Verify the backups exist before rebooting.
+1. **Always create backups**: The playbooks above include `backup: true` on file-editing tasks where Ansible supports it. Verify the backups exist before rebooting.
 
 2. **Test on one server first**: Never push GRUB changes to your entire fleet at once. Test on a single non-critical server and reboot it to verify.
 
