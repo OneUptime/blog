@@ -236,7 +236,7 @@ ansible-playbook -i inventory.ini site.yml --tags "web,monitoring"
 
 ## Conditional Imports
 
-You can use `when` with `import_playbook`, but there is a catch. Since imports are static, the condition is evaluated against each host individually when the plays execute.
+You can use `when` with `import_playbook`, but there is a catch. Since imports are static, the imported playbook is still parsed. The condition is inherited by the imported content and evaluated when those plays and tasks execute.
 
 ```yaml
 # conditional-import.yml - imports based on a variable
