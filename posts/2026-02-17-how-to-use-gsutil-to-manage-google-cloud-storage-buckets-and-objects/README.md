@@ -8,15 +8,15 @@ Description: A comprehensive guide to using gsutil for managing Google Cloud Sto
 
 ---
 
-gsutil has been the go-to command-line tool for Google Cloud Storage for years. While Google has been moving functionality into `gcloud storage` commands, gsutil is still widely used and supported. If you work with GCS regularly, knowing gsutil well makes you significantly more productive. Many operations that take multiple clicks in the Console take a single gsutil command.
+gsutil has been the go-to command-line tool for Google Cloud Storage for years. While Google now recommends `gcloud storage` commands for Cloud Storage, gsutil is still widely used in existing scripts and tutorials. If you work with GCS regularly, knowing gsutil well makes you significantly more productive. Many operations that take multiple clicks in the Console take a single gsutil command.
 
 This guide covers the essential gsutil commands with practical examples for daily operations.
 
 ## gsutil vs gcloud storage
 
-Quick note before we dive in: Google Cloud SDK now includes `gcloud storage` commands as the next-generation replacement for gsutil. Both work, but `gcloud storage` is generally faster for large operations because it uses the JSON API and parallel processing by default. gsutil uses the XML API.
+Quick note before we dive in: Google Cloud SDK now includes `gcloud storage` commands as the recommended replacement for gsutil. Both work, but `gcloud storage` generally requires less manual tuning for high-performance transfers and supports parallel processing by default for commands such as `rsync`.
 
-That said, gsutil is battle-tested, well-documented, and still the tool most tutorials and scripts reference. The commands are also more concise.
+That said, gsutil is battle-tested, well-documented, and still the tool many tutorials and scripts reference. The commands are also more concise.
 
 ## Setup
 
@@ -100,8 +100,8 @@ gsutil cp gs://my-bucket/data/report.csv ./report.csv
 # Download all files with a prefix
 gsutil cp -r gs://my-bucket/data/2026/ ./local-data/
 
-# Download and decompress gzip files on the fly
-gsutil cp -Z gs://my-bucket/data/compressed.csv.gz ./decompressed.csv
+# Download and decompress a gzip file
+gsutil cat gs://my-bucket/data/compressed.csv.gz | gunzip > ./decompressed.csv
 ```
 
 ### Listing Objects
@@ -120,7 +120,7 @@ gsutil ls -r gs://my-bucket/
 gsutil ls -l gs://my-bucket/data/
 
 # List objects with sizes in human-readable format
-gsutil du -s gs://my-bucket/data/
+gsutil du -h gs://my-bucket/data/
 ```
 
 ### Moving and Renaming Objects
@@ -285,7 +285,10 @@ gsutil -h "Content-Type:text/csv" -m cp ./data/*.csv gs://my-bucket/data/
 ### Counting Objects in a Bucket
 
 ```bash
-# Count objects and total size under a prefix
+# Count objects under a prefix
+gsutil ls -r gs://my-bucket/data/** | wc -l
+
+# Get total size under a prefix
 gsutil du -s gs://my-bucket/data/
 ```
 
