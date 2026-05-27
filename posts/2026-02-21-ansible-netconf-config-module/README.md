@@ -14,13 +14,13 @@ This is the module you reach for when you need features that platform modules do
 
 ## NETCONF Fundamentals
 
-NETCONF (RFC 6241) uses SSH as its transport and XML for data encoding. It provides several key capabilities:
+NETCONF is defined by RFC 6241, and NETCONF over SSH is defined by RFC 6242. It uses XML for protocol messages and provides several key capabilities:
 
 - **Configuration datastores** - Separate running and candidate configurations
-- **Atomic transactions** - Changes are all-or-nothing
+- **Transactional workflows** - Stage changes in a candidate datastore and commit them as a unit when the device supports the capability
 - **Locking** - Prevent concurrent modifications
 - **Validation** - Check config validity before applying
-- **Rollback** - Revert to previous configuration on failure
+- **Rollback options** - Revert a confirmed commit or use rollback-on-error when the device supports the capability
 
 ```mermaid
 sequenceDiagram
@@ -59,7 +59,7 @@ all:
             iosxe-rtr01:
               ansible_host: 10.1.1.2
           vars:
-            ansible_network_os: cisco.ios.ios
+            ansible_network_os: default
       vars:
         ansible_connection: ansible.netcommon.netconf
         ansible_port: 830
@@ -71,7 +71,8 @@ Install the required Python library on your control node.
 
 ```bash
 # ncclient is the Python NETCONF client library used by Ansible
-pip install ncclient
+# jxmlease is required by ansible.netcommon.netconf_rpc
+pip install ncclient jxmlease
 ansible-galaxy collection install ansible.netcommon
 ```
 
@@ -192,7 +193,7 @@ NETCONF's candidate datastore lets you stage changes before committing them. Thi
           </config>
         # Validate the candidate config before committing
         validate: true
-        # Commit with a comment
+        # Commit the candidate config
         commit: true
 ```
 
@@ -315,10 +316,8 @@ NETCONF supports confirmed commits with an automatic rollback timer. If you do n
 
     # If verification passes, confirm the commit
     - name: Confirm the commit (make it permanent)
-      ansible.netcommon.netconf_rpc:
-        rpc: commit
-        content: |
-          <confirmed/>
+      ansible.netcommon.netconf_config:
+        confirm_commit: true
 ```
 
 ## Using Templates for XML Content
