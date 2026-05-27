@@ -66,4 +66,4 @@ module.exit_json(
 
 ## Key Takeaways
 
-Return facts in the ansible_facts key for automatic variable registration. Prefix facts to avoid name conflicts. Facts modules typically return changed=False since they only gather information.
+Return facts in the ansible_facts key for automatic variable registration. Prefix facts to avoid name conflicts. Dedicated facts modules should return changed=False since they only gather information.
