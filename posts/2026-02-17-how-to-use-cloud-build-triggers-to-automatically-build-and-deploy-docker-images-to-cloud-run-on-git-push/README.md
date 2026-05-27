@@ -36,6 +36,7 @@ You need:
 gcloud services enable cloudbuild.googleapis.com
 gcloud services enable run.googleapis.com
 gcloud services enable artifactregistry.googleapis.com
+gcloud services enable iam.googleapis.com
 
 # Create an Artifact Registry repository
 gcloud artifacts repositories create my-repo \
@@ -92,6 +93,7 @@ images:
 # Use a larger machine for faster builds
 options:
   machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
 ```
 
 Cloud Build provides several built-in substitution variables:
@@ -103,21 +105,39 @@ Cloud Build provides several built-in substitution variables:
 
 ## Granting Cloud Build Permissions
 
-Cloud Build needs permission to deploy to Cloud Run.
+Cloud Build needs permission to deploy to Cloud Run. Create a dedicated service account for the trigger and grant it the roles it needs.
 
 ```bash
-# Get the Cloud Build service account
-PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+# Create a service account for Cloud Build
+gcloud iam service-accounts create cloud-run-deployer \
+    --display-name="Cloud Run deployer"
+
+BUILD_SA="cloud-run-deployer@$PROJECT_ID.iam.gserviceaccount.com"
 
 # Grant Cloud Run Admin role
 gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:$PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
+    --member="serviceAccount:$BUILD_SA" \
     --role="roles/run.admin"
 
 # Grant Service Account User role (needed to act as the Cloud Run service account)
 gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:$PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
+    --member="serviceAccount:$BUILD_SA" \
     --role="roles/iam.serviceAccountUser"
+
+# Grant permission to push and pull images in Artifact Registry
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$BUILD_SA" \
+    --role="roles/artifactregistry.writer"
+
+# Grant permission to write build logs
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$BUILD_SA" \
+    --role="roles/logging.logWriter"
+
+# Grant permission to run builds
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$BUILD_SA" \
+    --role="roles/cloudbuild.builds.editor"
 ```
 
 ## Creating the Trigger
@@ -132,10 +152,11 @@ gcloud builds triggers create github \
     --repo-name="my-app" \
     --branch-pattern="^main$" \
     --build-config="cloudbuild.yaml" \
+    --service-account="projects/$PROJECT_ID/serviceAccounts/$BUILD_SA" \
     --description="Build and deploy to Cloud Run on push to main"
 ```
 
-For other Git providers:
+For Cloud Source Repositories:
 
 ```bash
 # For Cloud Source Repositories
@@ -143,7 +164,8 @@ gcloud builds triggers create cloud-source-repositories \
     --name="deploy-to-cloud-run" \
     --repo="my-app" \
     --branch-pattern="^main$" \
-    --build-config="cloudbuild.yaml"
+    --build-config="cloudbuild.yaml" \
+    --service-account="projects/$PROJECT_ID/serviceAccounts/$BUILD_SA"
 ```
 
 ## A Complete Example Application
@@ -179,7 +201,7 @@ app.listen(PORT, '0.0.0.0', () => {
 FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 EXPOSE 8080
 USER node
@@ -231,6 +253,9 @@ steps:
       - '--region=us-central1'
       - '--platform=managed'
       - '--allow-unauthenticated'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
 ```
 
 If the tests fail, the build stops and the deployment never happens.
@@ -247,6 +272,7 @@ gcloud builds triggers create github \
     --repo-name="my-app" \
     --branch-pattern="^main$" \
     --build-config="cloudbuild.yaml" \
+    --service-account="projects/$PROJECT_ID/serviceAccounts/$BUILD_SA" \
     --substitutions="_ENVIRONMENT=production,_SERVICE_NAME=my-app"
 
 # Trigger for develop branch - deploys to staging
@@ -256,6 +282,7 @@ gcloud builds triggers create github \
     --repo-name="my-app" \
     --branch-pattern="^develop$" \
     --build-config="cloudbuild.yaml" \
+    --service-account="projects/$PROJECT_ID/serviceAccounts/$BUILD_SA" \
     --substitutions="_ENVIRONMENT=staging,_SERVICE_NAME=my-app-staging"
 ```
 
@@ -283,35 +310,52 @@ steps:
 substitutions:
   _ENVIRONMENT: 'development'
   _SERVICE_NAME: 'my-app'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
 ```
 
 ## Handling Secrets
 
-Use Cloud Build's Secret Manager integration for sensitive values.
+Use Cloud Build's Secret Manager integration for sensitive values. Enable the Secret Manager API and grant the build service account access to the secrets it needs.
+
+```bash
+gcloud services enable secretmanager.googleapis.com
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$BUILD_SA" \
+    --role="roles/secretmanager.secretAccessor"
+```
 
 ```yaml
 # cloudbuild.yaml - With secrets
 steps:
   - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
     args:
-      - 'build'
-      - '--build-arg'
-      - 'NPM_TOKEN=$$NPM_TOKEN'
-      - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/$REPO_NAME:$SHORT_SHA'
-      - '.'
+      - '-c'
+      - |
+        docker build \
+          --build-arg NPM_TOKEN="$$NPM_TOKEN" \
+          -t us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/$REPO_NAME:$SHORT_SHA \
+          .
     secretEnv:
       - 'NPM_TOKEN'
 
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'gcloud'
+  - name: 'gcr.io/cloud-builders/docker'
     args:
-      - 'run'
-      - 'deploy'
-      - '$REPO_NAME'
-      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/$REPO_NAME:$SHORT_SHA'
-      - '--region=us-central1'
-      - '--set-env-vars=DATABASE_URL=$$DATABASE_URL'
+      - 'push'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/$REPO_NAME:$SHORT_SHA'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run deploy $REPO_NAME \
+          --image=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/$REPO_NAME:$SHORT_SHA \
+          --region=us-central1 \
+          --set-env-vars=DATABASE_URL="$$DATABASE_URL"
     secretEnv:
       - 'DATABASE_URL'
 
@@ -321,6 +365,9 @@ availableSecrets:
       env: 'NPM_TOKEN'
     - versionName: projects/$PROJECT_ID/secrets/database-url/versions/latest
       env: 'DATABASE_URL'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
 ```
 
 ## Monitoring Build Status
