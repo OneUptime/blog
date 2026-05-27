@@ -30,10 +30,10 @@ This playbook lists the contents of a local directory:
     - name: List local config files
       ansible.builtin.debug:
         msg: "File: {{ item }}"
-      loop: "{{ lookup('lines', 'ls /etc/myapp/conf.d/').splitlines() }}"
+      loop: "{{ query('ansible.builtin.lines', 'ls /etc/myapp/conf.d/') }}"
 ```
 
-Note: The `lines` lookup returns a single string with newlines. Use `.splitlines()` to convert it to a list for looping.
+Note: Use `query('ansible.builtin.lines', ...)` or `lookup('ansible.builtin.lines', ..., wantlist=True)` when you need a list for looping. The `lookup()` function returns a string by default.
 
 ## Practical Example: Docker Container Management
 
@@ -47,7 +47,7 @@ Here is a real scenario where you need to get a list of running Docker container
   tasks:
     - name: Get list of running container names
       ansible.builtin.set_fact:
-        running_containers: "{{ lookup('lines', 'docker ps --format \"{{.Names}}\"').splitlines() }}"
+        running_containers: "{{ query('ansible.builtin.lines', 'docker ps --format ' + ('{{.Names}}' | quote)) }}"
 
     - name: Display running containers
       ansible.builtin.debug:
@@ -81,7 +81,7 @@ This example reads server lists from a custom inventory script:
   hosts: localhost
   vars:
     # Get the list of database replicas from a custom script
-    db_replicas: "{{ lookup('lines', playbook_dir + '/scripts/get_replicas.sh').splitlines() }}"
+    db_replicas: "{{ query('ansible.builtin.lines', (playbook_dir + '/scripts/get_replicas.sh') | quote) }}"
   tasks:
     - name: Show discovered replicas
       ansible.builtin.debug:
@@ -115,7 +115,7 @@ This playbook parses the output of `df` to find filesystems running low on space
   tasks:
     - name: Get disk usage information
       ansible.builtin.set_fact:
-        disk_lines: "{{ lookup('lines', 'df -h --output=target,pcent | tail -n +2').splitlines() }}"
+        disk_lines: "{{ query('ansible.builtin.lines', 'df -h --output=target,pcent | tail -n +2') }}"
 
     - name: Parse and check each filesystem
       ansible.builtin.debug:
@@ -134,10 +134,10 @@ A common use case is pulling information from git for deployment tagging or vers
 - name: Deploy with git metadata
   hosts: appservers
   vars:
-    git_branch: "{{ lookup('lines', 'git -C ' + playbook_dir + ' rev-parse --abbrev-ref HEAD') }}"
-    git_commit: "{{ lookup('lines', 'git -C ' + playbook_dir + ' rev-parse --short HEAD') }}"
-    git_author: "{{ lookup('lines', 'git -C ' + playbook_dir + ' log -1 --format=%an') }}"
-    recent_commits: "{{ lookup('lines', 'git -C ' + playbook_dir + ' log --oneline -5').splitlines() }}"
+    git_branch: "{{ query('ansible.builtin.lines', 'git -C ' + (playbook_dir | quote) + ' rev-parse --abbrev-ref HEAD') | first }}"
+    git_commit: "{{ query('ansible.builtin.lines', 'git -C ' + (playbook_dir | quote) + ' rev-parse --short HEAD') | first }}"
+    git_author: "{{ query('ansible.builtin.lines', 'git -C ' + (playbook_dir | quote) + ' log -1 --format=%an') | first }}"
+    recent_commits: "{{ query('ansible.builtin.lines', 'git -C ' + (playbook_dir | quote) + ' log --oneline -5') }}"
   tasks:
     - name: Show deployment info
       ansible.builtin.debug:
@@ -178,8 +178,7 @@ This playbook processes a list, filtering and transforming it:
     - name: Get enabled systemd services
       ansible.builtin.set_fact:
         enabled_services: >-
-          {{ lookup('lines', 'systemctl list-unit-files --type=service --state=enabled --no-legend')
-             .splitlines()
+          {{ query('ansible.builtin.lines', 'systemctl list-unit-files --type=service --state=enabled --no-legend')
              | map('regex_replace', '\\s+.*$', '')
              | list }}
 
@@ -207,7 +206,7 @@ If the command fails (returns a non-zero exit code), the lookup will raise an er
     # Use errors='ignore' for optional commands
     - name: Try to get optional data
       ansible.builtin.set_fact:
-        optional_data: "{{ lookup('lines', 'some-optional-command', errors='ignore') | default('') }}"
+        optional_data: "{{ query('ansible.builtin.lines', 'some-optional-command', errors='ignore') | default([]) }}"
 
     - name: Process data if available
       ansible.builtin.debug:
@@ -219,7 +218,7 @@ If the command fails (returns a non-zero exit code), the lookup will raise an er
       block:
         - name: Get current cluster state
           ansible.builtin.set_fact:
-            cluster_nodes: "{{ lookup('lines', 'kubectl get nodes -o name').splitlines() }}"
+            cluster_nodes: "{{ query('ansible.builtin.lines', 'kubectl get nodes -o name') }}"
       rescue:
         - name: Use cached node list
           ansible.builtin.set_fact:
@@ -244,7 +243,7 @@ It is worth understanding when to use each approach:
   hosts: webservers
   vars:
     # lines lookup - runs on controller, returns list of lines
-    local_users: "{{ lookup('lines', 'getent passwd | cut -d: -f1').splitlines() }}"
+    local_users: "{{ query('ansible.builtin.lines', 'getent passwd | cut -d: -f1') }}"
     # pipe lookup - runs on controller, returns single string
     controller_hostname: "{{ lookup('pipe', 'hostname -f') }}"
   tasks:
