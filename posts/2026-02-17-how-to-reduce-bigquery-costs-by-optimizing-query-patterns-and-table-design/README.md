@@ -84,7 +84,7 @@ The order of clustering columns matters. Put the most frequently filtered column
 
 ## Use Materialized Views for Repeated Queries
 
-If multiple dashboards or reports run similar aggregations on the same data, a materialized view computes the result once and serves it from cache.
+If multiple dashboards or reports run similar aggregations on the same data, a materialized view stores precomputed results and can reduce the amount of data scanned by compatible queries.
 
 ```sql
 -- Create a materialized view for a common aggregation
@@ -94,18 +94,18 @@ SELECT
   DATE(timestamp) AS event_date,
   event_type,
   COUNT(*) AS event_count,
-  COUNT(DISTINCT user_id) AS unique_users
+  APPROX_COUNT_DISTINCT(user_id) AS approx_unique_users
 FROM
   `my_project.analytics.events`
 GROUP BY
   event_date, event_type;
 ```
 
-When a query matches the materialized view pattern, BigQuery automatically uses it instead of scanning the base table. The materialized view is refreshed incrementally as new data arrives, so you get fresh results without full re-computation.
+When a query matches the materialized view pattern and meets BigQuery's smart tuning requirements, BigQuery can automatically use it instead of scanning the base table. Incremental materialized views are refreshed in the background as base table data changes, subject to BigQuery's materialized view limitations.
 
 ## Avoid Repeated Subqueries with CTEs
 
-Repeated subqueries cause BigQuery to scan the same data multiple times. Use CTEs (Common Table Expressions) to read data once and reference it multiple times.
+Repeated subqueries can make BigQuery scan the same data multiple times. CTEs (Common Table Expressions) are not guaranteed to materialize and be reused, but they are useful for structuring a single filtered input that you aggregate in one pass.
 
 ```sql
 -- Bad: Same subquery scanned twice
@@ -115,7 +115,7 @@ SELECT
   (SELECT COUNT(DISTINCT user_id) FROM `my_project.analytics.events`
    WHERE DATE(timestamp) = '2026-02-15') AS unique_users;
 
--- Good: CTE reads data once, used in multiple calculations
+-- Good: Filter once and calculate both aggregations in one SELECT
 WITH daily_events AS (
   SELECT user_id, event_type
   FROM `my_project.analytics.events`
@@ -129,7 +129,7 @@ FROM daily_events;
 
 ## Use Approximate Aggregation Functions
 
-When exact counts are not necessary, approximate functions process significantly less data.
+When exact counts are not necessary, approximate functions can use less memory and compute than exact aggregations.
 
 ```sql
 -- Exact distinct count - more expensive
@@ -137,13 +137,13 @@ SELECT COUNT(DISTINCT user_id) AS exact_unique_users
 FROM `my_project.analytics.events`
 WHERE DATE(timestamp) BETWEEN '2026-01-01' AND '2026-01-31';
 
--- Approximate distinct count - cheaper and usually close enough
+-- Approximate distinct count - less memory-intensive when an estimate is acceptable
 SELECT APPROX_COUNT_DISTINCT(user_id) AS approx_unique_users
 FROM `my_project.analytics.events`
 WHERE DATE(timestamp) BETWEEN '2026-01-01' AND '2026-01-31';
 ```
 
-APPROX_COUNT_DISTINCT is typically within 1-2% of the exact count and uses far less memory and compute.
+APPROX_COUNT_DISTINCT returns a statistical estimate for COUNT(DISTINCT) and uses less memory than exact distinct counting. Validate the error tolerance for your own data before using it in business-critical reporting.
 
 ## Set Table Expiration for Temporary Data
 
@@ -170,14 +170,14 @@ bq update --default_table_expiration=2592000 my_project:staging
 
 ## Use Long-Term Storage Pricing
 
-BigQuery automatically reduces the storage price for tables that have not been modified in 90 days. You do not need to do anything to enable this - it happens automatically. But you can take advantage of it by designing your data pipeline to append to tables rather than overwriting them, since modifications reset the 90-day clock.
+BigQuery automatically reduces the storage price for tables or table partitions that have not been modified in 90 days. You do not need to do anything to enable this - it happens automatically. For partitioned tables, you can take advantage of it by appending new data to new partitions rather than overwriting older partitions, since modifications reset the 90-day clock for the modified table or partition.
 
 ```sql
--- Good: Append new data to existing table (preserves long-term pricing for old data)
+-- Good: Append new data to the current partition of a partitioned table
 INSERT INTO `my_project.analytics.events`
 SELECT * FROM `my_project.staging.new_events`;
 
--- Avoid: Recreating the table resets long-term storage pricing
+-- Avoid: Recreating the table resets long-term storage pricing for the table
 CREATE OR REPLACE TABLE `my_project.analytics.events` AS
 SELECT * FROM `my_project.staging.combined_events`;
 ```
@@ -219,14 +219,17 @@ SELECT
   user_email,
   project_id,
   COUNT(*) AS query_count,
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4), 4) AS tb_processed,
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4) * 6.25, 2) AS estimated_cost_usd
+  ROUND(SUM(COALESCE(total_bytes_billed, 0)) / POW(1024, 4), 4) AS tib_billed,
+  -- Replace 6.25 with the on-demand price for your BigQuery region.
+  ROUND(SUM(COALESCE(total_bytes_billed, 0)) / POW(1024, 4) * 6.25, 2) AS estimated_cost_usd
 FROM
   `region-us-central1`.INFORMATION_SCHEMA.JOBS
 WHERE
   creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   AND job_type = 'QUERY'
   AND state = 'DONE'
+  AND error_result IS NULL
+  AND statement_type != 'SCRIPT'
 GROUP BY
   user_email, project_id
 ORDER BY
