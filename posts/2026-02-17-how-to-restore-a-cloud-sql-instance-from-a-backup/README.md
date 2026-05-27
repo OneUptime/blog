@@ -82,6 +82,8 @@ gcloud sql backups create \
     --description="Pre-restore backup - current state"
 ```
 
+If the target instance has read replicas, delete the replicas before restoring and recreate them after the restore completes.
+
 ## Restoring to a Different Instance
 
 The safer approach. Restore to a temporary instance, verify the data, then decide whether to switch.
@@ -175,7 +177,7 @@ gcloud sql instances describe my-instance \
 You need to know the exact timestamp to restore to. Common approaches:
 
 1. **From application logs**: Find when the bad operation happened
-2. **From Cloud SQL audit logs**: Check Cloud Logging for the problematic query
+2. **From Cloud SQL database logs**: Check Cloud Logging for the problematic query if statement logging or pgaudit is enabled
 3. **From user reports**: Estimate the time based on when users reported the issue
 
 ```bash
@@ -222,13 +224,13 @@ If you manage your infrastructure with Terraform, handle restores carefully:
 
 ```hcl
 # Import the restored instance into Terraform state
-# Do NOT try to restore using Terraform directly
+# Prefer operational restore commands over Terraform for emergency restores
 
 # After restoring via gcloud, import the instance
 # terraform import google_sql_database_instance.main my-instance
 ```
 
-Terraform does not have a native restore operation. Perform restores with gcloud, then reconcile your Terraform state.
+The Google Terraform provider has `restore_backup_context` and `clone` blocks for Cloud SQL, but restoring from a backup is an imperative action and the provider documentation does not recommend it for routine Terraform workflows. For emergency restores, perform the restore with gcloud, then reconcile your Terraform state.
 
 ## Automating Restore Testing
 
@@ -328,7 +330,7 @@ SELECT MAX(id) FROM orders;  -- Compare with expected value
 Additional checks:
 
 - Verify automated backups are still configured
-- Check that read replicas are still replicating (they may need to be recreated)
+- Recreate any read replicas that were deleted before the restore
 - Confirm monitoring and alerts are active
 - Test application connectivity end-to-end
 - Review any data that may have been lost between the backup time and the restore time
@@ -337,9 +339,9 @@ Additional checks:
 
 1. **Not backing up before restoring**: Always create a backup of the current state before overwriting it.
 2. **Wrong backup ID**: Double-check the backup timestamp matches what you expect.
-3. **Forgetting about replicas**: Restoring a primary can break replication. You may need to delete and recreate replicas.
+3. **Forgetting about replicas**: All replicas for the target instance must be deleted before restoring to an existing instance, and recreated after the restore completes.
 4. **Not verifying**: Always verify the restored data before switching traffic.
-5. **PITR timestamp too precise**: If you pick a timestamp during a transaction, you might get partial data. Choose a clean point.
+5. **PITR timestamp too late**: If you pick a timestamp after the bad transaction committed, the recovered instance can still include the unwanted change. Choose a timestamp before the problematic event.
 
 ## Summary
 
