@@ -41,6 +41,7 @@ First, install the required system packages:
     app_dir: /opt/{{ app_name }}
     app_user: www-data
     app_port: 8000
+    app_workers: 4
 
   tasks:
     - name: Install system dependencies
@@ -50,6 +51,7 @@ First, install the required system packages:
           - python3-pip
           - python3-venv
           - python3-dev
+          - git
           - gcc
           - libpq-dev
           - libssl-dev
@@ -124,7 +126,7 @@ First, install the required system packages:
           Group={{ app_user }}
           WorkingDirectory={{ app_dir }}/src
           EnvironmentFile={{ app_dir }}/.env
-          ExecStart={{ app_dir }}/venv/bin/python -m {{ app_name }}.main
+          ExecStart={{ app_dir }}/venv/bin/uvicorn {{ app_name }}.main:app --host 127.0.0.1 --port {{ app_port }} --workers {{ app_workers }}
           Restart=always
           RestartSec=5
 
@@ -141,6 +143,7 @@ First, install the required system packages:
         name: "{{ app_name }}"
         enabled: true
         state: started
+        daemon_reload: true
 ```
 
 ## Nginx Reverse Proxy
@@ -181,6 +184,9 @@ First, install the required system packages:
 ## Health Check and Verification
 
 ```yaml
+    - name: Apply pending service changes
+      ansible.builtin.meta: flush_handlers
+
     - name: Wait for application to be healthy
       ansible.builtin.uri:
         url: "http://localhost:{{ app_port }}/health"
@@ -229,7 +235,7 @@ ansible-playbook -i inventory/hosts deploy.yml --limit app01
 
 ## Summary
 
-This playbook provides a complete deployment pipeline: system preparation, code deployment, virtual environment management, service configuration, and reverse proxy setup. Each task is idempotent and can be run repeatedly. Extend it with additional steps like database migrations, cache warming, or load balancer integration based on your specific application requirements.
+This playbook provides a complete deployment pipeline: system preparation, code deployment, virtual environment management, service configuration, and reverse proxy setup. It is designed to be run repeatedly, with handlers applying restarts only when notified by changed tasks. Extend it with additional steps like database migrations, cache warming, or load balancer integration based on your specific application requirements.
 
 ## Common Use Cases
 
@@ -414,4 +420,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
