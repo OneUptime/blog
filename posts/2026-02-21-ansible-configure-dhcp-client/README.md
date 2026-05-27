@@ -107,10 +107,10 @@ supersede domain-name-servers {{ dhcp_custom_dns | join(', ') }};
 supersede domain-search "{{ dhcp_custom_search | join('", "') }}";
 {% endif %}
 
-# Do not accept default routes from DHCP on secondary interfaces
+# Do not request default routes from DHCP on secondary interfaces
 # (uncomment for multi-interface setups)
 # interface "eth1" {
-#     supersede routers;
+#     request subnet-mask, broadcast-address, domain-name, domain-name-servers, domain-search;
 # }
 
 # Prepend our DNS servers before DHCP-provided ones
@@ -439,11 +439,11 @@ graph TD
 
 ## Common DHCP Client Issues
 
-**Lease storms on large networks**: If many servers reboot simultaneously (power outage recovery), they all try to get leases at once. The `retry` and `initial-interval` options in dhclient.conf help spread out the requests.
+**Lease storms on large networks**: If many servers reboot simultaneously (power outage recovery), they all try to get leases at once. The `initial-delay`, `initial-interval`, and `backoff-cutoff` options in dhclient.conf help spread out the requests.
 
 **DHCP not starting before dependent services**: Services that bind to a specific IP address might fail if they start before DHCP completes. Use systemd dependencies (`After=network-online.target` and `Wants=network-online.target`) to fix this.
 
-**Multiple interfaces getting default routes**: When you have DHCP on multiple interfaces, both might install default routes, causing routing confusion. Use `UseRoutes=false` or `supersede routers` on secondary interfaces.
+**Multiple interfaces getting default routes**: When you have DHCP on multiple interfaces, both might install default routes, causing routing confusion. Use `UseRoutes=false` with systemd-networkd, or omit `routers` from the per-interface dhclient request list on secondary interfaces.
 
 **Cloud provider DHCP quirks**: AWS, Azure, and GCP all use DHCP to assign instance IPs, but they also use it to provide metadata routes. Be careful about overriding DHCP settings on cloud instances because you might break metadata service access (169.254.169.254).
 
