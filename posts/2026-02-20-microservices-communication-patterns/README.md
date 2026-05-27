@@ -32,7 +32,7 @@ In synchronous communication, the caller sends a request and waits for a respons
 
 ### REST / HTTP
 
-REST is the most common synchronous pattern. It uses HTTP methods and JSON payloads.
+REST is the most common synchronous pattern. It uses HTTP methods and commonly uses JSON payloads.
 
 ```python
 # order_service.py
@@ -58,7 +58,7 @@ class OrderRequest(BaseModel):
 
 
 @app.post("/orders")
-async def create_order(order: OrderRequest):
+def create_order(order: OrderRequest):
     """
     Create a new order. First checks inventory availability
     via a synchronous REST call to the inventory service.
@@ -98,7 +98,7 @@ async def create_order(order: OrderRequest):
 
 ### gRPC
 
-gRPC uses Protocol Buffers for serialization and HTTP/2 for transport. It is faster than REST and supports streaming.
+gRPC uses Protocol Buffers for serialization by default and HTTP/2 for transport. It can be more efficient than JSON-based REST APIs for internal service-to-service communication and supports streaming.
 
 ```protobuf
 // inventory.proto
@@ -164,8 +164,8 @@ import inventory_pb2_grpc
 def check_stock(product_id: str) -> dict:
     """
     Check stock availability using gRPC.
-    gRPC is significantly faster than REST for
-    internal service-to-service communication.
+    gRPC can be more efficient than JSON-based REST APIs
+    for internal service-to-service communication.
     """
     # Create a gRPC channel to the inventory service
     channel = grpc.insecure_channel("inventory-service:50051")
@@ -193,10 +193,10 @@ def check_stock(product_id: str) -> dict:
 flowchart LR
     subgraph REST
         R1[Text-based JSON]
-        R2[HTTP/1.1]
+        R2[Often HTTP/1.1 or HTTP/2]
         R3[Human-readable]
         R4[Broad ecosystem]
-        R5[Request-Response only]
+        R5[Resource-oriented APIs]
     end
 
     subgraph gRPC
@@ -210,7 +210,7 @@ flowchart LR
 
 ## Asynchronous Communication
 
-In asynchronous communication, the sender publishes a message and does not wait for a response. This decouples services and improves resilience.
+In asynchronous communication, the sender publishes a message and does not wait for a downstream consumer response. This decouples services and improves resilience.
 
 ### Message Queue Pattern
 
@@ -240,7 +240,7 @@ sequenceDiagram
 import json
 import pika
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -280,7 +280,7 @@ def publish_event(event: OrderCreatedEvent):
         routing_key="",
         body=message,
         properties=pika.BasicProperties(
-            delivery_mode=2,  # Persist message to disk
+            delivery_mode=pika.DeliveryMode.Persistent,  # Mark message as persistent
             content_type="application/json",
         )
     )
@@ -295,7 +295,7 @@ event = OrderCreatedEvent(
     product_id="prod_abc",
     quantity=2,
     customer_id="cust_789",
-    timestamp=datetime.utcnow().isoformat()
+    timestamp=datetime.now(timezone.utc).isoformat()
 )
 publish_event(event)
 ```
@@ -346,6 +346,13 @@ def start_consumer():
 
     # Declare the queue for this consumer
     channel.queue_declare(queue="inventory_queue", durable=True)
+
+    # Declare the exchange before binding, in case the consumer starts first
+    channel.exchange_declare(
+        exchange="order_events",
+        exchange_type="fanout",
+        durable=True
+    )
 
     # Bind the queue to the order events exchange
     channel.queue_bind(
