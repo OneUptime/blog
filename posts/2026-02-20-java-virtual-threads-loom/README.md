@@ -82,7 +82,7 @@ public class VirtualThreadBasics {
 
 ## Structured Concurrency
 
-Structured concurrency groups related tasks and handles their lifecycle together.
+Structured concurrency groups related tasks and handles their lifecycle together. In Java 21, `StructuredTaskScope` is a preview API, so compile and run code that uses it with preview features enabled.
 
 ```java
 // OrderProcessor.java - Structured concurrency with virtual threads
@@ -212,9 +212,8 @@ public class ExternalApiClient {
     private final HttpClient httpClient;
 
     public ExternalApiClient() {
-        // Create an HTTP client that uses virtual threads
+        // Synchronous HTTP calls will run inside virtual threads submitted below
         this.httpClient = HttpClient.newBuilder()
-            .executor(Executors.newVirtualThreadPerTaskExecutor())
             .connectTimeout(Duration.ofSeconds(5))
             .build();
     }
@@ -227,7 +226,7 @@ public class ExternalApiClient {
                 .map(url -> executor.submit(() -> fetchUrl(url)))
                 .toList();
 
-            // Collect results as they complete
+            // Collect results
             List<String> results = new ArrayList<>();
             for (Future<String> future : futures) {
                 results.add(future.get(10, TimeUnit.SECONDS));
@@ -255,25 +254,24 @@ public class ExternalApiClient {
 
 ## Things to Avoid with Virtual Threads
 
-Virtual threads have specific patterns that reduce their effectiveness.
+Virtual threads have specific patterns that reduce their effectiveness. On Java 21-23, frequent blocking while inside `synchronized` code can pin a virtual thread to its carrier. Java 24 and later remove this pinning for normal `synchronized` methods and blocks, but you should still avoid doing long blocking work while holding locks.
 
 ```java
 // VirtualThreadAntiPatterns.java - What to avoid
 public class VirtualThreadAntiPatterns {
 
-    // BAD: synchronized blocks pin the virtual thread to its carrier
-    // This prevents the carrier thread from running other virtual threads
+    // BAD on Java 21-23: blocking inside synchronized code pins the
+    // virtual thread to its carrier
     private final Object lock = new Object();
 
     public void pinnedExample() {
         synchronized (lock) {
-            // Virtual thread is pinned while holding this lock
-            // Use ReentrantLock instead
+            // On Java 21-23, use ReentrantLock instead for this pattern
             doBlockingWork();
         }
     }
 
-    // GOOD: Use ReentrantLock instead of synchronized
+    // GOOD on Java 21-23: Use ReentrantLock for blocking work
     private final ReentrantLock reentrantLock = new ReentrantLock();
 
     public void unpinnedExample() {
@@ -318,7 +316,7 @@ graph LR
     B --> F[Startup: Slow]
 
     C --> G[Memory: ~100MB]
-    C --> H[Threads: ~4 carrier threads]
+    C --> H[Carrier threads: defaults to available processors]
     C --> I[Startup: Fast]
 
     style D fill:#FF6347
@@ -338,11 +336,14 @@ Track virtual thread behavior with JFR (Java Flight Recorder) events.
 # Enable JFR to monitor virtual thread behavior
 java \
     -XX:StartFlightRecording=filename=recording.jfr,duration=60s \
-    -Djdk.tracePinnedThreads=short \
     -jar app.jar
 
-# The -Djdk.tracePinnedThreads flag prints a warning when
-# a virtual thread gets pinned to its carrier thread
+# Print virtual-thread events from the recording
+jfr print --events jdk.VirtualThreadPinned,jdk.VirtualThreadSubmitFailed recording.jfr
+
+# On Java 21-23, -Djdk.tracePinnedThreads=short can also print a stack
+# trace when a virtual thread blocks while pinned. The flag has no effect
+# on Java 24 and later.
 ```
 
 ## Conclusion
