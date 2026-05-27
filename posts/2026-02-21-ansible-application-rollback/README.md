@@ -71,7 +71,6 @@ shared_dir: /opt/myapp/shared
 current_link: /opt/myapp/current
 app_repo: git@github.com:yourorg/myapp.git
 app_branch: main
-keep_releases: 5
 app_port: 8000
 health_check_url: "http://127.0.0.1:{{ app_port }}/health"
 health_check_retries: 5
@@ -169,9 +168,6 @@ auto_rollback_on_failure: true
 
 - name: Run health checks
   include_tasks: health_check.yml
-
-- name: Clean up old releases
-  include_tasks: cleanup_releases.yml
 ```
 
 ## Health Check Tasks
@@ -220,7 +216,7 @@ auto_rollback_on_failure: true
       Run rollback manually: ansible-playbook rollback.yml
   when:
     - not deployment_healthy
-    - not auto_rollback_on_failure
+    - not auto_rollback_on_failure or previous_release is not defined or previous_release == ''
 ```
 
 ## Rollback Tasks
@@ -354,6 +350,12 @@ This separate playbook lets operators trigger a rollback manually:
     - name: Rollback complete
       debug:
         msg: "Successfully rolled back to {{ rollback_target | basename }}"
+
+  handlers:
+    - name: restart application
+      systemd:
+        name: "{{ app_name }}"
+        state: restarted
 ```
 
 ## Database Rollback
