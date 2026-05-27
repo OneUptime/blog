@@ -60,7 +60,6 @@ The OpenTelemetry Operator manages Collector instances using Custom Resources.
 
 ```bash
 # Install cert-manager (required by the operator)
-
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
 
 # Wait for cert-manager to be ready
@@ -73,11 +72,20 @@ kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releas
 # Wait for the operator to be ready
 kubectl wait --for=condition=Available deployment/opentelemetry-operator-controller-manager \
   -n opentelemetry-operator-system --timeout=300s
+
+# Create the namespace used by the examples
+kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
+
+# Create the OneUptime token secret used by the gateway exporter
+kubectl create secret generic oneuptime-otel \
+  --namespace observability \
+  --from-literal=token=YOUR_ONEUPTIME_TOKEN \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ## Step 2: Deploy the Collector as a DaemonSet (Agent)
 
-The agent runs on every node and collects telemetry from local pods.
+The agent runs on every node and collects node telemetry and OTLP data from applications.
 
 ```yaml
 # otel-agent.yaml - DaemonSet collector agent
@@ -87,8 +95,25 @@ metadata:
   name: otel-agent
   namespace: observability
 spec:
+  # Use the Kubernetes Collector distribution because this config uses Kubernetes-specific components
+  image: otel/opentelemetry-collector-k8s:0.153.0
+  serviceAccount: otel-collector
   # DaemonSet mode runs one collector pod per node
   mode: daemonset
+  env:
+    - name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+  volumeMounts:
+    - name: hostfs
+      mountPath: /hostfs
+      readOnly: true
+      mountPropagation: HostToContainer
+  volumes:
+    - name: hostfs
+      hostPath:
+        path: /
   # Resource limits for each agent pod
   resources:
     requests:
@@ -124,6 +149,7 @@ spec:
       # Collect host-level metrics from the node
       hostmetrics:
         collection_interval: 30s
+        root_path: /hostfs
         scrapers:
           cpu: {}
           memory: {}
@@ -214,9 +240,18 @@ metadata:
   name: otel-gateway
   namespace: observability
 spec:
+  # Use the Kubernetes Collector distribution for Kubernetes processors and receivers
+  image: otel/opentelemetry-collector-k8s:0.153.0
+  serviceAccount: otel-collector
   # Deployment mode runs a scalable set of collector pods
   mode: deployment
   replicas: 2
+  env:
+    - name: ONEUPTIME_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: oneuptime-otel
+          key: token
   resources:
     requests:
       cpu: 500m
@@ -255,9 +290,11 @@ spec:
 
     exporters:
       # Export to OneUptime
-      otlp/oneuptime:
-        endpoint: "https://otlp.oneuptime.com"
+      otlphttp/oneuptime:
+        endpoint: "https://oneuptime.com/otlp"
+        encoding: json
         headers:
+          Content-Type: "application/json"
           x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
       # Export metrics to Prometheus
@@ -271,20 +308,20 @@ spec:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, filter, batch]
-          exporters: [otlp/oneuptime]
+          exporters: [otlphttp/oneuptime]
         metrics:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [otlp/oneuptime, prometheus]
+          exporters: [otlphttp/oneuptime, prometheus]
         logs:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [otlp/oneuptime]
+          exporters: [otlphttp/oneuptime]
 ```
 
 ## Step 4: Configure Your Applications
 
-Point your applications to send telemetry to the local agent.
+Point your applications to send telemetry to the agent service.
 
 ```yaml
 # app-deployment.yaml - Application configured to send telemetry
@@ -307,10 +344,11 @@ spec:
       - name: my-app
         image: my-app:latest
         env:
-        # Point the OTLP exporter to the local agent DaemonSet
-        # Using the node IP ensures traffic stays local
+        # Point the OTLP exporter to the agent DaemonSet service
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://otel-agent-collector.observability.svc.cluster.local:4317"
+          value: "http://otel-agent-collector.observability.svc.cluster.local:4318"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "http/protobuf"
         # Set the service name for traces and metrics
         - name: OTEL_SERVICE_NAME
           value: "my-app"
@@ -321,7 +359,7 @@ spec:
 
 ## Step 5: Apply RBAC for Kubernetes Metadata
 
-The collector needs permissions to read Kubernetes metadata.
+The collector needs permissions to read Kubernetes metadata. Apply this manifest before the Collector manifests in Step 2 and Step 3.
 
 ```yaml
 # rbac.yaml - RBAC for the OpenTelemetry Collector
@@ -373,11 +411,11 @@ kubectl get pods -n observability
 kubectl logs -n observability -l app.kubernetes.io/name=otel-agent-collector --tail=50
 
 # Check the collector internal metrics
-kubectl port-forward -n observability svc/otel-gateway-collector 8888:8888
+kubectl port-forward -n observability deployment/otel-gateway-collector 8888:8888
 # Visit http://localhost:8888/metrics
 
 # Verify data is flowing through the pipeline
-kubectl logs -n observability -l app.kubernetes.io/name=otel-gateway-collector | grep "TracesExported\|MetricsExported\|LogsExported"
+curl -s http://localhost:8888/metrics | grep "otelcol_exporter"
 ```
 
 ## Conclusion
