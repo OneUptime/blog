@@ -36,7 +36,7 @@ Connect your GitHub repository to Cloud Build through the Cloud Console:
 4. Select "GitHub (Cloud Build GitHub App)"
 5. Authenticate with GitHub and select your repository
 
-You can also use the gcloud CLI:
+You can also use the gcloud CLI after you create the deployment service account in the next step:
 
 ```bash
 # Install the GitHub app (this will open a browser for GitHub auth)
@@ -45,32 +45,50 @@ gcloud builds triggers create github \
   --repo-owner=your-github-org \
   --branch-pattern="^main$" \
   --build-config=cloudbuild.yaml \
+  --service-account=projects/your-project-id/serviceAccounts/app-engine-deployer@your-project-id.iam.gserviceaccount.com \
   --project=your-project-id
 ```
 
 ## Step 2: Grant Cloud Build Permissions
 
-Cloud Build needs permission to deploy to App Engine. Grant the App Engine Admin and Service Account User roles to the Cloud Build service account:
+Cloud Build needs permission to deploy to App Engine. Create a dedicated service account for the trigger and grant it the roles needed to deploy, write build logs, and use the App Engine service account:
 
 ```bash
-# Get the Cloud Build service account email
-PROJECT_NUMBER=$(gcloud projects describe your-project-id --format="value(projectNumber)")
-CLOUD_BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+# Create a service account for App Engine deployments
+gcloud iam service-accounts create app-engine-deployer \
+  --display-name="App Engine Cloud Build deployer" \
+  --project=your-project-id
+
+CLOUD_BUILD_SA="app-engine-deployer@your-project-id.iam.gserviceaccount.com"
+APP_ENGINE_SA="your-project-id@appspot.gserviceaccount.com"
 
 # Grant App Engine Admin role
 gcloud projects add-iam-policy-binding your-project-id \
   --member="serviceAccount:${CLOUD_BUILD_SA}" \
   --role="roles/appengine.appAdmin"
 
-# Grant Service Account User role (needed to deploy as App Engine SA)
-gcloud projects add-iam-policy-binding your-project-id \
+# Grant Service Account User role on the App Engine service account
+gcloud iam service-accounts add-iam-policy-binding "${APP_ENGINE_SA}" \
   --member="serviceAccount:${CLOUD_BUILD_SA}" \
-  --role="roles/iam.serviceAccountUser"
+  --role="roles/iam.serviceAccountUser" \
+  --project=your-project-id
 
-# Grant Cloud Build Service Account role
+# Grant roles needed by the build itself
 gcloud projects add-iam-policy-binding your-project-id \
   --member="serviceAccount:${CLOUD_BUILD_SA}" \
-  --role="roles/cloudbuild.builds.builder"
+  --role="roles/cloudbuild.builds.editor"
+
+gcloud projects add-iam-policy-binding your-project-id \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role="roles/logging.logWriter"
+
+gcloud projects add-iam-policy-binding your-project-id \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role="roles/storage.admin"
+
+gcloud projects add-iam-policy-binding your-project-id \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role="roles/artifactregistry.writer"
 ```
 
 If your app uses Cloud SQL, add that permission too:
@@ -91,19 +109,18 @@ Here is a configuration for a Python App Engine Standard application:
 ```yaml
 # cloudbuild.yaml - Build and deploy to App Engine Standard
 steps:
-  # Step 1: Install dependencies
+  # Step 1: Install dependencies and run tests
   - name: "python:3.12"
-    entrypoint: "pip"
-    args: ["install", "-r", "requirements.txt", "--user"]
-
-  # Step 2: Run tests
-  - name: "python:3.12"
-    entrypoint: "python"
-    args: ["-m", "pytest", "tests/", "-v", "--tb=short"]
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        pip install -r requirements.txt
+        python -m pytest tests/ -v --tb=short
     env:
       - "APP_ENV=testing"
 
-  # Step 3: Deploy to App Engine
+  # Step 2: Deploy to App Engine
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: "gcloud"
     args:
@@ -116,6 +133,8 @@ steps:
 
 # Build timeout (default is 10 minutes)
 timeout: "1200s"
+options:
+  logging: CLOUD_LOGGING_ONLY
 ```
 
 For a Node.js application:
@@ -151,6 +170,8 @@ steps:
       - "--quiet"
 
 timeout: "1200s"
+options:
+  logging: CLOUD_LOGGING_ONLY
 ```
 
 ## Step 4: Create Build Triggers
@@ -165,6 +186,7 @@ gcloud builds triggers create github \
   --repo-owner=your-github-org \
   --branch-pattern="^main$" \
   --build-config=cloudbuild.yaml \
+  --service-account=projects/your-project-id/serviceAccounts/app-engine-deployer@your-project-id.iam.gserviceaccount.com \
   --project=your-project-id
 ```
 
@@ -178,6 +200,7 @@ gcloud builds triggers create github \
   --repo-owner=your-github-org \
   --branch-pattern="^develop$" \
   --build-config=cloudbuild-staging.yaml \
+  --service-account=projects/your-staging-project-id/serviceAccounts/app-engine-deployer@your-staging-project-id.iam.gserviceaccount.com \
   --project=your-staging-project-id
 ```
 
@@ -189,12 +212,12 @@ For different environments, use substitution variables in your Cloud Build confi
 # cloudbuild.yaml - Using substitution variables
 steps:
   - name: "python:3.12"
-    entrypoint: "pip"
-    args: ["install", "-r", "requirements.txt", "--user"]
-
-  - name: "python:3.12"
-    entrypoint: "python"
-    args: ["-m", "pytest", "tests/", "-v"]
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        pip install -r requirements.txt
+        python -m pytest tests/ -v
 
   # Deploy using environment-specific app.yaml
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
@@ -212,6 +235,8 @@ substitutions:
   _VERSION: "latest"
 
 timeout: "1200s"
+options:
+  logging: CLOUD_LOGGING_ONLY
 ```
 
 Override substitutions in the trigger:
@@ -225,6 +250,7 @@ gcloud builds triggers create github \
   --branch-pattern="^main$" \
   --build-config=cloudbuild.yaml \
   --substitutions="_APP_YAML=app-production.yaml,_VERSION=prod" \
+  --service-account=projects/your-project-id/serviceAccounts/app-engine-deployer@your-project-id.iam.gserviceaccount.com \
   --project=your-project-id
 ```
 
@@ -235,10 +261,14 @@ For safer production deployments, use a canary strategy that deploys without rou
 ```yaml
 # cloudbuild.yaml - Canary deployment strategy
 steps:
-  # Run tests
+  # Install dependencies and run tests
   - name: "python:3.12"
-    entrypoint: "python"
-    args: ["-m", "pytest", "tests/", "-v"]
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        pip install -r requirements.txt
+        python -m pytest tests/ -v
 
   # Deploy new version without routing traffic
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
@@ -260,19 +290,21 @@ steps:
       - "services"
       - "set-traffic"
       - "default"
-      - "--splits=canary=0.1"
+      - "--splits=stable-version=0.9,canary=0.1"
       - "--split-by=random"
       - "--project=$PROJECT_ID"
       - "--quiet"
 
 timeout: "1800s"
+options:
+  logging: CLOUD_LOGGING_ONLY
 ```
 
-After monitoring the canary, promote it to full traffic manually or with a second trigger.
+Replace `stable-version` with the currently serving production version. After monitoring the canary, promote it to full traffic manually or with a second trigger.
 
 ## Handling Deployment Failures
 
-Add a failure notification step using Cloud Build's built-in options:
+Configure Cloud Build logging and build options:
 
 ```yaml
 # cloudbuild.yaml - With failure handling
@@ -336,6 +368,8 @@ steps:
     args: ["app", "deploy", "dispatch.yaml", "--project=$PROJECT_ID", "--quiet"]
 
 timeout: "1800s"
+options:
+  logging: CLOUD_LOGGING_ONLY
 ```
 
 ## Monitoring Build History
@@ -355,4 +389,4 @@ gcloud builds log BUILD_ID --stream --project=your-project-id
 
 ## Summary
 
-Cloud Build with GitHub triggers gives you automatic deployments to App Engine on every push. The setup involves connecting your GitHub repo, granting the right IAM permissions to the Cloud Build service account, writing a `cloudbuild.yaml` that tests and deploys your code, and creating triggers for your branches. For production, consider canary deployments with `--no-promote` to validate new versions before routing full traffic. The entire setup takes about 30 minutes and saves you from manual deployments forever.
+Cloud Build with GitHub triggers gives you automatic deployments to App Engine on every push. The setup involves connecting your GitHub repo, granting the right IAM permissions to the trigger service account, writing a `cloudbuild.yaml` that tests and deploys your code, and creating triggers for your branches. For production, consider canary deployments with `--no-promote` to validate new versions before routing full traffic. The entire setup takes about 30 minutes and saves you from manual deployments forever.
