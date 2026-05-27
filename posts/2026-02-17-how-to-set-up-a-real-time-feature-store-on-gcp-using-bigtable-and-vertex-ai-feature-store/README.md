@@ -8,7 +8,7 @@ Description: Learn how to build a real-time feature store on GCP using Bigtable 
 
 ---
 
-Serving machine learning features in real time is one of those problems that looks simple until you try to build it. Your model needs features with sub-millisecond latency at prediction time, but those same features need to be available in batch for training without introducing training-serving skew. A feature store solves this by providing a single system that handles both. On GCP, you can combine Vertex AI Feature Store for management and offline serving with Bigtable for ultra-low-latency online serving. Here is how to set it up.
+Serving machine learning features in real time is one of those problems that looks simple until you try to build it. Your model needs features with low latency at prediction time, but those same features need to be available in batch for training without introducing training-serving skew. A feature store solves this by providing a single system that handles both. On GCP, you can combine Vertex AI Feature Store for management and offline serving with Bigtable for low-latency online serving at large scale. Here is how to set it up.
 
 ## The Feature Store Architecture
 
@@ -49,23 +49,17 @@ Create the feature store using the Vertex AI SDK:
 ```python
 # create_feature_store.py - Set up the feature store and feature groups
 from google.cloud import aiplatform
+from vertexai.resources.preview import feature_store
 
 # Initialize the Vertex AI client
 aiplatform.init(project='my-project', location='us-central1')
 
 # Create a Feature Online Store backed by Bigtable
-feature_online_store = aiplatform.FeatureOnlineStore.create(
-    name="production-feature-store",
-    bigtable=aiplatform.FeatureOnlineStore.Bigtable(
-        auto_scaling=aiplatform.FeatureOnlineStore.Bigtable.AutoScaling(
-            min_node_count=1,
-            max_node_count=5,
-            cpu_utilization_target=60,
-        )
-    ),
+feature_online_store = feature_store.FeatureOnlineStore.create_bigtable_store(
+    "production_feature_store",
 )
 
-print(f"Created online store: {feature_online_store.resource_name}")
+print(f"Created online store: {feature_online_store.name}")
 ```
 
 ## Step 2: Define Feature Groups and Features
@@ -75,118 +69,106 @@ Feature groups organize related features together. Define them based on your ent
 ```python
 # define_features.py - Create feature groups for user and product features
 from google.cloud import aiplatform
-from google.cloud.aiplatform import FeatureGroup
+from vertexai.resources.preview import feature_store
 
 aiplatform.init(project='my-project', location='us-central1')
 
 # Create a feature group for user features
 # The source is a BigQuery table that contains the feature values
-user_feature_group = FeatureGroup.create(
+user_feature_group = feature_store.FeatureGroup.create(
     name="user_features",
-    source=FeatureGroup.BigQuery(
+    source=feature_store.utils.FeatureGroupBigQuerySource(
         uri="bq://my-project.features.user_features",
         entity_id_columns=["user_id"],
     ),
-    description="User behavioral and demographic features",
 )
 
 # Register individual features within the group
 user_feature_group.create_feature(
     name="total_orders_30d",
-    description="Total number of orders in the last 30 days",
-    value_type="INT64",
+    version_column_name="total_orders_30d",
 )
 
 user_feature_group.create_feature(
     name="avg_order_value_30d",
-    description="Average order value in the last 30 days",
-    value_type="DOUBLE",
+    version_column_name="avg_order_value_30d",
 )
 
 user_feature_group.create_feature(
     name="days_since_last_order",
-    description="Number of days since the customer last ordered",
-    value_type="INT64",
+    version_column_name="days_since_last_order",
 )
 
 user_feature_group.create_feature(
     name="customer_segment",
-    description="Customer segment: platinum, gold, silver, bronze",
-    value_type="STRING",
+    version_column_name="customer_segment",
 )
 
-print(f"Created feature group: {user_feature_group.resource_name}")
+print(f"Created feature group: {user_feature_group.name}")
 
 # Create a feature group for product features
-product_feature_group = FeatureGroup.create(
+product_feature_group = feature_store.FeatureGroup.create(
     name="product_features",
-    source=FeatureGroup.BigQuery(
+    source=feature_store.utils.FeatureGroupBigQuerySource(
         uri="bq://my-project.features.product_features",
         entity_id_columns=["product_id"],
     ),
-    description="Product catalog and performance features",
 )
 
 product_feature_group.create_feature(
     name="avg_rating",
-    description="Average product rating from reviews",
-    value_type="DOUBLE",
+    version_column_name="avg_rating",
 )
 
 product_feature_group.create_feature(
     name="total_purchases_7d",
-    description="Total purchases in the last 7 days",
-    value_type="INT64",
+    version_column_name="total_purchases_7d",
 )
 
 product_feature_group.create_feature(
     name="category",
-    description="Product category",
-    value_type="STRING",
+    version_column_name="category",
 )
 
-print(f"Created feature group: {product_feature_group.resource_name}")
+print(f"Created feature group: {product_feature_group.name}")
 ```
 
 ## Step 3: Create Feature Views for Online Serving
 
-Feature views connect feature groups to the online store, making them available for real-time serving:
+Feature views connect BigQuery sources or feature groups to the online store, making them available for real-time serving:
 
 ```python
 # create_feature_views.py - Set up online serving views
 from google.cloud import aiplatform
+from vertexai.resources.preview import feature_store
 
 aiplatform.init(project='my-project', location='us-central1')
 
 # Get the online store
-online_store = aiplatform.FeatureOnlineStore("production-feature-store")
+online_store = feature_store.FeatureOnlineStore("production_feature_store")
 
 # Create a feature view for user features
 user_feature_view = online_store.create_feature_view(
     name="user_features_view",
-    source=aiplatform.FeatureView.BigQuerySource(
+    source=feature_store.utils.FeatureViewBigQuerySource(
         uri="bq://my-project.features.user_features",
         entity_id_columns=["user_id"],
-    ),
-    sync_config=aiplatform.FeatureView.SyncConfig(
-        cron="0 */4 * * *"  # Sync from BigQuery every 4 hours
     ),
 )
 
 # Create a feature view for product features
 product_feature_view = online_store.create_feature_view(
     name="product_features_view",
-    source=aiplatform.FeatureView.BigQuerySource(
+    source=feature_store.utils.FeatureViewBigQuerySource(
         uri="bq://my-project.features.product_features",
         entity_id_columns=["product_id"],
-    ),
-    sync_config=aiplatform.FeatureView.SyncConfig(
-        cron="0 */1 * * *"  # Sync every hour for faster-changing product features
     ),
 )
 
 print("Feature views created and syncing")
 ```
+
+If you need an explicit sync schedule, set the feature view `sync_config` with the REST API. For example, use `"cron": "0 */4 * * *"` for a four-hour sync interval.
 
 ## Step 4: Compute Features with a Batch Pipeline
 
@@ -196,8 +178,7 @@ Create a Dataflow pipeline that computes features and writes them to BigQuery (t
 # compute_user_features.py - Batch feature computation pipeline
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, count, avg, datediff, current_date, max as spark_max,
-    when, sum as spark_sum
+    col, count, avg, datediff, current_date, max as spark_max, when
 )
 
 spark = SparkSession.builder \
@@ -241,33 +222,61 @@ spark.stop()
 
 ## Step 5: Stream Real-Time Feature Updates
 
-For features that need to be fresher than the batch sync interval, write directly to Bigtable:
+For features that need to be fresher than the batch sync interval, write directly to the feature view. Direct writes are available for Bigtable online serving and are currently a preview feature:
 
 ```python
-# stream_features.py - Stream real-time feature updates to Bigtable
-from google.cloud import bigtable
-from google.cloud.bigtable import row as bt_row
-import json
-from datetime import datetime
+# stream_features.py - Stream real-time feature updates to the feature view
+import google.auth
+from google.auth.transport.requests import AuthorizedSession
 
-def update_user_feature(user_id, feature_name, feature_value):
-    """Update a single feature value in Bigtable for real-time serving."""
-    client = bigtable.Client(project='my-project', admin=True)
-    instance = client.instance('feature-store-instance')
-    table = instance.table('user_features')
+PROJECT_ID = "my-project"
+LOCATION = "us-central1"
+ONLINE_STORE = "production_feature_store"
+FEATURE_VIEW = "user_features_view"
 
-    # Create or update the row for this user
-    row_key = f"user#{user_id}".encode()
-    row = table.direct_row(row_key)
 
-    # Set the feature value in the 'features' column family
-    row.set_cell(
-        column_family_id='features',
-        column=feature_name.encode(),
-        value=str(feature_value).encode(),
-        timestamp=datetime.utcnow()
+def _feature_value(value):
+    """Convert Python values to the Feature Store typed value format."""
+    if isinstance(value, bool):
+        return {"bool_value": value}
+    if isinstance(value, int):
+        return {"int64_value": value}
+    if isinstance(value, float):
+        return {"double_value": value}
+    return {"string_value": str(value)}
+
+
+def update_user_features(user_id, features):
+    """Update feature values in a Bigtable-backed feature view."""
+    credentials, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
     )
-    row.commit()
+    session = AuthorizedSession(credentials)
+    feature_view = (
+        f"projects/{PROJECT_ID}/locations/{LOCATION}/featureOnlineStores/"
+        f"{ONLINE_STORE}/featureViews/{FEATURE_VIEW}"
+    )
+    url = f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1/{feature_view}:directWrite"
+
+    payload = [
+        {
+            "feature_view": feature_view,
+            "data_key_and_feature_values": {
+                "data_key": {"key": str(user_id)},
+                "features": [
+                    {
+                        "name": name,
+                        "value_and_timestamp": {"value": _feature_value(value)},
+                    }
+                    for name, value in features.items()
+                ],
+            },
+        }
+    ]
+
+    response = session.post(url, json=payload)
+    response.raise_for_status()
+    return response.json()
 
 
 def process_order_event(event):
@@ -277,9 +286,14 @@ def process_order_event(event):
 
     # Update real-time features based on the new order
     # In a production system, you would read the current values and recompute
-    update_user_feature(user_id, 'last_order_amount', order_amount)
-    update_user_feature(user_id, 'last_order_timestamp', event['timestamp'])
-    update_user_feature(user_id, 'days_since_last_order', 0)
+    update_user_features(
+        user_id,
+        {
+            "last_order_amount": order_amount,
+            "last_order_timestamp": event["timestamp"],
+            "days_since_last_order": 0,
+        },
+    )
 ```
 
 ## Step 6: Serve Features at Prediction Time
@@ -289,35 +303,21 @@ When your model needs features for a prediction, fetch them from the online stor
 ```python
 # serve_features.py - Fetch features for real-time predictions
 from google.cloud import aiplatform
+from vertexai.resources.preview.feature_store import FeatureOnlineStore, FeatureView
 
 aiplatform.init(project='my-project', location='us-central1')
 
 def get_prediction_features(user_id, product_id):
     """Fetch features for a prediction request from the online store."""
-    online_store = aiplatform.FeatureOnlineStore("production-feature-store")
+    online_store = FeatureOnlineStore("production_feature_store")
 
     # Fetch user features
-    user_view = online_store.get_feature_view("user_features_view")
-    user_features = user_view.fetch_feature_values(
-        entity_id=user_id,
-        feature_ids=[
-            "total_orders_30d",
-            "avg_order_value_30d",
-            "days_since_last_order",
-            "customer_segment",
-        ]
-    )
+    user_view = FeatureView("user_features_view", feature_online_store_id=online_store.name)
+    user_features = user_view.read(str(user_id))
 
     # Fetch product features
-    product_view = online_store.get_feature_view("product_features_view")
-    product_features = product_view.fetch_feature_values(
-        entity_id=product_id,
-        feature_ids=[
-            "avg_rating",
-            "total_purchases_7d",
-            "category",
-        ]
-    )
+    product_view = FeatureView("product_features_view", feature_online_store_id=online_store.name)
+    product_features = product_view.read(str(product_id))
 
     # Combine features into a single dictionary for the model
     combined = {}
@@ -359,44 +359,65 @@ For model training, you need features as they were at the time of each historica
 ```sql
 -- training_data.sql - Generate training data with point-in-time correct features
 -- This ensures no data leakage from the future into training examples
+WITH user_features_asof AS (
+  SELECT
+    e.user_id,
+    e.product_id,
+    e.event_timestamp,
+    e.label,
+    uf.total_orders_30d,
+    uf.avg_order_value_30d,
+    uf.days_since_last_order,
+    uf.customer_segment
+  FROM `my-project.training.events` e
+  LEFT JOIN `my-project.features.user_features_history` uf
+    ON e.user_id = uf.user_id
+   AND uf.feature_timestamp <= e.event_timestamp
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY e.user_id, e.product_id, e.event_timestamp, e.label
+    ORDER BY uf.feature_timestamp IS NULL, uf.feature_timestamp DESC
+  ) = 1
+),
+product_features_asof AS (
+  SELECT
+    e.user_id,
+    e.product_id,
+    e.event_timestamp,
+    e.label,
+    pf.avg_rating,
+    pf.total_purchases_7d,
+    pf.category
+  FROM `my-project.training.events` e
+  LEFT JOIN `my-project.features.product_features_history` pf
+    ON e.product_id = pf.product_id
+   AND pf.feature_timestamp <= e.event_timestamp
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY e.user_id, e.product_id, e.event_timestamp, e.label
+    ORDER BY pf.feature_timestamp IS NULL, pf.feature_timestamp DESC
+  ) = 1
+)
 SELECT
-  e.user_id,
-  e.product_id,
-  e.event_timestamp,
-  e.label,  -- Whether the user purchased (1) or not (0)
+  u.user_id,
+  u.product_id,
+  u.event_timestamp,
+  u.label,  -- Whether the user purchased (1) or not (0)
 
   -- User features as of the event time
-  uf.total_orders_30d,
-  uf.avg_order_value_30d,
-  uf.days_since_last_order,
-  uf.customer_segment,
+  u.total_orders_30d,
+  u.avg_order_value_30d,
+  u.days_since_last_order,
+  u.customer_segment,
 
   -- Product features as of the event time
-  pf.avg_rating,
-  pf.total_purchases_7d,
-  pf.category
-
-FROM `my-project.training.events` e
-
--- Point-in-time join for user features
-LEFT JOIN (
-  SELECT *, ROW_NUMBER() OVER (
-    PARTITION BY user_id
-    ORDER BY feature_timestamp DESC
-  ) AS rn
-  FROM `my-project.features.user_features_history`
-  WHERE feature_timestamp <= e.event_timestamp
-) uf ON e.user_id = uf.user_id AND uf.rn = 1
-
--- Point-in-time join for product features
-LEFT JOIN (
-  SELECT *, ROW_NUMBER() OVER (
-    PARTITION BY product_id
-    ORDER BY feature_timestamp DESC
-  ) AS rn
-  FROM `my-project.features.product_features_history`
-  WHERE feature_timestamp <= e.event_timestamp
-) pf ON e.product_id = pf.product_id AND pf.rn = 1;
+  p.avg_rating,
+  p.total_purchases_7d,
+  p.category
+FROM user_features_asof u
+LEFT JOIN product_features_asof p
+  ON u.user_id = p.user_id
+ AND u.product_id = p.product_id
+ AND u.event_timestamp = p.event_timestamp
+ AND u.label = p.label;
 ```
 
 ## Monitoring Feature Freshness
@@ -405,23 +426,52 @@ Track how stale your features are to catch pipeline failures:
 
 ```python
 # monitor_freshness.py - Check feature freshness and alert on staleness
-from google.cloud import monitoring_v3
-from google.cloud import aiplatform
+from datetime import datetime, timezone
+
+import google.auth
+from google.auth.transport.requests import AuthorizedSession
+
+PROJECT_ID = "my-project"
+LOCATION = "us-central1"
+ONLINE_STORE = "production_feature_store"
+MAX_STALENESS_SECONDS = 6 * 60 * 60
+
+
+def list_syncs(feature_view):
+    credentials, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    session = AuthorizedSession(credentials)
+    url = (
+        f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}"
+        f"/locations/{LOCATION}/featureOnlineStores/{ONLINE_STORE}"
+        f"/featureViews/{feature_view}/featureViewSyncs"
+    )
+    response = session.get(url)
+    response.raise_for_status()
+    return response.json().get("featureViewSyncs", [])
+
 
 def check_feature_freshness():
-    """Check if online features are stale."""
-    aiplatform.init(project='my-project', location='us-central1')
-
-    online_store = aiplatform.FeatureOnlineStore("production-feature-store")
-
-    # Check sync status for each feature view
+    """Check whether scheduled feature view syncs are stale."""
     for view_name in ["user_features_view", "product_features_view"]:
-        view = online_store.get_feature_view(view_name)
-        sync_status = view.get_sync_status()
+        syncs = list_syncs(view_name)
+        completed = [
+            sync for sync in syncs
+            if sync.get("runTime", {}).get("endTime")
+            and sync.get("finalStatus", {}).get("code", 0) == 0
+        ]
+        if not completed:
+            print(f"WARNING: {view_name} has no successful syncs")
+            continue
 
-        print(f"{view_name}: last sync at {sync_status.last_sync_time}")
-        if sync_status.is_stale:
+        latest = max(sync["runTime"]["endTime"] for sync in completed)
+        latest_time = datetime.fromisoformat(latest.replace("Z", "+00:00"))
+        age_seconds = (datetime.now(timezone.utc) - latest_time).total_seconds()
+
+        print(f"{view_name}: last successful sync at {latest}")
+        if age_seconds > MAX_STALENESS_SECONDS:
             print(f"WARNING: {view_name} features are stale!")
 ```
 
-Building a real-time feature store requires coordination between batch and streaming systems, but the payoff is significant. You get consistent features between training and serving, sub-millisecond online lookups through Bigtable, and a single source of truth for all your ML features. Start with your most critical model's features and expand the store as you onboard more models.
+Building a real-time feature store requires coordination between batch and streaming systems, but the payoff is significant. You get consistent features between training and serving, low-latency online lookups through Bigtable, and a single source of truth for all your ML features. Start with your most critical model's features and expand the store as you onboard more models.
