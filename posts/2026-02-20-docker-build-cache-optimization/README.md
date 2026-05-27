@@ -18,7 +18,7 @@ Docker caches each layer (each instruction in a Dockerfile). If the instruction 
 
 ```mermaid
 graph TD
-    A[FROM node:20-alpine] -->|Cached| B[COPY package.json]
+    A[FROM node:24-alpine] -->|Cached| B[COPY package.json]
     B -->|Cache HIT| C[RUN npm ci]
     C -->|Cache HIT| D[COPY . .]
     D -->|Cache MISS<br>source changed| E[RUN npm run build]
@@ -37,7 +37,7 @@ Put instructions that change rarely at the top and those that change often at th
 ```dockerfile
 # GOOD: Optimal layer ordering
 
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 # Layer 1: System dependencies (changes rarely)
@@ -58,7 +58,7 @@ RUN npm run build
 
 ```dockerfile
 # BAD: Everything invalidates on every change
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 # Copying everything first means ANY file change
@@ -90,7 +90,7 @@ CMD ["python", "app.py"]
 
 ```dockerfile
 # Go example: Separate go.mod from source
-FROM golang:1.22-alpine
+FROM golang:1.26-alpine
 
 WORKDIR /app
 
@@ -110,7 +110,7 @@ BuildKit cache mounts persist caches between builds without adding them to image
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -144,7 +144,7 @@ COPY . .
 # syntax=docker/dockerfile:1
 
 # Go with module cache mount
-FROM golang:1.22-alpine
+FROM golang:1.26-alpine
 WORKDIR /app
 
 COPY go.mod go.sum ./
@@ -282,9 +282,9 @@ graph TD
 ```yaml
 # .gitlab-ci.yml
 build:
-  image: docker:24
+  image: docker:27.4.1-cli
   services:
-    - docker:24-dind
+    - docker:27.4.1-dind
   variables:
     DOCKER_BUILDKIT: 1
   script:
@@ -292,6 +292,7 @@ build:
     - docker pull $CI_REGISTRY_IMAGE:latest || true
 
     - docker build
+        --build-arg BUILDKIT_INLINE_CACHE=1
         --cache-from $CI_REGISTRY_IMAGE:latest
         --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
         --tag $CI_REGISTRY_IMAGE:latest
@@ -327,14 +328,14 @@ BuildKit builds independent stages in parallel:
 # syntax=docker/dockerfile:1
 
 # These two stages build in parallel
-FROM node:20-alpine AS frontend
+FROM node:24-alpine AS frontend
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ .
 RUN npm run build
 
-FROM golang:1.22-alpine AS backend
+FROM golang:1.26-alpine AS backend
 WORKDIR /backend
 COPY go.mod go.sum ./
 RUN go mod download
@@ -342,7 +343,7 @@ COPY . .
 RUN go build -o /backend/server ./cmd/server
 
 # Final stage combines both outputs
-FROM alpine:3.19
+FROM alpine:3.23
 COPY --from=frontend /frontend/dist /app/static
 COPY --from=backend /backend/server /app/server
 EXPOSE 8080
