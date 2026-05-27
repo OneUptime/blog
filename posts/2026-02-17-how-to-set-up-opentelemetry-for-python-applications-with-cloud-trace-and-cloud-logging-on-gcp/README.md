@@ -30,6 +30,7 @@ pip install opentelemetry-instrumentation-requests
 pip install opentelemetry-instrumentation-sqlalchemy
 pip install opentelemetry-instrumentation-redis
 pip install opentelemetry-instrumentation-grpc
+pip install opentelemetry-instrumentation-celery
 
 # Cloud Logging integration
 pip install google-cloud-logging
@@ -109,43 +110,17 @@ The real power comes from connecting your logs to your traces. When you log from
 # logging_setup.py - Cloud Logging with trace correlation
 import logging
 import google.cloud.logging
-from opentelemetry import trace
-
-class TraceContextFilter(logging.Filter):
-    """Logging filter that adds trace context to log records."""
-
-    def filter(self, record):
-        span = trace.get_current_span()
-        if span and span.get_span_context().is_valid:
-            ctx = span.get_span_context()
-            # Format trace ID for Cloud Logging correlation
-            record.trace_id = format(ctx.trace_id, '032x')
-            record.span_id = format(ctx.span_id, '016x')
-            record.trace_sampled = bool(ctx.trace_flags & 0x01)
-        else:
-            record.trace_id = None
-            record.span_id = None
-            record.trace_sampled = False
-        return True
 
 def setup_logging(project_id: str = None):
     """Set up Cloud Logging with trace correlation."""
     # Initialize the Cloud Logging client
     client = google.cloud.logging.Client(project=project_id)
 
-    # Set up the Cloud Logging handler
-    handler = client.get_default_handler()
+    # Configure the root logger. The handler automatically populates
+    # trace, span_id, and trace_sampled from the active OpenTelemetry span.
+    client.setup_logging(log_level=logging.INFO)
 
-    # Add trace context filter
-    trace_filter = TraceContextFilter()
-
-    # Configure the root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(handler)
-    root_logger.addFilter(trace_filter)
-
-    return root_logger
+    return logging.getLogger()
 ```
 
 ## Complete Flask Application Example
@@ -177,7 +152,6 @@ logger = setup_logging(project_id='my-project')
 # Import and apply auto-instrumentation
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 # Create the Flask app
 app = Flask(__name__)
@@ -188,6 +162,7 @@ RequestsInstrumentor().instrument()
 
 # Get a tracer for custom spans
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 tracer = trace.get_tracer(__name__)
 
 @app.route('/api/orders', methods=['POST'])
@@ -225,7 +200,7 @@ def create_order():
             logger.info(f"Inventory check result: {inventory_result.get('available')}")
         except requests.RequestException as e:
             logger.error(f"Inventory service error: {e}")
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             span.record_exception(e)
             return jsonify({'error': 'Inventory check failed'}), 503
 
@@ -247,7 +222,7 @@ def create_order():
             logger.info("Payment processed successfully")
         except requests.RequestException as e:
             logger.error(f"Payment failed: {e}")
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             span.record_exception(e)
             return jsonify({'error': 'Payment processing failed'}), 503
 
@@ -310,6 +285,7 @@ Enrich your traces with business-relevant information:
 ```python
 # Adding custom attributes and events to spans
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer(__name__)
 
@@ -330,7 +306,7 @@ def process_order(order):
             span.add_event('validation_failed', {
                 'reason': 'insufficient_stock',
             })
-            span.set_status(trace.StatusCode.ERROR, 'Validation failed')
+            span.set_status(Status(StatusCode.ERROR, 'Validation failed'))
             return
 
         span.add_event('payment_initiated', {
@@ -373,7 +349,7 @@ opentelemetry-sdk==1.*
 opentelemetry-exporter-gcp-trace==1.*
 opentelemetry-instrumentation-flask==0.*
 opentelemetry-instrumentation-requests==0.*
-google-cloud-logging==3.*
+google-cloud-logging>=3.11,<4
 ```
 
 ## Verifying the Setup
