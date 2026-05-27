@@ -12,12 +12,12 @@ The Message of the Day (MOTD) is the first thing users see when they log into a 
 
 ## MOTD on Modern Linux
 
-On systemd-based systems, the MOTD system is more complex than just editing `/etc/motd`. There are several pieces:
+On many modern Linux distributions, especially Debian/Ubuntu systems that use PAM's `pam_motd`, the MOTD system is more complex than just editing `/etc/motd`. There are several pieces:
 
 - `/etc/motd` - Static MOTD text
 - `/etc/update-motd.d/` - Scripts that generate dynamic MOTD content (Debian/Ubuntu)
 - `/etc/profile.d/` - Scripts that run at login and can display messages
-- `/run/motd.dynamic` - Generated dynamic content
+- `/run/motd.dynamic` - Generated dynamic content on Debian/Ubuntu systems
 
 ## Simple Static MOTD
 
@@ -33,6 +33,7 @@ This playbook deploys a static MOTD with a legal banner:
   hosts: all
   become: true
   vars:
+    ssh_service_name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
     motd_banner: |
       ============================================================
       WARNING: This system is for authorized use only.
@@ -69,17 +70,24 @@ This playbook deploys a static MOTD with a legal banner:
         line: 'Banner /etc/issue.net'
       notify: Restart sshd
 
-    - name: Configure SSH to show MOTD after login
+    - name: Configure SSH to leave MOTD display to PAM
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^#?PrintMotd'
-        line: 'PrintMotd yes'
+        line: 'PrintMotd no'
+      notify: Restart sshd
+
+    - name: Configure SSH to use PAM for login session messages
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?UsePAM'
+        line: 'UsePAM yes'
       notify: Restart sshd
 
   handlers:
     - name: Restart sshd
-      ansible.builtin.systemd:
-        name: sshd
+      ansible.builtin.systemd_service:
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
