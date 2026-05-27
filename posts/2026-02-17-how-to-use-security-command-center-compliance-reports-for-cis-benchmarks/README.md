@@ -33,15 +33,15 @@ Each section contains specific controls with pass/fail criteria. For example, "E
 
 - Security Command Center Premium tier (compliance reports are not available in Standard)
 - Organization-level SCC access
-- The `roles/securitycenter.findingsViewer` role
+- The `roles/securitycenter.findingsViewer` role for findings, or `roles/securitycenter.adminViewer` for full Security Command Center console access
 
 ## Step 1: Access the Compliance Dashboard
 
 The compliance dashboard is available in the Cloud Console:
 
-1. Navigate to Security > Security Command Center
-2. Click on the "Compliance" tab
-3. Select "CIS Google Cloud Platform Foundation Benchmark" from the available standards
+1. Navigate to Security > Security Command Center > Compliance
+2. If you are using the legacy compliance view without Compliance Manager, click "View details" on the CIS Google Cloud Computing Foundations Benchmark card
+3. If Compliance Manager is enabled, use the Monitor tab to review the relevant CIS framework
 
 You will see a percentage score showing overall compliance and a breakdown by section.
 
@@ -68,19 +68,21 @@ You can also pull compliance-related findings via the command line.
 ```bash
 # List all findings related to CIS benchmark violations
 
-gcloud scc findings list ORGANIZATION_ID \
-  --source=organizations/ORGANIZATION_ID/sources/SHA_SOURCE_ID \
-  --filter='state="ACTIVE" AND sourceProperties.compliance_standards : "CIS"' \
+gcloud scc findings list organizations/ORGANIZATION_ID \
+  --location=global \
+  --source=SHA_SOURCE_ID \
+  --filter='state="ACTIVE" AND contains(compliances, standard : "CIS")' \
   --format="table(finding.category, finding.severity, finding.resourceName)" \
   --limit=50
 ```
 
-To get a count of violations per CIS section:
+To get a count of active violations per finding category:
 
 ```bash
 # Count findings grouped by category for CIS-related detectors
-gcloud scc findings list ORGANIZATION_ID \
-  --source=organizations/ORGANIZATION_ID/sources/SHA_SOURCE_ID \
+gcloud scc findings list organizations/ORGANIZATION_ID \
+  --location=global \
+  --source=SHA_SOURCE_ID \
   --filter='state="ACTIVE"' \
   --format="value(finding.category)" | sort | uniq -c | sort -rn
 ```
@@ -91,14 +93,14 @@ Each SHA finding category maps to one or more CIS controls. Here are some common
 
 | SHA Finding Category | CIS Control |
 |---|---|
-| MFA_NOT_ENFORCED | 1.1 - Ensure MFA is enabled for all users |
+| MFA_NOT_ENFORCED | 1.2 - Ensure multi-factor authentication is enabled for all users |
 | SERVICE_ACCOUNT_KEY_NOT_ROTATED | 1.7 - Ensure service account keys are rotated |
 | AUDIT_LOGGING_DISABLED | 2.1 - Ensure Cloud Audit Logging is configured |
-| FLOW_LOGS_DISABLED | 3.8 - Ensure VPC Flow Logs are enabled |
+| FLOW_LOGS_DISABLED / VPC_FLOW_LOGS_SETTINGS_NOT_RECOMMENDED | 3.8 - Ensure VPC Flow Logs are enabled and configured correctly |
 | DEFAULT_NETWORK | 3.1 - Ensure default network does not exist |
 | OPEN_SSH_PORT | 3.6 - Ensure SSH access is restricted |
 | PUBLIC_BUCKET_ACL | 5.1 - Ensure Cloud Storage buckets are not publicly accessible |
-| SQL_NO_ROOT_PASSWORD | 6.1 - Ensure Cloud SQL database requires all incoming connections to use SSL |
+| SSL_NOT_ENFORCED | 6.4 - Ensure Cloud SQL database requires all incoming connections to use SSL |
 
 ## Step 5: Generate a Compliance Report
 
@@ -106,8 +108,9 @@ For audit purposes, you often need a formal report. You can export the complianc
 
 ```bash
 # Export all active findings to a JSON file for reporting
-gcloud scc findings list ORGANIZATION_ID \
-  --source=organizations/ORGANIZATION_ID/sources/SHA_SOURCE_ID \
+gcloud scc findings list organizations/ORGANIZATION_ID \
+  --location=global \
+  --source=SHA_SOURCE_ID \
   --filter='state="ACTIVE"' \
   --format=json > scc_compliance_report.json
 ```
@@ -163,13 +166,13 @@ Export findings to BigQuery to track your compliance posture over time.
 -- Track weekly compliance score
 SELECT
   DATE_TRUNC(DATE(event_time), WEEK) as week,
-  COUNT(CASE WHEN state = 'ACTIVE' THEN 1 END) as active_violations,
-  COUNT(CASE WHEN state = 'INACTIVE' THEN 1 END) as resolved_violations
-FROM `my-project.scc_findings.structured_findings`
-WHERE category IN (
+  COUNT(CASE WHEN finding.state = 'ACTIVE' THEN 1 END) as active_violations,
+  COUNT(CASE WHEN finding.state = 'INACTIVE' THEN 1 END) as resolved_violations
+FROM `my-project.scc_findings.findings`
+WHERE finding.category IN (
   'MFA_NOT_ENFORCED', 'AUDIT_LOGGING_DISABLED',
-  'FLOW_LOGS_DISABLED', 'DEFAULT_NETWORK',
-  'OPEN_SSH_PORT', 'PUBLIC_BUCKET_ACL'
+  'FLOW_LOGS_DISABLED', 'VPC_FLOW_LOGS_SETTINGS_NOT_RECOMMENDED',
+  'DEFAULT_NETWORK', 'OPEN_SSH_PORT', 'PUBLIC_BUCKET_ACL'
 )
 GROUP BY week
 ORDER BY week DESC;
@@ -213,14 +216,15 @@ gcloud compute firewall-rules update allow-ssh \
 
 ## Step 8: Set Up Continuous Compliance Monitoring
 
-Create notification configs that alert you when new compliance violations appear.
+Create notification configs that alert you when new high-severity Security Health Analytics findings appear.
 
 ```bash
-# Alert on new CIS-related findings
+# Alert on new high-severity Security Health Analytics findings
 gcloud scc notifications create cis-violations \
   --organization=ORGANIZATION_ID \
+  --location=global \
   --pubsub-topic=projects/my-project-id/topics/compliance-alerts \
-  --filter='state="ACTIVE" AND (severity="HIGH" OR severity="CRITICAL")'
+  --filter='state="ACTIVE" AND parent="organizations/ORGANIZATION_ID/sources/SHA_SOURCE_ID" AND (severity="HIGH" OR severity="CRITICAL")'
 ```
 
 ## Best Practices for CIS Compliance
