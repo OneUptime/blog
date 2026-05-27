@@ -65,7 +65,7 @@ def postgres_container():
     Start a PostgreSQL container for the test module.
     The container is automatically stopped and removed after all tests complete.
     """
-    with PostgresContainer("postgres:16-alpine") as postgres:
+    with PostgresContainer("postgres:16-alpine", driver=None) as postgres:
         yield postgres
 
 @pytest.fixture(scope="module")
@@ -222,16 +222,18 @@ from kafka import KafkaProducer, KafkaConsumer
 @pytest.fixture(scope="module")
 def kafka_container():
     """Start a Kafka container with KRaft mode (no ZooKeeper needed)."""
-    with KafkaContainer("confluentinc/cp-kafka:7.6.0") as kafka:
+    with KafkaContainer("confluentinc/cp-kafka:7.6.0").with_kraft() as kafka:
         yield kafka
 
 @pytest.fixture(scope="module")
 def producer(kafka_container):
     """Create a Kafka producer connected to the test broker."""
-    return KafkaProducer(
+    producer = KafkaProducer(
         bootstrap_servers=kafka_container.get_bootstrap_server(),
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
     )
+    yield producer
+    producer.close()
 
 @pytest.fixture(scope="module")
 def consumer(kafka_container):
@@ -285,7 +287,7 @@ def compose():
     that need to communicate with each other.
     """
     with DockerCompose(
-        filepath=".",
+        context=".",
         compose_file_name="docker-compose.test.yml",
         pull=True,
     ) as compose:
