@@ -19,7 +19,7 @@ First, you need to install the required packages. The BigQuery library has an op
 ```bash
 # Install the BigQuery client library with Pandas support
 
-pip install google-cloud-bigquery pandas db-dtypes pyarrow
+pip install "google-cloud-bigquery[bqstorage,pandas]"
 ```
 
 The `db-dtypes` package handles BigQuery-specific data types like DATE and TIME when converting to Pandas. The `pyarrow` package speeds up data transfer significantly by using the Arrow format.
@@ -66,7 +66,7 @@ print(df.head())
 print(f"Total rows returned: {len(df)}")
 ```
 
-The `to_dataframe()` method is doing the heavy lifting here. It handles all the type conversions and pagination automatically. Under the hood, it uses the BigQuery Storage API when `pyarrow` is installed, which is much faster than the default REST-based approach.
+The `to_dataframe()` method is doing the heavy lifting here. It handles all the type conversions and pagination automatically. Under the hood, it can use the BigQuery Storage API when the `google-cloud-bigquery-storage` dependency is installed, which is much faster than the default REST-based approach.
 
 ## Parameterized Queries
 
@@ -141,6 +141,7 @@ When your query returns millions of rows, loading everything into memory at once
 
 ```python
 from google.cloud import bigquery
+import pandas as pd
 
 client = bigquery.Client()
 
@@ -150,13 +151,11 @@ query = """
     WHERE DATE(timestamp) BETWEEN '2024-01-01' AND '2024-12-31'
 """
 
-# Use the list_rows approach for paginated access
 query_job = client.query(query)
 
 # Process results in chunks instead of loading everything at once
 chunks = []
-for page in query_job.result().pages:
-    chunk_df = page.to_dataframe()
+for chunk_df in query_job.result().to_dataframe_iterable():
     # Process each chunk - filter, aggregate, or write to disk
     chunks.append(chunk_df)
     print(f"Processed chunk with {len(chunk_df)} rows")
@@ -184,12 +183,12 @@ query = """
 job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
 query_job = client.query(query, job_config=job_config)
 
-# Convert bytes to GB for readability
+# Convert bytes to TiB for pricing
 bytes_estimate = query_job.total_bytes_processed
-gb_estimate = bytes_estimate / (1024 ** 3)
-cost_estimate = gb_estimate * 6.25  # On-demand pricing per TB = $6.25, per GB = $6.25/1024
+tib_estimate = bytes_estimate / (1024 ** 4)
+cost_estimate = tib_estimate * 6.25  # On-demand pricing is $6.25 per TiB, before the monthly free tier
 
-print(f"This query will scan {gb_estimate:.2f} GB")
+print(f"This query will scan {tib_estimate:.4f} TiB")
 print(f"Estimated cost: ${cost_estimate:.4f}")
 ```
 
@@ -267,4 +266,4 @@ When you are running BigQuery queries in production - say, in a scheduled pipeli
 
 ## Wrapping Up
 
-The `google-cloud-bigquery` library paired with Pandas is a powerful combination for data work on GCP. The key things to remember are: always install `pyarrow` for faster data transfers, use parameterized queries to keep your code clean and safe, run dry runs before expensive queries, and process large results in chunks to avoid memory issues. Once you get comfortable with this workflow, switching between interactive analysis and production pipelines becomes much easier.
+The `google-cloud-bigquery` library paired with Pandas is a powerful combination for data work on GCP. The key things to remember are: install the BigQuery Storage API dependencies for faster data transfers, use parameterized queries to keep your code clean and safe, run dry runs before expensive queries, and process large results in chunks to avoid memory issues. Once you get comfortable with this workflow, switching between interactive analysis and production pipelines becomes much easier.
