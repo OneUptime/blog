@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix out of memory (OOM) kills in Google K
 
 ---
 
-Your GKE pods keep getting killed and restarted, and when you check the status, you see `OOMKilled`. This means the container exceeded its memory limit and the Linux OOM killer terminated it. It is one of the most common issues in Kubernetes, and in GKE specifically, it can cascade into node-level problems if enough pods get killed simultaneously.
+Your GKE pods keep getting killed and restarted, and when you check the status, you see `OOMKilled`. This usually means the container exceeded its memory limit, or the node ran out of memory and the Linux OOM killer terminated the container process. It is one of the most common issues in Kubernetes, and in GKE specifically, it can cascade into node-level problems if enough pods get killed simultaneously.
 
 Let me walk through how to find out what is happening and how to fix it.
 
@@ -36,7 +36,7 @@ Last State:     Terminated
   Exit Code:    137
 ```
 
-Exit code 137 is the signature of an OOM kill (128 + signal 9 SIGKILL).
+Exit code 137 means the process received SIGKILL (128 + signal 9). When the termination reason is `OOMKilled`, that SIGKILL came from an OOM event.
 
 ## Understanding the Two Types of OOM
 
@@ -48,7 +48,7 @@ The container exceeds its memory `limit` defined in the pod spec. Kubernetes kil
 
 ### Node-Level OOM
 
-The node itself runs out of memory. The kubelet starts evicting pods based on their QoS class (BestEffort first, then Burstable, then Guaranteed last).
+The node itself runs out of memory. The kubelet starts evicting pods under node pressure. QoS class influences the order (BestEffort pods are usually evicted before Burstable, and Guaranteed pods last), but Kubernetes also considers whether pods exceed their requests, pod priority, and resource usage relative to requests.
 
 ```bash
 # Check if node-level pressure is occurring
@@ -92,7 +92,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
       - name: my-app
@@ -109,11 +115,11 @@ spec:
 Guidelines for setting memory limits:
 - Set `requests` to the typical memory usage
 - Set `limits` to 1.5-2x the typical usage to handle spikes
-- Never set `limits` equal to `requests` unless you want Guaranteed QoS (which prevents bursting)
+- Set memory `limits` equal to `requests` when you want Guaranteed QoS and predictable scheduling; use higher limits than requests only when the workload needs to burst and you can tolerate eviction risk under node pressure
 
 ## Step 3: Use Vertical Pod Autoscaler
 
-If you are not sure what the right memory limits are, use the Vertical Pod Autoscaler (VPA) to get recommendations:
+If you are not sure what the right memory requests are, use the Vertical Pod Autoscaler (VPA) to get recommendations:
 
 ```bash
 # Install VPA if not already installed
@@ -146,7 +152,7 @@ After a few hours, check the recommendations:
 kubectl get vpa my-app-vpa -o jsonpath='{.status.recommendation}' | python3 -m json.tool
 ```
 
-The VPA will tell you the recommended requests and limits based on actual usage patterns.
+The VPA will tell you the recommended CPU and memory requests based on actual usage patterns.
 
 ## Step 4: Fix Node Pool Sizing
 
@@ -235,7 +241,7 @@ Configure alerts so you know about OOM kills before they cascade:
 # Create a log-based metric for OOM kills
 gcloud logging metrics create oom-kills \
     --description="Count of OOM killed containers" \
-    --log-filter='resource.type="k8s_container" AND jsonPayload.message=~"OOMKilled"'
+    --log-filter='resource.type="k8s_node" AND jsonPayload.MESSAGE:("ContainerDied" OR "TaskOOM event")'
 ```
 
 You can also set up GKE monitoring in the Cloud Console to track memory utilization per node pool and get alerts when nodes are above 80% memory usage.
@@ -261,12 +267,13 @@ graph TD
 
 ## GKE Autopilot Consideration
 
-If you are running GKE Autopilot, resource management is different. Autopilot enforces minimum resource requests and automatically provisions nodes to match. If your pods are getting OOM killed on Autopilot, the issue is almost certainly that your memory limits are too low - the node sizing is handled for you.
+If you are running GKE Autopilot, resource management is different. Autopilot enforces minimum resource requests and automatically provisions nodes to match. If your pods are getting OOM killed on Autopilot, the issue is usually that your memory request or limit is too low for the workload - the node sizing is handled for you.
 
 ```bash
-# On Autopilot, just adjust the pod resource requests and limits
-kubectl patch deployment my-app -n my-namespace --type=json \
-    -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "1Gi"}]'
+# On Autopilot, adjust the pod resource requests and limits
+kubectl set resources deployment my-app -n my-namespace \
+    --requests=memory=1Gi \
+    --limits=memory=1Gi
 ```
 
 OOM kills are a signal that your resource configuration does not match your workload's actual needs. Use VPA recommendations, monitor memory trends, and set alerts. The fix is usually straightforward - increase the memory limit or fix the application's memory management.
