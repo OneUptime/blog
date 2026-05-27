@@ -51,6 +51,7 @@ gcloud compute instance-templates create my-service-template \
     --network=producer-vpc \
     --subnet=producer-subnet \
     --region=us-central1 \
+    --tags=my-service-backend \
     --metadata=startup-script='#!/bin/bash
 apt-get update && apt-get install -y nginx
 echo "Hello from PSC producer" > /var/www/html/index.html
@@ -64,12 +65,32 @@ gcloud compute instance-groups managed create my-service-mig \
 
 # Create a health check
 gcloud compute health-checks create tcp my-service-hc \
+    --region=us-central1 \
     --port=80
+
+# Allow Google Cloud health checks to reach the backend VMs
+gcloud compute firewall-rules create allow-my-service-health-checks \
+    --network=producer-vpc \
+    --action=ALLOW \
+    --direction=INGRESS \
+    --source-ranges=35.191.0.0/16,130.211.0.0/22 \
+    --target-tags=my-service-backend \
+    --rules=tcp:80
+
+# Allow clients in the producer subnet to test the internal load balancer
+gcloud compute firewall-rules create allow-my-service-producer-clients \
+    --network=producer-vpc \
+    --action=ALLOW \
+    --direction=INGRESS \
+    --source-ranges=10.0.0.0/24 \
+    --target-tags=my-service-backend \
+    --rules=tcp:80
 
 # Create a backend service
 gcloud compute backend-services create my-backend-service \
     --protocol=TCP \
     --health-checks=my-service-hc \
+    --health-checks-region=us-central1 \
     --load-balancing-scheme=INTERNAL \
     --region=us-central1
 
@@ -92,6 +113,8 @@ gcloud compute forwarding-rules create my-service-ilb \
     --subnet=producer-subnet \
     --load-balancing-scheme=INTERNAL \
     --backend-service=my-backend-service \
+    --backend-service-region=us-central1 \
+    --ip-protocol=TCP \
     --ports=80 \
     --address=10.0.0.50
 ```
@@ -110,6 +133,15 @@ gcloud compute networks subnets create psc-nat-subnet \
     --region=us-central1 \
     --range=10.0.10.0/24 \
     --purpose=PRIVATE_SERVICE_CONNECT
+
+# Allow PSC NAT traffic to reach the backend VMs
+gcloud compute firewall-rules create allow-my-service-psc-nat \
+    --network=producer-vpc \
+    --action=ALLOW \
+    --direction=INGRESS \
+    --source-ranges=10.0.10.0/24 \
+    --target-tags=my-service-backend \
+    --rules=tcp:80
 ```
 
 The `--purpose=PRIVATE_SERVICE_CONNECT` flag is critical. It tells GCP that this subnet is reserved for PSC NAT and cannot be used for regular workloads.
@@ -192,13 +224,17 @@ gcloud compute service-attachments update my-service-attachment \
 
 ## Adding DNS for a Better Consumer Experience
 
-You can optionally register your service attachment with Service Directory, which allows consumers to use DNS names instead of raw IP addresses.
+You can optionally configure a DNS domain name on the service attachment, which allows Private Service Connect and Service Directory to create DNS entries for consumer endpoints instead of requiring raw IP addresses. Configure the domain name when you create the service attachment.
 
 ```bash
-# Update the service attachment to register with Service Directory
-gcloud compute service-attachments update my-service-attachment \
+# Create the service attachment with a DNS domain name
+gcloud compute service-attachments create my-service-attachment \
     --region=us-central1 \
-    --enable-proxy-protocol=false
+    --producer-forwarding-rule=my-service-ilb \
+    --nat-subnets=psc-nat-subnet \
+    --connection-preference=ACCEPT_MANUAL \
+    --consumer-accept-list=consumer-project-id=5 \
+    --domain-names=us-central1.p.example.com.
 ```
 
 ## Monitoring and Logging
@@ -224,8 +260,8 @@ You should also set up Cloud Monitoring alerts for:
 
 A few important security points when publishing services via PSC:
 
-- **Always prefer manual acceptance** for production services. Automatic acceptance means any project in your organization (or any project at all, if cross-org is enabled) can connect.
-- **Size your NAT subnet appropriately**. Each consumer connection uses one IP from the NAT subnet. If you expect many consumers, use a larger subnet.
+- **Always prefer manual acceptance** for production services. Automatic acceptance means any consumer that has the service attachment URI can request a connection.
+- **Size your NAT subnet appropriately**. Each connected endpoint or backend uses one IP from the NAT subnet. The number of TCP or UDP connections does not affect NAT subnet IP consumption.
 - **Use firewall rules** on the producer side to restrict which source IP ranges can reach your backends. Since consumer traffic gets NATed to the PSC NAT subnet, you can write rules targeting that subnet range.
 - **Monitor connection limits**. Service attachments have a maximum number of connected endpoints. Plan capacity accordingly.
 
