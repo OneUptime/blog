@@ -14,10 +14,10 @@ This guide covers using Ansible's `kubernetes.core.helm` module to install chart
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- ansible-core 2.16+ with the current `kubernetes.core` collection
 - Helm 3 installed on the Ansible control node
 - A valid kubeconfig
-- Python `kubernetes` library
+- Python `PyYAML` library
 
 ```bash
 # Install the Ansible collection
@@ -28,7 +28,7 @@ ansible-galaxy collection install kubernetes.core
 curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
 # Install Python dependencies
-pip install kubernetes
+pip install PyYAML
 ```
 
 ## Adding Helm Repositories
