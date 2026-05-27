@@ -80,9 +80,7 @@ gcloud compute backend-services create cloud-run-backend \
   --global \
   --load-balancing-scheme=EXTERNAL_MANAGED \
   --enable-cdn \
-  --cdn-policy-cache-mode=USE_ORIGIN_HEADERS \
-  --cdn-policy-default-ttl=3600 \
-  --cdn-policy-max-ttl=86400
+  --cache-mode=USE_ORIGIN_HEADERS
 
 # Add the serverless NEG to the backend service
 gcloud compute backend-services add-backend cloud-run-backend \
@@ -94,9 +92,9 @@ gcloud compute backend-services add-backend cloud-run-backend \
 Key CDN settings:
 
 - `--enable-cdn`: Turns on Cloud CDN caching
-- `--cdn-policy-cache-mode=USE_ORIGIN_HEADERS`: Respect Cache-Control headers from your app
-- `--cdn-policy-default-ttl=3600`: Default cache time of 1 hour if no Cache-Control header is present
-- `--cdn-policy-max-ttl=86400`: Maximum cache time of 24 hours
+- `--cache-mode=USE_ORIGIN_HEADERS`: Respect Cache-Control headers from your app
+
+With `USE_ORIGIN_HEADERS`, responses without valid caching headers are not cached. If you want Cloud CDN to cache static content even when no cache headers are present, use `--cache-mode=CACHE_ALL_STATIC` and configure `--default-ttl` and `--max-ttl` instead.
 
 ## Step 4: Create a URL Map
 
@@ -126,6 +124,8 @@ gcloud compute target-https-proxies create cloud-run-https-proxy \
 # Create the forwarding rule (connects the IP to the proxy)
 gcloud compute forwarding-rules create cloud-run-https-rule \
   --global \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
+  --network-tier=PREMIUM \
   --target-https-proxy=cloud-run-https-proxy \
   --address=cloud-run-cdn-ip \
   --ports=443
@@ -149,6 +149,8 @@ gcloud compute target-http-proxies create cloud-run-http-proxy \
 
 gcloud compute forwarding-rules create cloud-run-http-rule \
   --global \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
+  --network-tier=PREMIUM \
   --target-http-proxy=cloud-run-http-proxy \
   --address=cloud-run-cdn-ip \
   --ports=80
@@ -179,10 +181,13 @@ Cloud CDN respects the Cache-Control headers your application returns. Set appro
 
 ```python
 # app.py - Flask app with proper cache headers for CDN
-from flask import Flask, send_from_directory, make_response
-import os
+from flask import Flask, jsonify, make_response, render_template, send_from_directory
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=None)
+
+
+def get_catalog():
+    return [{"id": "example", "name": "Example item"}]
 
 @app.route("/")
 def index():
@@ -221,7 +226,7 @@ Important header details:
 
 - `s-maxage`: Controls CDN cache duration specifically (overrides max-age for shared caches)
 - `max-age`: Controls browser cache duration
-- `immutable`: Tells CDN and browser the content will never change at this URL
+- `immutable`: Tells browsers the content will never change at this URL; Cloud CDN still uses the response freshness headers
 - `stale-while-revalidate`: CDN can serve stale content while fetching a fresh copy
 - `no-store`: Prevents any caching
 
@@ -238,7 +243,7 @@ Look for these headers in the response:
 
 - `Age: 45` - The content has been cached for 45 seconds
 - `Via: 1.1 google` - The response came through Google's CDN
-- `X-Cache-Status` or checking if Age > 0 indicates a cache hit
+- `Age` greater than 0 indicates a cache hit. A cache status header such as `X-Cache-Status` only appears if you configure a custom response header for it.
 
 ## Invalidating the Cache
 
@@ -268,12 +273,12 @@ By default, Cloud CDN uses the full request URL as the cache key. You can custom
 # Include query strings in cache key (default)
 gcloud compute backend-services update cloud-run-backend \
   --global \
-  --cdn-policy-include-query-string
+  --cache-key-include-query-string
 
 # Exclude query strings from cache key
 gcloud compute backend-services update cloud-run-backend \
   --global \
-  --no-cdn-policy-include-query-string
+  --no-cache-key-include-query-string
 ```
 
 Excluding query strings means `style.css?v=1` and `style.css?v=2` serve the same cached response. Include them if you use query parameters for versioning.
