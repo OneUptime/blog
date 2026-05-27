@@ -35,7 +35,7 @@ Each line is a segment (MSH, EVN, PID, PV1), and fields within each segment are 
 
 ```bash
 gcloud services enable healthcare.googleapis.com
-pip install google-api-python-client google-cloud-pubsub
+pip install google-api-python-client google-cloud-firestore functions-framework
 ```
 
 ## Step 1: Create the HL7v2 Store
@@ -49,11 +49,19 @@ gcloud healthcare datasets create clinical-data \
 # Create a Pub/Sub topic for message notifications
 gcloud pubsub topics create hl7v2-notifications
 
+# Grant the Healthcare API service agent permission to publish notifications
+PROJECT_ID=your-project
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+gcloud pubsub topics add-iam-policy-binding hl7v2-notifications \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-healthcare.iam.gserviceaccount.com" \
+  --role="roles/pubsub.publisher"
+
 # Create the HL7v2 store
 gcloud healthcare hl7v2-stores create clinical-messages \
   --dataset=clinical-data \
   --location=us-central1 \
-  --notification-config=pubsubTopic=projects/your-project/topics/hl7v2-notifications
+  --parser-version=v3 \
+  --notification-config=pubsub-topic=projects/your-project/topics/hl7v2-notifications
 ```
 
 For detailed configuration, use the API:
@@ -85,8 +93,8 @@ def create_hl7v2_store(store_id):
 
     body = {
         "parserConfig": {
-            # Schema defines how to parse specific message types
-            "version": "V2",
+            # V3 is the recommended parser version for new HL7v2 stores
+            "version": "V3",
             # Allow null header to handle messages with incomplete MSH segments
             "allowNullHeader": False,
         },
@@ -221,7 +229,8 @@ def get_message(message_name):
     parsed = result.get("parsedData", {})
     if parsed:
         print("Parsed segments:")
-        for segment_name, segment_data in parsed.items():
+        for segment_data in parsed.get("segments", []):
+            segment_name = segment_data.get("segmentId", "Unknown")
             print(f"  {segment_name}: {json.dumps(segment_data, indent=2)[:200]}")
 
     # Message metadata
@@ -232,13 +241,13 @@ def get_message(message_name):
     return result
 
 def list_messages(message_type=None):
-    """Lists messages in the HL7v2 store, optionally filtered by type."""
+    """Lists messages in the HL7v2 store, optionally filtered by MSH-9.1 type."""
 
     client = get_client()
 
     filter_str = ""
     if message_type:
-        filter_str = f'messageType="{message_type}"'
+        filter_str = f'messageType = "{message_type}"'
 
     result = (
         client.projects()
@@ -269,7 +278,6 @@ Use Pub/Sub to trigger processing when messages arrive:
 import json
 import base64
 from googleapiclient import discovery
-from google.oauth2 import service_account
 from google.cloud import firestore
 import functions_framework
 
@@ -277,11 +285,16 @@ db = firestore.Client()
 
 def get_client():
     """Creates Healthcare API client."""
-    credentials = service_account.Credentials.from_service_account_file(
-        "service-account-key.json",
-        scopes=["https://www.googleapis.com/auth/cloud-healthcare"],
-    )
-    return discovery.build("healthcare", "v1", credentials=credentials)
+    return discovery.build("healthcare", "v1")
+
+def parse_msh_message_type(raw_message):
+    """Extracts the full MSH-9 message type, including the trigger event."""
+
+    for line in raw_message.split("\r"):
+        if line.startswith("MSH|"):
+            fields = line.split("|")
+            return fields[8] if len(fields) > 8 else ""
+    return ""
 
 def parse_pid_segment(raw_message):
     """Extracts patient information from the PID segment.
@@ -347,7 +360,7 @@ def process_message(cloud_event):
     )
 
     raw_data = base64.b64decode(message["data"]).decode("utf-8")
-    message_type = message.get("messageType", "")
+    message_type = parse_msh_message_type(raw_data)
 
     print(f"Processing {message_type} message: {message_name}")
 
@@ -409,6 +422,7 @@ gcloud functions deploy process-hl7v2 \
   --region=us-central1 \
   --memory=256MB \
   --timeout=120s \
+  --source=process_hl7v2 \
   --entry-point=process_message
 ```
 
@@ -417,20 +431,27 @@ gcloud functions deploy process-hl7v2 \
 Hospitals typically send HL7v2 over MLLP (Minimal Lower Layer Protocol), not HTTP. Google provides an MLLP adapter that bridges MLLP to the Healthcare API:
 
 ```bash
-# Deploy the MLLP adapter as a container on GKE
+# Run the MLLP adapter locally as a container
 # The adapter listens for MLLP connections and forwards to the Healthcare API
 docker pull gcr.io/cloud-healthcare-containers/mllp-adapter:latest
 
 # Run the adapter
 docker run -p 2575:2575 \
-  -e HL7_V2_PROJECT_ID=your-project \
-  -e HL7_V2_LOCATION_ID=us-central1 \
-  -e HL7_V2_DATASET_ID=clinical-data \
-  -e HL7_V2_STORE_ID=clinical-messages \
-  gcr.io/cloud-healthcare-containers/mllp-adapter:latest
+  -v ~/.config:/root/.config \
+  gcr.io/cloud-healthcare-containers/mllp-adapter:latest \
+  /usr/mllp_adapter/mllp_adapter \
+  --hl7_v2_project_id=your-project \
+  --hl7_v2_location_id=us-central1 \
+  --hl7_v2_dataset_id=clinical-data \
+  --hl7_v2_store_id=clinical-messages \
+  --export_stats=false \
+  --receiver_ip=0.0.0.0 \
+  --port=2575 \
+  --api_addr_prefix=https://healthcare.googleapis.com:443/v1 \
+  --logtostderr
 ```
 
-The adapter listens on port 2575 (standard MLLP port) and forwards messages to the Healthcare API HL7v2 store.
+The adapter listens on the configured port 2575 and forwards messages to the Healthcare API HL7v2 store.
 
 ## Wrapping Up
 
