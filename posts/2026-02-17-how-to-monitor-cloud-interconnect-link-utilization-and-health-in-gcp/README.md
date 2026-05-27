@@ -14,27 +14,27 @@ In this post, I will show you how to monitor your Cloud Interconnect using Cloud
 
 ## Available Metrics
 
-GCP exposes Interconnect metrics under the `compute.googleapis.com` namespace. Here are the most important ones:
+GCP exposes Interconnect metrics under the `interconnect.googleapis.com` namespace. For Dedicated Interconnect, Cloud Monitoring collects Interconnect and VLAN attachment metrics. For Partner Interconnect, it collects VLAN attachment metrics. Here are the most important ones:
 
 ### Link-Level Metrics
 
 | Metric | Description |
 |--------|-------------|
-| `interconnect/link/received_bytes_count` | Bytes received on the physical link |
-| `interconnect/link/transmitted_bytes_count` | Bytes transmitted on the physical link |
-| `interconnect/link/rx_light_level` | Receive optical light level (dBm) |
-| `interconnect/link/tx_light_level` | Transmit optical light level (dBm) |
-| `interconnect/link/operational_status` | Whether the link is up (1) or down (0) |
+| `network/interconnect/received_bytes_count` | Bytes received on the Interconnect |
+| `network/interconnect/sent_bytes_count` | Bytes sent on the Interconnect |
+| `network/interconnect/link/rx_power` | Receive optical light level (dBm) |
+| `network/interconnect/link/tx_power` | Transmit optical light level (dBm) |
+| `network/interconnect/link/operational` | Whether the physical circuit is up (`true`) or down (`false`) |
 
 ### Attachment-Level Metrics
 
 | Metric | Description |
 |--------|-------------|
-| `interconnect/attachment/received_bytes_count` | Bytes received on the VLAN attachment |
-| `interconnect/attachment/transmitted_bytes_count` | Bytes transmitted on the VLAN attachment |
-| `interconnect/attachment/received_packets_count` | Packets received |
-| `interconnect/attachment/transmitted_packets_count` | Packets transmitted |
-| `interconnect/attachment/capacity` | Configured bandwidth capacity |
+| `network/attachment/received_bytes_count` | Bytes received on the VLAN attachment |
+| `network/attachment/sent_bytes_count` | Bytes sent on the VLAN attachment |
+| `network/attachment/received_packets_count` | Packets received |
+| `network/attachment/sent_packets_count` | Packets sent |
+| `network/attachment/capacity` | Configured bandwidth capacity |
 
 ## Checking Link Health Quickly
 
@@ -61,10 +61,12 @@ You can query specific metrics from the command line:
 ```bash
 # Check link utilization for the last hour
 gcloud monitoring time-series list \
-    --filter='metric.type="compute.googleapis.com/interconnect/link/transmitted_bytes_count" AND resource.labels.interconnect_name="my-interconnect"' \
-    --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+    --filter='metric.type="interconnect.googleapis.com/network/interconnect/sent_bytes_count" AND resource.type="interconnect" AND resource.labels.interconnect="my-interconnect"' \
+    --interval-start-time=$(date -u -d "1 hour ago" +%Y-%m-%dT%H:%M:%SZ) \
     --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-    --format="table(points[].value.int64Value, points[].interval.endTime)"
+    --aggregation-alignment-period=60s \
+    --aggregation-per-series-aligner=ALIGN_RATE \
+    --format="table(points[].value.doubleValue, points[].interval.endTime)"
 ```
 
 ## Building a Monitoring Dashboard
@@ -89,10 +91,10 @@ resource "google_monitoring_dashboard" "interconnect_dashboard" {
               dataSets = [{
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "metric.type=\"compute.googleapis.com/interconnect/link/operational_status\""
+                    filter = "metric.type=\"interconnect.googleapis.com/network/interconnect/link/operational\" resource.type=\"interconnect\""
                     aggregation = {
                       alignmentPeriod  = "60s"
-                      perSeriesAligner = "ALIGN_MEAN"
+                      perSeriesAligner = "ALIGN_FRACTION_TRUE"
                     }
                   }
                 }
@@ -105,12 +107,12 @@ resource "google_monitoring_dashboard" "interconnect_dashboard" {
           width  = 6
           height = 4
           widget = {
-            title = "Link Bandwidth (Transmitted)"
+            title = "Interconnect Bandwidth (Sent)"
             xyChart = {
               dataSets = [{
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "metric.type=\"compute.googleapis.com/interconnect/link/transmitted_bytes_count\""
+                    filter = "metric.type=\"interconnect.googleapis.com/network/interconnect/sent_bytes_count\" resource.type=\"interconnect\""
                     aggregation = {
                       alignmentPeriod  = "60s"
                       perSeriesAligner = "ALIGN_RATE"
@@ -131,7 +133,7 @@ resource "google_monitoring_dashboard" "interconnect_dashboard" {
               dataSets = [{
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "metric.type=\"compute.googleapis.com/interconnect/link/rx_light_level\""
+                    filter = "metric.type=\"interconnect.googleapis.com/network/interconnect/link/rx_power\" resource.type=\"interconnect\""
                     aggregation = {
                       alignmentPeriod  = "60s"
                       perSeriesAligner = "ALIGN_MEAN"
@@ -181,14 +183,14 @@ gcloud compute interconnects get-diagnostics my-interconnect \
 This is the most important alert. Set it to trigger immediately:
 
 ```bash
-# Alert when interconnect link goes down
+# Alert when any interconnect circuit goes down
 gcloud alpha monitoring policies create \
     --display-name="Interconnect Link Down" \
-    --condition-display-name="Link operational status is 0" \
-    --condition-filter='metric.type="compute.googleapis.com/interconnect/link/operational_status" AND resource.type="interconnect"' \
-    --condition-comparison=COMPARISON_LT \
-    --condition-threshold-value=1 \
-    --condition-duration=60s \
+    --condition-display-name="Link operational status is false" \
+    --condition-filter='metric.type="interconnect.googleapis.com/network/interconnect/link/operational" AND resource.type="interconnect"' \
+    --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_FRACTION_TRUE"}' \
+    --if="< 1" \
+    --duration=60s \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -202,10 +204,10 @@ Trigger when you are approaching the link capacity:
 gcloud alpha monitoring policies create \
     --display-name="Interconnect High Bandwidth" \
     --condition-display-name="Bandwidth over 80%" \
-    --condition-filter='metric.type="compute.googleapis.com/interconnect/link/transmitted_bytes_count" AND resource.type="interconnect"' \
-    --condition-comparison=COMPARISON_GT \
-    --condition-threshold-value=1000000000 \
-    --condition-duration=300s \
+    --condition-filter='metric.type="interconnect.googleapis.com/network/interconnect/sent_bytes_count" AND resource.type="interconnect"' \
+    --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_RATE"}' \
+    --if="> 1000000000" \
+    --duration=300s \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -218,16 +220,16 @@ Get warned before the link actually drops:
 gcloud alpha monitoring policies create \
     --display-name="Interconnect Low Optical Power" \
     --condition-display-name="RX light level low" \
-    --condition-filter='metric.type="compute.googleapis.com/interconnect/link/rx_light_level" AND resource.type="interconnect"' \
-    --condition-comparison=COMPARISON_LT \
-    --condition-threshold-value=-10 \
-    --condition-duration=300s \
+    --condition-filter='metric.type="interconnect.googleapis.com/network/interconnect/link/rx_power" AND resource.type="interconnect"' \
+    --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_MEAN"}' \
+    --if="< -10" \
+    --duration=300s \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
 ## Monitoring BGP Sessions
 
-BGP session health is just as important as the physical link. Use Cloud Router metrics:
+BGP session health is just as important as the physical link. Use Cloud Router status:
 
 ```bash
 # Check BGP peer status for the interconnect router
@@ -241,7 +243,6 @@ Set up a monitoring script that checks BGP status periodically:
 ```python
 # bgp_monitor.py - Check BGP session health and alert on issues
 from google.cloud import compute_v1
-import json
 
 def check_bgp_health(project_id, region, router_name):
     """Check the BGP peer status on a Cloud Router."""
@@ -280,13 +281,17 @@ if __name__ == "__main__":
 
 ## Capacity Planning
 
-Beyond alerting, use bandwidth metrics for capacity planning. Export metrics to BigQuery for long-term analysis:
+Beyond alerting, use bandwidth metrics for capacity planning. Export metrics to BigQuery for long-term analysis by reading the Cloud Monitoring API on a schedule and writing the returned time series to BigQuery:
 
 ```bash
-# Create a log sink to export interconnect metrics to BigQuery
-gcloud logging sinks create interconnect-metrics-sink \
-    bigquery.googleapis.com/projects/my-project/datasets/network_metrics \
-    --log-filter='resource.type="interconnect"'
+# Read hourly Interconnect sent-byte rates as JSON for an export job
+gcloud monitoring time-series list \
+    --filter='metric.type="interconnect.googleapis.com/network/interconnect/sent_bytes_count" AND resource.type="interconnect"' \
+    --interval-start-time=$(date -u -d "1 hour ago" +%Y-%m-%dT%H:%M:%SZ) \
+    --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+    --aggregation-alignment-period=3600s \
+    --aggregation-per-series-aligner=ALIGN_RATE \
+    --format=json
 ```
 
 Then query historical utilization to identify trends:
@@ -294,11 +299,11 @@ Then query historical utilization to identify trends:
 ```sql
 -- Query peak bandwidth utilization over the past 30 days
 SELECT
-  DATE(timestamp) as date,
-  MAX(json_value(json_payload, '$.value')) as peak_bytes_per_second,
-  AVG(json_value(json_payload, '$.value')) as avg_bytes_per_second
-FROM `my-project.network_metrics.interconnect_metrics`
-WHERE timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+  DATE(point.interval.end_time) as date,
+  MAX(point.value.double_value) as peak_bytes_per_second,
+  AVG(point.value.double_value) as avg_bytes_per_second
+FROM `my-project.network_metrics.interconnect_metrics_export`
+WHERE point.interval.end_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY date
 ORDER BY date DESC
 ```
