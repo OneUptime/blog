@@ -35,7 +35,7 @@ First, install the required collection:
 ansible-galaxy collection install amazon.aws community.aws
 ```
 
-Here is a playbook that creates an IAM user with programmatic access and attaches a managed policy:
+Here is a playbook that creates IAM users and attaches managed policies:
 
 ```yaml
 # create-aws-iam-user.yml - Creates an IAM user with specific permissions
@@ -87,8 +87,8 @@ Here is a playbook that creates an IAM user with programmatic access and attache
     # Attach managed policies to users
     - name: Attach managed policies
       amazon.aws.iam_user:
-        name: "{{ item.0.name }}"
-        managed_policies: "{{ item.0.managed_policies }}"
+        name: "{{ item.name }}"
+        managed_policies: "{{ item.managed_policies }}"
         state: present
       loop: "{{ iam_users }}"
 ```
@@ -161,7 +161,7 @@ Here is how to create a service principal and assign it a role:
       azure.azcollection.azure_rm_roleassignment:
         scope: "/subscriptions/{{ lookup('env', 'AZURE_SUBSCRIPTION_ID') }}/resourceGroups/production"
         assignee_object_id: "{{ sp_result.object_id }}"
-        role_definition_id: "b24988ac-6180-42a0-ab88-20f7382dd24c"  # Contributor role
+        role_definition_id: "/subscriptions/{{ lookup('env', 'AZURE_SUBSCRIPTION_ID') }}/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"  # Contributor role
         state: present
 ```
 
@@ -230,12 +230,22 @@ Here is a practical example that enforces a company-wide policy: no IAM user or 
       amazon.aws.iam_user_info:
       register: aws_users
 
+    # Get each user's attached managed policies
+    - name: Get attached managed policies
+      command: >
+        aws iam list-attached-user-policies
+        --user-name {{ item.user_name }}
+        --output json
+      loop: "{{ aws_users.iam_users }}"
+      register: attached_policy_results
+      changed_when: false
+
     # Check each user for forbidden policies
     - name: Flag users with admin policies
       debug:
-        msg: "WARNING: User {{ item.user_name }} has overly broad permissions"
-      loop: "{{ aws_users.iam_users }}"
-      when: item.attached_policies | map(attribute='policy_arn') | intersect(forbidden_aws_policies) | length > 0
+        msg: "WARNING: User {{ item.item.user_name }} has overly broad permissions"
+      loop: "{{ attached_policy_results.results }}"
+      when: (item.stdout | from_json).AttachedPolicies | map(attribute='PolicyArn') | intersect(forbidden_aws_policies) | length > 0
 ```
 
 ## Organizing IAM Playbooks
@@ -270,10 +280,10 @@ Keep your user definitions in variables files and your policy logic in roles. Th
 
 ## Key Access Rotation
 
-Do not forget about key rotation. Here is a task that rotates AWS access keys older than 90 days:
+Do not forget about key rotation. Here is a task that deletes AWS access keys older than 90 days:
 
 ```yaml
-# rotate-old-keys.yml - Rotate AWS access keys older than 90 days
+# rotate-old-keys.yml - Delete AWS access keys older than 90 days
 - name: Get access key info
   amazon.aws.iam_access_key_info:
     user_name: "{{ item.user_name }}"
@@ -285,7 +295,7 @@ Do not forget about key rotation. Here is a task that rotates AWS access keys ol
     user_name: "{{ item.0.item.user_name }}"
     id: "{{ item.1.access_key_id }}"
     state: absent
-  loop: "{{ key_info.results | subelements('access_keys') }}"
+  loop: "{{ key_info.results | subelements('access_key') }}"
   when: >
     (now() - item.1.create_date | to_datetime).days > 90
 ```
