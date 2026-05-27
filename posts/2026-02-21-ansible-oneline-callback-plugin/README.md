@@ -8,7 +8,7 @@ Description: Configure the Ansible oneline callback plugin to display each task 
 
 ---
 
-The `oneline` callback plugin in Ansible compresses each task result into a single line. Instead of spreading results across multiple lines with formatted dictionaries, you get one line per host per task showing the status and a brief summary. This makes it easy to scan through large playbook runs quickly.
+The `oneline` callback plugin in Ansible compresses each task result into a single line. Instead of spreading results across multiple lines with formatted dictionaries, you get one line per host per task showing the status and a brief summary. This makes it easy to scan through large playbook runs quickly. In current ansible-core releases, the plugin is deprecated and scheduled for removal in ansible-core 2.23, so use it only when you specifically need this legacy output format.
 
 ## Enabling oneline
 
@@ -39,7 +39,7 @@ web-03 | FAILED! => {"changed": false, "msg": "Connection refused"}
 db-01 | SUCCESS => {"changed": false, "ping": "pong"}
 ```
 
-Each line follows the pattern: `hostname | STATUS => {result_json}`
+Most module result lines follow the pattern: `hostname | STATUS => {result_json}`. Unreachable results and command-style modules use slightly different one-line formats.
 
 For changed tasks:
 
@@ -56,7 +56,7 @@ web-03 | FAILED! => {"changed": false, "msg": "No package matching 'nginx' found
 For unreachable hosts:
 
 ```text
-web-04 | UNREACHABLE! => {"changed": false, "msg": "Failed to connect to the host", "unreachable": true}
+web-04 | UNREACHABLE!: Failed to connect to the host
 ```
 
 ## Comparing oneline with Other Callbacks
@@ -143,27 +143,27 @@ ANSIBLE_STDOUT_CALLBACK=oneline ansible-playbook site.yml | \
 
 ## oneline with Ad-Hoc Commands
 
-The oneline callback works well with ad-hoc commands for quick checks across your fleet:
+The oneline callback is also the output callback used by the `ansible -o` / `ansible --one-line` option, which works well with ad-hoc commands for quick checks across your fleet:
 
 ```bash
 # Check disk space across all servers, one line per host
-ANSIBLE_STDOUT_CALLBACK=oneline ansible all -m shell -a "df -h / | tail -1"
+ansible all -o -m shell -a "df -h / | tail -1"
 ```
 
 Output:
 
 ```text
-web-01 | CHANGED => {"changed": true, "stdout": "/dev/sda1  50G  23G  25G  48% /"}
-web-02 | CHANGED => {"changed": true, "stdout": "/dev/sda1  50G  45G  3.2G  94% /"}
-db-01 | CHANGED => {"changed": true, "stdout": "/dev/sda1  100G  34G  62G  36% /"}
+web-01 | CHANGED | rc=0 | (stdout) /dev/sda1  50G  23G  25G  48% /
+web-02 | CHANGED | rc=0 | (stdout) /dev/sda1  50G  45G  3.2G  94% /
+db-01 | CHANGED | rc=0 | (stdout) /dev/sda1  100G  34G  62G  36% /
 ```
 
 You can immediately spot the problem: web-02 is at 94% disk usage.
 
 ```bash
 # Check service status across servers
-ANSIBLE_STDOUT_CALLBACK=oneline ansible webservers -m service_facts | \
-  grep -o '"nginx.service":{[^}]*}'
+ansible webservers -o -m service_facts | \
+  grep -o '"nginx.service": *{[^}]*}'
 ```
 
 ## Using oneline in CI/CD Pipelines
@@ -220,6 +220,7 @@ If you want oneline output with task names, create a custom version:
 ```python
 # callback_plugins/oneline_plus.py - oneline with task names
 from ansible.plugins.callback.oneline import CallbackModule as OnelineCallback
+from ansible import constants as C
 
 class CallbackModule(OnelineCallback):
     CALLBACK_VERSION = 2.0
@@ -240,17 +241,33 @@ class CallbackModule(OnelineCallback):
 
     def v2_runner_on_ok(self, result):
         prefix = self._get_prefix()
-        host = result._host.get_name()
-        if result._result.get('changed', False):
-            self._display.display(f"{prefix}{host} | CHANGED", color='yellow')
+        host = result.host.get_name()
+        if result.result.get('changed', False):
+            color = C.COLOR_CHANGED
+            state = 'CHANGED'
         else:
-            self._display.display(f"{prefix}{host} | SUCCESS", color='green')
+            color = C.COLOR_OK
+            state = 'SUCCESS'
+
+        if result.task.action in C.MODULE_NO_JSON and 'ansible_job_id' not in result.result:
+            line = self._command_generic_msg(host, result.result, state)
+        else:
+            body = self._dump_results(result.result, indent=0).replace('\n', '')
+            line = f"{host} | {state} => {body}"
+
+        self._display.display(f"{prefix}{line}", color=color)
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
         prefix = self._get_prefix()
-        host = result._host.get_name()
-        msg = result._result.get('msg', '')
-        self._display.display(f"{prefix}{host} | FAILED! => {msg}", color='red')
+        host = result.host.get_name()
+        body = self._dump_results(result.result, indent=0).replace('\n', '')
+        self._display.display(f"{prefix}{host} | FAILED! => {body}", color=C.COLOR_ERROR)
+
+    def v2_runner_on_unreachable(self, result):
+        prefix = self._get_prefix()
+        host = result.host.get_name()
+        msg = result.result.get('msg', '')
+        self._display.display(f"{prefix}{host} | UNREACHABLE!: {msg}", color=C.COLOR_UNREACHABLE)
 ```
 
 The oneline callback fills a specific niche: when you need compact, parseable output and do not care about task-level context. It works best for monitoring scripts, large fleet operations, and CI pipelines where you just need to know if things passed or failed.
