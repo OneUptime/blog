@@ -1,16 +1,16 @@
-# Use the Go Vertex AI Client Library to Call Gemini Models from a Cloud Function
+# Use the Google Gen AI Go SDK to Call Gemini Models from a Cloud Function
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Vertex AI, Go, Gemini, Cloud Function, AI/ML
 
-Description: Learn how to call Gemini models using the Go Vertex AI client library from a Google Cloud Function with practical examples and cost optimization tips.
+Description: Learn how to call Gemini models on Vertex AI using the Google Gen AI Go SDK from a Google Cloud Function with practical examples and cost optimization tips.
 
 ---
 
 Running AI inference in a serverless function is a compelling pattern. You get per-request billing, automatic scaling, and zero infrastructure to manage. Google Cloud Functions paired with Vertex AI's Gemini models gives you exactly that - a function that wakes up, calls Gemini, and goes back to sleep.
 
-The Go Vertex AI client library makes this straightforward. Let me walk through building a Cloud Function that calls Gemini for text generation, handles streaming responses, and deals with the real-world concerns like timeouts and cost.
+The Google Gen AI Go SDK makes this straightforward. Let me walk through building a Cloud Function that calls Gemini on Vertex AI for text generation, handles structured responses, and deals with the real-world concerns like timeouts and cost.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ You need:
 
 - A GCP project with Vertex AI API enabled
 - Cloud Functions API enabled
-- Go 1.21 or later
+- Go 1.24 or later
 
 Enable the APIs if you have not already:
 
@@ -42,7 +42,7 @@ Initialize the module and add the Vertex AI dependency:
 
 ```bash
 go mod init my-function
-go get cloud.google.com/go/vertexai/genai
+go get google.golang.org/genai
 ```
 
 ## Basic Text Generation
@@ -60,8 +60,8 @@ import (
     "net/http"
     "os"
 
-    "cloud.google.com/go/vertexai/genai"
     "github.com/GoogleCloudPlatform/functions-framework-go/functions"
+    "google.golang.org/genai"
 )
 
 // init registers the Cloud Function entry point
@@ -138,45 +138,39 @@ func callGemini(ctx context.Context, req GenerateRequest) (string, error) {
         region = "us-central1"
     }
 
-    // Create the Vertex AI client
-    client, err := genai.NewClient(ctx, projectID, region)
+    // Create the Gen AI client using the Vertex AI backend
+    client, err := genai.NewClient(ctx, &genai.ClientConfig{
+        Project:  projectID,
+        Location: region,
+        Backend:  genai.BackendVertexAI,
+        HTTPOptions: genai.HTTPOptions{
+            APIVersion: "v1",
+        },
+    })
     if err != nil {
         return "", fmt.Errorf("failed to create client: %w", err)
     }
-    defer client.Close()
 
-    // Select the Gemini model
-    model := client.GenerativeModel("gemini-1.5-flash")
-
-    // Configure generation parameters
-    model.SetMaxOutputTokens(int32(req.MaxTokens))
-    model.SetTemperature(req.Temperature)
-
-    // Optional: set safety settings
-    model.SafetySettings = []*genai.SafetySetting{
-        {
-            Category:  genai.HarmCategoryDangerousContent,
-            Threshold: genai.HarmBlockMediumAndAbove,
+    config := &genai.GenerateContentConfig{
+        MaxOutputTokens: int32(req.MaxTokens),
+        Temperature:     genai.Ptr(req.Temperature),
+        SafetySettings: []*genai.SafetySetting{
+            {
+                Category:  genai.HarmCategoryDangerousContent,
+                Threshold: genai.HarmBlockThresholdBlockMediumAndAbove,
+            },
         },
     }
 
     // Generate content from the prompt
-    resp, err := model.GenerateContent(ctx, genai.Text(req.Prompt))
+    resp, err := client.Models.GenerateContent(ctx, "gemini-2.5-flash", genai.Text(req.Prompt), config)
     if err != nil {
         return "", fmt.Errorf("generation failed: %w", err)
     }
 
-    // Extract text from the response
-    if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+    result := resp.Text()
+    if result == "" {
         return "", fmt.Errorf("empty response from model")
-    }
-
-    // The response parts can be different types - we want the text parts
-    var result string
-    for _, part := range resp.Candidates[0].Content.Parts {
-        if text, ok := part.(genai.Text); ok {
-            result += string(text)
-        }
     }
 
     return result, nil
@@ -203,40 +197,50 @@ func callGeminiChat(ctx context.Context, messages []ChatMessage) (string, error)
     projectID := os.Getenv("GOOGLE_CLOUD_PROJECT")
     region := "us-central1"
 
-    client, err := genai.NewClient(ctx, projectID, region)
+    if len(messages) == 0 {
+        return "", fmt.Errorf("at least one message is required")
+    }
+
+    client, err := genai.NewClient(ctx, &genai.ClientConfig{
+        Project:  projectID,
+        Location: region,
+        Backend:  genai.BackendVertexAI,
+        HTTPOptions: genai.HTTPOptions{
+            APIVersion: "v1",
+        },
+    })
     if err != nil {
         return "", err
     }
-    defer client.Close()
 
-    model := client.GenerativeModel("gemini-1.5-flash")
-
-    // Start a chat session
-    chat := model.StartChat()
-
-    // Add conversation history (all messages except the last one)
+    // Build conversation history (all messages except the last one)
+    history := []*genai.Content{}
     for _, msg := range messages[:len(messages)-1] {
-        chat.History = append(chat.History, &genai.Content{
+        history = append(history, &genai.Content{
             Role: msg.Role,
-            Parts: []genai.Part{
-                genai.Text(msg.Content),
+            Parts: []*genai.Part{
+                {Text: msg.Content},
             },
         })
     }
 
+    // Start a chat session
+    chat, err := client.Chats.Create(ctx, "gemini-2.5-flash", nil, history)
+    if err != nil {
+        return "", fmt.Errorf("failed to create chat: %w", err)
+    }
+
     // Send the latest message
     lastMsg := messages[len(messages)-1]
-    resp, err := chat.SendMessage(ctx, genai.Text(lastMsg.Content))
+    resp, err := chat.SendMessage(ctx, genai.Part{Text: lastMsg.Content})
     if err != nil {
         return "", fmt.Errorf("chat failed: %w", err)
     }
 
     // Extract the response text
-    var result string
-    for _, part := range resp.Candidates[0].Content.Parts {
-        if text, ok := part.(genai.Text); ok {
-            result += string(text)
-        }
+    result := resp.Text()
+    if result == "" {
+        return "", fmt.Errorf("empty response from model")
     }
 
     return result, nil
@@ -252,19 +256,47 @@ You can ask Gemini to return JSON and parse it directly.
 func summarizeDocument(ctx context.Context, document string) (*DocumentSummary, error) {
     projectID := os.Getenv("GOOGLE_CLOUD_PROJECT")
 
-    client, err := genai.NewClient(ctx, projectID, "us-central1")
+    client, err := genai.NewClient(ctx, &genai.ClientConfig{
+        Project:  projectID,
+        Location: "us-central1",
+        Backend:  genai.BackendVertexAI,
+        HTTPOptions: genai.HTTPOptions{
+            APIVersion: "v1",
+        },
+    })
     if err != nil {
         return nil, err
     }
-    defer client.Close()
 
-    model := client.GenerativeModel("gemini-1.5-flash")
-    model.SetTemperature(0.2) // Lower temperature for more deterministic output
-
-    // System instruction to guide the model's behavior
-    model.SystemInstruction = &genai.Content{
-        Parts: []genai.Part{
-            genai.Text("You are a document summarizer. Always respond with valid JSON."),
+    config := &genai.GenerateContentConfig{
+        Temperature:      genai.Ptr[float32](0.2), // Lower temperature for more predictable output
+        ResponseMIMEType: "application/json",
+        ResponseSchema: &genai.Schema{
+            Type: genai.TypeObject,
+            Properties: map[string]*genai.Schema{
+                "title": {
+                    Type: genai.TypeString,
+                },
+                "summary": {
+                    Type: genai.TypeString,
+                },
+                "key_points": {
+                    Type:  genai.TypeArray,
+                    Items: &genai.Schema{Type: genai.TypeString},
+                },
+                "sentiment": {
+                    Type:   genai.TypeString,
+                    Format: "enum",
+                    Enum:   []string{"positive", "negative", "neutral"},
+                },
+            },
+            Required: []string{"title", "summary", "key_points", "sentiment"},
+        },
+        // System instruction to guide the model's behavior
+        SystemInstruction: &genai.Content{
+            Parts: []*genai.Part{
+                {Text: "You are a document summarizer. Always respond with valid JSON."},
+            },
         },
     }
 
@@ -277,14 +309,14 @@ func summarizeDocument(ctx context.Context, document string) (*DocumentSummary, 
     Document:
     %s`, document)
 
-    resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+    resp, err := client.Models.GenerateContent(ctx, "gemini-2.5-flash", genai.Text(prompt), config)
     if err != nil {
         return nil, err
     }
 
     // Parse the structured response
     var summary DocumentSummary
-    text := extractText(resp)
+    text := resp.Text()
     if err := json.Unmarshal([]byte(text), &summary); err != nil {
         return nil, fmt.Errorf("failed to parse structured response: %w", err)
     }
@@ -309,7 +341,7 @@ Deploy the function with the right memory and timeout settings.
 
 gcloud functions deploy generate-text \
   --gen2 \
-  --runtime=go122 \
+  --runtime=go124 \
   --region=us-central1 \
   --source=. \
   --entry-point=GenerateText \
@@ -341,7 +373,7 @@ flowchart LR
 1. **Use Gemini Flash** - It is significantly cheaper than Gemini Pro for most tasks and responds faster.
 2. **Set max tokens** - Do not let the model generate more text than you need.
 3. **Cache the client** - In Cloud Functions with min instances, the client can be reused across invocations to avoid setup overhead.
-4. **Use lower temperature** - For factual tasks, lower temperature reduces output length and cost.
+4. **Use lower temperature** - For factual tasks, lower temperature makes output more predictable.
 
 ## Testing
 
@@ -354,6 +386,6 @@ curl -X POST https://REGION-PROJECT.cloudfunctions.net/generate-text \
 
 ## Wrapping Up
 
-Calling Gemini from a Cloud Function is a clean way to add AI capabilities to your application without managing infrastructure. The Go Vertex AI client library handles authentication and serialization, and Cloud Functions gives you automatic scaling and per-invocation billing. Just watch your timeouts - Gemini calls can take a few seconds, and the default Cloud Function timeout might be too short for longer prompts.
+Calling Gemini from a Cloud Function is a clean way to add AI capabilities to your application without managing infrastructure. The Google Gen AI Go SDK handles authentication and serialization, and Cloud Functions gives you automatic scaling and per-invocation billing. Just watch your timeouts - Gemini calls can take a few seconds, and the default Cloud Function timeout might be too short for longer prompts.
 
 For monitoring your AI-powered functions - tracking latency, error rates, and cost per invocation - OneUptime can help you stay on top of your serverless AI workloads.
