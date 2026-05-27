@@ -29,7 +29,7 @@ gcloud artifacts repositories create my-maven-repo \
   --project=my-project
 ```
 
-You can choose between standard Maven repository mode and snapshot mode. By default, the repository accepts both releases and snapshots.
+You can leave the Maven version policy unset to accept both releases and snapshots, or set a release-only or snapshot-only policy.
 
 If you want separate repositories for releases and snapshots (which is a common practice):
 
@@ -70,14 +70,14 @@ Add the Artifact Registry wagon to your project's pom.xml in the build extension
       <extension>
         <groupId>com.google.cloud.artifactregistry</groupId>
         <artifactId>artifactregistry-maven-wagon</artifactId>
-        <version>2.2.1</version>
+        <version>2.2.5</version>
       </extension>
     </extensions>
   </build>
 </project>
 ```
 
-This extension handles authentication automatically using your Application Default Credentials (ADC). If you are logged in with gcloud, it just works.
+This extension handles authentication automatically using your Application Default Credentials (ADC). If you have run `gcloud auth application-default login`, it just works.
 
 ### Setting Up Application Default Credentials
 
@@ -143,7 +143,7 @@ Add your Artifact Registry repository as both a dependency repository (for downl
       <extension>
         <groupId>com.google.cloud.artifactregistry</groupId>
         <artifactId>artifactregistry-maven-wagon</artifactId>
-        <version>2.2.1</version>
+        <version>2.2.5</version>
       </extension>
     </extensions>
   </build>
@@ -201,18 +201,8 @@ If you use Gradle instead of Maven, the configuration is similar but uses Gradle
 plugins {
     id 'java-library'
     id 'maven-publish'
+    id 'com.google.cloud.artifactregistry.gradle-plugin' version '2.2.5'
 }
-
-// Apply the Artifact Registry plugin
-buildscript {
-    repositories {
-        mavenCentral()
-    }
-    dependencies {
-        classpath 'com.google.cloud.artifactregistry:artifactregistry-gradle-plugin:2.2.1'
-    }
-}
-apply plugin: 'com.google.cloud.artifactregistry.gradle-plugin'
 
 repositories {
     // Pull dependencies from Artifact Registry
@@ -262,7 +252,7 @@ steps:
     args: ['deploy', '-DskipTests']
 ```
 
-Cloud Build's service account needs the `roles/artifactregistry.writer` role on the repository.
+If Cloud Build and your repository are in different projects, or if you use a user-specified service account, grant Cloud Build's service account the `roles/artifactregistry.writer` role on the repository.
 
 ## Listing and Managing Packages
 
