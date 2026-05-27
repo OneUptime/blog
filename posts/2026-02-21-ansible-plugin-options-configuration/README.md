@@ -120,18 +120,21 @@ DOCUMENTATION = """
 
 ## Option Type Reference
 
-Here are all the supported option types:
+Here are the supported plugin configuration option types:
 
 | Type | Python Type | Notes |
 |------|-------------|-------|
-| `str` | `str` | Basic string |
-| `int` | `int` | Integer, auto-converted from string |
+| `str` / `string` | `str` | Basic string |
+| `int` / `integer` | `int` | Integer, auto-converted from string |
 | `float` | `float` | Float, auto-converted from string |
-| `bool` | `bool` | Accepts true/false, yes/no, 1/0 |
+| `bool` / `boolean` | `bool` | Accepts true/false, yes/no, 1/0 |
 | `list` | `list` | Use `elements` to specify item type |
-| `dict` | `dict` | Key-value mapping |
+| `dict` / `dictionary` | `dict` | Key-value mapping |
+| `none` | `None` | Explicit null value |
 | `path` | `str` | Path with `~` expansion |
-| `raw` | varies | No type conversion |
+| `pathlist` | `list` | Comma-separated list of paths |
+| `pathspec` | `list` | Colon-separated list of paths |
+| `tmppath` | `str` | Temporary directory created under the configured path |
 
 ## Loading Options in Your Plugin
 
@@ -251,7 +254,7 @@ verify_ssl = true
 
 ## Configuration via Environment Variables
 
-Environment variables work for all option types:
+Environment variables work well for string-like, numeric, boolean, list, and path options because Ansible converts those values from strings:
 
 ```bash
 # Set options via environment
@@ -291,6 +294,9 @@ When you define `vars` entries, users can set options as Ansible variables:
 Sometimes a default value needs to be computed. Handle this in your plugin code:
 
 ```python
+import os
+
+
 def run(self, terms, variables=None, **kwargs):
     self.set_options(var_options=variables, direct=kwargs)
 
@@ -317,8 +323,7 @@ options:
     type: str
     deprecated:
       why: Renamed for consistency
-      date: '2025-06-01'
-      collection_name: myorg.myutils
+      version: '2.0.0'
       alternatives: Use O(api_url) instead
 ```
 
