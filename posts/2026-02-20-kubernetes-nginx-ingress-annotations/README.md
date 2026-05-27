@@ -43,7 +43,7 @@ metadata:
   annotations:
     # Redirect HTTP to HTTPS with a 308 permanent redirect
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    # Use 308 instead of 301 to preserve the request method
+    # Enforce HTTPS redirects even when TLS is terminated before the controller
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 spec:
   ingressClassName: nginx
@@ -66,38 +66,24 @@ spec:
 
 ### HSTS (HTTP Strict Transport Security)
 
+HSTS is configured globally for the ingress-nginx controller through its ConfigMap:
+
 ```yaml
-# hsts.yaml
-# Enable HSTS to tell browsers to always use HTTPS
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+# hsts-configmap.yaml
+# Configure HSTS to tell browsers to always use HTTPS
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: hsts-app
-  annotations:
-    # Enable HSTS with a 1-year max age
-    nginx.ingress.kubernetes.io/hsts: "true"
-    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
-    # Include subdomains in HSTS
-    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
-    # Allow preloading in browser HSTS lists
-    nginx.ingress.kubernetes.io/hsts-preload: "true"
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - app.example.com
-      secretName: app-tls
-  rules:
-    - host: app.example.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: app-service
-                port:
-                  number: 80
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  # Enable HSTS with a 1-year max age
+  hsts: "true"
+  hsts-max-age: "31536000"
+  # Include subdomains in HSTS
+  hsts-include-subdomains: "true"
+  # Allow preloading in browser HSTS lists
+  hsts-preload: "true"
 ```
 
 ## URL Rewrite Annotations
@@ -188,8 +174,6 @@ metadata:
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
     # Limit concurrent connections per IP
     nginx.ingress.kubernetes.io/limit-connections: "5"
-    # Return 429 (Too Many Requests) when limit is exceeded
-    nginx.ingress.kubernetes.io/limit-rate-after: "0"
 spec:
   ingressClassName: nginx
   rules:
@@ -244,21 +228,19 @@ spec:
 
 ### WebSocket Support
 
-Enable WebSocket connections:
+Tune WebSocket connections:
 
 ```yaml
 # websocket.yaml
-# Enable WebSocket support with appropriate timeouts
+# Keep WebSocket connections open with appropriate timeouts
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: websocket-app
   annotations:
-    # Enable WebSocket proxying
+    # Keep long-lived WebSocket connections open
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    # Required for WebSocket upgrade
-    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
 spec:
   ingressClassName: nginx
   rules:
@@ -358,22 +340,31 @@ kubectl create secret generic basic-auth-secret --from-file=auth
 
 ## Custom Headers
 
-Add custom response headers:
+Add custom response headers with a ConfigMap:
+
+Make sure the controller ConfigMap allows these header names in `global-allowed-response-headers`.
 
 ```yaml
-# custom-headers.yaml
+# custom-headers-configmap.yaml
 # Add security headers to all responses
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: security-headers
+  namespace: default
+data:
+  X-Frame-Options: "SAMEORIGIN"
+  X-Content-Type-Options: "nosniff"
+  X-XSS-Protection: "1; mode=block"
+  Referrer-Policy: "strict-origin-when-cross-origin"
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: secure-headers
   annotations:
     # Add custom response headers via a ConfigMap
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      add_header X-Frame-Options "SAMEORIGIN" always;
-      add_header X-Content-Type-Options "nosniff" always;
-      add_header X-XSS-Protection "1; mode=block" always;
-      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    nginx.ingress.kubernetes.io/custom-headers: default/security-headers
 spec:
   ingressClassName: nginx
   rules:
