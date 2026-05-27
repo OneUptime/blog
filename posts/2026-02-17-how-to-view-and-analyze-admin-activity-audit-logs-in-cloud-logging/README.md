@@ -103,13 +103,13 @@ Look for specific types of operations:
 ```text
 # All resource deletions across any service
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
-protoPayload.methodName=~"delete"
+protoPayload.methodName=~"(?i)delete"
 ```
 
 ```text
 # IAM policy changes specifically
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
-protoPayload.methodName="SetIamPolicy"
+protoPayload.methodName=~"SetI[aA][mM]Policy$"
 ```
 
 ### Filter by Resource
@@ -153,10 +153,10 @@ Track permission changes - critical for access reviews and incident response:
 
 ```text
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
-protoPayload.methodName="SetIamPolicy"
+protoPayload.methodName=~"SetI[aA][mM]Policy$"
 ```
 
-The log entry includes both the old and new policy, so you can see exactly what changed.
+The log entry includes the policy update request and, for many IAM changes, service-specific policy delta details that help you see what changed.
 
 ### Who Deleted Resources?
 
@@ -164,19 +164,19 @@ Find out who deleted a resource that should not have been deleted:
 
 ```text
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
-protoPayload.methodName=~"\.delete$"
+protoPayload.methodName=~"(?i)(^|[.])delete[^.]*$"
 severity="NOTICE"
 ```
 
 ### Track Deployments
 
-See all deployments to Cloud Run or App Engine:
+See deployments to Cloud Run:
 
 ```text
 # Cloud Run deployments
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 protoPayload.serviceName="run.googleapis.com"
-protoPayload.methodName=~"ReplaceService"
+protoPayload.methodName=~"(ReplaceService|UpdateService|CreateService)$"
 ```
 
 ## Analyzing Audit Logs with SQL
@@ -212,7 +212,7 @@ FROM
   `my-project.global._Required._AllLogs`
 WHERE
   log_id = 'cloudaudit.googleapis.com/activity'
-  AND proto_payload.audit_log.method_name LIKE '%delete%'
+  AND REGEXP_CONTAINS(proto_payload.audit_log.method_name, r'(?i)delete')
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
 ORDER BY
   timestamp DESC
@@ -229,7 +229,7 @@ FROM
   `my-project.global._Required._AllLogs`
 WHERE
   log_id = 'cloudaudit.googleapis.com/activity'
-  AND proto_payload.audit_log.method_name = 'SetIamPolicy'
+  AND REGEXP_CONTAINS(proto_payload.audit_log.method_name, r'SetI[aA][mM]Policy$')
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 ORDER BY
   timestamp DESC
@@ -245,7 +245,7 @@ Create alerts for sensitive administrative actions:
 # Create a log-based alert for IAM changes
 gcloud logging metrics create iam-policy-changes \
   --description="Count of IAM policy changes" \
-  --log-filter='logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity" AND protoPayload.methodName="SetIamPolicy"' \
+  --log-filter='logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity" AND protoPayload.methodName=~"SetI[aA][mM]Policy$"' \
   --project=my-project
 ```
 
@@ -257,7 +257,7 @@ Then create an alerting policy on that metric.
 # Create a log-based alert for resource deletions
 gcloud logging metrics create resource-deletions \
   --description="Count of resource deletion operations" \
-  --log-filter='logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity" AND protoPayload.methodName=~"\.delete$"' \
+  --log-filter='logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity" AND protoPayload.methodName=~"(?i)(^|[.])delete[^.]*$"' \
   --project=my-project
 ```
 
