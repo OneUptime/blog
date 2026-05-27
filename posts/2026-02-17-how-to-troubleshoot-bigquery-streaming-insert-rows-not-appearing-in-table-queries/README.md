@@ -14,12 +14,12 @@ The streaming buffer in BigQuery has specific behaviors that differ from regular
 
 ## How the Streaming Buffer Works
 
-When you use the streaming insert API (insertAll or the Storage Write API), rows go into a streaming buffer before being merged into the table's permanent storage. During this buffer period, the rows are queryable but behave differently than permanent rows.
+When you use the legacy streaming insert API (`tabledata.insertAll`), rows go into a streaming buffer before being merged into the table's permanent storage. During this buffer period, the rows are queryable but behave differently than permanent rows. The BigQuery Storage Write API has different delivery and DML behavior, so the `insertId` and recent-row DML notes below apply to `insertAll`.
 
 Key behaviors of the streaming buffer:
-- Rows are available for querying within a few seconds of insertion
+- Rows are available for querying immediately after BigQuery successfully acknowledges the insert
 - Buffered rows are not visible to table copy operations or export operations
-- Buffered rows cannot be updated or deleted with DML until they are flushed to permanent storage
+- Rows recently written with `tabledata.insertAll` cannot be updated, deleted, merged, or truncated with DML for about 30 minutes
 - Buffer flush time is typically up to 90 minutes but can be longer
 - Table decorators and snapshots do not include buffered rows
 
@@ -39,9 +39,9 @@ else:
 "
 ```
 
-## Problem 1 - Rows Are in the Buffer but Not Yet Queryable
+## Problem 1 - The Query Runs Before the Insert Is Fully Acknowledged
 
-In rare cases, there can be a delay of a few seconds between when rows are inserted and when they appear in query results.
+BigQuery makes rows available to GoogleSQL queries immediately after a successful `insertAll` acknowledgement. If your application has asynchronous producer logic, retries, or a test that queries before the insert call has completed, wait for the insert response before querying.
 
 ```python
 from google.cloud import bigquery
@@ -58,7 +58,7 @@ errors = client.insert_rows_json(
 if errors:
     print(f"Insert errors: {errors}")
 else:
-    # Wait a moment for the buffer to become queryable
+    # Optional: wait briefly in end-to-end tests with async producers or retries
     time.sleep(5)
 
     # Now query
@@ -98,7 +98,7 @@ Common reasons for silent row failures:
 - Schema mismatch (wrong data types)
 - Required fields missing
 - Invalid values (like malformed timestamps)
-- Rows exceeding the maximum size (10 MB per request, 1 MB per row)
+- Rows exceeding the maximum size (10 MB per request, 10 MB per row)
 
 ## Problem 3 - Deduplication Removing Rows
 
@@ -106,7 +106,6 @@ BigQuery uses the `insertId` field to deduplicate streaming inserts. If you acci
 
 ```python
 from google.cloud import bigquery
-import uuid
 
 client = bigquery.Client()
 table_ref = client.dataset('my_dataset').table('my_table')
@@ -138,8 +137,9 @@ table_ref = client.dataset('my_dataset').table('my_table')
 # Disable deduplication by not sending insertIds
 # Note: this means retries can cause duplicate rows
 rows = [
-    bigquery.table.TableRow(values={'id': 'row-1', 'value': 1}),
+    {'id': 'row-1', 'value': 1},
 ]
+errors = client.insert_rows_json(table_ref, rows, row_ids=[None] * len(rows))
 ```
 
 ## Problem 4 - Table Schema Changed After Streaming Started
@@ -218,7 +218,7 @@ flowchart TD
     A[Streamed rows not appearing] --> B{Check insert response for errors}
     B -->|Errors found| C[Fix schema mismatch or invalid data]
     B -->|No errors| D{Wait 10 seconds and re-query}
-    D -->|Rows appear| E[Normal buffer delay - no action needed]
+    D -->|Rows appear| E[Timing issue in producer or test - no BigQuery fix needed]
     D -->|Rows still missing| F{Check insertId deduplication}
     F -->|Duplicate insertIds| G[Use unique insertIds per row]
     F -->|Unique insertIds| H{Using table decorator or snapshot?}
