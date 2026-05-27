@@ -93,13 +93,13 @@ These three settings control concurrency at different levels:
     - name: Throttled task
       command: echo "runs on up to 3 hosts at once"
       throttle: 3
-      # Limited by throttle (3), regardless of forks
+      # Limited by throttle (3), and still capped by forks and serial
 
     - name: Another normal task
       command: echo "back to 10 hosts at once"
 ```
 
-The hierarchy: `serial` creates batches, `forks` limits parallelism within batches, `throttle` limits parallelism for individual tasks.
+The hierarchy: `serial` creates batches, `forks` limits parallelism within batches, `throttle` reduces parallelism for individual tasks or blocks. A `throttle` value cannot increase concurrency beyond the active `forks` or `serial` limit.
 
 ## Common Use Cases
 
@@ -220,7 +220,7 @@ When using the `profile_tasks` callback, throttled tasks show their actual elaps
 ```ini
 # ansible.cfg
 [defaults]
-callback_whitelist = profile_tasks
+callbacks_enabled = ansible.posix.profile_tasks
 ```
 
 A throttled task with 50 hosts and `throttle: 5` will show a longer total time because hosts queue up waiting for their turn:
