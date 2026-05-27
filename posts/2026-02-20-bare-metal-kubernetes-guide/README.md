@@ -80,10 +80,11 @@ sudo systemctl restart containerd
 sudo systemctl enable containerd
 
 # Install kubeadm, kubelet, and kubectl
-sudo apt-get install -y apt-transport-https ca-certificates curl
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | \
+sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+sudo mkdir -p -m 755 /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.36/deb/Release.key | \
   sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | \
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.36/deb/ /' | \
   sudo tee /etc/apt/sources.list.d/kubernetes.list
 sudo apt-get update
 sudo apt-get install -y kubelet kubeadm kubectl
@@ -166,7 +167,9 @@ sudo kubeadm join 192.168.1.100:6443 \
 
 ```bash
 # Install Calico for pod networking and network policy support
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+curl -fsSLO https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml
+sed -i '/# - name: CALICO_IPV4POOL_CIDR/{s/# -/-/; n; s/#   value: "192.168.0.0\/16"/  value: "10.244.0.0\/16"/;}' calico.yaml
+kubectl apply -f calico.yaml
 
 # Verify all nodes are Ready
 kubectl get nodes -o wide
@@ -202,6 +205,11 @@ spec:
 ```bash
 # Install MetalLB using Helm
 helm repo add metallb https://metallb.github.io/metallb
+kubectl create namespace metallb-system
+kubectl label namespace metallb-system \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  pod-security.kubernetes.io/warn=privileged
 helm install metallb metallb/metallb --namespace metallb-system --create-namespace
 
 # Wait for MetalLB pods to be ready, then apply the config
@@ -248,8 +256,8 @@ graph LR
         SW[Top-of-Rack Switch]
     end
     subgraph "Kubernetes Overlay"
-        POD1[Pod 10.244.1.5] -->|VXLAN| POD2[Pod 10.244.2.8]
-        POD2 -->|VXLAN| POD3[Pod 10.244.3.12]
+        POD1[Pod 10.244.1.5] -->|IP-in-IP| POD2[Pod 10.244.2.8]
+        POD2 -->|IP-in-IP| POD3[Pod 10.244.3.12]
     end
     subgraph "Service Network"
         SVC[Service 10.96.0.1] --> POD1
