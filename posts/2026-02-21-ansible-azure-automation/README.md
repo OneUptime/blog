@@ -34,20 +34,29 @@ Azure Automation provides cloud-based automation capabilities. Ansible can manag
         name: "{{ vnet_name }}"
         address_prefixes: ["10.0.0.0/16"]
 
+    - name: Create subnet
+      azure.azcollection.azure_rm_subnet:
+        resource_group: "{{ resource_group }}"
+        virtual_network: "{{ vnet_name }}"
+        name: "{{ subnet_name }}"
+        address_prefix: "10.0.1.0/24"
+
     - name: Create VM
       azure.azcollection.azure_rm_virtualmachine:
         resource_group: "{{ resource_group }}"
         name: "{{ vm_name }}"
         vm_size: Standard_D2s_v3
         admin_username: deploy
+        virtual_network: "{{ vnet_name }}"
+        subnet: "{{ subnet_name }}"
         ssh_password_enabled: false
         ssh_public_keys:
           - path: /home/deploy/.ssh/authorized_keys
             key_data: "{{ ssh_public_key }}"
         image:
-          offer: UbuntuServer
-          publisher: Canonical
-          sku: 22_04-lts
+          offer: 0001-com-ubuntu-server-jammy
+          publisher: canonical
+          sku: 22_04-lts-gen2
           version: latest
 ```
 
@@ -71,16 +80,16 @@ Azure Automation provides cloud-based automation capabilities. Ansible can manag
 
 ## Key Takeaways
 
-Ansible's Azure collection provides modules for managing all Azure resources. Use Azure Key Vault for secrets management. Combine Ansible with Azure Automation for hybrid scenarios where some automation runs in Azure and some runs from your infrastructure.
+Ansible's Azure collection provides modules for managing many Azure resources. Use Azure Key Vault for secrets management. Combine Ansible with Azure Automation for hybrid scenarios where some automation runs in Azure and some runs from your infrastructure.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -112,7 +121,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -153,7 +162,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -194,7 +203,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -256,4 +265,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
