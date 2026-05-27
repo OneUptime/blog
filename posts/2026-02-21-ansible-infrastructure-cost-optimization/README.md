@@ -29,23 +29,23 @@ Resource Audit Tasks
 ---
 - name: Find servers with low CPU utilization
   shell: |
-    curl -s 'http://prometheus:9090/api/v1/query'       --data-urlencode 'query=avg_over_time(100 - (rate(node_cpu_seconds_total{mode="idle"}[24h]) * 100)[7d:1h]) < 10'
+    curl -s 'http://prometheus:9090/api/v1/query'       --data-urlencode 'query=avg_over_time((100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))))[7d:1h]) < 10'
   register: low_cpu_servers
   delegate_to: localhost
   changed_when: false
 
 - name: Find servers with low memory utilization
   shell: |
-    curl -s 'http://prometheus:9090/api/v1/query'       --data-urlencode 'query=avg_over_time((1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100[7d:1h]) < 20'
+    curl -s 'http://prometheus:9090/api/v1/query'       --data-urlencode 'query=avg_over_time(((1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)[7d:1h]) < 20'
   register: low_mem_servers
   delegate_to: localhost
   changed_when: false
 
-- name: Find unattached EBS volumes
+- name: Find unattached EBS volumes older than retention
   command: >
     aws ec2 describe-volumes
     --filters Name=status,Values=available
-    --query 'Volumes[].{ID:VolumeId,Size:Size,Created:CreateTime}'
+    --query "Volumes[?CreateTime<='{{ retention_cutoff }}'].{ID:VolumeId,Size:Size,Created:CreateTime}"
     --output json
   register: unattached_volumes
   delegate_to: localhost
@@ -305,4 +305,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
