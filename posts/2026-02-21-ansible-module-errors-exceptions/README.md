@@ -89,4 +89,4 @@ except TimeoutError:
 
 ## Key Takeaways
 
-Always wrap operations in try/except. Use fail_json with clear, actionable messages. Include tracebacks for debugging. Validate parameters early. Use warnings for non-fatal issues. Test error paths as thoroughly as the happy path.
+Wrap operations in try/except when you can handle specific failures or add useful context. Use fail_json with clear, actionable messages. Include tracebacks for debugging. Validate parameters early. Use warnings for non-fatal issues. Test error paths as thoroughly as the happy path.
