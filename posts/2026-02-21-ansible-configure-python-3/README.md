@@ -71,12 +71,15 @@ Ansible can auto-detect the correct Python interpreter:
 interpreter_python = auto
 ```
 
-The `auto` setting tries these paths in order:
-1. `/usr/bin/python3`
-2. `/usr/bin/python3.12`
-3. `/usr/bin/python3.11`
-4. `/usr/bin/python3.10`
-5. `/usr/bin/python`
+The `auto` setting searches Ansible's configurable fallback list. In current Ansible releases, the default fallback order is:
+1. `python3.14`
+2. `python3.13`
+3. `python3.12`
+4. `python3.11`
+5. `python3.10`
+6. `python3.9`
+7. `/usr/bin/python3`
+8. `python3`
 
 ### Method 4: Per-Host Override
 
@@ -84,7 +87,7 @@ For mixed environments:
 
 ```yaml
 # inventory/host_vars/legacy-server.yml
-ansible_python_interpreter: /usr/bin/python3.6
+ansible_python_interpreter: /usr/bin/python3.9
 
 # inventory/host_vars/modern-server.yml
 ansible_python_interpreter: /usr/bin/python3.12
@@ -103,12 +106,10 @@ If remote hosts do not have Python 3, install it using the raw module:
 
   tasks:
     - name: Install Python 3 (Debian/Ubuntu)
-      ansible.builtin.raw: apt-get update && apt-get install -y python3 python3-apt
-      when: false  # Set conditionally
+      ansible.builtin.raw: if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y python3 python3-apt; fi
 
     - name: Install Python 3 (RHEL/CentOS)
-      ansible.builtin.raw: dnf install -y python3
-      when: false  # Set conditionally
+      ansible.builtin.raw: if command -v dnf >/dev/null 2>&1; then dnf install -y python3; elif command -v yum >/dev/null 2>&1; then yum install -y python3; fi
 ```
 
 ## Verifying Python 3 Usage
@@ -130,16 +131,16 @@ If remote hosts do not have Python 3, install it using the raw module:
 
 ## Summary
 
-Configuring Ansible for Python 3 is straightforward: set `ansible_python_interpreter` in your inventory or `interpreter_python` in `ansible.cfg`. Use `auto` for auto-detection, or specify explicit paths for consistency. For legacy hosts, install Python 3 using the raw module before running regular playbooks. Modern Ansible versions (2.16+) require Python 3.10+ on the controller and Python 3.7+ on remote hosts.
+Configuring Ansible for Python 3 is straightforward: set `ansible_python_interpreter` in your inventory or `interpreter_python` in `ansible.cfg`. Use `auto` for auto-detection, or specify explicit paths for consistency. For legacy hosts, install Python 3 using the raw module before running regular playbooks. Python requirements vary by ansible-core release; for example, ansible-core 2.21 supports Python 3.12-3.14 on the controller and Python 3.9-3.14 on remote hosts.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this configuration proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this configuration
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -171,7 +172,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -212,7 +213,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name | default('ssh') }}"
         state: restarted
 ```
 
@@ -253,7 +254,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this configuration
 - name: Robust task execution
   hosts: all
   tasks:
@@ -315,4 +316,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
