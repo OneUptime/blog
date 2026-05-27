@@ -36,7 +36,7 @@ podman pull quay.io/ansible/ansible-runner:latest --arch amd64
 podman images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}" | grep ansible
 ```
 
-For the smallest possible EE, use the minimal runner image:
+For a small EE, use the lightweight runner image and install only the EE packages you need:
 
 ```yaml
 # execution-environment.yml - Minimal base
@@ -49,9 +49,9 @@ images:
 
 dependencies:
   ansible_core:
-    package_pip: ansible-core>=2.15.0,<2.17.0
+    package_pip: ansible-core
   ansible_runner:
-    package_pip: ansible-runner>=2.3.0
+    package_pip: ansible-runner
   galaxy: requirements.yml
   python: requirements.txt
   system: bindep.txt
