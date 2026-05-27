@@ -118,11 +118,11 @@ ansible_connect_timeout: 30
 # Timeout for individual command execution (seconds)
 ansible_command_timeout: 60
 
-# Number of retries for persistent connection
-ansible_persistent_connect_retry_timeout: 15
+# Number of attempts to connect to the remote host
+ansible_network_cli_retries: 3
 
-# Keep the connection alive between tasks
-ansible_persistent_command_timeout: 30
+# Extra read time after the prompt is matched
+ansible_buffer_read_timeout: 0.2
 
 # SSH options
 ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
@@ -130,7 +130,7 @@ ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
 
 ## httpapi: The REST API Connection
 
-`httpapi` connects to devices over HTTPS and communicates using REST APIs. This is faster than CLI scraping and returns structured data (usually JSON) natively. Platforms like Arista EOS (eAPI), Cisco NX-OS (NX-API), and F5 BIG-IP support this.
+`httpapi` connects to devices over HTTP or HTTPS and communicates using the platform's HTTP-based API. This is faster than CLI scraping and returns structured data (often JSON) natively. Platforms like Arista EOS (eAPI), Cisco NX-OS (NX-API), and F5 BIG-IP support this.
 
 ### Configuration
 
@@ -160,10 +160,10 @@ all:
 
 The httpapi connection:
 
-1. Establishes an HTTPS session to the device API endpoint
-2. Sends requests as JSON payloads
-3. Receives JSON responses
-4. No text parsing needed since data is already structured
+1. Establishes an HTTP or HTTPS session to the device API endpoint
+2. Sends requests using the platform API's expected payload format
+3. Receives structured responses, often as JSON
+4. Avoids CLI text parsing when the platform API returns structured data
 
 ### Example Playbook
 
@@ -193,7 +193,7 @@ The httpapi connection:
           - show interfaces status
       register: eos_output
 
-    # eAPI returns JSON by default, so data is already structured
+    # eAPI can return structured JSON data from commands
     - name: Display VLAN info
       ansible.builtin.debug:
         var: eos_output.stdout[0]
@@ -246,7 +246,7 @@ all:
 
 ## netconf: The YANG/XML Connection
 
-NETCONF is a network management protocol defined in RFC 6241. It runs over SSH (typically on port 830) and uses XML for data encoding. The big advantage is that NETCONF operations are transactional. If part of a configuration change fails, the entire change can be rolled back.
+NETCONF is a network management protocol defined in RFC 6241. It runs over SSH (typically on port 830) and uses XML for data encoding. The big advantage is that NETCONF supports transactional workflows when the device advertises capabilities such as `:candidate`, `:confirmed-commit`, or `:rollback-on-error`.
 
 ### Configuration
 
@@ -276,7 +276,7 @@ NETCONF provides several key operations:
 - **get-config** - Retrieve configuration data
 - **edit-config** - Modify configuration
 - **lock/unlock** - Prevent concurrent changes
-- **commit/discard** - Transactional configuration changes
+- **commit/discard-changes** - Commit or discard candidate configuration changes
 - **validate** - Check configuration validity before applying
 
 ### Example Playbook
@@ -320,7 +320,7 @@ NETCONF provides several key operations:
 
 ### NETCONF for Cisco IOS-XE
 
-Modern Cisco IOS-XE devices also support NETCONF.
+Modern Cisco IOS-XE devices also support NETCONF. For standards-based NETCONF access, use the default Ansible NETCONF plugin unless you are using a platform-specific NETCONF plugin.
 
 ```yaml
 # inventory/iosxe_netconf.yml - NETCONF for Cisco IOS-XE
@@ -333,7 +333,7 @@ all:
           ansible_host: 10.5.1.1
       vars:
         ansible_connection: ansible.netcommon.netconf
-        ansible_network_os: cisco.ios.ios
+        ansible_network_os: ansible.netcommon.default
         ansible_user: admin
         ansible_password: "{{ vault_iosxe_password }}"
         ansible_port: 830
@@ -359,7 +359,7 @@ General guidelines:
 
 - **Use network_cli** when the device only supports CLI, or when you are working with modules that are CLI-specific.
 - **Use httpapi** when the device has a good REST API and you want structured JSON responses without parsing overhead.
-- **Use netconf** when you need transactional configuration changes, YANG model compliance, or when working with Juniper devices.
+- **Use netconf** when you need model-driven configuration, YANG data models, or transactional workflows supported by the device's NETCONF capabilities.
 
 ## Multi-Connection Inventory
 
