@@ -21,7 +21,7 @@ Each alerting policy consists of:
 - One or more conditions (the metric and threshold)
 - A notification channel (where alerts go)
 - Optional documentation (runbook links, context)
-- A combiner logic (ALL conditions must be met, or ANY condition)
+- A combiner logic (ALL conditions must be met, ALL conditions must be met on the same resource, or ANY condition)
 
 ## Creating a Simple CPU Alert via gcloud
 
@@ -30,14 +30,13 @@ Here is an alert that fires when any VM instance exceeds 80% CPU utilization for
 ```bash
 # Create an alerting policy for high CPU utilization
 
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="High CPU Utilization" \
   --condition-display-name="CPU above 80%" \
   --condition-filter='resource.type="gce_instance" AND metric.type="compute.googleapis.com/instance/cpu/utilization"' \
-  --condition-threshold-value=0.8 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
-  --condition-threshold-aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_MEAN"}' \
+  --if='> 0.8' \
+  --duration=300s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_MEAN"}' \
   --notification-channels=CHANNEL_ID \
   --documentation="CPU utilization has exceeded 80% for 5 minutes. Check the instance for runaway processes."
 ```
@@ -88,7 +87,7 @@ Apply the policy.
 
 ```bash
 # Create an alerting policy from a JSON file
-gcloud alpha monitoring policies create --policy-from-file=alert-policy.json
+gcloud monitoring policies create --policy-from-file=alert-policy.json
 ```
 
 ## Common Alert Configurations
@@ -106,10 +105,18 @@ High error rate for a Cloud Run service.
       "displayName": "5xx error rate above 5%",
       "conditionThreshold": {
         "filter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class = \"5xx\"",
+        "denominatorFilter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\"",
         "comparison": "COMPARISON_GT",
-        "thresholdValue": 5,
+        "thresholdValue": 0.05,
         "duration": "60s",
         "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ],
+        "denominatorAggregations": [
           {
             "alignmentPeriod": "60s",
             "perSeriesAligner": "ALIGN_RATE",
@@ -161,16 +168,16 @@ Aggregation is how Cloud Monitoring processes raw metric data points before eval
 - Per-series aligner: Processes each time series individually. `ALIGN_MEAN` averages data points within the alignment period. `ALIGN_MAX` takes the maximum. `ALIGN_RATE` computes the rate of change.
 - Cross-series reducer: Combines multiple time series into one. `REDUCE_SUM` adds them up. `REDUCE_MEAN` averages them. `REDUCE_NONE` keeps them separate.
 
-For a CPU alert, you probably want `ALIGN_MEAN` with a 60-second period and `REDUCE_NONE` (to alert on individual instances). For a request count alert, you might want `ALIGN_RATE` with `REDUCE_SUM` (to get the total request rate across all instances).
+For a CPU alert, you probably want `ALIGN_MEAN` with a 60-second period and `REDUCE_NONE` (to alert on individual instances). For a request count alert, you might want `ALIGN_RATE` with `REDUCE_SUM` (to get the total request rate across all instances). For an error-rate percentage, use a numerator filter for error responses and a denominator filter for all requests.
 
 ## Multi-Condition Policies
 
-You can create policies with multiple conditions and specify whether all conditions or any condition must be met.
+You can create policies with multiple conditions and specify whether all conditions, all conditions on the same resource, or any condition must be met.
 
 ```json
 {
   "displayName": "Service Degradation Alert",
-  "combiner": "AND",
+  "combiner": "AND_WITH_MATCHING_RESOURCE",
   "conditions": [
     {
       "displayName": "High error rate",
@@ -207,7 +214,7 @@ You can create policies with multiple conditions and specify whether all conditi
 }
 ```
 
-With `"combiner": "AND"`, this alert only fires when both conditions are true simultaneously - the service has both high errors and high latency. This reduces noise from temporary blips in either metric.
+With `"combiner": "AND_WITH_MATCHING_RESOURCE"`, this alert only fires when both conditions are true simultaneously for the same monitored resource - the service has both high errors and high latency. This reduces noise from temporary blips in either metric.
 
 ## Trigger Configuration
 
@@ -235,19 +242,19 @@ List, update, and manage your alerting policies through the CLI.
 
 ```bash
 # List all alerting policies
-gcloud alpha monitoring policies list
+gcloud monitoring policies list
 
 # Describe a specific policy
-gcloud alpha monitoring policies describe POLICY_ID
+gcloud monitoring policies describe POLICY_ID
 
 # Disable a policy temporarily (useful during maintenance)
-gcloud alpha monitoring policies update POLICY_ID --no-enabled
+gcloud monitoring policies update POLICY_ID --no-enabled
 
 # Re-enable a policy
-gcloud alpha monitoring policies update POLICY_ID --enabled
+gcloud monitoring policies update POLICY_ID --enabled
 
 # Delete a policy
-gcloud alpha monitoring policies delete POLICY_ID
+gcloud monitoring policies delete POLICY_ID
 ```
 
 ## Alert Documentation Best Practices
