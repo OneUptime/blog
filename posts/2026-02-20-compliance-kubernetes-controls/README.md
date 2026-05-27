@@ -47,7 +47,7 @@ Kubernetes audit logging records all API server requests. This is required for a
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-  # Log all authentication failures at the Metadata level
+  # Log token review requests at the Metadata level
   - level: Metadata
     stages:
       - ResponseComplete
@@ -163,7 +163,7 @@ rules:
 ## Step 3: Enforce Pod Security Standards
 
 ```yaml
-# pod-security-policy.yaml
+# pod-security-standards.yaml
 # Enforce restrictive pod security standards at the namespace level
 apiVersion: v1
 kind: Namespace
@@ -173,7 +173,7 @@ metadata:
     # Enforce the restricted pod security standard
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
-    # Warn on baseline violations
+    # Warn on restricted profile violations
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/warn-version: latest
     # Audit all violations
@@ -282,8 +282,8 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: api-gateway
-        - podSelector:
+              kubernetes.io/metadata.name: api-gateway
+          podSelector:
             matchLabels:
               app: api-gateway
       ports:
@@ -302,7 +302,7 @@ flowchart TD
     D -->|Yes| F{Network Policy Exists?}
     F -->|No| G[Rejected by Policy]
     F -->|Yes| H{Image Signed?}
-    H -->|No| I[Rejected by Cosign]
+    H -->|No| I[Rejected by Image Policy]
     H -->|Yes| J[Deployment Created]
     J --> K[Audit Log Entry]
     K --> L[Compliance Dashboard]
@@ -332,7 +332,7 @@ resources:
 
 ```bash
 # Sign container images with cosign for supply chain security
-# This ensures only verified images run in your cluster
+# Admission policies can then require verified images before they run
 
 # Generate a signing key pair
 cosign generate-key-pair
