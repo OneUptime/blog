@@ -45,26 +45,21 @@ graph LR
 Make sure the audit log types you need are enabled. Admin Activity logs are always on, but Data Access logs need to be explicitly enabled.
 
 ```bash
-# Enable Data Access audit logs for all services
+# Get the current IAM policy
+gcloud projects get-iam-policy my-gcp-project > policy.yaml
 
-# Create the audit config
-cat > audit-config.json << 'EOF'
-{
-  "auditConfigs": [
-    {
-      "service": "allServices",
-      "auditLogConfigs": [
-        { "logType": "ADMIN_READ" },
-        { "logType": "DATA_READ" },
-        { "logType": "DATA_WRITE" }
-      ]
-    }
-  ]
-}
-EOF
+# Add or update only the auditConfigs section in policy.yaml.
+# Keep the existing bindings and etag entries unchanged.
+#
+# auditConfigs:
+# - auditLogConfigs:
+#   - logType: ADMIN_READ
+#   - logType: DATA_READ
+#   - logType: DATA_WRITE
+#   service: allServices
 
-# Apply the audit config to the project
-gcloud projects set-iam-policy my-gcp-project audit-config.json
+# Apply the updated IAM policy to the project
+gcloud projects set-iam-policy my-gcp-project policy.yaml
 ```
 
 Be careful with Data Access logs - they can be extremely high volume and expensive. Start with Admin Activity and System Events, and add Data Access selectively.
@@ -121,6 +116,8 @@ gcloud logging sinks create splunk-org-audit-sink \
     --include-children
 ```
 
+Grant the organization sink's writer identity `roles/pubsub.publisher` on the Pub/Sub topic the same way you did for the project sink.
+
 ## Step 4: Launch the Dataflow Pipeline
 
 Google provides a pre-built Dataflow template specifically for streaming Pub/Sub messages to Splunk.
@@ -133,7 +130,7 @@ gcloud storage buckets create gs://my-project-dataflow-temp \
 
 # Launch the Dataflow pipeline using the Pub/Sub to Splunk template
 gcloud dataflow jobs run splunk-audit-log-stream \
-    --gcs-location=gs://dataflow-templates/latest/Cloud_PubSub_to_Splunk \
+    --gcs-location=gs://dataflow-templates-us-central1/latest/Cloud_PubSub_to_Splunk \
     --region=us-central1 \
     --staging-location=gs://my-project-dataflow-temp/staging \
     --parameters \
@@ -213,7 +210,7 @@ resource "google_pubsub_topic_iam_member" "audit_sink_publisher" {
 # Dataflow job
 resource "google_dataflow_job" "splunk_stream" {
   name              = "splunk-audit-log-stream"
-  template_gcs_path = "gs://dataflow-templates/latest/Cloud_PubSub_to_Splunk"
+  template_gcs_path = "gs://dataflow-templates-${var.region}/latest/Cloud_PubSub_to_Splunk"
   temp_gcs_location = "gs://${var.dataflow_bucket}/temp"
   region            = var.region
   project           = var.project_id
@@ -244,7 +241,7 @@ gcloud monitoring policies create --policy-from-file=- << 'EOF'
   "conditions": [{
     "displayName": "Dataflow pipeline errors",
     "conditionThreshold": {
-      "filter": "metric.type=\"dataflow.googleapis.com/job/element_count\" AND resource.type=\"dataflow_job\" AND metric.labels.pcollection=~\".*dead-letter.*\"",
+      "filter": "metric.type=\"dataflow.googleapis.com/job/element_count\" AND resource.type=\"dataflow_job\" AND metric.labels.pcollection = monitoring.regex.full_match(\".*dead-letter.*\")",
       "comparison": "COMPARISON_GT",
       "thresholdValue": 0,
       "duration": "300s",
@@ -265,7 +262,7 @@ gcloud monitoring policies create --policy-from-file=- << 'EOF'
   "conditions": [{
     "displayName": "Backlog exceeds 50000 messages",
     "conditionThreshold": {
-      "filter": "metric.type=\"pubsub.googleapis.com/subscription/num_undelivered_messages\" AND resource.labels.subscription_id=\"splunk-audit-logs-sub\"",
+      "filter": "metric.type=\"pubsub.googleapis.com/subscription/num_undelivered_messages\" AND resource.type=\"pubsub_subscription\" AND resource.labels.subscription_id=\"splunk-audit-logs-sub\"",
       "comparison": "COMPARISON_GT",
       "thresholdValue": 50000,
       "duration": "600s"
@@ -310,7 +307,7 @@ Increase the number of Dataflow workers by adjusting the `maxNumWorkers` paramet
 ```bash
 # Launch with autoscaling configuration
 gcloud dataflow jobs run splunk-audit-log-stream \
-    --gcs-location=gs://dataflow-templates/latest/Cloud_PubSub_to_Splunk \
+    --gcs-location=gs://dataflow-templates-us-central1/latest/Cloud_PubSub_to_Splunk \
     --region=us-central1 \
     --staging-location=gs://my-project-dataflow-temp/staging \
     --max-workers=10 \
@@ -327,7 +324,7 @@ parallelism=16 \
 
 ## Security Considerations
 
-Store the Splunk HEC token in Secret Manager and reference it from the Dataflow pipeline rather than passing it as a plain text parameter. Use VPC Service Controls to restrict where the audit logs can be exported. Enable CMEK (Customer-Managed Encryption Keys) on the Pub/Sub topic if required by your compliance policies.
+Store the Splunk HEC token in Secret Manager and reference it from the Dataflow pipeline with `tokenSource=SECRET_MANAGER` and `tokenSecretId=projects/my-gcp-project/secrets/splunk-hec-token/versions/latest` rather than passing it as a plain text parameter. Use VPC Service Controls to restrict where the audit logs can be exported. Enable CMEK (Customer-Managed Encryption Keys) on the Pub/Sub topic if required by your compliance policies.
 
 ## Wrapping Up
 
