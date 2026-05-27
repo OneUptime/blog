@@ -36,9 +36,9 @@ You should see both dbt-core and dbt-bigquery in the output.
 
 ## Setting Up Authentication
 
-dbt needs credentials to connect to BigQuery. The recommended approach for local development is using a service account key file. For production, you would use Workload Identity Federation or the metadata server on GCP compute.
+dbt needs credentials to connect to BigQuery. The recommended approach for local development is using OAuth through `gcloud`. If you are scheduling dbt on a server, you would typically use a service account auth method, Workload Identity Federation, or the metadata server on GCP compute.
 
-Create a service account with the necessary roles:
+If you choose service account file authentication, create a service account with the necessary roles:
 
 ```bash
 # Create a service account for dbt
@@ -56,7 +56,7 @@ gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:dbt-dev@my-project.iam.gserviceaccount.com" \
   --role="roles/bigquery.jobUser"
 
-# Download the key file for local development
+# Download the key file for service account file authentication
 gcloud iam service-accounts keys create ~/dbt-bigquery-key.json \
   --iam-account=dbt-dev@my-project.iam.gserviceaccount.com
 ```
@@ -90,10 +90,10 @@ my_analytics:
       dataset: dbt_dev                  # BigQuery dataset for dev models
       threads: 4                        # Parallel model execution threads
       keyfile: /Users/me/dbt-bigquery-key.json  # Path to service account key
-      timeout_seconds: 300              # Query timeout
+      job_execution_timeout_seconds: 300 # Query execution timeout
       location: US                      # BigQuery dataset location
       priority: interactive             # Query priority (interactive or batch)
-      retries: 1                        # Number of retries on failure
+      job_retries: 1                    # Number of retries on failure
 
     prod:
       type: bigquery
@@ -102,13 +102,13 @@ my_analytics:
       dataset: analytics                # Production dataset
       threads: 8
       keyfile: /path/to/prod-key.json
-      timeout_seconds: 600
+      job_execution_timeout_seconds: 600
       location: US
       priority: interactive
-      retries: 3
+      job_retries: 3
 ```
 
-You can also use OAuth for local development if you prefer not to manage key files:
+For the recommended OAuth-based local development approach, use your personal Google account credentials:
 
 ```yaml
 # Alternative: OAuth-based authentication for local development
@@ -317,8 +317,8 @@ dbt docs serve
 When you run `dbt run`, dbt compiles each model's SQL, resolves the `ref()` and `source()` functions, determines the execution order from the dependency graph, and runs the queries against BigQuery.
 
 ```bash
-# Run a specific model and its dependencies
-dbt run --select customer_orders+
+# Run a specific model and its upstream dependencies
+dbt run --select +customer_orders
 
 # Run only the staging models
 dbt run --select staging.*
