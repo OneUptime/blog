@@ -12,13 +12,13 @@ One of Podman's most useful features is its ability to generate Kubernetes YAML 
 
 ## The Podman-to-Kubernetes Bridge
 
-Podman was designed with Kubernetes compatibility in mind. The `podman generate kube` command produces valid Kubernetes Pod, Service, and PersistentVolumeClaim YAML from running Podman resources. Going the other direction, `podman play kube` can create Podman containers from Kubernetes YAML.
+Podman was designed with Kubernetes compatibility in mind. The `podman kube generate` command produces valid Kubernetes Pod, Service, and PersistentVolumeClaim YAML from running Podman resources. Going the other direction, `podman kube play` can create Podman containers from Kubernetes YAML.
 
 ```mermaid
 flowchart LR
-    A[Podman Pod/Container] -->|podman generate kube| B[Kubernetes YAML]
+    A[Podman Pod/Container] -->|podman kube generate| B[Kubernetes YAML]
     B -->|kubectl apply| C[Kubernetes Cluster]
-    B -->|podman play kube| A
+    B -->|podman kube play| A
 ```
 
 This bidirectional compatibility means you can develop locally and deploy to Kubernetes without rewriting your deployment manifests from scratch.
@@ -62,7 +62,7 @@ Start by setting up a running Podman pod, then generate the Kubernetes YAML:
 
     - name: Generate Kubernetes YAML from the pod
       ansible.builtin.command:
-        cmd: podman generate kube webapp-pod
+        cmd: podman kube generate webapp-pod
       register: kube_yaml
       changed_when: false
 
@@ -91,6 +91,12 @@ A more realistic scenario involves a pod with multiple containers. Here is a ful
     output_dir: "{{ ansible_user_dir }}/k8s-manifests"
 
   tasks:
+    - name: Create output directory
+      ansible.builtin.file:
+        path: "{{ output_dir }}"
+        state: directory
+        mode: '0755'
+
     - name: Create the application pod
       containers.podman.podman_pod:
         name: fullapp-pod
@@ -136,7 +142,7 @@ A more realistic scenario involves a pod with multiple containers. Here is a ful
 
     - name: Generate Kubernetes YAML with service definition
       ansible.builtin.command:
-        cmd: podman generate kube --service fullapp-pod
+        cmd: podman kube generate --service fullapp-pod
       register: full_kube_yaml
       changed_when: false
 
@@ -231,6 +237,23 @@ spec:
 {% endfor %}
 {% endif %}
 {% endfor %}
+{% if k8s_resources[0].spec.volumes is defined %}
+      volumes:
+{% for volume in k8s_resources[0].spec.volumes %}
+        - name: {{ volume.name }}
+{% if volume.persistentVolumeClaim is defined %}
+          persistentVolumeClaim:
+            claimName: {{ volume.persistentVolumeClaim.claimName }}
+{% endif %}
+{% if volume.hostPath is defined %}
+          hostPath:
+            path: {{ volume.hostPath.path }}
+{% if volume.hostPath.type is defined %}
+            type: {{ volume.hostPath.type }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
 ```
 
 ## Playing Kubernetes YAML Back to Podman
@@ -275,7 +298,7 @@ The reverse operation is also useful. Take Kubernetes YAML and create Podman pod
 
     - name: Play the Kubernetes YAML with Podman
       ansible.builtin.command:
-        cmd: "podman play kube {{ manifest_path }}"
+        cmd: "podman kube play {{ manifest_path }}"
       register: play_result
       changed_when: "'Pod' in play_result.stdout"
 
@@ -333,7 +356,7 @@ Here is a complete workflow that develops locally with Podman, generates manifes
 
     - name: Generate Kubernetes manifests
       ansible.builtin.command:
-        cmd: "podman generate kube --service {{ app_name }}-pod"
+        cmd: "podman kube generate --service {{ app_name }}-pod"
       register: generated_yaml
       changed_when: false
 
@@ -345,7 +368,7 @@ Here is a complete workflow that develops locally with Podman, generates manifes
 
     - name: Validate the YAML syntax
       ansible.builtin.command:
-        cmd: "python3 -c \"import yaml; yaml.safe_load_all(open('{{ manifest_dir }}/pod-and-service.yaml'))\""
+        cmd: "python3 -c \"import pathlib, yaml; list(yaml.safe_load_all(pathlib.Path('{{ manifest_dir }}/pod-and-service.yaml').read_text()))\""
       changed_when: false
 
     - name: Clean up local pod
@@ -383,7 +406,7 @@ You do not need pods to generate YAML. Individual containers work too:
 
     - name: Generate Kubernetes YAML
       ansible.builtin.command:
-        cmd: podman generate kube standalone-redis
+        cmd: podman kube generate standalone-redis
       register: container_yaml
       changed_when: false
 
@@ -400,4 +423,4 @@ You do not need pods to generate YAML. Individual containers work too:
 
 ## Summary
 
-The ability to generate Kubernetes YAML from Podman pods and containers is a powerful bridge between local development and cluster deployment. Ansible can automate the entire workflow: create pods locally, verify they work, generate manifests, post-process them for production (adding Deployment wrappers, namespaces, resource limits), and validate the output. Going the other direction, `podman play kube` lets you test Kubernetes manifests on a local machine without needing a cluster. This round-trip capability makes Podman and Ansible a productive combination for teams that develop locally but deploy to Kubernetes.
+The ability to generate Kubernetes YAML from Podman pods and containers is a powerful bridge between local development and cluster deployment. Ansible can automate the entire workflow: create pods locally, verify they work, generate manifests, post-process them for production (adding Deployment wrappers, namespaces, resource limits), and validate the output. Going the other direction, `podman kube play` lets you test Kubernetes manifests on a local machine without needing a cluster. This round-trip capability makes Podman and Ansible a productive combination for teams that develop locally but deploy to Kubernetes.
