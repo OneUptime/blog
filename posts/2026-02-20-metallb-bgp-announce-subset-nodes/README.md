@@ -10,7 +10,7 @@ Description: Learn how to configure MetalLB to announce service routes from only
 
 ## Why Announce from a Subset of Nodes?
 
-When MetalLB runs in BGP mode, every node with a MetalLB speaker will announce routes for allocated service IPs by default. In many environments, you want to restrict announcements to specific nodes for several reasons:
+When MetalLB runs in BGP mode with the default `Cluster` external traffic policy, every eligible node with a MetalLB speaker and a matching BGP peer can announce routes for allocated service IPs by default. In many environments, you want to restrict announcements to specific nodes for several reasons:
 
 - Only certain nodes sit on the external-facing network
 - You want to concentrate ingress traffic on dedicated nodes with more bandwidth
@@ -38,7 +38,7 @@ flowchart LR
     R --> Internet
 ```
 
-Only the ingress nodes advertise the service IP. Worker nodes still run workloads but do not originate BGP announcements.
+Only the ingress nodes advertise the service IP. With the default `Cluster` external traffic policy, worker nodes can still run workloads but do not originate BGP announcements.
 
 ### Step 1: Label Your Ingress Nodes
 
@@ -149,9 +149,9 @@ kubectl apply -f bgp-advertisement.yaml
 Confirm that only the ingress nodes are advertising routes.
 
 ```bash
-# Check MetalLB speaker logs on an ingress node.
-# Look for "announcing" messages that confirm route advertisement.
-kubectl logs -n metallb-system -l component=speaker --all-containers | grep -i "announce"
+# Check the Service events.
+# Look for "announcing from node" events with protocol "bgp".
+kubectl describe svc <service-name> -n <service-namespace>
 
 # Describe the BGPAdvertisement to see node selector details.
 kubectl describe bgpadvertisement ingress-only -n metallb-system
@@ -183,7 +183,7 @@ flowchart TD
 - **BGPPeer nodeSelectors**: Which nodes open a BGP TCP session with the peer
 - **BGPAdvertisement nodeSelectors**: Which nodes actually send route announcements through their sessions
 
-A node must have both a BGP session (matched by BGPPeer) and be selected by the BGPAdvertisement to actually announce routes.
+A node must have both a BGP session (matched by BGPPeer) and be selected by the BGPAdvertisement to announce routes for a service that is otherwise eligible to be advertised. For example, with `externalTrafficPolicy: Local`, MetalLB only announces from nodes that have local endpoints for that service.
 
 ### Step 6: Multiple Advertisements for Different Node Groups
 
@@ -222,7 +222,7 @@ spec:
 
 ### Common Mistakes to Avoid
 
-1. **No matching nodes**: If no nodes match the advertisement's node selector, the service IP will never be announced. The service will be unreachable from outside the cluster.
+1. **No matching nodes**: If no nodes match the advertisement's node selector, the service IP will not be announced by that advertisement. The service will be unreachable from outside the cluster unless another valid advertisement also covers it.
 2. **Forgetting the BGPPeer**: A node must also be selected by a BGPPeer to have a session. Node selectors on the advertisement alone are not sufficient.
 3. **Selector overlap**: If multiple advertisements cover the same pool with different node selectors, the route will be announced from all matched nodes across all advertisements. This can cause unexpected ECMP behavior.
 4. **Node removal**: If a labeled node goes down, routes will be withdrawn. Make sure you have at least two nodes selected for redundancy.
