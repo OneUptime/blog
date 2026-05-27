@@ -82,6 +82,7 @@ keyed_groups:
     prefix: azure
 conditional_groups:
   azure_webservers: "'webserver' in tags.Role"
+  azure_databases: "'database' in tags.Role"
 ```
 
 Ansible merges these automatically when you point to the directory:
@@ -162,9 +163,9 @@ Provision resources in each cloud from a single playbook:
           - path: /home/deploy/.ssh/authorized_keys
             key_data: "{{ deploy_ssh_key }}"
         image:
-          offer: UbuntuServer
+          offer: 0001-com-ubuntu-server-jammy
           publisher: Canonical
-          sku: 22_04-lts
+          sku: 22_04-lts-gen2
           version: latest
         tags:
           Role: webserver
@@ -190,7 +191,7 @@ Set up VPN tunnels between environments:
   delegate_to: localhost
 
 - name: Create AWS Customer Gateway (on-prem endpoint)
-  amazon.aws.ec2_customer_gateway:
+  community.aws.ec2_customer_gateway:
     ip_address: "{{ on_prem_public_ip }}"
     name: "on-prem-gateway"
     bgp_asn: 65000
@@ -201,7 +202,7 @@ Set up VPN tunnels between environments:
 - name: Create VPN connection
   amazon.aws.ec2_vpc_vpn:
     customer_gateway_id: "{{ aws_cgw.gateway.customer_gateway.customer_gateway_id }}"
-    vpn_gateway_id: "{{ aws_vgw.vgw.vpn_gateway_id }}"
+    vpn_gateway_id: "{{ aws_vgw.vgw.id }}"
     state: present
     static_only: true
     routes:
@@ -253,7 +254,7 @@ package_mirror: ""
     mode: '0644'
   vars:
     labels:
-      cloud_provider: "{{ 'aws' if 'aws' in group_names else 'azure' if 'azure' in group_names else 'on_premises' }}"
+      cloud_provider: "{{ 'aws' if (group_names | select('match', '^aws_') | list | length > 0) else 'azure' if (group_names | select('match', '^azure_') | list | length > 0) else 'on_premises' }}"
       region: "{{ cloud_region | default(location | default('unknown')) }}"
       environment: "{{ environment_name }}"
 ```
@@ -301,7 +302,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -342,7 +343,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -445,4 +446,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
