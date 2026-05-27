@@ -26,15 +26,20 @@ graph LR
 # roles/elasticsearch/tasks/main.yml
 
 ---
-- name: Add Elasticsearch GPG key
-  ansible.builtin.apt_key:
-    url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+- name: Add Elastic APT repository
+  ansible.builtin.deb822_repository:
+    name: elastic-8.x
+    types: deb
+    uris: https://artifacts.elastic.co/packages/8.x/apt
+    suites: stable
+    components: main
+    signed_by: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    install_python_debian: true
     state: present
 
-- name: Add Elasticsearch repository
-  ansible.builtin.apt_repository:
-    repo: "deb https://artifacts.elastic.co/packages/8.x/apt stable main"
-    state: present
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
 
 - name: Install Elasticsearch
   ansible.builtin.apt:
@@ -67,6 +72,21 @@ graph LR
 ```yaml
 # roles/filebeat/tasks/main.yml
 ---
+- name: Add Elastic APT repository
+  ansible.builtin.deb822_repository:
+    name: elastic-8.x
+    types: deb
+    uris: https://artifacts.elastic.co/packages/8.x/apt
+    suites: stable
+    components: main
+    signed_by: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    install_python_debian: true
+    state: present
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+
 - name: Install Filebeat
   ansible.builtin.apt:
     name: filebeat
@@ -82,8 +102,8 @@ graph LR
 - name: Enable Filebeat modules
   ansible.builtin.command:
     cmd: "filebeat modules enable {{ item }}"
+    creates: "/etc/filebeat/modules.d/{{ item }}.yml"
   loop: "{{ filebeat_modules }}"
-  changed_when: true
 
 - name: Ensure Filebeat is running
   ansible.builtin.service:
@@ -97,17 +117,18 @@ graph LR
 ```yaml
 # roles/filebeat/templates/filebeat.yml.j2
 filebeat.inputs:
-  - type: log
+  - type: filestream
+    id: system-{{ inventory_hostname }}
     enabled: true
     paths:
       - /var/log/syslog
       - /var/log/auth.log
 {% for path in app_log_paths | default([]) %}
-      - {{ path }}
+      - {{ path | quote }}
 {% endfor %}
     fields:
-      environment: {{ environment_name }}
-      hostname: {{ inventory_hostname }}
+      environment: {{ environment_name | quote }}
+      hostname: {{ inventory_hostname | quote }}
 
 output.logstash:
   hosts: ["{{ logstash_host }}:5044"]
@@ -120,6 +141,21 @@ logging.level: warning
 ```yaml
 # roles/logstash/tasks/main.yml
 ---
+- name: Add Elastic APT repository
+  ansible.builtin.deb822_repository:
+    name: elastic-8.x
+    types: deb
+    uris: https://artifacts.elastic.co/packages/8.x/apt
+    suites: stable
+    components: main
+    signed_by: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    install_python_debian: true
+    state: present
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+
 - name: Install Logstash
   ansible.builtin.apt:
     name: logstash
@@ -133,11 +169,44 @@ logging.level: warning
   notify: restart logstash
 ```
 
+```ruby
+# roles/logstash/templates/pipeline.conf.j2
+input {
+  beats {
+    port => 5044
+  }
+}
+
+output {
+  elasticsearch {
+    hosts => ["{{ elasticsearch_url }}"]
+    user => "{{ elasticsearch_username }}"
+    password => "{{ elasticsearch_password }}"
+    ssl_certificate_authorities => ["{{ elasticsearch_ca_cert }}"]
+  }
+}
+```
+
 ## Deploying Kibana
 
 ```yaml
 # roles/kibana/tasks/main.yml
 ---
+- name: Add Elastic APT repository
+  ansible.builtin.deb822_repository:
+    name: elastic-8.x
+    types: deb
+    uris: https://artifacts.elastic.co/packages/8.x/apt
+    suites: stable
+    components: main
+    signed_by: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    install_python_debian: true
+    state: present
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+
 - name: Install Kibana
   ansible.builtin.apt:
     name: kibana
@@ -193,12 +262,12 @@ Ansible makes ELK Stack deployment repeatable. Deploy Elasticsearch nodes as a c
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this approach proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this approach
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -271,7 +340,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name | default('ssh') }}"
         state: restarted
 ```
 
@@ -312,7 +381,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this approach
 - name: Robust task execution
   hosts: all
   tasks:
@@ -374,4 +443,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
