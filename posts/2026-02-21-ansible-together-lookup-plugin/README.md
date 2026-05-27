@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible together lookup plugin to zip multiple
 
 ---
 
-When you have two or more related lists that need to be processed in parallel, the `together` lookup plugin zips them together. If you have a list of usernames and a corresponding list of UIDs, `together` pairs them up so you can access the username and UID for each user in a single loop iteration. It works exactly like Python's `zip()` function.
+When you have two or more related lists that need to be processed in parallel, the `together` lookup plugin zips them together. If you have a list of usernames and a corresponding list of UIDs, `together` pairs them up so you can access the username and UID for each user in a single loop iteration. It works like Python's `itertools.zip_longest()` function.
 
 ## What the together Lookup Does
 
@@ -71,8 +71,8 @@ This playbook pairs names, ports, and protocols:
       - 5432
       - 6379
     service_protocols:
-      - http
-      - http
+      - tcp
+      - tcp
       - tcp
       - tcp
   tasks:
@@ -230,7 +230,7 @@ When lists have different lengths, shorter lists get padded with `None`. This ca
   tasks:
     - name: Show paired values (some will have None)
       ansible.builtin.debug:
-        msg: "{{ item.0 }} -> {{ item.1 | default('no role assigned') }}"
+        msg: "{{ item.0 }} -> {{ item.1 | default('no role assigned', true) }}"
       loop: "{{ lookup('together', names, roles, wantlist=True) }}"
 ```
 
@@ -276,12 +276,11 @@ Pairing interface names with IP addresses for multi-homed servers:
         iface_ip: "{{ item.1 }}"
         iface_gateway: "{{ item.2 }}"
       loop: "{{ lookup('together', interfaces, ip_addresses, gateways, wantlist=True) }}"
-      notify: restart network
 ```
 
 ## together vs zip Filter
 
-Modern Ansible also provides a `zip` filter that does the same thing. Here is the comparison:
+Modern Ansible also provides a `zip` filter that does a similar thing when your lists are the same length. Here is the comparison:
 
 ```yaml
 # playbook.yml - together lookup vs zip filter
@@ -305,7 +304,7 @@ Modern Ansible also provides a `zip` filter that does the same thing. Here is th
       loop: "{{ list_a | zip(list_b) | list }}"
 ```
 
-The `zip` filter is generally preferred in modern Ansible because it is more readable and follows Python conventions. However, `together` has one advantage: it pads shorter lists with `None` instead of truncating, which `zip` does not do by default (you would need `zip_longest` for that behavior, which is not available as a built-in filter).
+The `zip` filter is generally preferred in modern Ansible because it is more readable and follows Python conventions. However, `together` has one advantage over `zip`: it pads shorter lists with `None` instead of truncating. If you want that behavior with filters, use the built-in `zip_longest` filter.
 
 ## When to Use together vs Dictionaries
 
