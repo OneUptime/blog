@@ -12,7 +12,7 @@ In standard TLS, only the server presents a certificate. Mutual TLS (mTLS) requi
 
 ## How mTLS Works
 
-In regular TLS, the client verifies the server identity. In mTLS, both sides verify each other. This eliminates the need for API keys or tokens for service identity.
+In regular TLS, the client verifies the server identity. In mTLS, both sides verify each other. This can reduce or eliminate the need for API keys or tokens for service identity.
 
 ```mermaid
 sequenceDiagram
@@ -66,7 +66,7 @@ echo "Keep the CA key secure - it can issue certificates for any service"
 
 ## Issuing Service Certificates
 
-Each service gets its own certificate signed by the CA. The certificate Common Name (CN) or Subject Alternative Name (SAN) identifies the service.
+Each service gets its own certificate signed by the CA. The Subject Alternative Name (SAN) should identify the service; the Common Name (CN) can be included for compatibility but should not be the only identity.
 
 ```bash
 #!/bin/bash
@@ -139,6 +139,7 @@ import ssl
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -147,22 +148,23 @@ app = FastAPI()
 def get_client_identity(request: Request):
     """Extract the client service identity from the mTLS certificate."""
     # The TLS layer has already verified the certificate
-    # Extract the Common Name (CN) from the client cert
-    client_cert = request.scope.get("transport", {})
+    # Uvicorn can require a client certificate, but it does not expose the
+    # decoded peer certificate on request.state by default. Use an ASGI server
+    # that supports the ASGI TLS extension, or a trusted proxy that forwards
+    # the verified client certificate subject.
+    tls_info = request.scope.get("extensions", {}).get("tls", {})
+    client_cert_name = tls_info.get("client_cert_name")
 
-    # In production with uvicorn, client cert info is available
-    # through the ASGI scope or middleware
-    peer_cert = getattr(request.state, "peer_cert", None)
-
-    if not peer_cert:
+    if not client_cert_name:
         raise HTTPException(
             status_code=403,
-            detail="No client certificate provided"
+            detail="No client certificate identity provided"
         )
 
-    # Extract CN from the certificate subject
-    subject = dict(x[0] for x in peer_cert.get("subject", ()))
-    return subject.get("commonName", "unknown")
+    # client_cert_name is an RFC4514 distinguished name, for example:
+    # CN=order-service,O=MyCompany,ST=California,C=US
+    match = re.search(r"(?:^|,)CN=([^,]+)", client_cert_name)
+    return match.group(1) if match else "unknown"
 
 
 @app.get("/api/data")
@@ -205,7 +207,6 @@ def create_ssl_context():
 
 
 if __name__ == "__main__":
-    ssl_context = create_ssl_context()
     uvicorn.run(
         app,
         host="0.0.0.0",
