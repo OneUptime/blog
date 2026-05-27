@@ -27,12 +27,14 @@ edition = "2021"
 [dependencies]
 # Web framework
 actix-web = "4"
+# CORS middleware
+actix-cors = "0.7"
 # Serialization and deserialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Unique identifiers
 uuid = { version = "1", features = ["v4"] }
-# Async runtime logging
+# Logging
 env_logger = "0.11"
 log = "0.4"
 # Date and time handling
@@ -309,6 +311,9 @@ fn configure_cors() -> Cors {
         // Cache preflight responses for one hour
         .max_age(3600)
 }
+
+// Register it in the App builder with:
+// .wrap(configure_cors())
 ```
 
 ## Running the Server
