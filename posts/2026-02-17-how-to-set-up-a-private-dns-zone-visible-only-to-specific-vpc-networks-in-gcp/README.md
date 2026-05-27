@@ -14,9 +14,9 @@ This post covers setting up private DNS zones, scoping them to specific VPCs, ha
 
 ## What Is a Private DNS Zone?
 
-A private DNS zone is a Cloud DNS managed zone with `visibility=private`. Unlike public zones that are queryable by anyone on the internet, private zones are only resolvable from VMs within the VPC networks you explicitly authorize.
+A private DNS zone is a Cloud DNS managed zone with `visibility=private`. Unlike public zones that are queryable by anyone on the internet, private zones are only resolvable by clients that use the VPC networks you explicitly authorize.
 
-When a VM in an authorized VPC makes a DNS query that matches a private zone, Cloud DNS responds with the records from that zone. Queries from outside the authorized VPCs get no response (the zone is invisible to them).
+When a VM in an authorized VPC makes a DNS query that matches a private zone, Cloud DNS responds with the records from that zone. Queries from outside the authorized VPCs are not answered by the private zone; external resolvers only see whatever exists in public DNS.
 
 ## Step 1: Create a Private DNS Zone
 
@@ -87,10 +87,10 @@ dig db.internal.mycompany.com +short
 dig api.internal.mycompany.com +short
 # Expected: 10.128.0.60
 
-# Verify the zone is not visible from the public internet
-# From a machine outside GCP:
+# Verify the private zone is not visible from the public internet
+# From a machine outside GCP, with no matching public DNS record:
 dig db.internal.mycompany.com +short
-# Expected: no result (NXDOMAIN)
+# Expected: no private-zone result
 ```
 
 ## Per-Environment DNS Zones
@@ -159,7 +159,7 @@ gcloud dns record-sets create app.example.com. \
     --rrdatas="10.128.0.100"
 ```
 
-External clients querying `app.example.com` see the public IP from the public zone. Internal clients see `10.128.0.100`.
+External clients querying `app.example.com` see the public IP from the public zone if one exists. Internal clients see `10.128.0.100`.
 
 ## DNS Peering
 
