@@ -14,10 +14,11 @@ This article covers how to set up Hive on Dataproc, configure the Hive Metastore
 
 ## Understanding the Hive Metastore Options
 
-When running Hive on Dataproc, you have two choices for the metastore:
+When running Hive on Dataproc, you have three choices for the metastore:
 
-1. **Local metastore** - A MySQL database running on the cluster's master node. This is the default, but metadata is lost when the cluster is deleted.
+1. **Local metastore** - A MySQL database running on the cluster's master node. This is the default, but metadata is tied to the cluster lifecycle.
 2. **Dataproc Metastore** - A managed, persistent Hive Metastore service that runs independently of any cluster. This is what you want for production.
+3. **Cloud SQL** - An external relational database that can be used as a Hive metastore database if you need to manage the database yourself.
 
 For anything beyond quick experiments, use the Dataproc Metastore service. It keeps your table definitions, partitions, and schema information available across cluster lifecycles.
 
@@ -30,12 +31,12 @@ The Dataproc Metastore service runs as a standalone resource in your project. Cr
 
 gcloud metastore services create my-hive-metastore \
   --location=us-central1 \
-  --tier=DEVELOPER \
+  --tier=developer \
   --hive-metastore-version=3.1.2 \
   --network=default
 ```
 
-The `DEVELOPER` tier is fine for testing. For production, use `ENTERPRISE` which gives you better availability and performance. The metastore takes a few minutes to provision.
+The `developer` tier is fine for testing. For production, use `enterprise` which gives you better availability and performance. The metastore takes a few minutes to provision.
 
 Check the status:
 
@@ -64,7 +65,7 @@ gcloud dataproc clusters create hive-cluster \
   --optional-components=HIVE_WEBHCAT
 ```
 
-The `--dataproc-metastore` flag links the cluster to your persistent metastore. The `HIVE_WEBHCAT` component enables the HiveServer2 web interface.
+The `--dataproc-metastore` flag links the cluster to your persistent metastore. The `HIVE_WEBHCAT` component enables the Hive WebHCat REST API for HCatalog.
 
 ## Step 3: Prepare Data in Cloud Storage
 
