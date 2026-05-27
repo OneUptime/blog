@@ -87,7 +87,7 @@ Migration questions are guaranteed on the exam. Know the six strategies:
 
 For each migration scenario, consider:
 
-- **Data transfer**: How much data needs to move? For small amounts, use gsutil or the Storage Transfer Service. For petabytes, use Transfer Appliance (physical device shipped to Google).
+- **Data transfer**: How much data needs to move? For small amounts, use `gcloud storage` or the Storage Transfer Service. For petabytes, use Transfer Appliance (physical device shipped to Google).
 - **Network connectivity**: Do you need Cloud VPN, Interconnect, or can you transfer over the internet?
 - **Downtime tolerance**: Can you do a big-bang cutover, or do you need a phased migration with both systems running in parallel?
 - **Dependencies**: Map application dependencies to determine the migration order.
@@ -95,14 +95,14 @@ For each migration scenario, consider:
 ```bash
 # Example: Migrating data from on-premises to Cloud Storage
 
-# For moderate data volumes, use the gsutil parallel upload
-gsutil -m cp -r /path/to/local/data gs://migration-bucket/
+# For moderate data volumes, use gcloud storage recursive upload
+gcloud storage cp --recursive /path/to/local/data gs://migration-bucket/
 
 # For cross-cloud transfers, use Storage Transfer Service
 gcloud transfer jobs create \
-  --source-agent-pool=my-pool \
-  --destination=gs://migration-bucket/ \
-  --source-directory=/path/to/data
+  posix:///path/to/data \
+  gs://migration-bucket/ \
+  --source-agent-pool=my-pool
 ```
 
 ## Database Design
