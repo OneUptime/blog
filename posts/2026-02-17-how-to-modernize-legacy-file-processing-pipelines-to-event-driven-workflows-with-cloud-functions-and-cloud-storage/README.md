@@ -70,14 +70,15 @@ import csv
 import io
 import json
 import logging
+import os
 from datetime import datetime
 from google.cloud import storage
 
 # Initialize the storage client once outside the function for reuse
 storage_client = storage.Client()
 
-OUTPUT_BUCKET = 'my-project-file-output'
-ERROR_BUCKET = 'my-project-file-errors'
+OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', 'my-project-file-output')
+ERROR_BUCKET = os.environ.get('ERROR_BUCKET', 'my-project-file-errors')
 
 def process_file(event, context):
     """Triggered by a Cloud Storage finalize event when a file is uploaded."""
@@ -220,26 +221,48 @@ from google.cloud import firestore
 # Use Firestore to track which files have been processed
 db = firestore.Client()
 
+@firestore.transactional
+def claim_event(transaction, doc_ref, file_name):
+    snapshot = doc_ref.get(transaction=transaction)
+    if snapshot.exists:
+        return False
+
+    transaction.set(doc_ref, {
+        'file': file_name,
+        'status': 'processing',
+        'claimed_at': firestore.SERVER_TIMESTAMP,
+    })
+    return True
+
 def process_file(event, context):
     """Idempotent file processor using event ID for deduplication."""
     event_id = context.event_id
     file_name = event['name']
 
-    # Check if we already processed this event
     doc_ref = db.collection('processed_events').document(event_id)
-    if doc_ref.get().exists:
+    transaction = db.transaction()
+
+    # Atomically claim the event so concurrent retries cannot process it twice
+    if not claim_event(transaction, doc_ref, file_name):
         logging.info(f'Event {event_id} already processed, skipping')
         return
 
-    # Process the file
-    result = do_processing(event)
+    try:
+        # Process the file
+        result = do_processing(event)
+    except Exception:
+        doc_ref.set({
+            'status': 'failed',
+            'failed_at': firestore.SERVER_TIMESTAMP,
+        }, merge=True)
+        raise
 
     # Mark as processed
     doc_ref.set({
-        'file': file_name,
-        'processed_at': datetime.utcnow(),
+        'status': 'processed',
+        'processed_at': firestore.SERVER_TIMESTAMP,
         'result': result,
-    })
+    }, merge=True)
 ```
 
 ## Monitoring the Pipeline
@@ -250,8 +273,10 @@ Set up Cloud Monitoring to keep tabs on the pipeline:
 # Create an alert policy for function errors
 gcloud alpha monitoring policies create \
   --display-name="File Processing Errors" \
-  --condition-display-name="Function error rate > 5%" \
-  --condition-filter='resource.type="cloud_function" AND resource.labels.function_name="process-file" AND metric.type="cloudfunctions.googleapis.com/function/execution_count" AND metric.labels.status!="ok"'
+  --condition-display-name="Function errors > 0" \
+  --condition-filter='resource.type="cloud_function" AND resource.labels.function_name="process-file" AND metric.type="cloudfunctions.googleapis.com/function/execution_count" AND metric.labels.status!="ok"' \
+  --duration=300s \
+  --if="> 0"
 ```
 
 You should also set up log-based metrics to track processing volume and latency:
