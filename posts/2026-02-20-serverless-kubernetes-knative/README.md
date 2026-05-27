@@ -12,7 +12,7 @@ Knative brings serverless capabilities to Kubernetes. It handles auto-scaling (i
 
 ## What Knative Provides
 
-Knative has two main components: Serving and Eventing.
+Knative has two main cluster components covered here: Serving and Eventing.
 
 ```mermaid
 graph TD
@@ -37,13 +37,13 @@ graph TD
 
 # Install the Knative Serving CRDs
 
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.13.0/serving-crds.yaml
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.22.0/serving-crds.yaml
 
 # Install the Knative Serving core components
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.13.0/serving-core.yaml
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.22.0/serving-core.yaml
 
 # Install Kourier as the networking layer (lighter than Istio)
-kubectl apply -f https://github.com/knative/net-kourier/releases/download/knative-v1.13.0/kourier.yaml
+kubectl apply -f https://github.com/knative-extensions/net-kourier/releases/download/knative-v1.22.0/kourier.yaml
 
 # Configure Knative to use Kourier
 kubectl patch configmap/config-network \
@@ -52,8 +52,13 @@ kubectl patch configmap/config-network \
   --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
 
 # Install Knative Eventing
-kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.13.0/eventing-crds.yaml
-kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.13.0/eventing-core.yaml
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.22.0/eventing-crds.yaml
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.22.0/eventing-core.yaml
+
+# Install an in-memory Channel and MT-Channel Broker for the examples below
+# The in-memory Channel is simple, but not suitable for production use cases
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.22.0/in-memory-channel.yaml
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.22.0/mt-channel-broker.yaml
 ```
 
 ## Deploying Your First Knative Service
@@ -181,8 +186,8 @@ spec:
         # Wait 30 seconds before scaling down
         autoscaling.knative.dev/scale-down-delay: "30s"
 
-        # Scale-to-zero grace period
-        autoscaling.knative.dev/scale-to-zero-grace-period: "60s"
+        # Keep the last pod active for at least 60 seconds after scaling to zero is triggered
+        autoscaling.knative.dev/scale-to-zero-pod-retention-period: "60s"
     spec:
       containers:
         - image: ghcr.io/myorg/api-server:latest
@@ -342,8 +347,8 @@ graph LR
 # event_producer.py
 # Send CloudEvents to the Knative Broker
 
-from cloudevents.http import CloudEvent
-from cloudevents.conversion import to_structured
+from cloudevents.core.v1.event import CloudEvent
+from cloudevents.core.bindings.http import to_structured_event
 import requests
 
 def publish_event(event_type: str, data: dict, source: str = "/api-server"):
@@ -357,19 +362,18 @@ def publish_event(event_type: str, data: dict, source: str = "/api-server"):
     event = CloudEvent({
         "type": event_type,
         "source": source,
-        "datacontenttype": "application/json",
-    })
+    }, data)
 
     # Convert to structured format (JSON with headers)
-    headers, body = to_structured(event, data=data)
+    message = to_structured_event(event)
 
     # Send to the broker's ingress endpoint
     broker_url = "http://broker-ingress.knative-eventing.svc.cluster.local/default/default"
 
     response = requests.post(
         broker_url,
-        headers=headers,
-        data=body,
+        headers=message.headers,
+        data=message.body,
         timeout=10,
     )
 
@@ -392,7 +396,7 @@ publish_event(
 # Knative Service that processes incoming CloudEvents
 
 from flask import Flask, request, jsonify
-from cloudevents.http import from_http
+from cloudevents.core.bindings.http import HTTPMessage, from_http_event
 
 app = Flask(__name__)
 
@@ -403,12 +407,12 @@ def handle_event():
     Knative sends events as HTTP POST requests to the service.
     """
     # Parse the CloudEvent from the HTTP request
-    event = from_http(request.headers, request.get_data())
+    event = from_http_event(HTTPMessage(dict(request.headers), request.get_data()))
 
     # Extract event metadata
-    event_type = event["type"]
-    event_source = event["source"]
-    event_data = event.data
+    event_type = event.get_type()
+    event_source = event.get_source()
+    event_data = event.get_data()
 
     print(f"Received event: type={event_type}, source={event_source}")
 
