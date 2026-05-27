@@ -12,7 +12,7 @@ Description: Learn how to deploy MinIO on Kubernetes for S3-compatible object st
 
 MinIO is a high-performance, S3-compatible object storage system. It is designed for large-scale data infrastructure and works natively with Kubernetes. MinIO supports erasure coding, bitrot protection, and encryption out of the box. It is widely used for storing logs, backups, machine learning datasets, and application artifacts.
 
-The key advantage of MinIO is full S3 API compatibility. Any application that works with Amazon S3 can work with MinIO without code changes.
+The key advantage of MinIO is S3 API compatibility. Applications that use standard S3 APIs can work with MinIO after pointing the client at the MinIO endpoint and credentials.
 
 ## MinIO Architecture on Kubernetes
 
@@ -37,7 +37,7 @@ graph TD
     O -->|Manages| F
 ```
 
-MinIO uses erasure coding to distribute data across multiple drives and nodes. With 4 nodes and 2 drives each (8 drives total), MinIO can tolerate up to 4 drive failures while maintaining data availability.
+MinIO uses erasure coding to distribute data across multiple drives and nodes. With 4 nodes and 2 drives each (8 drives total) and the `EC:2` storage class used below, MinIO can tolerate up to 2 drive failures while maintaining data availability.
 
 ## Installing the MinIO Operator
 
@@ -97,33 +97,30 @@ spec:
         limits:
           cpu: "2"
           memory: 4Gi
-  # Root credentials
-  credsSecret:
-    name: minio-creds
+  # Root credentials and MinIO configuration
+  configuration:
+    name: minio-config
   # Enable Prometheus metrics
   prometheusOperator: true
-  # Request automatic TLS certificate generation
-  requestAutoCert: true
+  # Disable automatic TLS for this local HTTP example
+  requestAutoCert: false
   # S3 features
   features:
     bucketDNS: false
-  # Environment variables for MinIO configuration
-  env:
-    - name: MINIO_BROWSER
-      value: "on"                          # Enable web console
-    - name: MINIO_STORAGE_CLASS_STANDARD
-      value: "EC:2"                        # Erasure coding with 2 parity blocks
 ---
-# Secret for MinIO root credentials
+# Secret for MinIO root credentials and configuration
 apiVersion: v1
 kind: Secret
 metadata:
-  name: minio-creds
+  name: minio-config
   namespace: minio-tenant
 type: Opaque
 stringData:
-  accesskey: "minio-admin"                 # Root access key
-  secretkey: "change-this-password"        # Root secret key (change this)
+  config.env: |-
+    export MINIO_ROOT_USER="minio-admin"
+    export MINIO_ROOT_PASSWORD="change-this-password"
+    export MINIO_BROWSER="on"              # Enable web console
+    export MINIO_STORAGE_CLASS_STANDARD="EC:2"
 ```
 
 ```bash
@@ -241,7 +238,7 @@ for obj in response.get("Contents", []):
 
 ## Bucket Lifecycle and Expiration
 
-```yaml
+```json
 # lifecycle-policy.json
 # Automatically expire old objects to manage storage costs
 {
@@ -257,7 +254,7 @@ for obj in response.get("Contents", []):
             }
         },
         {
-            "ID": "transition-to-archive",
+            "ID": "expire-old-backups",
             "Status": "Enabled",
             "Filter": {
                 "Prefix": "backups/"
@@ -272,10 +269,10 @@ for obj in response.get("Contents", []):
 
 ```bash
 # Apply the lifecycle policy to a bucket
-mc ilm import myminio/application-logs < lifecycle-policy.json
+mc ilm rule import myminio/application-logs < lifecycle-policy.json
 
 # View the current lifecycle rules
-mc ilm ls myminio/application-logs
+mc ilm rule ls myminio/application-logs
 ```
 
 ## Monitoring and Health Checks
@@ -298,7 +295,7 @@ mc admin info myminio
 mc admin info myminio --json | jq '.info.servers[].drives'
 
 # Check healing status (after a drive replacement)
-mc admin heal myminio --recursive
+mc admin heal myminio
 
 # View real-time server logs
 mc admin logs myminio
@@ -309,7 +306,7 @@ curl -s http://localhost:9000/minio/v2/metrics/cluster | head -30
 
 ## Production Considerations
 
-- Deploy at least 4 MinIO nodes for erasure coding (tolerates up to N/2 drive failures).
+- Deploy at least 4 MinIO nodes for erasure coding and choose a parity setting that matches your availability requirements.
 - Use dedicated fast SSDs for MinIO volumes.
 - Enable TLS for all client and inter-node communication.
 - Set up bucket versioning for critical data to protect against accidental deletion.
