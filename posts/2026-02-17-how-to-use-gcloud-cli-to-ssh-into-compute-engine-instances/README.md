@@ -14,10 +14,10 @@ This post covers the basics of gcloud SSH, the different connection methods avai
 
 ## Basic SSH Connection
 
-The simplest form of gcloud SSH requires just the instance name:
+The simplest form of gcloud SSH requires the instance name. If your default project and zone are set, you can omit those flags; otherwise include them or choose a zone when prompted in interactive mode:
 
 ```bash
-# SSH into an instance (gcloud resolves the zone automatically)
+# SSH into an instance using your default zone, or choose a zone if prompted
 
 gcloud compute ssh my-instance --project=my-project
 ```
@@ -116,6 +116,8 @@ gcloud projects add-iam-policy-binding my-project \
   --role="roles/iap.tunnelResourceAccessor"
 ```
 
+If you use `--target-tags=allow-iap-ssh`, make sure the VM has the `allow-iap-ssh` network tag.
+
 ## Port Forwarding
 
 Forward a remote port to your local machine through the SSH tunnel:
@@ -167,13 +169,13 @@ gcloud compute ssh my-instance \
 If you need to revoke access:
 
 ```bash
-# Remove a specific SSH key from project metadata
+# Remove all SSH keys from project metadata
 gcloud compute project-info remove-metadata \
   --keys=ssh-keys \
   --project=my-project
 ```
 
-This removes all keys. For removing a single key, you need to edit the metadata manually.
+This removes all project-level SSH keys stored in the `ssh-keys` metadata value. For removing a single key, you need to edit the metadata value manually.
 
 ### OS Login
 
@@ -211,12 +213,11 @@ ssh my-instance.us-central1-a.my-project
 If you get "Permission denied (publickey)":
 
 ```bash
-# Reset the SSH key by removing the old one and generating a new one
+# Run SSH troubleshooting checks for permissions, VM status, and network access
 gcloud compute ssh my-instance \
   --zone=us-central1-a \
   --project=my-project \
-  --ssh-key-expire-after=1h \
-  --force-key-file-overwrite
+  --troubleshoot
 ```
 
 ### Connection Timed Out
@@ -261,16 +262,22 @@ gcloud compute ssh my-instance \
 
 ### Serial Console Access
 
-When SSH is completely broken (network misconfiguration, broken sshd), use the serial console:
+When SSH is completely broken (network misconfiguration, broken sshd), use the serial console. Interactive serial console access must be enabled with the `serial-port-enable=true` metadata key before you can connect:
 
 ```bash
+# Enable interactive serial console access for this instance
+gcloud compute instances add-metadata my-instance \
+  --zone=us-central1-a \
+  --project=my-project \
+  --metadata=serial-port-enable=true
+
 # Connect to the serial console for emergency access
 gcloud compute connect-to-serial-port my-instance \
   --zone=us-central1-a \
   --project=my-project
 ```
 
-This connects directly to the VM's serial port, bypassing the network entirely.
+This connects to the VM's serial port and does not depend on the guest OS network path.
 
 ## Summary
 
