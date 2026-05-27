@@ -12,7 +12,7 @@ If you have ever tried installing packages from a third-party repository on a RH
 
 ## What Are RPM GPG Keys?
 
-RPG GPG keys are cryptographic keys used by the RPM package manager to verify the authenticity of packages. When you add a new repository (say, the Docker CE repo or the Elasticsearch repo), you also need to import the repository maintainer's public GPG key. Without the key, `yum` or `dnf` will refuse to install packages or will prompt you interactively, which breaks automation.
+RPM GPG keys are cryptographic keys used by the RPM package manager to verify the authenticity of packages. When you add a new repository (say, the Docker CE repo or the Elasticsearch repo), you also need to import the repository maintainer's public GPG key. Without the key, `yum` or `dnf` will refuse to install packages or will prompt you interactively, which breaks automation.
 
 The keys get stored in the RPM database, and you can list them with `rpm -qa gpg-pubkey*`. Each key has a fingerprint that uniquely identifies it.
 
@@ -127,6 +127,7 @@ Let me put this all together in a real-world example. This playbook adds the Gra
         name: grafana
         description: Grafana OSS Repository
         baseurl: "{{ grafana_repo_url }}"
+        repo_gpgcheck: true
         gpgcheck: true
         gpgkey: "{{ grafana_gpg_key_url }}"
         enabled: true
@@ -137,7 +138,7 @@ Let me put this all together in a real-world example. This playbook adds the Gra
         state: present
 
     - name: Start and enable Grafana service
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: grafana-server
         state: started
         enabled: true
@@ -145,27 +146,15 @@ Let me put this all together in a real-world example. This playbook adds the Gra
 
 ## Validating Key Fingerprints
 
-For security-sensitive environments, you might want to verify the key fingerprint after importing it. Here is a pattern that checks the fingerprint matches what you expect.
+For security-sensitive environments, you might want to verify the key fingerprint as part of the import. Here is a pattern that checks the fingerprint matches what you expect.
 
 ```yaml
 # Verify that the imported GPG key matches the expected fingerprint
-- name: Import the GPG key
+- name: Import and verify the GPG key
   ansible.builtin.rpm_key:
     key: https://download.docker.com/linux/centos/gpg
     state: present
-
-- name: Get list of imported GPG keys
-  ansible.builtin.command:
-    cmd: rpm -qa gpg-pubkey --qf '%{VERSION}-%{RELEASE}\t%{SUMMARY}\n'
-  register: gpg_keys
-  changed_when: false
-
-- name: Verify Docker GPG key is present
-  ansible.builtin.assert:
-    that:
-      - "'Docker' in gpg_keys.stdout"
-    fail_msg: "Docker GPG key was not found in the RPM database"
-    success_msg: "Docker GPG key verified successfully"
+    fingerprint: "060A 61C5 1B55 8A7F 742B  77AA C52F EB6B 621E 9F35"
 ```
 
 ## Handling Certificate Validation
