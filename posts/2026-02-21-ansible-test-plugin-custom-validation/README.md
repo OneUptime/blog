@@ -34,7 +34,7 @@ def is_valid_hostname_pattern(value, pattern=None):
         return False
 
     if pattern:
-        return bool(re.match(pattern, value))
+        return bool(re.fullmatch(pattern, value))
 
     # Default pattern: role-environment-number
     default_pattern = r'^[a-z]+-(?:prod|staging|dev|qa|uat)-\d{2,3}$'
@@ -62,7 +62,7 @@ def is_valid_resource_name(value, max_length=63):
         return False
     if len(value) > max_length or len(value) == 0:
         return False
-    pattern = r'^[a-z][a-z0-9-]*[a-z0-9]$'
+    pattern = r'^[a-z](?:[a-z0-9-]*[a-z0-9])?$'
     return bool(re.match(pattern, value))
 
 
@@ -131,14 +131,14 @@ def is_strong_password(value, min_length=12):
 
 
 def is_secure_port(value):
-    """Test if a port number is not in the well-known insecure range.
+    """Test if a port number is valid and not a common insecure service port.
 
     Rejects common insecure service ports: telnet(23), ftp(21), etc.
     """
-    insecure_ports = {21, 23, 25, 69, 110, 119, 143, 161, 162, 389, 445, 512, 513, 514}
+    insecure_ports = {21, 23, 25, 69, 80, 110, 119, 143, 161, 162, 389, 445, 512, 513, 514}
     try:
         port = int(value)
-        return port not in insecure_ports
+        return 1 <= port <= 65535 and port not in insecure_ports
     except (ValueError, TypeError):
         return False
 
@@ -326,6 +326,7 @@ assert is_valid_tag_format('ENV:Production') == False
 
 # Resource name tests
 assert is_valid_resource_name('my-api-service') == True
+assert is_valid_resource_name('a') == True
 assert is_valid_resource_name('-bad-name') == False
 assert is_valid_resource_name('a' * 64) == False
 
