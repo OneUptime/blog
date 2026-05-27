@@ -19,27 +19,35 @@ Before you start, make sure you have:
 - A GCP project with billing enabled
 - A GKE cluster up and running
 - Cloud Build API enabled
-- Container Registry or Artifact Registry set up
+- An Artifact Registry Docker repository set up
 - gcloud CLI installed locally
 
 ## Granting Cloud Build Access to GKE
 
-The first thing you need to do is give the Cloud Build service account permission to deploy to your GKE cluster. By default, Cloud Build runs under a service account that does not have Kubernetes Engine permissions.
+The first thing you need to do is give the service account that runs your Cloud Build job permission to deploy to your GKE cluster. Depending on your project and organization settings, Cloud Build might use the legacy Cloud Build service account, the Compute Engine default service account, or a user-specified service account.
 
 Here is how to grant the necessary role:
 
 ```bash
 # Get your project number
-
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
 
-# Grant the Kubernetes Engine Developer role to the Cloud Build service account
+# Use the service account configured for your build or trigger.
+# For the legacy Cloud Build service account, use:
+CLOUD_BUILD_SERVICE_ACCOUNT="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+
+# For the Compute Engine default service account, use:
+# CLOUD_BUILD_SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+# Grant the Kubernetes Engine Developer role to the build service account
 gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+  --member="serviceAccount:${CLOUD_BUILD_SERVICE_ACCOUNT}" \
   --role="roles/container.developer"
 ```
 
 The `container.developer` role gives Cloud Build the ability to create, update, and delete Kubernetes resources in your cluster. If you need more fine-grained access, you can create a custom IAM role instead.
+
+If you use a user-specified service account, or if your Artifact Registry repository is in a different project, also grant that service account permission to push images to the repository.
 
 ## Writing the Kubernetes Deployment Manifest
 
@@ -66,7 +74,7 @@ spec:
       containers:
       - name: my-app
         # The image tag will be replaced during the build
-        image: gcr.io/PROJECT_ID/my-app:latest
+        image: LOCATION-docker.pkg.dev/PROJECT_ID/REPOSITORY/my-app:SHORT_SHA
         ports:
         - containerPort: 8080
         resources:
@@ -84,42 +92,36 @@ Now for the main piece - the cloudbuild.yaml file. This file defines the build s
 
 ```yaml
 # cloudbuild.yaml - Build, push, and deploy to GKE
+substitutions:
+  _LOCATION: 'us-central1'
+  _REPOSITORY: 'my-repo'
+
 steps:
   # Step 1: Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA', '.']
+    args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/my-app:$SHORT_SHA', '.']
 
-  # Step 2: Push the image to Container Registry
+  # Step 2: Push the image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA']
+    args: ['push', '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/my-app:$SHORT_SHA']
 
-  # Step 3: Get GKE credentials so kubectl can talk to the cluster
-  - name: 'gcr.io/cloud-builders/gke-deploy'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        gcloud container clusters get-credentials my-cluster \
-          --zone us-central1-a \
-          --project $PROJECT_ID
-
-  # Step 4: Update the image in the deployment manifest
+  # Step 3: Update the image in the running deployment
   - name: 'gcr.io/cloud-builders/kubectl'
     args:
       - 'set'
       - 'image'
       - 'deployment/my-app'
-      - 'my-app=gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
+      - 'my-app=${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/my-app:$SHORT_SHA'
     env:
       - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
       - 'CLOUDSDK_CONTAINER_CLUSTER=my-cluster'
 
 # Declare the images that Cloud Build should store
 images:
-  - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
+  - '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/my-app:$SHORT_SHA'
 ```
 
-Let me break down what is happening here. The first step builds the Docker image and tags it with the short commit SHA. The second step pushes that image to Google Container Registry. The third step fetches cluster credentials, and the fourth step updates the running deployment to use the new image.
+Let me break down what is happening here. The first step builds the Docker image and tags it with the short commit SHA. The second step pushes that image to Artifact Registry. The third step uses the Cloud Build `kubectl` builder to connect to the cluster from the environment variables and updates the running deployment to use the new image.
 
 ## Using kubectl Apply Instead of Set Image
 
@@ -127,21 +129,27 @@ If you prefer applying full manifests instead of just updating the image tag, yo
 
 ```yaml
 # cloudbuild.yaml - Alternative approach using kubectl apply
+substitutions:
+  _LOCATION: 'us-central1'
+  _REPOSITORY: 'my-repo'
+
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA', '.']
+    args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/my-app:$SHORT_SHA', '.']
 
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA']
+    args: ['push', '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/my-app:$SHORT_SHA']
 
-  # Replace the PROJECT_ID and SHORT_SHA placeholders in the manifest
+  # Replace the image placeholders in the manifest
   - name: 'ubuntu'
+    entrypoint: 'bash'
     args:
-      - 'bash'
       - '-c'
       - |
         sed -i "s/PROJECT_ID/$PROJECT_ID/g" k8s/deployment.yaml
         sed -i "s/SHORT_SHA/$SHORT_SHA/g" k8s/deployment.yaml
+        sed -i "s/LOCATION/${_LOCATION}/g" k8s/deployment.yaml
+        sed -i "s/REPOSITORY/${_REPOSITORY}/g" k8s/deployment.yaml
 
   # Apply the updated manifest to the cluster
   - name: 'gcr.io/cloud-builders/kubectl'
@@ -151,7 +159,7 @@ steps:
       - 'CLOUDSDK_CONTAINER_CLUSTER=my-cluster'
 
 images:
-  - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
+  - '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/my-app:$SHORT_SHA'
 ```
 
 ## Setting Up the Build Trigger
@@ -174,18 +182,26 @@ Things go wrong sometimes. You can add a verification step to your pipeline that
 
 ```yaml
 # cloudbuild.yaml - With rollback on failure
+substitutions:
+  _LOCATION: 'us-central1'
+  _REPOSITORY: 'my-repo'
+
 steps:
   # ... previous build and push steps ...
 
   # Deploy and verify the rollout
-  - name: 'gcr.io/cloud-builders/kubectl'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
+        gcloud container clusters get-credentials my-cluster \
+          --zone us-central1-a \
+          --project $PROJECT_ID
+
         # Apply the deployment
         kubectl set image deployment/my-app \
-          my-app=gcr.io/$PROJECT_ID/my-app:$SHORT_SHA
+          my-app=${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/my-app:$SHORT_SHA
 
         # Wait for the rollout to complete (timeout after 120 seconds)
         if ! kubectl rollout status deployment/my-app --timeout=120s; then
@@ -212,13 +228,13 @@ substitutions:
 
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA', '.']
 
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA']
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA']
 
   - name: 'gcr.io/cloud-builders/kubectl'
-    args: ['set', 'image', 'deployment/my-app', 'my-app=gcr.io/$PROJECT_ID/my-app:$SHORT_SHA']
+    args: ['set', 'image', 'deployment/my-app', 'my-app=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA']
     env:
       - 'CLOUDSDK_COMPUTE_ZONE=${_CLUSTER_ZONE}'
       - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER_NAME}'
@@ -234,7 +250,7 @@ A few things that trip people up:
 
 2. **Cluster not found**: Verify the cluster name and zone match exactly. A typo here will waste your time.
 
-3. **Image pull errors**: If your GKE cluster is in a different project than your container registry, you need to grant the GKE service account read access to the registry.
+3. **Image pull errors**: If your GKE cluster is in a different project than your Artifact Registry repository, you need to grant the GKE node service account read access to the repository.
 
 4. **Timeout errors**: For large images, you might need to increase the build timeout. The default is 10 minutes, which is usually enough, but some builds need more.
 
