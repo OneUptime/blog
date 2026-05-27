@@ -37,8 +37,8 @@ $ docker run --rm node:22 sh -c "find /usr/bin | wc -l"
 168
 
 # gcr.io/distroless/nodejs22-debian12
-$ docker run --rm gcr.io/distroless/nodejs22-debian12 /bin/sh
-# Error: /bin/sh not found (there is no shell!)
+$ docker run --rm --entrypoint=/bin/sh gcr.io/distroless/nodejs22-debian12
+# Error: stat /bin/sh: no such file or directory (there is no shell!)
 ```
 
 No shell means an attacker who gets remote code execution in your app cannot drop into a terminal, install tools, or explore the filesystem the way they normally would.
@@ -71,7 +71,7 @@ COPY . .
 
 
 # Stage 2: Runtime using distroless - minimal attack surface
-FROM gcr.io/distroless/nodejs22-debian12
+FROM gcr.io/distroless/nodejs22-debian12:nonroot
 
 # Copy the application from the builder
 WORKDIR /app
@@ -79,15 +79,15 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/src ./src
 
-# Distroless runs as nonroot user (uid 65534) by default
+# The nonroot variant runs as uid 65532
 # No need to create a user manually
 
 # Cloud Run sets PORT environment variable
 ENV PORT=8080
 EXPOSE 8080
 
-# Distroless uses ENTRYPOINT syntax since there is no shell
-# The Node.js binary path is already in the PATH
+# The Node.js distroless image sets the Node binary as ENTRYPOINT
+# Use exec-form CMD to pass the application file as an argument
 CMD ["src/server.js"]
 ```
 
@@ -159,7 +159,7 @@ RUN npm prune --omit=dev
 
 
 # Stage 2: Runtime with distroless
-FROM gcr.io/distroless/nodejs22-debian12
+FROM gcr.io/distroless/nodejs22-debian12:nonroot
 
 WORKDIR /app
 
@@ -200,7 +200,7 @@ RUN npm ci --omit=dev
 COPY . .
 
 # Stage 2: Distroless runtime
-FROM gcr.io/distroless/nodejs22-debian12
+FROM gcr.io/distroless/nodejs22-debian12:nonroot
 
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
@@ -219,7 +219,7 @@ Since distroless images have no shell, debugging is different. Google provides d
 ```bash
 # For local debugging only - never use debug images in production
 # The debug variant has a basic shell
-docker run --rm -it gcr.io/distroless/nodejs22-debian12:debug sh
+docker run --rm -it --entrypoint=sh gcr.io/distroless/nodejs22-debian12:debug-nonroot
 
 # In Cloud Run, use Cloud Logging instead of shell access
 gcloud logging read \
@@ -262,10 +262,10 @@ The size difference is significant:
 
 | Base Image | Size |
 |-----------|------|
-| node:22 | ~1.1 GB |
-| node:22-slim | ~250 MB |
-| node:22-alpine | ~180 MB |
-| distroless/nodejs22-debian12 | ~130 MB |
+| node:22 | ~1.6 GB |
+| node:22-slim | ~330 MB |
+| node:22-alpine | ~230 MB |
+| distroless/nodejs22-debian12 | ~200 MB |
 
 Distroless is not always the smallest (Alpine can be comparable), but it has an important advantage over Alpine: it uses glibc instead of musl, which means better compatibility with npm packages that have native dependencies.
 
