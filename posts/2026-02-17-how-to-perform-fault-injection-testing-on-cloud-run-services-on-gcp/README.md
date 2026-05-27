@@ -155,7 +155,7 @@ gcloud run services update-traffic order-service \
 
 ## Technique 3: Dependency Fault Injection with a Proxy
 
-For testing how your Cloud Run service handles dependency failures (database, external APIs, cache), use a proxy that can inject faults between your service and its dependencies.
+For testing how your Cloud Run service handles HTTP dependency failures (external APIs, internal HTTP services), use a proxy that can inject faults between your service and its dependencies. For databases, caches, and other non-HTTP protocols, use a protocol-specific proxy or test double.
 
 Here is a simple fault injection proxy using Node.js:
 
@@ -168,11 +168,11 @@ const app = express();
 const proxy = httpProxy.createProxyServer({});
 
 // Configuration from environment variables
-const TARGET_URL = process.env.TARGET_URL || "http://real-database:5432";
+const TARGET_URL = process.env.TARGET_URL || "http://upstream-api.internal";
 const FAULT_LATENCY_MS = parseInt(process.env.FAULT_LATENCY_MS || "0");
 const FAULT_ERROR_RATE = parseFloat(process.env.FAULT_ERROR_RATE || "0");
 
-app.all("*", (req, res) => {
+app.use((req, res) => {
   // Inject random errors based on configured rate
   if (Math.random() < FAULT_ERROR_RATE) {
     console.log(`Injecting error for request to ${req.url}`);
@@ -255,7 +255,7 @@ During fault injection testing, keep a close eye on Cloud Monitoring. Check thes
 - Container startup latency - are new instances starting fast enough?
 
 ```bash
-# Watch Cloud Run metrics in real time
+# Inspect the current Cloud Run traffic split
 gcloud run services describe order-service \
   --region=us-central1 \
   --format="table(status.traffic[].percent, status.traffic[].revisionName)" \
