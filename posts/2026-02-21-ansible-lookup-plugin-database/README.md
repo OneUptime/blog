@@ -124,7 +124,7 @@ EXAMPLES = """
 # Query all web servers from the database
 - name: Get web server list
   ansible.builtin.set_fact:
-    web_servers: "{{ lookup('myorg.myutils.db_query', 'SELECT hostname, ip_address FROM servers WHERE role = %s', args=['web']) }}"
+    web_servers: "{{ query('myorg.myutils.db_query', 'SELECT hostname, ip_address FROM servers WHERE role = %s', args=['web']) }}"
 
 # Get a single configuration value
 - name: Get max connections setting
@@ -218,7 +218,7 @@ class LookupModule(LookupBase):
                     results.append(first_row[first_key])
                 else:
                     # Return all rows as dicts
-                    results.append([dict(row) for row in rows])
+                    results.extend([dict(row) for row in rows])
 
         except psycopg2.OperationalError as e:
             raise AnsibleLookupError(
@@ -264,13 +264,13 @@ Pull a list of servers from the database:
     - name: Get deployment targets from database
       ansible.builtin.set_fact:
         targets: >-
-          {{ lookup('myorg.myutils.db_query',
+          {{ query('myorg.myutils.db_query',
              "SELECT hostname, ip_address, datacenter FROM servers WHERE environment = 'production' AND role = 'web'") }}
 
     - name: Show targets
       ansible.builtin.debug:
         msg: "Deploying to {{ item.hostname }} ({{ item.ip_address }}) in {{ item.datacenter }}"
-      loop: "{{ targets[0] }}"
+      loop: "{{ targets }}"
 ```
 
 ### Parameterized Queries
@@ -282,7 +282,7 @@ Always use parameterized queries to prevent SQL injection:
     - name: Get config for specific environment
       ansible.builtin.set_fact:
         app_config: >-
-          {{ lookup('myorg.myutils.db_query',
+          {{ query('myorg.myutils.db_query',
              'SELECT key, value FROM app_config WHERE environment = %s AND application = %s',
              args=[target_env, app_name]) }}
 ```
@@ -349,7 +349,7 @@ class LookupModule(LookupBase):
             else:
                 cursor.execute(term)
             rows = cursor.fetchall()
-            results.append(rows)
+            results.extend(rows)
 
         conn.close()
         return results
