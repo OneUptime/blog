@@ -70,10 +70,12 @@ The base contains the common configuration shared across all environments.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Common labels applied to all resources
-commonLabels:
-  app: web-app
-  managed-by: kustomize
+# Labels applied to all resources and selectors
+labels:
+  - pairs:
+      app: web-app
+      managed-by: kustomize
+    includeSelectors: true
 
 # Resources to include in the base
 resources:
@@ -176,8 +178,10 @@ resources:
 namePrefix: dev-
 
 # Add environment-specific labels
-commonLabels:
-  environment: development
+labels:
+  - pairs:
+      environment: development
+    includeSelectors: true
 
 # Override the namespace
 namespace: dev
@@ -237,8 +241,10 @@ resources:
 
 namePrefix: prod-
 
-commonLabels:
-  environment: production
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: true
 
 namespace: production
 
@@ -313,7 +319,7 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: prod-web-app                     # Matches the prefixed name
+    name: web-app                          # Kustomize updates this to prod-web-app
   minReplicas: 5
   maxReplicas: 20
   metrics:
