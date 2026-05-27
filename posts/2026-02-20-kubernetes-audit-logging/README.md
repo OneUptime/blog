@@ -132,7 +132,7 @@ spec:
         - --audit-log-maxsize=100
         # Keep 10 rotated files
         - --audit-log-maxbackup=10
-        # Rotate daily
+        # Retain rotated audit logs for 30 days
         - --audit-log-maxage=30
       volumeMounts:
         # Mount the audit policy
@@ -283,7 +283,7 @@ def find_exec_sessions(events):
                     "user": event.get("user", {}).get("username"),
                     "namespace": obj_ref.get("namespace"),
                     "pod": obj_ref.get("name"),
-                    "source_ip": event.get("sourceIPs", ["unknown"])[0],
+                    "source_ip": (event.get("sourceIPs") or ["unknown"])[0],
                 }
             )
     return exec_events
