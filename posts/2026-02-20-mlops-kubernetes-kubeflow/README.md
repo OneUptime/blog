@@ -46,12 +46,12 @@ cd manifests
 
 # Install Kubeflow with all components
 # This includes Pipelines, Katib, KServe, and the dashboard
-while ! kustomize build example | kubectl apply -f -; do
+while ! kustomize build example | kubectl apply --server-side --force-conflicts -f -; do
   echo "Retrying to apply Kubeflow manifests..."
-  sleep 10
+  sleep 20
 done
 
-# Wait for all pods to be ready
+# Wait for pods in the kubeflow namespace to be ready
 kubectl wait --for=condition=Ready pods --all -n kubeflow --timeout=600s
 
 # Access the Kubeflow dashboard
@@ -227,7 +227,9 @@ metadata:
 spec:
   predictor:
     # Use the sklearn server for scikit-learn models
-    sklearn:
+    model:
+      modelFormat:
+        name: sklearn
       storageUri: "gs://my-models/iris/v1"
       resources:
         requests:
