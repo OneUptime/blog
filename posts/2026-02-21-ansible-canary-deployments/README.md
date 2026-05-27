@@ -52,7 +52,7 @@ all:
           ansible_host: 10.0.1.19
 ```
 
-In this setup, 2 out of 10 servers are in the canary group. That means roughly 20% of traffic will see the new version first.
+In this setup, 2 out of 10 servers are in the canary group. Assuming your load balancer distributes traffic evenly across all servers, roughly 20% of traffic will see the new version first.
 
 ## The Canary Deployment Playbook
 
@@ -112,7 +112,7 @@ Here is the core playbook that deploys to canary servers first, runs health chec
     - name: Wait for monitoring period
       pause:
         minutes: 5
-        prompt: "Canary servers are live. Monitor metrics for 5 minutes. Press Enter to continue or Ctrl+C to abort."
+        prompt: "Canary servers are live. Monitor metrics for 5 minutes. Press Ctrl+C then C to continue early, or Ctrl+C then A to abort."
 
 - name: Deploy to remaining servers
   hosts: main
@@ -196,7 +196,7 @@ If health checks fail, you want automatic rollback. Here is a role that handles 
       git:
         repo: "https://github.com/myorg/myapp.git"
         dest: "{{ app_dir }}"
-        version: "{{ previous_version.stdout | default('main') }}"
+        version: "{{ previous_version.stdout | default('main', true) }}"
         force: true
 
     - name: Restart service with old version
@@ -206,10 +206,10 @@ If health checks fail, you want automatic rollback. Here is a role that handles 
 
     - name: Fail the play to stop further deployment
       fail:
-        msg: "Canary deployment failed on {{ inventory_hostname }}. Rolled back to {{ previous_version.stdout }}."
+        msg: "Canary deployment failed on {{ inventory_hostname }}. Rolled back to {{ previous_version.stdout | default('main', true) }}."
 ```
 
-The `block/rescue` pattern is how Ansible handles try/catch logic. If anything in the block fails, the rescue section runs and rolls back to the previous version.
+The `block/rescue` pattern is how Ansible handles try/catch logic. If a task in the block returns a failure, the rescue section runs and rolls back to the previous version.
 
 ## Canary Deployment Flow
 
