@@ -37,6 +37,7 @@ Before using volume snapshots, you need:
 1. A CSI driver that supports snapshots (e.g., EBS CSI, GCE PD CSI, Ceph CSI).
 2. The snapshot controller installed in your cluster.
 3. The snapshot CRDs registered.
+4. `jq` installed if you use the automated rotation script.
 
 ```bash
 # Install the snapshot CRDs (if not already present)
@@ -226,11 +227,11 @@ echo "Snapshot backup complete."
 
 ## Pre-Snapshot Hooks
 
-For consistent snapshots of databases, you should freeze writes before snapshotting.
+For consistent snapshots of databases, you should quiesce writes before snapshotting. The exact hook depends on the application. For PostgreSQL, use a PostgreSQL-aware backup tool or the current non-exclusive backup API for physical backups; do not use the removed `pg_start_backup` and `pg_stop_backup` functions on PostgreSQL 15 or newer.
 
 ```yaml
 # cronjob-snapshot.yaml
-# This CronJob freezes Postgres, takes a snapshot, then unfreezes.
+# This CronJob runs application-specific hooks, takes a snapshot, then runs cleanup.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -245,24 +246,38 @@ spec:
           serviceAccountName: snapshot-operator
           containers:
             - name: backup
-              image: bitnami/kubectl:1.30
+              image: bitnami/kubectl:1.34
               command:
                 - /bin/sh
                 - -c
                 - |
-                  # Freeze Postgres writes using pg_start_backup
+                  set -e
+
+                  SNAPSHOT_NAME="postgres-snapshot-$(date +%Y-%m-%d-%H%M%S)"
+
+                  # Run an application-specific pre-snapshot hook.
                   kubectl exec -n production postgres-0 -- \
-                    psql -U postgres -c "SELECT pg_start_backup('snapshot');"
+                    /usr/local/bin/pre-snapshot-hook
+                  trap 'kubectl exec -n production postgres-0 -- /usr/local/bin/post-snapshot-hook' EXIT
                   
                   # Create the snapshot
-                  kubectl apply -f /config/snapshot-template.yaml
+                  cat <<EOF | kubectl apply -f -
+                  apiVersion: snapshot.storage.k8s.io/v1
+                  kind: VolumeSnapshot
+                  metadata:
+                    name: ${SNAPSHOT_NAME}
+                    namespace: production
+                  spec:
+                    volumeSnapshotClassName: ebs-snapshot-class
+                    source:
+                      persistentVolumeClaimName: data-postgres-0
+                  EOF
                   
                   # Wait for snapshot readiness
-                  sleep 30
-                  
-                  # Unfreeze Postgres writes
-                  kubectl exec -n production postgres-0 -- \
-                    psql -U postgres -c "SELECT pg_stop_backup();"
+                  kubectl wait volumesnapshot "${SNAPSHOT_NAME}" \
+                    -n production \
+                    --for=jsonpath='{.status.readyToUse}'=true \
+                    --timeout=600s
           restartPolicy: OnFailure
 ```
 
@@ -273,9 +288,10 @@ Snapshots are namespace-scoped, but VolumeSnapshotContent is cluster-scoped. To 
 ```yaml
 # cross-namespace-restore.yaml
 # Step 1: Get the snapshotHandle from the original VolumeSnapshotContent
-# kubectl get volumesnapshotcontent -o jsonpath='{.items[0].status.snapshotHandle}'
+# CONTENT_NAME=$(kubectl get volumesnapshot postgres-snapshot-2026-02-20 -n production -o jsonpath='{.status.boundVolumeSnapshotContentName}')
+# kubectl get volumesnapshotcontent "${CONTENT_NAME}" -o jsonpath='{.status.snapshotHandle}'
 ---
-# Step 2: Create a VolumeSnapshotContent in the target namespace context
+# Step 2: Create a cluster-scoped VolumeSnapshotContent that references the target namespace
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotContent
 metadata:
@@ -286,6 +302,7 @@ spec:
   source:
     # The actual cloud snapshot ID from the original
     snapshotHandle: snap-0abc123def456789
+  sourceVolumeMode: Filesystem
   volumeSnapshotRef:
     name: restored-snapshot
     namespace: staging
