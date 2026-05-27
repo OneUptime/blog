@@ -30,9 +30,9 @@ graph TD
 
 The building blocks are:
 
-- **Triggers** - Conditions that start the playbook (alert type, severity, log source)
+- **Triggers** - Conditions that start the playbook, such as alert type, product name, tag name, or custom trigger values
 - **Actions** - Individual operations like querying a threat intel feed or disabling a user
-- **Conditions** - Decision points that branch the workflow
+- **Flows** - Decision points, such as `if-then-else` conditions, that branch the workflow
 - **Manual tasks** - Steps that require human approval before proceeding
 
 ## Setting Up Your First Playbook
@@ -54,28 +54,16 @@ For a phishing alert, the typical flow is:
 
 ### Step 2: Create the Playbook in Chronicle
 
-In the Chronicle SOAR console, go to Playbooks and click Create.
+In Google SecOps SOAR, go to Response > Playbooks and create a new playbook.
 
-Set the trigger conditions. This playbook should run when a phishing alert comes in.
+Add a trigger as the first step. For a phishing playbook, you can use an Alert Type trigger if your connector maps phishing detections to a specific rule generator value, or use a Custom Trigger if you need to match alert fields such as the alert name or severity.
 
-```json
-{
-    "trigger": {
-        "type": "ALERT",
-        "conditions": [
-            {
-                "field": "alert.category",
-                "operator": "EQUALS",
-                "value": "PHISHING"
-            },
-            {
-                "field": "alert.severity",
-                "operator": "IN",
-                "value": ["MEDIUM", "HIGH", "CRITICAL"]
-            }
-        ]
-    }
-}
+```text
+Trigger: Alert Type
+Parameter: Contains "phishing"
+
+Optional additional flow condition:
+if alert severity IN ("Medium", "High", "Critical")
 ```
 
 ### Step 3: Add Enrichment Actions
@@ -87,8 +75,9 @@ The first actions in your playbook should gather context about the alert.
 Configure the action:
 - Integration: VirusTotal
 - Action: Scan URL
-- Input: `{alert.artifacts.url}`
-- Output variable: `vt_result`
+- Entity scope: URL entities extracted from the alert
+- Parameters: set the `Threshold` value that marks the URL as suspicious
+- Output: JSON result and entity enrichment fields such as `positives`, `total`, `Scanned Url`, and `Risk Score`
 
 **Sender Reputation Check**: Query your email security tool for information about the sender.
 
@@ -102,8 +91,8 @@ Configure the action:
 
 Configure the action:
 - Integration: Chronicle SIEM
-- Action: UDM Search
-- Input query: `metadata.event_type = "NETWORK_HTTP" AND target.url = "{alert.artifacts.url}"`
+- Action: Search UDM events or generate a UDM query, depending on the Google Chronicle integration action you use
+- Input query: `metadata.event_type = "NETWORK_HTTP" and target.url = "{alert.artifacts.url}"`
 - Output variable: `click_events`
 
 ### Step 4: Add Decision Logic
@@ -116,7 +105,7 @@ Now add a condition block that evaluates the enrichment results.
 # This runs after enrichment actions complete
 
 # Check if the URL is malicious based on VirusTotal score
-url_is_malicious = vt_result.positives > 3
+url_is_malicious = vt_result["EntityResult"]["positives"] > 3
 
 # Check if any users clicked the link
 users_clicked = len(click_events) > 0
@@ -226,10 +215,11 @@ def evaluate_login_alert(alert):
     ip_reputation = threat_intel.check_ip(login_ip)
 
     # Step 3: Get recent login history
+    # In Google SecOps, apply the 24-hour window through the search
+    # time range or the Chronicle integration action parameters.
     recent_logins = chronicle.search(
-        f"metadata.event_type = 'USER_LOGIN' AND "
-        f"principal.user.email_addresses = '{user}' AND "
-        f"metadata.event_timestamp.seconds > timestamp_sub(now(), '24h')"
+        f'metadata.event_type = "USER_LOGIN" and '
+        f'principal.user.email_addresses = "{user}"'
     )
 
     # Step 4: Decision logic
@@ -256,10 +246,11 @@ def evaluate_login_alert(alert):
 Never deploy an untested playbook to production. Chronicle SOAR provides a simulation mode.
 
 1. Create a test alert that matches your playbook's trigger conditions
-2. Run the playbook in simulation mode, which executes all logic but does not perform actual containment actions
+2. Turn on the Playbook Simulator and run the playbook against the test alert
 3. Review the execution log to verify each step ran correctly
 4. Check that decision points evaluated as expected
-5. Validate that the correct actions would have been taken
+5. Pin or insert simulated results for actions you do not want to call repeatedly, especially third-party or containment actions
+6. Validate that the correct actions would have been taken before enabling the playbook for live alerts
 
 ## Playbook Best Practices
 
