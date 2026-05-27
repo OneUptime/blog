@@ -43,10 +43,11 @@ graph LR
   no_log: true
 
 - name: Configure forward server
-  ansible.builtin.command:
-    cmd: "/opt/splunkforwarder/bin/splunk add forward-server {{ splunk_indexer }}:9997 -auth admin:{{ splunk_admin_password }}"
-  no_log: true
-  changed_when: true
+  ansible.builtin.template:
+    src: outputs.conf.j2
+    dest: /opt/splunkforwarder/etc/system/local/outputs.conf
+    mode: '0644'
+  notify: restart splunk forwarder
 
 - name: Configure monitored logs
   ansible.builtin.template:
@@ -54,6 +55,23 @@ graph LR
     dest: /opt/splunkforwarder/etc/system/local/inputs.conf
     mode: '0644'
   notify: restart splunk forwarder
+```
+
+```yaml
+# roles/splunk_forwarder/handlers/main.yml
+---
+- name: restart splunk forwarder
+  ansible.builtin.command:
+    cmd: /opt/splunkforwarder/bin/splunk restart
+```
+
+```ini
+# roles/splunk_forwarder/templates/outputs.conf.j2
+[tcpout]
+defaultGroup = default-autolb-group
+
+[tcpout:default-autolb-group]
+server = {{ splunk_indexer }}:9997
 ```
 
 ## Inputs Configuration
@@ -284,4 +302,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
