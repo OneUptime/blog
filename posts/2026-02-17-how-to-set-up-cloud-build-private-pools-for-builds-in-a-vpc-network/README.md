@@ -18,16 +18,16 @@ Key characteristics of private pools:
 
 - Workers are dedicated to your project (not shared with other customers)
 - Connected to your VPC via network peering
-- Customizable machine types (up to 32 vCPUs and 100 GB disk)
+- Customizable machine types and disk sizes (100 GB to 4000 GB)
 - Support for all the same build features as the default pool
-- Higher pricing than the default pool (you pay for the worker capacity)
+- Higher pricing than the default pool for builds that run on larger or private-pool machine types
 
 ## When to Use Private Pools
 
 You need a private pool when your builds need to:
 
 - Pull dependencies from a private artifact repository running in your VPC
-- Connect to a database with only a private IP (Cloud SQL private IP, for example)
+- Connect to a database with only a private IP (with appropriate routing for managed services such as Cloud SQL)
 - Access internal services or APIs that are not exposed publicly
 - Push images to a registry behind a firewall
 - Run builds in a specific region for compliance reasons
@@ -55,7 +55,7 @@ gcloud compute addresses create private-pool-range \
   --global \
   --purpose=VPC_PEERING \
   --addresses=192.168.0.0 \
-  --prefix-length=24 \
+  --prefix-length=16 \
   --network=my-vpc-network
 ```
 
@@ -78,7 +78,7 @@ This establishes the network path between Cloud Build private pool workers and y
 gcloud builds worker-pools create my-private-pool \
   --region=us-central1 \
   --peered-network="projects/$PROJECT_ID/global/networks/my-vpc-network" \
-  --peered-network-ip-range="/private-pool-range"
+  --peered-network-ip-range="192.168.0.0/24"
 ```
 
 You can also specify machine configuration:
@@ -88,17 +88,20 @@ You can also specify machine configuration:
 gcloud builds worker-pools create my-private-pool \
   --region=us-central1 \
   --peered-network="projects/$PROJECT_ID/global/networks/my-vpc-network" \
-  --peered-network-ip-range="/private-pool-range" \
+  --peered-network-ip-range="192.168.0.0/24" \
   --worker-machine-type=e2-standard-8 \
   --worker-disk-size=100
 ```
 
-Available machine types include:
+Available `e2` machine types include:
+- `e2-medium` - 2 vCPUs, 4 GB RAM
 - `e2-standard-2` - 2 vCPUs, 8 GB RAM
 - `e2-standard-4` - 4 vCPUs, 16 GB RAM
 - `e2-standard-8` - 8 vCPUs, 32 GB RAM
 - `e2-standard-16` - 16 vCPUs, 64 GB RAM
 - `e2-standard-32` - 32 vCPUs, 128 GB RAM
+
+Private pools also support additional `e2`, `n2d`, and `c3` machine types, depending on the region.
 
 ### Step 4: Verify the Private Pool
 
@@ -156,7 +159,7 @@ gcloud builds submit \
 
 ### In Trigger Configuration
 
-When creating a build trigger, specify the private pool:
+When creating a build trigger, keep the `options.pool.name` setting in the referenced `cloudbuild.yaml`:
 
 ```bash
 # Create a trigger that uses the private pool
@@ -165,15 +168,14 @@ gcloud builds triggers create github \
   --repo-name="my-app" \
   --repo-owner="my-org" \
   --branch-pattern="^main$" \
-  --build-config="cloudbuild.yaml" \
-  --worker-pool="projects/$PROJECT_ID/locations/us-central1/workerPools/my-private-pool"
+  --build-config="cloudbuild.yaml"
 ```
 
 ## Practical Use Cases
 
 ### Accessing a Private Cloud SQL Instance
 
-A very common scenario - your Cloud SQL database has only a private IP, and your build needs to run database migrations:
+A very common scenario - your database has only a private IP, and your build needs to run database migrations. For Cloud SQL private IP or another managed service reached through a peered service network, make sure routing is configured first because VPC peering is not transitive:
 
 ```yaml
 # Run database migrations against a private Cloud SQL instance
@@ -235,7 +237,7 @@ options:
 
 ### Deploying to a Private GKE Cluster
 
-For GKE clusters with private endpoints:
+For GKE clusters with private endpoints, make sure the private pool can route to the control plane first because VPC peering is not transitive:
 
 ```yaml
 # Deploy to a private GKE cluster from a private pool
@@ -296,7 +298,7 @@ steps:
 
 ### Egress to the Internet
 
-By default, private pool workers can still access the internet through Google's default internet gateway. If you need to route internet traffic through a specific path (like a proxy or NAT gateway), configure the VPC routing accordingly.
+By default, private pool workers are assigned external IP addresses and can access the public internet. If you need to prevent public internet access, create or update the pool with no public egress.
 
 ## Updating and Deleting Private Pools
 
@@ -313,7 +315,7 @@ gcloud builds worker-pools delete my-private-pool \
 
 ## Cost Considerations
 
-Private pools cost more than the default pool because you are paying for dedicated compute resources. The pricing is based on vCPU-hours and GB-hours of the machine type you select. To manage costs:
+Private pools cost more than the default pool because builds run on dedicated worker pools with configurable machine types. Pricing depends on the worker machine type, build duration, and any additional disk size beyond the default 100 GB. To manage costs:
 
 - Use the smallest machine type that meets your needs
 - Consider using the default pool for builds that do not need VPC access
