@@ -57,10 +57,11 @@ Value INTERFACE (\S+)
 Value IP_ADDRESS (\S+)
 Value OK (\S+)
 Value METHOD (\S+)
-Value STATUS (.+?)
-Value PROTOCOL (\S+)
+Value STATUS (up|down|administratively down|deleted)
+Value PROTOCOL (up|down)
 
 Start
+  ^Interface\s+IP-Address\s+OK\?\s+Method\s+Status\s+Protocol\s*$$
   ^${INTERFACE}\s+${IP_ADDRESS}\s+${OK}\s+${METHOD}\s+${STATUS}\s+${PROTOCOL} -> Record
 ```
 
@@ -85,17 +86,25 @@ The fastest way to get started is with NTC templates. They cover hundreds of com
           - show ip route
       register: route_output
 
-    # The parse_cli_textfsm filter auto-detects the right NTC template
+    # The ntc_templates parser selects the right template
     # based on the platform and command when ntc-templates is installed
     - name: Parse routing table
+      ansible.utils.cli_parse:
+        text: "{{ route_output.stdout[0] }}"
+        parser:
+          name: ansible.netcommon.ntc_templates
+          command: show ip route
+      register: parsed_routes
+
+    - name: Store parsed routes
       ansible.builtin.set_fact:
-        routes: "{{ route_output.stdout[0] | parse_cli_textfsm }}"
+        routes: "{{ parsed_routes.parsed }}"
 
     - name: Display parsed routes
       ansible.builtin.debug:
-        msg: "{{ item.PROTOCOL }} route to {{ item.NETWORK }}/{{ item.MASK }} via {{ item.NEXTHOP_IP }}"
+        msg: "{{ item.protocol }} route to {{ item.network }}/{{ item.prefix_length }} via {{ item.nexthop_ip }}"
       loop: "{{ routes }}"
-      when: item.NEXTHOP_IP | length > 0
+      when: item.nexthop_ip | length > 0
 ```
 
 For this automatic detection to work, set the `ansible_network_os` variable for your hosts.
@@ -106,7 +115,7 @@ For this automatic detection to work, set the `ansible_network_os` variable for 
 router1 ansible_host=10.1.1.1
 
 [ios_routers:vars]
-ansible_network_os=cisco_ios
+ansible_network_os=cisco.ios.ios
 ansible_connection=network_cli
 ansible_user=admin
 ansible_password=secretpass
@@ -126,7 +135,7 @@ Value IP_ADDRESS (\d+\.\d+\.\d+\.\d+)
 Value PLATFORM (.+?)
 Value LOCAL_INTERFACE (\S+)
 Value REMOTE_INTERFACE (\S+)
-Value SOFTWARE_VERSION (.+?)
+Value List SOFTWARE_VERSION (.+)
 
 # Start state - look for the beginning of each neighbor entry
 Start
@@ -135,14 +144,14 @@ Start
   ^Platform: ${PLATFORM},
   ^Interface: ${LOCAL_INTERFACE},\s+Port ID \(outgoing port\): ${REMOTE_INTERFACE}
   ^Version\s*: -> GetVersion
-  ^\s*$$ -> Record
 
-# GetVersion state - capture the version on the next line
+# GetVersion state - capture the version block until the record delimiter
 GetVersion
-  ^${SOFTWARE_VERSION} -> Start
+  ^advertisement version: \d+ -> Record Start
+  ^${SOFTWARE_VERSION}
 ```
 
-The template uses two states. It starts in the `Start` state, collecting values line by line. When it hits the `Version :` line, it transitions to `GetVersion` to capture the version string on the following line. An empty line signals the end of a neighbor record.
+The template uses two states. It starts in the `Start` state, collecting values line by line. When it hits the `Version :` line, it transitions to `GetVersion` to capture the version block. The `advertisement version` line signals the end of a neighbor record.
 
 Use this custom template in a playbook.
 
@@ -163,8 +172,12 @@ Use this custom template in a playbook.
 
     # Point to our custom template file
     - name: Parse CDP output
-      ansible.builtin.set_fact:
-        cdp_neighbors: "{{ cdp_output.stdout[0] | parse_cli_textfsm('templates/cisco_ios_show_cdp_neighbors_detail.textfsm') }}"
+      ansible.utils.cli_parse:
+        text: "{{ cdp_output.stdout[0] }}"
+        parser:
+          name: ansible.utils.textfsm
+          template_path: templates/cisco_ios_show_cdp_neighbors_detail.textfsm
+      register: cdp_neighbors
 
     - name: Build neighbor report
       ansible.builtin.debug:
@@ -172,7 +185,7 @@ Use this custom template in a playbook.
           Local port {{ item.LOCAL_INTERFACE }} connects to
           {{ item.DEVICE_ID }} port {{ item.REMOTE_INTERFACE }}
           ({{ item.PLATFORM }}, IP: {{ item.IP_ADDRESS }})
-      loop: "{{ cdp_neighbors }}"
+      loop: "{{ cdp_neighbors.parsed }}"
 ```
 
 ## Using cli_parse with TextFSM
@@ -193,7 +206,7 @@ The `cli_parse` module from `ansible.utils` provides a cleaner interface that co
       ansible.utils.cli_parse:
         command: show interfaces status
         parser:
-          name: ansible.netcommon.textfsm
+          name: ansible.utils.textfsm
           template_path: templates/cisco_ios_show_interfaces_status.textfsm
       register: interface_status
 
@@ -291,13 +304,13 @@ Here is a complete playbook that gathers and parses data from multiple commands 
     - name: Build inventory record
       ansible.builtin.set_fact:
         device_record:
-          hostname: "{{ version_data.parsed[0].HOSTNAME }}"
-          model: "{{ version_data.parsed[0].HARDWARE | default(['Unknown']) | first }}"
-          ios_version: "{{ version_data.parsed[0].VERSION }}"
-          serial: "{{ version_data.parsed[0].SERIAL | default(['N/A']) | first }}"
-          uptime: "{{ version_data.parsed[0].UPTIME }}"
+          hostname: "{{ version_data.parsed[0].hostname }}"
+          model: "{{ version_data.parsed[0].hardware | default(['Unknown']) | first }}"
+          ios_version: "{{ version_data.parsed[0].version }}"
+          serial: "{{ version_data.parsed[0].serial | default(['N/A']) | first }}"
+          uptime: "{{ version_data.parsed[0].uptime }}"
           interface_count: "{{ interface_data.parsed | length }}"
-          active_interfaces: "{{ interface_data.parsed | selectattr('STATUS', 'equalto', 'up') | list | length }}"
+          active_interfaces: "{{ interface_data.parsed | selectattr('status', 'equalto', 'up') | list | length }}"
           neighbor_count: "{{ cdp_data.parsed | length }}"
 
     - name: Write inventory to file
