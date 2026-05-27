@@ -36,7 +36,7 @@ snmp_config:
       group: MONITOR_GROUP
       auth_protocol: sha
       auth_password: "{{ vault_snmpv3_auth_pass }}"
-      priv_protocol: aes128
+      priv_protocol: "aes 128"
       priv_password: "{{ vault_snmpv3_priv_pass }}"
 
   # Trap destinations
@@ -89,8 +89,8 @@ Let me start with the basic SNMPv2c setup that most environments use with their 
         parents: ip access-list standard SNMP_ACCESS
       loop: "{{ snmp_config.allowed_sources }}"
 
-    # Add deny any at the end of the ACL
-    - name: Add implicit deny to SNMP ACL
+    # Add an explicit deny any at the end of the ACL
+    - name: Add explicit deny to SNMP ACL
       cisco.ios.ios_config:
         lines:
           - deny any log
@@ -233,6 +233,14 @@ Regularly audit SNMP configuration to catch unauthorized communities or missing 
           - show running-config | section snmp
       register: snmp_running
 
+    - name: Create local audit directory
+      ansible.builtin.file:
+        path: audit
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
+
     - name: Save SNMP config for review
       ansible.builtin.copy:
         content: "{{ snmp_running.stdout[0] }}"
@@ -279,7 +287,7 @@ Regularly audit SNMP configuration to catch unauthorized communities or missing 
 
 ## SNMP Verification
 
-After deployment, verify that SNMP is working correctly by testing from the monitoring server.
+After deployment, verify that SNMP is working correctly by testing from the Ansible control node or monitoring server.
 
 ```yaml
 # verify_snmp.yml - Test SNMP connectivity after deployment
@@ -319,7 +327,7 @@ After deployment, verify that SNMP is working correctly by testing from the moni
       ansible.builtin.debug:
         var: trap_hosts.stdout_lines[0]
 
-    # Test SNMP from control node using snmpwalk (requires net-snmp on control node)
+    # Test SNMP from control node using snmpget (requires net-snmp on control node)
     - name: Test SNMPv2c connectivity
       ansible.builtin.command:
         cmd: "snmpget -v2c -c {{ vault_snmp_ro_community }} {{ ansible_host }} sysName.0"
