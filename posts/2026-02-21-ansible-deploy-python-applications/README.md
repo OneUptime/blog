@@ -40,14 +40,16 @@ ansible_python_interpreter=/usr/bin/python3
 
   vars:
     app_name: myapp
+    app_repo: https://github.com/example/myapp.git
+    app_version: main
     app_dir: /opt/{{ app_name }}
     app_user: www-data
-    python_version: "3.11"
 
   tasks:
-    - name: Install system dependencies
-      ansible.builtin.package:
+    - name: Install Debian/Ubuntu system dependencies
+      ansible.builtin.apt:
         name:
+          - git
           - python3
           - python3-pip
           - python3-venv
@@ -65,6 +67,13 @@ ansible_python_interpreter=/usr/bin/python3
         group: "{{ app_user }}"
         mode: '0755'
 
+    - name: Check out application code
+      ansible.builtin.git:
+        repo: "{{ app_repo }}"
+        dest: "{{ app_dir }}"
+        version: "{{ app_version }}"
+      become_user: "{{ app_user }}"
+
     - name: Create virtual environment
       ansible.builtin.pip:
         virtualenv: "{{ app_dir }}/venv"
@@ -73,12 +82,17 @@ ansible_python_interpreter=/usr/bin/python3
         state: latest
       become_user: "{{ app_user }}"
 
+    - name: Check for requirements file
+      ansible.builtin.stat:
+        path: "{{ app_dir }}/requirements.txt"
+      register: requirements_file
+
     - name: Install application dependencies
       ansible.builtin.pip:
         virtualenv: "{{ app_dir }}/venv"
         requirements: "{{ app_dir }}/requirements.txt"
       become_user: "{{ app_user }}"
-      when: requirements_file.stat.exists | default(false)
+      when: requirements_file.stat.exists
 ```
 
 ## Configuration Tasks
@@ -102,7 +116,7 @@ ansible_python_interpreter=/usr/bin/python3
         - restart application
 
     - name: Enable and start application
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ app_name }}"
         enabled: true
         state: started
@@ -148,11 +162,11 @@ WantedBy=multi-user.target
 ```yaml
   handlers:
     - name: reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
 
     - name: restart application
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ app_name }}"
         state: restarted
 ```
@@ -210,6 +224,7 @@ Here are several practical scenarios where this module proves essential in real-
           - vim
           - htop
           - jq
+          - ufw
         state: present
 
     - name: Configure system timezone
@@ -357,4 +372,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
