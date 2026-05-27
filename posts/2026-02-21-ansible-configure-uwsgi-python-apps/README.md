@@ -60,7 +60,7 @@ app_dir: /opt/myapp
 venv_dir: /opt/myapp/venv
 wsgi_module: myapp.wsgi
 uwsgi_socket: /run/uwsgi/myapp.sock
-uwsgi_http_port: 8000  # Use this if you want uWSGI to serve HTTP directly
+# uwsgi_http_port: 8000  # Optional: uncomment to have uWSGI serve HTTP directly
 
 # Worker configuration
 uwsgi_processes: "{{ ansible_processor_vcpus * 2 }}"
@@ -150,12 +150,6 @@ uwsgi_apps:
 ```yaml
 # roles/uwsgi/tasks/single.yml
 ---
-- name: Install uWSGI in the application virtual environment
-  pip:
-    name: uwsgi
-    virtualenv: "{{ venv_dir }}"
-  become_user: "{{ app_user }}"
-
 - name: Deploy uWSGI application configuration
   template:
     src: uwsgi-app.ini.j2
@@ -173,6 +167,7 @@ uwsgi_apps:
       group: "{{ app_group }}"
       processes: "{{ uwsgi_processes }}"
       threads: "{{ uwsgi_threads }}"
+      http_port: "{{ uwsgi_http_port | default('') }}"
   notify: restart uwsgi
 
 - name: Deploy uWSGI systemd service
@@ -207,7 +202,7 @@ uwsgi_apps:
 - name: Deploy vassal configuration for each application
   template:
     src: uwsgi-app.ini.j2
-    dest: "{{ uwsgi_emperor_dir }}/{{ item.name }}.ini"
+    dest: "{{ uwsgi_emperor_dir }}/{{ app.name }}.ini"
     owner: root
     group: root
     mode: '0644'
@@ -254,10 +249,14 @@ enable-threads = true
 socket = /run/uwsgi/{{ app.name }}.sock
 chmod-socket = 660
 chown-socket = {{ app.user }}:www-data
+{% if app.http_port | default('') %}
+http = :{{ app.http_port }}
+{% endif %}
 
 # Process identity
 uid = {{ app.user }}
 gid = {{ app.group }}
+safe-pidfile = /run/uwsgi/{{ app.name }}.pid
 
 # Worker lifecycle
 harakiri = {{ uwsgi_harakiri }}
@@ -270,6 +269,7 @@ post-buffering = 1
 
 # Logging
 logto = {{ uwsgi_log_dir }}/{{ app.name }}.log
+log-reopen = true
 log-maxsize = 10485760
 log-backupname = {{ uwsgi_log_dir }}/{{ app.name }}.log.old
 
@@ -316,10 +316,8 @@ After=network.target
 
 [Service]
 Type=notify
-User={{ app_user }}
-Group={{ app_group }}
 WorkingDirectory={{ app_dir }}
-ExecStart={{ venv_dir }}/bin/uwsgi --ini {{ app_dir }}/uwsgi.ini
+ExecStart=/usr/bin/uwsgi --ini {{ app_dir }}/uwsgi.ini
 ExecReload=/bin/kill -HUP $MAINPID
 KillSignal=SIGQUIT
 Restart=on-failure
