@@ -17,9 +17,9 @@ This post covers strategies for managing IoT device fleets with Ansible.
 Dynamic inventory is essential for IoT fleets because devices come and go:
 
 ```yaml
-# inventories/iot/plugin_inventory.yml
+# inventories/iot/linode.yml
 
-# Dynamic inventory from device management database
+# Dynamic inventory from Linode
 plugin: community.general.linode
 regions:
   - us-east
@@ -106,6 +106,7 @@ Initial setup for new IoT devices:
           - requests
           - psutil
         state: present
+        break_system_packages: true
 
     - name: Deploy device agent
       ansible.builtin.template:
@@ -146,6 +147,27 @@ Initial setup for new IoT devices:
           location: "{{ location }}"
           firmware: "{{ firmware_version }}"
       delegate_to: localhost
+
+  handlers:
+    - name: restart networking
+      ansible.builtin.service:
+        name: networking
+        state: restarted
+
+    - name: daemon reload
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: start iot agent
+      ansible.builtin.systemd_service:
+        name: iot-agent
+        state: started
+        enabled: true
+
+    - name: restart watchdog
+      ansible.builtin.service:
+        name: watchdog
+        state: restarted
 ```
 
 ## Firmware Updates
@@ -238,8 +260,8 @@ Rolling firmware updates across IoT devices:
       DISK=$(df / --output=pcent | tail -1 | tr -d ' %')
       MEM=$(free | awk '/Mem:/ {printf("%.0f", $3/$2*100)}')
       UPTIME=$(cat /proc/uptime | awk '{print $1}')
-      MQTT_PID=$(pidof mosquitto_sub || echo 0)
-      echo "{\"temp_c\":$((TEMP/1000)),\"disk_pct\":$DISK,\"mem_pct\":$MEM,\"uptime\":$UPTIME,\"mqtt_alive\":$([[ $MQTT_PID -gt 0 ]] && echo true || echo false)}"
+      MQTT_ALIVE=$(pidof mosquitto_sub >/dev/null && echo true || echo false)
+      echo "{\"temp_c\":$((TEMP/1000)),\"disk_pct\":$DISK,\"mem_pct\":$MEM,\"uptime\":$UPTIME,\"mqtt_alive\":$MQTT_ALIVE}"
     dest: /opt/iot/health-check.sh
     mode: '0755'
 
@@ -283,11 +305,17 @@ Push configuration changes to entire device fleets:
       notify: restart iot agent
 
     - name: Verify agent is running after config change
-      ansible.builtin.service:
+      ansible.builtin.systemd_service:
         name: iot-agent
         state: started
       register: agent_status
       failed_when: agent_status.status.ActiveState != 'active'
+
+  handlers:
+    - name: restart iot agent
+      ansible.builtin.systemd_service:
+        name: iot-agent
+        state: restarted
 ```
 
 ## Key Takeaways
