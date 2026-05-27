@@ -17,8 +17,8 @@ Let me walk through the process step by step.
 A few important things to know:
 
 - You can only **increase** disk size, never decrease it. Plan accordingly.
-- The resize operation itself is instant on the GCP side, but expanding the filesystem takes a moment.
-- Boot disks on most modern Linux images support online resize without issues.
+- The resize operation itself is usually quick on the GCP side, but expanding the filesystem can take a moment.
+- Boot disks created from public Google Cloud images usually resize the root partition and filesystem automatically. Custom Linux images, custom Windows images, and Fedora CoreOS images might need the manual steps below.
 - For Windows VMs, the process is slightly different (covered later).
 - Always take a snapshot before resizing, just in case.
 
@@ -76,14 +76,14 @@ You will get a confirmation prompt. Type `y` to proceed. The resize happens almo
 
 ## Step 4: Expand the Partition and Filesystem
 
-Now SSH into the VM and grow the partition and filesystem to use the new space.
+Now SSH into the VM and check whether the partition and filesystem already use the new space. Public Google Cloud images usually do this automatically; if they do not, grow the partition and filesystem manually.
 
 ```bash
 # SSH into the VM
 gcloud compute ssh my-vm --zone=us-central1-a
 ```
 
-First, check the current partition layout:
+First, check the current partition layout. The examples below assume a SCSI-attached boot disk named `/dev/sda`; NVMe-attached disks use names like `/dev/nvme0n1`.
 
 ```bash
 # View the partition table
@@ -100,7 +100,7 @@ sda      8:0    0   50G  0 disk
 |-sda15  8:15   0  106M  0 part /boot/efi
 ```
 
-Notice that `sda` is now 50 GB (the disk was resized), but `sda1` is still 9.9 GB (the partition has not grown yet).
+Notice that `sda` is now 50 GB (the disk was resized), but `sda1` is still 9.9 GB (the partition has not grown yet). If your root partition already shows the new size, skip straight to verification.
 
 **For Debian/Ubuntu images**, use `growpart` to expand the partition:
 
@@ -142,7 +142,7 @@ The disk is now 49 GB (50 GB minus some filesystem overhead), and usage has drop
 
 ## Resizing a Windows Boot Disk
 
-For Windows VMs, the disk resize command is the same on the GCP side. The difference is how you expand the partition inside the VM.
+For Windows VMs, the disk resize command is the same on the GCP side. Public Windows images usually resize the boot partition automatically, but custom images might need you to expand the partition inside the VM.
 
 ```bash
 # Resize the Windows VM boot disk
@@ -151,7 +151,7 @@ gcloud compute disks resize windows-vm \
     --zone=us-central1-a
 ```
 
-Then RDP into the Windows VM and use PowerShell:
+If the C: drive did not expand automatically, RDP into the Windows VM and use PowerShell:
 
 ```powershell
 # Get the maximum supported size for the C: partition
@@ -170,7 +170,7 @@ Or use Disk Management (diskmgmt.msc) through the GUI:
 
 ## Automating Disk Resize with a Script
 
-If you frequently need to resize disks, here is a script that handles the entire process:
+If you frequently need to resize disks, here is a script that handles the resize for an ext4 boot disk that is named the same as the instance and attached as `/dev/sda`:
 
 ```bash
 #!/bin/bash
@@ -209,19 +209,24 @@ echo "Done. Disk resized to ${NEW_SIZE}GB."
 
 ## Terraform Approach
 
-In Terraform, you resize a disk by updating the `size` parameter. Terraform will perform an in-place update without destroying the instance.
+In Terraform, manage the boot disk as a separate `google_compute_disk` resource and resize it by updating the disk's `size` parameter. Terraform can then resize the disk in place instead of recreating the instance.
 
 ```hcl
+resource "google_compute_disk" "my_vm_boot" {
+  name  = "my-vm-boot"
+  type  = "pd-balanced"
+  zone  = "us-central1-a"
+  image = "debian-cloud/debian-12"
+  size  = 50 # Changed from 10 to 50
+}
+
 resource "google_compute_instance" "my_vm" {
   name         = "my-vm"
   machine_type = "e2-medium"
   zone         = "us-central1-a"
 
   boot_disk {
-    initialize_params {
-      image = "debian-cloud/debian-12"
-      size  = 50  # Changed from 10 to 50
-    }
+    source = google_compute_disk.my_vm_boot.self_link
   }
 
   network_interface {
@@ -230,7 +235,7 @@ resource "google_compute_instance" "my_vm" {
 }
 ```
 
-Note that Terraform resizes the disk but does not expand the filesystem. You still need to run `growpart` and `resize2fs` inside the VM. You can handle this with a provisioner or a configuration management tool.
+Note that Terraform resizes the disk but does not expand the filesystem on images that do not support automatic boot disk resizing. In that case, you still need to run `growpart` and `resize2fs` inside the VM. You can handle this with a provisioner or a configuration management tool.
 
 ## Resizing Data Disks
 
@@ -250,7 +255,7 @@ sudo resize2fs /dev/sdb
 sudo xfs_growfs /mnt/data
 ```
 
-For data disks, you usually do not need to grow a partition since the filesystem is often directly on the block device (not in a partition).
+For data disks, you do not need to grow a partition if the filesystem is directly on the block device. If the data disk has a partition table, grow the partition first and then resize the filesystem.
 
 ## Performance Implications
 
@@ -272,12 +277,12 @@ gcloud alpha monitoring policies create \
     --notification-channels=CHANNEL_ID \
     --display-name="High Disk Usage" \
     --condition-display-name="Disk usage above 80%" \
-    --condition-filter='resource.type="gce_instance" AND metric.type="agent.googleapis.com/disk/percent_used"' \
-    --condition-threshold-value=80 \
-    --condition-threshold-comparison=COMPARISON_GT
+    --condition-filter='resource.type="gce_instance" AND metric.type="agent.googleapis.com/disk/percent_used" AND metric.labels.state="used"' \
+    --if='> 80' \
+    --duration=60s
 ```
 
-This requires the Cloud Monitoring agent to be installed on your VM.
+This requires the Ops Agent or the legacy Cloud Monitoring agent to be installed on your VM.
 
 ## Wrapping Up
 
