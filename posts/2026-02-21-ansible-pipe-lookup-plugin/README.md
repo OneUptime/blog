@@ -20,7 +20,7 @@ Basic syntax:
 "{{ lookup('pipe', 'command here') }}"
 ```
 
-The command runs through `/bin/sh`, so you can use shell features like pipes, redirects, and environment variables.
+The command is passed to a shell, so you can use shell features like pipes, redirects, and environment variables.
 
 ## Basic Usage
 
@@ -198,7 +198,7 @@ Use pipe to interact with encryption tools:
     key_fingerprint: "{{ lookup('pipe', 'ssh-keygen -lf ~/.ssh/id_ed25519.pub 2>/dev/null | awk \"{print $2}\"') }}"
 
     # Hash a password for /etc/shadow format
-    hashed_password: "{{ lookup('pipe', 'python3 -c \"import crypt; print(crypt.crypt(\\\"password123\\\", crypt.mksalt(crypt.METHOD_SHA512)))\"') }}"
+    hashed_password: "{{ lookup('pipe', 'openssl passwd -6 -salt \"$(openssl rand -hex 8)\" password123') }}"
   tasks:
     - name: Create user with hashed password
       ansible.builtin.user:
@@ -251,7 +251,7 @@ The pipe lookup will fail if the command returns a non-zero exit code. Handle th
     quiet_result: "{{ lookup('pipe', 'risky-command 2>/dev/null || true') }}"
 
     # Check if a command exists before running it
-    tool_version: "{{ lookup('pipe', 'command -v kubectl >/dev/null 2>&1 && kubectl version --client --short 2>/dev/null || echo not-installed') }}"
+    tool_version: "{{ lookup('pipe', 'command -v kubectl >/dev/null 2>&1 && kubectl version --client 2>/dev/null || echo not-installed') }}"
   tasks:
     - name: Show results
       ansible.builtin.debug:
@@ -265,7 +265,7 @@ The pipe lookup will fail if the command returns a non-zero exit code. Handle th
 ```mermaid
 graph LR
     A[Playbook] --> B[pipe Lookup]
-    B --> C[/bin/sh on Control Node]
+    B --> C[Shell on Control Node]
     C --> D[Execute Command]
     D --> E{Exit Code}
     E -->|0| F[Return stdout]
@@ -277,6 +277,6 @@ graph LR
 
 ## Important Considerations
 
-The pipe lookup always runs on the control node. Every time the lookup is evaluated, the command runs again, so avoid expensive commands in loops or when using `with_items`. If you need the same pipe result in multiple tasks, store it in a variable with `set_fact` first. The command runs through `/bin/sh`, so be mindful of shell injection if any part of the command comes from untrusted input. Also, the output is stripped of trailing newlines by default, which is usually what you want.
+The pipe lookup always runs on the control node and is not affected by play keywords such as `become`. Every time the lookup is evaluated, the command runs again, so avoid expensive commands in loops or when using `with_items`. If you need the same pipe result in multiple tasks, store it in a variable with `set_fact` first. The command is passed to a shell, so be mindful of shell injection if any part of the command comes from untrusted input. Also, the output is stripped of trailing newlines by default, which is usually what you want.
 
 The pipe lookup is one of those tools that you should use sparingly but that can save you a lot of complexity when you need it. It bridges the gap between what Ansible provides natively and what you can do with shell commands, letting you integrate with virtually any tool that has a command-line interface.
