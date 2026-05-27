@@ -100,9 +100,9 @@ flowchart TD
     Q1 -- Yes --> Q2{Is BFD enabled<br/>on the router side?}
     Q2 -- No --> FIX2[Enable BFD on the<br/>router BGP neighbor.]
     Q2 -- Yes --> Q3{Can BFD packets<br/>reach the peer?}
-    Q3 -- No --> FIX3[Check firewall rules.<br/>BFD uses UDP port<br/>3784 and 3785.]
-    Q3 -- Yes --> Q4{Do timers match?}
-    Q4 -- No --> FIX4[Align TX/RX intervals<br/>and multiplier on<br/>both sides.]
+    Q3 -- No --> FIX3[Check firewall rules.<br/>BFD uses UDP ports<br/>3784, 4784, and 3785.]
+    Q3 -- Yes --> Q4{Are timers compatible?}
+    Q4 -- No --> FIX4[Tune TX/RX intervals<br/>and multiplier on<br/>both sides.]
     Q4 -- Yes --> FIX5[Check MTU and<br/>interface settings.]
 ```
 
@@ -165,7 +165,7 @@ The short uptime and the diagnostic message "control detection time expired" ind
 
 ```yaml
 # Increase intervals and multiplier to tolerate jitter
-# New detection time: 500ms x 5 = 2500ms
+# With symmetric timers, the detection time becomes 500ms x 5 = 2500ms
 apiVersion: metallb.io/v1beta1
 kind: BFDProfile
 metadata:
@@ -294,7 +294,7 @@ sequenceDiagram
 
 ### Resolution
 
-Use passive mode on the MetalLB side so the router initiates BFD. This can reduce the time to re-establish after a restart.
+If you use passive mode on the MetalLB side, make sure the router initiates BFD. Passive mode is useful when the router is the active side, but it is not a restart recovery mechanism by itself. If both sides are passive, the session will not come up.
 
 ```yaml
 # BFDProfile with passive mode
@@ -339,9 +339,9 @@ kubectl exec -n metallb-system <speaker-pod> -c frr -- \
 # (Run on the router)
 # show bfd neighbors
 
-# 6. Are UDP ports 3784/3785 open?
+# 6. Are the required BFD UDP ports open?
 # (Run on the Kubernetes node)
-ss -ulnp | grep -E "3784|3785"
+ss -ulnp | grep -E "3784|3785|4784"
 
 # 7. Is the speaker pod healthy and not CPU-starved?
 kubectl top pods -n metallb-system -l component=speaker
@@ -349,6 +349,6 @@ kubectl top pods -n metallb-system -l component=speaker
 
 ## Summary
 
-BFD troubleshooting in MetalLB comes down to four main areas: verifying both sides have BFD enabled, ensuring network connectivity on UDP ports 3784/3785, matching timer parameters, and checking resource availability on the speaker pods. When BFD flaps, the most common fix is increasing the detection time by raising the intervals or the multiplier.
+BFD troubleshooting in MetalLB comes down to four main areas: verifying both sides have BFD enabled, ensuring network connectivity on UDP ports 3784/3785 for single-hop or echo mode and 4784 for multi-hop, using compatible timer parameters, and checking resource availability on the speaker pods. When BFD flaps, the most common fix is increasing the detection time by raising the intervals or the multiplier.
 
 If you run Kubernetes on bare metal and need continuous monitoring of your BFD sessions, BGP peering health, and service availability, [OneUptime](https://oneuptime.com) can help. OneUptime provides real-time monitoring, alerting, and incident management designed for infrastructure teams running critical workloads.
