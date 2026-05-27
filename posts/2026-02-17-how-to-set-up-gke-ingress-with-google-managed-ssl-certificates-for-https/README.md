@@ -67,7 +67,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
 ---
-# Service - must be NodePort or ClusterIP for GKE Ingress
+# Service - use NodePort unless you are using container-native load balancing with NEGs
 apiVersion: v1
 kind: Service
 metadata:
@@ -115,7 +115,7 @@ Value: <THE_STATIC_IP>
 TTL: 300
 ```
 
-The DNS record must be in place before the certificate can be provisioned, because Google validates domain ownership through HTTP validation.
+The DNS record must point to the load balancer IP before the certificate can become active, because Google validates that the domain is served by the load balancer.
 
 ## Step 4: Create the Managed Certificate
 
@@ -141,7 +141,7 @@ spec:
 kubectl apply -f managed-cert.yaml
 ```
 
-The certificate starts provisioning immediately, but it takes 10-30 minutes to be fully active. Google needs to verify domain ownership through an HTTP challenge.
+The certificate object is created immediately, but it cannot become active until it is attached to an Ingress. After the Ingress is created, provisioning can take up to 60 minutes, and in some cases several hours, while Google verifies domain ownership and programs the load balancer.
 
 ## Step 5: Create the Ingress
 
@@ -159,7 +159,7 @@ metadata:
     kubernetes.io/ingress.global-static-ip-name: web-app-ip
     # Attach the managed certificate
     networking.gke.io/managed-certificates: web-app-cert
-    # Redirect HTTP to HTTPS
+    # Use GKE's external Ingress controller
     kubernetes.io/ingress.class: "gce"
 spec:
   defaultBackend:
@@ -199,7 +199,7 @@ kubectl describe managedcertificate web-app-cert
 gcloud compute ssl-certificates list
 ```
 
-If the status stays in "Provisioning" for more than 30 minutes, check that:
+If the status stays in "Provisioning" for more than 60 minutes, check that:
 - Your DNS A record points to the correct IP
 - The domain resolves correctly (`dig app.yourdomain.com`)
 - The Ingress is fully provisioned (has an IP address assigned)
@@ -310,7 +310,7 @@ spec:
 
 ## Health Checks
 
-The Google Cloud Load Balancer performs its own health checks against your pods. If the health checks fail, the backend is marked unhealthy and traffic stops flowing.
+The Google Cloud Load Balancer performs its own health checks against your backend endpoints. With container-native load balancing, those checks go to Pod IPs. With instance group backends, they go to the Service's NodePort on each node. If the health checks fail, the backend is marked unhealthy and traffic stops flowing.
 
 ```yaml
 # Configure custom health check parameters via BackendConfig
@@ -326,7 +326,9 @@ spec:
     unhealthyThreshold: 3
     type: HTTP
     requestPath: /healthz
-    port: 80
+    # For instance group backends, use the Service's nodePort.
+    # For NEG backends, use the serving containerPort instead.
+    port: 30080
 ---
 # Reference the BackendConfig in your Service
 apiVersion: v1
@@ -342,6 +344,7 @@ spec:
   ports:
     - port: 80
       targetPort: 80
+      nodePort: 30080
 ```
 
 ## Troubleshooting
@@ -369,4 +372,4 @@ The most common issue is health check failures. If the load balancer's health ch
 
 ## Wrapping Up
 
-GKE Ingress with Google-managed SSL certificates gives you production-grade HTTPS with minimal operational overhead. The certificate is provisioned automatically, renews before expiration, and TLS termination happens at the load balancer level so your application does not need to handle encryption. Combined with HTTP-to-HTTPS redirects and custom health checks, you get a robust setup that scales with the Google Cloud load balancer infrastructure. The main thing to remember is that DNS must be configured before the certificate can provision, so set up your A record early and give it time to propagate.
+GKE Ingress with Google-managed SSL certificates gives you production-grade HTTPS with minimal operational overhead. The certificate is provisioned automatically, renews before expiration, and TLS termination happens at the load balancer level so your application does not need to handle encryption. Combined with HTTP-to-HTTPS redirects and custom health checks, you get a robust setup that scales with the Google Cloud load balancer infrastructure. The main thing to remember is that DNS must point to the load balancer before the certificate can become active, so set up your A record early and give it time to propagate.
