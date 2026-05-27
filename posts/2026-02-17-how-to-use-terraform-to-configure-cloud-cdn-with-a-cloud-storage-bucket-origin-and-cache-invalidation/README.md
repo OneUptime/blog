@@ -171,11 +171,20 @@ resource "google_compute_url_map" "cdn" {
       service = google_compute_backend_bucket.cdn.id
 
       route_action {
-        cdn_policy {
-          default_ttl = 86400
-          max_ttl     = 604800
-          client_ttl  = 86400
-          cache_mode  = "FORCE_CACHE_ALL"
+        cache_policy {
+          cache_mode = "FORCE_CACHE_ALL"
+
+          default_ttl {
+            seconds = "86400"
+          }
+
+          max_ttl {
+            seconds = "604800"
+          }
+
+          client_ttl {
+            seconds = "86400"
+          }
         }
       }
     }
@@ -202,17 +211,18 @@ resource "google_compute_target_https_proxy" "cdn" {
 
 # Forwarding rule
 resource "google_compute_global_forwarding_rule" "cdn" {
-  project    = var.project_id
-  name       = "${var.environment}-cdn-forwarding-rule"
-  target     = google_compute_target_https_proxy.cdn.id
-  port_range = "443"
-  ip_address = google_compute_global_address.cdn.address
+  project               = var.project_id
+  name                  = "${var.environment}-cdn-forwarding-rule"
+  target                = google_compute_target_https_proxy.cdn.id
+  port_range            = "443"
+  ip_address            = google_compute_global_address.cdn.address
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 }
 ```
 
 ## Signed URLs for Private Content
 
-If some content should not be publicly accessible, use signed URLs with CDN:
+If some content should not be publicly accessible, use signed URLs with CDN. Do not grant `allUsers` access to buckets or objects that should be protected; for Cloud Storage backends, Cloud CDN relies on Cloud Storage rejecting unsigned requests, and the Cloud CDN fill service account needs `roles/storage.objectViewer` on the private bucket.
 
 ```hcl
 # signed-urls.tf - CDN signed URL configuration for private content
@@ -236,17 +246,13 @@ import datetime
 import hashlib
 import hmac
 import base64
-from urllib.parse import urlparse, urlencode
 
 def sign_url(url, key_name, key_value, expiration_time):
     """Generate a signed URL for Cloud CDN."""
-    # Strip existing query parameters for signing
-    parsed = urlparse(url)
-    url_to_sign = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-
     # Build the signed URL parameters
     expiration = int(expiration_time.timestamp())
-    url_to_sign += f"?Expires={expiration}&KeyName={key_name}"
+    separator = "&" if "?" in url else "?"
+    url_to_sign = f"{url}{separator}Expires={expiration}&KeyName={key_name}"
 
     # Create the signature
     decoded_key = base64.urlsafe_b64decode(key_value)
@@ -264,7 +270,7 @@ def sign_url(url, key_name, key_value, expiration_time):
 
 When you update content, you need to invalidate the CDN cache. Terraform cannot do this directly during apply (since it is an imperative action), but you can set up automated invalidation.
 
-Using a Cloud Build trigger that invalidates cache on bucket updates:
+Using a Cloud Function that invalidates cache on bucket updates:
 
 ```hcl
 # invalidation.tf - Automated cache invalidation setup
@@ -299,8 +305,9 @@ resource "google_cloudfunctions2_function" "cache_invalidator" {
   }
 
   event_trigger {
-    event_type   = "google.cloud.storage.object.v1.finalized"
-    trigger_region = var.region
+    event_type            = "google.cloud.storage.object.v1.finalized"
+    trigger_region        = var.region
+    service_account_email = google_service_account.invalidator.email
 
     event_filters {
       attribute = "bucket"
