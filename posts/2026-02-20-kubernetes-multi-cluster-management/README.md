@@ -169,14 +169,19 @@ patches:
       kind: Deployment
       name: api-server
     patch: |
-      - op: replace
-        path: /spec/replicas
-        value: 5
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value:
-          name: REGION
-          value: us-east-1
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-server
+      spec:
+        replicas: 5
+        template:
+          spec:
+            containers:
+              - name: api-server
+                env:
+                  - name: REGION
+                    value: us-east-1
 
 # Cluster-specific labels
 commonLabels:
@@ -272,7 +277,7 @@ class MultiClusterDeployer:
             result = subprocess.run(
                 [
                     "kubectl", "--context", context,
-                    "rollout", "status", "deployment",
+                    "rollout", "status", "-f", manifest_path,
                     "-n", namespace, "--timeout=300s"
                 ],
                 capture_output=True, text=True, check=True
