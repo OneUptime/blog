@@ -21,7 +21,7 @@ flowchart LR
     D[Dashboard] -->|simple query on new metric| C
 ```
 
-Without recording rules, every dashboard panel runs the full query on raw data. With recording rules, the dashboard queries a pre-computed metric that returns instantly.
+Without recording rules, every dashboard panel runs the full query on raw data. With recording rules, the dashboard queries a pre-computed metric that is often much faster.
 
 ## Recording Rules vs Alert Rules
 
@@ -34,7 +34,7 @@ Prometheus has two types of rules:
 | Keyword | `record` | `alert` |
 | Use case | Dashboard performance | Notification triggers |
 
-Both types live in rule files and are evaluated at the same interval.
+Both types live in rule files and are evaluated at the interval configured for their rule group, or at the global `evaluation_interval` by default.
 
 ## Basic Recording Rule
 
@@ -67,8 +67,8 @@ level:metric_name:operations
 ```
 
 - **level** - the aggregation level (e.g., `pod`, `namespace`, `cluster`)
-- **metric_name** - the base metric name
-- **operations** - the operations applied (e.g., `rate5m`, `sum`)
+- **metric_name** - the base metric name, with `_total` stripped from counters when using `rate()` or `irate()`
+- **operations** - the operations applied, with the newest operation first (e.g., `rate5m`, `sum`)
 
 Examples:
 
@@ -80,10 +80,10 @@ pod:container_cpu_usage_seconds:rate5m
 namespace:container_memory_usage_bytes:sum
 
 # Cluster-level request rate
-cluster:http_requests_total:rate5m_sum
+cluster:http_requests:rate5m
 
 # Job-level error ratio
-job:http_request_errors:ratio_rate5m
+job:http_request_errors_per_requests:ratio_rate5m
 ```
 
 ## Loading Rules in Prometheus
@@ -173,25 +173,25 @@ groups:
     interval: 30s
     rules:
       # Total request rate by service
-      - record: service:http_requests_total:rate5m
+      - record: service:http_requests:rate5m
         expr: >
           sum by (service, namespace) (
             rate(http_requests_total[5m])
           )
 
       # Error request rate by service
-      - record: service:http_request_errors_total:rate5m
+      - record: service:http_request_errors:rate5m
         expr: >
           sum by (service, namespace) (
             rate(http_requests_total{status_code=~"5.."}[5m])
           )
 
       # Error ratio by service
-      - record: service:http_request_errors:ratio_rate5m
+      - record: service:http_request_errors_per_requests:ratio_rate5m
         expr: >
-          service:http_request_errors_total:rate5m
+          service:http_request_errors:rate5m
           /
-          service:http_requests_total:rate5m
+          service:http_requests:rate5m
 
       # P99 latency by service
       - record: service:http_request_duration_seconds:p99_rate5m
@@ -293,9 +293,9 @@ tests:
     input_series:
       # Simulate input data
       - series: 'container_cpu_usage_seconds_total{pod="api-1",namespace="prod",image="api:v1"}'
-        values: '0+1x10'
+        values: '0+60x10'
       - series: 'container_cpu_usage_seconds_total{pod="api-2",namespace="prod",image="api:v1"}'
-        values: '0+2x10'
+        values: '0+120x10'
     alert_rule_test: []
     promql_expr_test:
       - expr: pod:container_cpu_usage_seconds:rate5m{namespace="prod"}
