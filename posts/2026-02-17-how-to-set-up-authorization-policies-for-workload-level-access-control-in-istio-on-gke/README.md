@@ -23,8 +23,10 @@ When a request arrives at a service's sidecar proxy, the proxy evaluates it agai
 
 ```mermaid
 graph TD
-    A[Request Arrives] --> B{DENY policy matches?}
-    B -->|Yes| C[403 Forbidden]
+    A[Request Arrives] --> X{CUSTOM policy matches?}
+    X -->|Yes, external authorizer denies| C[403 Forbidden]
+    X -->|No, or external authorizer allows| B{DENY policy matches?}
+    B -->|Yes| C
     B -->|No| D{Any ALLOW policies exist?}
     D -->|No| E[Allow Request]
     D -->|Yes| F{ALLOW policy matches?}
@@ -42,7 +44,7 @@ The safest starting point for a zero-trust architecture is to deny all traffic a
 # deny-all.yaml
 
 # Denies all traffic in the namespace by default
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -51,14 +53,14 @@ spec:
   {}
 ```
 
-An empty spec with no rules means "match all traffic" and the implicit action is ALLOW with no rules, which effectively means no traffic is allowed because no ALLOW rules match.
+An empty spec with no rules creates an ALLOW policy that matches no requests, which effectively means no traffic is allowed because no ALLOW rules match.
 
 ```bash
 # Apply the deny-all policy
 kubectl apply -f deny-all.yaml
 
 # Verify - all service-to-service calls should now fail
-kubectl exec deploy/frontend -c istio-proxy -- curl -s http://backend:8080/api
+kubectl exec -n my-app deploy/frontend -- curl -s http://backend:8080/api
 # Expected: RBAC: access denied
 ```
 
@@ -69,7 +71,7 @@ Now open up only the paths you need. This policy allows the frontend service to 
 ```yaml
 # allow-frontend-to-backend.yaml
 # Allows the frontend service to call the backend on specific paths
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend-to-backend
@@ -105,7 +107,7 @@ For a typical microservices application, you need policies for each service. Her
 ```yaml
 # allow-ingress-to-frontend.yaml
 # Allows the ingress gateway to reach the frontend
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-ingress-to-frontend
@@ -125,7 +127,7 @@ spec:
 ---
 # allow-backend-to-database.yaml
 # Allows the backend to access the database service
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-backend-to-database
@@ -151,7 +153,7 @@ For broader rules, you can use namespace-based source matching instead of indivi
 ```yaml
 # allow-monitoring-namespace.yaml
 # Allows any service in the monitoring namespace to scrape metrics
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-monitoring
@@ -179,7 +181,7 @@ Istio authorization policies can match on a wide range of request attributes bey
 ```yaml
 # allow-internal-api-key.yaml
 # Only allows requests with a valid internal API key header
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-api-key
@@ -203,7 +205,7 @@ spec:
 ```yaml
 # allow-from-specific-cidr.yaml
 # Only allows traffic from specific IP ranges
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-internal-ips
@@ -229,7 +231,7 @@ If you use JWT authentication, you can make authorization decisions based on JWT
 ```yaml
 # allow-based-on-jwt-role.yaml
 # Only allows requests where the JWT has an admin role claim
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-admin-role
@@ -255,7 +257,7 @@ DENY policies are evaluated before ALLOW policies, making them useful for blackl
 ```yaml
 # deny-sensitive-paths.yaml
 # Blocks access to debug endpoints from all sources except the SRE team
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-debug-endpoints
@@ -265,6 +267,7 @@ spec:
   rules:
   - to:
     - operation:
+        ports: ["8080"]
         paths: ["/debug/*", "/internal/*", "/admin/*"]
     from:
     - source:
@@ -281,7 +284,7 @@ Always test your policies before relying on them in production.
 
 ```bash
 # From the frontend pod, call the backend (should succeed)
-kubectl exec deploy/frontend -- curl -s -o /dev/null -w "%{http_code}" \
+kubectl exec -n my-app deploy/frontend -- curl -s -o /dev/null -w "%{http_code}" \
     http://backend:8080/api/data
 # Expected: 200
 ```
@@ -290,16 +293,15 @@ kubectl exec deploy/frontend -- curl -s -o /dev/null -w "%{http_code}" \
 
 ```bash
 # From the frontend pod, call the database directly (should fail)
-kubectl exec deploy/frontend -- curl -s -o /dev/null -w "%{http_code}" \
-    http://database-proxy:5432
-# Expected: 403
+kubectl exec -n my-app deploy/frontend -- nc -vz -w 5 database-proxy 5432
+# Expected: request fails because the TCP connection is denied
 ```
 
 ### Test Method Restrictions
 
 ```bash
 # From the frontend, try a DELETE on the backend (should fail if only GET/POST allowed)
-kubectl exec deploy/frontend -- curl -s -o /dev/null -w "%{http_code}" \
+kubectl exec -n my-app deploy/frontend -- curl -s -o /dev/null -w "%{http_code}" \
     -X DELETE http://backend:8080/api/data/123
 # Expected: 403
 ```
@@ -310,11 +312,10 @@ When requests are denied unexpectedly, use Envoy's debug logging to understand w
 
 ```bash
 # Enable debug logging for the RBAC filter
-kubectl exec deploy/backend -c istio-proxy -- \
-    curl -s -X POST "localhost:15000/logging?rbac=debug"
+istioctl proxy-config log deploy/backend -n my-app --level "rbac:debug"
 
 # Make a test request and check the proxy logs
-kubectl logs deploy/backend -c istio-proxy | grep rbac
+kubectl logs deploy/backend -n my-app -c istio-proxy | grep rbac
 ```
 
 The debug logs show which policies were evaluated and why a request was allowed or denied.
