@@ -8,18 +8,18 @@ Description: How to diagnose and resolve 503 Service Unavailable errors from Goo
 
 ---
 
-A 503 Service Unavailable from your Google Cloud Load Balancer typically means none of your backends can handle the request. Unlike a 502 (which indicates the backend gave a bad response), a 503 means the load balancer could not even attempt to send the request to a backend. Here is how to find out why and fix it.
+A 503 Service Unavailable from your Google Cloud Load Balancer typically means the load balancer could not select or successfully use a backend for the request. Unlike a 5xx response that is relayed from your backend, a load-balancer-generated 503 points to a load balancer, backend health, capacity, or connection problem. Here is how to find out why and fix it.
 
 ## What Causes 503 Errors
 
 The main reasons the load balancer returns 503:
 
 1. All backends are unhealthy
-2. All backends are at maximum capacity (connection or rate limits reached)
+2. Backends are overloaded or capacity settings are too low
 3. No backends are configured in the backend service
 4. The backend service has no instances in the requested region
 5. Circuit breaker thresholds have been exceeded
-6. The URL map does not have a matching backend for the request
+6. The URL map sends the request to an unintended or unhealthy default backend
 
 ## Step 1: Check Backend Health Status
 
@@ -102,7 +102,7 @@ gcloud compute firewall-rules create allow-health-checks \
 # Verify the backend service has backends attached
 gcloud compute backend-services describe my-backend-service \
     --global \
-    --format="json(backends, healthChecks, port, portName, protocol, capacityScaler)" \
+    --format="json(backends, healthChecks, portName, protocol)" \
     --project=my-project
 ```
 
@@ -158,7 +158,7 @@ gcloud compute backend-services describe my-backend-service \
 
 ## Step 4: Check the URL Map
 
-A 503 can also happen when the URL map does not have a matching route for the requested URL.
+A 503 can also happen when the URL map sends the request to the wrong backend service or to a default backend service that has no healthy backends.
 
 ```bash
 # Check the URL map configuration
@@ -168,7 +168,7 @@ gcloud compute url-maps describe my-url-map \
     --project=my-project
 ```
 
-Look at the `defaultService`, `hostRules`, and `pathMatchers`. If a request does not match any host or path rule and there is no default service, the load balancer returns 503.
+Look at the `defaultService`, `hostRules`, and `pathMatchers`. If a request does not match any host or path rule, the URL map uses its default backend service or backend bucket. Make sure that default points to a healthy backend that should handle unmatched requests.
 
 ```bash
 # Make sure a default backend service is configured
@@ -180,17 +180,17 @@ gcloud compute url-maps set-default-service my-url-map \
 
 ## Step 5: Check for Capacity Issues
 
-If backends are healthy but the load balancer is still returning 503, backends might be at capacity.
+If backends are healthy but the load balancer is still returning 503, backends might be overloaded or capacity settings might be too restrictive.
 
 ```bash
-# Check the max connections or max rate settings
+# Check the target connection or rate settings
 gcloud compute backend-services describe my-backend-service \
     --global \
     --format="json(backends[].maxConnections, backends[].maxRate, backends[].maxRatePerInstance)" \
     --project=my-project
 ```
 
-If `maxConnections` or `maxRate` is set too low, the load balancer may reject requests even though backends are healthy.
+If `maxConnections` or `maxRate` is set too low, the load balancer can treat a backend zone as already at its target capacity and prefer another zone when one is available. If there is not enough healthy capacity overall, increase the target or scale out.
 
 ```bash
 # Remove connection limits or increase them
@@ -204,7 +204,7 @@ gcloud compute backend-services update-backend my-backend-service \
 
 ## Step 6: Check Circuit Breaker Settings
 
-If you have circuit breaker policies configured, they might be tripping and causing 503s.
+If you use Cloud Service Mesh or another backend service configuration that supports circuit breaker policies, aggressive thresholds can cause requests to fail instead of overloading the backend.
 
 ```bash
 # Check circuit breaker configuration
@@ -214,13 +214,19 @@ gcloud compute backend-services describe my-backend-service \
     --project=my-project
 ```
 
-If circuit breakers are too aggressive, increase the thresholds:
+If circuit breakers are too aggressive, export the backend service, update the `circuitBreakers` values, and import it again:
 
 ```bash
-# Update circuit breaker settings via the REST API
-gcloud compute backend-services update my-backend-service \
+# Export backend service configuration
+gcloud compute backend-services export my-backend-service \
+    --destination=my-backend-service-config.yaml \
     --global \
-    --connection-draining-timeout=300 \
+    --project=my-project
+
+# After editing circuitBreakers in the YAML file, import the updated configuration
+gcloud compute backend-services import my-backend-service \
+    --source=my-backend-service-config.yaml \
+    --global \
     --project=my-project
 ```
 
@@ -239,8 +245,8 @@ The `statusDetails` field will tell you the exact reason:
 
 - `backend_connection_closed_after_partial_response_sent` - backend died mid-response
 - `backend_early_response_with_non_error_status` - premature response
-- `no_healthy_backends` - all backends are down
-- `rate_limited` - hit rate limits
+- `failed_to_pick_backend` - the load balancer could not pick a healthy backend
+- `failed_to_connect_to_backend` - the load balancer could not connect to the selected backend
 
 ## Debugging Flowchart
 
@@ -256,8 +262,8 @@ flowchart TD
     G -->|Yes| I{Port matches?}
     I -->|No| J[Fix port configuration]
     I -->|Yes| K[Check health check path and timeout]
-    C -->|No| L{URL map has matching route?}
-    L -->|No| M[Add route or default service]
+    C -->|No| L{URL map sends request to expected backend?}
+    L -->|No| M[Fix route or default backend service]
     L -->|Yes| N{Backends at capacity?}
     N -->|Yes| O[Increase max connections/rate or scale out]
     N -->|No| P[Check circuit breaker settings]
