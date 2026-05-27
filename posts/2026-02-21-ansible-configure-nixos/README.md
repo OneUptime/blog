@@ -8,7 +8,7 @@ Description: Manage NixOS systems with Ansible by generating Nix configuration, 
 
 ---
 
-NixOS is a Linux distribution built on the Nix package manager. It uses a declarative configuration model where the entire system is defined in `/etc/nixos/configuration.nix`. This is fundamentally different from imperative distributions where you install packages and modify config files individually. Managing NixOS with Ansible requires a different approach: instead of running apt or dnf, you modify the Nix configuration and trigger a system rebuild.
+NixOS is a Linux distribution built on the Nix package manager. It uses a declarative configuration model where the system is defined from `/etc/nixos/configuration.nix` and any modules it imports. This is fundamentally different from imperative distributions where you install packages and modify config files individually. Managing NixOS with Ansible requires a different approach: instead of running apt or dnf, you modify the Nix configuration and trigger a system rebuild.
 
 ## The NixOS Challenge for Ansible
 
@@ -16,10 +16,10 @@ Traditional Ansible patterns do not work directly on NixOS:
 
 - `ansible.builtin.package` does not work (Nix is not a supported package manager)
 - Modifying config files directly gets overwritten on rebuild
-- All system state is defined in `/etc/nixos/configuration.nix`
+- System state is declared in `/etc/nixos/configuration.nix` and imported modules
 - Services are managed through Nix, not directly via systemctl
 
-The solution: use Ansible to manage the Nix configuration file and trigger rebuilds.
+The solution: use Ansible to manage the Nix configuration files and trigger rebuilds.
 
 ## Inventory
 
@@ -96,6 +96,8 @@ The Nix configuration template:
 { config, pkgs, ... }:
 
 {
+  imports = [ ./hardware-configuration.nix ];
+
   # System settings
   networking.hostName = "{{ nixos_hostname }}";
   time.timeZone = "{{ nixos_timezone }}";
@@ -174,21 +176,31 @@ For more complex setups, use NixOS modules:
         content: |
           { config, pkgs, ... }:
           {
-            services.myapp = {
-              enable = true;
-              port = 8080;
-              dataDir = "/var/lib/myapp";
+            systemd.services.myapp = {
+              description = "Example application";
+              wantedBy = [ "multi-user.target" ];
+              after = [ "network.target" ];
+              serviceConfig = {
+                ExecStart = "${pkgs.python3}/bin/python3 -m http.server 8080 --directory /var/lib/myapp";
+                DynamicUser = true;
+                StateDirectory = "myapp";
+              };
             };
           }
         dest: /etc/nixos/myapp.nix
         mode: '0644'
+      register: myapp_module
 
     - name: Include module in main configuration
       ansible.builtin.lineinfile:
         path: /etc/nixos/configuration.nix
-        insertafter: '^{ config, pkgs'
-        line: '  imports = [ ./myapp.nix ];'
-      notify: rebuild nixos
+        regexp: '^  imports = \[ \./hardware-configuration\.nix'
+        line: '  imports = [ ./hardware-configuration.nix ./myapp.nix ];'
+      register: myapp_import
+
+    - name: Rebuild NixOS if module configuration changed
+      ansible.builtin.command: nixos-rebuild switch
+      when: myapp_module.changed or myapp_import.changed
 ```
 
 ## Summary
@@ -197,16 +209,30 @@ NixOS management with Ansible works at a higher level than traditional distribut
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this approach proves useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
-- name: Infrastructure provisioning
-  hosts: all
+# Complete workflow using NixOS configuration and rebuilds
+- name: Infrastructure provisioning for NixOS
+  hosts: nixos
   become: true
   gather_facts: true
+  vars:
+    nixos_hostname: "{{ inventory_hostname }}"
+    nixos_timezone: "{{ system_timezone | default('UTC') }}"
+    nixos_packages:
+      - curl
+      - wget
+      - git
+      - vim
+      - htop
+      - jq
+    nixos_firewall_allowed_tcp:
+      - 22
+      - 80
+      - 443
   tasks:
     - name: Gather system information
       ansible.builtin.setup:
@@ -222,61 +248,16 @@ Here are several practical scenarios where this module proves essential in real-
           {{ ansible_processor_vcpus }} vCPUs,
           running {{ ansible_distribution }} {{ ansible_distribution_version }}
 
-    - name: Install required packages
-      ansible.builtin.package:
-        name:
-          - curl
-          - wget
-          - git
-          - vim
-          - htop
-          - jq
-        state: present
+    - name: Deploy NixOS configuration
+      ansible.builtin.template:
+        src: configuration.nix.j2
+        dest: /etc/nixos/configuration.nix
+        mode: '0644'
+      register: nix_config
 
-    - name: Configure system timezone
-      ansible.builtin.timezone:
-        name: "{{ system_timezone | default('UTC') }}"
-
-    - name: Configure hostname
-      ansible.builtin.hostname:
-        name: "{{ inventory_hostname }}"
-
-    - name: Update /etc/hosts
-      ansible.builtin.lineinfile:
-        path: /etc/hosts
-        regexp: '^127\.0\.1\.1'
-        line: "127.0.1.1 {{ inventory_hostname }}"
-
-    - name: Configure SSH hardening
-      ansible.builtin.lineinfile:
-        path: /etc/ssh/sshd_config
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-      loop:
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
-      notify: restart sshd
-
-    - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
-      loop:
-        - "22"
-        - "80"
-        - "443"
-
-    - name: Enable firewall
-      community.general.ufw:
-        state: enabled
-        policy: deny
-
-  handlers:
-    - name: restart sshd
-      ansible.builtin.service:
-        name: sshd
-        state: restarted
+    - name: Rebuild NixOS if configuration changed
+      ansible.builtin.command: nixos-rebuild switch
+      when: nix_config.changed
 ```
 
 ### Integration with Monitoring
@@ -287,6 +268,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create monitoring configuration directory
+      ansible.builtin.file:
+        path: /etc/monitoring
+        state: directory
+        mode: '0755'
+
     - name: Set monitoring thresholds based on hardware
       ansible.builtin.template:
         src: monitoring_config.yml.j2
@@ -316,7 +303,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this approach
 - name: Robust task execution
   hosts: all
   tasks:
@@ -348,34 +335,62 @@ Here are several practical scenarios where this module proves essential in real-
 ### Scheduling and Automation
 
 ```yaml
-# Set up scheduled compliance scans using cron
+# Set up scheduled compliance scans using a NixOS systemd timer
 - name: Configure automated scans
-  hosts: all
+  hosts: nixos
   become: true
   tasks:
-    - name: Create scan script
+    - name: Deploy compliance scan module
       ansible.builtin.copy:
-        dest: /opt/scripts/compliance_scan.sh
-        mode: '0755'
+        dest: /etc/nixos/compliance-scan.nix
+        mode: '0644'
         content: |
-          #!/bin/bash
-          cd /opt/ansible
-          ansible-playbook playbooks/validate.yml -i inventory/ > /var/log/compliance_scan.log 2>&1
-          EXIT_CODE=$?
-          if [ $EXIT_CODE -ne 0 ]; then
-            curl -X POST https://hooks.example.com/alert \
-              -H "Content-Type: application/json" \
-              -d "{\"text\":\"Compliance scan failed on $(hostname)\"}"
-          fi
-          exit $EXIT_CODE
+          { pkgs, ... }:
+          {
+            systemd.tmpfiles.rules = [
+              "d /var/log 0755 root root -"
+            ];
 
-    - name: Schedule weekly compliance scan
-      ansible.builtin.cron:
-        name: "Weekly compliance scan"
-        minute: "0"
-        hour: "3"
-        weekday: "1"
-        job: "/opt/scripts/compliance_scan.sh"
-        user: ansible
+            environment.etc."compliance_scan.sh" = {
+              mode = "0755";
+              text = ''
+                #!${pkgs.bash}/bin/bash
+                cd /opt/ansible
+                ${pkgs.ansible}/bin/ansible-playbook playbooks/validate.yml -i inventory/ > /var/log/compliance_scan.log 2>&1
+                EXIT_CODE=$?
+                if [ $EXIT_CODE -ne 0 ]; then
+                  ${pkgs.curl}/bin/curl -X POST https://hooks.example.com/alert \
+                    -H "Content-Type: application/json" \
+                    -d "{\"text\":\"Compliance scan failed on $(hostname)\"}"
+                fi
+                exit $EXIT_CODE
+              '';
+            };
+
+            systemd.services.compliance-scan = {
+              description = "Compliance scan";
+              serviceConfig.Type = "oneshot";
+              script = "/etc/compliance_scan.sh";
+            };
+
+            systemd.timers.compliance-scan = {
+              wantedBy = [ "timers.target" ];
+              timerConfig = {
+                OnCalendar = "Mon 03:00";
+                Persistent = true;
+              };
+            };
+          }
+      register: compliance_module
+
+    - name: Include compliance scan module in main configuration
+      ansible.builtin.lineinfile:
+        path: /etc/nixos/configuration.nix
+        regexp: '^  imports = \[ \./hardware-configuration\.nix'
+        line: '  imports = [ ./hardware-configuration.nix ./compliance-scan.nix ];'
+      register: compliance_import
+
+    - name: Rebuild NixOS if compliance scan configuration changed
+      ansible.builtin.command: nixos-rebuild switch
+      when: compliance_module.changed or compliance_import.changed
 ```
-
