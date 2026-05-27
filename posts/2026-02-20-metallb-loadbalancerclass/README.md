@@ -16,7 +16,7 @@ When you deploy a `Service` of type `LoadBalancer` in Kubernetes, every load bal
 
 ## What Is LoadBalancerClass?
 
-The `loadBalancerClass` field is part of the Service spec. It works like `ingressClassName` for Ingress resources. Each load balancer controller registers a class name, and it only processes services that match its class.
+The `loadBalancerClass` field is part of the Service spec. It works like `ingressClassName` for Ingress resources. Each load balancer controller can be configured with a class name, and it only processes services that match its class.
 
 ```mermaid
 flowchart TD
@@ -75,12 +75,9 @@ If you deploy MetalLB with Helm, set the class in your values file:
 ```yaml
 # values-metallb.yaml
 
-# Configure MetalLB to only handle services with this specific class
-# Services without this class will be ignored by MetalLB
-controller:
-  # The loadBalancerClass tells MetalLB to only reconcile
-  # services whose spec.loadBalancerClass matches this value
-  loadBalancerClass: "metallb"
+# Configure MetalLB to only handle services with this specific class.
+# Services without this class will be ignored by MetalLB.
+loadBalancerClass: "metallb"
 ```
 
 Then install or upgrade MetalLB:
@@ -96,7 +93,7 @@ helm upgrade --install metallb metallb/metallb \
 
 ### Option 2: Controller Argument
 
-If you manage MetalLB manifests directly, add the `--lb-class` flag to the controller deployment:
+If you manage MetalLB manifests directly, add the `--lb-class` flag to both the controller deployment and the speaker daemon set:
 
 ```yaml
 # metallb-controller-deployment.yaml
@@ -126,6 +123,31 @@ spec:
             # Standard port for health and metrics endpoints
             - --port=7472
             - --log-level=info
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: speaker
+  namespace: metallb-system
+spec:
+  selector:
+    matchLabels:
+      app: metallb
+      component: speaker
+  template:
+    metadata:
+      labels:
+        app: metallb
+        component: speaker
+    spec:
+      containers:
+        - name: speaker
+          image: quay.io/metallb/speaker:v0.14.9
+          args:
+            # The speaker also needs the same class filter
+            - --lb-class=metallb
+            - --port=7472
+            - --log-level=info
 ```
 
 After applying this, MetalLB will ignore any `LoadBalancer` service that does not have `spec.loadBalancerClass: metallb`.
@@ -149,8 +171,7 @@ spec:
   addresses:
     - 10.0.0.50-10.0.0.99    # 50 IPs for internal services
     - 192.168.1.240/28        # Additional block if needed
-  # Prevent MetalLB from auto-assigning IPs from this pool
-  # unless explicitly requested via annotation
+  # Allow MetalLB to automatically assign IPs from this pool
   autoAssign: true
 ---
 # L2 advertisement makes MetalLB respond to ARP requests for assigned IPs
@@ -189,8 +210,8 @@ metadata:
   name: internal-api
   namespace: default
   annotations:
-    # Optional: request a specific IP from the pool
-    metallb.universe.tf/address-pool: internal-pool
+    # Optional: request an IP from a specific pool
+    metallb.io/address-pool: internal-pool
 spec:
   # This field is the key - it tells Kubernetes that only the controller
   # registered with class "metallb" should provision this service
@@ -298,9 +319,9 @@ flowchart LR
 
 **Mismatched class names.** The class string is case-sensitive. `MetalLB` and `metallb` are different values. Pick a convention and stick with it.
 
-**Not upgrading MetalLB.** Versions before 0.13.2 do not support `loadBalancerClass`. Running an older version with the flag will have no effect, and MetalLB will continue to reconcile all services.
+**Not upgrading MetalLB.** Versions before 0.13.2 do not support `loadBalancerClass`. Without class filtering, older MetalLB versions will continue to reconcile all `LoadBalancer` services they can handle.
 
-**Mixing annotations and class.** The `loadBalancerClass` field is a Kubernetes-native mechanism. The older `metallb.universe.tf/address-pool` annotation is for pool selection, not controller selection. They serve different purposes and both can be used together.
+**Mixing annotations and class.** The `loadBalancerClass` field is a Kubernetes-native mechanism. The `metallb.io/address-pool` annotation is for pool selection, not controller selection. They serve different purposes and both can be used together.
 
 ---
 
