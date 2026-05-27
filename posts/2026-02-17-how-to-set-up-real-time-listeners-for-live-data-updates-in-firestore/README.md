@@ -8,7 +8,7 @@ Description: Learn how to use Firestore real-time listeners to push live data up
 
 ---
 
-Polling a database every few seconds to check for changes is wasteful and slow. Firestore solves this with real-time listeners - you subscribe to a document or query, and Firestore pushes updates to your app the instant data changes. No polling, no WebSocket servers to manage, no infrastructure to maintain.
+Polling a database every few seconds to check for changes is wasteful and slow. Firestore solves this with real-time listeners - you subscribe to a document or query, and Firestore pushes low-latency updates to your app as data changes. No polling, no WebSocket servers to manage, no infrastructure to maintain.
 
 I have used this pattern in everything from chat applications to live dashboards, and it consistently delivers a great user experience with minimal code. Let me walk you through how to set it up properly.
 
@@ -127,7 +127,7 @@ This is particularly powerful for building chat UIs, live feeds, or any list tha
 
 ## Handling Errors
 
-Listeners can fail for several reasons - network issues, permission changes, or the user's auth token expiring. Always include an error handler.
+Listeners can fail for several reasons - permission changes, invalid queries, or the user's auth token expiring. Always include an error handler.
 
 ```javascript
 // Always include an error handler with your listeners
@@ -231,7 +231,7 @@ By default, the listener only fires when data changes. With `includeMetadataChan
 
 ## Performance Considerations
 
-Each active listener maintains a connection and consumes bandwidth. For most apps this is not a problem, but if you are listening to hundreds of queries simultaneously, you might run into issues.
+Active listeners keep a streaming connection available and consume bandwidth. For most apps this is not a problem, but if you are listening to hundreds of queries simultaneously, you might run into issues.
 
 A few tips to keep things efficient. First, listen to specific queries rather than entire collections whenever possible. If you only need active orders, filter by status instead of listening to all orders and filtering client-side. Second, detach listeners you no longer need. If the user navigates away from a page, unsubscribe from that page's listeners. Third, consider using snapshot listeners for frequently changing data and one-time reads (`getDoc`) for data that rarely changes.
 
