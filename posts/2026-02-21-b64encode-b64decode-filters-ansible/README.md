@@ -149,7 +149,7 @@ The `~` operator in Jinja2 concatenates strings. So `api_username ~ ':' ~ api_pa
 
 ## Cloud-Init User Data
 
-AWS, Azure, and GCP accept base64-encoded user data for cloud-init scripts:
+Cloud APIs often store cloud-init user data as base64-encoded data, but many tools encode it for you. With the `amazon.aws.ec2_instance` module, pass the cloud-init content directly:
 
 ```yaml
 # cloud_init.yml - Encode user data for cloud instances
@@ -158,7 +158,7 @@ AWS, Azure, and GCP accept base64-encoded user data for cloud-init scripts:
     name: "web-server-01"
     instance_type: "t3.medium"
     image_id: "ami-0123456789abcdef0"
-    user_data: "{{ lookup('template', 'cloud-init.yml.j2') | b64encode }}"
+    user_data: "{{ lookup('template', 'cloud-init.yml.j2') }}"
     region: "us-east-1"
 ```
 
@@ -220,7 +220,7 @@ data:
 
 ## Encoding and Decoding with Different Charsets
 
-By default, `b64encode` and `b64decode` use UTF-8 encoding. If you need a different character set, you cannot specify it directly through the filter, but you can handle it in a few ways:
+By default, `b64encode` and `b64decode` use UTF-8 encoding. If you need a different character set, pass the `encoding` parameter to the filter:
 
 ```yaml
 # The default encoding is UTF-8, which handles most use cases
@@ -228,6 +228,12 @@ By default, `b64encode` and `b64decode` use UTF-8 encoding. If you need a differ
   ansible.builtin.set_fact:
     encoded: "{{ 'Hello World' | b64encode }}"
     decoded: "{{ 'SGVsbG8gV29ybGQ=' | b64decode }}"
+
+# Use a different encoding when the source data requires it
+- name: Encode and decode UTF-16 little-endian text
+  ansible.builtin.set_fact:
+    encoded_utf16: "{{ 'Hello World' | b64encode(encoding='utf-16-le') }}"
+    decoded_utf16: "{{ encoded_utf16 | b64decode(encoding='utf-16-le') }}"
 ```
 
 ## Practical Example: SSH Key Management
