@@ -184,17 +184,21 @@ fetch_configuration:
     - get_config:
         switch:
           - condition: ${env == "production"}
-            assign:
-              - config:
-                  batch_size: 50
-                  items: ["item1", "item2", "item3"]
-                  timeout: 300
+            steps:
+              - set_production_config:
+                  assign:
+                    - config:
+                        batch_size: 50
+                        items: ["item1", "item2", "item3"]
+                        timeout: 300
           - condition: ${env == "staging"}
-            assign:
-              - config:
-                  batch_size: 10
-                  items: ["test_item"]
-                  timeout: 60
+            steps:
+              - set_staging_config:
+                  assign:
+                    - config:
+                        batch_size: 10
+                        items: ["test_item"]
+                        timeout: 60
     - return_config:
         return: ${config}
 
@@ -308,7 +312,7 @@ main:
                 result: health_response
             - record_result:
                 assign:
-                  - health_results: ${list.concat(health_results, [{"server": server, "status": health_response.code}])}
+                  - health_results: ${list.concat(health_results, {"server": server, "status": health_response.code})}
 
     - summarize:
         call: sys.log
