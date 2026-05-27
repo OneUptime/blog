@@ -179,11 +179,11 @@ WITH analyzed AS (
     SELECT
         review_id,
         review_text,
-        JSON_EXTRACT_SCALAR(
+        JSON_VALUE(
             `PROJECT_ID.my_dataset.analyze_sentiment`(review_text),
             '$.score'
         ) AS sentiment_score,
-        JSON_EXTRACT_SCALAR(
+        JSON_VALUE(
             `PROJECT_ID.my_dataset.analyze_sentiment`(review_text),
             '$.label'
         ) AS sentiment_label
@@ -317,12 +317,12 @@ OPTIONS (
 SELECT
     customer_id,
     email,
-    JSON_EXTRACT_SCALAR(
+    JSON_VALUE(
         `PROJECT_ID.my_dataset.validate_field`('email', email),
         '$.valid'
     ) AS email_valid,
     phone,
-    JSON_EXTRACT_SCALAR(
+    JSON_VALUE(
         `PROJECT_ID.my_dataset.validate_field`('phone', phone),
         '$.valid'
     ) AS phone_valid
