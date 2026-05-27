@@ -40,43 +40,28 @@ blackbox_exporter_version: "0.24.0"
 uptime_http_targets:
   - name: "Production API"
     url: "https://api.example.com/health"
-    expected_status: 200
-    interval: 30s
-    timeout: 10s
 
   - name: "Customer Portal"
     url: "https://portal.example.com"
-    expected_status: 200
-    interval: 30s
-    timeout: 10s
 
   - name: "Admin Dashboard"
     url: "https://admin.example.com/login"
-    expected_status: 200
-    interval: 60s
-    timeout: 15s
 
 # TCP endpoints to monitor
 uptime_tcp_targets:
   - name: "PostgreSQL Primary"
     host: "db-primary.internal:5432"
-    interval: 15s
-    timeout: 5s
 
   - name: "Redis Cache"
     host: "redis.internal:6379"
-    interval: 15s
-    timeout: 5s
 
 # ICMP ping targets
 uptime_icmp_targets:
   - name: "Core Router"
     host: "10.0.0.1"
-    interval: 15s
 
   - name: "Backup Server"
     host: "10.0.5.10"
-    interval: 30s
 
 # Alerting configuration
 alert_slack_webhook: "https://hooks.slack.com/services/xxx/yyy/zzz"
@@ -217,6 +202,14 @@ Configure Prometheus to scrape Blackbox Exporter with your target list.
 # roles/prometheus/templates/prometheus.yml.j2 (uptime-specific scrape configs)
 # Managed by Ansible
 
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['localhost:9093']
+
+rule_files:
+  - /etc/prometheus/uptime-alerts.yml
+
 scrape_configs:
   # Scrape Prometheus itself
   - job_name: 'prometheus'
@@ -339,8 +332,8 @@ route:
   receiver: 'slack-ops'
 
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'slack-ops'
       repeat_interval: 1h
 
@@ -382,16 +375,13 @@ uptime_http_targets:
   # ... existing targets ...
   - name: "New Microservice"
     url: "https://new-service.example.com/healthz"
-    expected_status: 200
-    interval: 30s
-    timeout: 10s
 ```
 
 Then apply the change.
 
 ```bash
 # Update monitoring configuration with new targets
-ansible-playbook -i inventory/hosts.ini site.yml --tags prometheus-config
+ansible-playbook -i inventory/hosts.ini site.yml
 ```
 
 ## Verification Playbook
