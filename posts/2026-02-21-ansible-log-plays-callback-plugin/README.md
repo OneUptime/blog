@@ -16,22 +16,30 @@ The log_plays callback is simple: for each host in your inventory, it creates (o
 
 ## Enabling log_plays
 
+The current `log_plays` callback is provided by the `community.general` collection. You may already have it if you installed the full `ansible` package; otherwise install the collection first:
+
+```bash
+ansible-galaxy collection install community.general
+```
+
 Enable it as a notification callback in `ansible.cfg`:
 
 ```ini
 # ansible.cfg - Enable per-host logging
 
 [defaults]
-callback_whitelist = log_plays
-# Directory for log files (default: /var/log/ansible/hosts)
-log_path = /var/log/ansible/hosts
+callbacks_enabled = community.general.log_plays
+
+[callback_log_plays]
+log_folder = /var/log/ansible/hosts
 ```
 
 Environment variable method:
 
 ```bash
 # Enable via environment
-export ANSIBLE_CALLBACK_WHITELIST=log_plays
+export ANSIBLE_CALLBACKS_ENABLED=community.general.log_plays
+export ANSIBLE_LOG_FOLDER=/var/log/ansible/hosts
 ```
 
 Create the log directory with proper permissions:
@@ -60,13 +68,15 @@ cat /var/log/ansible/hosts/web-01
 Output:
 
 ```text
-2026-02-21 10:15:23 - TASK: Gathering Facts - OK
-2026-02-21 10:15:35 - TASK: Install nginx - OK (changed=false)
-2026-02-21 10:15:36 - TASK: Deploy nginx config - CHANGED
-2026-02-21 10:15:37 - TASK: Start nginx service - OK (changed=false)
-2026-02-21 10:20:45 - TASK: Gathering Facts - OK
-2026-02-21 10:20:58 - TASK: Update application - CHANGED
-2026-02-21 10:21:02 - TASK: Restart application - CHANGED
+Feb 21 2026 10:15:23 - site.yml - Gathering Facts - gather_facts - OK - {"changed": false, "ansible_facts": "..."}
+
+Feb 21 2026 10:15:35 - site.yml - Install nginx - ansible.builtin.apt - OK - {"changed": false}
+
+Feb 21 2026 10:15:36 - site.yml - Deploy nginx config - ansible.builtin.template - OK - {"changed": true, "dest": "/etc/nginx/nginx.conf"}
+
+Feb 21 2026 10:15:37 - site.yml - Start nginx service - ansible.builtin.service - OK - {"changed": false, "name": "nginx", "state": "started"}
+
+Feb 21 2026 10:20:58 - deploy.yml - Update application - ansible.builtin.git - OK - {"changed": true, "after": "abc123"}
 ```
 
 You can see the full history of every playbook run against that host.
@@ -78,7 +88,7 @@ The default log directory is `/var/log/ansible/hosts`. Change it in your config:
 ```ini
 # ansible.cfg - Custom log directory
 [defaults]
-callback_whitelist = log_plays
+callbacks_enabled = community.general.log_plays
 
 [callback_log_plays]
 log_folder = /opt/ansible/logs/hosts
@@ -102,13 +112,17 @@ tail -50 /var/log/ansible/hosts/web-03
 ```
 
 ```text
-2026-02-18 14:30:00 - TASK: Gathering Facts - OK
-2026-02-18 14:30:12 - TASK: Update apt cache - OK
-2026-02-18 14:30:15 - TASK: Upgrade packages - CHANGED
-2026-02-18 14:31:22 - TASK: Reboot if required - CHANGED
-2026-02-19 09:00:00 - TASK: Gathering Facts - OK
-2026-02-19 09:00:15 - TASK: Deploy config v2.3 - CHANGED
-2026-02-19 09:00:20 - TASK: Restart application - CHANGED
+Feb 18 2026 14:30:00 - maintenance.yml - Gathering Facts - gather_facts - OK - {"changed": false}
+
+Feb 18 2026 14:30:12 - maintenance.yml - Update apt cache - ansible.builtin.apt - OK - {"changed": false}
+
+Feb 18 2026 14:30:15 - maintenance.yml - Upgrade packages - ansible.builtin.apt - OK - {"changed": true}
+
+Feb 18 2026 14:31:22 - maintenance.yml - Reboot if required - ansible.builtin.reboot - OK - {"changed": true}
+
+Feb 19 2026 09:00:15 - deploy.yml - Deploy config v2.3 - ansible.builtin.template - OK - {"changed": true}
+
+Feb 19 2026 09:00:20 - deploy.yml - Restart application - ansible.builtin.service - OK - {"changed": true}
 ```
 
 Now you know: on February 18th, packages were upgraded and the server was rebooted. On the 19th, a new config was deployed. If the issue started on the 19th, the config change is the likely culprit.
@@ -119,13 +133,13 @@ Since the log files are plain text, standard Unix tools work great:
 
 ```bash
 # Find all changes made to a host
-grep "CHANGED" /var/log/ansible/hosts/web-01
+grep '"changed": true' /var/log/ansible/hosts/web-01
 
 # Find all failures on a host
 grep "FAILED" /var/log/ansible/hosts/web-01
 
 # Find what happened on a specific date
-grep "2026-02-20" /var/log/ansible/hosts/web-01
+grep "Feb 20 2026" /var/log/ansible/hosts/web-01
 
 # Find all hosts where a specific task ran
 grep -l "Deploy config" /var/log/ansible/hosts/*
@@ -133,7 +147,7 @@ grep -l "Deploy config" /var/log/ansible/hosts/*
 # Count changes per host
 for f in /var/log/ansible/hosts/*; do
     host=$(basename "$f")
-    changes=$(grep -c "CHANGED" "$f" 2>/dev/null || echo 0)
+    changes=$(grep -c '"changed": true' "$f" 2>/dev/null || echo 0)
     echo "$host: $changes changes"
 done | sort -t: -k2 -n -r
 ```
@@ -180,32 +194,35 @@ The log files grow indefinitely since each run appends to them. Set up log rotat
     delaycompress
     missingok
     notifempty
+    # Replace ansible:ansible with the user and group that run ansible-playbook.
     create 0644 ansible ansible
 }
 ```
 
-Or handle rotation with a cron job:
+Or handle periodic archiving with a cron job:
 
 ```bash
 #!/bin/bash
-# rotate-ansible-logs.sh - Rotate logs older than 90 days
+# archive-ansible-logs.sh - Archive and truncate current per-host logs
 LOG_DIR="/var/log/ansible/hosts"
 ARCHIVE_DIR="/var/log/ansible/archive"
 
 mkdir -p "$ARCHIVE_DIR"
 
-# Archive current logs
 TIMESTAMP=$(date +%Y%m%d)
 for logfile in "$LOG_DIR"/*; do
-    host=$(basename "$logfile")
-    # Move lines older than 90 days to archive
     if [ -f "$logfile" ]; then
-        CUTOFF=$(date -d "90 days ago" +%Y-%m-%d)
-        grep -v "^$CUTOFF\|^202[0-5]" "$logfile" > "$logfile.tmp"
-        mv "$logfile.tmp" "$logfile"
+        host=$(basename "$logfile")
+        gzip -c "$logfile" > "$ARCHIVE_DIR/${host}.${TIMESTAMP}.gz"
+        : > "$logfile"
     fi
 done
+
+# Remove archived logs older than 90 days
+find "$ARCHIVE_DIR" -type f -name "*.gz" -mtime +90 -delete
 ```
+
+If you use the cron approach, schedule it at the interval you want to archive the active logs.
 
 ## Combining with Other Callbacks
 
@@ -214,8 +231,9 @@ log_plays works alongside any stdout callback and other notification callbacks:
 ```ini
 # ansible.cfg - log_plays with other useful callbacks
 [defaults]
-stdout_callback = yaml
-callback_whitelist = log_plays, timer, profile_tasks
+stdout_callback = ansible.builtin.default
+callbacks_enabled = community.general.log_plays, ansible.posix.timer, ansible.posix.profile_tasks
+callback_result_format = yaml
 
 [callback_log_plays]
 log_folder = /var/log/ansible/hosts
@@ -240,10 +258,10 @@ For larger teams, ship the per-host logs to a central logging system:
         file_type: file
       register: log_files
 
-    - name: Send new log entries to syslog
+    - name: Send log contents to syslog
       shell: >
-        tail -n +{{ last_line_count | default(0) }} {{ item.path }}
-        | logger -t ansible-{{ item.path | basename }} -p local0.info
+        logger -t ansible-{{ item.path | basename | quote }} -p local0.info
+        < {{ item.path | quote }}
       loop: "{{ log_files.files }}"
       changed_when: false
 ```
