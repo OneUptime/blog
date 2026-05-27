@@ -126,7 +126,6 @@ Here is a real-world scenario managing multiple systemd services with different 
         dest: "{{ item.value.config_dest }}"
         mode: '0644'
       loop: "{{ lookup('dict', services, wantlist=True) }}"
-      notify: "restart {{ item.key }}"
 
     - name: Manage service states
       ansible.builtin.service:
