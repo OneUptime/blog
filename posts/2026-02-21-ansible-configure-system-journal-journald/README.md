@@ -17,7 +17,7 @@ journald collects log data from multiple sources and stores it in a binary forma
 Key things to understand:
 
 - By default on many distributions, journald only stores logs in memory (volatile)
-- Persistent storage requires creating `/var/log/journal/`
+- With the default `Storage=auto`, persistent storage requires `/var/log/journal/`; with `Storage=persistent`, journald creates it if needed when `/var` is writable
 - journald can forward logs to syslog for compatibility with traditional log management
 - Journal files are automatically rotated based on size and time
 
@@ -45,6 +45,11 @@ This playbook configures journald for persistent log storage with size limits:
     journald_rate_limit_burst: 10000
 
   tasks:
+    - name: Ensure systemd-journal group exists
+      ansible.builtin.group:
+        name: systemd-journal
+        state: present
+
     - name: Create persistent journal directory
       ansible.builtin.file:
         path: /var/log/journal
@@ -63,11 +68,6 @@ This playbook configures journald for persistent log storage with size limits:
         backup: true
       notify: Restart journald
 
-    - name: Ensure systemd-journal group exists
-      ansible.builtin.group:
-        name: systemd-journal
-        state: present
-
     - name: Add ops users to systemd-journal group for log access
       ansible.builtin.user:
         name: "{{ item }}"
@@ -78,7 +78,7 @@ This playbook configures journald for persistent log storage with size limits:
 
   handlers:
     - name: Restart journald
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: systemd-journald
         state: restarted
 ```
@@ -259,14 +259,14 @@ This playbook configures journal-upload for remote log shipping:
       notify: Restart journal-upload
 
     - name: Enable and start journal-upload service
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: systemd-journal-upload
         enabled: true
         state: started
 
   handlers:
     - name: Restart journal-upload
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: systemd-journal-upload
         state: restarted
 ```
@@ -339,7 +339,7 @@ graph TD
 
 **Journal taking too much disk space**: Check with `journalctl --disk-usage`. If it is over your limit, the `SystemMaxUse` setting might not be applying. Restart journald after config changes.
 
-**Missing logs after reboot**: If `/var/log/journal/` does not exist, journald falls back to volatile storage. Create the directory and restart journald.
+**Missing logs after reboot**: If the default `Storage=auto` is used and `/var/log/journal/` does not exist, journald falls back to volatile storage. Create the directory or set `Storage=persistent`, then restart journald.
 
 **Rate limiting dropping logs**: If you see "Suppressed N messages" in your logs, increase `RateLimitBurst` or set `RateLimitIntervalSec=0` to disable rate limiting (not recommended for production).
 
