@@ -16,7 +16,7 @@ I have been building multimodal features for the past few months and have found 
 
 Gemini processes different modalities through a unified model. You do not need separate models for vision and text - you send images and text together in one request, and the model reasons over both. This is fundamentally different from older approaches where you had to chain a vision model with a language model.
 
-Supported image formats include JPEG, PNG, GIF, and WebP. You can send images from local files, Cloud Storage URIs, or base64-encoded data.
+Supported image formats include JPEG, PNG, WebP, HEIC, and HEIF. You can send images from local files, Cloud Storage URIs, or base64-encoded data.
 
 ## Sending Images from Local Files
 
@@ -25,25 +25,41 @@ The most straightforward approach is loading an image from disk and sending it w
 This code analyzes a local image:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part, Image
+import mimetypes
+from google import genai
+from google.genai import types
 
 # Initialize Vertex AI
 
-vertexai.init(project="your-project-id", location="us-central1")
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1"
+)
+model = "gemini-2.5-flash"
 
-model = GenerativeModel("gemini-2.0-flash")
+def image_part_from_file(path):
+    """Load a local image file as a Gemini content part."""
+    mime_type, _ = mimetypes.guess_type(path)
+    if mime_type not in {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}:
+        raise ValueError(f"Unsupported image MIME type: {mime_type}")
+
+    with open(path, "rb") as image_file:
+        return types.Part.from_bytes(data=image_file.read(), mime_type=mime_type)
 
 # Load an image from a local file
-image = Image.load_from_file("server-dashboard-screenshot.png")
+image = image_part_from_file("server-dashboard-screenshot.png")
 
 # Send the image with a text prompt
-response = model.generate_content([
-    image,
-    "Analyze this server monitoring dashboard screenshot. "
-    "What metrics are shown? Are there any concerning values? "
-    "What actions would you recommend based on what you see?"
-])
+response = client.models.generate_content(
+    model=model,
+    contents=[
+        image,
+        "Analyze this server monitoring dashboard screenshot. "
+        "What metrics are shown? Are there any concerning values? "
+        "What actions would you recommend based on what you see?"
+    ]
+)
 
 print(response.text)
 ```
@@ -54,18 +70,21 @@ For production applications, images are usually stored in Cloud Storage. You can
 
 ```python
 # Reference an image in Cloud Storage
-image_part = Part.from_uri(
-    uri="gs://your-bucket/images/architecture-diagram.png",
+image_part = types.Part.from_uri(
+    file_uri="gs://your-bucket/images/architecture-diagram.png",
     mime_type="image/png"
 )
 
 # Ask the model to analyze the architecture diagram
-response = model.generate_content([
-    image_part,
-    "Describe this architecture diagram in detail. "
-    "List all the components, their connections, and any potential "
-    "single points of failure you can identify."
-])
+response = client.models.generate_content(
+    model=model,
+    contents=[
+        image_part,
+        "Describe this architecture diagram in detail. "
+        "List all the components, their connections, and any potential "
+        "single points of failure you can identify."
+    ]
+)
 
 print(response.text)
 ```
@@ -78,19 +97,22 @@ Here is how to compare two images:
 
 ```python
 # Load two dashboard screenshots for comparison
-before_image = Image.load_from_file("dashboard-before.png")
-after_image = Image.load_from_file("dashboard-after.png")
+before_image = image_part_from_file("dashboard-before.png")
+after_image = image_part_from_file("dashboard-after.png")
 
 # Ask the model to compare them
-response = model.generate_content([
-    "Here are two monitoring dashboard screenshots taken at different times.",
-    before_image,
-    "This is the BEFORE screenshot (from Monday).",
-    after_image,
-    "This is the AFTER screenshot (from Friday).",
-    "Compare these two dashboards and describe what changed. "
-    "Are there any trends or concerns visible?"
-])
+response = client.models.generate_content(
+    model=model,
+    contents=[
+        "Here are two monitoring dashboard screenshots taken at different times.",
+        before_image,
+        "This is the BEFORE screenshot (from Monday).",
+        after_image,
+        "This is the AFTER screenshot (from Friday).",
+        "Compare these two dashboards and describe what changed. "
+        "Are there any trends or concerns visible?"
+    ]
+)
 
 print(response.text)
 ```
@@ -102,39 +124,42 @@ One of the most practical uses is extracting structured data from images - recei
 This code extracts data from a receipt image into JSON:
 
 ```python
-from vertexai.generative_models import GenerationConfig
+from google.genai import types
 
 # Configure JSON output
-json_config = GenerationConfig(
+json_config = types.GenerateContentConfig(
     response_mime_type="application/json",
     response_schema={
-        "type": "object",
+        "type": "OBJECT",
         "properties": {
-            "store_name": {"type": "string"},
-            "date": {"type": "string"},
+            "store_name": {"type": "STRING"},
+            "date": {"type": "STRING"},
             "items": {
-                "type": "array",
+                "type": "ARRAY",
                 "items": {
-                    "type": "object",
+                    "type": "OBJECT",
                     "properties": {
-                        "name": {"type": "string"},
-                        "quantity": {"type": "integer"},
-                        "price": {"type": "number"}
-                    }
+                        "name": {"type": "STRING"},
+                        "quantity": {"type": "INTEGER"},
+                        "price": {"type": "NUMBER"}
+                    },
+                    "required": ["name", "quantity", "price"]
                 }
             },
-            "subtotal": {"type": "number"},
-            "tax": {"type": "number"},
-            "total": {"type": "number"}
-        }
+            "subtotal": {"type": "NUMBER"},
+            "tax": {"type": "NUMBER"},
+            "total": {"type": "NUMBER"}
+        },
+        "required": ["store_name", "date", "items", "subtotal", "tax", "total"]
     }
 )
 
-receipt_image = Image.load_from_file("receipt.jpg")
+receipt_image = image_part_from_file("receipt.jpg")
 
-response = model.generate_content(
-    [receipt_image, "Extract all information from this receipt."],
-    generation_config=json_config
+response = client.models.generate_content(
+    model=model,
+    contents=[receipt_image, "Extract all information from this receipt."],
+    config=json_config
 )
 
 import json
@@ -149,10 +174,10 @@ A visual question-answering system lets users upload images and ask questions ab
 
 ```python
 # Create a chat session for interactive visual QA
-chat = model.start_chat()
+chat = client.chats.create(model=model)
 
 # User uploads an image and asks about it
-diagram = Image.load_from_file("network-diagram.png")
+diagram = image_part_from_file("network-diagram.png")
 response = chat.send_message([
     diagram,
     "I have uploaded our network architecture diagram. "
@@ -179,17 +204,20 @@ Gemini can read charts, graphs, and data visualizations with reasonable accuracy
 
 ```python
 # Analyze a chart from a monitoring tool
-chart_image = Image.load_from_file("cpu-usage-chart.png")
+chart_image = image_part_from_file("cpu-usage-chart.png")
 
-response = model.generate_content([
-    chart_image,
-    "Analyze this CPU usage chart and answer:\n"
-    "1. What is the overall trend?\n"
-    "2. Are there any spikes or anomalies?\n"
-    "3. What time periods show the highest usage?\n"
-    "4. Based on this pattern, predict what the next 24 hours might look like.\n"
-    "5. Should we consider scaling up? Why or why not?"
-])
+response = client.models.generate_content(
+    model=model,
+    contents=[
+        chart_image,
+        "Analyze this CPU usage chart and answer:\n"
+        "1. What is the overall trend?\n"
+        "2. Are there any spikes or anomalies?\n"
+        "3. What time periods show the highest usage?\n"
+        "4. Based on this pattern, predict what the next 24 hours might look like.\n"
+        "5. Should we consider scaling up? Why or why not?"
+    ]
+)
 
 print(response.text)
 ```
@@ -205,8 +233,11 @@ from concurrent.futures import ThreadPoolExecutor
 def analyze_image(image_path, prompt):
     """Analyze a single image with Gemini."""
     try:
-        image = Image.load_from_file(image_path)
-        response = model.generate_content([image, prompt])
+        image = image_part_from_file(image_path)
+        response = client.models.generate_content(
+            model=model,
+            contents=[image, prompt]
+        )
         return {
             "file": image_path,
             "analysis": response.text,
@@ -252,23 +283,40 @@ for r in results:
 Combine image and text analysis for content moderation. The model can flag inappropriate images, check for brand consistency, or verify that uploaded images match their descriptions.
 
 ```python
+import json
+
 def moderate_user_upload(image_path, user_description):
     """Check if an uploaded image matches its description and is appropriate."""
-    image = Image.load_from_file(image_path)
+    image = image_part_from_file(image_path)
 
-    response = model.generate_content(
-        [
+    response = client.models.generate_content(
+        model=model,
+        contents=[
             image,
             f"User description: '{user_description}'\n\n"
             "Evaluate this image upload:\n"
             "1. Does the image match the user's description? (yes/no)\n"
             "2. Is the image appropriate for a professional platform? (yes/no)\n"
             "3. Does the image contain any text? If so, what does it say?\n"
-            "4. Confidence level in your assessment (high/medium/low)\n"
-            "Respond in JSON format."
+            "4. Confidence level in your assessment (high/medium/low)"
         ],
-        generation_config=GenerationConfig(
-            response_mime_type="application/json"
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema={
+                "type": "OBJECT",
+                "properties": {
+                    "matches_description": {"type": "BOOLEAN"},
+                    "appropriate": {"type": "BOOLEAN"},
+                    "text_found": {"type": "STRING"},
+                    "confidence": {"type": "STRING"}
+                },
+                "required": [
+                    "matches_description",
+                    "appropriate",
+                    "text_found",
+                    "confidence"
+                ]
+            }
         )
     )
 
@@ -288,25 +336,33 @@ print(f"Appropriate: {result.get('appropriate')}")
 Not every image will process successfully. Images might be corrupt, too large, or in unsupported formats. Handle these cases gracefully.
 
 ```python
-from google.api_core import exceptions
+import os
+from google.genai import errors
 
 def safe_image_analysis(image_path, prompt):
     """Analyze an image with proper error handling."""
     # Check file size - Gemini has limits on image size
     file_size = os.path.getsize(image_path)
-    max_size = 20 * 1024 * 1024  # 20MB limit
+    max_size = 7 * 1024 * 1024  # 7MB limit for inline image data
 
     if file_size > max_size:
-        return {"error": f"Image too large: {file_size/1024/1024:.1f}MB (max 20MB)"}
+        return {"error": f"Image too large: {file_size/1024/1024:.1f}MB (max 7MB)"}
 
     try:
-        image = Image.load_from_file(image_path)
-        response = model.generate_content([image, prompt])
+        image = image_part_from_file(image_path)
+        response = client.models.generate_content(
+            model=model,
+            contents=[image, prompt]
+        )
         return {"result": response.text}
-    except exceptions.InvalidArgument as e:
+    except errors.APIError as e:
+        if e.code == 400:
+            return {"error": f"Invalid image request: {e.message}"}
+        if e.code == 429:
+            return {"error": "Rate limit exceeded. Try again later."}
+        return {"error": f"Gemini API error {e.code}: {e.message}"}
+    except ValueError as e:
         return {"error": f"Invalid image format: {str(e)}"}
-    except exceptions.ResourceExhausted:
-        return {"error": "Rate limit exceeded. Try again later."}
     except Exception as e:
         return {"error": f"Unexpected error: {str(e)}"}
 ```
