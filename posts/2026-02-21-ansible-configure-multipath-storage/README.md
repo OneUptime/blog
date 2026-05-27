@@ -8,7 +8,7 @@ Description: A practical guide to configuring DM-Multipath storage on Linux serv
 
 ---
 
-If you have ever worked with SAN-attached storage in a data center, you know that multipath I/O is not optional. It is a requirement. When a server connects to a storage array through multiple physical paths (dual HBAs, redundant fabric switches), the operating system sees the same LUN presented multiple times. Without multipath, the OS treats each path as a separate disk, which leads to data corruption, confused applications, and a very bad day.
+If you have ever worked with SAN-attached storage in a data center, you know that multipath I/O is not optional. It is a requirement. When a server connects to a storage array through multiple physical paths (dual HBAs, redundant fabric switches), the operating system sees the same LUN presented multiple times. Without multipath, the OS treats each path as a separate disk, which can lead to data corruption, confused applications, and a very bad day.
 
 Device Mapper Multipath (DM-Multipath) solves this by aggregating the redundant paths into a single block device. Configuring it by hand across a fleet of servers is tedious and error-prone. Ansible makes this much more manageable.
 
@@ -104,14 +104,14 @@ The heart of multipath setup is the `/etc/multipath.conf` file. This controls ho
 
     # Make sure the service is enabled and running
     - name: Enable and start multipathd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: multipathd
         state: started
         enabled: true
 
   handlers:
     - name: restart multipathd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: multipathd
         state: restarted
 ```
@@ -138,7 +138,7 @@ blacklist {
 {% for dev in blacklist_devices %}
     devnode "{{ dev.devnode }}"
 {% endfor %}
-    # Blacklist all partitions
+    # Blacklist common local, removable, and virtual device classes
     devnode "^(ram|raw|loop|fd|md|dm-|sr|scd|st)[0-9]*"
 }
 
@@ -156,7 +156,21 @@ devices {
         no_path_retry queue
     }
 
-    # Dell EMC PowerStore / Unity
+    # Dell EMC PowerStore
+    device {
+        vendor  "DellEMC"
+        product "PowerStore"
+        path_grouping_policy group_by_prio
+        path_selector "queue-length 0"
+        path_checker tur
+        detect_prio yes
+        failback immediate
+        no_path_retry 3
+        rr_min_io_rq 1
+        fast_io_fail_tmo 15
+    }
+
+    # Dell EMC Unity / VNX family
     device {
         vendor  "DGC"
         product ".*"
@@ -229,7 +243,7 @@ After deploying the configuration, you need to scan for new devices and build th
     # Count the paths per device
     - name: Check path count per multipath device
       ansible.builtin.shell:
-        cmd: "multipath -ll | grep -c 'active ready'"
+        cmd: "multipath -ll | grep -Ec 'active.*ready'"
       register: active_paths
       changed_when: false
       failed_when: false
@@ -279,9 +293,8 @@ Path failures happen. A switch goes down, an HBA dies, a cable gets unplugged. Y
     - name: Get path count per device
       ansible.builtin.shell:
         cmd: |
-          multipath -ll | grep "^mpath" | while read line; do
-            dev=$(echo "$line" | awk '{print $1}')
-            count=$(multipath -ll "$dev" | grep -c "active ready" || echo 0)
+          multipath -ll | awk '$0 !~ /^[[:space:]]/ && $0 ~ / dm-[0-9]+ / {print $1}' | while read dev; do
+            count=$(multipath -ll "$dev" | grep -Ec "active.*ready" || true)
             echo "${dev}:${count}"
           done
       register: path_counts
@@ -290,6 +303,12 @@ Path failures happen. A switch goes down, an HBA dies, a cable gets unplugged. Y
     - name: Display path counts
       ansible.builtin.debug:
         var: path_counts.stdout_lines
+
+    - name: Alert if a device has too few active paths
+      ansible.builtin.debug:
+        msg: "WARNING: {{ item.split(':')[0] }} has only {{ item.split(':')[1] }} active path(s) on {{ inventory_hostname }}"
+      loop: "{{ path_counts.stdout_lines }}"
+      when: item.split(':')[1] | int < min_paths_per_device
 ```
 
 ## Multipath Architecture Overview
@@ -335,6 +354,14 @@ If your SAN connectivity is iSCSI rather than Fibre Channel, you need additional
       ansible.builtin.yum:
         name: iscsi-initiator-utils
         state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Install open-iscsi
+      ansible.builtin.apt:
+        name: open-iscsi
+        state: present
+        update_cache: true
+      when: ansible_os_family == "Debian"
 
     # Set the initiator name
     - name: Configure initiator name
@@ -362,7 +389,7 @@ If your SAN connectivity is iSCSI rather than Fibre Channel, you need additional
 
   handlers:
     - name: restart iscsid
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: iscsid
         state: restarted
 ```
