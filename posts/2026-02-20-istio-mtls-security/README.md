@@ -10,7 +10,7 @@ Description: Learn how to configure Istio mutual TLS for zero-trust service-to-s
 
 ## Introduction
 
-In a zero-trust security model, no service is trusted by default, even within the cluster network. Istio enables mutual TLS (mTLS) between services, ensuring that every connection is authenticated, encrypted, and authorized. This guide shows you how to configure Istio's mTLS capabilities for production Kubernetes environments.
+In a zero-trust security model, no service is trusted by default, even within the cluster network. Istio enables mutual TLS (mTLS) between services, ensuring that every connection is authenticated and encrypted, and its authorization policies control which authenticated identities can communicate. This guide shows you how to configure Istio's mTLS capabilities for production Kubernetes environments.
 
 ## What is Mutual TLS?
 
@@ -44,9 +44,9 @@ graph TD
     Istiod -->|Issue Cert| PB[Proxy B]
     Istiod -->|Issue Cert| PC[Proxy C]
 
-    PA -->|SPIFFE ID: spiffe://cluster/ns/default/sa/service-a| SA[Service A]
-    PB -->|SPIFFE ID: spiffe://cluster/ns/default/sa/service-b| SB[Service B]
-    PC -->|SPIFFE ID: spiffe://cluster/ns/payments/sa/payment-svc| SC[Service C]
+    PA -->|SPIFFE ID: spiffe://cluster.local/ns/default/sa/service-a| SA[Service A]
+    PB -->|SPIFFE ID: spiffe://cluster.local/ns/default/sa/service-b| SB[Service B]
+    PC -->|SPIFFE ID: spiffe://cluster.local/ns/payments/sa/payment-svc| SC[Service C]
 
     subgraph "Certificate Lifecycle"
         D1[Generate Key Pair] --> D2[Create CSR]
@@ -64,7 +64,7 @@ graph TD
 ```yaml
 # PeerAuthentication - enforce mTLS for the entire mesh
 
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -78,7 +78,7 @@ spec:
 
 ```yaml
 # Enable strict mTLS for a specific namespace
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -91,7 +91,7 @@ spec:
 
 # Permissive mode for a namespace still migrating to mTLS
 # Accepts both plaintext and mTLS connections
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -105,7 +105,7 @@ spec:
 
 ```yaml
 # Override mTLS mode for a specific workload
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: payment-service-mtls
@@ -117,7 +117,7 @@ spec:
   mtls:
     mode: STRICT
   portLevelMtls:
-    # Allow plaintext on metrics port for Prometheus scraping
+    # Accept both mTLS and plaintext on the metrics port for Prometheus scraping
     9090:
       mode: PERMISSIVE
 ```
@@ -154,7 +154,7 @@ mTLS provides authentication (identity verification), but you also need authoriz
 ```yaml
 # Default deny-all policy for a namespace
 # No service can communicate unless explicitly allowed
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -167,7 +167,7 @@ spec:
 
 ```yaml
 # Allow only frontend to call the product-catalog service
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend-to-catalog
@@ -192,7 +192,7 @@ spec:
 ---
 
 # Allow payment-service to call the orders service
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-payment-to-orders
@@ -217,7 +217,7 @@ spec:
 
 ```yaml
 # Explicitly deny traffic from a specific namespace
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-from-untrusted
@@ -255,23 +255,11 @@ graph LR
 # Check if mTLS is enabled between services
 istioctl x describe pod productpage-v1-xxxxx
 
-# Verify the mTLS status of all services
+# Inspect inbound listener configuration for this workload
 istioctl proxy-config listeners productpage-v1-xxxxx --port 15006
 
 # Check the certificate details of a workload
-istioctl proxy-config secret productpage-v1-xxxxx -o json | \
-  python3 -c "
-import json, sys, base64
-from datetime import datetime
-
-# Parse the proxy secret configuration
-data = json.load(sys.stdin)
-for secret in data.get('dynamicActiveSecrets', []):
-    name = secret.get('name', 'unknown')
-    cert_chain = secret.get('secret', {}).get('tlsCertificate', {})
-    print(f'Secret: {name}')
-    # Display certificate validity info
-"
+istioctl proxy-config secret productpage-v1-xxxxx
 
 # Check for mTLS connection issues
 istioctl analyze --namespace production
@@ -297,14 +285,14 @@ graph LR
 # Query Prometheus for plaintext connections
 kubectl exec -it deploy/prometheus -n istio-system -- \
   promtool query instant http://localhost:9090 \
-  'sum(istio_tcp_connections_opened_total{connection_security_policy="none"}) by (source_workload, destination_workload)'
+  'sum(istio_tcp_connections_opened_total{connection_security_policy!="mutual_tls"}) by (source_workload, destination_workload)'
 
 # Step 3: Ensure all services have Istio sidecars
 kubectl get pods -n production -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.name}{" "}{end}{"\n"}{end}'
 
 # Step 4: Switch to STRICT mode
 kubectl apply -f - <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -322,7 +310,7 @@ kubectl logs -n istio-system -l app=istiod --tail=100 | grep -i "tls"
 
 ```yaml
 # Configure mTLS for communication with external services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api-mtls
@@ -330,16 +318,20 @@ metadata:
 spec:
   host: api.external-service.com
   trafficPolicy:
-    tls:
-      mode: MUTUAL                    # Use mTLS with external service
-      clientCertificate: /etc/certs/cert.pem
-      privateKey: /etc/certs/key.pem
-      caCertificates: /etc/certs/ca.pem
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: MUTUAL                    # Originate mTLS to the external service
+          clientCertificate: /etc/certs/cert.pem
+          privateKey: /etc/certs/key.pem
+          caCertificates: /etc/certs/ca.pem
+          sni: api.external-service.com
 
 ---
 
 # ServiceEntry to register the external service in the mesh
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -348,6 +340,10 @@ spec:
   hosts:
     - api.external-service.com
   ports:
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
     - number: 443
       name: https
       protocol: HTTPS
