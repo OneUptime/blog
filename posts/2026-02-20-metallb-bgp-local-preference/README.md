@@ -8,13 +8,13 @@ Description: Learn how to use BGP local preference in MetalLB BGPAdvertisement r
 
 ---
 
-When you run MetalLB in BGP mode across multiple Kubernetes nodes or sites, every node announces the same service IP to its upstream router. By default, routers treat all those paths as equal. Traffic spreads across all announcing nodes with no preference for one path over another. BGP local preference gives you a way to change that. It lets you tell routers which path to prefer, so you can build active-standby patterns, steer traffic to specific nodes, or drain a node before maintenance.
+When you run MetalLB in BGP mode across multiple Kubernetes nodes or sites, every eligible node announces the same service IP to its upstream router. If your routers are configured for BGP multipath, they can treat those paths as equal and spread traffic across all announcing nodes with no preference for one path over another. BGP local preference gives you a way to change that. It lets routers inside the same AS prefer one path over another, so you can build active-standby patterns, steer traffic to specific nodes, or drain a node before maintenance.
 
 This guide covers how BGP local preference works, how to configure it in MetalLB using BGPAdvertisement resources, and how to set up an active-standby load balancer topology.
 
 ## How BGP Local Preference Works
 
-Local preference is a BGP path attribute that influences route selection within an autonomous system (AS). When a router receives multiple routes to the same destination, it picks the one with the highest local preference value. The default value is 100.
+Local preference is a BGP path attribute that influences route selection within an autonomous system (AS). When a router receives multiple routes to the same destination, it picks the one with the highest local preference value. Many routers use 100 as the default local preference for route selection, while MetalLB's default BGP advertisements do not set a custom local preference.
 
 ```mermaid
 flowchart TD
@@ -37,7 +37,7 @@ flowchart TD
 Key points about local preference:
 
 - Higher values are preferred. A route with LP 200 wins over LP 100.
-- It only applies within a single AS. It is not sent to external BGP peers.
+- It only applies within a single AS. It is sent to internal BGP peers, not external BGP peers.
 - It is evaluated early in the BGP best path selection algorithm, before AS path length and MED.
 - When the preferred path goes down, the router falls back to the next highest LP automatically.
 
@@ -48,6 +48,7 @@ Before you begin, make sure you have:
 - A Kubernetes cluster with MetalLB v0.13 or later installed.
 - At least two nodes with BGP sessions to upstream routers.
 - BGP peers configured in MetalLB using BGPPeer resources.
+- iBGP sessions between MetalLB and the upstream routers, or inbound router policy that sets local preference when using eBGP.
 - Basic familiarity with BGP concepts (AS numbers, peering, route announcements).
 
 ## Setting Up BGP Peers
@@ -55,7 +56,7 @@ Before you begin, make sure you have:
 First, define the BGP peers that MetalLB will establish sessions with. Each node peers with its local upstream router.
 
 ```yaml
-# bgp-peer-router-a.yaml
+# bgp-peers.yaml
 
 # Peer configuration for Router A, connected to Node 1
 apiVersion: metallb.io/v1beta2
@@ -69,7 +70,7 @@ spec:
   # The AS number of the upstream router
   peerASN: 64500
   # The AS number MetalLB will use
-  myASN: 64501
+  myASN: 64500
   # Only establish this peer from Node 1
   nodeSelectors:
     - matchLabels:
@@ -83,7 +84,7 @@ metadata:
 spec:
   peerAddress: 10.0.0.2
   peerASN: 64500
-  myASN: 64501
+  myASN: 64500
   # Only establish this peer from Node 2
   nodeSelectors:
     - matchLabels:
