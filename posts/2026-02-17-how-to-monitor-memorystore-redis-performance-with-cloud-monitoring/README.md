@@ -24,8 +24,8 @@ Memorystore exposes dozens of metrics through Cloud Monitoring. Here are the one
 
 ### Connection Metrics
 
-- `redis.googleapis.com/stats/connected_clients` - Current number of connected clients.
-- `redis.googleapis.com/stats/rejected_connections` - Number of rejected connections (due to maxclients limit).
+- `redis.googleapis.com/clients/connected` - Current number of connected clients.
+- `redis.googleapis.com/stats/reject_connections_count` - Number of rejected connections (due to maxclients limit).
 
 ### Performance Metrics
 
@@ -35,8 +35,8 @@ Memorystore exposes dozens of metrics through Cloud Monitoring. Here are the one
 
 ### Operation Metrics
 
-- `redis.googleapis.com/stats/calls` - Number of commands processed per second, broken down by command type.
-- `redis.googleapis.com/stats/average_ttl` - Average TTL of keys in the database.
+- `redis.googleapis.com/commands/calls` - Number of commands processed per minute, broken down by command type.
+- `redis.googleapis.com/keyspace/avg_ttl` - Average TTL of keys in the database.
 - `redis.googleapis.com/stats/evicted_keys` - Number of keys evicted due to memory pressure.
 - `redis.googleapis.com/stats/expired_keys` - Number of keys expired by TTL.
 
@@ -87,7 +87,7 @@ gcloud monitoring dashboards create --config='
             "dataSets": [{
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "metric.type=\"redis.googleapis.com/stats/connected_clients\" AND resource.type=\"redis_instance\"",
+                  "filter": "metric.type=\"redis.googleapis.com/clients/connected\" AND resource.type=\"redis_instance\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_MEAN"
@@ -156,13 +156,12 @@ This is the most critical alert. When memory usage exceeds 80%, you need to eith
 
 ```bash
 # Create an alert for high memory usage (above 80%)
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Redis: High Memory Usage" \
   --condition-display-name="Memory usage above 80%" \
   --condition-filter='resource.type="redis_instance" AND metric.type="redis.googleapis.com/stats/memory/usage_ratio"' \
-  --condition-threshold-value=0.8 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --if='> 0.8' \
+  --duration=300s \
   --notification-channels=YOUR_CHANNEL_ID \
   --documentation="Redis memory usage has exceeded 80%. Consider scaling up the instance or reviewing your caching strategy."
 ```
@@ -173,13 +172,12 @@ Alert when the number of connected clients approaches the limit:
 
 ```bash
 # Alert when connections exceed a threshold
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Redis: High Connection Count" \
   --condition-display-name="Connected clients above threshold" \
-  --condition-filter='resource.type="redis_instance" AND metric.type="redis.googleapis.com/stats/connected_clients"' \
-  --condition-threshold-value=5000 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --condition-filter='resource.type="redis_instance" AND metric.type="redis.googleapis.com/clients/connected"' \
+  --if='> 5000' \
+  --duration=300s \
   --notification-channels=YOUR_CHANNEL_ID
 ```
 
@@ -189,13 +187,12 @@ A dropping hit ratio means your cache is not effective:
 
 ```bash
 # Alert when cache hit ratio drops below 80%
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Redis: Low Cache Hit Ratio" \
   --condition-display-name="Hit ratio below 80%" \
   --condition-filter='resource.type="redis_instance" AND metric.type="redis.googleapis.com/stats/cache_hit_ratio"' \
-  --condition-threshold-value=0.8 \
-  --condition-threshold-comparison=COMPARISON_LT \
-  --condition-threshold-duration=600s \
+  --if='< 0.8' \
+  --duration=600s \
   --notification-channels=YOUR_CHANNEL_ID
 ```
 
@@ -205,13 +202,12 @@ Evictions mean Redis is removing data to make room. This can cause cache misses 
 
 ```bash
 # Alert when key evictions spike
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Redis: High Eviction Rate" \
   --condition-display-name="Key evictions detected" \
   --condition-filter='resource.type="redis_instance" AND metric.type="redis.googleapis.com/stats/evicted_keys"' \
-  --condition-threshold-value=100 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --if='> 100' \
+  --duration=300s \
   --notification-channels=YOUR_CHANNEL_ID
 ```
 
@@ -347,11 +343,16 @@ def check_slow_log(r, threshold_ms=10):
     # Get the last 20 slow log entries
     slow_entries = r.slowlog_get(20)
 
+    slow_entries = [
+        entry for entry in slow_entries
+        if entry["duration"] / 1000 >= threshold_ms
+    ]
+
     if not slow_entries:
-        print("No slow commands found")
+        print(f"No commands slower than {threshold_ms}ms found")
         return
 
-    print(f"Found {len(slow_entries)} slow commands:")
+    print(f"Found {len(slow_entries)} commands slower than {threshold_ms}ms:")
     for entry in slow_entries:
         duration_ms = entry["duration"] / 1000  # microseconds to milliseconds
         command = " ".join(str(arg) for arg in entry["command"][:5])
@@ -370,10 +371,20 @@ gcloud alpha monitoring channels create \
   --channel-labels=email_address=ops-team@company.com
 
 # Create a Slack notification channel
-gcloud alpha monitoring channels create \
-  --display-name="Redis Alerts - Slack" \
-  --type=slack \
-  --channel-labels=channel_name="#redis-alerts"
+cat > slack-channel.json <<'EOF'
+{
+  "description": "Redis alerts Slack channel",
+  "displayName": "Redis Alerts - Slack",
+  "type": "slack",
+  "enabled": true,
+  "labels": {
+    "auth_token": "SLACK_BOT_USER_OAUTH_TOKEN",
+    "channel_name": "#redis-alerts"
+  }
+}
+EOF
+
+gcloud beta monitoring channels create --channel-content-from-file=slack-channel.json
 ```
 
 ## Wrapping Up
