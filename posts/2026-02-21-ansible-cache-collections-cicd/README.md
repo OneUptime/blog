@@ -97,8 +97,8 @@ jobs:
 
       - name: Install collections and roles
         run: |
-          ansible-galaxy collection install -r requirements.yml --force-with-deps
-          ansible-galaxy role install -r requirements.yml --force
+          ansible-galaxy collection install -r requirements.yml
+          ansible-galaxy role install -r requirements.yml
 
       - name: Run playbook
         run: |
@@ -196,19 +196,24 @@ pipeline {
 }
 ```
 
-For better caching in Jenkins, use the `stash/unstash` steps or the Job Cacher plugin.
+For better caching in Jenkins, use a persistent workspace or the Job Cacher plugin. Use `stash/unstash` only when you need to pass files between stages in the same pipeline run.
 
 ```groovy
-// Using Jenkins stash for collection caching
+// Using the Jenkins Job Cacher plugin for collection caching
 stage('Cache Collections') {
     steps {
-        script {
-            def cacheExists = fileExists('.ansible-cache/collections')
-            if (!cacheExists) {
-                sh 'ansible-galaxy collection install -r requirements.yml -p .ansible-cache/collections'
-            }
+        cache(caches: [
+            arbitraryFileCache(
+                path: '.ansible-cache',
+                includes: '**/*',
+                cacheValidityDecidingFile: 'requirements.yml'
+            )
+        ]) {
+            sh '''
+                ansible-galaxy collection install -r requirements.yml -p .ansible-cache/collections
+                ansible-galaxy role install -r requirements.yml -p .ansible-cache/roles
+            '''
         }
-        stash includes: '.ansible-cache/**', name: 'ansible-cache'
     }
 }
 ```
@@ -219,17 +224,18 @@ Cache invalidation is important. You do not want stale collections causing weird
 
 Strategy 1: Hash-based keys (recommended). The cache key includes a hash of `requirements.yml`, so any version change invalidates the cache.
 
-Strategy 2: Time-based expiry. Some CI systems support TTL on caches.
+Strategy 2: Time-based refresh. Include a weekly or monthly value in the cache key and update it on a schedule.
 
 ```yaml
-# GitLab CI cache with expiry - rebuild weekly regardless
-cache:
-  key:
-    files:
-      - requirements.yml
-  paths:
-    - .ansible/collections/
-  when: on_success
+# GitHub Actions - update CACHE_PERIOD to rebuild weekly regardless
+env:
+  CACHE_PERIOD: 2026-W08
+
+steps:
+  - uses: actions/cache@v4
+    with:
+      path: ~/.ansible/collections
+      key: ${{ env.CACHE_PERIOD }}-ansible-collections-${{ hashFiles('requirements.yml') }}
 ```
 
 Strategy 3: Manual invalidation. Increment a version number in the cache key.
