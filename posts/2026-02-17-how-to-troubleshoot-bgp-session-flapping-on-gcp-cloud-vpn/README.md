@@ -14,19 +14,21 @@ This guide provides a systematic approach to diagnosing and fixing BGP flapping 
 
 ## Understanding BGP Session Lifecycle
 
-A healthy BGP session goes through these states once and stays established:
+A healthy BGP session moves through the BGP finite-state machine and stays established:
 
 ```mermaid
 stateDiagram-v2
     [*] --> Idle
     Idle --> Connect
-    Connect --> OpenSent
+    Connect --> OpenSent: TCP established
+    Connect --> Active: TCP retry needed
+    Active --> Connect: retry
     OpenSent --> OpenConfirm
     OpenConfirm --> Established
-    Established --> [*]
+    Established --> Idle: reset/down
 ```
 
-A flapping session oscillates between Established and Idle/Connect, sometimes many times per hour. Each transition causes routes to be withdrawn and re-advertised, which disrupts traffic.
+A flapping session oscillates between Established and a non-established state such as Idle, Connect, or Active, sometimes many times per hour. Each transition causes routes to be withdrawn and re-advertised, which disrupts traffic.
 
 ## Step 1: Confirm Flapping Is Happening
 
@@ -48,14 +50,14 @@ Check Cloud Router logs for session state changes:
 ```bash
 # Look for BGP session state changes in logs
 gcloud logging read \
-  'resource.type="gce_router" AND jsonPayload.event:"BGP"' \
+  'resource.type="gce_router" AND ("BGP peering" AND ("came up" OR "went down"))' \
   --project=your-project-id \
   --freshness=24h \
-  --format="table(timestamp, jsonPayload.event, jsonPayload.message)" \
+  --format="table(timestamp, severity, textPayload, jsonPayload.message)" \
   --limit=50
 ```
 
-You will see entries like "BGP session down" and "BGP session up" repeating if flapping is occurring.
+You will see entries like "BGP peering with PEER came up" and "BGP peering with PEER went down" repeating if flapping is occurring.
 
 ## Step 2: Check the VPN Tunnel Status
 
@@ -70,10 +72,10 @@ gcloud compute vpn-tunnels describe your-tunnel \
 
 # Look for tunnel state changes in logs
 gcloud logging read \
-  'resource.type="vpn_gateway" AND jsonPayload.event:"tunnel"' \
+  'resource.type="vpn_gateway" AND ("IKE_SA" OR "CHILD_SA" OR "DELETE")' \
   --project=your-project-id \
   --freshness=24h \
-  --format="table(timestamp, jsonPayload.event, jsonPayload.message)" \
+  --format="table(timestamp, severity, textPayload, jsonPayload.message)" \
   --limit=30
 ```
 
@@ -90,10 +92,10 @@ Look for IKE rekey events in the tunnel logs:
 ```bash
 # Check for IKE events
 gcloud logging read \
-  'resource.type="vpn_gateway" AND (jsonPayload.event:"IKE" OR jsonPayload.event:"rekey")' \
+  'resource.type="vpn_gateway" AND ("CHILD_SA" OR "SA_DELETE" OR "detected rekeying")' \
   --project=your-project-id \
   --freshness=24h \
-  --format="table(timestamp, jsonPayload.event, jsonPayload.message)"
+  --format="table(timestamp, severity, textPayload, jsonPayload.message)"
 ```
 
 ### Fix
@@ -130,11 +132,11 @@ Check for packet loss on the tunnel:
 # Check tunnel packet loss from a VM
 gcloud compute ssh your-vm \
   --zone=us-central1-a \
-  --command="ping -c 100 169.254.0.2" \
+  --command="ping -c 100 10.10.0.10" \
   --project=your-project-id
 ```
 
-The 169.254.x.x address is the BGP peer IP on the on-premises side. Packet loss here directly impacts BGP keepalives.
+Use a reachable internal IP address on the on-premises side of the tunnel, not the VPN gateway's external IP address. Packet loss across the tunnel can also affect BGP keepalives between Cloud Router and your peer router.
 
 If there is packet loss, investigate:
 - Internet path quality between GCP and your on-premises site
@@ -153,11 +155,11 @@ Test the effective MTU through the tunnel:
 # Test MTU from a VM (adjust size until packets get through)
 gcloud compute ssh your-vm \
   --zone=us-central1-a \
-  --command="ping -c 5 -M do -s 1400 169.254.0.2" \
+  --command="ping -c 5 -M do -s 1400 10.10.0.10" \
   --project=your-project-id
 ```
 
-Start with 1400 and decrease if packets are dropped. The effective MTU through a GCP VPN tunnel is typically 1460 bytes.
+Start with 1400 and decrease if packets are dropped. Cloud VPN has a gateway MTU of 1460 bytes for both Classic VPN and HA VPN, while the payload MTU depends on the tunnel's ciphers and gateway IP version.
 
 ### Fix
 
@@ -207,24 +209,26 @@ gcloud compute routers update-bgp-peer your-router \
 
 ## Common Cause 5: Route Limit Exceeded
 
-Cloud Router has limits on the number of routes it can learn. If the on-premises network advertises too many routes, Cloud Router may reject them, causing session instability.
+Cloud Router has limits on the number of prefixes it accepts from a BGP peer. If the on-premises network advertises too many prefixes, Cloud Router resets the BGP session.
 
 ### Diagnosis
 
 ```bash
-# Check the number of learned routes
-gcloud compute routers get-status your-router \
+# List learned routes for one BGP peer
+gcloud compute routers list-bgp-routes your-router \
   --region=us-central1 \
-  --format="yaml(result.bestRoutes)" \
+  --peer=your-peer \
+  --address-family=IPV4 \
+  --route-direction=INBOUND \
+  --format="table(destination.prefix, med, origin)" \
   --project=your-project-id
 ```
 
-The default limit is 100 learned routes per BGP session (can be increased to 1000 with custom quota).
+Cloud Router accepts up to 5,000 prefixes from a single BGP peer. This is a limit, not an adjustable quota.
 
 ### Fix
 
 - Summarize routes on the on-premises side before advertising to GCP
-- Increase the route limit by requesting a quota increase
 - Filter unnecessary routes from being advertised
 
 ## Common Cause 6: On-Premises Router Issues
@@ -256,7 +260,7 @@ Create alerts to catch flapping early:
 gcloud logging metrics create bgp-session-changes \
   --project=your-project-id \
   --description="BGP session state changes" \
-  --log-filter='resource.type="gce_router" AND jsonPayload.event:"BGP" AND (jsonPayload.message:"up" OR jsonPayload.message:"down")'
+  --log-filter='resource.type="gce_router" AND ("BGP peering" AND ("came up" OR "went down"))'
 ```
 
 Build an alert that fires when BGP state changes happen more than a threshold (for example, more than 4 changes in an hour indicates flapping).
