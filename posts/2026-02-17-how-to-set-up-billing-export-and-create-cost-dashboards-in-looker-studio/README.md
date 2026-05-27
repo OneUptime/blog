@@ -8,7 +8,7 @@ Description: A complete walkthrough for setting up GCP billing export to BigQuer
 
 ---
 
-Numbers in a spreadsheet do not drive action. Dashboards do. When your team can see a visual breakdown of cloud spending that updates automatically, cost awareness becomes part of the culture. Google Cloud's billing export to BigQuery combined with Looker Studio (formerly Data Studio) gives you a powerful, free way to build exactly that.
+Numbers in a spreadsheet do not drive action. Dashboards do. When your team can see a visual breakdown of cloud spending that updates automatically, cost awareness becomes part of the culture. Google Cloud's billing export to BigQuery combined with Looker Studio (formerly Data Studio) gives you a powerful, low-cost way to build exactly that.
 
 This post walks through the end-to-end setup: enabling billing export, preparing the data, and building a dashboard that answers the questions your team actually asks.
 
@@ -33,7 +33,7 @@ If you have not already enabled billing export, here is how:
 1. Open the Cloud Console and go to Billing
 2. Select your billing account
 3. Click "Billing export" in the left menu
-4. Under "BigQuery export," click "Edit Settings" for both Standard and Detailed exports
+4. Under "BigQuery export," click "Edit settings" for the Standard usage cost export. Enable the Detailed usage cost export too if you need resource-level cost data.
 5. Select the project and dataset where you want the data to land
 6. Click Save
 
@@ -133,7 +133,7 @@ Looker Studio will import the schema. Review the field types and make adjustment
 
 - Set `date` as a Date type
 - Set `net_cost` as a Currency type (USD)
-- Set `team` and `environment` as Dimension types
+- Set `team` and `environment` as Text types
 
 ### Create Your First Report
 
@@ -211,7 +211,7 @@ Looker Studio supports calculated fields for custom metrics:
 ### Cost Per Day Average
 
 ```text
-net_cost / DATE_DIFF(MAX(date), MIN(date))
+SUM(net_cost) / (DATETIME_DIFF(MAX(date), MIN(date), DAY) + 1)
 ```
 
 ### Month-Over-Month Change
@@ -244,7 +244,7 @@ For larger organizations, create multiple pages in your Looker Studio report:
 
 2. **Limit date ranges in views** - Use WHERE clauses to limit views to the last 90 days for daily data. This keeps Looker Studio responsive.
 
-3. **Cache aggressively** - In Looker Studio data source settings, enable caching with a 12-hour refresh interval. Billing data does not change by the minute.
+3. **Cache aggressively** - In Looker Studio data source settings, set BigQuery data freshness to 12 hours. Billing data does not change by the minute.
 
 4. **Share with view-only access** - Give stakeholders view-only access to prevent accidental changes to the dashboard.
 
@@ -252,4 +252,4 @@ For larger organizations, create multiple pages in your Looker Studio report:
 
 ## Wrapping Up
 
-A well-built cost dashboard turns raw billing data into a shared understanding of where your cloud money goes. The combination of BigQuery billing export and Looker Studio is free, powerful, and takes about an hour to set up. Once it is running, it updates automatically and gives your entire organization visibility into cloud spending. Start with the basic charts in this guide, then iterate based on what questions your team asks.
+A well-built cost dashboard turns raw billing data into a shared understanding of where your cloud money goes. The combination of BigQuery billing export and Looker Studio is powerful and takes about an hour to set up, with BigQuery storage and query costs to keep in mind. Once it is running, it updates automatically and gives your entire organization visibility into cloud spending. Start with the basic charts in this guide, then iterate based on what questions your team asks.
