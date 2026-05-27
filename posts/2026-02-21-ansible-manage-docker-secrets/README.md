@@ -349,6 +349,12 @@ Remove secrets that are no longer needed:
       register: all_secrets
       changed_when: false
 
+    - name: Get list of all services
+      ansible.builtin.command:
+        cmd: docker service ls --format "{% raw %}{{.Name}}{% endraw %}"
+      register: service_list
+      changed_when: false
+
     - name: Get secrets in use by services
       ansible.builtin.command:
         cmd: >
