@@ -12,7 +12,7 @@ When an Ansible playbook fails and the default output only says "FAILED," you ne
 
 ## Verbosity Levels
 
-Ansible supports four levels of verbosity, controlled by adding more `v` flags.
+Ansible increases verbosity by adding more `v` flags. The built-in plugins currently evaluate verbosity up to `-vvvvvv`, but the first four levels are the ones you will use most often while debugging playbook runs.
 
 ```bash
 # Level 1: Shows task results and basic module output
@@ -25,7 +25,7 @@ ansible-playbook -i inventory.ini site.yml -vv
 # Level 3: Adds connection details and file paths
 ansible-playbook -i inventory.ini site.yml -vvv
 
-# Level 4: Adds raw SSH commands and plugin internals
+# Level 4: Adds connection debugging
 ansible-playbook -i inventory.ini site.yml -vvvv
 ```
 
@@ -95,16 +95,16 @@ task path: /home/admin/playbooks/deploy.yml:10
 
 Use this level when you are debugging SSH connectivity problems, permission issues, or when you need to verify which Python interpreter Ansible is using on the remote host.
 
-## Level 4 (-vvvv): Full Debug Output
+## Level 4 (-vvvv): Connection Debug Output
 
-Level 4 dumps everything, including the raw SSH protocol exchanges and internal plugin decisions.
+Level 4 enables deeper connection debugging, including the exact SSH invocation and verbose connection output.
 
 ```bash
 # Maximum verbosity - use sparingly as output is very long
 ansible-playbook -i inventory.ini deploy.yml -vvvv
 ```
 
-This is rarely needed in day-to-day work. It is helpful when you are debugging custom plugins, connection issues at the protocol level, or when you need to report a bug to the Ansible project.
+This is rarely needed in day-to-day work. It is helpful when you are debugging difficult connection issues or when you need to report a bug to the Ansible project. For even more plugin or framework detail, you can continue increasing verbosity up to `-vvvvvv`.
 
 ## Which Level to Use
 
