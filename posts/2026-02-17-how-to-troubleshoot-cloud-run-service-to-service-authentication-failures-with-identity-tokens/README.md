@@ -47,7 +47,7 @@ curl -H "Authorization: Bearer $TOKEN" https://service-b-xxxxx.run.app/api/data
 
 ## Problem 2 - Audience Mismatch
 
-The audience claim in the identity token must exactly match the Cloud Run service URL. This means the full URL including the protocol, and it should not include a trailing slash or path.
+The audience claim in the identity token must match the Cloud Run service URL or a configured custom audience. This means the full URL including the protocol, and it should not include the request path or query string.
 
 ```python
 import google.auth.transport.requests
@@ -60,7 +60,7 @@ token = google.oauth2.id_token.fetch_id_token(
     target_url  # The path /api/data makes this the wrong audience
 )
 
-# Correct - use just the base URL as the audience
+# Correct - use the service URL as the audience
 audience = "https://service-b-xxxxx.run.app"
 token = google.oauth2.id_token.fetch_id_token(
     google.auth.transport.requests.Request(),
@@ -75,11 +75,11 @@ response = requests.get(
 )
 ```
 
-If you are using a custom domain, the audience should be the Cloud Run-generated URL, not the custom domain, unless you have configured the custom domain as the audience in your auth setup.
+If you are using a custom domain, the audience should normally be the Cloud Run-generated URL, not the custom domain, unless you have explicitly configured a custom audience for the service.
 
 ## Problem 3 - Missing IAM Binding
 
-The service account running Service A needs the `roles/run.invoker` role on Service B. Not on the project, not on a different service - specifically on the target service.
+The service account running Service A needs the `roles/run.invoker` role for Service B. For least privilege, grant it specifically on the target service rather than broadly on the project or on a different service.
 
 ```bash
 # Check the IAM policy on Service B
@@ -147,8 +147,6 @@ package main
 import (
 	"context"
 	"io"
-	"log"
-	"net/http"
 
 	"google.golang.org/api/idtoken"
 )
@@ -175,7 +173,7 @@ func callServiceB() ([]byte, error) {
 
 ## Problem 5 - Testing Locally vs Cloud Run
 
-Code that works locally with `gcloud auth` might fail on Cloud Run because the authentication mechanism is different. Locally, you use your user credentials. On Cloud Run, you use the service account attached to the service.
+Code that works locally with one identity might fail on Cloud Run because the runtime identity is different. Locally, `fetch_id_token` needs Application Default Credentials that can mint ID tokens, such as a service account key referenced by `GOOGLE_APPLICATION_CREDENTIALS`. On Cloud Run, it uses the service account attached to the service.
 
 ```python
 import os
@@ -191,8 +189,10 @@ def get_identity_token(audience):
         auth_req = google.auth.transport.requests.Request()
         token = id_token.fetch_id_token(auth_req, audience)
     else:
-        # Running locally - use default credentials
-        # Make sure you have run: gcloud auth application-default login
+        # Running locally - use service account ADC, for example:
+        # export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+        # User ADC from gcloud auth application-default login cannot mint
+        # ID tokens with fetch_id_token.
         auth_req = google.auth.transport.requests.Request()
         token = id_token.fetch_id_token(auth_req, audience)
 
@@ -208,7 +208,16 @@ You can decode the identity token to inspect its claims without verifying the si
 TOKEN=$(gcloud auth print-identity-token --audiences="https://service-b-xxxxx.run.app")
 
 # Decode the JWT payload (middle part between the dots)
-echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+printf '%s' "$TOKEN" | python3 -c '
+import base64
+import json
+import sys
+
+token = sys.stdin.read().strip()
+payload = token.split(".")[1]
+payload += "=" * (-len(payload) % 4)
+print(json.dumps(json.loads(base64.urlsafe_b64decode(payload)), indent=2))
+'
 ```
 
 Look for these fields in the decoded token:
@@ -230,7 +239,7 @@ flowchart TD
     F -->|Present| H{Check service account}
     H -->|Wrong SA| I[Deploy with correct service account]
     H -->|Correct SA| J{Check ingress settings}
-    J -->|Internal only| K[Verify both services in same project or VPC]
+    J -->|Internal only| K[Route traffic through a VPC path considered internal]
     J -->|All traffic| L[Check org policies and VPC SC perimeters]
 ```
 
