@@ -8,18 +8,18 @@ Description: Learn how to configure port forwarding on Linux servers using Ansib
 
 ---
 
-Port forwarding is a fundamental networking technique that redirects traffic arriving on one port to a different port or a different machine entirely. It is essential for running services behind NAT gateways, load balancers, or jump hosts. Ansible makes it straightforward to configure port forwarding rules consistently across your infrastructure, whether you use iptables, firewalld, or nftables as your backend.
+Port forwarding is a fundamental networking technique that redirects traffic arriving on one port to a different port or a different machine entirely. It is essential for running services behind NAT gateways, load balancers, or jump hosts. Ansible makes it straightforward to configure port forwarding rules consistently across your infrastructure, whether you use iptables or firewalld.
 
 ## Prerequisites
 
-- Ansible 2.9+ on your control node
+- Ansible 2.16+ on your control node with the ansible.posix collection installed
 - Linux target hosts with root or sudo access
 - Basic understanding of NAT and IP forwarding concepts
-- Either iptables or firewalld installed on target hosts
+- Either iptables or firewalld installed on target hosts, with python-firewall bindings available for firewalld tasks
 
 ## Enabling IP Forwarding
 
-Before any port forwarding will work, the Linux kernel needs to have IP forwarding enabled. By default, Linux does not forward packets between interfaces. Here is how to enable it persistently:
+For routed forwarding with iptables, the Linux kernel needs to have IP forwarding enabled. By default, Linux does not forward packets between interfaces. Here is how to enable it persistently:
 
 ```yaml
 # enable_ip_forwarding.yml - Enable kernel IP forwarding
@@ -176,7 +176,7 @@ Sometimes you want to redirect traffic from one port to a different port number.
         to_destination: 10.0.1.50:22
         comment: "Remap 2222 to SSH on internal host"
 
-    - name: Local port redirect (same host, 8080 to 80)
+    - name: Redirect incoming traffic on this host (8080 to 80)
       ansible.builtin.iptables:
         table: nat
         chain: PREROUTING
@@ -295,6 +295,15 @@ For environments with many forwarding rules, using variables keeps things clean 
         comment: "Allow forward {{ item.comment }}"
       loop: "{{ port_forwards }}"
 
+    - name: Allow return traffic for forwarded connections
+      ansible.builtin.iptables:
+        chain: FORWARD
+        ctstate:
+          - ESTABLISHED
+          - RELATED
+        jump: ACCEPT
+        comment: "Allow return traffic for forwarded connections"
+
     - name: Enable masquerading
       ansible.builtin.iptables:
         table: nat
@@ -391,4 +400,4 @@ When port forwarding is not working, there are several things to check. Use this
         var: forward_rules.stdout_lines
 ```
 
-The most common issues are: IP forwarding not enabled (check sysctl), missing FORWARD chain rules (DNAT alone is not enough if your default FORWARD policy is DROP), and missing masquerade rules (the return packets need to be rewritten too). Ansible makes it easy to codify the complete setup and avoid missing any of these pieces.
+The most common issues are: IP forwarding not enabled (check sysctl), missing FORWARD chain rules (DNAT alone is not enough if your default FORWARD policy is DROP), and missing masquerade rules when return traffic does not route back through the gateway. Ansible makes it easy to codify the complete setup and avoid missing any of these pieces.
