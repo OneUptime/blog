@@ -14,18 +14,19 @@ In this post, I will show you how to use Cloud Monitoring to track VPN tunnel ba
 
 ## Available VPN Metrics
 
-GCP exposes several metrics for Cloud VPN tunnels under the `compute.googleapis.com` namespace. The most useful ones are:
+GCP exposes several metrics for Cloud VPN tunnels under the `vpn.googleapis.com` namespace. The most useful ones are:
 
 | Metric | Description |
 |--------|-------------|
-| `vpn/sent_bytes_count` | Total bytes sent through the tunnel |
-| `vpn/received_bytes_count` | Total bytes received through the tunnel |
-| `vpn/sent_packets_count` | Total packets sent |
-| `vpn/received_packets_count` | Total packets received |
-| `vpn/dropped_packets_count` | Packets dropped by the tunnel |
-| `vpn/tunnel_established` | Whether the tunnel is up (1) or down (0) |
+| `network/sent_bytes_count` | Total bytes sent through the tunnel |
+| `network/received_bytes_count` | Total bytes received through the tunnel |
+| `network/sent_packets_count` | Total packets sent |
+| `network/received_packets_count` | Total packets received |
+| `network/dropped_sent_packets_count` | Outgoing packets dropped by the tunnel |
+| `network/dropped_received_packets_count` | Incoming packets dropped by the tunnel |
+| `tunnel_established` | Whether the tunnel is established (> 0) or down (0) |
 
-For HA VPN, there are additional RTT (round-trip time) metrics that help measure latency.
+For HA VPN, there are additional connection health labels on the `gateway/connections` metric that help indicate whether the gateway is configured for SLA and healthy end to end.
 
 ## Viewing Metrics in the Console
 
@@ -34,35 +35,29 @@ The quickest way to check on your VPN tunnels is through Metrics Explorer in Clo
 1. Go to Cloud Monitoring in the GCP Console
 2. Navigate to Metrics Explorer
 3. In the metric field, search for `vpn`
-4. Select `compute.googleapis.com/vpn/sent_bytes_count`
+4. Select `vpn.googleapis.com/network/sent_bytes_count`
 
 This gives you a time series chart of bytes sent through each tunnel. You can group by tunnel name to see each tunnel individually.
 
-## Querying Metrics with MQL
+## Querying Metrics with PromQL
 
-For more advanced queries, you can use Monitoring Query Language (MQL). Here is a query that shows bandwidth in megabits per second for each tunnel:
+For more advanced queries, use PromQL in Cloud Monitoring. Here is a query that shows sent bandwidth in megabits per second for each tunnel:
 
 ```sql
 # Calculate sent bandwidth in Mbps per VPN tunnel
 
-fetch vpn_gateway
-| metric 'compute.googleapis.com/vpn/sent_bytes_count'
-| align rate(1m)
-| every 1m
-| map_add [bandwidth_mbps: val() * 8.0 / 1000000.0]
-| group_by [resource.tunnel_name], [max(bandwidth_mbps)]
+sum by (tunnel_name) (
+  rate({"vpn.googleapis.com/network/sent_bytes_count", monitored_resource="vpn_gateway"}[1m])
+) * 8 / 1000000
 ```
 
 And here is one for received bandwidth:
 
 ```sql
 # Calculate received bandwidth in Mbps per VPN tunnel
-fetch vpn_gateway
-| metric 'compute.googleapis.com/vpn/received_bytes_count'
-| align rate(1m)
-| every 1m
-| map_add [bandwidth_mbps: val() * 8.0 / 1000000.0]
-| group_by [resource.tunnel_name], [max(bandwidth_mbps)]
+sum by (tunnel_name) (
+  rate({"vpn.googleapis.com/network/received_bytes_count", monitored_resource="vpn_gateway"}[1m])
+) * 8 / 1000000
 ```
 
 ## Building a VPN Monitoring Dashboard
@@ -94,7 +89,7 @@ The dashboard JSON definition should look something like this:
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"compute.googleapis.com/vpn/tunnel_established\"",
+                    "filter": "metric.type=\"vpn.googleapis.com/tunnel_established\"",
                     "aggregation": {
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_MEAN"
@@ -117,7 +112,7 @@ The dashboard JSON definition should look something like this:
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"compute.googleapis.com/vpn/sent_bytes_count\"",
+                    "filter": "metric.type=\"vpn.googleapis.com/network/sent_bytes_count\"",
                     "aggregation": {
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_RATE"
@@ -136,7 +131,7 @@ The dashboard JSON definition should look something like this:
 
 ## Measuring Latency
 
-GCP does not provide a built-in latency metric for Classic VPN tunnels, but HA VPN exposes RTT data through the `vpn/gateway/connections` resource type. For Classic VPN, you need to measure latency yourself.
+Cloud VPN does not provide a built-in per-tunnel latency metric in the Cloud VPN metrics list. Network Topology can display latency for some connection types where enough traffic is available, but for tunnel-specific latency in Cloud Monitoring, you need to measure latency yourself.
 
 A practical approach is to run a lightweight monitoring agent on VMs at both ends of the tunnel:
 
@@ -165,9 +160,9 @@ def measure_latency(target_ip, count=5):
     )
     # Parse the avg from the summary line
     for line in result.stdout.split("\n"):
-        if "avg" in line:
-            parts = line.split("/")
-            return float(parts[4])
+        if "rtt min/avg/max" in line or "round-trip min/avg/max" in line:
+            stats = line.split("=", 1)[1].strip().split()[0]
+            return float(stats.split("/")[1])
     return -1  # Indicates failure
 
 def write_custom_metric(project_id, tunnel_name, latency_ms):
@@ -217,28 +212,41 @@ Alert when a tunnel goes down:
 
 ```bash
 # Create an alert policy for VPN tunnel down
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
     --display-name="VPN Tunnel Down" \
     --condition-display-name="Tunnel not established" \
-    --condition-filter='metric.type="compute.googleapis.com/vpn/tunnel_established" AND resource.type="vpn_gateway"' \
-    --condition-comparison=COMPARISON_LT \
-    --condition-threshold-value=1 \
-    --condition-duration=300s \
+    --condition-filter='metric.type="vpn.googleapis.com/tunnel_established" AND resource.type="vpn_gateway"' \
+    --if='< 1' \
+    --duration=300s \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
-Alert when bandwidth exceeds 80% of the tunnel capacity (3 Gbps for HA VPN):
+Alert when bandwidth exceeds 80% of the tunnel capacity. Because Cloud VPN's per-tunnel bandwidth limit applies to the sum of sent and received traffic, use a PromQL-based alerting policy:
 
 ```bash
-# Create an alert for high bandwidth utilization
-gcloud alpha monitoring policies create \
-    --display-name="VPN High Bandwidth" \
-    --condition-display-name="Bandwidth over 80%" \
-    --condition-filter='metric.type="compute.googleapis.com/vpn/sent_bytes_count" AND resource.type="vpn_gateway"' \
-    --condition-comparison=COMPARISON_GT \
-    --condition-threshold-value=300000000 \
-    --condition-duration=300s \
-    --notification-channels=projects/my-project/notificationChannels/12345
+# Create the alert policy from vpn-bandwidth-alert.json
+gcloud monitoring policies create \
+    --policy-from-file=vpn-bandwidth-alert.json
+```
+
+```json
+{
+  "displayName": "VPN High Bandwidth",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Bandwidth over 80%",
+      "conditionPrometheusQueryLanguage": {
+        "query": "(sum by (tunnel_name) (rate({\"vpn.googleapis.com/network/sent_bytes_count\", monitored_resource=\"vpn_gateway\"}[1m])) + sum by (tunnel_name) (rate({\"vpn.googleapis.com/network/received_bytes_count\", monitored_resource=\"vpn_gateway\"}[1m]))) > 300000000",
+        "duration": "300s",
+        "evaluationInterval": "60s"
+      }
+    }
+  ],
+  "notificationChannels": [
+    "projects/my-project/notificationChannels/12345"
+  ]
+}
 ```
 
 ## Packet Drop Monitoring
@@ -247,12 +255,15 @@ Dropped packets are a critical signal that something is wrong. Here is how to qu
 
 ```sql
 # Monitor dropped packets across all VPN tunnels
-fetch vpn_gateway
-| metric 'compute.googleapis.com/vpn/dropped_packets_count'
-| align rate(1m)
-| every 1m
-| group_by [resource.tunnel_name], [sum(val())]
-| condition val() > 10 '1/s'
+(
+  sum by (tunnel_name) (
+    rate({"vpn.googleapis.com/network/dropped_sent_packets_count", monitored_resource="vpn_gateway"}[1m])
+  )
+  +
+  sum by (tunnel_name) (
+    rate({"vpn.googleapis.com/network/dropped_received_packets_count", monitored_resource="vpn_gateway"}[1m])
+  )
+) > 10
 ```
 
 Non-zero packet drops can indicate:
