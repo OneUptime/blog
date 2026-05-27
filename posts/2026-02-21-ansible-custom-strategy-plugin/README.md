@@ -14,14 +14,14 @@ Common reasons to build a custom strategy include: rolling deployments with heal
 
 ## How Strategy Plugins Work
 
-A strategy plugin inherits from `StrategyBase` and implements the `run()` method. This method receives the play's task iterator and play context, and it is responsible for queuing tasks to workers, collecting results, and deciding what runs next. It is the most complex plugin type in Ansible because you are essentially controlling the execution engine.
+A strategy plugin inherits from `StrategyBase`, usually by extending an existing strategy such as `linear` or `free`. A full custom strategy can implement the `run()` method, which receives the play's task iterator and play context, and is responsible for queuing tasks to workers, collecting results, and deciding what runs next. For smaller changes, you can override helper methods from the existing strategy. It is the most complex plugin type in Ansible because you are essentially controlling the execution engine.
 
 ## Project Layout
 
 ```text
 my_project/
   strategy_plugins/
-    canary.py
+    rate_limited.py
   ansible.cfg
   playbooks/
     deploy.yml
@@ -34,153 +34,26 @@ Configure `ansible.cfg` to load your plugin:
 
 [defaults]
 strategy_plugins = ./strategy_plugins
-strategy = canary
+strategy = rate_limited
 ```
 
 ## Building a Canary Deployment Strategy
 
-This strategy plugin runs tasks on a small percentage of hosts first (the canary group), waits for confirmation, and then proceeds with the rest.
+For canary rollouts, use Ansible's built-in `serial` keyword to divide the play into batches. The `linear` strategy runs each batch to completion before Ansible moves to the next batch, and failures are scoped to the active batch.
 
-Create `strategy_plugins/canary.py`:
+## Using Canary Batches
 
-```python
-# canary.py - Strategy plugin for canary deployments
-from __future__ import absolute_import, division, print_function
-__metaclass__ = type
-
-DOCUMENTATION = """
-    name: canary
-    short_description: Canary deployment strategy
-    description:
-        - Runs tasks on a canary subset of hosts first,
-          then proceeds to the remaining hosts if successful.
-    options:
-      canary_percentage:
-        description: Percentage of hosts to use as canaries (1-50)
-        default: 10
-        type: int
-        env:
-          - name: ANSIBLE_CANARY_PERCENTAGE
-        ini:
-          - key: canary_percentage
-            section: canary_strategy
-      pause_after_canary:
-        description: Seconds to pause after canary batch completes
-        default: 0
-        type: int
-        env:
-          - name: ANSIBLE_CANARY_PAUSE
-        ini:
-          - key: pause_after_canary
-            section: canary_strategy
-"""
-
-import math
-import time
-
-from ansible.plugins.strategy.linear import StrategyModule as LinearStrategy
-from ansible.utils.display import Display
-
-display = Display()
-
-
-class StrategyModule(LinearStrategy):
-    """Canary deployment strategy.
-
-    Extends the linear strategy to first execute on a canary
-    subset of hosts, then on the remaining hosts.
-    """
-
-    def __init__(self, tqm):
-        super(StrategyModule, self).__init__(tqm)
-        self._canary_percentage = 10
-        self._pause_seconds = 0
-
-    def run(self, iterator, play_context):
-        """Execute the play with canary deployment logic."""
-
-        # Read configuration
-        self._canary_percentage = self.get_option('canary_percentage')
-        self._pause_seconds = self.get_option('pause_after_canary')
-
-        # Get the full list of hosts
-        all_hosts = self._inventory.get_hosts(
-            iterator._play.hosts, order=iterator._play.order
-        )
-
-        if len(all_hosts) <= 1:
-            # Not enough hosts for canary, just run normally
-            display.display("Only one host, running standard linear strategy")
-            return super(StrategyModule, self).run(iterator, play_context)
-
-        # Calculate canary count (at least 1 host)
-        canary_count = max(
-            1,
-            int(math.ceil(len(all_hosts) * self._canary_percentage / 100.0))
-        )
-
-        canary_hosts = all_hosts[:canary_count]
-        remaining_hosts = all_hosts[canary_count:]
-
-        canary_names = [h.name for h in canary_hosts]
-        remaining_names = [h.name for h in remaining_hosts]
-
-        display.display(
-            "CANARY STRATEGY: Running on %d canary hosts first: %s"
-            % (len(canary_hosts), ', '.join(canary_names)),
-            color='yellow'
-        )
-
-        # Phase 1: Run on canary hosts only
-        # Temporarily restrict the host list
-        for host in remaining_hosts:
-            self._tqm._unreachable_hosts[host.name] = True
-
-        result = super(StrategyModule, self).run(iterator, play_context)
-
-        # Check if canary phase had failures
-        if self._tqm._stats.failures:
-            display.error(
-                "CANARY STRATEGY: Canary hosts had failures. "
-                "Aborting deployment to remaining hosts."
-            )
-            return result
-
-        # Remove the temporary restriction
-        for host in remaining_hosts:
-            if host.name in self._tqm._unreachable_hosts:
-                del self._tqm._unreachable_hosts[host.name]
-
-        if self._pause_seconds > 0:
-            display.display(
-                "CANARY STRATEGY: Pausing %d seconds after canary phase"
-                % self._pause_seconds,
-                color='yellow'
-            )
-            time.sleep(self._pause_seconds)
-
-        display.display(
-            "CANARY STRATEGY: Canary successful. Proceeding with %d remaining hosts: %s"
-            % (len(remaining_hosts), ', '.join(remaining_names)),
-            color='green'
-        )
-
-        # Phase 2: Run on remaining hosts
-        result = super(StrategyModule, self).run(iterator, play_context)
-
-        return result
-```
-
-## Using the Canary Strategy
-
-Reference the strategy in your playbook:
+Reference the batching behavior in your playbook:
 
 ```yaml
 ---
 # deploy.yml - Deploy with canary strategy
 - name: Deploy application with canary rollout
   hosts: web_servers
-  strategy: canary
+  strategy: linear
+  serial:
+    - "10%"
+    - "100%"
   become: true
 
   vars:
@@ -211,16 +84,7 @@ Reference the strategy in your playbook:
       delay: 3
 ```
 
-Set strategy options via environment variables or `ansible.cfg`:
-
-```ini
-# ansible.cfg
-[canary_strategy]
-canary_percentage = 20
-pause_after_canary = 30
-```
-
-## A Simpler Strategy: Rate-Limited Execution
+## A Custom Strategy: Rate-Limited Execution
 
 Here is a simpler example that adds a delay between each host to avoid overwhelming downstream services:
 
@@ -285,10 +149,7 @@ flowchart TD
     B --> C[Phase 1: Execute on Canary Hosts]
     C --> D{Canary Failures?}
     D -->|Yes| E[Abort Deployment]
-    D -->|No| F{Pause Configured?}
-    F -->|Yes| G[Wait N Seconds]
-    F -->|No| H[Phase 2: Execute on Remaining Hosts]
-    G --> H
+    D -->|No| H[Phase 2: Execute on Remaining Hosts]
     H --> I{Remaining Failures?}
     I -->|Yes| J[Report Partial Failure]
     I -->|No| K[Deployment Complete]
@@ -306,8 +167,8 @@ Strategy plugins are the most powerful and most dangerous plugin type. A bug in 
 
 4. Use `display.display()`, `display.vv()`, and `display.vvv()` for output at different verbosity levels.
 
-5. Remember that `run()` must return a numeric result code. Zero means success, non-zero means failure.
+5. If you implement `run()`, remember that it must return a numeric result code. Zero means success, non-zero means failure.
 
 ## Summary
 
-Custom strategy plugins give you complete control over how Ansible distributes and sequences work across your hosts. Whether you need canary deployments, rate limiting, dependency-based ordering, or blue-green switching, the strategy plugin interface lets you implement it. Start by extending an existing strategy like `linear` and override only the methods you need to change. Test carefully since strategy bugs affect every task in your playbook.
+Custom strategy plugins give you control over how Ansible distributes and sequences work across your hosts. Whether you need rate limiting, dependency-based ordering, or custom task scheduling, the strategy plugin interface lets you implement it. For canary and rolling deployments, use `serial` when batching is enough, and reach for a strategy plugin only when you need behavior that Ansible's play-level keywords cannot express. Start by extending an existing strategy like `linear` and override only the methods you need to change. Test carefully since strategy bugs affect every task in your playbook.
