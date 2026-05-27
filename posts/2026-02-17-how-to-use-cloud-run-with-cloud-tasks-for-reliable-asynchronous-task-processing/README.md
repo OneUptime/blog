@@ -10,7 +10,7 @@ Description: Learn how to use Google Cloud Tasks with Cloud Run for reliable asy
 
 Some operations should not happen during an HTTP request. Sending emails, generating reports, processing uploads, updating search indexes - these tasks take time, and making the user wait for them leads to a poor experience and request timeouts.
 
-Cloud Tasks is Google's managed task queue. You enqueue a task, Cloud Tasks stores it durably, and then delivers it to your Cloud Run service as an HTTP request. If the processing fails, Cloud Tasks retries automatically. If your service is overloaded, Cloud Tasks backs off. It handles all the reliability plumbing so you can focus on the processing logic.
+Cloud Tasks is Google's managed task queue. You enqueue a task, Cloud Tasks stores it durably, and then delivers it to your Cloud Run service as an HTTP request. If the processing fails, Cloud Tasks retries automatically. If your service returns overload responses such as 429 or 503, Cloud Tasks backs off. It handles all the reliability plumbing so you can focus on the processing logic.
 
 ## How Cloud Tasks Works with Cloud Run
 
@@ -41,7 +41,11 @@ The user gets an immediate response. The actual processing happens asynchronousl
 ```bash
 # Enable required APIs
 
-gcloud services enable cloudtasks.googleapis.com run.googleapis.com
+gcloud services enable \
+  cloudtasks.googleapis.com \
+  run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com
 ```
 
 ## Step 1: Create a Cloud Tasks Queue
@@ -62,10 +66,10 @@ Here is what each setting does:
 
 - `--max-dispatches-per-second=10`: Cloud Tasks sends at most 10 tasks per second to your service
 - `--max-concurrent-dispatches=5`: At most 5 tasks are in-flight simultaneously
-- `--max-attempts=5`: A task is retried up to 5 times before being abandoned
+- `--max-attempts=5`: Cloud Tasks makes up to 5 total attempts, including the first attempt, before deleting the task
 - `--min-backoff=10s`: First retry waits at least 10 seconds
 - `--max-backoff=300s`: Maximum wait between retries is 5 minutes
-- `--max-doublings=4`: Backoff doubles 4 times (10s, 20s, 40s, 80s, then caps at 300s)
+- `--max-doublings=4`: Backoff doubles 4 times (10s, 20s, 40s, 80s, 160s), then increases linearly until it reaches the 300s maximum
 
 ## Step 2: Build the Worker Service
 
@@ -147,6 +151,12 @@ if __name__ == "__main__":
 Deploy the worker:
 
 ```bash
+# Create the Artifact Registry repository if it does not already exist
+gcloud artifacts repositories create myapp \
+  --repository-format=docker \
+  --location=us-central1 \
+  --description="Container images for order processing services"
+
 # Build and push the worker image
 gcloud builds submit ./worker \
   --tag us-central1-docker.pkg.dev/$(gcloud config get-value project)/myapp/task-worker:latest
@@ -177,6 +187,12 @@ gcloud run services add-iam-policy-binding task-worker \
   --region=us-central1 \
   --member="serviceAccount:cloud-tasks-sa@$(gcloud config get-value project).iam.gserviceaccount.com" \
   --role="roles/run.invoker"
+
+# Allow Cloud Tasks to mint OIDC tokens for that service account
+gcloud iam service-accounts add-iam-policy-binding \
+  cloud-tasks-sa@$(gcloud config get-value project).iam.gserviceaccount.com \
+  --member="serviceAccount:service-$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')@gcp-sa-cloudtasks.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
 ```
 
 ## Step 4: Build the API Service (Task Creator)
@@ -299,6 +315,15 @@ Deploy the API:
 # Get the worker URL
 WORKER_URL=$(gcloud run services describe task-worker --region=us-central1 --format="get(status.url)")
 
+# Build and push the API image
+gcloud builds submit ./api \
+  --tag us-central1-docker.pkg.dev/$(gcloud config get-value project)/myapp/order-api:latest
+
+# Let the API service enqueue tasks
+gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
+  --member="serviceAccount:$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
+  --role="roles/cloudtasks.enqueuer"
+
 # Deploy the API service
 gcloud run deploy order-api \
   --image=us-central1-docker.pkg.dev/$(gcloud config get-value project)/myapp/order-api:latest \
@@ -368,8 +393,8 @@ You can also build a dead letter pattern by checking the retry count in your wor
 def process_order():
     retry_count = int(request.headers.get("X-CloudTasks-TaskRetryCount", "0"))
 
-    if retry_count >= 4:  # Last attempt (0-indexed, max-attempts=5)
-        # This is the final retry - save to a dead letter store
+    if retry_count >= 4:  # Fifth total attempt when max-attempts=5
+        # This is the final attempt - save to a dead letter store
         save_to_dead_letter(request.get_json(), retry_count)
         # Return 200 so the task is not retried again
         return jsonify({"status": "moved_to_dead_letter"}), 200
