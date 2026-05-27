@@ -17,13 +17,13 @@ Cloud Load Balancing provides different metrics depending on the type of load ba
 | Metric | Description |
 |--------|-------------|
 | `loadbalancing.googleapis.com/https/request_count` | Number of requests handled |
-| `loadbalancing.googleapis.com/https/total_latencies` | Total request latency (client to LB and back) |
+| `loadbalancing.googleapis.com/https/total_latencies` | Total request latency (from when the LB receives the request until the client ACKs the last response byte) |
 | `loadbalancing.googleapis.com/https/backend_latencies` | Backend response time only |
 | `loadbalancing.googleapis.com/https/request_bytes_count` | Bytes received from clients |
 | `loadbalancing.googleapis.com/https/response_bytes_count` | Bytes sent to clients |
 | `loadbalancing.googleapis.com/https/backend_request_count` | Requests sent to backends |
 
-The distinction between `total_latencies` and `backend_latencies` is important. Total latency includes network time between the client and the load balancer, while backend latency isolates just the time your backend takes to respond.
+The distinction between `total_latencies` and `backend_latencies` is important. Total latency includes load balancer processing, backend time, and the response path back to the client, while backend latency isolates the time from when the proxy sends the request to the backend until it receives the last response byte.
 
 ## Building a Load Balancer Dashboard
 
@@ -101,7 +101,7 @@ This alert fires when the 95th percentile of total request latency exceeds 2 sec
           {
             "alignmentPeriod": "60s",
             "perSeriesAligner": "ALIGN_PERCENTILE_95",
-            "crossSeriesReducer": "REDUCE_SUM",
+            "crossSeriesReducer": "REDUCE_MAX",
             "groupByFields": ["resource.labels.url_map_name"]
           }
         ]
@@ -138,7 +138,7 @@ If you want to isolate backend performance issues specifically:
           {
             "alignmentPeriod": "60s",
             "perSeriesAligner": "ALIGN_PERCENTILE_95",
-            "crossSeriesReducer": "REDUCE_SUM",
+            "crossSeriesReducer": "REDUCE_MAX",
             "groupByFields": ["resource.labels.url_map_name"]
           }
         ]
@@ -168,6 +168,7 @@ Set up an alert for when 5xx errors exceed a threshold:
           {
             "alignmentPeriod": "60s",
             "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM",
             "groupByFields": ["resource.labels.url_map_name"]
           }
         ],
@@ -176,6 +177,7 @@ Set up an alert for when 5xx errors exceed a threshold:
           {
             "alignmentPeriod": "60s",
             "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM",
             "groupByFields": ["resource.labels.url_map_name"]
           }
         ]
@@ -222,7 +224,7 @@ resource "google_monitoring_alert_policy" "lb_latency" {
       aggregations {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_PERCENTILE_95"
-        cross_series_reducer = "REDUCE_SUM"
+        cross_series_reducer = "REDUCE_MAX"
         group_by_fields      = ["resource.labels.url_map_name"]
       }
     }
@@ -251,17 +253,19 @@ resource "google_monitoring_alert_policy" "lb_errors" {
       duration        = "300s"
 
       aggregations {
-        alignment_period   = "60s"
-        per_series_aligner = "ALIGN_RATE"
-        group_by_fields    = ["resource.labels.url_map_name"]
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.labels.url_map_name"]
       }
 
       denominator_filter = "resource.type=\"https_lb_rule\" AND metric.type=\"loadbalancing.googleapis.com/https/request_count\""
 
       denominator_aggregations {
-        alignment_period   = "60s"
-        per_series_aligner = "ALIGN_RATE"
-        group_by_fields    = ["resource.labels.url_map_name"]
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.labels.url_map_name"]
       }
     }
   }
