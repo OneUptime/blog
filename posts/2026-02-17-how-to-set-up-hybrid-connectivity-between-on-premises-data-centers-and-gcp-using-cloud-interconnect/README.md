@@ -16,7 +16,7 @@ In this post, I will walk through the process of setting up Cloud Interconnect, 
 
 GCP offers two types of Cloud Interconnect:
 
-**Dedicated Interconnect** provides a direct physical connection between your data center and a Google colocation facility. You get 10 Gbps or 100 Gbps links, and you need your own router in a facility where Google has a presence.
+**Dedicated Interconnect** provides a direct physical connection between your data center and a Google colocation facility. You get dedicated Ethernet links, commonly 10 Gbps or 100 Gbps depending on the location and link type, and you need your own router in a facility where Google has a presence.
 
 **Partner Interconnect** goes through a supported service provider. This is the option when your data center is not near a Google colocation facility, or when you need less than 10 Gbps of bandwidth.
 
@@ -44,7 +44,7 @@ graph LR
 
 | Feature | Dedicated | Partner |
 |---------|-----------|---------|
-| Bandwidth | 10/100 Gbps per link | 50 Mbps to 50 Gbps |
+| Bandwidth | 10/100 Gbps per link, depending on location | 50 Mbps to 50 Gbps |
 | Connection | Direct to Google | Through a provider |
 | SLA (with redundancy) | 99.99% | 99.99% |
 | Cost | Higher upfront | Lower entry point |
@@ -75,15 +75,15 @@ gcloud compute networks subnets create cloud-subnet-eu \
 gcloud compute routers create hybrid-router-us \
   --network=hybrid-network \
   --region=us-central1 \
-  --asn=16550
+  --asn=65000
 
 gcloud compute routers create hybrid-router-eu \
   --network=hybrid-network \
   --region=europe-west1 \
-  --asn=16550
+  --asn=65000
 ```
 
-The ASN (Autonomous System Number) 16550 is Google's default. You will configure your on-premises router with a different ASN.
+The ASN (Autonomous System Number) is the Google-side ASN for Cloud Router. For Dedicated Interconnect, use a private ASN that is not already used in your on-premises network. For Partner Interconnect, Cloud Router must use Google's public ASN, 16550. You will configure your on-premises router with a different ASN.
 
 ## Step 2: Create a Dedicated Interconnect Connection
 
@@ -106,30 +106,30 @@ After creating the connection, Google will provision the physical ports. You the
 VLAN attachments connect your Cloud Interconnect to your VPC network through the Cloud Router:
 
 ```bash
-# Create VLAN attachment for the first link
+# Create the first VLAN attachment
 gcloud compute interconnects attachments dedicated create attachment-us-1 \
   --interconnect=my-interconnect-1 \
   --router=hybrid-router-us \
   --region=us-central1 \
-  --bandwidth=BPS_5G \
+  --bandwidth=5g \
   --vlan=100
 
-# Create VLAN attachment for the second link (redundancy)
+# Create the second VLAN attachment
 gcloud compute interconnects attachments dedicated create attachment-us-2 \
   --interconnect=my-interconnect-1 \
   --router=hybrid-router-us \
   --region=us-central1 \
-  --bandwidth=BPS_5G \
+  --bandwidth=5g \
   --vlan=200
 ```
 
-After creating the attachments, get the pairing key and configuration details:
+After creating the attachments, get the VLAN and BGP peering configuration details:
 
 ```bash
 # Get attachment details for router configuration
 gcloud compute interconnects attachments describe attachment-us-1 \
   --region=us-central1 \
-  --format="yaml(googleReferenceId, pairingKey, cloudRouterIpAddress, customerRouterIpAddress)"
+  --format="yaml(vlanTag8021q, cloudRouterIpAddress, customerRouterIpAddress)"
 ```
 
 ## Step 4: Configure BGP Sessions
@@ -137,20 +137,29 @@ gcloud compute interconnects attachments describe attachment-us-1 \
 Set up BGP sessions between the Cloud Router and your on-premises router:
 
 ```bash
+# Create Cloud Router interfaces for the VLAN attachments
+gcloud compute routers add-interface hybrid-router-us \
+  --region=us-central1 \
+  --interface-name=attachment-us-1-if \
+  --interconnect-attachment=attachment-us-1
+
+gcloud compute routers add-interface hybrid-router-us \
+  --region=us-central1 \
+  --interface-name=attachment-us-2-if \
+  --interconnect-attachment=attachment-us-2
+
 # Add a BGP peer on the Cloud Router for the first VLAN
 gcloud compute routers add-bgp-peer hybrid-router-us \
   --peer-name=onprem-peer-1 \
   --peer-asn=65001 \
-  --interface=attachment-us-1 \
-  --peer-ip-address=169.254.0.2 \
+  --interface=attachment-us-1-if \
   --region=us-central1
 
 # Add a BGP peer for the second VLAN (redundancy)
 gcloud compute routers add-bgp-peer hybrid-router-us \
   --peer-name=onprem-peer-2 \
   --peer-asn=65001 \
-  --interface=attachment-us-2 \
-  --peer-ip-address=169.254.1.2 \
+  --interface=attachment-us-2-if \
   --region=us-central1
 ```
 
@@ -159,9 +168,9 @@ On your on-premises router, configure the corresponding BGP sessions. Here is an
 ```text
 ! On-premises Cisco router configuration
 router bgp 65001
-  neighbor 169.254.0.1 remote-as 16550
+  neighbor 169.254.0.1 remote-as 65000
   neighbor 169.254.0.1 description "GCP Cloud Router - Link 1"
-  neighbor 169.254.1.1 remote-as 16550
+  neighbor 169.254.1.1 remote-as 65000
   neighbor 169.254.1.1 description "GCP Cloud Router - Link 2"
 
   address-family ipv4 unicast
@@ -175,7 +184,7 @@ router bgp 65001
 
 ## Step 5: Set Up Redundancy for 99.99% SLA
 
-Google requires specific redundancy configurations to provide the 99.99% SLA. You need interconnect connections in at least two different metro areas:
+Google requires specific redundancy configurations to provide the 99.99% SLA. For Dedicated Interconnect, you need at least four interconnect connections: two connections in one metro and two connections in another metro. Connections in the same metro must be in different edge availability domains. The example below shows adding the second metro; repeat the connection and VLAN attachment pattern so that you have two connections per metro:
 
 ```bash
 # Create a second interconnect in a different metro
@@ -191,14 +200,14 @@ gcloud compute interconnects attachments dedicated create attachment-us-3 \
   --interconnect=my-interconnect-2 \
   --router=hybrid-router-us \
   --region=us-central1 \
-  --bandwidth=BPS_5G \
+  --bandwidth=5g \
   --vlan=300
 
 gcloud compute interconnects attachments dedicated create attachment-us-4 \
   --interconnect=my-interconnect-2 \
   --router=hybrid-router-us \
   --region=us-central1 \
-  --bandwidth=BPS_5G \
+  --bandwidth=5g \
   --vlan=400
 ```
 
@@ -267,12 +276,12 @@ gcloud compute interconnects describe my-interconnect-1 \
   --format="yaml(operationalStatus, state, circuitInfos)"
 
 # Create an alert for interconnect down
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Interconnect Link Down" \
   --condition-display-name="Interconnect operational status" \
   --condition-filter='resource.type="interconnect" AND metric.type="interconnect.googleapis.com/network/interconnect/link/operational_status"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-comparison=COMPARISON_LT \
+  --if="< 1" \
+  --duration=60s \
   --notification-channels=projects/my-project/notificationChannels/oncall
 ```
 
