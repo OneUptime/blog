@@ -18,7 +18,7 @@ GCS FUSE is a FUSE adapter that presents a Cloud Storage bucket as a local direc
 
 ```mermaid
 graph LR
-    A[Batch Task Code] -->|read/write files| B[/mnt/gcs/]
+    A[Batch Task Code] -->|read/write files| B[/mnt/disks/gcs/]
     B -->|GCS FUSE| C[Cloud Storage API]
     C -->|objects| D[GCS Bucket]
 ```
@@ -52,7 +52,7 @@ gcloud batch jobs submit gcs-mount-job \
         "runnables": [
           {
             "script": {
-              "text": "echo 'Files in mounted bucket:'\nls -la /mnt/input/\necho 'Processing files...'\nfor f in /mnt/input/data/*.csv; do\n  echo \"Processing $f\"\n  wc -l \"$f\" >> /mnt/output/results_${BATCH_TASK_INDEX}.txt\ndone\necho 'Done'"
+              "text": "echo 'Files in mounted bucket:'\nls -la /mnt/disks/input/\necho 'Processing files...'\nfor f in /mnt/disks/input/data/*.csv; do\n  echo \"Processing $f\"\n  wc -l \"$f\" >> /mnt/disks/output/results_${BATCH_TASK_INDEX}.txt\ndone\necho 'Done'"
             }
           }
         ],
@@ -61,14 +61,14 @@ gcloud batch jobs submit gcs-mount-job \
             "gcs": {
               "remotePath": "my-input-bucket"
             },
-            "mountPath": "/mnt/input",
+            "mountPath": "/mnt/disks/input",
             "mountOptions": ["implicit-dirs", "file-mode=444", "dir-mode=555"]
           },
           {
             "gcs": {
               "remotePath": "my-output-bucket"
             },
-            "mountPath": "/mnt/output",
+            "mountPath": "/mnt/disks/output",
             "mountOptions": ["implicit-dirs"]
           }
         ],
@@ -116,20 +116,20 @@ def create_gcs_mount_job(project_id, region, job_name, input_bucket, output_buck
     runnable.container.image_uri = f"gcr.io/{project_id}/data-processor:latest"
     runnable.container.commands = [
         "python", "process.py",
-        "--input-dir=/mnt/input/data",
-        "--output-dir=/mnt/output/results",
+        "--input-dir=/mnt/disks/input/data",
+        "--output-dir=/mnt/disks/output/results",
         "--task-index=${BATCH_TASK_INDEX}",
     ]
     # Mount the GCS volumes inside the container
     runnable.container.volumes = [
-        "/mnt/input:/mnt/input",
-        "/mnt/output:/mnt/output",
+        "/mnt/disks/input:/mnt/disks/input",
+        "/mnt/disks/output:/mnt/disks/output",
     ]
 
     # Define the GCS FUSE volumes
     input_volume = batch_v1.Volume()
     input_volume.gcs = batch_v1.GCS(remote_path=input_bucket)
-    input_volume.mount_path = "/mnt/input"
+    input_volume.mount_path = "/mnt/disks/input"
     input_volume.mount_options = [
         "implicit-dirs",          # Show directories that only exist as prefixes
         "file-mode=444",          # Read-only file permissions
@@ -139,7 +139,7 @@ def create_gcs_mount_job(project_id, region, job_name, input_bucket, output_buck
 
     output_volume = batch_v1.Volume()
     output_volume.gcs = batch_v1.GCS(remote_path=output_bucket)
-    output_volume.mount_path = "/mnt/output"
+    output_volume.mount_path = "/mnt/disks/output"
     output_volume.mount_options = [
         "implicit-dirs",
     ]
@@ -206,7 +206,7 @@ input_volume = batch_v1.Volume()
 input_volume.gcs = batch_v1.GCS(
     remote_path="my-bucket/data/2026-02-17/"  # Only mount this prefix
 )
-input_volume.mount_path = "/mnt/input"
+input_volume.mount_path = "/mnt/disks/input"
 ```
 
 ## Step 4: Optimize Performance
@@ -222,8 +222,7 @@ input_volume.mount_options = [
     "file-mode=444",
     "dir-mode=555",
     "max-conns-per-host=100",    # More parallel connections
-    "stat-cache-ttl=60s",        # Cache file metadata for 60 seconds
-    "type-cache-ttl=60s",        # Cache directory listing for 60 seconds
+    "metadata-cache-ttl-secs=60", # Cache file metadata for 60 seconds
     "kernel-list-cache-ttl-secs=60",  # Kernel-level directory cache
 ]
 ```
@@ -249,7 +248,7 @@ runnable.script = batch_v1.Runnable.Script()
 runnable.script.text = """#!/bin/bash
 # Copy input files to local SSD for faster random access
 echo "Copying input files to local disk..."
-cp -r /mnt/gcs/input/partition_${BATCH_TASK_INDEX}/ /tmp/local_input/
+cp -r /mnt/disks/gcs/input/partition_${BATCH_TASK_INDEX}/ /tmp/local_input/
 
 # Process from local disk (much faster for random access patterns)
 echo "Processing from local disk..."
@@ -257,7 +256,7 @@ python process.py --input=/tmp/local_input/ --output=/tmp/local_output/
 
 # Copy results back to GCS
 echo "Uploading results..."
-cp -r /tmp/local_output/* /mnt/gcs/output/task_${BATCH_TASK_INDEX}/
+cp -r /tmp/local_output/* /mnt/disks/gcs/output/task_${BATCH_TASK_INDEX}/
 echo "Done"
 """
 ```
@@ -270,9 +269,10 @@ Multiple tasks writing to the same bucket works, but they should not write to th
 # Pattern: Each task writes to its own output path
 # In your processing script:
 import os
+import json
 
 task_index = os.environ.get("BATCH_TASK_INDEX", "0")
-output_dir = f"/mnt/output/task_{task_index}"
+output_dir = f"/mnt/disks/output/task_{task_index}"
 os.makedirs(output_dir, exist_ok=True)
 
 # Write results to task-specific directory
@@ -294,36 +294,36 @@ def create_hybrid_storage_job(project_id, region, job_name):
     runnable = batch_v1.Runnable()
     runnable.script = batch_v1.Runnable.Script()
     runnable.script.text = """#!/bin/bash
-    # GCS FUSE mount at /mnt/gcs for input/output
-    # Local SSD at /mnt/local for temporary fast storage
+    # GCS FUSE mount at /mnt/disks/gcs for input/output
+    # Local SSD at /mnt/disks/local for temporary fast storage
 
     # Copy today's partition to local SSD
     echo "Staging data to local SSD..."
-    cp /mnt/gcs/input/partition_${BATCH_TASK_INDEX}.parquet /mnt/local/
+    cp /mnt/disks/gcs/input/partition_${BATCH_TASK_INDEX}.parquet /mnt/disks/local/
 
     # Process using local SSD (fast random access)
     echo "Processing..."
     python process.py \
-      --input=/mnt/local/partition_${BATCH_TASK_INDEX}.parquet \
-      --output=/mnt/local/result_${BATCH_TASK_INDEX}.parquet \
-      --temp-dir=/mnt/local/tmp/
+      --input=/mnt/disks/local/partition_${BATCH_TASK_INDEX}.parquet \
+      --output=/mnt/disks/local/result_${BATCH_TASK_INDEX}.parquet \
+      --temp-dir=/mnt/disks/local/tmp/
 
     # Write results back to GCS
     echo "Uploading results..."
-    cp /mnt/local/result_${BATCH_TASK_INDEX}.parquet /mnt/gcs/output/
+    cp /mnt/disks/local/result_${BATCH_TASK_INDEX}.parquet /mnt/disks/gcs/output/
     echo "Task ${BATCH_TASK_INDEX} complete"
     """
 
     # GCS FUSE volume
     gcs_volume = batch_v1.Volume()
     gcs_volume.gcs = batch_v1.GCS(remote_path="my-data-bucket")
-    gcs_volume.mount_path = "/mnt/gcs"
+    gcs_volume.mount_path = "/mnt/disks/gcs"
     gcs_volume.mount_options = ["implicit-dirs"]
 
     # Local SSD volume
     local_volume = batch_v1.Volume()
     local_volume.device_name = "local-ssd"
-    local_volume.mount_path = "/mnt/local"
+    local_volume.mount_path = "/mnt/disks/local"
 
     task = batch_v1.TaskSpec()
     task.runnables = [runnable]
