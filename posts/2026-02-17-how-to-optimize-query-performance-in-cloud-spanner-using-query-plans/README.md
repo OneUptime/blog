@@ -12,7 +12,7 @@ Writing a query that returns correct results is one thing. Writing a query that 
 
 ## Getting a Query Plan
 
-There are several ways to see a query plan in Spanner. The simplest is through the Google Cloud Console. Navigate to your Spanner database, go to the Query tab, type your query, and click "Explain" instead of "Run."
+There are several ways to see a query plan in Spanner. The simplest is through the Google Cloud Console. Navigate to your Spanner database, open Spanner Studio, type your query, click "Run," and then open the "Explanation" tab.
 
 From the command line, you can also see the plan:
 
@@ -25,13 +25,13 @@ gcloud spanner databases execute-sql my-database \
     --query-mode=PLAN
 ```
 
-For programmatic access, you can request the query plan through the client libraries by setting the query mode to PLAN or PROFILE. PLAN gives you the plan without executing the query. PROFILE executes the query and includes runtime statistics.
+For programmatic access, you can request the query plan through the client libraries by setting the query mode to PLAN or PROFILE. PLAN gives you the plan without executing the query. PROFILE executes the query and includes runtime statistics, but it adds overhead and is not recommended for production traffic.
 
 ## Understanding the Plan Structure
 
 A Spanner query plan is a tree of operators. The root operator is at the top, and data flows upward from the leaf operators. Here are the most common operators you will see:
 
-**Distributed Union** - This is Spanner's way of executing a query across multiple splits in parallel. Almost every query in Spanner starts with a distributed union.
+**Distributed Union** - This is Spanner's way of executing a query across multiple splits in parallel. Many distributed query plans include a distributed union.
 
 **Table Scan** - A full scan of the table. If you see this on a large table, it is usually a sign you need an index.
 
@@ -75,7 +75,7 @@ Distributed Union
         Table Scan (Orders - full scan)
 ```
 
-This is bad. Spanner is scanning the entire Orders table, filtering for matching rows, and then sorting the results. Every row in the table gets read from disk.
+This is bad. Spanner is scanning the entire Orders table, filtering for matching rows, and then sorting the results. Every row in the table has to be scanned.
 
 ## Adding an Index to Improve the Plan
 
