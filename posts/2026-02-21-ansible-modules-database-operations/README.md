@@ -18,6 +18,7 @@ from ansible.module_utils.basic import AnsibleModule
 
 try:
     import psycopg2
+    from psycopg2 import sql
     HAS_PSYCOPG2 = True
 except ImportError:
     HAS_PSYCOPG2 = False
@@ -39,6 +40,7 @@ def run_module():
     if not HAS_PSYCOPG2:
         module.fail_json(msg='psycopg2 is required. Install with: pip install psycopg2-binary')
 
+    conn = None
     try:
         conn = psycopg2.connect(
             host=module.params['host'],
@@ -51,7 +53,9 @@ def run_module():
         cursor = conn.cursor()
 
         # Check current value
-        cursor.execute('SHOW %s', (module.params['setting_name'],))
+        cursor.execute(
+            sql.SQL('SHOW {}').format(sql.Identifier(module.params['setting_name']))
+        )
         current = cursor.fetchone()[0]
 
         if current == module.params['setting_value']:
@@ -63,8 +67,10 @@ def run_module():
             return
 
         cursor.execute(
-            'ALTER SYSTEM SET %s = %s',
-            (module.params['setting_name'], module.params['setting_value'])
+            sql.SQL('ALTER SYSTEM SET {} = {}').format(
+                sql.Identifier(module.params['setting_name']),
+                sql.Literal(module.params['setting_value'])
+            )
         )
         cursor.execute('SELECT pg_reload_conf()')
         module.exit_json(changed=True)
