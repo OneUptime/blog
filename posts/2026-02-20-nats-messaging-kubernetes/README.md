@@ -10,7 +10,7 @@ Description: Learn how to deploy and use NATS for lightweight cloud-native messa
 
 ## What is NATS?
 
-NATS is a high-performance, lightweight messaging system designed for cloud-native applications. Unlike heavier message brokers like RabbitMQ or Apache Kafka, NATS is built for simplicity and speed. It supports multiple messaging patterns including publish-subscribe, request-reply, and queue groups. With JetStream, NATS also provides persistent messaging with at-least-once and exactly-once delivery guarantees.
+NATS is a high-performance, lightweight messaging system designed for cloud-native applications. Unlike heavier message brokers like RabbitMQ or Apache Kafka, NATS is built for simplicity and speed. It supports multiple messaging patterns including publish-subscribe, request-reply, and queue groups. With JetStream, NATS also provides persistent messaging with at-least-once delivery, and exactly-once semantics when message deduplication and double acknowledgments are used.
 
 ## NATS Messaging Patterns
 
@@ -58,9 +58,11 @@ kubectl create namespace nats
 helm install nats nats/nats \
   --namespace nats \
   --set config.jetstream.enabled=true \
-  --set config.jetstream.memStorage.size=1Gi \
-  --set config.jetstream.fileStorage.size=10Gi \
-  --set config.jetstream.fileStorage.storageClassName=standard \
+  --set config.jetstream.memoryStore.enabled=true \
+  --set config.jetstream.memoryStore.maxSize=1Gi \
+  --set config.jetstream.fileStore.enabled=true \
+  --set config.jetstream.fileStore.pvc.size=10Gi \
+  --set config.jetstream.fileStore.pvc.storageClassName=standard \
   --set config.cluster.enabled=true \
   --set config.cluster.replicas=3
 
@@ -82,13 +84,15 @@ config:
     replicas: 3                            # 3-node cluster for HA
   jetstream:
     enabled: true                          # Enable persistent messaging
-    memStorage:
+    memoryStore:
       enabled: true
-      size: 2Gi                            # In-memory storage for fast access
-    fileStorage:
+      maxSize: 2Gi                         # In-memory storage for fast access
+    fileStore:
       enabled: true
-      size: 20Gi                           # Persistent file storage
-      storageClassName: fast-ssd           # Use fast storage for JetStream
+      pvc:
+        enabled: true
+        size: 20Gi                         # Persistent file storage
+        storageClassName: fast-ssd         # Use fast storage for JetStream
   monitor:
     enabled: true                          # Enable HTTP monitoring endpoint
     port: 8222
@@ -98,23 +102,25 @@ config:
     enabled: false                         # Enable for edge deployments
 
 # Pod resources
-podTemplate:
-  merge:
-    spec:
-      containers:
-        - name: nats
-          resources:
-            requests:
-              cpu: 500m
-              memory: 1Gi
-            limits:
-              cpu: 2
-              memory: 4Gi
+container:
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+
+# Prometheus metrics exporter
+promExporter:
+  enabled: true
 
 # Pod disruption budget
 podDisruptionBudget:
   enabled: true
-  minAvailable: 2                          # Keep at least 2 pods running
+  merge:
+    spec:
+      minAvailable: 2                      # Keep at least 2 pods running
 ```
 
 ```bash
@@ -238,7 +244,7 @@ func main() {
 	}
 
 	// Subscribe using the durable consumer
-	sub, err := js.PullSubscribe("events.>", "event-processor")
+	sub, err := js.PullSubscribe("events.>", "event-processor", nats.Bind("EVENTS", "event-processor"))
 	if err != nil {
 		log.Fatalf("Failed to subscribe: %v", err)
 	}
@@ -271,8 +277,9 @@ graph LR
     B --> D[/connz - Connections]
     B --> E[/routez - Routes]
     B --> F[/jsz - JetStream]
-    G[Prometheus] -->|Scrape| B
-    H[OneUptime] -->|Dashboards| G
+    B --> G[NATS Prometheus Exporter]
+    H[Prometheus] -->|Scrape| G
+    I[OneUptime] -->|Dashboards| H
 ```
 
 ```bash
@@ -285,10 +292,9 @@ kubectl exec -n nats nats-0 -- wget -qO- http://localhost:8222/varz | head -20
 # Check JetStream status
 kubectl exec -n nats nats-0 -- wget -qO- http://localhost:8222/jsz
 
-# Install the NATS CLI tool for easier management
-# The nats CLI provides a comprehensive toolset
-kubectl exec -n nats nats-0 -- nats stream ls
-kubectl exec -n nats nats-0 -- nats consumer ls EVENTS
+# Use the NATS CLI from the nats-box deployment created by the Helm chart
+kubectl exec -n nats deploy/nats-box -- nats --server nats://nats:4222 stream ls
+kubectl exec -n nats deploy/nats-box -- nats --server nats://nats:4222 consumer ls EVENTS
 ```
 
 ## NATS vs Other Messaging Systems
@@ -315,4 +321,4 @@ kubectl exec -n nats nats-0 -- nats consumer ls EVENTS
 
 ## Monitoring with OneUptime
 
-NATS is a critical piece of infrastructure in cloud-native architectures. OneUptime (https://oneuptime.com) can monitor your NATS cluster health by scraping the built-in monitoring endpoints. You can set up dashboards for message throughput, connection counts, JetStream storage usage, and consumer lag. OneUptime alerts ensure you are notified when consumer lag grows or when cluster nodes become unreachable, helping you maintain reliable messaging across your services.
+NATS is a critical piece of infrastructure in cloud-native architectures. OneUptime (https://oneuptime.com) can monitor your NATS cluster health by checking the built-in monitoring endpoints or by ingesting metrics exported to Prometheus. You can set up dashboards for message throughput, connection counts, JetStream storage usage, and consumer lag. OneUptime alerts ensure you are notified when consumer lag grows or when cluster nodes become unreachable, helping you maintain reliable messaging across your services.
