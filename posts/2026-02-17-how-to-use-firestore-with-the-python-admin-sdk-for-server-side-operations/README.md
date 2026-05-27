@@ -184,11 +184,11 @@ def get_room_messages(room_id, limit=50):
 
 ## Batch Writes
 
-For bulk operations, use batch writes to commit up to 500 operations atomically.
+For bulk operations, use batch writes to commit multiple operations atomically. Keeping chunks around 500 operations is a common conservative approach for large jobs.
 
 ```python
 # Batch write to update multiple documents atomically
-# Max 500 operations per batch
+# Conservative chunk size for large jobs
 def bulk_update_status(user_ids, new_status):
     batch_size = 500
 
