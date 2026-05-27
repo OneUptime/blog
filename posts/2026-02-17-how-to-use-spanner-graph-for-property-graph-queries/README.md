@@ -66,10 +66,10 @@ CREATE OR REPLACE PROPERTY GRAPH SocialGraph
   NODE TABLES (
     Person
       KEY (PersonId)
-      PROPERTIES (Name, Email, JoinedAt),
+      PROPERTIES (PersonId, Name, Email, JoinedAt),
     Post
       KEY (PostId)
-      PROPERTIES (Content, CreatedAt)
+      PROPERTIES (PostId, Content, CreatedAt)
   )
   EDGE TABLES (
     Friendship
@@ -84,7 +84,7 @@ CREATE OR REPLACE PROPERTY GRAPH SocialGraph
       DESTINATION KEY (PostId) REFERENCES Post (PostId)
       PROPERTIES (LikedAt)
       LABEL LIKES,
-    Post
+    Post AS Authored
       KEY (PostId)
       SOURCE KEY (AuthorId) REFERENCES Person (PersonId)
       DESTINATION KEY (PostId) REFERENCES Post (PostId)
@@ -157,7 +157,7 @@ The `{1,3}` means "follow the IS_FRIENDS_WITH edge 1 to 3 times." This is much m
 ```sql
 -- Find the shortest path between Alice and Bob
 GRAPH SocialGraph
-MATCH SHORTEST (a:Person {Name: 'Alice'})-[:IS_FRIENDS_WITH]-+(b:Person {Name: 'Bob'})
+MATCH ANY SHORTEST (a:Person {Name: 'Alice'})-[:IS_FRIENDS_WITH]-{1,}(b:Person {Name: 'Bob'})
 RETURN a.Name, b.Name;
 ```
 
@@ -166,10 +166,13 @@ RETURN a.Name, b.Name;
 Spanner Graph lets you mix GQL and SQL in the same query. This is useful when you need graph traversal combined with relational operations:
 
 ```sql
--- Find friends of Alice and join with their order data from a regular table
-GRAPH SocialGraph
-MATCH (p:Person {Name: 'Alice'})-[:IS_FRIENDS_WITH]-(friend:Person)
-RETURN friend.PersonId AS FriendId, friend.Name AS FriendName
+-- Find friends of Alice and combine them with users from a regular table
+SELECT FriendId, FriendName
+FROM GRAPH_TABLE(
+  SocialGraph
+  MATCH (p:Person {Name: 'Alice'})-[:IS_FRIENDS_WITH]-(friend:Person)
+  RETURN friend.PersonId AS FriendId, friend.Name AS FriendName
+)
 
 -- Combine graph results with SQL
 UNION ALL
@@ -186,9 +189,12 @@ You can also use graph query results as a subquery:
 SELECT o.OrderId, o.TotalAmount
 FROM Orders o
 WHERE o.UserId IN (
-    GRAPH SocialGraph
-    MATCH (p:Person {Name: 'Alice'})-[:IS_FRIENDS_WITH]-(friend:Person)
-    RETURN friend.PersonId
+    SELECT FriendId
+    FROM GRAPH_TABLE(
+      SocialGraph
+      MATCH (p:Person {Name: 'Alice'})-[:IS_FRIENDS_WITH]-(friend:Person)
+      RETURN friend.PersonId AS FriendId
+    )
 );
 ```
 
@@ -254,7 +260,7 @@ flowchart TD
 
 ## Managing the Graph Schema
 
-Update the graph schema when your tables change:
+Update the graph schema when your tables change. After creating the `Group` and `GroupMembership` tables, add them to the graph schema:
 
 ```sql
 -- Add a new edge type to the graph
