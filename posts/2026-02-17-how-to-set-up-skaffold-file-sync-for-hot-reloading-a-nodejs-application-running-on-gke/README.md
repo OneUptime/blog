@@ -108,9 +108,11 @@ EXPOSE 8080
 CMD ["npm", "run", "dev"]
 ```
 
-Note that this Dockerfile installs all dependencies including devDependencies. For production, you would use `npm ci --only=production` and `npm start`. We will handle that with Skaffold profiles later.
+Note that this Dockerfile installs all dependencies including devDependencies. For production, you would use `npm ci --omit=dev` and `npm start`. We will handle that with Skaffold profiles later.
 
 ## The Kubernetes Manifest
+
+For GKE, use an image name that points to a registry your cluster can pull from. The examples below use an Artifact Registry-style placeholder; replace `PROJECT_ID` and `REPOSITORY` with your own values.
 
 ```yaml
 # k8s/deployment.yaml - Kubernetes deployment for our Node.js app
@@ -132,7 +134,7 @@ spec:
     spec:
       containers:
         - name: my-node-app
-          image: my-node-app
+          image: us-central1-docker.pkg.dev/PROJECT_ID/REPOSITORY/my-node-app
           ports:
             - containerPort: 8080
           # Liveness probe to detect crashes
@@ -170,13 +172,13 @@ This is the important part. The `skaffold.yaml` configuration defines which file
 
 ```yaml
 # skaffold.yaml - File sync configuration for hot reloading
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: my-node-app
 build:
   artifacts:
-    - image: my-node-app
+    - image: us-central1-docker.pkg.dev/PROJECT_ID/REPOSITORY/my-node-app
       docker:
         dockerfile: Dockerfile
       sync:
@@ -235,13 +237,13 @@ For simpler setups, Skaffold can infer what to sync based on your Dockerfile's `
 
 ```yaml
 # skaffold.yaml - Using inferred sync
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: my-node-app
 build:
   artifacts:
-    - image: my-node-app
+    - image: us-central1-docker.pkg.dev/PROJECT_ID/REPOSITORY/my-node-app
       docker:
         dockerfile: Dockerfile
       sync:
@@ -293,7 +295,7 @@ Update the sync config.
 # skaffold.yaml - TypeScript file sync
 build:
   artifacts:
-    - image: my-node-app
+    - image: us-central1-docker.pkg.dev/PROJECT_ID/REPOSITORY/my-node-app
       docker:
         dockerfile: Dockerfile
       sync:
@@ -310,13 +312,13 @@ You do not want nodemon and devDependencies in production. Use Skaffold profiles
 
 ```yaml
 # skaffold.yaml - With development and production profiles
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: my-node-app
 build:
   artifacts:
-    - image: my-node-app
+    - image: us-central1-docker.pkg.dev/PROJECT_ID/REPOSITORY/my-node-app
 deploy:
   kubectl:
     manifests:
@@ -326,7 +328,7 @@ profiles:
   - name: dev
     build:
       artifacts:
-        - image: my-node-app
+        - image: us-central1-docker.pkg.dev/PROJECT_ID/REPOSITORY/my-node-app
           docker:
             dockerfile: Dockerfile.dev
           sync:
@@ -342,7 +344,7 @@ profiles:
   - name: prod
     build:
       artifacts:
-        - image: my-node-app
+        - image: us-central1-docker.pkg.dev/PROJECT_ID/REPOSITORY/my-node-app
           docker:
             dockerfile: Dockerfile
 ```
