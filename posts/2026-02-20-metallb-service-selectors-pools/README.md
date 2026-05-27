@@ -20,7 +20,7 @@ There are two ways to direct a service to a specific pool:
 
 | Method | Who Decides | Scales How |
 |--------|------------|-----------|
-| Annotation (`metallb.universe.tf/address-pool`) | Service author | Must know pool names |
+| Annotation (`metallb.io/address-pool`) | Service author | Must know pool names |
 | Service selector on pool | Platform team | Automatic based on labels |
 
 ```mermaid
