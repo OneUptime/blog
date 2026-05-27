@@ -134,14 +134,23 @@ OpenBSD uses `doas` instead of `sudo` by default.
         - { regexp: '^#?MaxAuthTries', line: 'MaxAuthTries 3' }
       notify: restart sshd
 
-    - name: Configure sysctl security settings
-      ansible.posix.sysctl:
-        name: "{{ item.key }}"
-        value: "{{ item.value }}"
-        sysctl_set: true
+    - name: Configure persistent sysctl security settings
+      ansible.builtin.lineinfile:
+        path: /etc/sysctl.conf
+        regexp: "^{{ item.key }}="
+        line: "{{ item.key }}={{ item.value }}"
+        create: true
+        mode: '0644'
       loop:
         - { key: 'kern.nosuidcoredump', value: '1' }
-        - { key: 'net.inet.tcp.synuseithresh', value: '1' }
+        - { key: 'net.inet.tcp.synuselimit', value: '1' }
+
+    - name: Apply sysctl security settings
+      ansible.builtin.command: "sysctl {{ item.key }}={{ item.value }}"
+      changed_when: false
+      loop:
+        - { key: 'kern.nosuidcoredump', value: '1' }
+        - { key: 'net.inet.tcp.synuselimit', value: '1' }
 
   handlers:
     - name: restart ntpd
@@ -187,12 +196,12 @@ Here are several practical scenarios where this module proves essential in real-
           running {{ ansible_distribution }} {{ ansible_distribution_version }}
 
     - name: Install required packages
-      ansible.builtin.package:
+      community.general.openbsd_pkg:
         name:
           - curl
           - wget
           - git
-          - vim
+          - vim--no_x11
           - htop
           - jq
         state: present
@@ -208,8 +217,8 @@ Here are several practical scenarios where this module proves essential in real-
     - name: Update /etc/hosts
       ansible.builtin.lineinfile:
         path: /etc/hosts
-        regexp: '^127\.0\.1\.1'
-        line: "127.0.1.1 {{ inventory_hostname }}"
+        regexp: '^127\.0\.0\.1'
+        line: "127.0.0.1 localhost {{ inventory_hostname }}"
 
     - name: Configure SSH hardening
       ansible.builtin.lineinfile:
@@ -222,25 +231,26 @@ Here are several practical scenarios where this module proves essential in real-
       notify: restart sshd
 
     - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
-      loop:
-        - "22"
-        - "80"
-        - "443"
+      ansible.builtin.copy:
+        dest: /etc/pf.conf
+        mode: '0600'
+        content: |
+          set skip on lo
+          block return
+          pass out
+          pass in on egress proto tcp to port { 22, 80, 443 }
+      notify: reload pf
 
     - name: Enable firewall
-      community.general.ufw:
-        state: enabled
-        policy: deny
+      ansible.builtin.command: rcctl enable pf
+      changed_when: false
 
   handlers:
     - name: restart sshd
-      ansible.builtin.service:
-        name: sshd
-        state: restarted
+      ansible.builtin.command: rcctl restart sshd
+
+    - name: reload pf
+      ansible.builtin.command: pfctl -f /etc/pf.conf
 ```
 
 ### Integration with Monitoring
@@ -342,4 +352,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
