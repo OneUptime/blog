@@ -152,6 +152,7 @@ This playbook installs and configures a Samba file server:
         browseable: "yes"
         writable: "yes"
         guest_ok: "no"
+        group: engineering
         valid_users: "@engineering"
         create_mask: "0660"
         directory_mask: "0770"
@@ -161,6 +162,7 @@ This playbook installs and configures a Samba file server:
         browseable: "no"
         writable: "yes"
         guest_ok: "no"
+        owner: backup_user
         valid_users: "backup_user"
         create_mask: "0600"
         directory_mask: "0700"
@@ -176,17 +178,35 @@ This playbook installs and configures a Samba file server:
         update_cache: true
       when: ansible_os_family == "Debian"
 
+    - name: Create share groups
+      ansible.builtin.group:
+        name: "{{ item.group }}"
+        state: present
+      loop: "{{ samba_shares }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.group is defined
+
+    - name: Create share owner users
+      ansible.builtin.user:
+        name: "{{ item.owner }}"
+        shell: /usr/sbin/nologin
+        create_home: false
+      loop: "{{ samba_shares }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.owner is defined
+
     - name: Create share directories
       ansible.builtin.file:
         path: "{{ item.path }}"
         state: directory
         mode: "{{ item.directory_mask }}"
-        owner: root
-        group: "{{ item.valid_users | default('root') | regex_replace('^@', '') }}"
+        owner: "{{ item.owner | default('root') }}"
+        group: "{{ item.group | default('root') }}"
       loop: "{{ samba_shares }}"
       loop_control:
         label: "{{ item.name }}"
-      failed_when: false
 
     - name: Deploy Samba configuration
       ansible.builtin.template:
@@ -311,7 +331,7 @@ This playbook creates Linux users and adds them to Samba:
 
     - name: Set Samba passwords
       ansible.builtin.shell: |
-        echo -e "{{ item.password }}\n{{ item.password }}" | smbpasswd -a -s {{ item.name }}
+        printf '%s\n%s\n' "{{ item.password }}" "{{ item.password }}" | smbpasswd -a -s "{{ item.name }}"
       loop: "{{ samba_users }}"
       loop_control:
         label: "{{ item.name }}"
@@ -359,6 +379,14 @@ This playbook configures Kerberos-authenticated SMB mounts:
         state: directory
         mode: '0755'
 
+    - name: Create request-key configuration for CIFS
+      ansible.builtin.copy:
+        dest: /etc/request-key.d/cifs.spnego.conf
+        mode: '0644'
+        content: |
+          create cifs.spnego * * /usr/sbin/cifs.upcall %k
+          create dns_resolver * * /usr/sbin/cifs.upcall %k
+
     - name: Mount with Kerberos authentication
       ansible.posix.mount:
         path: "{{ smb_mount_point }}"
@@ -366,14 +394,6 @@ This playbook configures Kerberos-authenticated SMB mounts:
         fstype: cifs
         opts: "sec=krb5,cruid=1000,vers=3.0,_netdev,nofail"
         state: mounted
-
-    - name: Create request-key configuration for CIFS
-      ansible.builtin.copy:
-        dest: /etc/request-key.d/cifs.idmap.conf
-        mode: '0644'
-        content: |
-          create cifs.idmap * * /usr/sbin/cifs.idmap %k
-          create dns_resolver * * /usr/sbin/cifs.upcall %k
 ```
 
 ## SMB Mount Health Check
@@ -389,7 +409,7 @@ This playbook verifies SMB mounts are working correctly:
   tasks:
     - name: List all CIFS mounts
       ansible.builtin.shell: |
-        mount | grep cifs | awk '{print $3, $6}'
+        mount | awk '$5 == "cifs" {print $3, $6}'
       register: cifs_mounts
       changed_when: false
 
