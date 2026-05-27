@@ -66,7 +66,7 @@ Let me show a complete, working example of building Redis from source. This is u
 ```yaml
 ---
 # playbook: install-redis-from-source.yml
-# Build and install Redis from source for the latest version
+# Build and install Redis from source for a selected version
 - hosts: redis_servers
   become: true
 
@@ -83,6 +83,7 @@ Let me show a complete, working example of building Redis from source. This is u
           - build-essential
           - tcl
           - pkg-config
+          - libssl-dev
           - libsystemd-dev
         state: present
         update_cache: true
@@ -161,7 +162,7 @@ Let me show a complete, working example of building Redis from source. This is u
           Type=notify
           User=redis
           Group=redis
-          ExecStart={{ redis_install_dir }}/bin/redis-server /etc/redis/redis.conf
+          ExecStart={{ redis_install_dir }}/bin/redis-server /etc/redis/redis.conf --supervised systemd --dir /var/lib/redis
           ExecStop={{ redis_install_dir }}/bin/redis-cli shutdown
           Restart=always
           RestartSec=3
@@ -270,7 +271,7 @@ Now you can uninstall with `dpkg -r redis-custom` and the package manager knows 
 
 ## Handling Version Upgrades
 
-When you need to upgrade a source-built package, the pattern involves removing the old version and building the new one.
+When you need to upgrade a source-built package, the pattern involves stopping the service and building the new version.
 
 ```yaml
 # Upgrade a source-built application
