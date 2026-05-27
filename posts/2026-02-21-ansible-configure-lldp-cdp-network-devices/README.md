@@ -132,6 +132,14 @@ The `ios_lldp_global` and `ios_lldp_interfaces` resource modules provide declara
         state: merged
       when: discovery_config.lldp.enabled
 
+    # Disable LLDP globally if not wanted
+    - name: Disable LLDP globally
+      cisco.ios.ios_lldp_global:
+        config:
+          enabled: false
+        state: merged
+      when: not discovery_config.lldp.enabled
+
     # Disable LLDP on specific interfaces
     - name: Disable LLDP on user-facing ports
       cisco.ios.ios_lldp_interfaces:
@@ -284,6 +292,14 @@ Use LLDP and CDP neighbor information to build a network topology map.
           cdp_neighbors: "{{ parsed_cdp.parsed | default([]) }}"
           lldp_neighbors: "{{ parsed_lldp.parsed | default([]) }}"
 
+    - name: Create topology output directory
+      ansible.builtin.file:
+        path: topology
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
+
     - name: Save topology data
       ansible.builtin.copy:
         content: "{{ device_topology | to_nice_json }}"
@@ -341,23 +357,43 @@ Use LLDP and CDP neighbor information to build a network topology map.
     - name: Count CDP neighbors
       cisco.ios.ios_command:
         commands:
-          - show cdp neighbors | count
+          - show cdp neighbors detail
       register: cdp_count
       ignore_errors: true
 
     - name: Count LLDP neighbors
       cisco.ios.ios_command:
         commands:
-          - show lldp neighbors | count
+          - show lldp neighbors detail
       register: lldp_count
+      ignore_errors: true
+
+    - name: Parse CDP neighbor count
+      ansible.utils.cli_parse:
+        text: "{{ cdp_count.stdout[0] | default('') }}"
+        parser:
+          name: ansible.netcommon.ntc_templates
+          command: show cdp neighbors detail
+          os: cisco_ios
+      register: parsed_cdp_count
+      ignore_errors: true
+
+    - name: Parse LLDP neighbor count
+      ansible.utils.cli_parse:
+        text: "{{ lldp_count.stdout[0] | default('') }}"
+        parser:
+          name: ansible.netcommon.ntc_templates
+          command: show lldp neighbors detail
+          os: cisco_ios
+      register: parsed_lldp_count
       ignore_errors: true
 
     - name: Report neighbor counts
       ansible.builtin.debug:
         msg: >
           {{ inventory_hostname }}:
-          CDP neighbors: {{ cdp_count.stdout[0] | default('N/A') }},
-          LLDP neighbors: {{ lldp_count.stdout[0] | default('N/A') }}
+          CDP neighbors: {{ parsed_cdp_count.parsed | default([]) | length }},
+          LLDP neighbors: {{ parsed_lldp_count.parsed | default([]) | length }}
 
     # Verify no discovery protocols on user ports
     - name: Check user ports for discovery leaks
@@ -374,7 +410,11 @@ Use LLDP and CDP neighbor information to build a network topology map.
       loop: "{{ user_port_lldp.results | default([]) }}"
       when:
         - item is succeeded
-        - "'Tx' in item.stdout[0] | default('')"
+        - >
+          'tx: enabled' in (item.stdout[0] | default('') | lower) or
+          'rx: enabled' in (item.stdout[0] | default('') | lower) or
+          'transmit: enabled' in (item.stdout[0] | default('') | lower) or
+          'receive: enabled' in (item.stdout[0] | default('') | lower)
 ```
 
 Discovery protocol management with Ansible gives you the best of both worlds. You get full topology visibility where you need it (infrastructure and server ports) while maintaining security on untrusted ports (user-facing and external). Automate the configuration, gather neighbor data for topology maps, and audit your settings regularly to make sure nothing has drifted.
