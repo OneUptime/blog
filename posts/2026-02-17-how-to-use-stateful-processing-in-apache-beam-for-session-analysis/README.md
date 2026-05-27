@@ -10,11 +10,11 @@ Description: Learn how to use stateful and timely processing in Apache Beam to b
 
 Session analysis is about understanding what users do during a visit to your application. How many pages did they view? What was the sequence of actions? How long between actions? Did they convert?
 
-You might think session windows alone handle this, but they only group events - they do not let you maintain running state across those events. For true session analysis, you need stateful processing. This lets your DoFn remember information from previous elements and use it when processing new ones.
+You might think session windows alone handle this, and they can be enough for simple grouping and aggregation. But they do not let a custom `DoFn` maintain running state across those events. For more detailed session analysis, you need stateful processing. This lets your DoFn remember information from previous elements and use it when processing new ones.
 
 ## What is Stateful Processing?
 
-In a normal DoFn, each element is processed independently. You have no access to what came before. Stateful processing changes this by giving your DoFn access to persistent state that survives across elements for the same key.
+In a normal DoFn, each element is processed independently. You have no access to what came before. Stateful processing changes this by giving your DoFn access to persistent state that survives across elements for the same key and window.
 
 For session analysis, this means you can track things like:
 - Running count of events in a session
@@ -48,8 +48,8 @@ public class SessionAnalysisFn
 
     // State: set of unique pages visited
     @StateId("pagesVisited")
-    private final StateSpec<BagState<String>> pagesVisitedSpec =
-        StateSpecs.bag(StringUtf8Coder.of());
+    private final StateSpec<SetState<String>> pagesVisitedSpec =
+        StateSpecs.set(StringUtf8Coder.of());
 
     // State: whether a conversion occurred
     @StateId("converted")
@@ -69,7 +69,7 @@ public void processElement(
         @StateId("eventCount") ValueState<Integer> eventCount,
         @StateId("sessionStart") ValueState<Long> sessionStart,
         @StateId("lastActivity") ValueState<Long> lastActivity,
-        @StateId("pagesVisited") BagState<String> pagesVisited,
+        @StateId("pagesVisited") SetState<String> pagesVisited,
         @StateId("converted") ValueState<Boolean> converted) {
 
     KV<String, UserEvent> input = c.element();
@@ -138,10 +138,6 @@ public class SessionTrackerFn
     private final StateSpec<ValueState<Long>> lastEventTimeSpec =
         StateSpecs.value(VarLongCoder.of());
 
-    @StateId("totalDuration")
-    private final StateSpec<ValueState<Long>> totalDurationSpec =
-        StateSpecs.value(VarLongCoder.of());
-
     @StateId("converted")
     private final StateSpec<ValueState<Boolean>> convertedSpec =
         StateSpecs.value(BooleanCoder.of());
@@ -157,7 +153,6 @@ public class SessionTrackerFn
             @StateId("eventCount") ValueState<Integer> eventCount,
             @StateId("sessionStart") ValueState<Long> sessionStart,
             @StateId("lastEventTime") ValueState<Long> lastEventTime,
-            @StateId("totalDuration") ValueState<Long> totalDuration,
             @StateId("converted") ValueState<Boolean> converted,
             @TimerId("sessionTimeout") Timer sessionTimeout) {
 
@@ -173,25 +168,27 @@ public class SessionTrackerFn
             sessionStart.write(timestamp);
         }
 
-        // Calculate time since last event
+        // Track the latest event time seen for this session. Beam does not
+        // guarantee that elements for a key arrive in event-time order.
         Long prevTime = lastEventTime.read();
-        if (prevTime != null) {
-            long gap = timestamp - prevTime;
-            Long currentDuration = totalDuration.read();
-            totalDuration.write((currentDuration == null ? 0 : currentDuration) + gap);
+        if (prevTime == null || timestamp > prevTime) {
+            lastEventTime.write(timestamp);
+
+            // Reset the session timeout timer
+            // It fires SESSION_GAP after the latest event
+            sessionTimeout.set(
+                Instant.ofEpochMilli(timestamp).plus(SESSION_GAP));
         }
 
-        lastEventTime.write(timestamp);
+        Long startTime = sessionStart.read();
+        if (startTime != null && timestamp < startTime) {
+            sessionStart.write(timestamp);
+        }
 
         // Check for conversion
         if ("purchase".equals(event.getType())) {
             converted.write(true);
         }
-
-        // Reset the session timeout timer
-        // It fires SESSION_GAP after the latest event
-        sessionTimeout.set(
-            Instant.ofEpochMilli(timestamp).plus(SESSION_GAP));
     }
 
     @OnTimer("sessionTimeout")
@@ -200,15 +197,18 @@ public class SessionTrackerFn
             @StateId("eventCount") ValueState<Integer> eventCount,
             @StateId("sessionStart") ValueState<Long> sessionStart,
             @StateId("lastEventTime") ValueState<Long> lastEventTime,
-            @StateId("totalDuration") ValueState<Long> totalDuration,
             @StateId("converted") ValueState<Boolean> converted) {
+
+        Long startTime = sessionStart.read();
+        Long endTime = lastEventTime.read();
+        long duration = (startTime != null && endTime != null) ? endTime - startTime : 0;
 
         // Session has expired - emit the final summary
         SessionSummary summary = new SessionSummary(
             eventCount.read(),
-            sessionStart.read(),
-            lastEventTime.read(),
-            totalDuration.read() != null ? totalDuration.read() : 0,
+            startTime,
+            endTime,
+            duration,
             converted.read() != null && converted.read()
         );
 
@@ -218,7 +218,6 @@ public class SessionTrackerFn
         eventCount.clear();
         sessionStart.clear();
         lastEventTime.clear();
-        totalDuration.clear();
         converted.clear();
     }
 }
@@ -239,6 +238,10 @@ PCollection<SessionSummary> sessions = pipeline
 
     // Parse into UserEvent objects
     .apply("ParseEvents", ParDo.of(new ParseEventFn()))
+
+    // Use the event time from the payload for event-time timers and windows
+    .apply("AssignEventTimestamps", WithTimestamps.of(
+        event -> Instant.ofEpochMilli(event.getTimestamp())))
 
     // Key by user ID (required for stateful processing)
     .apply("KeyByUser", WithKeys.<String, UserEvent>of(
@@ -265,16 +268,15 @@ Apache Beam provides several state types for different use cases.
 
 **BagState** stores an unordered collection of values. Good for accumulating events.
 
+**SetState** stores an unordered set of unique values. Good for tracking distinct pages or IDs.
+
 **CombiningState** stores a value that is updated using a CombineFn. Good for running aggregations that can be computed incrementally.
 
 ```java
 // CombiningState for running sum of revenue
 @StateId("totalRevenue")
 private final StateSpec<CombiningState<Double, double[], Double>> revenueSpec =
-    StateSpecs.combining(
-        DoubleCoder.of(),
-        Sum.ofDoubles().getAccumulatorCoder(null, DoubleCoder.of()),
-        Sum.ofDoubles());
+    StateSpecs.combining(Sum.ofDoubles());
 
 // MapState for tracking counts per event type
 @StateId("typeCounts")
@@ -284,13 +286,13 @@ private final StateSpec<MapState<String, Integer>> typeCountsSpec =
 
 ## Handling Late Data with State
 
-Stateful processing interacts with watermarks and allowed lateness. Late data still gets processed by the stateful DoFn as long as the state has not been cleared.
+Stateful processing interacts with watermarks and allowed lateness. Late data still gets processed by the stateful DoFn as long as the state for that key and window has not been cleared or garbage collected.
 
 ```java
-// Apply windowing with allowed lateness before stateful processing
+// Apply non-merging windowing with allowed lateness before stateful processing
 PCollection<KV<String, UserEvent>> windowed = keyedEvents
     .apply("Window", Window.<KV<String, UserEvent>>into(
-        Sessions.withGapDuration(Duration.standardMinutes(30)))
+        FixedWindows.of(Duration.standardHours(1)))
         .withAllowedLateness(Duration.standardHours(2))
         .accumulatingFiredPanes());
 
@@ -300,12 +302,12 @@ PCollection<SessionSummary> sessions = windowed
 
 ## State Size Considerations
 
-State is persisted by Dataflow and must be checkpointed periodically. Large state slows down checkpointing and can cause performance issues.
+State is persisted by Dataflow. Large state increases storage reads and writes and can cause performance issues.
 
 Keep BagState from growing unbounded. If you are accumulating events in a bag, periodically flush and clear it.
 
-Use CombiningState instead of BagState when you only need an aggregate. CombiningState maintains a fixed-size accumulator regardless of how many elements it has seen.
+Use CombiningState instead of BagState when you only need an aggregate. For simple aggregates like sums and counts, CombiningState stores the accumulator instead of every input element.
 
-Monitor state size in the Dataflow console. The "State Size" metric shows how much state each step is maintaining. If it keeps growing, you have a state leak.
+Monitor state-related behavior in the Dataflow console. The Persistence dashboard shows storage reads and writes, including user state operations, and the Timers dashboard shows pending and processed timers. If these keep growing unexpectedly, you may have a state leak.
 
 Stateful processing in Apache Beam is a powerful tool for session analysis and similar use cases where you need to track information across events. Combined with timers, it gives you full control over when state is accumulated, when results are emitted, and when state is cleaned up. Start simple, monitor state size, and add complexity incrementally.
