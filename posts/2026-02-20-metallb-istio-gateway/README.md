@@ -74,10 +74,7 @@ Install Istio using istioctl with the default profile, which includes the Ingres
 ```bash
 # Install Istio with the default profile
 # This creates the istiod control plane and the ingress gateway
-istioctl install --set profile=default -y
-
-# Verify the installation
-istioctl verify-install
+istioctl install --set profile=default --verify -y
 
 # Check that the Istio Ingress Gateway got a MetalLB IP
 kubectl get svc -n istio-system istio-ingressgateway
@@ -99,7 +96,7 @@ If you want the Istio Ingress Gateway to always use a specific MetalLB IP, annot
 kubectl patch svc istio-ingressgateway -n istio-system -p '{
   "metadata": {
     "annotations": {
-      "metallb.universe.tf/loadBalancerIPs": "192.168.1.200"
+      "metallb.io/loadBalancerIPs": "192.168.1.200"
     }
   }
 }'
@@ -202,7 +199,7 @@ spec:
         - "bookinfo.example.com"
       tls:
         mode: SIMPLE
-        # Reference a Kubernetes secret containing the TLS cert
+        # Reference a Kubernetes secret containing the TLS cert in istio-system
         credentialName: bookinfo-tls-secret
 ---
 # VirtualService defines routing rules for traffic entering through the Gateway.
