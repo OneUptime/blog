@@ -38,7 +38,7 @@ Velero is the standard tool for backing up Kubernetes cluster resources and pers
 
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.13.1 \
   --bucket my-velero-backups \
   --backup-location-config region=us-east-1 \
   --snapshot-location-config region=us-east-1 \
@@ -150,7 +150,8 @@ spec:
           hostNetwork: true
           containers:
             - name: etcd-backup
-              image: bitnami/etcd:3.5
+              # Use an image that includes both etcdctl and the AWS CLI
+              image: ghcr.io/example/etcdctl-awscli:3.5
               command: ["/bin/bash", "/scripts/etcd-backup.sh"]
               volumeMounts:
                 - name: etcd-certs
@@ -202,11 +203,11 @@ graph TD
 
 ```yaml
 # postgres-replication.yaml
-# PostgreSQL primary with streaming replication to a secondary region
+# Primary PostgreSQL cluster with WAL archiving to S3
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  name: app-database
+  name: app-database-primary
   namespace: databases
 spec:
   instances: 3
@@ -227,10 +228,25 @@ spec:
           key: SECRET_ACCESS_KEY
       wal:
         compression: gzip
-        # Archive WAL files every 5 minutes
+        # Upload multiple ready WAL files in parallel
         maxParallel: 2
     retentionPolicy: "30d"
-  # External replica cluster in the secondary region
+---
+# Secondary PostgreSQL replica cluster restored from the primary WAL archive
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: app-database
+  namespace: databases
+spec:
+  instances: 3
+  primaryUpdateStrategy: unsupervised
+  storage:
+    size: 100Gi
+    storageClass: gp3-encrypted
+  bootstrap:
+    recovery:
+      source: app-database-primary
   replica:
     enabled: true
     source: app-database-primary
@@ -257,7 +273,7 @@ spec:
 set -euo pipefail
 
 SECONDARY_KUBECONFIG="/path/to/secondary-cluster-kubeconfig"
-DNS_ZONE="example.com"
+HOSTED_ZONE_ID="Z1234567890ABC"
 PRIMARY_REGION="us-east-1"
 SECONDARY_REGION="us-west-2"
 
@@ -266,8 +282,7 @@ echo "Time: $(date -u)"
 
 # Step 1: Verify the secondary cluster is healthy
 echo "Checking secondary cluster health..."
-kubectl --kubeconfig="$SECONDARY_KUBECONFIG" get nodes
-if [ $? -ne 0 ]; then
+if ! kubectl --kubeconfig="$SECONDARY_KUBECONFIG" get nodes; then
     echo "ERROR: Secondary cluster is not reachable"
     exit 1
 fi
@@ -276,10 +291,8 @@ fi
 echo "Restoring from latest backup..."
 velero restore create dr-restore \
   --from-schedule daily-full-backup \
-  --kubeconfig="$SECONDARY_KUBECONFIG"
-
-# Wait for the restore to complete
-velero restore wait dr-restore --kubeconfig="$SECONDARY_KUBECONFIG"
+  --kubeconfig="$SECONDARY_KUBECONFIG" \
+  --wait
 
 # Step 3: Promote the database replica to primary
 echo "Promoting database replica..."
