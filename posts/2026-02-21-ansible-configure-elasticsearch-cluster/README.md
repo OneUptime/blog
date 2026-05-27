@@ -19,9 +19,9 @@ A well-designed Elasticsearch cluster separates node roles. Here is a typical pr
 ```mermaid
 flowchart TD
     subgraph Master Nodes
-        M1[es-master-1<br/>master, voting_only]
-        M2[es-master-2<br/>master, voting_only]
-        M3[es-master-3<br/>master, voting_only]
+        M1[es-master-1<br/>master]
+        M2[es-master-2<br/>master]
+        M3[es-master-3<br/>master]
     end
 
     subgraph Data Nodes
@@ -85,7 +85,7 @@ es_version=8.12
 
 ## Configuring Node Roles
 
-Each node type gets a slightly different `elasticsearch.yml`. Use a single template with conditionals.
+Each node type gets a slightly different `elasticsearch.yml`. Use a single template with conditionals. Set `es_bootstrap_cluster=true` only for the first cluster bootstrap, then leave it unset after the cluster has formed.
 
 ```jinja2
 # templates/elasticsearch-cluster.yml.j2
@@ -109,11 +109,13 @@ discovery.seed_hosts:
   - {{ hostvars[host].ansible_host }}:9300
 {% endfor %}
 
-# Bootstrap the cluster with these master nodes
+# Bootstrap a brand-new cluster with these master nodes
+{% if es_bootstrap_cluster | default(false) and 'master' in (es_node_roles | from_json) %}
 cluster.initial_master_nodes:
 {% for host in groups['es_master_nodes'] %}
   - {{ host }}
 {% endfor %}
+{% endif %}
 
 # Memory locking
 bootstrap.memory_lock: true
@@ -188,6 +190,9 @@ cluster.routing.allocation.awareness.attributes: rack
       notify: Restart Elasticsearch node
 
   post_tasks:
+    - name: Apply pending restart before health checks
+      ansible.builtin.meta: flush_handlers
+
     - name: Wait for node to rejoin the cluster
       ansible.builtin.uri:
         url: "https://{{ ansible_host }}:9200/_cat/health"
@@ -211,7 +216,7 @@ cluster.routing.allocation.awareness.attributes: rack
         body_format: json
         body:
           persistent:
-            cluster.routing.allocation.enable: "all"
+            cluster.routing.allocation.enable: null
       when: es_cluster_is_running | default(false)
 
     - name: Wait for cluster to reach green status
@@ -347,9 +352,8 @@ ILM policies move data from hot to warm to cold tiers and eventually delete it.
                     number_of_shards: 1
                   forcemerge:
                     max_num_segments: 1
-                  allocate:
-                    include:
-                      _tier_preference: "data_warm"
+                  migrate:
+                    enabled: true
               delete:
                 min_age: "30d"
                 actions:
@@ -396,7 +400,7 @@ Configure cluster-wide settings for shard allocation and recovery.
 
 ## Production Tips
 
-1. **Separate master nodes from data nodes.** Masters should be lightweight (2GB heap is enough). If a data node goes down under heavy indexing, you do not want it to take the master with it.
+1. **Separate master nodes from data nodes.** Masters should be lightweight compared to data nodes, but size their heap for your cluster state and workload. If a data node goes down under heavy indexing, you do not want it to take the master with it.
 
 2. **Use `serial: 1` for rolling restarts.** This restarts one node at a time and waits for the cluster to stabilize before moving to the next. You avoid the whole cluster going yellow or red.
 
