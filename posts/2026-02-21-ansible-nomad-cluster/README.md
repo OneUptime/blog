@@ -28,7 +28,7 @@ graph TD
 ```yaml
 # roles/nomad/defaults/main.yml - Nomad cluster configuration
 
-nomad_version: "1.7.2"
+nomad_version: "2.0.2"
 nomad_datacenter: dc1
 nomad_region: global
 nomad_data_dir: /opt/nomad/data
@@ -121,18 +121,80 @@ nomad_retry_join:
   when: nomad_client
   notify: restart nomad
 
+- name: Install Docker APT prerequisites
+  apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: yes
+  when: nomad_client and nomad_docker_enabled
+
+- name: Create APT keyring directory
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  when: nomad_client and nomad_docker_enabled
+
+- name: Add Docker APT signing key
+  get_url:
+    url: "https://download.docker.com/linux/ubuntu/gpg"
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
+  when: nomad_client and nomad_docker_enabled
+
+- name: Add Docker APT repository
+  apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    filename: docker
+    state: present
+  when: nomad_client and nomad_docker_enabled
+
 - name: Install Docker for Nomad clients
   apt:
     name:
       - docker-ce
       - docker-ce-cli
+      - containerd.io
     state: present
+    update_cache: yes
   when: nomad_client and nomad_docker_enabled
 
+- name: Add nomad user to docker group
+  user:
+    name: nomad
+    groups: docker
+    append: yes
+  when: nomad_client and nomad_docker_enabled
+  notify: restart nomad
+
 - name: Create Nomad systemd service
-  template:
-    src: nomad.service.j2
+  copy:
     dest: /etc/systemd/system/nomad.service
+    content: |
+      [Unit]
+      Description=Nomad
+      Documentation=https://developer.hashicorp.com/nomad/docs
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      User=nomad
+      Group=nomad
+      ExecReload=/bin/kill -HUP $MAINPID
+      ExecStart=/usr/local/bin/nomad agent -config={{ nomad_config_dir }}
+      KillMode=process
+      KillSignal=SIGINT
+      LimitNOFILE=65536
+      LimitNPROC=infinity
+      Restart=on-failure
+      RestartSec=2
+      TasksMax=infinity
+
+      [Install]
+      WantedBy=multi-user.target
     mode: '0644'
   notify:
     - reload systemd
@@ -204,7 +266,7 @@ client {
 
 {% if nomad_docker_enabled %}
   options {
-    "driver.allowlist" = "docker,exec,raw_exec"
+    "driver.allowlist" = "docker,exec"
   }
 {% endif %}
 }
