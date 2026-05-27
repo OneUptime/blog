@@ -14,13 +14,13 @@ This guide covers deleting individual resources, bulk deletion by label, gracefu
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- Ansible Core 2.16+ with the current `kubernetes.core` collection
 - A valid kubeconfig
-- Python `kubernetes` library
+- Python `kubernetes`, `PyYAML`, and `jsonpatch` libraries
 
 ```bash
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes
+pip install kubernetes PyYAML jsonpatch
 ```
 
 ## Deleting a Single Resource
@@ -106,6 +106,7 @@ Deleting all resources matching a label selector is useful for tearing down an e
         kind: Deployment
         namespace: "{{ namespace }}"
         api_version: apps/v1
+        delete_all: true
         label_selectors:
           - "{{ target_label }}"
 
@@ -115,6 +116,7 @@ Deleting all resources matching a label selector is useful for tearing down an e
         kind: Service
         namespace: "{{ namespace }}"
         api_version: v1
+        delete_all: true
         label_selectors:
           - "{{ target_label }}"
 
@@ -124,6 +126,7 @@ Deleting all resources matching a label selector is useful for tearing down an e
         kind: ConfigMap
         namespace: "{{ namespace }}"
         api_version: v1
+        delete_all: true
         label_selectors:
           - "{{ target_label }}"
 
@@ -133,6 +136,7 @@ Deleting all resources matching a label selector is useful for tearing down an e
         kind: Secret
         namespace: "{{ namespace }}"
         api_version: v1
+        delete_all: true
         label_selectors:
           - "{{ target_label }}"
 ```
@@ -289,7 +293,7 @@ Old completed Jobs clutter the namespace. Clean them up periodically.
 
 ```yaml
 # playbook: cleanup-completed-jobs.yml
-# Removes completed Jobs older than a specified age
+# Removes completed Jobs
 ---
 - name: Clean up completed Jobs
   hosts: localhost
@@ -387,7 +391,7 @@ When tearing down an application, order matters. Delete Ingresses before Service
       ignore_errors: true
 ```
 
-The `ignore_errors: true` ensures the playbook continues even if a resource was already deleted or never existed. This makes the teardown idempotent.
+The `state: absent` tasks are idempotent when a resource was already deleted or never existed. The `ignore_errors: true` option ensures the playbook continues if one deletion fails.
 
 ## Summary
 
