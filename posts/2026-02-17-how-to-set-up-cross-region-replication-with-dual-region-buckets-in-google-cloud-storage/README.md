@@ -18,9 +18,9 @@ GCS offers three types of locations:
 
 **Single region** (e.g., `us-central1`): Data stored in one region. Lowest cost, but vulnerable to regional outages.
 
-**Dual-region** (e.g., `nam4`): Data automatically replicated across two specific regions. Balanced cost, redundancy, and performance.
+**Dual-region** (e.g., `nam4`): Data automatically replicated across two specific regions. Balanced redundancy and performance.
 
-**Multi-region** (e.g., `US`): Data replicated across multiple regions within a continent. Highest availability, highest cost.
+**Multi-region** (e.g., `US`): Data replicated across multiple regions within a broad geographic area.
 
 ```mermaid
 graph TD
@@ -30,7 +30,7 @@ graph TD
 
     subgraph "Dual-Region (nam4)"
         B1[us-central1<br/>Iowa]
-        B2[us-east4<br/>Virginia]
+        B2[us-east1<br/>South Carolina]
         B1 <-->|Auto Replication| B2
     end
 
@@ -50,7 +50,7 @@ graph TD
 GCS offers several predefined dual-region pairs:
 
 ```bash
-# Create a bucket in the NAM4 dual-region (Iowa + Virginia)
+# Create a bucket in the NAM4 dual-region (Iowa + South Carolina)
 
 gcloud storage buckets create gs://my-dual-region-bucket \
   --location=nam4
@@ -60,7 +60,7 @@ Common predefined dual-regions:
 
 | Code | Region 1 | Region 2 |
 |---|---|---|
-| `nam4` | us-central1 (Iowa) | us-east4 (Virginia) |
+| `nam4` | us-central1 (Iowa) | us-east1 (South Carolina) |
 | `eur4` | europe-north1 (Finland) | europe-west4 (Netherlands) |
 | `asia1` | asia-northeast1 (Tokyo) | asia-northeast2 (Osaka) |
 
@@ -71,7 +71,7 @@ You can also create custom dual-region pairs by specifying two individual region
 ```bash
 # Create a custom dual-region bucket with specific region pair
 gcloud storage buckets create gs://my-custom-dual-bucket \
-  --location=us-east1+us-west1 \
+  --location=US \
   --placement=us-east1,us-west1
 ```
 
@@ -97,23 +97,15 @@ gcloud storage buckets create gs://my-asia-bucket \
 
 ## Turbo Replication
 
-By default, dual-region and multi-region buckets replicate data asynchronously. Google targets replication within one hour for most objects, but does not guarantee a specific time. Turbo replication provides a stronger guarantee: 100% of objects replicated within 15 minutes.
+By default, dual-region and multi-region buckets replicate data asynchronously. Google targets replication for 99.9% of newly written objects within one hour and 100% within 12 hours. Turbo replication provides a stronger target for dual-region buckets: 100% of newly written objects replicated within 15 minutes.
 
 ```bash
 # Create a dual-region bucket with turbo replication
 gcloud storage buckets create gs://my-turbo-bucket \
   --location=nam4 \
-  --recovery-point-objective=DEFAULT
+  --rpo=ASYNC_TURBO
 
 # Enable turbo replication on an existing bucket
-gcloud storage buckets update gs://my-dual-region-bucket \
-  --recovery-point-objective=DEFAULT
-```
-
-Wait, let me correct that. To enable turbo replication:
-
-```bash
-# Enable turbo replication (RPO set to 0)
 gcloud storage buckets update gs://my-dual-region-bucket \
   --rpo=ASYNC_TURBO
 ```
@@ -123,24 +115,24 @@ To check the current RPO setting:
 ```bash
 # Check the replication configuration
 gcloud storage buckets describe gs://my-dual-region-bucket \
-  --format="value(rpo)"
+  --format="default(rpo)"
 ```
 
-Turbo replication costs more because GCS ensures synchronous writes to both regions. The trade-off is a stronger RPO guarantee.
+Turbo replication costs more because GCS provides a shorter and more predictable replication target. The trade-off is a stronger RPO target.
 
 ## Replication Behavior
 
 Here is what happens when you write to a dual-region bucket:
 
-1. Your write request goes to the nearest region
-2. GCS acknowledges the write after it is stored in the primary region
+1. Your write request is routed to an initial region
+2. GCS acknowledges the write after it is redundantly stored in that region
 3. GCS asynchronously replicates the object to the second region
-4. With turbo replication, this happens within 15 minutes; without it, typically within an hour
+4. With turbo replication, the target is 15 minutes for 100% of newly written objects; with default replication, the targets are one hour for 99.9% and 12 hours for 100%
 
 For reads:
 
-1. GCS serves the object from the region closest to the requester
-2. If the closest region is unavailable, it serves from the other region
+1. When the requester is in one of the dual-region locations, GCS routes the request to that same region for best performance
+2. If that region is unavailable, it serves replicated data from the other region
 3. This failover is automatic - you do not need to change your request
 
 ```mermaid
@@ -165,14 +157,14 @@ sequenceDiagram
     Region2->>Client: Object data
 ```
 
-## Verifying Replication Status
+## Monitoring Replication Status
 
-You can check if an object has been replicated to both regions:
+You can check the bucket's replication setting:
 
 ```bash
-# Check the replication status of a specific object
-gcloud storage objects describe gs://my-dual-region-bucket/important-file.dat \
-  --format="json(metadata)"
+# Check whether default or turbo replication is configured
+gcloud storage buckets describe gs://my-dual-region-bucket \
+  --format="default(rpo)"
 ```
 
 For programmatic checks:
@@ -180,20 +172,16 @@ For programmatic checks:
 ```python
 from google.cloud import storage
 
-def check_replication(bucket_name, blob_name):
-    """Check if an object has been replicated across regions."""
+def check_replication_setting(bucket_name):
+    """Check the bucket's replication setting."""
     client = storage.Client()
-    bucket = client.bucket(bucket_name)
-    blob = bucket.get_blob(blob_name)
+    bucket = client.get_bucket(bucket_name)
 
-    # Check the object's metadata for replication status
-    print(f"Object: {blob_name}")
-    print(f"Time created: {blob.time_created}")
-    print(f"Updated: {blob.updated}")
-    print(f"Storage class: {blob.storage_class}")
-    # The object exists in both regions once replication completes
+    print(f"Bucket: {bucket.name}")
+    print(f"Location: {bucket.location}")
+    print(f"RPO: {bucket.rpo}")
 
-check_replication("my-dual-region-bucket", "critical-data.json")
+check_replication_setting("my-dual-region-bucket")
 ```
 
 ## Terraform Configuration
@@ -240,12 +228,12 @@ Dual-region and multi-region storage costs more than single-region:
 
 | Location Type | Storage Premium | Network Replication Cost |
 |---|---|---|
-| Single region | Baseline | None |
-| Dual-region | ~20% more | Included |
-| Multi-region | ~24% more | Included |
-| Dual-region + Turbo | ~40% more | Included |
+| Single region | Billed for one region | None |
+| Dual-region | Billed against the underlying regions or predefined dual-region SKU | Inter-region replication charged per GiB written |
+| Multi-region | Billed against the multi-region SKU | Inter-region replication charged per GiB written |
+| Dual-region + Turbo | Same storage model as dual-region | Higher inter-region replication charge per GiB written |
 
-The replication network traffic is included in the storage price - you do not pay separately for data transfer between regions within a dual-region or multi-region bucket.
+Replication is billed as a data processing charge for data written to dual-region and multi-region buckets. Standard data transfer and operation charges can still apply depending on how the bucket is used.
 
 ## Designing for High Availability
 
@@ -260,7 +248,7 @@ graph TB
         GKE1[GKE Cluster 1]
     end
 
-    subgraph "Region 2: us-east4"
+    subgraph "Region 2: us-east1"
         App2[App Instance 2]
         GKE2[GKE Cluster 2]
     end
