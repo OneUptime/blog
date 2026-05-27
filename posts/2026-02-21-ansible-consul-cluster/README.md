@@ -40,6 +40,9 @@ consul_encrypt_key: "{{ vault_consul_encrypt_key }}"
 
 consul_acl_enabled: true
 consul_acl_default_policy: deny
+consul_acl_initial_management_token: "{{ vault_consul_acl_initial_management_token }}"
+consul_acl_agent_token: "{{ vault_consul_acl_agent_token }}"
+consul_acl_service_registration_token: "{{ vault_consul_acl_service_registration_token }}"
 
 # Server addresses for join
 consul_retry_join:
@@ -75,6 +78,11 @@ consul_http_port: 8500
     - "{{ consul_data_dir }}"
     - "{{ consul_config_dir }}"
     - "{{ consul_log_dir }}"
+
+- name: Install unzip package
+  package:
+    name: unzip
+    state: present
 
 - name: Download Consul
   get_url:
@@ -163,6 +171,14 @@ acl {
   enabled                  = true
   default_policy           = "{{ consul_acl_default_policy }}"
   enable_token_persistence = true
+
+  tokens {
+    agent                            = "{{ consul_acl_agent_token }}"
+    config_file_service_registration = "{{ consul_acl_service_registration_token }}"
+{% if consul_server %}
+    initial_management               = "{{ consul_acl_initial_management_token }}"
+{% endif %}
+  }
 }
 {% endif %}
 
@@ -244,17 +260,19 @@ Register services on client nodes:
 ```yaml
 # roles/consul/handlers/main.yml
 ---
+- name: reload systemd
+  systemd:
+    daemon_reload: yes
+
 - name: restart consul
   systemd:
     name: consul
     state: restarted
 
 - name: reload consul
-  command: consul reload
-
-- name: reload systemd
   systemd:
-    daemon_reload: yes
+    name: consul
+    state: reloaded
 ```
 
 ## Main Playbook
@@ -284,6 +302,7 @@ Register services on client nodes:
 ansible-playbook -i inventory/hosts.ini playbook.yml --ask-vault-pass
 
 # Verify cluster status
+export CONSUL_HTTP_TOKEN=<management-token>
 consul members
 consul operator raft list-peers
 ```
@@ -475,4 +494,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
