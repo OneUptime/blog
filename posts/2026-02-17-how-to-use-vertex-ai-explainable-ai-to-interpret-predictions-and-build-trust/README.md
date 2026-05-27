@@ -10,6 +10,8 @@ Description: Use Vertex AI Explainable AI to understand why your ML models make 
 
 A model that predicts a loan application will be denied is not useful if nobody can explain why. Regulators require it, customers expect it, and your own team needs it to debug problems. Vertex AI Explainable AI provides feature attributions - quantified explanations of how much each input feature contributed to a prediction. In this guide, I will show you how to configure explanations for your models and use them in practice.
 
+Note: Vertex Explainable AI was deprecated on March 16, 2026, and Google Cloud says access will no longer be available on or after March 16, 2027. Use this guide for existing Vertex Explainable AI deployments or migrations, not for new long-term architectures.
+
 ## What Explainable AI Provides
 
 Vertex AI Explainable AI computes feature attributions using methods like Sampled Shapley and Integrated Gradients. For each prediction, you get a breakdown showing which features pushed the prediction higher or lower, and by how much.
@@ -30,9 +32,9 @@ graph LR
     E --> F[Human-Readable Explanation]
 ```
 
-## Step 1: Configure Explanations for an AutoML Model
+## Step 1: Configure Explanations for an AutoML Tabular Model
 
-AutoML models get explanations automatically. You just need to enable them when deploying:
+AutoML tabular classification and regression models get explanations automatically. You do not need to pass a custom explanation configuration when deploying:
 
 ```python
 from google.cloud import aiplatform
@@ -43,16 +45,12 @@ model = aiplatform.Model(
     model_name="projects/your-project-id/locations/us-central1/models/YOUR_MODEL_ID"
 )
 
-# Deploy with explanations enabled
-
-# AutoML models use Sampled Shapley by default
+# AutoML tabular models use Sampled Shapley for feature attribution
 endpoint = model.deploy(
     deployed_model_display_name="loan-model-with-explanations",
     machine_type="n1-standard-4",
     min_replica_count=1,
     max_replica_count=5,
-    explanation_metadata=model.explanation_metadata,
-    explanation_parameters=model.explanation_parameters,
 )
 
 print(f"Deployed with explanations: {endpoint.resource_name}")
@@ -97,7 +95,7 @@ explanation_metadata = explain.ExplanationMetadata(
 )
 
 # Configure the explanation algorithm
-# Sampled Shapley works for any model type
+# Sampled Shapley works for custom models, including models served from custom containers
 explanation_parameters = explain.ExplanationParameters(
     sampled_shapley_attribution=explain.SampledShapleyAttribution(
         path_count=25,  # More paths = more accurate but slower
@@ -113,10 +111,10 @@ endpoint = model.deploy(
 )
 ```
 
-For deep learning models, use Integrated Gradients instead:
+For differentiable TensorFlow models served with a TensorFlow prebuilt container, use Integrated Gradients instead:
 
 ```python
-# Integrated Gradients works better for neural network models
+# Integrated Gradients is designed for differentiable neural network models
 explanation_parameters = explain.ExplanationParameters(
     integrated_gradients_attribution=explain.IntegratedGradientsAttribution(
         step_count=50,  # Number of steps for the gradient path
@@ -141,14 +139,15 @@ def predict_with_explanations(endpoint, instances):
 
     results = []
     for prediction, explanation in zip(response.predictions, response.explanations):
-        # Extract feature attributions from the explanation
+        # Extract feature attributions from the first explained output
         attributions = {}
-        for attr in explanation.attributions:
-            for feature_name, attribution in attr.feature_attributions.items():
-                attributions[feature_name] = float(attribution)
+        attr = explanation.attributions[0]
+        for feature_name, attribution in attr.feature_attributions.items():
+            attributions[feature_name] = float(attribution)
 
         results.append({
             "prediction": prediction,
+            "prediction_value": get_prediction_value(prediction),
             "attributions": attributions,
             "baseline_prediction": float(attr.baseline_output_value),
             "instance_output": float(attr.instance_output_value),
@@ -156,6 +155,20 @@ def predict_with_explanations(endpoint, instances):
         })
 
     return results
+
+def get_prediction_value(prediction):
+    """Extract a scalar score from common Vertex AI prediction response shapes."""
+
+    if isinstance(prediction, (int, float)):
+        return float(prediction)
+    if isinstance(prediction, list):
+        return float(prediction[0])
+    if isinstance(prediction, dict):
+        if "approval_probability" in prediction:
+            return float(prediction["approval_probability"])
+        if "scores" in prediction:
+            return float(prediction["scores"][0])
+    raise ValueError(f"Cannot extract a scalar score from prediction: {prediction}")
 
 # Get an explained prediction
 instances = [{
@@ -191,7 +204,7 @@ def generate_human_explanation(prediction_result, threshold=0.5):
     """Convert feature attributions into a natural language explanation.
     Useful for customer-facing applications where technical details are not appropriate."""
 
-    prediction = prediction_result["prediction"]
+    prediction = prediction_result["prediction_value"]
     attributions = prediction_result["attributions"]
     decision = "approved" if prediction >= threshold else "denied"
 
@@ -236,6 +249,7 @@ Track how feature attributions change over time to detect model drift or data is
 ```python
 # Store explanations in BigQuery for trend analysis
 from google.cloud import bigquery
+from datetime import datetime, timezone
 import json
 
 bq_client = bigquery.Client()
@@ -245,8 +259,8 @@ def log_explanation(prediction_result, request_metadata):
 
     record = {
         "prediction_id": request_metadata.get("request_id"),
-        "timestamp": datetime.utcnow().isoformat(),
-        "prediction_value": prediction_result["prediction"],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "prediction_value": prediction_result["prediction_value"],
         "attributions": json.dumps(prediction_result["attributions"]),
         "approximation_error": prediction_result["approximation_error"],
         "top_positive_feature": max(
@@ -311,8 +325,8 @@ def debug_unexpected_prediction(instance, prediction_result, expected_outcome):
 
 ## Choosing the Right Explanation Method
 
-- **Sampled Shapley**: Works with any model type. Good all-around choice. Slower for large feature sets.
-- **Integrated Gradients**: Best for neural networks and deep learning models. Faster than Shapley for these model types.
+- **Sampled Shapley**: Works with custom models and AutoML tabular models. Good all-around choice for tabular data and custom containers. Slower for large feature sets.
+- **Integrated Gradients**: Best for differentiable neural networks, including custom TensorFlow models served with a TensorFlow prebuilt container. Faster than Shapley for these model types.
 - **XRAI**: Designed for image models. Highlights which regions of an image influenced the prediction.
 
 ## Monitoring
