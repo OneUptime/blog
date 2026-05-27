@@ -14,7 +14,7 @@ Cloud Run has built-in integration with Cloud Trace, which means you get basic t
 
 ## Built-in Tracing on Cloud Run
 
-Cloud Run automatically creates trace spans for incoming HTTP requests. You do not need to configure anything - just deploy your service and traces start appearing in the Cloud Console.
+Cloud Run automatically creates sampled trace spans for incoming HTTP requests. You do not need to configure anything - just deploy your service and sampled traces start appearing in the Cloud Console.
 
 However, the built-in tracing only captures the outermost request span. It tells you the total latency but not what happened inside your service. For that, you need to add OpenTelemetry instrumentation.
 
@@ -64,12 +64,13 @@ def init_tracing():
 
 Cold starts are one of the biggest performance concerns on Cloud Run. When a new instance starts up, there is initialization time before it can serve the first request. Cloud Trace makes this visible.
 
-To measure cold start impact, add a span around your initialization code.
+To measure cold start impact, add the initialization time to the first request handled by each new instance.
 
 ```python
 # app.py - Measuring cold start time with tracing
 from tracing import init_tracing
 import time
+from threading import Lock
 
 # Record when the module starts loading
 init_start = time.time()
@@ -89,16 +90,25 @@ tracer = trace.get_tracer(__name__)
 
 # Calculate initialization time
 init_duration = time.time() - init_start
+is_cold_start = True
+cold_start_lock = Lock()
 
 @app.before_request
 def track_cold_start():
-    """Add cold start information to the current span."""
+    """Add cold start information to the first request on this instance."""
+    global is_cold_start
+    with cold_start_lock:
+        if not is_cold_start:
+            return
+        is_cold_start = False
+
     span = trace.get_current_span()
-    if span:
+    if span and span.is_recording():
         span.set_attribute("cloud_run.init_duration_ms", int(init_duration * 1000))
+        span.set_attribute("cloud_run.cold_start", True)
 ```
 
-In the Trace Explorer, filter for traces where `cloud_run.init_duration_ms` is present. Compare the latency of cold start requests versus warm requests to understand the impact.
+In the Trace Explorer, filter for traces where `cloud_run.cold_start` is true. Compare the latency of cold start requests versus warm requests to understand the impact.
 
 Strategies to reduce cold start latency:
 - Use minimum instances to keep at least one instance warm
@@ -127,19 +137,22 @@ tracer = trace.get_tracer("database")
 def execute_query(query, params=None):
     """Execute a database query with tracing."""
     with tracer.start_as_current_span("db.query") as span:
-        span.set_attribute("db.system", "postgresql")
-        span.set_attribute("db.statement", query)
+        span.set_attribute("db.system.name", "postgresql")
+        span.set_attribute("db.query.text", query)
 
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute(query, params)
+        if params is None:
+            cursor.execute(query)
+        else:
+            cursor.execute(query, params)
         results = cursor.fetchall()
 
         span.set_attribute("db.rows_returned", len(results))
         return results
 ```
 
-When you look at traces in the Explorer, you can now see how long each database query takes. Sort by duration to find the slowest queries, and check the `db.statement` attribute to see the actual SQL.
+When you look at traces in the Explorer, you can now see how long each database query takes. Sort by duration to find the slowest queries, and check the `db.query.text` attribute to see the SQL.
 
 ## Tracing Downstream Service Calls
 
@@ -149,6 +162,7 @@ If your Cloud Run service calls other services (APIs, other Cloud Run services, 
 # services/user_service.py - Traced HTTP calls to downstream services
 import requests
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("user-service-client")
 
@@ -167,8 +181,10 @@ def get_user(user_id):
 
         if response.status_code != 200:
             span.set_status(
-                trace.StatusCode.ERROR,
-                f"User service returned {response.status_code}"
+                Status(
+                    StatusCode.ERROR,
+                    f"User service returned {response.status_code}",
+                )
             )
             return None
 
@@ -202,15 +218,21 @@ def get_dashboard(user_id):
 ```python
 # AFTER: Parallel calls using concurrent.futures
 import concurrent.futures
+from contextvars import copy_context
+
+def submit_with_context(executor, func, *args):
+    """Submit work with the current OpenTelemetry context."""
+    ctx = copy_context()
+    return executor.submit(ctx.run, func, *args)
 
 @app.route('/api/dashboard/<user_id>')
 def get_dashboard(user_id):
     with tracer.start_as_current_span("get_dashboard"):
         # Run all three calls in parallel
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            user_future = executor.submit(get_user, user_id)
-            orders_future = executor.submit(get_orders, user_id)
-            recs_future = executor.submit(get_recs, user_id)
+            user_future = submit_with_context(executor, get_user, user_id)
+            orders_future = submit_with_context(executor, get_orders, user_id)
+            recs_future = submit_with_context(executor, get_recs, user_id)
 
             user = user_future.result()
             orders = orders_future.result()
@@ -244,10 +266,9 @@ gcloud monitoring policies create \
   --display-name="Cloud Run High Latency" \
   --condition-display-name="p95 latency above 2s" \
   --condition-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_latencies"' \
-  --condition-threshold-value=2000 \
-  --condition-threshold-duration=300s \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_PERCENTILE_95"}'
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_PERCENTILE_95"}' \
+  --duration=300s \
+  --if="> 2000"
 ```
 
 ## Performance Optimization Checklist
