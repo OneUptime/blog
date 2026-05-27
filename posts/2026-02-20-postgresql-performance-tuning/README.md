@@ -22,7 +22,7 @@ graph TD
         A[shared_buffers]
         B[WAL Buffers]
     end
-    subgraph "Per-Connection Memory"
+    subgraph "Session and Operation Memory"
         C[work_mem]
         D[maintenance_work_mem]
         E[temp_buffers]
@@ -100,14 +100,14 @@ maintenance_work_mem = 2GB
 Write-Ahead Log settings affect write performance significantly.
 
 ```ini
-# Size of WAL segment files
-# Larger segments reduce the number of WAL file switches
-wal_buffers = 64MB
+# Shared memory used for WAL data before it is written to disk
+# The default auto-tuning is usually reasonable; a few MB can help busy write workloads
+wal_buffers = 16MB
 
-# Minimum WAL size before a checkpoint is triggered
+# Minimum WAL size to retain for recycling at checkpoints
 min_wal_size = 1GB
 
-# Maximum WAL size
+# Soft maximum WAL size before PostgreSQL triggers a checkpoint
 max_wal_size = 4GB
 
 # Spread checkpoint writes over this fraction of the checkpoint interval
@@ -167,6 +167,11 @@ Key things to look for in the output:
 
 Enable the `pg_stat_statements` extension to track query performance.
 
+```ini
+# Required before creating the extension; restart PostgreSQL after changing this
+shared_preload_libraries = 'pg_stat_statements'
+```
+
 ```sql
 -- Enable the extension
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
@@ -206,10 +211,10 @@ autovacuum = on
 # Number of autovacuum worker processes
 autovacuum_max_workers = 3
 
-# Run vacuum when 20% of rows have changed
+# Run vacuum when 10% of rows have changed
 autovacuum_vacuum_scale_factor = 0.1
 
-# Run analyze when 10% of rows have changed
+# Run analyze when 5% of rows have changed
 autovacuum_analyze_scale_factor = 0.05
 
 # Slow down vacuum to reduce I/O impact on production queries
@@ -240,7 +245,7 @@ SELECT
     sum(heap_blks_hit) as cache_hits,
     round(
         sum(heap_blks_hit)::numeric /
-        (sum(heap_blks_hit) + sum(heap_blks_read)) * 100, 2
+        NULLIF(sum(heap_blks_hit) + sum(heap_blks_read), 0) * 100, 2
     ) as cache_hit_ratio
 FROM pg_statio_user_tables;
 
@@ -274,7 +279,7 @@ LIMIT 10;
 # Edit the PostgreSQL configuration
 sudo vim /etc/postgresql/16/main/postgresql.conf
 
-# Check for syntax errors
+# Show parsed settings in the configuration file (Debian/Ubuntu)
 sudo -u postgres pg_conftool 16 main show all
 
 # Some settings require a restart, others only a reload
@@ -291,6 +296,11 @@ SELECT name, setting, context
 FROM pg_settings
 WHERE context = 'postmaster'
 ORDER BY name;
+
+-- Check for configuration entries that failed to apply after a reload
+SELECT sourcefile, sourceline, name, error
+FROM pg_file_settings
+WHERE error IS NOT NULL;
 ```
 
 ## Summary
