@@ -8,7 +8,7 @@ Description: Learn how to create Cloud Logging sinks that export logs to Cloud S
 
 ---
 
-Many organizations need to retain logs for years - whether for regulatory compliance, security auditing, or forensic analysis. Cloud Logging's default retention of 30 days is not enough for these use cases. Cloud Storage, on the other hand, offers cheap, durable storage that can keep your logs for as long as you need them.
+Many organizations need to retain logs for years - whether for regulatory compliance, security auditing, or forensic analysis. Cloud Logging's `_Default` bucket retains logs for 30 days unless you configure custom retention, which is not enough for these use cases. Cloud Storage, on the other hand, offers cheap, durable storage that can keep your logs for as long as you need them.
 
 In this post, I will show you how to set up log sinks that export logs to Cloud Storage, including bucket configuration, lifecycle policies, and cost optimization strategies.
 
@@ -18,7 +18,7 @@ Compared to other log export destinations in GCP, Cloud Storage stands out for a
 
 - **Lowest cost**: Standard storage costs around $0.020 per GB/month. Nearline, Coldline, and Archive storage classes go even lower.
 - **Lifecycle policies**: Automatically transition logs to cheaper storage classes or delete them after a retention period.
-- **Compliance-friendly**: Object locks and retention policies prevent logs from being deleted prematurely.
+- **Compliance-friendly**: Bucket Lock, retention policies, and object holds prevent logs from being deleted prematurely.
 - **Familiar format**: Exported logs are stored as JSON files, which any tool can read.
 
 ## Step 1: Create a Cloud Storage Bucket
@@ -32,7 +32,7 @@ gcloud storage buckets create gs://my-project-log-archive \
   --location=US \
   --default-storage-class=STANDARD \
   --uniform-bucket-level-access \
-  --public-access-prevention=enforced
+  --public-access-prevention
 ```
 
 The `--uniform-bucket-level-access` flag ensures consistent IAM-based access control, and `--public-access-prevention` prevents accidental public exposure of your logs.
@@ -148,7 +148,7 @@ gs://my-project-log-archive/
   syslog/2026/02/17/
     08:00:00_08:59:59_S0.json
     09:00:00_09:59:59_S0.json
-  cloudaudit.googleapis.com%2Factivity/2026/02/17/
+  cloudaudit.googleapis.com/activity/2026/02/17/
     08:00:00_08:59:59_S0.json
 ```
 
