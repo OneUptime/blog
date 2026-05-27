@@ -73,7 +73,7 @@ gcloud composer environments run my-composer-env \
   --location=us-central1 \
   connections add -- google_cloud_custom \
   --conn-type=google_cloud_platform \
-  --conn-extra='{"extra__google_cloud_platform__project": "my-project", "extra__google_cloud_platform__key_path": "/path/to/key.json"}'
+  --conn-extra='{"project": "my-project", "key_path": "/path/to/key.json"}'
 ```
 
 ### Using Connection URIs
@@ -91,7 +91,7 @@ gcloud composer environments run my-composer-env \
 gcloud composer environments run my-composer-env \
   --location=us-central1 \
   connections add -- slack_webhook \
-  --conn-uri="https://:token@hooks.slack.com/services/T00/B00/XXXX"
+  --conn-uri="slackwebhook://:T00%2FB00%2FXXXX@/"
 ```
 
 ## Using Connections in DAGs
@@ -101,28 +101,28 @@ Here is how to use connections in your DAG code:
 ```python
 # Using connections with Airflow operators
 from airflow import DAG
-from airflow.providers.postgres.operators.postgres import PostgresOperator
-from airflow.providers.http.operators.http import SimpleHttpOperator
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
+from airflow.providers.http.operators.http import HttpOperator
 from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
 from datetime import datetime
 
 dag = DAG(
     dag_id="connections_example",
     start_date=datetime(2025, 1, 1),
-    schedule_interval="@daily",
+    schedule="@daily",
     catchup=False,
 )
 
 # Use a PostgreSQL connection - the operator looks up "postgres_default" automatically
-query_pg = PostgresOperator(
+query_pg = SQLExecuteQueryOperator(
     task_id="query_postgres",
-    postgres_conn_id="postgres_default",  # References the connection ID
+    conn_id="postgres_default",  # References the connection ID
     sql="SELECT COUNT(*) FROM orders WHERE order_date = '{{ ds }}'",
     dag=dag,
 )
 
 # Use an HTTP connection for API calls
-call_api = SimpleHttpOperator(
+call_api = HttpOperator(
     task_id="call_api",
     http_conn_id="my_api",  # References the connection ID
     endpoint="/v1/data",
@@ -290,9 +290,7 @@ echo -n "my-database-password" | gcloud secrets create db-password \
 # Configure Composer to use Secret Manager as a backend
 gcloud composer environments update my-composer-env \
   --location=us-central1 \
-  --update-airflow-configs="\
-secrets-backend=airflow.providers.google.cloud.secrets.secret_manager.CloudSecretManagerBackend,\
-secrets-backend_kwargs={\"project_id\": \"my-project\", \"connections_prefix\": \"airflow-connections\", \"variables_prefix\": \"airflow-variables\"}"
+  --update-airflow-configs='^:^secrets-backend=airflow.providers.google.cloud.secrets.secret_manager.CloudSecretManagerBackend:secrets-backend_kwargs={"project_id": "my-project", "connections_prefix": "airflow-connections", "variables_prefix": "airflow-variables", "sep": "-"}'
 ```
 
 With this configuration, Airflow checks Secret Manager before the metadata database. Store secrets with the appropriate prefix:
