@@ -283,10 +283,43 @@ def check_inventory_alerts(request):
     return json.dumps({"alerts_published": len(alerts)}), 200
 
 
+def check_below_safety_stock():
+    """Find products that are below their configured safety stock level."""
+    query = """
+        SELECT
+            ci.warehouse_id,
+            ci.product_id,
+            pp.product_name,
+            ci.available_quantity,
+            pp.daily_demand_avg,
+            SAFE_DIVIDE(ci.available_quantity, pp.daily_demand_avg) AS days_of_stock,
+            pp.safety_stock_days
+        FROM `project.supply_chain.current_inventory` ci
+        JOIN `project.supply_chain.product_planning` pp ON ci.product_id = pp.product_id
+        WHERE pp.daily_demand_avg > 0
+          AND SAFE_DIVIDE(ci.available_quantity, pp.daily_demand_avg) < pp.safety_stock_days
+          AND ci.available_quantity > 0
+    """
+    results = client.query(query).result()
+
+    alerts = []
+    for row in results:
+        alerts.append({
+            "alert_type": "LOW_STOCK",
+            "severity": "warning",
+            "warehouse_id": row.warehouse_id,
+            "product_id": row.product_id,
+            "product_name": row.product_name,
+            "message": f"LOW STOCK: {row.product_name} at warehouse {row.warehouse_id} has {row.days_of_stock:.1f} days of stock remaining",
+        })
+
+    return alerts
+
+
 def check_stockouts():
     """Find products that are currently out of stock."""
     query = """
-        SELECT warehouse_id, product_id, pp.product_name, pp.daily_demand_avg
+        SELECT ci.warehouse_id, ci.product_id, pp.product_name, pp.daily_demand_avg
         FROM `project.supply_chain.current_inventory` ci
         JOIN `project.supply_chain.product_planning` pp ON ci.product_id = pp.product_id
         WHERE ci.available_quantity <= 0
