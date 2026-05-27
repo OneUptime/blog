@@ -32,6 +32,7 @@ First, create a Feature Online Store with Bigtable as the serving backend:
 # Create a Feature Online Store backed by Bigtable
 
 from google.cloud import aiplatform
+from vertexai.resources.preview import feature_store
 
 aiplatform.init(
     project='your-project-id',
@@ -39,7 +40,7 @@ aiplatform.init(
 )
 
 # Create the online store with autoscaling Bigtable nodes
-online_store = aiplatform.FeatureOnlineStore.create_bigtable_store(
+online_store = feature_store.FeatureOnlineStore.create_bigtable_store(
     name='realtime-feature-store',
     # Minimum Bigtable nodes - keep at least 1 for low latency
     min_node_count=1,
@@ -61,37 +62,34 @@ Feature views define which features are available for online serving and where t
 # Create feature views for different entity types
 
 from google.cloud import aiplatform
+from vertexai.resources.preview import feature_store
 
 aiplatform.init(
     project='your-project-id',
     location='us-central1',
 )
 
-online_store = aiplatform.FeatureOnlineStore('realtime-feature-store')
+online_store = feature_store.FeatureOnlineStore('realtime-feature-store')
 
 # User features
 user_feature_view = online_store.create_feature_view(
     name='user-features',
-    source=aiplatform.FeatureView.BigQuerySource(
+    source=feature_store.utils.FeatureViewBigQuerySource(
         uri='bq://your-project.ml_features.user_features',
         entity_id_columns=['user_id'],
     ),
     # Sync every 2 hours to keep features fresh
-    sync_config=aiplatform.FeatureView.SyncConfig(
-        cron='0 */2 * * *',
-    ),
+    sync_config='0 */2 * * *',
 )
 
 # Product features
 product_feature_view = online_store.create_feature_view(
     name='product-features',
-    source=aiplatform.FeatureView.BigQuerySource(
+    source=feature_store.utils.FeatureViewBigQuerySource(
         uri='bq://your-project.ml_features.product_features',
         entity_id_columns=['product_id'],
     ),
-    sync_config=aiplatform.FeatureView.SyncConfig(
-        cron='0 */6 * * *',
-    ),
+    sync_config='0 */6 * * *',
 )
 
 print("Feature views created")
@@ -106,53 +104,89 @@ The most common operation is reading features for a single entity:
 # Read features for a single entity from the online store
 
 from google.cloud import aiplatform
+from vertexai.resources.preview.feature_store import FeatureOnlineStore, FeatureView
 
 aiplatform.init(
     project='your-project-id',
     location='us-central1',
 )
 
-online_store = aiplatform.FeatureOnlineStore('realtime-feature-store')
-user_features = online_store.get_feature_view('user-features')
+online_store = FeatureOnlineStore('realtime-feature-store')
+user_features = FeatureView('user-features', feature_online_store_id=online_store.name)
+
+def feature_response_to_dict(response):
+    """Convert a FeatureViewReadResponse to a feature-name/value dictionary."""
+    feature_dict = {}
+    for feature in response.to_dict().get('features', []):
+        value = feature.get('value', {})
+        if 'int64_value' in value:
+            feature_dict[feature['name']] = int(value['int64_value'])
+        elif 'double_value' in value:
+            feature_dict[feature['name']] = float(value['double_value'])
+        elif 'bool_value' in value:
+            feature_dict[feature['name']] = value['bool_value']
+        elif 'string_value' in value:
+            feature_dict[feature['name']] = value['string_value']
+        else:
+            feature_dict[feature['name']] = value
+    return feature_dict
 
 # Fetch features for a specific user
-response = user_features.read(key=['user_123'])
+response = user_features.read(key='user_123')
 
 # The response contains all feature values for the entity
 print("Features for user_123:")
-for feature_name, feature_value in response.to_dict().items():
+for feature_name, feature_value in feature_response_to_dict(response).items():
     print(f"  {feature_name}: {feature_value}")
 ```
 
-## Reading Features Online (Batch of Entities)
+## Reading Features Online (Multiple Entities)
 
-When you need features for multiple entities at once - like getting features for all items in a recommendation candidate set:
+When you need features for multiple entities - like getting features for all items in a recommendation candidate set:
 
 ```python
 # read_batch.py
-# Read features for multiple entities in one call
+# Read features for multiple entities
 
 from google.cloud import aiplatform
+from vertexai.resources.preview.feature_store import FeatureOnlineStore, FeatureView
 
 aiplatform.init(
     project='your-project-id',
     location='us-central1',
 )
 
-online_store = aiplatform.FeatureOnlineStore('realtime-feature-store')
-product_features = online_store.get_feature_view('product-features')
+online_store = FeatureOnlineStore('realtime-feature-store')
+product_features = FeatureView('product-features', feature_online_store_id=online_store.name)
 
-# Fetch features for multiple products at once
+def feature_response_to_dict(response):
+    """Convert a FeatureViewReadResponse to a feature-name/value dictionary."""
+    feature_dict = {}
+    for feature in response.to_dict().get('features', []):
+        value = feature.get('value', {})
+        if 'int64_value' in value:
+            feature_dict[feature['name']] = int(value['int64_value'])
+        elif 'double_value' in value:
+            feature_dict[feature['name']] = float(value['double_value'])
+        elif 'bool_value' in value:
+            feature_dict[feature['name']] = value['bool_value']
+        elif 'string_value' in value:
+            feature_dict[feature['name']] = value['string_value']
+        else:
+            feature_dict[feature['name']] = value
+    return feature_dict
+
+# Fetch features for multiple products
 product_ids = ['prod_001', 'prod_002', 'prod_003', 'prod_004', 'prod_005']
 
 responses = []
 for product_id in product_ids:
-    response = product_features.read(key=[product_id])
+    response = product_features.read(key=product_id)
     responses.append(response)
 
 # Process the responses
 for product_id, response in zip(product_ids, responses):
-    print(f"Product {product_id}: {response.to_dict()}")
+    print(f"Product {product_id}: {feature_response_to_dict(response)}")
 ```
 
 ## Building a Real-Time Prediction Service
@@ -165,7 +199,7 @@ Here is a complete example of a prediction service that combines Feature Store w
 
 from flask import Flask, request, jsonify
 from google.cloud import aiplatform
-import numpy as np
+from vertexai.resources.preview.feature_store import FeatureOnlineStore, FeatureView
 import time
 
 app = Flask(__name__)
@@ -177,13 +211,30 @@ aiplatform.init(
 )
 
 # Get Feature Store references
-online_store = aiplatform.FeatureOnlineStore('realtime-feature-store')
-user_feature_view = online_store.get_feature_view('user-features')
+online_store = FeatureOnlineStore('realtime-feature-store')
+user_feature_view = FeatureView('user-features', feature_online_store_id=online_store.name)
 
 # Get the prediction endpoint
 endpoint = aiplatform.Endpoint(
     'projects/your-project-id/locations/us-central1/endpoints/ENDPOINT_ID'
 )
+
+def feature_response_to_dict(response):
+    """Convert a FeatureViewReadResponse to a feature-name/value dictionary."""
+    feature_dict = {}
+    for feature in response.to_dict().get('features', []):
+        value = feature.get('value', {})
+        if 'int64_value' in value:
+            feature_dict[feature['name']] = int(value['int64_value'])
+        elif 'double_value' in value:
+            feature_dict[feature['name']] = float(value['double_value'])
+        elif 'bool_value' in value:
+            feature_dict[feature['name']] = value['bool_value']
+        elif 'string_value' in value:
+            feature_dict[feature['name']] = value['string_value']
+        else:
+            feature_dict[feature['name']] = value
+    return feature_dict
 
 @app.route('/predict-churn', methods=['POST'])
 def predict_churn():
@@ -198,11 +249,11 @@ def predict_churn():
 
     # Step 1: Fetch features from the online store
     feature_start = time.time()
-    features = user_feature_view.read(key=[user_id])
+    features = user_feature_view.read(key=user_id)
     feature_time = time.time() - feature_start
 
     # Step 2: Prepare the feature vector for the model
-    feature_dict = features.to_dict()
+    feature_dict = feature_response_to_dict(features)
     instance = [
         feature_dict.get('total_purchases', 0),
         feature_dict.get('avg_order_value', 0.0),
@@ -258,7 +309,9 @@ Use the right Bigtable configuration. More nodes handle more concurrent reads wi
 
 ```python
 # Higher node count for lower latency under load
-online_store = aiplatform.FeatureOnlineStore.create_bigtable_store(
+from vertexai.resources.preview import feature_store
+
+online_store = feature_store.FeatureOnlineStore.create_bigtable_store(
     name='low-latency-store',
     # More minimum nodes means lower cold-start latency
     min_node_count=3,
@@ -275,7 +328,6 @@ Cache frequently accessed features in your application layer if the same entity 
 
 ```python
 # Simple in-memory cache for frequently accessed features
-from functools import lru_cache
 import time
 
 # Cache features for up to 60 seconds
@@ -294,8 +346,8 @@ def get_features_cached(user_id):
             return cached_features
 
     # Cache miss - fetch from Feature Store
-    features = user_feature_view.read(key=[user_id])
-    feature_dict = features.to_dict()
+    features = user_feature_view.read(key=user_id)
+    feature_dict = feature_response_to_dict(features)
 
     # Update cache
     feature_cache[cache_key] = (now, feature_dict)
@@ -310,6 +362,7 @@ Monitor your Feature Store's online serving performance:
 ```python
 # Check online store health and metrics
 from google.cloud import monitoring_v3
+import time
 
 client = monitoring_v3.MetricServiceClient()
 
@@ -317,7 +370,7 @@ client = monitoring_v3.MetricServiceClient()
 results = client.list_time_series(
     request={
         'name': f'projects/your-project-id',
-        'filter': 'metric.type = "aiplatform.googleapis.com/featurestore/online_serving/latencies"',
+        'filter': 'metric.type = "aiplatform.googleapis.com/featureonlinestore/online_serving/serving_latencies"',
         'interval': {
             'end_time': {'seconds': int(time.time())},
             'start_time': {'seconds': int(time.time() - 3600)},
@@ -336,14 +389,23 @@ Features become stale when the sync from BigQuery falls behind. Build checks int
 
 ```python
 # Check feature freshness before serving
+from datetime import datetime, timezone
+import time
+
 def get_features_with_freshness_check(user_id, max_age_hours=6):
     """Fetch features and warn if they are stale."""
-    features = user_feature_view.read(key=[user_id])
-    feature_dict = features.to_dict()
+    features = user_feature_view.read(key=user_id)
+    feature_dict = feature_response_to_dict(features)
 
-    # Check the timestamp of the features
-    feature_timestamp = feature_dict.get('feature_timestamp')
+    # Check a custom freshness column from your BigQuery source
+    feature_timestamp = feature_dict.get('features_updated_at')
     if feature_timestamp:
+        if isinstance(feature_timestamp, str):
+            feature_timestamp = datetime.fromisoformat(
+                feature_timestamp.replace('Z', '+00:00')
+            )
+        elif feature_timestamp.tzinfo is None:
+            feature_timestamp = feature_timestamp.replace(tzinfo=timezone.utc)
         age_hours = (time.time() - feature_timestamp.timestamp()) / 3600
         if age_hours > max_age_hours:
             print(f"WARNING: Features for {user_id} are {age_hours:.1f} hours old")
