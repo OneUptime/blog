@@ -14,22 +14,23 @@ Let's work through how to diagnose RBAC issues and set up the right permissions.
 
 ## How RBAC Works in GKE
 
-GKE uses two layers of authorization. Your request must pass both:
+GKE can authorize requests through Kubernetes RBAC or IAM. GKE checks for an RBAC policy first; if RBAC does not grant the request, GKE checks IAM permissions:
 
 ```mermaid
 flowchart TD
     A[User / Service Account] --> B{GCP IAM Check}
-    B -->|Pass| C{Kubernetes RBAC Check}
-    B -->|Fail| D[403 Forbidden]
+    A --> C{Kubernetes RBAC Check}
     C -->|Pass| E[Request Allowed]
-    C -->|Fail| F[403 Forbidden]
+    C -->|No matching grant| B
+    B -->|Pass| E
+    B -->|Fail| D[403 Forbidden]
 ```
 
-1. **GCP IAM** - Determines if you can access the GKE API at all. You need at minimum the `container.clusters.get` permission (typically via the `roles/container.clusterViewer` role).
+1. **GCP IAM** - Determines if you can authenticate to the cluster and can also authorize broad access to Kubernetes API object types at the project level. You need at minimum the `container.clusters.get` permission (typically via the `roles/container.clusterViewer` role) to authenticate to clusters in the project.
 
 2. **Kubernetes RBAC** - Determines what you can do within the cluster. This is where Roles, ClusterRoles, RoleBindings, and ClusterRoleBindings come in.
 
-A common source of confusion is that you can have the right IAM permissions but wrong RBAC permissions, or vice versa.
+A common source of confusion is that Kubernetes RBAC is usually the better place for fine-grained in-cluster permissions, while IAM roles can still authorize broad Kubernetes API access.
 
 ## Step 1 - Identify the Failing User or Service Account
 
@@ -111,7 +112,7 @@ metadata:
   namespace: production
 rules:
 - apiGroups: [""]
-  resources: ["pods", "services", "configmaps", "secrets", "endpoints"]
+  resources: ["pods", "services", "configmaps", "endpoints"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
@@ -228,11 +229,11 @@ gcloud projects get-iam-policy your-project-id \
 ```
 
 Minimum IAM roles needed to access GKE:
-- `roles/container.clusterViewer` - to get cluster credentials
+- `roles/container.clusterViewer` - to authenticate to clusters in the project
 - `roles/container.viewer` - to view GKE resources in Console
 
 For developers who need to deploy:
-- `roles/container.developer` - full access to Kubernetes API objects
+- `roles/container.developer` - broad access to Kubernetes API objects inside clusters
 
 ```bash
 # Grant the container developer role
@@ -241,7 +242,7 @@ gcloud projects add-iam-policy-binding your-project-id \
   --role="roles/container.developer"
 ```
 
-Note that `roles/container.admin` grants cluster-admin equivalent permissions, which bypasses RBAC entirely. Use this sparingly.
+Note that `roles/container.admin` grants full management of clusters and Kubernetes API objects through IAM, even without Kubernetes RBAC bindings. Use this sparingly.
 
 ## Step 7 - Debug with Audit Logs
 
@@ -266,9 +267,8 @@ A few GKE-specific issues that catch people:
 ```bash
 # Enable Google Groups for RBAC
 gcloud container clusters update your-cluster \
-  --enable-managed-config-connector-identity \
   --security-group="gke-security-groups@yourdomain.com" \
-  --zone us-central1-a
+  --location us-central1-a
 ```
 
 **Default service account**: Pods use the `default` service account in their namespace if none is specified. This account has no permissions by default. Always create and specify a dedicated service account.
