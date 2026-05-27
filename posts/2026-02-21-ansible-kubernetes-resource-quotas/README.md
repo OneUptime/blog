@@ -14,13 +14,13 @@ Managing Resource Quotas through Ansible keeps your cluster governance policies 
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- A supported Ansible installation with the `kubernetes.core` collection
 - A Kubernetes cluster
 - A valid kubeconfig
 
 ```bash
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes
+pip install kubernetes jsonpatch
 ```
 
 ## Understanding Resource Quotas
@@ -31,7 +31,7 @@ Resource Quotas operate at the namespace level. They limit:
 - **Storage resources**: PVC count and total storage capacity
 - **Object counts**: Pods, Services, ConfigMaps, Secrets, etc.
 
-When a quota is active, pods must specify resource requests and limits. If they do not, the pod creation will be rejected. You can use a LimitRange to provide defaults (covered in a companion guide).
+When CPU or memory quotas are active, pods must specify the corresponding resource requests or limits being tracked. If they do not, the pod creation may be rejected. You can use a LimitRange to provide defaults (covered in a companion guide).
 
 ## Creating a Compute Resource Quota
 
@@ -81,7 +81,7 @@ Start with the most common type: CPU and memory limits for a namespace.
               limits.memory: "{{ memory_limits }}"
 ```
 
-This quota means all pods in the `development` namespace collectively cannot request more than 10 CPU cores and 20Gi of memory. The `limits` fields cap the maximum resources pods can burst to.
+This quota means all pods in the `development` namespace collectively cannot request more than 10 CPU cores and 20Gi of memory. The `limits` fields cap the aggregate CPU and memory limits that pods can declare.
 
 ## Creating a Storage Resource Quota
 
@@ -330,4 +330,4 @@ Check how much of the quota is being consumed.
 
 ## Summary
 
-Resource Quotas are your first line of defense against resource exhaustion in shared Kubernetes clusters. They enforce fair resource distribution across teams and prevent any single namespace from monopolizing cluster capacity. Managing them through Ansible makes quota policies part of your infrastructure-as-code workflow, so changes are reviewed, tracked, and applied consistently. Remember that when you enable compute quotas, all pods must specify resource requests and limits. Pair Resource Quotas with LimitRanges to provide sensible defaults for pods that do not specify their own.
+Resource Quotas are your first line of defense against resource exhaustion in shared Kubernetes clusters. They enforce fair resource distribution across teams and prevent any single namespace from monopolizing cluster capacity. Managing them through Ansible makes quota policies part of your infrastructure-as-code workflow, so changes are reviewed, tracked, and applied consistently. Remember that when you enable CPU or memory quotas, pods must specify the corresponding resource requests or limits being tracked. Pair Resource Quotas with LimitRanges to provide sensible defaults for pods that do not specify their own.
