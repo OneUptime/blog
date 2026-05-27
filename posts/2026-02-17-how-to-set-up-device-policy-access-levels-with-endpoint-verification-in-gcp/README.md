@@ -12,7 +12,7 @@ IP-based access levels are a solid starting point, but they have limitations. A 
 
 This is a core component of Google's BeyondCorp zero-trust model. Instead of trusting a device just because it is on the right network, you verify that the device itself meets your security standards before granting access.
 
-Endpoint Verification is the tool that collects device information. It runs as a Chrome extension and a native helper application on user devices, reporting device attributes to Google Cloud.
+Endpoint Verification is the tool that collects device information. It runs as a Chrome extension, with a native helper application installed when needed, reporting device attributes to Google Cloud.
 
 ## How It Works
 
@@ -36,7 +36,7 @@ sequenceDiagram
 
 ## Prerequisites
 
-- Google Workspace or Cloud Identity Premium license (for device management)
+- Chrome Enterprise Premium subscription for Context-Aware Access and device-based access levels
 - Access Context Manager configured with an access policy
 - The `roles/accesscontextmanager.policyAdmin` role
 - Chrome browser on user devices
@@ -62,9 +62,9 @@ In the Admin console: Devices > Chrome > Apps & Extensions > Users & Browsers, a
 
 The Chrome extension alone provides basic device info, but the native helper application provides more detailed attributes like disk encryption status.
 
-Users can install it from the Chrome Web Store, or you can deploy it through your MDM solution:
+Users can install it when prompted by Endpoint Verification, or you can deploy it through your MDM solution:
 
-- **macOS**: Deploy via MDM or `brew install --cask endpoint-verification`
+- **macOS**: Deploy the Endpoint Verification helper app package via MDM
 - **Windows**: Deploy via Group Policy or SCCM
 - **Linux**: Available as a DEB or RPM package
 
@@ -76,14 +76,7 @@ In the Admin console:
 1. Go to Devices > Endpoints
 2. You should see a list of devices with their attributes
 
-You can also check via the API:
-
-```bash
-# List enrolled devices (requires Directory API access)
-
-gcloud endpoint-verification list \
-  --organization=ORGANIZATION_ID
-```
+You can also check device records with the Cloud Identity Devices API.
 
 ## Step 4: Create a Basic Device Policy Access Level
 
@@ -91,14 +84,13 @@ Start with a simple policy that requires screen lock.
 
 ```yaml
 # basic-device-spec.yaml
-conditions:
-  - devicePolicy:
-      requireScreenlock: true
+- devicePolicy:
+    requireScreenlock: true
 ```
 
 ```bash
 # Create the access level
-gcloud access-context-manager levels create basic-device-trust \
+gcloud access-context-manager levels create basic_device_trust \
   --title="Basic Device Trust - Screen Lock Required" \
   --basic-level-spec=basic-device-spec.yaml \
   --policy=$ACCESS_POLICY_ID
@@ -110,18 +102,17 @@ For more sensitive resources, require additional device attributes.
 
 ```yaml
 # strict-device-spec.yaml
-conditions:
-  - devicePolicy:
-      requireScreenlock: true
-      allowedEncryptionStatuses:
-        - ENCRYPTED
-      osConstraints:
-        - osType: DESKTOP_MAC
-          minimumVersion: "13.0.0"
-        - osType: DESKTOP_WINDOWS
-          minimumVersion: "10.0.19045"
-        - osType: DESKTOP_CHROME_OS
-          requireVerifiedChromeOs: true
+- devicePolicy:
+    requireScreenlock: true
+    allowedEncryptionStatuses:
+      - ENCRYPTED
+    osConstraints:
+      - osType: DESKTOP_MAC
+        minimumVersion: "13.0.0"
+      - osType: DESKTOP_WINDOWS
+        minimumVersion: "10.0.19045"
+      - osType: DESKTOP_CHROME_OS
+        requireVerifiedChromeOs: true
 ```
 
 This requires:
@@ -131,7 +122,7 @@ This requires:
 
 ```bash
 # Create the strict access level
-gcloud access-context-manager levels create strict-device-trust \
+gcloud access-context-manager levels create strict_device_trust \
   --title="Strict Device Trust - Encryption and OS Version" \
   --basic-level-spec=strict-device-spec.yaml \
   --policy=$ACCESS_POLICY_ID
@@ -143,21 +134,20 @@ For the strongest access control, require both a trusted network and a trusted d
 
 ```yaml
 # combined-trust-spec.yaml
-conditions:
-  - ipSubnetworks:
-      - 203.0.113.0/24
-      - 198.51.100.0/24
-    devicePolicy:
-      requireScreenlock: true
-      allowedEncryptionStatuses:
-        - ENCRYPTED
+- ipSubnetworks:
+    - 203.0.113.0/24
+    - 198.51.100.0/24
+  devicePolicy:
+    requireScreenlock: true
+    allowedEncryptionStatuses:
+      - ENCRYPTED
 ```
 
 When `ipSubnetworks` and `devicePolicy` are in the same condition, both must be true (AND logic).
 
 ```bash
 # Create the combined access level
-gcloud access-context-manager levels create full-trust \
+gcloud access-context-manager levels create full_trust \
   --title="Full Trust - Network and Device" \
   --basic-level-spec=combined-trust-spec.yaml \
   --policy=$ACCESS_POLICY_ID
@@ -170,7 +160,7 @@ Add the access level to your VPC Service Controls perimeter.
 ```bash
 # Add the device policy access level to the perimeter
 gcloud access-context-manager perimeters update my-perimeter \
-  --add-access-levels="accessPolicies/$ACCESS_POLICY_ID/accessLevels/strict-device-trust" \
+  --add-access-levels="accessPolicies/$ACCESS_POLICY_ID/accessLevels/strict_device_trust" \
   --policy=$ACCESS_POLICY_ID
 ```
 
@@ -181,7 +171,7 @@ Or use it in an ingress rule:
 - ingressFrom:
     identityType: ANY_USER_ACCOUNT
     sources:
-      - accessLevel: accessPolicies/POLICY_ID/accessLevels/strict-device-trust
+      - accessLevel: accessPolicies/POLICY_ID/accessLevels/strict_device_trust
   ingressTo:
     operations:
       - serviceName: "*"
@@ -198,53 +188,50 @@ Different resources might need different levels of device trust.
 ```yaml
 # Tier 1: Basic trust - screen lock only (for viewing dashboards)
 # tier1-spec.yaml
-conditions:
-  - devicePolicy:
-      requireScreenlock: true
+- devicePolicy:
+    requireScreenlock: true
 ```
 
 ```yaml
 # Tier 2: Standard trust - screen lock + encryption (for development)
 # tier2-spec.yaml
-conditions:
-  - devicePolicy:
-      requireScreenlock: true
-      allowedEncryptionStatuses:
-        - ENCRYPTED
+- devicePolicy:
+    requireScreenlock: true
+    allowedEncryptionStatuses:
+      - ENCRYPTED
 ```
 
 ```yaml
 # Tier 3: High trust - everything + current OS (for production admin)
 # tier3-spec.yaml
-conditions:
-  - devicePolicy:
-      requireScreenlock: true
-      allowedEncryptionStatuses:
-        - ENCRYPTED
-      allowedDeviceManagementLevels:
-        - ADVANCED
-      osConstraints:
-        - osType: DESKTOP_MAC
-          minimumVersion: "14.0.0"
-        - osType: DESKTOP_WINDOWS
-          minimumVersion: "10.0.22000"
+- devicePolicy:
+    requireScreenlock: true
+    allowedEncryptionStatuses:
+      - ENCRYPTED
+    allowedDeviceManagementLevels:
+      - MANAGEMENT_VERIFIED
+    osConstraints:
+      - osType: DESKTOP_MAC
+        minimumVersion: "14.0.0"
+      - osType: DESKTOP_WINDOWS
+        minimumVersion: "10.0.22000"
 ```
 
 Create all three tiers:
 
 ```bash
 # Create tiered access levels
-gcloud access-context-manager levels create tier1-device-trust \
+gcloud access-context-manager levels create tier1_device_trust \
   --title="Tier 1 - Basic Device Trust" \
   --basic-level-spec=tier1-spec.yaml \
   --policy=$ACCESS_POLICY_ID
 
-gcloud access-context-manager levels create tier2-device-trust \
+gcloud access-context-manager levels create tier2_device_trust \
   --title="Tier 2 - Standard Device Trust" \
   --basic-level-spec=tier2-spec.yaml \
   --policy=$ACCESS_POLICY_ID
 
-gcloud access-context-manager levels create tier3-device-trust \
+gcloud access-context-manager levels create tier3_device_trust \
   --title="Tier 3 - High Device Trust" \
   --basic-level-spec=tier3-spec.yaml \
   --policy=$ACCESS_POLICY_ID
@@ -261,14 +248,16 @@ In the Admin console:
 
 ## Available Device Policy Attributes
 
-Here is a reference of all device attributes you can check:
+Here is a reference of the main device attributes you can check:
 
 | Attribute | Description | Values |
 |---|---|---|
 | requireScreenlock | Device must have screen lock enabled | true/false |
-| allowedEncryptionStatuses | Disk encryption status | ENCRYPTED, UNENCRYPTED |
-| allowedDeviceManagementLevels | MDM enrollment level | NONE, BASIC, ADVANCED |
-| osConstraints.osType | Operating system type | DESKTOP_MAC, DESKTOP_WINDOWS, DESKTOP_CHROME_OS, DESKTOP_LINUX |
+| allowedEncryptionStatuses | Disk encryption status | ENCRYPTION_UNSUPPORTED, ENCRYPTED, UNENCRYPTED |
+| allowedDeviceManagementLevels | Device management level | MANAGEMENT_UNSPECIFIED, NONE, BASIC, COMPLETE, MANAGEMENT_VERIFIED |
+| requireAdminApproval | Device must be approved by an administrator | true/false |
+| requireCorpOwned | Device must be owned by the enterprise | true/false |
+| osConstraints.osType | Operating system type | DESKTOP_MAC, DESKTOP_WINDOWS, DESKTOP_CHROME_OS, DESKTOP_LINUX, IOS, ANDROID |
 | osConstraints.minimumVersion | Minimum OS version | Version string like "13.0.0" |
 | osConstraints.requireVerifiedChromeOs | Verified Chrome OS boot | true/false |
 
@@ -282,7 +271,7 @@ If device policy access levels are not working:
 
 3. **Check attribute values**: The device might not report the expected attributes. For example, a Linux device might not report encryption status.
 
-4. **Check license**: Endpoint Verification requires specific Google Workspace or Cloud Identity licenses.
+4. **Check license**: Device-based Context-Aware Access rules require Chrome Enterprise Premium.
 
 5. **Allow time for sync**: Device attributes can take up to an hour to sync after changes.
 
