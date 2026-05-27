@@ -81,7 +81,7 @@ Make sure you are using this exact string. Common mistakes:
 
 ## Cause 3: Authentication Issues
 
-The proxy needs valid credentials with the `cloudsql.client` role. There are several ways authentication can fail.
+The proxy needs valid credentials with the Cloud SQL Client role (`roles/cloudsql.client`) or equivalent permissions. There are several ways authentication can fail.
 
 ### No Credentials Found
 
@@ -141,7 +141,7 @@ gcloud auth application-default print-access-token
 
 ## Cause 4: Network Connectivity
 
-The proxy needs to reach Google APIs over HTTPS (port 443). If your machine cannot reach `sqladmin.googleapis.com`, the proxy will fail to dial.
+The proxy needs to reach Google APIs over HTTPS (port 443) and the Cloud SQL proxy server over TCP port 3307. If your machine cannot reach `sqladmin.googleapis.com`, the proxy will fail before it can fetch instance metadata or certificates.
 
 ```bash
 # Test connectivity to the Cloud SQL Admin API
@@ -183,14 +183,24 @@ If the Cloud SQL instance is stopped, under maintenance, or suspended, the proxy
 ```bash
 # Check instance status
 gcloud sql instances describe my-db \
-    --format="value(state)"
+    --project=my-project \
+    --format="value(state,settings.activationPolicy)"
 ```
 
 Expected states:
-- `RUNNABLE` - Instance is running and accepting connections
+- `RUNNABLE` with activation policy `ALWAYS` - Instance is running and accepting connections
+- `RUNNABLE` with activation policy `NEVER` - Instance is stopped and not accepting connections
 - `SUSPENDED` - Instance is suspended (billing issue)
 - `MAINTENANCE` - Instance is undergoing maintenance
 - `FAILED` - Instance is in an error state
+
+If the activation policy is `NEVER`, start the instance with:
+
+```bash
+gcloud sql instances patch my-db \
+    --project=my-project \
+    --activation-policy=ALWAYS
+```
 
 If suspended, check billing. If in maintenance, wait for it to complete.
 
@@ -221,7 +231,7 @@ An outdated proxy version might have bugs or be incompatible with newer Cloud SQ
 
 # Download the latest version
 curl -o cloud-sql-proxy \
-    https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.linux.amd64
+    https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.22.0/cloud-sql-proxy.linux.amd64
 chmod +x cloud-sql-proxy
 ```
 
@@ -263,13 +273,14 @@ echo "$CONN_NAME"
 echo ""
 echo "=== Instance Status ==="
 gcloud sql instances describe $INSTANCE --project=$PROJECT \
-    --format="table(state, ipAddresses.type, ipAddresses.ipAddress)" 2>&1
+    --format="table(state, settings.activationPolicy, ipAddresses.type, ipAddresses.ipAddress)" 2>&1
 
 echo ""
 echo "=== SQL Admin API ==="
-gcloud services list --enabled \
+API_ENABLED=$(gcloud services list --enabled \
     --filter="name:sqladmin.googleapis.com" \
-    --project=$PROJECT --format="value(name)" 2>&1 || echo "NOT ENABLED"
+    --project=$PROJECT --format="value(name)" 2>/dev/null)
+[ "$API_ENABLED" = "sqladmin.googleapis.com" ] && echo "ENABLED" || echo "NOT ENABLED"
 
 echo ""
 echo "=== Current Credentials ==="
@@ -295,8 +306,8 @@ graph TD
     B -->|No| C[Enable sqladmin.googleapis.com]
     B -->|Yes| D{Credentials valid?}
     D -->|No| E[Fix auth - login or set key file]
-    D -->|Yes| F{Has cloudsql.client role?}
-    F -->|No| G[Grant cloudsql.client]
+    D -->|Yes| F{Has Cloud SQL Client role?}
+    F -->|No| G[Grant roles/cloudsql.client]
     F -->|Yes| H{Instance running?}
     H -->|No| I[Start instance or fix billing]
     H -->|Yes| J{Network reachable?}
