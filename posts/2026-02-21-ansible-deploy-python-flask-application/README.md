@@ -156,6 +156,7 @@ The core of the deployment lives in the role tasks. We will break this into logi
 - name: Enable and start Gunicorn service
   systemd:
     name: "{{ app_name }}"
+    daemon_reload: yes
     enabled: yes
     state: started
 
@@ -195,7 +196,8 @@ User={{ app_user }}
 Group={{ app_user }}
 WorkingDirectory={{ app_dir }}
 Environment="PATH={{ venv_dir }}/bin"
-ExecStart={{ venv_dir }}/bin/gunicorn --workers 3 --bind 0.0.0.0:{{ app_port }} wsgi:app
+EnvironmentFile=-{{ app_dir }}/.env
+ExecStart={{ venv_dir }}/bin/gunicorn --workers 3 --bind 127.0.0.1:{{ app_port }} wsgi:app
 Restart=always
 RestartSec=5
 
@@ -207,7 +209,7 @@ The `wsgi:app` part assumes your Flask app has a `wsgi.py` file with an `app` ob
 
 ## Nginx Configuration Template
 
-Nginx sits in front of Gunicorn and handles static files, SSL termination, and request buffering.
+Nginx sits in front of Gunicorn and can handle static files, SSL termination, and request buffering. This example configures HTTP proxying and static files.
 
 ```nginx
 # roles/flask_app/templates/nginx.conf.j2
@@ -293,7 +295,7 @@ And the corresponding template:
 ```bash
 # roles/flask_app/templates/env.j2
 FLASK_APP=wsgi.py
-FLASK_ENV=production
+FLASK_DEBUG=0
 SECRET_KEY={{ flask_secret_key }}
 DATABASE_URL={{ database_url }}
 ```
@@ -338,6 +340,7 @@ It is a good practice to verify the deployment worked before moving to the next 
     url: "http://localhost:{{ app_port }}/health"
     status_code: 200
   register: health_check
+  until: health_check.status | default(0) == 200
   retries: 3
   delay: 5
 ```
@@ -357,7 +360,7 @@ When deploying to multiple servers behind a load balancer, use serial deployment
     - flask_app
 ```
 
-Setting `serial: 1` means Ansible will fully deploy to one server before moving to the next. This ensures your application stays available throughout the deployment.
+Setting `serial: 1` means Ansible will fully deploy to one server before moving to the next. When the servers are behind a correctly configured load balancer, this helps your application stay available throughout the deployment.
 
 ## Wrapping Up
 
