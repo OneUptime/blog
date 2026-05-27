@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, BGP, FRR, Free Range Routing
 
-Description: Learn how to configure MetalLB with FRR mode for full-featured BGP support including BFD, VRF, and advanced route policies.
+Description: Learn how to configure MetalLB with FRR mode for BGP support including BFD, VRF, and BGP route attributes.
 
 ---
 
-MetalLB ships with a native BGP implementation that handles basic peering well, but it lacks support for advanced features like BFD (Bidirectional Forwarding Detection), VRF (Virtual Routing and Forwarding), and fine-grained route policies. FRR mode replaces the built-in speaker with a full FRR routing stack, giving you production-grade BGP capabilities inside your Kubernetes cluster.
+MetalLB ships with a native BGP implementation that handles basic peering well, but it lacks support for advanced features like BFD (Bidirectional Forwarding Detection), VRF (Virtual Routing and Forwarding), and multiprotocol BGP. FRR mode replaces the built-in speaker with an FRR routing stack, giving you production-grade BGP capabilities inside your Kubernetes cluster.
 
-This guide walks you through deploying MetalLB in FRR mode from scratch, configuring BGP peers, and verifying that routes are advertised correctly.
+This guide walks you through deploying MetalLB in FRR mode from scratch, configuring BGP peers, and verifying that routes are advertised correctly. FRR mode is deprecated in current MetalLB releases; new deployments should prefer FRR-K8s mode unless you specifically need the legacy FRR sidecar deployment model.
 
 ## Why FRR Mode?
 
@@ -18,7 +18,7 @@ The default MetalLB speaker handles simple BGP peering, but it cannot do the fol
 
 - Run BFD for sub-second failure detection
 - Peer through a VRF
-- Apply community strings or local preference policies
+- Use multiprotocol BGP features
 - Support IPv4 and IPv6 dual-stack in a single session
 
 FRR mode solves all of these by running an actual FRR daemon (with zebra and bgpd) inside each speaker pod.
@@ -37,7 +37,7 @@ graph TD
     G --> H[External Network]
 ```
 
-Each speaker pod runs an FRR sidecar container. The controller translates your Kubernetes CRDs into FRR configuration that bgpd consumes.
+Each speaker pod runs an FRR sidecar container. MetalLB reconciles your Kubernetes CRDs into FRR configuration that bgpd consumes.
 
 ### Prerequisites
 
@@ -55,28 +55,29 @@ Add the MetalLB Helm repository and install with the FRR flag:
 ```bash
 # Add the official MetalLB Helm chart repository
 
-helm repo add metallb https://metallb.universe.tf
+helm repo add metallb https://metallb.github.io/metallb
 
 # Update local chart cache
 helm repo update
 
 # Install MetalLB with FRR mode enabled
-# The speaker.frr.enabled flag swaps the native BGP implementation for FRR
+# Current MetalLB charts default to FRR-K8s; these values pin legacy FRR mode
 helm install metallb metallb/metallb \
   --namespace metallb-system \
   --create-namespace \
-  --set speaker.frr.enabled=true
+  --set speaker.frr.enabled=true \
+  --set frrk8s.enabled=false
 ```
 
 Verify that the speaker pods are running and each has an FRR container:
 
 ```bash
 # Check that speaker pods are running with the frr container
-kubectl get pods -n metallb-system -l app=metallb,component=speaker
+kubectl get pods -n metallb-system -l app.kubernetes.io/name=metallb,app.kubernetes.io/component=speaker
 
 # Inspect the containers inside a speaker pod
 # You should see both "speaker" and "frr" containers listed
-kubectl get pod -n metallb-system -l component=speaker -o jsonpath='{.items[0].spec.containers[*].name}'
+kubectl get pod -n metallb-system -l app.kubernetes.io/component=speaker -o jsonpath='{.items[0].spec.containers[*].name}'
 ```
 
 You should see output that includes both `speaker` and `frr` containers.
@@ -150,12 +151,12 @@ spec:
   transmitInterval: 300
   # Number of missed packets before declaring the peer down
   detectMultiplier: 3
-  # Use echo mode for lower CPU overhead
+  # Enable BFD echo mode; this is not supported for multihop BFD sessions
   echoMode: true
   # Passive mode means MetalLB waits for the router to initiate BFD
   passiveMode: false
   # Minimum echo receive interval in milliseconds
-  minimumTtl: 254
+  echoInterval: 50
 ```
 
 ```bash
@@ -202,7 +203,7 @@ Check that FRR has established a session with your upstream router:
 ```bash
 # Exec into the FRR container of a speaker pod
 # Replace the pod name with an actual pod from your cluster
-SPEAKER_POD=$(kubectl get pod -n metallb-system -l component=speaker -o jsonpath='{.items[0].metadata.name}')
+SPEAKER_POD=$(kubectl get pod -n metallb-system -l app.kubernetes.io/component=speaker -o jsonpath='{.items[0].metadata.name}')
 
 # Show the BGP summary - you should see "Established" state
 kubectl exec -n metallb-system "$SPEAKER_POD" -c frr -- vtysh -c "show bgp summary"
