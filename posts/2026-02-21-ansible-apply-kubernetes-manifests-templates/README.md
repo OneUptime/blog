@@ -14,13 +14,13 @@ This guide shows how to use Jinja2 templates to generate Kubernetes manifests dy
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- ansible-core 2.16+ with the current `kubernetes.core` collection
 - Familiarity with Jinja2 template syntax
 - A valid kubeconfig
 
 ```bash
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes
+pip install kubernetes PyYAML jsonpatch
 ```
 
 ## Basic Template with Variable Substitution
@@ -244,7 +244,7 @@ spec:
         definition: "{{ lookup('template', 'templates/services.yml.j2') | from_yaml_all }}"
 ```
 
-Note the use of `from_yaml_all` instead of `from_yaml`. The template generates multiple YAML documents (separated by `---`), so `from_yaml_all` parses all of them into a list.
+Note the use of `from_yaml_all` instead of `from_yaml`. The template generates multiple YAML documents (separated by `---`), so `from_yaml_all` parses all of them into objects that the `k8s` module can apply.
 
 ## Environment-Specific Variable Files
 
@@ -432,7 +432,7 @@ spec:
       kubernetes.core.k8s:
         state: present
         definition: "{{ item }}"
-      loop: "{{ lookup('template', 'templates/full-stack.yml.j2') | from_yaml_all }}"
+      loop: "{{ lookup('template', 'templates/full-stack.yml.j2') | from_yaml_all | list }}"
       loop_control:
         label: "{{ item.kind }}/{{ item.metadata.name }}"
 ```
