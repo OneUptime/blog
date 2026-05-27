@@ -14,9 +14,9 @@ This guide covers practical patterns for gathering Kubernetes resource informati
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- Ansible 2.16+ with `kubernetes.core` collection
 - A valid kubeconfig
-- Python `kubernetes` library
+- Python `kubernetes` library 24.2.0+
 
 ```bash
 ansible-galaxy collection install kubernetes.core
