@@ -37,6 +37,7 @@ flowchart TD
 - An IAP-protected application (web app behind a load balancer)
 - Access Context Manager API enabled
 - An organization-level access policy (or permissions to create one)
+- Chrome Enterprise Premium and Endpoint Verification configured if you want to use device-based access levels
 
 ```bash
 # Enable the Access Context Manager API
@@ -76,7 +77,7 @@ Restrict access to requests coming from your corporate network IP ranges.
 
 ```bash
 # Create an access level that requires corporate IP addresses
-gcloud access-context-manager levels create corporate-network \
+gcloud access-context-manager levels create corporate_network \
     --policy=POLICY_ID \
     --title="Corporate Network" \
     --basic-level-spec=corp-network-spec.yaml
@@ -119,7 +120,7 @@ conditions:
 
 ```bash
 # Create the device-based access level
-gcloud access-context-manager levels create managed-devices \
+gcloud access-context-manager levels create managed_devices \
     --policy=POLICY_ID \
     --title="Managed Devices Only" \
     --basic-level-spec=managed-device-spec.yaml
@@ -127,7 +128,7 @@ gcloud access-context-manager levels create managed-devices \
 
 ### Combining Conditions (AND Logic)
 
-When you put multiple conditions in a single access level, they use OR logic (any condition can be met). To require ALL conditions, list them in a single condition block.
+When you put multiple attributes in a single condition block, they use AND logic. Multiple condition blocks use AND logic by default, or OR logic if you create the access level with `--combine-function=OR`. To require ALL attributes together, list them in a single condition block.
 
 ```yaml
 # strict-access-spec.yaml
@@ -143,9 +144,9 @@ conditions:
 
 ```bash
 # Create a strict access level that combines requirements
-gcloud access-context-manager levels create strict-access \
+gcloud access-context-manager levels create strict_access \
     --policy=POLICY_ID \
-    --title="Strict Access - Corp Network and Managed Device" \
+    --title="Strict Access Corp Network and Managed Device" \
     --basic-level-spec=strict-access-spec.yaml
 ```
 
@@ -155,11 +156,11 @@ You can reference other access levels as dependencies. This lets you build compo
 
 ```yaml
 # high-security-spec.yaml
-# Requires the managed-devices access level AND the corporate network
+# Requires the managed_devices access level AND the corporate network
 conditions:
   - requiredAccessLevels:
-      - accessPolicies/POLICY_ID/accessLevels/managed-devices
-      - accessPolicies/POLICY_ID/accessLevels/corporate-network
+      - accessPolicies/POLICY_ID/accessLevels/managed_devices
+      - accessPolicies/POLICY_ID/accessLevels/corporate_network
 ```
 
 ## Step 3: Bind Access Levels to IAP Resources
@@ -173,7 +174,7 @@ gcloud iap web add-iam-policy-binding \
     --service=my-backend-service \
     --member="group:engineering@company.com" \
     --role="roles/iap.httpsResourceAccessor" \
-    --condition="expression=accessPolicies/POLICY_ID/accessLevels/corporate-network in request.auth.access_levels,title=require-corp-network,description=Requires corporate network" \
+    --condition='expression="accessPolicies/POLICY_ID/accessLevels/corporate_network" in request.auth.access_levels,title=require-corp-network,description=Requires corporate network' \
     --project=my-project-id
 ```
 
@@ -188,7 +189,7 @@ gcloud iap web add-iam-policy-binding \
     --service=my-secure-app \
     --member="group:engineering@company.com" \
     --role="roles/iap.httpsResourceAccessor" \
-    --condition="expression=accessPolicies/POLICY_ID/accessLevels/corporate-network in request.auth.access_levels && accessPolicies/POLICY_ID/accessLevels/managed-devices in request.auth.access_levels,title=require-corp-and-device,description=Requires corp network and managed device" \
+    --condition='expression="accessPolicies/POLICY_ID/accessLevels/corporate_network" in request.auth.access_levels && "accessPolicies/POLICY_ID/accessLevels/managed_devices" in request.auth.access_levels,title=require-corp-and-device,description=Requires corp network and managed device' \
     --project=my-project-id
 ```
 
@@ -200,9 +201,11 @@ From a corporate network IP:
 
 ```bash
 # This should succeed if your IP is in the allowed range
-curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+curl -H "Authorization: Bearer IAP_TOKEN" \
     https://my-app.company.com/
 ```
+
+For programmatic tests, `IAP_TOKEN` must be an IAP-accepted credential, such as an OAuth 2.0 ID token with the audience set to the IAP application's OAuth client ID, or a service account JWT for the target URL.
 
 From a non-corporate IP (like a home network), the request should fail with a 403 even if the user is authorized.
 
@@ -261,7 +264,7 @@ resource "google_iap_web_backend_service_iam_member" "context_aware_access" {
 
 ## Endpoint Verification for Device Posture
 
-For device policy access levels to work, users need the Endpoint Verification Chrome extension installed on their devices. This extension collects device attributes and reports them to Google.
+For device policy access levels to work, users need Endpoint Verification deployed on their devices, including the Chrome extension and the native helper where required. Endpoint Verification collects device attributes and reports them to Google.
 
 1. Deploy the Endpoint Verification extension through your MDM or Chrome Enterprise
 2. Ensure the extension is active and signed in with the user's corporate Google account
@@ -281,12 +284,12 @@ Without Endpoint Verification, device policy conditions will not evaluate proper
 
 ## Monitoring Context-Aware Access
 
-Use Cloud Audit Logs to see which access levels were evaluated and whether they passed or failed.
+Use Cloud Audit Logs to see IAP access decisions and which access levels a requester met. Logs only list access levels that were met; blocked access levels are not listed on unauthorized requests.
 
 ```bash
 # Check IAP access decisions in the audit log
 gcloud logging read \
-    'resource.type="iap_web" AND protoPayload.methodName="AuthorizeUser"' \
+    'protoPayload.serviceName="iap.googleapis.com" AND protoPayload.authorizationInfo.permission="iap.webServiceVersions.accessViaIAP"' \
     --limit=20 \
     --project=my-project-id
 ```
