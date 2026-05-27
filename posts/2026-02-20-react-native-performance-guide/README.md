@@ -16,7 +16,7 @@ Understanding the architecture helps you identify where bottlenecks occur.
 
 ```mermaid
 flowchart LR
-    JS["JS Thread"] -->|Serialized Messages| Bridge["Bridge / JSI"]
+    JS["JS Thread"] -->|Bridge messages or JSI calls| Bridge["Native Interop"]
     Bridge --> Native["Native Thread"]
     Native --> UI["UI Thread"]
     UI --> Screen["Screen"]
@@ -24,7 +24,7 @@ flowchart LR
     style Bridge fill:#ffcc02
 ```
 
-Performance issues often come from too many messages crossing the bridge, heavy work on the JS thread, or layout thrashing on the UI thread.
+Performance issues often come from excessive JavaScript/native communication, heavy work on the JS thread, or expensive rendering work on the UI thread. In React Native's New Architecture, JSI avoids the serialization costs of the old asynchronous bridge, but frequent cross-boundary calls can still hurt responsiveness.
 
 ## Optimizing FlatList Rendering
 
@@ -32,7 +32,7 @@ Performance issues often come from too many messages crossing the bridge, heavy 
 
 ```tsx
 // src/components/OptimizedProductList.tsx
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback } from 'react';
 import { FlatList, View, Text, Image, StyleSheet } from 'react-native';
 
 interface Product {
@@ -106,7 +106,7 @@ const OptimizedProductList: React.FC<Props> = ({ products }) => {
       keyExtractor={keyExtractor}
       renderItem={renderItem}
       getItemLayout={getItemLayout}
-      // Render 5 items beyond the visible area for smooth scrolling
+      // Keep a 5-viewport render window: current viewport plus nearby content
       windowSize={5}
       // Maximum items to render in one batch
       maxToRenderPerBatch={10}
@@ -114,7 +114,7 @@ const OptimizedProductList: React.FC<Props> = ({ products }) => {
       initialNumToRender={10}
       // Time between rendering off-screen items (in ms)
       updateCellsBatchingPeriod={50}
-      // Remove items far from the viewport from the component tree
+      // Detach off-screen native views from the native view hierarchy
       removeClippedSubviews={true}
     />
   );
@@ -165,8 +165,8 @@ flowchart TD
     D --> E
     E --> F["User scrolls"]
     F --> G{"removeClippedSubviews?"}
-    G -->|Yes| H["Detach off-screen items"]
-    G -->|No| I["Keep all items mounted"]
+    G -->|Yes| H["Detach off-screen native views"]
+    G -->|No| I["Keep off-screen native views attached"]
     H --> J["Render new items in batches"]
     I --> J
     J --> K["maxToRenderPerBatch controls batch size"]
@@ -179,7 +179,7 @@ Images are often the largest resource in a mobile app. Optimize them aggressivel
 ```tsx
 // src/components/OptimizedImage.tsx
 import React, { useState } from 'react';
-import { View, Image, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Image, ActivityIndicator, StyleSheet, Text } from 'react-native';
 
 interface OptimizedImageProps {
   uri: string;
@@ -216,7 +216,7 @@ const OptimizedImage: React.FC<OptimizedImageProps> = React.memo(
           <Image
             source={{
               uri,
-              // Request the exact size needed to avoid loading oversized images
+              // Provide the intended display size for the image source
               width,
               height,
               // Enable caching
@@ -229,7 +229,7 @@ const OptimizedImage: React.FC<OptimizedImageProps> = React.memo(
               setLoading(false);
               setError(true);
             }}
-            // Lower quality for thumbnails
+            // Enable progressive JPEG rendering on Android
             progressiveRenderingEnabled={true}
           />
         )}
@@ -276,6 +276,12 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 interface DashboardProps {
   transactions: Transaction[];
+}
+
+interface Transaction {
+  id: string;
+  amount: number;
+  date: string;
 }
 
 const DashboardScreen: React.FC<DashboardProps> = ({ transactions }) => {
@@ -454,9 +460,9 @@ interface FadeInViewProps {
 }
 
 /**
- * Fade-in animation that runs entirely on the native thread.
- * useNativeDriver: true ensures the JS thread is not involved
- * during the animation, keeping it at 60fps.
+ * Fade-in animation that uses the native driver.
+ * useNativeDriver: true sends the animation to native before it starts,
+ * so the JS thread does not need to update every frame.
  */
 const FadeInView: React.FC<FadeInViewProps> = ({
   children,
@@ -473,7 +479,7 @@ const FadeInView: React.FC<FadeInViewProps> = ({
         toValue: 1,
         duration,
         delay,
-        useNativeDriver: true, // Run on native thread
+        useNativeDriver: true, // Use the native driver
       }),
       Animated.timing(translateY, {
         toValue: 0,
