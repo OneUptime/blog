@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Timeout, Task Configuration, Error Handling
 
-Description: Configure Ansible task timeouts at the global, play, and task level to prevent hung tasks from blocking playbook execution indefinitely.
+Description: Configure Ansible task timeouts at the global, play, block, and task level to prevent hung tasks from blocking playbook execution indefinitely.
 
 ---
 
-Tasks that hang indefinitely are one of the most frustrating Ansible problems. A network call that never returns, a package install that gets stuck, or a service that will not start can block your entire playbook forever. Ansible provides timeout settings at multiple levels to protect against this, from global connection timeouts to per-task execution limits.
+Tasks that hang indefinitely are one of the most frustrating Ansible problems. A network call that never returns, a package install that gets stuck, or a service that will not start can block your entire playbook forever. Ansible provides timeout settings at multiple levels to protect against this, from global connection and task timeouts to per-task execution limits.
 
 ## Connection Timeout
 
@@ -27,6 +27,20 @@ ssh_args = -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax
 ```
 
 The `timeout` setting in `[defaults]` controls the overall connection timeout. The SSH-specific settings provide finer control over keep-alive and dead connection detection.
+
+## Global Task Timeout
+
+Set a default task action timeout for all tasks in `ansible.cfg`:
+
+```ini
+# ansible.cfg - Default task action timeout
+
+[defaults]
+# Maximum seconds for each task action to execute. 0 means no timeout.
+task_timeout = 300
+```
+
+This is different from the connection timeout. It applies to task action execution and does not include templating or loops.
 
 ## Task-Level Timeout
 
@@ -67,14 +81,14 @@ When a task exceeds its timeout, Ansible kills the task and marks it as failed. 
 
 ## Play-Level Timeout
 
-Set a timeout for the entire play:
+Set a default task action timeout for tasks in a play:
 
 ```yaml
-# play-timeout.yml - Limit the entire play duration
+# play-timeout.yml - Set a default task timeout for the play
 ---
 - name: Quick configuration check
   hosts: all
-  timeout: 300  # 5 minutes for the entire play
+  timeout: 300  # 5 minutes for each task action in this play
 
   tasks:
     - name: Check disk space
@@ -89,11 +103,34 @@ Set a timeout for the entire play:
       service_facts:
 ```
 
-If the play does not complete within 300 seconds, it aborts.
+If a task action in the play runs longer than 300 seconds, Ansible interrupts that task. This is not a wall-clock timeout for the entire play.
+
+## Block-Level Timeout
+
+Set a default task action timeout for tasks in a block:
+
+```yaml
+# block-timeout.yml - Set a default task timeout for a block
+---
+- name: Configuration checks with block timeout
+  hosts: all
+
+  tasks:
+    - name: Run quick checks
+      block:
+        - name: Check disk space
+          command: df -h /
+          changed_when: false
+
+        - name: Check memory
+          command: free -m
+          changed_when: false
+      timeout: 60  # 60 seconds for each task action in this block
+```
 
 ## Async Tasks with Timeouts
 
-For long-running tasks, use `async` with `poll` for non-blocking execution with a timeout:
+For long-running tasks, use `async` with `poll` for controlled polling and a timeout:
 
 ```yaml
 # async-timeout.yml - Long-running tasks with async
@@ -136,7 +173,7 @@ For long-running tasks, use `async` with `poll` for non-blocking execution with 
 The difference between `timeout` and `async`:
 
 - `timeout`: Hard kill after N seconds. Task fails.
-- `async`: Maximum runtime of N seconds. You control the polling behavior.
+- `async`: Maximum runtime of N seconds. With `poll` greater than 0, Ansible waits and polls for completion; with `poll: 0`, Ansible starts the task and moves on.
 
 ## Module-Specific Timeouts
 
@@ -227,7 +264,8 @@ Combine timeout with retries for resilient operations:
       register: health
       until: health.status == 200
 
-    # Total maximum wait: 6 attempts * (10s timeout + 10s delay) = 120 seconds
+    # Total maximum wait is about 110 seconds:
+    # 6 attempts * 10s timeout + 5 delays * 10s
 ```
 
 ## Global Timeout via Environment
@@ -238,8 +276,8 @@ Override timeout settings via environment variables:
 # Set connection timeout via environment
 export ANSIBLE_TIMEOUT=60
 
-# For SSH specifically
-export ANSIBLE_SSH_TIMEOUT=30
+# Set the default task action timeout
+export ANSIBLE_TASK_TIMEOUT=300
 
 # Run with extended timeout for slow networks
 ANSIBLE_TIMEOUT=120 ansible-playbook -i inventory/remote site.yml
