@@ -16,21 +16,20 @@ If you are stuck with service account keys, the next best thing you can do is ro
 
 The approach is straightforward:
 
-1. A Cloud Scheduler job fires on a schedule (every 30 days, for example)
+1. A Cloud Scheduler job fires on a schedule (monthly, for example)
 2. It publishes a message to a Pub/Sub topic
 3. A Cloud Function listens on that topic and performs the rotation
-4. The function creates a new key, stores it in Secret Manager, deletes the old key, and notifies the team
+4. The function creates a new key, stores it in Secret Manager, keeps the most recent previous key as a fallback, and deletes older stale keys
 
-The reason we create the new key before deleting the old one is to avoid downtime. There is a brief window where both keys are valid, and the consuming application can switch over seamlessly.
+The reason we create the new key before deleting stale keys is to avoid downtime. The most recent previous key stays valid until the next rotation, so the consuming application can switch over before that key is removed.
 
 ```mermaid
 flowchart LR
-    A[Cloud Scheduler] -->|Trigger every 30 days| B[Pub/Sub Topic]
+    A[Cloud Scheduler] -->|Trigger monthly| B[Pub/Sub Topic]
     B --> C[Cloud Function]
     C --> D[Create New Key]
     D --> E[Store in Secret Manager]
-    E --> F[Delete Old Key]
-    F --> G[Send Notification]
+    E --> F[Delete Stale Old Keys]
 ```
 
 ## Prerequisites
@@ -38,7 +37,7 @@ flowchart LR
 You need the following set up before building this pipeline:
 
 - A GCP project with billing enabled
-- The Cloud Functions, Cloud Scheduler, Pub/Sub, and Secret Manager APIs enabled
+- The Cloud Functions, Cloud Scheduler, Pub/Sub, Secret Manager, Cloud Build, Artifact Registry, Cloud Run Admin, Cloud Logging, and Eventarc APIs enabled
 - A service account whose keys you want to rotate
 - A separate service account for the rotation function with appropriate permissions
 
@@ -52,6 +51,11 @@ gcloud services enable \
   cloudscheduler.googleapis.com \
   pubsub.googleapis.com \
   secretmanager.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  run.googleapis.com \
+  logging.googleapis.com \
+  eventarc.googleapis.com \
   iam.googleapis.com \
   --project=my-project-id
 ```
@@ -93,13 +97,9 @@ gcloud projects add-iam-policy-binding my-project-id \
 Here is the Cloud Function code that performs the rotation. Create a directory for the function:
 
 ```python
-# main.py - Cloud Function for automatic service account key rotation
-import base64
-import json
 import os
 from google.cloud import iam_admin_v1
 from google.cloud import secretmanager
-from google.protobuf import field_mask_pb2
 import functions_framework
 
 # Configuration - set these as environment variables
@@ -139,7 +139,7 @@ def rotate_key(cloud_event):
     )
     print(f"Stored new key in Secret Manager: {SECRET_ID}")
 
-    # Step 3: List all keys and delete the old ones
+    # Step 3: List all keys and delete stale old ones
     keys = iam_client.list_service_account_keys(
         request={
             "name": sa_name,
@@ -150,12 +150,13 @@ def rotate_key(cloud_event):
     )
 
     new_key_id = new_key.name.split("/")[-1]
-    for key in keys.keys:
-        key_id = key.name.split("/")[-1]
-        # Delete all keys except the newly created one
-        if key_id != new_key_id:
-            iam_client.delete_service_account_key(request={"name": key.name})
-            print(f"Deleted old key: {key.name}")
+    old_keys = [key for key in keys.keys if key.name.split("/")[-1] != new_key_id]
+    old_keys.sort(key=lambda key: key.valid_after_time, reverse=True)
+
+    # Keep the most recent previous key so consumers can switch without downtime.
+    for key in old_keys[1:]:
+        iam_client.delete_service_account_key(request={"name": key.name})
+        print(f"Deleted stale key: {key.name}")
 
     print("Key rotation completed successfully")
     return "OK"
@@ -201,10 +202,10 @@ gcloud functions deploy rotate-sa-key \
 
 ## Step 6 - Create the Cloud Scheduler Job
 
-Set up a scheduler job that triggers rotation every 30 days:
+Set up a scheduler job that triggers rotation monthly:
 
 ```bash
-# Create a scheduler job that fires every 30 days
+# Create a scheduler job that fires on the first day of each month
 gcloud scheduler jobs create pubsub rotate-sa-key-job \
   --schedule="0 2 1 * *" \
   --topic=sa-key-rotation-trigger \
