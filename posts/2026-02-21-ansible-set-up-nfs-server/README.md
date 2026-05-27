@@ -155,10 +155,10 @@ The client side involves installing packages, creating mount points, and adding 
     nfs_mounts:
       - src: "{{ nfs_server_ip }}:/srv/nfs/shared"
         path: /mnt/nfs/shared
-        opts: "rw,hard,intr,timeo=600,retrans=2,_netdev"
+        opts: "rw,hard,timeo=600,retrans=2,_netdev"
       - src: "{{ nfs_server_ip }}:/srv/nfs/web_content"
         path: /mnt/nfs/web_content
-        opts: "ro,hard,intr,timeo=600,retrans=2,_netdev"
+        opts: "ro,hard,timeo=600,retrans=2,_netdev"
 
   tasks:
     # Install NFS client packages
@@ -226,7 +226,7 @@ flowchart TD
 
 ## Configuring NFSv4 with Kerberos Security
 
-For production environments where security matters, NFSv4 with Kerberos authentication is the way to go:
+For production environments where security matters, NFSv4 with Kerberos authentication is the way to go. This assumes you already have Kerberos principals and keytabs for the NFS server and clients:
 
 ```yaml
 # nfs-kerberos.yml - Configure NFSv4 with Kerberos security
@@ -237,9 +237,21 @@ For production environments where security matters, NFSv4 with Kerberos authenti
 
   vars:
     nfs_domain: example.com
-    kerberos_keytab: /etc/krb5.keytab
 
   tasks:
+    - name: Install Kerberos support for NFS (RedHat)
+      ansible.builtin.yum:
+        name: gssproxy
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Install Kerberos support for NFS (Debian)
+      ansible.builtin.apt:
+        name: gssproxy
+        state: present
+        update_cache: true
+      when: ansible_os_family == "Debian"
+
     # Configure the NFS domain for idmapping
     - name: Set NFS domain in idmapd.conf
       ansible.builtin.lineinfile:
@@ -256,12 +268,17 @@ For production environments where security matters, NFSv4 with Kerberos authenti
         mode: '0644'
         content: |
           [nfsd]
-          vers2=n
           vers3=n
           vers4=y
-          vers4.1=y
-          vers4.2=y
       notify: restart nfs-server
+
+    - name: Create secure NFS export directory
+      ansible.builtin.file:
+        path: /srv/nfs/secure
+        state: directory
+        owner: nobody
+        group: "{{ 'nogroup' if ansible_os_family == 'Debian' else 'nobody' }}"
+        mode: '0755'
 
     # Configure secure exports with Kerberos
     - name: Configure Kerberos-secured exports
