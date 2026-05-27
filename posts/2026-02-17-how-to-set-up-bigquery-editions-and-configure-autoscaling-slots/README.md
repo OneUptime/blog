@@ -16,31 +16,33 @@ In this post, I will walk through how BigQuery Editions work, how to set up auto
 
 BigQuery offers three editions, each with different capabilities and price points.
 
-Standard edition is the entry-level option. It includes autoscaling, baseline slots, and standard features. It does not include advanced features like multi-statement transactions, row-level security, or column-level security. The slot price is the lowest of the three editions.
+Standard edition is the entry-level option. It includes autoscaling and standard features, but it does not support baseline slots or capacity commitments. It also does not include advanced features like row-level security, column-level security, or BI Engine query acceleration. The slot price is the lowest of the three editions.
 
-Enterprise edition adds advanced security features, multi-statement transactions, and support for longer commitments that reduce per-slot pricing. This is the most common choice for production workloads.
+Enterprise edition adds advanced security features, BI Engine query acceleration, and support for commitments that reduce per-slot pricing. This is the most common choice for production workloads.
 
-Enterprise Plus adds materialized views with automatic refresh, BI Engine, and other premium features. The per-slot price is higher, but the additional features can provide significant value for large-scale analytics.
+Enterprise Plus adds premium features such as Assured Workloads compliance controls and managed disaster recovery. The per-slot price is higher, but the additional features can provide significant value for large-scale analytics.
 
 All three editions use slots as the unit of compute. A slot represents a unit of computational capacity. More slots means more queries can run concurrently and complex queries complete faster.
 
 ## Creating a Capacity Commitment
 
-The first step is creating a capacity commitment, which is your baseline slot allocation. This is the minimum number of slots you will always have available.
+If you use Enterprise or Enterprise Plus and want discounted baseline capacity, the first step is creating a capacity commitment. A commitment is not required for autoscaling, but it can cover baseline slots at a lower rate than pay-as-you-go capacity.
 
 ```bash
-# Create an Enterprise edition commitment with 100 baseline slots
+# Create an Enterprise edition commitment to cover 100 baseline slots
 
-# Using a monthly commitment for better pricing
-gcloud bq reservations create-capacity-commitment \
-  --project=my-project \
+# Using an annual commitment for better pricing
+bq mk \
+  --project_id=my-project \
   --location=us-central1 \
+  --capacity_commitment=true \
   --edition=ENTERPRISE \
-  --slots=100 \
-  --commitment-plan=MONTHLY
+  --plan=ANNUAL \
+  --renewal_plan=NONE \
+  --slots=100
 ```
 
-The commitment plan affects pricing. Annual commitments offer the best per-slot rate but require a one-year minimum. Monthly commitments are more flexible but cost more per slot. Flex commitments (pay-as-you-go) have no minimum term but the highest per-slot rate - useful for testing before committing.
+The commitment plan affects pricing. Annual commitments offer a lower per-slot rate but require a one-year minimum, and three-year commitments offer a larger discount with a longer minimum term. If you do not purchase a commitment, baseline slots are billed at the pay-as-you-go rate, which is useful for testing before committing.
 
 You can also create this using the BigQuery API.
 
@@ -55,7 +57,8 @@ parent = "projects/my-project/locations/us-central1"
 
 # Create the capacity commitment
 commitment = bigquery_reservation_v1.CapacityCommitment(
-    plan=bigquery_reservation_v1.CapacityCommitment.CommitmentPlan.MONTHLY,
+    plan=bigquery_reservation_v1.CapacityCommitment.CommitmentPlan.ANNUAL,
+    renewal_plan=bigquery_reservation_v1.CapacityCommitment.CommitmentPlan.NONE,
     slot_count=100,
     edition=bigquery_reservation_v1.Edition.ENTERPRISE,
 )
@@ -78,17 +81,20 @@ A reservation allocates slots to specific projects or organizations. With autosc
 ```bash
 # Create a reservation with autoscaling
 # Baseline: 100 slots, can scale up to 400 slots
-gcloud bq reservations create my-analytics-reservation \
-  --project=my-project \
+bq mk \
+  --project_id=my-project \
   --location=us-central1 \
+  --reservation \
   --edition=ENTERPRISE \
   --slots=100 \
-  --autoscale-max-slots=300
+  --ignore_idle_slots=false \
+  --autoscale_max_slots=300 \
+  my-analytics-reservation
 ```
 
-In this configuration, you always have 100 baseline slots from your capacity commitment. When demand exceeds what 100 slots can handle, BigQuery automatically provisions additional slots up to 300 more (for a total of 400). The autoscaled slots are billed at the flex rate - you only pay for them while they are in use.
+In this configuration, you always have 100 baseline slots, and the capacity commitment can cover those slots at a committed rate. When demand exceeds what 100 slots can handle, BigQuery automatically provisions additional slots up to 300 more (for a total of 400). The autoscaled slots are billed at capacity compute pricing for your edition while the reservation is upscaled.
 
-This is the key benefit of the autoscaling model. You pay a committed rate for your baseline and a flex rate only for burst capacity when you need it.
+This is the key benefit of the autoscaling model. You pay for your baseline continuously, and autoscaled slots are billed at capacity compute pricing for your edition only while the reservation is upscaled, subject to the one-minute minimum.
 
 ## Assigning Projects to Reservations
 
@@ -96,29 +102,33 @@ After creating a reservation, you need to assign projects to it. Without an assi
 
 ```bash
 # Assign a project to the reservation
-gcloud bq reservations assignments create \
-  --project=my-project \
+bq mk \
+  --project_id=my-project \
   --location=us-central1 \
-  --reservation=my-analytics-reservation \
-  --assignee=projects/my-analytics-project \
-  --job-type=QUERY
+  --reservation_assignment \
+  --reservation_id=my-analytics-reservation \
+  --assignee_id=my-analytics-project \
+  --assignee_type=PROJECT \
+  --job_type=QUERY
 ```
 
-You can assign different job types separately. For example, you might want queries to use one reservation while LOAD jobs use another, or fall back to on-demand.
+You can assign different job types separately. For example, you might want queries to use one reservation while pipeline jobs use another, or fall back to on-demand.
 
 ```bash
 # Assign ML training jobs to a separate reservation
-gcloud bq reservations assignments create \
-  --project=my-project \
+bq mk \
+  --project_id=my-project \
   --location=us-central1 \
-  --reservation=my-ml-reservation \
-  --assignee=projects/my-analytics-project \
-  --job-type=ML_EXTERNAL
+  --reservation_assignment \
+  --reservation_id=my-ml-reservation \
+  --assignee_id=my-analytics-project \
+  --assignee_type=PROJECT \
+  --job_type=ML_EXTERNAL
 ```
 
 ## Choosing the Right Baseline
 
-Setting the baseline correctly is important for both cost and performance. If the baseline is too low, you will be paying flex rates for slots you use constantly. If it is too high, you are paying for idle capacity.
+Setting the baseline correctly is important for both cost and performance. If the baseline is too low, you will be paying autoscaling rates for slots you use constantly. If it is too high, you are paying for idle capacity.
 
 To determine the right baseline, look at your current slot utilization patterns.
 
@@ -126,17 +136,21 @@ To determine the right baseline, look at your current slot utilization patterns.
 -- Analyze historical slot utilization to determine baseline
 SELECT
   TIMESTAMP_TRUNC(period_start, HOUR) AS hour,
-  -- Average slot usage across all jobs
-  AVG(period_slot_ms / (TIMESTAMP_DIFF(period_start,
-    TIMESTAMP_SUB(period_start, INTERVAL 1 SECOND), MILLISECOND))) AS avg_slots_used,
-  -- Peak slot usage
-  MAX(period_slot_ms / (TIMESTAMP_DIFF(period_start,
-    TIMESTAMP_SUB(period_start, INTERVAL 1 SECOND), MILLISECOND))) AS peak_slots_used
-FROM
-  `region-us-central1`.INFORMATION_SCHEMA.JOBS_TIMELINE
-WHERE
-  period_start > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-  AND job_type = 'QUERY'
+  AVG(slots_used) AS avg_slots_used,
+  MAX(slots_used) AS peak_slots_used
+FROM (
+  SELECT
+    period_start,
+    SUM(period_slot_ms) / 1000 AS slots_used
+  FROM
+    `region-us-central1`.INFORMATION_SCHEMA.JOBS_TIMELINE
+  WHERE
+    period_start > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+    AND job_type = 'QUERY'
+    AND (statement_type != 'SCRIPT' OR statement_type IS NULL)
+  GROUP BY
+    period_start
+)
 GROUP BY
   hour
 ORDER BY
@@ -152,17 +166,19 @@ Once autoscaling is active, you want to monitor how often it triggers and how ma
 ```sql
 -- Monitor autoscaling events and slot utilization
 SELECT
-  TIMESTAMP_TRUNC(period_start, MINUTE) AS minute,
-  SUM(period_slot_ms) / 60000 AS total_slot_minutes,
-  COUNT(DISTINCT job_id) AS concurrent_jobs
+  s.start_time,
+  reservation_id,
+  s.slots_assigned AS baseline_slots,
+  s.autoscale_current_slots AS autoscaled_slots,
+  s.autoscale_max_slots AS max_autoscale_slots
 FROM
-  `region-us-central1`.INFORMATION_SCHEMA.JOBS_TIMELINE
+  `region-us-central1`.INFORMATION_SCHEMA.RESERVATIONS_TIMELINE,
+  UNNEST(per_second_details) AS s
 WHERE
   period_start > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
-GROUP BY
-  minute
+  AND reservation_name = 'my-analytics-reservation'
 ORDER BY
-  minute;
+  s.start_time;
 ```
 
 You can also check autoscaling metrics through Cloud Monitoring.
@@ -170,8 +186,8 @@ You can also check autoscaling metrics through Cloud Monitoring.
 ```bash
 # View autoscaling metrics in Cloud Monitoring
 gcloud monitoring time-series list \
-  --filter='metric.type="bigquery.googleapis.com/reservation/slots/total_available" AND resource.labels.reservation_name="my-analytics-reservation"' \
-  --interval-start-time=$(date -u -v-24H +%Y-%m-%dT%H:%M:%SZ) \
+  --filter='metric.type="bigquery.googleapis.com/slots/max_assigned" AND metric.labels.reservation="my-analytics-reservation"' \
+  --interval-start-time=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ) \
   --format=json
 ```
 
@@ -181,13 +197,15 @@ As your workload evolves, you may need to adjust the autoscaling configuration. 
 
 ```bash
 # Update the autoscaling maximum to allow more burst capacity
-gcloud bq reservations update my-analytics-reservation \
-  --project=my-project \
+bq update \
+  --project_id=my-project \
   --location=us-central1 \
-  --autoscale-max-slots=500
+  --slots=100 \
+  --autoscale_max_slots=500 \
+  --reservation my-analytics-reservation
 ```
 
-If you find that autoscaling triggers frequently and stays at the maximum for extended periods, it is a sign that you should increase your baseline commitment. Conversely, if autoscaling rarely triggers, you might be able to reduce the baseline to save costs.
+If you find that autoscaling triggers frequently and stays at the maximum for extended periods, it is a sign that you should increase your baseline slots and make sure your commitments cover them if you want discounted committed pricing. Conversely, if autoscaling rarely triggers, you might be able to reduce the baseline to save costs.
 
 ## Multiple Reservations for Workload Isolation
 
@@ -195,20 +213,26 @@ A common pattern is creating separate reservations for different workload types,
 
 ```bash
 # Reservation for interactive dashboard queries - low baseline, high autoscale
-gcloud bq reservations create dashboard-reservation \
-  --project=my-project \
+bq mk \
+  --project_id=my-project \
   --location=us-central1 \
+  --reservation \
   --edition=ENTERPRISE \
   --slots=50 \
-  --autoscale-max-slots=200
+  --ignore_idle_slots=false \
+  --autoscale_max_slots=200 \
+  dashboard-reservation
 
 # Reservation for ETL/pipeline jobs - higher baseline, moderate autoscale
-gcloud bq reservations create etl-reservation \
-  --project=my-project \
+bq mk \
+  --project_id=my-project \
   --location=us-central1 \
+  --reservation \
   --edition=ENTERPRISE \
   --slots=200 \
-  --autoscale-max-slots=100
+  --ignore_idle_slots=false \
+  --autoscale_max_slots=100 \
+  etl-reservation
 ```
 
 This ensures that heavy ETL jobs do not starve dashboard queries of compute resources, and vice versa.
