@@ -45,12 +45,13 @@ admin_users:
       - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... deploy@ci"
 
 # Sudo configuration
-sudo_require_password: false  # Set true for stricter security
+sudo_require_password: false  # Required for the non-interactive sudo verification below
 sudo_password_timeout: 15  # Minutes before sudo asks again
 
 # SSH settings
 ssh_permit_root_login: "no"
 ssh_port: 22
+ssh_service_name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
 ```
 
 ## Step 1: Create Admin Users
@@ -65,10 +66,11 @@ Before touching root access, make sure alternative admin accounts exist.
     name: sudo
     state: present
 
-- name: Ensure sshusers group exists
+- name: Ensure admin supplementary groups exist
   ansible.builtin.group:
-    name: sshusers
+    name: "{{ item }}"
     state: present
+  loop: "{{ admin_users | map(attribute='groups') | flatten | unique }}"
 
 - name: Create admin users
   ansible.builtin.user:
@@ -201,21 +203,15 @@ Only after admin access is confirmed, disable root login.
 - name: Disable root SSH login
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
-    regexp: '^#?PermitRootLogin'
+    regexp: '^\s*#?\s*PermitRootLogin\s+'
     line: "PermitRootLogin {{ ssh_permit_root_login }}"
     state: present
-  notify: Restart sshd
-
-- name: Disable password authentication for root
-  ansible.builtin.lineinfile:
-    path: /etc/ssh/sshd_config
-    regexp: '^#?PermitRootLogin'
-    line: "PermitRootLogin no"
+    validate: '/usr/sbin/sshd -t -f %s'
   notify: Restart sshd
 
 - name: Validate sshd configuration
   ansible.builtin.command:
-    cmd: sshd -t
+    cmd: /usr/sbin/sshd -t
   changed_when: false
 
 - name: Lock root password (optional extra hardening)
@@ -232,7 +228,7 @@ Only after admin access is confirmed, disable root login.
 ---
 - name: Restart sshd
   ansible.builtin.service:
-    name: sshd
+    name: "{{ ssh_service_name }}"
     state: restarted
 ```
 
@@ -343,12 +339,13 @@ If you need to re-enable root login in an emergency.
     - name: Or manually re-enable root login
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
-        regexp: '^PermitRootLogin'
+        regexp: '^\s*#?\s*PermitRootLogin\s+'
         line: 'PermitRootLogin yes'
+        validate: '/usr/sbin/sshd -t -f %s'
 
     - name: Restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
