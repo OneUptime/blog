@@ -56,9 +56,9 @@ sequenceDiagram
     end
 ```
 
-## Setting Up Trivy as an Admission Controller
+## Setting Up Trivy Operator for Image Reports
 
-Trivy is an open-source vulnerability scanner that can run as a Kubernetes admission webhook.
+Trivy is an open-source vulnerability scanner. In Kubernetes, Trivy Operator scans workloads and creates vulnerability report resources that policy engines and dashboards can consume. It does not reject Pod admission by itself.
 
 ```bash
 # Install Trivy Operator using Helm
@@ -66,7 +66,7 @@ Trivy is an open-source vulnerability scanner that can run as a Kubernetes admis
 helm repo add aqua https://aquasecurity.github.io/helm-charts
 helm repo update
 
-# Install the Trivy operator with admission webhook enabled
+# Install the Trivy Operator
 helm install trivy-operator aqua/trivy-operator \
   --namespace trivy-system \
   --create-namespace \
@@ -80,7 +80,7 @@ kubectl get pods -n trivy-system
 
 ## Kyverno Image Verification Policy
 
-Kyverno is a Kubernetes-native policy engine that can verify image signatures and check for vulnerabilities.
+Kyverno is a Kubernetes-native policy engine that can verify image signatures and signed vulnerability scan attestations.
 
 ```bash
 # Install Kyverno
@@ -90,7 +90,10 @@ helm repo update
 helm install kyverno kyverno/kyverno \
   --namespace kyverno \
   --create-namespace \
-  --set replicaCount=3
+  --set admissionController.replicas=3 \
+  --set backgroundController.replicas=2 \
+  --set cleanupController.replicas=2 \
+  --set reportsController.replicas=2
 ```
 
 ### Block Unsigned Images
@@ -99,77 +102,80 @@ helm install kyverno kyverno/kyverno \
 # policy-verify-signatures.yaml
 # This policy requires all images to be signed with cosign.
 # Unsigned images are rejected.
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
 metadata:
   name: verify-image-signatures
 spec:
-  validationFailureAction: Enforce
-  background: false
-  rules:
-    - name: verify-cosign-signature
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      verifyImages:
-        - imageReferences:
-            # Apply to all images from your registry
-            - "ghcr.io/my-org/*"
-          attestors:
-            - count: 1
-              entries:
-                - keys:
-                    # The public key used to verify signatures
-                    publicKeys: |-
-                      -----BEGIN PUBLIC KEY-----
-                      MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
-                      -----END PUBLIC KEY-----
+  validationActions: [Deny]
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  matchImageReferences:
+    # Apply to all images from your registry
+    - glob: "ghcr.io/my-org/*"
+  attestors:
+    - name: cosign
+      cosign:
+        key:
+          # The public key used to verify signatures
+          data: |-
+            -----BEGIN PUBLIC KEY-----
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
+            -----END PUBLIC KEY-----
+  validations:
+    - expression: >-
+        images.containers.map(image, verifyImageSignatures(image, [attestors.cosign])).all(result, result > 0)
+      message: "Image signature verification failed."
 ```
 
-### Block Images with Critical CVEs
+### Require Vulnerability Scan Attestations
 
 ```yaml
-# policy-block-critical-cves.yaml
-# This policy blocks pods that use images with critical vulnerabilities.
-# It checks Trivy vulnerability reports created by the Trivy Operator.
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# policy-require-vulnerability-scan.yaml
+# This policy requires every image to carry a signed vulnerability scan attestation.
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
 metadata:
-  name: block-critical-vulnerabilities
+  name: require-vulnerability-scan
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: check-vulnerability-report
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      preconditions:
-        all:
-          - key: "{{request.operation}}"
-            operator: In
-            value: ["CREATE", "UPDATE"]
-      validate:
-        message: >-
-          Image {{element.image}} has critical vulnerabilities.
-          Please update to a patched version before deploying.
-        foreach:
-          - list: "request.object.spec.containers"
-            context:
-              - name: vulnReport
-                apiCall:
-                  urlPath: "/apis/aquasecurity.github.io/v1alpha1/namespaces/{{request.namespace}}/vulnerabilityreports"
-                  jmesPath: "items[?metadata.labels.\"trivy-operator.container.name\"=='{{element.name}}'] | [0]"
-            deny:
-              conditions:
-                any:
-                  - key: "{{vulnReport.report.summary.criticalCount}}"
-                    operator: GreaterThan
-                    value: 0
+  validationActions: [Deny]
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  matchImageReferences:
+    - glob: "ghcr.io/my-org/*"
+  attestors:
+    - name: cosign
+      cosign:
+        key:
+          data: |-
+            -----BEGIN PUBLIC KEY-----
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
+            -----END PUBLIC KEY-----
+  attestations:
+    - name: vulnScan
+      intoto:
+        type: cosign.sigstore.dev/attestation/vuln/v1
+  validations:
+    - expression: >-
+        images.containers.map(image, verifyImageSignatures(image, [attestors.cosign])).all(result, result > 0)
+      message: "Image signature verification failed."
+    - expression: >-
+        images.containers.map(image, verifyAttestationSignatures(image, attestations.vulnScan, [attestors.cosign])).all(result, result > 0)
+      message: "Missing or invalid vulnerability scan attestation."
 ```
 
 ## Custom Admission Webhook
@@ -350,8 +356,15 @@ cosign generate-key-pair
 # Sign an image after building
 cosign sign --key cosign.key ghcr.io/my-org/myapp:v2.1.0
 
+# Create and attach a signed vulnerability scan attestation
+trivy image --format cosign-vuln --output vuln.json ghcr.io/my-org/myapp:v2.1.0
+cosign attest --key cosign.key --type vuln --predicate vuln.json ghcr.io/my-org/myapp:v2.1.0
+
 # Verify an image signature
 cosign verify --key cosign.pub ghcr.io/my-org/myapp:v2.1.0
+
+# Verify the vulnerability scan attestation
+cosign verify-attestation --key cosign.pub --type vuln ghcr.io/my-org/myapp:v2.1.0
 ```
 
 ## Deployment Workflow with Scanning
@@ -362,7 +375,7 @@ flowchart TD
     B --> C[Build container image]
     C --> D[Run Trivy scan in CI]
     D -->|Critical CVEs| E[Fail pipeline]
-    D -->|Clean| F[Sign image with cosign]
+    D -->|Clean| F[Sign image and vulnerability attestation with cosign]
     F --> G[Push to registry]
     G --> H[CD deploys to Kubernetes]
     H --> I[Admission webhook validates]
