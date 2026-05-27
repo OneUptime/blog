@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Lookup Plugins, Template, Jinja2, Configuration
 
-Description: Learn how to use the Ansible template lookup plugin to render Jinja2 templates inline and use the result as a string in playbooks.
+Description: Learn how to use the Ansible template lookup plugin to render Jinja2 template files and use the result as a string in playbooks.
 
 ---
 
@@ -320,7 +320,7 @@ Pass extra variables to the template at render time:
 
 ## Inline Template Rendering
 
-For simple templates, you can use the template lookup with inline content rather than a file:
+For simple templates, you can render inline Jinja2 directly in a variable without using a separate template file:
 
 ```yaml
 # inline_template.yml - Render inline Jinja2 string
@@ -368,4 +368,4 @@ graph LR
 
 The template lookup returns a string. The template module writes a file. Use the lookup when you need the rendered content as data, for example when sending it to an API, combining it with other content, or storing it in a variable for conditional logic. Use the module when you simply need to write a rendered file to a remote host.
 
-Both the lookup and the module have access to the same variable context, and both support the full Jinja2 feature set including filters, tests, macros, and includes. The template lookup is a tool you will reach for when you need more flexibility than "render this template and save it as a file."
+Both the lookup and the module have access to the Ansible variable context, and both support the full Jinja2 feature set including filters, tests, macros, and includes. The template lookup is a tool you will reach for when you need more flexibility than "render this template and save it as a file."
