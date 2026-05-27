@@ -144,7 +144,7 @@ This playbook configures limits for specific service accounts:
 
 ## Configuring Limits for systemd Services
 
-Modern Linux systems use systemd, which has its own resource limit mechanism that overrides PAM limits. You need to set limits in both places.
+Modern Linux systems use systemd, which has its own resource limit mechanism for services. PAM limits apply to login sessions, while systemd service limits apply to services started by systemd.
 
 This playbook configures limits via systemd service overrides:
 
@@ -197,7 +197,9 @@ This playbook configures limits via systemd service overrides:
       loop: "{{ service_limits }}"
       loop_control:
         label: "{{ item.service }}"
-      notify: Reload systemd
+      notify:
+        - Reload systemd
+        - Restart services with updated limits
 
     - name: Set DefaultLimitNOFILE in system.conf
       ansible.builtin.lineinfile:
@@ -217,6 +219,14 @@ This playbook configures limits via systemd service overrides:
     - name: Reload systemd
       ansible.builtin.systemd:
         daemon_reload: true
+
+    - name: Restart services with updated limits
+      ansible.builtin.systemd:
+        name: "{{ item.service }}"
+        state: restarted
+      loop: "{{ service_limits }}"
+      loop_control:
+        label: "{{ item.service }}"
 ```
 
 ## System-Wide fs.file-max
@@ -246,7 +256,7 @@ This task sets the kernel-level file descriptor maximum:
 
 ## Verification Playbook
 
-After setting limits, verify they are applied correctly.
+After setting limits, reconnect or start a new login session, then verify they are applied correctly.
 
 This playbook checks that ulimits are configured as expected:
 
@@ -255,7 +265,7 @@ This playbook checks that ulimits are configured as expected:
 ---
 - name: Verify Resource Limits
   hosts: all
-  become: true
+  become: false
   vars:
     expected_nofile_soft: 65536
     expected_nofile_hard: 131072
@@ -329,7 +339,7 @@ graph TD
 
 **Forgetting systemd**: Setting limits in `/etc/security/limits.conf` does not affect services managed by systemd. You need both PAM limits (for SSH sessions) and systemd overrides (for services).
 
-**Not reloading systemd**: After creating override files, you must run `systemctl daemon-reload` for changes to take effect. Ansible's handler approach takes care of this.
+**Not reloading and restarting systemd services**: After creating override files, you must run `systemctl daemon-reload` so systemd rereads the unit configuration, then restart the affected services so the new limits apply to their processes. Ansible's handler approach takes care of this.
 
 **PAM module not enabled**: On some minimal installations, `pam_limits.so` is not included in the PAM session configuration. Without it, limits.conf is completely ignored for login sessions.
 
