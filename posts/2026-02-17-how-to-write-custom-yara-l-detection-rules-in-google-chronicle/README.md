@@ -34,12 +34,14 @@ rule rule_name {
 }
 ```
 
-The four main sections are:
+The main sections are:
 
 - **meta** - Descriptive information about the rule (author, severity, MITRE ATT&CK mapping)
 - **events** - Defines variables and matching conditions for UDM events
 - **match** - (Optional) Groups events by specific fields over a time window
+- **outcome** - (Optional) Calculates values that add context to detections
 - **condition** - Specifies the logical condition that triggers the rule
+- **options** - (Optional) Enables rule-specific behavior such as suppression windows
 
 ## Your First Rule: Failed Login Detection
 
@@ -58,11 +60,11 @@ rule multiple_failed_logins {
         // Match failed authentication events
         $fail.metadata.event_type = "USER_LOGIN"
         $fail.security_result.action = "BLOCK"
-        $fail.principal.ip != ""
+        $source_ip = $fail.principal.ip
 
     match:
         // Group by source IP over a 10-minute window
-        $fail.principal.ip over 10m
+        $source_ip over 10m
 
     condition:
         // Trigger when 5 or more failures are seen
@@ -73,7 +75,7 @@ rule multiple_failed_logins {
 Let me break down what is happening:
 
 1. The `events` section defines a variable `$fail` that matches login events where the action was blocked
-2. The `match` section groups these events by the source IP address within a 10-minute sliding window
+2. The `match` section groups these events by the source IP address within a 10-minute time window
 3. The `condition` section uses `#fail` (the count operator) to check if 5 or more matching events occurred
 
 ## Multi-Event Correlation
@@ -135,14 +137,14 @@ rule sensitive_bucket_access_from_unusual_location {
         $access.target.resource.name = /.*financial-reports.*/
 
         // Source IP is not in the corporate IP list
-        not $access.principal.ip in %corporate_ips
+        not $access.principal.ip in cidr %corporate_ips
 
     condition:
         $access
 }
 ```
 
-The `%corporate_ips` reference is a Chronicle reference list. You create these in the Chronicle UI under Settings. They let you maintain lists of IPs, domains, or other values separately from your rules, so you can update them without modifying rule logic.
+The `%corporate_ips` reference is a Chronicle reference list containing CIDR ranges. You create these in the Chronicle UI under Settings. They let you maintain lists of IPs, domains, or other values separately from your rules, so you can update them without modifying rule logic.
 
 ## Detecting Data Exfiltration Patterns
 
@@ -215,9 +217,9 @@ The `outcome` section calculates values that get attached to the resulting alert
 
 Before enabling a rule in production, test it using Chronicle's rule testing feature.
 
-1. Navigate to Detection in the Chronicle console, then Rules
-2. Click "Create Rule" and paste your YARA-L code
-3. Click "Test Rule" to run it against historical data
+1. Navigate to Detections in the Chronicle console, then Rules & detections, then the Rules editor tab
+2. Click "New" and paste your YARA-L code
+3. Click "Run test" to run it against events in the selected time range
 4. Review the matches to check for false positives
 5. Adjust thresholds and conditions as needed
 6. Enable the rule when you are satisfied
