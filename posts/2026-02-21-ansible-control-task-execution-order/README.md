@@ -12,7 +12,7 @@ Ansible tasks run in a specific order, and understanding that order is critical 
 
 ## The Play Execution Order
 
-Within a single play, Ansible executes in this order:
+Within a single play, Ansible gathers facts first unless `gather_facts: false` is set. After that, Ansible executes in this order:
 
 1. `pre_tasks`
 2. Handlers triggered by pre_tasks
@@ -30,6 +30,7 @@ Here is a playbook demonstrating all sections:
 ---
 - name: Demonstrate execution order
   hosts: webservers
+  gather_facts: false
 
   pre_tasks:
     - name: "1. Pre-task: Disable monitoring alerts"
@@ -170,7 +171,7 @@ By default, handlers run in the order they are defined (not the order they are n
         state: restarted
 ```
 
-Handlers fire in the order: Validate nginx, Reload nginx, Restart application, regardless of which task notified them.
+If all three handlers are notified, they fire in the order: Validate nginx, Reload nginx, Restart application, regardless of which task notified them.
 
 ## Forcing Handlers to Run Early
 
@@ -319,7 +320,7 @@ Control host execution order with the `order` parameter:
 ```
 
 Options:
-- `inventory` - use inventory order (default)
+- `inventory` - use Ansible's inventory selection order (default; reproducible, but not guaranteed to match the source file order)
 - `reverse_inventory` - reverse of inventory order
 - `sorted` - alphabetical by hostname
 - `reverse_sorted` - reverse alphabetical
