@@ -126,9 +126,9 @@ Let's put together a full example. Your repository has this structure:
 my-app/
   Dockerfile
   cloudbuild.yaml
+  package.json
   src/
     app.js
-    package.json
 ```
 
 The Dockerfile builds a Node.js application:
