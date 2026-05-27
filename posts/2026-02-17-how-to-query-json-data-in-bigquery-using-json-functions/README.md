@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, JSON, SQL, Data Analysis
 
-Description: A comprehensive guide to querying JSON data in BigQuery using native JSON functions including JSON_VALUE, JSON_QUERY, JSON_EXTRACT, and more with practical examples.
+Description: A comprehensive guide to querying JSON data in BigQuery using native JSON functions including JSON_VALUE, JSON_QUERY, JSON_VALUE_ARRAY, JSON_QUERY_ARRAY, and more with practical examples.
 
 ---
 
@@ -264,21 +264,21 @@ WHERE event_date = '2026-02-17'
 LIMIT 5;
 ```
 
-## LAX vs STRICT Mode
+## JSONPath Modes
 
-BigQuery JSON functions support lax (default) and strict modes. In lax mode, missing keys return NULL. In strict mode, missing keys cause an error.
+BigQuery JSON functions support strict (default), lax, and lax recursive JSONPath modes. Strict mode requires the JSONPath to structurally match the JSON data. Lax mode can adapt between single values and arrays, which is useful when your JSON schema is inconsistent. Missing paths still return NULL, while invalid JSONPath syntax causes an error.
 
 ```sql
--- Lax mode (default): returns NULL for missing keys
+-- Strict mode (default): returns NULL for missing keys
 SELECT JSON_VALUE(JSON '{"name": "Alice"}', '$.age') AS age;
 -- Returns: NULL
 
--- You can explicitly specify lax mode
-SELECT JSON_VALUE(JSON '{"name": "Alice"}', 'lax $.age') AS age;
--- Returns: NULL
+-- Lax mode can unwrap arrays when the path structure does not exactly match
+SELECT JSON_QUERY(JSON '{"class": {"students": [{"name": "Jane"}]}}', 'lax $.class.students.name') AS student_names;
+-- Returns: ["Jane"]
 ```
 
-For most analytics use cases, lax mode is what you want. You do not want your query to fail just because one row is missing an optional field.
+For most analytics use cases, strict mode is fine when your JSON shape is consistent. Use lax mode when producers sometimes send a single value and sometimes send an array for the same field.
 
 ## Performance Tips
 
@@ -288,8 +288,8 @@ For most analytics use cases, lax mode is what you want. You do not want your qu
 4. **Filter on non-JSON columns first**: Let BigQuery prune data using partition and clustering columns before applying JSON functions.
 
 ```sql
--- Extract commonly used fields into a materialized view
-CREATE MATERIALIZED VIEW `my_project.my_dataset.events_extracted` AS
+-- Extract commonly used fields into a regular table
+CREATE OR REPLACE TABLE `my_project.my_dataset.events_extracted` AS
 SELECT
   event_id,
   event_type,
