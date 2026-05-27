@@ -10,7 +10,7 @@ Description: A step-by-step guide to installing MetalLB on MicroK8s without disr
 
 If you run MicroK8s in production - or even in a serious staging environment - you have probably hit the point where you need a real load balancer. MetalLB is the go-to solution for bare-metal Kubernetes clusters, but installing it on MicroK8s has a few sharp edges that can knock your running services offline if you are not careful.
 
-This guide walks through the full process: understanding what MicroK8s gives you out of the box, deciding whether to use the addon or go standalone, and doing the switch without downtime.
+This guide walks through the full process: understanding what MicroK8s gives you out of the box, deciding whether to use the addon or go standalone, and doing the switch with as little disruption as possible.
 
 ## The Problem
 
@@ -40,14 +40,15 @@ Before we jump into commands, here is the high-level flow:
 
 ```mermaid
 flowchart TD
-    A[Document current service IPs] --> B[Install standalone MetalLB]
-    B --> C[Create IPAddressPool + L2Advertisement]
-    C --> D[Disable MicroK8s MetalLB addon]
-    D --> E[Verify services get IPs from new pool]
-    E --> F[Test connectivity]
+    A[Document current service IPs] --> B[Prepare standalone MetalLB config]
+    B --> C[Disable MicroK8s MetalLB addon]
+    C --> D[Install standalone MetalLB]
+    D --> E[Create IPAddressPool + L2Advertisement]
+    E --> F[Verify services get IPs from new pool]
+    F --> G[Test connectivity]
 ```
 
-The key insight is that you install the new MetalLB first, then disable the addon. This minimizes the window where no load balancer is running.
+The key insight is that you prepare the standalone manifest and IP pool first, then disable the addon and install standalone MetalLB back to back. This minimizes the window where no load balancer is running without having two MetalLB instances active at the same time.
 
 ## Step 1: Document Your Current State
 
@@ -116,8 +117,9 @@ Now install MetalLB using the official manifests. Using manifests gives you a re
 kubectl create namespace metallb-system --dry-run=client -o yaml | kubectl apply -f -
 
 # Apply the official MetalLB manifests (use the version you want)
-# Check https://metallb.universe.tf/installation/ for the latest version
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+# Check https://metallb.io/installation/ for the latest version
+# For L2-only setups, the native manifest is enough. For production BGP, use the FRR-K8s manifest recommended by MetalLB.
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.0/config/manifests/metallb-native.yaml
 ```
 
 If you prefer Helm:
@@ -326,7 +328,7 @@ metadata:
   name: my-service
   annotations:
     # Tell MetalLB to pick an IP from the external pool
-    metallb.universe.tf/address-pool: external-pool
+    metallb.io/address-pool: external-pool
 spec:
   type: LoadBalancer
   ports:
@@ -350,7 +352,7 @@ If your MetalLB IP range overlaps with your DHCP server's range, you will get in
 
 ### 3. Firewall rules blocking ARP
 
-MetalLB in L2 mode relies on ARP (Address Resolution Protocol) to work. If you have strict iptables rules or a firewall between your nodes and the rest of the network, ARP responses from the speaker pods might get dropped.
+MetalLB in L2 mode relies on ARP (Address Resolution Protocol) to work. If your network has ARP filtering, anti-spoofing rules, or firewall controls between your nodes and the rest of the network, ARP responses from the speaker pods might get dropped.
 
 ```bash
 # Check if the MetalLB speaker is sending ARP responses
@@ -384,7 +386,7 @@ kubectl get svc --all-namespaces -o wide | grep LoadBalancer > /tmp/svc-before.t
 microk8s disable metallb
 
 # 3. Install standalone MetalLB
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.0/config/manifests/metallb-native.yaml
 
 # 4. Wait for pods
 kubectl wait --namespace metallb-system \
