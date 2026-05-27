@@ -56,7 +56,7 @@ gcloud logging read \
     --format="table(timestamp, textPayload)"
 
 # Or use gcloud run
-gcloud run revisions logs my-service-00002-abc \
+gcloud beta run revisions logs read my-service-00002-abc \
     --project=my-project \
     --region=us-central1 \
     --limit=50
@@ -111,17 +111,16 @@ gcloud run services update my-service \
     --port=3000
 ```
 
-## Step 3: Increase the Startup Timeout
+## Step 3: Configure the Startup Probe
 
-If your application legitimately takes a long time to start (loading ML models, warming caches, running migrations), increase the startup timeout:
+If your application legitimately takes a long time to start (loading ML models, warming caches, running migrations), configure a startup probe so Cloud Run checks the right endpoint. Cloud Run still requires the container instance to start within 240 seconds:
 
 ```bash
-# Increase the startup timeout to 600 seconds (10 minutes)
+# Deploy with startup CPU boost to help reduce startup time
 gcloud run deploy my-service \
     --image=us-docker.pkg.dev/my-project/my-repo/my-app:latest \
     --region=us-central1 \
-    --startup-cpu-boost \
-    --timeout=600
+    --cpu-boost
 ```
 
 You can also configure a startup probe with custom settings:
@@ -145,7 +144,7 @@ spec:
             port: 8080
           initialDelaySeconds: 10
           periodSeconds: 10
-          failureThreshold: 30    # 30 x 10s = 5 minutes to start
+          failureThreshold: 24    # 24 x 10s = 4 minutes to start
           timeoutSeconds: 5
 ```
 
@@ -158,14 +157,14 @@ gcloud run services replace service.yaml --region=us-central1
 
 ## Step 4: Use Startup CPU Boost
 
-Cloud Run allocates CPU only during request processing by default. During startup (before any requests), CPU might be throttled, making your application start slowly. Enable startup CPU boost to get full CPU during container initialization:
+Cloud Run allocates CPU during instance startup, and startup CPU boost temporarily increases that allocation during startup and for a short period after the instance has started:
 
 ```bash
 # Enable startup CPU boost
 gcloud run deploy my-service \
     --image=us-docker.pkg.dev/my-project/my-repo/my-app:latest \
     --region=us-central1 \
-    --startup-cpu-boost
+    --cpu-boost
 ```
 
 This can significantly reduce startup time for CPU-intensive initialization like loading ML models or compiling JIT code.
@@ -253,7 +252,7 @@ graph TD
     E -->|Yes| F[Bind to 0.0.0.0:PORT]
     E -->|No| G{Slow startup?}
     G -->|Yes| H[Enable startup CPU boost]
-    H --> I[Increase startup timeout]
+    H --> I[Configure startup probe]
     I --> J[Optimize container image]
     G -->|No| K{No logs at all?}
     K -->|Yes| L[Check if image exists and is pullable]
