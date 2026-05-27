@@ -10,6 +10,8 @@ Description: A complete guide to setting up Google Cloud Vision API Product Sear
 
 Visual product search is one of those features that users love once they experience it. Instead of typing keywords to find a product, they can snap a photo or upload an image and instantly find matching or similar products from your catalog. Google Cloud Vision API Product Search makes building this capability surprisingly approachable, even if you have a large product catalog.
 
+Product Search is currently in maintenance mode. For new projects that need better scalability with similar functionality, Google recommends Vision Warehouse, but Product Search remains useful when you need to work with the existing Vision API Product Search resources.
+
 In this post, I will walk through the entire process of setting up Vision API Product Search, from creating a product set to querying it with images.
 
 ## How Product Search Works
@@ -48,7 +50,7 @@ gcloud services enable vision.googleapis.com
 pip install google-cloud-vision
 
 # Create a GCS bucket for reference images
-gsutil mb -l us-central1 gs://your-product-images-bucket
+gsutil mb -l us-west1 gs://your-product-images-bucket
 ```
 
 ## Step 1: Create a Product Set
@@ -81,7 +83,7 @@ def create_product_set(project_id, location, product_set_id, display_name):
 # Create a product set for shoes
 create_product_set(
     project_id="your-project-id",
-    location="us-central1",
+    location="us-west1",
     product_set_id="shoe-catalog",
     display_name="Shoe Catalog"
 )
@@ -137,7 +139,7 @@ def add_product_to_set(project_id, location, product_id, product_set_id):
 # Create a product and add it to the set
 create_product(
     project_id="your-project-id",
-    location="us-central1",
+    location="us-west1",
     product_id="red-running-shoe-001",
     display_name="Red Running Shoe Model X",
     category="apparel-v2",
@@ -145,7 +147,7 @@ create_product(
 
 add_product_to_set(
     project_id="your-project-id",
-    location="us-central1",
+    location="us-west1",
     product_id="red-running-shoe-001",
     product_set_id="shoe-catalog",
 )
@@ -179,7 +181,7 @@ def add_reference_image(project_id, location, product_id, image_id, gcs_uri):
 # Add multiple reference images for better matching
 add_reference_image(
     project_id="your-project-id",
-    location="us-central1",
+    location="us-west1",
     product_id="red-running-shoe-001",
     image_id="front-view",
     gcs_uri="gs://your-product-images-bucket/shoes/red-runner-front.jpg",
@@ -187,7 +189,7 @@ add_reference_image(
 
 add_reference_image(
     project_id="your-project-id",
-    location="us-central1",
+    location="us-west1",
     product_id="red-running-shoe-001",
     image_id="side-view",
     gcs_uri="gs://your-product-images-bucket/shoes/red-runner-side.jpg",
@@ -207,7 +209,7 @@ def bulk_import_products(project_id, location, csv_gcs_uri):
     location_path = f"projects/{project_id}/locations/{location}"
 
     # The CSV format is:
-    # gs://bucket/image.jpg,image-id,product-set-id,product-id,product-category,display-name,labels,bounding-poly
+    # gs://bucket/image.jpg,image-id,product-set-id,product-id,product-category,product-display-name,labels,bounding-poly
     input_config = vision.ImportProductSetsInputConfig(
         gcs_source=vision.ImportProductSetsGcsSource(csv_file_uri=csv_gcs_uri)
     )
@@ -233,14 +235,14 @@ def bulk_import_products(project_id, location, csv_gcs_uri):
 # Import from a CSV file
 bulk_import_products(
     project_id="your-project-id",
-    location="us-central1",
+    location="us-west1",
     csv_gcs_uri="gs://your-product-images-bucket/catalog/products.csv",
 )
 ```
 
 ## Step 4: Search for Similar Products
 
-After the index is built (which happens automatically and usually takes about 30 minutes after the first import), you can search:
+After the index is built (which happens automatically and updates approximately every 30 minutes after products or reference images change), you can search:
 
 ```python
 from google.cloud import vision
@@ -301,7 +303,7 @@ def search_similar_products(project_id, location, product_set_id, image_path, ma
 # Search with a user's photo
 results = search_similar_products(
     project_id="your-project-id",
-    location="us-central1",
+    location="us-west1",
     product_set_id="shoe-catalog",
     image_path="user_photo.jpg",
 )
@@ -313,6 +315,7 @@ Products and reference images need maintenance as your catalog changes:
 
 ```python
 from google.cloud import vision
+from google.protobuf import field_mask_pb2 as field_mask
 
 def update_product_labels(project_id, location, product_id, new_labels):
     """Update the labels on an existing product."""
@@ -328,9 +331,10 @@ def update_product_labels(project_id, location, product_id, new_labels):
     )
 
     # Update only the product_labels field
+    update_mask = field_mask.FieldMask(paths=["product_labels"])
     updated = client.update_product(
         product=product,
-        update_mask={"paths": ["product_labels"]},
+        update_mask=update_mask,
     )
 
     print(f"Updated product labels: {updated.name}")
@@ -347,7 +351,7 @@ def delete_product(project_id, location, product_id):
 # Update labels for a product
 update_product_labels(
     project_id="your-project-id",
-    location="us-central1",
+    location="us-west1",
     product_id="red-running-shoe-001",
     new_labels={"color": "red", "brand": "ExampleBrand", "sale": "true"},
 )
@@ -363,6 +367,6 @@ update_product_labels(
 
 ## Wrapping Up
 
-Vision API Product Search gives you a production-ready visual search system without training any custom models. The setup is a bit involved since you need to structure your catalog with product sets, products, and reference images, but once it is running, the search quality is solid.
+Vision API Product Search gives you a managed visual search system without training any custom models. The setup is a bit involved since you need to structure your catalog with product sets, products, and reference images, but once it is running, the search quality is solid.
 
 For monitoring the uptime and performance of your visual search endpoints in production, consider [OneUptime](https://oneuptime.com) to ensure your product discovery experience stays reliable for your customers.
