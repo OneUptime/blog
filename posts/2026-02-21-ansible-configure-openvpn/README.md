@@ -117,6 +117,12 @@ OpenVPN uses TLS certificates for authentication. Easy-RSA manages the CA and ce
       ansible.builtin.command: openvpn --genkey secret /etc/openvpn/ta.key
       args:
         creates: /etc/openvpn/ta.key
+
+    - name: Generate initial CRL
+      ansible.builtin.command: ./easyrsa gen-crl
+      args:
+        chdir: "{{ easyrsa_dir }}"
+        creates: "{{ easyrsa_dir }}/pki/crl.pem"
 ```
 
 ## Configuring the OpenVPN Server
@@ -158,6 +164,9 @@ OpenVPN uses TLS certificates for authentication. Easy-RSA manages the CA and ce
         - src: "{{ easyrsa_dir }}/pki/dh.pem"
           dest: /etc/openvpn/server/dh.pem
           mode: '0644'
+        - src: "{{ easyrsa_dir }}/pki/crl.pem"
+          dest: /etc/openvpn/server/crl.pem
+          mode: '0644'
 
     - name: Deploy OpenVPN server configuration
       ansible.builtin.template:
@@ -183,6 +192,11 @@ OpenVPN uses TLS certificates for authentication. Easy-RSA manages the CA and ce
         out_interface: "{{ server_public_interface }}"
         jump: MASQUERADE
         comment: "OpenVPN NAT"
+
+    - name: Persist NAT rules on Debian/Ubuntu
+      ansible.builtin.shell: iptables-save > /etc/iptables/rules.v4
+      changed_when: false
+      when: ansible_os_family == "Debian"
 
     - name: Enable and start OpenVPN
       ansible.builtin.systemd:
@@ -210,6 +224,7 @@ cert server.crt
 key server.key
 dh dh.pem
 tls-auth ta.key 0
+crl-verify crl.pem
 
 server {{ vpn_network }} {{ vpn_netmask }}
 
@@ -226,7 +241,7 @@ push "redirect-gateway def1 bypass-dhcp"
 keepalive 10 120
 
 # Encryption settings
-cipher AES-256-GCM
+data-ciphers AES-256-GCM:AES-128-GCM
 auth SHA256
 
 # Run as unprivileged user
@@ -318,7 +333,7 @@ nobind
 persist-key
 persist-tun
 remote-cert-tls server
-cipher AES-256-GCM
+data-ciphers AES-256-GCM:AES-128-GCM
 auth SHA256
 key-direction 1
 verb 3
