@@ -16,12 +16,14 @@ Tutorial
 
 ## Sources Consulted
 - Ansible community.general.terraform module documentation: https://docs.ansible.com/projects/ansible/latest/collections/community/general/terraform_module.html
+- Ansible community.general.terraform upstream module source: https://raw.githubusercontent.com/ansible-collections/community.general/main/plugins/modules/terraform.py
 - Ansible community.general.timezone module documentation: https://docs.ansible.com/projects/ansible/latest/collections/community/general/timezone_module.html
 - Ansible community.general.ufw module documentation: https://docs.ansible.com/projects/ansible/latest/collections/community/general/ufw_module.html
-- Ansible ansible.builtin collection index: https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/index.html
 - Ansible ansible.builtin.cron module documentation: https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/cron_module.html
-- Ansible ansible.builtin.uri module documentation: https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/uri_module.html
 - Ansible ansible.builtin.setup module documentation: https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/setup_module.html
+- Ansible ansible.builtin.uri module documentation: https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/uri_module.html
+- Ansible ansible.builtin.service module documentation: https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/service_module.html
+- Ansible variables documentation for extra vars: https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_variables.html
 
 ## Issues Found
 - The first Terraform task was labeled as initialization but used `community.general.terraform` with `state: present`, which performs an apply workflow rather than a standalone init. Removed the separate init task and moved `force_init: true` onto the `state: planned` task so the example plans changes without applying them.
@@ -31,4 +33,4 @@ Tutorial
 - Several later example comments referred to "this module" even though the snippets demonstrated general Ansible workflow patterns rather than `community.general.terraform`. Adjusted the wording to avoid implying those snippets used the Terraform module.
 
 ## Review Notes
-The examples assume Terraform and any target-side utilities, such as UFW and timezone tooling, are already installed where the relevant modules run. The `community.general.terraform` module is part of the `community.general` collection and is not included in `ansible-core`, so the collection install command in the post is necessary for minimal Ansible installations.
+Ansible is not installed in the local workspace, so local `ansible-playbook --syntax-check` and `ansible-doc` verification could not be run. The examples were reviewed against the current official Ansible documentation and the upstream `community.general.terraform` module source. The `community.general.terraform` module requires the `community.general` collection and a Terraform binary on the host that executes the module.
