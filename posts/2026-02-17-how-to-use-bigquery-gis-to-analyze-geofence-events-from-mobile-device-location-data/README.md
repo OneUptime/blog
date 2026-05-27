@@ -138,7 +138,7 @@ This query detects entry and exit events by comparing consecutive location pings
 ```sql
 -- Detect geofence entry and exit events
 WITH location_with_geofence AS (
-  -- Join each location ping with all geofences it falls within
+  -- Join each location ping with each geofence and calculate the inside/outside state
   SELECT
     le.device_id,
     le.event_timestamp,
@@ -146,13 +146,11 @@ WITH location_with_geofence AS (
     gf.geofence_id,
     gf.geofence_name,
     gf.geofence_type,
-    -- Check if this ping is inside the geofence
-    ST_CONTAINS(gf.boundary, le.location) as is_inside
+    -- Check if this ping is inside or on the boundary of the geofence
+    ST_COVERS(gf.boundary, le.location) as is_inside
   FROM `MY_PROJECT.geo_analytics.location_events` le
   CROSS JOIN `MY_PROJECT.geo_analytics.geofences` gf
   WHERE le.event_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-    -- Pre-filter: only check geofences within 1km of the ping
-    AND ST_DWITHIN(le.location, gf.boundary, 1000)
 ),
 with_previous AS (
   -- Get the previous inside/outside state for each device-geofence pair
@@ -205,6 +203,10 @@ WITH entry_exit_pairs AS (
       PARTITION BY device_id, geofence_id
       ORDER BY event_timestamp
     ) as exit_time,
+    LEAD(event_type) OVER (
+      PARTITION BY device_id, geofence_id
+      ORDER BY event_timestamp
+    ) as next_event_type,
     event_type
   FROM `MY_PROJECT.geo_analytics.geofence_events`
 )
@@ -224,6 +226,7 @@ SELECT
   END as visit_type
 FROM entry_exit_pairs
 WHERE event_type = 'ENTER'
+  AND next_event_type = 'EXIT'
   AND exit_time IS NOT NULL
   AND TIMESTAMP_DIFF(exit_time, entry_time, MINUTE) < 480;  -- Cap at 8 hours
 ```
@@ -246,17 +249,7 @@ SELECT
 FROM `MY_PROJECT.geo_analytics.geofence_visits`
 WHERE entry_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY geofence_name, day_of_week, hour_of_day
-ORDER BY geofence_name,
-  CASE FORMAT_TIMESTAMP('%A', entry_time)
-    WHEN 'Monday' THEN 1
-    WHEN 'Tuesday' THEN 2
-    WHEN 'Wednesday' THEN 3
-    WHEN 'Thursday' THEN 4
-    WHEN 'Friday' THEN 5
-    WHEN 'Saturday' THEN 6
-    WHEN 'Sunday' THEN 7
-  END,
-  hour_of_day;
+ORDER BY geofence_name, MOD(MIN(EXTRACT(DAYOFWEEK FROM entry_time)) + 5, 7) + 1, hour_of_day;
 ```
 
 ## Step 6: Cross-Visit Analysis
@@ -331,4 +324,4 @@ When working with mobile location data, privacy must be a top priority:
 
 ## Summary
 
-BigQuery GIS turns raw mobile location pings into actionable geofence analytics. The spatial join between location events and geofence polygons is the foundation, and from there you can calculate dwell time, detect visit patterns, analyze cross-location movement, and attribute visits to business outcomes. The key technical decisions are choosing the right geofence radius (too small misses visitors, too large catches passersby), setting appropriate dwell time thresholds to distinguish real visits from pass-throughs, and pre-filtering with ST_DWITHIN for query performance. Always prioritize user privacy by aggregating results and implementing proper data retention policies.
+BigQuery GIS turns raw mobile location pings into actionable geofence analytics. The spatial join between location events and geofence polygons is the foundation, and from there you can calculate dwell time, detect visit patterns, analyze cross-location movement, and attribute visits to business outcomes. The key technical decisions are choosing the right geofence radius (too small misses visitors, too large catches passersby), setting appropriate dwell time thresholds to distinguish real visits from pass-throughs, and preserving enough outside-geofence pings to detect exit events correctly. Always prioritize user privacy by aggregating results and implementing proper data retention policies.
