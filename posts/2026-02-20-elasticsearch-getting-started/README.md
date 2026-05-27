@@ -19,7 +19,7 @@ Traditional databases struggle with log data because logs are:
 - Semi-structured (different services produce different formats)
 - Searched by text content, not just exact fields
 
-Elasticsearch handles all of these well because it indexes every word in every field by default.
+Elasticsearch handles all of these well because fields are indexed by default, and text fields are analyzed into searchable terms.
 
 ```mermaid
 graph LR
@@ -72,7 +72,7 @@ Mappings define the data types for each field. Without explicit mappings, Elasti
 
 ```python
 from elasticsearch import Elasticsearch
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Connect to Elasticsearch
 es = Elasticsearch("http://localhost:9200")
@@ -130,8 +130,12 @@ log_mapping = {
 
 # Create the index
 # Use date-based index names for easy lifecycle management
-index_name = f"logs-{datetime.utcnow().strftime('%Y.%m.%d')}"
-es.indices.create(index=index_name, body=log_mapping)
+index_name = f"logs-{datetime.now(timezone.utc).strftime('%Y.%m.%d')}"
+es.indices.create(
+    index=index_name,
+    settings=log_mapping["settings"],
+    mappings=log_mapping["mappings"]
+)
 print(f"Created index: {index_name}")
 ```
 
@@ -153,8 +157,7 @@ graph TD
 ## Step 3: Indexing Log Data
 
 ```python
-import json
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 import random
 
 def index_log_entry(service: str, level: str, message: str,
@@ -164,7 +167,7 @@ def index_log_entry(service: str, level: str, message: str,
     Uses date-based index naming for lifecycle management.
     """
     doc = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "level": level,
         "service": service,
         "message": message,
@@ -175,7 +178,7 @@ def index_log_entry(service: str, level: str, message: str,
         doc["request"] = request_data
 
     # Index name based on today's date
-    index = f"logs-{datetime.utcnow().strftime('%Y.%m.%d')}"
+    index = f"logs-{datetime.now(timezone.utc).strftime('%Y.%m.%d')}"
 
     # Index the document
     result = es.index(index=index, document=doc)
@@ -192,7 +195,7 @@ def bulk_index_logs(logs: list):
     actions = []
     for log in logs:
         action = {
-            "_index": f"logs-{datetime.utcnow().strftime('%Y.%m.%d')}",
+            "_index": f"logs-{datetime.now(timezone.utc).strftime('%Y.%m.%d')}",
             "_source": log
         }
         actions.append(action)
@@ -297,7 +300,7 @@ def search_logs(query_text: str, level: str = None,
 # Search for error logs
 search_logs("token expired", level="ERROR")
 
-# Search for slow requests
+# Search recent API gateway logs
 search_logs("", service="api-gateway", hours=1)
 ```
 
@@ -364,7 +367,7 @@ def log_level_distribution(hours: int = 24):
 
 ## Step 5: Index Lifecycle Management
 
-Logs should be automatically rolled over and deleted based on age.
+Logs should be automatically managed and deleted based on age. The examples above use date-based index names; if you want Elasticsearch to roll over write targets automatically, use a data stream or a rollover alias.
 
 ```python
 def setup_index_lifecycle(es):
@@ -378,10 +381,9 @@ def setup_index_lifecycle(es):
             "phases": {
                 "hot": {
                     "actions": {
-                        # Roll over when the index gets too large or old
-                        "rollover": {
-                            "max_primary_shard_size": "50gb",
-                            "max_age": "1d"
+                        # Keep recent indexes in the hot phase
+                        "set_priority": {
+                            "priority": 100
                         }
                     }
                 },
@@ -393,9 +395,8 @@ def setup_index_lifecycle(es):
                         "forcemerge": {
                             "max_num_segments": 1
                         },
-                        # Shrink to fewer shards
-                        "shrink": {
-                            "number_of_shards": 1
+                        "set_priority": {
+                            "priority": 50
                         }
                     }
                 },
@@ -410,8 +411,30 @@ def setup_index_lifecycle(es):
         }
     }
 
-    es.ilm.put_lifecycle(name="logs-policy", body=policy)
+    es.ilm.put_lifecycle(name="logs-policy", policy=policy["policy"])
     print("ILM policy 'logs-policy' created")
+
+    # Attach the lifecycle policy to future log indexes
+    es.indices.put_index_template(
+        name="logs-template",
+        index_patterns=["logs-*"],
+        priority=501,
+        template={
+            "settings": {
+                "index.lifecycle.name": "logs-policy"
+            }
+        }
+    )
+    print("Index template 'logs-template' created")
+
+    # Attach the lifecycle policy to any existing log indexes
+    es.indices.put_settings(
+        index="logs-*",
+        settings={
+            "index.lifecycle.name": "logs-policy"
+        },
+        ignore_unavailable=True
+    )
 ```
 
 ## Architecture Overview
