@@ -141,28 +141,31 @@ The interpret-as options include:
 
 ## Adding Emphasis
 
-The `<emphasis>` tag changes how strongly a word or phrase is stressed:
+The `<emphasis>` tag changes how strongly a full sentence is stressed:
 
 ```python
 ssml_emphasis = """
 <speak>
-    This feature is <emphasis level="strong">critically important</emphasis>
-    for production environments.
+    <emphasis level="strong">
+        This feature is critically important for production environments.
+    </emphasis>
     <break time="300ms"/>
 
-    You should <emphasis level="moderate">always</emphasis> enable monitoring
-    before deploying.
+    <emphasis level="moderate">
+        You should always enable monitoring before deploying.
+    </emphasis>
     <break time="300ms"/>
 
-    The change is <emphasis level="reduced">relatively minor</emphasis>
-    and should not affect performance.
+    <emphasis level="reduced">
+        The change is relatively minor and should not affect performance.
+    </emphasis>
 </speak>
 """
 
 synthesize_ssml(ssml_emphasis, "emphasis_demo.mp3")
 ```
 
-Emphasis levels are: `strong`, `moderate`, and `reduced`.
+Emphasis levels are: `strong`, `moderate`, `none`, and `reduced`.
 
 ## Controlling Prosody (Speed, Pitch, Volume)
 
@@ -228,11 +231,14 @@ synthesize_ssml(ssml_substitution, "abbreviations.mp3")
 Here is a practical example that generates audio notifications with appropriate pacing and emphasis:
 
 ```python
+from html import escape
 from google.cloud import texttospeech
 
 def generate_notification_audio(notification_type, message, details=None):
     """Generate an audio notification with appropriate SSML styling."""
     client = texttospeech.TextToSpeechClient()
+    safe_message = escape(message)
+    safe_details = escape(details) if details else None
 
     # Build SSML based on notification type
     if notification_type == "critical":
@@ -241,9 +247,9 @@ def generate_notification_audio(notification_type, message, details=None):
             <prosody rate="95%" pitch="-1st">
                 <emphasis level="strong">Critical alert.</emphasis>
                 <break time="500ms"/>
-                {message}
+                {safe_message}
             </prosody>
-            {f'<break time="800ms"/><prosody rate="90%">{details}</prosody>' if details else ''}
+            {f'<break time="800ms"/><prosody rate="90%">{safe_details}</prosody>' if safe_details else ''}
         </speak>
         """
     elif notification_type == "warning":
@@ -252,22 +258,22 @@ def generate_notification_audio(notification_type, message, details=None):
             <prosody rate="medium">
                 Warning.
                 <break time="300ms"/>
-                {message}
+                {safe_message}
             </prosody>
-            {f'<break time="500ms"/>{details}' if details else ''}
+            {f'<break time="500ms"/>{safe_details}' if safe_details else ''}
         </speak>
         """
     elif notification_type == "info":
         ssml = f"""
         <speak>
             <prosody rate="medium" pitch="+1st">
-                {message}
+                {safe_message}
             </prosody>
-            {f'<break time="300ms"/>{details}' if details else ''}
+            {f'<break time="300ms"/>{safe_details}' if safe_details else ''}
         </speak>
         """
     else:
-        ssml = f"<speak>{message}</speak>"
+        ssml = f"<speak>{safe_message}</speak>"
 
     synthesis_input = texttospeech.SynthesisInput(ssml=ssml)
 
@@ -337,11 +343,11 @@ ssml_combined = """
 
     <break time="500ms"/>
 
-    <emphasis level="moderate">However</emphasis>,
-    <break time="200ms"/>
-    disk usage on server
-    <say-as interpret-as="characters">DB2</say-as>
-    has reached <say-as interpret-as="cardinal">87</say-as> percent.
+    <emphasis level="moderate">
+        However, disk usage on server
+        <say-as interpret-as="characters">DB2</say-as>
+        has reached <say-as interpret-as="cardinal">87</say-as> percent.
+    </emphasis>
 
     <break time="300ms"/>
 
@@ -369,7 +375,7 @@ A few things I have learned from working with SSML:
 - Use breaks liberally between sections and after important information. Listeners need processing time.
 - Keep prosody changes moderate. Extreme speed or pitch changes sound unnatural.
 - Validate your SSML before sending it to the API. Malformed XML will cause errors.
-- The maximum SSML input length is 5000 characters per request. For longer content, split it into multiple requests.
+- The maximum input length is 5000 bytes per request. For longer content, split it into multiple requests.
 
 ## Wrapping Up
 
