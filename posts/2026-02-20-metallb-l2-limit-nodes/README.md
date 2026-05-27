@@ -26,12 +26,12 @@ flowchart LR
         N4[Node 4 - Ingress VLAN A]
     end
     Client[External Client - VLAN A] -->|ARP Request| N2
-    N2 -.->|ARP Reply from wrong VLAN| Client
+    N2 -.->|Elected node cannot answer on VLAN A| Client
     style N2 fill:#f96,stroke:#333
     style Client fill:#bbf,stroke:#333
 ```
 
-If Node 2 wins the speaker election, it responds to ARP requests. But Node 2 is on VLAN B, which the external client cannot reach at Layer 2. Traffic fails silently. The service has an IP but nothing can connect to it.
+If Node 2 wins the speaker election, it is responsible for announcing the service IP. But Node 2 is on VLAN B, which the external client cannot reach at Layer 2, so it cannot answer ARP requests on VLAN A. Traffic fails silently. The service has an IP but nothing can connect to it.
 
 By restricting L2 advertisements to nodes on the correct network, you avoid this entirely.
 
@@ -168,11 +168,18 @@ Check the MetalLB speaker logs to see which node won the election and is respond
 ```bash
 # Check speaker logs across all speaker pods
 # Look for "announcing" messages that show which node claimed the IP
-kubectl logs -n metallb-system -l app=metallb-speaker --all-containers \
+kubectl logs -n metallb-system -l app=metallb,component=speaker --all-containers \
   | grep -i "announc"
 ```
 
 You should see announcement messages only from speaker pods on your labeled nodes (node-1 or node-4). If you see announcements from node-2 or node-3, the nodeSelector is not working correctly.
+
+You can also check the status resource that MetalLB speakers create:
+
+```bash
+# Show which node is currently advertising each service via Layer 2
+kubectl get servicel2statuses -n metallb-system
+```
 
 ### Using matchExpressions for Advanced Selection
 
@@ -241,7 +248,7 @@ Each pool's IPs are only advertised on the correct network segment, preventing c
 
 ### Common Mistakes
 
-**Forgetting to label nodes.** The nodeSelector will match zero nodes, and MetalLB will not advertise the IP at all. The service will stay in `<pending>` state or get an IP that nobody announces.
+**Forgetting to label nodes.** The nodeSelector will match zero nodes, and MetalLB will not advertise the IP at all. The service can get an IP that nobody announces, so the LoadBalancer endpoint appears allocated but remains unreachable.
 
 **Typos in label keys or values.** Label matching is exact. `ingress: "True"` does not match `ingress: "true"`. Always double-check with `kubectl get nodes --show-labels`.
 
