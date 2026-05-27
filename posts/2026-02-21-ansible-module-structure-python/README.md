@@ -18,9 +18,9 @@ Every module should include these sections in order:
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Copyright: (c) 2026, Your Name
+# Copyright: Your Name
 
-# GNU General Public License v3.0+
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 # 1. DOCUMENTATION string
 DOCUMENTATION = r"""
@@ -29,6 +29,7 @@ module: my_module
 short_description: Manage my resources
 description:
     - Create, update, and delete resources.
+version_added: '1.0.0'
 options:
     name:
         description: Resource name.
@@ -39,6 +40,9 @@ options:
         default: present
         choices: ['present', 'absent']
         type: str
+attributes:
+    check_mode:
+        support: full
 author:
     - Your Name (@github)
 """
@@ -46,7 +50,7 @@ author:
 # 2. EXAMPLES string
 EXAMPLES = r"""
 - name: Create resource
-  my_module:
+  namespace.collection.my_module:
     name: test
     state: present
 """
@@ -54,9 +58,12 @@ EXAMPLES = r"""
 # 3. RETURN string
 RETURN = r"""
 resource:
-    description: Resource details
+    description: Resource details.
     type: dict
-    returned: always
+    returned: when state=present and the resource is created
+    sample:
+        id: '123'
+        name: test
 """
 
 # 4. Imports
@@ -175,7 +182,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -319,4 +326,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
