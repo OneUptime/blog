@@ -8,7 +8,7 @@ Description: Automate the deployment of a hardened bastion host with SSH jump co
 
 ---
 
-A bastion host (also called a jump box) is the single entry point into your private network. Instead of exposing every server to the internet, you expose only the bastion and require all SSH connections to pass through it. This dramatically reduces your attack surface and creates a single point where you can enforce authentication policies, log all access, and apply security controls. Setting up a proper bastion host involves hardening SSH, configuring fail2ban, enabling session logging, and restricting what users can do once they connect.
+A bastion host (also called a jump box) is the single entry point into your private network. Instead of exposing every server to the internet, you expose only the bastion and require all SSH connections to pass through it. This dramatically reduces your attack surface and creates a single point where you can enforce authentication policies, log all access, and apply security controls. Setting up a proper bastion host involves hardening SSH, configuring fail2ban, enabling session logging, and restricting which users can connect.
 
 Ansible is ideal for this because a bastion host configuration needs to be rock-solid and reproducible. If the bastion goes down or gets compromised, you need to spin up an identical replacement quickly.
 
@@ -25,12 +25,8 @@ bastion_allowed_ssh_cidrs:
 bastion_users:
   - name: devops-john
     ssh_key: "ssh-rsa AAAAB3... john@laptop"
-    allowed_targets:
-      - 10.0.0.0/8
   - name: devops-jane
     ssh_key: "ssh-rsa AAAAB3... jane@laptop"
-    allowed_targets:
-      - 10.0.1.0/24
 
 # SSH hardening settings
 bastion_ssh_password_auth: false
@@ -138,7 +134,6 @@ bastion_session_log_dir: /var/log/bastion-sessions
 ```text
 # roles/bastion/templates/sshd_config.j2 - Hardened SSH configuration
 Port {{ bastion_ssh_port }}
-Protocol 2
 HostKey /etc/ssh/ssh_host_ed25519_key
 HostKey /etc/ssh/ssh_host_rsa_key
 
@@ -221,14 +216,16 @@ Banner /etc/ssh/banner.txt
     state: directory
     owner: root
     group: root
-    mode: '0700'
+    mode: '1733'
 
 - name: Deploy session recording script
   copy:
     content: |
       #!/bin/bash
       # Record SSH session with timestamp
-      SESSION_LOG="{{ bastion_session_log_dir }}/${USER}_$(date +%Y%m%d_%H%M%S)_$$.log"
+      export BASTION_RECORDING_ACTIVE=1
+      SESSION_LOG="$(mktemp "{{ bastion_session_log_dir }}/${USER}_$(date +%Y%m%d_%H%M%S)_$$.XXXXXX.log")"
+      chmod 0600 "$SESSION_LOG"
       echo "Session started: $(date)" >> "$SESSION_LOG"
       echo "User: $USER" >> "$SESSION_LOG"
       echo "Source: $SSH_CLIENT" >> "$SESSION_LOG"
@@ -238,13 +235,12 @@ Banner /etc/ssh/banner.txt
     mode: '0755'
 
 - name: Set session recording as default shell wrapper
-  lineinfile:
-    path: /etc/profile.d/session-record.sh
-    line: |
-      if [ -n "$SSH_CLIENT" ] && [ "$TERM" != "dumb" ]; then
+  copy:
+    dest: /etc/profile.d/session-record.sh
+    content: |
+      if [ -n "$SSH_CLIENT" ] && [ "$TERM" != "dumb" ] && [ -z "$BASTION_RECORDING_ACTIVE" ]; then
         exec /usr/local/bin/session-record.sh
       fi
-    create: yes
     mode: '0644'
 ```
 
@@ -307,7 +303,7 @@ Host 10.0.*
 ---
 - name: restart sshd
   systemd:
-    name: sshd
+    name: ssh
     state: restarted
 
 - name: restart fail2ban
