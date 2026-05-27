@@ -10,7 +10,7 @@ Description: Learn how to request a specific IP address for a Kubernetes LoadBal
 
 When running services in a bare-metal Kubernetes cluster with MetalLB, you sometimes need a service to receive a specific external IP address. This is common when DNS records are already configured, when firewall rules reference a fixed IP, or when you need deterministic addressing for compliance reasons.
 
-MetalLB supports two ways to request a specific IP: using the Kubernetes-native `spec.loadBalancerIP` field and using MetalLB-specific annotations.
+MetalLB supports two ways to request a specific IP: using the Kubernetes-native `spec.loadBalancerIP` field and using MetalLB-specific annotations. For new configurations, prefer the MetalLB annotation because Kubernetes deprecated `spec.loadBalancerIP` in v1.24.
 
 ## Why Request a Specific IP?
 
@@ -27,7 +27,7 @@ flowchart TD
     B -->|No| C[MetalLB assigns from pool]
     B -->|Yes| D{IP in pool range?}
     D -->|Yes| E{IP available?}
-    D -->|No| F[Service stays Pending]
+    D -->|No| F[External IP stays Pending]
     E -->|Yes| G[IP assigned to service]
     E -->|No| F
     C --> G
@@ -59,6 +59,7 @@ spec:
   addresses:
     # Range of IPs available for assignment
     - 192.168.1.100-192.168.1.120
+    - fd00::1:100/120
 ```
 
 Apply the pool:
@@ -70,7 +71,7 @@ kubectl apply -f ip-address-pool.yaml
 
 ## Method 1: Using spec.loadBalancerIP
 
-The simplest way to request a specific IP is through the `spec.loadBalancerIP` field on the Service resource. This is a standard Kubernetes field that MetalLB honors.
+One way to request a specific IP is through the `spec.loadBalancerIP` field on the Service resource. MetalLB honors this field, but Kubernetes deprecated it in v1.24 because its behavior is under-specified and it does not support dual-stack services.
 
 ```yaml
 # service-with-specific-ip.yaml
@@ -126,7 +127,7 @@ metadata:
   namespace: default
   annotations:
     # MetalLB annotation for requesting a specific IP
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.110"
+    metallb.io/loadBalancerIPs: "192.168.1.110"
 spec:
   type: LoadBalancer
   selector:
@@ -140,7 +141,7 @@ spec:
 
 ## What Happens When the IP Is Not Available
 
-If the requested IP is already assigned to another service or falls outside any configured pool, MetalLB will not assign an IP. The service will remain in a `Pending` state.
+If the requested IP is already assigned to another service or falls outside any configured pool, MetalLB will not assign an IP. The service's external IP will remain in a `Pending` state.
 
 ```bash
 # Check the service status
@@ -173,7 +174,7 @@ metadata:
   namespace: default
   annotations:
     # Comma-separated list for multiple IPs
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.115,fd00::1:115"
+    metallb.io/loadBalancerIPs: "192.168.1.115,fd00::1:115"
 spec:
   type: LoadBalancer
   ipFamilyPolicy: RequireDualStack
