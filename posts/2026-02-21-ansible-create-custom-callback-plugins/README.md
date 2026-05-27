@@ -14,9 +14,10 @@ Ansible's built-in callback plugins cover common needs, but sometimes you need s
 
 A callback plugin is a Python class that inherits from `CallbackBase` and implements methods for specific events. Ansible fires events at key points during execution: playbook start, task start, host success, host failure, and so on. Your callback receives these events and does whatever you want with them.
 
-There are two types of callbacks:
+There are three types of callbacks:
 
 - **stdout** callbacks replace the default terminal output (only one active at a time)
+- **aggregate** callbacks add extra console output alongside the stdout callback
 - **notification** callbacks run alongside the stdout callback (multiple can be active)
 
 ## Minimal Callback Plugin
@@ -33,9 +34,9 @@ class CallbackModule(CallbackBase):
     """A minimal custom callback plugin."""
 
     CALLBACK_VERSION = 2.0
-    CALLBACK_TYPE = 'notification'  # or 'stdout' for output callbacks
+    CALLBACK_TYPE = 'notification'  # or 'stdout' / 'aggregate'
     CALLBACK_NAME = 'my_callback'
-    CALLBACK_NEEDS_WHITELIST = True  # Require explicit enable in ansible.cfg
+    CALLBACK_NEEDS_ENABLED = True  # Require explicit enable in ansible.cfg
 
     def v2_playbook_on_stats(self, stats):
         """Called at the end of the playbook with summary statistics."""
@@ -54,7 +55,7 @@ Place this file in your project's `callback_plugins/` directory and enable it:
 ```ini
 # ansible.cfg
 [defaults]
-callback_whitelist = my_callback
+callbacks_enabled = my_callback
 callback_plugins = ./callback_plugins
 ```
 
@@ -71,7 +72,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'event_reference'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     # Playbook lifecycle events
     def v2_playbook_on_start(self, playbook):
@@ -90,24 +91,24 @@ class CallbackModule(CallbackBase):
     # Host result events
     def v2_runner_on_ok(self, result):
         """Fired when a task succeeds on a host."""
-        host = result._host.get_name()
-        changed = result._result.get('changed', False)
+        host = result.host.get_name()
+        changed = result.result.get('changed', False)
         self._display.display(f"OK: {host} (changed={changed})")
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
         """Fired when a task fails on a host."""
-        host = result._host.get_name()
-        msg = result._result.get('msg', 'No error message')
+        host = result.host.get_name()
+        msg = result.result.get('msg', 'No error message')
         self._display.display(f"FAILED: {host} - {msg}")
 
     def v2_runner_on_skipped(self, result):
         """Fired when a task is skipped on a host."""
-        host = result._host.get_name()
+        host = result.host.get_name()
         self._display.display(f"SKIPPED: {host}")
 
     def v2_runner_on_unreachable(self, result):
         """Fired when a host is unreachable."""
-        host = result._host.get_name()
+        host = result.host.get_name()
         self._display.display(f"UNREACHABLE: {host}")
 
     # Summary event
@@ -147,7 +148,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'webhook_notify'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super().__init__()
@@ -169,9 +170,9 @@ class CallbackModule(CallbackBase):
     def v2_runner_on_failed(self, result, ignore_errors=False):
         if not ignore_errors:
             self.failed_tasks.append({
-                'host': result._host.get_name(),
-                'task': result._task.get_name(),
-                'message': result._result.get('msg', ''),
+                'host': result.host.get_name(),
+                'task': result.task.get_name(),
+                'message': result.result.get('msg', ''),
             })
 
     def v2_playbook_on_stats(self, stats):
@@ -218,7 +219,7 @@ Enable and use it:
 ```bash
 # Set the webhook URL and run
 export ANSIBLE_WEBHOOK_URL=https://hooks.example.com/ansible
-export ANSIBLE_CALLBACK_WHITELIST=webhook_notify
+export ANSIBLE_CALLBACKS_ENABLED=webhook_notify
 ansible-playbook deploy.yml
 ```
 
@@ -256,27 +257,30 @@ class CallbackModule(CallbackBase):
     def _show_progress(self, host, status, color):
         self.completed_tasks += 1
         bar_length = 40
-        filled = int(bar_length * self.completed_tasks / max(self.total_tasks, 1))
+        filled = min(
+            bar_length,
+            int(bar_length * self.completed_tasks / max(self.total_tasks, 1))
+        )
         bar = '#' * filled + '-' * (bar_length - filled)
         sys.stdout.write(f"\r  [{bar}] {host}: {status}    ")
         sys.stdout.flush()
 
     def v2_runner_on_ok(self, result):
-        status = 'changed' if result._result.get('changed') else 'ok'
+        status = 'changed' if result.result.get('changed') else 'ok'
         color = 'yellow' if status == 'changed' else 'green'
-        self._show_progress(result._host.get_name(), status, color)
+        self._show_progress(result.host.get_name(), status, color)
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
-        host = result._host.get_name()
+        host = result.host.get_name()
         self.failures.append({
             'host': host,
-            'task': result._task.get_name(),
-            'msg': result._result.get('msg', ''),
+            'task': result.task.get_name(),
+            'msg': result.result.get('msg', ''),
         })
         self._show_progress(host, 'FAILED', 'red')
 
     def v2_runner_on_unreachable(self, result):
-        self._show_progress(result._host.get_name(), 'UNREACHABLE', 'red')
+        self._show_progress(result.host.get_name(), 'UNREACHABLE', 'red')
 
     def v2_playbook_on_stats(self, stats):
         # Final newline after progress bar
@@ -300,6 +304,15 @@ class CallbackModule(CallbackBase):
                 )
 ```
 
+Enable it as the stdout callback:
+
+```ini
+# ansible.cfg
+[defaults]
+stdout_callback = progress
+callback_plugins = ./callback_plugins
+```
+
 ## Plugin Configuration with DOCUMENTATION
 
 For plugins that accept configuration, add a DOCUMENTATION string:
@@ -308,7 +321,7 @@ For plugins that accept configuration, add a DOCUMENTATION string:
 # callback_plugins/configurable_example.py
 DOCUMENTATION = '''
     name: configurable_example
-    type: notification
+    callback_type: notification
     short_description: Example with configuration
     description:
         - An example callback with configurable options
@@ -336,7 +349,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'configurable_example'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def set_options(self, task_keys=None, var_options=None, direct=None):
         super().set_options(task_keys=task_keys, var_options=var_options, direct=direct)
@@ -364,7 +377,7 @@ Test with a simple playbook:
 ```
 
 ```bash
-ANSIBLE_CALLBACK_WHITELIST=my_callback ansible-playbook test-callback.yml
+ANSIBLE_CALLBACKS_ENABLED=my_callback ansible-playbook test-callback.yml
 ```
 
 Writing custom callbacks opens up Ansible to integrate with any system you use. The event model is simple, the Python is straightforward, and the payoff is worth the effort.
