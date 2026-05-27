@@ -8,50 +8,42 @@ Description: Configure the Ansible junit callback plugin to generate JUnit XML r
 
 ---
 
-The `junit` callback plugin generates JUnit XML files from Ansible playbook runs. JUnit XML is the standard format that CI/CD systems like Jenkins, GitLab CI, Azure DevOps, and GitHub Actions use to display test results. By using this callback, your Ansible runs show up as test suites in your CI dashboard with individual tasks as test cases, complete with pass/fail status and timing information.
+The `junit` callback plugin generates JUnit XML files from Ansible playbook runs. JUnit XML is the standard format that CI/CD systems like Jenkins, GitLab CI, Azure DevOps, and GitHub Actions reporting actions use to display test results. By using this callback, your Ansible runs show up as test suites in your CI dashboard with individual host/task results as test cases, complete with pass/fail status and timing information.
 
 ## Why JUnit Output Matters
 
-When Ansible runs in CI/CD, the typical result is either "exit code 0" or "exit code non-zero" with a wall of text in the build log. JUnit XML gives you structured results that CI systems can parse and display in their test result views. Each task becomes a test case, so you can quickly see which specific task failed, how long each task took, and track trends over time.
+When Ansible runs in CI/CD, the typical result is either "exit code 0" or "exit code non-zero" with a wall of text in the build log. JUnit XML gives you structured results that CI systems can parse and display in their test result views. Each recorded host/task result becomes a test case, so you can quickly see which specific task failed, how long each task took, and track trends over time.
 
 ## Enabling the JUnit Callback
 
-The junit callback is a notification callback, so it runs alongside your normal stdout callback:
+The junit callback is an aggregate callback, so it runs alongside your normal stdout callback:
 
 ```ini
 # ansible.cfg - Enable JUnit XML output
 
 [defaults]
-callback_whitelist = junit
-
-[callback_junit]
-# Directory where JUnit XML files will be written
-output_dir = ./junit-results
-# Include the task class name in the output
-include_setup_tasks_in_report = true
-# Fail on change (treat changed tasks as failures)
-fail_on_change = false
-# Test case name format
-test_case_prefix = ansible
+callbacks_enabled = ansible.builtin.junit
 ```
 
 Environment variable configuration:
 
 ```bash
 # Enable JUnit via environment
-export ANSIBLE_CALLBACK_WHITELIST=junit
+export ANSIBLE_CALLBACKS_ENABLED=ansible.builtin.junit
 export JUNIT_OUTPUT_DIR=./junit-results
 export JUNIT_FAIL_ON_CHANGE=false
+export JUNIT_INCLUDE_SETUP_TASKS_IN_REPORT=true
+export JUNIT_TASK_CLASS=false
 ```
 
 ## Generated XML Structure
 
-After running a playbook, the junit callback creates XML files in the output directory. One file per playbook host group:
+After running a playbook, the junit callback creates an XML file in the output directory. The file name uses the playbook name and a timestamp:
 
 ```bash
 # List generated JUnit files
 ls junit-results/
-# web-01.xml  web-02.xml  db-01.xml
+# deploy-1771688925.123456.xml
 ```
 
 The XML follows the JUnit schema:
@@ -59,25 +51,25 @@ The XML follows the JUnit schema:
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <testsuites>
-  <testsuite name="web-01" tests="5" errors="0" failures="0" skipped="1" time="45.23">
-    <testcase classname="Configure web servers"
-              name="Gathering Facts"
+  <testsuite name="deploy" tests="5" errors="0" failures="0" skipped="1" time="45.23">
+    <testcase classname="deploy.yml:2"
+              name="[web-01] Configure web servers: Gathering Facts"
               time="2.14">
     </testcase>
-    <testcase classname="Configure web servers"
-              name="Install nginx"
+    <testcase classname="roles/web/tasks/main.yml:4"
+              name="[web-01] Configure web servers: Install nginx name=nginx state=present"
               time="15.67">
     </testcase>
-    <testcase classname="Configure web servers"
-              name="Deploy configuration"
+    <testcase classname="roles/web/tasks/main.yml:10"
+              name="[web-01] Configure web servers: Deploy configuration"
               time="3.21">
     </testcase>
-    <testcase classname="Configure web servers"
-              name="Start service"
+    <testcase classname="roles/web/tasks/main.yml:18"
+              name="[web-01] Configure web servers: Start service"
               time="1.89">
     </testcase>
-    <testcase classname="Configure web servers"
-              name="Install Redis (skipped)"
+    <testcase classname="roles/web/tasks/main.yml:25"
+              name="[web-01] Configure web servers: Install Redis"
               time="0.01">
       <skipped message="Conditional result was False"/>
     </testcase>
@@ -88,10 +80,10 @@ The XML follows the JUnit schema:
 Failed tasks include the error message:
 
 ```xml
-<testcase classname="Configure web servers"
-          name="Deploy configuration"
+<testcase classname="roles/web/tasks/main.yml:10"
+          name="[web-01] Configure web servers: Deploy configuration"
           time="3.21">
-  <failure message="msg: Could not find /opt/app/config.yml">
+  <failure message="Could not find /opt/app/config.yml">
     FAILED! =&gt; {"changed": false, "msg": "Could not find /opt/app/config.yml"}
   </failure>
 </testcase>
@@ -107,7 +99,7 @@ pipeline {
     agent any
 
     environment {
-        ANSIBLE_CALLBACK_WHITELIST = 'junit'
+        ANSIBLE_CALLBACKS_ENABLED = 'ansible.builtin.junit'
         JUNIT_OUTPUT_DIR = "${WORKSPACE}/junit-results"
     }
 
@@ -129,7 +121,7 @@ pipeline {
 }
 ```
 
-After the build, Jenkins shows a "Test Results" section with each Ansible task as a test case. You can drill into failures and see the error messages.
+After the build, Jenkins shows a "Test Results" section with each recorded Ansible host/task result as a test case. You can drill into failures and see the error messages.
 
 ## GitLab CI Integration
 
@@ -140,7 +132,7 @@ GitLab CI also supports JUnit reports natively:
 deploy:
   stage: deploy
   variables:
-    ANSIBLE_CALLBACK_WHITELIST: "junit"
+    ANSIBLE_CALLBACKS_ENABLED: "ansible.builtin.junit"
     JUNIT_OUTPUT_DIR: "${CI_PROJECT_DIR}/junit-results"
   script:
     - mkdir -p ${JUNIT_OUTPUT_DIR}
@@ -151,7 +143,7 @@ deploy:
       junit: junit-results/*.xml
 ```
 
-GitLab shows the results in the merge request and pipeline views, making it easy to see which Ansible tasks passed or failed.
+GitLab shows the results in the merge request and pipeline views, making it easy to see which Ansible host/task results passed or failed.
 
 ## GitHub Actions Integration
 
@@ -166,7 +158,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      ANSIBLE_CALLBACK_WHITELIST: junit
+      ANSIBLE_CALLBACKS_ENABLED: ansible.builtin.junit
       JUNIT_OUTPUT_DIR: ./junit-results
 
     steps:
@@ -190,22 +182,21 @@ jobs:
 The `fail_on_change` option is useful for compliance checking. When enabled, any task that reports "changed" is marked as a failure in the JUnit output:
 
 ```ini
-# ansible.cfg - Treat changes as failures for compliance
-[callback_junit]
-output_dir = ./compliance-results
-fail_on_change = true
+# ansible.cfg - Enable JUnit XML output
+[defaults]
+callbacks_enabled = ansible.builtin.junit
 ```
 
 This is useful when running playbooks in check mode to verify configuration drift:
 
 ```bash
 # Check for drift - any changes detected are marked as failures
-JUNIT_FAIL_ON_CHANGE=true ansible-playbook --check compliance.yml
+JUNIT_OUTPUT_DIR=./compliance-results JUNIT_FAIL_ON_CHANGE=true ansible-playbook --check compliance.yml
 ```
 
 ## Custom Task Names in JUnit
 
-The JUnit output uses Ansible task names as test case names. Write descriptive task names for better reports:
+The JUnit output includes Ansible task names in test case names. Write descriptive task names for better reports:
 
 ```yaml
 # Good task names for JUnit readability
@@ -228,16 +219,12 @@ The JUnit output will show these descriptive names, making it easy to identify w
 
 ## Combining JUnit with Other Callbacks
 
-JUnit is a notification callback, so combine it with your preferred stdout callback and other notification callbacks:
+JUnit is an aggregate callback, so combine it with your preferred stdout callback and other aggregate or notification callbacks. For example, if the `ansible.posix` collection is installed:
 
 ```ini
 # ansible.cfg - JUnit with timer and profile callbacks
 [defaults]
-stdout_callback = yaml
-callback_whitelist = junit, timer, profile_tasks
-
-[callback_junit]
-output_dir = ./junit-results
+callbacks_enabled = ansible.builtin.junit, ansible.posix.timer, ansible.posix.profile_tasks
 ```
 
 ## Processing JUnit XML Programmatically
@@ -271,8 +258,10 @@ for xml_file in glob.glob(f"{results_dir}/*.xml"):
 
         if failures > 0:
             print(f"FAILURES in {suite.get('name')}:")
-            for case in suite.findall('.//failure'):
-                print(f"  - {case.getparent().get('name')}: {case.get('message')}")
+            for test_case in suite.findall('.//testcase'):
+                failure = test_case.find('failure')
+                if failure is not None:
+                    print(f"  - {test_case.get('name')}: {failure.get('message')}")
 
 print(f"\nTotal: {total_tests} tasks, {total_failures} failures, {total_time:.1f}s")
 ```
