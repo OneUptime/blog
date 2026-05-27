@@ -8,9 +8,9 @@ Description: Learn how to use GCP Migrate to Containers to automatically convert
 
 ---
 
-You have a fleet of virtual machines running applications that would benefit from containerization - better resource utilization, easier scaling, faster deployments. But rewriting applications and creating Dockerfiles from scratch for dozens or hundreds of VMs is a massive undertaking. Migrate to Containers (M2C) automates this conversion, turning VMs into container images and generating Kubernetes deployment artifacts.
+You have a fleet of virtual machines running applications that would benefit from containerization - better resource utilization, easier scaling, faster deployments. But rewriting applications and creating Dockerfiles from scratch for dozens or hundreds of VMs is a massive undertaking. Migrate to Containers (M2C) automates much of this conversion, turning VM file systems into container build artifacts and generating Kubernetes deployment artifacts.
 
-M2C analyzes a running VM, extracts the application and its dependencies, builds a container image, and creates the Kubernetes YAML you need to deploy it on GKE. It is not a magic button - you will still need to tune the results - but it dramatically reduces the effort compared to manual containerization.
+M2C copies a VM file system, analyzes the application and its dependencies, generates a migration plan, and creates the Dockerfiles and Kubernetes YAML you need to build and deploy it on GKE. It is not a magic button - you will still need to tune the results - but it dramatically reduces the effort compared to manual containerization.
 
 ## How Migrate to Containers Works
 
@@ -18,35 +18,37 @@ The process has several stages:
 
 ```mermaid
 flowchart LR
-    A[Source VM] --> B[Migration Plan]
-    B --> C[Generate Artifacts]
-    C --> D[Container Image]
-    C --> E[Kubernetes YAML]
-    D --> F[GKE Deployment]
-    E --> F
+    A[Source VM] --> B[Copy File System]
+    B --> C[Migration Plan]
+    C --> D[Generate Artifacts]
+    D --> E[Dockerfile and Skaffold Config]
+    D --> F[Kubernetes YAML]
+    E --> G[GKE Deployment]
+    F --> G
 
-    style C fill:#4285f4,stroke:#333,color:#fff
+    style D fill:#4285f4,stroke:#333,color:#fff
 ```
 
-1. **Create a migration source**: Connect M2C to where your VMs live (Compute Engine, VMware, AWS)
-2. **Create a migration plan**: M2C analyzes the VM and generates a migration plan
+1. **Copy the source VM file system**: Copy the VM file system locally using `m2c copy`
+2. **Create a migration plan**: M2C analyzes the copied file system and writes a migration plan
 3. **Review and customize**: You review the plan, adjust what gets included in the container
-4. **Generate artifacts**: M2C builds the container image and Kubernetes manifests
-5. **Deploy**: Apply the manifests to your GKE cluster
+4. **Generate artifacts**: M2C generates Dockerfiles, Kubernetes manifests, and Skaffold configuration
+5. **Build and deploy**: Use the generated artifacts to build the image and deploy it to GKE
 
 ## Prerequisites
 
-- A GKE cluster with Migrate to Containers installed
-- Source VMs (Compute Engine, VMware, or AWS)
-- The M2C processing cluster needs at least 3 nodes with 4 vCPUs and 16 GB RAM each
+- A Linux local machine or VM with Docker installed
+- The Migrate to Containers CLI (`m2c`)
+- Skaffold for building and deploying the generated artifacts
+- Source VMs running on Compute Engine, VMware, or another environment reachable by SSH
+- A GKE cluster where you will deploy the migrated workload
 
 ## Step 1: Set Up the GKE Cluster
 
-Create a GKE cluster and install Migrate to Containers:
+Create a GKE cluster where you will deploy the migrated workload:
 
 ```bash
-# Create a GKE cluster for M2C processing
-
+# Create a GKE cluster for the migrated workload
 gcloud container clusters create m2c-cluster \
   --zone=us-central1-a \
   --machine-type=e2-standard-4 \
@@ -60,79 +62,77 @@ gcloud container clusters get-credentials m2c-cluster \
   --project=PROJECT_ID
 ```
 
-Install Migrate to Containers:
+Install Migrate to Containers on your local Linux machine:
 
 ```bash
-# Download and install migctl
-gcloud components install migrate-to-containers
+# Install Docker first, then download the Migrate to Containers CLI
+curl -O "https://m2c-cli-release.storage.googleapis.com/$(curl -s https://m2c-cli-release.storage.googleapis.com/latest)/linux/amd64/m2c"
+chmod +x ./m2c
 
-# Set up M2C on the cluster
-migctl setup install --gke-cluster=m2c-cluster \
-  --gke-zone=us-central1-a \
-  --gke-project=PROJECT_ID
+# Install Skaffold
+curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64 && \
+  sudo install skaffold /usr/local/bin/
 ```
 
 Verify the installation:
 
 ```bash
-# Check M2C components are running
-migctl doctor
+# Check the M2C CLI version
+./m2c version
 ```
 
 ## Step 2: Create a Migration Source
 
-Connect M2C to your VM source. For Compute Engine VMs:
+Copy the source VM file system to your local machine. For Compute Engine VMs:
 
 ```bash
-# Create a Compute Engine migration source
-migctl source create ce my-ce-source \
-  --project=PROJECT_ID \
-  --json='{"projectId": "PROJECT_ID"}'
+# Copy a Compute Engine VM file system
+./m2c copy gcloud \
+  --project PROJECT_ID \
+  --zone us-central1-a \
+  --vm-name web-server-vm-001 \
+  --output web-server-filesystem
 ```
 
-For VMware VMs:
+For VMware VMs or other VMs reachable over SSH:
 
 ```bash
-# Create a VMware migration source
-migctl source create vsphere my-vmware-source \
-  --manager-address=vcenter.example.com \
-  --cloud-extension=cloud-extension-name \
-  --cloud-details-name=cloud-details-name
+# Copy a VM file system over SSH
+./m2c copy ssh user@vmware-or-ec2-host.example.com \
+  --output web-server-filesystem \
+  --remote-sudo
 ```
 
-For AWS EC2 VMs:
+If you need to customize what is copied, start from the default filters:
 
 ```bash
-# Create an AWS migration source
-migctl source create aws my-aws-source \
-  --region=us-east-1 \
-  --access-key-id=AKIAIOSFODNN7EXAMPLE \
-  --secret-access-key=wJalrXUtnFEMI/K7MDENG
+# Save the default copy filters, edit them, then pass them to m2c copy
+./m2c copy default-filters > filters.txt
 ```
 
 ## Step 3: Create a Migration
 
-Start a migration for a specific VM:
+Start a migration analysis for the copied VM file system:
 
 ```bash
-# Create a migration for a Compute Engine VM
-migctl migration create my-web-server-migration \
-  --source=my-ce-source \
-  --vm-id=web-server-vm-001 \
-  --intent=Image
+# Analyze a Linux VM file system
+./m2c analyze \
+  --source web-server-filesystem \
+  --plugin linux-vm-container \
+  --output analysis-output
 ```
 
-The `--intent` parameter specifies what you want to produce:
+The `--plugin` parameter specifies the type of workload you want to produce:
 
-- `Image`: Generate a container image and Kubernetes YAML
-- `ImageAndData`: Also include stateful data volumes
-- `Data`: Only migrate data, not the application
+- `linux-vm-container`: Generate a Linux system container from a Linux VM
+- `apache-container`: Generate an application container for Apache workloads
+- `tomcat-container`: Generate an application container for Tomcat workloads
 
-Check the migration status:
+Check the analysis output:
 
 ```bash
-# Check migration status
-migctl migration status my-web-server-migration
+# Check the generated analysis files
+ls analysis-output
 ```
 
 ## Step 4: Generate and Review the Migration Plan
@@ -140,105 +140,87 @@ migctl migration status my-web-server-migration
 Once M2C has analyzed the VM, it generates a migration plan:
 
 ```bash
-# Get the migration plan for review
-migctl migration get-plan my-web-server-migration
+# Open the migration plan for review
+less analysis-output/config.yaml
 ```
 
-The plan is a YAML file that describes what M2C found on the VM and how it plans to containerize it. Here is an example plan:
+The plan is a YAML file that describes what M2C found on the VM and how it plans to containerize it. Here is an example plan fragment:
 
 ```yaml
-# Migration plan generated by M2C
-apiVersion: anthos-migrate.cloud.google.com/v1
-kind: LinuxMigrationPlan
-metadata:
-  name: my-web-server-migration
-spec:
-  # Base OS image for the container
-  image:
-    base: "ubuntu:20.04"
+# config.yaml generated by M2C
+filters:
+  - "- /tmp/***"
+  - "- /var/tmp/***"
+  - "- /var/cache/***"
 
-  # Services detected on the VM
-  detectedServices:
-    - name: nginx
-      enabled: true
-      probes:
-        - type: liveness
-          httpGet:
-            path: /
-            port: 80
-    - name: my-app
-      enabled: true
-      probes:
-        - type: liveness
-          tcpSocket:
-            port: 8080
+systemServices:
+  - name: nginx
+    enabled: true
+    probed: true
+  - name: cron
+    enabled: false
+    probed: false
 
-  # File system paths to include/exclude
-  dataVolumes:
-    - path: /var/www/html
-      persistentVolume: true
-    - path: /etc/nginx
-      persistentVolume: false
+endpoints:
+  - port: 80
+    protocol: HTTP
+    name: web-server-nginx
+  - port: 8080
+    protocol: TCP
+    name: web-server-app
 
-  # Directories to exclude from the container image
-  excludePaths:
-    - /tmp
-    - /var/tmp
-    - /var/cache
-    - /var/log
+nfsMounts:
+  - mountPoint: /mnt/shared
+    exportedDirectory: /exports/shared
+    nfsServer: 10.0.0.10
+    mountOptions:
+      - rw
+    enabled: false
 
-  # Network ports to expose
-  endpoints:
-    - port: 80
-      protocol: TCP
-    - port: 8080
-      protocol: TCP
+deployment:
+  logPaths:
+    - appName: nginx
+      globs:
+        - /var/log/nginx/*.log
 ```
 
 Review this plan carefully. Common adjustments include:
 
 - Removing unnecessary services from the container
 - Adjusting which paths are included or excluded
-- Configuring volume mounts for persistent data
-- Setting the right health check endpoints
+- Configuring external mounts or data migration for persistent data
+- Setting the right service endpoints and log paths
 
 To edit the plan:
 
 ```bash
-# Download the plan for editing
-migctl migration get-plan my-web-server-migration -o plan.yaml
-
-# Edit the plan
-# ... make your changes to plan.yaml ...
-
-# Upload the modified plan
-migctl migration update my-web-server-migration --plan plan.yaml
+# Edit the generated plan directly
+vi analysis-output/config.yaml
 ```
 
 ## Step 5: Generate Container Artifacts
 
-Once you are happy with the plan, generate the container image and Kubernetes manifests:
+Once you are happy with the plan, generate the container build files and Kubernetes manifests:
 
 ```bash
 # Generate the container artifacts
-migctl migration generate-artifacts my-web-server-migration
+./m2c generate \
+  --input analysis-output \
+  --output ./artifacts
 ```
 
 This step:
 
-1. Creates a container image from the VM's filesystem
-2. Pushes the image to your container registry
-3. Generates Kubernetes deployment YAML
-4. Generates a Dockerfile for future rebuilds
+1. Creates Dockerfiles and Docker build context for the migrated workload
+2. Generates Kubernetes deployment YAML
+3. Generates Skaffold configuration for building and deploying the image
+4. Copies the migration configuration into the generated artifacts
 
-Check the status:
+Check the output:
 
 ```bash
-# Monitor artifact generation progress
-migctl migration status my-web-server-migration
-
-# Once complete, download the artifacts
-migctl migration get-artifacts my-web-server-migration -o ./artifacts/
+# List the generated artifacts
+ls ./artifacts/
 ```
 
 ## Step 6: Review Generated Artifacts
@@ -252,14 +234,16 @@ ls ./artifacts/
 
 You will find:
 
-- `deployment_spec.yaml` - Kubernetes Deployment and Service definitions
-- `Dockerfile` - For rebuilding the container image
+- `deployment_spec.yaml` - Kubernetes workload and Service definitions
+- `Dockerfile` - For building the container image
+- `skaffold.yaml` - For building and deploying the generated image
 - `migration.yaml` - The migration configuration
+- `blocklist.yaml` and `logs.yaml` - Linux system container settings when applicable
 
 Review the deployment spec:
 
 ```yaml
-# deployment_spec.yaml (generated by M2C)
+# deployment_spec.yaml (generated by M2C, then edited for production)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -319,7 +303,7 @@ spec:
 Adjust the generated YAML for production use:
 
 ```yaml
-# Add resource limits, HPA, and additional configuration
+# Add resource limits and additional configuration
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -361,11 +345,12 @@ spec:
             periodSeconds: 5
 ```
 
-Deploy to your production GKE cluster:
+Build and deploy to your production GKE cluster:
 
 ```bash
-# Deploy the containerized workload
-kubectl apply -f deployment_spec.yaml
+# Build, push, and deploy the migrated workload
+cd ./artifacts
+skaffold run -d us-central1-docker.pkg.dev/PROJECT_ID/m2c-images
 
 # Verify the deployment
 kubectl rollout status deployment/web-server
@@ -381,7 +366,7 @@ kubectl get svc web-server
 
 The first migration is rarely perfect. Common post-migration tasks:
 
-**Slim down the image.** M2C includes the full VM filesystem by default. Remove unnecessary packages and files to reduce image size:
+**Slim down the image.** A Linux system container can include a large portion of the VM filesystem. Remove unnecessary packages and files to reduce image size:
 
 ```dockerfile
 # Edit the generated Dockerfile to remove unnecessary packages
@@ -414,18 +399,18 @@ data:
     }
 ```
 
-**Add proper logging.** Configure the application to log to stdout/stderr instead of log files so Kubernetes picks up the logs automatically.
+**Add proper logging.** Configure the migration plan or `logs.yaml` for logs that should be forwarded, and move application logging to stdout/stderr where possible so Kubernetes picks up the logs automatically.
 
 ## Limitations to Be Aware Of
 
 **Not all workloads containerize well.** Applications with heavy filesystem dependencies, GUI components, or kernel-level operations may not work well in containers.
 
-**Windows VMs require different handling.** M2C primarily supports Linux VMs. Windows containerization requires a different approach.
+**Windows VMs require different handling.** M2C supports Windows IIS migrations with the Windows version of the `m2c` CLI, but the workflow differs from Linux VM migrations.
 
-**Stateful applications need careful planning.** If the VM has local databases or stateful services, you need to decide whether to include them in the container or migrate them to managed services (Cloud SQL, etc.).
+**Stateful applications need careful planning.** If the VM has local databases or stateful services, you need to decide whether to migrate data into persistent volumes or move the data layer to managed services such as Cloud SQL.
 
 **Performance may differ.** Containerized workloads share resources differently than VMs. Benchmark your containerized application against the original VM to make sure performance is acceptable.
 
 ## Summary
 
-Migrate to Containers automates the hardest part of containerizing VM workloads - analyzing the VM, extracting the application, and generating a working container image. Install M2C on a GKE cluster, create a migration for your VM, review and customize the generated plan, and deploy the containerized result. The generated artifacts are a starting point - plan for iteration to slim down images, externalize configuration, and optimize for the container runtime. The result is a containerized workload that benefits from Kubernetes orchestration without requiring a manual rewrite.
+Migrate to Containers automates much of the hardest part of containerizing VM workloads - copying the VM filesystem, analyzing the application, and generating container build and deployment artifacts. Install the M2C CLI on a local machine, copy and analyze your VM, review and customize the generated plan, then build and deploy the containerized result to GKE. The generated artifacts are a starting point - plan for iteration to slim down images, externalize configuration, and optimize for the container runtime. The result is a containerized workload that benefits from Kubernetes orchestration without requiring a manual rewrite.
