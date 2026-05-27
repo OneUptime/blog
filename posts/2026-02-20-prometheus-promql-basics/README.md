@@ -69,16 +69,16 @@ There are four label matchers:
 
 ## Range Vectors and the Rate Function
 
-Counter metrics always go up. To get a useful per-second rate, use the `rate()` function with a range vector:
+Counter metrics monotonically increase, except when they reset after a process restart. To get a useful per-second rate, use the `rate()` function with a range vector:
 
 ```promql
 # Per-second CPU usage rate over the last 5 minutes
 rate(container_cpu_usage_seconds_total{namespace="production"}[5m])
 ```
 
-The `[5m]` turns the instant vector into a range vector covering the last 5 minutes. The `rate()` function calculates the per-second average rate of increase.
+The `[5m]` turns the instant vector into a range vector covering the last 5 minutes. The `rate()` function calculates the per-second average rate of increase and adjusts for counter resets.
 
-For short-lived jobs or spiky traffic, use `irate()` instead:
+For graphing volatile, fast-moving counters or spiky traffic, use `irate()` instead:
 
 ```promql
 # Instantaneous rate using the last two data points
@@ -123,7 +123,7 @@ flowchart TD
     A[Raw metric: container_cpu_usage_seconds_total] --> B[rate over 5m window]
     B --> C[sum by pod]
     C --> D[Per-pod CPU rate]
-    B --> E[sum without namespace]
+    B --> E[sum all series]
     E --> F[Total CPU across all namespaces]
     B --> G[topk 5]
     G --> H[Top 5 series by CPU]
@@ -141,7 +141,7 @@ sum by (pod, namespace) (
 )
 /
 sum by (pod, namespace) (
-    kube_pod_container_resource_requests{resource="cpu"}
+    kube_pod_container_resource_requests{resource="cpu", unit="core"}
 )
 * 100
 ```
@@ -156,7 +156,7 @@ sum by (pod, namespace) (
 )
 /
 sum by (pod, namespace) (
-    kube_pod_container_resource_limits{resource="memory"}
+    kube_pod_container_resource_limits{resource="memory", unit="byte"}
 )
 * 100
 ```
@@ -236,14 +236,14 @@ sum(rate(http_requests_total[5m]))
 
 ## Vector Matching
 
-When combining two vectors with different labels, you need vector matching:
+When combining two vectors with different labels, you can use vector matching:
 
 ```promql
 # Use 'on' to specify which labels to match
 sum by (namespace) (rate(container_cpu_usage_seconds_total[5m]))
 /
 on(namespace)
-sum by (namespace) (kube_pod_container_resource_requests{resource="cpu"})
+sum by (namespace) (kube_pod_container_resource_requests{resource="cpu", unit="core"})
 ```
 
 ## Useful Functions
@@ -261,7 +261,7 @@ sum by (namespace) (kube_pod_container_resource_requests{resource="cpu"})
 
 ## Tips for Writing Good PromQL
 
-1. Always use `rate()` on counters, never query raw counter values
+1. Use `rate()` or `increase()` on counters when you need changes over time, instead of graphing raw counter values
 2. Use `sum by (label)` rather than `sum without (label)` for clarity
 3. Filter early with label matchers to reduce cardinality
 4. Use recording rules for expensive queries that run repeatedly
