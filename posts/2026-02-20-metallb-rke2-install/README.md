@@ -4,24 +4,24 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, RKE2, Rancher, Load Balancing
 
-Description: A guide to installing MetalLB on RKE2 clusters. Learn how to handle RKE2 defaults, disable its built-in load balancer, and configure MetalLB for production use.
+Description: A guide to installing MetalLB on RKE2 clusters. Learn how to handle RKE2 networking, avoid conflicts with its optional ServiceLB controller, and configure MetalLB for production use.
 
 ---
 
-RKE2 (Rancher Kubernetes Engine 2) is a fully conformant Kubernetes distribution focused on security and compliance. It ships with sensible defaults out of the box, including a built-in load balancer called **ServiceLB** (formerly Klipper). While ServiceLB works well for simple setups, production bare-metal environments often need the flexibility and protocol support that **MetalLB** provides.
+RKE2 (Rancher Kubernetes Engine 2) is a fully conformant Kubernetes distribution focused on security and compliance. It ships with sensible defaults out of the box and can optionally run a built-in load balancer called **ServiceLB** (formerly Klipper). While ServiceLB works well for simple setups, production bare-metal environments often need the flexibility and protocol support that **MetalLB** provides.
 
-This guide walks through the full process of installing MetalLB on an RKE2 cluster, from disabling RKE2's built-in ServiceLB to verifying your MetalLB configuration in production.
+This guide walks through the full process of installing MetalLB on an RKE2 cluster, from making sure RKE2's optional ServiceLB is disabled to verifying your MetalLB configuration in production.
 
 ## How RKE2 Networking Defaults Work
 
-RKE2 bundles several networking components by default:
+RKE2 includes several networking components and options:
 
 - **Canal CNI** (Calico + Flannel) for pod networking
 - **CoreDNS** for cluster DNS
-- **ServiceLB** (Klipper) as the default LoadBalancer controller
+- **ServiceLB** (Klipper) as an optional LoadBalancer controller
 - **Nginx Ingress Controller** for HTTP/HTTPS traffic
 
-ServiceLB works by deploying a DaemonSet that binds directly to host ports. This is fine for single-node or test clusters, but it has limitations:
+ServiceLB works by deploying a DaemonSet for each LoadBalancer service. Its pods use host ports and iptables to forward traffic to the service. This is fine for single-node or test clusters, but it has limitations:
 
 - No support for BGP (Border Gateway Protocol)
 - No fine-grained IP pool management
@@ -32,14 +32,15 @@ The following diagram shows the difference between the two approaches:
 
 ```mermaid
 flowchart LR
-    subgraph ServiceLB["ServiceLB (Default)"]
+    subgraph ServiceLB["ServiceLB (Optional)"]
         A[Client] --> B[Host Port Binding]
-        B --> C[Pod]
+        B --> C[Service ClusterIP]
+        C --> H[Pod]
     end
 
     subgraph MetalLB["MetalLB (Replacement)"]
         D[Client] --> E[Virtual IP via ARP/BGP]
-        E --> F[kube-proxy / IPVS]
+        E --> F[Node kube-proxy / IPVS]
         F --> G[Pod]
     end
 ```
@@ -54,9 +55,9 @@ Before you begin, make sure you have:
 - A range of free IP addresses on your network for MetalLB to allocate
 - SSH access to RKE2 server nodes (for config changes)
 
-## Step 1: Disable ServiceLB on RKE2
+## Step 1: Make Sure ServiceLB Is Disabled on RKE2
 
-You must disable RKE2's built-in ServiceLB before installing MetalLB. Running both at the same time causes IP conflicts and unpredictable behavior.
+RKE2 does not enable ServiceLB by default, but if it has been enabled in your cluster you should turn it off before installing MetalLB. Running both at the same time can cause IP conflicts and unpredictable behavior.
 
 Edit the RKE2 server configuration file on **each server node**:
 
@@ -67,15 +68,13 @@ Edit the RKE2 server configuration file on **each server node**:
 sudo nano /etc/rancher/rke2/config.yaml
 ```
 
-Add the following line to disable ServiceLB:
+If ServiceLB is enabled, remove that setting or set it to `false`:
 
 ```yaml
 # /etc/rancher/rke2/config.yaml
 #
-# disable: tells RKE2 which built-in components to skip
-# rke2-servicelb: the built-in Klipper load balancer
-disable:
-  - rke2-servicelb
+# enable-servicelb controls RKE2's optional ServiceLB controller
+enable-servicelb: false
 ```
 
 After saving, restart the RKE2 server service:
@@ -90,11 +89,11 @@ Verify that ServiceLB pods are gone:
 
 ```bash
 # Check that no servicelb pods are running
-# If the disable worked, this should return nothing
-kubectl get pods -A | grep servicelb
+# If ServiceLB is disabled, this should return nothing
+kubectl get pods -n kube-system | grep '^svclb-'
 ```
 
-> **Important:** If you also want to bring your own ingress controller instead of the bundled Nginx, you can add `rke2-ingress-nginx` to the disable list.
+> **Important:** If you also want to bring your own ingress controller instead of the bundled Nginx, use RKE2's `ingress-controller: none` setting.
 
 ## Step 2: Install MetalLB via Helm
 
@@ -109,6 +108,13 @@ helm repo update
 
 # Create a dedicated namespace for MetalLB
 kubectl create namespace metallb-system
+
+# MetalLB speaker pods need privileged pod security admission
+kubectl label namespace metallb-system \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  pod-security.kubernetes.io/warn=privileged \
+  --overwrite
 
 # Install MetalLB using Helm
 # --namespace: target namespace for all MetalLB resources
@@ -192,14 +198,15 @@ sequenceDiagram
     participant Client
     participant Network as Local Network
     participant Speaker as MetalLB Speaker
+    participant Node as Selected Node
     participant KubeProxy as kube-proxy
     participant Pod
 
     Client->>Network: ARP request for 192.168.1.240
     Network->>Speaker: Who has this IP?
     Speaker->>Network: ARP reply (I do)
-    Client->>Speaker: TCP traffic to 192.168.1.240
-    Speaker->>KubeProxy: Forward to Service ClusterIP
+    Client->>Node: TCP traffic to 192.168.1.240
+    Node->>KubeProxy: Forward to Service ClusterIP
     KubeProxy->>Pod: Route to backend Pod
     Pod->>Client: Response
 ```
@@ -242,7 +249,7 @@ metadata:
   namespace: default
   annotations:
     # Optional: pin this service to a specific pool
-    metallb.universe.tf/address-pool: rke2-pool
+    metallb.io/address-pool: rke2-pool
 spec:
   type: LoadBalancer
   ports:
@@ -283,11 +290,11 @@ curl http://192.168.1.240
 
 ### 1. Canal CNI and Speaker Pods
 
-RKE2 uses Canal (Calico + Flannel) by default. MetalLB speakers run as a DaemonSet and need to send gratuitous ARP packets. If you have strict Calico network policies, you need to allow traffic from the `metallb-system` namespace:
+RKE2 uses Canal (Calico + Flannel) by default. MetalLB speakers run as a DaemonSet and need to send gratuitous ARP packets. If you have strict Calico network policies, you need to allow IP traffic for the speaker pods; ARP/NDP is layer 2 traffic and must be allowed by your node and network firewalls:
 
 ```yaml
 # calico-allow-metallb.yaml
-# Allows MetalLB speaker pods to send ARP and communicate with peers
+# Allows MetalLB speaker pods to communicate with peers
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
@@ -307,7 +314,7 @@ spec:
 
 ### 2. Firewall Rules on RKE2 Nodes
 
-RKE2 nodes often run with `firewalld` or `iptables` rules. Make sure the following ports are open:
+RKE2's default Canal networking can conflict with `firewalld`; if you keep a host firewall enabled, make sure the following ports are open:
 
 | Port    | Protocol | Purpose                        |
 |---------|----------|--------------------------------|
@@ -327,16 +334,16 @@ RKE2 defaults to `10.43.0.0/16` for its Service CIDR. Make sure your MetalLB IP 
 
 ### 4. Multi-Server HA Setups
 
-In an RKE2 HA setup with multiple server nodes, ensure you disable ServiceLB on **every server node** before installing MetalLB. A single node still running ServiceLB can cause intermittent failures.
+In an RKE2 HA setup with multiple server nodes, ensure ServiceLB is not enabled on **any server node** before installing MetalLB. A single node still running ServiceLB can cause intermittent failures.
 
 ### 5. Upgrading RKE2 Without Losing MetalLB
 
-When you upgrade RKE2, the `config.yaml` is preserved, so the `disable` setting persists. However, always verify after an upgrade:
+When you upgrade RKE2, the `config.yaml` is preserved, so the `enable-servicelb` setting persists. However, always verify after an upgrade:
 
 ```bash
 # After upgrading RKE2, confirm ServiceLB is still disabled
-# This should return empty if the disable setting was preserved
-kubectl get pods -A | grep servicelb
+# This should return empty if ServiceLB remains disabled
+kubectl get pods -n kube-system | grep '^svclb-'
 
 # Confirm MetalLB pods are healthy after the upgrade
 kubectl get pods -n metallb-system
@@ -346,7 +353,7 @@ kubectl get pods -n metallb-system
 
 Here is a condensed checklist you can follow:
 
-1. Edit `/etc/rancher/rke2/config.yaml` and add `rke2-servicelb` to the `disable` list
+1. Edit `/etc/rancher/rke2/config.yaml` and make sure `enable-servicelb` is absent or set to `false`
 2. Restart `rke2-server` on all server nodes
 3. Install MetalLB via Helm into `metallb-system`
 4. Create an `IPAddressPool` with your free IP range
@@ -356,6 +363,6 @@ Here is a condensed checklist you can follow:
 
 ## Conclusion
 
-MetalLB is the go-to solution for production-grade load balancing on bare-metal Kubernetes clusters, and RKE2 is no exception. The key RKE2-specific step is disabling ServiceLB before MetalLB goes in. Once that is done, the rest follows the standard MetalLB installation process.
+MetalLB is the go-to solution for production-grade load balancing on bare-metal Kubernetes clusters, and RKE2 is no exception. The key RKE2-specific step is making sure ServiceLB is not enabled before MetalLB goes in. Once that is done, the rest follows the standard MetalLB installation process.
 
 If you are running RKE2 in production and want full observability into your cluster, services, and endpoints, check out [OneUptime](https://oneuptime.com). OneUptime provides monitoring, alerting, status pages, and incident management - all in one open-source platform - so you can keep track of your LoadBalancer services, node health, and everything in between.
