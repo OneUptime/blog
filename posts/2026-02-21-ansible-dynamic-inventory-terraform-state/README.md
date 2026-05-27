@@ -25,27 +25,37 @@ def get_terraform_state():
     result = subprocess.run(
         ['terraform', 'show', '-json'],
         capture_output=True, text=True,
-        cwd='/path/to/terraform'
+        cwd='/path/to/terraform',
+        check=True
     )
     return json.loads(result.stdout)
+
+def iter_resources(module):
+    """Yield resources from a Terraform module and its child modules."""
+    for resource in module.get('resources', []):
+        yield resource
+
+    for child in module.get('child_modules', []):
+        yield from iter_resources(child)
 
 def build_inventory(state):
     """Convert Terraform state to Ansible inventory."""
     inventory = {
         '_meta': {'hostvars': {}},
-        'all': {'hosts': [], 'children': ['webservers', 'databases']},
+        'all': {'hosts': [], 'children': ['webservers', 'databases', 'ungrouped']},
         'webservers': {'hosts': []},
-        'databases': {'hosts': []}
+        'databases': {'hosts': []},
+        'ungrouped': {'hosts': []}
     }
 
     if 'values' not in state or 'root_module' not in state['values']:
         return inventory
 
-    for resource in state['values']['root_module']['resources']:
-        if resource['type'] == 'aws_instance':
+    for resource in iter_resources(state['values']['root_module']):
+        if resource.get('type') == 'aws_instance':
             values = resource['values']
             name = values.get('tags', {}).get('Name', resource['name'])
-            ip = values.get('public_ip', values.get('private_ip'))
+            ip = values.get('public_ip') or values.get('private_ip')
 
             if not ip:
                 continue
@@ -56,6 +66,7 @@ def build_inventory(state):
                 inventory[role] = {'hosts': []}
                 inventory['all']['children'].append(role)
 
+            inventory['all']['hosts'].append(name)
             inventory[role]['hosts'].append(name)
             inventory['_meta']['hostvars'][name] = {
                 'ansible_host': ip,
@@ -144,7 +155,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -288,4 +299,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
