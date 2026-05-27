@@ -26,16 +26,6 @@ While Terraform manages its own state, there are scenarios where you need Ansibl
       ManagedBy: ansible
       Purpose: terraform-state
 
-- name: Create DynamoDB table for state locking
-  community.aws.dynamodb_table:
-    name: "{{ terraform_lock_table }}"
-    region: "{{ aws_region }}"
-    hash_key_name: LockID
-    hash_key_type: STRING
-    billing_mode: PAY_PER_REQUEST
-    tags:
-      ManagedBy: ansible
-
 - name: Deploy Terraform backend configuration
   template:
     src: backend.tf.j2
@@ -80,7 +70,7 @@ ansible-playbook -i localhost, -c local terraform-state.yml
 
 ## Summary
 
-Ansible can manage the infrastructure that Terraform state depends on (S3 buckets, DynamoDB tables), orchestrate state operations (init, import, workspace creation), and handle state migrations. This is useful when bootstrapping new environments or when Terraform state management needs to be part of a larger automated workflow.
+Ansible can manage the infrastructure that Terraform state depends on (S3 buckets and backend configuration with S3 native lock files), orchestrate state operations (init, import, workspace creation), and handle state migrations. This is useful when bootstrapping new environments or when Terraform state management needs to be part of a larger automated workflow.
 
 ## Common Use Cases
 
@@ -121,7 +111,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -265,4 +255,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
