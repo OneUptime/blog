@@ -12,7 +12,7 @@ Running RabbitMQ on Kubernetes gives you automated scaling, self-healing, and de
 
 ## Why Use the Cluster Operator?
 
-Manually deploying RabbitMQ on Kubernetes means configuring StatefulSets, persistent volumes, service discovery, Erlang clustering, and TLS certificates by hand. The Cluster Operator handles all of this through a single Custom Resource Definition.
+Manually deploying RabbitMQ on Kubernetes means configuring StatefulSets, persistent volumes, service discovery, Erlang clustering, and TLS certificates by hand. The Cluster Operator handles all of this through a single custom resource.
 
 ```mermaid
 graph TD
@@ -42,6 +42,12 @@ graph TD
 
 kubectl apply -f https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml
 
+# Install cert-manager, required by the Messaging Topology Operator webhooks
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+
+# Install the Messaging Topology Operator for Policy, User, and Permission resources
+kubectl apply -f https://github.com/rabbitmq/messaging-topology-operator/releases/latest/download/messaging-topology-operator-with-certmanager.yaml
+
 # Verify the operator is running
 kubectl get pods -n rabbitmq-system
 ```
@@ -59,7 +65,7 @@ metadata:
 spec:
   # Run 3 replicas for high availability
   replicas: 3
-  image: rabbitmq:3.13-management
+  image: rabbitmq:4.3-management
   resources:
     requests:
       cpu: 500m
@@ -97,6 +103,12 @@ Apply the cluster definition:
 # Create the namespace first
 kubectl create namespace messaging
 
+# Create the TLS secret referenced by the RabbitmqCluster
+kubectl create secret tls rabbitmq-tls-secret \
+  --cert=server.pem \
+  --key=server-key.pem \
+  -n messaging
+
 # Deploy the cluster
 kubectl apply -f rabbitmq-cluster.yaml
 
@@ -122,8 +134,10 @@ kubectl port-forward svc/production-rabbitmq -n messaging 15672:15672
 ```mermaid
 graph TB
     subgraph Kubernetes Cluster
-        subgraph messaging namespace
+        subgraph rabbitmq-system namespace
             OP[Cluster Operator]
+        end
+        subgraph messaging namespace
             subgraph RabbitMQ Cluster
                 R1[Node 0<br/>PVC: 50Gi]
                 R2[Node 1<br/>PVC: 50Gi]
@@ -152,7 +166,7 @@ graph TB
 
 ```yaml
 # rabbitmq-policy.yaml
-# Define a policy for high-availability quorum queues
+# Define a policy for quorum queue delivery limits
 # Note: The ha-mode/ha-sync-mode policy settings (classic mirroring) were
 # removed in RabbitMQ 4.0. Use quorum queues declared with x-queue-type=quorum
 # for HA instead of applying an ha-mode policy.
@@ -164,13 +178,12 @@ metadata:
 spec:
   name: ha-queues
   vhost: "/"
-  # Apply to all queues matching the pattern
+  # Apply to all quorum queues matching the pattern
   pattern: ".*"
-  applyTo: "queues"
+  applyTo: "quorum_queues"
   definition:
-    # Set default queue type to quorum for high availability
-    # (RabbitMQ 4.0+ - replaces deprecated ha-mode mirroring)
-    queue-master-locator: min-masters
+    # Limit repeated redeliveries before dead-lettering or dropping a message
+    delivery-limit: 50
   rabbitmqClusterReference:
     name: production-rabbitmq
 ```
@@ -178,6 +191,18 @@ spec:
 ## Step 5: Create Users and Permissions
 
 ```yaml
+# app-user-secret.yaml
+# Store the application user's credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-user-credentials
+  namespace: messaging
+type: Opaque
+stringData:
+  username: app-user
+  password: change-me-to-a-secure-password
+---
 # rabbitmq-user.yaml
 # Create an application-specific user
 apiVersion: rabbitmq.com/v1beta1
@@ -294,7 +319,7 @@ kubectl get pods -n messaging -w
 | Disk limit | Set disk_free_limit |
 | TLS | Enable for all connections |
 | Network policy | Restrict access to the messaging namespace |
-| Pod disruption budget | Configured automatically by the operator |
+| Pod disruption budget | Create a PodDisruptionBudget with maxUnavailable: 1 |
 
 ## Monitoring RabbitMQ on Kubernetes
 
