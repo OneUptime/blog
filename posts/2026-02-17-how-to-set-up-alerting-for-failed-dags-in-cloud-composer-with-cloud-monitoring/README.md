@@ -75,7 +75,7 @@ resource "google_monitoring_alert_policy" "composer_dag_failure" {
 
     condition_threshold {
       filter = <<-EOT
-        resource.type = "cloud_composer_environment"
+        resource.type = "cloud_composer_workflow"
         AND metric.type = "composer.googleapis.com/workflow/run_count"
         AND metric.labels.state = "failed"
       EOT
@@ -116,7 +116,7 @@ resource "google_monitoring_alert_policy" "composer_dag_failure" {
 
 Not all DAGs are equally important. Your revenue-critical ETL pipeline failing at 2 AM deserves a PagerDuty alert. A development DAG that someone left running in production probably does not.
 
-You can filter alerts by DAG ID using the `workflow_name` label:
+You can filter alerts by DAG ID using the `workflow_name` resource label:
 
 ```hcl
 # Alert only for critical DAGs
@@ -129,10 +129,10 @@ resource "google_monitoring_alert_policy" "critical_dag_failure" {
 
     condition_threshold {
       filter = <<-EOT
-        resource.type = "cloud_composer_environment"
+        resource.type = "cloud_composer_workflow"
         AND metric.type = "composer.googleapis.com/workflow/run_count"
         AND metric.labels.state = "failed"
-        AND metric.labels.workflow_name = monitoring.regex.full_match("(revenue_etl|billing_sync|customer_export)")
+        AND resource.labels.workflow_name = monitoring.regex.full_match("(revenue_etl|billing_sync|customer_export)")
       EOT
 
       aggregations {
@@ -171,7 +171,7 @@ resource "google_monitoring_alert_policy" "task_failure_rate" {
 
     condition_threshold {
       filter = <<-EOT
-        resource.type = "cloud_composer_environment"
+        resource.type = "cloud_composer_workflow"
         AND metric.type = "composer.googleapis.com/workflow/task/run_count"
         AND metric.labels.state = "failed"
       EOT
@@ -200,7 +200,7 @@ resource "google_monitoring_alert_policy" "task_failure_rate" {
 
 ## Alerting on Environment Health
 
-Beyond individual DAG failures, you should monitor the overall health of your Composer environment. If the scheduler goes down or the database becomes unresponsive, all DAGs are affected.
+Beyond individual DAG failures, you should monitor the overall health of your Composer environment. This gives you a signal when the Composer deployment itself is unhealthy. For deeper coverage of Airflow components, add separate alerts for metrics like scheduler heartbeat and database health.
 
 ```hcl
 # Alert when the Composer environment becomes unhealthy
@@ -219,10 +219,10 @@ resource "google_monitoring_alert_policy" "composer_unhealthy" {
 
       aggregations {
         alignment_period   = "300s"
-        per_series_aligner = "ALIGN_MEAN"
+        per_series_aligner = "ALIGN_FRACTION_TRUE"
       }
 
-      # Health metric is 1 for healthy, 0 for unhealthy
+      # Healthy is a Boolean metric; alert if any sample in the window is unhealthy
       comparison      = "COMPARISON_LT"
       threshold_value = 1
       duration        = "300s"  # Must be unhealthy for 5 minutes
@@ -234,7 +234,7 @@ resource "google_monitoring_alert_policy" "composer_unhealthy" {
   ]
 
   documentation {
-    content   = "The Cloud Composer environment is unhealthy. Check scheduler, database, and worker status."
+    content   = "The Cloud Composer environment is unhealthy. Check the environment details page and related scheduler, database, and worker metrics."
     mime_type = "text/markdown"
   }
 }
@@ -247,16 +247,18 @@ For more granular control, you can send alerts directly from your DAG code using
 ```python
 # DAG with failure callbacks that send alerts with detailed context
 from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.providers.google.cloud.operators.pubsub import PubSubPublishMessageOperator
 from datetime import datetime, timedelta
+from google.cloud import pubsub_v1
 import json
+
+PROJECT_ID = "your-project-id"
+TOPIC_ID = "airflow-alerts"
 
 def on_failure_callback(context):
     """Send a detailed failure notification via Pub/Sub."""
     dag_id = context['dag'].dag_id
     task_id = context['task_instance'].task_id
-    execution_date = str(context['execution_date'])
+    logical_date = str(context['logical_date'])
     exception = str(context.get('exception', 'Unknown error'))
 
     # Build a structured alert message
@@ -264,11 +266,15 @@ def on_failure_callback(context):
         'severity': 'ERROR',
         'dag_id': dag_id,
         'task_id': task_id,
-        'execution_date': execution_date,
+        'logical_date': logical_date,
         'error': exception,
         'log_url': context['task_instance'].log_url,
     }
-    return message
+
+    publisher = pubsub_v1.PublisherClient()
+    topic_path = publisher.topic_path(PROJECT_ID, TOPIC_ID)
+    future = publisher.publish(topic_path, json.dumps(message).encode('utf-8'))
+    future.result(timeout=30)
 
 default_args = {
     'owner': 'data-team',
@@ -280,7 +286,7 @@ default_args = {
 with DAG(
     'revenue_etl',
     default_args=default_args,
-    schedule_interval='@hourly',
+    schedule='@hourly',
     start_date=datetime(2026, 1, 1),
     catchup=False,
 ) as dag:
@@ -311,7 +317,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from datetime import datetime
 
-with DAG('test_alerting_failure', start_date=datetime(2026, 1, 1), schedule_interval=None) as dag:
+with DAG('test_alerting_failure', start_date=datetime(2026, 1, 1), schedule=None) as dag:
 
     def fail_task():
         raise Exception("This is a test failure for alerting validation")
