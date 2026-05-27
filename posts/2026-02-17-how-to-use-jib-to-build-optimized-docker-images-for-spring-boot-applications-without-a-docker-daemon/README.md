@@ -47,7 +47,7 @@ Add the Jib Maven plugin to your `pom.xml`.
     <plugin>
       <groupId>com.google.cloud.tools</groupId>
       <artifactId>jib-maven-plugin</artifactId>
-      <version>3.4.0</version>
+      <version>3.5.1</version>
       <configuration>
         <!-- Target Artifact Registry in GCP -->
         <to>
@@ -137,7 +137,7 @@ public class DemoApplication {
 }
 ```
 
-With the Jib plugin configured as shown above, running `mvn compile jib:build` produces an image that is typically 30-50% smaller than a traditional Docker build of the same application.
+With the Jib plugin configured as shown above, running `mvn compile jib:build` produces a layered image that is usually much faster to rebuild and push than a traditional Docker build of the same application.
 
 ## Building to a Local Docker Daemon
 
@@ -167,7 +167,7 @@ You can control how Jib organizes layers for your specific application.
 <plugin>
   <groupId>com.google.cloud.tools</groupId>
   <artifactId>jib-maven-plugin</artifactId>
-  <version>3.4.0</version>
+  <version>3.5.1</version>
   <configuration>
     <to>
       <image>us-central1-docker.pkg.dev/my-project/my-repo/my-spring-app</image>
@@ -199,30 +199,45 @@ You can control how Jib organizes layers for your specific application.
 
 ## Using Jib with Spring Boot 3 Native Images
 
-If you are using Spring Boot 3 with GraalVM native images, Jib still works. You just need to adjust the base image and configuration.
+If you are using Spring Boot 3 with GraalVM native images and the Native Image Maven Plugin, Jib still works. You just need to adjust the base image and configuration.
 
 ```xml
 <!-- pom.xml - Jib config for native Spring Boot 3 -->
-<configuration>
-  <from>
-    <!-- Use a minimal base for native images -->
-    <image>gcr.io/distroless/base-debian12</image>
-  </from>
-  <to>
-    <image>us-central1-docker.pkg.dev/my-project/my-repo/my-native-app</image>
-  </to>
-  <container>
-    <!-- Native images do not use a JVM -->
-    <entrypoint>
-      <entry>/app/my-native-app</entry>
-    </entrypoint>
-  </container>
-  <pluginExtensions>
-    <pluginExtension>
-      <implementation>com.google.cloud.tools.jib.maven.extension.nativeimage.JibNativeImageExtension</implementation>
-    </pluginExtension>
-  </pluginExtensions>
-</configuration>
+<plugin>
+  <groupId>com.google.cloud.tools</groupId>
+  <artifactId>jib-maven-plugin</artifactId>
+  <version>3.5.1</version>
+  <dependencies>
+    <dependency>
+      <groupId>com.google.cloud.tools</groupId>
+      <artifactId>jib-native-image-extension-maven</artifactId>
+      <version>0.1.0</version>
+    </dependency>
+  </dependencies>
+  <configuration>
+    <from>
+      <!-- Use a minimal base for native images -->
+      <image>gcr.io/distroless/base-debian12</image>
+    </from>
+    <to>
+      <image>us-central1-docker.pkg.dev/my-project/my-repo/my-native-app</image>
+    </to>
+    <container>
+      <!-- Native images do not use a JVM -->
+      <entrypoint>
+        <entry>/app/my-native-app</entry>
+      </entrypoint>
+    </container>
+    <pluginExtensions>
+      <pluginExtension>
+        <implementation>com.google.cloud.tools.jib.maven.extension.nativeimage.JibNativeImageExtension</implementation>
+        <properties>
+          <imageName>my-native-app</imageName>
+        </properties>
+      </pluginExtension>
+    </pluginExtensions>
+  </configuration>
+</plugin>
 ```
 
 ## Integrating with Cloud Build
@@ -238,21 +253,21 @@ steps:
       - 'compile'
       - 'jib:build'
       - '-Djib.to.image=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-spring-app:$SHORT_SHA'
-    # Cloud Build automatically provides credentials
+    # Cloud Build uses its service account for credentials
 ```
 
-Notice that you do not need a Docker build step in Cloud Build. Jib handles everything within the Maven build, which simplifies your pipeline.
+Notice that you do not need a Docker build step in Cloud Build. Jib handles everything within the Maven build, which simplifies your pipeline. Make sure the Cloud Build service account has permission to write to the Artifact Registry repository, especially if the repository is in another project or you use a custom service account.
 
 ## Comparing Image Sizes
 
-Here is a rough comparison based on a typical Spring Boot application with several dependencies:
+Here is a rough comparison based on a typical Spring Boot application with several dependencies. Exact sizes vary by dependencies, base image, architecture, and whether the Dockerfile uses a JRE, JDK, or multi-stage build:
 
 - Traditional fat JAR approach: ~280MB
 - Jib with Temurin JRE base: ~190MB
 - Jib with Alpine JRE base: ~140MB
 - Jib with distroless base: ~170MB
 
-The size savings come from both the layering strategy and the fact that Jib does not include build tools in the final image.
+The biggest day-to-day improvement comes from the layering strategy. Image size improvements usually come from choosing a smaller runtime base image and avoiding build tools in the final image.
 
 ## Performance Tips
 
