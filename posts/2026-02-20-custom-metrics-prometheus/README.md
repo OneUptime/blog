@@ -26,8 +26,8 @@ graph TD
     C --> C2[Example: active connections]
     D --> D1[Distribution of values in buckets]
     D --> D2[Example: request duration]
-    E --> E1[Pre-calculated quantiles]
-    E --> E2[Example: response time percentiles]
+    E --> E1[Count and sum of observations]
+    E --> E2[Example: response time averages]
 ```
 
 ## Counters: Tracking Totals
