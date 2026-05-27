@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Ruby, Gem, DevOps, Configuration Management
 
-Description: A practical guide to installing, managing, and automating Ruby gem packages across your infrastructure using the Ansible gem module.
+Description: A practical guide to installing, managing, and automating Ruby gem packages across your infrastructure using the Ansible community.general gem module.
 
 ---
 
-Ruby gems are the standard packaging format for Ruby libraries and applications. Whether you are deploying a Rails application, installing a Ruby-based tool like Sass or Bundler, or managing a legacy Ruby infrastructure, Ansible provides the `gem` module to handle gem installations in an automated and idempotent way.
+Ruby gems are the standard packaging format for Ruby libraries and applications. Whether you are deploying a Rails application, installing a Ruby-based tool like Sass or Bundler, or managing a legacy Ruby infrastructure, Ansible provides the `community.general.gem` module to handle gem installations in an automated and idempotent way.
 
 In this post, I will cover the common patterns for managing Ruby gems with Ansible, from basic installations to full application deployment workflows.
 
@@ -86,19 +86,19 @@ For production applications that need a specific Ruby version, rbenv is a popula
 
 ## Installing Gems with the gem Module
 
-The `ansible.builtin.gem` module provides a clean interface for managing Ruby gems.
+The `community.general.gem` module provides a clean interface for managing Ruby gems.
 
 ### Basic Installation
 
 ```yaml
 # Install a Ruby gem
 - name: Install Bundler
-  ansible.builtin.gem:
+  community.general.gem:
     name: bundler
     state: present
 
 - name: Install a specific version of Bundler
-  ansible.builtin.gem:
+  community.general.gem:
     name: bundler
     version: "2.4.19"
     state: present
@@ -111,7 +111,7 @@ Use a loop to install several gems.
 ```yaml
 # Install multiple Ruby gems from a list
 - name: Install common Ruby tools
-  ansible.builtin.gem:
+  community.general.gem:
     name: "{{ item.name }}"
     version: "{{ item.version | default(omit) }}"
     state: present
@@ -124,12 +124,12 @@ Use a loop to install several gems.
 
 ### User-Level vs System-Level Installation
 
-By default, gems are installed to the system gem directory (requires root). You can install gems for a specific user instead.
+By default, the Ansible module installs gems in the user's local gem cache. Set `user_install: false` when you want a system-wide installation instead.
 
 ```yaml
 # Install a gem for a specific user (no root required)
 - name: Install bundler for the deploy user
-  ansible.builtin.gem:
+  community.general.gem:
     name: bundler
     state: present
     user_install: true
@@ -146,9 +146,10 @@ If you have multiple Ruby versions installed (via rbenv, rvm, or system packages
 ```yaml
 # Install a gem using a specific Ruby version from rbenv
 - name: Install bundler using rbenv Ruby
-  ansible.builtin.gem:
+  community.general.gem:
     name: bundler
     executable: "/home/deploy/.rbenv/shims/gem"
+    user_install: false
     state: present
   become_user: deploy
 ```
@@ -172,11 +173,11 @@ In most Ruby projects, dependencies are managed through a Gemfile and installed 
     BUNDLE_PATH: "/opt/myapp/vendor/bundle"
 ```
 
-The `deployment_mode` flag is equivalent to `bundle install --deployment`, which installs gems into the `vendor/bundle` directory and ensures the Gemfile.lock is respected exactly.
+The `deployment_mode` flag enables Bundler's deployment mode, which requires an up-to-date Gemfile.lock and installs gems into `vendor/bundle`.
 
 ## A Complete Rails Application Deployment
 
-Here is a realistic playbook for deploying a Ruby on Rails application.
+Here is a realistic playbook for deploying a Ruby on Rails application, assuming rbenv and the target Ruby version have already been installed for the deploy user.
 
 ```yaml
 ---
@@ -189,13 +190,18 @@ Here is a realistic playbook for deploying a Ruby on Rails application.
     app_name: myapp
     app_dir: /opt/{{ app_name }}
     deploy_user: deploy
-    ruby_version: "3.2.2"
     rails_env: production
 
   tasks:
+    - name: Ensure deploy group exists
+      ansible.builtin.group:
+        name: "{{ deploy_user }}"
+        system: true
+
     - name: Ensure deploy user exists
       ansible.builtin.user:
         name: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
         system: true
         shell: /bin/bash
         home: "/home/{{ deploy_user }}"
@@ -211,6 +217,14 @@ Here is a realistic playbook for deploying a Ruby on Rails application.
           - imagemagick
         state: present
 
+    - name: Ensure application directory exists
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: '0755'
+
     - name: Deploy application code
       ansible.builtin.git:
         repo: "https://github.com/company/{{ app_name }}.git"
@@ -220,12 +234,19 @@ Here is a realistic playbook for deploying a Ruby on Rails application.
       register: code_deployed
 
     - name: Install Bundler
-      ansible.builtin.gem:
+      community.general.gem:
         name: bundler
         version: "2.4.19"
         executable: "/home/{{ deploy_user }}/.rbenv/shims/gem"
+        user_install: false
         state: present
       become_user: "{{ deploy_user }}"
+
+    - name: Refresh rbenv shims
+      ansible.builtin.command:
+        cmd: "/home/{{ deploy_user }}/.rbenv/bin/rbenv rehash"
+      become_user: "{{ deploy_user }}"
+      changed_when: false
 
     - name: Install application gems
       community.general.bundler:
@@ -275,7 +296,7 @@ Remove a gem by setting `state: absent`.
 ```yaml
 # Remove an unused gem
 - name: Remove deprecated gem
-  ansible.builtin.gem:
+  community.general.gem:
     name: sass
     state: absent
 ```
@@ -287,7 +308,7 @@ For testing purposes, you might need pre-release versions.
 ```yaml
 # Install a pre-release version of a gem
 - name: Install pre-release version
-  ansible.builtin.gem:
+  community.general.gem:
     name: rails
     version: "7.1.0.rc1"
     pre_release: true
@@ -302,12 +323,13 @@ If you use a private gem server (like Gemfury or a self-hosted Geminabox), you c
 # Configure a private gem source
 - name: Add private gem source
   ansible.builtin.command:
-    cmd: gem sources --add https://gems.company.com/
-  changed_when: true
+    cmd: gem sources --prepend https://gems.company.com/
+  register: private_source
+  changed_when: "'added to sources' in private_source.stdout or 'moved to front of sources' in private_source.stdout"
 
 # Install from the private source
 - name: Install private gem
-  ansible.builtin.gem:
+  community.general.gem:
     name: company-utils
     source: https://gems.company.com/
     state: present
@@ -315,7 +337,7 @@ If you use a private gem server (like Gemfury or a self-hosted Geminabox), you c
 
 ## Managing Gem Documentation
 
-By default, gem installations generate documentation, which is slow and unnecessary on servers. You can disable this globally.
+The Ansible module skips documentation by default. For gems installed directly with the `gem` command, you can disable documentation globally.
 
 ```yaml
 # Disable gem documentation generation on servers
@@ -329,4 +351,4 @@ By default, gem installations generate documentation, which is slow and unnecess
 
 ## Wrapping Up
 
-Managing Ruby gems with Ansible is about picking the right tool for the job. For global CLI tools, the `gem` module works perfectly. For application dependencies, pair the `bundler` module with a proper deployment workflow. Always consider which Ruby version you are targeting, whether gems should be system-level or user-level, and how to handle native extension compilation dependencies. With these patterns in place, your Ruby deployments will be repeatable, consistent, and fully automated.
+Managing Ruby gems with Ansible is about picking the right tool for the job. For global CLI tools, the `community.general.gem` module works well when you set `user_install: false`. For application dependencies, pair the `bundler` module with a proper deployment workflow. Always consider which Ruby version you are targeting, whether gems should be system-level or user-level, and how to handle native extension compilation dependencies. With these patterns in place, your Ruby deployments will be repeatable, consistent, and fully automated.
