@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback Plugins, YAML, Output Formatting
 
-Description: Configure the Ansible yaml callback plugin to display playbook results in readable YAML format instead of default Python dictionary output.
+Description: Configure Ansible's callback result formatting to display playbook results in readable YAML format instead of default JSON-style output.
 
 ---
 
-The `yaml` callback plugin formats Ansible task results as YAML instead of the default Python dictionary format. If you have ever stared at a wall of curly braces and quotes trying to find a specific value in Ansible output, the YAML callback is for you. It produces the same information but in a format that is much easier for humans to read.
+Modern Ansible formats task results as YAML by setting `callback_result_format = yaml` on the default stdout callback. Older Ansible installations also had a `community.general.yaml` stdout callback, but that callback is deprecated and removed from current `community.general` releases. If you have ever stared at a wall of curly braces and quotes trying to find a specific value in Ansible output, YAML-formatted results are for you. They produce the same information but in a format that is much easier for humans to read.
 
 ## Enabling the YAML Callback
 
@@ -18,15 +18,18 @@ Add it to your `ansible.cfg`:
 # ansible.cfg - Switch to YAML output formatting
 
 [defaults]
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 ```
 
 Or for a single run:
 
 ```bash
-# Use YAML callback for this run
-ANSIBLE_STDOUT_CALLBACK=yaml ansible-playbook site.yml
+# Use YAML-formatted callback results for this run
+ANSIBLE_CALLBACK_RESULT_FORMAT=yaml ansible-playbook site.yml
 ```
+
+On older installations that still include the deprecated `community.general.yaml` callback, you may see examples that use `stdout_callback = community.general.yaml` or `ANSIBLE_STDOUT_CALLBACK=community.general.yaml`. For ansible-core 2.13 and newer, use `callback_result_format = yaml` instead.
 
 ## The Readability Difference
 
@@ -37,7 +40,7 @@ TASK [Get service status] ****************************************************
 ok: [web-01] => {"changed": false, "status": {"ActiveState": "active", "Description": "The NGINX HTTP and reverse proxy server", "ExecMainPID": 1234, "LoadState": "loaded", "SubState": "running", "UnitFileState": "enabled"}}
 ```
 
-The same result with the YAML callback:
+The same result with YAML-formatted callback results:
 
 ```text
 TASK [Get service status] ****************************************************
@@ -56,11 +59,11 @@ The YAML format uses indentation and newlines to show structure, which makes nes
 
 ## When YAML Shines
 
-The YAML callback is most valuable when debugging tasks that return rich data. Consider gathering facts:
+YAML-formatted callback results are most valuable when debugging tasks that return rich data. Consider gathering facts:
 
 ```bash
 # View facts in YAML format - much more readable
-ANSIBLE_STDOUT_CALLBACK=yaml ansible web-01 -m setup -a "filter=ansible_memory_mb" -v
+ANSIBLE_LOAD_CALLBACK_PLUGINS=1 ANSIBLE_STDOUT_CALLBACK=default ANSIBLE_CALLBACK_RESULT_FORMAT=yaml ansible web-01 -m setup -a "filter=ansible_memory_mb" -v
 ```
 
 Default output:
@@ -92,7 +95,7 @@ web-01 | SUCCESS =>
 
 ## Using YAML with Debug Tasks
 
-The YAML callback pairs well with debug tasks that display complex variables:
+YAML-formatted callback results pair well with debug tasks that display complex variables:
 
 ```yaml
 # debug-example.yml - Display complex data structures
@@ -117,7 +120,7 @@ The YAML callback pairs well with debug tasks that display complex variables:
           dns_servers: "{{ ansible_dns.nameservers }}"
 ```
 
-With the YAML callback, the debug output is neatly indented:
+With YAML-formatted callback results, the debug output is neatly indented:
 
 ```text
 TASK [Show network config] ***************************************************
@@ -135,11 +138,11 @@ ok: [web-01] =>
 
 ## YAML Callback with Diff Mode
 
-The YAML callback handles diff mode nicely. When you run with `--diff`, file changes are displayed cleanly:
+YAML-formatted callback results handle diff mode nicely. When you run with `--diff`, file changes are displayed cleanly:
 
 ```bash
-# Show diffs in YAML output format
-ANSIBLE_STDOUT_CALLBACK=yaml ansible-playbook site.yml --diff --check
+# Show diffs with YAML-formatted callback results
+ANSIBLE_CALLBACK_RESULT_FORMAT=yaml ansible-playbook site.yml --diff --check
 ```
 
 Output:
@@ -168,7 +171,7 @@ changed: [web-01] =>
 
 ## YAML Callback for API Responses
 
-When working with URI or API modules, responses often contain deeply nested JSON. The YAML callback makes these manageable:
+When working with URI or API modules, responses often contain deeply nested JSON. YAML-formatted callback results make these manageable:
 
 ```yaml
 # api-check.yml - Query an API and display results
@@ -192,56 +195,53 @@ When working with URI or API modules, responses often contain deeply nested JSON
         msg: "{{ k8s_nodes.json.items | map(attribute='status.conditions') | list }}"
 ```
 
-Without the YAML callback, that output would be an unreadable wall of text. With it, you get properly indented structure showing each node's conditions.
+Without YAML-formatted callback results, that output would be an unreadable wall of text. With them, you get properly indented structure showing each node's conditions.
 
 ## Making YAML the Default
 
-Many teams adopt the YAML callback as their standard. Here is a project-level `ansible.cfg` that sets it up with complementary options:
+Many teams adopt YAML-formatted callback results as their standard. Here is a project-level `ansible.cfg` that sets them up with complementary options:
 
 ```ini
-# ansible.cfg - YAML callback with optimal settings
+# ansible.cfg - YAML-formatted callback results with complementary settings
 [defaults]
-stdout_callback = yaml
-# Also display results in YAML format at all verbosity levels
+stdout_callback = default
+# Display results in YAML format
 callback_result_format = yaml
 # Hide skipped tasks to reduce noise
 display_skipped_hosts = False
 # Show task timing
-callback_whitelist = timer, profile_tasks
-
-[callback_yaml]
-# These are specific to the yaml callback
+callbacks_enabled = timer, profile_tasks
 ```
 
 ## YAML Callback vs Setting callback_result_format
 
-There is a subtle difference between using the YAML stdout callback and setting `callback_result_format = yaml` with the default callback.
+There is a subtle difference between using the older `community.general.yaml` stdout callback and setting `callback_result_format = yaml` with the default callback.
 
-The `yaml` stdout callback replaces the entire output format. Task headers, play headers, and results are all formatted differently.
+The deprecated `community.general.yaml` stdout callback replaces the stdout callback. It was removed in current `community.general` releases because the default callback can now print results in YAML format.
 
-Setting `callback_result_format = yaml` on the default callback only changes how task results are displayed while keeping the standard task/play headers.
+Setting `callback_result_format = yaml` on the default callback changes how task results are displayed while keeping the standard task/play headers.
 
 ```ini
-# Option 1: Full YAML callback (changes everything)
+# Option 1: Legacy YAML callback, only for older community.general releases
 [defaults]
-stdout_callback = yaml
+stdout_callback = community.general.yaml
 
-# Option 2: Default callback with YAML-formatted results (changes just results)
+# Option 2: Current default callback with YAML-formatted results
 [defaults]
 stdout_callback = default
 callback_result_format = yaml
 ```
 
-For most people, option 2 is the better choice because you keep the familiar task headers and play recap while getting YAML-formatted results.
+For most people, option 2 is the better choice because it is the current supported approach and keeps the familiar task headers and play recap while getting YAML-formatted results.
 
 ## Performance Considerations
 
-The YAML callback has a minimal performance overhead. Converting result dictionaries to YAML adds microseconds per task, which is negligible compared to actual task execution time. The output is slightly larger in terms of bytes because of the whitespace, but this is only relevant if you are piping output to a file on a disk-constrained system.
+YAML-formatted callback results have a small performance overhead. Converting result dictionaries to YAML is normally negligible compared to actual task execution time. The output is slightly larger in terms of bytes because of the whitespace, but this is only relevant if you are piping output to a file on a disk-constrained system.
 
 ## When Not to Use YAML
 
-The YAML callback is for human consumption. If you need machine-parseable output, use the `json` callback instead. Parsing YAML output from a callback is fragile because the output includes ANSI color codes and non-YAML text like task headers.
+YAML-formatted callback output is for human consumption. If you need machine-parseable output, use the `ansible.posix.json` callback instead. Parsing YAML output from a callback is fragile because the output includes ANSI color codes and non-YAML text like task headers.
 
-For CI/CD pipelines where both humans and machines need the output, a practical approach is to use the YAML callback for stdout (so developers can read the logs) and the `json` callback as a secondary output written to a file using a notification callback or a wrapper script.
+For CI/CD pipelines where both humans and machines need the output, a practical approach is to use YAML-formatted results for stdout (so developers can read the logs) and write structured JSON to a file using a notification callback or a wrapper script.
 
-The YAML callback is one of those small quality-of-life improvements that makes working with Ansible noticeably more pleasant. Try it for a week and you will not want to go back to reading Python dictionaries.
+YAML-formatted callback results are one of those small quality-of-life improvements that make working with Ansible noticeably more pleasant. Try them for a week and you will not want to go back to reading JSON-style dictionaries.
