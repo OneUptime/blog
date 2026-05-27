@@ -35,7 +35,7 @@ gcloud redis instances describe my-redis \
   --format="table(name,tier,currentLocationId,locationId,alternativeLocationId,state)"
 ```
 
-You should see `tier: STANDARD` and both `locationId` and `alternativeLocationId` populated.
+You should see `tier: STANDARD_HA` and both `locationId` and `alternativeLocationId` populated.
 
 ## Pre-Failover Checklist
 
@@ -67,7 +67,7 @@ gcloud redis instances describe my-redis \
 redis-cli -h REDIS_IP -p 6379 -a AUTH_STRING INFO replication
 ```
 
-Look for `master_repl_offset` and `slave_repl_offset` in the output. If the slave offset is significantly behind the master, wait for it to catch up before failing over.
+Look for `master_repl_offset` and the replica `offset` value in the `slave0` line in the output. If the replica offset is significantly behind the master, wait for it to catch up before failing over. You can also monitor the Cloud Monitoring `redis.googleapis.com/replication/offset_diff` metric.
 
 ### Verify Application Readiness
 
@@ -91,10 +91,10 @@ Memorystore supports two data protection modes for failover:
 
 ### Limited Data Loss Mode (Recommended)
 
-This mode waits for the replica to catch up with the primary before switching. There may be a brief pause in writes while replication catches up, but you will not lose data.
+This mode minimizes data loss by checking that the replication offset difference between the primary and replica is below 30 MB before switching. The failover is aborted if the offset delta is 30 MB or greater.
 
 ```bash
-# Perform failover with limited data loss - waits for replication sync
+# Perform failover with limited data loss protection
 gcloud redis instances failover my-redis \
   --region=us-central1 \
   --data-protection-mode=limited-data-loss
@@ -111,20 +111,20 @@ gcloud redis instances failover my-redis \
   --data-protection-mode=force-data-loss
 ```
 
-The difference matters: if your primary received writes that had not yet been replicated, `force-data-loss` mode will lose those writes. For routine testing, always use `limited-data-loss`.
+The difference matters: if your primary received writes that had not yet been replicated, `force-data-loss` mode can lose those writes. For routine testing, always use `limited-data-loss`.
 
 ## What Happens During Failover
 
 Here is the timeline of events:
 
 1. **Failover initiated** - You run the gcloud command
-2. **Write pause** (limited-data-loss mode only) - The primary stops accepting writes while replication catches up
+2. **Data protection check** (limited-data-loss mode only) - Memorystore checks that the primary and replica offset delta is below the allowed threshold
 3. **Replica promotion** - The replica becomes the new primary
 4. **IP remapping** - The instance's IP address now points to the new primary
 5. **Old primary becomes replica** - The former primary is reconfigured as the new replica
 6. **Normal operations resume** - Applications reconnect to the new primary
 
-The entire process typically takes 30-60 seconds. During this time, your applications will experience connection errors.
+Failover normally takes around 30 seconds. During this time, your applications will experience connection errors.
 
 ```bash
 # Monitor the failover progress by checking instance state
@@ -275,9 +275,9 @@ Each failover swaps the primary and replica zones.
 
 **Application does not reconnect.** Usually caused by connection pooling that does not detect dead connections. Enable keepalive and health checks on your Redis connection pool.
 
-**Data appears missing after failover.** In `force-data-loss` mode, writes that were not replicated are lost. Use `limited-data-loss` mode unless the primary is actually down.
+**Data appears missing after failover.** In `force-data-loss` mode, writes that were not replicated can be lost. Use `limited-data-loss` mode unless the primary is actually down.
 
-**Failover takes longer than expected.** If the replica is far behind on replication, `limited-data-loss` mode waits for it to catch up. Monitor replication lag before triggering failover.
+**Failover takes longer than expected.** If the replica is far behind on replication, `limited-data-loss` mode can abort because the offset delta is too high. Monitor replication lag before triggering failover.
 
 **Instance stuck in FAILING_OVER state.** This is rare but can happen. Contact Google Cloud Support if the instance does not return to READY within 10 minutes.
 
