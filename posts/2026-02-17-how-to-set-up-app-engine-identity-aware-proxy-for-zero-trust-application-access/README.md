@@ -35,7 +35,7 @@ First, enable the IAP API:
 gcloud services enable iap.googleapis.com --project=your-project-id
 ```
 
-Then configure the OAuth consent screen. This is required even for internal applications:
+Then configure the OAuth consent screen if you need a custom OAuth client, such as when you need external user access, custom branding, or programmatic access through an OAuth client:
 
 ```bash
 # Configure the OAuth consent screen through the Cloud Console
@@ -44,7 +44,7 @@ Then configure the OAuth consent screen. This is required even for internal appl
 # or "External" for broader access
 ```
 
-You need to set this up through the Cloud Console UI because it requires interactive configuration of the consent screen fields.
+You need to set this up through the Cloud Console UI because it requires interactive configuration of the consent screen fields. For internal browser-only access, App Engine can use a Google-managed OAuth client instead.
 
 ## Step 2: Enable IAP for App Engine
 
@@ -219,30 +219,32 @@ The calling service needs to include an ID token in its requests:
 
 ```python
 # Calling an IAP-protected App Engine service from another GCP service
-import google.auth
-from google.auth.transport.requests import AuthorizedSession
+import requests
+from google.auth.transport.requests import Request
+from google.oauth2 import id_token
 
 def call_iap_app(url, client_id):
     """Make an authenticated request to an IAP-protected app."""
-    credentials, _ = google.auth.default()
+    open_id_connect_token = id_token.fetch_id_token(Request(), client_id)
 
-    # Create an authorized session that includes the IAP client ID
-    authed_session = AuthorizedSession(credentials)
-    authed_session.credentials._target_audience = client_id
-
-    response = authed_session.get(url)
+    response = requests.get(
+        url,
+        headers={"Authorization": f"Bearer {open_id_connect_token}"},
+        timeout=90,
+    )
     return response
 ```
 
+The `client_id` value is the OAuth client ID for the IAP-protected resource. If you use the Google-managed OAuth client, programmatic access is blocked by default unless you allowlist the calling OAuth client or use a service account JWT flow.
+
 ## Per-Service IAP Configuration
 
-You can enable IAP selectively for different App Engine services. Maybe your public-facing frontend does not need IAP, but your admin panel does:
+IAP is enabled for the App Engine application, and you can grant access at lower levels such as a service or version. If your public-facing frontend does not need IAP but your admin panel does, enable IAP for the app and grant public access to the service that should remain public:
 
 ```bash
-# Enable IAP only for the admin service
+# Enable IAP for the App Engine application
 gcloud iap web enable \
   --resource-type=app-engine \
-  --service=admin \
   --project=your-project-id
 
 # Grant access for the admin service
@@ -252,19 +254,27 @@ gcloud iap web add-iam-policy-binding \
   --member="group:admins@yourdomain.com" \
   --role="roles/iap.httpsResourceAccessor" \
   --project=your-project-id
+
+# Keep the frontend service publicly accessible
+gcloud iap web add-iam-policy-binding \
+  --resource-type=app-engine \
+  --service=frontend \
+  --member="allUsers" \
+  --role="roles/iap.httpsResourceAccessor" \
+  --project=your-project-id
 ```
 
 ## Customizing the Login Flow
 
-You can customize some aspects of the IAP login experience:
+You can customize some aspects of the IAP login experience, including custom brand information in the consent screen. Create the OAuth client and consent screen in the Google Cloud console, then enable IAP with those credentials:
 
 ```bash
 # Set a custom brand (logo and support email shown on consent screen)
-gcloud iap settings set \
+gcloud iap web enable \
   --resource-type=app-engine \
-  --project=your-project-id \
   --oauth2-client-id=YOUR_CLIENT_ID \
-  --oauth2-client-secret=YOUR_CLIENT_SECRET
+  --oauth2-client-secret=YOUR_CLIENT_SECRET \
+  --project=your-project-id
 ```
 
 For internal applications (where the OAuth consent screen is set to "Internal"), users in your Google Workspace organization will see a simplified login flow without the consent screen.
@@ -273,18 +283,18 @@ For internal applications (where the OAuth consent screen is set to "Internal"),
 
 Sometimes you need specific endpoints to be accessible without authentication - like health checks or webhook receivers:
 
-The `/_ah/health` endpoint used by App Engine is always accessible regardless of IAP settings. But for custom endpoints, you need to exclude them by configuring IAP access levels or handling them at the load balancer layer.
+App Engine health checks do not require your users to authenticate through IAP. But for custom endpoints, you need to grant appropriate IAP access or handle them at the load balancer layer.
 
 A practical approach is to separate authenticated and unauthenticated endpoints into different services:
 
 ```yaml
-# dispatch.yaml - Route webhooks to a non-IAP service
+# dispatch.yaml - Route webhooks to a service that grants allUsers IAP access
 dispatch:
   - url: "*/webhooks/*"
-    service: webhook-receiver   # This service does not have IAP enabled
+    service: webhook-receiver
 
   - url: "*/api/*"
-    service: api               # This service has IAP enabled
+    service: api
 ```
 
 ## Monitoring IAP Access
