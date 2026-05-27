@@ -234,6 +234,13 @@ interface CartItem {
   quantity: number;
 }
 
+interface Product {
+  id: number;
+  name: string;
+  price: number;
+  imageUrl: string;
+}
+
 const ShoppingCart: React.FC<{ products: Product[] }> = ({ products }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
 
@@ -365,8 +372,8 @@ For lists with hundreds or thousands of items, virtualize to render only visible
 
 ```tsx
 // src/components/VirtualizedList.tsx
-import React, { useCallback } from 'react';
-import { FixedSizeList as List } from 'react-window';
+import React, { useMemo } from 'react';
+import { List, RowComponentProps } from 'react-window';
 
 interface Item {
   id: number;
@@ -378,35 +385,37 @@ interface VirtualizedListProps {
   items: Item[];
 }
 
+type RowProps = {
+  items: Item[];
+};
+
+const Row = ({ index, style, items }: RowComponentProps<RowProps>) => {
+  const item = items[index];
+  return (
+    <div style={{ ...style, display: 'flex', alignItems: 'center', padding: '0 1rem' }}>
+      <span style={{ flex: 1 }}>{item.name}</span>
+      <span>${(item.value / 100).toFixed(2)}</span>
+    </div>
+  );
+};
+
 /**
  * Virtualized list renders only the visible rows.
  * For 10,000 items, it might only render 20 DOM nodes at a time,
  * dramatically improving performance.
  */
 const VirtualizedList: React.FC<VirtualizedListProps> = ({ items }) => {
-  // Memoize the row renderer
-  const Row = useCallback(
-    ({ index, style }: { index: number; style: React.CSSProperties }) => {
-      const item = items[index];
-      return (
-        <div style={{ ...style, display: 'flex', alignItems: 'center', padding: '0 1rem' }}>
-          <span style={{ flex: 1 }}>{item.name}</span>
-          <span>${(item.value / 100).toFixed(2)}</span>
-        </div>
-      );
-    },
-    [items]
-  );
+  // Keep row props stable between renders unless the items change
+  const rowProps = useMemo(() => ({ items }), [items]);
 
   return (
     <List
-      height={600}          // Viewport height in pixels
-      itemCount={items.length}
-      itemSize={50}         // Height of each row in pixels
-      width="100%"
-    >
-      {Row}
-    </List>
+      rowComponent={Row}
+      rowCount={items.length}
+      rowHeight={50}        // Height of each row in pixels
+      rowProps={rowProps}
+      style={{ height: 600, width: '100%' }}
+    />
   );
 };
 
