@@ -10,7 +10,7 @@ Description: Learn how to use FluxCD for GitOps-based continuous delivery with a
 
 ## Introduction
 
-FluxCD is a GitOps toolkit for Kubernetes that keeps your clusters in sync with Git repositories. Unlike traditional CI/CD where a pipeline pushes changes to the cluster, Flux pulls changes from Git and applies them automatically. It also supports Helm charts, Kustomize overlays, and automated image updates out of the box.
+FluxCD is a GitOps toolkit for Kubernetes that keeps your clusters in sync with Git repositories. Unlike traditional CI/CD where a pipeline pushes changes to the cluster, Flux pulls changes from Git and applies them automatically. It also supports Helm charts, Kustomize overlays, and automated image updates with optional image automation controllers.
 
 This guide covers installing Flux, configuring Git sources, deploying applications, managing Helm releases, and setting up automated image updates.
 
@@ -53,19 +53,21 @@ Bootstrapping installs Flux and connects it to your Git repository.
 # Bootstrap Flux with GitHub
 # This creates the flux-system namespace and connects to your repo
 flux bootstrap github \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --owner=myorg \
   --repository=gitops-repo \
   --branch=main \
   --path=clusters/production \
-  --personal
+  --read-write-key
 ```
 
 This command does the following:
 
 1. Creates the `flux-system` namespace
 2. Installs Flux controllers
-3. Creates a `GitRepository` source pointing to your repo
-4. Commits Flux manifests back to the repository
+3. Installs the optional image automation controllers
+4. Creates a `GitRepository` source pointing to your repo
+5. Commits Flux manifests back to the repository
 
 ## Repository Structure
 
@@ -86,6 +88,7 @@ gitops-repo/
         service.yaml
         kustomization.yaml
     production/
+      namespace.yaml
       kustomization.yaml
   infrastructure/
     base/
@@ -107,7 +110,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m
-  url: https://github.com/myorg/gitops-repo
+  url: ssh://git@github.com/myorg/gitops-repo
+  secretRef:
+    name: flux-system
   ref:
     branch: main
 ---
@@ -199,10 +204,19 @@ resources:
 ### Production Overlay
 
 ```yaml
+# apps/production/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+```
+
+```yaml
 # apps/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - namespace.yaml
   - ../base/my-app
 namespace: production
 patches:
@@ -239,9 +253,12 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
-  namespace: ingress-nginx
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: ingress-nginx
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: ingress-nginx
@@ -395,7 +412,7 @@ Configure Flux to send alerts when deployments succeed or fail.
 ```yaml
 # clusters/production/notifications.yaml
 # Send alerts to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -406,7 +423,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-alerts
