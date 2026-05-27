@@ -8,13 +8,13 @@ Description: Learn how to use key salting in Cloud Bigtable to distribute write 
 
 ---
 
-If you are writing to Cloud Bigtable with keys that have a common prefix or follow a sequential pattern, you will hit a hotspot. All those writes land on the same tablet (and the same node), creating a bottleneck that can slow your entire cluster to a crawl. Key salting is a technique that adds a computed prefix to your row keys to spread writes across the entire key space.
+If you are writing to Cloud Bigtable with keys that have a common prefix or follow a sequential pattern, you can hit a hotspot. Many of those writes can land in the same tablet range and be handled by the same node, creating a bottleneck that can slow your entire cluster to a crawl. Key salting is a technique that adds a computed prefix to your row keys to spread writes across multiple key ranges.
 
 It is a simple concept with big impact. Let me show you how to implement it correctly and how to handle the tradeoffs.
 
 ## The Hotspot Problem
 
-Bigtable stores data sorted by row key and splits the key space into tablets. Each tablet is served by a single node. When all your writes cluster in one part of the key space, one node does all the work while the others sit idle.
+Bigtable stores data sorted by row key and splits the key space into tablets. Each tablet is associated with a single node. When all your writes cluster in one part of the key space, one node can do a disproportionate amount of the work while the others sit idle.
 
 Common hotspot-causing patterns:
 - Monotonically increasing keys like timestamps: `2026-02-17T10:00:01`, `2026-02-17T10:00:02`, etc.
@@ -38,7 +38,7 @@ graph LR
 
 ## What Key Salting Is
 
-Key salting prepends a short, deterministic prefix to each row key. The prefix is computed from the key itself (usually via a hash), so the same logical key always gets the same salt. This scatters keys that would otherwise be adjacent across different regions of the key space.
+Key salting prepends a short, deterministic prefix to each row key. The prefix is computed from the key itself (usually via a hash), so the same logical key always gets the same salt. This scatters keys that would otherwise be adjacent across different salted key ranges.
 
 ```text
 // Without salting (all writes go to the same region):
@@ -99,7 +99,7 @@ keygen = SaltedKeyGenerator(num_buckets=10)
 # Writing: salt the key before writing
 salted_key = keygen.salt_key("event#2026-02-17T10:00:01")
 print(f"Salted key: {salted_key}")
-# Output: "07#event#2026-02-17T10:00:01" (bucket depends on hash)
+# Output: "05#event#2026-02-17T10:00:01"
 
 # Reading a specific key: salt it the same way
 lookup_key = keygen.salt_key("event#2026-02-17T10:00:01")
@@ -113,8 +113,6 @@ Here is how to integrate salting into your Bigtable writes.
 ```python
 # Writing to Bigtable with salted keys
 from google.cloud import bigtable
-from google.cloud.bigtable import row as bt_row
-import time
 
 client = bigtable.Client(project='your-project-id')
 instance = client.instance('my-instance')
@@ -180,10 +178,8 @@ def scan_events(prefix, limit_per_bucket=100):
         """Scan a single salt bucket."""
         results = []
         rows = table.read_rows(
-            row_set=bt_row.RowRange(
-                start_key=salted_prefix.encode(),
-                end_key=(salted_prefix + '\xff').encode()
-            ),
+            start_key=salted_prefix.encode(),
+            end_key=(salted_prefix + '\xff').encode(),
             limit=limit_per_bucket
         )
 
@@ -318,4 +314,4 @@ Salting is the best general-purpose choice because it gives you predictable dist
 
 ## Wrapping Up
 
-Key salting is a proven technique for preventing hotspots in Cloud Bigtable. By prepending a hash-derived bucket number to your row keys, you force even distribution of writes across all nodes in your cluster. The tradeoff is that range scans require parallel queries across all salt buckets, but with proper parallelization, this overhead is manageable. Choose your bucket count based on your cluster size, use deterministic hashing so reads can reconstruct the salted key, and verify your distribution using Key Visualizer. With salting in place, your Bigtable cluster can achieve the throughput it was designed for.
+Key salting is a proven technique for preventing hotspots in Cloud Bigtable. By prepending a hash-derived bucket number to your row keys, you spread writes across multiple key ranges so Bigtable can balance tablets across nodes more effectively. The tradeoff is that range scans require parallel queries across all salt buckets, but with proper parallelization, this overhead is manageable. Choose your bucket count based on your cluster size, use deterministic hashing so reads can reconstruct the salted key, and verify your distribution using Key Visualizer. With salting in place, your Bigtable cluster can achieve the throughput it was designed for.
