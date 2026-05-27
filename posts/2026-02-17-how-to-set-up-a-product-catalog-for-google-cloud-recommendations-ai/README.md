@@ -39,30 +39,26 @@ gcloud services enable retail.googleapis.com
 pip install google-cloud-retail
 ```
 
-## Creating the Default Catalog Branch
+## Checking the Default Catalog Branch
 
-Recommendations AI organizes products into catalogs and branches. The default branch is where your live catalog lives.
+Recommendations AI organizes products into catalogs and branches. The `default_branch` alias points to the branch currently configured as the default.
 
 ```python
 from google.cloud import retail_v2
 
-def get_default_catalog(project_id, location="global"):
-    """Get the default catalog configuration."""
+def get_default_branch(project_id, location="global"):
+    """Get the branch currently configured as the default."""
     client = retail_v2.CatalogServiceClient()
 
-    # List catalogs in the project
-    parent = f"projects/{project_id}/locations/{location}"
-    request = retail_v2.ListCatalogsRequest(parent=parent)
+    catalog = f"projects/{project_id}/locations/{location}/catalogs/default_catalog"
+    request = retail_v2.GetDefaultBranchRequest(catalog=catalog)
 
-    catalogs = client.list_catalogs(request=request)
+    response = client.get_default_branch(request=request)
 
-    for catalog in catalogs:
-        print(f"Catalog: {catalog.name}")
-        print(f"Display name: {catalog.display_name}")
+    print(f"Default branch: {response.branch}")
+    return response.branch
 
-    return catalogs
-
-get_default_catalog("my-gcp-project")
+get_default_branch("my-gcp-project")
 ```
 
 ## Importing Products One at a Time
@@ -224,18 +220,19 @@ def bulk_import_products(project_id, gcs_uri):
     operation = client.import_products(request=request)
     print("Import started. This may take several minutes...")
 
-    result = operation.result(timeout=600)
+    response = operation.result(timeout=600)
+    metadata = operation.metadata
 
     print(f"Import complete!")
-    print(f"Successfully imported: {result.success_count}")
-    print(f"Failed: {result.failure_count}")
+    print(f"Successfully imported: {metadata.success_count}")
+    print(f"Failed: {metadata.failure_count}")
 
-    if result.error_samples:
+    if response.error_samples:
         print("Sample errors:")
-        for error in result.error_samples[:5]:
+        for error in response.error_samples[:5]:
             print(f"  {error.message}")
 
-    return result
+    return response
 
 # Run the bulk import
 bulk_import_products(
@@ -319,6 +316,8 @@ For production systems, you need a reliable sync mechanism between your product 
 
 ```python
 import time
+
+from google.cloud import retail_v2
 
 def sync_catalog(project_id, product_database):
     """Sync your product database with the Recommendations AI catalog."""
