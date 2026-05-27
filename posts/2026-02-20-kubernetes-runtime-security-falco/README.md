@@ -40,11 +40,11 @@ graph TD
 helm repo add falcosecurity https://falcosecurity.github.io/charts
 helm repo update
 
-# Install Falco with the eBPF driver (no kernel module needed)
+# Install Falco with the modern eBPF driver
 helm install falco falcosecurity/falco \
   --namespace falco \
   --create-namespace \
-  --set driver.kind=ebpf \
+  --set driver.kind=modern_ebpf \
   --set falcosidekick.enabled=true \
   --set falcosidekick.webui.enabled=true \
   --set collectors.kubernetes.enabled=true
@@ -56,9 +56,9 @@ helm install falco falcosecurity/falco \
 # falco-values.yaml
 # Helm values for production Falco deployment
 driver:
-  # Use eBPF probe instead of kernel module
-  # eBPF is safer and works on more kernel versions
-  kind: ebpf
+  # Use the modern eBPF probe instead of a kernel module
+  # This avoids building or loading a kernel module, but requires modern eBPF features
+  kind: modern_ebpf
 
 # Enable Kubernetes metadata enrichment
 collectors:
@@ -151,7 +151,6 @@ customRules:
       desc: Detects outbound connections from shell processes
       condition: >
         evt.type=connect and
-        evt.dir=< and
         container and
         (proc.name in (bash, sh, zsh, dash) or
          proc.name in (nc, ncat, netcat))
@@ -170,7 +169,6 @@ customRules:
       desc: Detects containers making connections to non-approved IPs
       condition: >
         evt.type=connect and
-        evt.dir=< and
         container and
         fd.typechar=4 and
         not (fd.sip in (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16))
