@@ -74,7 +74,7 @@ Ansible needs to know which migrations have already been applied:
 ---
 - name: Create schema migrations tracking table
   community.postgresql.postgresql_query:
-    db: "{{ db_name }}"
+    login_db: "{{ db_name }}"
     login_host: "{{ db_host }}"
     login_user: "{{ db_admin_user }}"
     login_password: "{{ db_admin_password }}"
@@ -107,7 +107,7 @@ Ansible needs to know which migrations have already been applied:
 
 - name: Get applied migrations
   community.postgresql.postgresql_query:
-    db: "{{ db_name }}"
+    login_db: "{{ db_name }}"
     login_host: "{{ db_host }}"
     login_user: "{{ db_admin_user }}"
     login_password: "{{ db_admin_password }}"
@@ -123,8 +123,8 @@ Ansible needs to know which migrations have already been applied:
     pending_migrations: >-
       {{ migration_files.files
          | sort(attribute='path')
-         | selectattr('path', 'regex', 'V\d+__')
-         | rejectattr('path', 'search', applied_versions | join('|'))
+         | selectattr('path', 'search', '(^|/)V\\d+__')
+         | rejectattr('path', 'search', '(^|/)(' ~ (applied_versions | join('|')) ~ ')__')
          | list }}
   when: applied_versions | length > 0
 
@@ -175,16 +175,16 @@ Ansible needs to know which migrations have already been applied:
 
 - name: Apply migration
   community.postgresql.postgresql_query:
-    db: "{{ db_name }}"
+    login_db: "{{ db_name }}"
     login_host: "{{ db_host }}"
     login_user: "{{ db_admin_user }}"
     login_password: "{{ db_admin_password }}"
-    query: "{{ migration_content.content | b64decode | regex_replace('--\\s*ROLLBACK:.*', '', multiline=True) }}"
+    query: "{{ migration_content.content | b64decode | regex_replace('(?s)--\\s*ROLLBACK:.*$', '') }}"
   register: migration_result
 
 - name: Record migration in tracking table
   community.postgresql.postgresql_query:
-    db: "{{ db_name }}"
+    login_db: "{{ db_name }}"
     login_host: "{{ db_host }}"
     login_user: "{{ db_admin_user }}"
     login_password: "{{ db_admin_password }}"
@@ -196,7 +196,7 @@ Ansible needs to know which migrations have already been applied:
       file: "{{ migration_filename }}"
       user: "ansible-{{ lookup('env', 'USER') }}"
       sum: "{{ migration_checksum }}"
-      time: "{{ migration_result.query_all_results | length }}"
+      time: "{{ migration_result.execution_time_ms | default([0]) | sum }}"
 
 - name: Log migration success
   ansible.builtin.debug:
@@ -213,14 +213,14 @@ Always run safety checks before migrating:
 ---
 - name: Check database connectivity
   community.postgresql.postgresql_ping:
-    db: "{{ db_name }}"
+    login_db: "{{ db_name }}"
     login_host: "{{ db_host }}"
     login_user: "{{ db_admin_user }}"
     login_password: "{{ db_admin_password }}"
 
 - name: Check for active locks
   community.postgresql.postgresql_query:
-    db: "{{ db_name }}"
+    login_db: "{{ db_name }}"
     login_host: "{{ db_host }}"
     login_user: "{{ db_admin_user }}"
     login_password: "{{ db_admin_password }}"
@@ -266,7 +266,7 @@ If you prefer a dedicated migration tool:
 ---
 - name: Download Flyway
   ansible.builtin.get_url:
-    url: "https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/{{ flyway_version }}/flyway-commandline-{{ flyway_version }}-linux-x64.tar.gz"
+    url: "https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline/{{ flyway_version }}/flyway-commandline-{{ flyway_version }}-linux-x64.tar.gz"
     dest: "/tmp/flyway-{{ flyway_version }}.tar.gz"
     mode: '0644'
 
@@ -316,13 +316,11 @@ When things go wrong, you need a fast rollback path:
 - name: Rollback database migration
   hosts: db_primary
   become: true
-  vars:
-    target_version: "{{ rollback_to_version }}"
 
   tasks:
     - name: Get last applied migration
       community.postgresql.postgresql_query:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         login_host: "{{ db_host }}"
         login_user: "{{ db_admin_user }}"
         login_password: "{{ db_admin_password }}"
@@ -340,7 +338,7 @@ When things go wrong, you need a fast rollback path:
         login_user: "{{ db_admin_user }}"
         login_password: "{{ db_admin_password }}"
         state: restore
-        target: "{{ backup_dir }}/pre_migration_{{ target_version }}.sql.gz"
+        target: "/tmp/pre_{{ last_migration.query_result[0].version }}_backup.sql.gz"
       when: rollback_method == "restore"
 ```
 
