@@ -8,7 +8,7 @@ Description: Learn how to manage Kafka consumer groups, offsets, and rebalancing
 
 ---
 
-Consumer groups are the backbone of Kafka's scalability model. They let you distribute message processing across multiple instances while guaranteeing that each message is processed by exactly one consumer in the group. Getting consumer group management right is critical for building reliable streaming applications.
+Consumer groups are the backbone of Kafka's scalability model. They let you distribute message processing across multiple instances while ensuring each partition is assigned to only one consumer in the group at a time. Getting consumer group management right is critical for building reliable streaming applications.
 
 ## How Consumer Groups Work
 
@@ -55,19 +55,19 @@ graph LR
 
 ## Understanding Offsets
 
-Every message in a partition has a unique offset. The consumer group tracks which offset each consumer has processed. This is how Kafka knows where to resume if a consumer restarts.
+Every message in a partition has a unique offset. The consumer group commits the next offset it should consume for each partition. This is how Kafka knows where to resume if a consumer restarts.
 
 ```mermaid
 graph LR
     subgraph Partition 0
         M0["Offset 0 (processed)"]
         M1["Offset 1 (processed)"]
-        M2["Offset 2 (committed)"]
+        M2["Offset 2 (processed)"]
         M3["Offset 3 (pending)"]
         M4["Offset 4 (pending)"]
     end
     M0 --> M1 --> M2 --> M3 --> M4
-    CP[Committed Position] -.-> M2
+    CP["Committed Offset: 3"] -.-> M3
 ```
 
 ## Auto-Commit vs Manual Commit
@@ -101,8 +101,9 @@ try:
         if msg.error():
             print(f"Error: {msg.error()}")
             continue
-        # If the consumer crashes here, before the next auto-commit,
-        # the message will be redelivered on restart
+        # If the consumer crashes before the next auto-commit,
+        # the message may be redelivered on restart. If the offset
+        # is auto-committed before processing finishes, it may be skipped.
         process_order(msg.value())
 except KeyboardInterrupt:
     pass
@@ -156,15 +157,14 @@ try:
             message_count = 0
 
 except KeyboardInterrupt:
-    # Final commit before shutting down
-    consumer.commit(asynchronous=False)
+    pass
 finally:
     consumer.close()
 ```
 
 ## Handling Rebalances
 
-When consumers join or leave a group, Kafka triggers a rebalance. During a rebalance, no messages are delivered. You can hook into this process with a callback.
+When consumers join or leave a group, Kafka triggers a rebalance. Depending on the assignment strategy, some or all partitions may pause while ownership changes. You can hook into this process with a callback.
 
 ```python
 # rebalance_handler.py
@@ -237,7 +237,7 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
 
 ## Resetting Offsets
 
-Sometimes you need to reprocess messages. Kafka lets you reset offsets for a consumer group.
+Sometimes you need to reprocess messages. Kafka lets you reset offsets for a consumer group. Make sure the consumer instances in that group are inactive before running a reset.
 
 ```bash
 # Reset to the earliest offset (reprocess everything)
