@@ -383,20 +383,22 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 )
 
-func longRunningTask(ctx context.Context, name string) {
+func longRunningTask(ctx context.Context, name string, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	for i := 0; ; i++ {
 		select {
 		case <-ctx.Done():
 			// Context was cancelled or timed out
 			fmt.Printf("%s: stopped after %d iterations (reason: %v)\n", name, i, ctx.Err())
 			return
-		default:
+		case <-time.After(200 * time.Millisecond):
 			// Do some work
 			fmt.Printf("%s: iteration %d\n", name, i)
-			time.Sleep(200 * time.Millisecond)
 		}
 	}
 }
@@ -407,13 +409,15 @@ func main() {
 	defer cancel()
 
 	// Start two goroutines that respect cancellation
-	go longRunningTask(ctx, "worker-A")
-	go longRunningTask(ctx, "worker-B")
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go longRunningTask(ctx, "worker-A", &wg)
+	go longRunningTask(ctx, "worker-B", &wg)
 
 	// Wait for the context to expire
 	<-ctx.Done()
-	// Give goroutines a moment to print their exit messages
-	time.Sleep(100 * time.Millisecond)
+	// Wait for goroutines to print their exit messages
+	wg.Wait()
 	fmt.Println("All workers stopped")
 }
 ```
