@@ -8,7 +8,7 @@ Description: Learn how to build minimal Docker images for Go applications using 
 
 ---
 
-Go compiles to a single static binary with no runtime dependencies. This makes it one of the best languages for creating extremely small Docker images. A typical Go API image can be under 10 MB when built correctly, compared to hundreds of megabytes with a standard base image.
+Go can compile to a single static binary with no runtime dependencies when CGO is disabled. This makes it one of the best languages for creating extremely small Docker images. A typical Go API image can be under 10 MB when built correctly, compared to hundreds of megabytes with a standard base image.
 
 In this guide, we will walk through multiple strategies for building minimal Go Docker images, from basic multi-stage builds to scratch and distroless images.
 
@@ -28,7 +28,7 @@ Here is what a typical first attempt looks like:
 ```dockerfile
 # Bad example - produces an image over 800 MB
 
-FROM golang:1.22
+FROM golang:1.26
 
 WORKDIR /app
 COPY . .
@@ -48,7 +48,7 @@ A multi-stage build separates the build environment from the runtime environment
 
 ```dockerfile
 # Stage 1: Build the binary
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine3.23 AS builder
 
 WORKDIR /app
 
@@ -62,7 +62,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w" -o server ./cmd/server
 
 # Stage 2: Create the minimal runtime image
-FROM alpine:3.19
+FROM alpine:3.23
 
 # Add ca-certificates for HTTPS and a non-root user
 RUN apk --no-cache add ca-certificates && \
@@ -99,9 +99,11 @@ The scratch image is an empty filesystem. Nothing is included - no shell, no lib
 
 ```dockerfile
 # Stage 1: Build
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine3.23 AS builder
 
 WORKDIR /app
+
+RUN apk --no-cache add ca-certificates tzdata
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -135,11 +137,11 @@ This produces an image that is often under 10 MB.
 
 ## Google Distroless: A Middle Ground
 
-Distroless images include just enough to run an application - CA certificates, timezone data, and a non-root user - but no shell or package manager:
+Distroless images include just enough to run an application - common runtime files such as CA certificates and a non-root user variant - but no shell or package manager:
 
 ```dockerfile
 # Stage 1: Build
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine3.23 AS builder
 
 WORKDIR /app
 
@@ -151,7 +153,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w" -o server ./cmd/server
 
 # Stage 2: Distroless static image
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 
 # Copy the binary from the builder stage
 COPY --from=builder /app/server /server
@@ -167,10 +169,10 @@ ENTRYPOINT ["/server"]
 
 ```mermaid
 graph LR
-    A[golang:1.22] -->|~850 MB| B[Full SDK]
-    C[golang:1.22-alpine] -->|~250 MB| D[Alpine SDK]
-    E[alpine:3.19] -->|~15 MB + binary| F[Alpine Runtime]
-    G[distroless/static] -->|~5 MB + binary| H[Distroless]
+    A[golang:1.26] -->|hundreds of MB| B[Full SDK]
+    C[golang:1.26-alpine] -->|~70 MB compressed + build layers| D[Alpine SDK]
+    E[alpine:3.23] -->|~5 MB + binary| F[Alpine Runtime]
+    G[distroless/static] -->|~2 MB + binary| H[Distroless]
     I[scratch] -->|~0 MB + binary| J[Empty + Binary]
 ```
 
@@ -183,6 +185,7 @@ package main
 
 import (
     "encoding/json"
+    "flag"
     "log"
     "net/http"
     "os"
@@ -197,10 +200,27 @@ type HealthResponse struct {
 }
 
 func main() {
+    healthcheck := flag.Bool("healthcheck", false, "check the local health endpoint")
+    flag.Parse()
+
     // Read the version from an environment variable
     version := os.Getenv("APP_VERSION")
     if version == "" {
         version = "dev"
+    }
+
+    // Run a one-shot health check when invoked by Docker HEALTHCHECK
+    if *healthcheck {
+        port := os.Getenv("PORT")
+        if port == "" {
+            port = "8080"
+        }
+        resp, err := http.Get("http://127.0.0.1:" + port + "/health")
+        if err != nil || resp.StatusCode >= http.StatusBadRequest {
+            os.Exit(1)
+        }
+        resp.Body.Close()
+        return
     }
 
     // Register the health check endpoint
@@ -229,7 +249,7 @@ func main() {
 You can add health checks even in minimal images by using the binary itself:
 
 ```dockerfile
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 
 COPY --from=builder /app/server /server
 
@@ -255,7 +275,7 @@ graph TD
     B --> G[USER nonroot or appuser]
     C --> H[scratch or distroless]
     D --> I[docker scout or trivy]
-    E --> J[golang:1.22 not golang:latest]
+    E --> J[golang:1.26 not golang:latest]
     F --> K[Exclude .git, docs, tests]
 ```
 
@@ -300,13 +320,13 @@ curl http://localhost:8080/health
 
 | Base Image | Size | Shell | CA Certs | Use Case |
 |---|---|---|---|---|
-| golang:1.22 | ~850 MB | Yes | Yes | Development only |
-| alpine:3.19 | ~15 MB | Yes | Add manually | Need debugging shell |
-| distroless/static | ~5 MB | No | Yes | Recommended for production |
+| golang:1.26 | Hundreds of MB | Yes | Yes | Development only |
+| alpine:3.23 | ~5 MB + binary | Yes | Add manually | Need debugging shell |
+| distroless/static | ~2 MB + binary | No | Yes | Recommended for production |
 | scratch | 0 MB | No | Copy manually | Absolute minimum size |
 
 ## Conclusion
 
-Go's static binary compilation is a perfect match for minimal container images. By using multi-stage builds and choosing the right base image, you can shrink your production images from hundreds of megabytes to under 10 MB, improving security, deployment speed, and resource usage.
+Go's static binary compilation with CGO disabled is a perfect match for minimal container images. By using multi-stage builds and choosing the right base image, you can shrink your production images from hundreds of megabytes to under 10 MB, improving security, deployment speed, and resource usage.
 
 If you are deploying Go services in containers and want to monitor their health, performance, and uptime, [OneUptime](https://oneuptime.com) provides container-aware monitoring with health check tracking, alerting, and status pages that help your team stay on top of production deployments.
