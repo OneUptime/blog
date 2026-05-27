@@ -65,19 +65,19 @@ Install Node.js using the NodeSource repository to get a specific major version.
           - curl
           - gnupg
           - build-essential
+          - python3-debian
         state: present
         update_cache: true
 
-    - name: Add NodeSource GPG key
-      ansible.builtin.apt_key:
-        url: "https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key"
-        state: present
-
     - name: Add NodeSource repository for Node.js {{ node_version }}
-      ansible.builtin.apt_repository:
-        repo: "deb https://deb.nodesource.com/node_{{ node_version }}.x nodistro main"
+      ansible.builtin.deb822_repository:
+        name: nodesource
+        types: deb
+        uris: "https://deb.nodesource.com/node_{{ node_version }}.x"
+        suites: nodistro
+        components: main
+        signed_by: "https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key"
         state: present
-        filename: nodesource
 
     - name: Install Node.js
       ansible.builtin.apt:
@@ -211,10 +211,16 @@ This playbook handles the actual deployment using a release directory pattern fo
     - name: Install npm dependencies
       community.general.npm:
         path: "{{ release_dir }}"
-        production: true
         state: present
-      environment:
-        NODE_ENV: production
+
+    - name: Check whether package.json has a build script
+      ansible.builtin.command:
+        cmd: >
+          node -e "const p=require('./package.json'); process.exit(p.scripts && p.scripts.build ? 0 : 1)"
+        chdir: "{{ release_dir }}"
+      register: build_script
+      changed_when: false
+      failed_when: false
 
     - name: Run build step if package.json has a build script
       ansible.builtin.command:
@@ -223,13 +229,26 @@ This playbook handles the actual deployment using a release directory pattern fo
       register: build_result
       changed_when: build_result.rc == 0
       failed_when: build_result.rc != 0
+      when: build_script.rc == 0
       environment:
         NODE_ENV: production
+
+    - name: Prune development dependencies after the build
+      ansible.builtin.command:
+        cmd: npm prune --omit=dev
+        chdir: "{{ release_dir }}"
+      changed_when: true
 
     - name: Link the shared .env file
       ansible.builtin.file:
         src: "{{ app_dir }}/shared/.env"
         dest: "{{ release_dir }}/.env"
+        state: link
+
+    - name: Link the PM2 ecosystem configuration
+      ansible.builtin.file:
+        src: "{{ app_dir }}/shared/ecosystem.config.js"
+        dest: "{{ release_dir }}/ecosystem.config.js"
         state: link
 
     - name: Link the shared logs directory
@@ -246,10 +265,10 @@ This playbook handles the actual deployment using a release directory pattern fo
         state: link
         force: true
 
-    - name: Start or restart the application with PM2
+    - name: Start or reload the application with PM2
       ansible.builtin.command:
         cmd: >
-          pm2 startOrRestart ecosystem.config.js
+          pm2 startOrReload ecosystem.config.js
           --env production
         chdir: "{{ app_dir }}/current"
       register: pm2_result
@@ -274,8 +293,6 @@ This playbook handles the actual deployment using a release directory pattern fo
       ansible.builtin.shell:
         cmd: "ls -dt {{ app_dir }}/releases/*/ | tail -n +6 | xargs rm -rf"
       changed_when: true
-      args:
-        warn: false
 ```
 
 ## PM2 Ecosystem Configuration
@@ -316,8 +333,7 @@ Deploy a PM2 ecosystem file to manage the Node.js process.
               restart_delay: 4000,
               watch: false,
               kill_timeout: 5000,
-              listen_timeout: 8000,
-              wait_ready: true
+              listen_timeout: 8000
             }]
           };
         mode: "0644"
@@ -362,7 +378,8 @@ Put Nginx in front of Node.js for SSL termination and static file serving.
           }
 
           server {
-              listen 443 ssl http2;
+              listen 443 ssl;
+              http2 on;
               server_name {{ app_domain }};
 
               ssl_certificate /etc/letsencrypt/live/{{ app_domain }}/fullchain.pem;
@@ -441,10 +458,13 @@ Orchestrate the entire deployment.
 - name: Step 2 - Prepare environment
   import_playbook: prepare-app-environment.yml
 
-- name: Step 3 - Deploy application
+- name: Step 3 - Configure PM2
+  import_playbook: configure-pm2.yml
+
+- name: Step 4 - Deploy application
   import_playbook: deploy-nodejs-app.yml
 
-- name: Step 4 - Configure Nginx
+- name: Step 5 - Configure Nginx
   import_playbook: configure-nginx-for-node.yml
 ```
 
@@ -499,9 +519,9 @@ If a deployment goes wrong, roll back to the previous release.
         state: link
         force: true
 
-    - name: Restart the application with PM2
+    - name: Reload the application with PM2
       ansible.builtin.command:
-        cmd: pm2 restart {{ app_name }}
+        cmd: pm2 reload {{ app_name }}
       changed_when: true
 
     - name: Wait for health check
