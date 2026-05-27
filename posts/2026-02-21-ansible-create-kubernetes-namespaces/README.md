@@ -8,16 +8,16 @@ Description: Create and manage Kubernetes namespaces with Ansible including labe
 
 ---
 
-Namespaces are the fundamental organizational unit in Kubernetes. They partition a cluster into virtual sub-clusters, providing isolation for resources, access control boundaries, and a way to divvy up cluster resources among teams or environments. Creating namespaces manually is quick, but managing dozens of namespaces with consistent configurations, quotas, and policies is where Ansible adds real value.
+Namespaces are the fundamental organizational unit in Kubernetes. They provide a scope for names and a way to divide cluster resources among teams or environments; with RBAC, resource quotas, and network policies, they can also form useful administrative boundaries. Creating namespaces manually is quick, but managing dozens of namespaces with consistent configurations, quotas, and policies is where Ansible adds real value.
 
 ## What Namespaces Do
 
 A namespace in Kubernetes provides:
 
-- **Resource isolation**: Resources in one namespace are not visible from another by default
+- **Resource scoping**: Namespaced resources are organized within one namespace, and names only need to be unique inside that namespace
 - **Access control**: RBAC policies can be scoped to a namespace
 - **Resource quotas**: Limit CPU, memory, and object counts per namespace
-- **Network policies**: Control traffic between namespaces
+- **Network policies**: Control traffic between namespaces when the cluster uses a network plugin that implements NetworkPolicy
 - **Naming scope**: Two namespaces can each have a Service called "api" without conflict
 
 ```mermaid
@@ -256,7 +256,7 @@ While ResourceQuotas limit the total resources in a namespace, LimitRanges set d
                   memory: "16Gi"
 ```
 
-This means that if a developer creates a pod without specifying resource requests/limits, it gets the defaults automatically. And no single container can request more than the maximum.
+This means that if a developer creates a pod without specifying resource requests/limits, it gets the defaults automatically. And no single container can specify resource requests or limits outside the configured minimum and maximum constraints.
 
 ## Network Policies
 
@@ -411,27 +411,27 @@ Here is a full playbook that sets up a namespace with everything it needs:
     - name: Create ResourceQuota
       kubernetes.core.k8s:
         state: present
-        src: templates/resource-quota.yaml.j2
+        template: templates/resource-quota.yaml.j2
 
     - name: Create LimitRange
       kubernetes.core.k8s:
         state: present
-        src: templates/limit-range.yaml.j2
+        template: templates/limit-range.yaml.j2
 
     - name: Create default NetworkPolicy
       kubernetes.core.k8s:
         state: present
-        src: templates/network-policy.yaml.j2
+        template: templates/network-policy.yaml.j2
 
     - name: Create RBAC Role
       kubernetes.core.k8s:
         state: present
-        src: templates/role.yaml.j2
+        template: templates/role.yaml.j2
 
     - name: Create RoleBinding
       kubernetes.core.k8s:
         state: present
-        src: templates/rolebinding.yaml.j2
+        template: templates/rolebinding.yaml.j2
 
     - name: Verify namespace is ready
       kubernetes.core.k8s_info:
