@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Python, Microservice, Deployment
 
-Description: Deploy multiple Python microservices with Ansible including service discovery, health checks, and coordinated rolling updates.
+Description: Deploy Python microservices with Ansible including system dependencies, systemd service setup, and health checks.
 
 ---
 
-Deploying Python microservices requires orchestrating multiple on remote servers. This guide provides practical Ansible playbooks for this common automation task.
+Deploying Python microservices requires orchestrating multiple services on remote servers. This guide provides practical Ansible playbooks for this common automation task.
 
 ## Overview
 
@@ -42,7 +42,6 @@ ansible_python_interpreter=/usr/bin/python3
     app_name: myapp
     app_dir: /opt/{{ app_name }}
     app_user: www-data
-    python_version: "3.11"
 
   tasks:
     - name: Install system dependencies
@@ -73,6 +72,11 @@ ansible_python_interpreter=/usr/bin/python3
         state: latest
       become_user: "{{ app_user }}"
 
+    - name: Check for requirements file
+      ansible.builtin.stat:
+        path: "{{ app_dir }}/requirements.txt"
+      register: requirements_file
+
     - name: Install application dependencies
       ansible.builtin.pip:
         virtualenv: "{{ app_dir }}/venv"
@@ -102,10 +106,11 @@ ansible_python_interpreter=/usr/bin/python3
         - restart application
 
     - name: Enable and start application
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ app_name }}"
         enabled: true
         state: started
+        daemon_reload: true
 ```
 
 ## Systemd Service Template
@@ -148,11 +153,11 @@ WantedBy=multi-user.target
 ```yaml
   handlers:
     - name: reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
 
     - name: restart application
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ app_name }}"
         state: restarted
 ```
@@ -172,16 +177,16 @@ ansible-playbook -i inventory/hosts playbook.yml --limit app01
 
 ## Summary
 
-This playbook automates the complete setup process, from installing system dependencies through configuring the application service. Every step is idempotent, meaning you can run it repeatedly without side effects. Extend it with additional tasks for your specific needs like database migrations, static file collection, or load balancer registration.
+This playbook automates the setup process, from installing system dependencies through configuring the application service. It is designed to be rerunnable, with handlers restarting the application only when notified by configuration changes. Extend it with additional tasks for your specific needs like database migrations, static file collection, or load balancer registration.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -232,8 +237,8 @@ Here are several practical scenarios where this module proves essential in real-
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
     - name: Configure firewall rules
@@ -254,7 +259,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -295,7 +300,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -332,6 +337,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -355,6 +366,5 @@ Here are several practical scenarios where this module proves essential in real-
         hour: "3"
         weekday: "1"
         job: "/opt/scripts/compliance_scan.sh"
-        user: ansible
+        user: root
 ```
-
