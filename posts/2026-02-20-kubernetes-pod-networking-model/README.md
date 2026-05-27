@@ -77,10 +77,10 @@ When a pod is created, the following happens at the network level:
 ```mermaid
 graph TD
     A[Kubelet creates pod] --> B[CNI plugin invoked]
-    B --> C[Create network namespace]
-    C --> D[Create veth pair]
+    B --> C[Use the pod's network namespace]
+    C --> D[Configure pod networking, often with a veth pair]
     D --> E[Attach one end to pod namespace]
-    D --> F[Attach other end to node bridge]
+    D --> F[Attach other end to the node network]
     F --> G[Assign IP from pod CIDR]
     G --> H[Configure routes]
 ```
@@ -103,7 +103,7 @@ sudo crictl inspect $CONTAINER_ID | grep -i netns
 
 ### Virtual Ethernet Pairs (veth)
 
-A veth pair is like a virtual network cable. One end sits inside the pod's network namespace, and the other end connects to a bridge on the host.
+A veth pair is like a virtual network cable. In bridge-based CNI implementations, one end sits inside the pod's network namespace, and the other end connects to the node's network, often through a bridge on the host.
 
 ```bash
 # Inside the pod, you see eth0
@@ -117,7 +117,7 @@ ip link show | grep veth
 
 ### Linux Bridge
 
-The node has a bridge (typically called cbr0 or cni0) that connects all veth pairs. This bridge acts like a virtual switch, allowing pods on the same node to communicate.
+Some CNI implementations create a bridge (typically called cni0, or cbr0 in older kubelet-managed networking) that connects pod veth pairs. This bridge acts like a virtual switch, allowing pods on the same node to communicate.
 
 ```bash
 # View the bridge on the node
@@ -158,7 +158,7 @@ When pods are on different nodes, the packet must traverse the physical network.
 
 ### Overlay Networks (VXLAN)
 
-Flannel and Weave use VXLAN to encapsulate pod-to-pod traffic inside UDP packets that can traverse the underlying network.
+Flannel's VXLAN backend and many overlay network implementations use VXLAN to encapsulate pod-to-pod traffic inside UDP packets that can traverse the underlying network.
 
 ```mermaid
 sequenceDiagram
@@ -170,7 +170,7 @@ sequenceDiagram
 
     PA->>N1: Packet to 10.244.2.2
     N1->>N1: Encapsulate in VXLAN/UDP
-    N1->>NET: Send to Node 2 (10.0.1.2:4789)
+    N1->>NET: Send to Node 2 over UDP (for example, 8472 on Flannel/Linux)
     NET->>N2: Deliver UDP packet
     N2->>N2: Decapsulate VXLAN
     N2->>PC: Deliver original packet
@@ -216,7 +216,7 @@ kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.podCIDR
 
 ## Service Networking
 
-Kubernetes Services provide stable virtual IPs (ClusterIPs) that load-balance traffic to pod endpoints. These are implemented using iptables or IPVS rules on each node.
+Kubernetes Services provide stable virtual IPs (ClusterIPs) that load-balance traffic to pod endpoints. With kube-proxy on Linux, these are implemented using iptables, IPVS, or nftables rules on each node, depending on the configured proxy mode.
 
 ```bash
 # Check iptables rules for a service
