@@ -45,6 +45,9 @@ infrastructure/
     nginx/
     postgresql/
     firewall/
+    app_deploy/
+    backup_agent/
+    haproxy/
   ansible.cfg
   requirements.yml
 ```
@@ -225,7 +228,7 @@ Then your roles reference these variables without knowing which environment they
 - name: Configure PostgreSQL max connections
   ansible.builtin.lineinfile:
     path: /etc/postgresql/15/main/postgresql.conf
-    regexp: '^max_connections'
+    regexp: '^#?max_connections\s*='
     line: "max_connections = {{ db_max_connections }}"
   notify: restart postgresql
 ```
@@ -245,6 +248,7 @@ Ansible can also create cloud resources, making it a full IaC solution:
   vars:
     region: us-east-1
     vpc_cidr: 10.0.0.0/16
+    app_replicas: 3
 
   tasks:
     - name: Create VPC
