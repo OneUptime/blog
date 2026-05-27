@@ -36,17 +36,15 @@ For automation and version control, use the gcloud CLI.
 ```bash
 # Create an HTTPS uptime check for your API endpoint
 
-gcloud monitoring uptime create my-api-check \
-  --display-name="API Health Check" \
+gcloud monitoring uptime create "API Health Check" \
   --resource-type=uptime-url \
-  --monitored-resource-labels="host=api.myapp.com" \
-  --protocol=HTTPS \
+  --resource-labels="project_id=my-project,host=api.myapp.com" \
+  --protocol=https \
   --path="/health" \
   --port=443 \
   --period=60 \
-  --timeout=10s \
-  --content-type=TYPE_UNSPECIFIED \
-  --regions=USA,EUROPE,ASIA_PACIFIC
+  --timeout=10 \
+  --regions=usa-iowa,europe,asia-pacific
 ```
 
 ## Creating Uptime Checks with the API
@@ -190,7 +188,8 @@ For endpoints that require POST requests, you can configure the method and body.
     "path": "/api/v1/healthcheck",
     "port": 443,
     "useSsl": true,
-    "contentType": "APPLICATION_JSON",
+    "contentType": "USER_PROVIDED",
+    "customContentType": "application/json",
     "body": "eyJ0eXBlIjoiaGVhbHRoY2hlY2sifQ=="
   }
 }
@@ -210,7 +209,7 @@ An uptime check by itself just collects data. To get notified when the check fai
     {
       "displayName": "Uptime check failing",
       "conditionThreshold": {
-        "filter": "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"my-api-check\"",
+        "filter": "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.check_id = \"CHECK_ID\"",
         "comparison": "COMPARISON_GT",
         "thresholdValue": 1,
         "duration": "60s",
@@ -241,10 +240,12 @@ Uptime checks typically target public endpoints. For internal resources (private
 {
   "displayName": "Internal Service Check",
   "monitoredResource": {
-    "type": "uptime_url",
+    "type": "servicedirectory_service",
     "labels": {
       "project_id": "my-project",
-      "host": "10.0.1.50"
+      "location": "us-central1",
+      "namespace_name": "my-namespace",
+      "service_name": "internal-service"
     }
   },
   "httpCheck": {
@@ -270,10 +271,10 @@ List, update, and delete uptime checks with the CLI.
 gcloud monitoring uptime list-configs
 
 # Describe a specific uptime check
-gcloud monitoring uptime describe my-api-check
+gcloud monitoring uptime describe "API Health Check"
 
 # Delete an uptime check
-gcloud monitoring uptime delete my-api-check
+gcloud monitoring uptime delete "API Health Check"
 ```
 
 ## Viewing Uptime Check Results
