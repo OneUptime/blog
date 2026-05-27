@@ -42,9 +42,6 @@ resource "google_kms_crypto_key" "cosign_signing_key" {
     protection_level = "HSM"
   }
 
-  # Rotate signing keys every 90 days
-  rotation_period = "7776000s"
-
   lifecycle {
     prevent_destroy = true
   }
@@ -69,9 +66,9 @@ go install github.com/sigstore/cosign/v2/cmd/cosign@latest
 # Verify the installation
 cosign version
 
-# Generate a key pair using KMS (no local private key stored)
-cosign generate-key-pair \
-  --kms gcpkms://projects/my-project/locations/global/keyRings/cosign-keyring/cryptoKeys/image-signing-key
+# Retrieve the public key for verification (the private key stays in KMS)
+cosign public-key \
+  --key gcpkms://projects/my-project/locations/global/keyRings/cosign-keyring/cryptoKeys/image-signing-key/versions/1 > cosign.pub
 ```
 
 ## Signing Images in Your CI Pipeline
@@ -123,7 +120,7 @@ steps:
         IMAGE_DIGEST=$(cat /workspace/image_digest.txt)
         # Sign the image using the KMS key
         cosign sign \
-          --key gcpkms://projects/${PROJECT_ID}/locations/global/keyRings/cosign-keyring/cryptoKeys/image-signing-key \
+          --key gcpkms://projects/${PROJECT_ID}/locations/global/keyRings/cosign-keyring/cryptoKeys/image-signing-key/versions/1 \
           --yes \
           us-docker.pkg.dev/${PROJECT_ID}/my-repo/my-app@${IMAGE_DIGEST}
         echo "Image signed successfully"
@@ -139,7 +136,7 @@ steps:
         IMAGE_DIGEST=$(cat /workspace/image_digest.txt)
         # Verify the signature
         cosign verify \
-          --key gcpkms://projects/${PROJECT_ID}/locations/global/keyRings/cosign-keyring/cryptoKeys/image-signing-key \
+          --key gcpkms://projects/${PROJECT_ID}/locations/global/keyRings/cosign-keyring/cryptoKeys/image-signing-key/versions/1 \
           us-docker.pkg.dev/${PROJECT_ID}/my-repo/my-app@${IMAGE_DIGEST}
         echo "Signature verified successfully"
     id: 'verify'
@@ -180,11 +177,11 @@ PREDICATE
 
 # Attach the attestation using cosign attest
 cosign attest \
-  --key gcpkms://projects/my-project/locations/global/keyRings/cosign-keyring/cryptoKeys/image-signing-key \
+  --key gcpkms://projects/my-project/locations/global/keyRings/cosign-keyring/cryptoKeys/image-signing-key/versions/1 \
   --predicate /tmp/build-predicate.json \
-  --type https://in-toto.io/Statement/v0.1 \
+  --type https://slsa.dev/provenance/v0.2 \
   --yes \
-  us-docker.pkg.dev/my-project/my-repo/my-app@sha256:abc123
+  us-docker.pkg.dev/my-project/my-repo/my-app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
 ## Verifying Signatures at Deployment Time
@@ -213,13 +210,17 @@ spec:
       verifyImages:
         - imageReferences:
             - "us-docker.pkg.dev/my-project/my-repo/*"
+          failureAction: Enforce
           attestors:
             - entries:
                 - keys:
                     kms: gcpkms://projects/my-project/locations/global/keyRings/cosign-keyring/cryptoKeys/image-signing-key
+        - imageReferences:
+            - "us-docker.pkg.dev/my-project/my-repo/*"
+          failureAction: Enforce
           # Also verify attestations
           attestations:
-            - type: https://in-toto.io/Statement/v0.1
+            - predicateType: https://slsa.dev/provenance/v0.2
               attestors:
                 - entries:
                     - keys:
@@ -228,57 +229,31 @@ spec:
 
 ## Using Binary Authorization with Cosign
 
-You can also use Google's Binary Authorization to enforce signature verification natively:
+You can also use Google's Binary Authorization to enforce signed Binary Authorization attestations. If you also sign images with Cosign, verify the Cosign signature in the pipeline and then create a Binary Authorization attestation for the same image digest:
 
-```python
-# verify_and_attest.py
-# Creates a Binary Authorization attestation from a Cosign signature
-from google.cloud import binaryauthorization_v1
-from google.cloud import kms_v1
-import subprocess
-import json
+```bash
+IMAGE_PATH="us-docker.pkg.dev/${PROJECT_ID}/my-repo/my-app"
+IMAGE_DIGEST="sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+IMAGE_TO_ATTEST="${IMAGE_PATH}@${IMAGE_DIGEST}"
+ATTESTOR_NAME="prod-attestor"
+KMS_KEY_VERSION="1"
 
-def verify_cosign_and_create_binauthz_attestation(
-    project_id, image_url, key_name, attestor_name
-):
-    """Verify Cosign signature and create Binary Authorization attestation."""
+# First verify the Cosign signature
+cosign verify \
+  --key gcpkms://projects/${PROJECT_ID}/locations/global/keyRings/cosign-keyring/cryptoKeys/image-signing-key/versions/${KMS_KEY_VERSION} \
+  "${IMAGE_TO_ATTEST}"
 
-    # First verify with Cosign
-    result = subprocess.run(
-        [
-            "cosign", "verify",
-            "--key", f"gcpkms://{key_name}",
-            image_url,
-        ],
-        capture_output=True,
-        text=True,
-    )
-
-    if result.returncode != 0:
-        print(f"Cosign verification failed: {result.stderr}")
-        return False
-
-    print("Cosign signature verified successfully")
-
-    # Parse the verified signatures
-    signatures = json.loads(result.stdout)
-
-    # Create Binary Authorization attestation
-    binauthz_client = binaryauthorization_v1.BinauthzManagementServiceV1Client()
-
-    # The attestation links the verified image to Binary Authorization
-    attestation = {
-        "resource_uri": image_url,
-        "attestation": {
-            "serialized_payload": json.dumps(signatures[0]).encode("utf-8"),
-            "signatures": [{
-                "public_key_id": key_name,
-            }]
-        }
-    }
-
-    print(f"Binary Authorization attestation created for {image_url}")
-    return True
+# Then create the Binary Authorization attestation
+gcloud container binauthz attestations sign-and-create \
+  --project="${PROJECT_ID}" \
+  --artifact-url="${IMAGE_TO_ATTEST}" \
+  --attestor="${ATTESTOR_NAME}" \
+  --attestor-project="${PROJECT_ID}" \
+  --keyversion-project="${PROJECT_ID}" \
+  --keyversion-location="global" \
+  --keyversion-keyring="cosign-keyring" \
+  --keyversion-key="image-signing-key" \
+  --keyversion="${KMS_KEY_VERSION}"
 ```
 
 ## Key Rotation Strategy
@@ -286,15 +261,14 @@ def verify_cosign_and_create_binauthz_attestation(
 Rotate your signing keys regularly. Here is how to handle the transition:
 
 ```bash
-# Create a new key version (old versions remain for verification)
+# Create a new key version and make it primary (old versions remain for verification)
 gcloud kms keys versions create \
   --key image-signing-key \
   --keyring cosign-keyring \
   --location global \
-  --algorithm ec-sign-p256-sha256 \
-  --protection-level hsm
+  --primary
 
-# New builds will use the latest key version automatically
+# Update your Cosign commands and verification policies to trust the new key version
 # Old images remain verifiable with their original key version
 
 # List all key versions to see which are active
