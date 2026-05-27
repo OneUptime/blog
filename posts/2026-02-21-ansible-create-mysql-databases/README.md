@@ -14,12 +14,14 @@ This post covers creating MySQL databases with Ansible, setting character encodi
 
 ## Prerequisites
 
-Install the MySQL community collection.
+Install the MySQL collection and make sure PyMySQL is available on the managed database hosts for the Python interpreter Ansible uses.
 
 ```bash
-# Install the community MySQL collection
+# Install the MySQL collection
 
-ansible-galaxy collection install community.mysql
+ansible-galaxy collection install ansible.mysql
+
+# Run on each managed database host or bake into the image
 pip install PyMySQL
 ```
 
@@ -37,7 +39,7 @@ The simplest database creation looks like this.
 
   tasks:
     - name: Create application database
-      community.mysql.mysql_db:
+      ansible.mysql.mysql_db:
         name: myapp
         encoding: utf8mb4
         collation: utf8mb4_unicode_ci
@@ -75,7 +77,7 @@ Define databases as a list and loop through them.
 
   tasks:
     - name: Create databases
-      community.mysql.mysql_db:
+      ansible.mysql.mysql_db:
         name: "{{ item.name }}"
         encoding: "{{ item.encoding | default('utf8mb4') }}"
         collation: "{{ item.collation | default('utf8mb4_unicode_ci') }}"
@@ -91,7 +93,7 @@ After creating the database, you often need to load an initial schema.
 ```yaml
 # Import schema into a newly created database
 - name: Check if schema has been applied
-  community.mysql.mysql_query:
+  ansible.mysql.mysql_query:
     login_db: myapp_production
     query: "SHOW TABLES LIKE 'users'"
     login_unix_socket: /var/run/mysqld/mysqld.sock
@@ -105,7 +107,7 @@ After creating the database, you often need to load an initial schema.
   when: tables_check.query_result[0] | length == 0
 
 - name: Import schema
-  community.mysql.mysql_db:
+  ansible.mysql.mysql_db:
     name: myapp_production
     state: import
     target: /tmp/schema.sql
@@ -190,7 +192,7 @@ Wrap everything in a reusable role.
 # Create databases, import schemas, and verify
 ---
 - name: Create MySQL databases
-  community.mysql.mysql_db:
+  ansible.mysql.mysql_db:
     name: "{{ item.name }}"
     encoding: "{{ item.encoding | default('utf8mb4') }}"
     collation: "{{ item.collation | default('utf8mb4_unicode_ci') }}"
@@ -199,15 +201,17 @@ Wrap everything in a reusable role.
   loop: "{{ mysql_databases }}"
 
 - name: Check if initial schema is needed
-  community.mysql.mysql_query:
+  ansible.mysql.mysql_query:
     login_db: "{{ item.name }}"
-    query: "SELECT COUNT(*) as table_count FROM information_schema.tables WHERE table_schema = '{{ item.name }}'"
+    query: "SELECT COUNT(*) as table_count FROM information_schema.tables WHERE table_schema = %s"
+    positional_args:
+      - "{{ item.name }}"
     login_unix_socket: "{{ mysql_socket }}"
   register: schema_check
   loop: "{{ mysql_databases }}"
 
 - name: Import schema for empty databases
-  community.mysql.mysql_db:
+  ansible.mysql.mysql_db:
     name: "{{ item.item.name }}"
     state: import
     target: "{{ item.item.schema_file }}"
@@ -241,7 +245,7 @@ Ansible can also manage database dumps for backups or migrations.
 ```yaml
 # Dump a database to a file
 - name: Create database backup
-  community.mysql.mysql_db:
+  ansible.mysql.mysql_db:
     name: myapp_production
     state: dump
     target: "/backups/myapp_production_{{ ansible_date_time.date }}.sql.gz"
@@ -250,7 +254,7 @@ Ansible can also manage database dumps for backups or migrations.
 
 # Restore from a dump file
 - name: Restore database from backup
-  community.mysql.mysql_db:
+  ansible.mysql.mysql_db:
     name: myapp_production
     state: import
     target: "/backups/myapp_production_2026-02-20.sql.gz"
@@ -270,7 +274,7 @@ Include safety checks before dropping any database.
     fail_msg: "Refusing to drop databases on production"
 
 - name: Drop test database
-  community.mysql.mysql_db:
+  ansible.mysql.mysql_db:
     name: myapp_test
     state: absent
     login_unix_socket: /var/run/mysqld/mysqld.sock
@@ -293,7 +297,7 @@ ansible-playbook playbooks/create-mysql-databases.yml \
 ```yaml
 # Verify databases were created correctly
 - name: List all databases
-  community.mysql.mysql_query:
+  ansible.mysql.mysql_query:
     query: "SHOW DATABASES"
     login_unix_socket: /var/run/mysqld/mysqld.sock
   register: db_list
@@ -301,16 +305,18 @@ ansible-playbook playbooks/create-mysql-databases.yml \
 - name: Verify expected databases exist
   assert:
     that:
-      - "'{{ item.name }}' in (db_list.query_result[0] | map(attribute='Database') | list)"
+      - item.name in (db_list.query_result[0] | map(attribute='Database') | list)
     fail_msg: "Database {{ item.name }} was not created"
   loop: "{{ mysql_databases }}"
 
 - name: Check character set for each database
-  community.mysql.mysql_query:
+  ansible.mysql.mysql_query:
     query: >
       SELECT default_character_set_name, default_collation_name
       FROM information_schema.schemata
-      WHERE schema_name = '{{ item.name }}'
+      WHERE schema_name = %s
+    positional_args:
+      - "{{ item.name }}"
     login_unix_socket: /var/run/mysqld/mysqld.sock
   register: charset_check
   loop: "{{ mysql_databases }}"
@@ -318,4 +324,4 @@ ansible-playbook playbooks/create-mysql-databases.yml \
 
 ## Conclusion
 
-Creating MySQL databases with Ansible gives you consistent, repeatable database provisioning across all your environments. Define your databases in inventory variables, use the `community.mysql.mysql_db` module for creation and schema imports, and always include verification tasks. The idempotent nature means running the playbook on a server that already has the databases is safe and produces no changes. Combine database creation with user and permission management for a complete MySQL provisioning pipeline.
+Creating MySQL databases with Ansible gives you consistent, repeatable database provisioning across all your environments. Define your databases in inventory variables, use the `ansible.mysql.mysql_db` module for creation and schema imports, and always include verification tasks. Database creation with `state: present` is idempotent, and guarded schema imports avoid reloading the same schema on every run. Combine database creation with user and permission management for a complete MySQL provisioning pipeline.
