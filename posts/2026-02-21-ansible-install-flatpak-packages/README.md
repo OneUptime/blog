@@ -193,7 +193,7 @@ Beyond Flathub, you can add other remotes. Some organizations host their own Fla
 
 ### Removing a Remote
 
-If you need to remove a remote and all applications installed from it, set the state to absent.
+If you need to remove a remote from the Flatpak repository configuration, set the state to absent.
 
 ```yaml
 # Remove a Flatpak remote
@@ -290,7 +290,7 @@ For workstations that should always have the latest versions, you can set up a s
     mode: '0644'
 
 - name: Enable Flatpak update timer
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: flatpak-update.timer
     state: started
     enabled: true
