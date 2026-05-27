@@ -14,7 +14,7 @@ This post walks through setting up namespaced mode step by step, including the I
 
 ## Cluster Mode vs Namespaced Mode
 
-By default, Config Connector runs in cluster mode. That means a single GCP service account handles all resource creation across all namespaces. This works fine for single-team clusters, but it breaks down when you have multiple teams because:
+In cluster mode, a single GCP service account handles all resource creation across all namespaces. This works fine for single-team clusters, but it breaks down when you have multiple teams because:
 
 - Every team shares the same permissions
 - Any namespace can create resources in any GCP project
@@ -28,6 +28,7 @@ You need:
 
 - A GKE cluster with Config Connector add-on enabled
 - Workload Identity enabled on the cluster
+- Kubernetes Engine Monitoring enabled on the cluster
 - Cluster admin access
 - IAM admin access on each team's GCP project
 
@@ -45,6 +46,7 @@ metadata:
   name: configconnector.core.cnrm.cloud.google.com
 spec:
   mode: namespaced
+  stateIntoSpec: Absent
 ```
 
 Apply it to the cluster.
@@ -132,6 +134,23 @@ gcloud projects add-iam-policy-binding data-project-id \
 
 In production, replace `roles/editor` with the specific roles each team actually needs. The principle of least privilege matters here.
 
+Config Connector also publishes metrics to Cloud Monitoring, so grant each service account metric writer access on the cluster project.
+
+```bash
+# Allow Config Connector controllers to write monitoring metrics
+gcloud projects add-iam-policy-binding cluster-project-id \
+  --member="serviceAccount:cnrm-team-frontend@frontend-project-id.iam.gserviceaccount.com" \
+  --role="roles/monitoring.metricWriter"
+
+gcloud projects add-iam-policy-binding cluster-project-id \
+  --member="serviceAccount:cnrm-team-backend@backend-project-id.iam.gserviceaccount.com" \
+  --role="roles/monitoring.metricWriter"
+
+gcloud projects add-iam-policy-binding cluster-project-id \
+  --member="serviceAccount:cnrm-team-data@data-project-id.iam.gserviceaccount.com" \
+  --role="roles/monitoring.metricWriter"
+```
+
 ## Step 5: Set Up Workload Identity Bindings
 
 In namespaced mode, Config Connector creates a per-namespace controller with the naming pattern `cnrm-controller-manager-NAMESPACE`. Bind each one to its GCP service account.
@@ -166,7 +185,7 @@ Notice that the `cluster-project-id` is the project where the GKE cluster lives,
 Now activate Config Connector in each namespace by creating a ConfigConnectorContext.
 
 ```yaml
-# frontend-context.yaml
+# team-contexts.yaml
 # Activates Config Connector in the frontend namespace
 apiVersion: core.cnrm.cloud.google.com/v1beta1
 kind: ConfigConnectorContext
@@ -175,8 +194,9 @@ metadata:
   namespace: team-frontend
 spec:
   googleServiceAccount: "cnrm-team-frontend@frontend-project-id.iam.gserviceaccount.com"
+  stateIntoSpec: Absent
 ---
-# backend-context.yaml
+# Activates Config Connector in the backend namespace
 apiVersion: core.cnrm.cloud.google.com/v1beta1
 kind: ConfigConnectorContext
 metadata:
@@ -184,8 +204,9 @@ metadata:
   namespace: team-backend
 spec:
   googleServiceAccount: "cnrm-team-backend@backend-project-id.iam.gserviceaccount.com"
+  stateIntoSpec: Absent
 ---
-# data-context.yaml
+# Activates Config Connector in the data namespace
 apiVersion: core.cnrm.cloud.google.com/v1beta1
 kind: ConfigConnectorContext
 metadata:
@@ -193,11 +214,12 @@ metadata:
   namespace: team-data
 spec:
   googleServiceAccount: "cnrm-team-data@data-project-id.iam.gserviceaccount.com"
+  stateIntoSpec: Absent
 ```
 
 ```bash
 # Apply the contexts for all teams
-kubectl apply -f frontend-context.yaml
+kubectl apply -f team-contexts.yaml
 ```
 
 After applying each context, Config Connector will spin up a dedicated controller pod in the cnrm-system namespace for that namespace.
@@ -207,13 +229,13 @@ After applying each context, Config Connector will spin up a dedicated controlle
 Check that controller pods are running for each configured namespace.
 
 ```bash
-# List all Config Connector controller pods
-kubectl get pods -n cnrm-system
+# Wait for the frontend controller pod
+kubectl wait -n cnrm-system \
+  --for=condition=Ready pod \
+  -l cnrm.cloud.google.com/component=cnrm-controller-manager \
+  -l cnrm.cloud.google.com/scoped-namespace=team-frontend
 
-# You should see pods like:
-# cnrm-controller-manager-team-frontend-0
-# cnrm-controller-manager-team-backend-0
-# cnrm-controller-manager-team-data-0
+# Repeat the same command for team-backend and team-data
 ```
 
 Test resource creation in each namespace.
@@ -255,7 +277,7 @@ subjects:
 roleRef:
   kind: ClusterRole
   # This built-in role allows management of all Config Connector resources
-  name: cnrm-manager
+  name: cnrm-admin
   apiGroup: rbac.authorization.k8s.io
 ```
 
