@@ -88,7 +88,6 @@ Here is a complete playbook that performs a rolling deployment with health check
     - name: Run database migrations (only on first host in batch)
       command: "{{ app_dir }}/bin/migrate"
       run_once: true
-      when: inventory_hostname == ansible_play_hosts[0]
 
     - name: Start the application service
       systemd:
@@ -211,9 +210,11 @@ deploy_production:
     - echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
     - chmod 600 ~/.ssh/deploy_key
   script:
-    - ansible-playbook playbooks/rolling-deploy.yml
-        -i inventory/production.yml
-        -e "deploy_version=${CI_COMMIT_TAG}"
+    - |
+      ansible-playbook playbooks/rolling-deploy.yml \
+        -i inventory/production.yml \
+        -e "deploy_version=${CI_COMMIT_TAG}" \
+        -e "lb_host=10.0.0.5" \
         --private-key ~/.ssh/deploy_key
   only:
     - tags
@@ -246,6 +247,7 @@ pipeline {
                         ansible-playbook playbooks/rolling-deploy.yml \
                           -i inventory/production.yml \
                           -e "deploy_version=${params.DEPLOY_VERSION}" \
+                          -e "lb_host=10.0.0.5" \
                           --private-key \$SSH_KEY
                     """
                 }
