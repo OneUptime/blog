@@ -83,7 +83,7 @@ For a proper report with categorization, use a playbook:
       ansible.builtin.set_fact:
         host_report:
           hostname: "{{ inventory_hostname }}"
-          ip: "{{ ansible_host | default(ansible_default_ipv4.address) }}"
+          ip: "{{ ansible_host | default(ansible_default_ipv4.address | default('')) }}"
           os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
           kernel: "{{ kernel_version.stdout }}"
           uptime_days: "{{ uptime_days }}"
@@ -111,30 +111,64 @@ For a more comprehensive view that groups servers by their uptime status:
   become: false
   gather_facts: true
 
+  vars:
+    critical_uptime_days: 180
+    warning_uptime_days: 90
+    recent_reboot_hours: 24
+
   tasks:
     - name: Set uptime facts
       ansible.builtin.set_fact:
         uptime_days: "{{ (ansible_uptime_seconds | int / 86400) | round(1) }}"
+        uptime_hours: "{{ (ansible_uptime_seconds | int / 3600) | round(1) }}"
+
+    - name: Get last boot time
+      ansible.builtin.command:
+        cmd: "who -b"
+      register: last_boot
+      changed_when: false
+
+    - name: Get running kernel version
+      ansible.builtin.command:
+        cmd: uname -r
+      register: kernel_version
+      changed_when: false
+
+    - name: Categorize uptime status
+      ansible.builtin.set_fact:
+        uptime_status: >-
+          {% if uptime_days | float > critical_uptime_days %}CRITICAL - Uptime exceeds {{ critical_uptime_days }} days
+          {% elif uptime_days | float > warning_uptime_days %}WARNING - Uptime exceeds {{ warning_uptime_days }} days
+          {% elif uptime_hours | float < recent_reboot_hours %}NOTICE - Recently rebooted
+          {% else %}OK{% endif %}
 
 - name: Generate uptime dashboard
   hosts: localhost
-  gather_facts: false
+  gather_facts: true
 
   tasks:
     # Group servers by uptime category
-    - name: Categorize all servers
+    - name: Initialize uptime groups
       ansible.builtin.set_fact:
-        critical_servers: >-
-          {{ groups['all'] | map('extract', hostvars)
-             | selectattr('uptime_days', 'defined')
-             | selectattr('uptime_days', '>', 180)
-             | map(attribute='inventory_hostname') | list }}
-        warning_servers: >-
-          {{ groups['all'] | map('extract', hostvars)
-             | selectattr('uptime_days', 'defined')
-             | rejectattr('uptime_days', '>', 180)
-             | selectattr('uptime_days', '>', 90)
-             | map(attribute='inventory_hostname') | list }}
+        critical_servers: []
+        warning_servers: []
+
+    - name: Add critical uptime servers
+      ansible.builtin.set_fact:
+        critical_servers: "{{ critical_servers + [item] }}"
+      loop: "{{ groups['all'] }}"
+      when:
+        - hostvars[item]['uptime_days'] is defined
+        - hostvars[item]['uptime_days'] | float > 180
+
+    - name: Add warning uptime servers
+      ansible.builtin.set_fact:
+        warning_servers: "{{ warning_servers + [item] }}"
+      loop: "{{ groups['all'] }}"
+      when:
+        - hostvars[item]['uptime_days'] is defined
+        - hostvars[item]['uptime_days'] | float <= 180
+        - hostvars[item]['uptime_days'] | float > 90
 
     # Display the dashboard
     - name: Display uptime dashboard
@@ -223,24 +257,32 @@ Uptime alone does not tell the full story. A server might be up but have crashed
 
     # Check critical services on all servers
     - name: Check critical services
-      ansible.builtin.systemd:
-        name: "{{ item }}"
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-active
+          - "{{ item }}"
       register: critical_check
       loop: "{{ critical_services }}"
+      changed_when: false
       failed_when: false
 
     # Check role-specific services
     - name: Check role services
-      ansible.builtin.systemd:
-        name: "{{ item }}"
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-active
+          - "{{ item }}"
       register: role_check
-      loop: "{{ role_services[group_names | first] | default([]) }}"
+      loop: "{{ role_services | dict2items | selectattr('key', 'in', group_names) | map(attribute='value') | flatten | list }}"
+      changed_when: false
       failed_when: false
 
     # Count failed services
     - name: Count service failures
       ansible.builtin.set_fact:
-        failed_services: "{{ (critical_check.results + role_check.results) | selectattr('status.ActiveState', 'ne', 'active') | map(attribute='item') | list }}"
+        failed_services: "{{ (critical_check.results + role_check.results) | selectattr('stdout', 'ne', 'active') | map(attribute='item') | list }}"
 
     # Display combined health report
     - name: Display health report
@@ -342,10 +384,26 @@ Use this to verify that a patching cycle actually rebooted the servers it was su
       register: boot_time
       changed_when: false
 
+    # Convert the maintenance date to a Unix timestamp
+    - name: Convert maintenance date to timestamp
+      ansible.builtin.command:
+        argv:
+          - date
+          - -d
+          - "{{ maintenance_date }} 00:00:00"
+          - +%s
+      register: maintenance_epoch
+      changed_when: false
+
+    # Calculate the boot timestamp from current time and uptime
+    - name: Calculate boot timestamp
+      ansible.builtin.set_fact:
+        boot_epoch: "{{ ansible_date_time.epoch | int - ansible_uptime_seconds | int }}"
+
     # Check if server was rebooted after the maintenance date
     - name: Check if rebooted after maintenance
       ansible.builtin.set_fact:
-        rebooted_after_maintenance: "{{ uptime_days | float < 2 }}"
+        rebooted_after_maintenance: "{{ boot_epoch | int >= maintenance_epoch.stdout | int }}"
 
     # Report servers that were NOT rebooted
     - name: Flag servers not rebooted
