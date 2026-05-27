@@ -18,7 +18,7 @@ A flame graph is a visualization of sampled call stacks. During profiling, Cloud
 
 Here is what each axis means:
 
-- **Y-axis (vertical)**: Call stack depth. The bottom is the entry point (like `main()` or the HTTP handler), and each layer up is a function call deeper in the stack.
+- **Y-axis (vertical)**: Call stack depth. In Cloud Profiler, the top frame is the root that represents the entire service, and each layer below it is a function call deeper in the stack.
 - **X-axis (horizontal)**: Proportion of total time. A function that is twice as wide as another consumed twice as much time. The x-axis is NOT a timeline - the left-to-right ordering is alphabetical, not chronological.
 
 That last point is critical. Many people misread flame graphs by assuming left means "earlier in time." It does not. The x-axis only represents the proportion of samples in which a function appeared.
@@ -29,14 +29,14 @@ Open Cloud Profiler in the Cloud Console and select a service. The flame graph s
 
 ### The Root Frame
 
-The bottom bar spans the full width and represents the entry point. For a web service, this is usually the HTTP server's request handler. Everything above it is code that runs within request handling.
+The top bar spans the full width and represents the entire service. Under it are the top-level calls made by the service, such as `main()` or an HTTP server's request handler. Everything below those frames is code that runs within that call path.
 
 ### Self Time vs. Total Time
 
 This distinction is crucial:
 
 - **Total time**: The width of a bar, including all its children. This is how long the function was "on the stack."
-- **Self time**: Time spent in the function itself, excluding time in child function calls. This appears as the portion of the bar that has NO child bar directly above it.
+- **Self time**: Time spent in the function itself, excluding time in child function calls. This appears as the portion of the bar that has NO child bar directly below it.
 
 A function with high total time but low self time is a coordinator - it calls other functions that do the actual work. A function with high self time is doing the work itself.
 
@@ -52,7 +52,7 @@ Here is my process for reading a flame graph:
 
 ### Step 1: Look at the Widest Bars
 
-Start by scanning the top of the graph for the widest bars. These are leaf functions (or near-leaf functions) that consume the most CPU time. If one bar takes up 30% of the graph width, you have found a major hotspot.
+Start by scanning the lower levels of the graph for the widest bars. These are leaf functions (or near-leaf functions) that consume the most CPU time. If one bar takes up 30% of the graph width, you have found a major hotspot.
 
 ### Step 2: Trace Down to Find the Call Path
 
@@ -60,11 +60,11 @@ Once you find a wide bar, trace down through its parents to understand the call 
 
 ### Step 3: Check for Plateau Patterns
 
-A "plateau" is when a function and its parent have nearly the same width. This means the parent does almost nothing except call the child. A chain of plateaus leading to a hot function tells you the call path is trivial - the time is genuinely spent at the bottom.
+A "plateau" is when a function and its parent have nearly the same width. This means the parent does almost nothing except call the child. A chain of plateaus leading to a hot function tells you the call path is trivial - the time is genuinely spent at the deepest frames.
 
-### Step 4: Look for Wide, Flat Bars at the Top
+### Step 4: Look for Wide, Flat Bars at the Bottom
 
-A wide, flat bar at the top of the stack (no children above it) represents code that is genuinely CPU-intensive. These are your optimization targets. Common examples:
+A wide, flat bar at the bottom of the stack (no children below it) represents code that is genuinely CPU-intensive. These are your optimization targets. Common examples:
 
 - JSON serialization/deserialization
 - String processing
@@ -142,11 +142,11 @@ Cloud Profiler has several filters to refine your analysis:
 
 ### Focus
 
-Click on a bar to "focus" on it. The flame graph re-renders with that function as the root, showing only its descendants. This is useful when a function has many children and you want to zoom in on one subtree.
+Hover over a bar and click "Focus" in the tooltip. The flame graph re-renders around that function, showing the call paths that flow into it and out of it. This is useful when a function is reached through multiple call stacks and you want to understand its aggregate resource consumption.
 
 ### Filter by Weight
 
-Use the minimum weight filter to hide functions that consume less than a threshold percentage. This declutters the graph and lets you focus on significant hotspots.
+Use the Weight menu to analyze profiles captured during peak resource consumption, such as the top 10% or top 5% of profiles by the selected metric. This helps you compare normal execution with high-consumption periods.
 
 ### Profile Type
 
@@ -161,9 +161,9 @@ If a function takes 10% of wall time but 0.1% of CPU time, it is waiting on some
 Cloud Profiler lets you compare two flame graphs:
 1. Select your service and time range
 2. Click "Compare to"
-3. Select a different time range or service version
+3. Select a comparison attribute, such as end date/time, zone, service version, or weight
 
-Functions that got slower show up in one color, and functions that got faster show in another. This is invaluable for spotting regressions after a deployment.
+Functions with higher metric consumption in the original profile show up in one color, and functions with lower consumption show up in another. This is invaluable for spotting regressions after a deployment.
 
 ## Actionable Optimization Strategies
 
@@ -181,4 +181,4 @@ Based on flame graph findings, here are common optimizations:
 
 ## Wrapping Up
 
-Flame graphs are not complicated once you know what to look for. Width means time. Height means call depth. Self time at the top tells you where the actual work happens. Start with the widest bars, trace the call paths, and focus your optimization on the functions that genuinely consume the most resources. Cloud Profiler makes this data available continuously from production, so check it regularly and especially after deployments.
+Flame graphs are not complicated once you know what to look for. Width means time. Height means call depth. Self time in leaf frames tells you where the actual work happens. Start with the widest bars, trace the call paths, and focus your optimization on the functions that genuinely consume the most resources. Cloud Profiler makes this data available continuously from production, so check it regularly and especially after deployments.
