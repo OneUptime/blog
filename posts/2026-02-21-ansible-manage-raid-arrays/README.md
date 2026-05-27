@@ -44,7 +44,7 @@ Let us start with creating a RAID-1 mirror and a RAID-5 array. RAID-1 gives you 
           - /dev/sdg
         filesystem: xfs
         mount_point: /data/storage
-        mount_opts: defaults,noatime,nobarrier
+        mount_opts: defaults,noatime
 
   tasks:
     # Install mdadm if not present
@@ -245,6 +245,7 @@ When a disk fails, you need to remove it, physically replace it, and add the new
     raid_device: /dev/md0
     failed_disk: /dev/sdc
     new_disk: /dev/sdc
+    existing_member_disk: /dev/sdb
 
   tasks:
     # Mark the failed disk as faulty (if not already)
@@ -274,8 +275,8 @@ When a disk fails, you need to remove it, physically replace it, and add the new
 
     # Partition the new disk to match the array
     - name: Copy partition table from existing member
-      ansible.builtin.command:
-        cmd: "sfdisk -d {{ raid_device | regex_replace('md\\d+', 'sdb') }} | sfdisk {{ new_disk }}"
+      ansible.builtin.shell:
+        cmd: "sfdisk -d {{ existing_member_disk }} | sfdisk {{ new_disk }}"
       changed_when: true
       failed_when: false
 
@@ -404,6 +405,7 @@ When you add more disks to a server, you can grow existing arrays:
       - /dev/sdh
       - /dev/sdi
     new_raid_devices: 6  # Total devices after adding (was 4, adding 2)
+    raid_mount: /data/storage
 
   tasks:
     # Add new disks to the array
@@ -430,13 +432,13 @@ When you add more disks to a server, you can grow existing arrays:
     # Grow the filesystem to use the new space
     - name: Grow XFS filesystem
       ansible.builtin.command:
-        cmd: "xfs_growfs {{ raid_device }}"
-      when: "'xfs' in ansible_mounts | selectattr('device', 'equalto', raid_device) | map(attribute='fstype') | first | default('xfs')"
+        cmd: "xfs_growfs {{ raid_mount }}"
+      when: (ansible_mounts | selectattr('mount', 'equalto', raid_mount) | map(attribute='fstype') | first | default('')) == 'xfs'
 
     - name: Grow ext4 filesystem
       ansible.builtin.command:
         cmd: "resize2fs {{ raid_device }}"
-      when: "'ext' in ansible_mounts | selectattr('device', 'equalto', raid_device) | map(attribute='fstype') | first | default('')"
+      when: (ansible_mounts | selectattr('mount', 'equalto', raid_mount) | map(attribute='fstype') | first | default('')) is match('ext[234]')
 
     # Update configuration
     - name: Update mdadm.conf
