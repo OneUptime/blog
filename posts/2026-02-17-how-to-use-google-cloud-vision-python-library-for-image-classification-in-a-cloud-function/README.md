@@ -17,10 +17,12 @@ Install the Vision API client library.
 ```bash
 # Install the Vision API Python client
 
-pip install google-cloud-vision google-cloud-storage google-cloud-firestore
+pip install functions-framework google-cloud-vision google-cloud-storage google-cloud-firestore
 
-# Enable the Vision API in your project
-gcloud services enable vision.googleapis.com
+# Enable the APIs used by the function
+gcloud services enable vision.googleapis.com firestore.googleapis.com storage.googleapis.com \
+    cloudfunctions.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com \
+    run.googleapis.com eventarc.googleapis.com logging.googleapis.com
 ```
 
 ## Basic Image Label Detection
@@ -203,7 +205,7 @@ Store the classification results so they can be queried later.
 ```python
 def store_results(bucket_name, file_name, results):
     """Store image classification results in Firestore."""
-    # Use the file path as the document ID (replacing slashes with dashes)
+    # Use the file path as the document ID (replacing slashes with underscores)
     doc_id = f"{bucket_name}_{file_name}".replace("/", "_")
 
     doc_data = {
@@ -295,7 +297,8 @@ gcloud functions deploy classify-image \
     --trigger-event-filters="bucket=my-upload-bucket" \
     --memory=512Mi \
     --timeout=120s \
-    --max-instances=10
+    --max-instances=10 \
+    --retry
 ```
 
 ## Querying Classification Results
