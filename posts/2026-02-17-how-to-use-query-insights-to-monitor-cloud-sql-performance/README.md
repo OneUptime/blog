@@ -18,7 +18,7 @@ Query Insights gives you:
 - **Top queries by load**: Identifies which queries consume the most database time
 - **Query plan analysis**: Shows execution plans for slow queries
 - **Tag-based filtering**: Filter queries by application, user, or custom tags
-- **Historical data**: Up to 7 days of query performance history
+- **Historical data**: Up to 7 days of query performance history for Cloud SQL Enterprise edition, or up to 30 days for Cloud SQL Enterprise Plus edition
 
 Think of it as a lightweight APM tool specifically for your database.
 
@@ -73,7 +73,7 @@ resource "google_sql_database_instance" "main" {
 The configuration options:
 
 - `query_insights_enabled` - Turns Query Insights on
-- `query_string_length` - Maximum query string length to capture (up to 4500)
+- `query_string_length` - Maximum query string length to capture. For Cloud SQL Enterprise edition, the limit is up to 4500 bytes; Cloud SQL Enterprise Plus supports longer limits.
 - `record_application_tags` - Capture application tags for filtering
 - `record_client_address` - Record which client IPs are running queries
 - `query_plans_per_minute` - How many execution plans to capture per minute
@@ -102,7 +102,7 @@ Below the load graph, you will find the list of queries ranked by their contribu
 - Number of executions
 - Total load contribution
 
-Click on any query to see its execution plan and detailed statistics.
+Click on any query to see detailed statistics and sampled execution plans when plan samples are available.
 
 ### Query Details
 
@@ -116,7 +116,7 @@ For each query, you can see:
 
 ## Using Application Tags
 
-Application tags let you group queries by feature or service. Set them in your application code.
+Application tags let you group queries by feature or service. Query Insights reads tags from SQL comments in the sqlcommenter format, either added by a supported ORM integration or manually in your application code.
 
 ### PostgreSQL Tags
 
@@ -129,17 +129,16 @@ conn = psycopg2.connect(
     port=5432,
     dbname="mydb",
     user="myuser",
-    password="password",
-    options="-c cloudsql.enable_tag=true"  # Enable tagging
+    password="password"
 )
 
 cursor = conn.cursor()
 
-# Set tags for the current session
-cursor.execute("SET cloudsql.application_tag = 'checkout-service'")
-
-# Now any queries in this session will be tagged
-cursor.execute("SELECT * FROM orders WHERE user_id = %s", (user_id,))
+# Add a sqlcommenter tag that Query Insights can capture
+cursor.execute(
+    "SELECT * FROM orders WHERE user_id = %s /*application='checkout-service'*/",
+    (user_id,)
+)
 ```
 
 ### MySQL Tags
@@ -158,8 +157,11 @@ conn = mysql.connector.connect(
 
 cursor = conn.cursor()
 
-# Add a query attribute that Query Insights captures
-cursor.execute("SELECT /*+ TAG('checkout-service') */ * FROM orders WHERE user_id = %s", (user_id,))
+# Add a sqlcommenter tag that Query Insights can capture
+cursor.execute(
+    "SELECT * FROM orders WHERE user_id = %s /*application='checkout-service'*/",
+    (user_id,)
+)
 ```
 
 Tags help you answer questions like "which microservice is generating the most database load?" or "are queries from the reporting service affecting the main application?"
@@ -255,13 +257,13 @@ products = db.query("SELECT * FROM products WHERE id = ANY(%s)", (product_ids,))
 Create alerts for query performance degradation:
 
 ```bash
-# Alert when database load exceeds 80% of available CPU cores
+# Alert when Cloud SQL CPU utilization exceeds 80%
 gcloud monitoring policies create \
     --display-name="Cloud SQL High Load" \
-    --condition-display-name="DB Load > 80%" \
+    --condition-display-name="CPU utilization > 80%" \
     --condition-filter='resource.type="cloudsql_database" AND metric.type="cloudsql.googleapis.com/database/cpu/utilization"' \
-    --condition-threshold-value=0.8 \
-    --condition-threshold-duration=300s \
+    --if='metric.value > 0.8' \
+    --duration=300s \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -270,19 +272,19 @@ gcloud monitoring policies create \
 For longer-term analysis or custom dashboards, export the data:
 
 ```bash
-# Query insights data is available through Cloud Monitoring
-# Export to BigQuery for custom analysis
-gcloud monitoring export create my-export \
-    --dataset=projects/my-project/datasets/monitoring_export
+# Query Insights metrics are available through Cloud Monitoring.
+# Retrieve time-series data, then load the JSON into BigQuery or your warehouse.
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    "https://monitoring.googleapis.com/v3/projects/my-project/timeSeries?filter=metric.type%3D%22cloudsql.googleapis.com%2Fdatabase%2Fpostgresql%2Finsights%2Fperquery%2Fexecution_time%22%20AND%20resource.type%3D%22cloudsql_instance_database%22&interval.endTime=2026-02-17T12:00:00Z&interval.startTime=2026-02-17T11:00:00Z"
 ```
 
-You can also use the Cloud SQL Admin API to programmatically access query statistics.
+You can also use the Cloud Monitoring API to programmatically access Query Insights metrics.
 
 ## Query Insights Overhead
 
-Query Insights has minimal performance impact:
+Query Insights is designed for low overhead:
 
-- Approximately 1-2% overhead on query execution time
+- Increasing the query plan sampling rate can add performance overhead
 - Small increase in memory usage for query statistics
 - Execution plan capture is sampled (not every execution)
 
