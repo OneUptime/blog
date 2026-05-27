@@ -14,9 +14,9 @@ Let me walk through the systematic debugging process.
 
 ## Understanding Health Checks
 
-GCP load balancers periodically send health check probes to backend instances. These probes come from specific Google-owned IP ranges, not from the load balancer's IP. If the backend responds with the expected status code within the timeout, it is marked healthy.
+GCP load balancers periodically send health check probes to backend instances. These probes come from specific Google-owned IP ranges, not from the load balancer's IP. For HTTP, HTTPS, and HTTP/2 health checks, the backend must return `200 OK` within the timeout to be marked healthy.
 
-Key detail: Health check probes come from the IP ranges `35.191.0.0/16` and `130.211.0.0/22`. Your firewall rules must allow incoming traffic from these ranges.
+Key detail: For many load balancer types, health check probes come from the IP ranges `35.191.0.0/16` and `130.211.0.0/22`. External passthrough Network Load Balancers use `35.191.0.0/16`, `209.85.152.0/22`, and `209.85.204.0/22` for IPv4 health checks. Your firewall rules must allow incoming traffic from the health check ranges for your load balancer type.
 
 ## Step 1: Check the Current Health Status
 
@@ -53,7 +53,7 @@ Key fields to examine:
 
 ```yaml
 httpHealthCheck:
-  host: ""           # Host header (empty = use instance IP)
+  host: ""           # Host header (empty = use the health check destination IP)
   port: 80           # Port to check
   requestPath: "/"   # URL path to probe
 checkIntervalSec: 10     # How often to check
@@ -84,7 +84,7 @@ gcloud compute health-checks update http my-health-check \
 
 ## Step 3: Check Firewall Rules
 
-This is the number one cause of health check failures. The health check probes come from Google's IP ranges, and your firewall must allow them.
+This is the number one cause of health check failures. The health check probes come from Google's IP ranges for your load balancer type, and your firewall must allow them.
 
 ```bash
 # Check if there is a firewall rule allowing health check traffic
@@ -93,7 +93,7 @@ gcloud compute firewall-rules list \
     --format="table(name, allowed, sourceRanges, targetTags)"
 ```
 
-Look for a rule that allows traffic from `35.191.0.0/16` and `130.211.0.0/22` on your health check port.
+Look for a rule that allows traffic from the required health check source ranges on your health check port. For many load balancer types, those ranges are `35.191.0.0/16` and `130.211.0.0/22`.
 
 If no such rule exists, create one:
 
@@ -141,7 +141,7 @@ ss -tlnp | grep 8080
 curl -v http://10.0.1.5:8080/health
 ```
 
-If the health endpoint returns anything other than a 200 status code (or whatever your health check expects), the health check will fail.
+For HTTP, HTTPS, and HTTP/2 health checks, if the health endpoint returns anything other than a `200 OK` status code, the health check will fail.
 
 ## Step 5: Check the Application's Health Endpoint
 
@@ -159,13 +159,15 @@ For more advanced health checks that verify dependencies:
 
 ```python
 # Python Flask health endpoint with dependency checks
+from sqlalchemy import text
+
 @app.route('/health')
 def health():
     checks = {}
 
     # Check database connectivity
     try:
-        db.session.execute('SELECT 1')
+        db.session.execute(text('SELECT 1'))
         checks['database'] = 'ok'
     except Exception as e:
         checks['database'] = str(e)
@@ -202,7 +204,7 @@ gcloud compute instance-groups managed describe my-mig \
 
 ## Step 7: Check Named Ports
 
-For HTTP(S) load balancers, the backend service uses named ports to route traffic. If the named port is not configured on the instance group, health checks will fail:
+For Application Load Balancers and proxy Network Load Balancers with instance group backends, the backend service uses named ports to route traffic. If the backend service's port name is not configured on the instance group, traffic routing can fail, and health checks that use the serving port can fail:
 
 ```bash
 # Check named ports on the instance group
@@ -216,6 +218,8 @@ gcloud compute instance-groups set-named-ports my-instance-group \
     --named-ports=http:8080
 ```
 
+For a managed instance group, use `gcloud compute instance-groups managed set-named-ports` instead.
+
 ## Debugging Flowchart
 
 ```mermaid
@@ -224,7 +228,7 @@ graph TD
     B --> C{Port and path correct?}
     C -->|No| D[Update health check settings]
     C -->|Yes| E[Check firewall rules]
-    E --> F{Allow from 35.191.0.0/16?}
+    E --> F{Allow health check ranges?}
     F -->|No| G[Create firewall rule for health checks]
     F -->|Yes| H{Tags match instances?}
     H -->|No| I[Fix instance tags]
@@ -261,7 +265,7 @@ gcloud compute firewall-rules list \
     --format="table(name, allowed, sourceRanges, targetTags)" 2>&1
 
 echo ""
-echo "=== Named Ports ==="
+echo "=== Backend Groups ==="
 gcloud compute backend-services describe $BACKEND_SERVICE --global \
     --format="value(backends.group)" 2>&1
 ```
