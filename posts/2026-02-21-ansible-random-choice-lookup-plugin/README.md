@@ -146,6 +146,12 @@ Similar to DNS, NTP server assignment benefits from randomization to avoid all h
         dest: /etc/chrony.conf
         mode: '0644'
       notify: restart chronyd
+
+  handlers:
+    - name: restart chronyd
+      ansible.builtin.systemd:
+        name: chronyd
+        state: restarted
 ```
 
 ## Randomized Deployment Scheduling
@@ -252,13 +258,13 @@ There are a few things you should be aware of when using `random_choice`:
 
 1. **Non-deterministic**: Every evaluation returns a potentially different result. If you reference the same lookup in multiple places, you might get different values each time. Always use `set_fact` to capture the result if you need consistency within a play.
 
-2. **Not cryptographically secure**: This uses Python's standard random module, not a cryptographic PRNG. Do not use it for security-sensitive selections like key generation.
+2. **Not a secret generator**: Current Ansible releases use Python's `secrets.choice` for the selection, but the plugin still only returns one of the values you provide. Do not use it for security-sensitive generation tasks like creating keys or passwords.
 
-3. **Idempotency concerns**: Because the result changes between runs, tasks that depend on the random value might not be idempotent. The server could get a different mirror or DNS server on every run. If that is a problem, use the `password` lookup to generate a persistent random seed instead.
+3. **Idempotency concerns**: Because the result changes between runs, tasks that depend on the random value might not be idempotent. The server could get a different mirror or DNS server on every run. If that is a problem, use a deterministic alternative such as the `random` filter with a stable `seed` value.
 
 4. **Unweighted selection**: Every item has an equal probability of being selected. If you need weighted random selection, you need to repeat items in the list proportionally. For example, to make "option_a" twice as likely: `lookup('random_choice', 'option_a', 'option_a', 'option_b')`.
 
-5. **Empty lists**: Passing an empty list will cause an error. Always ensure the list has at least one item.
+5. **Empty lists**: Passing an empty list, such as with `lookup('random_choice', *empty_list)`, returns an empty result instead of a selected item. Always ensure the list has at least one item when you expect a single value.
 
 ```yaml
 # playbook.yml - Demonstrating the consistency issue
