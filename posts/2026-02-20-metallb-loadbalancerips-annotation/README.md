@@ -31,42 +31,44 @@ Before using this annotation, make sure you have:
 
 - A Kubernetes cluster with dual-stack networking enabled
 - MetalLB v0.13 or later installed
-- At least one IPv4 and one IPv6 address pool configured
+- At least one address pool that contains both IPv4 and IPv6 addresses
+- A Layer 2 or BGP advertisement configured for the address pool
 
 ## Configuring IP Address Pools
 
-First, set up your address pools. You need separate pools for IPv4 and IPv6, or a single pool that includes both ranges.
+First, set up your address pool. For a dual-stack service, MetalLB needs at least one `IPAddressPool` that includes both IPv4 and IPv6 addresses. This example uses Layer 2 mode; if you use BGP, configure a `BGPAdvertisement` instead.
 
 ```yaml
 # ipaddresspool.yaml
 
-# Defines the pool of IPv4 addresses MetalLB can assign
+# Defines the pool of IPv4 and IPv6 addresses MetalLB can assign
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
-  name: ipv4-pool
+  name: dual-stack-pool
   namespace: metallb-system
 spec:
   addresses:
     # Range of IPv4 addresses available for LoadBalancer services
     - 192.168.1.100-192.168.1.200
+    # Range of IPv6 addresses available for LoadBalancer services
+    - fd00::100-fd00::200
 ---
-# Defines the pool of IPv6 addresses MetalLB can assign
+# Advertises the pool in Layer 2 mode
 apiVersion: metallb.io/v1beta1
-kind: IPAddressPool
+kind: L2Advertisement
 metadata:
-  name: ipv6-pool
+  name: dual-stack-l2
   namespace: metallb-system
 spec:
-  addresses:
-    # IPv6 subnet available for LoadBalancer services
-    - fd00::100-fd00::200
+  ipAddressPools:
+    - dual-stack-pool
 ```
 
-Apply the pools:
+Apply the pool and advertisement:
 
 ```bash
-# Apply both IP address pool definitions to the cluster
+# Apply the IP address pool and L2 advertisement to the cluster
 kubectl apply -f ipaddresspool.yaml
 ```
 
@@ -178,7 +180,7 @@ spec:
 
 ### Mistake 3: Duplicate IP Assignment
 
-Each IP can only be assigned to one service at a time. If another service already holds the IP, MetalLB rejects the request.
+By default, each IP can only be assigned to one service at a time. If another service already holds the IP and you have not configured MetalLB IP address sharing, MetalLB rejects the request.
 
 ```bash
 # Find which service is using a specific IP
@@ -192,7 +194,7 @@ kubectl get svc -A -o json | jq -r '
 
 ## Migrating from the Deprecated Annotation
 
-If you are using the older `metallb.universe.tf/loadBalancerIPs` annotation, migrate to the new `metallb.io/loadBalancerIPs` annotation. The old annotation is deprecated since MetalLB v0.13.
+If you are using the older `metallb.universe.tf/loadBalancerIPs` annotation, migrate to the new `metallb.io/loadBalancerIPs` annotation. The old annotation prefix is deprecated in current MetalLB releases.
 
 ```yaml
 # Old (deprecated) - do not use
