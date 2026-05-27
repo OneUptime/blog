@@ -220,7 +220,7 @@ resource "google_compute_security_policy" "waf" {
 
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('sqli-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('sqli-v33-stable')"
       }
     }
 
@@ -234,7 +234,7 @@ resource "google_compute_security_policy" "waf" {
 
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('xss-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('xss-v33-stable')"
       }
     }
 
@@ -248,7 +248,7 @@ resource "google_compute_security_policy" "waf" {
 
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('lfi-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('lfi-v33-stable')"
       }
     }
 
@@ -262,7 +262,7 @@ resource "google_compute_security_policy" "waf" {
 
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('rfi-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('rfi-v33-stable')"
       }
     }
 
@@ -276,7 +276,7 @@ resource "google_compute_security_policy" "waf" {
 
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('rce-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('rce-v33-stable')"
       }
     }
 
@@ -290,7 +290,7 @@ resource "google_compute_security_policy" "waf" {
 
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('scannerdetection-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('scannerdetection-v33-stable')"
       }
     }
 
@@ -356,7 +356,7 @@ resource "google_compute_security_policy" "waf" {
     layer_7_ddos_defense_config {
       enable = true
 
-      # AUTO_DEPLOY automatically creates rules for detected attacks
+      # STANDARD keeps suggested rules opaque; use PREMIUM for transparent rules
       rule_visibility = "STANDARD"
     }
   }
@@ -410,7 +410,7 @@ curl -v "https://your-domain.com/"
 
 # Check Cloud Armor logs
 gcloud logging read \
-  "resource.type=http_load_balancer AND jsonPayload.enforcedSecurityPolicy.name=${ENVIRONMENT}-waf-policy" \
+  "resource.type=\"http_load_balancer\" AND jsonPayload.enforcedSecurityPolicy.name=\"${ENVIRONMENT}-waf-policy\"" \
   --project=your-project --limit=10
 ```
 
@@ -426,7 +426,7 @@ rule {
 
   match {
     expr {
-      expression = "evaluatePreconfiguredExpr('sqli-v33-stable')"
+      expression = "evaluatePreconfiguredWaf('sqli-v33-stable')"
     }
   }
 }
