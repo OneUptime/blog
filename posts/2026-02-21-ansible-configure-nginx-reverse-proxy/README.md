@@ -12,17 +12,17 @@ Nginx is a popular choice for reverse proxying because it is fast, lightweight, 
 
 ## Prerequisites
 
-- Ansible 2.9+ on your control node
-- Ubuntu/Debian or RHEL/CentOS target hosts
+- Ansible 2.10+ on your control node
+- Ubuntu/Debian target hosts for the examples below. On RHEL/CentOS, adapt the site paths to your Nginx layout, such as `/etc/nginx/conf.d/*.conf`, and adjust the Nginx user/group.
 - Root or sudo access
 - Backend application servers running behind the proxy
 
 ## Installing Nginx
 
-First, install Nginx from the official repository for the latest stable version:
+First, install Nginx from your configured package repositories:
 
 ```yaml
-# install_nginx.yml - Install Nginx from official repo
+# install_nginx.yml - Install Nginx from configured package repositories
 
 ---
 - name: Install Nginx
@@ -267,7 +267,7 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
     server_name {{ server_name }};
 
     ssl_certificate {{ ssl_cert }};
