@@ -43,7 +43,7 @@ Tags are simple and intuitive. But they have some significant limitations.
 
 1. **Anyone with instance edit permission can add or remove tags.** A developer with `compute.instances.setTags` permission can tag any VM with `http-server` and suddenly expose it to traffic that the firewall rule allows. There is no way to restrict who can assign specific tags.
 
-2. **Tags are not part of the IAM model.** You cannot audit who changed a tag or require approval for tag changes. They are just metadata on the instance.
+2. **Tags are not controlled per tag value by IAM.** Compute Engine audit logs can show tag changes, but you cannot grant permission to assign only specific network tag values or require per-tag approval with IAM alone. They are still arbitrary metadata on the instance.
 
 3. **Tags are mutable at any time.** A running VM's tags can be changed without stopping it, which makes it easy for tags to drift from the intended configuration.
 
@@ -80,7 +80,7 @@ gcloud compute firewall-rules create allow-http-to-web-servers \
 
 1. **IAM-controlled assignment.** To run a VM with a specific service account, you need `iam.serviceAccounts.actAs` permission on that service account. This means a network admin can create firewall rules tied to service accounts, and only users with explicit permission can launch VMs that match those rules.
 
-2. **Immutable after creation.** A VM's service account cannot be changed without stopping and recreating it. This prevents runtime drift.
+2. **Requires a stop/start cycle to change.** A VM's service account can be changed on an existing VM, but Compute Engine requires you to stop the VM, update the service account, and restart it. This reduces runtime drift compared with tags.
 
 3. **Auditable.** IAM policy changes are logged, so you can track who granted the ability to use a specific service account.
 
