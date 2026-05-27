@@ -8,7 +8,7 @@ Description: Configure Docker container volume mounts with Ansible including bin
 
 ---
 
-Containers are ephemeral by design. When a container stops, any data written inside it is gone. Volume mounts solve this by connecting host directories or Docker-managed volumes to paths inside the container. The Ansible `docker_container` module supports all of Docker's mount types, and this post covers each one with real examples.
+Containers are ephemeral by design. When a container is removed, any data written only to its writable layer is gone. Volume mounts solve this by connecting host directories or Docker-managed volumes to paths inside the container. The Ansible `docker_container` module supports all of Docker's mount types, and this post covers each one with real examples.
 
 ## Volume Types in Docker
 
@@ -25,7 +25,7 @@ flowchart TD
 
 - **Bind mounts** map a specific directory on the host to a path in the container. You control the exact location on disk.
 - **Named volumes** are managed by Docker. Docker decides where on the host filesystem to store the data.
-- **tmpfs mounts** store data in memory only. Useful for sensitive data that should never touch disk.
+- **tmpfs mounts** store temporary data outside the container's writable layer. Useful for sensitive data or non-persistent state, though Docker notes that tmpfs data may still be written to swap.
 
 ## Bind Mounts
 
@@ -130,8 +130,8 @@ A security best practice is to run containers with a read-only root filesystem a
           - "app_data:/app/data"              # Writable: persistent data
           - "/opt/config/app.yml:/app/config/app.yml:ro"  # Read-only config
         tmpfs:
-          /tmp: "size=100M,mode=1777"         # Writable tmp in memory
-          /run: "size=50M"                     # Writable run directory
+          - "/tmp:size=100M,mode=1777"        # Writable tmp in memory
+          - "/run:size=50M"                   # Writable run directory
 ```
 
 The `read_only: true` parameter makes the entire container filesystem read-only. The `tmpfs` parameter creates in-memory writable mounts for directories where the application needs to write temporary files.
@@ -311,7 +311,8 @@ Unused volumes accumulate over time and eat disk space:
 
   tasks:
     - name: Get list of all volumes
-      community.docker.docker_volume_info:
+      community.docker.docker_host_info:
+        volumes: true
       register: all_volumes
 
     - name: Prune unused volumes
@@ -365,4 +366,4 @@ One of the most common issues with volume mounts is file permission problems. Th
 
 ## Summary
 
-Volume mounts in the `docker_container` module cover every scenario you will encounter in production. Use bind mounts when you need control over the exact host path, named volumes for portability and Docker-managed storage, and tmpfs for temporary data that should never hit disk. Always create host directories before mounting them, handle file permissions carefully, and remember that `:ro` mounts are a simple but effective security measure for configuration files. Regular volume cleanup prevents disk space issues from sneaking up on you.
+Volume mounts in the `docker_container` module cover every scenario you will encounter in production. Use bind mounts when you need control over the exact host path, named volumes for portability and Docker-managed storage, and tmpfs for temporary data that should not persist. Always create host directories before bind-mounting them, handle file permissions carefully, and remember that `:ro` mounts are a simple but effective security measure for configuration files. Regular volume cleanup prevents disk space issues from sneaking up on you.
