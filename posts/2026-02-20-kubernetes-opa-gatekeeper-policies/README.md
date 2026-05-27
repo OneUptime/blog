@@ -36,8 +36,7 @@ helm repo update
 helm install gatekeeper gatekeeper/gatekeeper \
   --namespace gatekeeper-system \
   --create-namespace \
-  --set replicas=3 \
-  --set audit.replicas=1
+  --set replicas=3
 
 # Verify the installation
 kubectl get pods -n gatekeeper-system
@@ -141,6 +140,9 @@ spec:
     spec:
       names:
         kind: K8sBlockLatestTag
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -159,7 +161,8 @@ spec:
         violation[{"msg": msg}] {
           container := input.review.object.spec.template.spec.containers[_]
           # Check if the image has no tag at all (defaults to latest)
-          not contains(container.image, ":")
+          parts := split(container.image, "/")
+          not contains(parts[count(parts) - 1], ":")
           msg := sprintf("Container '%v' has no image tag. Specify a version tag.", [
             container.name
           ])
@@ -191,6 +194,9 @@ spec:
     spec:
       names:
         kind: K8sRequireResourceLimits
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
