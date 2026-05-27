@@ -78,6 +78,14 @@ class ConnectionPool:
             # Try to get an existing connection
             conn, last_used = self._pool.get(timeout=timeout)
 
+            # Close idle connections above the minimum pool size
+            if (time.time() - last_used > self.max_idle_seconds and
+                    self._total_connections > self.min_size):
+                conn.close()
+                with self._lock:
+                    self._total_connections -= 1
+                return self._create_connection()
+
             # Check if connection is still alive
             if self._is_connection_healthy(conn):
                 return conn
@@ -112,9 +120,10 @@ class ConnectionPool:
     def _is_connection_healthy(self, conn):
         """Check if a connection is still usable."""
         try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1")
-            cursor.close()
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            # SELECT starts a transaction in psycopg2; end it before reuse
+            conn.rollback()
             return True
         except Exception:
             return False
@@ -122,7 +131,7 @@ class ConnectionPool:
 
 ## Using PgBouncer as a Connection Proxy
 
-PgBouncer sits between your services and PostgreSQL, pooling connections at the infrastructure level. This is more efficient than per-service pooling because it shares connections across all services.
+PgBouncer sits between your services and PostgreSQL, pooling connections at the infrastructure level. This can be more efficient than per-service pooling because it can share server connections across compatible clients, such as services connecting to the same database as the same user.
 
 ```mermaid
 graph TD
@@ -154,7 +163,7 @@ pool_mode = transaction
 ; Maximum client connections PgBouncer will accept
 max_client_conn = 500
 
-; Maximum connections PgBouncer opens to PostgreSQL
+; Maximum server connections PgBouncer opens per user/database pool
 default_pool_size = 20
 
 ; Extra connections allowed during traffic spikes
