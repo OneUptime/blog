@@ -38,6 +38,7 @@ Here is a playbook that configures the most common SSH server settings:
     ssh_client_alive_interval: 300
     ssh_client_alive_count_max: 2
     ssh_login_grace_time: 30
+    ssh_service_name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
   tasks:
     - name: Backup original sshd_config
       ansible.builtin.copy:
@@ -54,19 +55,19 @@ Here is a playbook that configures the most common SSH server settings:
         owner: root
         group: root
         mode: '0600'
-        validate: 'sshd -t -f %s'
+        validate: '/usr/sbin/sshd -t -f %s'
       notify: Restart sshd
 
     - name: Ensure SSH service is running
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: started
         enabled: true
 
   handlers:
     - name: Restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
@@ -91,7 +92,7 @@ HostKey /etc/ssh/ssh_host_ed25519_key
 PermitRootLogin {{ ssh_permit_root_login }}
 PubkeyAuthentication {{ ssh_pubkey_authentication }}
 PasswordAuthentication {{ ssh_password_authentication }}
-ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
 MaxAuthTries {{ ssh_max_auth_tries }}
 MaxSessions {{ ssh_max_sessions }}
 LoginGraceTime {{ ssh_login_grace_time }}
@@ -111,7 +112,7 @@ SyslogFacility AUTH
 LogLevel INFO
 
 # Subsystems
-Subsystem sftp /usr/lib/openssh/sftp-server
+Subsystem sftp internal-sftp
 
 # Misc
 PrintMotd no
@@ -130,13 +131,15 @@ Sometimes you do not want to manage the entire sshd_config file. The `lineinfile
 - name: Apply targeted SSH settings
   hosts: all
   become: true
+  vars:
+    ssh_service_name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
   tasks:
     - name: Disable root login
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^#?PermitRootLogin'
         line: 'PermitRootLogin no'
-        validate: 'sshd -t -f %s'
+        validate: '/usr/sbin/sshd -t -f %s'
       notify: Restart sshd
 
     - name: Disable password authentication
@@ -144,7 +147,7 @@ Sometimes you do not want to manage the entire sshd_config file. The `lineinfile
         path: /etc/ssh/sshd_config
         regexp: '^#?PasswordAuthentication'
         line: 'PasswordAuthentication no'
-        validate: 'sshd -t -f %s'
+        validate: '/usr/sbin/sshd -t -f %s'
       notify: Restart sshd
 
     - name: Set max auth tries
@@ -152,7 +155,7 @@ Sometimes you do not want to manage the entire sshd_config file. The `lineinfile
         path: /etc/ssh/sshd_config
         regexp: '^#?MaxAuthTries'
         line: 'MaxAuthTries 3'
-        validate: 'sshd -t -f %s'
+        validate: '/usr/sbin/sshd -t -f %s'
       notify: Restart sshd
 
     - name: Disable X11 forwarding
@@ -160,13 +163,13 @@ Sometimes you do not want to manage the entire sshd_config file. The `lineinfile
         path: /etc/ssh/sshd_config
         regexp: '^#?X11Forwarding'
         line: 'X11Forwarding no'
-        validate: 'sshd -t -f %s'
+        validate: '/usr/sbin/sshd -t -f %s'
       notify: Restart sshd
 
   handlers:
     - name: Restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
@@ -236,6 +239,7 @@ Limit SSH access to members of specific groups:
     ssh_allowed_groups:
       - sshusers
       - admins
+    ssh_service_name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
   tasks:
     - name: Create SSH access group
       ansible.builtin.group:
@@ -257,13 +261,13 @@ Limit SSH access to members of specific groups:
         path: /etc/ssh/sshd_config
         regexp: '^#?AllowGroups'
         line: "AllowGroups {{ ssh_allowed_groups | join(' ') }}"
-        validate: 'sshd -t -f %s'
+        validate: '/usr/sbin/sshd -t -f %s'
       notify: Restart sshd
 
   handlers:
     - name: Restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
@@ -279,6 +283,7 @@ Changing the SSH port is not real security (it is security through obscurity), b
   become: true
   vars:
     new_ssh_port: 2222
+    ssh_service_name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
   tasks:
     - name: Allow new SSH port in firewall first
       community.general.ufw:
@@ -293,7 +298,7 @@ Changing the SSH port is not real security (it is security through obscurity), b
         path: /etc/ssh/sshd_config
         regexp: '^#?Port '
         line: "Port {{ new_ssh_port }}"
-        validate: 'sshd -t -f %s'
+        validate: '/usr/sbin/sshd -t -f %s'
       notify: Restart sshd
 
     - name: Update SELinux SSH port if applicable
@@ -302,13 +307,13 @@ Changing the SSH port is not real security (it is security through obscurity), b
         proto: tcp
         setype: ssh_port_t
         state: present
-      when: ansible_selinux.status == "enabled"
+      when: ansible_selinux is defined and ansible_selinux.status == "enabled"
       ignore_errors: true
 
   handlers:
     - name: Restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
@@ -331,6 +336,8 @@ Display a legal notice or system information when users log in:
 - name: Configure SSH banner
   hosts: all
   become: true
+  vars:
+    ssh_service_name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
   tasks:
     - name: Deploy SSH banner
       ansible.builtin.copy:
@@ -349,7 +356,7 @@ Display a legal notice or system information when users log in:
         path: /etc/ssh/sshd_config
         regexp: '^#?Banner'
         line: 'Banner /etc/ssh/banner'
-        validate: 'sshd -t -f %s'
+        validate: '/usr/sbin/sshd -t -f %s'
       notify: Restart sshd
 
     - name: Deploy MOTD with system info
@@ -361,7 +368,7 @@ Display a legal notice or system information when users log in:
   handlers:
     - name: Restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
@@ -397,7 +404,7 @@ graph TD
   become: true
   tasks:
     - name: Test SSH configuration syntax
-      ansible.builtin.command: sshd -t
+      ansible.builtin.command: /usr/sbin/sshd -t
       register: sshd_test
       changed_when: false
 
@@ -406,7 +413,7 @@ graph TD
         msg: "SSH config: {{ 'VALID' if sshd_test.rc == 0 else 'INVALID' }}"
 
     - name: Get active SSH settings
-      ansible.builtin.command: sshd -T
+      ansible.builtin.command: /usr/sbin/sshd -T
       register: sshd_settings
       changed_when: false
 
@@ -416,4 +423,4 @@ graph TD
       loop: "{{ sshd_settings.stdout_lines | select('match', '^(permitrootlogin|passwordauthentication|pubkeyauthentication|maxauthtries|port)') | list }}"
 ```
 
-The most important thing when managing SSH with Ansible is the `validate` parameter on the template and lineinfile tasks. It runs `sshd -t -f` against the new config file before committing the change. A bad SSH config can lock you out of the server entirely, so this validation step is not optional.
+The most important thing when managing SSH with Ansible is the `validate` parameter on the template and lineinfile tasks. It runs `/usr/sbin/sshd -t -f` against the new config file before committing the change. A bad SSH config can lock you out of the server entirely, so this validation step is not optional.
