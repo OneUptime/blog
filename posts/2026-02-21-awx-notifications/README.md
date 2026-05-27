@@ -8,7 +8,7 @@ Description: Configure AWX notification templates for Slack, email, webhooks, an
 
 ---
 
-AWX can send notifications when jobs start, succeed, fail, or require approval. This is essential for any team using AWX in production because you need to know when deployments complete, when patching finishes, and especially when something fails. AWX supports multiple notification channels including email, Slack, Microsoft Teams, PagerDuty, webhooks, and more. This post covers setting up each type and attaching them to job templates and workflows.
+AWX can send notifications when jobs start, succeed, fail, or require approval. This is essential for any team using AWX in production because you need to know when deployments complete, when patching finishes, and especially when something fails. AWX supports multiple notification channels including email, Slack, PagerDuty, webhooks, and more. This post covers setting up each type and attaching them to job templates and workflows, including using webhooks for Microsoft Teams.
 
 ## Notification Flow
 
@@ -72,21 +72,21 @@ Notifications are configured in two steps:
               Job "{{ '{{' }} job.name {{ '}}' }}" has started.
               Job ID: {{ '{{' }} job.id {{ '}}' }}
               Started by: {{ '{{' }} job.created_by {{ '}}' }}
-              URL: {{ '{{' }} url {{ '}}' }}
+              URL: {{ '{{' }} job.url {{ '}}' }}
           success:
             message: "AWX Job Succeeded: {{ '{{' }} job.name {{ '}}' }}"
             body: >
               Job "{{ '{{' }} job.name {{ '}}' }}" completed successfully.
               Job ID: {{ '{{' }} job.id {{ '}}' }}
               Duration: {{ '{{' }} job.elapsed {{ '}}' }} seconds
-              URL: {{ '{{' }} url {{ '}}' }}
+              URL: {{ '{{' }} job.url {{ '}}' }}
           error:
             message: "AWX Job FAILED: {{ '{{' }} job.name {{ '}}' }}"
             body: >
               Job "{{ '{{' }} job.name {{ '}}' }}" has FAILED.
               Job ID: {{ '{{' }} job.id {{ '}}' }}
               Duration: {{ '{{' }} job.elapsed {{ '}}' }} seconds
-              URL: {{ '{{' }} url {{ '}}' }}
+              URL: {{ '{{' }} job.url {{ '}}' }}
               Please investigate immediately.
         state: present
 ```
@@ -112,17 +112,17 @@ Notifications are configured in two steps:
             message: >
               :rocket: *Job Started*: {{ '{{' }} job.name {{ '}}' }}
               Launched by: {{ '{{' }} job.created_by {{ '}}' }}
-              <{{ '{{' }} url {{ '}}' }}|View Job>
+              <{{ '{{' }} job.url {{ '}}' }}|View Job>
           success:
             message: >
               :white_check_mark: *Job Succeeded*: {{ '{{' }} job.name {{ '}}' }}
               Duration: {{ '{{' }} job.elapsed {{ '}}' }}s
-              <{{ '{{' }} url {{ '}}' }}|View Job>
+              <{{ '{{' }} job.url {{ '}}' }}|View Job>
           error:
             message: >
               :x: *Job FAILED*: {{ '{{' }} job.name {{ '}}' }}
               Duration: {{ '{{' }} job.elapsed {{ '}}' }}s
-              <{{ '{{' }} url {{ '}}' }}|View Job> - Please investigate!
+              <{{ '{{' }} job.url {{ '}}' }}|View Job> - Please investigate!
         state: present
 ```
 
@@ -147,14 +147,22 @@ Webhooks send a POST request with job data to any URL. This is flexible and work
           http_method: "POST"
         messages:
           started:
-            body: >
-              {"event": "job_started", "job_name": "{{ '{{' }} job.name {{ '}}' }}", "job_id": {{ '{{' }} job.id {{ '}}' }}}
+            body:
+              event: "job_started"
+              job_name: "{{ '{{' }} job.name {{ '}}' }}"
+              job_id: "{{ '{{' }} job.id {{ '}}' }}"
           success:
-            body: >
-              {"event": "job_success", "job_name": "{{ '{{' }} job.name {{ '}}' }}", "job_id": {{ '{{' }} job.id {{ '}}' }}, "duration": {{ '{{' }} job.elapsed {{ '}}' }}}
+            body:
+              event: "job_success"
+              job_name: "{{ '{{' }} job.name {{ '}}' }}"
+              job_id: "{{ '{{' }} job.id {{ '}}' }}"
+              duration: "{{ '{{' }} job.elapsed {{ '}}' }}"
           error:
-            body: >
-              {"event": "job_failure", "job_name": "{{ '{{' }} job.name {{ '}}' }}", "job_id": {{ '{{' }} job.id {{ '}}' }}, "duration": {{ '{{' }} job.elapsed {{ '}}' }}}
+            body:
+              event: "job_failure"
+              job_name: "{{ '{{' }} job.name {{ '}}' }}"
+              job_id: "{{ '{{' }} job.id {{ '}}' }}"
+              duration: "{{ '{{' }} job.elapsed {{ '}}' }}"
         state: present
 ```
 
@@ -173,6 +181,7 @@ For critical job failures that need immediate attention.
         notification_type: pagerduty
         notification_configuration:
           token: "{{ lookup('env', 'PAGERDUTY_TOKEN') }}"
+          subdomain: "your-pagerduty-subdomain"
           service_key: "{{ lookup('env', 'PAGERDUTY_SERVICE_KEY') }}"
           client_name: "AWX"
         state: present
@@ -190,21 +199,25 @@ For critical job failures that need immediate attention.
         organization: "Default"
         notification_type: webhook
         notification_configuration:
-          url: "https://outlook.office.com/webhook/your-webhook-url"
+          url: "https://your-teams-webhook-url"
           http_method: "POST"
           headers:
             Content-Type: "application/json"
         messages:
           success:
-            body: >
-              {"@type": "MessageCard", "summary": "AWX Job Succeeded", "themeColor": "00FF00",
-               "title": "Job Succeeded: {{ '{{' }} job.name {{ '}}' }}",
-               "text": "Duration: {{ '{{' }} job.elapsed {{ '}}' }}s. [View Job]({{ '{{' }} url {{ '}}' }})"}
+            body:
+              "@type": "MessageCard"
+              summary: "AWX Job Succeeded"
+              themeColor: "00FF00"
+              title: "Job Succeeded: {{ '{{' }} job.name {{ '}}' }}"
+              text: "Duration: {{ '{{' }} job.elapsed {{ '}}' }}s. [View Job]({{ '{{' }} job.url {{ '}}' }})"
           error:
-            body: >
-              {"@type": "MessageCard", "summary": "AWX Job Failed", "themeColor": "FF0000",
-               "title": "Job FAILED: {{ '{{' }} job.name {{ '}}' }}",
-               "text": "Duration: {{ '{{' }} job.elapsed {{ '}}' }}s. [View Job]({{ '{{' }} url {{ '}}' }})"}
+            body:
+              "@type": "MessageCard"
+              summary: "AWX Job Failed"
+              themeColor: "FF0000"
+              title: "Job FAILED: {{ '{{' }} job.name {{ '}}' }}"
+              text: "Duration: {{ '{{' }} job.elapsed {{ '}}' }}s. [View Job]({{ '{{' }} job.url {{ '}}' }})"
         state: present
 ```
 
