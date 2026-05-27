@@ -144,15 +144,15 @@ For CI/CD pipelines, you need to handle the case where the rollout fails or take
         kind: Deployment
         name: "{{ app_name }}"
         namespace: "{{ namespace }}"
-      register: deploy_status
+      register: wait_result
       until:
-        - deploy_status.resources[0].status.updatedReplicas is defined
-        - deploy_status.resources[0].status.updatedReplicas == deploy_status.resources[0].spec.replicas
-        - deploy_status.resources[0].status.readyReplicas is defined
-        - deploy_status.resources[0].status.readyReplicas == deploy_status.resources[0].spec.replicas
+        - wait_result.resources | length > 0
+        - wait_result.resources[0].status.updatedReplicas is defined
+        - wait_result.resources[0].status.updatedReplicas == wait_result.resources[0].spec.replicas
+        - wait_result.resources[0].status.readyReplicas is defined
+        - wait_result.resources[0].status.readyReplicas == wait_result.resources[0].spec.replicas
       retries: 30
       delay: 10
-      register: wait_result
       ignore_errors: true
 
     - name: Rollback if deployment failed
@@ -225,7 +225,7 @@ DaemonSets update across all nodes, so the wait depends on cluster size.
 Sometimes you need to wait for a specific pod, not just the overall deployment status.
 
 ```yaml
-# task: wait for a specific pod to be in Running phase
+# task: wait for a specific pod to reach a terminal phase
 - name: Wait for migration pod to complete
   kubernetes.core.k8s_info:
     kind: Pod
@@ -249,22 +249,21 @@ Sometimes you need to wait for a specific pod, not just the overall deployment s
 
 ## Waiting for Service Endpoints
 
-Even after a Deployment is ready, the Service might not have updated its endpoints yet. This matters for zero-downtime deployments.
+Even after a Deployment is ready, the Service might not have updated its EndpointSlices yet. This matters for zero-downtime deployments.
 
 ```yaml
 # task: wait for service to have healthy endpoints
 - name: Wait for service endpoints to be ready
   kubernetes.core.k8s_info:
-    kind: Endpoints
-    name: web-api
+    kind: EndpointSlice
+    api_version: discovery.k8s.io/v1
     namespace: production
-  register: endpoints
+    label_selectors:
+      - "kubernetes.io/service-name=web-api"
+  register: endpoint_slices
   until:
-    - endpoints.resources | length > 0
-    - endpoints.resources[0].subsets is defined
-    - endpoints.resources[0].subsets | length > 0
-    - endpoints.resources[0].subsets[0].addresses is defined
-    - endpoints.resources[0].subsets[0].addresses | length >= 3
+    - endpoint_slices.resources | length > 0
+    - endpoint_slices.resources | map(attribute='endpoints') | flatten | selectattr('conditions.ready', 'ne', false) | list | length >= 3
   retries: 30
   delay: 5
 ```
@@ -355,13 +354,15 @@ Here is a full pipeline that combines several wait patterns.
 
     - name: Step 3 - Verify service endpoints
       kubernetes.core.k8s_info:
-        kind: Endpoints
-        name: "{{ app_name }}"
+        kind: EndpointSlice
+        api_version: discovery.k8s.io/v1
         namespace: "{{ namespace }}"
-      register: endpoints
+        label_selectors:
+          - "kubernetes.io/service-name={{ app_name }}"
+      register: endpoint_slices
       until:
-        - endpoints.resources[0].subsets is defined
-        - endpoints.resources[0].subsets | length > 0
+        - endpoint_slices.resources | length > 0
+        - endpoint_slices.resources | map(attribute='endpoints') | flatten | selectattr('conditions.ready', 'ne', false) | list | length > 0
       retries: 12
       delay: 5
 
