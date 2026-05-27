@@ -236,12 +236,12 @@ The host_pinned strategy is great for deployment workflows but has some things t
 - The total runtime depends on the slowest host, not the slowest task
 - Forks determine maximum parallel host processing
 
-Use the `dense` callback for readable output:
+Use the `community.general.dense` callback for readable output if you have the `community.general` collection installed:
 
 ```ini
 [defaults]
 strategy = host_pinned
-stdout_callback = dense
+stdout_callback = community.general.dense
 ```
 
 The host_pinned strategy gives you the speed benefits of free execution with the consistency guarantee that each host completes its full task sequence before the worker moves on. It is the best strategy for deployment workflows where each host needs to go through a complete lifecycle.
