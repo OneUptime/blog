@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Plugin, Strategy, Execution, Deployment
 
-Description: Build custom Ansible strategy plugins to implement advanced execution patterns like rolling deploys, blue-green switching, and weighted batches.
+Description: Build custom Ansible strategy plugins to implement advanced execution patterns like rolling deploys with health gates and priority scheduling.
 
 ---
 
-Strategy plugins control the order and grouping of task execution across hosts. The built-in `linear` strategy runs each task on all hosts before moving to the next task. The `free` strategy lets each host run through all tasks independently. When you need something more sophisticated, like rolling deployments with health gate checks, weighted batch processing, or priority-based execution, you write a custom strategy.
+Strategy plugins control the flow of task execution across hosts. The built-in `linear` strategy runs each task on all hosts before moving to the next task. The `free` strategy lets each host run through all tasks independently. When you need something more sophisticated, like rolling deployments with health gate checks or priority-based execution, you write a custom strategy.
 
 This guide builds two practical strategies: a rolling deploy with health checks and a priority-based execution strategy.
 
 ## Rolling Deploy with Health Gates
 
-This strategy processes hosts in configurable batch sizes and runs a health check between batches. If the health check fails, it stops the deployment.
+This strategy uses Ansible's `serial` play keyword for batch sizing and runs a health check after each batch. If the health check fails, it stops the deployment.
 
 Create `strategy_plugins/rolling_health.py`:
 
@@ -28,20 +28,11 @@ DOCUMENTATION = """
     name: rolling_health
     short_description: Rolling deployment with health gate checks
     description:
-        - Processes hosts in batches with configurable health checks between batches.
+        - Runs configurable health checks after Ansible serial batches.
         - Stops deployment if health checks fail after any batch.
     options:
-      batch_size:
-        description: Number of hosts per batch.
-        type: int
-        default: 5
-        env:
-          - name: ANSIBLE_ROLLING_BATCH_SIZE
-        ini:
-          - key: batch_size
-            section: rolling_health
       health_check_url:
-        description: URL to check between batches (expects HTTP 200).
+        description: URL to check after each serial batch (expects HTTP 200).
         type: str
         default: ''
         env:
@@ -68,7 +59,7 @@ DOCUMENTATION = """
           - key: health_check_delay
             section: rolling_health
       pause_between_batches:
-        description: Seconds to pause between batches.
+        description: Seconds to pause after each batch.
         type: int
         default: 0
         env:
@@ -81,7 +72,6 @@ DOCUMENTATION = """
 import time
 from ansible.plugins.strategy.linear import StrategyModule as LinearStrategy
 from ansible.utils.display import Display
-from ansible.errors import AnsibleError
 
 display = Display()
 
@@ -90,98 +80,40 @@ class StrategyModule(LinearStrategy):
     """Rolling deployment strategy with health gates."""
 
     def run(self, iterator, play_context):
-        batch_size = self.get_option('batch_size')
         health_url = self.get_option('health_check_url')
         retries = self.get_option('health_check_retries')
         delay = self.get_option('health_check_delay')
         pause = self.get_option('pause_between_batches')
 
-        all_hosts = self._inventory.get_hosts(
+        hosts = self._inventory.get_hosts(
             iterator._play.hosts, order=iterator._play.order
         )
-
-        if len(all_hosts) <= batch_size:
-            display.display(
-                "ROLLING: All %d hosts fit in one batch, running normally"
-                % len(all_hosts)
-            )
-            return super(StrategyModule, self).run(iterator, play_context)
-
-        # Split hosts into batches
-        batches = []
-        for i in range(0, len(all_hosts), batch_size):
-            batches.append(all_hosts[i:i + batch_size])
-
         display.display(
-            "ROLLING: %d hosts in %d batches of %d"
-            % (len(all_hosts), len(batches), batch_size),
+            "ROLLING: Running batch with %d host(s)" % len(hosts),
             color='cyan'
         )
 
-        total_result = 0
+        result = super(StrategyModule, self).run(iterator, play_context)
+        if result != self._tqm.RUN_OK:
+            return result
 
-        for batch_num, batch in enumerate(batches, 1):
-            batch_names = [h.name for h in batch]
+        if health_url:
+            if not self._run_health_check(health_url, retries, delay):
+                display.error(
+                    "ROLLING: Health check failed after batch. Stopping deployment."
+                )
+                return self._tqm.RUN_FAILED_HOSTS
+
             display.display(
-                "ROLLING: Batch %d/%d: %s"
-                % (batch_num, len(batches), ', '.join(batch_names)),
-                color='yellow'
+                "ROLLING: Health check passed after batch",
+                color='green'
             )
 
-            # Mark hosts not in this batch as unreachable temporarily
-            other_hosts = [h for h in all_hosts if h not in batch]
-            for host in other_hosts:
-                self._tqm._unreachable_hosts[host.name] = True
+        if pause > 0:
+            display.display("ROLLING: Pausing %d seconds" % pause, color='cyan')
+            time.sleep(pause)
 
-            # Run the batch
-            result = super(StrategyModule, self).run(iterator, play_context)
-
-            # Restore hosts
-            for host in other_hosts:
-                if host.name in self._tqm._unreachable_hosts:
-                    del self._tqm._unreachable_hosts[host.name]
-
-            # Check for failures in this batch
-            if self._tqm._stats.failures:
-                failed_hosts = [
-                    h for h in batch_names
-                    if self._tqm._stats.summarize(h).get('failures', 0) > 0
-                ]
-                if failed_hosts:
-                    display.error(
-                        "ROLLING: Batch %d had failures on: %s. Stopping."
-                        % (batch_num, ', '.join(failed_hosts))
-                    )
-                    return result
-
-            # Run health check if configured
-            if health_url and batch_num < len(batches):
-                if not self._run_health_check(health_url, retries, delay):
-                    display.error(
-                        "ROLLING: Health check failed after batch %d. Stopping deployment."
-                        % batch_num
-                    )
-                    return 1
-
-                display.display(
-                    "ROLLING: Health check passed after batch %d" % batch_num,
-                    color='green'
-                )
-
-            # Pause between batches
-            if pause > 0 and batch_num < len(batches):
-                display.display(
-                    "ROLLING: Pausing %d seconds" % pause, color='cyan'
-                )
-                time.sleep(pause)
-
-            total_result = max(total_result, result)
-
-        display.display(
-            "ROLLING: All %d batches complete" % len(batches),
-            color='green'
-        )
-        return total_result
+        return result
 
     def _run_health_check(self, url, retries, delay):
         """Run an HTTP health check with retries."""
@@ -214,7 +146,7 @@ class StrategyModule(LinearStrategy):
 
 ## Priority-Based Strategy
 
-This strategy lets you assign priorities to hosts and processes higher-priority hosts first.
+This strategy lets you assign priorities to hosts and schedules higher-priority hosts first.
 
 Create `strategy_plugins/priority.py`:
 
@@ -227,8 +159,8 @@ DOCUMENTATION = """
     name: priority
     short_description: Priority-based execution strategy
     description:
-        - Processes hosts in order of their assigned priority.
-        - Higher priority hosts are processed first.
+        - Schedules hosts in order of their assigned priority.
+        - Higher priority hosts are scheduled first.
         - Set priority via the ansible_priority host variable.
     options:
       priority_var:
@@ -240,12 +172,6 @@ DOCUMENTATION = """
         ini:
           - key: priority_var
             section: priority_strategy
-      group_by_priority:
-        description: If true, all hosts of same priority run together before next group.
-        type: bool
-        default: true
-        env:
-          - name: ANSIBLE_PRIORITY_GROUP
 """
 
 from ansible.plugins.strategy.linear import StrategyModule as LinearStrategy
@@ -257,72 +183,39 @@ display = Display()
 class StrategyModule(LinearStrategy):
     """Execute hosts based on priority variable."""
 
-    def run(self, iterator, play_context):
+    def _get_priority(self, host):
         priority_var = self.get_option('priority_var')
-        group_by_priority = self.get_option('group_by_priority')
-
-        all_hosts = self._inventory.get_hosts(
-            iterator._play.hosts, order=iterator._play.order
+        priority = self._inventory.get_host(host.name).get_vars().get(
+            priority_var, 0
         )
+        try:
+            return int(priority)
+        except (ValueError, TypeError):
+            return 0
 
-        # Sort hosts by priority (highest first)
-        def get_priority(host):
-            priority = self._inventory.get_host(host.name).get_vars().get(
-                priority_var, 0
-            )
-            try:
-                return int(priority)
-            except (ValueError, TypeError):
-                return 0
+    def _set_hosts_cache(self, play, refresh=True):
+        super(StrategyModule, self)._set_hosts_cache(play, refresh=refresh)
+        hosts = [
+            self._inventory.get_host(host_name)
+            for host_name in self._hosts_cache
+        ]
+        sorted_hosts = sorted(hosts, key=self._get_priority, reverse=True)
+        self._hosts_cache = [host.name for host in sorted_hosts]
 
-        sorted_hosts = sorted(all_hosts, key=get_priority, reverse=True)
+    def run(self, iterator, play_context):
+        self._set_hosts_cache(iterator._play)
 
         # Log the execution order
-        for host in sorted_hosts:
-            p = get_priority(host)
-            display.vv("PRIORITY: %s (priority=%d)" % (host.name, p))
+        for host_name in self._hosts_cache:
+            host = self._inventory.get_host(host_name)
+            p = self._get_priority(host)
+            display.vv("PRIORITY: %s (priority=%d)" % (host_name, p))
 
-        if not group_by_priority:
-            # Just reorder and run linearly
-            display.display(
-                "PRIORITY: Running hosts in priority order",
-                color='cyan'
-            )
-            return super(StrategyModule, self).run(iterator, play_context)
-
-        # Group by priority and run each group separately
-        priority_groups = {}
-        for host in sorted_hosts:
-            p = get_priority(host)
-            if p not in priority_groups:
-                priority_groups[p] = []
-            priority_groups[p].append(host)
-
-        total_result = 0
-        for priority in sorted(priority_groups.keys(), reverse=True):
-            group = priority_groups[priority]
-            group_names = [h.name for h in group]
-
-            display.display(
-                "PRIORITY: Processing priority %d: %s"
-                % (priority, ', '.join(group_names)),
-                color='yellow'
-            )
-
-            # Run only this priority group
-            other_hosts = [h for h in all_hosts if h not in group]
-            for host in other_hosts:
-                self._tqm._unreachable_hosts[host.name] = True
-
-            result = super(StrategyModule, self).run(iterator, play_context)
-
-            for host in other_hosts:
-                if host.name in self._tqm._unreachable_hosts:
-                    del self._tqm._unreachable_hosts[host.name]
-
-            total_result = max(total_result, result)
-
-        return total_result
+        display.display(
+            "PRIORITY: Running hosts in priority order",
+            color='cyan'
+        )
+        return super(StrategyModule, self).run(iterator, play_context)
 ```
 
 ## Using These Strategies
@@ -335,6 +228,7 @@ class StrategyModule(LinearStrategy):
 - name: Deploy with rolling health checks
   hosts: web_servers
   strategy: rolling_health
+  serial: 3
   become: true
 
   tasks:
@@ -361,7 +255,6 @@ Configure the strategy:
 ```ini
 # ansible.cfg
 [rolling_health]
-batch_size = 3
 health_check_url = https://lb.myorg.com/health
 health_check_retries = 5
 health_check_delay = 10
@@ -423,4 +316,4 @@ flowchart TD
 
 ## Summary
 
-Custom strategy plugins give you precise control over how Ansible processes hosts. The rolling health strategy adds safety to deployments by checking service health between batches. The priority strategy ensures critical hosts get updated first. Both patterns extend the linear strategy, reusing its task execution and result handling while adding custom orchestration logic on top. The key technique is temporarily manipulating `_tqm._unreachable_hosts` to control which hosts get processed in each phase.
+Custom strategy plugins give you precise control over how Ansible processes hosts. The rolling health strategy adds safety to deployments by checking service health after each serial batch. The priority strategy ensures critical hosts get scheduled first. Both patterns extend the linear strategy, reusing its task execution and result handling while adding custom orchestration logic on top. The key technique is overriding strategy behavior while leaving rolling deployment batch sizing to Ansible's `serial` keyword.
