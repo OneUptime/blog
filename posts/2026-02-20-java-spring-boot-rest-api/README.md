@@ -272,6 +272,21 @@ public class ProductController {
 Handle errors consistently across the entire API.
 
 ```java
+// ResourceNotFoundException.java - Custom exception for missing resources
+public class ResourceNotFoundException extends RuntimeException {
+    public ResourceNotFoundException(String message) {
+        super(message);
+    }
+}
+```
+
+```java
+// ErrorResponse.java - Consistent API error response body
+public record ErrorResponse(int status, String message, LocalDateTime timestamp) {
+}
+```
+
+```java
 // GlobalExceptionHandler.java - Centralized error handling
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -333,7 +348,7 @@ sequenceDiagram
     Client->>Controller: POST /api/v1/products
     Controller->>Validator: Validate request body
     alt Validation fails
-        Validator-->>Controller: ConstraintViolation
+        Validator-->>Controller: MethodArgumentNotValidException
         Controller-->>Client: 400 Bad Request
     else Validation passes
         Controller->>Service: createProduct(request)
