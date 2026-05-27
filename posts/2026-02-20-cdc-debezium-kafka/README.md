@@ -32,7 +32,7 @@ Debezium reads the database's write-ahead log (WAL) or binary log, converts each
 # Install the Strimzi Kafka operator
 
 kubectl create namespace kafka
-kubectl apply -f https://strimzi.io/install/latest?namespace=kafka
+kubectl apply -f <(curl -L https://github.com/strimzi/strimzi-kafka-operator/releases/download/0.45.2/strimzi-cluster-operator-0.45.2.yaml | sed 's/namespace: myproject/namespace: kafka/g')
 
 # Wait for the operator to be ready
 kubectl wait --for=condition=Ready pod -l name=strimzi-cluster-operator -n kafka --timeout=300s
@@ -48,7 +48,7 @@ metadata:
   namespace: kafka
 spec:
   kafka:
-    version: 3.7.0
+    version: 3.9.2
     replicas: 3
     listeners:
       # Internal listener for in-cluster communication
@@ -147,7 +147,7 @@ metadata:
     # Enable the connector operator to manage connectors
     strimzi.io/use-connector-resources: "true"
 spec:
-  version: 3.7.0
+  version: 3.9.2
   replicas: 2
   bootstrapServers: cdc-cluster-kafka-bootstrap:9092
   config:
@@ -174,7 +174,13 @@ spec:
       - name: debezium-postgres
         artifacts:
           - type: tgz
-            url: https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/2.6.0.Final/debezium-connector-postgres-2.6.0.Final-plugin.tar.gz
+            url: https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/3.4.3.Final/debezium-connector-postgres-3.4.3.Final-plugin.tar.gz
+  metricsConfig:
+    type: jmxPrometheusExporter
+    valueFrom:
+      configMapKeyRef:
+        name: kafka-connect-metrics
+        key: connect-metrics-config.yaml
   resources:
     requests:
       cpu: 500m
@@ -297,7 +303,7 @@ def process_change_event(event):
         # DELETE: Remove the document from the index
         doc_id = before.get("id")
         print(f"Deleting order: {doc_id}")
-        es.delete(index=f"{table}-index", id=doc_id, ignore=[404])
+        es.options(ignore_status=404).delete(index=f"{table}-index", id=doc_id)
 
     elif operation == "r":
         # READ: Snapshot event during initial load
@@ -317,6 +323,21 @@ for message in consumer:
 ```
 
 ## Step 6: Monitor the CDC Pipeline
+
+```yaml
+# kafka-connect-metrics-config.yaml
+# Prometheus JMX Exporter configuration for Kafka Connect metrics
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-connect-metrics
+  namespace: kafka
+data:
+  connect-metrics-config.yaml: |
+    lowercaseOutputName: true
+    rules:
+      - pattern: ".*"
+```
 
 ```yaml
 # cdc-monitoring.yaml
