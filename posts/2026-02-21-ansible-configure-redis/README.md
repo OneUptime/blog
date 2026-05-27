@@ -109,9 +109,13 @@ logfile {{ redis_logfile }}
 databases 16
 
 # Snapshotting (RDB)
+{% if redis_save_rules | length > 0 %}
 {% for rule in redis_save_rules %}
 save {{ rule }}
 {% endfor %}
+{% else %}
+save ""
+{% endif %}
 stop-writes-on-bgsave-error yes
 rdbcompression yes
 rdbchecksum yes
@@ -123,7 +127,7 @@ dir {{ redis_rdb_dir }}
 replicaof {{ redis_replica_of.host }} {{ redis_replica_of.port }}
 {% endif %}
 {% if redis_replica_read_only is defined %}
-replica-read-only {{ redis_replica_read_only | lower }}
+replica-read-only {{ "yes" if redis_replica_read_only else "no" }}
 {% endif %}
 
 # Security
@@ -140,9 +144,9 @@ maxmemory-policy {{ redis_maxmemory_policy }}
 maxmemory-samples {{ redis_maxmemory_samples }}
 
 # Lazy freeing
-lazyfree-lazy-eviction {{ redis_lazyfree_lazy_eviction | lower }}
-lazyfree-lazy-expire {{ redis_lazyfree_lazy_expire | lower }}
-lazyfree-lazy-server-del {{ redis_lazyfree_lazy_server_del | lower }}
+lazyfree-lazy-eviction {{ "yes" if redis_lazyfree_lazy_eviction else "no" }}
+lazyfree-lazy-expire {{ "yes" if redis_lazyfree_lazy_expire else "no" }}
+lazyfree-lazy-server-del {{ "yes" if redis_lazyfree_lazy_server_del else "no" }}
 
 # Append Only File
 appendonly {{ "yes" if redis_aof_enabled else "no" }}
@@ -260,23 +264,38 @@ Sometimes you need to change a setting without restarting Redis. The `CONFIG SET
   tasks:
     - name: Update maxmemory at runtime without restart
       ansible.builtin.command:
-        cmd: >
-          redis-cli -a {{ redis_password }}
-          CONFIG SET maxmemory {{ redis_maxmemory }}
+        argv:
+          - redis-cli
+          - CONFIG
+          - SET
+          - maxmemory
+          - "{{ redis_maxmemory }}"
+      environment:
+        REDISCLI_AUTH: "{{ redis_password }}"
       changed_when: true
       no_log: true
 
     - name: Update maxmemory-policy at runtime
       ansible.builtin.command:
-        cmd: >
-          redis-cli -a {{ redis_password }}
-          CONFIG SET maxmemory-policy {{ redis_maxmemory_policy }}
+        argv:
+          - redis-cli
+          - CONFIG
+          - SET
+          - maxmemory-policy
+          - "{{ redis_maxmemory_policy }}"
+      environment:
+        REDISCLI_AUTH: "{{ redis_password }}"
       changed_when: true
       no_log: true
 
     - name: Persist runtime changes to the config file
       ansible.builtin.command:
-        cmd: redis-cli -a {{ redis_password }} CONFIG REWRITE
+        argv:
+          - redis-cli
+          - CONFIG
+          - REWRITE
+      environment:
+        REDISCLI_AUTH: "{{ redis_password }}"
       changed_when: true
       no_log: true
 ```
@@ -312,21 +331,37 @@ After deploying config changes, verify everything is working.
   tasks:
     - name: Check Redis is responding
       ansible.builtin.command:
-        cmd: redis-cli -a {{ redis_password }} ping
+        argv:
+          - redis-cli
+          - ping
+      environment:
+        REDISCLI_AUTH: "{{ redis_password }}"
       register: redis_ping
       changed_when: false
       no_log: true
 
     - name: Verify maxmemory setting
       ansible.builtin.command:
-        cmd: redis-cli -a {{ redis_password }} CONFIG GET maxmemory
+        argv:
+          - redis-cli
+          - CONFIG
+          - GET
+          - maxmemory
+      environment:
+        REDISCLI_AUTH: "{{ redis_password }}"
       register: maxmemory_check
       changed_when: false
       no_log: true
 
     - name: Verify persistence settings
       ansible.builtin.command:
-        cmd: redis-cli -a {{ redis_password }} CONFIG GET appendonly
+        argv:
+          - redis-cli
+          - CONFIG
+          - GET
+          - appendonly
+      environment:
+        REDISCLI_AUTH: "{{ redis_password }}"
       register: aof_check
       changed_when: false
       no_log: true
@@ -351,7 +386,7 @@ Here are some things I have seen go wrong in production:
 
 4. **Binding to `0.0.0.0` without a password or firewall.** Redis has no built-in authentication that is resistant to brute force. If you expose it to the network, set a strong password and use firewall rules.
 
-5. **Forgetting to set `tcp-keepalive`.** Without it, idle connections pile up and you run into file descriptor limits.
+5. **Disabling `tcp-keepalive` or setting it too high.** Redis defaults to a reasonable keepalive interval, but if you disable it or push the interval too high, dead peers can linger longer than expected.
 
 ## Conclusion
 
