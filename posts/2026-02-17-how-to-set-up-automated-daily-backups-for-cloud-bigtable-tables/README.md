@@ -8,17 +8,17 @@ Description: Learn how to configure automated daily backups for your Cloud Bigta
 
 ---
 
-If you are running production workloads on Cloud Bigtable, you need a solid backup strategy. Bigtable stores massive amounts of data - time-series metrics, user activity logs, financial records - and losing any of it could be catastrophic. While Bigtable replicates data across nodes within a cluster, that does not protect you from accidental deletions, application bugs that corrupt data, or compliance requirements that mandate point-in-time recovery.
+If you are running production workloads on Cloud Bigtable, you need a solid backup strategy. Bigtable stores massive amounts of data - time-series metrics, user activity logs, financial records - and losing any of it could be catastrophic. While Bigtable can replicate data across clusters, that does not protect you from accidental deletions, application bugs that corrupt data, or compliance requirements that mandate point-in-time recovery.
 
-Google Cloud introduced native backup support for Bigtable, which lets you create snapshots of your tables that you can restore later. But clicking through the console every day is not a real backup strategy. You need automation. In this post, I will walk you through setting up automated daily backups using Cloud Scheduler and Cloud Functions.
+Google Cloud supports native backups for Bigtable, which lets you create restorable copies of your tables. Bigtable can also manage automated backup policies for you, but if you need custom naming, scheduling, logging, or retention logic, you can build your own automation. In this post, I will walk you through setting up automated daily backups using Cloud Scheduler and Cloud Functions.
 
 ## Understanding Bigtable Backups
 
-Bigtable backups are cluster-level snapshots of a table. When you create a backup, Bigtable captures the state of the table at that point in time. A few things to keep in mind:
+Bigtable backups are table-level backups stored in a cluster. When you create a backup, Bigtable captures the state of the table at that point in time. A few things to keep in mind:
 
-- Backups are stored in the same cluster as the source table
+- Manually created backups are stored in a cluster in the same instance as the source table
 - Each backup has an expiration date (maximum 90 days)
-- You can restore a backup to a new table in the same instance
+- You can restore a backup to a new table in any existing Bigtable instance
 - Backups are billed based on storage used
 
 The backup process is non-blocking, meaning your table continues to serve reads and writes while the backup is being created.
@@ -68,9 +68,10 @@ Here is the `main.py` file that handles the backup logic:
 ```python
 # main.py - Cloud Function to create Bigtable table backups
 import datetime
+import hashlib
+import logging
 import os
 from google.cloud import bigtable
-from google.cloud.bigtable import admin_v2
 
 def create_bigtable_backup(request):
     """Creates a backup of specified Bigtable tables."""
@@ -90,32 +91,37 @@ def create_bigtable_backup(request):
 
     client = bigtable.Client(project=project_id, admin=True)
     instance = client.instance(instance_id)
-    cluster = instance.cluster(cluster_id)
 
     results = []
+    failed = False
 
     for table_id in table_ids:
         table_id = table_id.strip()
         if not table_id:
             continue
 
-        backup_id = f"{table_id}-backup-{timestamp}"
+        # Backup IDs must be 50 characters or fewer.
+        table_hash = hashlib.sha1(table_id.encode("utf-8")).hexdigest()[:8]
+        backup_id = f"{table_id[:24]}-{table_hash}-{timestamp}"
 
         try:
             # Create the backup using the Bigtable Admin API
-            backup = cluster.backup(backup_id)
-            backup.create(
-                table_id=table_id,
+            table = instance.table(table_id)
+            backup = table.backup(
+                backup_id,
+                cluster_id=cluster_id,
                 expire_time=expire_time
             )
+            backup.create()
             results.append(f"Backup {backup_id} created for table {table_id}")
             print(f"Successfully created backup: {backup_id}")
         except Exception as e:
+            failed = True
             error_msg = f"Failed to backup table {table_id}: {str(e)}"
             results.append(error_msg)
-            print(error_msg)
+            logging.exception(error_msg)
 
-    return "\n".join(results), 200
+    return "\n".join(results), 500 if failed else 200
 ```
 
 And here is the `requirements.txt`:
@@ -138,10 +144,20 @@ gcloud functions deploy bigtable-daily-backup \
   --set-env-vars GCP_PROJECT_ID=YOUR_PROJECT_ID,BIGTABLE_INSTANCE_ID=my-instance,BIGTABLE_CLUSTER_ID=my-cluster,BIGTABLE_TABLE_IDS="table1,table2,table3" \
   --region us-central1 \
   --timeout 540s \
-  --memory 256MB
+  --memory 256MB \
+  --no-allow-unauthenticated
 ```
 
 The timeout is set to 540 seconds because large tables can take a while to initiate backups. Adjust this based on the number and size of your tables.
+
+Grant the Scheduler service account permission to invoke the function:
+
+```bash
+# Allow Cloud Scheduler to invoke the authenticated Cloud Function
+gcloud functions add-invoker-policy-binding bigtable-daily-backup \
+  --member="serviceAccount:bigtable-backup-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --region us-central1
+```
 
 ## Step 4: Set Up Cloud Scheduler
 
@@ -168,7 +184,7 @@ Old backups accumulate and cost money. Add a cleanup function that removes backu
 # cleanup.py - Remove expired Bigtable backups beyond retention period
 import datetime
 import os
-from google.cloud import bigtable
+from google.cloud import bigtable_admin_v2
 
 def cleanup_old_backups(request):
     """Deletes backups older than the retention period."""
@@ -179,21 +195,20 @@ def cleanup_old_backups(request):
     # Number of days to keep backups
     retention_days = int(os.environ.get("RETENTION_DAYS", "30"))
 
-    client = bigtable.Client(project=project_id, admin=True)
-    instance = client.instance(instance_id)
-    cluster = instance.cluster(cluster_id)
+    client = bigtable_admin_v2.BigtableTableAdminClient()
+    parent = f"projects/{project_id}/instances/{instance_id}/clusters/{cluster_id}"
 
     cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=retention_days)
 
     # List all backups in the cluster and delete old ones
-    backups = cluster.list_backups()
+    backups = client.list_backups(parent=parent)
     deleted_count = 0
 
     for backup in backups:
         if backup.start_time < cutoff:
-            backup.delete()
+            client.delete_backup(name=backup.name)
             deleted_count += 1
-            print(f"Deleted old backup: {backup.backup_id}")
+            print(f"Deleted old backup: {backup.name}")
 
     return f"Cleaned up {deleted_count} old backups", 200
 ```
@@ -223,7 +238,7 @@ gcloud scheduler jobs run bigtable-daily-backup-job
 gcloud functions logs read bigtable-daily-backup --limit=20
 
 # List backups to confirm they were created
-cbt -instance=my-instance listbackups my-cluster
+gcloud bigtable backups list --instance=my-instance --cluster=my-cluster
 ```
 
 ## Architecture Overview
@@ -249,7 +264,7 @@ graph LR
 
 **Test restores regularly.** A backup is only useful if you can restore from it. Schedule periodic restore tests to verify your backups are intact.
 
-**Consider cross-region replication.** Bigtable backups are cluster-level, meaning they live in the same region as the cluster. For disaster recovery across regions, consider using Bigtable replication instead of or in addition to backups.
+**Consider cross-region replication.** Manually created Bigtable backups live in the region of the cluster where you create them. For disaster recovery across regions, consider using Bigtable replication and backup copies or automated backups on multiple clusters instead of relying on a single-cluster backup.
 
 ## Wrapping Up
 
