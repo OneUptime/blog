@@ -135,7 +135,7 @@ Keep `gather_facts: true` (the default) when your playbook does any of the follo
 
     # Uses ansible_os_family
     - name: Install packages on RedHat
-      yum:
+      dnf:
         name: nginx
         state: present
       when: ansible_os_family == "RedHat"
@@ -157,7 +157,7 @@ Keep `gather_facts: true` (the default) when your playbook does any of the follo
 
 ## Gathering Specific Facts Only
 
-If you only need a few facts but not the full set, you can disable the automatic gathering and manually call the `setup` module with a filter.
+If you only need a few facts but not the full set, you can disable the automatic gathering and manually call the `setup` module with a subset.
 
 ```yaml
 # selective-facts.yml - gather only network-related facts
@@ -172,6 +172,8 @@ If you only need a few facts but not the full set, you can disable the automatic
     - name: Gather network facts only
       setup:
         gather_subset:
+          - "!all"
+          - "!min"
           - network
 
     - name: Configure application with host IP
@@ -182,7 +184,7 @@ If you only need a few facts but not the full set, you can disable the automatic
         bind_ip: "{{ ansible_default_ipv4.address }}"
 ```
 
-Available subsets include: `all`, `min`, `hardware`, `network`, `virtual`, `ohai`, `facter`. You can also use `!` to exclude subsets.
+Available subsets include: `all`, `min`, `hardware`, `network`, `virtual`, `ohai`, `facter`, and more specific subsets such as `default_ipv4`, `distribution`, and `mounts`. You can also use `!` to exclude subsets.
 
 ```yaml
 # Gather everything except hardware facts (which are slow)
@@ -199,7 +201,7 @@ Here is how different fact gathering strategies compare.
 ```mermaid
 flowchart LR
     A[gather_facts: true] -->|Full setup module| B[2-5 seconds per host]
-    C[gather_subset: network] -->|Filtered setup| D[0.5-1 second per host]
+    C["gather_subset: !all,!min,network"] -->|Subset setup| D[0.5-1 second per host]
     E[gather_facts: false] -->|No setup module| F[0 seconds per host]
 ```
 
@@ -257,6 +259,7 @@ Here is a pattern that gathers facts only when needed, letting you keep `gather_
     - name: Gather facts for template
       setup:
         gather_subset:
+          - "!all"
           - min
           - network
       when: gather_host_info | default(false) | bool
