@@ -20,8 +20,8 @@ The key design principles are:
 
 - **Declarative state management** - You describe the desired state, not the commands to get there.
 - **Idempotent by default** - Running the same playbook twice produces no changes on the second run.
-- **Consistent across platforms** - The `cisco.ios.ios_interfaces` module and the `arista.eos.eos_interfaces` module accept the same structure.
-- **State parameter** - Each module supports states like `merged`, `replaced`, `overridden`, `deleted`, and `gathered`.
+- **Consistent across platforms** - Modules such as `cisco.ios.ios_interfaces` and `arista.eos.eos_interfaces` use a similar structure, with some platform-specific options.
+- **State parameter** - Resource modules support states like `merged`, `replaced`, `overridden`, `deleted`, `gathered`, `rendered`, and `parsed`.
 
 ## Understanding the State Parameter
 
@@ -115,7 +115,7 @@ The module compares your desired config against the running config and only send
 
 ## Using Replaced State for Precise Control
 
-When you want to ensure an interface matches your definition exactly, use `replaced`. This removes any config on the specified interface that is not in your definition.
+When you want tighter control over a specified interface, use `replaced`. This replaces the attributes managed by the module for that interface, while other interfaces are left alone.
 
 ```yaml
 # replace_interface.yml - Ensure interface matches this exact definition
@@ -136,7 +136,7 @@ When you want to ensure an interface matches your definition exactly, use `repla
         state: replaced
 ```
 
-If GigabitEthernet0/1 previously had `speed 1000` and `duplex full` configured but those are not in your definition, the module removes them. Other interfaces are left alone.
+If GigabitEthernet0/1 previously had attributes managed by the module that are not in your definition, the module may remove or reset them according to the platform module's behavior. Other interfaces are left alone.
 
 ## Overridden State for Full Resource Control
 
