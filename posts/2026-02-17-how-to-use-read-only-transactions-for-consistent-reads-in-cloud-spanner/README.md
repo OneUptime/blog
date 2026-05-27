@@ -8,19 +8,19 @@ Description: Learn when and how to use read-only transactions in Cloud Spanner f
 
 ---
 
-Not every database operation needs the full weight of a read-write transaction. When you only need to read data - no writes involved - Cloud Spanner offers read-only transactions that give you a consistent snapshot of your data without acquiring any locks. This makes them faster, cheaper, and non-blocking. In this post, I will explain how read-only transactions work, when to use them, and how they differ from read-write transactions.
+Not every database operation needs the full weight of a read-write transaction. When you only need to read data - no writes involved - Cloud Spanner offers read-only transactions that give you a consistent snapshot of your data without acquiring any locks. This makes them efficient and non-blocking for writes. In this post, I will explain how read-only transactions work, when to use them, and how they differ from read-write transactions.
 
 ## Why Read-Only Transactions Exist
 
-In Spanner, read-write transactions acquire shared locks on every row they read. This is necessary because the transaction might later write to those rows, and Spanner needs to ensure no one else changes them in the meantime.
+In Spanner's default serializable isolation level, read-write transactions acquire shared locks on the data they read. This is necessary because the transaction might later write based on those reads, and Spanner needs to ensure no one else changes them in the meantime.
 
-But if you know upfront that you will only be reading, those locks are unnecessary overhead. Read-only transactions skip the locking entirely. They read from a consistent snapshot of the database at a specific timestamp, and they never block or are blocked by write transactions.
+But if you know upfront that you will only be reading, those locks are unnecessary overhead. Read-only transactions skip the locking entirely. They read from a consistent snapshot of the database at a specific timestamp, and they do not hold locks that block write transactions. A strong read might still wait briefly for an ongoing write to finish so Spanner can choose a consistent timestamp.
 
 This has several practical benefits:
 
 - Lower latency because no locks are acquired or waited on
-- No possibility of transaction aborts due to contention
-- Can be served from any replica, not just the leader
+- No possibility of transaction aborts due to lock contention
+- Can execute on any read-write or read-only replica, although strong reads from non-leader replicas may still contact the leader to confirm freshness
 - Multiple read-only transactions can run concurrently without interfering with each other
 
 ## Strong Reads vs Stale Reads
@@ -45,7 +45,7 @@ instance = client.instance("my-instance")
 database = instance.database("my-database")
 
 # Create a snapshot for a read-only transaction
-with database.snapshot() as snapshot:
+with database.snapshot(multi_use=True) as snapshot:
     # Read all orders for a customer
     results = snapshot.execute_sql(
         "SELECT OrderId, TotalAmount, Status, CreatedAt "
@@ -100,7 +100,7 @@ With a read-only transaction:
 ```python
 # With read-only transaction - CONSISTENT
 # All three queries see the exact same snapshot of the database
-with database.snapshot() as snapshot:
+with database.snapshot(multi_use=True) as snapshot:
     user = snapshot.execute_sql(
         "SELECT * FROM Users WHERE UserId = @id",
         params={"id": "user-123"},
@@ -171,6 +171,9 @@ func getCustomerDashboard(ctx context.Context, client *spanner.Client, customerI
     defer iter.Stop()
 
     row, err := iter.Next()
+    if err == iterator.Done {
+        return fmt.Errorf("customer not found: %s", customerID)
+    }
     if err != nil {
         return fmt.Errorf("reading user: %w", err)
     }
@@ -208,29 +211,43 @@ func getCustomerDashboard(ctx context.Context, client *spanner.Client, customerI
 
 Read-only transactions in Spanner have some notable performance properties:
 
-**No leader required.** In a multi-region setup, read-write transactions must coordinate with the leader replica. Read-only transactions with strong reads can be served by the nearest replica that is caught up, which means lower latency for globally distributed readers.
+**No leader lock path.** In a multi-region setup, read-write transactions are served from the leader replica because the leader maintains the locks required for serializable transactions. Read-only transactions can execute on any read-write or read-only replica. Strong reads from a non-leader replica may still contact the leader to confirm the replica is up to date, while stale reads can often be served by a nearby replica without that round trip.
 
-**No retries.** Since read-only transactions do not acquire locks, they cannot be aborted due to contention. Your code does not need retry logic.
+**Fewer contention retries.** Since read-only transactions do not acquire locks, they cannot be aborted due to lock contention. Your code still needs normal error handling for timeouts, unavailable service errors, and reads at timestamps that are outside the version retention period.
 
-**No 10-second limit.** Read-write transactions must complete within 10 seconds. Read-only transactions have a much more generous timeout of 60 minutes. This makes them suitable for long-running analytical queries.
+**No read-write lock lifetime concern.** Read-write transactions should be kept short because long-held locks increase contention and Spanner can abort transactions that remain idle for too long. Read-only transactions do not hold those locks, which makes them a better fit for consistent multi-query reads. For long-running reads, still use appropriate request deadlines and make sure any historical timestamp is within the database's version retention period.
 
 **Parallel execution.** Multiple read-only transactions can run concurrently on the same data without any interference, making them perfect for serving high-traffic read workloads.
 
 ## Timestamps and Reproducibility
 
-Every read-only transaction is associated with a specific timestamp. You can retrieve this timestamp and use it later for debugging or to create another read at the exact same point in time:
+Every read-only transaction is associated with a specific timestamp. Some client libraries expose this timestamp so you can use it later for debugging or to create another read at the exact same point in time. In Go, you can retrieve it after a read or query has returned data or completed:
 
-```python
-with database.snapshot() as snapshot:
-    results = snapshot.execute_sql("SELECT * FROM Users")
+```go
+func printReadTimestamp(ctx context.Context, client *spanner.Client) error {
+    txn := client.ReadOnlyTransaction()
+    defer txn.Close()
 
-    # Get the timestamp of this snapshot
-    read_timestamp = snapshot.read_timestamp
-    print(f"Data as of: {read_timestamp}")
+    iter := txn.Query(ctx, spanner.NewStatement("SELECT UserId FROM Users LIMIT 1"))
+    defer iter.Stop()
+
+    _, err := iter.Next()
+    if err != nil && err != iterator.Done {
+        return err
+    }
+
+    readTimestamp, err := txn.Timestamp()
+    if err != nil {
+        return err
+    }
+
+    fmt.Printf("Data as of: %s\n", readTimestamp)
+    return nil
+}
 ```
 
-This is extremely useful for debugging data inconsistency reports from users - you can read the database as it was at the exact time the user saw the issue.
+This is extremely useful for debugging data inconsistency reports from users - if the timestamp is still within the database's version retention period, you can read the database as it was at the exact time the user saw the issue.
 
 ## Wrapping Up
 
-Read-only transactions are one of Spanner's best features for read-heavy workloads. They give you consistent snapshots without locking overhead, they cannot be aborted by contention, and they can be served from any caught-up replica. If your operation does not need to write data, always prefer a read-only transaction over a read-write transaction. Your queries will be faster, your system will handle more concurrent load, and you will avoid unnecessary contention with write transactions. It is a straightforward optimization that pays off immediately.
+Read-only transactions are one of Spanner's best features for read-heavy workloads. They give you consistent snapshots without locking overhead, they cannot be aborted by lock contention, and they can execute on any read-write or read-only replica. If your operation does not need to write data, prefer a single read or a read-only transaction over a read-write transaction. Your queries avoid unnecessary locks, your system can handle more concurrent read load, and you will avoid unnecessary contention with write transactions. It is a straightforward optimization that pays off immediately.
