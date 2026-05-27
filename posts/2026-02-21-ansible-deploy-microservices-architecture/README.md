@@ -55,7 +55,6 @@ microservices-deploy/
         main.yml
       templates/
         service.j2
-        nginx-upstream.conf.j2
       handlers/
         main.yml
     api_gateway/
@@ -63,6 +62,8 @@ microservices-deploy/
         main.yml
       templates/
         gateway.conf.j2
+      handlers/
+        main.yml
     shared_infra/
       tasks/
         main.yml
@@ -195,6 +196,12 @@ Tasks that run on every server regardless of which service it hosts:
       - net-tools
     state: present
 
+- name: Create service group
+  group:
+    name: "{{ service_group }}"
+    system: yes
+    state: present
+
 - name: Create service user
   user:
     name: "{{ service_user }}"
@@ -214,12 +221,17 @@ Tasks that run on every server regardless of which service it hosts:
 ## Service Base Role
 
 This reusable role handles deploying any microservice. Each service-specific role includes it with its own variables.
+The npm task uses the `community.general` collection, so install it on the control node if you are using `ansible-core` instead of the full `ansible` package:
+
+```bash
+ansible-galaxy collection install community.general
+```
 
 ```yaml
 # roles/service_base/tasks/main.yml
 ---
 - name: Install Node.js
-  shell: "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -"
+  shell: "curl -fsSL https://deb.nodesource.com/setup_24.x | bash -"
   args:
     creates: /etc/apt/sources.list.d/nodesource.list
 
@@ -247,7 +259,7 @@ This reusable role handles deploying any microservice. Each service-specific rol
   notify: restart service
 
 - name: Install npm dependencies
-  npm:
+  community.general.npm:
     path: "{{ deploy_base_dir }}/{{ service_name }}"
     production: yes
   become_user: "{{ service_user }}"
@@ -278,6 +290,7 @@ This reusable role handles deploying any microservice. Each service-specific rol
   systemd:
     name: "{{ service_name }}"
     enabled: yes
+    daemon_reload: yes
     state: started
 
 - name: Wait for service to be ready
@@ -292,6 +305,21 @@ This reusable role handles deploying any microservice. Each service-specific rol
     status_code: 200
   retries: 5
   delay: 5
+```
+
+Add the handlers referenced by the service role:
+
+```yaml
+# roles/service_base/handlers/main.yml
+---
+- name: reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: restart service
+  systemd:
+    name: "{{ service_name }}"
+    state: restarted
 ```
 
 ## Service Systemd Template
@@ -343,6 +371,12 @@ WantedBy=multi-user.target
     dest: /etc/nginx/sites-enabled/api-gateway
     state: link
   notify: reload nginx
+
+- name: Enable and start Nginx
+  systemd:
+    name: nginx
+    enabled: yes
+    state: started
 ```
 
 ```nginx
@@ -400,6 +434,17 @@ server {
 }
 ```
 
+Add the handler referenced by the API gateway role:
+
+```yaml
+# roles/api_gateway/handlers/main.yml
+---
+- name: reload nginx
+  systemd:
+    name: nginx
+    state: reloaded
+```
+
 ## Main Deployment Playbook
 
 ```yaml
@@ -441,6 +486,7 @@ server {
 - name: Deploy Notification Service
   hosts: notification_service
   become: yes
+  serial: 1
   roles:
     - service_base
 
@@ -468,7 +514,7 @@ When you only need to update one service:
 
 ```bash
 # Deploy only the order service
-ansible-playbook -i inventory/production deploy-service.yml -e "target_service=order_service"
+ansible-playbook -i inventory/production deploy-service.yml -e "target_service=order_service" --ask-vault-pass
 ```
 
 ## Running the Full Deployment
@@ -478,12 +524,13 @@ ansible-playbook -i inventory/production deploy-service.yml -e "target_service=o
 ansible-playbook -i inventory/production deploy.yml --ask-vault-pass
 
 # Deploy a specific service
-ansible-playbook -i inventory/production deploy-service.yml -e "target_service=user_service"
+ansible-playbook -i inventory/production deploy-service.yml -e "target_service=user_service" --ask-vault-pass
 
 # Deploy with a specific branch for one service
 ansible-playbook -i inventory/production deploy-service.yml \
   -e "target_service=product_service" \
-  -e "service_branch=feature/new-search"
+  -e "service_branch=feature/new-search" \
+  --ask-vault-pass
 ```
 
 ## Wrapping Up
