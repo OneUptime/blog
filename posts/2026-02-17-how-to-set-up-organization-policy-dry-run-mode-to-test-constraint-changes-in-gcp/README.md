@@ -34,6 +34,7 @@ flowchart LR
 - A GCP organization
 - The `roles/orgpolicy.policyAdmin` role on the organization or the folder/project where you want to test
 - The Organization Policy API enabled
+- Billing enabled for the Google Cloud project where you are testing dry-run policies
 
 ## Setting Up a Dry-Run Policy
 
@@ -65,7 +66,8 @@ Apply the policy:
 ```bash
 # Apply the dry-run policy
 gcloud org-policies set-policy vm-external-ip-dryrun.yaml \
-  --project=my-project-id
+  --project=my-project-id \
+  --update-mask=*
 ```
 
 ### Using Terraform
@@ -102,7 +104,7 @@ After enabling the dry-run policy, violations appear in Cloud Audit Logs. You ca
 
 ```bash
 # Query audit logs for dry-run violations
-gcloud logging read 'protoPayload.metadata.constraint="constraints/compute.vmExternalIpAccess" AND protoPayload.metadata.dryRun=true' \
+gcloud logging read 'protoPayload.metadata.constraint="constraints/compute.vmExternalIpAccess" AND protoPayload.metadata.dryRunResult="DENIED" AND protoPayload.metadata.liveResult="ALLOWED"' \
   --project=my-project-id \
   --limit=50 \
   --format="table(timestamp, protoPayload.resourceName, protoPayload.authenticationInfo.principalEmail)"
@@ -114,7 +116,7 @@ You can also set up a log-based metric to track violation counts over time:
 # Create a log-based metric for dry-run violations
 gcloud logging metrics create org-policy-dryrun-violations \
   --description="Count of organization policy dry-run violations" \
-  --log-filter='protoPayload.metadata.dryRun=true AND protoPayload.metadata.constraint="constraints/compute.vmExternalIpAccess"' \
+  --log-filter='protoPayload.metadata.constraint="constraints/compute.vmExternalIpAccess" AND protoPayload.metadata.dryRunResult="DENIED" AND protoPayload.metadata.liveResult="ALLOWED"' \
   --project=my-project-id
 ```
 
@@ -149,7 +151,7 @@ dryRunSpec:
 name: organizations/ORG_ID/policies/storage.uniformBucketLevelAccess
 spec:
   rules:
-    - allowAll: true
+    - enforce: false
 dryRunSpec:
   rules:
     - enforce: true
@@ -181,7 +183,7 @@ Once you have a dry-run policy collecting violations, follow this workflow to mo
 # Create a log sink to send violations to BigQuery
 gcloud logging sinks create org-policy-violations-sink \
   bigquery.googleapis.com/projects/my-project-id/datasets/policy_violations \
-  --log-filter='protoPayload.metadata.dryRun=true' \
+  --log-filter='protoPayload.metadata.dryRunResult="DENIED" AND protoPayload.metadata.liveResult="ALLOWED"' \
   --project=my-project-id
 ```
 
@@ -205,7 +207,8 @@ spec:
 ```bash
 # Apply the enforced policy
 gcloud org-policies set-policy vm-external-ip-enforced.yaml \
-  --project=my-project-id
+  --project=my-project-id \
+  --update-mask=*
 ```
 
 ## Running Dry-Run and Enforced Simultaneously
