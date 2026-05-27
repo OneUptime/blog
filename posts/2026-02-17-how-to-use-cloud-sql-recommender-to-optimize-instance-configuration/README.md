@@ -8,20 +8,20 @@ Description: Learn how to use Cloud SQL Recommender to get actionable recommenda
 
 ---
 
-Most Cloud SQL instances are over-provisioned. You picked a machine type during setup, guessed at what you might need, and never went back to check. Cloud SQL Recommender analyzes your actual usage patterns and gives you specific recommendations to right-size instances, fix performance issues, and reduce costs. This guide shows how to access, interpret, and act on those recommendations.
+Many Cloud SQL instances are over-provisioned. You picked a machine type during setup, guessed at what you might need, and never went back to check. Cloud SQL Recommender analyzes your actual usage patterns and gives you specific recommendations to right-size instances, fix performance issues, and reduce costs. This guide shows how to access, interpret, and act on those recommendations.
 
 ## What Cloud SQL Recommender Provides
 
 Cloud SQL Recommender analyzes your instance metrics over time and generates recommendations in several categories:
 
 - **Machine type right-sizing**: Scale up or down based on actual CPU and memory usage
-- **Storage right-sizing**: Reduce over-provisioned storage
+- **Storage outage prevention**: Detect instances at risk of running out of disk
 - **High availability**: Enable HA for unprotected production instances
-- **Backup configuration**: Improve backup settings
-- **Idle instance detection**: Identify instances with no connections
+- **Backup retention**: Increase backup retention for critical instances
+- **Idle instance detection**: Identify instances with very low activity
 - **Performance improvements**: Suggest flag changes and configuration adjustments
 
-Each recommendation includes an estimated cost impact, priority level, and the specific change to make.
+Recommendations include a priority level, the specific change to make, and, where applicable, an estimated cost impact.
 
 ## Enabling the Recommender API
 
@@ -31,13 +31,13 @@ Each recommendation includes an estimated cost impact, priority level, and the s
 gcloud services enable recommender.googleapis.com
 ```
 
-You also need the `roles/recommender.viewer` role (or broader) to view recommendations:
+You also need a role that can view Cloud SQL recommendations, such as `roles/recommender.cloudsqlViewer`, `roles/cloudsql.viewer`, or a broader role:
 
 ```bash
-# Grant recommender viewer role
+# Grant Cloud SQL recommender viewer role
 gcloud projects add-iam-policy-binding my-project \
     --member="user:you@example.com" \
-    --role="roles/recommender.viewer"
+    --role="roles/recommender.cloudsqlViewer"
 ```
 
 ## Viewing Recommendations via gcloud
@@ -45,9 +45,9 @@ gcloud projects add-iam-policy-binding my-project \
 List all Cloud SQL recommendations for your project:
 
 ```bash
-# List Cloud SQL instance performance recommendations
+# List Cloud SQL underprovisioned instance recommendations
 gcloud recommender recommendations list \
-    --recommender=google.cloudsql.instance.PerformanceRecommender \
+    --recommender=google.cloudsql.instance.UnderprovisionedRecommender \
     --location=us-central1 \
     --project=my-project \
     --format="table(name, recommenderSubtype, priority, content.overview)"
@@ -56,9 +56,9 @@ gcloud recommender recommendations list \
 For cost recommendations:
 
 ```bash
-# List Cloud SQL cost optimization recommendations
+# List Cloud SQL overprovisioned instance recommendations
 gcloud recommender recommendations list \
-    --recommender=google.cloudsql.instance.CostRecommender \
+    --recommender=google.cloudsql.instance.OverprovisionedRecommender \
     --location=us-central1 \
     --project=my-project \
     --format="table(name, recommenderSubtype, priority, content.overview)"
@@ -70,6 +70,17 @@ For idle instance recommendations:
 # List idle Cloud SQL instance recommendations
 gcloud recommender recommendations list \
     --recommender=google.cloudsql.instance.IdleRecommender \
+    --location=us-central1 \
+    --project=my-project \
+    --format="table(name, recommenderSubtype, priority, content.overview)"
+```
+
+For performance recommendations:
+
+```bash
+# List Cloud SQL performance recommendations
+gcloud recommender recommendations list \
+    --recommender=google.cloudsql.instance.PerformanceRecommender \
     --location=us-central1 \
     --project=my-project \
     --format="table(name, recommenderSubtype, priority, content.overview)"
@@ -100,7 +111,7 @@ This recommendation appears when your instance consistently runs close to or abo
 Recommendation: Upgrade machine type
 Current: db-custom-2-8192 (2 vCPUs, 8 GB RAM)
 Suggested: db-custom-4-16384 (4 vCPUs, 16 GB RAM)
-Reason: CPU utilization averaged 85% over the past 30 days
+Reason: CPU utilization was high during the observation period
 Impact: Improved query performance, reduced risk of CPU throttling
 ```
 
@@ -120,8 +131,7 @@ The most common recommendation. Your instance has more resources than it uses:
 Recommendation: Downsize machine type
 Current: db-custom-8-32768 (8 vCPUs, 32 GB RAM)
 Suggested: db-custom-4-16384 (4 vCPUs, 16 GB RAM)
-Reason: CPU utilization averaged 15% over the past 30 days
-              Memory utilization averaged 25%
+Reason: CPU and memory utilization were low during the observation period
 Estimated savings: $300/month
 ```
 
@@ -129,25 +139,29 @@ Before applying, verify that peak usage (not just average) fits the smaller tier
 
 ```bash
 # Check peak CPU utilization over the past 30 days
-gcloud monitoring read \
-    --resource-type=cloudsql_database \
-    --metric-type=cloudsql.googleapis.com/database/cpu/utilization \
-    --filter='resource.labels.database_id="my-project:my-instance"' \
-    --start-time="-30d" \
-    --aggregation-alignment-period=3600s \
-    --aggregation-per-series-aligner=ALIGN_MAX
+END_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+START_TIME=$(date -u -d "30 days ago" +"%Y-%m-%dT%H:%M:%SZ")
+
+curl --get \
+    --header "Authorization: Bearer $(gcloud auth print-access-token)" \
+    "https://monitoring.googleapis.com/v3/projects/my-project/timeSeries" \
+    --data-urlencode 'filter=metric.type = "cloudsql.googleapis.com/database/cpu/utilization" AND resource.type = "cloudsql_database" AND resource.labels.database_id = "my-project:my-instance"' \
+    --data-urlencode "interval.startTime=${START_TIME}" \
+    --data-urlencode "interval.endTime=${END_TIME}" \
+    --data-urlencode "aggregation.alignmentPeriod=3600s" \
+    --data-urlencode "aggregation.perSeriesAligner=ALIGN_MAX"
 ```
 
-If peak CPU stays under 60% of the suggested tier, it is safe to downsize.
+Compare CPU and memory peaks against the smaller tier and leave enough headroom for normal traffic spikes before downsizing.
 
 ### Idle Instance
 
-Instances with zero or near-zero connections over an extended period:
+Instances with very low activity over the past 30-day observation period:
 
 ```text
-Recommendation: Delete idle instance
+Recommendation: Shut down idle instance
 Instance: staging-db-old
-Reason: No connections in the past 14 days
+Reason: Low activity during the observation period
 Estimated savings: $150/month
 ```
 
@@ -159,11 +173,15 @@ gcloud sql instances describe staging-db-old \
     --format="json(settings.tier, state)"
 
 # Check connection count from Cloud Monitoring
-gcloud monitoring read \
-    --resource-type=cloudsql_database \
-    --metric-type=cloudsql.googleapis.com/database/network/connections \
-    --filter='resource.labels.database_id="my-project:staging-db-old"' \
-    --start-time="-30d"
+END_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+START_TIME=$(date -u -d "30 days ago" +"%Y-%m-%dT%H:%M:%SZ")
+
+curl --get \
+    --header "Authorization: Bearer $(gcloud auth print-access-token)" \
+    "https://monitoring.googleapis.com/v3/projects/my-project/timeSeries" \
+    --data-urlencode 'filter=metric.type = "cloudsql.googleapis.com/database/network/connections" AND resource.type = "cloudsql_database" AND resource.labels.database_id = "my-project:staging-db-old"' \
+    --data-urlencode "interval.startTime=${START_TIME}" \
+    --data-urlencode "interval.endTime=${END_TIME}"
 ```
 
 If it is genuinely idle, create a final backup before deleting:
@@ -213,9 +231,11 @@ def list_recommendations():
 
     # Check multiple recommender types
     recommender_types = [
-        "google.cloudsql.instance.CostRecommender",
-        "google.cloudsql.instance.PerformanceRecommender",
+        "google.cloudsql.instance.OverprovisionedRecommender",
+        "google.cloudsql.instance.UnderprovisionedRecommender",
         "google.cloudsql.instance.IdleRecommender",
+        "google.cloudsql.instance.PerformanceRecommender",
+        "google.cloudsql.instance.ReliabilityRecommender",
     ]
 
     project = "my-project"
@@ -236,7 +256,8 @@ def list_recommendations():
             print(f"  Description: {rec.description}")
             if rec.primary_impact.cost_projection:
                 cost = rec.primary_impact.cost_projection.cost
-                print(f"  Estimated savings: ${abs(cost.units)}/month")
+                duration = rec.primary_impact.cost_projection.duration
+                print(f"  Estimated cost impact: ${cost.units}.{abs(cost.nanos):09d} over {duration}")
 
 if __name__ == "__main__":
     list_recommendations()
@@ -251,7 +272,7 @@ After reviewing a recommendation, mark it:
 ```bash
 # Mark a recommendation as claimed (you plan to act on it)
 gcloud recommender recommendations mark-claimed RECOMMENDATION_ID \
-    --recommender=google.cloudsql.instance.CostRecommender \
+    --recommender=google.cloudsql.instance.OverprovisionedRecommender \
     --location=us-central1 \
     --project=my-project \
     --etag=RECOMMENDATION_ETAG \
@@ -259,14 +280,14 @@ gcloud recommender recommendations mark-claimed RECOMMENDATION_ID \
 
 # Mark as succeeded after applying
 gcloud recommender recommendations mark-succeeded RECOMMENDATION_ID \
-    --recommender=google.cloudsql.instance.CostRecommender \
+    --recommender=google.cloudsql.instance.OverprovisionedRecommender \
     --location=us-central1 \
     --project=my-project \
     --etag=RECOMMENDATION_ETAG
 
 # Or dismiss if you decide not to act
 gcloud recommender recommendations mark-dismissed RECOMMENDATION_ID \
-    --recommender=google.cloudsql.instance.CostRecommender \
+    --recommender=google.cloudsql.instance.OverprovisionedRecommender \
     --location=us-central1 \
     --project=my-project \
     --etag=RECOMMENDATION_ETAG
@@ -277,7 +298,7 @@ gcloud recommender recommendations mark-dismissed RECOMMENDATION_ID \
 Follow this process when applying recommendations:
 
 1. **Review the recommendation** and understand the change
-2. **Check peak usage**, not just average - the recommender uses averages
+2. **Check peak usage and seasonality**, not just the recommendation summary
 3. **Test in staging first** if possible
 4. **Create a backup** before making changes
 5. **Apply during low-traffic hours** for changes that require a restart
@@ -298,12 +319,7 @@ gcloud sql instances patch my-instance \
     --tier=db-custom-4-16384
 
 # 4. Monitor the instance for the next 24 hours
-watch -n 60 "gcloud monitoring read \
-    --resource-type=cloudsql_database \
-    --metric-type=cloudsql.googleapis.com/database/cpu/utilization \
-    --filter='resource.labels.database_id=\"my-project:my-instance\"' \
-    --start-time='-1h' \
-    --format='table(timeSeries.points.value.doubleValue)'"
+watch -n 60 'END_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ"); START_TIME=$(date -u -d "1 hour ago" +"%Y-%m-%dT%H:%M:%SZ"); curl --get --silent --header "Authorization: Bearer $(gcloud auth print-access-token)" "https://monitoring.googleapis.com/v3/projects/my-project/timeSeries" --data-urlencode "filter=metric.type = \"cloudsql.googleapis.com/database/cpu/utilization\" AND resource.type = \"cloudsql_database\" AND resource.labels.database_id = \"my-project:my-instance\"" --data-urlencode "interval.startTime=${START_TIME}" --data-urlencode "interval.endTime=${END_TIME}"'
 ```
 
 ## Insights (Complementary to Recommendations)
@@ -313,7 +329,7 @@ Cloud SQL Recommender also provides insights - observations about your instance 
 ```bash
 # List insights for Cloud SQL instances
 gcloud recommender insights list \
-    --insight-type=google.cloudsql.instance.CostInsight \
+    --insight-type=google.cloudsql.instance.CpuUsageInsight \
     --location=us-central1 \
     --project=my-project \
     --format="table(name, insightSubtype, severity, description)"
@@ -321,9 +337,9 @@ gcloud recommender insights list \
 
 Insights might include:
 
-- "This instance's CPU utilization has been increasing steadily for the past 3 months"
-- "This instance has 500 GB of storage but only uses 50 GB"
-- "This instance's backup storage costs exceed the instance cost"
+- "This instance has low CPU utilization during the observation period"
+- "This instance has high memory utilization during the observation period"
+- "This instance has low activity during the observation period"
 
 ## Cost Optimization Report
 
@@ -337,7 +353,7 @@ echo "=== Cloud SQL Cost Optimization Report ==="
 echo "Date: $(date)"
 echo ""
 
-# List all instances with their tiers and costs
+# List all instances with their tiers and availability type
 echo "Current Instances:"
 gcloud sql instances list \
     --format="table(name, region, settings.tier, settings.availabilityType, state)"
@@ -348,7 +364,7 @@ for region in us-central1 europe-west1 asia-east1; do
     echo ""
     echo "Region: ${region}"
     gcloud recommender recommendations list \
-        --recommender=google.cloudsql.instance.CostRecommender \
+        --recommender=google.cloudsql.instance.OverprovisionedRecommender \
         --location=${region} \
         --format="table(content.overview.instanceName, recommenderSubtype, priority)" \
         2>/dev/null || echo "  No recommendations"
@@ -379,13 +395,13 @@ done
 
 1. **Review recommendations weekly**. Make it part of your team's operational routine.
 
-2. **Do not blindly follow recommendations**. The recommender uses averages, which can miss traffic spikes or seasonal patterns.
+2. **Do not blindly follow recommendations**. Validate each recommendation against peak traffic, upcoming launches, and seasonal patterns.
 
 3. **Start with the highest-priority recommendations**. They offer the best return on effort.
 
 4. **Track savings**. After applying recommendations, note the before and after costs to quantify the impact.
 
-5. **Set up alerts for new recommendations**. Use Cloud Monitoring to notify you when new recommendations appear.
+5. **Set up notifications for new recommendations**. Use a scheduled script or Cloud Function to check recommendations and notify your team.
 
 6. **Consider the full picture**. A recommendation to downsize might save money but leave no headroom for traffic growth.
 
