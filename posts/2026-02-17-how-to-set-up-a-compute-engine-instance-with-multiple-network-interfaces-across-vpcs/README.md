@@ -21,11 +21,11 @@ The most common use cases are:
 - **Legacy application requirements** - Applications that expect to communicate on specific network interfaces
 - **Cross-VPC communication** - Connecting VPCs that do not have VPC peering configured
 
-Each network interface connects to a different VPC network. A single VM can have up to 8 network interfaces, depending on the machine type. The number of allowed interfaces scales with the number of vCPUs.
+In this cross-VPC setup, each network interface connects to a different VPC network. A single VM can have up to 10 vNICs for most machine types, and up to 16 total network interfaces if you use Dynamic NICs. The number of allowed interfaces scales with the number of vCPUs.
 
 ## Prerequisites: Create the VPC Networks
 
-Each network interface must connect to a different VPC. You cannot have two interfaces in the same VPC. Let me create two VPC networks for this example:
+For a straightforward cross-VPC setup, each network interface should connect to a different VPC. Google Cloud also supports some same-VPC multi-NIC configurations, but that is a separate preview feature with additional limitations. Let me create two VPC networks for this example:
 
 ```bash
 # Create the first VPC network for application traffic
@@ -105,7 +105,7 @@ gcloud compute instances describe multi-nic-vm \
   --format="yaml(networkInterfaces)"
 ```
 
-SSH into the VM and check the interfaces from inside:
+After configuring policy routing for the management interface, SSH into the VM and check the interfaces from inside:
 
 ```bash
 # SSH via the management interface
@@ -119,7 +119,9 @@ You should see `ens4` (nic0, connected to app-subnet) and `ens5` (nic1, connecte
 
 ## Configuring Routing Inside the VM
 
-This is where multi-NIC setups get tricky. By default, the VM only has a default route through `nic0`. Traffic destined for subnets on other interfaces will try to go through `nic0` and fail.
+This is where multi-NIC setups get tricky. By default, the VM only has a default route through `nic0`. Traffic destined for directly connected subnets can use the attached interface, but traffic to other destinations, including replies for connections that arrive on `nic1`, uses the default route on `nic0` unless you configure policy routing.
+
+For the initial routing setup, get shell access through the serial console, an initial startup script, or another temporary path that does not depend on the unconfigured `nic1` return route. After policy routing is in place, SSH through the management interface works as expected.
 
 You need to set up policy-based routing so that responses go back through the correct interface:
 
@@ -127,8 +129,9 @@ You need to set up policy-based routing so that responses go back through the co
 # Add a routing table for the second interface (nic1/ens5)
 # This ensures responses on nic1 go back through nic1
 
-# Get the gateway IP for nic1 (usually the first IP in the subnet)
-GATEWAY_NIC1="10.0.2.1"
+# Get the gateway IP for nic1 from the metadata server
+GATEWAY_NIC1=$(curl -H "Metadata-Flavor: Google" \
+  http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/1/gateway)
 NIC1_IP=$(ip addr show ens5 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1)
 
 # Create a separate routing table for nic1 traffic
@@ -137,7 +140,7 @@ echo "100 mgmt" | sudo tee -a /etc/iproute2/rt_tables
 # Add rules to use the mgmt routing table for traffic from nic1
 sudo ip rule add from "${NIC1_IP}" table mgmt priority 100
 sudo ip route add default via "${GATEWAY_NIC1}" dev ens5 table mgmt
-sudo ip route add 10.0.2.0/24 dev ens5 table mgmt
+sudo ip route add "${GATEWAY_NIC1}" src "${NIC1_IP}" dev ens5 table mgmt
 ```
 
 To make these routes persistent across reboots, create a script:
@@ -148,7 +151,8 @@ To make these routes persistent across reboots, create a script:
 # Configure policy routing for multi-NIC setup
 
 if [ "$IFACE" = "ens5" ]; then
-  GATEWAY="10.0.2.1"
+  GATEWAY=$(curl -H "Metadata-Flavor: Google" \
+    http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/1/gateway)
   NIC_IP=$(ip addr show ens5 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1)
 
   # Add routing table entry if not present
@@ -157,7 +161,7 @@ if [ "$IFACE" = "ens5" ]; then
   # Configure policy routing
   ip rule add from "${NIC_IP}" table mgmt priority 100 2>/dev/null
   ip route add default via "${GATEWAY}" dev ens5 table mgmt 2>/dev/null
-  ip route add 10.0.2.0/24 dev ens5 table mgmt 2>/dev/null
+  ip route add "${GATEWAY}" src "${NIC_IP}" dev ens5 table mgmt 2>/dev/null
 fi
 ```
 
@@ -213,27 +217,39 @@ gcloud compute routes create app-to-internet \
 
 ## Machine Type NIC Limits
 
-Not every machine type supports the same number of network interfaces. Here is a quick reference:
+Not every machine type supports the same number of network interfaces. For most machine types, here is a quick reference for vNICs:
 
-| vCPUs | Maximum NICs |
-|-------|-------------|
-| 1 | 2 |
-| 2-3 | 3 |
-| 4-5 | 4 |
-| 6-7 | 5 |
-| 8+ | 8 |
+| vCPUs | Maximum vNICs | Maximum total interfaces with Dynamic NICs |
+|-------|---------------|-------------------------------------------|
+| 2 or fewer | 2 | 2 |
+| 4 | 4 | 4 |
+| 6 | 6 | 6 |
+| 8 | 8 | 8 |
+| 10 | 10 | 10 |
+| 12 | 10 | 11 |
+| 14 | 10 | 12 |
+| 16 | 10 | 13 |
+| 18 | 10 | 14 |
+| 20 | 10 | 15 |
+| 22 or more | 10 | 16 |
 
 If you try to add more interfaces than your machine type allows, the creation will fail with an error message telling you the maximum.
 
 ## Monitoring Multi-NIC Traffic
 
-You can monitor traffic on each interface separately in Cloud Monitoring. The metrics include bytes sent/received per interface, packets per interface, and dropped packets.
+You can monitor traffic per interface in Cloud Monitoring with VM flow metrics, which include a `local_network_interface` label. The built-in Compute Engine `instance/network/*` metrics are useful for VM-level traffic totals, but they are not the best choice when you need to break traffic down by NIC.
 
 ```bash
 # Check per-interface network metrics
-gcloud monitoring time-series list \
-  --filter='metric.type="compute.googleapis.com/instance/network/received_bytes_count" AND resource.labels.instance_id="INSTANCE_ID"' \
-  --interval-start-time=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+START_TIME=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
+
+curl -G \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --data-urlencode 'filter=metric.type="networking.googleapis.com/vm_flow/ingress_bytes_count" AND resource.labels.instance_id="INSTANCE_ID" AND metric.labels.local_network_interface="nic1"' \
+  --data-urlencode "interval.startTime=${START_TIME}" \
+  --data-urlencode "interval.endTime=${END_TIME}" \
+  "https://monitoring.googleapis.com/v3/projects/PROJECT_ID/timeSeries"
 ```
 
 VPC Flow Logs are also useful for debugging multi-NIC routing. Enable them on both subnets:
