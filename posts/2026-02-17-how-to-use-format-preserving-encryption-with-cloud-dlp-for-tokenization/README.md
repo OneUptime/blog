@@ -16,14 +16,14 @@ Cloud DLP implements FPE through the `CryptoReplaceFfxFpeConfig` transformation.
 
 ## How Format-Preserving Encryption Works
 
-FPE uses the FF1 or FF3-1 algorithms (depending on the implementation) to encrypt data within a specific alphabet. If your input is numeric, the output is numeric. If your input uses alphanumeric characters, the output uses the same character set. The encryption key is a standard AES key, typically managed through Cloud KMS.
+Cloud DLP uses the FFX mode of operation to encrypt data within a specific alphabet. If your input is numeric, the output is numeric. If your input uses alphanumeric characters, the output uses the same character set. The encryption key is an AES key, typically wrapped with Cloud KMS.
 
 ```mermaid
 flowchart LR
-    A[Original: 4532-1234-5678-9012] --> B[Cloud DLP FPE]
-    B --> C[Tokenized: 7891-4567-2345-6780]
+    A[Original: 4532123456789012] --> B[Cloud DLP FPE]
+    B --> C[Tokenized: 7891456723456780]
     C --> D[Cloud DLP FPE Reverse]
-    D --> E[Original: 4532-1234-5678-9012]
+    D --> E[Original: 4532123456789012]
 
     style A fill:#f99,stroke:#333
     style C fill:#9f9,stroke:#333
@@ -113,24 +113,27 @@ Save the wrapped key value - you will need it for your DLP configurations.
 Here is how to tokenize sensitive data in text using FPE:
 
 ```python
+import base64
 from google.cloud import dlp_v2
 
 def tokenize_with_fpe(project_id, text, wrapped_key, kms_key_name):
     """Tokenize sensitive data in text using format-preserving encryption."""
 
     dlp_client = dlp_v2.DlpServiceClient()
+    wrapped_key_bytes = base64.b64decode(wrapped_key)
 
     # Configure FPE transformation for credit card numbers
     fpe_config = {
         "crypto_key": {
             "kms_wrapped": {
-                "wrapped_key": wrapped_key,
+                "wrapped_key": wrapped_key_bytes,
                 "crypto_key_name": kms_key_name,
             }
         },
         # NUMERIC means input and output are digits only
         "common_alphabet": "NUMERIC",
-        # Optional: add a surrogate InfoType to mark tokenized values
+        # Optional: add a surrogate InfoType to mark tokenized values.
+        # This adds a TOKENIZED_CC(16): prefix; omit it if strict format preservation is required.
         "surrogate_info_type": {
             "name": "TOKENIZED_CC"
         },
@@ -177,7 +180,7 @@ kms_key = "projects/my-project/locations/global/keyRings/dlp-keyring/cryptoKeys/
 
 tokenize_with_fpe(
     "my-project",
-    "Customer card: 4532-1234-5678-9012",
+    "Customer card: 4532123456789012",
     "YOUR_BASE64_WRAPPED_KEY",
     kms_key,
 )
@@ -188,16 +191,20 @@ tokenize_with_fpe(
 The power of FPE is that you can reverse it. Use the `reidentifyContent` API:
 
 ```python
+import base64
+from google.cloud import dlp_v2
+
 def reverse_tokenization(project_id, tokenized_text, wrapped_key, kms_key_name):
     """Reverse FPE tokenization to recover original values."""
 
     dlp_client = dlp_v2.DlpServiceClient()
+    wrapped_key_bytes = base64.b64decode(wrapped_key)
 
     # Same FPE config as tokenization - must match exactly
     fpe_config = {
         "crypto_key": {
             "kms_wrapped": {
-                "wrapped_key": wrapped_key,
+                "wrapped_key": wrapped_key_bytes,
                 "crypto_key_name": kms_key_name,
             }
         },
@@ -254,10 +261,14 @@ def reverse_tokenization(project_id, tokenized_text, wrapped_key, kms_key_name):
 FPE works great with structured data like BigQuery tables and CSV files. Here is how to tokenize specific columns:
 
 ```python
+import base64
+from google.cloud import dlp_v2
+
 def tokenize_table_data(project_id, wrapped_key, kms_key_name):
     """Tokenize specific columns in structured data."""
 
     dlp_client = dlp_v2.DlpServiceClient()
+    wrapped_key_bytes = base64.b64decode(wrapped_key)
 
     # Define the structured data (simulating a table)
     table = {
@@ -273,7 +284,7 @@ def tokenize_table_data(project_id, wrapped_key, kms_key_name):
                 "values": [
                     {"string_value": "John Smith"},
                     {"string_value": "john@example.com"},
-                    {"string_value": "123-45-6789"},
+                    {"string_value": "123456789"},
                     {"string_value": "4532123456789012"},
                     {"string_value": "150.00"},
                 ]
@@ -282,7 +293,7 @@ def tokenize_table_data(project_id, wrapped_key, kms_key_name):
                 "values": [
                     {"string_value": "Jane Doe"},
                     {"string_value": "jane@example.com"},
-                    {"string_value": "987-65-4321"},
+                    {"string_value": "987654321"},
                     {"string_value": "5425987654321098"},
                     {"string_value": "250.00"},
                 ]
@@ -294,7 +305,7 @@ def tokenize_table_data(project_id, wrapped_key, kms_key_name):
     numeric_fpe = {
         "crypto_key": {
             "kms_wrapped": {
-                "wrapped_key": wrapped_key,
+                "wrapped_key": wrapped_key_bytes,
                 "crypto_key_name": kms_key_name,
             }
         },
@@ -359,7 +370,7 @@ You can also define a custom alphabet with `custom_alphabet`:
 fpe_config = {
     "crypto_key": {
         "kms_wrapped": {
-            "wrapped_key": wrapped_key,
+            "wrapped_key": wrapped_key_bytes,
             "crypto_key_name": kms_key_name,
         }
     },
@@ -368,7 +379,7 @@ fpe_config = {
 }
 ```
 
-Choose the alphabet that matches your data. Credit cards and SSNs are numeric. Customer IDs might be alphanumeric. Pick the narrowest alphabet that covers your data for the strongest encryption.
+Choose the alphabet that matches your data. Credit cards and SSNs are numeric. Customer IDs might be alphanumeric. Pick an alphabet that covers every character that can appear in the values you transform.
 
 ## When to Use FPE vs Other Methods
 
