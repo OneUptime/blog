@@ -14,13 +14,14 @@ This guide covers creating DaemonSets with Ansible for common use cases, targeti
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- Ansible with the `kubernetes.core` collection
+- Python 3.9+ with the Kubernetes Python client 24.2.0+
 - A running Kubernetes cluster
 - A valid kubeconfig
 
 ```bash
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes
+pip install "kubernetes>=24.2.0"
 ```
 
 ## When to Use DaemonSets
@@ -100,6 +101,16 @@ Fluent Bit is a lightweight log processor that collects container logs from ever
                   Time_Key    time
                   Time_Format %Y-%m-%dT%H:%M:%S.%L
 
+    - name: Create Fluent Bit ServiceAccount
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: fluent-bit
+            namespace: "{{ namespace }}"
+
     - name: Create Fluent Bit DaemonSet
       kubernetes.core.k8s:
         state: present
@@ -167,7 +178,19 @@ Prometheus Node Exporter collects hardware and OS metrics from every node. It is
   connection: local
   gather_facts: false
 
+  vars:
+    namespace: monitoring
+
   tasks:
+    - name: Create monitoring namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ namespace }}"
+
     - name: Create Node Exporter DaemonSet
       kubernetes.core.k8s:
         state: present
@@ -176,7 +199,7 @@ Prometheus Node Exporter collects hardware and OS metrics from every node. It is
           kind: DaemonSet
           metadata:
             name: node-exporter
-            namespace: monitoring
+            namespace: "{{ namespace }}"
             labels:
               app: node-exporter
           spec:
@@ -253,7 +276,19 @@ Sometimes you want a DaemonSet to run only on certain nodes. Node selectors and 
   connection: local
   gather_facts: false
 
+  vars:
+    namespace: monitoring
+
   tasks:
+    - name: Create monitoring namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ namespace }}"
+
     - name: Create GPU monitoring DaemonSet
       kubernetes.core.k8s:
         state: present
@@ -262,7 +297,7 @@ Sometimes you want a DaemonSet to run only on certain nodes. Node selectors and 
           kind: DaemonSet
           metadata:
             name: gpu-monitor
-            namespace: monitoring
+            namespace: "{{ namespace }}"
           spec:
             selector:
               matchLabels:
@@ -282,11 +317,15 @@ Sometimes you want a DaemonSet to run only on certain nodes. Node selectors and 
                       - containerPort: 9400
                         name: metrics
                     resources:
+                      requests:
+                        cpu: 100m
+                        memory: 128Mi
                       limits:
-                        nvidia.com/gpu: 0
+                        cpu: 500m
+                        memory: 512Mi
 ```
 
-The `nodeSelector` field restricts the DaemonSet to nodes with the label `gpu=true`. Only those nodes will get a pod.
+The `nodeSelector` field restricts the DaemonSet to nodes with the label `gpu=true`. Only those nodes will get a pod. The GPU nodes still need the NVIDIA drivers, container runtime integration, and device plugin or GPU Operator components required by your cluster.
 
 ## Configuring Update Strategies
 
@@ -312,6 +351,9 @@ DaemonSets support two update strategies: `RollingUpdate` (default) and `OnDelet
             name: fluent-bit
             namespace: logging
           spec:
+            selector:
+              matchLabels:
+                app: fluent-bit
             updateStrategy:
               type: RollingUpdate
               rollingUpdate:
@@ -322,6 +364,12 @@ DaemonSets support two update strategies: `RollingUpdate` (default) and `OnDelet
                 labels:
                   app: fluent-bit
               spec:
+                serviceAccountName: fluent-bit
+                tolerations:
+                  - key: node-role.kubernetes.io/control-plane
+                    effect: NoSchedule
+                  - key: node-role.kubernetes.io/master
+                    effect: NoSchedule
                 containers:
                   - name: fluent-bit
                     # Updating to a new version triggers the rollout
@@ -337,10 +385,15 @@ DaemonSets support two update strategies: `RollingUpdate` (default) and `OnDelet
                       - name: varlog
                         mountPath: /var/log
                         readOnly: true
+                      - name: config
+                        mountPath: /fluent-bit/etc/
                 volumes:
                   - name: varlog
                     hostPath:
                       path: /var/log
+                  - name: config
+                    configMap:
+                      name: fluent-bit-config
 ```
 
 Setting `maxUnavailable: 1` means the rollout updates one node at a time. For a 100-node cluster, you could set this to `10` or `10%` to speed things up while keeping 90% of your log collection running.
