@@ -1,10 +1,10 @@
-# How to Use the google-cloud/storage npm Package to Generate Signed URLs
+# How to Use the @google-cloud/storage npm Package to Generate Signed URLs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Storage, Node.js, Signed URLs, Security
 
-Description: Learn how to generate signed URLs using the google-cloud/storage npm package for temporary and secure file access without exposing your Cloud Storage bucket publicly.
+Description: Learn how to generate signed URLs using the @google-cloud/storage npm package for temporary and secure file access without exposing your Cloud Storage bucket publicly.
 
 ---
 
@@ -24,6 +24,8 @@ Install the Cloud Storage Node.js client.
 npm install @google-cloud/storage
 ```
 
+Generating signed URLs also requires credentials that can sign URLs, such as a service account private key or a service account with `iam.serviceAccounts.signBlob` permission.
+
 ## Generating a Download Signed URL
 
 Here is the basic pattern for generating a signed URL that allows downloading a file.
@@ -32,7 +34,8 @@ Here is the basic pattern for generating a signed URL that allows downloading a 
 // generate-signed-url.js - Basic signed URL generation
 const { Storage } = require('@google-cloud/storage');
 
-// Create a storage client - uses Application Default Credentials
+// Create a storage client - uses Application Default Credentials.
+// The credentials must be able to sign URLs.
 const storage = new Storage();
 
 async function generateDownloadUrl(bucketName, fileName, expirationMinutes = 60) {
@@ -159,12 +162,18 @@ app.post('/api/files/upload-url', async (req, res) => {
       return res.status(400).json({ error: `Content type ${contentType} not allowed` });
     }
 
+    const maxUploadSize = 10 * 1024 * 1024;
+    if (maxSizeBytes && maxSizeBytes > maxUploadSize) {
+      return res.status(400).json({ error: 'File is too large' });
+    }
+
     // Generate a unique file path
     const fileId = uuidv4();
     const extension = fileName.split('.').pop();
     const filePath = `uploads/${fileId}.${extension}`;
 
     const file = storage.bucket(BUCKET_NAME).file(filePath);
+    const uploadSizeRange = `0,${maxSizeBytes || maxUploadSize}`;
 
     // Generate a signed URL for upload
     const [url] = await file.getSignedUrl({
@@ -173,8 +182,8 @@ app.post('/api/files/upload-url', async (req, res) => {
       expires: Date.now() + 15 * 60 * 1000, // 15 minutes to complete upload
       contentType: contentType,
       extensionHeaders: {
-        // Optionally restrict the upload size
-        'x-goog-content-length-range': `0,${maxSizeBytes || 10 * 1024 * 1024}`,
+        // Restrict the upload size
+        'x-goog-content-length-range': uploadSizeRange,
       },
     });
 
@@ -183,6 +192,10 @@ app.post('/api/files/upload-url', async (req, res) => {
       fileId: fileId,
       filePath: filePath,
       contentType: contentType,
+      uploadHeaders: {
+        'Content-Type': contentType,
+        'x-goog-content-length-range': uploadSizeRange,
+      },
       expiresIn: '15 minutes',
     });
   } catch (error) {
@@ -249,14 +262,12 @@ async function uploadFile(file) {
     }),
   });
 
-  const { uploadUrl, fileId } = await urlResponse.json();
+  const { uploadUrl, fileId, uploadHeaders } = await urlResponse.json();
 
   // Step 2: Upload the file directly to Cloud Storage using the signed URL
   const uploadResponse = await fetch(uploadUrl, {
     method: 'PUT',
-    headers: {
-      'Content-Type': file.type,
-    },
+    headers: uploadHeaders,
     body: file,  // Send the raw file bytes
   });
 
