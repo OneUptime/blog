@@ -61,10 +61,10 @@ FROM (
 ORDER BY order_date;
 ```
 
-The frame `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` means "from the very first row to the current row." This is actually the default frame when ORDER BY is specified, so you can simplify it:
+The frame `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` means "from the very first row to the current row." For aggregate window functions, BigQuery's default frame when `ORDER BY` is specified is `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`, so you can simplify it when your `ORDER BY` values are unique:
 
 ```sql
--- Simplified version - the default frame is UNBOUNDED PRECEDING to CURRENT ROW
+-- Simplified version - the default frame is RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 SELECT
   order_date,
   daily_revenue,
@@ -144,7 +144,7 @@ SELECT
 FROM daily_revenue_table;
 
 -- RANGE frame: all rows within 6 units of the current ORDER BY value
--- For dates, use RANGE with interval expressions for calendar-aware windows
+-- For dates, order by UNIX_DATE() for calendar-aware windows
 SELECT
   order_date,
   daily_revenue,
@@ -155,7 +155,7 @@ SELECT
 FROM daily_revenue_table;
 ```
 
-If your data has no gaps, ROWS and RANGE produce the same result. But if you are missing some dates, RANGE gives you a true 7-calendar-day average while ROWS gives you the average of the last 7 available data points.
+If your data has one row per date and no gaps, ROWS and RANGE produce the same result. But if you are missing some dates, RANGE gives you a true 7-calendar-day average while ROWS gives you the average of the last 7 available data points.
 
 ## Ranking Functions
 
