@@ -10,7 +10,7 @@ Description: A practical guide to diagnosing and resolving GKE nodes stuck in No
 
 You check your cluster and see nodes in `NotReady` status. Pods are being evicted. New pods cannot schedule. Your application is degraded. This is one of those situations where you need to act fast, but understanding what is happening is essential to fixing it correctly.
 
-When a GKE node goes NotReady, it means the kubelet on that node has stopped reporting healthy status to the API server. One of the most common causes is resource pressure - the node has run out of memory, disk space, or process IDs. The kubelet detects the pressure, marks the node with a condition, and eventually stops accepting new pods.
+When a GKE node goes NotReady, it means the kubelet on that node is not reporting healthy status to the API server. One common cause is resource exhaustion - the node has run out of CPU, memory, disk space, or process IDs. The kubelet detects the pressure, marks the node with a condition, and Kubernetes prevents new pods from being scheduled while the node is under pressure or NotReady.
 
 ## Identifying the Problem
 
@@ -49,7 +49,9 @@ Check memory usage on the node:
 kubectl top nodes
 
 # Check which pods on the problem node are using the most memory
-kubectl top pods --all-namespaces --sort-by=memory | head -20
+kubectl top pods --all-namespaces \
+  --field-selector spec.nodeName=gke-my-cluster-default-pool-abc123 \
+  --sort-by=memory | head -20
 ```
 
 If kubectl top is not working (because the node is NotReady), check through the GCP console or use gcloud:
@@ -161,10 +163,10 @@ gcloud compute ssh gke-my-cluster-default-pool-abc123 \
 # Check what is using the most space
 gcloud compute ssh gke-my-cluster-default-pool-abc123 \
   --zone us-central1-a \
-  --command "du -sh /var/lib/docker/* 2>/dev/null | sort -rh | head -10"
+  --command "sudo du -sh /var/lib/containerd /var/lib/kubelet 2>/dev/null | sort -rh"
 ```
 
-The kubelet evicts pods when available disk space drops below 15% (default) and starts garbage collecting container images when it drops below 85% utilization.
+The kubelet evicts pods when available disk space drops below the default hard eviction thresholds: `nodefs.available<10%` for the node filesystem or `imagefs.available<15%` for the image filesystem. It starts garbage collecting container images when image filesystem usage rises above 85% and tries to reduce usage to 80%.
 
 ## Fixing Disk Pressure
 
@@ -271,10 +273,11 @@ Create alerts that fire before nodes reach critical pressure:
 # Create an alert for high node memory usage (above 85%)
 gcloud alpha monitoring policies create \
   --display-name="GKE Node High Memory" \
+  --condition-display-name="Node memory allocatable utilization above 85%" \
   --condition-filter='resource.type="k8s_node" AND metric.type="kubernetes.io/node/memory/allocatable_utilization"' \
-  --condition-threshold-value=0.85 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --duration=300s
+  --if='> 0.85' \
+  --duration=300s \
+  --combiner=OR
 ```
 
 ### Review Pod Priorities
