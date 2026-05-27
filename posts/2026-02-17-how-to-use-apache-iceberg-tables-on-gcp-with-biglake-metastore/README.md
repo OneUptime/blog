@@ -30,7 +30,7 @@ gcloud services enable biglake.googleapis.com
 # Create a BigLake Metastore catalog
 # This is the top-level container for your Iceberg databases and tables
 curl -X POST \
-  "https://biglake.googleapis.com/v1/projects/my-project/locations/us-central1/catalogs?catalogId=my-iceberg-catalog" \
+  "https://biglake.googleapis.com/v1/projects/my-project/locations/us-central1/catalogs?catalogId=my_iceberg_catalog" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{}'
@@ -41,7 +41,7 @@ Next, create a database within the catalog:
 ```bash
 # Create a database in the catalog
 curl -X POST \
-  "https://biglake.googleapis.com/v1/projects/my-project/locations/us-central1/catalogs/my-iceberg-catalog/databases?databaseId=analytics" \
+  "https://biglake.googleapis.com/v1/projects/my-project/locations/us-central1/catalogs/my_iceberg_catalog/databases?databaseId=analytics" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{
@@ -55,7 +55,7 @@ curl -X POST \
 
 ## Creating Your First Iceberg Table with Spark
 
-Spark on Dataproc is currently the best way to create and write to Iceberg tables on GCP. Set up a Dataproc cluster with Iceberg support.
+Spark on Dataproc is a common way to create and write to Iceberg tables on GCP. Set up a Dataproc cluster with Iceberg support.
 
 ```bash
 # Create a Dataproc cluster with Iceberg dependencies
@@ -63,7 +63,7 @@ gcloud dataproc clusters create iceberg-cluster \
   --region=us-central1 \
   --image-version=2.1-debian11 \
   --optional-components=JUPYTER \
-  --properties="spark:spark.jars.packages=org.apache.iceberg:iceberg-spark-runtime-3.3_2.12:1.4.3,spark:spark.sql.catalog.my_catalog=org.apache.iceberg.spark.SparkCatalog,spark:spark.sql.catalog.my_catalog.catalog-impl=org.apache.iceberg.gcp.biglake.BigLakeCatalog,spark:spark.sql.catalog.my_catalog.gcp_project=my-project,spark:spark.sql.catalog.my_catalog.gcp_location=us-central1,spark:spark.sql.catalog.my_catalog.blms_catalog=my-iceberg-catalog,spark:spark.sql.catalog.my_catalog.warehouse=gs://my-iceberg-warehouse"
+  --properties="spark:spark.jars=gs://spark-lib/biglake/biglake-catalog-iceberg1.5.1-0.1.2-with-dependencies.jar,spark:spark.jars.packages=org.apache.iceberg:iceberg-spark-runtime-3.3_2.12:1.5.1,spark:spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,spark:spark.sql.catalog.my_catalog=org.apache.iceberg.spark.SparkCatalog,spark:spark.sql.catalog.my_catalog.catalog-impl=org.apache.iceberg.gcp.biglake.BigLakeCatalog,spark:spark.sql.catalog.my_catalog.gcp_project=my-project,spark:spark.sql.catalog.my_catalog.gcp_location=us-central1,spark:spark.sql.catalog.my_catalog.blms_catalog=my_iceberg_catalog,spark:spark.sql.catalog.my_catalog.warehouse=gs://my-iceberg-warehouse"
 ```
 
 Now submit a Spark job to create an Iceberg table:
@@ -101,7 +101,7 @@ spark.sql("""
         region STRING
     )
     USING iceberg
-    PARTITIONED BY (days(event_time), region)
+    PARTITIONED BY (day(event_time), region)
     TBLPROPERTIES (
         'write.format.default' = 'parquet',
         'write.parquet.compression-codec' = 'zstd'
@@ -139,7 +139,7 @@ CREATE OR REPLACE EXTERNAL TABLE `my-project.analytics.user_events`
 WITH CONNECTION `my-project.us-central1.my-biglake-connection`
 OPTIONS (
   format = 'ICEBERG',
-  uris = ['gs://my-iceberg-warehouse/analytics/user_events/metadata/v1.metadata.json'],
+  uris = ['blms://projects/my-project/locations/us-central1/catalogs/my_iceberg_catalog/databases/analytics/tables/user_events'],
   require_partition_filter = false
 );
 
@@ -156,7 +156,7 @@ ORDER BY total_amount DESC;
 
 ## Using Iceberg Time Travel
 
-One of the best features of Iceberg is time travel. You can query the table as it existed at any point in the past.
+One of the best features of Iceberg is time travel. You can query the table as it existed at any retained snapshot in the past.
 
 ```python
 # Query a previous snapshot of the table using Spark
