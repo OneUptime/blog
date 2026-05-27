@@ -22,7 +22,7 @@ OS Patch Management requires the VM Manager (OS Config) agent to be running on y
 gcloud services enable osconfig.googleapis.com
 ```
 
-Then ensure the OS Config agent is installed on your VMs. For VMs created from recent GCP images (2020+), the agent is already installed. For older VMs, install it:
+Then ensure the OS Config agent is installed on your VMs. For VMs created from Google-provided images with a build date of `v20200114` or later, the agent is already installed. For older VMs, install it:
 
 ```bash
 # Install the OS Config agent on Debian/Ubuntu
@@ -57,7 +57,7 @@ gcloud compute os-config patch-jobs execute \
 You can filter which instances get patched:
 
 ```bash
-# Patch only VMs with a specific label
+# Patch only VMs with specific names
 gcloud compute os-config patch-jobs execute \
     --instance-filter-names="zones/us-central1-a/instances/web-1,zones/us-central1-a/instances/web-2" \
     --display-name="Patch web servers"
@@ -75,26 +75,26 @@ gcloud compute os-config patch-jobs execute \
 
 ## Configuring What Gets Patched
 
-You can control which patches are applied. Here is how to create a patch job that only applies security updates:
+You can control which patches are applied. Here is how to create a patch job that uses `apt dist-upgrade` while excluding kernel image packages:
 
 ```bash
-# Apply only security updates on Debian/Ubuntu VMs
+# Run apt dist-upgrade on Debian/Ubuntu VMs and exclude kernel images
 gcloud compute os-config patch-jobs execute \
     --instance-filter-all \
-    --apt-type=dist \
-    --apt-excludes=linux-image-* \
-    --display-name="Security patches only"
+    --apt-dist \
+    --apt-excludes="linux-image-*" \
+    --display-name="Apt dist-upgrade without kernel images"
 ```
 
-For more control, use a patch config file:
+For more control, use additional patch configuration flags:
 
 ```bash
 # Create a patch configuration that specifies exactly what to patch
 gcloud compute os-config patch-jobs execute \
     --instance-filter-group-labels="env=production" \
-    --apt-type=dist \
+    --apt-dist \
     --reboot-config=DEFAULT \
-    --display-name="Production security patches" \
+    --display-name="Production apt dist-upgrade" \
     --duration=3600s
 ```
 
@@ -110,38 +110,67 @@ The real power comes from scheduling patches to run automatically.
 
 ```bash
 # Create a recurring patch deployment that runs weekly on Sundays at 2 AM
+cat > weekly-patch.yaml <<'EOF'
+description: Weekly production patching
+instanceFilter:
+  groupLabels:
+  - labels:
+      env: production
+patchConfig:
+  rebootConfig: DEFAULT
+  apt:
+    type: DIST
+recurringSchedule:
+  frequency: WEEKLY
+  weekly:
+    dayOfWeek: SUNDAY
+  timeOfDay:
+    hours: 2
+  timeZone:
+    id: America/Chicago
+rollout:
+  mode: ZONE_BY_ZONE
+  disruptionBudget:
+    percent: 25
+EOF
+
 gcloud compute os-config patch-deployments create weekly-patch \
-    --instance-filter-group-labels="env=production" \
-    --recurring-schedule-frequency=weekly \
-    --recurring-schedule-day-of-week=SUNDAY \
-    --recurring-schedule-time-of-day="02:00" \
-    --recurring-schedule-time-zone="America/Chicago" \
-    --reboot-config=DEFAULT \
-    --apt-type=dist \
-    --rollout-mode=zone-by-zone \
-    --rollout-disruption-budget-percent=25 \
-    --description="Weekly production patching"
+    --file=weekly-patch.yaml
 ```
 
 The rollout configuration is critical for production:
 
-- **--rollout-mode=zone-by-zone**: Patches one zone at a time, so your service stays available across zones.
-- **--rollout-disruption-budget-percent=25**: Only patches 25% of instances in each zone simultaneously.
+- **mode: ZONE_BY_ZONE**: Patches one zone at a time, so your service stays available across zones.
+- **disruptionBudget.percent: 25**: Only patches 25% of instances in each zone simultaneously.
 
 For monthly patching:
 
 ```bash
 # Create a monthly patch deployment on the first Saturday
+cat > monthly-patch.yaml <<'EOF'
+description: Monthly patching for all VMs
+instanceFilter:
+  all: true
+patchConfig:
+  rebootConfig: DEFAULT
+recurringSchedule:
+  frequency: MONTHLY
+  monthly:
+    weekDayOfMonth:
+      weekOrdinal: 1
+      dayOfWeek: SATURDAY
+  timeOfDay:
+    hours: 3
+  timeZone:
+    id: UTC
+rollout:
+  mode: ZONE_BY_ZONE
+  disruptionBudget:
+    percent: 33
+EOF
+
 gcloud compute os-config patch-deployments create monthly-patch \
-    --instance-filter-all \
-    --recurring-schedule-frequency=monthly \
-    --recurring-schedule-day-of-month=1 \
-    --recurring-schedule-time-of-day="03:00" \
-    --recurring-schedule-time-zone="UTC" \
-    --reboot-config=DEFAULT \
-    --rollout-mode=zone-by-zone \
-    --rollout-disruption-budget-percent=33 \
-    --description="Monthly patching for all VMs"
+    --file=monthly-patch.yaml
 ```
 
 ## Terraform Configuration
@@ -261,12 +290,12 @@ Check the OS inventory for each VM to see its patch status:
 ```bash
 # View the OS inventory for an instance
 gcloud compute os-config inventories describe my-vm \
-    --location=us-central1-a
-
-# List available package updates for a specific VM
-gcloud compute os-config inventories list-vulnerability-reports \
     --location=us-central1-a \
-    --filter="name:my-vm"
+    --view=full
+
+# View the vulnerability report for a specific VM
+gcloud compute os-config vulnerability-reports describe my-vm \
+    --location=us-central1-a
 ```
 
 ## Handling Patch Failures
