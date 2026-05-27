@@ -217,7 +217,7 @@ WITH RECURSIVE reachable AS (
   SELECT
     CAST('server-a' AS STRING) AS server_id,
     0 AS hops,
-    CAST('server-a' AS STRING) AS path
+    [CAST('server-a' AS STRING)] AS path
 
   UNION ALL
 
@@ -225,15 +225,15 @@ WITH RECURSIVE reachable AS (
   SELECT
     n.target_server AS server_id,
     r.hops + 1 AS hops,
-    CONCAT(r.path, ' -> ', n.target_server) AS path
+    ARRAY_CONCAT(r.path, [n.target_server]) AS path
   FROM `my_project.network.connections` n
   INNER JOIN reachable r ON n.source_server = r.server_id
   -- Prevent cycles by checking the path
-  WHERE STRPOS(r.path, n.target_server) = 0
+  WHERE n.target_server NOT IN UNNEST(r.path)
   -- Limit depth to prevent infinite recursion
   AND r.hops < 10
 )
-SELECT DISTINCT
+SELECT
   server_id,
   MIN(hops) AS min_hops
 FROM reachable
@@ -241,11 +241,11 @@ GROUP BY server_id
 ORDER BY min_hops;
 ```
 
-The cycle prevention (`STRPOS` check) and depth limit are essential for graph traversal. Without them, cycles in the graph would cause infinite recursion.
+The cycle prevention (`NOT IN UNNEST` check) and depth limit are essential for graph traversal. Without them, cycles in the graph would continue until BigQuery's recursion limit is reached and the query fails.
 
 ## Recursion Limits and Safety
 
-BigQuery has a default recursion limit of 500 iterations. For most hierarchical data, this is more than enough (a 500-level-deep tree would be unusual). But you should always add a depth guard:
+BigQuery enforces a recursion limit of 500 iterations by default. For most hierarchical data, this is more than enough (a 500-level-deep tree would be unusual). But you should always add a depth guard:
 
 ```sql
 -- Safe recursive CTE with explicit depth limit
@@ -267,8 +267,8 @@ SELECT * FROM safe_hierarchy;
 
 ## Performance Considerations
 
-Recursive CTEs in BigQuery process each iteration as a separate stage. The more levels in your hierarchy, the more stages BigQuery needs to execute. For deep hierarchies (dozens of levels) or wide ones (millions of nodes per level), performance can degrade.
+Recursive CTEs in BigQuery evaluate the recursive term iteratively. The more levels in your hierarchy, the more recursive iterations BigQuery needs to execute. For deep hierarchies (dozens of levels) or wide ones (millions of nodes per level), performance can degrade.
 
-A few tips to keep recursive CTEs performant: filter early to reduce the number of rows at each level, keep the join condition selective (use indexed or clustered columns), and avoid accumulating large strings in the path column if you do not need them. For very large graphs, consider materializing intermediate results.
+A few tips to keep recursive CTEs performant: filter early to reduce the number of rows at each level, keep the join keys narrow and typed consistently, cluster large source tables on columns you commonly filter by, and avoid accumulating large strings in the path column if you do not need them. For very large graphs, consider materializing intermediate results.
 
 Recursive CTEs unlock a whole class of queries that would otherwise require procedural code or multiple round trips. If you are dealing with any kind of hierarchical or graph-structured data in BigQuery, they are an essential tool in your SQL toolkit.
