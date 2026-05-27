@@ -32,14 +32,21 @@ Before you can run containers, you need Docker installed and configured on your 
     state: present
     update_cache: true
 
+- name: Create apt keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
 - name: Add Docker GPG key
-  ansible.builtin.apt_key:
+  ansible.builtin.get_url:
     url: https://download.docker.com/linux/ubuntu/gpg
-    state: present
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
 
 - name: Add Docker repository
   ansible.builtin.apt_repository:
-    repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    repo: "deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
     state: present
 
 - name: Install Docker Engine
@@ -48,8 +55,10 @@ Before you can run containers, you need Docker installed and configured on your 
       - docker-ce
       - docker-ce-cli
       - containerd.io
+      - docker-buildx-plugin
       - docker-compose-plugin
     state: present
+    update_cache: true
 
 - name: Configure Docker daemon
   ansible.builtin.template:
@@ -142,7 +151,7 @@ For applications that use Docker Compose, Ansible can manage the full lifecycle:
     project_src: "{{ app_dir }}"
     state: present
     pull: "always"
-    recreate: "{{ 'always' if force_redeploy | default(false) else 'smart' }}"
+    recreate: "{{ 'always' if force_redeploy | default(false) else 'auto' }}"
   register: deploy_result
 
 - name: Wait for health checks to pass
@@ -166,8 +175,6 @@ The Compose template:
 ```yaml
 # roles/compose_deploy/templates/docker-compose.yml.j2
 # Docker Compose stack definition
-version: "3.8"
-
 services:
   app:
     image: {{ docker_registry }}/{{ app_name }}:{{ app_version }}
@@ -296,7 +303,7 @@ Ansible can bootstrap a Kubernetes cluster using kubeadm:
 
 - name: Install Calico network plugin
   ansible.builtin.command:
-    cmd: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.0/manifests/calico.yaml
+    cmd: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml
   become: false
   environment:
     KUBECONFIG: "/home/{{ admin_user }}/.kube/config"
