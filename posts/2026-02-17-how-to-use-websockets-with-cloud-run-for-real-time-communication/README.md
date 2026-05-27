@@ -196,7 +196,7 @@ gcloud run deploy ws-server \
 
 Important flags:
 - `--timeout=3600` sets the request timeout to 60 minutes (the maximum), which is how long a WebSocket connection can stay open
-- `--min-instances=1` prevents scale-to-zero, which would disconnect all clients
+- `--min-instances=1` keeps one warm instance available when there are no active connections
 - `--concurrency=1000` allows many WebSocket connections per instance
 - `--session-affinity` tries to route reconnecting clients to the same instance
 
@@ -357,12 +357,12 @@ When running multiple instances, each instance has its own set of connected clie
 
 ```python
 # Using Redis Pub/Sub for cross-instance message distribution
-import aioredis
+import redis.asyncio as redis
 
 async def setup_redis_pubsub(room_id):
     """Subscribe to a Redis channel for cross-instance messaging."""
-    redis = await aioredis.from_url(os.environ.get('REDIS_URL'))
-    pubsub = redis.pubsub()
+    redis_client = redis.from_url(os.environ.get('REDIS_URL'))
+    pubsub = redis_client.pubsub()
     await pubsub.subscribe(f'room:{room_id}')
 
     # Listen for messages from other instances
@@ -373,15 +373,15 @@ async def setup_redis_pubsub(room_id):
 
 async def publish_message(room_id, message):
     """Publish a message to Redis for all instances to receive."""
-    redis = await aioredis.from_url(os.environ.get('REDIS_URL'))
-    await redis.publish(f'room:{room_id}', message)
+    redis_client = redis.from_url(os.environ.get('REDIS_URL'))
+    await redis_client.publish(f'room:{room_id}', message)
 ```
 
 ### Connection Limits
 
 Each Cloud Run instance can handle many WebSocket connections, but consider:
 - Each connection uses memory (typically a few KB per connection)
-- An instance with 512 MB memory can reasonably handle 5,000-10,000 connections
+- Cloud Run supports up to 1,000 concurrent requests per container instance, so set the limit no higher than that
 - Set concurrency accordingly to prevent overloading instances
 
 ## Alternative: Server-Sent Events
@@ -428,23 +428,33 @@ Track active connections using Cloud Monitoring:
 
 ```bash
 # Check active instance count (indicates WebSocket load)
-gcloud monitoring time-series list \
-  --filter='metric.type="run.googleapis.com/container/instance_count" AND resource.labels.service_name="ws-server"' \
-  --interval-start-time=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
+PROJECT_ID=my-project
+START_TIME=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -G "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/timeSeries" \
+  --data-urlencode 'filter=metric.type="run.googleapis.com/container/instance_count" AND resource.labels.service_name="ws-server"' \
+  --data-urlencode "interval.startTime=${START_TIME}" \
+  --data-urlencode "interval.endTime=${END_TIME}"
 ```
 
 Also add connection tracking in your application:
 
 ```python
-# Expose connection count as a metric
-@app.route('/metrics')
-def metrics():
-    """Return current connection counts for monitoring."""
-    total_connections = sum(len(clients) for clients in rooms.values())
-    return json.dumps({
-        'total_connections': total_connections,
-        'rooms': {room: len(clients) for room, clients in rooms.items()}
-    })
+# Add a /metrics response to the process_request handler
+async def health_check(path, request_headers):
+    """Handle health and metrics requests on HTTP paths."""
+    if path == '/health':
+        return (200, [], b'OK')
+    if path == '/metrics':
+        total_connections = sum(len(clients) for clients in rooms.values())
+        body = json.dumps({
+            'total_connections': total_connections,
+            'rooms': {room: len(clients) for room, clients in rooms.items()}
+        }).encode()
+        return (200, [('Content-Type', 'application/json')], body)
+    return None
 ```
 
 WebSockets on Cloud Run work well for moderate real-time workloads. For applications with tens of thousands of concurrent connections, dedicated WebSocket infrastructure (like a Pub/Sub-backed system) might be a better fit. But for most real-time features - live notifications, dashboards, collaborative editing - Cloud Run with WebSockets gets the job done with minimal operational overhead.
