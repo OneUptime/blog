@@ -19,12 +19,12 @@ The concept is simple: test first, deploy second. If the test step exits with a 
 
 steps:
   # Step 1: Install dependencies
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'install'
     args: ['npm', 'ci']
 
   # Step 2: Run tests - if this fails, the build stops here
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'test'
     args: ['npm', 'test']
 
@@ -51,12 +51,12 @@ This works because Cloud Build treats any step that exits with a non-zero code a
 ```yaml
 # Node.js test pipeline
 steps:
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'install'
     args: ['npm', 'ci']
 
   # Run Jest, Mocha, Vitest, or whatever your test runner is
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'test'
     args: ['npm', 'test']
     env:
@@ -87,7 +87,7 @@ steps:
 ```yaml
 # Go test pipeline
 steps:
-  - name: 'golang:1.22'
+  - name: 'golang:1.26'
     id: 'test'
     args: ['go', 'test', '-v', '-race', './...']
     env:
@@ -115,21 +115,21 @@ Linting catches style issues and potential bugs before tests even run. Since lin
 ```yaml
 # Lint, then test, then deploy
 steps:
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'install'
     args: ['npm', 'ci']
 
   # Lint runs first - catches syntax and style issues quickly
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'lint'
     args: ['npm', 'run', 'lint']
 
   # Tests run after lint passes
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'test'
     args: ['npm', 'test']
 
-  # Deploy only if both lint and test pass
+  # Build only if both lint and test pass
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build'
     args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA', '.']
@@ -143,16 +143,16 @@ Or run them in parallel for faster feedback:
 ```yaml
 # Run lint and test in parallel for faster builds
 steps:
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'install'
     args: ['npm', 'ci']
 
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'lint'
     waitFor: ['install']
     args: ['npm', 'run', 'lint']
 
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'test'
     waitFor: ['install']
     args: ['npm', 'test']
@@ -206,23 +206,19 @@ steps:
         exit 1
 
   # Install dependencies
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'install'
     waitFor: ['-']
     args: ['npm', 'ci']
 
   # Run tests against the database
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'test'
     waitFor: ['install', 'wait-for-db']
     env:
       - 'DATABASE_URL=postgresql://postgres:testpass@test-db:5432/testdb'
       - 'NODE_ENV=test'
     args: ['npm', 'test']
-
-options:
-  # Required for Docker networking between containers
-  pool: {}
 ```
 
 Note: The `--network cloudbuild` flag puts the database container on the same Docker network that Cloud Build step containers use, allowing them to communicate by container name.
@@ -234,51 +230,40 @@ Cloud Build does not natively display test reports, but you can store them for l
 ```yaml
 # Generate and store test reports
 steps:
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'install'
     args: ['npm', 'ci']
 
-  - name: 'node:20'
-    id: 'test'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        # Run tests and generate a JUnit XML report
-        npm test -- --reporter=junit --reporter-options="mochaFile=/workspace/test-results.xml"
-        TEST_EXIT_CODE=$$?
-
-        # Upload the report to GCS regardless of test result
-        exit $$TEST_EXIT_CODE
-
-  # Upload test results to GCS (runs even if tests fail? No - we need a different approach)
-  # Instead, handle this in the test step itself
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'test-with-report'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        # Run tests and capture the exit code
-        npm test -- --reporter=junit --output=/workspace/test-results.xml || true
+        # Run Vitest and generate a JUnit XML report
+        set +e
+        npx vitest run --reporter=junit --outputFile=/workspace/test-results.xml
         TEST_RESULT=$$?
 
-        # Always upload the report
-        echo "Test results generated at /workspace/test-results.xml"
+        # Save the exit code so later steps can upload the report first
+        echo "$$TEST_RESULT" > /workspace/test-exit-code
+        exit 0
 
-        # Fail the step if tests failed
-        exit $$TEST_RESULT
-```
-
-To store test reports in GCS:
-
-```yaml
   - name: 'gcr.io/cloud-builders/gsutil'
     id: 'upload-report'
     args:
       - 'cp'
       - '/workspace/test-results.xml'
       - 'gs://my-test-reports/$BUILD_ID/test-results.xml'
+
+  - name: 'node:24'
+    id: 'fail-if-tests-failed'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        TEST_RESULT="$$(cat /workspace/test-exit-code)"
+        exit $$TEST_RESULT
 ```
 
 ## Code Coverage
@@ -288,11 +273,11 @@ Add code coverage reporting to your test step:
 ```yaml
 # Run tests with code coverage
 steps:
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'install'
     args: ['npm', 'ci']
 
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'test-with-coverage'
     entrypoint: 'bash'
     args:
@@ -316,11 +301,11 @@ Use substitution variables to adjust test behavior per environment:
 ```yaml
 # Adjust test configuration based on environment
 steps:
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'install'
     args: ['npm', 'ci']
 
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'test'
     env:
       - 'NODE_ENV=test'
@@ -350,18 +335,18 @@ Flaky tests - tests that sometimes pass and sometimes fail without code changes 
 
 ### Retry Failed Tests
 
-Some test runners support retries:
+Some test runners support retries. For Jest, configure `jest.retryTimes(3)` in a setup file, then run Jest normally:
 
 ```yaml
 # Retry failed tests up to 3 times (Jest)
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'test'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         # Run tests with retry for flaky tests
-        npx jest --forceExit --detectOpenHandles
+        npx jest
 ```
 
 For pytest:
@@ -384,18 +369,18 @@ Run stable tests as a gate, and flaky tests as non-blocking:
 
 ```yaml
 # Run stable tests as a gate
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'stable-tests'
-    args: ['npx', 'jest', '--testPathPattern=stable']
+    args: ['npx', 'jest', '--testPathPatterns=stable']
 
 # Run flaky tests but do not block deployment
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'flaky-tests'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        npx jest --testPathPattern=flaky || echo "Some flaky tests failed (non-blocking)"
+        npx jest --testPathPatterns=flaky || echo "Some flaky tests failed (non-blocking)"
 ```
 
 ## Complete Production Pipeline
@@ -406,24 +391,24 @@ Here is a complete pipeline that lint-checks, tests, builds, and deploys:
 # Complete test-before-deploy production pipeline
 steps:
   # Install dependencies
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'install'
     args: ['npm', 'ci']
 
   # Lint and test in parallel
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'lint'
     waitFor: ['install']
     args: ['npm', 'run', 'lint']
 
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'test'
     waitFor: ['install']
     env: ['CI=true', 'NODE_ENV=test']
     args: ['npm', 'test']
 
   # Type check (for TypeScript projects)
-  - name: 'node:20'
+  - name: 'node:24'
     id: 'typecheck'
     waitFor: ['install']
     args: ['npx', 'tsc', '--noEmit']
