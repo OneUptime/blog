@@ -19,7 +19,7 @@ GCP's Recommender analyzes your resource usage patterns and generates recommenda
 - Idle IP addresses (allocated but not in use)
 - Oversized VMs (using far less CPU/memory than provisioned)
 - Idle Cloud SQL instances
-- Unattached snapshots past their retention period
+- Idle custom images
 
 ```mermaid
 flowchart TD
@@ -42,9 +42,12 @@ flowchart TD
 
 gcloud services enable recommender.googleapis.com
 
-# Also enable the services we will manage
+# Also enable the services we will manage and use for automation
 gcloud services enable compute.googleapis.com
 gcloud services enable sqladmin.googleapis.com
+gcloud services enable cloudfunctions.googleapis.com
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable cloudscheduler.googleapis.com
 ```
 
 ## Step 2: Query Recommendations Manually
@@ -68,6 +71,12 @@ gcloud recommender recommendations list \
 gcloud recommender recommendations list \
   --project=my-project \
   --location=us-central1 \
+  --recommender=google.compute.address.IdleResourceRecommender
+
+# Get global idle IP address recommendations
+gcloud recommender recommendations list \
+  --project=my-project \
+  --location=global \
   --recommender=google.compute.address.IdleResourceRecommender
 
 # Get VM right-sizing recommendations
@@ -96,7 +105,6 @@ SLACK_WEBHOOK = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 # Safety configuration
 DRY_RUN = False  # Set to True to preview without taking action
 PROTECTED_LABELS = ["production", "prod", "critical", "do-not-delete"]
-MIN_IDLE_DAYS = 14  # Only clean up resources idle for at least 2 weeks
 
 
 @functions_framework.http
@@ -124,6 +132,15 @@ def is_protected(labels):
         if key == "no-auto-cleanup" and value.lower() == "true":
             return True
     return False
+
+
+def resource_name_from_operation(op, resource_kind):
+    """Return the resource name from a recommendation remove operation."""
+    if op.action != "remove":
+        return None
+    if op.resource_type != resource_kind:
+        return None
+    return op.resource.rstrip("/").split("/")[-1]
 
 
 def process_idle_vms():
@@ -155,8 +172,10 @@ def process_idle_vms():
             # Extract the instance name from the recommendation
             for group in rec.content.operation_groups:
                 for op in group.operations:
-                    if op.resource_type == "compute.googleapis.com/Instance":
-                        instance_name = op.resource.split("/")[-1]
+                    instance_name = resource_name_from_operation(
+                        op, "compute.googleapis.com/Instance"
+                    )
+                    if instance_name:
 
                         try:
                             instance = compute_client.get(
@@ -231,8 +250,10 @@ def process_idle_disks():
 
             for group in rec.content.operation_groups:
                 for op in group.operations:
-                    if op.resource_type == "compute.googleapis.com/Disk":
-                        disk_name = op.resource.split("/")[-1]
+                    disk_name = resource_name_from_operation(
+                        op, "compute.googleapis.com/Disk"
+                    )
+                    if disk_name:
 
                         try:
                             disk = compute_client.get(
@@ -253,25 +274,31 @@ def process_idle_disks():
                             snapshot_name = f"auto-backup-{disk_name}-{datetime.now().strftime('%Y%m%d')}"
                             logging.info(f"Creating snapshot {snapshot_name} of {disk_name}")
 
-                            snapshot_client = compute_v1.SnapshotsClient()
                             snapshot_resource = compute_v1.Snapshot()
                             snapshot_resource.name = snapshot_name
-                            snapshot_resource.source_disk = disk.self_link
                             snapshot_resource.labels = {
                                 "created-by": "idle-cleanup-automation",
                                 "original-disk": disk_name,
                             }
 
-                            snapshot_client.insert(
+                            operation = compute_client.create_snapshot(
                                 project=PROJECT_ID,
+                                zone=zone.name,
+                                disk=disk_name,
                                 snapshot_resource=snapshot_resource,
                             )
+                            operation.result()
 
                             # Delete the disk after snapshot
                             compute_client.delete(
                                 project=PROJECT_ID,
                                 zone=zone.name,
                                 disk=disk_name,
+                            )
+                            client.mark_recommendation_claimed(
+                                name=rec.name,
+                                state_metadata={"action": "deleted_by_automation"},
+                                etag=rec.etag,
                             )
 
                         cleaned_disks.append({
@@ -288,11 +315,14 @@ def process_idle_ips():
     """Release idle static IP addresses."""
     client = recommender_v1.RecommenderClient()
     address_client = compute_v1.AddressesClient()
+    global_address_client = compute_v1.GlobalAddressesClient()
+    regions_client = compute_v1.RegionsClient()
 
     released_ips = []
 
     # Check each region for idle IPs
-    for region in ["us-central1", "us-east1", "us-west1", "europe-west1"]:
+    for region_obj in regions_client.list(project=PROJECT_ID):
+        region = region_obj.name
         parent = (
             f"projects/{PROJECT_ID}/locations/{region}/"
             f"recommenders/google.compute.address.IdleResourceRecommender"
@@ -309,8 +339,10 @@ def process_idle_ips():
 
             for group in rec.content.operation_groups:
                 for op in group.operations:
-                    if op.resource_type == "compute.googleapis.com/Address":
-                        address_name = op.resource.split("/")[-1]
+                    address_name = resource_name_from_operation(
+                        op, "compute.googleapis.com/Address"
+                    )
+                    if address_name:
 
                         if DRY_RUN:
                             logging.info(f"[DRY RUN] Would release IP: {address_name}")
@@ -321,12 +353,57 @@ def process_idle_ips():
                                 region=region,
                                 address=address_name,
                             )
+                            client.mark_recommendation_claimed(
+                                name=rec.name,
+                                state_metadata={"action": "released_by_automation"},
+                                etag=rec.etag,
+                            )
 
                         released_ips.append({
                             "name": address_name,
                             "region": region,
                             "status": "dry_run" if DRY_RUN else "released",
                         })
+
+    parent = (
+        f"projects/{PROJECT_ID}/locations/global/"
+        f"recommenders/google.compute.address.IdleResourceRecommender"
+    )
+
+    try:
+        recommendations = client.list_recommendations(parent=parent)
+    except Exception:
+        recommendations = []
+
+    for rec in recommendations:
+        if rec.state_info.state != recommender_v1.RecommendationStateInfo.State.ACTIVE:
+            continue
+
+        for group in rec.content.operation_groups:
+            for op in group.operations:
+                address_name = resource_name_from_operation(
+                    op, "compute.googleapis.com/Address"
+                )
+                if address_name:
+                    if DRY_RUN:
+                        logging.info(f"[DRY RUN] Would release global IP: {address_name}")
+                    else:
+                        logging.info(f"Releasing idle global IP: {address_name}")
+                        global_address_client.delete(
+                            project=PROJECT_ID,
+                            address=address_name,
+                        )
+                        client.mark_recommendation_claimed(
+                            name=rec.name,
+                            state_metadata={"action": "released_by_automation"},
+                            etag=rec.etag,
+                        )
+
+                    released_ips.append({
+                        "name": address_name,
+                        "region": "global",
+                        "status": "dry_run" if DRY_RUN else "released",
+                    })
 
     return released_ips
 
@@ -368,22 +445,6 @@ def send_summary(results):
 ## Step 4: Deploy the Function
 
 ```bash
-# Deploy the cleanup function
-gcloud functions deploy idle-resource-cleanup \
-  --runtime=python311 \
-  --trigger-http \
-  --source=idle_cleanup/ \
-  --entry-point=cleanup_idle_resources \
-  --region=us-central1 \
-  --timeout=540 \
-  --memory=512MB \
-  --service-account=resource-cleanup-sa@my-project.iam.gserviceaccount.com \
-  --no-allow-unauthenticated
-```
-
-Grant the necessary permissions:
-
-```bash
 # Create the service account
 gcloud iam service-accounts create resource-cleanup-sa \
   --display-name="Resource Cleanup Automation"
@@ -395,11 +456,35 @@ gcloud projects add-iam-policy-binding my-project \
 
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:resource-cleanup-sa@my-project.iam.gserviceaccount.com" \
-  --role="roles/recommender.viewer"
+  --role="roles/recommender.computeAdmin"
 
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:resource-cleanup-sa@my-project.iam.gserviceaccount.com" \
   --role="roles/compute.storageAdmin"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:resource-cleanup-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/compute.networkAdmin"
+
+# Deploy the cleanup function
+gcloud functions deploy idle-resource-cleanup \
+  --gen2 \
+  --runtime=python311 \
+  --trigger-http \
+  --source=idle_cleanup/ \
+  --entry-point=cleanup_idle_resources \
+  --region=us-central1 \
+  --timeout=540 \
+  --memory=512MB \
+  --service-account=resource-cleanup-sa@my-project.iam.gserviceaccount.com \
+  --no-allow-unauthenticated
+
+# Allow Cloud Scheduler to invoke the authenticated function
+gcloud functions add-iam-policy-binding idle-resource-cleanup \
+  --region=us-central1 \
+  --gen2 \
+  --member="serviceAccount:resource-cleanup-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
 ```
 
 ## Step 5: Schedule Weekly Cleanup
@@ -409,6 +494,7 @@ Use Cloud Scheduler to run the cleanup automatically:
 ```bash
 # Schedule weekly cleanup every Monday at 6 AM
 gcloud scheduler jobs create http weekly-idle-cleanup \
+  --location=us-central1 \
   --schedule="0 6 * * 1" \
   --uri="https://us-central1-my-project.cloudfunctions.net/idle-resource-cleanup" \
   --http-method=GET \
@@ -450,6 +536,15 @@ Some resources should not be deleted, just resized. Generate a weekly report:
 # right_sizing_report.py - Generate right-sizing recommendations
 import functions_framework
 from google.cloud import recommender_v1
+from google.cloud import compute_v1
+import requests
+
+PROJECT_ID = "my-project"
+SLACK_WEBHOOK = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+
+
+def send_slack(message):
+    requests.post(SLACK_WEBHOOK, json={"text": message})
 
 @functions_framework.http
 def generate_rightsizing_report(request):
