@@ -23,23 +23,23 @@ You could run the Spanner emulator manually with `gcloud emulators spanner start
 <dependency>
     <groupId>org.testcontainers</groupId>
     <artifactId>testcontainers</artifactId>
-    <version>1.19.3</version>
+    <version>2.0.5</version>
     <scope>test</scope>
 </dependency>
 
 <!-- Testcontainers GCloud module for Spanner emulator -->
 <dependency>
     <groupId>org.testcontainers</groupId>
-    <artifactId>gcloud</artifactId>
-    <version>1.19.3</version>
+    <artifactId>testcontainers-gcloud</artifactId>
+    <version>2.0.5</version>
     <scope>test</scope>
 </dependency>
 
 <!-- JUnit 5 integration -->
 <dependency>
     <groupId>org.testcontainers</groupId>
-    <artifactId>junit-jupiter</artifactId>
-    <version>1.19.3</version>
+    <artifactId>testcontainers-junit-jupiter</artifactId>
+    <version>2.0.5</version>
     <scope>test</scope>
 </dependency>
 
@@ -70,7 +70,7 @@ public abstract class SpannerIntegrationTest {
     @Container
     private static final SpannerEmulatorContainer emulator =
             new SpannerEmulatorContainer(
-                    DockerImageName.parse("gcr.io/cloud-spanner-emulator/emulator:latest"));
+                    DockerImageName.parse("gcr.io/cloud-spanner-emulator/emulator:1.4.0"));
 
     protected static Spanner spanner;
     protected static DatabaseClient databaseClient;
@@ -84,6 +84,7 @@ public abstract class SpannerIntegrationTest {
         // Create a Spanner client connected to the emulator
         SpannerOptions options = SpannerOptions.newBuilder()
                 .setEmulatorHost(emulator.getEmulatorGrpcEndpoint())
+                .setCredentials(NoCredentials.getInstance())
                 .setProjectId(PROJECT_ID)
                 .build();
 
@@ -91,12 +92,12 @@ public abstract class SpannerIntegrationTest {
 
         // Create the instance
         InstanceAdminClient instanceAdmin = spanner.getInstanceAdminClient();
-        InstanceConfig config = instanceAdmin.listInstanceConfigs().iterateAll()
-                .iterator().next();
+        InstanceConfigId instanceConfig =
+                InstanceConfigId.of(PROJECT_ID, "emulator-config");
 
         instanceAdmin.createInstance(
                 InstanceInfo.newBuilder(InstanceId.of(PROJECT_ID, INSTANCE_ID))
-                        .setInstanceConfigId(config.getId())
+                        .setInstanceConfigId(instanceConfig)
                         .setDisplayName("Test Instance")
                         .setNodeCount(1)
                         .build())
@@ -271,7 +272,7 @@ class TransactionTest extends SpannerIntegrationTest {
 
     @Test
     void shouldRollbackOnException() {
-        assertThrows(SpannerException.class, () -> {
+        assertThrows(RuntimeException.class, () -> {
             databaseClient.readWriteTransaction().run(transaction -> {
                 transaction.buffer(Mutation.newInsertBuilder("orders")
                         .set("order_id").to("order-2")
@@ -308,11 +309,12 @@ public class SpringSpannerIntegrationTest {
 
     @Container
     static SpannerEmulatorContainer emulator = new SpannerEmulatorContainer(
-            DockerImageName.parse("gcr.io/cloud-spanner-emulator/emulator:latest"));
+            DockerImageName.parse("gcr.io/cloud-spanner-emulator/emulator:1.4.0"));
 
     // Override Spring configuration to point to the emulator
     @DynamicPropertySource
     static void setProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.cloud.gcp.spanner.emulator.enabled", () -> true);
         registry.add("spring.cloud.gcp.spanner.emulator-host",
                 emulator::getEmulatorGrpcEndpoint);
         registry.add("spring.cloud.gcp.spanner.project-id", () -> "test-project");
@@ -356,4 +358,4 @@ No special Docker setup is needed. GitHub Actions runners have Docker pre-instal
 
 ## Wrapping Up
 
-Testcontainers with the Cloud Spanner emulator gives you fast, isolated integration tests that do not touch real GCP infrastructure. The emulator supports the full Spanner API including transactions, secondary indexes, and schema DDL. Tests are reproducible because each run starts with a clean emulator instance. The main limitation is that the emulator does not replicate Spanner's distributed behavior - you will not see the same latency characteristics or multi-region consistency. But for testing your application logic, data access patterns, and transaction correctness, it is exactly what you need.
+Testcontainers with the Cloud Spanner emulator gives you fast, isolated integration tests that do not touch real GCP infrastructure. The emulator supports common Spanner APIs used by application tests, including transactions, secondary indexes, and schema DDL, but it has some documented differences from the production service. Tests are reproducible because each run starts with a clean emulator instance. The main limitation is that the emulator does not replicate Spanner's distributed behavior - you will not see the same latency characteristics, scalability characteristics, or multi-region consistency. But for testing your application logic, data access patterns, and transaction correctness, it is exactly what you need.
