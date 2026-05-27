@@ -16,23 +16,23 @@ Before diving into errors, you need to understand which service accounts Cloud B
 
 ### The Cloud Build Service Account
 
-Every GCP project has a default Cloud Build service account:
+Cloud Build can use several different service accounts. In older projects, the default build identity is often the legacy Cloud Build service account:
 
 ```text
 PROJECT_NUMBER@cloudbuild.gserviceaccount.com
 ```
 
-This is the account that runs your build steps. When a build step tries to access a GCP resource (push an image, deploy a service, read a secret), it uses this service account's credentials.
+In newer projects, depending on your organization's settings, Cloud Build may use the Compute Engine default service account instead. You can also set a user-specified service account on a build or trigger. The account that runs the build steps is the one whose credentials are used when a build step accesses a GCP resource (push an image, deploy a service, read a secret). The commands below use the legacy Cloud Build service account as the example; replace `CB_SA` with the service account that actually runs your build.
 
 ### The Compute Engine Default Service Account
 
-Cloud Build also uses the Compute Engine default service account for some operations:
+Cloud Build may use the Compute Engine default service account as the build identity:
 
 ```text
 PROJECT_NUMBER-compute@developer.gserviceaccount.com
 ```
 
-This matters when deploying to services like Cloud Run or Cloud Functions, where the deployed service runs as this account.
+This also matters when deploying to services like Cloud Run or Cloud Run functions, where the deployed service may run as this account unless you specify a different runtime service account.
 
 ### Custom Service Accounts
 
@@ -62,10 +62,10 @@ gcloud artifacts repositories add-iam-policy-binding my-repo \
   --role="roles/artifactregistry.writer"
 ```
 
-If you are using the older Container Registry (gcr.io), grant Storage Admin:
+Container Registry is deprecated and writes to Container Registry are shut down. If you are still working with pre-migration Container Registry buckets, Cloud Storage roles apply. For `gcr.io` repositories hosted on Artifact Registry, grant Artifact Registry roles instead.
 
 ```bash
-# For Container Registry
+# For legacy Container Registry buckets only
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
   --role="roles/storage.admin"
@@ -148,10 +148,12 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 # Grant permission to act as the function's runtime service account
 gcloud iam service-accounts add-iam-policy-binding \
-  "${PROJECT_ID}@appspot.gserviceaccount.com" \
+  "${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --member="serviceAccount:${CB_SA}" \
   --role="roles/iam.serviceAccountUser"
 ```
+
+For Cloud Run functions, you may also need Cloud Run Admin, Artifact Registry Writer, Storage Admin, and Logs Writer on the build service account, depending on what the deployment creates and where it writes build logs and artifacts.
 
 ## Error 5: Cannot Access GCS Bucket
 
@@ -219,6 +221,8 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
   --role="roles/container.developer"
 ```
 
+This covers Google Cloud IAM access. If your cluster uses Kubernetes RBAC, the service account also needs the appropriate Kubernetes permissions inside the cluster.
+
 ## Error 8: Trigger Creation Fails Due to Repository Permissions
 
 **Error message:**
@@ -268,13 +272,13 @@ vpcServiceControls
 
 **Fix:**
 
-This requires updating the VPC Service Controls configuration. You need to either:
+This requires updating the VPC Service Controls configuration. Cloud Build support for VPC Service Controls is based on private pools, and builds running inside a service perimeter also need an allowed logs configuration. You typically need to either:
 
-1. Add Cloud Build to the service perimeter
-2. Create an ingress rule that allows the Cloud Build service account
+1. Run the build in a private pool that is inside the service perimeter
+2. Create an ingress rule or access level that allows the build service account
 
 ```bash
-# Add Cloud Build to the access level in VPC SC
+# Add an access level to the VPC SC perimeter
 # This typically requires an organization admin
 gcloud access-context-manager perimeters update my-perimeter \
   --add-access-levels=my-access-level
@@ -289,12 +293,16 @@ When you hit a permission error, these commands help you figure out what is goin
 ```bash
 # Check what roles the Cloud Build service account has
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
 gcloud projects get-iam-policy $PROJECT_ID \
   --flatten="bindings[].members" \
-  --filter="bindings.members:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+  --filter="bindings.members:${CB_SA}" \
   --format="table(bindings.role)"
 
-# Test if the service account can access a specific resource
+# Check the default service account Cloud Build will use
+gcloud builds get-default-service-account --project=$PROJECT_ID
+
+# List testable permissions for a resource
 gcloud iam list-testable-permissions \
   //cloudresourcemanager.googleapis.com/projects/$PROJECT_ID \
   --filter="name:cloudbuild"
@@ -325,7 +333,13 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:cloud-build-custom@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/run.admin"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:cloud-build-custom@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/logging.logWriter"
 ```
+
+When you specify your own service account, configure your build logs to use Cloud Logging or a user-created Cloud Storage logs bucket. User-specified service accounts cannot write logs to the default Cloud Build logs bucket.
 
 Reference the custom service account in your trigger:
 
