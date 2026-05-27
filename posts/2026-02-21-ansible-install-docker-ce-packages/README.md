@@ -33,9 +33,11 @@ The official Docker CE installation on Ubuntu involves adding the Docker reposit
     - name: Remove old Docker packages if present
       ansible.builtin.apt:
         name:
-          - docker
-          - docker-engine
           - docker.io
+          - docker-compose
+          - docker-compose-v2
+          - docker-doc
+          - podman-docker
           - containerd
           - runc
         state: absent
@@ -50,6 +52,12 @@ The official Docker CE installation on Ubuntu involves adding the Docker reposit
           - lsb-release
         state: present
         update_cache: true
+
+    - name: Get Debian package architecture
+      ansible.builtin.command:
+        cmd: dpkg --print-architecture
+      register: docker_apt_arch
+      changed_when: false
 
     - name: Create keyrings directory
       ansible.builtin.file:
@@ -66,7 +74,7 @@ The official Docker CE installation on Ubuntu involves adding the Docker reposit
     - name: Add Docker APT repository
       ansible.builtin.apt_repository:
         repo: >-
-          deb [arch={{ ansible_architecture | replace('x86_64', 'amd64') }}
+          deb [arch={{ docker_apt_arch.stdout }}
           signed-by=/etc/apt/keyrings/docker.asc]
           https://download.docker.com/linux/ubuntu
           {{ ansible_distribution_release }} stable
@@ -112,6 +120,7 @@ The process for RHEL-based systems uses the `yum_repository` module and `dnf` fo
   vars:
     docker_users:
       - deploy
+    docker_repo_os: "{{ 'rhel' if ansible_distribution == 'RedHat' else 'centos' }}"
 
   tasks:
     - name: Remove old Docker packages
@@ -132,23 +141,21 @@ The process for RHEL-based systems uses the `yum_repository` module and `dnf` fo
     - name: Install required packages
       ansible.builtin.dnf:
         name:
-          - yum-utils
-          - device-mapper-persistent-data
-          - lvm2
+          - dnf-plugins-core
         state: present
 
     - name: Import Docker GPG key
       ansible.builtin.rpm_key:
-        key: https://download.docker.com/linux/centos/gpg
+        key: "https://download.docker.com/linux/{{ docker_repo_os }}/gpg"
         state: present
 
     - name: Add Docker CE repository
       ansible.builtin.yum_repository:
         name: docker-ce-stable
         description: Docker CE Stable
-        baseurl: "https://download.docker.com/linux/centos/$releasever/$basearch/stable"
+        baseurl: "https://download.docker.com/linux/{{ docker_repo_os }}/$releasever/$basearch/stable"
         gpgcheck: true
-        gpgkey: https://download.docker.com/linux/centos/gpg
+        gpgkey: "https://download.docker.com/linux/{{ docker_repo_os }}/gpg"
         enabled: true
 
     - name: Install Docker CE packages
@@ -228,8 +235,8 @@ After installation, you almost always need to configure the Docker daemon. Commo
         "default-address-pools": [
           {"base": "172.17.0.0/12", "size": 24}
         ],
-        "metrics-addr": "0.0.0.0:9323",
-        "experimental": false
+        "metrics-addr": "127.0.0.1:9323",
+        "experimental": true
       }
     mode: '0644'
   notify: restart docker
@@ -258,16 +265,22 @@ In production, you might need a specific Docker version for compatibility reason
 # Install a specific version of Docker CE on Ubuntu
 - name: Get available Docker CE versions
   ansible.builtin.command:
-    cmd: apt-cache madison docker-ce
+    cmd: apt list --all-versions docker-ce
   register: docker_versions
   changed_when: false
+
+- name: Set Docker CE version string
+  ansible.builtin.set_fact:
+    docker_version_string: "5:29.5.2-1~ubuntu.24.04~noble"
 
 - name: Install specific Docker CE version
   ansible.builtin.apt:
     name:
-      - "docker-ce=5:24.0.7-1~ubuntu.{{ ansible_distribution_release }}~{{ ansible_distribution_release }}"
-      - "docker-ce-cli=5:24.0.7-1~ubuntu.{{ ansible_distribution_release }}~{{ ansible_distribution_release }}"
+      - "docker-ce={{ docker_version_string }}"
+      - "docker-ce-cli={{ docker_version_string }}"
       - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
     state: present
 ```
 
@@ -319,7 +332,6 @@ For Docker daemons that need remote access, configure TLS certificates.
         "tlscacert": "/etc/docker/tls/ca.pem",
         "tlscert": "/etc/docker/tls/server-cert.pem",
         "tlskey": "/etc/docker/tls/server-key.pem",
-        "hosts": ["unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"],
         "tlsverify": true,
         "log-driver": "json-file",
         "log-opts": {
@@ -328,6 +340,16 @@ For Docker daemons that need remote access, configure TLS certificates.
         },
         "storage-driver": "overlay2"
       }
+    mode: '0644'
+  notify: restart docker
+
+- name: Configure Docker systemd hosts for TLS
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/docker.service.d/override.conf
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/bin/dockerd -H fd:// -H tcp://0.0.0.0:2376
     mode: '0644'
   notify: restart docker
 ```
