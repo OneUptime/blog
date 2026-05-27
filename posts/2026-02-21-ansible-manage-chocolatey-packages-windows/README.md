@@ -10,11 +10,11 @@ Description: A practical guide to managing Chocolatey packages on Windows server
 
 Chocolatey is the most popular package manager for Windows, and it fills the same role that APT and YUM/DNF fill on Linux. It lets you install, update, and remove software from the command line, which is exactly what you need for automation. When you pair Chocolatey with Ansible, you get a powerful combination for managing Windows infrastructure at scale.
 
-Ansible includes the `chocolatey.chocolatey.win_chocolatey` module (and related modules) that integrate directly with Chocolatey. Let me walk through how to use them effectively.
+The `chocolatey.chocolatey` Ansible collection provides the `chocolatey.chocolatey.win_chocolatey` module (and related modules) that integrate directly with Chocolatey. Let me walk through how to use them effectively.
 
 ## Prerequisites
 
-Before managing Chocolatey packages, you need two things: Ansible configured to manage Windows hosts (via WinRM), and Chocolatey installed on those hosts.
+Before managing Chocolatey packages, you need Ansible configured to manage Windows hosts (via WinRM), the `chocolatey.chocolatey` collection installed on your control node, and Chocolatey installed on those hosts.
 
 ### Installing Chocolatey with Ansible
 
@@ -172,7 +172,7 @@ Here is a realistic playbook for provisioning a Windows developer workstation.
 
 ## Configuring Chocolatey Sources
 
-By default, Chocolatey uses the community repository at `chocolatey.org`. In enterprise environments, you typically use a private repository.
+By default, Chocolatey uses the Chocolatey Community Repository. In enterprise environments, you typically use a private repository.
 
 ```yaml
 # Configure Chocolatey to use an internal repository
@@ -236,9 +236,9 @@ Update packages to the latest version.
 
 # Update all installed packages
 - name: Update all Chocolatey packages
-  ansible.windows.win_shell: choco upgrade all -y
-  register: choco_upgrade
-  changed_when: "'upgraded 0' not in choco_upgrade.stdout"
+  chocolatey.chocolatey.win_chocolatey:
+    name: all
+    state: latest
 ```
 
 ## Pinning Packages
@@ -248,14 +248,17 @@ Prevent specific packages from being upgraded automatically.
 ```yaml
 # Pin a package to prevent automatic upgrades
 - name: Pin Docker Desktop version
-  ansible.windows.win_shell: choco pin add --name=docker-desktop
-  register: pin_result
-  changed_when: "'already pinned' not in pin_result.stdout"
+  chocolatey.chocolatey.win_chocolatey:
+    name: docker-desktop
+    state: present
+    pinned: true
 
 # Unpin a package
 - name: Unpin Docker Desktop for upgrade
-  ansible.windows.win_shell: choco pin remove --name=docker-desktop
-  changed_when: true
+  chocolatey.chocolatey.win_chocolatey:
+    name: docker-desktop
+    state: present
+    pinned: false
 ```
 
 ## Removing Packages
