@@ -38,14 +38,9 @@ graph LR
 Admin Activity logs are on by default, but verify:
 
 ```bash
-# Check audit log configuration
-
-gcloud projects get-iam-policy my-project \
-    --format="json" | jq '.auditConfigs'
-
 # List recent IAM policy changes to confirm logging works
 gcloud logging read \
-    'protoPayload.methodName="SetIamPolicy"' \
+    'log_id("cloudaudit.googleapis.com/activity") AND protoPayload.methodName="SetIamPolicy"' \
     --project=my-project \
     --freshness=7d \
     --limit=5 \
@@ -82,12 +77,11 @@ gcloud monitoring policies create \
     --display-name="High-Privilege IAM Role Granted" \
     --condition-display-name="Owner or Editor role granted" \
     --condition-filter='metric.type="logging.googleapis.com/user/iam-high-priv-grant"' \
-    --condition-threshold-value=0 \
-    --condition-threshold-comparison=COMPARISON_GT \
+    --if='> 0' \
+    --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_SUM"}' \
     --notification-channels=CHANNEL_ID \
     --combiner=OR \
-    --duration=0s \
-    --condition-threshold-aggregation-alignment-period=60s
+    --duration=0s
 ```
 
 ### Alert: External Member Added to IAM Policy
@@ -114,7 +108,6 @@ gcloud logging metrics create sa-key-created \
     --description="Tracks service account key creation events" \
     --log-filter='
         protoPayload.methodName="google.iam.admin.v1.CreateServiceAccountKey"
-        AND protoPayload.request.privateKeyType!="TYPE_GOOGLE_CREDENTIALS_FILE"
     '
 ```
 
@@ -158,8 +151,9 @@ Now create a Cloud Function that processes these events:
 import base64
 import json
 import os
-from google.cloud import pubsub_v1
-import requests
+import urllib.request
+
+import functions_framework
 
 # Slack webhook URL for notifications (set as environment variable)
 SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK_URL")
@@ -177,10 +171,13 @@ HIGH_RISK_ROLES = [
     "roles/resourcemanager.projectIamAdmin",
 ]
 
-def process_iam_change(event, context):
+@functions_framework.cloud_event
+def process_iam_change(cloud_event):
     """Process an IAM change event from Cloud Audit Logs."""
     # Decode the Pub/Sub message
-    pubsub_message = base64.b64decode(event["data"]).decode("utf-8")
+    pubsub_message = base64.b64decode(
+        cloud_event.data["message"]["data"]
+    ).decode("utf-8")
     log_entry = json.loads(pubsub_message)
 
     payload = log_entry.get("protoPayload", {})
@@ -264,7 +261,13 @@ def send_slack_alert(alert, timestamp):
     }
 
     if SLACK_WEBHOOK:
-        requests.post(SLACK_WEBHOOK, json=payload)
+        request = urllib.request.Request(
+            SLACK_WEBHOOK,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(request, timeout=10)
 ```
 
 Deploy the function:
@@ -273,6 +276,7 @@ Deploy the function:
 # Deploy the Cloud Function
 gcloud functions deploy process-iam-changes \
     --project=my-project \
+    --gen2 \
     --runtime=python311 \
     --trigger-topic=iam-changes \
     --entry-point=process_iam_change \
@@ -304,9 +308,7 @@ SINK_SA=$(gcloud logging sinks describe iam-changes-bigquery \
     --project=my-project \
     --format="value(writerIdentity)")
 
-bq add-iam-policy-binding \
-    --project=my-project \
-    --dataset=iam_audit \
+gcloud projects add-iam-policy-binding my-project \
     --member="${SINK_SA}" \
     --role="roles/bigquery.dataEditor"
 ```
