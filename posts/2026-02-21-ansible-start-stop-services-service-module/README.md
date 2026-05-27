@@ -168,23 +168,23 @@ Sometimes you need to check the status of a service before deciding what to do.
 
 ```yaml
 # Check if a service is running
-- name: Check nginx status
-  ansible.builtin.command:
-    cmd: systemctl is-active nginx
-  register: nginx_status
-  changed_when: false
-  failed_when: false
+- name: Collect service facts
+  ansible.builtin.service_facts:
 
 - name: Report nginx status
   ansible.builtin.debug:
-    msg: "nginx is {{ 'running' if nginx_status.rc == 0 else 'not running' }}"
+    msg: "nginx is {{ 'running' if (nginx_service.state | default('unknown')) == 'running' else 'not running' }}"
+  vars:
+    nginx_service: "{{ ansible_facts.services.get('nginx.service', ansible_facts.services.get('nginx', {})) }}"
 
 # Take action based on status
 - name: Start backup service only if primary is down
   ansible.builtin.service:
     name: nginx-backup
     state: started
-  when: nginx_status.rc != 0
+  when: (nginx_service.state | default('unknown')) != 'running'
+  vars:
+    nginx_service: "{{ ansible_facts.services.get('nginx.service', ansible_facts.services.get('nginx', {})) }}"
 ```
 
 ## Maintenance Mode Workflow
@@ -349,4 +349,4 @@ Wrap service operations in blocks for proper error handling.
 
 ## Wrapping Up
 
-Starting and stopping services with the Ansible `service` module is straightforward, but doing it well requires thinking about ordering, dependencies, health checks, and error handling. The patterns in this post cover the common scenarios: basic start/stop, conditional management, maintenance workflows, and proper dependency handling. The `service` module works across init systems, so these patterns apply whether your hosts use systemd, SysV init, or Upstart. For systemd-specific features (like daemon_reload), you will want to use the `systemd` module instead, but for basic start/stop operations, `service` is the right tool.
+Starting and stopping services with the Ansible `service` module is straightforward, but doing it well requires thinking about ordering, dependencies, health checks, and error handling. The patterns in this post cover the common scenarios: basic start/stop, conditional management, maintenance workflows, and proper dependency handling. The `service` module works across init systems, so these patterns apply whether your hosts use systemd, SysV init, or Upstart. For systemd-specific features (like daemon_reload), you will want to use the `systemd_service` module instead, but for basic start/stop operations, `service` is the right tool.
