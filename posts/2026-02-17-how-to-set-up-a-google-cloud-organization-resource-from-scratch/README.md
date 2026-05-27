@@ -50,8 +50,8 @@ You also need a domain name that you own and can verify.
 
 If your company does not use Google Workspace, sign up for Cloud Identity Free:
 
-1. Go to [cloud.google.com/identity](https://cloud.google.com/identity)
-2. Click "Start free trial" or "Sign up"
+1. Go to the [Cloud Identity Free signup page](https://workspace.google.com/gcpidentity/signup?sku=identitybasic)
+2. Follow the guided signup instructions
 3. Enter your business information
 4. Enter your domain name (e.g., example.com)
 5. Create the first admin account (e.g., admin@example.com)
@@ -76,11 +76,11 @@ Google needs to verify that you own the domain. The process depends on your doma
 # TTL: 3600
 ```
 
-Verification usually completes within a few minutes to a few hours, depending on DNS propagation.
+Verification often completes within a few minutes to a few hours, but DNS changes can take up to 72 hours to be recognized.
 
 ## Step 3: Access the Organization in GCP
 
-Once your domain is verified, GCP automatically creates an Organization resource. To see it:
+Once your Google Workspace or Cloud Identity account is associated with a domain, GCP automatically creates an Organization resource when you first use Google Cloud, such as when you log in to the Cloud Console and accept the terms or create a project or billing account. To see it:
 
 1. Log into the Cloud Console at console.cloud.google.com with your new admin account
 2. Click the project selector at the top of the page
@@ -235,7 +235,7 @@ If you have existing projects that were created without an organization, migrate
 
 ```bash
 # Move a project into the organization
-gcloud projects move PROJECT_ID \
+gcloud beta projects move PROJECT_ID \
   --folder=FOLDER_ID
 
 # Verify the move
@@ -258,13 +258,18 @@ Before migrating, be aware that:
 
 4. **Not setting up groups** - Use Google Groups for IAM instead of individual user accounts. Groups make it easy to add and remove team members without changing IAM policies.
 
-5. **Forgetting to restrict project creation** - By default, anyone in the organization can create projects. Use organization policies to restrict this.
+5. **Forgetting to restrict project creation** - By default, all users in the domain are granted the Project Creator role at the organization level. Grant Project Creator to specific groups, then remove the default domain-wide binding.
 
 ```bash
-# Restrict project creation to specific groups
-gcloud resource-manager org-policies set-policy \
-  --organization=ORGANIZATION_ID \
-  policy-restrict-project-creation.yaml
+# Allow a specific group to create projects
+gcloud organizations add-iam-policy-binding ORGANIZATION_ID \
+  --member="group:project-creators@example.com" \
+  --role="roles/resourcemanager.projectCreator"
+
+# Remove the default domain-wide Project Creator binding
+gcloud organizations remove-iam-policy-binding ORGANIZATION_ID \
+  --member="domain:example.com" \
+  --role="roles/resourcemanager.projectCreator"
 ```
 
 ## Wrapping Up
