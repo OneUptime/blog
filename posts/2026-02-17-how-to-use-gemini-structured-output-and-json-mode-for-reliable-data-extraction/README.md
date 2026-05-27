@@ -10,7 +10,7 @@ Description: Learn how to use Gemini structured output and JSON mode on Vertex A
 
 LLMs are great at understanding text, but getting them to return data in a consistent, parseable format is a different challenge. Ask Gemini to extract information from an invoice, and it might return a nice JSON object one time and a conversational paragraph the next. When you are building an application that needs to parse the output programmatically, this inconsistency breaks things.
 
-Gemini's structured output mode and JSON mode solve this by constraining the model's output to match a specific schema. The model can only return valid JSON that conforms to your defined structure, eliminating the need for fragile output parsing.
+Gemini's structured output mode and JSON mode solve this by constraining the model's output format. JSON mode constrains the output to valid JSON, and structured output adds a schema so the response conforms to your defined structure, eliminating the need for fragile output parsing.
 
 ## JSON Mode vs Structured Output
 
@@ -37,18 +37,14 @@ JSON mode is the simpler option. You configure the model to return JSON, and it 
 This code uses JSON mode for basic extraction:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+from google import genai
+from google.genai import types
 
-vertexai.init(project="your-project-id", location="us-central1")
-
-# Configure the model to return JSON
-
-model = GenerativeModel(
-    "gemini-1.5-pro-002",
-    generation_config=GenerationConfig(
-        response_mime_type="application/json"  # Enable JSON mode
-    )
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+    http_options=types.HttpOptions(api_version="v1")
 )
 
 # Extract information from unstructured text
@@ -70,8 +66,10 @@ Payment Terms: Net 30
 Due Date: March 17, 2026
 """
 
-response = model.generate_content(
-    f"Extract all structured information from this invoice:\n\n{invoice_text}"
+response = client.models.generate_content(
+    model="gemini-2.5-pro",
+    contents=f"Extract all structured information from this invoice:\n\n{invoice_text}",
+    config={"response_mime_type": "application/json"}  # Enable JSON mode
 )
 
 # The response is guaranteed to be valid JSON
@@ -89,65 +87,66 @@ Structured output lets you define exactly what the response should look like. Th
 This code defines a schema and extracts structured data:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+from google import genai
+from google.genai import types
 import json
 
-vertexai.init(project="your-project-id", location="us-central1")
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+    http_options=types.HttpOptions(api_version="v1")
+)
 
 # Define the schema for invoice extraction
 invoice_schema = {
-    "type": "object",
+    "type": "OBJECT",
     "properties": {
-        "invoice_number": {"type": "string"},
-        "date": {"type": "string"},
+        "invoice_number": {"type": "STRING"},
+        "date": {"type": "STRING"},
         "bill_to": {
-            "type": "object",
+            "type": "OBJECT",
             "properties": {
-                "company": {"type": "string"},
-                "address": {"type": "string"},
-                "city": {"type": "string"},
-                "state": {"type": "string"},
-                "zip": {"type": "string"}
+                "company": {"type": "STRING"},
+                "address": {"type": "STRING"},
+                "city": {"type": "STRING"},
+                "state": {"type": "STRING"},
+                "zip": {"type": "STRING"}
             },
             "required": ["company"]
         },
         "line_items": {
-            "type": "array",
+            "type": "ARRAY",
             "items": {
-                "type": "object",
+                "type": "OBJECT",
                 "properties": {
-                    "description": {"type": "string"},
-                    "amount": {"type": "number"},
+                    "description": {"type": "STRING"},
+                    "amount": {"type": "NUMBER"},
                     "frequency": {
-                        "type": "string",
+                        "type": "STRING",
                         "enum": ["one_time", "monthly", "annual"]
                     }
                 },
                 "required": ["description", "amount"]
             }
         },
-        "subtotal": {"type": "number"},
-        "tax_rate": {"type": "number"},
-        "tax_amount": {"type": "number"},
-        "total": {"type": "number"},
-        "payment_terms": {"type": "string"},
-        "due_date": {"type": "string"}
+        "subtotal": {"type": "NUMBER"},
+        "tax_rate": {"type": "NUMBER"},
+        "tax_amount": {"type": "NUMBER"},
+        "total": {"type": "NUMBER"},
+        "payment_terms": {"type": "STRING"},
+        "due_date": {"type": "STRING"}
     },
     "required": ["invoice_number", "total", "line_items"]
 }
 
-# Create model with structured output configuration
-model = GenerativeModel(
-    "gemini-1.5-pro-002",
-    generation_config=GenerationConfig(
-        response_mime_type="application/json",
-        response_schema=invoice_schema
-    )
-)
-
-response = model.generate_content(
-    f"Extract all information from this invoice:\n\n{invoice_text}"
+response = client.models.generate_content(
+    model="gemini-2.5-pro",
+    contents=f"Extract all information from this invoice:\n\n{invoice_text}",
+    config={
+        "response_mime_type": "application/json",
+        "response_schema": invoice_schema
+    }
 )
 
 # Parse the response - guaranteed to match the schema
@@ -170,43 +169,35 @@ This code extracts entities from a support ticket:
 ```python
 # Schema for support ticket entity extraction
 ticket_schema = {
-    "type": "object",
+    "type": "OBJECT",
     "properties": {
-        "customer_name": {"type": "string"},
-        "email": {"type": "string"},
+        "customer_name": {"type": "STRING"},
+        "email": {"type": "STRING"},
         "severity": {
-            "type": "string",
+            "type": "STRING",
             "enum": ["low", "medium", "high", "critical"]
         },
         "category": {
-            "type": "string",
+            "type": "STRING",
             "enum": ["billing", "technical", "account", "feature_request", "bug_report"]
         },
-        "product_mentioned": {"type": "string"},
+        "product_mentioned": {"type": "STRING"},
         "error_codes": {
-            "type": "array",
-            "items": {"type": "string"}
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
         },
-        "summary": {"type": "string"},
+        "summary": {"type": "STRING"},
         "action_items": {
-            "type": "array",
-            "items": {"type": "string"}
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
         },
         "sentiment": {
-            "type": "string",
+            "type": "STRING",
             "enum": ["positive", "neutral", "negative", "angry"]
         }
     },
     "required": ["severity", "category", "summary", "sentiment"]
 }
-
-model = GenerativeModel(
-    "gemini-1.5-pro-002",
-    generation_config=GenerationConfig(
-        response_mime_type="application/json",
-        response_schema=ticket_schema
-    )
-)
 
 ticket_text = """
 Subject: URGENT - Production monitoring down for 3 hours
@@ -224,8 +215,13 @@ resolved immediately or we will need to reconsider our subscription.
 Our account ID is ACC-8872.
 """
 
-response = model.generate_content(
-    f"Extract entities and metadata from this support ticket:\n\n{ticket_text}"
+response = client.models.generate_content(
+    model="gemini-2.5-pro",
+    contents=f"Extract entities and metadata from this support ticket:\n\n{ticket_text}",
+    config={
+        "response_mime_type": "application/json",
+        "response_schema": ticket_schema
+    }
 )
 
 ticket = json.loads(response.text)
@@ -246,50 +242,60 @@ This code processes multiple documents:
 ```python
 import asyncio
 import json
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+from google import genai
+from google.genai import types
 
 async def extract_batch(documents, schema, batch_size=5):
     """Extract structured data from a batch of documents.
 
     Processes documents in parallel batches for throughput.
     """
-    model = GenerativeModel(
-        "gemini-1.5-flash-002",  # Flash for high-volume processing
-        generation_config=GenerationConfig(
-            response_mime_type="application/json",
-            response_schema=schema
-        )
+    client = genai.Client(
+        vertexai=True,
+        project="your-project-id",
+        location="us-central1",
+        http_options=types.HttpOptions(api_version="v1")
     )
+    async_client = client.aio
 
     results = []
 
-    for i in range(0, len(documents), batch_size):
-        batch = documents[i:i + batch_size]
+    async def extract_one(doc):
+        response = await async_client.models.generate_content(
+            model="gemini-2.5-flash-lite",  # Flash-Lite for high-volume processing
+            contents=f"Extract structured data:\n\n{doc['text']}",
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": schema
+            }
+        )
+        return response
 
-        # Process batch items concurrently
-        responses = []
-        for doc in batch:
-            response = model.generate_content(
-                f"Extract structured data:\n\n{doc['text']}"
-            )
-            responses.append(response)
+    try:
+        for i in range(0, len(documents), batch_size):
+            batch = documents[i:i + batch_size]
 
-        for doc, response in zip(batch, responses):
-            try:
-                extracted = json.loads(response.text)
-                results.append({
-                    "id": doc["id"],
-                    "data": extracted,
-                    "status": "success"
-                })
-            except json.JSONDecodeError as e:
-                results.append({
-                    "id": doc["id"],
-                    "error": str(e),
-                    "status": "failed"
-                })
+            # Process batch items concurrently
+            responses = await asyncio.gather(*(extract_one(doc) for doc in batch))
 
-        print(f"Processed {min(i + batch_size, len(documents))}/{len(documents)}")
+            for doc, response in zip(batch, responses):
+                try:
+                    extracted = json.loads(response.text)
+                    results.append({
+                        "id": doc["id"],
+                        "data": extracted,
+                        "status": "success"
+                    })
+                except json.JSONDecodeError as e:
+                    results.append({
+                        "id": doc["id"],
+                        "error": str(e),
+                        "status": "failed"
+                    })
+
+            print(f"Processed {min(i + batch_size, len(documents))}/{len(documents)}")
+    finally:
+        await async_client.aclose()
 
     return results
 
@@ -311,10 +317,10 @@ This code classifies text into categories:
 
 ```python
 classification_schema = {
-    "type": "object",
+    "type": "OBJECT",
     "properties": {
         "primary_intent": {
-            "type": "string",
+            "type": "STRING",
             "enum": [
                 "purchase_inquiry",
                 "return_request",
@@ -324,34 +330,31 @@ classification_schema = {
                 "general_question"
             ]
         },
-        "sub_intent": {"type": "string"},
+        "sub_intent": {"type": "STRING"},
         "urgency": {
-            "type": "string",
+            "type": "STRING",
             "enum": ["low", "medium", "high"]
         },
-        "requires_human": {"type": "boolean"},
-        "suggested_response_template": {"type": "string"},
+        "requires_human": {"type": "BOOLEAN"},
+        "suggested_response_template": {"type": "STRING"},
         "confidence": {
-            "type": "string",
+            "type": "STRING",
             "enum": ["low", "medium", "high"]
         }
     },
     "required": ["primary_intent", "urgency", "requires_human"]
 }
 
-model = GenerativeModel(
-    "gemini-1.5-flash-002",
-    generation_config=GenerationConfig(
-        response_mime_type="application/json",
-        response_schema=classification_schema
-    )
-)
-
 # Classify a customer message
 message = "I bought a laptop last week and the screen has dead pixels. I want to return it."
 
-response = model.generate_content(
-    f"Classify this customer message:\n\n{message}"
+response = client.models.generate_content(
+    model="gemini-2.5-flash-lite",
+    contents=f"Classify this customer message:\n\n{message}",
+    config={
+        "response_mime_type": "application/json",
+        "response_schema": classification_schema
+    }
 )
 
 classification = json.loads(response.text)
@@ -367,42 +370,42 @@ For complex data with nested structures, define the schema carefully to capture 
 ```python
 # Schema for extracting meeting notes structure
 meeting_schema = {
-    "type": "object",
+    "type": "OBJECT",
     "properties": {
-        "meeting_title": {"type": "string"},
-        "date": {"type": "string"},
+        "meeting_title": {"type": "STRING"},
+        "date": {"type": "STRING"},
         "attendees": {
-            "type": "array",
+            "type": "ARRAY",
             "items": {
-                "type": "object",
+                "type": "OBJECT",
                 "properties": {
-                    "name": {"type": "string"},
-                    "role": {"type": "string"}
+                    "name": {"type": "STRING"},
+                    "role": {"type": "STRING"}
                 }
             }
         },
         "agenda_items": {
-            "type": "array",
+            "type": "ARRAY",
             "items": {
-                "type": "object",
+                "type": "OBJECT",
                 "properties": {
-                    "topic": {"type": "string"},
+                    "topic": {"type": "STRING"},
                     "discussion_points": {
-                        "type": "array",
-                        "items": {"type": "string"}
+                        "type": "ARRAY",
+                        "items": {"type": "STRING"}
                     },
                     "decisions": {
-                        "type": "array",
-                        "items": {"type": "string"}
+                        "type": "ARRAY",
+                        "items": {"type": "STRING"}
                     },
                     "action_items": {
-                        "type": "array",
+                        "type": "ARRAY",
                         "items": {
-                            "type": "object",
+                            "type": "OBJECT",
                             "properties": {
-                                "task": {"type": "string"},
-                                "assignee": {"type": "string"},
-                                "deadline": {"type": "string"}
+                                "task": {"type": "STRING"},
+                                "assignee": {"type": "STRING"},
+                                "deadline": {"type": "STRING"}
                             },
                             "required": ["task"]
                         }
@@ -411,7 +414,7 @@ meeting_schema = {
                 "required": ["topic"]
             }
         },
-        "next_meeting": {"type": "string"}
+        "next_meeting": {"type": "STRING"}
     },
     "required": ["meeting_title", "agenda_items"]
 }
@@ -422,16 +425,23 @@ meeting_schema = {
 Even with structured output, validate the response in your application. The model always returns valid JSON matching the schema, but the content might not make semantic sense.
 
 ```python
-def extract_and_validate(model, text, schema, validators=None):
+def extract_and_validate(client, text, schema, validators=None):
     """Extract structured data with validation.
 
     Args:
-        model: Configured Gemini model
+        client: Configured Gen AI client
         text: Input text to extract from
         schema: JSON schema (for reference, already in model config)
         validators: Dict of field_name -> validation_function
     """
-    response = model.generate_content(f"Extract data:\n\n{text}")
+    response = client.models.generate_content(
+        model="gemini-2.5-pro",
+        contents=f"Extract data:\n\n{text}",
+        config={
+            "response_mime_type": "application/json",
+            "response_schema": schema
+        }
+    )
     data = json.loads(response.text)
 
     # Run custom validators
@@ -456,7 +466,7 @@ validators = {
     "date": lambda v: (len(v) > 0, "Date cannot be empty")
 }
 
-result = extract_and_validate(model, invoice_text, invoice_schema, validators)
+result = extract_and_validate(client, invoice_text, invoice_schema, validators)
 if result["valid"]:
     print("Extraction successful and validated")
 else:
