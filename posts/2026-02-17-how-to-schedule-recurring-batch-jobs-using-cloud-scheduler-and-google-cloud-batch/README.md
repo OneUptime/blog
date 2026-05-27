@@ -74,6 +74,9 @@ First, define the batch job that will run on each scheduled execution. This is a
         }
       }
     ],
+    "serviceAccount": {
+      "email": "batch-runner-sa@YOUR_PROJECT.iam.gserviceaccount.com"
+    },
     "location": {
       "allowedLocations": [
         "zones/us-central1-a",
@@ -114,25 +117,25 @@ Now create the scheduler job that triggers batch processing nightly.
 
 ```bash
 # Create the Cloud Scheduler job
-# The job ID includes a timestamp to ensure unique Batch job names
+# Omitting jobId lets the Batch API generate a unique Batch job name
 gcloud scheduler jobs create http nightly-data-processing \
   --location=us-central1 \
   --schedule="0 2 * * *" \
   --time-zone="America/New_York" \
-  --uri="https://batch.googleapis.com/v1/projects/YOUR_PROJECT/locations/us-central1/jobs?job_id=nightly-process-\$(date +%Y%m%d-%H%M%S)" \
+  --uri="https://batch.googleapis.com/v1/projects/YOUR_PROJECT/locations/us-central1/jobs" \
   --http-method=POST \
   --headers="Content-Type=application/json" \
   --message-body-from-file=batch-job-template.json \
   --oauth-service-account-email=batch-scheduler-sa@YOUR_PROJECT.iam.gserviceaccount.com
 ```
 
-Since Cloud Scheduler does not support dynamic job IDs in the URL directly, use a Cloud Function as an intermediary.
+If you want to generate human-readable dynamic job IDs or customize job parameters for each run, use a Cloud Function as an intermediary.
 
 ```python
 # scheduler_trigger.py - Cloud Function to create Batch jobs with unique names
 import functions_framework
 from google.cloud import batch_v1
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
 
@@ -145,7 +148,7 @@ def create_batch_job(request):
     request_json = request.get_json(silent=True) or {}
 
     # Generate a unique job ID based on the current timestamp
-    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     job_id = f"scheduled-processing-{timestamp}"
 
     project_id = "YOUR_PROJECT"
@@ -192,6 +195,9 @@ def create_batch_job(request):
     policy.provisioning_model = batch_v1.AllocationPolicy.ProvisioningModel.SPOT
     instance_policy.policy = policy
     allocation.instances = [instance_policy]
+    allocation.service_account = batch_v1.ServiceAccount(
+        email="batch-runner-sa@YOUR_PROJECT.iam.gserviceaccount.com",
+    )
 
     location = batch_v1.AllocationPolicy.LocationPolicy()
     location.allowed_locations = [
@@ -235,6 +241,13 @@ gcloud functions deploy batch-job-trigger \
   --trigger-http \
   --no-allow-unauthenticated \
   --service-account=batch-scheduler-sa@YOUR_PROJECT.iam.gserviceaccount.com
+
+# Grant Cloud Scheduler permission to invoke the authenticated Gen 2 function
+gcloud functions add-iam-policy-binding batch-job-trigger \
+  --region=us-central1 \
+  --gen2 \
+  --member="serviceAccount:batch-scheduler-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
 
 # Create the scheduler pointing at the function
 gcloud scheduler jobs create http nightly-batch-processing \
@@ -280,7 +293,7 @@ Track the status of your scheduled batch runs.
 ```python
 # monitor_jobs.py - Check status of recent batch jobs
 from google.cloud import batch_v1
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -293,10 +306,13 @@ def check_recent_jobs(project_id, region, prefix="scheduled-processing"):
 
     jobs = client.list_jobs(parent=parent)
 
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     recent_failures = []
     for job in jobs:
         # Filter to scheduled jobs from the last 24 hours
         if not job.name.split("/")[-1].startswith(prefix):
+            continue
+        if job.create_time and job.create_time < cutoff:
             continue
 
         if job.status.state == batch_v1.JobStatus.State.FAILED:
