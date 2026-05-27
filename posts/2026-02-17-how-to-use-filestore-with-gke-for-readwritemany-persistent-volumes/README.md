@@ -20,7 +20,7 @@ Here are some common scenarios where RWX volumes are essential:
 - **Content management systems** like WordPress where multiple replicas need access to the same media folder
 - **Log aggregation** where multiple pods write to a shared filesystem for collection
 
-In all these cases, Persistent Disk (RWO) would limit you to a single pod accessing the data at a time. Filestore removes that limitation.
+In all these cases, Persistent Disk (RWO) would limit read-write access to pods on a single node at a time. Filestore removes that limitation.
 
 ## Prerequisites
 
@@ -103,20 +103,20 @@ The PVC stays in Pending state while Filestore provisions a new instance. This t
 
 If you already have a Filestore instance or want more control over the instance configuration, you can create a PV that points to it directly.
 
-First, get the Filestore instance IP:
+First, get the Filestore instance IP and file share name:
 
 ```bash
-# Get the IP of your existing Filestore instance
+# Get the IP and file share name of your existing Filestore instance
 gcloud filestore instances describe my-filestore \
-  --zone=us-central1-a \
-  --format="value(networks[0].ipAddresses[0])"
+  --location=us-central1-a \
+  --format="value(networks[0].ipAddresses[0],fileShares[0].name)"
 ```
 
 Create the PV and PVC pair in `filestore-existing-rwx.yaml`:
 
 ```yaml
 # PV that references an existing Filestore instance
-# The NFS server IP and path must match your Filestore configuration
+# The CSI volume handle, IP, and share name must match your Filestore configuration
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -127,9 +127,13 @@ spec:
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
-  nfs:
-    server: 10.0.0.2
-    path: /vol1
+  volumeMode: Filesystem
+  csi:
+    driver: filestore.csi.storage.gke.io
+    volumeHandle: "modeInstance/us-central1-a/my-filestore/vol1"
+    volumeAttributes:
+      ip: 10.0.0.2
+      volume: vol1
   storageClassName: ""
 ---
 # PVC that binds directly to the pre-existing PV above
