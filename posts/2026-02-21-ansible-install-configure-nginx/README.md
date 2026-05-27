@@ -14,8 +14,8 @@ This guide covers installing and configuring Nginx using Ansible, including SSL/
 
 ## Prerequisites
 
-- Ansible 2.9+
-- Target servers running Ubuntu 20.04+ or RHEL 8+
+- Ansible 2.10+
+- Target servers running Ubuntu 20.04+ (the examples below use `apt`; use Nginx's yum repository instructions for RHEL 8+)
 - DNS records pointing to your server (for SSL with Let's Encrypt)
 
 ## Inventory
@@ -52,19 +52,33 @@ The distro-packaged Nginx is often outdated. Install from the official Nginx rep
           - gnupg2
           - ca-certificates
           - lsb-release
+          - ubuntu-keyring
         state: present
         update_cache: true
 
     - name: Add Nginx signing key
-      ansible.builtin.apt_key:
+      ansible.builtin.get_url:
         url: https://nginx.org/keys/nginx_signing.key
-        state: present
+        dest: /usr/share/keyrings/nginx-archive-keyring.asc
+        mode: "0644"
 
     - name: Add Nginx mainline repository
       ansible.builtin.apt_repository:
-        repo: "deb https://nginx.org/packages/mainline/ubuntu {{ ansible_distribution_release }} nginx"
+        repo: "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.asc] https://nginx.org/packages/mainline/ubuntu {{ ansible_distribution_release }} nginx"
         state: present
         filename: nginx
+
+    - name: Prefer packages from nginx.org
+      ansible.builtin.copy:
+        dest: /etc/apt/preferences.d/99nginx
+        content: |
+          Package: *
+          Pin: origin nginx.org
+          Pin: release o=nginx
+          Pin-Priority: 900
+        owner: root
+        group: root
+        mode: "0644"
 
     - name: Install Nginx
       ansible.builtin.apt:
@@ -219,6 +233,12 @@ http {
     limit_req_zone $binary_remote_addr zone=general:10m rate=10r/s;
     limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
 
+    # WebSocket connection upgrade handling
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        '' close;
+    }
+
     # Include site configurations
     include /etc/nginx/conf.d/*.conf;
 }
@@ -280,7 +300,8 @@ server {
 
 # HTTPS server
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name {{ app_domain }};
 
     # SSL certificates
@@ -293,14 +314,12 @@ server {
     access_log /var/log/nginx/{{ app_name }}_access.log main;
     error_log /var/log/nginx/{{ app_name }}_error.log warn;
 
-    # Rate limiting
-    limit_req zone=general burst=20 nodelay;
-
     location / {
+        limit_req zone=general burst=20 nodelay;
         proxy_pass http://{{ app_name }}_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -313,13 +332,13 @@ server {
     }
 
     # Health check endpoint (no rate limiting)
-    location /health {
-        limit_req off;
+    location = /health {
         proxy_pass http://{{ app_name }}_backend/health;
     }
 
     # Static file caching
     location ~* \.(jpg|jpeg|png|gif|ico|css|js|woff2)$ {
+        limit_req zone=general burst=20 nodelay;
         proxy_pass http://{{ app_name }}_backend;
         expires 30d;
         add_header Cache-Control "public, immutable";
@@ -381,8 +400,8 @@ flowchart TD
     A[Install Nginx from Official Repo] --> B[Deploy nginx.conf Template]
     B --> C[Create SSL Snippets]
     C --> D[Create Security Header Snippets]
-    D --> E[Deploy Site Configurations]
-    E --> F[Obtain SSL Certificates]
+    D --> E[Obtain SSL Certificates]
+    E --> F[Deploy Site Configurations]
     F --> G[Test Configuration]
     G --> H{Config Valid?}
     H -->|Yes| I[Reload Nginx]
@@ -401,9 +420,10 @@ flowchart TD
 
   tasks:
     - name: Check Nginx service status
-      ansible.builtin.systemd:
-        name: nginx
+      ansible.builtin.command:
+        cmd: systemctl is-active nginx
       register: nginx_service
+      changed_when: false
 
     - name: Get Nginx version
       ansible.builtin.command:
@@ -430,7 +450,7 @@ flowchart TD
     - name: Display status
       ansible.builtin.debug:
         msg:
-          - "Service: {{ nginx_service.status.ActiveState }}"
+          - "Service: {{ nginx_service.stdout }}"
           - "Version: {{ nginx_version.stderr }}"
           - "Config: {{ nginx_config_test.stderr }}"
 ```
@@ -443,7 +463,7 @@ flowchart TD
 
 3. **Set up rate limiting.** Even basic rate limiting prevents simple DDoS attacks and brute force attempts. Define zones in the main config and apply them per location.
 
-4. **Use `http2` on all HTTPS listeners.** HTTP/2 multiplexes requests over a single connection, reducing latency. There is no downside for modern clients.
+4. **Use HTTP/2 on HTTPS server blocks.** HTTP/2 multiplexes requests over a single connection, reducing latency for modern clients.
 
 5. **Monitor Nginx with the stub_status module.** Enable it on a local-only endpoint and scrape it with Prometheus for connection counts, request rates, and active connections.
 
