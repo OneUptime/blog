@@ -10,7 +10,7 @@ Description: Learn how to use Velero for Kubernetes cluster backup and restore i
 
 ## What is Velero?
 
-Velero is an open-source tool for backing up and restoring Kubernetes cluster resources and persistent volumes. Originally developed by VMware (previously called Heptio Ark), Velero gives you the ability to recover from cluster failures, migrate workloads between clusters, and replicate your production environment for testing. It works with any Kubernetes distribution and supports multiple cloud providers and on-premises storage.
+Velero is an open-source tool for backing up and restoring Kubernetes cluster resources and persistent volumes. Originally developed by VMware (previously called Heptio Ark), Velero gives you the ability to recover from cluster failures, migrate workloads between clusters, and replicate your production environment for testing. It works across many Kubernetes distributions and supports multiple cloud providers and on-premises storage.
 
 ## How Velero Works
 
@@ -22,9 +22,11 @@ graph TD
     B --> E[Object Storage Plugin]
     E --> F[S3 / GCS / Azure Blob / MinIO]
     B --> G[Volume Snapshot Plugin]
-    G --> H[CSI Snapshots / Restic / Kopia]
+    G --> H[CSI or Provider Snapshots]
+    B --> J[Node Agent / File System Backup]
+    J --> K[Kopia Repository]
     F -->|Store Backups| I[Backup Archive]
-    H -->|Store Volume Data| I
+    K -->|Store Volume Data| I
 ```
 
 Velero consists of:
@@ -43,9 +45,9 @@ Velero consists of:
 brew install velero
 
 # Linux
-wget https://github.com/vmware-tanzu/velero/releases/download/v1.13.0/velero-v1.13.0-linux-amd64.tar.gz
-tar -xzf velero-v1.13.0-linux-amd64.tar.gz
-sudo mv velero-v1.13.0-linux-amd64/velero /usr/local/bin/
+wget https://github.com/vmware-tanzu/velero/releases/download/v1.18.0/velero-v1.18.0-linux-amd64.tar.gz
+tar -xzf velero-v1.18.0-linux-amd64.tar.gz
+sudo mv velero-v1.18.0-linux-amd64/velero /usr/local/bin/
 
 # Verify the installation
 velero version --client-only
@@ -66,12 +68,12 @@ EOF
 # Using MinIO as the S3-compatible backend
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket velero-backups \
   --secret-file /tmp/velero-credentials \
   --backup-location-config \
     region=us-east-1,s3ForcePathStyle=true,s3Url=http://minio.minio.svc:9000 \
-  --snapshot-location-config region=us-east-1 \
+  --use-volume-snapshots=false \
   --use-node-agent \
   --default-volumes-to-fs-backup
 
@@ -158,9 +160,11 @@ sequenceDiagram
     Server->>API: List all resources
     API->>Server: Return resource list
     Server->>Server: Filter by selectors
-    Server->>Storage: Upload resource manifests
-    Server->>Volumes: Snapshot PersistentVolumes
-    Volumes->>Storage: Upload volume data
+    Server->>Storage: Upload resource manifests and backup metadata
+    Server->>Volumes: Create CSI/native snapshots if configured
+    Volumes-->>Server: Return snapshot metadata
+    Server->>Volumes: Or run file-system backup through node-agent
+    Volumes->>Storage: Upload file-system backup data
     Server->>Server: Update Backup status
     Note over Server: Backup Complete
     Server->>Server: TTL expiry check (periodic)
@@ -207,7 +211,7 @@ Velero supports two methods for backing up persistent volume data:
 ```mermaid
 graph TD
     A[PV Backup Methods] --> B[CSI Snapshots]
-    A --> C[File System Backup - Kopia/Restic]
+    A --> C[File System Backup - Kopia]
     B --> D[Fast - Storage Provider Snapshots]
     B --> E[Requires CSI Driver Support]
     C --> F[Universal - Works with Any Storage]
