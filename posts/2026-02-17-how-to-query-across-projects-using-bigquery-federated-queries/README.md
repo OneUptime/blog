@@ -8,13 +8,13 @@ Description: Learn how to use BigQuery federated queries to join data across mul
 
 ---
 
-BigQuery federated queries let you reach beyond BigQuery to query data in external sources - Cloud SQL, Cloud Spanner, and other BigQuery projects - all from a single SQL statement. Instead of building ETL pipelines to move data around, you write a query that pulls data from wherever it lives.
+BigQuery federated queries let you reach beyond BigQuery to query data in external sources like Cloud SQL and Cloud Spanner, while standard BigQuery SQL can reference tables in other BigQuery projects from the same statement. Instead of building ETL pipelines to move data around, you write a query that pulls data from wherever it lives.
 
 This is particularly useful in organizations where data is spread across multiple GCP projects, when you need to join BigQuery analytics data with operational data in Cloud SQL, or when you want to run reports that combine data from different systems without setting up ongoing replication.
 
 ## Cross-Project BigQuery Queries
 
-The simplest form of federated querying is querying data in another BigQuery project. This does not require any special setup - just the right permissions.
+The simplest cross-project pattern is querying data in another BigQuery project. This does not require any special setup - just the right permissions.
 
 ```sql
 -- Query a table in a different project
@@ -32,26 +32,25 @@ WHERE
     a.total_orders > 100;
 ```
 
-You reference tables using the full path: `project-id.dataset.table`. The user running the query needs `bigquery.tables.getData` permission (or `bigquery.dataViewer` role) on the datasets in both projects.
+You reference tables using the full path: `project-id.dataset.table`. The user running the query needs `bigquery.tables.getData` permission (or `roles/bigquery.dataViewer`) on the datasets in both projects, plus permission to create query jobs in the project that runs the query.
 
 ### Granting Cross-Project Access
 
 ```bash
-# Grant the analytics team read access to the CRM project's customer dataset
+# Grant the analytics team read access to datasets in the CRM project
 
 gcloud projects add-iam-policy-binding crm-project \
     --member="group:analytics-team@company.com" \
-    --role="roles/bigquery.dataViewer" \
-    --condition="expression=resource.name.startsWith('projects/crm-project/datasets/customers'),title=customer-data-read"
+    --role="roles/bigquery.dataViewer"
 ```
 
 Or grant at the dataset level:
 
-```bash
-# Grant dataset-level access for cross-project queries
-bq update --dataset \
-    --access_entry='{"role":"READER","groupByEmail":"analytics-team@company.com"}' \
-    crm-project:customers
+```sql
+-- Grant dataset-level access for cross-project queries
+GRANT `roles/bigquery.dataViewer`
+ON SCHEMA `crm-project`.customers
+TO "group:analytics-team@company.com";
 ```
 
 ## Federated Queries to Cloud SQL
@@ -84,6 +83,14 @@ bq mk --connection \
     --location=US \
     --project_id=my-project-id \
     my-mysql-connection
+```
+
+After creating a Cloud SQL connection, grant the BigQuery Connection Service Agent for the connection the `roles/cloudsql.client` role on the Cloud SQL project:
+
+```bash
+gcloud projects add-iam-policy-binding crm-project \
+    --member="serviceAccount:service-PROJECT_NUMBER@gcp-sa-bigqueryconnection.iam.gserviceaccount.com" \
+    --role="roles/cloudsql.client"
 ```
 
 ### Step 2: Query Cloud SQL from BigQuery
@@ -167,7 +174,7 @@ bq ls --connection --location=US --project_id=my-project-id
 
 ```bash
 # Show connection details
-bq show --connection --location=US --project_id=my-project-id my-cloudsql-connection
+bq show --connection my-project-id.US.my-cloudsql-connection
 ```
 
 ### Update Connection Credentials
@@ -175,17 +182,17 @@ bq show --connection --location=US --project_id=my-project-id my-cloudsql-connec
 ```bash
 # Update the password for a connection
 bq update --connection \
+    --connection_type=CLOUD_SQL \
+    --properties='{"instanceId":"crm-project:us-central1:my-postgres-instance","database":"crm_db","type":"POSTGRES"}' \
     --connection_credential='{"username":"bigquery_reader","password":"new-password"}' \
-    --location=US \
-    --project_id=my-project-id \
-    my-cloudsql-connection
+    my-project-id.US.my-cloudsql-connection
 ```
 
 ### Delete a Connection
 
 ```bash
 # Delete a connection
-bq rm --connection --location=US --project_id=my-project-id my-cloudsql-connection
+bq rm --connection my-project-id.US.my-cloudsql-connection
 ```
 
 ## Terraform Configuration
@@ -262,7 +269,7 @@ Understanding who pays for cross-project queries:
 
 - The project running the query pays for query processing (the project in your `bq` command or the console's active project)
 - The project hosting the data does not get charged for someone else's queries
-- For federated queries, the project owning the connection pays for the external query execution
+- For federated queries, on-demand BigQuery pricing is based on the bytes returned from the external query; BigQuery editions pricing is based on slot usage. The external system, such as Cloud SQL or Spanner, can also incur its own charges.
 
 ```bash
 # Run a cross-project query and bill it to your project
@@ -303,7 +310,7 @@ gcloud projects add-iam-policy-binding my-project-id \
 
 **"Connection not found"**: Make sure the connection location matches the query location. A connection in `US` can only be used by queries running in the `US` processing location.
 
-**"Access denied" to external database**: Check the database credentials in the connection. Also verify the Cloud SQL instance allows connections from BigQuery's IP ranges or has the public IP enabled.
+**"Access denied" to external database**: Check the database credentials in the connection. Also verify that the BigQuery Connection Service Agent has `roles/cloudsql.client` on the Cloud SQL project, and that private Cloud SQL instances have private path enabled.
 
 **Slow performance on large joins**: BigQuery pulls all external query results before performing the join. If the external query returns millions of rows, this can be slow. Filter as aggressively as possible in the external query.
 
@@ -311,4 +318,4 @@ gcloud projects add-iam-policy-binding my-project-id \
 
 ## Summary
 
-BigQuery federated queries eliminate the need for ETL when you need to join data across systems. Cross-project BigQuery queries just need the right IAM permissions. For Cloud SQL and Spanner, create connections with appropriate credentials and use the `EXTERNAL_QUERY` function. The performance is not as fast as querying native BigQuery tables, so push filters into the external query and consider caching results for repeated access patterns. For organizations with data spread across multiple projects and databases, federated queries provide a unified query layer without data movement.
+BigQuery federated queries eliminate the need for ETL when you need to join BigQuery data with external systems. Cross-project BigQuery queries just need the right IAM permissions. For Cloud SQL and Spanner, create connections with appropriate credentials and use the `EXTERNAL_QUERY` function. The performance is not as fast as querying native BigQuery tables, so push filters into the external query and consider caching results for repeated access patterns. For organizations with data spread across multiple projects and databases, federated queries provide a unified query layer without data movement.
