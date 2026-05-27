@@ -8,7 +8,7 @@ Description: Learn how to configure secret replication policies in GCP Secret Ma
 
 ---
 
-When your application runs in multiple regions, the secrets it depends on need to be available in those regions too. A database password stored only in us-central1 creates a single point of failure for your eu-west1 deployment. If there is a regional outage or network issue, your European workloads cannot authenticate, even though the application itself is perfectly healthy.
+When your application runs in multiple regions, the secrets it depends on need to be available in those regions too. A database password stored only in us-central1 creates a single point of failure for your europe-west1 deployment. If there is a regional outage or network issue, your European workloads cannot authenticate, even though the application itself is perfectly healthy.
 
 Secret Manager supports two replication policies: automatic and user-managed. Automatic replication lets Google decide where to store copies based on its global infrastructure. User-managed replication lets you specify exact regions, which is essential for compliance requirements that restrict where data can be stored.
 
@@ -50,7 +50,7 @@ The choice between automatic and user-managed depends on your requirements:
 | Data must stay in specific countries | User-managed |
 | Low-latency access from specific regions | User-managed |
 | Compliance (GDPR, data sovereignty) | User-managed |
-| Customer-managed encryption (CMEK) | User-managed (different key per region) |
+| Per-region customer-managed encryption keys (CMEK) | User-managed |
 
 ```mermaid
 flowchart TD
@@ -83,9 +83,13 @@ echo -n "db-connection-string" | gcloud secrets create app-db-credentials \
 
 For compliance-heavy environments where each region needs its own encryption key:
 
-First, create KMS keys in each region:
+First, create the Secret Manager service identity and KMS keys in each region:
 
 ```bash
+gcloud beta services identity create \
+  --service=secretmanager.googleapis.com \
+  --project=my-project-id
+
 # Create key rings and keys in each region
 for region in us-central1 us-east4 europe-west1 europe-west4; do
   gcloud kms keyrings create secret-keyring \
@@ -250,9 +254,9 @@ echo -n "us-financial-data-key" | gcloud secrets create us-encryption-key \
 
 ## Performance Considerations
 
-Secret Manager serves requests from the nearest replica. If your workload in europe-west1 accesses a secret that has a replica in europe-west1, the read is served locally. If the secret only has replicas in US regions, the request crosses the Atlantic, adding latency.
+With user-managed replication, Secret Manager routes access requests to one of the configured replica locations. If your workload in europe-west1 accesses a secret that has a replica in europe-west1, requests can be served from that region. If the secret only has replicas in US regions, access may be routed to a US replica, adding latency.
 
-For latency-sensitive applications, make sure secrets are replicated to the same regions where your workloads run. The latency difference between a local read (under 10ms) and a cross-region read (50-100ms) is significant for applications that read secrets frequently.
+For latency-sensitive applications, replicate secrets to the same regions where your workloads run, and cache secret values in your application where appropriate instead of reading them on every request.
 
 ## Disaster Recovery
 
@@ -273,16 +277,16 @@ For the highest availability, use automatic replication. Google manages the repl
 
 ## Monitoring Replication
 
-Secret Manager does not expose replication lag metrics because replication is synchronous - when you create a version, it is available in all replicas before the API call returns. This means there is no eventual consistency to worry about. If the `add_secret_version` call succeeds, the new value is immediately available in every configured region.
+Secret Manager does not expose replication lag metrics. Adding a secret version and then immediately accessing that version by version number is strongly consistent, but access through `latest` or aliases does not have the same guarantee.
 
-However, you should monitor access patterns by region to verify that your workloads are reaching the expected replicas:
+However, you should monitor access patterns to verify which workloads and callers are reading your secrets. Data Access audit logs must be enabled for `AccessSecretVersion` events:
 
 ```bash
 # Check secret access patterns in audit logs
-gcloud logging read 'protoPayload.methodName="AccessSecretVersion" AND protoPayload.resourceName:"app-db-credentials"' \
+gcloud logging read 'protoPayload.serviceName="secretmanager.googleapis.com" AND protoPayload.methodName="google.cloud.secretmanager.v1.SecretManagerService.AccessSecretVersion" AND protoPayload.resourceName:"app-db-credentials"' \
   --project=my-project-id \
   --limit=20 \
   --format="table(timestamp, protoPayload.requestMetadata.callerIp)"
 ```
 
-Replication in Secret Manager is a set-it-and-forget-it configuration for most use cases. Choose automatic if you do not have compliance constraints. Choose user-managed when you need control over data location, per-region encryption keys, or guaranteed low-latency access from specific regions. Either way, your secrets are available where your workloads need them.
+Replication in Secret Manager is a set-it-and-forget-it configuration for most use cases. Choose automatic if you do not have compliance constraints. Choose user-managed when you need control over data location, per-region encryption keys, or lower-latency access from specific regions. Either way, your secrets are available where your workloads need them.
