@@ -80,7 +80,7 @@ docker run -d \
   -p 15672:15672 \
   -e RABBITMQ_DEFAULT_USER=admin \
   -e RABBITMQ_DEFAULT_PASS=secretpassword \
-  rabbitmq:3.13-management
+  rabbitmq:4-management
 ```
 
 Access the management UI at `http://localhost:15672` with the credentials above.
@@ -174,7 +174,7 @@ def process_order(ch, method, properties, body):
     print(f"Processing order: {order['order_id']}")
 
     # Simulate order processing
-    save_to_database(order)
+    print(f"Saving order {order['order_id']} to the database")
 
     # Acknowledge the message after successful processing
     # If we crash before this, RabbitMQ will redeliver the message
@@ -246,7 +246,7 @@ sequenceDiagram
     P->>E: Publish message with routing key
     E->>E: Match routing key against bindings
     E->>Q: Route message to matching queue
-    Q->>Q: Store message on disk (durable)
+    Q->>Q: Persist message if marked persistent
     C->>Q: Fetch message (basic.get or basic.consume)
     Q-->>C: Deliver message
     C->>C: Process message
@@ -259,7 +259,7 @@ sequenceDiagram
 | Setting | Purpose | Recommendation |
 |---------|---------|---------------|
 | `durable: true` | Queue survives restarts | Always for production |
-| `delivery_mode: 2` | Message persisted to disk | Use for important messages |
+| `delivery_mode: 2` | Persistent message delivery mode | Use with durable queues for important messages |
 | `prefetch_count` | Messages per consumer | 1 for fair dispatch |
 | `auto_ack: false` | Manual acknowledgment | Always for reliability |
 | `x-message-ttl` | Message expiration | Set based on use case |
