@@ -14,7 +14,7 @@ In this post, I will cover how to configure worker machine types in Dataflow, ho
 
 ## Default Worker Configuration
 
-When you launch a Dataflow job without specifying worker configuration, Dataflow uses default settings. For batch jobs, the default machine type is typically n1-standard-1 (1 vCPU, 3.75 GB RAM) with autoscaling enabled. For streaming jobs, the default is n1-standard-4 (4 vCPUs, 15 GB RAM).
+When you launch a Dataflow job without specifying worker configuration, Dataflow uses default settings and chooses the worker machine type based on your job. Autoscaling defaults to `THROUGHPUT_BASED` for batch jobs and for streaming jobs that use Streaming Engine. Streaming jobs that don't use Streaming Engine default to `NONE`.
 
 These defaults are conservative. For any non-trivial pipeline, you will want to customize the worker configuration.
 
@@ -40,7 +40,7 @@ options = PipelineOptions([
     '--num_workers=5',                   # Initial worker count
     '--max_num_workers=50',              # Maximum for autoscaling
     '--disk_size_gb=100',                # Boot disk size per worker
-    '--worker_disk_type=compute.googleapis.com/projects//zones//diskTypes/pd-ssd',
+    '--worker_disk_type=compute.googleapis.com/projects/my-project/zones/us-central1-b/diskTypes/pd-ssd',
 ])
 
 with beam.Pipeline(options=options) as pipeline:
@@ -104,7 +104,7 @@ Here is a quick reference of the machine families you can use with Dataflow.
 
 N1 series is the previous generation general purpose. It is cheaper per hour but less efficient than N2. Use it for cost-sensitive workloads where performance is not critical.
 
-N2 series is the current generation general purpose. It offers a good balance of price and performance and is the best default choice.
+N2 series is a general-purpose family newer than N1. It offers a good balance of price and performance and is a good default choice.
 
 C2 series is compute-optimized with the highest per-core performance. It costs more per hour but finishes CPU-bound work faster, often resulting in lower total cost.
 
@@ -121,7 +121,7 @@ The worker disk type and size affect shuffle performance and the ability to hand
 options = PipelineOptions([
     '--machine_type=n2-standard-8',
     # Use SSD for better shuffle performance
-    '--worker_disk_type=compute.googleapis.com/projects//zones//diskTypes/pd-ssd',
+    '--worker_disk_type=compute.googleapis.com/projects/my-project/zones/us-central1-b/diskTypes/pd-ssd',
     # Increase disk size for pipelines with large intermediate data
     '--disk_size_gb=500',
 ])
@@ -129,13 +129,12 @@ options = PipelineOptions([
 
 For pipelines that produce large intermediate datasets during shuffles or joins, increasing the disk size prevents out-of-disk errors. SSD disks provide faster read and write speeds for shuffle operations, which can significantly speed up pipelines with many GroupByKey or CoGroupByKey transforms.
 
-However, for most pipelines, Dataflow Shuffle service eliminates the need for local disk shuffle. Enable it to offload shuffle to a managed service.
+However, for batch pipelines, Dataflow Shuffle service eliminates the need for local disk shuffle and is enabled by default. This offloads shuffle to a managed service.
 
 ```python
-# Use Dataflow Shuffle service instead of local disk
+# Dataflow Shuffle is enabled by default for batch jobs
 options = PipelineOptions([
     '--machine_type=n2-standard-4',
-    '--experiments=shuffle_mode=service',  # Use managed shuffle
     '--disk_size_gb=30',  # Can use smaller disks with managed shuffle
 ])
 ```
@@ -152,8 +151,6 @@ options = PipelineOptions([
     '--subnetwork=regions/us-central1/subnetworks/dataflow-subnet',
     # Disable public IPs for workers (requires Cloud NAT for internet access)
     '--no_use_public_ips',
-    # Use internal IPs only
-    '--use_public_ips=false',
 ])
 ```
 
@@ -167,7 +164,7 @@ For advanced customization, you can specify a custom Docker container image for 
 # Use a custom container image with pre-installed dependencies
 options = PipelineOptions([
     '--machine_type=n2-standard-4',
-    '--sdk_container_image=us-docker.pkg.dev/my-project/dataflow/custom-worker:latest',
+    '--sdk_container_image=us-docker.pkg.dev/my-project/dataflow/custom-worker:2026-02-17',
     '--experiments=use_runner_v2',  # Required for custom containers
 ])
 ```
@@ -191,8 +188,8 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 ```bash
 # Build and push the custom container
-docker build -t us-docker.pkg.dev/my-project/dataflow/custom-worker:latest .
-docker push us-docker.pkg.dev/my-project/dataflow/custom-worker:latest
+docker build -t us-docker.pkg.dev/my-project/dataflow/custom-worker:2026-02-17 .
+docker push us-docker.pkg.dev/my-project/dataflow/custom-worker:2026-02-17
 ```
 
 ## Autoscaling Configuration
@@ -224,17 +221,14 @@ options = PipelineOptions([
 
 ## Cost Optimization Tips
 
-To minimize costs, keep these strategies in mind. Use preemptible VMs for batch pipelines. Preemptible workers cost about 80% less but can be terminated at any time. Dataflow handles the termination gracefully by redistributing work.
+To minimize costs, keep these strategies in mind. Use Flexible Resource Scheduling (FlexRS) for autoscaled batch pipelines that are not time-critical. FlexRS uses Dataflow Shuffle with a combination of preemptible and regular VMs, and Dataflow bills the job at a uniform discounted rate compared to regular Dataflow prices.
 
 ```python
-# Use preemptible VMs for batch cost savings
+# Use FlexRS for batch cost savings
 options = PipelineOptions([
     '--machine_type=n2-standard-4',
     '--max_num_workers=20',
-    # Use preemptible VMs (batch only)
-    '--use_preemptible_workers',
-    # Keep some non-preemptible workers for stability
-    '--num_workers=2',
+    '--flexrs_goal=COST_OPTIMIZED',
 ])
 ```
 
