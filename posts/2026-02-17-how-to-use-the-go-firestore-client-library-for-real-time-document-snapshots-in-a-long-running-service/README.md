@@ -36,11 +36,13 @@ import (
     "context"
     "fmt"
     "log"
+    "net/http"
     "os"
     "sync"
     "time"
 
     "cloud.google.com/go/firestore"
+    "google.golang.org/api/iterator"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 )
@@ -95,7 +97,7 @@ func (fw *FirestoreWatcher) WatchDocument(
         snap, err := iter.Next()
         if err != nil {
             // Check if the context was cancelled (shutdown)
-            if status.Code(err) == codes.Canceled || ctx.Err() != nil {
+            if err == iterator.Done || status.Code(err) == codes.Canceled || ctx.Err() != nil {
                 log.Printf("Document watcher stopped for %s/%s", collection, docID)
                 return nil
             }
@@ -132,7 +134,7 @@ func (fw *FirestoreWatcher) WatchQuery(
     for {
         snap, err := iter.Next()
         if err != nil {
-            if status.Code(err) == codes.Canceled || ctx.Err() != nil {
+            if err == iterator.Done || status.Code(err) == codes.Canceled || ctx.Err() != nil {
                 return nil
             }
             return fmt.Errorf("query snapshot error: %w", err)
@@ -250,6 +252,12 @@ type Order struct {
 
 // StartTracking begins watching the active orders collection
 func (ot *OrderTracker) StartTracking(ctx context.Context) error {
+    ot.mu.Lock()
+    if ot.orders == nil {
+        ot.orders = make(map[string]Order)
+    }
+    ot.mu.Unlock()
+
     // Build a query for active orders
     query := ot.fw.client.Collection("orders").
         Where("status", "in", []string{"pending", "processing", "shipped"}).
