@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Python, Flask, WSGI, Deployment
 
-Description: Automate Flask application deployment with Ansible covering gunicorn configuration, static files, and production best practices.
+Description: Automate Flask application deployment with Ansible covering Gunicorn configuration and production best practices.
 
 ---
 
@@ -50,6 +50,7 @@ First, install the required system packages:
           - python3-pip
           - python3-venv
           - python3-dev
+          - git
           - gcc
           - libpq-dev
           - libssl-dev
@@ -99,6 +100,13 @@ First, install the required system packages:
         requirements: "{{ app_dir }}/src/requirements.txt"
       notify: restart application
 
+    - name: Install Gunicorn
+      ansible.builtin.pip:
+        virtualenv: "{{ app_dir }}/venv"
+        name: gunicorn
+        state: present
+      notify: restart application
+
     - name: Deploy environment configuration
       ansible.builtin.template:
         src: dotenv.j2
@@ -124,7 +132,7 @@ First, install the required system packages:
           Group={{ app_user }}
           WorkingDirectory={{ app_dir }}/src
           EnvironmentFile={{ app_dir }}/.env
-          ExecStart={{ app_dir }}/venv/bin/python -m {{ app_name }}.main
+          ExecStart={{ app_dir }}/venv/bin/gunicorn --bind 127.0.0.1:{{ app_port }} {{ app_name }}.main:app
           Restart=always
           RestartSec=5
 
@@ -192,7 +200,7 @@ First, install the required system packages:
 
     - name: Display application status
       ansible.builtin.debug:
-        msg: "Application is healthy at http://{{ inventory_hostname }}:{{ app_port }}"
+        msg: "Application is healthy at http://{{ inventory_hostname }}"
 ```
 
 ## Handlers
@@ -414,4 +422,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
