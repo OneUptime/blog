@@ -37,7 +37,7 @@ gcloud compute networks subnets create vpc-connector-subnet \
   --range=10.8.0.0/28
 ```
 
-The `/28` range gives you 16 IP addresses, which is the minimum for a connector. For high-throughput services, you might need more - the connector scales its VMs based on traffic, and each VM uses an IP from this subnet.
+The `/28` range gives you 16 IP addresses, which is the required size for a connector. For high-throughput services, increase the connector's instance count or choose a larger machine type.
 
 ## Step 2: Create the VPC Connector
 
@@ -48,7 +48,6 @@ Create the connector using the dedicated subnet:
 gcloud compute networks vpc-access connectors create my-connector \
   --region=us-central1 \
   --subnet=vpc-connector-subnet \
-  --subnet-project=my-project \
   --min-instances=2 \
   --max-instances=10 \
   --machine-type=e2-micro
@@ -57,7 +56,7 @@ gcloud compute networks vpc-access connectors create my-connector \
 Key options:
 - `--min-instances=2` keeps at least 2 connector VMs running for availability
 - `--max-instances=10` caps the connector's auto-scaling
-- `--machine-type=e2-micro` is sufficient for most workloads (also available: e2-standard-4 for high throughput)
+- `--machine-type=e2-micro` is sufficient for light workloads (also available: e2-standard-4 for production workloads with high concurrency or frequent small requests)
 
 Alternatively, you can create a connector without a pre-existing subnet by specifying an IP range directly:
 
@@ -96,7 +95,7 @@ gcloud run deploy my-service \
 ```
 
 The `--vpc-egress` flag controls which traffic goes through the connector:
-- `private-ranges-only` - Only traffic to private IP ranges (RFC 1918) goes through the connector. Internet traffic goes directly. This is the most common and recommended setting.
+- `private-ranges-only` - Only traffic to internal address ranges goes through the connector, including RFC 1918, RFC 6598, and Private Google Access IP ranges. Internet traffic goes directly. This is the most common and recommended setting.
 - `all-traffic` - All egress traffic goes through the connector, including internet traffic. Use this if you need traffic to exit through a Cloud NAT or firewall in your VPC.
 
 For an existing service, update it:
@@ -146,7 +145,7 @@ def test_redis():
 
 @app.route('/test-internal')
 def test_internal():
-    """Test DNS resolution and connectivity to an internal hostname."""
+    """Test connectivity to an internal host."""
     try:
         # Test connectivity to an internal VM
         internal_host = os.environ.get('INTERNAL_HOST', '10.0.0.10')
@@ -169,10 +168,10 @@ if __name__ == '__main__':
 
 ## Step 5: Configure Firewall Rules
 
-The VPC connector VMs need firewall rules to reach your private resources. The connector uses the IP range you specified, so create rules that allow traffic from that range:
+The VPC connector VMs need firewall rules to reach your private resources. In standalone VPC networks and Shared VPC host projects, Google Cloud creates connector firewall rules automatically, but you might still add higher-priority rules to restrict or explicitly allow access. In Shared VPC service projects, you must add the required firewall rules yourself. The connector uses the IP range you specified, so create rules that allow traffic from that range where needed:
 
 ```bash
-# Allow traffic from the VPC connector to Memorystore Redis
+# Allow traffic from the VPC connector to a self-managed Redis VM
 gcloud compute firewall-rules create allow-connector-to-redis \
   --network=my-vpc \
   --allow=tcp:6379 \
@@ -245,7 +244,7 @@ gcloud monitoring time-series list \
 
 ## Scaling Considerations
 
-The connector auto-scales its VM instances based on throughput. Each e2-micro instance handles about 100 Mbps. If your service sends a lot of data through the VPC, you might need to increase the maximum instances or switch to a larger machine type:
+The connector auto-scales its VM instances based on throughput. An e2-micro connector has an estimated throughput range of 200-1000 Mbps across its configured instance range, but high packet rates can still exhaust shared CPU or connection tracking capacity. If your service sends a lot of data through the VPC, you might need to increase the maximum instances or switch to a larger machine type:
 
 ```bash
 # Update the connector for higher throughput
