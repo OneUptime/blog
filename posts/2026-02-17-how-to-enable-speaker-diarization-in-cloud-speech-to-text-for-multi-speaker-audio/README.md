@@ -23,7 +23,7 @@ Speaker 1: Great, can you share those first?
 Speaker 3: Before that, can we discuss the budget review?
 ```
 
-The API handles overlapping speech, speaker changes mid-sentence, and varying numbers of participants.
+The API can label speaker changes mid-sentence and work with varying numbers of participants. Overlapping speech is still challenging and can be less accurate.
 
 ## Basic Speaker Diarization
 
@@ -204,11 +204,10 @@ Here is a complete meeting transcription tool that produces a structured output:
 from google.cloud import speech, storage
 import json
 import os
-from collections import Counter
 
 def generate_meeting_transcript(audio_path, bucket_name, output_path, num_speakers=4):
-    """Generate a structured meeting transcript with speaker statistics."""
-    # Upload to GCS if it is a local file
+    """Generate a structured meeting transcript from a FLAC file with speaker statistics."""
+    # Upload the local FLAC file to GCS
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
 
@@ -283,6 +282,14 @@ def generate_meeting_transcript(audio_path, bucket_name, output_path, num_speake
               f"{stats['speaking_time']:.0f}s speaking time")
 
     return transcript
+
+
+def format_timestamp(seconds):
+    """Convert seconds to HH:MM:SS format."""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
 def build_segments(words):
