@@ -8,7 +8,7 @@ Description: Learn how to fine-tune foundation models from Vertex AI Model Garde
 
 ---
 
-Foundation models like Gemini, PaLM, and open-source models on Vertex AI Model Garden are trained on massive datasets and work well for general tasks. But for your specific domain - legal document analysis, medical coding, customer support for your product - they need fine-tuning. A generic model might know what a "pod" is in biology, but your DevOps chatbot needs to know it means a Kubernetes pod.
+Foundation models like Gemini, Gemma, and other open models on Vertex AI Model Garden are trained on massive datasets and work well for general tasks. But for your specific domain - legal document analysis, medical coding, customer support for your product - they need fine-tuning. A generic model might know what a "pod" is in biology, but your DevOps chatbot needs to know it means a Kubernetes pod.
 
 Vertex AI Model Garden provides a catalog of foundation models that you can fine-tune with your own data. The tuning process adjusts the model's weights to perform better on your specific task while retaining the general knowledge from pre-training.
 
@@ -19,27 +19,25 @@ Model Garden offers a variety of models including Google's first-party models an
 This code lists available models in the Model Garden:
 
 ```python
-from google.cloud import aiplatform
+import vertexai
+from vertexai import model_garden
 
-aiplatform.init(project="your-project-id", location="us-central1")
+vertexai.init(project="your-project-id", location="us-central1")
 
-# List models available for tuning
-
-models = aiplatform.Model.list(
-    filter='labels.model_garden=true',
-    order_by="display_name"
+# List self-deployable Model Garden models. Use the Cloud console to
+# confirm whether a specific model card supports tuning.
+models = model_garden.list_deployable_models(
+    list_hf_models=False,
+    model_filter="gemma"
 )
 
 for model in models[:20]:
-    print(f"Model: {model.display_name}")
-    print(f"  Resource: {model.resource_name}")
-    print(f"  Labels: {model.labels}")
-    print()
+    print(model)
 ```
 
 ## Preparing Training Data for Supervised Fine-Tuning
 
-For supervised fine-tuning, you need labeled examples in JSONL format. The exact format depends on the task type.
+For supervised fine-tuning, you need labeled examples in JSONL format. The exact format depends on the model type.
 
 For text generation/instruction following:
 
@@ -56,8 +54,16 @@ def prepare_instruction_tuning_data(examples, output_path):
     with open(output_path, "w") as f:
         for example in examples:
             record = {
-                "input_text": example["prompt"],
-                "output_text": example["response"]
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": example["prompt"]}]
+                    },
+                    {
+                        "role": "model",
+                        "parts": [{"text": example["response"]}]
+                    }
+                ]
             }
             f.write(json.dumps(record) + "\n")
 
@@ -76,7 +82,7 @@ training_examples = [
     {
         "prompt": "How do I set up an alert for high CPU usage?",
         "response": "Navigate to Monitors > Create New Monitor. Select 'Server Monitor' as the type. Under Alert Conditions, add a rule for CPU usage with threshold set to your desired percentage. Choose notification channels (email, Slack, PagerDuty) in the Notification section. Click Create to activate the monitor."
-    }
+    },
     # ... hundreds more examples
 ]
 
@@ -91,8 +97,16 @@ def prepare_classification_data(examples, output_path):
     with open(output_path, "w") as f:
         for example in examples:
             record = {
-                "input_text": example["text"],
-                "output_text": example["label"]  # Just the class label
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": f"Classify this support ticket: {example['text']}"}]
+                    },
+                    {
+                        "role": "model",
+                        "parts": [{"text": example["label"]}]  # Just the class label
+                    }
+                ]
             }
             f.write(json.dumps(record) + "\n")
 
@@ -114,73 +128,66 @@ Vertex AI provides a managed fine-tuning pipeline for Gemini models. You specify
 This code fine-tunes a Gemini model:
 
 ```python
-from vertexai.generative_models import GenerativeModel
-from vertexai import tuning
+import time
+import vertexai
 from vertexai.tuning import sft
+
+vertexai.init(project="your-project-id", location="us-central1")
 
 # Upload training data to GCS first
 # gsutil cp training_data.jsonl gs://your-bucket/tuning-data/
 
 # Start supervised fine-tuning
 tuning_job = sft.train(
-    source_model="gemini-1.5-flash-002",
+    source_model="gemini-2.5-flash",
     train_dataset="gs://your-bucket/tuning-data/training_data.jsonl",
     validation_dataset="gs://your-bucket/tuning-data/validation_data.jsonl",
     epochs=3,
-    adapter_size=4,  # LoRA rank - 1, 4, 8, or 16
+    adapter_size=4,  # Supported values depend on the source model
     learning_rate_multiplier=1.0,
     tuned_model_display_name="customer-support-gemini"
 )
 
 # Monitor the tuning job
-print(f"Tuning job: {tuning_job.name}")
-print(f"State: {tuning_job.state}")
+print(f"Tuning job: {tuning_job.resource_name}")
 
 # Wait for completion (can take 1-4 hours depending on data size)
-tuning_job.wait()
+while not tuning_job.has_ended:
+    time.sleep(60)
+    tuning_job.refresh()
 
 # Get the tuned model endpoint
-tuned_model = tuning_job.tuned_model
-print(f"Tuned model: {tuned_model}")
+print(f"Tuned model: {tuning_job.tuned_model_name}")
+print(f"Endpoint: {tuning_job.tuned_model_endpoint_name}")
 ```
 
 ## Fine-Tuning Open-Source Models
 
-Model Garden also hosts open-source models like Llama, Mistral, and Gemma. Fine-tuning these uses a different approach through custom training jobs.
+Model Garden also hosts open models like Llama, Qwen, and Gemma. Fine-tuning these uses managed tuning jobs for the supported open models.
 
 This code fine-tunes a Gemma model using Vertex AI:
 
 ```python
-from google.cloud import aiplatform
+import vertexai
+from vertexai.tuning import sft, SourceModel
 
-aiplatform.init(project="your-project-id", location="us-central1")
+vertexai.init(project="your-project-id", location="us-central1")
 
-# Fine-tune using the Model Garden's built-in tuning pipeline
-# for open-source models
-job = aiplatform.PipelineJob(
-    display_name="gemma-fine-tuning",
-    template_path="gs://vertex-ai-model-garden/pipelines/gemma-tuning.json",
-    pipeline_root="gs://your-bucket/pipeline-root/",
-    parameter_values={
-        "model_name": "google/gemma-2b",
-        "train_data_uri": "gs://your-bucket/tuning-data/training_data.jsonl",
-        "eval_data_uri": "gs://your-bucket/tuning-data/validation_data.jsonl",
-        "output_dir": "gs://your-bucket/tuned-models/gemma-support/",
-        "epochs": 3,
-        "learning_rate": 2e-5,
-        "per_device_train_batch_size": 4,
-        "gradient_accumulation_steps": 4,
-        "lora_rank": 8,
-        "lora_alpha": 16,
-        "lora_dropout": 0.05,
-        "max_seq_length": 2048,
-        "accelerator_type": "NVIDIA_L4",
-        "accelerator_count": 4
-    }
+# Fine-tune a supported open model with managed tuning.
+tuning_job = sft.train(
+    source_model=SourceModel(
+        base_model="google/gemma3@gemma-3-27b-it"
+    ),
+    tuning_mode="PEFT_ADAPTER",
+    epochs=3,
+    train_dataset="gs://your-bucket/tuning-data/training_data.jsonl",
+    validation_dataset="gs://your-bucket/tuning-data/validation_data.jsonl",
+    output_uri="gs://your-bucket/tuned-models/gemma-support/"
 )
 
-job.submit()
-print(f"Pipeline job: {job.resource_name}")
+print(f"Tuning job: {tuning_job.resource_name}")
+print("Final artifacts will be under:")
+print("gs://your-bucket/tuned-models/gemma-support/postprocess/node-0/checkpoints/final")
 ```
 
 ## Evaluating the Fine-Tuned Model
@@ -232,18 +239,39 @@ exact_matches = sum(1 for r in results if r["exact_match"])
 print(f"Exact match rate: {exact_matches}/{len(results)}")
 ```
 
-## Using RLHF for Further Refinement
+## Using Preference Tuning for Further Refinement
 
-After supervised fine-tuning, you can further improve the model using Reinforcement Learning from Human Feedback (RLHF) if you have preference data.
+After supervised fine-tuning, you can further improve supported Gemini models using preference tuning if you have human feedback data.
 
 ```python
+import json
+
 # Prepare preference data
 # Each example has a prompt, a preferred response, and a rejected response
 preference_data = [
     {
-        "input_text": "How do I set up monitoring?",
-        "preferred_output": "Here is a step-by-step guide to setting up monitoring in OneUptime: 1) Navigate to the Monitors page. 2) Click 'Create Monitor'. 3) Select your monitor type (HTTP, Ping, Port, etc). 4) Enter the URL or hostname to monitor. 5) Set the check interval. 6) Configure alert conditions and notification channels. 7) Click Save.",
-        "rejected_output": "You can set up monitoring by going to the monitoring page and creating a new monitor. It is pretty straightforward."
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": "How do I set up monitoring?"}]
+            }
+        ],
+        "completions": [
+            {
+                "score": 1,
+                "completion": {
+                    "role": "model",
+                    "parts": [{"text": "Here is a step-by-step guide to setting up monitoring in OneUptime: 1) Navigate to the Monitors page. 2) Click 'Create Monitor'. 3) Select your monitor type (HTTP, Ping, Port, etc). 4) Enter the URL or hostname to monitor. 5) Set the check interval. 6) Configure alert conditions and notification channels. 7) Click Save."}]
+                }
+            },
+            {
+                "score": 0,
+                "completion": {
+                    "role": "model",
+                    "parts": [{"text": "You can set up monitoring by going to the monitoring page and creating a new monitor. It is pretty straightforward."}]
+                }
+            }
+        ]
     }
 ]
 
@@ -258,34 +286,22 @@ with open("preference_data.jsonl", "w") as f:
 After tuning, deploy the model to an endpoint for serving.
 
 ```python
-from google.cloud import aiplatform
+import vertexai
+from vertexai.preview import model_garden
 
-aiplatform.init(project="your-project-id", location="us-central1")
+vertexai.init(project="your-project-id", location="us-central1")
 
 # For Gemini fine-tuned models, the endpoint is created automatically
-# For open-source fine-tuned models, deploy manually
+# For open-model fine-tuned models, deploy the final checkpoint manually
 
-# Upload the fine-tuned model
-model = aiplatform.Model.upload(
-    display_name="gemma-support-tuned",
-    artifact_uri="gs://your-bucket/tuned-models/gemma-support/",
-    serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/vllm-inference:latest",
-    serving_container_environment_variables={
-        "MODEL_ID": "gs://your-bucket/tuned-models/gemma-support/",
-        "DEPLOY_SOURCE": "model_garden"
-    }
+model = model_garden.CustomModel(
+    gcs_uri="gs://your-bucket/tuned-models/gemma-support/postprocess/node-0/checkpoints/final"
 )
 
-# Create endpoint and deploy
-endpoint = aiplatform.Endpoint.create(display_name="support-bot-endpoint")
-
-model.deploy(
-    endpoint=endpoint,
+endpoint = model.deploy(
     machine_type="g2-standard-12",  # Machine with L4 GPU
     accelerator_type="NVIDIA_L4",
-    accelerator_count=1,
-    min_replica_count=1,
-    max_replica_count=3
+    accelerator_count=1
 )
 
 print(f"Deployed to: {endpoint.resource_name}")
@@ -295,7 +311,7 @@ print(f"Deployed to: {endpoint.resource_name}")
 
 Data quality matters more than data quantity. A hundred high-quality, diverse examples often produce better results than thousands of noisy, repetitive ones. Focus on examples that represent the range of inputs your model will see in production.
 
-Start with the smallest effective model. Fine-tuning Gemini 1.5 Flash is faster and cheaper than fine-tuning Gemini 1.5 Pro, and for many tasks the smaller model performs just as well after tuning. Only move to larger models if the smaller one cannot achieve your quality bar.
+Start with the smallest effective model. Fine-tuning a Flash or Flash-Lite model is faster and cheaper than fine-tuning a Pro model, and for many tasks the smaller model performs just as well after tuning. Only move to larger models if the smaller one cannot achieve your quality bar.
 
 Use a validation set to avoid overfitting. Reserve 10-20% of your data for validation. If validation metrics start degrading while training metrics improve, you are overfitting and should reduce epochs or increase regularization.
 
