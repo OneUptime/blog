@@ -22,28 +22,27 @@ This gives you confidence that your policy is doing what you expect before you t
 
 ### On a New Repository
 
-When creating a repository, enable dry run by default:
+When creating a repository, create the repository first. Dry run is set when you apply cleanup policies:
 
 ```bash
-# Create a repository with cleanup policy dry run enabled
-
+# Create a repository
 gcloud artifacts repositories create my-docker-repo \
   --repository-format=docker \
   --location=us-central1 \
   --description="Docker images with dry-run cleanup" \
-  --cleanup-policy-dry-run \
   --project=my-project
 ```
 
 ### On an Existing Repository
 
-Enable dry run on an existing repository:
+Enable dry run on an existing repository by applying your cleanup policy with `--dry-run`:
 
 ```bash
-# Enable dry run mode on an existing repository
-gcloud artifacts repositories update my-docker-repo \
+# Apply cleanup policies in dry run mode
+gcloud artifacts repositories set-cleanup-policies my-docker-repo \
   --location=us-central1 \
-  --cleanup-policy-dry-run \
+  --policy=cleanup-policy.json \
+  --dry-run \
   --project=my-project
 ```
 
@@ -54,16 +53,17 @@ Here is the typical workflow. First, define your cleanup policy:
 ```json
 [
   {
-    "id": "keep-production",
+    "name": "keep-production",
     "action": {
       "type": "Keep"
     },
     "condition": {
+      "tagState": "tagged",
       "tagPrefixes": ["v", "release-", "prod-"]
     }
   },
   {
-    "id": "keep-recent",
+    "name": "keep-recent",
     "action": {
       "type": "Keep"
     },
@@ -72,27 +72,28 @@ Here is the typical workflow. First, define your cleanup policy:
     }
   },
   {
-    "id": "delete-untagged",
+    "name": "delete-untagged",
     "action": {
       "type": "Delete"
     },
     "condition": {
-      "tagState": "UNTAGGED",
+      "tagState": "untagged",
       "olderThan": "259200s"
     }
   },
   {
-    "id": "delete-dev-images",
+    "name": "delete-dev-images",
     "action": {
       "type": "Delete"
     },
     "condition": {
+      "tagState": "tagged",
       "tagPrefixes": ["dev-", "feature-", "pr-"],
       "olderThan": "604800s"
     }
   },
   {
-    "id": "delete-old",
+    "name": "delete-old",
     "action": {
       "type": "Delete"
     },
@@ -106,30 +107,25 @@ Here is the typical workflow. First, define your cleanup policy:
 Apply it with dry run enabled:
 
 ```bash
-# Make sure dry run is enabled
-gcloud artifacts repositories update my-docker-repo \
-  --location=us-central1 \
-  --cleanup-policy-dry-run \
-  --project=my-project
-
-# Apply the cleanup policy
+# Apply the cleanup policy in dry run mode
 gcloud artifacts repositories set-cleanup-policies my-docker-repo \
   --location=us-central1 \
   --policy=cleanup-policy.json \
+  --dry-run \
   --project=my-project
 ```
 
 ## Reviewing Dry Run Results
 
-After the cleanup policy runs in dry run mode, check the audit logs to see what would have been deleted:
+After the cleanup policy runs in dry run mode, check the Data Access audit logs to see what would have been deleted. Data Access audit logs for Artifact Registry must be enabled first.
 
 ```bash
 # View dry run results in Cloud Audit Logs
 gcloud logging read \
-  'resource.type="audited_resource" AND
-   protoPayload.serviceName="artifactregistry.googleapis.com" AND
+  'protoPayload.serviceName="artifactregistry.googleapis.com" AND
    protoPayload.methodName="google.devtools.artifactregistry.v1.ArtifactRegistry.BatchDeleteVersions" AND
-   protoPayload.metadata.dryRun=true' \
+   protoPayload.request.parent="projects/my-project/locations/us-central1/repositories/my-docker-repo/packages/-" AND
+   protoPayload.request.validateOnly=true' \
   --project=my-project \
   --limit=50 \
   --format='table(timestamp, protoPayload.request.names)'
@@ -137,9 +133,9 @@ gcloud logging read \
 
 You can also check the results in the Cloud Console:
 
-1. Go to Artifact Registry in the Cloud Console
-2. Click on your repository
-3. Look at the cleanup policy section for dry run results
+1. Go to Logs Explorer in the Cloud Console
+2. Use the same audit log filter for your project, location, and repository
+3. Review the `protoPayload.request.names` field to see the versions that would be deleted
 
 ## Comparing Before and After
 
@@ -168,7 +164,7 @@ If the dry run shows that too many images would be deleted, loosen the criteria:
 ```json
 [
   {
-    "id": "delete-old",
+    "name": "delete-old",
     "action": {
       "type": "Delete"
     },
@@ -188,7 +184,7 @@ If the dry run shows images that should be deleted but are not matched:
 ```json
 [
   {
-    "id": "delete-old",
+    "name": "delete-old",
     "action": {
       "type": "Delete"
     },
@@ -197,11 +193,12 @@ If the dry run shows images that should be deleted but are not matched:
     }
   },
   {
-    "id": "delete-sha-tags",
+    "name": "delete-sha-tags",
     "action": {
       "type": "Delete"
     },
     "condition": {
+      "tagState": "tagged",
       "tagPrefixes": ["sha-"],
       "olderThan": "604800s"
     }
@@ -216,25 +213,27 @@ If the dry run shows production images would be deleted, add keep rules:
 ```json
 [
   {
-    "id": "keep-production",
+    "name": "keep-production",
     "action": {
       "type": "Keep"
     },
     "condition": {
+      "tagState": "tagged",
       "tagPrefixes": ["v", "release-"]
     }
   },
   {
-    "id": "keep-deployed",
+    "name": "keep-deployed",
     "action": {
       "type": "Keep"
     },
     "condition": {
+      "tagState": "tagged",
       "tagPrefixes": ["deployed-"]
     }
   },
   {
-    "id": "delete-old",
+    "name": "delete-old",
     "action": {
       "type": "Delete"
     },
@@ -251,9 +250,10 @@ Once you are confident the policy does what you want, disable dry run to start a
 
 ```bash
 # Disable dry run mode - deletions will now be real
-gcloud artifacts repositories update my-docker-repo \
+gcloud artifacts repositories set-cleanup-policies my-docker-repo \
   --location=us-central1 \
-  --no-cleanup-policy-dry-run \
+  --policy=cleanup-policy.json \
+  --no-dry-run \
   --project=my-project
 ```
 
@@ -278,6 +278,7 @@ resource "google_artifact_registry_repository" "docker_repo" {
     id     = "keep-production"
     action = "KEEP"
     condition {
+      tag_state    = "TAGGED"
       tag_prefixes = ["v", "release-"]
     }
   }
@@ -294,6 +295,7 @@ resource "google_artifact_registry_repository" "docker_repo" {
     id     = "delete-old-dev"
     action = "DELETE"
     condition {
+      tag_state    = "TAGGED"
       tag_prefixes = ["dev-", "feature-"]
       older_than   = "604800s"
     }
@@ -324,15 +326,15 @@ After going live, monitor the actual deletions:
 ```bash
 # Watch for actual deletions in audit logs
 gcloud logging read \
-  'resource.type="audited_resource" AND
-   protoPayload.serviceName="artifactregistry.googleapis.com" AND
+  'protoPayload.serviceName="artifactregistry.googleapis.com" AND
    protoPayload.methodName="google.devtools.artifactregistry.v1.ArtifactRegistry.BatchDeleteVersions" AND
-   NOT protoPayload.metadata.dryRun=true' \
+   protoPayload.request.parent="projects/my-project/locations/us-central1/repositories/my-docker-repo/packages/-" AND
+   NOT protoPayload.request.validateOnly=true' \
   --project=my-project \
   --limit=20
 ```
 
-Set up a Cloud Monitoring alert if deletions exceed an expected threshold:
+Set up a Cloud Monitoring alert if deletions exceed an expected threshold after creating a log-based metric for the deletion audit logs:
 
 ```bash
 # Create an alert for unexpected high deletion counts
@@ -340,6 +342,9 @@ Set up a Cloud Monitoring alert if deletions exceed an expected threshold:
 gcloud alpha monitoring policies create \
   --display-name="High Image Deletion Rate" \
   --condition-display-name="Many images deleted by cleanup" \
+  --condition-filter='metric.type="logging.googleapis.com/user/artifact_registry_deletions"' \
+  --duration=300s \
+  --if='> 100' \
   --notification-channels=CHANNEL_ID
 ```
 
