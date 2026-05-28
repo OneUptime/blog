@@ -37,6 +37,12 @@ resource "google_project_service" "pubsub" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "artifactregistry" {
+  project = var.project_id
+  service = "artifactregistry.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_project_service" "run" {
   project = var.project_id
   service = "run.googleapis.com"
@@ -46,6 +52,12 @@ resource "google_project_service" "run" {
 resource "google_project_service" "eventarc" {
   project = var.project_id
   service = "eventarc.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "logging" {
+  project = var.project_id
+  service = "logging.googleapis.com"
   disable_on_destroy = false
 }
 ```
@@ -111,7 +123,7 @@ resource "google_storage_bucket" "function_source" {
 data "archive_file" "function_zip" {
   type        = "zip"
   source_dir  = "${path.module}/src/event-processor"
-  output_path = "${path.module}/tmp/event-processor.zip"
+  output_path = "${path.module}/event-processor.zip"
 }
 
 # Upload the source to GCS
@@ -145,6 +157,18 @@ resource "google_project_iam_member" "function_roles" {
     "roles/storage.objectAdmin",
     "roles/logging.logWriter",
     "roles/secretmanager.secretAccessor",
+  ])
+
+  project = var.project_id
+  role    = each.value
+  member  = "serviceAccount:${google_service_account.function_sa.email}"
+}
+
+# Grant the Eventarc trigger identity the roles it needs to invoke the function
+resource "google_project_iam_member" "trigger_roles" {
+  for_each = toset([
+    "roles/eventarc.eventReceiver",
+    "roles/run.invoker",
   ])
 
   project = var.project_id
@@ -202,8 +226,13 @@ resource "google_cloudfunctions2_function" "event_processor" {
 
   depends_on = [
     google_project_service.cloudfunctions,
+    google_project_service.cloudbuild,
+    google_project_service.artifactregistry,
+    google_project_service.pubsub,
     google_project_service.run,
     google_project_service.eventarc,
+    google_project_service.logging,
+    google_project_iam_member.trigger_roles,
   ]
 }
 ```
@@ -215,7 +244,6 @@ The function source code at `src/event-processor/main.py`:
 import base64
 import json
 import functions_framework
-from google.cloud import storage
 
 @functions_framework.cloud_event
 def process_event(cloud_event):
@@ -245,6 +273,14 @@ def handle_event(payload):
         process_order(payload)
     else:
         print(f"Unknown event type: {event_type}")
+
+def process_signup(payload):
+    """Process a user signup event."""
+    print(f"Processing signup for user: {payload.get('user_id')}")
+
+def process_order(payload):
+    """Process an order placed event."""
+    print(f"Processing order: {payload.get('order_id')}")
 ```
 
 ## Deploying a Gen 1 Cloud Function (Legacy)
@@ -263,7 +299,7 @@ resource "google_cloudfunctions_function" "event_processor" {
   available_memory_mb   = 256
   source_archive_bucket = google_storage_bucket.function_source.name
   source_archive_object = google_storage_bucket_object.function_source.name
-  entry_point           = "process_event"
+  entry_point           = "process_event_gen1"
   timeout               = 120
   max_instances         = 10
 
@@ -286,9 +322,28 @@ resource "google_cloudfunctions_function" "event_processor" {
 }
 ```
 
+For Gen 1 Pub/Sub background functions, use the legacy event and context signature:
+
+```python
+import base64
+import json
+
+def process_event_gen1(event, context):
+    """Process a Pub/Sub message triggered by a Gen 1 background event."""
+    message_data = base64.b64decode(event["data"])
+    payload = json.loads(message_data)
+
+    attributes = event.get("attributes", {})
+
+    print(f"Processing event: {payload.get('event_type', 'unknown')}")
+    print(f"Attributes: {attributes}")
+
+    handle_event(payload)
+```
+
 ## Setting Up Dead-Letter Handling
 
-Configure a dead-letter policy to catch messages that fail repeatedly:
+If your architecture uses an explicit Pub/Sub subscription, configure a dead-letter policy to catch messages that fail repeatedly. Cloud Functions Pub/Sub triggers create and manage their own subscriptions, so this subscription does not change the trigger subscription used by the function above:
 
 ```hcl
 # dead_letter.tf - Dead-letter subscription and handling function
@@ -299,6 +354,13 @@ resource "google_pubsub_topic_iam_member" "dead_letter_publisher" {
   role    = "roles/pubsub.publisher"
   member  = "serviceAccount:service-${var.project_number}@gcp-sa-pubsub.iam.gserviceaccount.com"
   project = var.project_id
+}
+
+resource "google_pubsub_subscription_iam_member" "dead_letter_subscriber" {
+  subscription = google_pubsub_subscription.events_sub.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${var.project_number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+  project      = var.project_id
 }
 
 # Subscription with dead-letter policy
@@ -333,7 +395,7 @@ resource "google_cloudfunctions2_function" "dead_letter_handler" {
     source {
       storage_source {
         bucket = google_storage_bucket.function_source.name
-        object = google_storage_bucket_object.dead_letter_source.name
+        object = google_storage_bucket_object.function_source.name
       }
     }
   }
@@ -421,7 +483,7 @@ resource "google_cloudfunctions2_function" "processors" {
 # outputs.tf
 output "function_url" {
   description = "The URL of the deployed Cloud Function"
-  value       = google_cloudfunctions2_function.event_processor.url
+  value       = google_cloudfunctions2_function.event_processor.service_config[0].uri
 }
 
 output "topic_name" {
@@ -457,7 +519,7 @@ gcloud functions logs read event-processor \
 ## Best Practices
 
 1. **Use Gen 2 Cloud Functions** for new deployments. They support longer timeouts, more concurrency options, and are built on Cloud Run.
-2. **Always set up dead-letter topics.** Messages that fail repeatedly should not be lost silently.
+2. **Set up dead-letter topics for explicit subscriptions.** Messages that fail repeatedly should not be lost silently.
 3. **Use a dedicated service account** with minimal permissions for each function.
 4. **Include the source hash in the GCS object name** so Terraform detects code changes.
 5. **Set appropriate timeouts and memory limits** based on your function's actual requirements.
