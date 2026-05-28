@@ -127,7 +127,7 @@ resource "google_storage_bucket" "tenant_data" {
   }
 }
 
-# Label GKE clusters and node pools
+# Label GKE node pools
 resource "google_container_node_pool" "tenant_pool" {
   name       = "tenant-${var.tenant_id}-pool"
   cluster    = google_container_cluster.primary.name
@@ -146,9 +146,11 @@ resource "google_container_node_pool" "tenant_pool" {
 }
 ```
 
-## Step 3: Enforce Labels with Organization Policies
+For per-namespace or pod-label GKE cost attribution, also enable GKE cost allocation on the cluster so Kubernetes labels appear in the billing export.
 
-Labels are only useful if they are applied consistently. Use a Cloud Function to audit and enforce labeling.
+## Step 3: Audit Labels with Cloud Asset Inventory
+
+Labels are only useful if they are applied consistently. Use a Cloud Function to audit labeling and alert on violations.
 
 ```python
 # label_enforcer.py - Cloud Function that checks for missing labels
@@ -166,27 +168,24 @@ def audit_labels(event, context):
     client = asset_v1.AssetServiceClient()
     project = "projects/my-project"
 
-    # Search for resources that are missing required labels
-    for label in REQUIRED_LABELS:
-        # Find resources without this label
-        query = f"NOT labels.{label}:*"
+    request = asset_v1.SearchAllResourcesRequest(
+        scope=project,
+        asset_types=[
+            "compute.googleapis.com/Instance",
+            "sqladmin.googleapis.com/Instance",
+            "storage.googleapis.com/Bucket",
+        ]
+    )
 
-        request = asset_v1.SearchAllResourcesRequest(
-            scope=project,
-            query=query,
-            asset_types=[
-                "compute.googleapis.com/Instance",
-                "sqladmin.googleapis.com/Instance",
-                "storage.googleapis.com/Bucket",
-            ]
-        )
+    results = client.search_all_resources(request=request)
 
-        results = client.search_all_resources(request=request)
-
-        for resource in results:
-            print(f"MISSING LABEL '{label}': {resource.name}")
-            # Send an alert or notification
-            notify_missing_label(resource.name, label)
+    for resource in results:
+        resource_labels = dict(resource.labels)
+        for label in REQUIRED_LABELS:
+            if label not in resource_labels:
+                print(f"MISSING LABEL '{label}': {resource.name}")
+                # Send an alert or notification
+                notify_missing_label(resource.name, label)
 
 def notify_missing_label(resource_name, missing_label):
     """Send a notification about a resource with missing labels."""
@@ -213,12 +212,11 @@ SELECT
   labels.value AS tenant_id,
   invoice.month AS billing_month,
   SUM(cost) AS total_cost,
-  SUM(credits.amount) AS total_credits,
-  SUM(cost) + SUM(credits.amount) AS net_cost
+  SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) AS c), 0)) AS total_credits,
+  SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) AS c), 0)) AS net_cost
 FROM
-  `billing_export.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX` AS billing,
-  UNNEST(labels) AS labels,
-  UNNEST(credits) AS credits
+  `billing_export.gcp_billing_export_resource_v1_XXXXXX_XXXXXX_XXXXXX` AS billing,
+  UNNEST(labels) AS labels
 WHERE
   labels.key = "tenant-id"
   AND invoice.month = "202602"
@@ -239,7 +237,7 @@ SELECT
   SUM(usage.amount) AS total_usage,
   usage.unit AS usage_unit
 FROM
-  `billing_export.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX` AS billing,
+  `billing_export.gcp_billing_export_resource_v1_XXXXXX_XXXXXX_XXXXXX` AS billing,
   UNNEST(labels) AS labels
 WHERE
   labels.key = "tenant-id"
@@ -260,7 +258,7 @@ WITH monthly_costs AS (
     invoice.month AS billing_month,
     SUM(cost) AS total_cost
   FROM
-    `billing_export.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX`,
+    `billing_export.gcp_billing_export_resource_v1_XXXXXX_XXXXXX_XXXXXX`,
     UNNEST(labels) AS labels
   WHERE
     labels.key = "tenant-id"
@@ -300,7 +298,7 @@ WITH
       labels.value AS tenant_id,
       SUM(cost) AS tenant_direct_cost
     FROM
-      `billing_export.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX`,
+      `billing_export.gcp_billing_export_resource_v1_XXXXXX_XXXXXX_XXXXXX`,
       UNNEST(labels) AS labels
     WHERE
       labels.key = "tenant-id"
@@ -312,7 +310,7 @@ WITH
   ),
   shared_costs AS (
     SELECT SUM(cost) AS total_shared
-    FROM `billing_export.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX`
+    FROM `billing_export.gcp_billing_export_resource_v1_XXXXXX_XXXXXX_XXXXXX`
     WHERE
       -- Resources without tenant labels are considered shared
       NOT EXISTS (
@@ -323,8 +321,8 @@ WITH
 SELECT
   d.tenant_id,
   d.tenant_direct_cost,
-  ROUND(s.total_shared * (d.tenant_direct_cost / t.total), 2) AS allocated_shared_cost,
-  ROUND(d.tenant_direct_cost + s.total_shared * (d.tenant_direct_cost / t.total), 2) AS total_attributed_cost
+  ROUND(s.total_shared * SAFE_DIVIDE(d.tenant_direct_cost, t.total), 2) AS allocated_shared_cost,
+  ROUND(d.tenant_direct_cost + s.total_shared * SAFE_DIVIDE(d.tenant_direct_cost, t.total), 2) AS total_attributed_cost
 FROM
   direct_costs d,
   total_direct t,
@@ -340,22 +338,22 @@ Set up a scheduled query that generates a monthly cost report and stores it in a
 ```hcl
 # Scheduled query that runs monthly to generate tenant cost reports
 resource "google_bigquery_data_transfer_config" "tenant_cost_report" {
-  display_name   = "Monthly Tenant Cost Report"
-  location       = "US"
-  data_source_id = "scheduled_query"
-  schedule       = "1 of month 06:00"
-  project        = var.billing_project_id
+  display_name           = "Monthly Tenant Cost Report"
+  location               = "US"
+  data_source_id         = "scheduled_query"
+  schedule               = "1 of month 06:00"
+  project                = var.billing_project_id
+  destination_dataset_id = google_bigquery_dataset.billing_export.dataset_id
 
   params = {
     query = <<-SQL
-      INSERT INTO billing_export.tenant_monthly_costs
       SELECT
         labels.value AS tenant_id,
         invoice.month,
         SUM(cost) AS total_cost,
         CURRENT_TIMESTAMP() AS report_generated_at
       FROM
-        `billing_export.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX`,
+        `billing_export.gcp_billing_export_resource_v1_XXXXXX_XXXXXX_XXXXXX`,
         UNNEST(labels) AS labels
       WHERE
         labels.key = "tenant-id"
@@ -370,4 +368,4 @@ resource "google_bigquery_data_transfer_config" "tenant_cost_report" {
 
 ## Wrapping Up
 
-Per-tenant cost attribution on GCP comes down to three things: consistent labeling, billing export to BigQuery, and smart SQL queries. Start by defining your labeling strategy, enforce it with automation, and build queries that break down costs by tenant. This data is essential for pricing decisions, profitability analysis, and capacity planning. The sooner you set it up, the better visibility you will have into your unit economics.
+Per-tenant cost attribution on GCP comes down to three things: consistent labeling, billing export to BigQuery, and smart SQL queries. Start by defining your labeling strategy, audit it with automation, and build queries that break down costs by tenant. This data is essential for pricing decisions, profitability analysis, and capacity planning. The sooner you set it up, the better visibility you will have into your unit economics.
