@@ -44,7 +44,7 @@ This is the most important step. Do not just mirror your Realtime Database struc
 
 Here is a common Realtime Database structure for a chat app:
 
-```json
+```javascript
 // Realtime Database structure - deeply nested JSON tree
 {
   "rooms": {
@@ -61,7 +61,7 @@ Here is a common Realtime Database structure for a chat app:
       "msg1": {
         "text": "Hello",
         "sender": "user1",
-        "timestamp": 1708000000
+        "timestamp": 1708000000000
       }
     }
   },
@@ -144,18 +144,31 @@ async function exportLargeNode(nodeName, batchSize = 10000) {
   let batchNum = 0;
 
   while (true) {
-    let query = rtdb.ref(nodeName).orderByKey().limitToFirst(batchSize);
+    let query = rtdb.ref(nodeName).orderByKey();
 
     if (lastKey) {
-      query = query.startAfter(lastKey);
+      // startAt is inclusive, so ask for one extra record and skip lastKey below.
+      query = query.startAt(lastKey).limitToFirst(batchSize + 1);
+    } else {
+      query = query.limitToFirst(batchSize);
     }
 
     const snapshot = await query.once('value');
-    const data = snapshot.val();
+    const data = {};
+    const keys = [];
 
-    if (!data) break;
+    snapshot.forEach((childSnapshot) => {
+      if (childSnapshot.key === lastKey) {
+        return false;
+      }
 
-    const keys = Object.keys(data);
+      keys.push(childSnapshot.key);
+      data[childSnapshot.key] = childSnapshot.val();
+      return false;
+    });
+
+    if (keys.length === 0) break;
+
     lastKey = keys[keys.length - 1];
     totalExported += keys.length;
 
@@ -291,14 +304,21 @@ For a safe migration, run both databases simultaneously during a transition peri
 ```javascript
 // Dual-write function during the transition period
 // Writes to both databases to keep them in sync
-async function dualWrite(collectionPath, docId, data) {
-  const rtdbPath = collectionPath.replace(/\//g, '/') + '/' + docId;
-
+async function dualWrite(
+  firestoreCollectionPath,
+  firestoreDocId,
+  firestoreData,
+  rtdbPath,
+  rtdbData
+) {
   await Promise.all([
     // Write to Firestore (new)
-    firestore.collection(collectionPath).doc(docId).set(data, { merge: true }),
-    // Write to RTDB (old) - keep in sync during transition
-    rtdb.ref(rtdbPath).update(data)
+    firestore
+      .collection(firestoreCollectionPath)
+      .doc(firestoreDocId)
+      .set(firestoreData, { merge: true }),
+    // Write to RTDB (old) with the legacy path and JSON-shaped data
+    rtdb.ref(rtdbPath).update(rtdbData)
   ]);
 }
 ```
