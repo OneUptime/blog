@@ -108,11 +108,13 @@ Pull the metrics that show the user-facing impact. This is critical for quantify
 ```bash
 # Export error rate metrics for the incident time window
 # Useful for the "Impact" section of the postmortem
-gcloud monitoring time-series list \
-  --project=my-project \
-  --filter='metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="5xx"' \
-  --interval-start-time="2026-02-15T10:00:00Z" \
-  --interval-end-time="2026-02-15T14:00:00Z"
+curl -G \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --data-urlencode 'filter=metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="5xx"' \
+  --data-urlencode 'interval.startTime=2026-02-15T10:00:00Z' \
+  --data-urlencode 'interval.endTime=2026-02-15T14:00:00Z' \
+  --data-urlencode 'view=FULL' \
+  'https://monitoring.googleapis.com/v3/projects/my-project/timeSeries'
 ```
 
 ### Cloud Audit Logs for Change Tracking
