@@ -38,9 +38,9 @@ For most cases, `STOP` is better because you can attempt to restart the VM later
 
 When GCP needs your Spot VM's capacity back:
 
-1. The VM receives a preemption notice (30 seconds before termination)
-2. An ACPI G2 soft power-off signal is sent to the guest OS
-3. Your shutdown scripts run (you have roughly 30 seconds)
+1. Compute Engine sends a preemption notice as an ACPI G2 soft power-off signal
+2. Your shutdown scripts run (best effort, up to 30 seconds by default)
+3. If the VM has not stopped after the shutdown period, Compute Engine sends an ACPI G3 mechanical off signal
 4. The VM is stopped or deleted
 
 You can detect the preemption notice from inside the VM:
@@ -230,7 +230,7 @@ resource "google_compute_instance_template" "spot_worker" {
   }
 
   scheduling {
-    preemptible                 = false
+    preemptible                 = true
     provisioning_model          = "SPOT"
     instance_termination_action = "STOP"
     automatic_restart           = false
@@ -295,8 +295,8 @@ Here is a rough comparison for an e2-standard-4 instance in us-central1:
 | Pricing Model | Hourly Cost | Monthly Cost (730 hrs) | Savings |
 |---------------|-------------|------------------------|---------|
 | On-Demand | ~$0.134 | ~$97.82 | - |
-| 1-Year CUD | ~$0.089 | ~$64.97 | 34% |
-| 3-Year CUD | ~$0.054 | ~$39.42 | 60% |
+| 1-Year CUD | ~$0.084 | ~$61.64 | 37% |
+| 3-Year CUD | ~$0.060 | ~$44.03 | 55% |
 | Spot | ~$0.040 | ~$29.20 | 70% |
 
 The savings are significant, but remember that Spot VMs can be interrupted at any time. The actual availability varies by zone and machine type.
