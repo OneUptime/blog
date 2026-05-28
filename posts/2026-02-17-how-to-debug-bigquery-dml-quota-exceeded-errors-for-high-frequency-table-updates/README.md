@@ -14,13 +14,14 @@ Let me explain the quotas, why they exist, and how to architect your data pipeli
 
 ## Understanding BigQuery DML Quotas
 
-BigQuery imposes limits on how many DML operations you can run against a single table in a given time period. As of the current limits:
+BigQuery imposes limits on how many DML operations can run or queue against a single table at the same time. As of the current limits:
 
-- **INSERT DML statements**: 1,500 per table per day
-- **UPDATE/DELETE/MERGE DML statements**: 20 per table per day for on-demand pricing, higher for flat-rate
-- **Combined DML statements**: Various limits depending on the operation type
+- **DML statements per day**: Unlimited
+- **INSERT DML statements**: The first 1,500 statements per table in a 24-hour period run immediately. After that, BigQuery limits INSERT DML concurrency for the table to 10, with up to 100 INSERT statements queued.
+- **UPDATE/DELETE/MERGE DML statements**: BigQuery runs up to 2 mutating DML statements concurrently per table, with up to 20 queued.
+- **Queued DML statements**: Interactive DML jobs can wait in the queue for up to 7 hours before failing.
 
-These limits exist because BigQuery is a columnar analytics engine, not an OLTP database. Each DML operation rewrites entire column files, which is expensive.
+These limits exist because BigQuery is a columnar analytics engine, not an OLTP database. Mutating DML can rewrite file groups, which is expensive, although fine-grained DML can reduce the amount of data rewritten for UPDATE, DELETE, and MERGE statements.
 
 Check your current DML usage.
 
@@ -48,7 +49,7 @@ You have a process that inserts small batches of rows every minute.
 ```python
 # Bad: inserting a small batch every minute = 1440 DML inserts per day
 
-# This will exceed the 1500 daily limit very quickly
+# This approaches the point where BigQuery starts limiting INSERT DML concurrency
 
 from google.cloud import bigquery
 client = bigquery.Client()
@@ -72,7 +73,7 @@ You update individual rows as events occur, resulting in hundreds of UPDATE stat
 
 ## Fix 1 - Use the Streaming Insert API Instead of DML INSERT
 
-For high-frequency inserts, the BigQuery streaming API (also called the Storage Write API) is designed for exactly this use case. It does not count against DML quotas.
+For high-frequency inserts, use the legacy streaming insert API or the Storage Write API instead of DML INSERT. These writes do not count against DML quotas.
 
 ```python
 from google.cloud import bigquery
@@ -102,16 +103,15 @@ For even better performance, use the Storage Write API.
 ```python
 from google.cloud.bigquery_storage_v1 import BigQueryWriteClient
 from google.cloud.bigquery_storage_v1 import types
-from google.protobuf import descriptor_pb2
 
 def write_with_storage_api(project_id, dataset_id, table_id, rows):
     """Use the Storage Write API for high-throughput streaming."""
     client = BigQueryWriteClient()
     parent = f"projects/{project_id}/datasets/{dataset_id}/tables/{table_id}"
 
-    # Create a write stream
+    # Create a committed write stream for streaming workloads
     write_stream = types.WriteStream()
-    write_stream.type_ = types.WriteStream.Type.PENDING
+    write_stream.type_ = types.WriteStream.Type.COMMITTED
     write_stream = client.create_write_stream(
         parent=parent, write_stream=write_stream
     )
@@ -155,15 +155,13 @@ class BatchedUpdater:
 
         # Build a single MERGE statement for all updates
         values = ", ".join([
-            f"('{rid}', {val})" for rid, val in self.pending_updates
+            f"STRUCT('{rid}' AS id, {val} AS value)"
+            for rid, val in self.pending_updates
         ])
 
         query = f"""
         MERGE `my_dataset.my_table` T
-        USING (SELECT * FROM UNNEST([
-            STRUCT<id STRING, value INT64>
-            {values}
-        ])) S
+        USING UNNEST([{values}]) S
         ON T.id = S.id
         WHEN MATCHED THEN UPDATE SET value = S.value
         WHEN NOT MATCHED THEN INSERT (id, value) VALUES (S.id, S.value)
@@ -180,15 +178,14 @@ class BatchedUpdater:
 If you are appending data, use date-partitioned tables with partition-based loading instead of DML inserts.
 
 ```bash
-# Load data into a specific partition using bq load (not DML)
+# Load data into a specific partition of an existing partitioned table using bq load (not DML)
 bq load \
     --source_format=NEWLINE_DELIMITED_JSON \
-    --time_partitioning_field=event_date \
     'my_dataset.events$20240615' \
     data.json
 ```
 
-Load jobs have much higher limits than DML operations (100,000 per table per day).
+Load jobs have separate limits from DML operations. The project-level limit is 100,000 load jobs per day, and the per-table load job limit is 1,500 per day.
 
 ## Fix 4 - Redesign for Immutable Append Patterns
 
@@ -196,8 +193,8 @@ Instead of updating rows in place, use an append-only pattern and read the lates
 
 ```sql
 -- Instead of updating a row, append a new version
--- Original row: {id: 'abc', status: 'pending', updated_at: '2024-06-15 10:00'}
--- Update:       {id: 'abc', status: 'shipped', updated_at: '2024-06-15 14:00'}
+-- Original row: {order_id: 'abc', status: 'pending', updated_at: '2024-06-15 10:00'}
+-- Update:       {order_id: 'abc', status: 'shipped', updated_at: '2024-06-15 14:00'}
 
 -- Create a view that always returns the latest version of each record
 CREATE VIEW `my_dataset.current_orders` AS
@@ -240,26 +237,18 @@ def run_pipeline():
 Set up monitoring to catch quota issues before they cause pipeline failures.
 
 ```sql
--- Daily DML operation count per table
+-- DML operation count per table
 SELECT
   DATE(creation_time) as day,
   destination_table.table_id,
   statement_type,
-  COUNT(*) as dml_count,
-  CASE
-    WHEN statement_type = 'INSERT' THEN 1500
-    WHEN statement_type IN ('UPDATE', 'DELETE', 'MERGE') THEN 20
-  END as daily_limit,
-  ROUND(COUNT(*) * 100.0 / CASE
-    WHEN statement_type = 'INSERT' THEN 1500
-    WHEN statement_type IN ('UPDATE', 'DELETE', 'MERGE') THEN 20
-  END, 1) as percentage_used
+  COUNT(*) as dml_count
 FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   AND statement_type IN ('INSERT', 'UPDATE', 'DELETE', 'MERGE')
   AND state = 'DONE'
 GROUP BY day, destination_table.table_id, statement_type
-ORDER BY day DESC, percentage_used DESC;
+ORDER BY day DESC, dml_count DESC;
 ```
 
 ## Decision Tree
