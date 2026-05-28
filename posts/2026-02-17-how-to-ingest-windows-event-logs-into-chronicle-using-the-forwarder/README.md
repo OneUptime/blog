@@ -12,11 +12,13 @@ Windows Event Logs are one of the most valuable data sources for security monito
 
 In this guide, I will walk through deploying the Chronicle Forwarder, configuring it for Windows Event Log collection, and verifying the data shows up correctly in Chronicle.
 
+Note: Google has deprecated the Google SecOps forwarder for new deployments. As of April 1, 2026, new Google SecOps customers cannot use the forwarder, and Google recommends Bindplane for Google SecOps as the primary log collection option. Existing forwarder deployments can continue until the published forwarder end-of-life dates.
+
 ## Architecture Overview
 
 The Chronicle Forwarder runs as a service on a Linux or Windows machine in your network. For Windows Event Logs, you have two approaches:
 
-1. **WEF (Windows Event Forwarding) + Forwarder** - Windows machines forward events to a WEF collector, which sends them to the Chronicle Forwarder via syslog
+1. **WEF (Windows Event Forwarding) + Forwarder** - Windows machines forward events to a WEF collector, which sends them to the Chronicle Forwarder over TCP
 2. **NXLog + Forwarder** - NXLog agent on Windows machines sends events directly to the Chronicle Forwarder
 
 ```mermaid
@@ -32,9 +34,9 @@ I will cover both approaches.
 
 ## Prerequisites
 
-- Chronicle SIEM instance with forwarder credentials (customer ID, collector ID, secret key)
+- Chronicle SIEM instance with forwarder credentials (customer ID, collector ID, and a service account key with Data Plane API permissions)
 - A Linux or Windows server to run the Chronicle Forwarder
-- Network connectivity from the forwarder to `malachiteingestion-pa.googleapis.com` on port 443
+- Network connectivity from the forwarder to the required Google SecOps ingestion and authentication endpoints on port 443
 - Admin access to your Windows machines for configuring log forwarding
 
 ## Method 1: Windows Event Forwarding with Chronicle Forwarder
@@ -129,18 +131,22 @@ Install a syslog agent on the WEF collector to forward events to the Chronicle F
 <!-- Reads forwarded Windows events and sends them via syslog -->
 <Input eventlog>
     Module im_msvistalog
-    Query <QueryList>\
-        <Query Id="0">\
-            <Select Path="ForwardedEvents">*</Select>\
-        </Query>\
-    </QueryList>
+    <QueryXML>
+        <QueryList>
+            <Query Id="0">
+                <Select Path="ForwardedEvents">*</Select>
+            </Query>
+        </QueryList>
+    </QueryXML>
 </Input>
 
 <Output chronicle_forwarder>
     Module om_tcp
     Host CHRONICLE_FORWARDER_IP
     Port 10514
-    OutputType Syslog_TLS
+    Exec $EventTime = integer($EventTime) / 1000;
+    Exec $EventReceivedTime = integer($EventReceivedTime) / 1000;
+    Exec to_json();
 </Output>
 
 <Route wef_to_chronicle>
@@ -166,11 +172,26 @@ Create the forwarder configuration.
 # /opt/chronicle/config/forwarder.conf
 # Chronicle Forwarder configuration for Windows Event Logs
 output:
-  url: malachiteingestion-pa.googleapis.com:443
+  url: us-chronicle.googleapis.com
+  use_dataplane: true
+  project_id: "YOUR_GCP_PROJECT_ID"
+  region: "us"
   identity:
     customer_id: "YOUR_CHRONICLE_CUSTOMER_ID"
     collector_id: "YOUR_COLLECTOR_ID"
-    secret_key: "YOUR_SECRET_KEY"
+    secret_key: |
+      {
+        "type": "service_account",
+        "project_id": "YOUR_GCP_PROJECT_ID",
+        "private_key_id": "YOUR_PRIVATE_KEY_ID",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY\n-----END PRIVATE KEY-----\n",
+        "client_email": "YOUR_SERVICE_ACCOUNT@YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com",
+        "client_id": "YOUR_CLIENT_ID",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/YOUR_SERVICE_ACCOUNT%40YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com"
+      }
   compression: true
 
 collectors:
@@ -191,8 +212,10 @@ Start the forwarder.
 docker run -d \
     --name chronicle-forwarder \
     --restart=always \
+    --log-opt max-size=100m \
+    --log-opt max-file=10 \
+    --net=host \
     -v /opt/chronicle/config:/opt/chronicle/external \
-    -p 10514:10514/tcp \
     gcr.io/chronicle-container/cf_production_stable
 ```
 
@@ -263,11 +286,26 @@ define ROOT C:\Program Files\nxlog
     Module om_tcp
     Host CHRONICLE_FORWARDER_IP
     Port 10514
-    Exec to_syslog_ietf();
+    Exec $EventTime = integer($EventTime) / 1000;
+    Exec $EventReceivedTime = integer($EventReceivedTime) / 1000;
+    Exec to_json();
 </Output>
 
-<Route security_to_chronicle>
-    Path security_events, powershell_events, sysmon_events => chronicle
+<Output chronicle_sysmon>
+    Module om_tcp
+    Host CHRONICLE_FORWARDER_IP
+    Port 10515
+    Exec $EventTime = integer($EventTime) / 1000;
+    Exec $EventReceivedTime = integer($EventReceivedTime) / 1000;
+    Exec to_json();
+</Output>
+
+<Route windows_events_to_chronicle>
+    Path security_events, powershell_events => chronicle
+</Route>
+
+<Route sysmon_to_chronicle>
+    Path sysmon_events => chronicle_sysmon
 </Route>
 ```
 
@@ -278,11 +316,26 @@ The forwarder configuration is the same as Method 1. If you are collecting from 
 ```yaml
 # /opt/chronicle/config/forwarder.conf
 output:
-  url: malachiteingestion-pa.googleapis.com:443
+  url: us-chronicle.googleapis.com
+  use_dataplane: true
+  project_id: "YOUR_GCP_PROJECT_ID"
+  region: "us"
   identity:
     customer_id: "YOUR_CHRONICLE_CUSTOMER_ID"
     collector_id: "YOUR_COLLECTOR_ID"
-    secret_key: "YOUR_SECRET_KEY"
+    secret_key: |
+      {
+        "type": "service_account",
+        "project_id": "YOUR_GCP_PROJECT_ID",
+        "private_key_id": "YOUR_PRIVATE_KEY_ID",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY\n-----END PRIVATE KEY-----\n",
+        "client_email": "YOUR_SERVICE_ACCOUNT@YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com",
+        "client_id": "YOUR_CLIENT_ID",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/YOUR_SERVICE_ACCOUNT%40YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com"
+      }
   compression: true
 
 collectors:
