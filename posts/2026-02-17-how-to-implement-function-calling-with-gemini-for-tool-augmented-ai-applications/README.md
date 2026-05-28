@@ -20,25 +20,24 @@ The key insight is that Gemini does not execute the function itself. It generate
 
 ## Setting Up Your Environment
 
-Before you start, make sure you have the Google Cloud SDK configured and the Vertex AI Python SDK installed.
+Before you start, make sure you have Google Cloud authentication configured and the Google Gen AI Python SDK installed.
 
-This snippet installs the required packages and sets up authentication:
+This snippet installs the required package and creates a Vertex AI-backed Gemini client:
 
 ```python
-# Install the Vertex AI SDK with the latest Gemini support
+# Install the Google Gen AI SDK
 
-# pip install google-cloud-aiplatform
+# pip install --upgrade google-genai
 
-import vertexai
-from vertexai.generative_models import (
-    FunctionDeclaration,
-    GenerativeModel,
-    Part,
-    Tool,
+from google import genai
+from google.genai import types
+
+# Create a Vertex AI-backed Gemini client
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
 )
-
-# Initialize Vertex AI with your project and region
-vertexai.init(project="your-project-id", location="us-central1")
 ```
 
 ## Defining Function Declarations
@@ -49,7 +48,7 @@ Here is an example defining a weather lookup function:
 
 ```python
 # Define a function that Gemini can call to get weather data
-get_weather_func = FunctionDeclaration(
+get_weather_func = types.FunctionDeclaration(
     name="get_current_weather",
     description="Get the current weather conditions for a given city. Use this when the user asks about weather, temperature, or climate conditions.",
     parameters={
@@ -70,33 +69,38 @@ get_weather_func = FunctionDeclaration(
 )
 
 # Bundle functions into a Tool object
-weather_tool = Tool(function_declarations=[get_weather_func])
+weather_tool = types.Tool(function_declarations=[get_weather_func])
 ```
 
 ## Making the First Function Call
 
-With your tool defined, you can now create a model instance and send a message. When Gemini decides it needs weather data, it will respond with a function call instead of text.
+With your tool defined, you can now configure a model request and send a message. When Gemini decides it needs weather data, it will respond with a function call instead of text.
 
 This code sends a query and handles the function call response:
 
 ```python
-# Create the model with our tool
-model = GenerativeModel(
-    "gemini-2.0-flash",
-    tools=[weather_tool]
+# Configure the model with our tool
+config = types.GenerateContentConfig(
+    tools=[weather_tool],
 )
 
-# Start a chat session
-chat = model.start_chat()
-
 # Send a message that should trigger the weather function
-response = chat.send_message("What is the weather like in Tokyo right now?")
+prompt = "What is the weather like in Tokyo right now?"
+user_prompt_content = types.Content(
+    role="user",
+    parts=[types.Part.from_text(text=prompt)],
+)
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=[user_prompt_content],
+    config=config,
+)
 
 # Check if the model wants to call a function
-function_call = response.candidates[0].content.parts[0].function_call
+function_call = response.function_calls[0]
 
 print(f"Function to call: {function_call.name}")
-print(f"Arguments: {dict(function_call.args)}")
+print(f"Arguments: {function_call.args}")
 # Output: Function to call: get_current_weather
 # Output: Arguments: {'city': 'Tokyo', 'unit': 'celsius'}
 ```
@@ -118,11 +122,23 @@ weather_data = {
 }
 
 # Send the function response back to Gemini
-response = chat.send_message(
-    Part.from_function_response(
-        name="get_current_weather",
-        response={"result": weather_data}
-    )
+function_response_content = types.Content(
+    role="tool",
+    parts=[
+        types.Part.from_function_response(
+            name="get_current_weather",
+            response={"result": weather_data},
+        )
+    ],
+)
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=[
+        user_prompt_content,
+        response.candidates[0].content,
+        function_response_content,
+    ],
+    config=config,
 )
 
 # Now Gemini produces a natural language answer using the data
@@ -139,7 +155,7 @@ This example shows a multi-tool setup with weather and restaurant search:
 
 ```python
 # Define a second function for restaurant search
-search_restaurants_func = FunctionDeclaration(
+search_restaurants_func = types.FunctionDeclaration(
     name="search_restaurants",
     description="Search for restaurants in a given city. Use this when the user asks about places to eat or dining options.",
     parameters={
@@ -164,45 +180,67 @@ search_restaurants_func = FunctionDeclaration(
 )
 
 # Combine both functions into a single tool
-multi_tool = Tool(
+multi_tool = types.Tool(
     function_declarations=[get_weather_func, search_restaurants_func]
 )
 
-# Create model with both tools available
-model = GenerativeModel("gemini-2.0-flash", tools=[multi_tool])
+# Configure the model with both tools available
+config = types.GenerateContentConfig(tools=[multi_tool])
 ```
 
 ## Parallel Function Calling
 
-Gemini can request multiple function calls in a single turn. For example, if a user asks "What is the weather in Tokyo and find me good sushi restaurants there?", the model might return two function calls at once. You should handle this by iterating over all parts in the response.
+Gemini can request multiple function calls in a single turn. For example, if a user asks "What is the weather in Tokyo and find me good sushi restaurants there?", the model might return two function calls at once. You should handle this by iterating over all returned function calls.
 
 This code handles parallel function calls:
 
 ```python
 # Handle multiple function calls in one response
-response = chat.send_message(
-    "What is the weather in Tokyo and find me good sushi restaurants there?"
+prompt = "What is the weather in Tokyo and find me good sushi restaurants there?"
+user_prompt_content = types.Content(
+    role="user",
+    parts=[types.Part.from_text(text=prompt)],
+)
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=[user_prompt_content],
+    config=config,
 )
 
-# Iterate through all parts - there may be multiple function calls
-function_responses = []
-for part in response.candidates[0].content.parts:
-    if part.function_call:
-        call = part.function_call
-        print(f"Calling: {call.name} with args: {dict(call.args)}")
+# Iterate through all function calls
+function_response_parts = []
+for call in response.function_calls:
+    print(f"Calling: {call.name} with args: {call.args}")
 
-        # Execute each function and collect results
-        if call.name == "get_current_weather":
-            result = {"temperature": 12, "condition": "sunny"}
-        elif call.name == "search_restaurants":
-            result = {"restaurants": ["Sukiyabashi Jiro", "Sushi Saito"]}
+    # Execute each function and collect results
+    if call.name == "get_current_weather":
+        result = {"temperature": 12, "condition": "sunny"}
+    elif call.name == "search_restaurants":
+        result = {"restaurants": ["Sukiyabashi Jiro", "Sushi Saito"]}
+    else:
+        result = {"error": f"Unknown function: {call.name}"}
 
-        function_responses.append(
-            Part.from_function_response(name=call.name, response={"result": result})
+    function_response_parts.append(
+        types.Part.from_function_response(
+            name=call.name,
+            response={"result": result},
         )
+    )
 
 # Send all results back at once
-final_response = chat.send_message(function_responses)
+function_response_content = types.Content(
+    role="tool",
+    parts=function_response_parts,
+)
+final_response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=[
+        user_prompt_content,
+        response.candidates[0].content,
+        function_response_content,
+    ],
+    config=config,
+)
 print(final_response.text)
 ```
 
@@ -246,16 +284,30 @@ This code shows proper error handling for function execution:
 # Wrap function execution with error handling
 try:
     if call.name == "get_current_weather":
-        result = fetch_weather(dict(call.args))
+        result = fetch_weather(**call.args)
+    else:
+        result = {"error": f"Unknown function: {call.name}"}
 except Exception as e:
     # Return the error to Gemini so it can inform the user gracefully
     result = {"error": f"Failed to fetch weather: {str(e)}"}
 
-response = chat.send_message(
-    Part.from_function_response(
-        name=call.name,
-        response={"result": result}
-    )
+function_response_content = types.Content(
+    role="tool",
+    parts=[
+        types.Part.from_function_response(
+            name=call.name,
+            response={"result": result},
+        )
+    ],
+)
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=[
+        user_prompt_content,
+        response.candidates[0].content,
+        function_response_content,
+    ],
+    config=config,
 )
 ```
 
