@@ -88,7 +88,7 @@ This scheduled query runs daily to delete rows older than 30 days from a non-par
 
 ```sql
 -- Scheduled daily: Delete records older than 30 days
--- Targets PII-containing columns specifically
+-- Targets rows containing stale PII
 DELETE FROM `my-project.analytics.user_profiles`
 WHERE last_updated < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY);
 ```
@@ -98,9 +98,8 @@ To create this as a scheduled query using the bq CLI:
 ```bash
 # Schedule a daily deletion query at 2 AM UTC
 bq query --use_legacy_sql=false \
-  --schedule="every 24 hours" \
+  --schedule="every day 02:00" \
   --display_name="Delete expired user profiles" \
-  --destination_table="" \
   --target_dataset="analytics" \
   'DELETE FROM `my-project.analytics.user_profiles` WHERE last_updated < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)'
 ```
@@ -126,7 +125,7 @@ GROUP BY event_date, event_type;
 
 -- Step 2: Delete the detailed data that has been aggregated
 DELETE FROM `my-project.analytics.detailed_events`
-WHERE DATE(event_time) <= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY);
+WHERE DATE(event_time) = DATE_SUB(CURRENT_DATE(), INTERVAL 91 DAY);
 ```
 
 ## Terraform Configuration for Retention Policies
@@ -214,7 +213,7 @@ SELECT
   PARSE_DATE('%Y%m%d', partition_id) AS partition_date,
   DATE_DIFF(CURRENT_DATE(), PARSE_DATE('%Y%m%d', partition_id), DAY) AS age_days
 FROM `my-project.analytics.INFORMATION_SCHEMA.PARTITIONS`
-WHERE partition_id != '__NULL__'
+WHERE REGEXP_CONTAINS(partition_id, r'^\d{8}$')
 ORDER BY partition_date ASC
 LIMIT 20;
 ```
@@ -230,7 +229,7 @@ SELECT
   MIN(PARSE_DATE('%Y%m%d', partition_id)) AS oldest_partition,
   MAX(PARSE_DATE('%Y%m%d', partition_id)) AS newest_partition
 FROM `my-project.analytics.INFORMATION_SCHEMA.PARTITIONS`
-WHERE partition_id != '__NULL__'
+WHERE REGEXP_CONTAINS(partition_id, r'^\d{8}$')
 GROUP BY table_name
 ORDER BY total_gb DESC;
 ```
@@ -241,10 +240,10 @@ Different compliance frameworks have different retention requirements. Here is a
 
 | Data Type | GDPR | HIPAA | PCI DSS | Recommended Approach |
 |-----------|------|-------|---------|---------------------|
-| PII / PHI | Delete when purpose fulfilled | 6 years | Varies | Partition expiration + scheduled deletion |
-| Transaction logs | As needed | 6 years | 1 year minimum | Partition expiration with long retention |
-| Audit logs | As needed | 6 years | 1 year minimum | Separate dataset, long retention |
-| Analytics (anonymized) | No limit | No limit | No limit | No expiration needed |
+| PII / PHI | Delete or anonymize when no longer necessary | Medical-record retention varies by jurisdiction; HIPAA documentation retention is 6 years | Varies by cardholder-data scope | Partition expiration + scheduled deletion |
+| Transaction logs | Based on purpose and legal obligations | Varies by record type and jurisdiction | Varies by cardholder-data scope | Partition expiration with long retention |
+| Audit logs | Based on purpose and legal obligations | Keep required HIPAA compliance documentation for 6 years | Audit log history: at least 12 months, with at least 3 months immediately available | Separate dataset, long retention |
+| Analytics (anonymized) | Outside GDPR if truly anonymized | Outside HIPAA if properly de-identified | Outside PCI DSS if no cardholder data is present | No expiration needed |
 
 ## Best Practices
 
@@ -256,7 +255,7 @@ After implementing retention across multiple BigQuery environments, these are th
 
 3. **Test retention before production**. Create a test dataset, load sample data with various dates, set expiration, and verify that the right data gets deleted.
 
-4. **Log all deletion operations**. BigQuery audit logs capture DELETE statements and partition drops. Export these to a separate long-retention dataset for compliance evidence.
+4. **Log deletion operations where BigQuery emits audit events**. BigQuery audit logs capture query jobs such as DELETE statements and table deletions caused by table expiration, but partition expirations do not generate `TableDataChange` entries. Export relevant audit logs to a separate long-retention dataset for compliance evidence.
 
 5. **Use labels for retention tracking**. Label tables and datasets with their retention period so it is easy to audit.
 
