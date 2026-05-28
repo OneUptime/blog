@@ -20,36 +20,37 @@ This is different from retrieval-augmented generation (RAG) with your own data. 
 
 ## Enabling Google Search Grounding
 
-Setting up grounding requires just a few lines of code. You configure a grounding tool and pass it to the model.
+Setting up grounding requires just a few lines of code. You configure a grounding tool and pass it with the request.
 
 This code enables Google Search grounding on a Gemini model:
 
 ```python
-import vertexai
-from vertexai.generative_models import (
-    GenerativeModel,
-    Tool,
-    grounding,
+from google import genai
+from google.genai import types
+
+# Create a Vertex AI client
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="global",
+    http_options=types.HttpOptions(api_version="v1"),
 )
-
-# Initialize Vertex AI
-
-vertexai.init(project="your-project-id", location="us-central1")
 
 # Create a grounding tool with Google Search
-google_search_tool = Tool.from_google_search_retrieval(
-    grounding.GoogleSearchRetrieval()
+google_search_tool = types.Tool(
+    google_search=types.GoogleSearch()
 )
 
-# Create the model with grounding enabled
-model = GenerativeModel(
-    "gemini-2.0-flash",
+# Configure generation with grounding enabled
+grounded_config = types.GenerateContentConfig(
     tools=[google_search_tool]
 )
 
 # Ask a question that requires current information
-response = model.generate_content(
-    "What are the latest updates to Google Cloud's pricing for Compute Engine?"
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="What are the latest updates to Google Cloud's pricing for Compute Engine?",
+    config=grounded_config,
 )
 
 print(response.text)
@@ -63,8 +64,10 @@ Here is how to extract grounding metadata:
 
 ```python
 # Generate a grounded response
-response = model.generate_content(
-    "What were the major announcements at the latest Google Cloud Next conference?"
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="What were the major announcements at the latest Google Cloud Next conference?",
+    config=grounded_config,
 )
 
 # Access the grounding metadata
@@ -74,9 +77,14 @@ candidate = response.candidates[0]
 if candidate.grounding_metadata:
     metadata = candidate.grounding_metadata
 
-    # Print search queries that were executed
+    # Print Search Suggestions, which must be displayed in production
     if metadata.search_entry_point:
-        print(f"Search rendered content available: yes")
+        print("Search rendered content available: yes")
+
+    if metadata.web_search_queries:
+        print("\nSearch queries:")
+        for query in metadata.web_search_queries:
+            print(f"  - {query}")
 
     # Print grounding chunks (source citations)
     if metadata.grounding_chunks:
@@ -106,29 +114,32 @@ This code configures dynamic grounding:
 ```python
 # Configure dynamic grounding with a threshold
 # Lower threshold = more likely to ground, higher = less likely
-dynamic_search_tool = Tool.from_google_search_retrieval(
-    grounding.GoogleSearchRetrieval(
-        dynamic_retrieval_config=grounding.DynamicRetrievalConfig(
-            dynamic_threshold=0.3  # Ground when confidence is below 0.3
+dynamic_search_tool = types.Tool(
+    google_search_retrieval=types.GoogleSearchRetrieval(
+        dynamic_retrieval_config=types.DynamicRetrievalConfig(
+            dynamic_threshold=0.3
         )
     )
 )
 
-model_dynamic = GenerativeModel(
-    "gemini-2.0-flash",
+dynamic_config = types.GenerateContentConfig(
     tools=[dynamic_search_tool]
 )
 
 # This factual question about current events will likely trigger grounding
-response1 = model_dynamic.generate_content(
-    "What is the current price of Bitcoin?"
+response1 = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="What is the current price of Bitcoin?",
+    config=dynamic_config,
 )
 print("Bitcoin query - grounded:",
       response1.candidates[0].grounding_metadata is not None)
 
 # This general knowledge question may not trigger grounding
-response2 = model_dynamic.generate_content(
-    "What is the chemical formula for water?"
+response2 = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="What is the chemical formula for water?",
+    config=dynamic_config,
 )
 print("Water formula query - grounded:",
       response2.candidates[0].grounding_metadata is not None)
@@ -140,7 +151,10 @@ Grounding works in chat sessions too. The model can search at any point during t
 
 ```python
 # Create a chat with grounding enabled
-chat = model.start_chat()
+chat = client.chats.create(
+    model="gemini-2.5-flash",
+    config=grounded_config,
+)
 
 # First turn - general setup
 response = chat.send_message(
@@ -161,7 +175,7 @@ response = chat.send_message(
 print(response.text)
 
 # Check which turns used grounding
-for i, content in enumerate(chat.history):
+for i, content in enumerate(chat.get_history()):
     print(f"Turn {i}: {content.role}")
 ```
 
@@ -174,11 +188,16 @@ class GroundedResearchAssistant:
     """A research assistant that grounds answers with web sources."""
 
     def __init__(self):
-        search_tool = Tool.from_google_search_retrieval(
-            grounding.GoogleSearchRetrieval()
+        search_tool = types.Tool(
+            google_search=types.GoogleSearch()
         )
-        self.model = GenerativeModel(
-            "gemini-2.0-flash",
+        self.client = genai.Client(
+            vertexai=True,
+            project="your-project-id",
+            location="global",
+            http_options=types.HttpOptions(api_version="v1"),
+        )
+        self.config = types.GenerateContentConfig(
             tools=[search_tool],
             system_instruction=(
                 "You are a research assistant. When answering questions, "
@@ -187,7 +206,10 @@ class GroundedResearchAssistant:
                 "or recent developments."
             )
         )
-        self.chat = self.model.start_chat()
+        self.chat = self.client.chats.create(
+            model="gemini-2.5-flash",
+            config=self.config,
+        )
 
     def research(self, query):
         """Research a topic and return the answer with sources."""
@@ -232,13 +254,13 @@ print(assistant.format_response(result))
 You can use grounding alongside function calling. The model can search the web for context and also call your custom functions. This is powerful for applications that need both public web data and access to internal systems.
 
 ```python
-from vertexai.generative_models import FunctionDeclaration
+from google.genai import types
 
 # Define a custom function for internal data
-get_internal_metrics = FunctionDeclaration(
+get_internal_metrics = types.FunctionDeclaration(
     name="get_internal_metrics",
     description="Retrieve internal system metrics for a given service.",
-    parameters={
+    parameters_json_schema={
         "type": "object",
         "properties": {
             "service_name": {
@@ -255,14 +277,13 @@ get_internal_metrics = FunctionDeclaration(
 )
 
 # Combine grounding and function calling
-internal_tool = Tool(function_declarations=[get_internal_metrics])
-search_tool = Tool.from_google_search_retrieval(
-    grounding.GoogleSearchRetrieval()
+internal_tool = types.Tool(function_declarations=[get_internal_metrics])
+search_tool = types.Tool(
+    google_search=types.GoogleSearch()
 )
 
-# Model has access to both web search and internal functions
-model_combined = GenerativeModel(
-    "gemini-2.0-flash",
+# Requests using this config have access to both web search and internal functions
+combined_config = types.GenerateContentConfig(
     tools=[search_tool, internal_tool]
 )
 ```
@@ -272,10 +293,14 @@ model_combined = GenerativeModel(
 Sometimes search results might not be relevant, or the grounding service might be temporarily unavailable. Build fallback handling into your application.
 
 ```python
-def grounded_query_with_fallback(model, query, fallback_model=None):
+def grounded_query_with_fallback(client, query, fallback_config=None):
     """Query with grounding, falling back to ungrounded if needed."""
     try:
-        response = model.generate_content(query)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=query,
+            config=grounded_config,
+        )
 
         # Check if grounding actually provided useful results
         candidate = response.candidates[0]
@@ -293,8 +318,12 @@ def grounded_query_with_fallback(model, query, fallback_model=None):
 
     except Exception as e:
         # Grounding service unavailable - fall back to ungrounded model
-        if fallback_model:
-            response = fallback_model.generate_content(query)
+        if fallback_config:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=query,
+                config=fallback_config,
+            )
             return {
                 "response": response.text,
                 "grounded": False,
