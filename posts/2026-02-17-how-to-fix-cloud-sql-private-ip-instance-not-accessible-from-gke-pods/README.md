@@ -79,7 +79,7 @@ gcloud services vpc-peerings connect \
 
 ## Step 3: Check GKE Cluster Network Configuration
 
-The GKE cluster must be in the same VPC as the Cloud SQL instance (or a VPC that is peered to it).
+The GKE cluster must be in the same VPC as the Cloud SQL instance (or in a Shared VPC where private service access is configured on the host VPC).
 
 ```bash
 # Check GKE cluster network configuration
@@ -150,7 +150,7 @@ gcloud compute firewall-rules list \
     --project=my-project
 ```
 
-The pod IP ranges (secondary ranges from your subnet) need to be allowed. Check what ranges your GKE cluster uses:
+Most VPC networks have an implied allow egress rule, so you usually only need a new rule if your project has a higher-priority deny rule or a restrictive egress policy. The pod IP ranges (secondary ranges from your subnet) and the Cloud SQL private IP range need to be allowed. Check what ranges your GKE cluster uses:
 
 ```bash
 # Get the pod IP range
@@ -159,7 +159,7 @@ gcloud container clusters describe my-cluster \
     --format="value(ipAllocationPolicy.clusterIpv4CidrBlock)"
 ```
 
-If there is a deny rule or no matching allow rule for this range, create one:
+If there is a deny rule or restrictive egress policy blocking this traffic, create a more specific allow rule:
 
 ```bash
 # Allow traffic from GKE pods to Cloud SQL private IP range
@@ -167,14 +167,17 @@ gcloud compute firewall-rules create allow-gke-to-cloudsql \
     --network=my-vpc \
     --allow=tcp:3306,tcp:5432 \
     --source-ranges=10.4.0.0/14 \
+    --destination-ranges=10.10.0.5/32 \
     --direction=EGRESS \
     --priority=1000 \
     --project=my-project
 ```
 
+Replace `10.4.0.0/14` with your pod range and `10.10.0.5/32` with the Cloud SQL private IP, or with the allocated private service access range if you want the rule to cover multiple Cloud SQL instances.
+
 ## Step 7: Check for Missing Route Export
 
-When you use VPC peering for private service access, routes need to be exported so that GKE pod IPs can reach the Cloud SQL network. For VPC-native clusters, this should work automatically. But for private clusters, you need to make sure the peering exports custom routes.
+When you use VPC peering for private service access, subnet routes such as RFC 1918 VPC-native GKE pod ranges are exchanged automatically. If your pods use privately used public IP ranges, non-RFC 1918 ranges, or another custom routed range, you need to make sure the private service access peering exports those routes to Cloud SQL.
 
 ```bash
 # Check the VPC peering configuration
@@ -182,17 +185,16 @@ gcloud compute networks peerings list \
     --network=my-vpc \
     --project=my-project
 
-# Update peering to export and import custom routes
+# Update peering to export custom routes
 gcloud compute networks peerings update servicenetworking-googleapis-com \
     --network=my-vpc \
     --export-custom-routes \
-    --import-custom-routes \
     --project=my-project
 ```
 
 ## Step 8: Use Cloud SQL Auth Proxy Instead (Recommended)
 
-The recommended approach for connecting GKE pods to Cloud SQL is using the Cloud SQL Auth Proxy as a sidecar container. This avoids many of the networking issues because the proxy handles the connection.
+The recommended approach for connecting GKE pods to Cloud SQL is using the Cloud SQL Auth Proxy as a sidecar container. The proxy handles IAM-based authorization and encrypted connections. If you start it with `--private-ip`, the pod still needs network access to the Cloud SQL private IP through the same VPC.
 
 ```yaml
 # Kubernetes deployment with Cloud SQL Auth Proxy sidecar
@@ -221,16 +223,17 @@ spec:
           value: "5432"
       # Cloud SQL Auth Proxy sidecar
       - name: cloud-sql-proxy
-        image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:latest
+        image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.20.0
         args:
           - "--private-ip"
           - "--structured-logs"
+          - "--port=5432"
           - "my-project:us-central1:my-instance"
         securityContext:
           runAsNonRoot: true
 ```
 
-The proxy handles private IP routing, authentication, and SSL encryption. It simplifies the networking requirements significantly.
+The proxy handles authentication and SSL/TLS encryption, but private IP connections still depend on correct VPC routing and firewall rules. It simplifies the application-side connection requirements significantly.
 
 ## Debugging Flowchart
 
@@ -241,14 +244,14 @@ flowchart TD
     B -->|Yes| D{Private service access configured?}
     D -->|No| E[Set up private service access]
     D -->|Yes| F{GKE in same VPC?}
-    F -->|No| G[Move to same VPC or set up peering]
+    F -->|No| G[Use the same VPC or Shared VPC]
     F -->|Yes| H{VPC-native cluster?}
     H -->|No| I[Recreate as VPC-native]
     H -->|Yes| J{Firewall allows traffic?}
     J -->|No| K[Create firewall rule]
-    J -->|Yes| L{Routes exported?}
-    L -->|No| M[Enable route export on peering]
-    L -->|Yes| N[Use Cloud SQL Auth Proxy]
+    J -->|Yes| L{Custom routes needed?}
+    L -->|Yes| M[Enable route export on peering]
+    L -->|No| N[Use Cloud SQL Auth Proxy]
 ```
 
-The most reliable solution is to use the Cloud SQL Auth Proxy as a sidecar. It handles private IP routing, provides IAM-based authentication, and encrypts connections automatically. Direct private IP connections work too, but they require getting all the networking pieces right, which is where most teams run into trouble.
+The most reliable solution is to use the Cloud SQL Auth Proxy as a sidecar. It provides IAM-based authorization and encrypts connections automatically. Direct private IP connections work too, but they require getting all the networking pieces right, which is where most teams run into trouble.
