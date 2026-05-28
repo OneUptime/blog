@@ -23,6 +23,12 @@ The `parallel` keyword creates branches that run simultaneously.
 
 main:
   steps:
+    - init:
+        assign:
+          - weather_data: null
+          - news_data: null
+          - stock_data: null
+
     - fetch_all_data:
         parallel:
           shared: [weather_data, news_data, stock_data]
@@ -102,6 +108,7 @@ main:
                           - count_error_a:
                               assign:
                                 - error_count: ${error_count + 1}
+                              next: continue
                   - save_result_a:
                       assign:
                         - results["service_a"]: ${response_a.body}
@@ -120,6 +127,7 @@ main:
                           - count_error_b:
                               assign:
                                 - error_count: ${error_count + 1}
+                              next: continue
                   - save_result_b:
                       assign:
                         - results["service_b"]: ${response_b.body}
@@ -258,11 +266,11 @@ main:
                         steps:
                           - record_failure_1:
                               assign:
-                                - failed: ${list.concat(failed, {"service": "reliable", "error": e.message})}
-                              next: end
+                                - failed: '${list.concat(failed, {"service": "reliable", "error": e.message})}'
+                              next: continue
                   - record_success_1:
                       assign:
-                        - successful: ${list.concat(successful, {"service": "reliable", "data": result_1.body})}
+                        - successful: '${list.concat(successful, {"service": "reliable", "data": result_1.body})}'
 
             - branch_2:
                 steps:
@@ -278,11 +286,11 @@ main:
                         steps:
                           - record_failure_2:
                               assign:
-                                - failed: ${list.concat(failed, {"service": "unreliable", "error": e.message})}
-                              next: end
+                                - failed: '${list.concat(failed, {"service": "unreliable", "error": e.message})}'
+                              next: continue
                   - record_success_2:
                       assign:
-                        - successful: ${list.concat(successful, {"service": "unreliable", "data": result_2.body})}
+                        - successful: '${list.concat(successful, {"service": "unreliable", "data": result_2.body})}'
 
             - branch_3:
                 steps:
@@ -298,11 +306,11 @@ main:
                         steps:
                           - record_failure_3:
                               assign:
-                                - failed: ${list.concat(failed, {"service": "flaky", "error": e.message})}
-                              next: end
+                                - failed: '${list.concat(failed, {"service": "flaky", "error": e.message})}'
+                              next: continue
                   - record_success_3:
                       assign:
-                        - successful: ${list.concat(successful, {"service": "flaky", "data": result_3.body})}
+                        - successful: '${list.concat(successful, {"service": "flaky", "data": result_3.body})}'
 
     - return_summary:
         return:
@@ -352,8 +360,10 @@ main:
                         steps:
                           - email_failed:
                               assign:
-                                - delivery_results["email"]: {"status": "failed", "error": ${e.message}}
-                              next: end
+                                - delivery_results["email"]:
+                                    status: "failed"
+                                    error: ${e.message}
+                              next: continue
                   - email_success:
                       assign:
                         - delivery_results["email"]: {"status": "sent"}
@@ -373,8 +383,10 @@ main:
                         steps:
                           - slack_failed:
                               assign:
-                                - delivery_results["slack"]: {"status": "failed", "error": ${e.message}}
-                              next: end
+                                - delivery_results["slack"]:
+                                    status: "failed"
+                                    error: ${e.message}
+                              next: continue
                   - slack_success:
                       assign:
                         - delivery_results["slack"]: {"status": "sent"}
@@ -384,9 +396,13 @@ main:
                   - check_sms_needed:
                       switch:
                         - condition: ${severity != "critical"}
-                          assign:
-                            - delivery_results["sms"]: {"status": "skipped", "reason": "not critical"}
-                          next: end
+                          steps:
+                            - sms_skipped:
+                                assign:
+                                  - delivery_results["sms"]:
+                                      status: "skipped"
+                                      reason: "not critical"
+                                next: continue
                   - send_sms:
                       try:
                         call: http.post
@@ -403,8 +419,10 @@ main:
                         steps:
                           - sms_failed:
                               assign:
-                                - delivery_results["sms"]: {"status": "failed", "error": ${e.message}}
-                              next: end
+                                - delivery_results["sms"]:
+                                    status: "failed"
+                                    error: ${e.message}
+                              next: continue
                   - sms_success:
                       assign:
                         - delivery_results["sms"]: {"status": "sent"}
