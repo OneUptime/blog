@@ -31,6 +31,7 @@ Let's start with a straightforward example. Suppose you need to update order sta
 # Python: Execute multiple DML statements in a single batch
 
 from google.cloud import spanner
+from google.rpc.code_pb2 import OK
 
 client = spanner.Client(project='my-project')
 instance = client.instance('my-instance')
@@ -69,6 +70,8 @@ def process_completed_orders():
 
         # Execute all statements in one batch call
         status, row_counts = transaction.batch_update(statements)
+        if status.code != OK:
+            raise RuntimeError(f"Batch DML failed: {status.message}")
 
         # Check results for each statement
         for i, count in enumerate(row_counts):
@@ -84,7 +87,10 @@ Here is the same concept in Java, which is a common choice for Cloud Spanner app
 
 ```java
 // Java: Batch DML with the Spanner client library
+import com.google.cloud.Timestamp;
 import com.google.cloud.spanner.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class BatchDmlExample {
     public static void runBatchUpdate(DatabaseClient dbClient) {
@@ -127,7 +133,7 @@ One thing that catches people off guard is how Spanner handles errors in batch D
 
 ```python
 # Python: Handling partial failures in batch DML
-from google.api_core import exceptions
+from google.rpc.code_pb2 import OK
 
 def handle_partial_failure(transaction):
     statements = [
@@ -139,19 +145,20 @@ def handle_partial_failure(transaction):
         ("UPDATE Users SET Active = true WHERE Region = 'ap-south1'", {}, {}),
     ]
 
-    try:
-        status, row_counts = transaction.batch_update(statements)
+    status, row_counts = transaction.batch_update(statements)
+
+    if status.code == OK:
         print(f"All {len(row_counts)} statements succeeded")
-    except exceptions.InvalidArgument as e:
-        # The exception contains partial results
-        print(f"Batch partially failed: {e}")
-        # You might want to abort the transaction here
-        raise
+    else:
+        failed_statement = len(row_counts) + 1
+        print(f"Statement {failed_statement} failed: {status.message}")
+        # Abort the transaction so the completed statements are not committed.
+        raise RuntimeError(status.message)
 ```
 
 ## Chunking Large Updates
 
-Cloud Spanner has a mutation limit per transaction (around 80,000 mutations by default). If your batch DML operations affect more rows than that, you need to break them into chunks.
+Cloud Spanner has a limit of 80,000 mutations per transaction. If your batch DML operations generate more mutations than that, you need to break them into chunks.
 
 ```python
 # Python: Chunking large updates across multiple transactions
@@ -211,6 +218,7 @@ When running batch DML operations, you should track execution time and row count
 ```python
 # Python: Batch DML with timing and metrics
 import time
+from google.rpc.code_pb2 import OK
 
 def monitored_batch_update(database):
     def execute_batch(transaction):
@@ -233,6 +241,8 @@ def monitored_batch_update(database):
         ]
 
         status, row_counts = transaction.batch_update(statements)
+        if status.code != OK:
+            raise RuntimeError(f"Batch DML failed: {status.message}")
 
         elapsed = time.time() - start_time
         total_rows = sum(row_counts)
@@ -254,7 +264,7 @@ After working with batch DML in production, here are the patterns that work well
 
 1. **Keep transactions short.** Long-running transactions increase the chance of conflicts and aborts. If you need to update millions of rows, break it into smaller chunks.
 
-2. **Order statements carefully.** Since statements execute in order, put the most critical ones first so they complete even if a later statement fails.
+2. **Order statements carefully.** Since statements execute in order, put prerequisite statements before statements that depend on their results. If a later statement fails, abort the transaction unless you have explicitly designed the transaction to commit only the completed statements.
 
 3. **Use parameterized queries.** Always use parameters instead of string interpolation. This prevents SQL injection and lets Spanner cache query plans.
 
