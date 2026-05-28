@@ -239,7 +239,7 @@ gcloud pubsub subscriptions update eventarc-us-central1-process-user-events-sub-
   --max-retry-delay=600s
 ```
 
-The retry policy uses exponential backoff. Starting from the minimum delay, each retry doubles the wait time up to the maximum delay.
+The retry policy uses exponential backoff. After the first delivery failure, Pub/Sub waits for at least the minimum backoff, then progressively increases the delay up to the maximum backoff on later failures.
 
 ## Setting Up Dead Letter Topics
 
@@ -250,9 +250,20 @@ For messages that repeatedly fail processing, configure a dead letter topic to c
 gcloud pubsub subscriptions update eventarc-us-central1-process-user-events-sub-123 \
   --dead-letter-topic=user-events-dead-letter \
   --max-delivery-attempts=5
+
+# Grant Pub/Sub permission to publish to the dead letter topic and ack forwarded messages
+PUBSUB_SERVICE_ACCOUNT="service-PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com"
+
+gcloud pubsub topics add-iam-policy-binding user-events-dead-letter \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role="roles/pubsub.publisher"
+
+gcloud pubsub subscriptions add-iam-policy-binding eventarc-us-central1-process-user-events-sub-123 \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role="roles/pubsub.subscriber"
 ```
 
-After 5 failed delivery attempts, the message moves to the dead letter topic instead of being retried again. Create a separate function to monitor or process dead letter messages:
+After approximately 5 failed delivery attempts, Pub/Sub forwards the message to the dead letter topic on a best-effort basis instead of retrying indefinitely. Create a separate function to monitor or process dead letter messages:
 
 ```javascript
 // dead-letter-handler.js - Process messages that failed multiple times
@@ -324,11 +335,13 @@ def handle_update(user_data):
 
 ## Message Ordering
 
-If your events need to be processed in order, enable message ordering on the topic:
+If your events need to be processed in order, enable message ordering on the subscription that receives the messages. Message ordering is a subscription setting and must be enabled when the subscription is created, so decide on ordering before creating the trigger or subscription:
 
 ```bash
-# Enable message ordering on the topic
-gcloud pubsub topics update user-events --message-ordering
+# Create a subscription with message ordering enabled
+gcloud pubsub subscriptions create user-events-ordered-sub \
+  --topic=user-events \
+  --enable-message-ordering
 ```
 
 When publishing, provide an ordering key:
