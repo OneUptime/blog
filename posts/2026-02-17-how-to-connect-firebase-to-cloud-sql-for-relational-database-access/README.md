@@ -78,7 +78,7 @@ This returns something like `my-project:us-central1:my-firebase-db`. Save this -
 
 ## Step 3: Connect from Firebase Cloud Functions v2
 
-v2 functions run on Cloud Run, which can connect to Cloud SQL through the built-in Cloud SQL proxy.
+v2 functions run on Cloud Run, which can connect to Cloud SQL through the built-in Cloud SQL Auth Proxy after the Cloud Run service is configured with the Cloud SQL instance connection.
 
 ### Install Dependencies
 
@@ -96,7 +96,13 @@ npm install mysql2
 ```typescript
 // functions/src/index.ts - Connecting to Cloud SQL from v2 functions
 import { onRequest } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
 import { Pool } from "pg";
+
+const dbUser = defineSecret("DB_USER");
+const dbPassword = defineSecret("DB_PASSWORD");
+const dbName = defineSecret("DB_NAME");
+const connectionName = defineSecret("CLOUD_SQL_CONNECTION_NAME");
 
 // Connection pool - created once per instance, reused across requests
 let pool: Pool;
@@ -105,10 +111,10 @@ function getPool(): Pool {
   if (!pool) {
     pool = new Pool({
       // When running on Cloud Run, use Unix socket
-      host: `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
+      host: `/cloudsql/${connectionName.value()}`,
+      user: dbUser.value(),
+      password: dbPassword.value(),
+      database: dbName.value(),
       max: 5,  // Maximum connections per function instance
     });
   }
@@ -121,8 +127,7 @@ export const getUsers = onRequest(
     region: "us-central1",
     memory: "512MiB",
     concurrency: 80,
-    // This is the key setting - it tells Cloud Run to mount the SQL proxy
-    secrets: ["DB_PASSWORD"],
+    secrets: [dbUser, dbPassword, dbName, connectionName],
   },
   async (req, res) => {
     try {
@@ -144,7 +149,7 @@ export const createUser = onRequest(
     region: "us-central1",
     memory: "512MiB",
     concurrency: 80,
-    secrets: ["DB_PASSWORD"],
+    secrets: [dbUser, dbPassword, dbName, connectionName],
   },
   async (req, res) => {
     if (req.method !== "POST") {
@@ -204,7 +209,7 @@ export const api = onRequest(
     secrets: [dbPassword, dbUser],
   },
   async (req, res) => {
-    // Secrets are available as environment variables
+    // Access bound secrets with .value()
     const password = dbPassword.value();
     const user = dbUser.value();
     // ... use credentials
@@ -212,27 +217,31 @@ export const api = onRequest(
 );
 ```
 
-## Step 4: Configure Cloud SQL Connection in firebase.json
+## Step 4: Configure the Cloud SQL Connection
 
-For v2 functions, you need to specify the Cloud SQL connection:
+Deploy the functions first:
 
-```json
-{
-  "functions": {
-    "source": "functions",
-    "runtime": "nodejs20",
-    "frameworkAware": true
-  }
-}
+```bash
+firebase deploy --only functions
 ```
 
-And in the function definition, add the VPC connector if needed:
+Then attach the Cloud SQL instance to each generated Cloud Run service that needs database access:
+
+```bash
+gcloud run services update SERVICE_NAME \
+  --region=us-central1 \
+  --add-cloudsql-instances=my-project:us-central1:my-firebase-db
+```
+
+Replace `SERVICE_NAME` with the Cloud Run service created for the function, such as `getusers` or `createuser`. Reapply this command after redeploying if your Firebase deploy replaces the Cloud Run service configuration.
+
+If you use private IP instead of the Cloud SQL Auth Proxy Unix socket, add a VPC connector and connect to the instance's private IP address:
 
 ```typescript
 export const api = onRequest(
   {
     region: "us-central1",
-    // Allow the function to connect to Cloud SQL
+    // Route private address traffic through the VPC connector
     vpcConnector: "projects/my-project/locations/us-central1/connectors/my-connector",
     vpcConnectorEgressSettings: "PRIVATE_RANGES_ONLY",
   },
@@ -274,14 +283,16 @@ pool.on("error", (err) => {
 
 ### Cloud SQL Instance Connection Limits
 
-Cloud SQL has connection limits based on instance tier:
+For PostgreSQL, Cloud SQL sets the default `max_connections` based on instance memory:
 
-| Tier | Max Connections |
+| Instance Memory | Default max_connections |
 |------|----------------|
-| db-f1-micro | 25 |
-| db-custom-1-3840 | 200 |
-| db-custom-2-8192 | 500 |
-| db-custom-4-16384 | 1000 |
+| tiny (~0.5 GB) | 25 |
+| small (~1.7 GB) | 50 |
+| 3.75 GB to < 6 GB | 100 |
+| 6 GB to < 7.5 GB | 200 |
+| 7.5 GB to < 15 GB | 400 |
+| 15 GB to < 30 GB | 500 |
 
 If you have multiple function instances, each with a pool of 10 connections, and 20 instances, that is 200 connections. Plan your pool sizes accordingly.
 
@@ -397,20 +408,35 @@ export default config;
 Map Firebase users to Cloud SQL records:
 
 ```typescript
-// Create or update a user record when they sign up via Firebase
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+// Create or update a user record after verifying a Firebase ID token
+import { onRequest } from "firebase-functions/v2/https";
+import { initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { Pool } from "pg";
+
+initializeApp();
 
 export const syncUserToSQL = onRequest(
   {
     region: "us-central1",
-    secrets: ["DB_PASSWORD"],
+    secrets: [dbUser, dbPassword, dbName, connectionName],
   },
   async (req, res) => {
-    // After verifying Firebase token (see auth middleware)
-    const firebaseUid = req.user.uid;
-    const email = req.user.email;
-    const name = req.user.name || "Unknown";
+    const authorization = req.header("Authorization") || "";
+    const match = authorization.match(/^Bearer (.+)$/);
+
+    if (!match) {
+      return res.status(401).json({ error: "Missing Firebase ID token" });
+    }
+
+    const decodedToken = await getAuth().verifyIdToken(match[1]);
+    const firebaseUid = decodedToken.uid;
+    const email = decodedToken.email;
+    const name = decodedToken.name || "Unknown";
+
+    if (!email) {
+      return res.status(400).json({ error: "Firebase user email is required" });
+    }
 
     const db = getPool();
 
@@ -449,11 +475,13 @@ const pool = new Pool({
 The first request to a cold function instance needs to establish database connections:
 
 ```typescript
-// Solution: warm up the connection pool during instance initialization
-const pool = getPool();
+import { onInit } from "firebase-functions/v2";
 
-// Pre-warm one connection
-pool.query("SELECT 1").catch(console.error);
+// Solution: warm up the connection pool during runtime initialization
+onInit(() => {
+  const pool = getPool();
+  pool.query("SELECT 1").catch(console.error);
+});
 ```
 
 ### 3. Unix Socket Not Found
@@ -461,9 +489,10 @@ pool.query("SELECT 1").catch(console.error);
 If you get "could not connect to server: No such file or directory":
 
 ```bash
-# Make sure the Cloud SQL connection is configured
-# For Cloud Functions v2, it should be automatic when you reference
-# the /cloudsql/ socket path
+# Make sure the Cloud Run service is configured with the Cloud SQL instance
+gcloud run services update SERVICE_NAME \
+  --region=us-central1 \
+  --add-cloudsql-instances=my-project:us-central1:my-firebase-db
 
 # Verify the connection name
 gcloud sql instances describe my-firebase-db \
@@ -477,7 +506,7 @@ The service account running your function needs the `cloudsql.client` role:
 ```bash
 # Grant Cloud SQL client access to the function's service account
 gcloud projects add-iam-policy-binding my-project \
-  --member="serviceAccount:my-project@appspot.gserviceaccount.com" \
+  --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
   --role="roles/cloudsql.client"
 ```
 
@@ -487,10 +516,9 @@ gcloud projects add-iam-policy-binding my-project \
 
 2. **Index your queries** - Cloud SQL performance depends heavily on proper indexing. Use EXPLAIN ANALYZE to check query plans.
 
-3. **Use prepared statements** - They reduce query parsing overhead and prevent SQL injection:
+3. **Use parameterized queries** - They keep SQL separate from user input and prevent SQL injection:
 
 ```typescript
-// Parameterized queries are automatically prepared
 const result = await pool.query(
   "SELECT * FROM users WHERE email = $1",
   [email]
