@@ -8,9 +8,9 @@ Description: Set up a remote repository in Google Artifact Registry to proxy and
 
 ---
 
-Docker Hub rate limits have become a real headache for CI/CD pipelines. If your builds pull base images from Docker Hub on every run, you are going to hit the limit sooner or later - 100 pulls per 6 hours for anonymous users, 200 for authenticated users. When that happens, your builds start failing.
+Docker Hub rate limits have become a real headache for CI/CD pipelines. If your builds pull base images from Docker Hub on every run, you are going to hit the limit sooner or later - 100 pulls per 6 hours for anonymous users, 200 for authenticated Personal users, and higher limits for paid plans. When that happens, your builds start failing.
 
-Artifact Registry remote repositories solve this by acting as a caching proxy. When you pull an image through the remote repository, it fetches the image from Docker Hub and caches it locally. Subsequent pulls come from the cache, which is faster and does not count against Docker Hub rate limits.
+Artifact Registry remote repositories solve this by acting as a caching proxy. When you pull an image through the remote repository, it fetches the image from Docker Hub and caches it locally. Subsequent pulls of the same cached image come from the cache, which is faster and reduces the number of requests that go to Docker Hub.
 
 ## How Remote Repositories Work
 
@@ -128,12 +128,12 @@ steps:
 
 ## Authenticated Upstream Access
 
-If you have a Docker Hub paid plan, you can configure the remote repository to use your Docker Hub credentials. This gives you higher rate limits:
+You can configure the remote repository to use Docker Hub credentials. Use a Docker Hub personal access token as the secret value. Authenticated pulls get the limits for your Docker Hub plan:
 
 ```bash
-# First, store your Docker Hub credentials in Secret Manager
-echo -n "your-dockerhub-password" | \
-  gcloud secrets create dockerhub-password \
+# First, store your Docker Hub access token in Secret Manager
+echo -n "your-dockerhub-access-token" | \
+  gcloud secrets create dockerhub-token \
     --data-file=- \
     --project=my-project
 
@@ -145,7 +145,7 @@ gcloud artifacts repositories create dockerhub-proxy-auth \
   --remote-repo-config-desc="Authenticated Docker Hub proxy" \
   --remote-docker-repo=DOCKER-HUB \
   --remote-username=your-dockerhub-username \
-  --remote-password-secret-version=projects/my-project/secrets/dockerhub-password/versions/latest \
+  --remote-password-secret-version=projects/my-project/secrets/dockerhub-token/versions/latest \
   --project=my-project
 ```
 
@@ -183,10 +183,10 @@ Make sure your GKE nodes have read access to the Artifact Registry repository.
 
 A few things to know about how the cache works:
 
-- **Cache TTL**: Cached images are kept according to Artifact Registry's internal policies. Generally, images stay cached as long as the repository exists and is not cleaned up.
-- **Tag updates**: If you pull `nginx:latest` and Docker Hub updates the image, the proxy will fetch the new version on the next pull.
+- **Cache TTL**: Artifact Registry caches Docker tag list/get metadata for 1 hour by default. Cached images can also be removed by cleanup policies or by deleting cached packages or versions.
+- **Tag updates**: If you pull `nginx:latest` and Docker Hub updates the tag, the proxy might continue serving cached tag metadata until the Docker tag cache expires.
 - **Storage costs**: Cached images count toward your Artifact Registry storage, so you are paying for the cache space.
-- **No manual cache clearing**: You cannot manually invalidate the cache. If you need a fresh pull, use a specific digest instead of a tag.
+- **Manual cache clearing**: You can delete cached packages or versions from a remote repository. The upstream source is not affected, and Artifact Registry downloads and caches the package again the next time it is requested.
 
 ## Setting Up IAM Permissions
 
@@ -200,7 +200,9 @@ gcloud artifacts repositories add-iam-policy-binding dockerhub-proxy \
   --role="roles/artifactregistry.reader" \
   --project=my-project
 
-# Grant read access to Cloud Build
+# Grant read access to the service account that runs your Cloud Build build.
+# Some projects use the legacy Cloud Build service account shown here;
+# others use the Compute Engine default service account or a user-specified service account.
 gcloud artifacts repositories add-iam-policy-binding dockerhub-proxy \
   --location=us-central1 \
   --member="serviceAccount:$(gcloud projects describe my-project --format='value(projectNumber)')@cloudbuild.gserviceaccount.com" \
