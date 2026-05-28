@@ -22,7 +22,7 @@ graph LR
     B --> C[Call Vision API]
     C --> D[Process Labels/Objects]
     D --> E[Store Results in Firestore]
-    D --> F[Move Image to Category Folder]
+    D --> F[Copy Image to Category Folder]
 ```
 
 1. A user or system uploads an image to a Cloud Storage bucket
@@ -42,6 +42,11 @@ gcloud services enable \
     vision.googleapis.com \
     cloudfunctions.googleapis.com \
     cloudbuild.googleapis.com \
+    artifactregistry.googleapis.com \
+    eventarc.googleapis.com \
+    run.googleapis.com \
+    storage.googleapis.com \
+    pubsub.googleapis.com \
     firestore.googleapis.com
 
 # Create the input bucket for image uploads
@@ -87,6 +92,11 @@ def classify_image(cloud_event):
     supported_extensions = (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp")
     if not file_name.lower().endswith(supported_extensions):
         print(f"Skipping non-image file: {file_name}")
+        return
+
+    # Avoid reprocessing copies created by this function
+    if file_name.startswith("classified/"):
+        print(f"Skipping already classified file: {file_name}")
         return
 
     print(f"Classifying image: gs://{bucket_name}/{file_name}")
@@ -165,9 +175,17 @@ def process_results(response, file_name, bucket_name):
 
     # Check content safety
     safe = response.safe_search_annotation
+    likelihood_name = (
+        "UNKNOWN",
+        "VERY_UNLIKELY",
+        "UNLIKELY",
+        "POSSIBLE",
+        "LIKELY",
+        "VERY_LIKELY",
+    )
     is_safe = (
-        safe.adult.name in ("VERY_UNLIKELY", "UNLIKELY")
-        and safe.violence.name in ("VERY_UNLIKELY", "UNLIKELY")
+        likelihood_name[safe.adult] in ("VERY_UNLIKELY", "UNLIKELY")
+        and likelihood_name[safe.violence] in ("VERY_UNLIKELY", "UNLIKELY")
     )
 
     return {
@@ -215,6 +233,7 @@ functions-framework==3.*
 google-cloud-vision==3.*
 google-cloud-storage==2.*
 google-cloud-firestore==2.*
+google-cloud-pubsub==2.*
 ```
 
 ## Deploying the Cloud Function
@@ -234,7 +253,8 @@ gcloud functions deploy classify-image \
     --memory=512MB \
     --timeout=120s \
     --min-instances=0 \
-    --max-instances=10
+    --max-instances=10 \
+    --retry
 ```
 
 ## Testing the Pipeline
@@ -330,7 +350,7 @@ def notify_classification(project_id, classification):
 
 ## Error Handling and Retries
 
-Cloud Functions automatically retry on failure for event-driven functions. Make sure your function is idempotent:
+Cloud Functions can retry on failure for event-driven functions when retries are enabled, such as with the `--retry` flag used above. Make sure your function is idempotent:
 
 ```python
 def classify_image_safe(cloud_event):
