@@ -20,11 +20,11 @@ GMP is a fully managed, multi-cloud Prometheus-compatible monitoring service. It
 - Global query across all your clusters
 - PromQL support in Cloud Monitoring
 - Integration with Cloud Monitoring alerting and dashboards
-- Essentially unlimited metric retention
+- 24 months of metric retention
 
 ## Enabling Managed Collection on GKE
 
-GMP can run in two modes: managed collection (Google runs the collectors) or self-deployed collection (you run the collectors). Managed collection is the simpler option.
+GMP can collect data through managed collection, self-deployed collection, the OpenTelemetry Collector, or the Ops Agent. Managed collection is the simpler option for Kubernetes workloads.
 
 ```bash
 # Enable managed collection on an existing GKE cluster
@@ -40,7 +40,7 @@ gcloud container clusters create my-cluster \
   --num-nodes=3
 ```
 
-This deploys the GMP collector components in the `gmp-system` namespace. They automatically start collecting cluster and node metrics.
+This deploys the GMP collector components in the `gmp-system` namespace. After managed collection is enabled, configure PodMonitoring or ClusterPodMonitoring resources for your application metrics, or enable one of the managed metric packages built into GKE.
 
 ## Configuring Scrape Targets with PodMonitoring
 
@@ -177,44 +177,53 @@ You can create alerting policies that use PromQL conditions.
 
 ## Setting Up Self-Deployed Collection
 
-For more control over the collector configuration, use the self-deployed mode. This involves deploying the Prometheus operator and configuring it to remote-write to Cloud Monitoring.
+For more control over the collector configuration, use the self-deployed mode. With self-deployed collection, you manage your Prometheus deployment and run the Managed Service for Prometheus drop-in replacement binary instead of the upstream Prometheus binary.
 
 ```bash
-# Install the GMP operator
-kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/prometheus-engine/main/manifests/operator.yaml
+# Deploy the GMP self-deployed Prometheus example
+kubectl create namespace gmp-test
+kubectl -n gmp-test apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/prometheus-engine/v0.15.3/examples/prometheus.yaml
 ```
 
-Then configure the operator.
+Then configure collection by using your existing Prometheus or prometheus-operator scrape configuration. If you use prometheus-operator, replace the Prometheus image with the GMP image.
 
 ```yaml
-# operator-config.yaml - Configure the Prometheus operator for GMP
-apiVersion: monitoring.googleapis.com/v1
-kind: OperatorConfig
+# prometheus.yaml - Use the GMP Prometheus binary
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
 metadata:
-  name: config
-  namespace: gmp-public
-collection:
-  filter:
-    matchOneOf:
-    - '{job="my-app"}'
-    - '{__name__=~"go_.*"}'
+  name: example
+  namespace: monitoring
+spec:
+  image: gke.gcr.io/prometheus-engine/prometheus:v2.53.5-gmp.1-gke.2
+  replicas: 1
+  version: v2.35.0
 ```
 
 ## Sending Metrics from Outside GKE
 
-If you have workloads outside GKE (on VMs or other platforms), you can use the Prometheus sidecar or remote write to send metrics to GMP.
+If you have workloads outside GKE (on VMs or other platforms), you can use managed collection on non-GKE Kubernetes clusters, self-deployed collection, the OpenTelemetry Collector, the Cloud Run Prometheus sidecar, or the Ops Agent to send metrics to GMP.
 
-Configure your existing Prometheus server to remote-write to GMP.
+For Compute Engine VMs, configure the Ops Agent Prometheus receiver.
 
 ```yaml
-# prometheus.yml - Remote write configuration for GMP
-remote_write:
-- url: "https://monitoring.googleapis.com/v1/projects/my-project/location/global/prometheus/api/v1/write"
-  headers:
-    Authorization: "Bearer <access-token>"
+# /etc/google-cloud-ops-agent/config.yaml
+metrics:
+  receivers:
+    my_app:
+      type: prometheus
+      config:
+        scrape_configs:
+        - job_name: my-app
+          static_configs:
+          - targets: ["localhost:9090"]
+  service:
+    pipelines:
+      my_app:
+        receivers: [my_app]
 ```
 
-For authentication, you can use Workload Identity or a service account key.
+For authentication outside Google Cloud, use the credential options documented for the collection method you choose.
 
 ## Building Dashboards with Prometheus Metrics
 
@@ -311,4 +320,4 @@ spec:
 
 ## Summary
 
-Managed Service for Prometheus bridges the gap between Prometheus-native monitoring and Cloud Monitoring. You keep your existing Prometheus instrumentation and gain fully managed collection, global querying, unlimited retention, and integration with Cloud Monitoring's alerting and dashboarding. For GKE workloads, enabling managed collection and creating PodMonitoring resources is all it takes to get started.
+Managed Service for Prometheus bridges the gap between Prometheus-native monitoring and Cloud Monitoring. You keep your existing Prometheus instrumentation and gain fully managed collection, global querying, 24 months of retention, and integration with Cloud Monitoring's alerting and dashboarding. For GKE workloads, enabling managed collection and creating PodMonitoring resources is all it takes to get started.
