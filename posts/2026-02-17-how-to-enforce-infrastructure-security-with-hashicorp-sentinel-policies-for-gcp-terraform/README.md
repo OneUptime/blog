@@ -16,7 +16,7 @@ In this post, I will show you how to write practical Sentinel policies for commo
 
 ## How Sentinel Works with Terraform
 
-Sentinel policies run between the plan and apply phases. When someone runs terraform plan, Sentinel evaluates the planned changes against your policies. If a policy fails, the apply is blocked.
+Sentinel policies run between the plan and apply phases in Terraform Cloud and Terraform Enterprise runs. After Terraform creates a plan, Sentinel evaluates the planned changes against your policies. If a policy fails, the apply is blocked.
 
 ```mermaid
 flowchart LR
@@ -105,7 +105,7 @@ firewall_rules = filter tfplan.resource_changes as _, rc {
 # Block firewall rules that allow 0.0.0.0/0 as a source range
 no_open_firewall_rules = rule {
     all firewall_rules as _, rule {
-        all rule.change.after.source_ranges as range {
+        all (rule.change.after.source_ranges else []) as range {
             range is not "0.0.0.0/0"
         }
     }
@@ -114,21 +114,22 @@ no_open_firewall_rules = rule {
 # Block firewall rules that allow all ports
 no_all_ports_allowed = rule {
     all firewall_rules as _, rule {
-        all rule.change.after.allow as allow_block {
+        all (rule.change.after.allow else []) as allow_block {
             # Must specify explicit ports, not allow all
-            length(allow_block.ports) > 0
+            allow_block.protocol is not "all" and
+            length(allow_block.ports else []) > 0
         }
     }
 }
 
-# Block SSH from the internet (only allow from IAP range)
+# Block SSH from the internet
 no_public_ssh = rule {
     all firewall_rules as _, rule {
         # If the rule allows TCP port 22
-        not any rule.change.after.allow as allow_block {
+        not any (rule.change.after.allow else []) as allow_block {
             allow_block.protocol is "tcp" and
-            "22" in allow_block.ports and
-            "0.0.0.0/0" in rule.change.after.source_ranges
+            "22" in (allow_block.ports else []) and
+            "0.0.0.0/0" in (rule.change.after.source_ranges else [])
         }
     }
 }
@@ -162,7 +163,9 @@ storage_buckets = filter tfplan.resource_changes as _, rc {
 require_cmek = rule {
     all storage_buckets as _, bucket {
         bucket.change.after.encryption is not null and
-        length(bucket.change.after.encryption) > 0
+        any (bucket.change.after.encryption else []) as e {
+            e.default_kms_key_name is not null
+        }
     }
 }
 
@@ -184,7 +187,8 @@ require_public_access_prevention = rule {
 require_versioning = rule {
     all storage_buckets as _, bucket {
         bucket.change.after.versioning is not null and
-        all bucket.change.after.versioning as v {
+        length(bucket.change.after.versioning else []) > 0 and
+        all (bucket.change.after.versioning else []) as v {
             v.enabled is true
         }
     }
@@ -244,7 +248,7 @@ no_dangerous_role_members = rule {
 }
 
 # Block granting roles to allUsers or allAuthenticatedUsers
-no_public_iam = rule {
+no_public_iam_bindings = rule {
     all iam_bindings as _, binding {
         all binding.change.after.members as m {
             m is not "allUsers" and
@@ -253,10 +257,18 @@ no_public_iam = rule {
     }
 }
 
+no_public_iam_members = rule {
+    all iam_members as _, member {
+        member.change.after.member is not "allUsers" and
+        member.change.after.member is not "allAuthenticatedUsers"
+    }
+}
+
 main = rule {
     no_dangerous_role_bindings and
     no_dangerous_role_members and
-    no_public_iam
+    no_public_iam_bindings and
+    no_public_iam_members
 }
 ```
 
@@ -280,20 +292,21 @@ sql_instances = filter tfplan.resource_changes as _, rc {
 # No public IP addresses on database instances
 no_public_ip = rule {
     all sql_instances as _, instance {
-        all instance.change.after.settings as settings {
-            all settings.ip_configuration as ip_config {
+        all (instance.change.after.settings else []) as settings {
+            length(settings.ip_configuration else []) > 0 and
+            all (settings.ip_configuration else []) as ip_config {
                 ip_config.ipv4_enabled is false
             }
         }
     }
 }
 
-# SSL must be required for all connections
+# Encrypted connections must be required
 require_ssl = rule {
     all sql_instances as _, instance {
-        all instance.change.after.settings as settings {
-            all settings.ip_configuration as ip_config {
-                ip_config.require_ssl is true
+        all (instance.change.after.settings else []) as settings {
+            all (settings.ip_configuration else []) as ip_config {
+                ip_config.ssl_mode in ["ENCRYPTED_ONLY", "TRUSTED_CLIENT_CERTIFICATE_REQUIRED"]
             }
         }
     }
@@ -302,10 +315,14 @@ require_ssl = rule {
 # Automated backups must be enabled
 require_backups = rule {
     all sql_instances as _, instance {
-        all instance.change.after.settings as settings {
-            all settings.backup_configuration as backup {
-                backup.enabled is true
-                backup.point_in_time_recovery_enabled is true
+        all (instance.change.after.settings else []) as settings {
+            length(settings.backup_configuration else []) > 0 and
+            all (settings.backup_configuration else []) as backup {
+                backup.enabled is true and
+                (
+                    (instance.change.after.database_version else "") matches "^MYSQL_" or
+                    backup.point_in_time_recovery_enabled is true
+                )
             }
         }
     }
