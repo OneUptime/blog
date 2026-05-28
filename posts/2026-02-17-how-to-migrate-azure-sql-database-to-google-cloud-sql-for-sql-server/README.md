@@ -8,15 +8,15 @@ Description: A complete guide to migrating Azure SQL Database instances to Googl
 
 ---
 
-Azure SQL Database and Google Cloud SQL for SQL Server both run Microsoft SQL Server under the hood, which makes this one of the more straightforward database migrations between cloud providers. The SQL Server engine is the same, so your schemas, stored procedures, and queries should work with minimal changes. The main differences are in the managed service features, networking, and administration tools.
+Azure SQL Database and Google Cloud SQL for SQL Server both provide SQL Server-compatible database engines, which makes this one of the more straightforward database migrations between cloud providers. Your schemas, stored procedures, and queries should work with minimal changes if they avoid service-specific features. The main differences are in the managed service features, networking, and administration tools.
 
 ## Service Comparison
 
 | Feature | Azure SQL Database | Cloud SQL for SQL Server |
 |---------|-------------------|------------------------|
-| SQL Server versions | Varies by tier | SQL Server 2017, 2019, 2022 |
-| Max storage | 4 TB (general) / 100 TB (hyperscale) | 64 TB |
-| Read replicas | Yes | Yes |
+| SQL Server versions | Varies by tier | SQL Server 2017, 2019, 2022, 2025 |
+| Max storage | 4 TB (general) / 128 TB (hyperscale) | 64 TB |
+| Read replicas | Yes | Enterprise editions |
 | Automatic backups | Yes | Yes (automated daily) |
 | Point-in-time restore | Yes | Yes |
 | High availability | Built-in | Regional HA with failover replica |
@@ -37,7 +37,7 @@ az sql db list \
     Name:name,
     Edition:edition,
     ServiceObjective:currentServiceObjectiveName,
-    MaxSizeGB:maxSizeBytes,
+    MaxSizeBytes:maxSizeBytes,
     Status:status
   }' \
   --output table
@@ -62,14 +62,13 @@ SELECT * FROM sys.dm_db_persisted_sku_features;
 -- Get table sizes and row counts
 SELECT
     t.name AS TableName,
-    s.row_count AS RowCount,
-    CAST(ROUND(SUM(a.total_pages) * 8 / 1024.0, 2) AS DECIMAL(18,2)) AS SizeMB
+    SUM(ps.row_count) AS RowCount,
+    CAST(ROUND(SUM(ps.reserved_page_count) * 8 / 1024.0, 2) AS DECIMAL(18,2)) AS SizeMB
 FROM sys.tables t
-INNER JOIN sys.indexes i ON t.object_id = i.object_id
-INNER JOIN sys.partitions s ON i.object_id = s.object_id AND i.index_id = s.index_id
-INNER JOIN sys.allocation_units a ON s.partition_id = a.container_id
+INNER JOIN sys.dm_db_partition_stats ps ON t.object_id = ps.object_id
 WHERE t.is_ms_shipped = 0
-GROUP BY t.name, s.row_count
+  AND ps.index_id IN (0, 1)
+GROUP BY t.name
 ORDER BY SizeMB DESC;
 ```
 
@@ -79,24 +78,27 @@ Provision a Cloud SQL for SQL Server instance that matches your Azure SQL Databa
 
 ```bash
 # Map Azure SQL tiers to Cloud SQL configurations:
-# Azure S3 (50 DTU) -> db-custom-2-7680 (2 vCPU, 7.5 GB RAM)
-# Azure P2 (250 DTU) -> db-custom-4-26624 (4 vCPU, 26 GB RAM)
-# Azure BC_Gen5_8 -> db-custom-8-53248 (8 vCPU, 52 GB RAM)
+# Azure S3 (50 DTU) -> 2 vCPU, 7680 MB RAM
+# Azure P2 (250 DTU) -> 4 vCPU, 26624 MB RAM
+# Azure BC_Gen5_8 -> 8 vCPU, 53248 MB RAM
 
 # Create the Cloud SQL instance
-gcloud sql instances create my-sqlserver \
+gcloud beta sql instances create my-sqlserver \
   --database-version=SQLSERVER_2022_STANDARD \
-  --tier=db-custom-4-26624 \
+  --cpu=4 \
+  --memory=26624MB \
   --region=us-central1 \
   --root-password=your-strong-password \
-  --storage-size=100GB \
+  --storage-size=100 \
   --storage-auto-increase \
   --availability-type=REGIONAL \
   --backup-start-time=02:00 \
   --enable-point-in-time-recovery \
+  --no-assign-ip \
   --network=projects/my-project/global/networks/default
 
-# Create the database
+# Create the database only if you will load data with SQL scripts or bcp.
+# Do not pre-create it before a BAK or BACPAC import.
 gcloud sql databases create mydb --instance=my-sqlserver
 ```
 
@@ -143,7 +145,7 @@ SqlPackage /Action:Export \
 
 ## Step 4: Import into Cloud SQL
 
-Cloud SQL for SQL Server supports importing BAK files directly. If you exported as BACPAC, you need to convert it first.
+Cloud SQL for SQL Server supports importing BAK files directly. If you exported as BACPAC, import it with SqlPackage or restore it to a temporary SQL Server instance and create a BAK from there.
 
 ### Import a BAK file:
 
@@ -159,25 +161,18 @@ gcloud sql import bak my-sqlserver \
 
 ### If you have a BACPAC file:
 
-BACPAC files cannot be imported directly into Cloud SQL. Convert to BAK first using a temporary SQL Server instance, or use the Database Migration Service.
+BACPAC files cannot be imported with `gcloud sql import bak`. Use SqlPackage to import the BACPAC into Cloud SQL, or convert it to a BAK using a temporary SQL Server instance.
 
 ```bash
-# Option 1: Use DMS for the migration
-gcloud database-migration connection-profiles create azure-source \
-  --region=us-central1 \
-  --display-name="Azure SQL Source" \
-  --provider=SQLSERVER \
-  --host=my-sql-server.database.windows.net \
-  --port=1433 \
-  --username=sqladmin \
-  --password=YourPassword
-
-gcloud database-migration migration-jobs create azure-to-cloudsql \
-  --region=us-central1 \
-  --display-name="Azure SQL to Cloud SQL" \
-  --source=azure-source \
-  --destination=my-sqlserver \
-  --type=CONTINUOUS
+# Import a BACPAC with SqlPackage
+SqlPackage /Action:Import \
+  /SourceFile:mydb.bacpac \
+  /TargetServerName:10.0.0.5 \
+  /TargetDatabaseName:mydb \
+  /TargetUser:sqlserver \
+  /TargetPassword:YourPassword \
+  /TargetEncryptConnection:True \
+  /TargetTrustServerCertificate:True
 ```
 
 ## Step 5: Verify Schema and Data
@@ -302,19 +297,19 @@ Set up monitoring for your Cloud SQL instance.
 # Create an alert for high CPU usage
 gcloud monitoring policies create \
   --display-name="Cloud SQL High CPU" \
+  --condition-filter='resource.type="cloudsql_database" AND metric.type="cloudsql.googleapis.com/database/cpu/utilization" AND resource.label.database_id="my-project:my-sqlserver"' \
+  --if='> 0.8' \
+  --duration=300s \
   --condition-display-name="CPU above 80%" \
-  --condition-filter='resource.type="cloudsql_database" AND metric.type="cloudsql.googleapis.com/database/cpu/utilization"' \
-  --condition-threshold-value=0.8 \
-  --condition-threshold-comparison=COMPARISON_GT \
   --notification-channels=projects/my-project/notificationChannels/12345
 
 # Create an alert for storage usage
 gcloud monitoring policies create \
   --display-name="Cloud SQL Storage Alert" \
+  --condition-filter='resource.type="cloudsql_database" AND metric.type="cloudsql.googleapis.com/database/disk/utilization" AND resource.label.database_id="my-project:my-sqlserver"' \
+  --if='> 0.8' \
+  --duration=300s \
   --condition-display-name="Storage above 80%" \
-  --condition-filter='resource.type="cloudsql_database" AND metric.type="cloudsql.googleapis.com/database/disk/utilization"' \
-  --condition-threshold-value=0.8 \
-  --condition-threshold-comparison=COMPARISON_GT \
   --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -323,9 +318,9 @@ gcloud monitoring policies create \
 - Cloud SQL for SQL Server does not support elastic pools (Azure SQL's multi-database pricing model).
 - CLR assemblies are not supported in Cloud SQL.
 - Some SQL Server Agent features may have limitations.
-- Linked servers to external databases are not supported.
-- SQL Server Integration Services (SSIS) is not available - use Dataflow or alternative ETL tools.
+- Linked servers are supported in Cloud SQL with limitations.
+- SQL Server Integration Services (SSIS) packages cannot be hosted on or executed from Cloud SQL. Run SSIS on a separate host connected to Cloud SQL, or use Dataflow or alternative ETL tools.
 
 ## Summary
 
-Migrating Azure SQL Database to Cloud SQL for SQL Server is one of the simpler database migrations because the underlying engine is identical. The BAK import path is the fastest for one-time migrations, while Database Migration Service works well for continuous replication during the cutover period. Focus your testing on connection string changes, any Azure-specific features you might be using (elastic pools, CLR, SSIS), and ensuring your application's connection method works with Cloud SQL Auth Proxy or direct private IP connectivity.
+Migrating Azure SQL Database to Cloud SQL for SQL Server is one of the simpler database migrations when your workload uses portable SQL Server features. The BAK import path is the fastest for one-time migrations when a native SQL Server backup is available, while BACPAC imports are common for Azure SQL Database. Focus your testing on connection string changes, any Azure-specific features you might be using (elastic pools, CLR, SSIS), and ensuring your application's connection method works with Cloud SQL Auth Proxy or direct private IP connectivity.
