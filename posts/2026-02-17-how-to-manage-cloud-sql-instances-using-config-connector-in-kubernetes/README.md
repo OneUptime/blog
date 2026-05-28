@@ -19,17 +19,28 @@ Before starting, you need:
 - A GKE cluster with Config Connector installed and configured
 - Workload Identity set up for Config Connector
 - The Config Connector service account needs `roles/cloudsql.admin` on your project
-- The Cloud SQL Admin API enabled
+- If you are creating the private networking resources with Config Connector, the Config Connector service account also needs `roles/compute.networkAdmin` and `roles/servicenetworking.networksAdmin`
+- The Cloud SQL Admin, Compute Engine, and Service Networking APIs enabled
 
 ```bash
-# Enable the Cloud SQL Admin API
+# Enable the required APIs
 
-gcloud services enable sqladmin.googleapis.com --project=my-project-id
+gcloud services enable sqladmin.googleapis.com compute.googleapis.com servicenetworking.googleapis.com \
+  --project=my-project-id
 
 # Grant Cloud SQL Admin role to Config Connector service account
 gcloud projects add-iam-policy-binding my-project-id \
   --member="serviceAccount:cnrm-sa@my-project-id.iam.gserviceaccount.com" \
   --role="roles/cloudsql.admin"
+
+# Grant networking roles if Config Connector will create private service access
+gcloud projects add-iam-policy-binding my-project-id \
+  --member="serviceAccount:cnrm-sa@my-project-id.iam.gserviceaccount.com" \
+  --role="roles/compute.networkAdmin"
+
+gcloud projects add-iam-policy-binding my-project-id \
+  --member="serviceAccount:cnrm-sa@my-project-id.iam.gserviceaccount.com" \
+  --role="roles/servicenetworking.networksAdmin"
 ```
 
 ## Creating a Cloud SQL Instance
@@ -68,7 +79,7 @@ spec:
       transactionLogRetentionDays: 7
       backupRetentionSettings:
         retainedBackups: 14
-    # Maintenance window - Sunday at 4 AM
+    # Maintenance window - Sunday at 4 AM UTC
     maintenanceWindow:
       day: 7
       hour: 4
@@ -84,7 +95,7 @@ spec:
       ipv4Enabled: false
       privateNetworkRef:
         name: my-vpc-network
-      requireSsl: true
+      sslMode: ENCRYPTED_ONLY
 ```
 
 Let me break down the important settings. The `tier` field determines the CPU and memory. The format `db-custom-VCPU-MEMORYMB` lets you customize these values. The `availabilityType: REGIONAL` enables high availability with automatic failover. Setting `ipv4Enabled: false` and configuring `privateNetworkRef` means the database is only accessible through your VPC, which is the recommended setup for production.
@@ -181,7 +192,7 @@ If you configured the instance with private IP only, you need Private Service Ac
 # private-ip-range.yaml
 # Allocate an IP range for Cloud SQL private access
 apiVersion: compute.cnrm.cloud.google.com/v1beta1
-kind: ComputeGlobalAddress
+kind: ComputeAddress
 metadata:
   name: cloudsql-private-ip-range
   namespace: default
@@ -190,6 +201,7 @@ metadata:
 spec:
   purpose: VPC_PEERING
   addressType: INTERNAL
+  location: global
   prefixLength: 16
   networkRef:
     name: my-vpc-network
@@ -227,6 +239,7 @@ kubectl wait --for=condition=Ready servicenetworkingconnection/cloudsql-private-
 ## Connecting from GKE Pods
 
 The Cloud SQL Auth Proxy is the recommended way to connect from GKE pods to Cloud SQL. Here is how to add it as a sidecar.
+The Kubernetes service account used by the pod must be configured to authenticate to Google Cloud and have the `roles/cloudsql.client` role.
 
 ```yaml
 # deployment-with-sql-proxy.yaml
@@ -267,10 +280,11 @@ spec:
                   key: password
         # Cloud SQL Auth Proxy sidecar
         - name: cloud-sql-proxy
-          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0
           args:
             - "--structured-logs"
             - "--port=5432"
+            - "--private-ip"
             # Connection name format: project:region:instance
             - "my-project-id:us-central1:my-app-db"
           securityContext:
