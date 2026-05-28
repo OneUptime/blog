@@ -22,68 +22,75 @@ Before diving in, make sure you have the following in place:
 
 - A Cloud SQL instance (PostgreSQL or MySQL)
 - Cloud Build API enabled in your GCP project
+- The Cloud Build service account granted the Cloud SQL Client role
 - A migration tool of your choice (I will use Flyway in these examples, but Liquibase or golang-migrate work just as well)
 - Your migration scripts stored in version control alongside your application code
 
 ## Setting Up Cloud SQL Proxy in Cloud Build
 
-Cloud Build steps run in containers, so they do not have direct access to your Cloud SQL instance through a private IP. The Cloud SQL Auth Proxy solves this by creating a secure tunnel.
+Cloud Build steps run in containers. For public IP connections, the Cloud SQL Auth Proxy gives your build a local TCP endpoint for connecting securely to Cloud SQL. If your instance only uses private IP, run the build in a Cloud Build private pool on the same VPC and either connect directly to the private IP or run the proxy with `--private-ip`.
 
-Here is a Cloud Build configuration that starts the proxy as a background step:
+Cloud Build waits for each step listed in `waitFor` to finish, so do not put the proxy in a separate foreground step and then wait on it. A reliable pattern is to use a small migration image that contains both Flyway and the proxy, then start the proxy in the same step as the migration command:
+
+```dockerfile
+# Dockerfile.migrations
+FROM flyway/flyway:10-alpine
+RUN apk add --no-cache netcat-openbsd
+COPY --from=gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0 /cloud-sql-proxy /cloud-sql-proxy
+ENTRYPOINT []
+```
 
 ```yaml
 # cloudbuild.yaml - Main build configuration with Cloud SQL Proxy
 
 steps:
-  # Step 1: Start Cloud SQL Auth Proxy in the background
-  - name: 'gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0'
-    args:
-      - '--port=5432'
-      - '${_CLOUD_SQL_CONNECTION_NAME}'
-    waitFor: ['-']  # Start immediately, don't wait for other steps
-    id: 'proxy'
-    env:
-      - 'INSTANCE_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME}'
-
-  # Step 2: Wait for the proxy to be ready
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        # Simple loop to wait for the proxy socket to be available
-        for i in $(seq 1 30); do
-          nc -z localhost 5432 && exit 0
-          sleep 1
-        done
-        echo "Proxy did not start in time"
-        exit 1
-    waitFor: ['proxy']
-    id: 'wait-for-proxy'
+  # Step 1: Build a local image that includes Flyway and the Cloud SQL Auth Proxy
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-f', 'Dockerfile.migrations', '-t', 'flyway-cloud-sql-proxy:${SHORT_SHA}', '.']
+    id: 'build-migration-image'
 ```
 
-The key detail here is `waitFor: ['-']` on the proxy step, which tells Cloud Build to start it immediately without waiting for any preceding steps. This lets it run in the background while subsequent steps execute.
+The key detail here is that the proxy process will be started inside the migration step itself. That keeps the proxy lifecycle tied to the command that needs it, instead of leaving Cloud Build waiting on a long-running proxy step.
 
 ## Running Flyway Migrations
 
-With the proxy running, you can now connect to your Cloud SQL instance from any subsequent build step. Here is how to run Flyway migrations:
+With the migration image built, you can start the proxy, wait for the local port to accept connections, and then run Flyway:
 
 ```yaml
-  # Step 3: Run database migrations using Flyway
-  - name: 'flyway/flyway:10'
+  # Step 2: Run database migrations using Flyway
+  - name: 'flyway-cloud-sql-proxy:${SHORT_SHA}'
+    entrypoint: 'sh'
     args:
-      - '-url=jdbc:postgresql://localhost:5432/${_DB_NAME}'
-      - '-user=${_DB_USER}'
-      - '-password=${_DB_PASSWORD}'
-      - '-locations=filesystem:./db/migrations'
-      - '-baselineOnMigrate=true'
-      - 'migrate'
-    waitFor: ['wait-for-proxy']
+      - '-c'
+      - |
+        /cloud-sql-proxy --port=5432 "${_CLOUD_SQL_CONNECTION_NAME}" &
+
+        for i in $(seq 1 30); do
+          if nc -z 127.0.0.1 5432; then
+            proxy_ready=1
+            break
+          fi
+          sleep 1
+        done
+
+        if [ "${proxy_ready:-0}" != "1" ]; then
+          echo "Proxy did not start in time"
+          exit 1
+        fi
+
+        flyway \
+          -url="jdbc:postgresql://127.0.0.1:5432/${_DB_NAME}" \
+          -user="${_DB_USER}" \
+          -password="${_DB_PASSWORD}" \
+          -locations="filesystem:./db/migrations" \
+          -baselineOnMigrate=true \
+          migrate
+    waitFor: ['build-migration-image']
     id: 'run-migrations'
 
-  # Step 4: Build and deploy the application (only after migrations succeed)
+  # Step 3: Build and deploy the application (only after migrations succeed)
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/${PROJECT_ID}/myapp:${SHORT_SHA}', '.']
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/myapp:${SHORT_SHA}', '.']
     waitFor: ['run-migrations']
     id: 'build-app'
 
@@ -92,6 +99,8 @@ substitutions:
   _DB_NAME: 'mydb'
   _DB_USER: 'migration_user'
   _DB_PASSWORD: ''  # Use Secret Manager instead
+  _REGION: 'us-central1'
+  _REPOSITORY: 'my-repo'
 ```
 
 ## Securing Database Credentials
@@ -120,18 +129,21 @@ availableSecrets:
       env: 'DB_PASSWORD'
 
 steps:
-  - name: 'flyway/flyway:10'
+  - name: 'flyway-cloud-sql-proxy:${SHORT_SHA}'
+    entrypoint: 'sh'
     args:
-      - '-url=jdbc:postgresql://localhost:5432/${_DB_NAME}'
-      - '-user=${_DB_USER}'
-      - '-password=$$DB_PASSWORD'  # Double dollar sign to reference the secret
-      - '-locations=filesystem:./db/migrations'
-      - 'migrate'
+      - '-c'
+      - |
+        flyway \
+          -url="jdbc:postgresql://127.0.0.1:5432/${_DB_NAME}" \
+          -user="${_DB_USER}" \
+          -password="$$DB_PASSWORD" \
+          -locations="filesystem:./db/migrations" \
+          migrate
     secretEnv: ['DB_PASSWORD']
-    waitFor: ['wait-for-proxy']
 ```
 
-The double dollar sign (`$$DB_PASSWORD`) is important - a single dollar sign would try to do Cloud Build substitution, while the double dollar sign references the secret environment variable.
+The double dollar sign (`$$DB_PASSWORD`) is important - a single dollar sign would try to do Cloud Build substitution, while the double dollar sign lets the shell read the secret environment variable.
 
 ## Writing Migration Scripts
 
@@ -170,25 +182,62 @@ Here is a Cloud Build step that validates migrations before applying them:
 
 ```yaml
   # Validate migrations before applying them
-  - name: 'flyway/flyway:10'
+  - name: 'flyway-cloud-sql-proxy:${SHORT_SHA}'
+    entrypoint: 'sh'
     args:
-      - '-url=jdbc:postgresql://localhost:5432/${_DB_NAME}'
-      - '-user=${_DB_USER}'
-      - '-password=$$DB_PASSWORD'
-      - '-locations=filesystem:./db/migrations'
-      - 'validate'
+      - '-c'
+      - |
+        /cloud-sql-proxy --port=5432 "${_CLOUD_SQL_CONNECTION_NAME}" &
+
+        for i in $(seq 1 30); do
+          if nc -z 127.0.0.1 5432; then
+            proxy_ready=1
+            break
+          fi
+          sleep 1
+        done
+
+        if [ "${proxy_ready:-0}" != "1" ]; then
+          echo "Proxy did not start in time"
+          exit 1
+        fi
+
+        flyway \
+          -url="jdbc:postgresql://127.0.0.1:5432/${_DB_NAME}" \
+          -user="${_DB_USER}" \
+          -password="$$DB_PASSWORD" \
+          -locations="filesystem:./db/migrations" \
+          validate
     secretEnv: ['DB_PASSWORD']
-    waitFor: ['wait-for-proxy']
     id: 'validate-migrations'
 
   # Only run migrate if validation passes
-  - name: 'flyway/flyway:10'
+  - name: 'flyway-cloud-sql-proxy:${SHORT_SHA}'
+    entrypoint: 'sh'
     args:
-      - '-url=jdbc:postgresql://localhost:5432/${_DB_NAME}'
-      - '-user=${_DB_USER}'
-      - '-password=$$DB_PASSWORD'
-      - '-locations=filesystem:./db/migrations'
-      - 'migrate'
+      - '-c'
+      - |
+        /cloud-sql-proxy --port=5432 "${_CLOUD_SQL_CONNECTION_NAME}" &
+
+        for i in $(seq 1 30); do
+          if nc -z 127.0.0.1 5432; then
+            proxy_ready=1
+            break
+          fi
+          sleep 1
+        done
+
+        if [ "${proxy_ready:-0}" != "1" ]; then
+          echo "Proxy did not start in time"
+          exit 1
+        fi
+
+        flyway \
+          -url="jdbc:postgresql://127.0.0.1:5432/${_DB_NAME}" \
+          -user="${_DB_USER}" \
+          -password="$$DB_PASSWORD" \
+          -locations="filesystem:./db/migrations" \
+          migrate
     secretEnv: ['DB_PASSWORD']
     waitFor: ['validate-migrations']
     id: 'run-migrations'
@@ -219,16 +268,34 @@ You might want to run migrations against a staging database whenever a pull requ
 # cloudbuild-pr.yaml - Triggered on pull requests against staging
 steps:
   # Run migrations against the staging database
-  - name: 'flyway/flyway:10'
+  - name: 'flyway-cloud-sql-proxy:${SHORT_SHA}'
+    entrypoint: 'sh'
     args:
-      - '-url=jdbc:postgresql://localhost:5432/staging_db'
-      - '-user=${_DB_USER}'
-      - '-password=$$DB_PASSWORD'
-      - '-locations=filesystem:./db/migrations'
-      - '-baselineOnMigrate=true'
-      - 'info'  # Just show migration status, don't apply
+      - '-c'
+      - |
+        /cloud-sql-proxy --port=5432 "${_CLOUD_SQL_CONNECTION_NAME}" &
+
+        for i in $(seq 1 30); do
+          if nc -z 127.0.0.1 5432; then
+            proxy_ready=1
+            break
+          fi
+          sleep 1
+        done
+
+        if [ "${proxy_ready:-0}" != "1" ]; then
+          echo "Proxy did not start in time"
+          exit 1
+        fi
+
+        flyway \
+          -url="jdbc:postgresql://127.0.0.1:5432/staging_db" \
+          -user="${_DB_USER}" \
+          -password="$$DB_PASSWORD" \
+          -locations="filesystem:./db/migrations" \
+          -baselineOnMigrate=true \
+          info  # Just show migration status, don't apply
     secretEnv: ['DB_PASSWORD']
-    waitFor: ['wait-for-proxy']
 ```
 
 Using `info` instead of `migrate` lets you preview what changes would be applied without actually running them - useful for code review.
