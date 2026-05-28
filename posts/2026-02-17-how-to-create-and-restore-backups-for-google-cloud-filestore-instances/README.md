@@ -93,12 +93,14 @@ To restore data from a backup, you create a new Filestore instance using the bac
 
 ```bash
 # Restore a backup to a new Filestore instance
-gcloud filestore instances restore my-new-filestore \
+gcloud filestore instances create my-new-filestore \
   --zone=us-central1-a \
-  --file-share=name=vol1,capacity=1TB,source-backup=my-backup,source-backup-region=us-central1
+  --tier=BASIC_HDD \
+  --file-share=name=vol1,capacity=1TiB,source-backup=my-backup,source-backup-region=us-central1 \
+  --network=name=default
 ```
 
-Wait, that syntax looks complicated. Let me break it down more clearly with the actual restore command:
+That syntax creates the new Filestore instance and restores the backup into its file share in one operation. To restore onto an existing Basic HDD or Basic SSD instance instead, use the restore command:
 
 ```bash
 # Restore a backup onto an existing Filestore instance
@@ -110,24 +112,17 @@ gcloud filestore instances restore my-filestore \
   --source-backup-region=us-central1
 ```
 
-This command restores the backup data onto the specified file share of an existing instance. The target instance must have at least as much capacity as the backup's source data.
+This command restores the backup data onto the specified file share of an existing instance. Restoring to an existing instance is supported for Basic HDD and Basic SSD backups. The target instance must have at least as much capacity as the original source instance.
 
-To restore to a new instance, create the instance first and then restore:
+To restore Zonal, Regional, or Enterprise backups, create a new instance from the backup:
 
 ```bash
-# Step 1: Create a new instance with enough capacity
+# Create a new instance from the backup
 gcloud filestore instances create my-restored-filestore \
   --zone=us-central1-a \
-  --tier=BASIC_HDD \
-  --file-share=name=vol1,capacity=1TB \
+  --tier=zonal \
+  --file-share=name=vol1,capacity=1TiB,source-backup=my-backup,source-backup-region=us-central1 \
   --network=name=default
-
-# Step 2: Restore the backup onto the new instance
-gcloud filestore instances restore my-restored-filestore \
-  --zone=us-central1-a \
-  --file-share=vol1 \
-  --source-backup=my-backup \
-  --source-backup-region=us-central1
 ```
 
 ## Automating Backups with Cloud Scheduler
