@@ -39,7 +39,7 @@ bq mk --dataset \
   your-project-id:billing_export
 ```
 
-After enabling the export, it takes a few hours for data to start appearing. The table that matters most is `gcp_billing_export_v1_XXXXXX_XXXXXX`, where the X values correspond to your billing account ID.
+After enabling the export, it takes a few hours for data to start appearing. The table that matters most is `gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX`, where the X values correspond to your billing account ID with hyphens replaced by underscores.
 
 ## Step 2 - Explore and Prepare the Data
 
@@ -52,7 +52,7 @@ SELECT
   service.description AS service_name,
   SUM(cost) AS daily_cost
 FROM
-  `your-project-id.billing_export.gcp_billing_export_v1_XXXXXX`
+  `your-project-id.billing_export.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX`
 WHERE
   DATE(usage_start_time) >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
 GROUP BY
@@ -84,10 +84,10 @@ SELECT
   DATE(usage_start_time) AS usage_date,
   SUM(cost) AS daily_cost
 FROM
-  `your-project-id.billing_export.gcp_billing_export_v1_XXXXXX`
+  `your-project-id.billing_export.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX`
 WHERE
   DATE(usage_start_time) BETWEEN
-    DATE_SUB(CURRENT_DATE(), INTERVAL 60 DAY) AND DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
+    DATE_SUB(CURRENT_DATE(), INTERVAL 61 DAY) AND DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY)
 GROUP BY
   usage_date
 ```
@@ -96,7 +96,7 @@ Training typically takes a few minutes. The ARIMA_PLUS model handles seasonality
 
 ## Step 4 - Generate Forecasts and Detect Anomalies
 
-Now we compare actual spending against what the model predicted. The key idea is simple - if actual spend exceeds the upper bound of the prediction interval by a meaningful margin, something unusual is going on.
+Now we compare actual spending for the latest completed day against what the model predicted. The key idea is simple - if actual spend exceeds the upper bound of the prediction interval by a meaningful margin, something unusual is going on.
 
 ```sql
 -- Compare actual daily costs against the model's predicted confidence interval
@@ -108,16 +108,16 @@ WITH forecast AS (
     prediction_interval_upper_bound
   FROM
     ML.FORECAST(MODEL `your-project-id.billing_export.cost_forecast_model`,
-      STRUCT(7 AS horizon, 0.95 AS confidence_level))
+      STRUCT(1 AS horizon, 0.95 AS confidence_level))
 ),
 actuals AS (
   SELECT
     DATE(usage_start_time) AS usage_date,
     SUM(cost) AS actual_cost
   FROM
-    `your-project-id.billing_export.gcp_billing_export_v1_XXXXXX`
+    `your-project-id.billing_export.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX`
   WHERE
-    DATE(usage_start_time) >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+    DATE(usage_start_time) = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
   GROUP BY
     usage_date
 )
@@ -144,13 +144,14 @@ ORDER BY
 You do not want to run this manually every day. Set up a BigQuery scheduled query that runs the anomaly detection logic daily and writes results to a dedicated table.
 
 ```bash
-# Create a scheduled query that runs every day at 8 AM UTC
+# Create a scheduled query that runs every day at 8 AM UTC.
+# Put the full anomaly detection SQL from the previous step in anomaly_detection.sql.
 bq query --use_legacy_sql=false \
   --schedule='every day 08:00' \
   --display_name='Cost Anomaly Detection' \
   --destination_table='your-project-id:billing_export.anomaly_results' \
   --replace=true \
-  'SELECT ... (your anomaly detection query here)'
+  "$(cat anomaly_detection.sql)"
 ```
 
 In practice, you would put the full anomaly detection SQL from the previous step into this scheduled query.
@@ -167,18 +168,18 @@ from google.cloud import monitoring_v3, bigquery
 import time
 
 def push_anomaly_metric(project_id):
-    # Query the anomaly results table for today's data
+    # Query the anomaly results table for the latest completed day
     bq_client = bigquery.Client(project=project_id)
     query = """
         SELECT actual_cost, predicted_cost, overage, status
         FROM `{}.billing_export.anomaly_results`
-        WHERE usage_date = CURRENT_DATE()
+        WHERE usage_date = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
         LIMIT 1
     """.format(project_id)
 
     results = list(bq_client.query(query).result())
     if not results:
-        print("No anomaly data for today")
+        print("No anomaly data for the latest completed day")
         return
 
     row = results[0]
@@ -193,10 +194,15 @@ def push_anomaly_metric(project_id):
     series.resource.type = "global"
     series.resource.labels["project_id"] = project_id
 
-    point = monitoring_v3.Point()
-    point.value.double_value = is_anomaly
     now = time.time()
-    point.interval.end_time.seconds = int(now)
+    seconds = int(now)
+    nanos = int((now - seconds) * 10**9)
+    interval = monitoring_v3.TimeInterval(
+        {"end_time": {"seconds": seconds, "nanos": nanos}}
+    )
+    point = monitoring_v3.Point(
+        {"interval": interval, "value": {"double_value": is_anomaly}}
+    )
     series.points = [point]
 
     client.create_time_series(name=project_name, time_series=[series])
@@ -213,13 +219,12 @@ The final piece is creating an alerting policy that fires when the custom metric
 
 ```bash
 # Create an alerting policy using gcloud
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Cost Anomaly Alert" \
   --condition-display-name="Billing anomaly detected" \
   --condition-filter='metric.type="custom.googleapis.com/billing/cost_anomaly" AND resource.type="global"' \
-  --condition-threshold-value=0.5 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=0s \
+  --if='> 0.5' \
+  --duration=0s \
   --notification-channels="projects/your-project-id/notificationChannels/CHANNEL_ID" \
   --combiner=OR
 ```
@@ -246,9 +251,10 @@ SELECT
   service.description AS service_name,
   SUM(cost) AS daily_cost
 FROM
-  `your-project-id.billing_export.gcp_billing_export_v1_XXXXXX`
+  `your-project-id.billing_export.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX`
 WHERE
-  DATE(usage_start_time) >= DATE_SUB(CURRENT_DATE(), INTERVAL 60 DAY)
+  DATE(usage_start_time) BETWEEN
+    DATE_SUB(CURRENT_DATE(), INTERVAL 61 DAY) AND DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY)
 GROUP BY
   usage_date, service_name
 HAVING
