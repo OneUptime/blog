@@ -21,21 +21,21 @@ You need the Protocol Buffer compiler plugin and the gRPC Spring Boot starter:
 <dependency>
     <groupId>net.devh</groupId>
     <artifactId>grpc-server-spring-boot-starter</artifactId>
-    <version>2.15.0.RELEASE</version>
+    <version>3.1.0.RELEASE</version>
 </dependency>
 
 <!-- Protocol Buffers -->
 <dependency>
     <groupId>io.grpc</groupId>
     <artifactId>grpc-protobuf</artifactId>
-    <version>1.60.0</version>
+    <version>1.63.0</version>
 </dependency>
 
 <!-- gRPC stub generation -->
 <dependency>
     <groupId>io.grpc</groupId>
     <artifactId>grpc-stub</artifactId>
-    <version>1.60.0</version>
+    <version>1.63.0</version>
 </dependency>
 
 <!-- Required for Java 9+ -->
@@ -68,7 +68,7 @@ Add the Protocol Buffer Maven plugin to generate Java code from your `.proto` fi
                 </protocArtifact>
                 <pluginId>grpc-java</pluginId>
                 <pluginArtifact>
-                    io.grpc:protoc-gen-grpc-java:1.60.0:exe:${os.detected.classifier}
+                    io.grpc:protoc-gen-grpc-java:1.63.0:exe:${os.detected.classifier}
                 </pluginArtifact>
             </configuration>
             <executions>
@@ -221,6 +221,31 @@ public class ProductServiceImpl extends ProductServiceGrpc.ProductServiceImplBas
         responseObserver.onCompleted();
     }
 
+    // Handle UpdateProduct RPC
+    @Override
+    public void updateProduct(UpdateProductRequest request,
+                              StreamObserver<ProductResponse> responseObserver) {
+
+        ProductData existing = products.get(request.getProductId());
+
+        if (existing == null) {
+            responseObserver.onError(
+                    Status.NOT_FOUND
+                            .withDescription("Product not found: " + request.getProductId())
+                            .asRuntimeException());
+            return;
+        }
+
+        ProductData updated = new ProductData(
+                existing.id(), request.getName(), request.getDescription(),
+                request.getPrice(), existing.category(), existing.createdAt());
+
+        products.put(existing.id(), updated);
+
+        responseObserver.onNext(toResponse(updated));
+        responseObserver.onCompleted();
+    }
+
     // Handle DeleteProduct RPC
     @Override
     public void deleteProduct(DeleteProductRequest request,
@@ -269,10 +294,6 @@ grpc.server.health-service-enabled=true
 
 # Enable reflection for debugging with grpcurl
 grpc.server.reflection-service-enabled=true
-
-# Actuator for HTTP health checks
-management.server.port=8081
-management.endpoints.web.exposure.include=health
 ```
 
 ## Dockerfile for Cloud Run
