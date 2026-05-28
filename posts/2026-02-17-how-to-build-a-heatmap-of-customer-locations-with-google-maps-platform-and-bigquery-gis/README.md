@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, GIS, Google Maps, Heatmap, Data Visualization, Google Cloud
 
-Description: Build a customer location heatmap using Google Maps Platform visualization library and BigQuery GIS geospatial data for market analysis and store planning.
+Description: Build a customer location heatmap using Google Maps Platform, deck.gl visualization layers, and BigQuery GIS geospatial data for market analysis and store planning.
 
 ---
 
@@ -21,16 +21,16 @@ The end result is a web-based heatmap that:
 
 ```mermaid
 graph TD
-    A[Customer Data<br/>BigQuery] --> B[Aggregation Query<br/>ST_GEOGPOINT + Clustering]
+    A[Customer Data<br/>BigQuery] --> B[Aggregation Query<br/>ST_GEOGPOINT + Grid Bucketing]
     B --> C[Cloud Function<br/>API Endpoint]
-    C --> D[Maps JavaScript API<br/>HeatmapLayer]
+    C --> D[Maps JavaScript API<br/>deck.gl HeatmapLayer]
     D --> E[Interactive Heatmap<br/>in Browser]
 ```
 
 ## Prerequisites
 
 - Customer data with latitude/longitude in BigQuery
-- Google Maps JavaScript API key with the Visualization library enabled
+- Google Maps JavaScript API key and the deck.gl Google Maps overlay library
 - A Cloud Function for the backend API
 
 ## Step 1: Prepare the Data in BigQuery
@@ -44,10 +44,10 @@ This query creates an aggregated grid of customer density:
 -- Uses ST_SNAPTOGRID to bucket nearby customers together
 CREATE OR REPLACE TABLE `MY_PROJECT.geo_analytics.customer_density_grid` AS
 SELECT
-  -- Snap points to a 0.005 degree grid (roughly 500 meter cells)
-  ST_SNAPTOGRID(ST_GEOGPOINT(lng, lat), 0.005) as grid_cell,
-  ST_X(ST_SNAPTOGRID(ST_GEOGPOINT(lng, lat), 0.005)) as cell_lng,
-  ST_Y(ST_SNAPTOGRID(ST_GEOGPOINT(lng, lat), 0.005)) as cell_lat,
+  -- Snap points to a 0.01 degree grid (roughly 1.1 km at the equator)
+  ST_SNAPTOGRID(ST_GEOGPOINT(lng, lat), 0.01) as grid_cell,
+  ST_X(ST_SNAPTOGRID(ST_GEOGPOINT(lng, lat), 0.01)) as cell_lng,
+  ST_Y(ST_SNAPTOGRID(ST_GEOGPOINT(lng, lat), 0.01)) as cell_lat,
   COUNT(*) as customer_count,
   SUM(lifetime_value) as total_ltv,
   AVG(lifetime_value) as avg_ltv,
@@ -65,12 +65,13 @@ For multi-resolution heatmaps that adapt to zoom level, create grids at differen
 -- Coarse grid for zoomed-out views
 CREATE OR REPLACE TABLE `MY_PROJECT.geo_analytics.density_grid_coarse` AS
 SELECT
-  ST_X(ST_SNAPTOGRID(ST_GEOGPOINT(lng, lat), 0.05)) as cell_lng,
-  ST_Y(ST_SNAPTOGRID(ST_GEOGPOINT(lng, lat), 0.05)) as cell_lat,
+  ST_X(ST_SNAPTOGRID(ST_GEOGPOINT(lng, lat), 0.1)) as cell_lng,
+  ST_Y(ST_SNAPTOGRID(ST_GEOGPOINT(lng, lat), 0.1)) as cell_lat,
   COUNT(*) as customer_count,
-  SUM(lifetime_value) as total_ltv
+  SUM(lifetime_value) as total_ltv,
+  COUNT(DISTINCT CASE WHEN signup_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY) THEN customer_id END) as new_customers_90d
 FROM `MY_PROJECT.geo_analytics.customers`
-WHERE lat IS NOT NULL
+WHERE lat IS NOT NULL AND lng IS NOT NULL
 GROUP BY cell_lng, cell_lat;
 
 -- Fine grid for zoomed-in views
@@ -79,9 +80,10 @@ SELECT
   ST_X(ST_SNAPTOGRID(ST_GEOGPOINT(lng, lat), 0.001)) as cell_lng,
   ST_Y(ST_SNAPTOGRID(ST_GEOGPOINT(lng, lat), 0.001)) as cell_lat,
   COUNT(*) as customer_count,
-  SUM(lifetime_value) as total_ltv
+  SUM(lifetime_value) as total_ltv,
+  COUNT(DISTINCT CASE WHEN signup_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY) THEN customer_id END) as new_customers_90d
 FROM `MY_PROJECT.geo_analytics.customers`
-WHERE lat IS NOT NULL
+WHERE lat IS NOT NULL AND lng IS NOT NULL
 GROUP BY cell_lng, cell_lat;
 ```
 
@@ -144,7 +146,7 @@ def heatmap_api(request):
         SELECT
             cell_lat as lat,
             cell_lng as lng,
-            {weight_col} as weight
+            COALESCE({weight_col}, 0) as weight
         FROM `MY_PROJECT.geo_analytics.{table}`
         WHERE cell_lat BETWEEN @south AND @north
           AND cell_lng BETWEEN @west AND @east
@@ -181,7 +183,7 @@ def heatmap_api(request):
 
 ## Step 3: Build the Heatmap Frontend
 
-Create the HTML page with the Google Maps heatmap visualization and controls for weight metric and radius.
+Create the HTML page with the Google Maps base map, a deck.gl heatmap overlay, and controls for weight metric and radius.
 
 ```html
 <!DOCTYPE html>
@@ -234,7 +236,10 @@ Create the HTML page with the Google Maps heatmap visualization and controls for
     <script>
         const API_BASE = 'https://us-central1-MY_PROJECT.cloudfunctions.net/heatmap-api';
         let map;
-        let heatmapLayer;
+        let heatmapOverlay;
+        let heatmapData = [];
+        let heatmapRadius = 25;
+        let heatmapOpacity = 0.7;
         let debounceTimer;
 
         function initMap() {
@@ -242,31 +247,13 @@ Create the HTML page with the Google Maps heatmap visualization and controls for
             map = new google.maps.Map(document.getElementById('map'), {
                 center: { lat: 37.5, lng: -122.1 },
                 zoom: 10,
-                mapTypeId: 'roadmap',
-                styles: [
-                    { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-                    { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-                    { featureType: 'road', elementType: 'labels', stylers: [{ visibility: 'off' }] }
-                ]
+                mapId: 'YOUR_MAP_ID',
+                mapTypeId: 'roadmap'
             });
 
-            // Initialize an empty heatmap layer
-            heatmapLayer = new google.maps.visualization.HeatmapLayer({
-                radius: 25,
-                opacity: 0.7,
-                // Custom gradient from cool blue to warm red
-                gradient: [
-                    'rgba(0, 0, 255, 0)',
-                    'rgba(0, 0, 255, 0.4)',
-                    'rgba(0, 128, 255, 0.6)',
-                    'rgba(0, 255, 128, 0.8)',
-                    'rgba(128, 255, 0, 0.9)',
-                    'rgba(255, 255, 0, 1)',
-                    'rgba(255, 128, 0, 1)',
-                    'rgba(255, 0, 0, 1)'
-                ]
-            });
-            heatmapLayer.setMap(map);
+            // Initialize an empty deck.gl heatmap overlay
+            heatmapOverlay = new deck.GoogleMapsOverlay({ layers: [] });
+            heatmapOverlay.setMap(map);
 
             // Refresh data when the map viewport changes
             map.addListener('idle', () => {
@@ -296,14 +283,13 @@ Create the HTML page with the Google Maps heatmap visualization and controls for
                 const response = await fetch(url);
                 const data = await response.json();
 
-                // Convert points to weighted LatLng objects
-                const heatmapData = data.points.map(p => ({
-                    location: new google.maps.LatLng(p.lat, p.lng),
+                // Convert points to weighted deck.gl positions
+                heatmapData = data.points.map(p => ({
+                    position: [p.lng, p.lat],
                     weight: p.weight
                 }));
 
-                // Update the heatmap layer
-                heatmapLayer.setData(heatmapData);
+                renderHeatmapLayer();
 
                 // Update stats display
                 const totalWeight = data.points.reduce((sum, p) => sum + p.weight, 0);
@@ -318,18 +304,47 @@ Create the HTML page with the Google Maps heatmap visualization and controls for
             }
         }
 
+        function renderHeatmapLayer() {
+            heatmapOverlay.setProps({
+                layers: [
+                    new deck.HeatmapLayer({
+                        id: 'customer-heatmap',
+                        data: heatmapData,
+                        getPosition: d => d.position,
+                        getWeight: d => d.weight,
+                        radiusPixels: heatmapRadius,
+                        opacity: heatmapOpacity,
+                        aggregation: 'SUM',
+                        colorRange: [
+                            [0, 0, 255, 0],
+                            [0, 0, 255, 102],
+                            [0, 128, 255, 153],
+                            [0, 255, 128, 204],
+                            [128, 255, 0, 230],
+                            [255, 255, 0, 255],
+                            [255, 128, 0, 255],
+                            [255, 0, 0, 255]
+                        ]
+                    })
+                ]
+            });
+        }
+
         function updateRadius(value) {
             document.getElementById('radiusValue').textContent = value;
-            heatmapLayer.set('radius', parseInt(value));
+            heatmapRadius = parseInt(value, 10);
+            renderHeatmapLayer();
         }
 
         function updateOpacity(value) {
             const opacity = value / 100;
             document.getElementById('opacityValue').textContent = opacity.toFixed(1);
-            heatmapLayer.set('opacity', opacity);
+            heatmapOpacity = opacity;
+            renderHeatmapLayer();
         }
     </script>
-    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=visualization&callback=initMap" async defer></script>
+    <script src="https://unpkg.com/deck.gl@^9.0.0/dist.min.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&loading=async&libraries=marker&callback=initMap" async defer></script>
 </body>
 </html>
 ```
@@ -340,22 +355,26 @@ Enhance the heatmap with additional context layers like competitor locations or 
 
 ```javascript
 // Add competitor location markers on top of the heatmap
+const COMPETITORS_API_BASE = 'https://us-central1-MY_PROJECT.cloudfunctions.net/competitors-api';
+
 async function loadCompetitorLocations() {
-    const response = await fetch(`${API_BASE}?type=competitors`);
+    const response = await fetch(COMPETITORS_API_BASE);
     const data = await response.json();
 
     data.locations.forEach(loc => {
-        new google.maps.Marker({
+        const markerContent = document.createElement('div');
+        markerContent.style.cssText = `
+            width: 14px;
+            height: 14px;
+            background: #ff0000;
+            border: 2px solid #990000;
+            transform: rotate(45deg);
+        `;
+
+        new google.maps.marker.AdvancedMarkerElement({
             position: { lat: loc.lat, lng: loc.lng },
             map: map,
-            icon: {
-                path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
-                scale: 6,
-                fillColor: '#ff0000',
-                fillOpacity: 0.8,
-                strokeColor: '#990000',
-                strokeWeight: 1,
-            },
+            content: markerContent,
             title: loc.name,
         });
     });
@@ -367,7 +386,7 @@ async function loadCompetitorLocations() {
 Create BigQuery queries that quantify the insights visible in the heatmap:
 
 ```sql
--- Identify customer concentration hotspots using BigQuery GIS clustering
+-- Identify customer concentration hotspots using BigQuery GIS grid bucketing
 SELECT
   ST_CENTROID(cluster_geom) as cluster_center,
   ST_X(ST_CENTROID(cluster_geom)) as center_lng,
@@ -385,7 +404,7 @@ FROM (
     COUNT(*) as cluster_size,
     SUM(lifetime_value) as total_ltv
   FROM `MY_PROJECT.geo_analytics.customers`
-  WHERE lat IS NOT NULL
+  WHERE lat IS NOT NULL AND lng IS NOT NULL
   -- Group by grid cell to identify clusters
   GROUP BY ST_SNAPTOGRID(ST_GEOGPOINT(lng, lat), 0.01)
   HAVING cluster_size >= 50
@@ -396,4 +415,4 @@ LIMIT 20;
 
 ## Summary
 
-Building a customer heatmap with BigQuery GIS and Google Maps Platform involves three main pieces: pre-aggregating location data in BigQuery using spatial grid functions for performance, serving the data through a Cloud Function API that adapts resolution based on zoom level, and rendering it with the Maps JavaScript API HeatmapLayer. The key to a performant heatmap is not sending every individual customer point to the browser - aggregate into grid cells at the right resolution, filter by viewport bounds, and limit the total points returned. This approach scales to millions of customer records while keeping the map interaction smooth.
+Building a customer heatmap with BigQuery GIS and Google Maps Platform involves three main pieces: pre-aggregating location data in BigQuery using spatial grid functions for performance, serving the data through a Cloud Function API that adapts resolution based on zoom level, and rendering it with deck.gl's HeatmapLayer on top of a Google Map. The key to a performant heatmap is not sending every individual customer point to the browser - aggregate into grid cells at the right resolution, filter by viewport bounds, and limit the total points returned. This approach scales to millions of customer records while keeping the map interaction smooth.
