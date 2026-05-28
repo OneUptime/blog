@@ -23,7 +23,7 @@ Some Service Bus features have direct Pub/Sub equivalents. Others require differ
 | Message TTL | Per message or queue | Subscription message retention |
 | Transactions | Yes | No |
 | Duplicate detection | Built-in | Client-side with Datastore/Firestore |
-| Message size | 256 KB (Standard) / 100 MB (Premium) | 10 MB |
+| Message size | 256 KB (Standard) / up to 100 MB over AMQP (Premium) | 10 MB |
 | Scheduled delivery | Yes | No built-in (use Cloud Tasks or Scheduler) |
 | Sessions | Yes | No direct equivalent |
 | Message lock | Peek-lock pattern | Ack deadline |
@@ -91,6 +91,9 @@ gcloud pubsub subscriptions create order-processing-sub \
 # Set up dead-letter handling
 gcloud pubsub topics create order-processing-dead-letter
 
+gcloud pubsub subscriptions create order-processing-dead-letter-sub \
+  --topic=order-processing-dead-letter
+
 gcloud pubsub subscriptions update order-processing-sub \
   --dead-letter-topic=order-processing-dead-letter \
   --max-delivery-attempts=10
@@ -152,8 +155,10 @@ When publishing, specify an ordering key:
 
 ```python
 from google.cloud import pubsub_v1
+import json
 
-publisher = pubsub_v1.PublisherClient()
+publisher_options = pubsub_v1.types.PublisherOptions(enable_message_ordering=True)
+publisher = pubsub_v1.PublisherClient(publisher_options=publisher_options)
 topic_path = publisher.topic_path('my-project', 'order-processing-queue')
 
 def publish_ordered_message(session_id, message_data):
@@ -177,6 +182,8 @@ Convert your Service Bus sender code to Pub/Sub publisher code.
 ```python
 # Old Azure Service Bus producer
 from azure.servicebus import ServiceBusClient, ServiceBusMessage
+from datetime import timedelta
+import json
 
 connection_str = "Endpoint=sb://my-namespace.servicebus.windows.net/;SharedAccessKeyName=..."
 client = ServiceBusClient.from_connection_string(connection_str)
@@ -266,7 +273,6 @@ Service Bus supports scheduled delivery (enqueue messages for future delivery). 
 ```python
 from google.cloud import tasks_v2
 from google.protobuf import timestamp_pb2
-import datetime
 import json
 
 tasks_client = tasks_v2.CloudTasksClient()
@@ -274,6 +280,9 @@ queue_path = tasks_client.queue_path('my-project', 'us-central1', 'scheduled-mes
 
 def schedule_message(topic_id, message_body, deliver_at):
     """Schedule a message for future delivery - replaces Service Bus scheduled enqueue."""
+    schedule_time = timestamp_pb2.Timestamp()
+    schedule_time.FromDatetime(deliver_at)
+
     task = {
         'http_request': {
             'http_method': tasks_v2.HttpMethod.POST,
@@ -287,7 +296,7 @@ def schedule_message(topic_id, message_body, deliver_at):
                 'service_account_email': 'tasks-sa@my-project.iam.gserviceaccount.com'
             }
         },
-        'schedule_time': timestamp_pb2.Timestamp().FromDatetime(deliver_at)
+        'schedule_time': schedule_time
     }
 
     tasks_client.create_task(parent=queue_path, task=task)
@@ -338,13 +347,11 @@ Run both systems in parallel and compare behavior.
 gcloud monitoring metrics list \
   --filter='metric.type=starts_with("pubsub.googleapis.com")'
 
-# Check for unacknowledged messages (potential processing issues)
-gcloud pubsub subscriptions pull order-processing-sub --auto-ack --limit=0
+# Sample pending messages without acknowledging them
+gcloud pubsub subscriptions pull order-processing-sub --limit=10
 
 # Check dead-letter topic for failed messages
-gcloud pubsub subscriptions create dlq-reader \
-  --topic=order-processing-dead-letter
-gcloud pubsub subscriptions pull dlq-reader --limit=10
+gcloud pubsub subscriptions pull order-processing-dead-letter-sub --limit=10
 ```
 
 ## Summary
