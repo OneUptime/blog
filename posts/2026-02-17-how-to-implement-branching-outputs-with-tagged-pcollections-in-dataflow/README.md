@@ -14,7 +14,7 @@ This is a pattern I use in almost every production pipeline. Once you understand
 
 ## The Basic Pattern
 
-A DoFn can produce output to multiple tagged PCollections. You define `TupleTag` objects for each output, then use `c.output(tag, element)` to route elements.
+A DoFn can produce output to multiple tagged PCollections. You define `TupleTag` objects for each output, then use `c.output(element)` for the main output and `c.output(tag, element)` for side outputs.
 
 ```java
 // Define tags for each output branch
@@ -36,7 +36,7 @@ PCollectionTuple results = rawEvents
                     // Route to the appropriate output based on event type
                     switch (event.getType()) {
                         case "click":
-                            c.output(clicksTag, event);
+                            c.output(event);
                             break;
                         case "purchase":
                             c.output(purchasesTag, event);
@@ -116,7 +116,7 @@ PCollectionTuple results = rawEvents
                 Event event = c.element();
 
                 // Every event goes to the main analytics output
-                c.output(analyticsTag, event);
+                c.output(event);
 
                 // High-value purchases also go to the alerts stream
                 if (event.getType().equals("purchase")
