@@ -12,7 +12,7 @@ Sharing data in BigQuery is straightforward when you can just grant table-level 
 
 ## The Problem with Direct Table Access
 
-Imagine you have a customer table with sensitive fields like social security numbers, credit scores, and full addresses. Your analytics team needs customer demographics for reporting but should not see the sensitive fields. You could create a view that excludes sensitive columns, but views in BigQuery require the user to have at least read access to the underlying dataset. That is often too broad.
+Imagine you have a customer table with sensitive fields like social security numbers, credit scores, and full addresses. Your analytics team needs customer demographics for reporting but should not see the sensitive fields. You could create a regular view that excludes sensitive columns, but users need access to the resources referenced by the view's query unless you configure it as an authorized view. That can be too broad or less flexible when you need parameterized logic.
 
 Authorized routines offer a better approach. You create a function that returns only the data you want to share, authorize that function to access the protected dataset, and grant users permission to execute the function. The users never get direct access to the tables.
 
@@ -96,46 +96,50 @@ AS (
 Now authorize this routine to access the protected dataset. You do this by adding the routine to the protected dataset's authorized routines list:
 
 ```bash
-# Authorize the routine to access the protected dataset
-
-# This grants the routine (not the user) access to query protected_data
-bq update --authorized_routine \
-  my_project:shared_analytics.get_customer_demographics \
-  my_project:protected_data
+# Export the protected dataset metadata
+bq show --format=prettyjson my_project:protected_data > /tmp/dataset.json
 ```
 
-You can also do this through the BigQuery API or Terraform:
+Edit `/tmp/dataset.json` and add this entry to the `access` array:
+
+```json
+{
+  "routine": {
+    "projectId": "my_project",
+    "datasetId": "shared_analytics",
+    "routineId": "get_customer_demographics"
+  }
+}
+```
+
+Then update the protected dataset:
 
 ```bash
-# Using gcloud to update dataset access
-# Add the routine as an authorized routine on the protected dataset
-bq show --format=prettyjson my_project:protected_data > /tmp/dataset.json
-
-# Edit the JSON to add authorizedRoutine entry, then update
+# This grants the routine (not the user) access to query protected_data
 bq update --source /tmp/dataset.json my_project:protected_data
 ```
+
+You can also do this through the BigQuery API or Terraform.
 
 ## Granting User Access
 
 Grant users access to the shared dataset (where the routine lives) but NOT to the protected dataset:
 
-```bash
-# Grant the analytics team permission to use routines in shared_analytics
-# They can execute functions but cannot access protected_data directly
-gcloud projects add-iam-policy-binding my_project \
-  --member="group:analytics-team@company.com" \
-  --role="roles/bigquery.dataViewer" \
-  --condition='expression=resource.name.startsWith("projects/my_project/datasets/shared_analytics"),title=shared-analytics-access'
+```sql
+-- Grant access to the shared_analytics dataset only
+GRANT `roles/bigquery.dataViewer`
+ON SCHEMA `my_project`.shared_analytics
+TO "group:analytics-team@company.com";
 ```
 
-Or at the dataset level:
+Or by editing the dataset access policy with the bq tool:
 
 ```bash
-# Grant access to the shared_analytics dataset only
-bq add-iam-policy-binding \
-  --member="group:analytics-team@company.com" \
-  --role="roles/bigquery.dataViewer" \
-  my_project:shared_analytics
+bq show --format=prettyjson my_project:shared_analytics > /tmp/shared_dataset.json
+
+# Edit /tmp/shared_dataset.json and add a READER access entry for the group,
+# then update the dataset.
+bq update --source /tmp/shared_dataset.json my_project:shared_analytics
 ```
 
 ## Using the Authorized Routine
@@ -244,7 +248,7 @@ Authorized routines work with BigQuery audit logs. Every call to an authorized r
 ```bash
 # Query audit logs for authorized routine usage
 gcloud logging read \
-  'resource.type="bigquery_resource" AND protoPayload.methodName="jobservice.jobcompleted" AND protoPayload.serviceData.jobCompletedEvent.job.jobConfiguration.query.query:"shared_analytics"' \
+  'resource.type="bigquery_project" AND protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.BigQueryAuditMetadata" AND protoPayload.metadata.jobChange.job.jobStats.queryStats.referencedRoutines:"projects/my_project/datasets/shared_analytics/routines"' \
   --limit=50 \
   --format=json
 ```
