@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud SQL, Read Replica, Disaster Recovery, High Availability, Cross-Region
 
-Description: Learn how to set up cross-region read replicas in Cloud SQL for disaster recovery, reduced read latency, and automated failover in multi-region architectures.
+Description: Learn how to set up cross-region read replicas in Cloud SQL for disaster recovery, reduced read latency, and manual failover in multi-region architectures.
 
 ---
 
@@ -34,11 +34,11 @@ graph TB
 
 ## Understanding Replication Types
 
-Cloud SQL supports two types of replicas:
+Cloud SQL supports high availability and read replicas, but they solve different problems:
 
-**Same-region replicas** provide high availability within a region. They use synchronous replication, so data is consistent.
+**High availability** provides failover within a region. A regional Cloud SQL instance uses a primary and standby instance in different zones, with synchronous replication to regional persistent disks.
 
-**Cross-region replicas** provide disaster recovery and reduced read latency. They use asynchronous replication, which means there is a small lag between the primary and replica. Typically this lag is under a second, but it can increase during heavy write periods.
+**Read replicas** offload read traffic and can be created in the same region or a different region. They use asynchronous replication, which means there is a small lag between the primary and replica. Typically this lag is small, but it can increase during heavy write periods.
 
 ## Step 1: Set Up the Primary Instance
 
@@ -56,15 +56,16 @@ gcloud sql instances create primary-db \
   --storage-size=100GB \
   --storage-auto-increase \
   --backup-start-time=02:00 \
-  --enable-bin-log \
+  --enable-point-in-time-recovery \
   --retained-backups-count=7 \
+  --retained-transaction-log-days=7 \
   --maintenance-window-day=SUN \
   --maintenance-window-hour=4
 ```
 
 Key flags:
 - `--availability-type=REGIONAL` enables HA within the primary region
-- `--enable-bin-log` is required for replication (automatically enabled with HA)
+- `--enable-point-in-time-recovery` enables PostgreSQL write-ahead log retention for point-in-time recovery
 - `--backup-start-time` sets automated backup schedule
 
 ## Step 2: Create Cross-Region Replicas
@@ -125,8 +126,8 @@ For MySQL:
 
 ```sql
 -- On the replica, check replication lag
-SHOW SLAVE STATUS\G
--- Look for Seconds_Behind_Master
+SHOW REPLICA STATUS\G
+-- Look for Seconds_Behind_Source (or Seconds_Behind_Master on older versions)
 ```
 
 ## Step 4: Configure Application Read Routing
@@ -184,8 +185,8 @@ def update_user(user_id, data):
 ```bash
 # Start Cloud SQL proxy for both primary and replica
 cloud-sql-proxy \
-  MY_PROJECT:us-central1:primary-db=tcp:5432 \
-  MY_PROJECT:us-east1:replica-east=tcp:5433 &
+  "MY_PROJECT:us-central1:primary-db?port=5432" \
+  "MY_PROJECT:us-east1:replica-east?port=5433" &
 ```
 
 Your application connects to `localhost:5432` for writes and `localhost:5433` for reads.
@@ -308,9 +309,8 @@ gcloud monitoring policies create \
   --display-name="High Replication Lag" \
   --condition-display-name="Replica lag > 30s" \
   --condition-filter='resource.type="cloudsql_database" AND metric.type="cloudsql.googleapis.com/database/replication/replica_lag"' \
-  --condition-threshold-value=30 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --if='> 30' \
+  --duration=300s \
   --notification-channels=CHANNEL_ID
 ```
 
