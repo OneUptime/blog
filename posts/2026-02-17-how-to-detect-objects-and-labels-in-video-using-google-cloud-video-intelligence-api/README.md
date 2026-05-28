@@ -8,7 +8,7 @@ Description: Use Google Cloud Video Intelligence API to automatically detect obj
 
 ---
 
-Manually tagging and categorizing video content does not scale. Whether you are managing a media library, building a content moderation system, or analyzing surveillance footage, the Video Intelligence API lets you automatically detect objects and classify scenes in your videos. It identifies everything from common objects like cars and people to more specific items like musical instruments or food, and it tells you exactly where and when each object appears.
+Manually tagging and categorizing video content does not scale. Whether you are managing a media library, building a content moderation system, or analyzing surveillance footage, the Video Intelligence API lets you automatically detect objects and classify scenes in your videos. It identifies everything from common objects like cars and people to more specific items like musical instruments or food, and for object tracking results it tells you where and when each tracked object appears.
 
 This guide covers how to use the Video Intelligence API for both label detection (what is in the video) and object tracking (where things are moving across frames).
 
@@ -33,15 +33,15 @@ In this post, I will focus on label detection and object tracking since those ar
 ```bash
 # Enable the API
 
-gcloud services enable videointelligence.googleapis.com
+gcloud services enable videointelligence.googleapis.com bigquery.googleapis.com
 
 # Install the client library
-pip install google-cloud-videointelligence
+pip install google-cloud-videointelligence google-cloud-bigquery
 ```
 
 ## Step 1: Basic Label Detection
 
-Label detection identifies what is happening in a video at two levels: shot-level (what happens in each scene) and frame-level (what is visible in individual frames).
+Label detection identifies what is happening in a video at segment level, shot level (what happens in each scene), and frame level (what is visible in sampled frames).
 
 ```python
 # label_detection.py - Detects labels in a video stored in Cloud Storage
@@ -49,8 +49,8 @@ Label detection identifies what is happening in a video at two levels: shot-leve
 from google.cloud import videointelligence_v1 as vi
 
 def detect_labels(video_uri):
-    """Analyzes a video and returns detected labels at both
-    the shot/segment level and the frame level.
+    """Analyzes a video and returns detected labels at
+    the segment, shot, and frame levels.
 
     Args:
         video_uri: GCS path to the video (gs://bucket/video.mp4)
@@ -87,7 +87,7 @@ def detect_labels(video_uri):
     # Process the results
     annotation_result = result.annotation_results[0]
 
-    # Print segment-level labels (what happens across the whole video or shots)
+    # Print segment-level labels (what happens across the whole video or requested segments)
     print("\n--- Segment-Level Labels ---")
     for label in annotation_result.segment_label_annotations:
         print(f"\nLabel: {label.entity.description}")
@@ -98,6 +98,16 @@ def detect_labels(video_uri):
             end = segment.segment.end_time_offset.seconds
             confidence = segment.confidence
             print(f"  Segment: {start}s - {end}s (confidence: {confidence:.2f})")
+
+    # Print shot-level labels (what happens within each detected shot)
+    print("\n--- Shot-Level Labels ---")
+    for label in annotation_result.shot_label_annotations:
+        print(f"\nLabel: {label.entity.description}")
+        for shot in label.segments:
+            start = shot.segment.start_time_offset.seconds
+            end = shot.segment.end_time_offset.seconds
+            confidence = shot.confidence
+            print(f"  Shot: {start}s - {end}s (confidence: {confidence:.2f})")
 
     # Print frame-level labels (what is visible in specific frames)
     print("\n--- Frame-Level Labels ---")
@@ -133,19 +143,11 @@ def track_objects(video_uri):
 
     features = [vi.Feature.OBJECT_TRACKING]
 
-    # Configure object tracking
-    config = vi.ObjectTrackingConfig()
-    config.max_bounding_box_count = 10  # Maximum objects to track per frame
-
-    video_context = vi.VideoContext()
-    video_context.object_tracking_config = config
-
     print(f"Tracking objects in: {video_uri}")
     operation = client.annotate_video(
         request={
             "features": features,
             "input_uri": video_uri,
-            "video_context": video_context,
         }
     )
 
@@ -157,13 +159,12 @@ def track_objects(video_uri):
     for obj in annotation_result.object_annotations:
         description = obj.entity.description
         confidence = obj.confidence
-        track_id = obj.track_id
 
         # Time range where this object was tracked
         start = obj.segment.start_time_offset.seconds
         end = obj.segment.end_time_offset.seconds
 
-        print(f"\nObject: {description} (track #{track_id})")
+        print(f"\nObject: {description}")
         print(f"  Confidence: {confidence:.2f}")
         print(f"  Tracked from {start}s to {end}s")
         print(f"  Total frames: {len(obj.frames)}")
@@ -186,6 +187,8 @@ results = track_objects("gs://your-bucket/your-video.mp4")
 You can also analyze videos stored locally by sending the file content directly:
 
 ```python
+from google.cloud import videointelligence_v1 as vi
+
 def detect_labels_local(video_path):
     """Analyzes a local video file for labels.
     Reads the file and sends it directly to the API."""
@@ -215,6 +218,8 @@ def detect_labels_local(video_path):
 You can request multiple annotation types in a single API call:
 
 ```python
+from google.cloud import videointelligence_v1 as vi
+
 def full_video_analysis(video_uri):
     """Runs a comprehensive analysis combining label detection,
     object tracking, and shot detection in a single API call."""
@@ -290,7 +295,7 @@ If you are building a video search system, store the annotation results in BigQu
 
 ```python
 from google.cloud import bigquery
-from datetime import datetime
+from datetime import datetime, timezone
 
 def index_video_labels(video_id, video_uri, annotation_result):
     """Stores video label annotations in BigQuery for search.
@@ -310,7 +315,7 @@ def index_video_labels(video_id, video_uri, annotation_result):
                 "confidence": float(segment.confidence),
                 "start_seconds": segment.segment.start_time_offset.seconds,
                 "end_seconds": segment.segment.end_time_offset.seconds,
-                "indexed_at": datetime.utcnow().isoformat(),
+                "indexed_at": datetime.now(timezone.utc).isoformat(),
             })
 
     errors = bq_client.insert_rows_json(table_id, rows)
@@ -322,9 +327,9 @@ def index_video_labels(video_id, video_uri, annotation_result):
 
 ## Cost and Performance Tips
 
-- Label detection takes roughly 50% of the video duration to process
+- Processing time varies with video length, file characteristics, and requested features
 - Object tracking takes longer, especially for dense scenes
-- Requesting multiple features in one call is cheaper than separate calls
+- Pricing is charged per minute by feature; shot detection is free when used with label detection
 - Use `segments` in the video context to analyze only portions of a video
 - Frame-level labels generate much more data than segment-level, so disable them if you do not need that granularity
 
