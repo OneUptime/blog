@@ -77,7 +77,7 @@ workloads:
 
 ## Setting Up Google Cloud Backup and DR Service
 
-Google Cloud Backup and DR Service provides centralized backup management for Compute Engine VMs, Cloud SQL, and GKE workloads.
+Google Cloud Backup and DR Service provides centralized backup management for Compute Engine VMs, Compute Engine disks, Cloud SQL instances, and AlloyDB clusters. For GKE workloads, use the separate Backup for GKE service.
 
 ```bash
 # Enable the Backup and DR API
@@ -86,12 +86,11 @@ gcloud services enable backupdr.googleapis.com
 # Create a backup vault for storing backups
 gcloud backup-dr backup-vaults create production-vault \
   --location=us-central1 \
-  --backup-minimum-enforced-retention-duration=604800s  # 7 days minimum retention
+  --backup-min-enforced-retention=7d  # 7 days minimum retention
 
-# Create a management server (required for Backup and DR)
+# Create a management server (required if you use the Backup and DR appliance management console)
 gcloud backup-dr management-servers create dr-manager \
-  --location=us-central1 \
-  --network=projects/my-project/global/networks/default
+  --location=us-central1
 ```
 
 ## Implementing RPO with Backup Schedules
@@ -99,23 +98,26 @@ gcloud backup-dr management-servers create dr-manager \
 Match your backup frequency to your RPO targets.
 
 ```bash
-# For RPO = 0 (zero data loss): Use synchronous replication
-# Cloud SQL with HA enabled provides this within a region
+# For very low RPO during zonal failures: use synchronous regional HA
+# Cloud SQL HA keeps a standby in another zone in the same region.
 gcloud sql instances create critical-db \
   --database-version=POSTGRES_15 \
   --availability-type=REGIONAL \
   --tier=db-custom-4-16384 \
   --region=us-central1
 
-# For RPO = 15 minutes: Point-in-time recovery with continuous WAL archiving
+# For RPO measured in minutes: enable point-in-time recovery with transaction log retention
 gcloud sql instances patch critical-db \
   --enable-point-in-time-recovery \
   --retained-transaction-log-days=7
 
-# For RPO = 1 hour: Hourly backup snapshots
-gcloud sql instances patch standard-db \
-  --backup-start-time=00:00 \
-  --enable-bin-log
+# For backup-and-restore targets: use Backup and DR backup plans.
+# Google Cloud console backup plans have a minimum RPO of 4 hours.
+gcloud backup-dr backup-plans create standard-db-plan \
+  --location=us-central1 \
+  --resource-type=sqladmin.googleapis.com/Instance \
+  --backup-vault=production-vault \
+  --backup-rule=rule-id=every-4-hours,retention-days=30,recurrence=HOURLY,hourly-frequency=4,time-zone=UTC,backup-window-start=0,backup-window-end=24
 ```
 
 For Compute Engine VMs, create backup policies that match your RPO.
@@ -129,15 +131,22 @@ def create_snapshot_schedule(project_id, region, schedule_name, interval_hours):
     client = compute_v1.ResourcePoliciesClient()
 
     # Define the snapshot schedule
+    schedule = compute_v1.ResourcePolicySnapshotSchedulePolicySchedule()
+    if interval_hours == 24:
+        schedule.daily_schedule = compute_v1.ResourcePolicyDailyCycle(
+            days_in_cycle=1,
+            start_time='00:00',
+        )
+    else:
+        schedule.hourly_schedule = compute_v1.ResourcePolicyHourlyCycle(
+            hours_in_cycle=interval_hours,
+            start_time='00:00',
+        )
+
     policy = compute_v1.ResourcePolicy(
         name=schedule_name,
         snapshot_schedule_policy=compute_v1.ResourcePolicySnapshotSchedulePolicy(
-            schedule=compute_v1.ResourcePolicySnapshotSchedulePolicySchedule(
-                hourly_schedule=compute_v1.ResourcePolicyHourlySnapshot(
-                    hours_in_cycle=interval_hours,
-                    start_time='00:00',
-                )
-            ),
+            schedule=schedule,
             retention_policy=compute_v1.ResourcePolicySnapshotSchedulePolicyRetentionPolicy(
                 max_retention_days=30,
                 on_source_disk_delete='KEEP_AUTO_SNAPSHOTS',
@@ -174,12 +183,9 @@ RTO is about how fast you can recover. Automate the recovery process to reduce h
 
 ```python
 # dr_recovery.py - Automated recovery orchestration
-import os
 import time
-import json
-from google.cloud import compute_v1
-from google.cloud import sqladmin_v1beta4
-from google.cloud import container_v1
+import subprocess
+from googleapiclient.discovery import build
 
 class DisasterRecoveryOrchestrator:
     """Automates recovery procedures to meet RTO targets."""
@@ -203,47 +209,51 @@ class DisasterRecoveryOrchestrator:
         """Recover a Cloud SQL instance from backup."""
         start = time.time()
 
-        client = sqladmin_v1beta4.SqlAdminServiceClient()
+        client = build('sqladmin', 'v1beta4')
 
         if backup_id:
             # Restore from a specific backup
-            restore_request = sqladmin_v1beta4.InstancesRestoreBackupRequest(
-                restore_backup_context=sqladmin_v1beta4.RestoreBackupContext(
-                    backup_run_id=backup_id,
-                )
-            )
-            client.restore_backup(
+            request_body = {
+                'restoreBackupContext': {
+                    'backupRunId': str(backup_id),
+                }
+            }
+            operation = client.instances().restoreBackup(
                 project=self.project_id,
                 instance=instance_name,
-                body=restore_request,
-            )
+                body=request_body,
+            ).execute()
         else:
-            # Perform point-in-time recovery to the most recent possible time
-            clone_request = sqladmin_v1beta4.InstancesCloneRequest(
-                clone_context=sqladmin_v1beta4.CloneContext(
-                    destination_instance_name=f'{instance_name}-recovery',
-                    point_in_time=None,  # Most recent available
-                )
-            )
-            client.clone(
+            # Clone the instance using the most recent available state.
+            request_body = {
+                'cloneContext': {
+                    'destinationInstanceName': f'{instance_name}-recovery',
+                }
+            }
+            operation = client.instances().clone(
                 project=self.project_id,
                 instance=instance_name,
-                body=clone_request,
-            )
+                body=request_body,
+            ).execute()
 
         duration = time.time() - start
-        self.log_step(f'Recover Cloud SQL: {instance_name}', 'COMPLETED', int(duration))
+        self.log_step(
+            f'Recover Cloud SQL: {instance_name} ({operation["name"]})',
+            'STARTED',
+            int(duration),
+        )
 
-    def recover_gke_workloads(self, cluster_name, backup_name):
-        """Restore GKE workloads from Velero backup."""
+    def recover_gke_workloads(self, restore_name, restore_plan, backup_name):
+        """Restore GKE workloads from a Backup for GKE backup."""
         start = time.time()
 
-        # This would typically be done via kubectl/velero CLI
-        import subprocess
         result = subprocess.run([
-            'velero', 'restore', 'create',
-            '--from-backup', backup_name,
-            '--wait',
+            'gcloud', 'beta', 'container', 'backup-restore', 'restores', 'create',
+            restore_name,
+            '--project', self.project_id,
+            '--location', self.recovery_region,
+            '--restore-plan', restore_plan,
+            '--backup', backup_name,
         ], capture_output=True, text=True)
 
         duration = time.time() - start
@@ -259,8 +269,13 @@ class DisasterRecoveryOrchestrator:
         zone = client.zone('my-zone')
 
         changes = zone.changes()
-        record_set = zone.resource_record_set(domain, 'A', 300, [new_ip])
-        changes.add_record_set(record_set)
+        new_record_set = zone.resource_record_set(domain, 'A', 300, [new_ip])
+
+        for record_set in zone.list_resource_record_sets():
+            if record_set.name == domain and record_set.record_type == 'A':
+                changes.delete_record_set(record_set)
+
+        changes.add_record_set(new_record_set)
         changes.create()
 
         duration = time.time() - start
@@ -354,17 +369,21 @@ strategies:
 Create monitoring alerts that track your DR readiness.
 
 ```bash
-# Alert when backup age exceeds RPO threshold
+# Alert when no scheduled GKE backup has been created within the RPO threshold
 gcloud alpha monitoring policies create \
-  --display-name="Backup age exceeds RPO" \
-  --condition-display-name="Last backup older than 1 hour" \
-  --condition-filter='metric.type="cloudsql.googleapis.com/database/backup/last_completed_time"'
+  --display-name="Scheduled GKE backup missing" \
+  --condition-display-name="No scheduled backup created in 1 hour" \
+  --condition-filter='metric.type="gkebackup.googleapis.com/backup_created_count" AND metric.labels.scheduled="true"' \
+  --duration=3600s \
+  --if=absent
 
-# Alert when a scheduled backup fails
+# Alert when Backup and DR reports failed snapshot jobs
 gcloud alpha monitoring policies create \
   --display-name="Backup failure alert" \
-  --condition-display-name="Backup job failed" \
-  --condition-filter='metric.type="cloudsql.googleapis.com/database/backup/status" AND metric.labels.status="FAILED"'
+  --condition-display-name="Backup and DR job failed" \
+  --condition-filter='metric.type="backupdr.googleapis.com/jobs/job_trend" AND metric.labels.job_status="failed" AND metric.labels.job_type="snapshot"' \
+  --duration=0s \
+  --if="> 0"
 ```
 
 ## Documenting the DR Runbook
@@ -376,7 +395,7 @@ Every team member should know how to execute the DR plan. Document it clearly.
 
 ### Pre-requisites
 - Access to GCP console or gcloud CLI
-- Velero CLI installed
+- gcloud CLI with the Backup for GKE commands available
 - kubectl configured for recovery cluster
 
 ### Step 1: Assess the Situation (5 minutes)
@@ -390,7 +409,7 @@ Every team member should know how to execute the DR plan. Document it clearly.
 
 ### Step 3: Execute Recovery
 - For database: Run `./scripts/recover-db.sh`
-- For GKE: Run `velero restore create --from-backup latest`
+- For GKE: Run `gcloud beta container backup-restore restores create restore-payment --location us-central1 --restore-plan payment-restore --backup projects/PROJECT_ID/locations/us-central1/backupPlans/payment-plan/backups/BACKUP_ID`
 - For DNS: Run `./scripts/update-dns.sh dr-region`
 
 ### Step 4: Verify
