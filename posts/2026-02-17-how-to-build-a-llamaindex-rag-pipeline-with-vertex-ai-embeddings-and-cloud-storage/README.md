@@ -30,13 +30,13 @@ graph LR
 ## Prerequisites
 
 - Google Cloud project with Vertex AI and Cloud Storage APIs enabled
-- Python 3.9+
+- Python 3.10+
 - Documents uploaded to a GCS bucket
 
 ```bash
 # Install LlamaIndex with Vertex AI and GCS integrations
 
-pip install llama-index llama-index-llms-vertex llama-index-embeddings-vertex llama-index-readers-google google-cloud-storage google-cloud-aiplatform
+pip install llama-index llama-index-llms-google-genai llama-index-embeddings-google-genai llama-index-readers-gcs google-cloud-storage google-cloud-aiplatform
 ```
 
 ## Setting Up the Components
@@ -46,22 +46,20 @@ pip install llama-index llama-index-llms-vertex llama-index-embeddings-vertex ll
 LlamaIndex needs two model connections - one for embeddings (converting text to vectors) and one for generation (producing answers).
 
 ```python
-from llama_index.llms.vertex import Vertex
-from llama_index.embeddings.vertex import VertexTextEmbedding
+from llama_index.llms.google_genai import GoogleGenAI
+from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
 from llama_index.core import Settings
 
 # Configure the embedding model for converting text to vectors
-embed_model = VertexTextEmbedding(
-    model_name="text-embedding-004",
-    project="your-project-id",
-    location="us-central1",
+embed_model = GoogleGenAIEmbedding(
+    model_name="gemini-embedding-001",
+    vertexai_config={"project": "your-project-id", "location": "us-central1"},
 )
 
 # Configure the language model for answer generation
-llm = Vertex(
-    model="gemini-1.5-pro",
-    project="your-project-id",
-    location="us-central1",
+llm = GoogleGenAI(
+    model="gemini-2.5-flash",
+    vertexai_config={"project": "your-project-id", "location": "us-central1"},
     temperature=0.2,
     max_tokens=2048,
 )
@@ -78,13 +76,12 @@ Settings.chunk_overlap = 200  # Overlap between chunks
 LlamaIndex has a dedicated reader for Google Cloud Storage that handles downloading and parsing files from your bucket.
 
 ```python
-from llama_index.readers.google import GCSReader
+from llama_index.readers.gcs import GCSReader
 
 # Initialize the GCS reader
 gcs_reader = GCSReader(
     bucket="your-document-bucket",
     prefix="knowledge-base/",  # Only read files under this prefix
-    project_id="your-project-id",
 )
 
 # Load all documents from the bucket
@@ -102,35 +99,16 @@ for doc in documents[:3]:
 If you need more control over which files to load, you can filter by extension.
 
 ```python
-import re
-from google.cloud import storage
+from llama_index.readers.gcs import GCSReader
 
 def load_filtered_documents(bucket_name: str, prefix: str, extensions: list):
     """Load only specific file types from GCS."""
-    client = storage.Client()
-    bucket = client.bucket(bucket_name)
-    blobs = bucket.list_blobs(prefix=prefix)
-
-    # Filter blobs by extension
-    filtered_blobs = [
-        blob for blob in blobs
-        if any(blob.name.endswith(ext) for ext in extensions)
-    ]
-
-    print(f"Found {len(filtered_blobs)} matching files")
-
-    # Use GCSReader to load filtered files
     reader = GCSReader(
         bucket=bucket_name,
-        project_id="your-project-id",
+        prefix=prefix,
+        required_exts=extensions,
     )
-
-    all_docs = []
-    for blob in filtered_blobs:
-        docs = reader.load_data(blob_name=blob.name)
-        all_docs.extend(docs)
-
-    return all_docs
+    return reader.load_data()
 
 # Load only PDFs and text files
 docs = load_filtered_documents(
@@ -213,9 +191,10 @@ print(f"Answer: {response}")
 
 # Access the source documents that were used
 for source_node in response.source_nodes:
-    print(f"\nSource: {source_node.metadata.get('file_name', 'unknown')}")
-    print(f"Score: {source_node.score:.4f}")
-    print(f"Text: {source_node.text[:200]}...")
+    score = f"{source_node.score:.4f}" if source_node.score is not None else "N/A"
+    print(f"\nSource: {source_node.node.metadata.get('file_name', 'unknown')}")
+    print(f"Score: {score}")
+    print(f"Text: {source_node.node.get_text()[:200]}...")
 ```
 
 ### Customizing the Query Engine
