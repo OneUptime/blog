@@ -20,16 +20,14 @@ The justification codes fall into several categories. CUSTOMER_INITIATED_ACCESS 
 
 ## Prerequisites
 
-Before setting up KAJ, you need an external key manager that supports the Cloud EKM protocol - Fortanix, Thales CipherTrust, or another compatible provider. You also need Cloud EKM enabled in your project and the Cloud KMS Admin role.
+Before setting up KAJ, you need an external key manager that supports the Cloud EKM protocol - Fortanix, Thales CipherTrust, Futurex, or another compatible provider. You also need the Cloud KMS API enabled in your project and the Cloud KMS Admin role.
 
 ```bash
 # Enable the required APIs
 
 gcloud services enable cloudkms.googleapis.com
-gcloud services enable ekms.googleapis.com
 
-# Verify your organization has the KAJ feature available
-# This requires Assured Workloads or a specific support level
+# Verify your organization has an Assured Workloads folder with KAJ available
 gcloud assured workloads list --organization=YOUR_ORG_ID
 ```
 
@@ -37,7 +35,7 @@ gcloud assured workloads list --organization=YOUR_ORG_ID
 
 The external key manager is where your keys physically reside. I will use Fortanix DSM as an example, but the process is similar for other providers.
 
-First, configure your external key manager to accept connections from Google Cloud's EKM service. This typically involves creating an API key or service account in your EKM, whitelisting Google's EKM service IP ranges, and configuring a key that maps to the Cloud EKM key URI format.
+First, configure your external key manager to accept connections from Google Cloud's EKM service. For Cloud EKM over VPC, this typically involves creating a Service Directory service endpoint that points to the private IP address and port of your external key manager, configuring certificates, and configuring a key that maps to the Cloud EKM key path format.
 
 ```bash
 # Create a Cloud EKM connection to your external key manager
@@ -45,7 +43,7 @@ gcloud kms ekm-connections create my-ekm-connection \
   --location=us-central1 \
   --service-directory-service="projects/PROJECT_ID/locations/us-central1/namespaces/ekm-ns/services/ekm-service" \
   --hostname="ekm.example.com" \
-  --server-certificates-pem-file=server-cert.pem
+  --server-certificates-files=server-cert.pem
 ```
 
 ## Step 2: Create a Key Ring and EKM-Backed Key
@@ -62,16 +60,18 @@ gcloud kms keys create kaj-protected-key \
   --keyring=ekm-keyring \
   --location=us-central1 \
   --purpose=encryption \
-  --protection-level=external \
+  --protection-level=external-vpc \
   --default-algorithm=external-symmetric-encryption \
-  --skip-initial-version-creation
+  --skip-initial-version-creation \
+  --crypto-key-backend="projects/PROJECT_ID/locations/us-central1/ekmConnections/my-ekm-connection"
 
 # Create the initial key version pointing to your external key
 gcloud kms keys versions create \
   --key=kaj-protected-key \
   --keyring=ekm-keyring \
   --location=us-central1 \
-  --external-key-uri="https://ekm.example.com/v1/keys/my-key-id"
+  --ekm-connection-key-path="v0/keys/my-key-id" \
+  --primary
 ```
 
 ## Step 3: Configure Key Access Justification Policies
@@ -80,23 +80,19 @@ This is where you define which justification codes are acceptable. Your external
 
 ```json
 {
-  "policy": {
-    "allowed_justifications": [
+  "keyAccessJustificationsPolicy": {
+    "allowedAccessReasons": [
       "CUSTOMER_INITIATED_ACCESS",
-      "GOOGLE_INITIATED_SYSTEM_OPERATION"
-    ],
-    "denied_justifications": [
-      "THIRD_PARTY_DATA_REQUEST",
-      "GOOGLE_INITIATED_SERVICE"
-    ],
-    "default_action": "DENY"
+      "GOOGLE_INITIATED_SYSTEM_OPERATION",
+      "CUSTOMER_AUTHORIZED_WORKFLOW_SERVICING"
+    ]
   }
 }
 ```
 
-The policy above allows access when your own users and applications need to use the key, and when Google's automated systems need to perform operations. It denies access for third-party data requests and Google-initiated service operations.
+The policy above allows access when your own users and applications need to use the key, when Google's automated systems need to perform operations, and when Google cannot generate a more precise justification for an otherwise customer-authorized workflow. Justification codes that are not in the allowed list are denied.
 
-Configure this policy in your external key manager's console. The exact steps depend on your provider, but the concept is the same - you are creating rules that evaluate the justification code attached to each key access request.
+Configure this policy in your external key manager's console if you are using a supported external enforcement partner, or configure the policy on the Cloud KMS key with the Cloud KMS API for software and HSM keys. The exact steps depend on your provider and control package, but the concept is the same - you are creating rules that evaluate the justification code attached to each key access request.
 
 ## Step 4: Apply the Key to Your Resources
 
@@ -129,14 +125,14 @@ Set up monitoring to track all key access events and their justifications. This 
 # Query Cloud Audit Logs for key access events
 gcloud logging read '
   resource.type="cloudkms_cryptokey"
-  AND protoPayload.methodName="Decrypt"
-  AND protoPayload.serviceData.keyAccessJustification!=""
+  AND protoPayload.serviceName="cloudkms.googleapis.com"
+  AND protoPayload.metadata.entries.key_access_justification.reason!=""
 ' --limit=100 --format=json
 
 # Create a log-based metric for denied key access attempts
 gcloud logging metrics create kaj_denied_access \
   --description="Key access requests denied by justification policy" \
-  --filter='resource.type="cloudkms_cryptokey" AND protoPayload.status.code!=0 AND protoPayload.serviceData.keyAccessJustification!=""'
+  --filter='resource.type="cloudkms_cryptokey" AND protoPayload.serviceName="cloudkms.googleapis.com" AND protoPayload.status.code!=0 AND protoPayload.metadata.entries.key_access_justification.reason!=""'
 ```
 
 You can also export these logs to BigQuery for long-term analysis:
@@ -150,13 +146,21 @@ client = bigquery.Client()
 # Query to summarize key access by justification type
 query = """
 SELECT
-    protopayload_auditlog.servicedata_v1_cloudkms.keyAccessJustification AS justification,
+    JSON_VALUE(
+        TO_JSON_STRING(protopayload_auditlog.metadata),
+        '$.entries.key_access_justification.reason'
+    ) AS justification,
     protopayload_auditlog.status.code AS status_code,
     COUNT(*) AS access_count,
     MIN(timestamp) AS first_access,
     MAX(timestamp) AS last_access
 FROM `project.dataset.cloudaudit_googleapis_com_data_access`
 WHERE resource.type = 'cloudkms_cryptokey'
+  AND protopayload_auditlog.servicename = 'cloudkms.googleapis.com'
+  AND JSON_VALUE(
+      TO_JSON_STRING(protopayload_auditlog.metadata),
+      '$.entries.key_access_justification.reason'
+  ) IS NOT NULL
 GROUP BY justification, status_code
 ORDER BY access_count DESC
 """
@@ -177,8 +181,8 @@ gcloud alpha monitoring policies create \
   --display-name="KAJ Access Denied Alert" \
   --condition-display-name="Key access denied by justification policy" \
   --condition-filter='metric.type="logging.googleapis.com/user/kaj_denied_access"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --duration=60s \
+  --if='> 0' \
   --notification-channels="projects/PROJECT_ID/notificationChannels/CHANNEL_ID"
 ```
 
