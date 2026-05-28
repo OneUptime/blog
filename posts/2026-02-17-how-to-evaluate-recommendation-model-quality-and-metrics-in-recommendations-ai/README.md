@@ -31,19 +31,19 @@ There are two categories of metrics to track: model metrics (how well the model 
 - **Revenue Per Recommendation**: Average revenue generated per recommendation impression
 - **Average Order Value lift**: How much higher is the order value when users interact with recommendations vs when they do not
 
-## Accessing Model Metrics in Recommendations AI
+## Accessing Model Status in Recommendations AI
 
-Recommendations AI provides some metrics directly through the console and API.
+Recommendations AI provides serving-config analytics in the console, while the Retail API provides model metadata such as training state, serving state, data state, and tuning information.
 
 ```python
 from google.cloud import retail_v2
 
-def get_model_info(project_id, model_id):
-    """Retrieve model status and basic metrics."""
+def get_model_info(project_number, model_id):
+    """Retrieve model status and metadata."""
     client = retail_v2.ModelServiceClient()
 
     model_name = (
-        f"projects/{project_id}/locations/global"
+        f"projects/{project_number}/locations/global"
         f"/catalogs/default_catalog/models/{model_id}"
     )
 
@@ -63,7 +63,7 @@ def get_model_info(project_id, model_id):
 
     return model
 
-model = get_model_info("my-gcp-project", "homepage-rec-model")
+model = get_model_info("123456789012", "homepage-rec-model")
 ```
 
 ## Building a Custom Evaluation Pipeline
@@ -72,20 +72,21 @@ To track business metrics, build your own evaluation system that connects recomm
 
 ```python
 from google.cloud import bigquery
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 bq_client = bigquery.Client()
 
 def track_recommendation_impression(visitor_id, serving_config,
                                       recommended_product_ids):
     """Log which products were recommended to a user."""
+    now = datetime.now(timezone.utc)
     rows = [{
         "visitor_id": visitor_id,
         "serving_config": serving_config,
         "product_id": pid,
         "position": i + 1,
-        "impression_time": datetime.utcnow().isoformat(),
-        "event_date": datetime.utcnow().strftime("%Y-%m-%d")
+        "impression_time": now.isoformat(),
+        "event_date": now.strftime("%Y-%m-%d")
     } for i, pid in enumerate(recommended_product_ids)]
 
     table_ref = bq_client.dataset("analytics").table("rec_impressions")
@@ -96,12 +97,13 @@ def track_recommendation_impression(visitor_id, serving_config,
 
 def track_recommendation_click(visitor_id, product_id, serving_config):
     """Log when a user clicks on a recommended product."""
+    now = datetime.now(timezone.utc)
     row = {
         "visitor_id": visitor_id,
         "product_id": product_id,
         "serving_config": serving_config,
-        "click_time": datetime.utcnow().isoformat(),
-        "event_date": datetime.utcnow().strftime("%Y-%m-%d")
+        "click_time": now.isoformat(),
+        "event_date": now.strftime("%Y-%m-%d")
     }
 
     table_ref = bq_client.dataset("analytics").table("rec_clicks")
@@ -179,7 +181,7 @@ GROUP BY i.position
 ORDER BY i.position;
 ```
 
-A healthy recommendation system shows a clear decline in CTR as position increases - the best items should be at the top.
+A healthy recommendation system often shows CTR declining as position increases, because the strongest items should appear near the top.
 
 ## Measuring Catalog Coverage
 
@@ -202,7 +204,7 @@ SELECT
   ) as coverage_percent;
 ```
 
-Low coverage (below 30%) suggests the model is stuck in a popularity bias, only recommending well-known products.
+Low coverage can suggest the model is stuck in a popularity bias, only recommending well-known products.
 
 ## A/B Testing Recommendations
 
