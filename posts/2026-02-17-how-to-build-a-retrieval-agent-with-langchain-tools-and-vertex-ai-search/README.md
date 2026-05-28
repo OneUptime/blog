@@ -32,7 +32,7 @@ graph TD
 
 - Google Cloud project with Vertex AI Search configured
 - A Vertex AI Search data store with indexed content
-- Python 3.9+
+- Python 3.10+
 
 ```bash
 # Install required packages
@@ -45,11 +45,17 @@ pip install langchain langchain-google-vertexai langchain-google-community googl
 Before building the agent, you need a Vertex AI Search data store. If you have not set one up yet, you can do it through the Cloud Console or the API.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import discoveryengine_v1 as discoveryengine
 
 def create_search_data_store(project_id: str, location: str, data_store_id: str):
     """Create a Vertex AI Search data store for unstructured documents."""
-    client = discoveryengine.DataStoreServiceClient()
+    client_options = (
+        ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
+        if location != "global"
+        else None
+    )
+    client = discoveryengine.DataStoreServiceClient(client_options=client_options)
 
     # Create the data store
     data_store = discoveryengine.DataStore(
@@ -77,12 +83,20 @@ LangChain lets you wrap any function as a tool for an agent. We will create a to
 
 ```python
 from langchain_core.tools import tool
+from google.api_core.client_options import ClientOptions
 from google.cloud import discoveryengine_v1 as discoveryengine
 
 PROJECT_ID = "your-project-id"
 LOCATION = "global"
 DATA_STORE_ID = "your-data-store-id"
 ENGINE_ID = "your-search-engine-id"
+
+def get_client_options(location: str):
+    return (
+        ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
+        if location != "global"
+        else None
+    )
 
 @tool
 def search_enterprise_docs(query: str) -> str:
@@ -91,7 +105,9 @@ def search_enterprise_docs(query: str) -> str:
     to find factual information to answer a question."""
 
     # Initialize the search client
-    client = discoveryengine.SearchServiceClient()
+    client = discoveryengine.SearchServiceClient(
+        client_options=get_client_options(LOCATION)
+    )
 
     # Build the serving config path
     serving_config = (
@@ -130,10 +146,11 @@ def search_enterprise_docs(query: str) -> str:
         doc_data = doc.derived_struct_data
 
         title = doc_data.get("title", "Untitled")
+        document_id = doc.id or doc.name.rsplit("/", 1)[-1]
         snippets = doc_data.get("snippets", [])
         snippet_text = " ".join(s.get("snippet", "") for s in snippets)
 
-        results.append(f"Title: {title}\nContent: {snippet_text}")
+        results.append(f"Document ID: {document_id}\nTitle: {title}\nContent: {snippet_text}")
 
     if not results:
         return "No results found for this query. Try rephrasing your search."
@@ -151,7 +168,9 @@ def get_document_details(document_id: str) -> str:
     """Retrieve the full content of a specific document from the knowledge base.
     Use this when search results mention a document that needs more detail."""
 
-    client = discoveryengine.DocumentServiceClient()
+    client = discoveryengine.DocumentServiceClient(
+        client_options=get_client_options(LOCATION)
+    )
 
     doc_path = (
         f"projects/{PROJECT_ID}/locations/{LOCATION}"
@@ -161,8 +180,13 @@ def get_document_details(document_id: str) -> str:
 
     try:
         doc = client.get_document(name=doc_path)
-        content = doc.derived_struct_data.get("content", "No content available")
         title = doc.derived_struct_data.get("title", "Untitled")
+        if doc.content.raw_bytes:
+            content = doc.content.raw_bytes.decode("utf-8", errors="replace")
+        elif doc.content.uri:
+            content = f"Document content is stored at: {doc.content.uri}"
+        else:
+            content = doc.struct_data.get("content", "No content available")
         return f"Document: {title}\n\nFull Content:\n{content}"
     except Exception as e:
         return f"Could not retrieve document {document_id}: {str(e)}"
@@ -173,13 +197,13 @@ def get_document_details(document_id: str) -> str:
 Now we assemble the agent with both tools and a system prompt that guides its retrieval strategy.
 
 ```python
+from langchain.agents import create_agent
 from langchain_google_vertexai import ChatVertexAI
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langgraph.checkpoint.memory import InMemorySaver
 
 # Initialize the Gemini model
 llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+    model_name="gemini-2.5-pro",
     project="your-project-id",
     location="us-central1",
     temperature=0.1,
@@ -189,8 +213,7 @@ llm = ChatVertexAI(
 tools = [search_enterprise_docs, get_document_details]
 
 # Define the agent prompt with retrieval strategy guidance
-prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are a knowledgeable assistant with access to the enterprise knowledge base.
+prompt = """You are a knowledgeable assistant with access to the enterprise knowledge base.
 
 Your retrieval strategy:
 1. When a user asks a question, first search the knowledge base for relevant information
@@ -200,50 +223,60 @@ Your retrieval strategy:
 5. Always cite which documents your answer is based on
 6. If you cannot find the answer in the knowledge base, say so clearly
 
-Be thorough but efficient - avoid redundant searches."""),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad"),
-])
+Be thorough but efficient - avoid redundant searches."""
 
-# Create the ReAct agent
-agent = create_react_agent(llm=llm, tools=tools, prompt=prompt)
-
-# Wrap in an executor
-agent_executor = AgentExecutor(
-    agent=agent,
+# Create the agent
+agent = create_agent(
+    model=llm,
     tools=tools,
-    verbose=True,
-    max_iterations=6,  # Allow multiple search rounds
-    handle_parsing_errors=True,
-    return_intermediate_steps=True,  # Keep track of the agent's search history
+    system_prompt=prompt,
+    checkpointer=InMemorySaver(),
 )
 ```
 
 ## Running the Agent
 
 ```python
+from langchain_core.utils.uuid import uuid7
+
 # Simple factual question
-result = agent_executor.invoke({
-    "input": "What is our company's data retention policy?",
-    "chat_history": [],
-})
-print(f"\nAnswer: {result['output']}")
+result = agent.invoke(
+    {"messages": [{"role": "user", "content": "What is our company's data retention policy?"}]},
+    config={
+        "configurable": {"thread_id": str(uuid7())},
+        "recursion_limit": 12,
+    },
+)
+print(f"\nAnswer: {result['messages'][-1].content}")
 
 # Show the agent's search steps
-print(f"\nSearch steps taken: {len(result['intermediate_steps'])}")
-for step in result['intermediate_steps']:
-    action = step[0]
-    print(f"  Tool: {action.tool}, Query: {action.tool_input}")
+tool_calls = [
+    tool_call
+    for message in result["messages"]
+    for tool_call in getattr(message, "tool_calls", [])
+]
+print(f"\nSearch steps taken: {len(tool_calls)}")
+for tool_call in tool_calls:
+    print(f"  Tool: {tool_call['name']}, Args: {tool_call['args']}")
 ```
 
 ```python
 # Complex question requiring multiple searches
-result = agent_executor.invoke({
-    "input": "Compare our standard and premium support tiers - what are the differences in response times and included services?",
-    "chat_history": [],
-})
-print(f"\nAnswer: {result['output']}")
+result = agent.invoke(
+    {
+        "messages": [
+            {
+                "role": "user",
+                "content": "Compare our standard and premium support tiers - what are the differences in response times and included services?",
+            }
+        ]
+    },
+    config={
+        "configurable": {"thread_id": str(uuid7())},
+        "recursion_limit": 12,
+    },
+)
+print(f"\nAnswer: {result['messages'][-1].content}")
 ```
 
 ## Multi-Turn Conversations
@@ -251,22 +284,21 @@ print(f"\nAnswer: {result['output']}")
 The agent can maintain context across multiple turns, building on previous searches.
 
 ```python
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.utils.uuid import uuid7
 
-chat_history = []
+config = {
+    "configurable": {"thread_id": str(uuid7())},
+    "recursion_limit": 12,
+}
 
 def ask_agent(question: str) -> str:
     """Ask the agent a question with conversation context."""
-    result = agent_executor.invoke({
-        "input": question,
-        "chat_history": chat_history,
-    })
+    result = agent.invoke(
+        {"messages": [{"role": "user", "content": question}]},
+        config=config,
+    )
 
-    # Update conversation history
-    chat_history.append(HumanMessage(content=question))
-    chat_history.append(AIMessage(content=result["output"]))
-
-    return result["output"]
+    return result["messages"][-1].content
 
 # Multi-turn example
 print(ask_agent("What integrations does our product support?"))
@@ -282,7 +314,9 @@ Good retrieval agents cite their sources. Here is how to format the output with 
 @tool
 def search_with_citations(query: str) -> str:
     """Search the knowledge base and return results with source citations."""
-    client = discoveryengine.SearchServiceClient()
+    client = discoveryengine.SearchServiceClient(
+        client_options=get_client_options(LOCATION)
+    )
 
     serving_config = (
         f"projects/{PROJECT_ID}/locations/{LOCATION}"
@@ -333,7 +367,7 @@ def safe_search(query: str) -> str:
     for attempt in range(max_retries + 1):
         try:
             # Call the actual search function
-            return search_enterprise_docs.invoke(query)
+            return search_enterprise_docs.invoke({"query": query})
         except Exception as e:
             if attempt < max_retries:
                 time.sleep(1)  # Brief pause before retry
