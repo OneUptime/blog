@@ -10,7 +10,7 @@ Description: Learn how to build a real-time feature serving pipeline using Verte
 
 When a user clicks "Buy Now" on your e-commerce site, your fraud detection model needs their recent purchase history, account age, and device fingerprint features in milliseconds. Querying a data warehouse at prediction time is too slow. Pre-computing and caching features is fragile. A feature store with online serving gives you a managed, low-latency solution for serving pre-computed features at prediction time.
 
-Vertex AI Feature Store provides both offline storage for training and online serving for real-time inference. This guide focuses on the online serving side - getting features to your model as fast as possible.
+Vertex AI Feature Store (Legacy) provides both offline storage for training and online serving for real-time inference. This guide focuses on the online serving side - getting features to your model as fast as possible. Note that Vertex AI Feature Store (Legacy) is deprecated and scheduled to be fully sunset on February 17, 2027; new implementations should evaluate the current Vertex AI Feature Store APIs.
 
 ## Architecture of a Real-Time Feature Pipeline
 
@@ -30,10 +30,9 @@ graph TD
 
     subgraph "Online Serving"
         G[Prediction Request] --> H[Fetch Features]
-        H --> C
-        H --> F
         C --> I[Feature Store Online Store]
         F --> I
+        H --> I
         I --> J[Feature Vector]
         J --> K[Model Prediction]
     end
@@ -54,18 +53,13 @@ aiplatform.init(project="your-project-id", location="us-central1")
 
 feature_store = aiplatform.Featurestore.create(
     featurestore_id="realtime_features",
-    online_serving_config=aiplatform.Featurestore.OnlineServingConfig(
-        fixed_node_count=3  # Number of serving nodes for online reads
-    )
+    online_store_fixed_node_count=3  # Number of serving nodes for online reads
 )
 
 # Create an entity type for users
 user_entity = feature_store.create_entity_type(
     entity_type_id="users",
-    description="User features for fraud detection",
-    online_serving_config=aiplatform.Featurestore.OnlineServingConfig(
-        fixed_node_count=3
-    )
+    description="User features for fraud detection"
 )
 
 # Create features with different value types
@@ -181,19 +175,39 @@ class WriteToFeatureStore(beam.DoFn):
     def process(self, feature_update):
         """Write a single feature update to the online store."""
         from google.protobuf import timestamp_pb2
-        from google.cloud.aiplatform_v1.types import featurestore_online_service
+        from google.cloud.aiplatform_v1 import types
 
-        # Build the write request
-        request = featurestore_online_service.WriteFeatureValuesRequest(
+        generate_time = timestamp_pb2.Timestamp()
+        generate_time.FromJsonString(feature_update["timestamp"])
+
+        def make_feature_value(value):
+            if isinstance(value, bool):
+                return types.FeatureValue(
+                    bool_value=value,
+                    metadata=types.FeatureValue.Metadata(generate_time=generate_time),
+                )
+            if isinstance(value, int):
+                return types.FeatureValue(
+                    int64_value=value,
+                    metadata=types.FeatureValue.Metadata(generate_time=generate_time),
+                )
+            if isinstance(value, float):
+                return types.FeatureValue(
+                    double_value=value,
+                    metadata=types.FeatureValue.Metadata(generate_time=generate_time),
+                )
+            return types.FeatureValue(
+                string_value=str(value),
+                metadata=types.FeatureValue.Metadata(generate_time=generate_time),
+            )
+
+        request = types.WriteFeatureValuesRequest(
             entity_type=self.entity_type,
             payloads=[
-                featurestore_online_service.WriteFeatureValuesPayload(
+                types.WriteFeatureValuesPayload(
                     entity_id=feature_update["entity_id"],
                     feature_values={
-                        k: featurestore_online_service.FeatureValue(
-                            int64_value=v if isinstance(v, int) else None,
-                            double_value=v if isinstance(v, float) else None
-                        )
+                        k: make_feature_value(v)
                         for k, v in feature_update["feature_values"].items()
                     }
                 )
@@ -326,7 +340,7 @@ def predict_fraud(request):
 
 Several configuration choices impact the latency of online feature reads.
 
-The number of online serving nodes directly affects throughput and tail latency. Start with 3 nodes and scale based on your QPS requirements. Each node can handle roughly 1000-5000 reads per second depending on the number of features per read.
+The number of online serving nodes directly affects throughput and tail latency. Start with enough nodes for your expected QPS and import load, then scale based on the Feature Store online serving metrics and quota limits in your project.
 
 Read only the features you need. Fetching 5 features is faster than fetching 50. If different models need different feature subsets, specify only the relevant feature IDs in each read call.
 
@@ -334,6 +348,6 @@ Batch your reads when possible. If you need features for multiple entities in on
 
 Keep your feature values small. Large string features or high-cardinality arrays add serialization overhead. Pre-compute aggregations instead of storing raw data.
 
-Feature freshness depends on your ingestion pipeline. Batch ingestion updates features on an hourly or daily cadence. Streaming ingestion through Dataflow can achieve near-real-time freshness with latencies of a few seconds. Choose based on how stale your features can be without hurting model quality.
+Feature freshness depends on your ingestion pipeline. Batch ingestion updates features on an hourly or daily cadence. Streaming ingestion through Dataflow can keep features fresher than batch ingestion, but end-to-end latency depends on your pipeline, network, and Feature Store write path. Choose based on how stale your features can be without hurting model quality.
 
-A well-configured feature store online serving setup typically achieves P99 latencies under 10 milliseconds for small feature vectors, making it suitable for user-facing prediction services where every millisecond counts.
+A well-configured feature store online serving setup is designed for low-latency reads of small feature vectors, making it suitable for user-facing prediction services where every millisecond counts.
