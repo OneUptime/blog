@@ -28,7 +28,7 @@ The Prometheus adapter translates Prometheus queries into the Kubernetes custom 
 
 ## Prerequisites
 
-- A GKE cluster (Standard mode, not Autopilot - we need control over cluster add-ons)
+- A GKE cluster (Standard mode is the most flexible option for the self-managed Prometheus Adapter path; for Autopilot, use the managed Prometheus option later in this guide)
 - Prometheus installed in the cluster (I will use the kube-prometheus-stack Helm chart)
 - Helm 3 installed
 - `kubectl` configured for your cluster
@@ -67,7 +67,6 @@ const app = express();
 const queueDepth = new client.Gauge({
   name: "app_request_queue_depth",
   help: "Number of requests currently waiting in the processing queue",
-  labelValues: ["service"],
 });
 
 // Create a histogram for tracking request duration
@@ -101,7 +100,7 @@ app.listen(8080);
 
 ## Step 3: Create a ServiceMonitor
 
-Tell Prometheus to scrape your application by creating a ServiceMonitor resource.
+Tell Prometheus to scrape your application by creating a ServiceMonitor resource. This assumes your app has a Kubernetes Service in the same namespace with the label `app: my-app` and a port named `http`.
 
 ```yaml
 # service-monitor.yaml - Tells Prometheus to scrape your app
@@ -162,7 +161,7 @@ rules:
         as: "${1}"
       metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
 
-    # Map request duration to a per-second rate
+    # Map request count to a per-second request rate
     - seriesQuery: 'app_request_duration_seconds_count{namespace!="",pod!=""}'
       resources:
         overrides:
@@ -171,7 +170,7 @@ rules:
           pod:
             resource: pod
       name:
-        matches: "^(.*)_total$"
+        matches: "^(.*)_count$"
         as: "${1}_per_second"
       metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
 ```
@@ -223,7 +222,7 @@ spec:
           type: AverageValue
           averageValue: "10"
 
-    # Secondary metric: CPU as a fallback
+    # Secondary metric: CPU as another scaling signal
     - type: Resource
       resource:
         name: cpu
@@ -265,8 +264,8 @@ Generate some load and watch the HPA respond.
 kubectl get hpa my-app-hpa --watch
 
 # In another terminal, generate load
-kubectl run load-test --rm -i --tty --image=busybox -- /bin/sh -c \
-  "while true; do wget -q -O- http://my-app:8080/process; done"
+kubectl run load-test --rm -i --tty --image=curlimages/curl -- /bin/sh -c \
+  "while true; do curl -s -X POST http://my-app:8080/process >/dev/null; done"
 ```
 
 You should see the `TARGETS` column in the HPA output change as the queue depth increases, and eventually new pods will be created.
@@ -300,7 +299,7 @@ spec:
       interval: 15s
 ```
 
-With GMP, you use the `Stackdriver` adapter instead of the Prometheus adapter, and metrics flow through Cloud Monitoring.
+With GMP, you can use the Custom Metrics Stackdriver Adapter so metrics flow through Cloud Monitoring. Do not install the Stackdriver Adapter and Prometheus Adapter together in the same cluster because their custom metrics API resources overlap.
 
 ## Troubleshooting Common Issues
 
