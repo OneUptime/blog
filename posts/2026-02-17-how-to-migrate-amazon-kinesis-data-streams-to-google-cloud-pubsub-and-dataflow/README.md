@@ -8,7 +8,7 @@ Description: A step-by-step guide to migrating Amazon Kinesis Data Streams to Go
 
 ---
 
-Amazon Kinesis Data Streams and Google Cloud Pub/Sub are both managed streaming services, but they have fundamentally different architectures. Kinesis uses a shard-based model where you provision throughput capacity. Pub/Sub is a serverless messaging service that auto-scales without shard management. When you factor in stream processing, Kinesis Data Analytics maps to Google Cloud Dataflow.
+Amazon Kinesis Data Streams and Google Cloud Pub/Sub are both managed streaming services, but they have fundamentally different architectures. Kinesis uses a shard-based model where you provision throughput capacity. Pub/Sub is a serverless messaging service that auto-scales without shard management. When you factor in stream processing, Amazon Managed Service for Apache Flink (formerly Kinesis Data Analytics for Apache Flink) maps to Google Cloud Dataflow.
 
 This guide covers migrating both the streaming infrastructure and the processing logic.
 
@@ -20,13 +20,13 @@ Before starting, understand what changes between the two platforms:
 - Kinesis retains data for 24 hours by default (up to 365 days). Pub/Sub retains unacknowledged messages for 7 days by default (up to 31 days).
 - Kinesis consumers track their position using sequence numbers. Pub/Sub uses subscriptions with automatic acknowledgment tracking.
 - Kinesis uses partition keys for ordering within shards. Pub/Sub provides ordering keys for ordered delivery within subscriptions.
-- Kinesis Data Analytics uses SQL or Apache Flink. Dataflow uses Apache Beam.
+- Amazon Managed Service for Apache Flink uses Apache Flink APIs, including Java, Python, Scala, and SQL. Legacy Kinesis Data Analytics for SQL applications were discontinued on January 27, 2026. Dataflow uses Apache Beam.
 
 ```mermaid
 graph LR
     subgraph AWS
         P1[Producers] --> KDS[Kinesis Data Streams]
-        KDS --> KDA[Kinesis Data Analytics]
+        KDS --> KDA[Managed Service for Apache Flink]
         KDS --> LC[Lambda Consumer]
         KDA --> S3[S3 Output]
     end
@@ -58,7 +58,7 @@ aws kinesis describe-stream-summary \
     EncryptionType:EncryptionType
   }'
 
-# List all Kinesis Data Analytics applications
+# List all Managed Service for Apache Flink applications
 aws kinesisanalyticsv2 list-applications \
   --query 'ApplicationSummaries[*].{Name:ApplicationName,Status:ApplicationStatus}'
 ```
@@ -112,12 +112,13 @@ def send_to_kinesis(event):
 from google.cloud import pubsub_v1
 import json
 
-publisher = pubsub_v1.PublisherClient()
+publisher_options = pubsub_v1.types.PublisherOptions(enable_message_ordering=True)
+publisher = pubsub_v1.PublisherClient(publisher_options=publisher_options)
 topic_path = publisher.topic_path('my-project', 'my-event-stream')
 
 def send_to_pubsub(event):
     # Publish a message to the Pub/Sub topic
-    # ordering_key preserves ordering like Kinesis partition keys
+    # ordering_key preserves per-key delivery order when the subscription also enables ordering
     data = json.dumps(event).encode('utf-8')
     future = publisher.publish(
         topic_path,
@@ -194,13 +195,13 @@ except TimeoutError:
 
 ## Step 5: Migrate Stream Processing to Dataflow
 
-If you use Kinesis Data Analytics for stream processing, migrate that logic to Dataflow using Apache Beam.
+If you use Amazon Managed Service for Apache Flink for stream processing, migrate that logic to Dataflow using Apache Beam.
 
-Here is an example converting a Kinesis Analytics SQL query into a Beam pipeline:
+Here is an example converting Flink SQL-style aggregation logic into a Beam pipeline:
 
 ```python
 # Apache Beam pipeline for Dataflow
-# Equivalent to a Kinesis Data Analytics application
+# Equivalent to an Amazon Managed Service for Apache Flink application
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.transforms.window import FixedWindows
@@ -284,8 +285,8 @@ gcloud monitoring policies create \
   --display-name="Pub/Sub Consumer Lag" \
   --condition-display-name="Old unacked messages" \
   --condition-filter='resource.type="pubsub_subscription" AND metric.type="pubsub.googleapis.com/subscription/oldest_unacked_message_age"' \
-  --condition-threshold-value=300 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --duration=60s \
+  --if="> 300"
 ```
 
 Key metrics to track:
