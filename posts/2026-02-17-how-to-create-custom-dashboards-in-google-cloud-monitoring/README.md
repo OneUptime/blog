@@ -14,7 +14,7 @@ This guide covers creating custom dashboards both through the Console and progra
 
 ## Dashboard Basics
 
-A Cloud Monitoring dashboard is a collection of widgets arranged in a grid layout. Each widget displays one or more metrics using different visualization types - line charts, bar charts, gauges, scorecards, text, and more. Dashboards update in real time and can be shared across your team.
+A Cloud Monitoring dashboard is a collection of widgets arranged in a layout. Each widget displays one or more metrics using different visualization types - line charts, bar charts, gauges, scorecards, text, and more. Dashboards update in real time and can be shared across your team.
 
 ## Creating a Dashboard in the Console
 
@@ -255,7 +255,7 @@ This is the layout type I recommend for any dashboard beyond a simple one. It le
 
 ## Adding Variables and Filters
 
-Dashboard-level filters let viewers narrow down what they see without modifying the dashboard definition.
+Pinned dashboard filters let viewers narrow down what they see without modifying the dashboard definition.
 
 ```json
 {
@@ -263,13 +263,11 @@ Dashboard-level filters let viewers narrow down what they see without modifying 
   "dashboardFilters": [
     {
       "labelKey": "resource.label.namespace_name",
-      "filterType": "RESOURCE_LABEL",
-      "templateVariable": "namespace"
+      "filterType": "RESOURCE_LABEL"
     },
     {
       "labelKey": "resource.label.cluster_name",
-      "filterType": "RESOURCE_LABEL",
-      "templateVariable": "cluster"
+      "filterType": "RESOURCE_LABEL"
     }
   ],
   "mosaicLayout": {
@@ -279,7 +277,7 @@ Dashboard-level filters let viewers narrow down what they see without modifying 
 }
 ```
 
-Users can then select specific namespaces or clusters from a dropdown, and all widgets on the dashboard filter accordingly.
+Users can then select specific namespaces or clusters from a dropdown, and relevant widgets on the dashboard filter accordingly.
 
 ## Version Controlling Dashboards
 
