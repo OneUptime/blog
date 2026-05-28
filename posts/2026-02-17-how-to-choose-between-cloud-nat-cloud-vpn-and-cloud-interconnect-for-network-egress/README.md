@@ -12,9 +12,9 @@ Network egress on Google Cloud Platform is one of those topics that seems straig
 
 ## Cloud NAT - Internet Access Without Public IPs
 
-Cloud NAT provides outbound internet connectivity for VM instances and GKE pods that do not have external IP addresses. It translates private IP addresses to public IP addresses so your resources can reach the internet while remaining inaccessible from the outside.
+Public Cloud NAT provides outbound internet connectivity for VM instances and GKE pods that do not have external IP addresses. It translates private IP addresses to public IP addresses so your resources can reach the internet while remaining inaccessible from the outside.
 
-Think of Cloud NAT as your default internet gateway for private workloads. It is not about connecting to on-premises infrastructure or creating encrypted tunnels - it is simply about letting private resources reach the public internet.
+Think of Public Cloud NAT as your default internet gateway for private workloads. It is not about connecting to on-premises infrastructure or creating encrypted tunnels - it is simply about letting private resources reach the public internet.
 
 ```bash
 # Create a Cloud Router (required for Cloud NAT)
@@ -47,7 +47,7 @@ gcloud compute routers nats create my-nat-gateway \
 - You need predictable egress IPs for allowlisting with external services
 - You want to enforce that all internet access goes through a controlled gateway
 
-**Cloud NAT does not help with:**
+**Public Cloud NAT does not help with:**
 
 - Connecting to on-premises networks
 - Providing encrypted tunnels between sites
@@ -59,7 +59,7 @@ Cloud VPN creates IPsec encrypted tunnels between your GCP VPC and another netwo
 
 GCP offers two types of Cloud VPN:
 
-- **HA VPN** - the recommended option, provides 99.99% SLA with two tunnels
+- **HA VPN** - the recommended option, provides 99.99% SLA for most topologies when you configure tunnels on both HA VPN gateway interfaces
 - **Classic VPN** - older option with a single tunnel and 99.9% SLA
 
 ```bash
@@ -78,7 +78,7 @@ gcloud compute routers create vpn-router \
   --region us-central1 \
   --asn 65001
 
-# Create VPN tunnels
+# Create one VPN tunnel (repeat for the second HA VPN gateway interface)
 gcloud compute vpn-tunnels create tunnel-0 \
   --vpn-gateway my-ha-vpn \
   --peer-external-gateway my-peer-gateway \
@@ -87,7 +87,7 @@ gcloud compute vpn-tunnels create tunnel-0 \
   --ike-version 2 \
   --shared-secret "your-secret-key" \
   --router vpn-router \
-  --vpn-gateway-interface 0
+  --interface 0
 
 # Configure BGP session on the Cloud Router
 gcloud compute routers add-interface vpn-router \
@@ -141,8 +141,12 @@ gcloud compute interconnects attachments dedicated create my-attachment \
 gcloud compute routers add-interface my-router \
   --interface-name attachment-iface \
   --interconnect-attachment my-attachment \
-  --ip-address 169.254.100.1 \
-  --mask-length 29 \
+  --region us-central1
+
+gcloud compute routers add-bgp-peer my-router \
+  --peer-name attachment-peer \
+  --interface attachment-iface \
+  --peer-asn 65002 \
   --region us-central1
 ```
 
@@ -166,11 +170,11 @@ gcloud compute routers add-interface my-router \
 | Feature | Cloud NAT | Cloud VPN | Cloud Interconnect |
 |---------|-----------|-----------|-------------------|
 | Purpose | Internet egress | Site-to-site tunnel | Private dedicated link |
-| Encryption | N/A | IPsec (built-in) | Optional (MACsec) |
+| Encryption | N/A | IPsec (built-in) | Optional (MACsec or HA VPN over Interconnect) |
 | Bandwidth | Scales with instances | 3 Gbps per tunnel | 10-200 Gbps |
 | Latency | Internet latency | Internet latency | Low, consistent |
 | Setup time | Minutes | Hours | Days to months |
-| Monthly cost | ~$0.045/hr + data | ~$0.075/hr + data | $1,700+/month |
+| Monthly cost | Up to ~$0.044/hr + IPs + data | Region-dependent tunnel-hour + data | ~$1,700/month per 10 Gbps circuit + attachments |
 | Egress pricing | Standard internet | Standard internet | Reduced rates |
 | Use case | Internet access | Hybrid connectivity | High-volume hybrid |
 
