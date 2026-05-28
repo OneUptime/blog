@@ -14,7 +14,7 @@ Text embeddings are one of those behind-the-scenes technologies that power a hug
 
 An embedding is a list of floating-point numbers (a vector) that represents the meaning of a piece of text. Two texts with similar meanings will have similar vectors, even if they use completely different words. For example, "How do I restart my server?" and "Steps to reboot a machine" would have very similar embeddings, even though they share few words.
 
-These vectors are typically 768 dimensions, meaning each text is represented by a list of 768 numbers. The relationships between these numbers encode the semantic meaning.
+With `text-embedding-005`, these vectors are up to 768 dimensions, meaning each text is represented by a list of up to 768 numbers. Newer models such as `gemini-embedding-001` can produce larger vectors. The relationships between these numbers encode the semantic meaning.
 
 ## Getting Started
 
@@ -23,7 +23,7 @@ Install the Vertex AI SDK:
 ```bash
 # Install the SDK
 
-pip install google-cloud-aiplatform
+pip install --upgrade google-cloud-aiplatform numpy
 ```
 
 ## Generating Your First Embedding
@@ -140,6 +140,9 @@ The available task types are:
 - `SEMANTIC_SIMILARITY` - For comparing text similarity
 - `CLASSIFICATION` - For text classification tasks
 - `CLUSTERING` - For grouping similar texts
+- `QUESTION_ANSWERING` - For question-answering query embeddings
+- `FACT_VERIFICATION` - For fact-verification query embeddings
+- `CODE_RETRIEVAL_QUERY` - For retrieving relevant code blocks from text queries
 
 ## Computing Similarity Between Texts
 
@@ -253,7 +256,7 @@ search('What is the best way to manage access control?')
 
 ## Handling Large Batches
 
-The API has limits on batch size. For large datasets, process in chunks:
+The API has limits on batch size. For online prediction requests, the general text embedding limit is 250 input texts and 20,000 tokens per request, with each input limited to 2,048 tokens. For large datasets, process in chunks:
 
 ```python
 # large_batch.py
@@ -293,11 +296,11 @@ print(f"Generated {vectors.shape[0]} embeddings of dimension {vectors.shape[1]}"
 
 Vertex AI offers several embedding models:
 
-- **text-embedding-005** - Latest model, best overall performance
-- **text-embedding-004** - Previous generation, still widely used
+- **gemini-embedding-001** - Highest-performing current embedding model, with output dimensions up to 3072
+- **text-embedding-005** - Specialized in English and code tasks, with output dimensions up to 768
 - **text-multilingual-embedding-002** - Supports 100+ languages
 
-For English-only applications, use `text-embedding-005`. For multilingual applications, use `text-multilingual-embedding-002`.
+For the best overall embedding quality, use `gemini-embedding-001`. Use `text-embedding-005` when you want an English/code-specialized model with 768-dimensional output, and use `text-multilingual-embedding-002` for multilingual applications.
 
 ## Wrapping Up
 
