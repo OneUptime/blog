@@ -19,7 +19,7 @@ There are a few practical reasons to reach for views:
 - **Reduce query duplication.** If 10 different services run the same complex join, you can define it once as a view.
 - **Abstract complexity.** Downstream consumers do not need to know about the underlying table structure. They just query the view.
 - **Enforce consistency.** When business logic changes, you update the view definition in one place instead of hunting down every query.
-- **Control access.** You can grant read access to a view without exposing the underlying tables directly.
+- **Control access.** With `SQL SECURITY DEFINER` and fine-grained access control, you can grant read access to a view without exposing the underlying tables directly.
 
 That said, views in Cloud Spanner are not materialized. They do not cache results. Every time you query a view, Spanner runs the underlying query. Keep that in mind for performance planning.
 
@@ -30,12 +30,12 @@ The syntax for creating a view in Cloud Spanner is straightforward. Let's say yo
 Here is the table schema for reference:
 
 ```sql
--- Orders table with a foreign key to Customers
+-- Customers table referenced by Orders
 CREATE TABLE Customers (
   CustomerId INT64 NOT NULL,
   Name STRING(256),
   Email STRING(256),
-  Region STRING(64),
+  Region STRING(64)
 ) PRIMARY KEY (CustomerId);
 
 -- Orders table linked to Customers
@@ -44,7 +44,7 @@ CREATE TABLE Orders (
   CustomerId INT64 NOT NULL,
   Amount FLOAT64,
   Status STRING(32),
-  CreatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
+  CreatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true)
 ) PRIMARY KEY (OrderId);
 ```
 
@@ -67,7 +67,7 @@ FROM Orders o
 JOIN Customers c ON o.CustomerId = c.CustomerId;
 ```
 
-The `SQL SECURITY INVOKER` clause is important. It means the view runs with the permissions of the user querying it, not the user who created it. Cloud Spanner currently requires this setting for all views.
+The `SQL SECURITY INVOKER` clause is important. It means the view runs with the permissions of the user querying it, not the user who created it. Cloud Spanner requires every view to specify either `SQL SECURITY INVOKER` or `SQL SECURITY DEFINER`.
 
 ## Querying Views
 
@@ -223,7 +223,7 @@ Cloud Spanner views come with a few restrictions:
 
 - Views are read-only. You cannot INSERT, UPDATE, or DELETE through a view.
 - You cannot create indexes on views.
-- Views must use `SQL SECURITY INVOKER`.
+- Views must specify `SQL SECURITY INVOKER` or `SQL SECURITY DEFINER`.
 - The underlying query cannot use DML statements or procedural logic.
 - Schema changes to base tables can break views if columns are removed or renamed.
 
