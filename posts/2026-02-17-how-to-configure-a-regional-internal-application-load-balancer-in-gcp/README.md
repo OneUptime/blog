@@ -8,13 +8,13 @@ Description: Learn how to configure a regional internal application load balance
 
 ---
 
-Not every load balancer needs to face the internet. When you have microservices communicating inside a VPC, or internal tools that should never be exposed publicly, a regional internal application load balancer is the right choice. It distributes Layer 7 (HTTP/HTTPS) traffic between backends that live within your VPC network, and it is only accessible from within that network or connected networks.
+Not every load balancer needs to face the internet. When you have microservices communicating inside a VPC, or internal tools that should never be exposed publicly, a regional internal application load balancer is the right choice. It distributes Layer 7 (HTTP/HTTPS) traffic between backends that live within your VPC network, and it is only accessible from within that network or connected networks, subject to the load balancer's regional access settings.
 
 This guide covers the full setup from scratch, including the proxy-only subnet that this load balancer type requires.
 
 ## How the Regional Internal Application Load Balancer Works
 
-Unlike external load balancers, the internal application load balancer gets a private IP address from your VPC subnet. Clients within the VPC (or connected via VPN/Interconnect) send requests to this private IP, and the load balancer routes them to healthy backends based on URL maps, just like its external counterpart.
+Unlike external load balancers, the internal application load balancer gets a private IP address from your VPC subnet. Clients within the VPC (or connected via VPN/Interconnect) send requests to this private IP, and the load balancer routes them to healthy backends based on URL maps, just like its external counterpart. By default, regional internal application load balancers are reachable by clients in the same region; you can enable global access on the forwarding rule if clients in other regions need to reach it.
 
 Under the hood, this load balancer uses Envoy proxies. These proxies run in a special proxy-only subnet that you must create in the same region as the load balancer. The proxies handle the actual traffic forwarding, so backend instances see traffic originating from IPs in the proxy-only subnet rather than from the original client.
 
@@ -79,10 +79,16 @@ The `INTERNAL_MANAGED` load balancing scheme is what makes this an Envoy-based i
 Now attach your instance group:
 
 ```bash
+# Make sure the instance group's named port points to your backend app port
+gcloud compute instance-groups set-named-ports my-internal-group \
+    --named-ports=http:8080 \
+    --zone=us-central1-a
+
 # Add an instance group to the backend service
 gcloud compute backend-services add-backend internal-web-backend \
     --instance-group=my-internal-group \
     --instance-group-zone=us-central1-a \
+    --balancing-mode=UTILIZATION \
     --region=us-central1
 ```
 
@@ -107,6 +113,7 @@ The target proxy ties the URL map to the load balancer.
 # Create a regional target HTTP proxy
 gcloud compute target-http-proxies create internal-http-proxy \
     --url-map=internal-web-map \
+    --url-map-region=us-central1 \
     --region=us-central1
 ```
 
@@ -197,7 +204,7 @@ There are a few important distinctions worth knowing:
 
 **Scope**: The regional internal application load balancer is regional, not global. Your backends must be in the same region as the load balancer. If you need cross-region internal load balancing, look at the cross-region internal application load balancer instead.
 
-**IP Address**: It uses a private IP from your VPC subnet, not a public IP. Only clients within the VPC (or connected networks) can reach it.
+**IP Address**: It uses a private IP from your VPC subnet, not a public IP. Only clients within the VPC (or connected networks) can reach it, and regional access rules still apply unless you enable global access.
 
 **Proxy-Only Subnet**: This is unique to Envoy-based load balancers. External load balancers do not need this.
 
@@ -209,7 +216,7 @@ If requests are timing out, check that the proxy-only subnet exists and is in th
 
 If you get 502 errors, the health checks are likely failing. Verify that your firewall rules allow traffic on the health check port from Google's health check IP ranges, and that the application is actually responding on the configured path and port.
 
-If some clients cannot reach the load balancer, confirm they are in the same VPC or a connected network. The internal load balancer is not accessible from the internet.
+If some clients cannot reach the load balancer, confirm they are in the same VPC or a connected network and, for a regional internal application load balancer, in the same region unless global access is enabled. The internal load balancer is not accessible from the internet.
 
 ## Wrapping Up
 
