@@ -16,9 +16,9 @@ Every write to Spanner involves network overhead, transaction coordination, and 
 
 The difference is significant. Single-row writes might give you a few hundred writes per second. Properly batched writes can push tens of thousands of rows per second on a modestly sized instance.
 
-## Method 1: Mutations with Apply
+## Method 1: Mutations with a Batch
 
-The simplest form of batch writing groups multiple mutations into a single `Apply` call:
+The simplest form of batch writing groups multiple mutations into a single commit:
 
 ```python
 from google.cloud import spanner
@@ -57,10 +57,10 @@ The `batch()` context manager collects all mutations and commits them in a singl
 
 There are limits to how much you can put in a single batch:
 
-- Maximum 20,000 mutations per commit (each column value counts as one mutation)
-- Maximum 100 MB of data per commit
+- Maximum 80,000 mutations per commit, including indexes (each column value counts as one mutation)
+- Maximum 100 MiB of data per commit
 
-If you have 4 columns per row, you can fit about 5,000 rows in a single batch (4 columns x 5,000 rows = 20,000 mutations). Plan your batch sizes accordingly:
+If you have 4 columns per row and no secondary indexes, you can fit about 20,000 rows in a single batch (4 columns x 20,000 rows = 80,000 mutations). Indexes add mutations, so plan your batch sizes accordingly:
 
 ```python
 def chunked_batch_insert(all_rows, columns, table_name, chunk_size=2000):
@@ -110,11 +110,11 @@ def batch_update_statuses(order_updates):
     database.run_in_transaction(run_batch_dml)
 ```
 
-Batch DML is limited to 20 statements per batch. For more statements, execute multiple batches within the same transaction or across separate transactions.
+For very large sets of statements, execute multiple batches within the same transaction or across separate transactions while staying within Spanner's transaction, parameter, and request-size limits.
 
 ## Method 3: Partitioned DML
 
-For bulk updates that do not need transactional semantics, partitioned DML is the fastest option. It splits a single DML statement across multiple server-side partitions and executes them in parallel:
+For bulk updates and deletes that do not need all-or-nothing transactional semantics, partitioned DML can be a good option. It splits a single DML statement across multiple server-side partitions and executes them in parallel:
 
 ```python
 def archive_old_orders():
@@ -127,10 +127,10 @@ def archive_old_orders():
         "AND CreatedAt < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)"
     )
 
-    print(f"Archived {row_count} orders")
+    print(f"Archived at least {row_count} orders")
 ```
 
-Partitioned DML is not a transaction in the traditional sense. It does not provide atomicity across the entire operation. Some rows might be updated while others are not yet processed. It is best for maintenance operations where eventual consistency is acceptable.
+Partitioned DML is not a transaction in the traditional sense. It does not provide atomicity across the entire operation, and the returned row count is a lower bound. Some partitions might be updated while others are not yet processed or might never run if the statement fails. It is best for idempotent maintenance operations where all-or-nothing semantics are not required.
 
 ## Method 4: Parallel Writers
 
@@ -190,7 +190,7 @@ func parallelIngest(ctx context.Context, client *spanner.Client, allRows [][]int
 Make sure your batch writes touch different parts of the key space. If all rows in a batch have adjacent primary keys, they will all hit the same split and create a hotspot:
 
 ```python
-# Good: Random UUIDs spread writes across all splits
+# Good: Random UUIDs help spread writes across splits
 values = [[str(uuid.uuid4()), data] for data in batch_data]
 
 # Bad: Sequential IDs concentrate writes on one split
@@ -215,12 +215,12 @@ A batch size of 500-2000 rows works well for most workloads.
 Keep an eye on CPU utilization during bulk ingestion:
 
 ```bash
-# Check instance CPU during ingestion
+# Check high-priority instance CPU during ingestion
 gcloud monitoring metrics list \
-    --filter="metric.type=spanner.googleapis.com/instance/cpu/utilization"
+    --filter="metric.type=spanner.googleapis.com/instance/cpu/utilization_by_priority"
 ```
 
-If CPU exceeds 65% (regional) or 45% (multi-region), either slow down the ingestion rate or add more processing units temporarily.
+If high-priority CPU exceeds 65% (regional) or 45% (multi-region), either slow down the ingestion rate or add more processing units temporarily.
 
 ### Use InsertOrUpdate for Idempotency
 
