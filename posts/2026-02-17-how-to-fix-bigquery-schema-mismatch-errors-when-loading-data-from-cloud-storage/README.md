@@ -103,7 +103,7 @@ bq load \
 ```
 
 The flags:
-- `--allow_jagged_rows`: allows rows with fewer columns than the schema (missing columns default to NULL)
+- `--allow_jagged_rows`: allows rows that are missing trailing optional columns (missing values default to NULL)
 - `--ignore_unknown_values`: ignores extra columns not in the schema
 
 ## Mismatch 3 - JSON Field Name Differences
@@ -114,7 +114,7 @@ When loading newline-delimited JSON, field names must match the schema exactly (
 {"UserId": 123, "value": 42}
 ```
 
-If your schema defines the field as `user_id` but the JSON has `UserId`, the field will be null (or the load will fail depending on whether the field is required).
+If your schema defines the field as `user_id` but the JSON has `UserId`, BigQuery treats `UserId` as an unknown field by default and the row can fail. If you load with `--ignore_unknown_values`, the unknown field is ignored; then `user_id` is loaded as NULL if it is nullable, or the row fails if `user_id` is required.
 
 ```bash
 # Load with auto-detect to see what BigQuery infers from the JSON
@@ -218,15 +218,16 @@ print(schema)
 ```
 
 Common Parquet schema mismatches:
-- INT32 in Parquet vs INT64 in BigQuery
-- BYTE_ARRAY in Parquet vs STRING in BigQuery
-- Missing logical type annotations for timestamps
+- BYTE_ARRAY without a STRING logical annotation maps to BYTES, not STRING
+- INT64 without a TIMESTAMP logical annotation maps to INT64, not TIMESTAMP
+- Decimal logical types must be compatible with NUMERIC, BIGNUMERIC, or STRING targets
+
+INT32 in Parquet generally maps to INT64 in BigQuery, so it is usually not a mismatch by itself.
 
 ```bash
-# Load Parquet with schema auto-detection (recommended)
+# Load Parquet and let BigQuery infer the schema from the file
 bq load \
     --source_format=PARQUET \
-    --autodetect \
     my_dataset.my_table \
     gs://my-bucket/data.parquet
 ```
@@ -239,7 +240,7 @@ When appending data to an existing table, the incoming data schema must be compa
 # This will fail if the new file has a different schema
 bq load \
     --source_format=CSV \
-    --write_disposition=WRITE_APPEND \
+    --noreplace \
     my_dataset.my_table \
     gs://my-bucket/new_data.csv
 ```
@@ -250,7 +251,8 @@ To add new columns while appending.
 # Allow schema updates when appending
 bq load \
     --source_format=NEWLINE_DELIMITED_JSON \
-    --write_disposition=WRITE_APPEND \
+    --noreplace \
+    --autodetect \
     --schema_update_option=ALLOW_FIELD_ADDITION \
     my_dataset.my_table \
     gs://my-bucket/new_data.json
@@ -267,14 +269,14 @@ flowchart TD
     B -->|JSON| F{Check field names case-sensitivity}
     F -->|Wrong names| G[Rename fields or use auto-detect]
     F -->|Correct names| H[Check nested structure and types]
-    B -->|Parquet/Avro| I{Use auto-detect}
-    I -->|Works| J[Schema in file is correct - update table schema]
+    B -->|Parquet/Avro| I{Check embedded schema}
+    I -->|Compatible| J[Schema in file is correct - update table schema]
     I -->|Fails| K[Check file for corruption or incompatible types]
 ```
 
 ## Prevention Best Practices
 
-1. Use auto-detect for initial loads to see what BigQuery infers
+1. Use auto-detect for initial CSV and JSON loads to see what BigQuery infers
 2. Load into a staging table first, then transform and insert into the final table
 3. Use Parquet or Avro instead of CSV when possible - they carry schema information
 4. Set `max_bad_records` to catch and skip a few bad rows without failing the entire load
@@ -282,4 +284,4 @@ flowchart TD
 
 ## Summary
 
-BigQuery schema mismatch errors when loading from Cloud Storage are usually caused by data type conflicts, column count differences, case-sensitive field name issues, or schema evolution problems. The safest approach is to use auto-detect or load into a staging table with STRING types first, then transform into the correct types using SAFE_CAST. For production pipelines, use self-describing formats like Parquet or Avro to minimize schema issues.
+BigQuery schema mismatch errors when loading from Cloud Storage are usually caused by data type conflicts, column count differences, case-sensitive field name issues, or schema evolution problems. The safest approach for CSV and JSON is to use auto-detect or load into a staging table with STRING types first, then transform into the correct types using SAFE_CAST. For production pipelines, use self-describing formats like Parquet or Avro to minimize schema issues.
