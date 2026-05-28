@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Terraform, GitHub Action, CI/CD, Cost Estimation, Infrastructure as Code
 
-Description: Set up automated Terraform plan reviews in GitHub Actions for GCP deployments, including plan output as PR comments, cost estimation with Infracost, and automated approval workflows.
+Description: Set up automated Terraform plan reviews in GitHub Actions for GCP deployments, including plan output as PR comments, cost estimation with Infracost, and environment approval gates.
 
 ---
 
@@ -131,7 +131,7 @@ permissions:
   id-token: write
 
 env:
-  TF_VERSION: '1.7.0'
+  TF_VERSION: '1.15.5'
   WORKING_DIR: 'infrastructure'
   GCP_PROJECT_ID: 'my-project'
   GCP_WORKLOAD_IDENTITY_PROVIDER: 'projects/123456/locations/global/workloadIdentityPools/github-actions/providers/github-provider'
@@ -149,7 +149,7 @@ jobs:
       # Authenticate to GCP using Workload Identity Federation
       - name: Authenticate to GCP
         id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
@@ -184,12 +184,16 @@ jobs:
         id: plan
         working-directory: ${{ env.WORKING_DIR }}
         run: |
+          set +e
           terraform plan -no-color -out=tfplan 2>&1 | tee plan_output.txt
-          echo "exitcode=$?" >> $GITHUB_OUTPUT
+          status=${PIPESTATUS[0]}
+          echo "exitcode=$status" >> $GITHUB_OUTPUT
+          exit $status
         continue-on-error: true
 
       # Save plan as JSON for Infracost
       - name: Save Plan JSON
+        if: steps.plan.outputs.exitcode == '0'
         working-directory: ${{ env.WORKING_DIR }}
         run: terraform show -json tfplan > plan.json
 
@@ -210,7 +214,7 @@ jobs:
 
             const fmtResult = '${{ steps.fmt.outcome }}';
             const validateResult = '${{ steps.validate.outcome }}';
-            const planResult = '${{ steps.plan.outcome }}';
+            const planExitCode = '${{ steps.plan.outputs.exitcode }}';
 
             const body = `## Terraform Plan Review
 
@@ -218,7 +222,7 @@ jobs:
             |-------|--------|
             | Format | ${fmtResult === 'success' ? 'Passed' : 'Failed'} |
             | Validate | ${validateResult === 'success' ? 'Passed' : 'Failed'} |
-            | Plan | ${planResult === 'success' ? 'Passed' : 'Failed'} |
+            | Plan | ${planExitCode === '0' ? 'Passed' : 'Failed'} |
 
             <details>
             <summary>Plan Output (click to expand)</summary>
@@ -260,7 +264,7 @@ jobs:
 
       # Fail if plan failed
       - name: Check Plan Status
-        if: steps.plan.outcome == 'failure'
+        if: steps.plan.outputs.exitcode != '0'
         run: exit 1
 
   cost-estimation:
@@ -277,17 +281,15 @@ jobs:
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
-      # Authenticate to GCP for Infracost
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
 
       # Generate Infracost baseline from main branch
       - name: Infracost Baseline
@@ -298,6 +300,11 @@ jobs:
             --out-file=/tmp/infracost-base.json
         env:
           INFRACOST_TERRAFORM_BINARY: terraform
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       # Generate Infracost diff
       - name: Infracost Diff
@@ -339,7 +346,7 @@ permissions:
   id-token: write
 
 env:
-  TF_VERSION: '1.7.0'
+  TF_VERSION: '1.15.5'
   WORKING_DIR: 'infrastructure'
   GCP_WORKLOAD_IDENTITY_PROVIDER: 'projects/123456/locations/global/workloadIdentityPools/github-actions/providers/github-provider'
   GCP_SERVICE_ACCOUNT: 'terraform-apply@my-project.iam.gserviceaccount.com'
@@ -354,7 +361,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
@@ -380,7 +387,7 @@ You can fail the PR check if the cost increase exceeds a threshold. Add this to 
 ```yaml
       - name: Check Cost Threshold
         run: |
-          MONTHLY_DIFF=$(jq '.diffTotalMonthlyCost | tonumber' /tmp/infracost-diff.json)
+          MONTHLY_DIFF=$(jq -r '(.diffTotalMonthlyCost // 0) | tonumber' /tmp/infracost-diff.json)
           THRESHOLD=500
 
           if (( $(echo "$MONTHLY_DIFF > $THRESHOLD" | bc -l) )); then
@@ -418,7 +425,7 @@ A few important security points for this setup:
 - The apply service account has write permissions and should only be used from the main branch workflow.
 - Use GitHub's environment protection rules on the production environment to require approvals.
 - Never log the full plan output if it might contain secrets. Use `terraform plan -no-color` and review the output before posting.
-- Infracost does not need GCP credentials for cost estimation - it reads the plan JSON.
+- Infracost does not need GCP credentials for pricing - it reads Terraform configuration or plan JSON and looks up prices through the Infracost API.
 
 ## Summary
 
