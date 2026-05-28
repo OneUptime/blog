@@ -36,25 +36,26 @@ resource "google_monitoring_alert_policy" "service_degradation" {
   conditions {
     display_name = "Error Rate Above 5%"
 
-    condition_monitoring_query_language {
-      query = <<-MQL
-        fetch cloud_run_revision
-        | metric 'run.googleapis.com/request_count'
-        | align rate(5m)
-        | group_by [resource.service_name, metric.response_code_class],
-            [val: aggregate(val())]
-        | {
-            filter metric.response_code_class = '5xx'
-            | group_by [resource.service_name], [errors: aggregate(val)]
-          ;
-            group_by [resource.service_name], [total: aggregate(val)]
-          }
-        | join
-        | value [error_rate: errors / total * 100]
-        | condition error_rate > 5
-      MQL
+    condition_threshold {
+      filter             = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class = \"5xx\""
+      denominator_filter = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\""
+      comparison         = "COMPARISON_GT"
+      threshold_value    = 0.05
+      duration           = "300s"  # Must hold for 5 minutes
 
-      duration = "300s"  # Must hold for 5 minutes
+      aggregations {
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.service_name"]
+      }
+
+      denominator_aggregations {
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.service_name"]
+      }
 
       trigger {
         count = 1
@@ -65,17 +66,18 @@ resource "google_monitoring_alert_policy" "service_degradation" {
   conditions {
     display_name = "P99 Latency Above 2 seconds"
 
-    condition_monitoring_query_language {
-      query = <<-MQL
-        fetch cloud_run_revision
-        | metric 'run.googleapis.com/request_latencies'
-        | align delta(5m)
-        | group_by [resource.service_name],
-            [p99: percentile(val(), 99)]
-        | condition p99 > 2000
-      MQL
+    condition_threshold {
+      filter          = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_latencies\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 2000
+      duration        = "300s"
 
-      duration = "300s"
+      aggregations {
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_PERCENTILE_99"
+        cross_series_reducer = "REDUCE_PERCENTILE_99"
+        group_by_fields      = ["resource.label.service_name"]
+      }
 
       trigger {
         count = 1
@@ -89,7 +91,7 @@ resource "google_monitoring_alert_policy" "service_degradation" {
   ]
 
   alert_strategy {
-    auto_close = "1800s"  # Auto-close after 30 minutes of recovery
+    auto_close = "1800s"  # Auto-close after 30 minutes without metric data
   }
 
   documentation {
@@ -118,15 +120,24 @@ resource "google_monitoring_alert_policy" "per_service_degradation" {
   conditions {
     display_name = "High Error Rate for Service"
     condition_threshold {
-      filter          = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class = \"5xx\""
-      comparison      = "COMPARISON_GT"
-      threshold_value = 10
-      duration        = "300s"
+      filter             = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class = \"5xx\""
+      denominator_filter = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\""
+      comparison         = "COMPARISON_GT"
+      threshold_value    = 0.05
+      duration           = "300s"
 
       aggregations {
-        alignment_period   = "300s"
-        per_series_aligner = "ALIGN_RATE"
-        group_by_fields    = ["resource.label.service_name"]
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.service_name"]
+      }
+
+      denominator_aggregations {
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.service_name"]
       }
     }
   }
@@ -142,6 +153,7 @@ resource "google_monitoring_alert_policy" "per_service_degradation" {
       aggregations {
         alignment_period     = "300s"
         per_series_aligner   = "ALIGN_PERCENTILE_99"
+        cross_series_reducer = "REDUCE_PERCENTILE_99"
         group_by_fields      = ["resource.label.service_name"]
       }
     }
@@ -164,18 +176,17 @@ Require a problem to persist for several minutes before alerting:
 ```hcl
 # Only alert if the problem lasts more than 10 minutes
 conditions {
-  display_name = "Sustained High Error Rate"
-  condition_monitoring_query_language {
-    query = <<-MQL
-      fetch cloud_run_revision
-      | metric 'run.googleapis.com/request_count'
-      | filter metric.response_code_class = '5xx'
-      | align rate(5m)
-      | group_by [resource.service_name], [errors_per_sec: aggregate(val())]
-      | condition errors_per_sec > 1
-    MQL
+  display_name = "Sustained 5xx Error Rate"
+  condition_threshold {
+    filter          = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class = \"5xx\""
+    comparison      = "COMPARISON_GT"
+    threshold_value = 1
     # The condition must hold continuously for 10 minutes
     duration = "600s"
+    aggregations {
+      alignment_period   = "300s"
+      per_series_aligner = "ALIGN_RATE"
+    }
     trigger {
       count = 1
     }
@@ -211,7 +222,7 @@ resource "google_monitoring_alert_policy" "capacity_warning" {
   conditions {
     display_name = "High Memory"
     condition_threshold {
-      filter          = "resource.type = \"gce_instance\" AND metric.type = \"agent.googleapis.com/memory/percent_used\""
+      filter          = "resource.type = \"gce_instance\" AND metric.type = \"agent.googleapis.com/memory/percent_used\" AND metric.labels.state = \"used\""
       comparison      = "COMPARISON_GT"
       threshold_value = 85
       duration        = "600s"
@@ -291,7 +302,7 @@ For quick setup or testing, you can create alert policies from the command line:
 
 ```bash
 # Create a composite alert from a JSON policy file
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --policy-from-file=alert-policy.json \
   --project=my-project
 ```
@@ -301,20 +312,35 @@ The policy JSON file:
 ```json
 {
   "displayName": "Service Health Composite Alert",
-  "combiner": "AND",
+  "combiner": "AND_WITH_MATCHING_RESOURCE",
   "conditions": [
     {
       "displayName": "Error Rate Above Threshold",
       "conditionThreshold": {
         "filter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class = \"5xx\"",
+        "denominatorFilter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\"",
         "aggregations": [
           {
             "alignmentPeriod": "300s",
-            "perSeriesAligner": "ALIGN_RATE"
+            "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": [
+              "resource.label.service_name"
+            ]
+          }
+        ],
+        "denominatorAggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": [
+              "resource.label.service_name"
+            ]
           }
         ],
         "comparison": "COMPARISON_GT",
-        "thresholdValue": 5,
+        "thresholdValue": 0.05,
         "duration": "300s"
       }
     },
@@ -325,7 +351,11 @@ The policy JSON file:
         "aggregations": [
           {
             "alignmentPeriod": "300s",
-            "perSeriesAligner": "ALIGN_RATE"
+            "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": [
+              "resource.label.service_name"
+            ]
           }
         ],
         "comparison": "COMPARISON_GT",
