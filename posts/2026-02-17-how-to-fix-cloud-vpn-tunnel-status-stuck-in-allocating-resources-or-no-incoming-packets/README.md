@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud VPN, VPN Tunnel, IPsec, Networking, Troubleshooting
 
-Description: How to diagnose and fix Cloud VPN tunnel issues when the tunnel is stuck in allocating resources state or shows no incoming packets despite being established.
+Description: How to diagnose and fix Cloud VPN tunnel issues when the tunnel is stuck in allocating resources state, shows no incoming packets, or is established but does not pass traffic.
 
 ---
 
@@ -12,15 +12,16 @@ Setting up a Cloud VPN tunnel should be straightforward, but sometimes the tunne
 
 ## Understanding VPN Tunnel States
 
-A Cloud VPN tunnel goes through these states:
+A Cloud VPN tunnel can show these states:
 
-1. **PROVISIONING** - GCP is setting up the tunnel resources
-2. **WAITING_FOR_FULL_CONFIG** - waiting for the peer to be configured
-3. **FIRST_HANDSHAKE** - attempting the initial IKE handshake
-4. **ESTABLISHED** - tunnel is up and running
-5. **NO_INCOMING_PACKETS** - tunnel configuration exists but no traffic from the peer
+1. **ALLOCATING_RESOURCES** - GCP is allocating resources to set up the tunnel
+2. **PROVISIONING** - waiting to receive all configs to set up the tunnel
+3. **WAITING_FOR_FULL_CONFIG** - full configuration has been received, but the tunnel is not yet established
+4. **FIRST_HANDSHAKE** - attempting the initial IKE handshake
+5. **ESTABLISHED** - tunnel is up and running
+6. **NO_INCOMING_PACKETS** - the gateway is not receiving packets from the peer VPN gateway
 
-The problem states are when the tunnel is stuck in PROVISIONING (allocating resources) for more than 10 minutes, or when it shows ESTABLISHED/NO_INCOMING_PACKETS but traffic does not flow.
+The problem states are when the tunnel is stuck in ALLOCATING_RESOURCES/PROVISIONING for more than 10 minutes, or when it shows ESTABLISHED/NO_INCOMING_PACKETS but traffic does not flow.
 
 ## Step 1: Check the Tunnel Status
 
@@ -44,7 +45,7 @@ The `detailedStatus` field often contains the actual error message.
 
 ## Fixing "Allocating Resources" (Stuck Provisioning)
 
-If the tunnel has been in provisioning for more than 15 minutes:
+If the tunnel has been in allocating resources or provisioning for more than 15 minutes:
 
 ### Check 1: VPN Gateway Is Ready
 
@@ -90,6 +91,7 @@ gcloud compute vpn-tunnels create my-vpn-tunnel \
     --vpn-gateway=my-vpn-gateway \
     --interface=0 \
     --peer-gcp-gateway=peer-vpn-gateway \
+    --router=my-cloud-router \
     --shared-secret=my-shared-secret \
     --ike-version=2 \
     --project=my-project
@@ -97,11 +99,11 @@ gcloud compute vpn-tunnels create my-vpn-tunnel \
 
 ## Fixing "No Incoming Packets"
 
-This means the tunnel exists but the peer is not sending any IKE packets. This is almost always a configuration mismatch between the two sides.
+This means the tunnel exists but the Cloud VPN gateway is not receiving packets from the peer VPN gateway. Common things to rule out include a wrong peer IP, peer-side firewall or NAT problems, and configuration mismatches between the two sides.
 
 ### Check 1: Shared Secret Matches
 
-The most common cause is a mismatched pre-shared key.
+A mismatched pre-shared key causes authentication failures, so confirm it while checking both sides.
 
 ```bash
 # View the shared secret (you will need to compare with the peer config)
@@ -138,6 +140,7 @@ gcloud compute vpn-tunnels create my-vpn-tunnel \
     --vpn-gateway=my-vpn-gateway \
     --interface=0 \
     --peer-gcp-gateway=peer-vpn-gateway \
+    --router=my-cloud-router \
     --shared-secret=my-shared-secret \
     --ike-version=1 \
     --project=my-project
@@ -168,7 +171,7 @@ The GCP `localTrafficSelector` must match the peer's `remoteTrafficSelector`, an
 
 ### Check 5: NAT Is Not Interfering
 
-If the peer VPN device is behind a NAT, it can cause issues with IKE negotiation. Make sure NAT-T (NAT Traversal) is enabled on the peer device.
+If the peer VPN device is behind a NAT, it can cause issues with IKE negotiation. Cloud VPN supports one-to-one NAT for peer gateways. Make sure NAT-T (NAT Traversal) is enabled on the peer device and that UDP ports 500 and 4500 are forwarded to it.
 
 ## Fixing "Established But No Traffic"
 
@@ -249,14 +252,14 @@ nc -zv 10.1.0.10 22 -w 5
 ```bash
 # Set up monitoring for tunnel status changes
 gcloud monitoring time-series list \
-    --filter='resource.type="vpn_gateway" AND metric.type="compute.googleapis.com/vpn/tunnel_established"' \
-    --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+    --filter='resource.type="vpn_gateway" AND metric.type="vpn.googleapis.com/tunnel_established"' \
+    --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
     --project=my-project
 
 # Check packets sent and received
 gcloud monitoring time-series list \
-    --filter='resource.type="vpn_gateway" AND metric.type="compute.googleapis.com/vpn/received_bytes_count"' \
-    --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+    --filter='resource.type="vpn_gateway" AND metric.type="vpn.googleapis.com/network/received_bytes_count"' \
+    --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
     --project=my-project
 ```
 
@@ -285,7 +288,7 @@ flowchart TD
 ## Key Takeaways
 
 - If stuck in allocating resources for more than 15 minutes, delete and recreate
-- "No incoming packets" is almost always a configuration mismatch (shared secret, IKE version, or peer firewall)
+- "No incoming packets" means Cloud VPN is not receiving packets from the peer VPN gateway; check the peer IP, peer firewall, NAT, and matching IKE configuration
 - "Established but no traffic" is usually missing routes or firewall rules
 - For HA VPN with BGP, verify the BGP session is established and routes are being advertised
 - Always test connectivity from both sides when troubleshooting
