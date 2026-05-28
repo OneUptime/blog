@@ -48,10 +48,6 @@ WORKDIR /app
 # Copy the built JAR file
 COPY target/my-application-1.0.0.jar app.jar
 
-# Cloud Run sets the PORT environment variable
-# Configure the app to listen on that port
-ENV SERVER_PORT=${PORT:-8080}
-
 # JVM optimization flags for containers
 # -XX:+UseContainerSupport ensures JVM respects container memory limits
 # -XX:MaxRAMPercentage sets heap as percentage of available memory
@@ -64,7 +60,7 @@ ENV JAVA_OPTS="-XX:+UseContainerSupport \
 EXPOSE 8080
 
 # Run the application
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar --server.port=$SERVER_PORT"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar --server.port=${PORT:-8080}"]
 ```
 
 ### For WAR Files on Tomcat
@@ -73,7 +69,9 @@ Legacy applications packaged as WAR files need a Tomcat container:
 
 ```dockerfile
 # Dockerfile for a WAR-based Java application on Tomcat
-FROM tomcat:10-jre17-temurin-jammy
+# Use Tomcat 9 for legacy Java EE / javax.servlet applications.
+# Use Tomcat 10+ only after migrating the application to Jakarta EE / jakarta.servlet.
+FROM tomcat:9-jre17-temurin-jammy
 
 # Remove the default Tomcat webapps
 RUN rm -rf /usr/local/tomcat/webapps/*
@@ -83,7 +81,7 @@ RUN rm -rf /usr/local/tomcat/webapps/*
 COPY target/my-legacy-app.war /usr/local/tomcat/webapps/ROOT.war
 
 # Configure Tomcat to use the PORT environment variable from Cloud Run
-RUN sed -i 's/port="8080"/port="${PORT:-8080}"/' \
+RUN sed -i 's/port="8080"/port="${http.port}"/' \
   /usr/local/tomcat/conf/server.xml
 
 # JVM settings for container environment
@@ -93,7 +91,7 @@ ENV CATALINA_OPTS="-XX:+UseContainerSupport \
 
 EXPOSE 8080
 
-CMD ["catalina.sh", "run"]
+CMD ["sh", "-c", "export CATALINA_OPTS=\"$CATALINA_OPTS -Dhttp.port=${PORT:-8080}\" && catalina.sh run"]
 ```
 
 ### Multi-Stage Build for Building and Packaging
@@ -220,7 +218,7 @@ For Spring Boot 3.x applications, compile to a native image for near-instant sta
 
 ```dockerfile
 # Build a native image using GraalVM
-FROM ghcr.io/graalvm/graalvm-community:17 AS builder
+FROM ghcr.io/graalvm/native-image-community:17 AS builder
 
 WORKDIR /build
 COPY . .
@@ -234,7 +232,7 @@ WORKDIR /app
 COPY --from=builder /build/target/my-application /app/my-application
 
 EXPOSE 8080
-ENTRYPOINT ["/app/my-application"]
+ENTRYPOINT ["sh", "-c", "/app/my-application --server.port=${PORT:-8080}"]
 ```
 
 Native images typically start in under 1 second compared to 5-30 seconds for JVM-based startup.
@@ -250,11 +248,10 @@ FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 COPY target/app.jar app.jar
 
-# Generate the CDS archive
-RUN java -Xshare:off -XX:DumpLoadedClassList=classes.lst -jar app.jar --exit || true
-RUN java -Xshare:dump -XX:SharedClassListFile=classes.lst -XX:SharedArchiveFile=app-cds.jsa -jar app.jar --exit || true
+# Generate the CDS archive with a Spring Boot training run
+RUN java -XX:ArchiveClassesAtExit=app-cds.jsa -Dspring.context.exit=onRefresh -jar app.jar
 
-ENV JAVA_OPTS="-XX:SharedArchiveFile=app-cds.jsa -Xshare:on"
+ENV JAVA_OPTS="-XX:SharedArchiveFile=app-cds.jsa"
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar --server.port=${PORT:-8080}"]
 ```
 
@@ -282,7 +279,7 @@ spring.datasource.password=${DB_PASSWORD}
 
 ## Step 6 - Connect to Databases
 
-Cloud Run connects to Cloud SQL through the Unix socket proxy:
+Java applications can connect to Cloud SQL with the Cloud SQL Java Connector:
 
 ```yaml
 # Spring Boot application.properties for Cloud SQL
@@ -299,7 +296,7 @@ Add the Cloud SQL socket factory dependency:
 <dependency>
     <groupId>com.google.cloud.sql</groupId>
     <artifactId>postgres-socket-factory</artifactId>
-    <version>1.14.0</version>
+    <version>1.15.0</version>
 </dependency>
 ```
 
