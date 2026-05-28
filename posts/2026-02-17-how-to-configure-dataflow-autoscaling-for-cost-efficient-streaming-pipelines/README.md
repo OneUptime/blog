@@ -19,7 +19,7 @@ Dataflow's autoscaling algorithm monitors several signals to decide when to add 
 - **Backlog size**: How much unprocessed data is waiting
 - **CPU utilization**: How busy the current workers are
 - **Throughput**: How many elements per second are being processed
-- **System lag**: The difference between the watermark and wall clock time
+- **System lag**: The maximum time an item has been processing or waiting to be processed
 
 Based on these signals, Dataflow calculates the ideal number of workers and adjusts up or down. The algorithm aims to keep the pipeline processing data with minimal lag while using the fewest workers possible.
 
@@ -34,15 +34,15 @@ gcloud dataflow jobs run my-streaming-job \
   --gcs-location=gs://my-bucket/templates/my-template \
   --region=us-central1 \
   --num-workers=3 \
-  --max-num-workers=20 \
-  --autoscaling-algorithm=THROUGHPUT_BASED \
+  --max-workers=20 \
+  --enable-streaming-engine \
   --worker-machine-type=n1-standard-4
 ```
 
 The key parameters:
 - `num-workers`: Initial number of workers when the pipeline starts
-- `max-num-workers`: The ceiling - Dataflow will never scale beyond this
-- `autoscaling-algorithm`: Set to `THROUGHPUT_BASED` for streaming pipelines
+- `max-workers`: The ceiling - Dataflow will never scale beyond this
+- `enable-streaming-engine`: Enables Streaming Engine, where horizontal autoscaling is enabled by default for streaming jobs
 
 If you are using the Beam SDK to launch your pipeline programmatically, set these in your pipeline options.
 
@@ -103,7 +103,7 @@ print(f"Recommended max workers: {max_workers}")
 
 ## Horizontal vs. Vertical Autoscaling
 
-Dataflow primarily uses horizontal autoscaling - adding or removing workers. But you can also use vertical autoscaling by choosing different machine types.
+Dataflow primarily uses horizontal autoscaling - adding or removing workers. You can also vertically size workers by choosing different machine types.
 
 For pipelines with consistent per-element processing costs, horizontal scaling works well. For pipelines where memory usage varies (like those with large side inputs or stateful processing), you might need to start with a larger machine type and scale horizontally from there.
 
@@ -113,9 +113,9 @@ gcloud dataflow jobs run memory-intensive-job \
   --gcs-location=gs://my-bucket/templates/my-template \
   --region=us-central1 \
   --num-workers=2 \
-  --max-num-workers=10 \
+  --max-workers=10 \
   --worker-machine-type=n1-highmem-4 \
-  --autoscaling-algorithm=THROUGHPUT_BASED
+  --enable-streaming-engine
 ```
 
 ## Controlling Scale-Down Behavior
@@ -138,14 +138,9 @@ Here are strategies I have used to reduce streaming pipeline costs significantly
 
 **Monitor and adjust max-workers.** Review your actual peak worker count over the past month. If you set max to 20 but never go above 8, lower the max to 12 to reduce risk.
 
-```bash
-# Check historical worker count for a running job
-gcloud dataflow metrics list JOB_ID \
-  --region=us-central1 \
-  --filter="name.name=CurrentNumWorkers"
-```
+Use the Dataflow monitoring interface or Cloud Monitoring metrics such as `dataflow.googleapis.com/job/current_num_vcpus` and `dataflow.googleapis.com/job/active_worker_instances` to review worker usage over time.
 
-**Consider Dataflow Prime for automatic vertical scaling.** Dataflow Prime can adjust CPU, memory, and disk independently per worker, potentially reducing costs further.
+**Consider Dataflow Prime for automatic vertical scaling.** Dataflow Prime can dynamically adjust the memory available to workers, potentially reducing costs further.
 
 ## Monitoring Autoscaling Behavior
 
@@ -166,7 +161,7 @@ Key metrics to watch in Cloud Monitoring:
 dataflow.googleapis.com/job/current_num_vcpus  # Total vCPUs in use
 dataflow.googleapis.com/job/system_lag          # How far behind the pipeline is
 dataflow.googleapis.com/job/backlog_bytes       # Unprocessed data volume
-dataflow.googleapis.com/job/elements_produced   # Throughput
+dataflow.googleapis.com/job/elements_produced_count  # Elements produced
 ```
 
 Set up alerts for when system lag exceeds your acceptable threshold. If autoscaling cannot keep up, you might need to increase max workers or optimize your pipeline.
@@ -175,17 +170,13 @@ Set up alerts for when system lag exceeds your acceptable threshold. If autoscal
 
 In some cases, you might want to disable autoscaling and run with a fixed number of workers. This is useful for debugging, benchmarking, or when you have very predictable traffic.
 
-```bash
-# Run with exactly 5 workers, no autoscaling
-gcloud dataflow jobs run fixed-workers-job \
-  --gcs-location=gs://my-bucket/templates/my-template \
-  --region=us-central1 \
-  --num-workers=5 \
-  --max-num-workers=5 \
-  --autoscaling-algorithm=NONE
+```java
+// Run with exactly 5 workers, no autoscaling
+options.setNumWorkers(5);
+options.setAutoscalingAlgorithm(AutoscalingAlgorithmType.NONE);
 ```
 
-Setting `max-num-workers` equal to `num-workers` with `NONE` algorithm ensures a fixed worker count.
+Setting `autoscalingAlgorithm` to `NONE` makes Dataflow use the worker count from `numWorkers`.
 
 ## Autoscaling with Streaming Engine
 
@@ -197,7 +188,7 @@ gcloud dataflow jobs run streaming-engine-job \
   --gcs-location=gs://my-bucket/templates/my-template \
   --region=us-central1 \
   --num-workers=2 \
-  --max-num-workers=15 \
+  --max-workers=15 \
   --enable-streaming-engine \
   --worker-machine-type=n1-standard-2
 ```
@@ -212,6 +203,6 @@ Set your initial worker count to handle your average load, not your peak. Let au
 
 Review your costs monthly. Look at the ratio of worker hours to data processed. If the cost per GB is climbing, investigate whether you are over-provisioned or if your pipeline efficiency has degraded.
 
-Use Streaming Engine. It almost always reduces costs and improves autoscaling responsiveness for streaming pipelines.
+Use Streaming Engine. It reduces worker CPU, memory, and Persistent Disk usage and improves autoscaling responsiveness for streaming pipelines, though you should still review total job cost because Streaming Engine has its own service charge.
 
 Autoscaling is one of Dataflow's best features for managing the cost of always-on streaming pipelines. Configure it thoughtfully, monitor it actively, and adjust based on real usage patterns.
