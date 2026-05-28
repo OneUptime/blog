@@ -19,9 +19,9 @@ Cloud Run scales horizontally by adding container instances. If user A makes a r
 Install the required packages.
 
 ```bash
-# Install Flask and the Firestore client
+# Install Flask, Firestore, and deployment dependencies
 
-pip install flask google-cloud-firestore flask-session
+pip install flask google-cloud-firestore itsdangerous gunicorn functions-framework
 ```
 
 ## Building a Custom Firestore Session Interface
@@ -33,6 +33,7 @@ Flask-Session supports Redis, Memcached, and other backends, but not Firestore o
 from flask.sessions import SessionInterface, SessionMixin
 from werkzeug.datastructures import CallbackDict
 from google.cloud import firestore
+from itsdangerous import BadSignature, URLSafeSerializer
 from datetime import datetime, timezone, timedelta
 import uuid
 import json
@@ -64,10 +65,24 @@ class FirestoreSessionInterface(SessionInterface):
         """Get a reference to the session document in Firestore."""
         return self.db.collection(self.collection).document(sid)
 
+    def _get_signer(self, app):
+        """Create a signer for the session ID cookie."""
+        if not app.secret_key:
+            raise RuntimeError("A secret key is required for Firestore sessions")
+        return URLSafeSerializer(app.secret_key, salt="firestore-session")
+
     def open_session(self, app, request):
         """Load an existing session or create a new one."""
         # Look for the session ID in the cookie
-        sid = request.cookies.get(app.config.get("SESSION_COOKIE_NAME", "session"))
+        cookie_name = self.get_cookie_name(app)
+        cookie_value = request.cookies.get(cookie_name)
+        sid = None
+
+        if cookie_value:
+            try:
+                sid = self._get_signer(app).loads(cookie_value)
+            except BadSignature:
+                sid = None
 
         if sid:
             # Try to load the session from Firestore
@@ -92,13 +107,14 @@ class FirestoreSessionInterface(SessionInterface):
     def save_session(self, app, session, response):
         """Save the session to Firestore and set the cookie."""
         domain = self.get_cookie_domain(app)
-        cookie_name = app.config.get("SESSION_COOKIE_NAME", "session")
+        path = self.get_cookie_path(app)
+        cookie_name = self.get_cookie_name(app)
 
         # If the session is empty, delete it
         if not session:
             if session.modified:
                 self._get_session_ref(session.sid).delete()
-                response.delete_cookie(cookie_name, domain=domain)
+                response.delete_cookie(cookie_name, domain=domain, path=path)
             return
 
         # Calculate expiry time
@@ -120,12 +136,13 @@ class FirestoreSessionInterface(SessionInterface):
         # Set the session cookie
         response.set_cookie(
             cookie_name,
-            session.sid,
+            self._get_signer(app).dumps(session.sid),
             expires=expires,
-            httponly=True,
-            secure=True,
-            samesite="Lax",
+            httponly=self.get_cookie_httponly(app),
+            secure=self.get_cookie_secure(app),
+            samesite=self.get_cookie_samesite(app),
             domain=domain,
+            path=path,
         )
 ```
 
@@ -138,6 +155,7 @@ Wire the custom session interface into your Flask application.
 from flask import Flask, session, redirect, url_for, request, jsonify
 from firestore_session import FirestoreSessionInterface
 from google.cloud import firestore
+from datetime import datetime, timezone, timedelta
 import os
 
 app = Flask(__name__)
@@ -167,7 +185,7 @@ def index():
 @app.route("/login", methods=["POST"])
 def login():
     """Log in a user and store their info in the session."""
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     username = data.get("username")
     if not username:
         return jsonify({"error": "Username required"}), 400
@@ -197,8 +215,6 @@ def profile():
         "visits": session.get("visits", 0),
     })
 
-from datetime import datetime, timezone
-
 if __name__ == "__main__":
     app.run(debug=True, port=8080)
 ```
@@ -211,6 +227,7 @@ Expired sessions accumulate in Firestore and should be cleaned up periodically. 
 # cleanup.py - Scheduled function to delete expired sessions
 import functions_framework
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime, timezone
 
 @functions_framework.http
@@ -222,28 +239,31 @@ def cleanup_sessions(request):
     # Query for expired sessions
     expired_docs = (
         db.collection("flask_sessions")
-        .where("expires_at", "<", now)
+        .where(filter=FieldFilter("expires_at", "<", now))
         .limit(500)  # Process in batches
         .stream()
     )
 
     # Delete expired sessions in a batch
     batch = db.batch()
-    count = 0
+    batch_count = 0
+    deleted_count = 0
 
     for doc in expired_docs:
         batch.delete(doc.reference)
-        count += 1
+        batch_count += 1
+        deleted_count += 1
 
-        # Firestore batch limit is 500 operations
-        if count >= 500:
+        # Commit periodically to keep each request small
+        if batch_count >= 500:
             batch.commit()
             batch = db.batch()
+            batch_count = 0
 
-    if count > 0:
+    if batch_count > 0:
         batch.commit()
 
-    return f"Deleted {count} expired sessions"
+    return f"Deleted {deleted_count} expired sessions"
 ```
 
 Deploy the cleanup function with a Cloud Scheduler trigger.
@@ -256,6 +276,11 @@ gcloud functions deploy cleanup-sessions \
     --entry-point=cleanup_sessions \
     --trigger-http \
     --region=us-central1
+
+# Allow the Scheduler service account to invoke the function
+gcloud functions add-invoker-policy-binding cleanup-sessions \
+    --region=us-central1 \
+    --member="serviceAccount:my-scheduler-sa@my-project.iam.gserviceaccount.com"
 
 # Create a Cloud Scheduler job to run cleanup every hour
 gcloud scheduler jobs create http cleanup-sessions-job \
