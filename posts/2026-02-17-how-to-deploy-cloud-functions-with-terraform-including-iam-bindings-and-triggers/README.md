@@ -27,6 +27,11 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 5.0"
     }
+
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
+    }
   }
 
   backend "gcs" {
@@ -47,8 +52,10 @@ resource "google_project_service" "required_apis" {
     "cloudbuild.googleapis.com",
     "run.googleapis.com",
     "eventarc.googleapis.com",
+    "pubsub.googleapis.com",
     "artifactregistry.googleapis.com",
-    "secretmanager.googleapis.com"
+    "secretmanager.googleapis.com",
+    "vpcaccess.googleapis.com"
   ])
 
   service            = each.value
@@ -75,6 +82,24 @@ variable "environment" {
   description = "Environment name (dev, staging, prod)"
   type        = string
   default     = "prod"
+}
+
+variable "allowed_origins" {
+  description = "Comma-separated CORS origins for the API function"
+  type        = string
+  default     = "*"
+}
+
+variable "vpc_connector_network" {
+  description = "VPC network for the Serverless VPC Access connector"
+  type        = string
+  default     = "default"
+}
+
+variable "db_password" {
+  description = "Database password to store in Secret Manager"
+  type        = string
+  sensitive   = true
 }
 ```
 
@@ -137,6 +162,19 @@ resource "google_service_account" "api_function_sa" {
   description  = "Service account for the API Cloud Function"
 }
 
+resource "google_secret_manager_secret" "db_password" {
+  secret_id = "db-password"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "db_password" {
+  secret      = google_secret_manager_secret.db_password.id
+  secret_data = var.db_password
+}
+
 # Grant the service account permission to access Firestore
 resource "google_project_iam_member" "api_firestore" {
   project = var.project_id
@@ -163,6 +201,13 @@ resource "google_secret_manager_secret_iam_member" "api_db_password" {
 
 ```hcl
 # functions.tf - HTTP-triggered Cloud Function Gen 2
+
+resource "google_vpc_access_connector" "connector" {
+  name          = "functions-${var.environment}"
+  region        = var.region
+  network       = var.vpc_connector_network
+  ip_cidr_range = "10.8.0.0/28"
+}
 
 resource "google_cloudfunctions2_function" "api" {
   name        = "api-${var.environment}"
@@ -216,7 +261,9 @@ resource "google_cloudfunctions2_function" "api" {
   }
 
   depends_on = [
-    google_project_service.required_apis
+    google_project_service.required_apis,
+    google_secret_manager_secret_version.db_password,
+    google_vpc_access_connector.connector
   ]
 }
 
@@ -259,6 +306,12 @@ resource "google_service_account" "event_processor_sa" {
 resource "google_project_iam_member" "event_processor_eventarc" {
   project = var.project_id
   role    = "roles/eventarc.eventReceiver"
+  member  = "serviceAccount:${google_service_account.event_processor_sa.email}"
+}
+
+resource "google_project_iam_member" "event_processor_invoker" {
+  project = var.project_id
+  role    = "roles/run.invoker"
   member  = "serviceAccount:${google_service_account.event_processor_sa.email}"
 }
 
@@ -318,7 +371,9 @@ resource "google_cloudfunctions2_function" "event_processor" {
   }
 
   depends_on = [
-    google_project_service.required_apis
+    google_project_service.required_apis,
+    google_project_iam_member.event_processor_eventarc,
+    google_project_iam_member.event_processor_invoker
   ]
 }
 ```
@@ -335,6 +390,53 @@ resource "google_project_iam_member" "storage_eventarc" {
   project = var.project_id
   role    = "roles/pubsub.publisher"
   member  = "serviceAccount:${data.google_storage_project_service_account.default.email_address}"
+}
+
+resource "google_storage_bucket" "original_images" {
+  name                        = "${var.project_id}-original-images"
+  location                    = var.region
+  uniform_bucket_level_access = true
+}
+
+resource "google_storage_bucket" "resized_images" {
+  name                        = "${var.project_id}-resized-images"
+  location                    = var.region
+  uniform_bucket_level_access = true
+}
+
+resource "google_service_account" "image_resizer_sa" {
+  account_id   = "image-resizer-sa"
+  display_name = "Image Resizer Service Account"
+}
+
+resource "google_project_iam_member" "image_resizer_eventarc" {
+  project = var.project_id
+  role    = "roles/eventarc.eventReceiver"
+  member  = "serviceAccount:${google_service_account.image_resizer_sa.email}"
+}
+
+resource "google_project_iam_member" "image_resizer_invoker" {
+  project = var.project_id
+  role    = "roles/run.invoker"
+  member  = "serviceAccount:${google_service_account.image_resizer_sa.email}"
+}
+
+resource "google_project_iam_member" "image_resizer_storage" {
+  project = var.project_id
+  role    = "roles/storage.objectAdmin"
+  member  = "serviceAccount:${google_service_account.image_resizer_sa.email}"
+}
+
+data "archive_file" "image_resizer_source" {
+  type        = "zip"
+  source_dir  = "${path.module}/../functions/image-resizer"
+  output_path = "${path.module}/.build/image-resizer.zip"
+}
+
+resource "google_storage_bucket_object" "image_resizer_source" {
+  name   = "image-resizer-${data.archive_file.image_resizer_source.output_md5}.zip"
+  bucket = google_storage_bucket.function_source.name
+  source = data.archive_file.image_resizer_source.output_path
 }
 
 # The image resizer function
@@ -383,7 +485,10 @@ resource "google_cloudfunctions2_function" "image_resizer" {
 
   depends_on = [
     google_project_service.required_apis,
-    google_project_iam_member.storage_eventarc
+    google_project_iam_member.storage_eventarc,
+    google_project_iam_member.image_resizer_eventarc,
+    google_project_iam_member.image_resizer_invoker,
+    google_project_iam_member.image_resizer_storage
   ]
 }
 ```
