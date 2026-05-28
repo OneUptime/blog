@@ -29,22 +29,14 @@ Create the Feature Store instance and define your feature groups.
 # setup_feature_store.py
 
 from google.cloud import aiplatform
-from google.cloud.aiplatform import FeatureGroup, FeatureOnlineStore
+from vertexai.resources.preview import feature_store
 
 # Initialize the Vertex AI client
 aiplatform.init(project="my-project", location="us-central1")
 
 # Create a Feature Online Store for low-latency serving
-online_store = FeatureOnlineStore.create_bigtable_store(
-    name="production-feature-store",
-    # Configure Bigtable for online serving
-    online_store_config=FeatureOnlineStore.BigtableConfig(
-        auto_scaling=FeatureOnlineStore.BigtableConfig.AutoScaling(
-            min_node_count=1,
-            max_node_count=5,
-            cpu_utilization_target=70,
-        )
-    ),
+online_store = feature_store.FeatureOnlineStore.create_bigtable_store(
+    "production-feature-store",
 )
 
 print(f"Online store created: {online_store.resource_name}")
@@ -58,8 +50,7 @@ The feature pipeline reads raw data, computes features, and writes them to the F
 # feature_pipeline.py
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
-from google.cloud import bigquery
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 class ComputeUserFeatures(beam.DoFn):
     """Compute features for each user from their raw events."""
@@ -77,7 +68,7 @@ class ComputeUserFeatures(beam.DoFn):
         )
 
         # Calculate time-windowed features
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         last_30_days = [
             e for e in events
             if (now - e["timestamp"]).days <= 30
@@ -102,7 +93,7 @@ class ComputeUserFeatures(beam.DoFn):
             "purchases_30d": purchases_30d,
             "spend_30d": float(spend_30d),
             "days_since_last_purchase": days_since_last_purchase,
-            "feature_timestamp": now.isoformat(),
+            "feature_timestamp": now,
         }
 
 
@@ -125,8 +116,8 @@ def run_feature_pipeline():
                 query="""
                     SELECT user_id, event_type as type,
                            event_timestamp as timestamp,
-                           JSON_EXTRACT_SCALAR(payload, '$.amount') as amount,
-                           JSON_EXTRACT_SCALAR(payload, '$.duration') as duration
+                           SAFE_CAST(JSON_VALUE(payload, '$.amount') AS FLOAT64) as amount,
+                           SAFE_CAST(JSON_VALUE(payload, '$.duration') AS FLOAT64) as duration
                     FROM `my-project.events.user_events`
                     WHERE event_timestamp > TIMESTAMP_SUB(
                         CURRENT_TIMESTAMP(), INTERVAL 180 DAY
@@ -160,7 +151,7 @@ def run_feature_pipeline():
                    "purchases_30d:INTEGER,spend_30d:FLOAT,"
                    "days_since_last_purchase:INTEGER,"
                    "feature_timestamp:TIMESTAMP",
-            write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
+            write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
             create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
         )
 
@@ -175,34 +166,33 @@ After the pipeline writes features to BigQuery, register them with the Feature S
 ```python
 # register_features.py
 from google.cloud import aiplatform
-from google.cloud.aiplatform import FeatureGroup
+from vertexai.resources.preview import feature_store
 
 aiplatform.init(project="my-project", location="us-central1")
 
 # Create a Feature Group backed by the BigQuery table
-user_feature_group = FeatureGroup.create(
+user_feature_group = feature_store.FeatureGroup.create(
     name="user_features",
-    source=FeatureGroup.BigQuerySource(
+    source=feature_store.utils.FeatureGroupBigQuerySource(
         uri="bq://my-project.ml_features.user_features",
         entity_id_columns=["user_id"],
     ),
-    description="User behavior and purchase features",
 )
 
 # Register individual features within the group
 features_to_register = [
-    ("total_purchases", "Total number of purchases"),
-    ("total_spend", "Total amount spent"),
-    ("avg_session_duration", "Average session duration in seconds"),
-    ("purchases_30d", "Purchases in the last 30 days"),
-    ("spend_30d", "Spend in the last 30 days"),
-    ("days_since_last_purchase", "Days since last purchase"),
+    "total_purchases",
+    "total_spend",
+    "avg_session_duration",
+    "purchases_30d",
+    "spend_30d",
+    "days_since_last_purchase",
 ]
 
-for feature_name, description in features_to_register:
+for feature_name in features_to_register:
     feature = user_feature_group.create_feature(
         name=feature_name,
-        description=description,
+        version_column_name=feature_name,
     )
     print(f"Registered feature: {feature_name}")
 ```
@@ -213,25 +203,48 @@ Feature Views define which features should be available for low-latency online s
 
 ```python
 # create_feature_view.py
-from google.cloud.aiplatform import FeatureOnlineStore, FeatureView
+import google.auth
+from google.auth.transport.requests import AuthorizedSession
 
-# Reference the online store we created earlier
-online_store = FeatureOnlineStore("production-feature-store")
+project = "my-project"
+location = "us-central1"
+online_store_id = "production-feature-store"
+feature_view_id = "user-prediction-features"
 
-# Create a Feature View that syncs features for online serving
-feature_view = online_store.create_feature_view(
-    name="user-prediction-features",
-    source=FeatureView.BigQuerySource(
-        uri="bq://my-project.ml_features.user_features",
-        entity_id_columns=["user_id"],
-    ),
-    # Configure sync schedule - how often to refresh online features
-    sync_config=FeatureView.SyncConfig(
-        cron="0 */6 * * *"  # Sync every 6 hours
-    ),
+credentials, _ = google.auth.default(
+    scopes=["https://www.googleapis.com/auth/cloud-platform"]
+)
+session = AuthorizedSession(credentials)
+
+url = (
+    f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}"
+    f"/locations/{location}/featureOnlineStores/{online_store_id}"
+    f"/featureViews?feature_view_id={feature_view_id}"
 )
 
-print(f"Feature view created: {feature_view.resource_name}")
+body = {
+    "featureRegistrySource": {
+        "featureGroups": [
+            {
+                "featureGroupId": "user_features",
+                "featureIds": [
+                    "total_purchases",
+                    "total_spend",
+                    "avg_session_duration",
+                    "purchases_30d",
+                    "spend_30d",
+                    "days_since_last_purchase",
+                ],
+            }
+        ]
+    },
+    # Configure sync schedule - how often to refresh online features
+    "syncConfig": {"cron": "0 */6 * * *"},  # Sync every 6 hours
+}
+
+response = session.post(url, json=body)
+response.raise_for_status()
+print(f"Feature view creation operation: {response.json()['name']}")
 ```
 
 ## Step 5: Serve Features for Online Prediction
@@ -240,26 +253,22 @@ When your model needs features for a real-time prediction, fetch them from the F
 
 ```python
 # serve_features.py
-from google.cloud.aiplatform import FeatureOnlineStore
+from google.cloud import aiplatform
+from vertexai.resources.preview.feature_store import FeatureOnlineStore, FeatureView
+
+aiplatform.init(project="my-project", location="us-central1")
 
 def get_user_features(user_id):
     """Fetch features for a user from the online store.
     Returns a dictionary of feature values."""
     online_store = FeatureOnlineStore("production-feature-store")
-    feature_view = online_store.get_feature_view("user-prediction-features")
-
-    # Fetch features for the specified user
-    response = feature_view.fetch_feature_values(
-        entity_ids=[user_id],
+    feature_view = FeatureView(
+        "user-prediction-features",
+        feature_online_store_id=online_store.name,
     )
 
-    # Convert to a dictionary for easy use
-    features = {}
-    for entity in response:
-        for feature in entity.features:
-            features[feature.name] = feature.value
-
-    return features
+    # Fetch features for the specified user
+    return feature_view.read([user_id])
 
 
 # Example usage in a prediction service
@@ -306,9 +315,9 @@ def get_training_data(start_date, end_date):
         f.days_since_last_purchase,
         l.churned AS label
     FROM
-        `ml_features.user_features` f
+        `my-project.ml_features.user_features` f
     JOIN
-        `ml_labels.churn_labels` l
+        `my-project.ml_labels.churn_labels` l
     ON
         f.user_id = l.user_id
     WHERE
