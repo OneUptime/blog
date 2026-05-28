@@ -34,16 +34,31 @@ graph TD
 First, set up SLOs that your error budget policies will reference:
 
 ```bash
-# Create a Cloud Monitoring SLO for your service
+# Create a Cloud Monitoring SLO for your service with the Monitoring API
 
 # This example creates an availability SLO based on good/total request ratio
-gcloud monitoring slos create \
-    --project=your-project-id \
-    --service=your-service-id \
-    --display-name="API Availability SLO" \
-    --goal=0.999 \
-    --rolling-period-days=30 \
-    --request-based-sli='{"goodTotalRatio":{"goodServiceFilter":"resource.type=\"cloud_run_revision\" AND metric.type=\"run.googleapis.com/request_count\" AND metric.labels.response_code_class=\"2xx\"","totalServiceFilter":"resource.type=\"cloud_run_revision\" AND metric.type=\"run.googleapis.com/request_count\""}}'
+PROJECT_ID="your-project-id"
+SERVICE_ID="your-service-id"
+ACCESS_TOKEN="$(gcloud auth print-access-token)"
+
+curl --http1.1 \
+    --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+    --header "Content-Type: application/json" \
+    --request POST \
+    --data '{
+      "displayName": "API Availability SLO",
+      "goal": 0.999,
+      "rollingPeriod": "2592000s",
+      "serviceLevelIndicator": {
+        "requestBased": {
+          "goodTotalRatio": {
+            "goodServiceFilter": "resource.type=\"cloud_run_revision\" AND metric.type=\"run.googleapis.com/request_count\" AND metric.labels.response_code_class=\"2xx\"",
+            "totalServiceFilter": "resource.type=\"cloud_run_revision\" AND metric.type=\"run.googleapis.com/request_count\""
+          }
+        }
+      }
+    }' \
+    "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/services/${SERVICE_ID}/serviceLevelObjectives?serviceLevelObjectiveId=availability-slo"
 ```
 
 You can also create SLOs programmatically:
@@ -57,50 +72,58 @@ project_name = "projects/your-project-id"
 
 # Create a service first if it does not exist
 service = client.create_service(
-    parent=project_name,
-    service=monitoring_v3.Service(
-        display_name="API Service",
-        custom=monitoring_v3.Service.Custom(),
-    ),
-    service_id="api-service",
+    request=monitoring_v3.CreateServiceRequest(
+        parent=project_name,
+        service_id="api-service",
+        service=monitoring_v3.Service(
+            display_name="API Service",
+            custom=monitoring_v3.Service.Custom(),
+        ),
+    )
 )
+
+service_name = service.name
 
 # Create an availability SLO - 99.9% of requests should succeed
 availability_slo = client.create_service_level_objective(
-    parent=service.name,
-    service_level_objective=monitoring_v3.ServiceLevelObjective(
-        display_name="API Availability - 99.9%",
-        goal=0.999,
-        rolling_period={"seconds": 30 * 24 * 3600},  # 30-day rolling window
-        service_level_indicator=monitoring_v3.ServiceLevelIndicator(
-            request_based=monitoring_v3.RequestBasedSli(
-                good_total_ratio=monitoring_v3.TimeSeriesRatio(
-                    good_service_filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="2xx"',
-                    total_service_filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count"',
+    request=monitoring_v3.CreateServiceLevelObjectiveRequest(
+        parent=service_name,
+        service_level_objective_id="availability-slo",
+        service_level_objective=monitoring_v3.ServiceLevelObjective(
+            display_name="API Availability - 99.9%",
+            goal=0.999,
+            rolling_period={"seconds": 30 * 24 * 3600},  # 30-day rolling window
+            service_level_indicator=monitoring_v3.ServiceLevelIndicator(
+                request_based=monitoring_v3.RequestBasedSli(
+                    good_total_ratio=monitoring_v3.TimeSeriesRatio(
+                        good_service_filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="2xx"',
+                        total_service_filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count"',
+                    ),
                 ),
             ),
         ),
-    ),
-    service_level_objective_id="availability-slo",
+    )
 )
 
 # Create a latency SLO - 99% of requests under 500ms
 latency_slo = client.create_service_level_objective(
-    parent=service.name,
-    service_level_objective=monitoring_v3.ServiceLevelObjective(
-        display_name="API Latency - 99% under 500ms",
-        goal=0.99,
-        rolling_period={"seconds": 30 * 24 * 3600},
-        service_level_indicator=monitoring_v3.ServiceLevelIndicator(
-            request_based=monitoring_v3.RequestBasedSli(
-                distribution_cut=monitoring_v3.DistributionCut(
-                    distribution_filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_latencies"',
-                    range=monitoring_v3.Range(max=500),  # 500ms threshold
+    request=monitoring_v3.CreateServiceLevelObjectiveRequest(
+        parent=service_name,
+        service_level_objective_id="latency-slo",
+        service_level_objective=monitoring_v3.ServiceLevelObjective(
+            display_name="API Latency - 99% under 500ms",
+            goal=0.99,
+            rolling_period={"seconds": 30 * 24 * 3600},
+            service_level_indicator=monitoring_v3.ServiceLevelIndicator(
+                request_based=monitoring_v3.RequestBasedSli(
+                    distribution_cut=monitoring_v3.DistributionCut(
+                        distribution_filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_latencies"',
+                        range=monitoring_v3.Range(max=500),  # 500ms threshold
+                    ),
                 ),
             ),
         ),
-    ),
-    service_level_objective_id="latency-slo",
+    )
 )
 
 print(f"Availability SLO: {availability_slo.name}")
@@ -113,82 +136,60 @@ Create a module that queries current error budget status:
 
 ```python
 # error_budget_checker.py - Query error budget status from Cloud Monitoring
-from google.cloud import monitoring_v3
-from google.protobuf import timestamp_pb2
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-client = monitoring_v3.ServiceMonitoringServiceClient()
+from google.cloud import monitoring_v3
+
+service_client = monitoring_v3.ServiceMonitoringServiceClient()
+metric_client = monitoring_v3.MetricServiceClient()
 
 def get_error_budget_status(project_id, service_id, slo_id):
     """Query the current error budget status for an SLO.
-    Returns the remaining budget as a percentage and absolute values."""
+    Returns the remaining error budget as a percentage."""
 
     slo_name = f"projects/{project_id}/services/{service_id}/serviceLevelObjectives/{slo_id}"
 
-    # Get the SLO definition to know the goal
-    slo = client.get_service_level_objective(name=slo_name)
+    # Get the SLO definition to know the goal.
+    slo = service_client.get_service_level_objective(name=slo_name)
     goal = slo.goal
 
-    # Query the current SLI performance over the rolling window
-    now = datetime.utcnow()
+    # Query Cloud Monitoring's SLO budget-fraction time series.
+    now = datetime.now(timezone.utc)
     interval = monitoring_v3.TimeInterval(
-        end_time=timestamp_pb2.Timestamp(seconds=int(now.timestamp())),
-        start_time=timestamp_pb2.Timestamp(
-            seconds=int((now - timedelta(days=30)).timestamp())
-        ),
+        {
+            "end_time": {"seconds": int(now.timestamp())},
+            "start_time": {"seconds": int((now - timedelta(hours=1)).timestamp())},
+        }
     )
 
-    # Use the Monitoring API to get the SLO time series
-    query_client = monitoring_v3.QueryServiceClient()
+    results = metric_client.list_time_series(
+        request={
+            "name": f"projects/{project_id}",
+            "filter": f'select_slo_budget_fraction("{slo_name}")',
+            "interval": interval,
+            "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
+        }
+    )
 
-    # Calculate from SLO data
-    # Total error budget = 1 - goal (e.g., 0.001 for 99.9%)
-    total_budget = 1 - goal
+    points = [
+        point
+        for time_series in results
+        for point in time_series.points
+    ]
+    if not points:
+        raise RuntimeError(f"No SLO budget data returned for {slo_name}")
 
-    # Get the current SLI value from the time series
-    # This is a simplified example - in practice, use the MQL or monitoring API
-    sli_value = get_current_sli_value(project_id, service_id, slo_id)
-
-    # Errors consumed = goal - actual SLI (if SLI < goal)
-    errors_consumed = max(0, goal - sli_value)
-
-    # Remaining budget
-    budget_remaining = total_budget - errors_consumed
-    budget_remaining_pct = (budget_remaining / total_budget) * 100 if total_budget > 0 else 0
+    latest_point = max(points, key=lambda point: point.interval.end_time.seconds)
+    budget_remaining_fraction = latest_point.value.double_value
+    budget_remaining_pct = budget_remaining_fraction * 100
 
     return {
         "slo_name": slo_id,
         "goal": goal,
-        "current_sli": sli_value,
-        "total_budget": total_budget,
-        "budget_consumed": errors_consumed,
-        "budget_remaining": budget_remaining,
+        "budget_remaining_fraction": round(budget_remaining_fraction, 4),
         "budget_remaining_pct": round(budget_remaining_pct, 2),
-        "is_budget_exhausted": budget_remaining <= 0,
+        "is_budget_exhausted": budget_remaining_fraction <= 0,
     }
-
-
-def get_current_sli_value(project_id, service_id, slo_id):
-    """Get the current SLI value using the Monitoring Query Language.
-    Returns the ratio of good events to total events over the SLO window."""
-
-    query_client = monitoring_v3.QueryServiceClient()
-
-    # MQL query to get the current SLI
-    query = f"""
-    fetch cloud_run_revision
-    | metric 'run.googleapis.com/request_count'
-    | align rate(1m)
-    | every 1m
-    | group_by [], [
-        good: sum(val()).filter(metric.response_code_class = '2xx'),
-        total: sum(val())
-    ]
-    """
-
-    # Simplified - in production use the API properly
-    # Return a mock value for illustration
-    return 0.9995  # 99.95% current SLI
 ```
 
 ## Step 3: Implement the Release Gate
@@ -197,8 +198,9 @@ Create the release gate that integrates with your CI/CD pipeline:
 
 ```python
 # release_gate.py - Error budget-based release gate
-import json
 from datetime import datetime
+
+from error_budget_checker import get_error_budget_status
 
 class ReleaseGate:
     """Controls release approvals based on error budget status.
@@ -311,6 +313,8 @@ import sys
 import os
 import argparse
 
+from release_gate import ReleaseGate
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--release-name", required=True)
@@ -346,7 +350,7 @@ if __name__ == "__main__":
 
 ## Step 5: Set Up Error Budget Alerts
 
-Create alerts that fire as the error budget gets consumed:
+Create alerts that fire as the error budget gets consumed faster than expected:
 
 ```python
 # Create tiered alerts for error budget consumption
@@ -354,25 +358,26 @@ from google.cloud import monitoring_v3
 
 alert_client = monitoring_v3.AlertPolicyServiceClient()
 
-def create_error_budget_alert(project_id, slo_name, threshold_pct, severity):
-    """Create an alert that fires when error budget drops below a threshold."""
+def create_error_budget_alert(project_id, slo_name, lookback_period, burn_rate_threshold, severity):
+    """Create an alert that fires when the SLO burn rate exceeds a threshold."""
 
     policy = monitoring_v3.AlertPolicy(
-        display_name=f"Error Budget Alert - {threshold_pct}% remaining",
+        display_name=f"Error Budget Burn Rate Alert - {lookback_period}",
         conditions=[
             monitoring_v3.AlertPolicy.Condition(
-                display_name=f"Error budget below {threshold_pct}%",
+                display_name=f"Burn rate above {burn_rate_threshold}x",
                 condition_threshold=monitoring_v3.AlertPolicy.Condition.MetricThreshold(
-                    filter=f'select_slo_budget_fraction("{slo_name}")',
-                    comparison=monitoring_v3.ComparisonType.COMPARISON_LT,
-                    threshold_value=threshold_pct / 100.0,
+                    filter=f'select_slo_burn_rate("{slo_name}", "{lookback_period}")',
+                    comparison=monitoring_v3.ComparisonType.COMPARISON_GT,
+                    threshold_value=burn_rate_threshold,
                     duration={"seconds": 0},
                     trigger=monitoring_v3.AlertPolicy.Condition.Trigger(count=1),
                 ),
             ),
         ],
+        combiner=monitoring_v3.AlertPolicy.ConditionCombinerType.OR,
         notification_channels=["projects/your-project-id/notificationChannels/CHANNEL_ID"],
-        severity=severity,
+        severity=monitoring_v3.AlertPolicy.Severity[severity],
     )
 
     result = alert_client.create_alert_policy(
@@ -382,9 +387,9 @@ def create_error_budget_alert(project_id, slo_name, threshold_pct, severity):
     return result
 
 # Create tiered alerts
-create_error_budget_alert("your-project-id", "slo-name", 50, "WARNING")
-create_error_budget_alert("your-project-id", "slo-name", 25, "ERROR")
-create_error_budget_alert("your-project-id", "slo-name", 10, "CRITICAL")
+create_error_budget_alert("your-project-id", "slo-name", "24h", 3, "WARNING")
+create_error_budget_alert("your-project-id", "slo-name", "6h", 6, "ERROR")
+create_error_budget_alert("your-project-id", "slo-name", "1h", 14.4, "CRITICAL")
 ```
 
 ## Step 6: Error Budget Reporting
