@@ -22,7 +22,7 @@ If you do not already have a Quarkus project, create one with the CLI.
 # Create a new Quarkus project with REST support
 
 quarkus create app com.example:my-quarkus-app \
-  --extension='resteasy-reactive,resteasy-reactive-jackson'
+  --extension='rest,rest-jackson,smallrye-health,logging-json'
 
 cd my-quarkus-app
 ```
@@ -65,10 +65,10 @@ This is the core of the setup. The Dockerfile has two stages: one for building t
 
 ```dockerfile
 # Stage 1: Build the native executable using GraalVM
-FROM quay.io/quarkus/ubi-quarkus-mandrel-builder-image:jdk-21 AS builder
+FROM quay.io/quarkus/ubi9-quarkus-mandrel-builder-image:jdk-21 AS builder
 
 # Copy the project files
-COPY --chown=quarkus:quarkus mvnw /code/mvnw
+COPY --chown=quarkus:quarkus --chmod=0755 mvnw /code/mvnw
 COPY --chown=quarkus:quarkus .mvn /code/.mvn
 COPY --chown=quarkus:quarkus pom.xml /code/
 
@@ -77,7 +77,7 @@ USER quarkus
 WORKDIR /code
 
 # Download dependencies first (cached layer)
-RUN ./mvnw -B org.apache.maven.plugins:maven-dependency-plugin:3.6.0:go-offline
+RUN ./mvnw -B org.apache.maven.plugins:maven-dependency-plugin:3.8.1:go-offline
 
 # Copy source code
 COPY src /code/src
@@ -89,18 +89,24 @@ RUN ./mvnw package -Dnative \
     -Dquarkus.native.additional-build-args="--initialize-at-build-time"
 
 # Stage 2: Create the minimal runtime image
-FROM quay.io/quarkus/quarkus-micro-image:2.0
+FROM quay.io/quarkus/ubi9-quarkus-micro-image:2.0
 
 WORKDIR /work/
 
 # Copy just the native binary from the build stage
 COPY --from=builder /code/target/*-runner /work/application
 
-# Make it executable
-RUN chmod 775 /work/application
+# Set up permissions for the runtime user
+RUN chmod 775 /work /work/application \
+    && chown -R 1001 /work \
+    && chmod -R "g+rwX" /work \
+    && chown -R 1001:root /work
 
 # Expose the port Cloud Run expects
 EXPOSE 8080
+
+# Run as a non-root user
+USER 1001
 
 # Run the native binary
 CMD ["./application", "-Dquarkus.http.host=0.0.0.0"]
@@ -112,7 +118,7 @@ The build stage uses the Mandrel builder image. Mandrel is Red Hat's distributio
 
 We copy the `pom.xml` and download dependencies before copying the source code. This way, Docker caches the dependency download layer. When you change only source code, the build skips the dependency download entirely.
 
-The runtime stage uses `quarkus-micro-image`, which is a minimal base image designed for Quarkus native binaries. It is only about 10MB and includes just enough to run a statically compiled application.
+The runtime stage uses `ubi9-quarkus-micro-image`, which is a minimal UBI Micro based image designed for Quarkus native binaries. It includes just enough system libraries to run the native executable.
 
 ## Configuring Quarkus for Cloud Run
 
@@ -125,13 +131,14 @@ Add some Cloud Run specific configuration to your `application.properties`.
 quarkus.http.port=${PORT:8080}
 
 # Enable graceful shutdown for Cloud Run scaling
-quarkus.shutdown.timeout=10
+quarkus.shutdown.timeout=10s
 
 # Health check configuration
 quarkus.smallrye-health.root-path=/health
 
 # Log in JSON format for Cloud Logging integration
-quarkus.log.console.json=true
+quarkus.log.console.json.enabled=true
+quarkus.log.console.json.log-format=gcp
 quarkus.log.console.json.date-format=yyyy-MM-dd'T'HH:mm:ss.SSSZ
 ```
 
@@ -209,7 +216,7 @@ curl $SERVICE_URL/api/hello
 # Check the startup time in the logs
 gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=quarkus-app" \
   --limit=5 \
-  --format='value(textPayload)'
+  --format='table(timestamp,textPayload,jsonPayload.message)'
 ```
 
 You should see startup times in the range of 20-50ms. Compare that to the 2-5 seconds a typical Spring Boot JVM application takes.
@@ -218,7 +225,7 @@ You should see startup times in the range of 20-50ms. Compare that to the 2-5 se
 
 There are a few tricks to make the native build faster and the resulting image smaller.
 
-You can enable static linking to produce a fully static binary that does not need any shared libraries.
+You can enable static linking to produce a fully static binary that does not need any shared libraries. Quarkus treats fully static native executables as experimental, so test this carefully before using it in production.
 
 ```properties
 # application.properties - Enable static native image
