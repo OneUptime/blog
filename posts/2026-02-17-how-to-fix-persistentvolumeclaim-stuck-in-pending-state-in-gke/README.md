@@ -30,12 +30,12 @@ Look at the Events section. Common messages include:
 
 ## Step 2 - Understand WaitForFirstConsumer
 
-If you see "waiting for first consumer to be created before binding," this is actually normal behavior with the default GKE StorageClass. The `standard-rw` and `premium-rw` StorageClasses use `WaitForFirstConsumer` volume binding mode, which means the PV is not created until a pod that uses the PVC is scheduled to a node.
+If you see "waiting for first consumer to be created before binding," this is actually normal behavior with the pre-installed Compute Engine persistent disk CSI StorageClasses in GKE. The `standard-rwo` and `premium-rwo` StorageClasses use `WaitForFirstConsumer` volume binding mode, which means the PV is not created until a pod that uses the PVC is scheduled to a node.
 
 ```bash
 # Check the volume binding mode of the storage class
 kubectl get storageclass
-kubectl describe storageclass standard-rw
+kubectl describe storageclass standard-rwo
 ```
 
 This design prevents zone mismatches. If the PV were created in zone us-central1-a but the pod gets scheduled to us-central1-b, the pod could never mount the volume.
@@ -71,8 +71,8 @@ kubectl get storageclass
 ```
 
 GKE provides these default StorageClasses:
-- `standard-rw` - Standard persistent disk (HDD)
-- `premium-rw` - SSD persistent disk
+- `standard-rwo` - Balanced persistent disk
+- `premium-rwo` - SSD persistent disk
 
 If your PVC references a different name:
 
@@ -88,7 +88,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  storageClassName: standard-rw  # must match an existing StorageClass
+  storageClassName: standard-rwo  # must match an existing StorageClass
 ```
 
 If you need a custom StorageClass, create one:
@@ -109,7 +109,7 @@ reclaimPolicy: Delete
 
 ## Step 4 - Fix Zone Mismatch Issues
 
-Persistent disks in GCP are zonal resources. A disk in us-central1-a cannot be attached to a VM in us-central1-b. If you are using `Immediate` binding mode and the disk gets created in a different zone than where the pod runs, you get a mount failure.
+Zonal persistent disks in GCP are zonal resources. A disk in us-central1-a cannot be attached to a VM in us-central1-b. If you are using `Immediate` binding mode and the disk gets created in a different zone than where the pod runs, you get a mount failure.
 
 Check where your existing PV is:
 
@@ -165,8 +165,9 @@ Persistent disks consume quota. If you are out of disk quota, provisioning fails
 ```bash
 # Check disk quota in the region
 gcloud compute regions describe us-central1 \
-  --format="table(quotas[].metric, quotas[].limit, quotas[].usage)" \
-  --filter="quotas.metric:DISKS_TOTAL_GB OR quotas.metric:SSD_TOTAL_GB"
+  --flatten="quotas[]" \
+  --filter="quotas.metric=(DISKS_TOTAL_GB,SSD_TOTAL_GB)" \
+  --format="table(quotas.metric, quotas.limit, quotas.usage)"
 ```
 
 If you are near the limit, either request a quota increase or clean up unused disks:
@@ -180,12 +181,12 @@ Old PVCs with `reclaimPolicy: Retain` leave disks behind after deletion. Clean t
 
 ## Step 6 - Fix Access Mode Issues
 
-PVCs in GKE support these access modes:
+PVCs in GKE commonly use these access modes:
 - `ReadWriteOnce` (RWO) - mounted read-write by a single node
 - `ReadOnlyMany` (ROX) - mounted read-only by many nodes
 - `ReadWriteMany` (RWX) - mounted read-write by many nodes (requires Filestore)
 
-Standard persistent disks only support RWO. If you request RWX, the PVC stays Pending because no provisioner can fulfill it:
+Compute Engine persistent disk StorageClasses do not support RWX. If you request RWX with a persistent disk StorageClass, the PVC stays Pending because no provisioner can fulfill it:
 
 ```yaml
 # This will stay Pending with standard persistent disks
@@ -233,7 +234,7 @@ Note that Filestore has a minimum size of 1TB for the standard tier, which can b
 
 ## Step 7 - Check the CSI Driver
 
-GKE uses the Compute Engine persistent disk CSI driver by default. If the driver pods are unhealthy, provisioning fails:
+GKE Autopilot uses the Compute Engine persistent disk CSI driver by default. In Standard clusters, make sure the driver is enabled. If the driver pods are unhealthy, provisioning fails:
 
 ```bash
 # Check CSI driver pods
