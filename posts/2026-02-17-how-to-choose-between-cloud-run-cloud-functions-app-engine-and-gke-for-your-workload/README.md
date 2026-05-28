@@ -17,7 +17,7 @@ Before going deep, here is a fast way to narrow it down:
 - **Cloud Functions**: You need to run small pieces of code in response to events. No long-running processes. Think webhook handlers, file processing triggers, Pub/Sub message handlers.
 - **Cloud Run**: You have a containerized application or API. It can be stateless. You want automatic scaling including scale-to-zero. This is the default choice for most new projects.
 - **App Engine**: You want a PaaS with managed deployment, traffic splitting, and versioning. Your app fits a standard runtime (Python, Node, Go, Java, etc.). You do not want to think about containers.
-- **GKE**: You need full Kubernetes. You have complex networking, stateful workloads, GPUs, specific scheduling needs, or you are running many microservices that benefit from a shared platform.
+- **GKE**: You need full Kubernetes. You have complex networking, stateful workloads, advanced GPU needs beyond Cloud Run's L4 GPU support, specific scheduling needs, or you are running many microservices that benefit from a shared platform.
 
 ## Cloud Functions - Event-Driven Glue Code
 
@@ -76,6 +76,7 @@ gcloud functions deploy process-image \
     --gen2 \
     --runtime=python311 \
     --region=us-central1 \
+    --entry-point=process_image \
     --trigger-topic=image-uploads \
     --memory=512MB \
     --timeout=120s
@@ -95,7 +96,7 @@ Cloud Run takes container images and runs them as services. It handles scaling, 
 **Limitations**:
 - Stateless by design (no local persistent storage between requests)
 - Maximum request timeout of 60 minutes
-- No GPU support (as of early 2026)
+- GPU support is available, but limited to supported regions and GPU types, with CPU, memory, and billing constraints
 - WebSocket connections limited to 60 minutes
 
 ```dockerfile
@@ -247,13 +248,13 @@ graph TD
 | Requirement | Cloud Functions | Cloud Run | App Engine | GKE |
 |-------------|----------------|-----------|------------|-----|
 | Scale to zero | Yes | Yes | Standard only | No |
-| Custom containers | No (2nd gen: yes) | Yes | Flexible only | Yes |
-| GPU support | No | No | No | Yes |
-| WebSockets | Limited | Yes (60 min) | Yes | Yes |
+| Custom containers | No | Yes | Flexible only | Yes |
+| GPU support | No | Limited (L4) | No | Yes |
+| WebSockets | Limited | Yes (60 min) | Flexible only | Yes |
 | gRPC | No | Yes | No | Yes |
 | Min latency | Higher (cold start) | Low | Low | Lowest |
 | Ops overhead | None | None | Low | High |
-| Cost at zero traffic | $0 | $0 | $0 (Std) | Cluster fee |
+| Cost at zero traffic | $0 | $0 | $0 if Standard scales to zero | Cluster fee |
 | Max request duration | 60 min | 60 min | Varies | Unlimited |
 
 ## Cost Comparison
