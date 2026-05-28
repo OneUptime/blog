@@ -8,7 +8,7 @@ Description: Learn how to securely connect to AlloyDB from GKE pods using the Al
 
 ---
 
-Connecting to AlloyDB from a GKE cluster is straightforward when your pods can directly reach the AlloyDB private IP. But for secure, IAM-authenticated connections, the AlloyDB Auth Proxy is the recommended approach. It handles SSL encryption, IAM authentication, and connection management. In GKE, you deploy it as a sidecar container alongside your application pod.
+Connecting to AlloyDB from a GKE cluster is straightforward when your pods can directly reach the AlloyDB private IP. But for secure, IAM-authorized connections, the AlloyDB Auth Proxy is the recommended approach. It handles TLS encryption, IAM authorization, and optional IAM database authentication. In GKE, you deploy it as a sidecar container alongside your application pod.
 
 In this post, I will walk through the full setup: configuring Workload Identity, deploying the Auth Proxy sidecar, and wiring up your application to use it.
 
@@ -16,7 +16,7 @@ In this post, I will walk through the full setup: configuring Workload Identity,
 
 You might wonder why you need a proxy when your pods can already connect to AlloyDB over the private network. Here are the reasons:
 
-1. **IAM-based authentication** - Instead of managing database passwords, you use GCP IAM to control who can connect. The proxy handles the authentication handshake.
+1. **IAM-based authorization** - You use GCP IAM to control who can connect to the AlloyDB instance. If you also enable IAM database authentication, the proxy can authenticate without a database password.
 
 2. **Automatic SSL/TLS** - The proxy establishes encrypted connections without you needing to manage certificates.
 
@@ -53,6 +53,12 @@ If your GKE cluster does not have Workload Identity enabled:
 gcloud container clusters update my-cluster \
   --zone=us-central1-a \
   --workload-pool=my-project.svc.id.goog
+
+# For existing Standard node pools, enable the GKE metadata server
+gcloud container node-pools update my-node-pool \
+  --cluster=my-cluster \
+  --zone=us-central1-a \
+  --workload-metadata=GKE_METADATA
 ```
 
 ## Step 2 - Create a Service Account for the Auth Proxy
@@ -151,9 +157,10 @@ spec:
             - "projects/my-project/locations/us-central1/clusters/my-alloydb-cluster/instances/my-primary"
             # Listen on localhost port 5432
             - "--port=5432"
-            - "--address=0.0.0.0"
-            # Health check endpoint
+            - "--address=127.0.0.1"
+            # Health check endpoint, bound to the Pod IP for Kubernetes probes
             - "--health-check"
+            - "--http-address=0.0.0.0"
             - "--http-port=9090"
           ports:
             - containerPort: 5432
@@ -209,12 +216,12 @@ kubectl logs deploy/my-app -c alloydb-auth-proxy --tail=20
 
 You should see messages indicating a successful connection to AlloyDB.
 
-Test from the application container:
+If your application image includes `psql`, test from the application container:
 
 ```bash
 # Exec into the app container and test the connection
 kubectl exec deploy/my-app -c app -- \
-  sh -c "apt-get update && apt-get install -y postgresql-client && psql -h 127.0.0.1 -U appuser -d myapp -c 'SELECT 1'"
+  sh -c 'PGPASSWORD="$DB_PASSWORD" psql -h 127.0.0.1 -U appuser -d myapp -c "SELECT 1"'
 ```
 
 ## Connecting to Read Pool Instances
@@ -230,8 +237,9 @@ If you have read pool instances, you can run a second Auth Proxy sidecar on a di
     - "projects/my-project/locations/us-central1/clusters/my-alloydb-cluster/instances/my-read-pool"
     # Use a different port for the read connection
     - "--port=5433"
-    - "--address=0.0.0.0"
+    - "--address=127.0.0.1"
     - "--health-check"
+    - "--http-address=0.0.0.0"
     - "--http-port=9091"
   ports:
     - containerPort: 5433
@@ -249,6 +257,20 @@ Then in your application, connect to `127.0.0.1:5432` for writes and `127.0.0.1:
 Instead of password-based authentication, you can use IAM authentication where the proxy handles the entire auth flow:
 
 ```bash
+# Enable IAM database authentication on the AlloyDB instance
+gcloud alloydb instances update my-primary \
+  --cluster=my-alloydb-cluster \
+  --region=us-central1 \
+  --database-flags=alloydb.iam_authentication=on
+
+# If the instance already has database flags set, include those
+# existing flags in the --database-flags list so they are not reset.
+
+# Grant the service account IAM database access
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:alloydb-proxy-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/alloydb.databaseUser"
+
 # Grant the service account IAM database login
 gcloud alloydb users create alloydb-proxy-sa@my-project.iam \
   --cluster=my-alloydb-cluster \
@@ -286,7 +308,7 @@ This gives existing connections up to 30 seconds to complete before the proxy sh
 
 **Connection refused on localhost:5432** - The proxy might not be ready yet. Check the readiness probe and Auth Proxy logs.
 
-**Permission denied** - Verify the GCP service account binding and IAM roles. Use `gcloud auth list` inside the proxy container to check the active identity.
+**Permission denied** - Verify the GCP service account binding, the Kubernetes service account annotation, and IAM roles. Check the Auth Proxy logs for the exact authorization error.
 
 **Timeout connecting** - Check that Private Services Access is configured and the GKE nodes can reach the AlloyDB IP range.
 
