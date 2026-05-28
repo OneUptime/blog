@@ -133,7 +133,7 @@ Allow a backup service to write to an external backup bucket:
       - projects/BACKUP_PROJECT_NUMBER
 ```
 
-Note that the backup service account can only create objects (write), not read or delete. This prevents the backup path from being used for exfiltration.
+Note that the backup service account can only create objects in the specified external project, not read from or delete objects in that project. Because writing protected data to an external bucket is still an outbound data path, keep this rule limited to a dedicated backup identity and destination project, and use IAM on the source buckets to limit what that identity can read.
 
 ```bash
 # Apply the egress rule
@@ -197,7 +197,7 @@ gsutil cp gs://protected-bucket/data.csv gs://external-bucket/data.csv
 
 ## Step 8: Protect Against Signed URL Exfiltration
 
-A common bypass attempt is generating signed URLs for objects and sharing them externally. VPC SC handles this too - signed URL access is still subject to perimeter checks.
+A common bypass attempt is generating signed URLs for objects and sharing them externally. Cloud Storage signed URLs support VPC SC, but the perimeter check uses the credentials of the user or service account that signed the URL, not the caller who uses the URL.
 
 However, if you want to be extra cautious, restrict who can generate signed URLs:
 
@@ -216,7 +216,7 @@ Set up alerts for blocked storage operations.
 # Create a log-based metric for blocked storage operations
 gcloud logging metrics create storage_exfiltration_attempts \
   --description="Cloud Storage operations blocked by VPC SC" \
-  --filter='protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.serviceName="storage.googleapis.com" AND protoPayload.metadata.violationReason!="" AND protoPayload.metadata.dryRun=false' \
+  --log-filter='protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.serviceName="storage.googleapis.com" AND protoPayload.metadata.violationReason!="" AND protoPayload.metadata.dryRun=false' \
   --project=my-data-project
 
 # Create an alert policy for the metric
@@ -224,8 +224,8 @@ gcloud monitoring policies create \
   --display-name="Storage Exfiltration Attempt Alert" \
   --condition-display-name="Blocked storage operations" \
   --condition-filter='metric.type="logging.googleapis.com/user/storage_exfiltration_attempts"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-duration=60s \
+  --if="> 0" \
+  --duration=60s \
   --notification-channels=CHANNEL_ID \
   --project=my-data-project
 ```
