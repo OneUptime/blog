@@ -91,7 +91,7 @@ variable "backup_start_time" {
 }
 
 variable "point_in_time_recovery" {
-  description = "Enable point-in-time recovery (requires binary logging for MySQL)"
+  description = "Enable point-in-time recovery"
   type        = bool
   default     = true
 }
@@ -179,6 +179,11 @@ Now the main instance, configured with private IP, automated backups, and high a
 # main.tf - Primary Cloud SQL instance
 # This is the main database instance with all production settings
 
+locals {
+  # MySQL enables PITR through binary logs; PostgreSQL and SQL Server use the PITR field.
+  is_mysql = startswith(var.database_version, "MYSQL_")
+}
+
 resource "google_sql_database_instance" "primary" {
   project          = var.project_id
   name             = var.instance_name
@@ -208,7 +213,8 @@ resource "google_sql_database_instance" "primary" {
     backup_configuration {
       enabled                        = var.backup_enabled
       start_time                     = var.backup_start_time
-      point_in_time_recovery_enabled = var.point_in_time_recovery
+      binary_log_enabled             = local.is_mysql ? var.point_in_time_recovery : null
+      point_in_time_recovery_enabled = local.is_mysql ? null : var.point_in_time_recovery
       transaction_log_retention_days = 7
 
       backup_retention_settings {
@@ -274,10 +280,6 @@ resource "google_sql_database_instance" "read_replica" {
 
   # Replicas do not need deletion protection since they can be recreated
   deletion_protection = false
-
-  replica_configuration {
-    failover_target = false
-  }
 
   settings {
     tier            = local.effective_replica_tier
