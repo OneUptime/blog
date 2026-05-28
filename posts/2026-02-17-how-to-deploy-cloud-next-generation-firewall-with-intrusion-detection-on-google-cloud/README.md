@@ -17,7 +17,7 @@ In this post, I will walk through deploying Cloud NGFW with intrusion detection 
 Cloud NGFW operates at three tiers:
 
 - **Cloud NGFW Essentials**: Standard VPC firewall rules with IAM-governed tags (free)
-- **Cloud NGFW Standard**: Adds FQDN filtering and geolocation filtering
+- **Cloud NGFW Standard**: Adds FQDN filtering, geolocation filtering, and Google Threat Intelligence for firewall policy rules
 - **Cloud NGFW Enterprise**: Adds TLS inspection and intrusion detection/prevention
 
 The intrusion detection capability inspects traffic for known exploits, malware, and suspicious patterns using Palo Alto Networks' threat signatures. It can run in detection mode (alert only) or prevention mode (block threats).
@@ -46,7 +46,7 @@ gcloud services enable compute.googleapis.com
 
 # You need:
 # 1. A VPC network
-# 2. Firewall endpoint (regional, managed by Google)
+# 2. Firewall endpoint (zonal, managed by Google)
 # 3. Firewall endpoint association (connects endpoint to your VPC)
 # 4. Security profile and security profile group
 # 5. Firewall policy rules that reference the security profile group
@@ -54,7 +54,7 @@ gcloud services enable compute.googleapis.com
 
 ## Step 1 - Create a Firewall Endpoint
 
-The firewall endpoint is the inspection point for your traffic. It is a regional resource managed by Google.
+The firewall endpoint is the inspection point for your traffic. It is a zonal resource managed by Google.
 
 ```bash
 # Create a firewall endpoint in your desired zone
@@ -72,7 +72,7 @@ gcloud network-security firewall-endpoints describe ngfw-endpoint-us \
 
 ## Step 2 - Associate the Endpoint with Your VPC
 
-The association connects the firewall endpoint to your VPC network so traffic can be routed through it.
+The association connects the firewall endpoint to your VPC network so traffic matched by Layer 7 inspection rules can be inspected by the endpoint.
 
 ```bash
 # Associate the endpoint with your VPC
@@ -80,7 +80,6 @@ gcloud network-security firewall-endpoint-associations create ngfw-assoc-us \
     --zone=us-central1-a \
     --endpoint=organizations/123456789/locations/us-central1-a/firewallEndpoints/ngfw-endpoint-us \
     --network=projects/my-project/global/networks/my-vpc \
-    --tls-inspection-policy="" \
     --project=my-project
 
 # Verify the association
@@ -102,15 +101,23 @@ gcloud network-security security-profiles threat-prevention create ids-profile \
 
 # Configure severity-based overrides
 # By default, all threats follow the default action. You can override per severity.
-gcloud network-security security-profiles threat-prevention update ids-profile \
+gcloud network-security security-profiles threat-prevention add-override ids-profile \
     --organization=123456789 \
     --location=global \
-    --severity-overrides=\
-severity=CRITICAL,action=DENY,\
-severity=HIGH,action=DENY,\
-severity=MEDIUM,action=ALERT,\
-severity=LOW,action=ALERT,\
-severity=INFORMATIONAL,action=ALLOW
+    --severities=CRITICAL,HIGH \
+    --action=DENY
+
+gcloud network-security security-profiles threat-prevention add-override ids-profile \
+    --organization=123456789 \
+    --location=global \
+    --severities=MEDIUM,LOW \
+    --action=ALERT
+
+gcloud network-security security-profiles threat-prevention add-override ids-profile \
+    --organization=123456789 \
+    --location=global \
+    --severities=INFORMATIONAL \
+    --action=ALLOW
 ```
 
 This configuration blocks critical and high severity threats while alerting on medium and low severity threats. Informational events are allowed without alerts.
@@ -133,7 +140,7 @@ gcloud network-security security-profile-groups create ngfw-profile-group \
 Now create firewall policy rules that route traffic through the NGFW for inspection.
 
 ```bash
-# Create a hierarchical firewall policy (or use network firewall policy)
+# Create a global network firewall policy
 gcloud compute network-firewall-policies create ngfw-policy \
     --global \
     --project=my-project \
@@ -188,14 +195,14 @@ Cloud NGFW logs threat detections to Cloud Logging. Set up queries and alerts.
 ```bash
 # Query for detected threats
 gcloud logging read \
-    'resource.type="gce_subnetwork" AND jsonPayload.rule_details.action="APPLY_SECURITY_PROFILE_GROUP" AND jsonPayload.threat_details' \
+    'logName="projects/my-project/logs/networksecurity.googleapis.com%2Ffirewall_threat"' \
     --format=json \
     --limit=20
 
 # Query specifically for blocked threats
 gcloud logging read \
-    'jsonPayload.threat_details.action="DENY"' \
-    --format="table(timestamp, jsonPayload.connection.src_ip, jsonPayload.connection.dest_ip, jsonPayload.threat_details.threat_name, jsonPayload.threat_details.severity)" \
+    'logName="projects/my-project/logs/networksecurity.googleapis.com%2Ffirewall_threat" AND jsonPayload.action="DROP"' \
+    --format="table(timestamp, jsonPayload.source_ip_address, jsonPayload.destination_ip_address, jsonPayload.name, jsonPayload.alert_severity)" \
     --limit=50
 ```
 
@@ -213,8 +220,8 @@ alert = monitoring_v3.AlertPolicy(
             display_name="Critical or High severity threat",
             condition_matched_log=monitoring_v3.AlertPolicy.Condition.LogMatch(
                 filter=(
-                    'resource.type="gce_subnetwork" '
-                    'AND jsonPayload.threat_details.severity=("CRITICAL" OR "HIGH")'
+                    'logName="projects/my-project/logs/networksecurity.googleapis.com%2Ffirewall_threat" '
+                    'AND jsonPayload.alert_severity=("CRITICAL" OR "HIGH")'
                 ),
             ),
         )
@@ -242,7 +249,7 @@ For long-term threat analysis, export the logs to BigQuery.
 # Create a log sink for NGFW threat data
 gcloud logging sinks create ngfw-threats-to-bq \
     bigquery.googleapis.com/projects/my-project/datasets/ngfw_threats \
-    --log-filter='resource.type="gce_subnetwork" AND jsonPayload.threat_details:*'
+    --log-filter='logName="projects/my-project/logs/networksecurity.googleapis.com%2Ffirewall_threat"'
 
 # After data accumulates, query for threat patterns
 ```
@@ -250,16 +257,16 @@ gcloud logging sinks create ngfw-threats-to-bq \
 ```sql
 -- Find the most common threats detected in the last 30 days
 SELECT
-    jsonPayload.threat_details.threat_name AS threat,
-    jsonPayload.threat_details.severity AS severity,
-    jsonPayload.threat_details.action AS action_taken,
+    jsonPayload.name AS threat,
+    jsonPayload.alert_severity AS severity,
+    jsonPayload.action AS action_taken,
     COUNT(*) AS detection_count,
-    COUNT(DISTINCT jsonPayload.connection.src_ip) AS unique_sources
+    COUNT(DISTINCT jsonPayload.source_ip_address) AS unique_sources
 FROM
-    `my_project.ngfw_threats.compute_googleapis_com_firewall`
+    `my_project.ngfw_threats.networksecurity_googleapis_com_firewall_threat_*`
 WHERE
     _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY))
-    AND jsonPayload.threat_details IS NOT NULL
+    AND jsonPayload.threat_id IS NOT NULL
 GROUP BY
     threat, severity, action_taken
 ORDER BY
@@ -274,12 +281,11 @@ After running in detection mode for a while, review the findings and tune your s
 ```bash
 # Add threat ID overrides for specific threats
 # Useful for suppressing false positives
-gcloud network-security security-profiles threat-prevention update ids-profile \
+gcloud network-security security-profiles threat-prevention add-override ids-profile \
     --organization=123456789 \
     --location=global \
-    --threat-overrides=\
-threat-id=41234,action=ALLOW,\
-threat-id=41235,action=ALLOW
+    --threat-ids=41234,41235 \
+    --action=ALLOW
 ```
 
 The workflow is:
