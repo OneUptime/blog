@@ -96,7 +96,7 @@ Each bounded context has its own data model. The sales context's model of a prod
 # sales-context/models.py
 from dataclasses import dataclass, field
 from typing import List
-from datetime import datetime
+from datetime import UTC, datetime
 
 @dataclass
 class OrderItem:
@@ -119,7 +119,7 @@ class Order:
     customer_email: str
     items: List[OrderItem] = field(default_factory=list)
     status: str = 'draft'
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def total(self):
@@ -152,7 +152,7 @@ class OrderPlacedEvent:
     total: float
     items: list
     event_type: str = 'order.placed'
-    occurred_at: datetime = field(default_factory=datetime.utcnow)
+    occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 ```
 
 ## Publishing Domain Events Between Contexts
@@ -267,18 +267,21 @@ Each bounded context is deployed independently with its own database.
 gcloud run deploy order-service \
   --source=./sales-context \
   --region=us-central1 \
+  --allow-unauthenticated \
   --set-env-vars="DB_NAME=sales_db,PROJECT_ID=my-project"
 
 # Deploy the Fulfillment context services
 gcloud run deploy shipping-service \
   --source=./fulfillment-context \
   --region=us-central1 \
+  --allow-unauthenticated \
   --set-env-vars="DB_NAME=fulfillment_db,PROJECT_ID=my-project"
 
 # Deploy the Billing context services
 gcloud run deploy payment-service \
   --source=./billing-context \
   --region=us-central1 \
+  --allow-unauthenticated \
   --set-env-vars="DB_NAME=billing_db,PROJECT_ID=my-project"
 
 # Create separate databases for each context
@@ -298,13 +301,13 @@ gcloud pubsub topics create domain-events
 # Fulfillment context subscribes to order events
 gcloud pubsub subscriptions create fulfillment-orders-sub \
   --topic=domain-events \
-  --filter='attributes.source_context = "sales" AND attributes.event_type = "order.placed"' \
+  --message-filter='attributes.source_context = "sales" AND attributes.event_type = "order.placed"' \
   --push-endpoint=https://shipping-service-xxxx.run.app/events
 
 # Billing context subscribes to order events
 gcloud pubsub subscriptions create billing-orders-sub \
   --topic=domain-events \
-  --filter='attributes.source_context = "sales" AND attributes.event_type = "order.placed"' \
+  --message-filter='attributes.source_context = "sales" AND attributes.event_type = "order.placed"' \
   --push-endpoint=https://payment-service-xxxx.run.app/events
 ```
 
@@ -329,8 +332,7 @@ SERVICES = {
 @app.route('/api/orders/<order_id>/details', methods=['GET'])
 def get_order_details(order_id):
     """Compose a complete order view from multiple bounded contexts."""
-    loop = asyncio.new_event_loop()
-    results = loop.run_until_complete(fetch_all_contexts(order_id))
+    results = asyncio.run(fetch_all_contexts(order_id))
 
     return jsonify({
         'order': results.get('sales'),
@@ -348,11 +350,14 @@ async def fetch_all_contexts(order_id):
         }
 
         results = {}
-        for name, task in tasks.items():
+        responses = await asyncio.gather(*tasks.values(), return_exceptions=True)
+        for name, response in zip(tasks.keys(), responses):
             try:
-                results[name] = await task
-            except Exception as e:
-                results[name] = {'error': str(e)}
+                if isinstance(response, Exception):
+                    raise response
+                results[name] = response
+            except Exception as exc:
+                results[name] = {'error': str(exc)}
 
         return results
 
