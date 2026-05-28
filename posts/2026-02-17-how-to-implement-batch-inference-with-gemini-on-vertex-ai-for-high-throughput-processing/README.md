@@ -41,9 +41,9 @@ def create_batch_input(prompts, output_path):
                         "parts": [{"text": prompt}]
                     }
                 ],
-                "generation_config": {
+                "generationConfig": {
                     "temperature": 0.2,
-                    "max_output_tokens": 256
+                    "maxOutputTokens": 256
                 }
             }
         }
@@ -95,20 +95,27 @@ With your input in Cloud Storage, you can submit the batch job through the Verte
 This code creates and submits a batch prediction job:
 
 ```python
-import vertexai
-from vertexai.batch_prediction import BatchPredictionJob
+from google import genai
+from google.genai.types import CreateBatchJobConfig, HttpOptions
 
 # Initialize Vertex AI
-vertexai.init(project="your-project-id", location="us-central1")
-
-# Submit the batch prediction job
-batch_job = BatchPredictionJob.submit(
-    source_model="gemini-2.0-flash",
-    input_dataset=input_uri,
-    output_uri_prefix="gs://your-batch-bucket/batch-jobs/output/"
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+    http_options=HttpOptions(api_version="v1")
 )
 
-print(f"Job submitted: {batch_job.resource_name}")
+# Submit the batch prediction job
+batch_job = client.batches.create(
+    model="gemini-2.5-flash",
+    src=input_uri,
+    config=CreateBatchJobConfig(
+        dest="gs://your-batch-bucket/batch-jobs/output/"
+    )
+)
+
+print(f"Job submitted: {batch_job.name}")
 print(f"State: {batch_job.state}")
 ```
 
@@ -118,36 +125,35 @@ Batch jobs run asynchronously. You need to check their status periodically or se
 
 ```python
 import time
+from google.genai.types import JobState
 
-def monitor_batch_job(job, poll_interval=60):
+def monitor_batch_job(client, job, poll_interval=60):
     """Monitor a batch job until completion."""
-    print(f"Monitoring job: {job.resource_name}")
+    print(f"Monitoring job: {job.name}")
 
-    while True:
-        job.refresh()
-        state = job.state.name
+    completed_states = {
+        JobState.JOB_STATE_SUCCEEDED,
+        JobState.JOB_STATE_FAILED,
+        JobState.JOB_STATE_CANCELLED,
+        JobState.JOB_STATE_PAUSED,
+    }
+
+    while job.state not in completed_states:
+        time.sleep(poll_interval)
+        job = client.batches.get(name=job.name)
+        state = job.state
 
         print(f"State: {state}")
 
-        if state == "JOB_STATE_SUCCEEDED":
-            print("Job completed successfully!")
-            print(f"Output location: {job.output_info}")
-            return True
-        elif state in ("JOB_STATE_FAILED", "JOB_STATE_CANCELLED"):
-            print(f"Job ended with state: {state}")
-            if hasattr(job, 'error'):
-                print(f"Error: {job.error}")
-            return False
-        elif state == "JOB_STATE_RUNNING":
-            # Show progress if available
-            if hasattr(job, 'completion_stats'):
-                stats = job.completion_stats
-                print(f"  Completed: {stats.successful_count}/{stats.total_count}")
+    if job.state == JobState.JOB_STATE_SUCCEEDED:
+        print("Job completed successfully!")
+        return True
 
-        time.sleep(poll_interval)
+    print(f"Job ended with state: {job.state}")
+    return False
 
 # Monitor the job
-success = monitor_batch_job(batch_job)
+success = monitor_batch_job(client, batch_job)
 ```
 
 ## Processing Batch Output
@@ -197,11 +203,23 @@ for i, result in enumerate(results[:5]):
 Here is an end-to-end pipeline that handles the full lifecycle:
 
 ```python
+import json
+import time
+
+from google import genai
+from google.cloud import storage
+from google.genai.types import CreateBatchJobConfig, HttpOptions, JobState
+
 class BatchInferencePipeline:
     """End-to-end batch inference pipeline."""
 
-    def __init__(self, project_id, bucket_name, model_name="gemini-2.0-flash"):
-        vertexai.init(project=project_id, location="us-central1")
+    def __init__(self, project_id, bucket_name, model_name="gemini-2.5-flash"):
+        self.client = genai.Client(
+            vertexai=True,
+            project=project_id,
+            location="us-central1",
+            http_options=HttpOptions(api_version="v1")
+        )
         self.bucket_name = bucket_name
         self.model_name = model_name
         self.storage_client = storage.Client()
@@ -214,7 +232,7 @@ class BatchInferencePipeline:
             request = {
                 "request": {
                     "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                    "generation_config": {"temperature": 0.2, "max_output_tokens": 512}
+                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 512}
                 }
             }
             lines.append(json.dumps(request))
@@ -231,10 +249,10 @@ class BatchInferencePipeline:
         """Submit the batch job."""
         output_prefix = f"gs://{self.bucket_name}/batch-jobs/{job_name}/output/"
 
-        job = BatchPredictionJob.submit(
-            source_model=self.model_name,
-            input_dataset=input_uri,
-            output_uri_prefix=output_prefix
+        job = self.client.batches.create(
+            model=self.model_name,
+            src=input_uri,
+            config=CreateBatchJobConfig(dest=output_prefix)
         )
         return job
 
@@ -244,10 +262,14 @@ class BatchInferencePipeline:
         timeout_seconds = timeout_minutes * 60
 
         while time.time() - start_time < timeout_seconds:
-            job.refresh()
-            if job.state.name == "JOB_STATE_SUCCEEDED":
+            job = self.client.batches.get(name=job.name)
+            if job.state == JobState.JOB_STATE_SUCCEEDED:
                 return True
-            elif job.state.name in ("JOB_STATE_FAILED", "JOB_STATE_CANCELLED"):
+            elif job.state in (
+                JobState.JOB_STATE_FAILED,
+                JobState.JOB_STATE_CANCELLED,
+                JobState.JOB_STATE_PAUSED,
+            ):
                 return False
             time.sleep(30)
 
@@ -264,7 +286,7 @@ class BatchInferencePipeline:
 
         # Submit
         job = self.submit_job(input_uri, job_name)
-        print(f"Job submitted: {job.resource_name}")
+        print(f"Job submitted: {job.name}")
 
         # Wait
         success = self.wait_for_completion(job)
@@ -294,7 +316,7 @@ results = pipeline.run(prompts, job_name="doc-summary-2026-02")
 Batch inference is already cheaper than real-time, but you can optimize further:
 
 - Use the smallest model that meets your quality requirements. Gemini Flash is typically sufficient for classification and extraction tasks.
-- Set appropriate max_output_tokens. If you only need a one-word classification, do not allow 1024 output tokens.
+- Set appropriate maxOutputTokens. If you only need a one-word classification, do not allow 1024 output tokens.
 - Batch your batches. Submitting one job with 10,000 requests is more efficient than ten jobs with 1,000 requests each.
 - Clean up intermediate files in Cloud Storage to avoid storage costs.
 
@@ -321,7 +343,20 @@ def process_with_retries(pipeline, prompts, job_name, max_retries=2):
 
         # Match results back to original indices
         failures = []
-        for (original_idx, prompt), result in zip(remaining, results):
+        result_by_prompt = {}
+        for result in results:
+            request_contents = result.get("request", {}).get("contents", [])
+            if request_contents:
+                parts = request_contents[0].get("parts", [])
+                if parts and parts[0].get("text"):
+                    result_by_prompt.setdefault(parts[0]["text"], []).append(result)
+
+        for original_idx, prompt in remaining:
+            request_text = prompt
+            result = None
+            if result_by_prompt.get(request_text):
+                result = result_by_prompt[request_text].pop(0)
+
             if result and result.get("response", {}).get("candidates"):
                 all_results[original_idx] = result
             else:
