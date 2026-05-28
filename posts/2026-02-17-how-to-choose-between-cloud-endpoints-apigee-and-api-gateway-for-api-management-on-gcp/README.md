@@ -24,22 +24,22 @@ Think of it as a progression: Cloud Endpoints is basic, API Gateway is intermedi
 
 | Feature | Cloud Endpoints | API Gateway | Apigee |
 |---------|----------------|-------------|--------|
-| Deployment model | Sidecar proxy (ESP) | Fully managed | Managed or hybrid |
-| API definition | OpenAPI 2.0 | OpenAPI 2.0 | OpenAPI, gRPC, SOAP |
+| Deployment model | ESP/ESPv2 proxy you deploy | Fully managed | Managed or hybrid |
+| API definition | OpenAPI 2.0, OpenAPI 3.x, gRPC | OpenAPI 2.0, OpenAPI 3.x, gRPC on Cloud Run | OpenAPI, gRPC, SOAP |
 | Authentication | API keys, JWT, Firebase Auth, Google ID | API keys, JWT, Google ID | API keys, OAuth 2.0, JWT, SAML |
-| Rate limiting | No | No | Yes (Spike Arrest, Quota) |
+| Rate limiting | Quotas (beta) | Quotas | Yes (Spike Arrest, Quota) |
 | Request/response transformation | No | No | Yes (extensive policies) |
 | Developer portal | No | No | Yes (built-in) |
 | Analytics | Cloud Monitoring integration | Cloud Monitoring integration | Built-in advanced analytics |
 | Monetization | No | No | Yes |
 | Caching | No | No | Yes |
 | Custom policies | No | No | Yes (JavaScript, Python, Java) |
-| Cost | Free (you pay for compute) | $3.50 per million calls | Starts at ~$500/month |
+| Cost | First 2M calls/month free, then $3.00 per million calls | First 2M calls/month free, then $3.00 per million calls | Starts at $365/month per region for a Base pay-as-you-go environment |
 | Best for | Internal APIs, gRPC | Simple public APIs | Enterprise API programs |
 
 ## Cloud Endpoints - The Lightweight Option
 
-Cloud Endpoints works by deploying the Extensible Service Proxy (ESP or ESPv2) as a sidecar container alongside your application. It validates API keys, verifies JWT tokens, and sends telemetry to Cloud Monitoring.
+Cloud Endpoints works by deploying the Extensible Service Proxy (ESP or ESPv2) alongside your application, or as an ESPv2 Cloud Run service in front of your backend. It validates API keys, verifies JWT tokens, enforces configured quotas, and sends telemetry to Cloud Monitoring.
 
 ### When to Use Cloud Endpoints
 
@@ -59,6 +59,9 @@ host: "my-api-xxx.run.app"
 basePath: "/"
 schemes:
   - "https"
+x-google-backend:
+  address: https://my-backend-xxx.run.app
+  protocol: h2
 paths:
   /users:
     get:
@@ -99,22 +102,25 @@ Deploy it with Cloud Run:
 # Deploy the API configuration
 gcloud endpoints services deploy openapi-spec.yaml
 
-# Deploy your backend with ESP as a sidecar on Cloud Run
-gcloud run deploy my-api \
-    --image=gcr.io/my-project/my-api:latest \
-    --region=us-central1 \
-    --set-env-vars="ESPv2_ARGS=--cors_preset=basic"
+# Build the Endpoints service config into an ESPv2 image
+wget https://raw.githubusercontent.com/GoogleCloudPlatform/esp-v2/master/docker/serverless/gcloud_build_image
+chmod +x gcloud_build_image
+./gcloud_build_image -s my-api-xxx.run.app \
+    -c 2026-02-17r0 -p my-project
 
-# Or use the ESPv2 container as a separate service
+# Deploy the ESPv2 proxy service on Cloud Run
 gcloud run deploy esp-proxy \
-    --image=gcr.io/endpoints-release/endpoints-runtime-serverless:2 \
-    --set-env-vars="ENDPOINTS_SERVICE_NAME=my-api-xxx.run.app" \
+    --image="gcr.io/my-project/endpoints-runtime-serverless:ESPv2_VERSION-my-api-xxx.run.app-2026-02-17r0" \
+    --set-env-vars=ESPv2_ARGS=--cors_preset=basic \
+    --allow-unauthenticated \
+    --platform managed \
+    --project=my-project \
     --region=us-central1
 ```
 
 ### Cloud Endpoints Limitations
 
-- No rate limiting or quota management
+- Quotas are available, but they are not a replacement for Apigee's advanced traffic management policies
 - No request/response transformation
 - No developer portal
 - Limited to API key and JWT authentication
@@ -160,8 +166,7 @@ paths:
       x-google-backend:
         address: https://us-central1-my-project.cloudfunctions.net/create-order
       security:
-        - google_id_token:
-            - "https://my-api.example.com"
+        - google_id_token: []
       responses:
         201:
           description: "Created"
@@ -190,6 +195,9 @@ gcloud api-gateway api-configs create orders-config \
     --api=orders-api \
     --openapi-spec=openapi-spec.yaml
 
+# Enable the managed service for this API
+gcloud services enable MANAGED_SERVICE_NAME.apigateway.my-project.cloud.goog
+
 # Create the gateway
 gcloud api-gateway gateways create orders-gateway \
     --api=orders-api \
@@ -204,7 +212,7 @@ gcloud api-gateway gateways describe orders-gateway \
 
 ### API Gateway Limitations
 
-- No rate limiting or quota management
+- Quotas are available, but not Apigee-style traffic management policies like Spike Arrest
 - No request/response transformation
 - No developer portal
 - Limited routing capabilities
@@ -223,7 +231,7 @@ Apigee is a complete API management platform. It is what you use when APIs are a
 - Enterprise compliance requirements
 - Multi-cloud API management
 
-```bash
+```hcl
 # Apigee setup is more involved - typically done through the UI or Terraform
 # Here is a Terraform example
 
@@ -244,9 +252,9 @@ resource "google_apigee_environment" "env" {
 An Apigee proxy with rate limiting and caching:
 
 ```xml
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!-- Apigee proxy configuration with policies -->
 <!-- ProxyEndpoint handles incoming requests -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <ProxyEndpoint name="default">
     <PreFlow name="PreFlow">
         <Request>
@@ -278,13 +286,13 @@ An Apigee proxy with rate limiting and caching:
 - Full API lifecycle management
 - Advanced security policies
 - Built-in analytics and developer portal
-- Monetization for API products
+- Monetization for API products, depending on your Apigee pricing model and available add-ons
 - API versioning and revision management
 - Custom policies with JavaScript, Python, or Java
 
 ### Apigee Limitations
 
-- Expensive (minimum ~$500/month for pay-as-you-go)
+- Expensive compared with API Gateway or Cloud Endpoints (minimum $365/month per region for a Base pay-as-you-go environment)
 - Complex to set up and learn
 - Overkill for internal-only APIs
 - Setup and provisioning takes time
@@ -310,14 +318,14 @@ graph TD
 
 | Service | Pricing Model | Estimated Cost (1M calls/month) |
 |---------|--------------|-------------------------------|
-| Cloud Endpoints | Free (compute costs only) | $0 (plus backend compute) |
-| API Gateway | $3.50 per million calls | ~$3.50 |
-| Apigee (pay-as-you-go) | Base fee + per call | ~$500+ |
-| Apigee (subscription) | Annual contract | ~$10,000+/year |
+| Cloud Endpoints | First 2M calls/month free, then per-call pricing | $0 for Endpoints usage at 1M calls, plus backend compute |
+| API Gateway | First 2M calls/month free, then per-call pricing | $0 for API Gateway usage at 1M calls, plus data transfer |
+| Apigee (pay-as-you-go) | Environment fee + per-call pricing | $365+ per month per region, plus API calls and networking |
+| Apigee (subscription) | Annual contract | Contact Google Cloud sales |
 
 ## Practical Guidance
 
-If you are building internal microservices and just need authentication and monitoring: **Cloud Endpoints**. It is free and gets the job done.
+If you are building internal microservices and just need authentication, quotas, and monitoring: **Cloud Endpoints**. It stays inexpensive at low volume and gets the job done.
 
 If you have a straightforward public API and want a managed gateway without managing proxies: **API Gateway**. It is cheap and simple.
 
