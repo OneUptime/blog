@@ -53,7 +53,14 @@ Start by enabling the required APIs and creating the Cloud Tasks queue.
 
 gcloud services enable \
   cloudtasks.googleapis.com \
-  cloudfunctions.googleapis.com
+  cloudfunctions.googleapis.com \
+  run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  logging.googleapis.com
+
+PROJECT_ID=$(gcloud config get-value project)
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
 
 # Create the task queue with rate limiting and retry config
 gcloud tasks queues create order-tasks \
@@ -68,6 +75,22 @@ gcloud tasks queues create order-tasks \
 # Create a service account for task dispatch
 gcloud iam service-accounts create task-dispatcher \
   --display-name="Cloud Tasks Dispatcher"
+
+# Create a service account for the function runtime
+gcloud iam service-accounts create task-handler-sa \
+  --display-name="Order Task Handler"
+
+# Allow Cloud Tasks to mint OIDC tokens for the dispatcher service account
+gcloud iam service-accounts add-iam-policy-binding \
+  task-dispatcher@${PROJECT_ID}.iam.gserviceaccount.com \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-cloudtasks.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+
+# Grant your API service account permission to enqueue tasks
+gcloud tasks queues add-iam-policy-binding order-tasks \
+  --location=us-central1 \
+  --member="serviceAccount:YOUR_API_SERVICE_ACCOUNT@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/cloudtasks.enqueuer"
 ```
 
 ## Creating the Task Handler Cloud Function
@@ -214,19 +237,19 @@ Deploy the function.
 # Deploy the Cloud Function
 gcloud functions deploy order-task-handler \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --entry-point=orderTaskHandler \
   --trigger-http \
   --no-allow-unauthenticated \
   --timeout=120s \
   --memory=256MB \
-  --service-account=task-handler-sa@YOUR_PROJECT.iam.gserviceaccount.com
+  --service-account=task-handler-sa@${PROJECT_ID}.iam.gserviceaccount.com
 
 # Grant the task dispatcher permission to invoke the function
 gcloud functions add-invoker-policy-binding order-task-handler \
   --region=us-central1 \
-  --member="serviceAccount:task-dispatcher@YOUR_PROJECT.iam.gserviceaccount.com"
+  --member="serviceAccount:task-dispatcher@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
 
 ## Creating the Task Producer
@@ -272,7 +295,7 @@ async function createDeferredTask(taskType, orderId, data, delaySeconds = 0) {
   }
 
   // Use a deterministic name for deduplication
-  const taskId = `${orderId}-${taskType}-${Date.now()}`;
+  const taskId = `${orderId}-${taskType}`;
   task.name = `${parent}/tasks/${taskId}`;
 
   try {
