@@ -58,12 +58,12 @@ gcloud compute networks vpc-access connectors create my-connector \
   --machine-type=e2-micro
 ```
 
-The subnet needs to be a /28 range at minimum. This gives the connector 16 IP addresses to work with.
+The connector subnet must be a dedicated /28 range. This gives the connector 16 IP addresses to work with.
 
 ### Option B: Auto-created Subnet
 
 ```bash
-# Create with an auto-assigned IP range (simpler but less control)
+# Create with a Google-managed subnet for the connector (simpler but less control)
 gcloud compute networks vpc-access connectors create my-connector \
   --region=us-central1 \
   --network=default \
@@ -224,6 +224,7 @@ If you have internal services behind an internal load balancer, the VPC connecto
 
 ```javascript
 // Connect to an internal API behind an internal load balancer
+const functions = require('@google-cloud/functions-framework');
 const axios = require('axios');
 
 functions.http('callInternalApi', async (req, res) => {
@@ -242,25 +243,26 @@ functions.http('callInternalApi', async (req, res) => {
 
 ## Firewall Rules
 
-Make sure your VPC firewall rules allow traffic from the connector's subnet to your private resources:
+Make sure your VPC firewall rules allow traffic from the connector to private VM-based resources such as internal load balancer backends. For Cloud SQL private IP and Memorystore, also make sure the resource is attached to the same VPC network and that egress firewall rules do not block the destination IP or port.
 
 ```bash
-# Allow traffic from the VPC connector subnet to Cloud SQL
-gcloud compute firewall-rules create allow-connector-to-sql \
+# Allow HTTP traffic from this connector to VM backends tagged "internal-api"
+gcloud compute firewall-rules create allow-connector-to-internal-api \
+  --network=default \
+  --direction=INGRESS \
+  --action=ALLOW \
+  --rules=tcp:8080 \
+  --source-tags=vpc-connector-us-central1-my-connector \
+  --target-tags=internal-api
+
+# Allow PostgreSQL traffic from any VPC connector to VM databases tagged "postgres"
+gcloud compute firewall-rules create allow-connector-to-postgres-vms \
   --network=default \
   --direction=INGRESS \
   --action=ALLOW \
   --rules=tcp:5432 \
-  --source-ranges=10.8.0.0/28 \
-  --target-tags=cloudsql
-
-# Allow traffic from the VPC connector to Memorystore
-gcloud compute firewall-rules create allow-connector-to-redis \
-  --network=default \
-  --direction=INGRESS \
-  --action=ALLOW \
-  --rules=tcp:6379 \
-  --source-ranges=10.8.0.0/28
+  --source-tags=vpc-connector \
+  --target-tags=postgres
 ```
 
 ## Terraform Configuration
@@ -323,7 +325,7 @@ resource "google_cloudfunctions2_function" "private_function" {
 
 **High latency**: If you see latency spikes, your connector might be underscaled. Increase `max-instances` to handle more concurrent connections.
 
-**Connector in ERROR state**: This usually means the subnet is too small or conflicts with existing resources. Delete and recreate with a different IP range.
+**Connector in ERROR state**: This can happen when the subnet is not a dedicated /28 or the range conflicts with existing resources. Delete and recreate with a different IP range.
 
 ## Monitoring
 
