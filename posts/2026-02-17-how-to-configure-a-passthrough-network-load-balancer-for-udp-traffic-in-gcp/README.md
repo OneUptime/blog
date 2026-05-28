@@ -17,7 +17,7 @@ This post covers the complete setup for both external and internal passthrough n
 Unlike proxy-based load balancers (HTTP(S), TCP proxy), the passthrough network load balancer does not terminate connections. It receives packets on the frontend IP and forwards them to a healthy backend, without modifying the packet headers. The backend sees the original client IP as the source address.
 
 For UDP specifically:
-- There is no connection state, so each packet is independently routed
+- UDP is connectionless, but Google Cloud can still track UDP flows for load-balancing decisions
 - Session affinity uses a hash of the source IP (and optionally port) to consistently send packets from the same client to the same backend
 - Health checks still work but use TCP or HTTP probes (since UDP health checks are not natively supported)
 
@@ -42,7 +42,9 @@ gcloud compute instances create udp-server-1 \
     --machine-type=e2-medium \
     --tags=udp-backend \
     --metadata=startup-script='#!/bin/bash
-apt-get update && apt-get install -y socat
+apt-get update && apt-get install -y socat python3
+mkdir -p /tmp/health && echo ok > /tmp/health/health
+python3 -m http.server 8080 --directory /tmp/health &
 # Run a simple UDP echo server on port 5353
 socat UDP4-RECVFROM:5353,fork EXEC:"/bin/cat" &'
 
@@ -51,9 +53,13 @@ gcloud compute instances create udp-server-2 \
     --machine-type=e2-medium \
     --tags=udp-backend \
     --metadata=startup-script='#!/bin/bash
-apt-get update && apt-get install -y socat
+apt-get update && apt-get install -y socat python3
+mkdir -p /tmp/health && echo ok > /tmp/health/health
+python3 -m http.server 8080 --directory /tmp/health &
 socat UDP4-RECVFROM:5353,fork EXEC:"/bin/cat" &'
 ```
+
+For UDP services that send replies, make sure the backend application is configured to reply from the load balancer IP. Passthrough load balancers preserve the destination IP, so backends see packets addressed to the forwarding rule IP.
 
 ### Step 2: Create an Unmanaged Instance Group
 
@@ -140,7 +146,7 @@ gcloud compute firewall-rules create allow-udp-health-check \
     --network=default \
     --action=allow \
     --direction=ingress \
-    --source-ranges=130.211.0.0/22,35.191.0.0/16 \
+    --source-ranges=35.191.0.0/16,209.85.152.0/22,209.85.204.0/22 \
     --target-tags=udp-backend \
     --rules=tcp:8080
 ```
@@ -174,12 +180,29 @@ gcloud compute backend-services add-backend internal-udp-backend \
 gcloud compute forwarding-rules create internal-udp-rule \
     --region=us-central1 \
     --load-balancing-scheme=INTERNAL \
-    --network=my-vpc \
-    --subnet=my-subnet \
+    --network=default \
+    --subnet=default \
     --address=10.128.0.100 \
     --backend-service=internal-udp-backend \
     --ip-protocol=UDP \
-    --ports=53
+    --ports=5353
+
+# Allow internal UDP traffic and health check probes
+gcloud compute firewall-rules create allow-internal-udp-traffic \
+    --network=default \
+    --action=allow \
+    --direction=ingress \
+    --source-ranges=10.128.0.0/9 \
+    --target-tags=udp-backend \
+    --rules=udp:5353
+
+gcloud compute firewall-rules create allow-internal-udp-health-check \
+    --network=default \
+    --action=allow \
+    --direction=ingress \
+    --source-ranges=35.191.0.0/16,130.211.0.0/22 \
+    --target-tags=udp-backend \
+    --rules=tcp:8080
 ```
 
 ## Session Affinity for UDP
@@ -194,8 +217,9 @@ gcloud compute backend-services update udp-backend-service \
 ```
 
 Available session affinity options for UDP:
-- `NONE` - Each packet is independently routed (round-robin)
+- `NONE` - Packets are distributed based on load-balancing hashes without client affinity
 - `CLIENT_IP` - Packets from the same client IP go to the same backend
+- `CLIENT_IP_PROTO` - Packets from the same client IP and protocol go to the same backend
 - `CLIENT_IP_PORT_PROTO` - Packets from the same client IP, port, and protocol go to the same backend
 
 ## Use Case: Internal DNS Server
@@ -216,12 +240,13 @@ graph TD
 Configure your VPC to use the load balancer IP as the DNS server:
 
 ```bash
-# Update DHCP options to point to the internal NLB for DNS
-gcloud compute networks subnets update my-subnet \
-    --region=us-central1
+# Forward VPC DNS queries to the internal NLB
+gcloud dns policies create internal-dns-policy \
+    --networks=default \
+    --private-alternative-name-servers=10.128.0.100
 ```
 
-Individual VMs can be configured to use the load balancer IP as their DNS server in `/etc/resolv.conf`.
+Individual VMs can also be configured to use the load balancer IP as their DNS server in `/etc/resolv.conf`.
 
 ## Use Case: VoIP/SIP Load Balancing
 
@@ -251,7 +276,7 @@ gcloud compute forwarding-rules create voip-rule \
 Test your UDP load balancer with `nc` (netcat):
 
 ```bash
-# Send a UDP packet to the load balancer and listen for response
+# Send a UDP packet to the load balancer
 echo "hello" | nc -u -w2 LOAD_BALANCER_IP 5353
 
 # Send multiple packets to verify distribution
@@ -285,7 +310,7 @@ Keep these in mind when planning your UDP load balancing:
 
 - **No global load balancing**: The passthrough NLB is regional only. For multi-region UDP, you need a load balancer in each region.
 - **No UDP health checks**: You must use TCP or HTTP health checks as a proxy for service health.
-- **No connection draining**: Since UDP is connectionless, there is no connection draining during backend removal.
+- **Connection tracking is time-limited**: UDP flows are tracked for a limited idle timeout, so backend changes can affect long-lived UDP exchanges differently from TCP connections.
 - **Packet size limits**: The load balancer handles standard UDP packets. Jumbo frames are not supported through the load balancer.
 
 ## Wrapping Up
