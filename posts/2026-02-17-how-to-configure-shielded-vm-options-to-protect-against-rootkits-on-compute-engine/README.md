@@ -183,7 +183,7 @@ sudo tpm2_pcrread sha256
 
 ### Integrity Monitoring
 
-Integrity Monitoring checks the boot sequence against a baseline stored in Cloud Logging. When the boot sequence changes, it generates an event.
+Integrity Monitoring checks the boot sequence against a securely stored integrity policy baseline. When the boot sequence changes, it generates events in Cloud Logging.
 
 The flow works like this:
 
@@ -200,13 +200,13 @@ flowchart TD
 
 ## Checking Integrity Status
 
-You can check whether an instance passed or failed its integrity verification:
+You can check whether an instance passed or failed its integrity verification by querying the Shielded VM integrity events. Replace `PROJECT_ID` with your Google Cloud project ID:
 
 ```bash
 # Check the integrity status of a Shielded VM
-gcloud compute instances describe secure-vm \
-    --zone=us-central1-a \
-    --format="yaml(shieldedInstanceIntegrityPolicy)"
+gcloud logging read 'resource.type="gce_instance" AND logName="projects/PROJECT_ID/logs/compute.googleapis.com%2Fshielded_vm_integrity" AND (jsonPayload.earlyBootReportEvent.policyEvaluationPassed:* OR jsonPayload.lateBootReportEvent.policyEvaluationPassed:*)' \
+    --limit=20 \
+    --format="table(timestamp,jsonPayload.earlyBootReportEvent.policyEvaluationPassed,jsonPayload.lateBootReportEvent.policyEvaluationPassed)"
 ```
 
 View integrity monitoring events in Cloud Logging:
@@ -220,7 +220,7 @@ gcloud logging read 'resource.type="gce_instance" AND logName:"compute.googleapi
 
 ## Updating the Integrity Baseline
 
-When you make legitimate changes to the boot configuration (kernel update, new boot parameters), the integrity check will fail. You need to update the baseline:
+When you make legitimate changes to the boot configuration (kernel update, new boot parameters), the integrity check will fail. You need to update the baseline while the VM is running:
 
 ```bash
 # Update the integrity baseline after a legitimate change
