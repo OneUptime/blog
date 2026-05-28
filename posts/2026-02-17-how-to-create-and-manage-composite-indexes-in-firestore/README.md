@@ -8,7 +8,7 @@ Description: Learn how to create, manage, and optimize composite indexes in Fire
 
 ---
 
-Firestore automatically creates single-field indexes for every field in every document. These cover simple queries. But the moment you need to filter or sort on multiple fields in a single query, you need composite indexes. Getting your composite indexes right is essential for building a performant Firestore application. In this post, I will cover everything you need to know about creating and managing composite indexes.
+Firestore automatically creates single-field indexes for every field in every document. These cover simple queries and some compound equality queries. But when you need a compound query with range filters or sorting across multiple fields, you need composite indexes. Getting your composite indexes right is essential for building a performant Firestore application. In this post, I will cover everything you need to know about creating and managing composite indexes.
 
 ## How Firestore Indexes Work
 
@@ -25,7 +25,7 @@ You need a composite index when your query:
 - Filters on one field and sorts on a different field
 - Filters on multiple fields (with at least one non-equality filter)
 - Filters with equality on one field and uses a range filter on another field
-- Combines an `array-contains` or `in` operator with additional filters
+- Combines an `array-contains` or `in` operator with additional range filters or sort orders
 
 Here are concrete examples:
 
@@ -64,7 +64,7 @@ FAILED_PRECONDITION: The query requires an index. You can create it here:
 https://console.firebase.google.com/v1/r/project/my-project/firestore/indexes?create_composite=...
 ```
 
-Click the link and Firestore creates the index for you. This is the approach most developers use during development.
+Click the link, review the pre-populated index in the Firebase console, and click Create. This is the approach most developers use during development.
 
 ## Method 2: Create with gcloud CLI
 
@@ -75,21 +75,21 @@ For automated deployments and infrastructure-as-code:
 
 gcloud firestore indexes composite create \
     --collection-group=products \
-    --field-config=field-path=category,order=ASCENDING \
-    --field-config=field-path=price,order=ASCENDING
+    --field-config=field-path=category,order=ascending \
+    --field-config=field-path=price,order=ascending
 
 # Create a composite index with a descending sort
 gcloud firestore indexes composite create \
     --collection-group=orders \
-    --field-config=field-path=userId,order=ASCENDING \
-    --field-config=field-path=createdAt,order=DESCENDING
+    --field-config=field-path=userId,order=ascending \
+    --field-config=field-path=createdAt,order=descending
 
 # Create a composite index for array-contains queries
 gcloud firestore indexes composite create \
     --collection-group=articles \
-    --field-config=field-path=tags,array-config=CONTAINS \
-    --field-config=field-path=published,order=ASCENDING \
-    --field-config=field-path=publishedAt,order=DESCENDING
+    --field-config=field-path=tags,array-config=contains \
+    --field-config=field-path=published,order=ascending \
+    --field-config=field-path=publishedAt,order=descending
 ```
 
 ## Method 3: Firebase Configuration File
@@ -142,8 +142,8 @@ For version-controlled index management, use a `firestore.indexes.json` file:
 Deploy the indexes:
 
 ```bash
-# Deploy all indexes defined in the configuration file
-firebase deploy --only firestore:indexes
+# Deploy Firestore rules and indexes defined in the project
+firebase deploy --only firestore
 ```
 
 This approach is great for teams because the index definitions are checked into version control alongside the application code.
@@ -206,8 +206,8 @@ Each composite index adds storage cost and slightly increases write latency (bec
 # List indexes to find the one you want to delete
 gcloud firestore indexes composite list
 
-# Delete a specific composite index by its name
-gcloud firestore indexes composite delete INDEX_NAME
+# Delete a specific composite index by its ID or fully qualified name
+gcloud firestore indexes composite delete INDEX_ID_OR_NAME
 ```
 
 ## Index Design Strategy
@@ -226,7 +226,7 @@ flowchart TD
 
 ### Minimizing the Number of Indexes
 
-Firestore has a limit of 200 composite indexes per database. You can reduce the number of indexes needed by:
+Firestore has a limit of 200 composite indexes per database without billing enabled, and 1000 composite indexes per database with billing enabled. You can reduce the number of indexes needed by:
 
 **Sharing indexes across queries.** An index on `(category ASC, price ASC)` supports:
 - `where('category', '==', X).orderBy('price')`
@@ -310,7 +310,7 @@ Your application can read and write to the collection while the index is buildin
 If an index has been in CREATING state for a very long time:
 
 1. Check if the collection has an unusually large number of documents
-2. Verify that there are no documents with missing fields that the index covers
+2. Check the index operation status in the Firebase or Google Cloud console
 3. As a last resort, delete and recreate the index
 
 ### Query Returns "requires an index" Despite Index Existing
