@@ -86,9 +86,19 @@ resource "google_project" "host_project" {
   billing_account = var.billing_account_id
 }
 
+# Enable the Compute Engine API before configuring Shared VPC resources
+resource "google_project_service" "host_compute_api" {
+  project = google_project.host_project.project_id
+  service = "compute.googleapis.com"
+
+  disable_on_destroy = false
+}
+
 # Enable the shared VPC host project
 resource "google_compute_shared_vpc_host_project" "host" {
   project = google_project.host_project.project_id
+
+  depends_on = [google_project_service.host_compute_api]
 }
 
 # Create the shared VPC network
@@ -97,6 +107,8 @@ resource "google_compute_network" "shared_vpc" {
   project                 = google_project.host_project.project_id
   auto_create_subnetworks = false
   routing_mode            = "GLOBAL"
+
+  depends_on = [google_project_service.host_compute_api]
 }
 
 # Create subnets for different environments and regions
@@ -152,7 +164,7 @@ resource "google_org_policy_policy" "disable_external_ip" {
 
   spec {
     rules {
-      enforce = "TRUE"
+      deny_all = "TRUE"
     }
   }
 }
@@ -202,8 +214,16 @@ resource "google_logging_organization_sink" "audit_sink" {
   destination      = "bigquery.googleapis.com/projects/${google_project.logging_project.project_id}/datasets/${google_bigquery_dataset.audit_logs.dataset_id}"
   include_children = true
 
-  # Capture admin activity and data access logs
+  # Capture Cloud Audit Logs, including Data Access logs where they are enabled
   filter = "logName:\"cloudaudit.googleapis.com\""
+}
+
+# Grant the sink permission to write to the BigQuery dataset
+resource "google_bigquery_dataset_iam_member" "audit_sink_writer" {
+  project    = google_project.logging_project.project_id
+  dataset_id = google_bigquery_dataset.audit_logs.dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = google_logging_organization_sink.audit_sink.writer_identity
 }
 ```
 
@@ -250,6 +270,10 @@ Once your landing zone foundation is in place, you need a way for teams to reque
 ```hcl
 # modules/project-factory/main.tf
 # Reusable module for creating standardized projects
+resource "random_id" "suffix" {
+  byte_length = 4
+}
+
 resource "google_project" "project" {
   name            = var.project_name
   project_id      = "${var.project_name}-${random_id.suffix.hex}"
