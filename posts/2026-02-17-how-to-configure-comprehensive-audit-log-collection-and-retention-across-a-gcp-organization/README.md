@@ -8,16 +8,16 @@ Description: Configure organization-wide audit log collection and long-term rete
 
 ---
 
-Every action in Google Cloud generates an audit log entry. The problem is not generating these logs - GCP does that automatically for admin activities. The problem is making sure you are collecting everything you need, storing it for the right amount of time, and actually being able to search through it when something goes wrong.
+Many administrative and access actions in Google Cloud generate audit log entries. The problem is not generating these logs - GCP does that automatically for admin activities. The problem is making sure you are collecting everything you need, storing it for the right amount of time, and actually being able to search through it when something goes wrong.
 
-In this post, I will walk through setting up a comprehensive audit log collection strategy across an entire GCP organization, including the tricky parts like Data Access logs that are not enabled by default, long-term retention for compliance, and making the data queryable.
+In this post, I will walk through setting up a comprehensive audit log collection strategy across an entire GCP organization, including the tricky parts like Data Access logs that are not enabled by default for most services, long-term retention for compliance, and making the data queryable.
 
 ## Understanding GCP Audit Log Types
 
 Google Cloud produces four types of audit logs:
 
 - **Admin Activity** - Always on, cannot be disabled. Records configuration changes like creating VMs, modifying IAM policies, or changing firewall rules. Free to collect and store.
-- **Data Access** - Not enabled by default. Records when data is read or written. This includes things like reading a Cloud Storage object or querying BigQuery. Can generate a lot of volume and may cost money to store.
+- **Data Access** - Disabled by default for most services, with BigQuery as a notable exception. Records when data is read or written. This includes things like reading a Cloud Storage object or querying BigQuery. Can generate a lot of volume and may cost money to store.
 - **System Event** - Always on, cannot be configured. Records GCP system actions like live migration events.
 - **Policy Denied** - Records when access is denied by VPC Service Controls or Organization Policies.
 
@@ -353,7 +353,7 @@ resource "google_monitoring_alert_policy" "log_gap_alert" {
   conditions {
     display_name = "No audit logs received in 30 minutes"
     condition_absent {
-      filter   = "resource.type=\"bigquery_dataset\" AND metric.type=\"logging.googleapis.com/exports/byte_count\""
+      filter   = "resource.type=\"logging_sink\" AND metric.type=\"logging.googleapis.com/exports/byte_count\""
       duration = "1800s"
 
       aggregations {
