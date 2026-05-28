@@ -8,7 +8,7 @@ Description: Step-by-step guide to diagnosing and fixing GKE containers stuck in
 
 ---
 
-Your pod got scheduled to a node, but it never starts running. Instead of the familiar Running status, it sits in ContainerCreating indefinitely. This status means the kubelet picked up the pod but hit a problem while setting up the container - pulling the image, mounting volumes, creating the network sandbox, or injecting secrets.
+Your pod got scheduled to a node, but it never starts running. Instead of the familiar Running status, it sits in ContainerCreating indefinitely, or moves into a related waiting state like ErrImagePull or ImagePullBackOff. This status means the kubelet picked up the pod but hit a problem while setting up the container - pulling the image, mounting volumes, creating the network sandbox, or injecting secrets.
 
 Let's figure out which step is failing and how to fix it.
 
@@ -25,13 +25,13 @@ flowchart TD
     E --> F[Start Container]
     F --> G[Running]
 
-    B -->|Fail| H[ContainerCreating - ImagePullBackOff]
+    B -->|Fail| H[ErrImagePull or ImagePullBackOff]
     C -->|Fail| I[ContainerCreating - Sandbox error]
     D -->|Fail| J[ContainerCreating - Volume mount error]
     E -->|Fail| K[ContainerCreating - Secret not found]
 ```
 
-If any of these steps fails, the container stays in ContainerCreating.
+If any of these steps stalls or fails, the container stays in a waiting state.
 
 ## Step 1 - Check Pod Events
 
@@ -46,23 +46,24 @@ kubectl describe pod your-pod-name -n your-namespace
 The Events section will tell you exactly what is stuck. Common messages:
 
 - `Pulling image "..."` - image pull in progress or stuck
-- `Failed to pull image "..."` - image pull failed
+- `Failed to pull image "..."` - image pull failed, often followed by `ErrImagePull` or `ImagePullBackOff`
 - `MountVolume.SetUp failed` - volume mount issue
 - `failed to create sandbox` - network sandbox creation failed
 - `secret "..." not found` - referenced secret does not exist
 
 ## Step 2 - Fix Image Pull Issues
 
-Image pull problems are the most common cause of ContainerCreating. There are several variants.
+Image pull problems are a common cause of startup waiting states. There are several variants.
 
 **Image does not exist or wrong tag:**
 
 ```bash
-# Verify the image exists in the registry
-gcloud container images list-tags gcr.io/your-project/your-image
+# Verify the image exists in Artifact Registry
+gcloud artifacts docker images list us-central1-docker.pkg.dev/your-project/your-repo/your-image \
+  --include-tags
 
 # Check if a specific tag exists
-gcloud container images describe gcr.io/your-project/your-image:your-tag
+gcloud artifacts docker images describe us-central1-docker.pkg.dev/your-project/your-repo/your-image:your-tag
 ```
 
 If the image does not exist, fix the image reference in your deployment:
@@ -72,12 +73,12 @@ If the image does not exist, fix the image reference in your deployment:
 spec:
   containers:
   - name: app
-    image: gcr.io/your-project/your-image:v1.2.3  # exact tag, not latest
+    image: us-central1-docker.pkg.dev/your-project/your-repo/your-image:v1.2.3  # exact tag, not latest
 ```
 
 **Authentication failure:**
 
-If the pod cannot authenticate to the registry, you will see "unauthorized" in the error. For GCR and Artifact Registry in the same project, GKE nodes should have access by default. For cross-project or external registries, you need an image pull secret:
+If the pod cannot authenticate to the registry, you will see "unauthorized" or "forbidden" in the error. For Artifact Registry in the same project, GKE can pull images when the node service account has the Artifact Registry Reader role. For cross-project or external registries, grant the node service account access or use an image pull secret:
 
 ```bash
 # Create an image pull secret for a private registry
@@ -103,7 +104,7 @@ spec:
 
 **Large image taking too long:**
 
-Very large images (multiple GB) can take a long time to pull, especially on nodes with slow disk I/O. The kubelet has a default image pull timeout. Consider using smaller images or enabling image streaming:
+Very large images (multiple GB) can take a long time to pull, especially on nodes with slow disk I/O, and image pulls can time out. Consider using smaller images or enabling image streaming:
 
 ```bash
 # Enable image streaming on the node pool
@@ -197,7 +198,7 @@ kubectl get pods -n kube-system -l k8s-app=calico-node
 kubectl get pods -n kube-system -l k8s-app=cilium
 ```
 
-If CNI pods are not running on the affected node, the issue is with the CNI plugin. Try restarting the DaemonSet:
+If CNI pods are not running on the affected node, the issue is with the CNI plugin. Try restarting the relevant DaemonSet:
 
 ```bash
 # Restart the CNI DaemonSet
@@ -214,11 +215,11 @@ kubectl get pods --field-selector spec.nodeName=NODE_NAME --all-namespaces | wc 
 kubectl get node NODE_NAME -o jsonpath='{.status.capacity.pods}'
 ```
 
-GKE nodes have a default pod limit based on the machine type and IP range configuration. If you are hitting this limit, consider using larger machines or expanding your pod IP range.
+GKE nodes have a pod limit based on the maximum Pods per node setting and Pod secondary IP range configuration. If you are hitting this limit, consider adjusting your maximum Pods per node for new node pools or expanding your pod IP range.
 
 ## Step 5 - Fix Service Account Token Issues
 
-Pods mount a service account token by default. If the service account does not exist or token generation fails:
+Pods mount a service account token by default. A pod that references a service account that does not exist is usually rejected when it is created, but token projection failures can still block startup:
 
 ```bash
 # Check if the service account exists
@@ -228,7 +229,7 @@ kubectl get serviceaccount -n your-namespace
 kubectl get pod your-pod -n your-namespace -o jsonpath='{.spec.serviceAccountName}'
 ```
 
-If the service account is missing, create it:
+If the pod was rejected because the service account is missing, create it before creating the pod again:
 
 ```bash
 # Create the missing service account
@@ -248,7 +249,7 @@ spec:
 
 ## Step 6 - Check for Resource Pressure on the Node
 
-If the node is under resource pressure (CPU, memory, or disk), the kubelet might throttle container creation:
+If the node is under resource pressure (memory, disk, PID pressure, or severe CPU contention), the kubelet might delay container creation:
 
 ```bash
 # Check node conditions
@@ -258,11 +259,11 @@ kubectl describe node NODE_NAME | grep -A 5 "Conditions"
 kubectl top node NODE_NAME
 ```
 
-If the node is under pressure, the kubelet prioritizes existing containers over creating new ones. Resolve the resource pressure first.
+If the node is under pressure, resolve the resource constraint first.
 
 ## Step 7 - Check Init Containers
 
-If the pod has init containers, they must complete before the main containers start. A stuck init container will keep the main container in ContainerCreating:
+If the pod has init containers, they must complete before the main containers start. A stuck init container will keep the main container from starting:
 
 ```bash
 # Check init container status
@@ -278,7 +279,7 @@ kubectl logs your-pod -n your-namespace -c init-container-name
 
 ## Diagnostic Summary
 
-When a container is stuck in ContainerCreating:
+When a container is stuck in ContainerCreating or another startup waiting state:
 
 1. `kubectl describe pod` - read the events carefully
 2. Image pull issues - verify image exists, check auth, check size
