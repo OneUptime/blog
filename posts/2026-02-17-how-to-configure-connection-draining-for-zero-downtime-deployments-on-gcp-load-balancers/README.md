@@ -8,7 +8,7 @@ Description: Learn how to configure connection draining on GCP load balancers to
 
 ---
 
-Deploying new code to production should not mean dropping active user requests. When you remove a backend instance from a load balancer - whether for a rolling update, scaling down, or maintenance - you need existing connections and in-flight requests to complete gracefully. Connection draining is the mechanism that makes this possible. It tells the load balancer to stop sending new requests to a backend that is being removed, while allowing existing requests to finish within a configurable timeout.
+Deploying new code to production should not mean dropping active user requests. When you remove a backend instance from a load balancer - whether for a rolling update, scaling down, or maintenance - you need existing connections and in-flight requests to complete gracefully. Connection draining is the mechanism that makes this possible. It tells the load balancer to stop sending new connections to a backend that is being removed, while allowing existing requests to finish within a configurable timeout.
 
 This post covers how to configure connection draining in GCP, how it interacts with different deployment strategies, and how to tune it for your specific workload.
 
@@ -18,7 +18,7 @@ When a backend instance is removed from a load balancer (either manually or thro
 
 1. **Without connection draining**: The load balancer immediately removes the backend. Any in-flight requests are dropped, and clients see errors.
 
-2. **With connection draining**: The load balancer marks the backend as "draining." No new requests are sent to it. Existing requests continue to be served until they complete or the draining timeout expires, whichever comes first.
+2. **With connection draining**: The load balancer marks the backend as "draining." No new connections are sent to it. Existing requests continue to be served until they complete or the draining timeout expires, whichever comes first.
 
 ```mermaid
 sequenceDiagram
@@ -133,13 +133,13 @@ gcloud compute backend-services describe my-backend-service \
 
 ## Connection Draining for Different Load Balancer Types
 
-Connection draining works on all GCP load balancer types, but the behavior varies slightly:
+Connection draining works on backend services for Application Load Balancers, proxy Network Load Balancers, internal passthrough Network Load Balancers, and backend service-based external passthrough Network Load Balancers. The behavior varies slightly:
 
-**HTTP(S) Load Balancers**: The load balancer stops sending new HTTP requests. Existing requests complete normally. The load balancer can also send a `Connection: close` header on draining responses to signal to HTTP/1.1 clients that they should not reuse the connection.
+**Application Load Balancers**: The load balancer stops sending new connections to the draining backend. Existing requests are given time to complete during the configured timeout. If your clients or proxies use connection pooling, new requests can still arrive over an already established connection until that connection is closed.
 
-**TCP Proxy Load Balancer**: Existing TCP connections continue until they close naturally or the timeout expires. No new connections are routed to the draining backend.
+**Proxy Network Load Balancers**: Existing TCP connections continue to work during the configured draining period. No new connections are routed to the draining backend. After the timeout expires, existing TCP connections can remain active briefly until the proxy closes them.
 
-**Network Load Balancer (Passthrough)**: Since the load balancer does not terminate connections, it stops directing new packets to the draining backend. Existing "connections" (tracked by a 5-tuple hash) continue to be forwarded.
+**Passthrough Network Load Balancers**: Since the load balancer does not terminate connections, packets for existing connections continue to be routed to the draining backend during the draining timeout. After the timeout expires, the connection tracking entry is removed.
 
 ## Application-Side Graceful Shutdown
 
@@ -148,7 +148,6 @@ Connection draining on the load balancer side is only half the story. Your appli
 ```python
 # Python example of graceful shutdown handling
 import signal
-import sys
 from flask import Flask
 
 app = Flask(__name__)
@@ -171,6 +170,9 @@ def health():
         # Return unhealthy so LB stops sending new traffic
         return 'shutting down', 503
     return 'ok', 200
+
+def process_request():
+    return {'message': 'success'}
 
 @app.route('/api/data')
 def get_data():
@@ -237,7 +239,7 @@ echo "Exit code: $?"
 
 **Timeout too short**: If requests take longer than the draining timeout, they are forcibly terminated. Monitor for 503/502 errors during deployments and increase the timeout if needed.
 
-**Health check too fast**: If your health check has a very short unhealthy threshold, the load balancer might mark an instance as unhealthy and start draining before the application has finished initializing. Make sure the unhealthy threshold is reasonable.
+**Health check too sensitive**: If your health check has a very short unhealthy threshold, the load balancer might mark an instance as unhealthy and stop sending it new connections after transient failures. Make sure the unhealthy threshold is reasonable.
 
 **Application not handling SIGTERM**: If your application exits immediately on SIGTERM without finishing in-flight requests, connection draining on the load balancer side does not help. The backend connection closes and the client gets an error.
 
