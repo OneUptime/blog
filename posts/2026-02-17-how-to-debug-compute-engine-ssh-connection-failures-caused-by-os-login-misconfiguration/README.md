@@ -30,7 +30,7 @@ gcloud compute instances describe my-instance \
   --format="value(metadata.items[key='enable-oslogin'].value)"
 ```
 
-If this returns `TRUE`, OS Login is active on that instance. You can also check the project-level default:
+If this returns `TRUE`, OS Login is active on that instance. If it returns `FALSE`, OS Login is disabled for that instance even if project metadata enables it. You can also check the project-level default:
 
 ```bash
 # Check project-level OS Login setting
@@ -38,7 +38,7 @@ gcloud compute project-info describe \
   --format="value(commonInstanceMetadata.items[key='enable-oslogin'].value)"
 ```
 
-If both are empty, OS Login is not enabled and your SSH issue is likely something else entirely - like a missing SSH key in metadata or a firewall rule problem.
+If both are empty, OS Login is not enabled and your SSH issue is likely something else entirely - like a missing SSH key in metadata or a firewall rule problem. If the project value is `TRUE` and the instance value is empty, OS Login is enabled through project metadata.
 
 ## Step 2: Verify IAM Roles
 
@@ -48,6 +48,8 @@ The two key roles are:
 
 - `roles/compute.osLogin` - Allows SSH access without sudo
 - `roles/compute.osAdminLogin` - Allows SSH access with sudo privileges
+
+If the VM uses a service account, the connecting user also needs `roles/iam.serviceAccountUser` on that service account. If you are connecting through IAP TCP forwarding, the user also needs `roles/iap.tunnelResourceAccessor`. Users from a different organization than the VM also need `roles/compute.osLoginExternalUser` at the organization level.
 
 Check what roles your user has on the project:
 
@@ -68,11 +70,11 @@ gcloud projects add-iam-policy-binding my-project \
   --role="roles/compute.osLogin"
 ```
 
-For service accounts connecting via SSH, the same roles apply. Make sure the service account has the OS Login role bound at the project or instance level.
+For service accounts connecting via SSH, the same OS Login roles apply. Make sure the service account has the OS Login role bound at the project or instance level.
 
 ## Step 3: Check for Two-Factor Authentication Requirements
 
-If your organization has enabled OS Login with two-factor authentication, you need the `roles/compute.osLogin` role AND must have 2FA configured on your Google account. You can check whether 2FA is required:
+If your organization has enabled OS Login with two-factor authentication, you need the `roles/compute.osLogin` role AND must have 2FA configured on your Google account. OS Login 2FA is enforced only when both `enable-oslogin` and `enable-oslogin-2fa` are set to `TRUE`; it is not enforced for service account users. You can check whether 2FA is required:
 
 ```bash
 # Check if 2FA is required for OS Login
@@ -112,7 +114,7 @@ gcloud compute firewall-rules create allow-ssh-iap \
 
 ## Step 5: Test with the Serial Console
 
-When SSH is completely broken, the serial console is your lifeline. You can connect to it through the Cloud Console or via gcloud:
+When SSH is completely broken, the serial console is your lifeline. Serial port access must first be enabled with the `serial-port-enable=true` metadata key at the project or instance level. You can connect to it through the Cloud Console or via gcloud:
 
 ```bash
 # Connect to the serial console for debugging
@@ -124,7 +126,7 @@ Once connected, check the SSH daemon logs:
 
 ```bash
 # Check SSH daemon logs on the VM
-sudo journalctl -u sshd -n 50
+sudo journalctl -u ssh -u sshd -n 50
 ```
 
 Look for messages like "Permission denied" or "no matching key exchange method." These will point you directly to the issue.
