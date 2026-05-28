@@ -23,11 +23,10 @@ If your server-side stream sends data for 10 minutes, you need the timeout set t
 This is the most basic requirement and the first thing to check. By default, Cloud Run downgrades HTTP/2 to HTTP/1.1 between the load balancer and your container. gRPC requires HTTP/2, so streams will fail immediately without this setting.
 
 ```bash
-# Check if HTTP/2 is enabled
-
+# Check if HTTP/2 is enabled. If it is enabled, the port name is h2c.
 gcloud run services describe my-grpc-service \
     --region=us-central1 \
-    --format="value(spec.template.metadata.annotations['run.googleapis.com/launch-stage'])"
+    --format="value(spec.template.spec.containers[0].ports[0].name)"
 
 # Enable HTTP/2 end-to-end
 gcloud run services update my-grpc-service \
@@ -60,7 +59,7 @@ But do not rely on this alone. Your application should handle reconnection grace
 
 ## Step 3 - Configure gRPC Keepalive
 
-gRPC keepalive pings maintain the connection and detect dead connections. Without keepalive, idle streams can be terminated by intermediate proxies (including Cloud Run's load balancer).
+gRPC keepalive pings help detect dead connections and keep idle connection segments active. On Cloud Run, client keepalive affects the client-to-load-balancer connection; backend connections to instances are still managed by Cloud Run.
 
 Here is how to configure keepalive on the server side in Go.
 
@@ -70,6 +69,7 @@ package main
 import (
 	"log"
 	"net"
+	"os"
 	"time"
 
 	"google.golang.org/grpc"
@@ -77,7 +77,12 @@ import (
 )
 
 func main() {
-	lis, err := net.Listen("tcp", ":8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	lis, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		log.Fatalf("Failed to listen: %v", err)
 	}
@@ -101,7 +106,7 @@ func main() {
 	// Register your gRPC services here
 	// pb.RegisterMyServiceServer(server, &myServiceImpl{})
 
-	log.Printf("gRPC server listening on :8080")
+	log.Printf("gRPC server listening on :%s", port)
 	if err := server.Serve(lis); err != nil {
 		log.Fatalf("Failed to serve: %v", err)
 	}
@@ -112,14 +117,18 @@ And on the client side.
 
 ```go
 import (
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/keepalive"
+	"crypto/tls"
 	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 )
 
 func createConnection(target string) (*grpc.ClientConn, error) {
 	// Client keepalive settings to match server configuration
-	conn, err := grpc.Dial(target,
+	conn, err := grpc.NewClient(target,
+		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			// Send keepalive ping after 60 seconds of inactivity
 			Time: 60 * time.Second,
@@ -136,6 +145,8 @@ func createConnection(target string) (*grpc.ClientConn, error) {
 For Python gRPC.
 
 ```python
+from concurrent import futures
+
 import grpc
 
 def create_server():
@@ -169,7 +180,6 @@ import (
 	"time"
 
 	pb "my-project/proto"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -214,13 +224,12 @@ func streamWithReconnect(client pb.MyServiceClient, request *pb.StreamRequest) {
 
 ## Step 5 - Handle Cloud Run Scaling Events
 
-When Cloud Run scales down or deploys a new revision, existing connections are terminated. Your server should handle SIGTERM gracefully to give streams time to close cleanly.
+When Cloud Run scales down or deploys a new revision, backend connections can be closed and streaming RPCs can be interrupted. Your server should handle SIGTERM gracefully to give streams time to close cleanly.
 
 ```go
 package main
 
 import (
-	"context"
 	"log"
 	"net"
 	"os"
@@ -232,7 +241,12 @@ import (
 )
 
 func main() {
-	lis, err := net.Listen("tcp", ":8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	lis, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		log.Fatalf("Failed to listen: %v", err)
 	}
@@ -298,7 +312,7 @@ flowchart TD
 1. **Forgetting --use-http2**: gRPC will not work at all without HTTP/2 end-to-end
 2. **Setting concurrency too low**: Each streaming connection uses one concurrent request slot. If concurrency is 1, only one stream can exist per instance
 3. **Not handling reconnection**: Streams will be interrupted by deployments and scaling events
-4. **Keepalive too aggressive**: Cloud Run may throttle connections that ping too frequently. Keep ping intervals at 30 seconds or higher
+4. **Keepalive too aggressive**: gRPC servers or intermediaries may close connections that ping too frequently. Keep ping intervals at 30 seconds or higher
 5. **Ignoring the 60-minute cap**: There is no way around the maximum 3600-second timeout on Cloud Run. Design your protocol to handle periodic reconnection
 
 ## Summary
