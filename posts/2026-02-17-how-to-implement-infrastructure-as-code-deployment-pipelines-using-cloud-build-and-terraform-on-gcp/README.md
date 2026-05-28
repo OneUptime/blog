@@ -36,8 +36,8 @@ gsutil mb -l us-central1 gs://my-project-terraform-state
 # Enable versioning for state recovery
 gsutil versioning set on gs://my-project-terraform-state
 
-# Create a table for state locking (using Cloud Storage locking, not DynamoDB)
-# GCS handles locking natively for Terraform
+# No separate lock table is required
+# The Terraform GCS backend supports state locking natively
 ```
 
 Configure the Terraform backend:
@@ -221,41 +221,83 @@ steps:
     id: 'plan'
     waitFor: ['validate']
 
-  # Run tfsec for security analysis
-  - name: 'aquasec/tfsec:latest'
+  # Run Trivy for security analysis
+  - name: 'aquasec/trivy:latest'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
-        tfsec terraform/environments/$_ENVIRONMENT \
-          --format=json \
-          --out=/workspace/tfsec_results.json \
-          --soft-fail
+        trivy config terraform/environments/$_ENVIRONMENT \
+          --format json \
+          --output /workspace/trivy_results.json \
+          --exit-code 0
         echo "Security scan complete"
     id: 'security-scan'
     waitFor: ['init']
 
   # Post plan output as a PR comment
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'bash'
+  - name: 'python:3.12-slim'
+    entrypoint: 'python'
     args:
       - '-c'
       - |
-        if [ -n "$_PR_NUMBER" ]; then
-          PLAN_SUMMARY=$(cat /workspace/plan_summary.txt)
-          TFSEC_SUMMARY=$(cat /workspace/tfsec_results.json | jq '.results | length')
+        import json
+        import os
+        import urllib.request
 
-          # Post comment to the PR using the GitHub API
-          COMMENT="### Terraform Plan - $_ENVIRONMENT\n\n```\n$PLAN_SUMMARY\n```\n\nSecurity findings: $TFSEC_SUMMARY\n\nFull plan output available in [Cloud Build logs](https://console.cloud.google.com/cloud-build/builds/$BUILD_ID)"
+        pr_number = "$_PR_NUMBER"
+        if not pr_number:
+            raise SystemExit(0)
 
-          echo "$COMMENT"
-        fi
+        with open("/workspace/plan_summary.txt", "r", encoding="utf-8") as plan_file:
+            plan_summary = plan_file.read().strip()
+
+        try:
+            with open("/workspace/trivy_results.json", "r", encoding="utf-8") as trivy_file:
+                trivy_results = json.load(trivy_file)
+            security_findings = sum(
+                len(result.get("Misconfigurations") or [])
+                for result in trivy_results.get("Results", [])
+            )
+        except FileNotFoundError:
+            security_findings = 0
+
+        comment = (
+            "### Terraform Plan - $_ENVIRONMENT\n\n"
+            "```\n"
+            f"{plan_summary}\n"
+            "```\n\n"
+            f"Security findings: {security_findings}\n\n"
+            "Full plan output available in "
+            "[Cloud Build logs](https://console.cloud.google.com/cloud-build/builds/$BUILD_ID)"
+        )
+
+        request = urllib.request.Request(
+            "https://api.github.com/repos/$_REPO_OWNER/$_REPO_NAME/issues/"
+            f"{pr_number}/comments",
+            data=json.dumps({"body": comment}).encode("utf-8"),
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        urllib.request.urlopen(request, timeout=30).read()
     id: 'comment'
+    secretEnv: ['GITHUB_TOKEN']
     waitFor: ['plan', 'security-scan']
 
 substitutions:
   _ENVIRONMENT: dev
-  _PR_NUMBER: ""
+  _REPO_OWNER: my-org
+  _REPO_NAME: infrastructure
+
+availableSecrets:
+  secretManager:
+    # Store a GitHub token that can write issue comments as this secret
+    - versionName: projects/$PROJECT_ID/secrets/github-token/versions/latest
+      env: 'GITHUB_TOKEN'
 ```
 
 ```yaml
@@ -325,7 +367,7 @@ gcloud builds triggers create github \
   --repo-owner=my-org \
   --pull-request-pattern="^main$" \
   --build-config=cloudbuild-plan.yaml \
-  --substitutions="_ENVIRONMENT=dev" \
+  --substitutions="_ENVIRONMENT=dev,_REPO_OWNER=my-org,_REPO_NAME=infrastructure" \
   --included-files="terraform/environments/dev/**,terraform/modules/**"
 
 gcloud builds triggers create github \
@@ -334,7 +376,7 @@ gcloud builds triggers create github \
   --repo-owner=my-org \
   --pull-request-pattern="^main$" \
   --build-config=cloudbuild-plan.yaml \
-  --substitutions="_ENVIRONMENT=production" \
+  --substitutions="_ENVIRONMENT=production,_REPO_OWNER=my-org,_REPO_NAME=infrastructure" \
   --included-files="terraform/environments/production/**,terraform/modules/**"
 
 # Apply trigger for merges to main
@@ -385,7 +427,7 @@ gcloud projects add-iam-policy-binding my-app-production \
 
 ## Step 6: Add Policy Checks
 
-Use Open Policy Agent (OPA) or Sentinel to enforce infrastructure policies:
+Use Open Policy Agent (OPA) or HCP Terraform policy checks to enforce infrastructure policies:
 
 ```bash
 # Install conftest for OPA policy testing
@@ -396,14 +438,16 @@ Use Open Policy Agent (OPA) or Sentinel to enforce infrastructure policies:
 cat > policy/gke.rego << 'EOF'
 package main
 
-deny[msg] {
+import rego.v1
+
+deny contains msg if {
   resource := input.resource_changes[_]
   resource.type == "google_container_cluster"
   not resource.change.after.private_cluster_config
   msg := sprintf("GKE cluster '%s' must use private cluster config", [resource.name])
 }
 
-deny[msg] {
+deny contains msg if {
   resource := input.resource_changes[_]
   resource.type == "google_container_cluster"
   resource.change.after.private_cluster_config.enable_private_nodes != true
