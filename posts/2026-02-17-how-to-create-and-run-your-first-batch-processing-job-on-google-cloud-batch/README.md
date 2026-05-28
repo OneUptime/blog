@@ -28,7 +28,7 @@ graph TD
     C --> D[Distribute Tasks]
     D --> E[Execute Tasks<br/>in Parallel]
     E --> F[Monitor & Retry]
-    F --> G[Collect Results]
+    F --> G[Write Results]
     G --> H[Clean Up VMs]
 ```
 
@@ -37,7 +37,7 @@ graph TD
 - A Google Cloud project with billing enabled
 - The Batch API enabled (`batch.googleapis.com`)
 - The `gcloud` CLI installed and configured
-- IAM permissions: `batch.jobs.create`, `batch.jobs.get`
+- IAM permissions to create jobs and act as the job's service account, such as `roles/batch.jobsEditor` on the project and `roles/iam.serviceAccountUser` on the job service account
 
 Enable the API first:
 
@@ -65,7 +65,7 @@ gcloud batch jobs submit my-first-batch-job \
         "runnables": [
           {
             "script": {
-              "text": "echo 'Processing task ${BATCH_TASK_INDEX} of ${BATCH_TASK_COUNT}'\necho 'Task ID: ${BATCH_TASK_ID}'\nsleep 10\necho 'Task ${BATCH_TASK_INDEX} complete'"
+              "text": "echo 'Processing task ${BATCH_TASK_INDEX} of ${BATCH_TASK_COUNT}'\necho 'Retry attempt: ${BATCH_TASK_RETRY_ATTEMPT}'\nsleep 10\necho 'Task ${BATCH_TASK_INDEX} complete'"
             }
           }
         ],
@@ -209,9 +209,9 @@ gcloud batch tasks list \
   --job=my-first-batch-job \
   --location=us-central1
 
-# View task logs
+# View task logs for the job
 gcloud logging read \
-  'labels.job_uid="JOB_UID" AND labels.task_id="task/0"' \
+  'logName="projects/PROJECT_ID/logs/batch_task_logs" AND labels.job_uid="JOB_UID"' \
   --limit=50
 ```
 
@@ -254,84 +254,79 @@ monitor_job("my-project", "us-central1", "data-processing-001")
 
 ## Step 4: Handle Task Dependencies
 
-For multi-step processing where one set of tasks depends on another, use task groups with ordering.
+For multi-step processing where one stage depends on another, create separate jobs and make the later job depend on the earlier job. Dependent jobs are a preview feature, so use the alpha gcloud command.
 
-```python
-from google.cloud import batch_v1
+Create the preprocessing job first:
 
-def create_multi_step_job(project_id, region, job_name):
-    """Creates a batch job with sequential task groups."""
-    client = batch_v1.BatchServiceClient()
+```bash
+gcloud batch jobs submit preprocess-data \
+  --location=us-central1 \
+  --config=- <<'EOF'
+{
+  "taskGroups": [
+    {
+      "taskSpec": {
+        "runnables": [
+          {
+            "script": {
+              "text": "echo 'Preprocessing task ${BATCH_TASK_INDEX}'\ngsutil cp gs://my-bucket/raw/file_${BATCH_TASK_INDEX}.csv /tmp/\npython3 /scripts/preprocess.py /tmp/file_${BATCH_TASK_INDEX}.csv\ngsutil cp /tmp/processed_${BATCH_TASK_INDEX}.csv gs://my-bucket/processed/"
+            }
+          }
+        ],
+        "computeResource": {
+          "cpuMilli": 2000,
+          "memoryMib": 4096
+        }
+      },
+      "taskCount": 50,
+      "parallelism": 10
+    }
+  ],
+  "logsPolicy": {
+    "destination": "CLOUD_LOGGING"
+  }
+}
+EOF
+```
 
-    # Step 1: Download and preprocess data
-    preprocess_runnable = batch_v1.Runnable()
-    preprocess_runnable.script = batch_v1.Runnable.Script()
-    preprocess_runnable.script.text = """#!/bin/bash
-    echo "Preprocessing task $BATCH_TASK_INDEX"
-    gsutil cp gs://my-bucket/raw/file_${BATCH_TASK_INDEX}.csv /tmp/
-    # Preprocess the file
-    python3 /scripts/preprocess.py /tmp/file_${BATCH_TASK_INDEX}.csv
-    gsutil cp /tmp/processed_${BATCH_TASK_INDEX}.csv gs://my-bucket/processed/
-    """
+Then create the aggregation job so it waits for the preprocessing job to succeed:
 
-    preprocess_task = batch_v1.TaskSpec()
-    preprocess_task.runnables = [preprocess_runnable]
-    preprocess_task.compute_resource = batch_v1.ComputeResource(
-        cpu_milli=2000, memory_mib=4096
-    )
-
-    preprocess_group = batch_v1.TaskGroup()
-    preprocess_group.task_spec = preprocess_task
-    preprocess_group.task_count = 50
-    preprocess_group.parallelism = 10
-
-    # Step 2: Aggregate results (runs after all preprocessing is done)
-    aggregate_runnable = batch_v1.Runnable()
-    aggregate_runnable.script = batch_v1.Runnable.Script()
-    aggregate_runnable.script.text = """#!/bin/bash
-    echo "Aggregating results"
-    gsutil cp gs://my-bucket/processed/*.csv /tmp/processed/
-    python3 /scripts/aggregate.py /tmp/processed/ /tmp/final_result.csv
-    gsutil cp /tmp/final_result.csv gs://my-bucket/results/
-    """
-
-    aggregate_task = batch_v1.TaskSpec()
-    aggregate_task.runnables = [aggregate_runnable]
-    aggregate_task.compute_resource = batch_v1.ComputeResource(
-        cpu_milli=4000, memory_mib=16384
-    )
-
-    aggregate_group = batch_v1.TaskGroup()
-    aggregate_group.task_spec = aggregate_task
-    aggregate_group.task_count = 1
-    aggregate_group.parallelism = 1
-
-    # Build the job with both task groups
-    job = batch_v1.Job()
-    job.task_groups = [preprocess_group, aggregate_group]
-
-    # Configure allocation
-    allocation = batch_v1.AllocationPolicy()
-    instance_policy = batch_v1.AllocationPolicy.InstancePolicyOrTemplate()
-    instance_policy.policy = batch_v1.AllocationPolicy.InstancePolicy(
-        machine_type="e2-standard-4"
-    )
-    allocation.instances = [instance_policy]
-    job.allocation_policy = allocation
-    job.logs_policy = batch_v1.LogsPolicy(
-        destination=batch_v1.LogsPolicy.Destination.CLOUD_LOGGING
-    )
-
-    # Submit the job
-    request = batch_v1.CreateJobRequest(
-        parent=f"projects/{project_id}/locations/{region}",
-        job=job,
-        job_id=job_name,
-    )
-
-    response = client.create_job(request=request)
-    print(f"Multi-step job created: {response.name}")
-    return response
+```bash
+gcloud alpha batch jobs submit aggregate-data \
+  --location=us-central1 \
+  --config=- <<'EOF'
+{
+  "taskGroups": [
+    {
+      "taskSpec": {
+        "runnables": [
+          {
+            "script": {
+              "text": "echo 'Aggregating results'\nmkdir -p /tmp/processed\ngsutil cp 'gs://my-bucket/processed/*.csv' /tmp/processed/\npython3 /scripts/aggregate.py /tmp/processed/ /tmp/final_result.csv\ngsutil cp /tmp/final_result.csv gs://my-bucket/results/"
+            }
+          }
+        ],
+        "computeResource": {
+          "cpuMilli": 4000,
+          "memoryMib": 16384
+        }
+      },
+      "taskCount": 1,
+      "parallelism": 1
+    }
+  ],
+  "dependencies": [
+    {
+      "items": {
+        "preprocess-data": "SUCCEEDED"
+      }
+    }
+  ],
+  "logsPolicy": {
+    "destination": "CLOUD_LOGGING"
+  }
+}
+EOF
 ```
 
 ## Step 5: Clean Up and Cost Control
