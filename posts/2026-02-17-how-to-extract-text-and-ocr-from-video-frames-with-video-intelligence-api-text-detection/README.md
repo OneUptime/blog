@@ -112,6 +112,8 @@ results = detect_text("gs://your-bucket/video-with-text.mp4")
 For moving text (like scrolling tickers or text on moving objects), you can track position changes:
 
 ```python
+from google.cloud import videointelligence_v1 as vi
+
 def track_text_movement(video_uri):
     """Tracks how text elements move across video frames.
     Useful for scrolling text, captions, or text on moving objects."""
@@ -150,9 +152,15 @@ def track_text_movement(video_uri):
                 center_x = sum(v.x for v in vertices) / 4
                 center_y = sum(v.y for v in vertices) / 4
 
-                # Calculate approximate width and height
-                width = abs(vertices[1].x - vertices[0].x)
-                height = abs(vertices[2].y - vertices[1].y)
+                # Calculate approximate width and height of the rotated box
+                width = (
+                    (vertices[1].x - vertices[0].x) ** 2 +
+                    (vertices[1].y - vertices[0].y) ** 2
+                ) ** 0.5
+                height = (
+                    (vertices[2].x - vertices[1].x) ** 2 +
+                    (vertices[2].y - vertices[1].y) ** 2
+                ) ** 0.5
 
                 track["frames"].append({
                     "time": time_sec,
@@ -195,7 +203,12 @@ Build a function that extracts all unique text from a video for search indexing:
 ```python
 import json
 from google.cloud import bigquery
-from datetime import datetime
+from google.cloud import videointelligence_v1 as vi
+from datetime import datetime, timezone
+
+def time_offset_seconds(offset):
+    """Converts a protobuf Duration to seconds as a float."""
+    return offset.seconds + offset.microseconds / 1e6
 
 def extract_text_for_index(video_uri, video_id):
     """Extracts all text from a video and creates a searchable index.
@@ -234,8 +247,8 @@ def extract_text_for_index(video_uri, video_id):
             }
 
         for segment in text_ann.segments:
-            start_sec = segment.segment.start_time_offset.seconds
-            end_sec = segment.segment.end_time_offset.seconds
+            start_sec = time_offset_seconds(segment.segment.start_time_offset)
+            end_sec = time_offset_seconds(segment.segment.end_time_offset)
             duration = end_sec - start_sec
 
             text_index[text]["appearances"].append({
@@ -263,7 +276,7 @@ def extract_text_for_index(video_uri, video_id):
             "max_confidence": info["max_confidence"],
             "first_appearance_seconds": info["appearances"][0]["start_seconds"],
             "appearances_json": json.dumps(info["appearances"]),
-            "indexed_at": datetime.utcnow().isoformat(),
+            "indexed_at": datetime.now(timezone.utc).isoformat(),
         })
 
     if rows:
@@ -281,6 +294,8 @@ def extract_text_for_index(video_uri, video_id):
 For long videos, you might only need text from a specific section:
 
 ```python
+from google.cloud import videointelligence_v1 as vi
+
 def detect_text_in_segment(video_uri, start_seconds, end_seconds):
     """Detects text only within a specified time range of the video.
     This saves processing time and cost for long videos."""
@@ -289,8 +304,8 @@ def detect_text_in_segment(video_uri, start_seconds, end_seconds):
 
     # Define the segment to analyze
     segment = vi.VideoSegment()
-    segment.start_time_offset = {"seconds": start_seconds}
-    segment.end_time_offset = {"seconds": end_seconds}
+    segment.start_time_offset.seconds = start_seconds
+    segment.end_time_offset.seconds = end_seconds
 
     video_context = vi.VideoContext()
     video_context.segments = [segment]
@@ -330,41 +345,47 @@ texts = detect_text_in_segment(
 
 ## Step 5: Batch Processing Multiple Videos
 
-For processing a library of videos, use an async approach:
+For processing a library of videos, use a parallel approach:
 
 ```python
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from google.cloud import videointelligence_v1 as vi
 
 def batch_text_detection(video_uris, max_concurrent=5):
     """Processes multiple videos in parallel for text detection.
     Respects API quotas by limiting concurrent requests."""
 
-    client = vi.VideoIntelligenceServiceClient()
-    operations = {}
-
-    # Submit all jobs
-    for uri in video_uris:
+    def process_video(uri):
+        client = vi.VideoIntelligenceServiceClient()
         operation = client.annotate_video(
             request={
                 "features": [vi.Feature.TEXT_DETECTION],
                 "input_uri": uri,
             }
         )
-        operations[uri] = operation
         print(f"Submitted: {uri}")
+        result = operation.result(timeout=600)
+        annotation = result.annotation_results[0]
+        return uri, annotation
 
     # Collect results
     results = {}
-    for uri, operation in operations.items():
-        try:
-            result = operation.result(timeout=600)
-            annotation = result.annotation_results[0]
-            text_count = len(annotation.text_annotations)
-            results[uri] = annotation
-            print(f"Completed: {uri} ({text_count} text elements)")
-        except Exception as e:
-            print(f"Failed: {uri} - {e}")
-            results[uri] = None
+    with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+        future_to_uri = {
+            executor.submit(process_video, uri): uri
+            for uri in video_uris
+        }
+
+        for future in as_completed(future_to_uri):
+            uri = future_to_uri[future]
+            try:
+                uri, annotation = future.result()
+                text_count = len(annotation.text_annotations)
+                results[uri] = annotation
+                print(f"Completed: {uri} ({text_count} text elements)")
+            except Exception as e:
+                print(f"Failed: {uri} - {e}")
+                results[uri] = None
 
     return results
 ```
