@@ -100,7 +100,6 @@ Create the proxy endpoint configuration. This defines how the proxy accepts inco
     <HTTPProxyConnection>
         <!-- The base path clients use to access this proxy -->
         <BasePath>/weather</BasePath>
-        <VirtualHost>default</VirtualHost>
     </HTTPProxyConnection>
 
     <RouteRule name="default">
@@ -172,8 +171,7 @@ cd ..
 curl -X POST \
   "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/apis?name=weather-api&action=import" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/octet-stream" \
-  --data-binary @weather-api.zip
+  -F "file=@weather-api.zip"
 
 # Deploy to the test environment
 curl -X POST \
@@ -187,10 +185,11 @@ curl -X POST \
 Once deployed, test the proxy by sending requests to the Apigee endpoint:
 
 ```bash
-# Get your Apigee environment group hostname
-HOSTNAME=$(gcloud alpha apigee environments describe eval \
-  --organization YOUR_ORG \
-  --format="value(properties.host)")
+# Get a hostname from the Apigee environment group that contains eval
+HOSTNAME=$(curl -s \
+  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/envgroups/YOUR_ENVGROUP" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  | jq -r '.hostnames[0]')
 
 # Test the proxy
 curl "https://$HOSTNAME/weather/weather?q=London&appid=YOUR_OPENWEATHER_KEY"
@@ -249,7 +248,6 @@ Attach the policy to the proxy endpoint's PostFlow:
 
     <HTTPProxyConnection>
         <BasePath>/weather</BasePath>
-        <VirtualHost>default</VirtualHost>
     </HTTPProxyConnection>
 
     <RouteRule name="default">
@@ -258,9 +256,26 @@ Attach the policy to the proxy endpoint's PostFlow:
 </ProxyEndpoint>
 ```
 
-Redeploy the updated proxy and test again:
+Import the updated bundle as a new revision, deploy that revision, and test again:
 
 ```bash
+# Recreate the proxy bundle after adding the policy
+cd weather-api
+zip -r ../weather-api.zip apiproxy/
+cd ..
+
+# Importing an existing proxy creates a new revision
+curl -X POST \
+  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/apis?name=weather-api&action=import" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -F "file=@weather-api.zip"
+
+# Deploy the new revision, replacing the previously deployed revision
+curl -X POST \
+  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/eval/apis/weather-api/revisions/2/deployments?override=true" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json"
+
 # The response should now include X-Proxy-Name and X-Proxy-Timestamp headers
 curl -I "https://$HOSTNAME/weather/weather?q=London&appid=YOUR_KEY"
 ```
@@ -272,15 +287,16 @@ Every request through an Apigee proxy follows a specific flow:
 ```mermaid
 graph LR
     A[Client Request] --> B[ProxyEndpoint PreFlow]
-    B --> C[ProxyEndpoint Flows]
+    B --> C[ProxyEndpoint Conditional Flows]
     C --> D[ProxyEndpoint PostFlow]
     D --> E[Route Rule]
     E --> F[TargetEndpoint PreFlow]
-    F --> G[TargetEndpoint PostFlow]
-    G --> H[Backend Service]
-    H --> I[TargetEndpoint Response]
-    I --> J[ProxyEndpoint Response]
-    J --> K[Client Response]
+    F --> G[TargetEndpoint Conditional Flows]
+    G --> H[TargetEndpoint PostFlow]
+    H --> I[Backend Service]
+    I --> J[TargetEndpoint Response Flow]
+    J --> K[ProxyEndpoint Response Flow]
+    K --> L[Client Response]
 ```
 
 - **PreFlow** runs before everything else, on every request
