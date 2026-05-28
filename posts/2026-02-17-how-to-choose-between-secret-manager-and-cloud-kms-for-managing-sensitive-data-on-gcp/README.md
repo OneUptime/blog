@@ -16,7 +16,7 @@ Secret Manager and Cloud KMS both deal with sensitive data on Google Cloud, but 
 
 **Cloud KMS** manages encryption keys and performs cryptographic operations. It does not store your data. It stores keys that you use to encrypt and decrypt your data. Think of it as a locksmith who makes and manages keys, but does not store your belongings.
 
-If you need to store a database password, use Secret Manager. If you need to encrypt a file or a database column, use Cloud KMS.
+If you need to store a database password, use Secret Manager. If you need to encrypt small values such as a database column, use Cloud KMS.
 
 ## Feature Comparison
 
@@ -31,7 +31,7 @@ If you need to store a database password, use Secret Manager. If you need to enc
 | Rotation | Manual or automatic (with triggers) | Automatic key rotation |
 | Operations | Store, retrieve, list, delete | Encrypt, decrypt, sign, verify |
 | Max value size | 64 KiB per version | Depends on operation |
-| Cost | $0.06/10K access operations | $0.06/10K crypto operations + key storage |
+| Cost | $0.03/10K access operations + active secret version storage | $0.03/10K crypto operations + key version storage |
 | Integration | Application code, GKE, Cloud Run | Application code, CMEK for GCP services |
 
 ## When to Use Secret Manager
@@ -92,13 +92,13 @@ gcloud secrets add-iam-policy-binding db-password \
 
 ```yaml
 # Mount secrets from Secret Manager into a GKE pod
-# Using the Secret Store CSI driver
+# Using the GKE Secret Manager add-on
 apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
 metadata:
   name: my-app-secrets
 spec:
-  provider: gcp
+  provider: gke
   parameters:
     secrets: |
       - resourceName: "projects/my-project/secrets/db-password/versions/latest"
@@ -121,7 +121,7 @@ spec:
   volumes:
     - name: secrets
       csi:
-        driver: secrets-store.csi.k8s.io
+        driver: secrets-store-gke.csi.k8s.io
         readOnly: true
         volumeAttributes:
           secretProviderClass: my-app-secrets
@@ -150,7 +150,7 @@ Set up automatic rotation using Cloud Functions:
 ```bash
 # Create a rotation schedule
 gcloud secrets update db-password \
-    --rotation-period=30d \
+    --rotation-period=2592000s \
     --next-rotation-time=2026-03-01T00:00:00Z \
     --topics=projects/my-project/topics/secret-rotation
 ```
@@ -181,15 +181,14 @@ def rotate_secret(cloud_event):
     )
 
     # Update the actual service that uses this password
-    # (e.g., update the database user password)
-    update_database_password(new_password)
+    # (e.g., call your database API to update the user password)
 ```
 
 ## When to Use Cloud KMS
 
 ### Encrypting Data in Your Application
 
-Use Cloud KMS when you need to encrypt data before storing it:
+Use Cloud KMS when you need to encrypt small values before storing them:
 
 ```python
 # Encrypt sensitive data using Cloud KMS
@@ -303,13 +302,12 @@ The most robust pattern uses both services together. Secret Manager stores the s
 ```bash
 # Create a Secret Manager secret encrypted with a customer-managed KMS key
 gcloud secrets create super-sensitive-secret \
-    --replication-policy=user-managed \
-    --locations=us-central1 \
-    --kms-key-name=projects/my-project/locations/us-central1/keyRings/my-keyring/cryptoKeys/secret-encryption-key \
+    --replication-policy=automatic \
+    --kms-key-name=projects/my-project/locations/global/keyRings/my-keyring/cryptoKeys/secret-encryption-key \
     --data-file=secret-value.txt
 ```
 
-This means even Google cannot read the secret without access to your KMS key - providing an additional layer of control.
+If the Secret Manager service identity loses access to the KMS key, or if the key becomes unavailable, Secret Manager cannot create new secret versions or access existing versions encrypted with that key - providing an additional layer of control.
 
 ## Decision Guide
 
