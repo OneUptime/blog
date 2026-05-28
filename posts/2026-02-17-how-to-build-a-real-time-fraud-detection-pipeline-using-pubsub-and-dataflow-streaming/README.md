@@ -10,7 +10,7 @@ Description: Build a real-time fraud detection pipeline on Google Cloud using Pu
 
 Fraud detection needs to happen in real time. If you are processing transactions in batch - even hourly batches - by the time you detect a fraudulent pattern, the money is already gone. The standard approach on GCP is to use Pub/Sub for ingestion, Dataflow (Apache Beam) for stream processing and scoring, and BigQuery as the analytical store.
 
-This guide walks through building a complete real-time fraud detection pipeline, from ingesting transaction events to flagging suspicious activity within seconds.
+This guide walks through building a complete real-time fraud detection pipeline, from ingesting transaction events to flagging suspicious activity as the streaming windows emit results.
 
 ## Architecture
 
@@ -83,11 +83,8 @@ This is the core of the system. The pipeline reads transactions from Pub/Sub, en
 # fraud_pipeline.py - Real-time fraud detection pipeline
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
-from apache_beam.transforms.window import FixedWindows, SlidingWindows
-from apache_beam.transforms.trigger import AfterWatermark, AfterProcessingTime, AccumulationMode
+from apache_beam.transforms.window import SlidingWindows
 import json
-import math
-from datetime import datetime
 
 class ParseTransaction(beam.DoFn):
     """Parse raw Pub/Sub messages into transaction dictionaries."""
@@ -99,13 +96,13 @@ class ParseTransaction(beam.DoFn):
             if all(field in data for field in required):
                 yield data
             else:
-                # Route invalid messages to dead letter
+                # Route invalid messages to a side output
                 yield beam.pvalue.TaggedOutput('invalid', element)
         except json.JSONDecodeError:
             yield beam.pvalue.TaggedOutput('invalid', element)
 
 class EnrichWithUserHistory(beam.DoFn):
-    """Look up user transaction history from BigQuery side input."""
+    """Look up user transaction history from a side input."""
     def process(self, transaction, user_profiles):
         user_id = transaction['user_id']
         profile = user_profiles.get(user_id, {})
@@ -189,10 +186,34 @@ def run():
                 .with_outputs('invalid', main='valid')
         )
 
+        # Sample user profiles for enrichment.
+        # In production, replace this with a bounded BigQuery read.
+        user_profiles = (
+            p
+            | "CreateSampleUserProfiles" >> beam.Create([
+                {
+                    'user_id': 'usr_100',
+                    'avg_amount': 100.00,
+                    'txn_count_30d': 12,
+                    'usual_country': 'US',
+                    'account_age_days': 120,
+                }
+            ])
+            | "KeyProfilesByUser" >> beam.Map(lambda profile: (profile['user_id'], profile))
+        )
+
+        enriched = (
+            parsed.valid
+            | "EnrichWithUserHistory" >> beam.ParDo(
+                EnrichWithUserHistory(),
+                beam.pvalue.AsDict(user_profiles)
+            )
+        )
+
         # Calculate transaction velocity using sliding windows
         # 5-minute windows sliding every 1 minute
         velocity_enriched = (
-            parsed.valid
+            enriched
             | "WindowForVelocity" >> beam.WindowInto(
                 SlidingWindows(size=300, period=60)
             )
