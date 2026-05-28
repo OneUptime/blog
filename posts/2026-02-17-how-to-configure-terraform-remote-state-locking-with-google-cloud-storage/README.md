@@ -14,7 +14,7 @@ State locking prevents this. When Terraform starts an operation, it acquires a l
 
 ## How GCS State Locking Works
 
-The GCS backend for Terraform uses a lock file stored in the same bucket as your state. When Terraform begins a state-modifying operation (plan, apply, destroy), it creates a lock file at `<prefix>/<workspace>.tflock`. Other Terraform processes check for this lock file before proceeding.
+The GCS backend for Terraform uses a lock file stored in the same bucket as your state. When Terraform begins an operation that requires a state lock (including plan, apply, and destroy), it creates a lock file at `<prefix>/<workspace>.tflock`. Other Terraform processes check for this lock file before proceeding.
 
 The lock file contains information about who holds the lock:
 
@@ -24,7 +24,7 @@ The lock file contains information about who holds the lock:
   "Operation": "OperationTypeApply",
   "Info": "",
   "Who": "user@machine",
-  "Version": "1.7.0",
+  "Version": "1.15.4",
   "Created": "2026-02-17T10:30:00.000Z",
   "Path": "terraform/state/default.tflock"
 }
@@ -92,7 +92,7 @@ Lock Info:
   Path:      infrastructure/production/default.tflock
   Operation: OperationTypePlan
   Who:       user@machine
-  Version:   1.7.0
+  Version:   1.15.4
   Created:   2026-02-17 10:30:00.000000 +0000 UTC
 ```
 
@@ -100,7 +100,7 @@ This means locking is working correctly.
 
 ## Handling Lock Timeouts
 
-By default, Terraform will retry acquiring the lock for a short period. You can increase the timeout using the `-lock-timeout` flag:
+By default, Terraform can fail immediately if another process already holds the state lock. You can make it retry acquiring the lock by using the `-lock-timeout` flag:
 
 ```bash
 # Wait up to 5 minutes for the lock to be released
@@ -152,18 +152,18 @@ Here is a Cloud Build configuration that handles locking properly:
 # cloudbuild.yaml - Terraform pipeline with lock retry
 steps:
   - id: 'terraform-init'
-    name: 'hashicorp/terraform:1.7'
+    name: 'hashicorp/terraform:1.15.4'
     args: ['init', '-no-color']
     dir: 'infrastructure/'
 
   - id: 'terraform-plan'
-    name: 'hashicorp/terraform:1.7'
+    name: 'hashicorp/terraform:1.15.4'
     args: ['plan', '-no-color', '-lock-timeout=5m', '-out=tfplan']
     dir: 'infrastructure/'
 
   - id: 'terraform-apply'
-    name: 'hashicorp/terraform:1.7'
-    args: ['apply', '-no-color', '-lock-timeout=5m', '-auto-approve', 'tfplan']
+    name: 'hashicorp/terraform:1.15.4'
+    args: ['apply', '-no-color', '-lock-timeout=5m', 'tfplan']
     dir: 'infrastructure/'
 ```
 
@@ -171,7 +171,7 @@ The `-lock-timeout=5m` ensures that if a previous build is still running, the ne
 
 ## Monitoring State Lock Activity
 
-You can monitor who is locking and unlocking state using Cloud Audit Logs. GCS operations are logged by default:
+You can monitor who is acquiring state locks using Cloud Audit Logs if Data Access audit logs are enabled for Cloud Storage:
 
 ```bash
 # Query audit logs for state bucket operations
