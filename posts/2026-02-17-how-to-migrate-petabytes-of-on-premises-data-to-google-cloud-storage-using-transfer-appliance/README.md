@@ -64,15 +64,15 @@ Plan your bucket structure in Cloud Storage:
 # Create destination buckets before ordering the appliance
 gcloud storage buckets create gs://my-data-lake-warehouse \
   --location us-central1 \
-  --storage-class STANDARD
+  --default-storage-class STANDARD
 
 gcloud storage buckets create gs://my-data-lake-archives \
   --location us-central1 \
-  --storage-class NEARLINE  # Cost-effective for infrequently accessed data
+  --default-storage-class NEARLINE  # Cost-effective for infrequently accessed data
 
 gcloud storage buckets create gs://my-data-lake-media \
   --location us-central1 \
-  --storage-class STANDARD
+  --default-storage-class STANDARD
 ```
 
 ## Step 2 - Order the Transfer Appliance
@@ -87,11 +87,11 @@ Order through the Google Cloud Console:
 While waiting for the appliance, prepare your environment:
 
 ```bash
-# Install the Transfer Appliance management software
-# Google provides a client tool for managing the data transfer
+# Install any copy tools you plan to use, such as rsync, scp, or tmux
+# The appliance itself provides the Transfer Appliance CLI for setup
 
 # Ensure your data center has:
-# - Available 10 GbE or 25 GbE network port
+# - Available 10 GbE, 40 GbE, or 100 GbE network port, depending on appliance model
 # - Power connection (standard rack power)
 # - Physical space in your server room or data center floor
 # - Staff with physical access to connect and monitor the device
@@ -105,14 +105,14 @@ Once the appliance arrives at your data center:
 # Connect the appliance to your network
 # The appliance gets an IP address via DHCP or you can assign a static IP
 
-# Access the appliance management interface
-# Open a browser and navigate to the appliance IP address
+# Access the appliance command-line interface
+# Use the credentials displayed in the Google Cloud console after attestation
 
-# Configure the appliance with your GCP project details
+# Configure the appliance with the Transfer Appliance CLI
 # You will need:
-# - GCP project ID
-# - Service account credentials
-# - Destination bucket names
+# - Data port and appliance IP settings
+# - File share mode, such as NFS, SMB, SCP, or SFTP
+# - Service account key if you are using online transfer
 ```
 
 The appliance presents itself as an NFS mount point that your servers can write to:
@@ -120,7 +120,7 @@ The appliance presents itself as an NFS mount point that your servers can write 
 ```bash
 # Mount the Transfer Appliance as an NFS share
 sudo mkdir -p /mnt/transfer-appliance
-sudo mount -t nfs <appliance-ip>:/transfer /mnt/transfer-appliance
+sudo mount -o vers=4 <appliance-ip>:/mnt/ta_data /mnt/transfer-appliance
 
 # Verify the mount and available space
 df -h /mnt/transfer-appliance
@@ -160,7 +160,7 @@ du -sh /mnt/transfer-appliance/
 # Monitor network throughput to the appliance
 iftop -i eth0 -f "host <appliance-ip>"
 
-# The appliance management UI also shows transfer progress and speed
+# The Transfer Appliance CLI also shows appliance status
 ```
 
 ### Optimizing Transfer Speed
@@ -170,8 +170,8 @@ Several factors affect loading speed:
 ```bash
 # Use larger block sizes for sequential reads
 # Tune NFS mount options for performance
-sudo mount -t nfs -o rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 \
-  <appliance-ip>:/transfer /mnt/transfer-appliance
+sudo mount -o vers=4,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 \
+  <appliance-ip>:/mnt/ta_data /mnt/transfer-appliance
 
 # For many small files, consider creating tar archives first
 # Small files have high per-file overhead on NFS
@@ -187,16 +187,16 @@ Before shipping the appliance back, verify your data:
 
 ```bash
 # Generate checksums for the source data
-find /data/warehouse/ -type f -exec md5sum {} \; > source_checksums.txt
+(cd /data/warehouse && find . -type f -print0 | sort -z | xargs -0 md5sum) > source_checksums.txt
 
 # Generate checksums for the data on the appliance
-find /mnt/transfer-appliance/warehouse/ -type f -exec md5sum {} \; > appliance_checksums.txt
+(cd /mnt/transfer-appliance/warehouse && find . -type f -print0 | sort -z | xargs -0 md5sum) > appliance_checksums.txt
 
 # Compare checksums
 diff source_checksums.txt appliance_checksums.txt
 
 # The appliance also generates its own integrity verification
-# Check the appliance management UI for data integrity status
+# Check the Transfer Appliance CLI for data integrity status
 ```
 
 Finalize and prepare for shipping:
@@ -205,27 +205,27 @@ Finalize and prepare for shipping:
 # Unmount the appliance
 sudo umount /mnt/transfer-appliance
 
-# Use the appliance management tool to finalize the data
+# Run the Transfer Appliance CLI finalize command
 # This encrypts the data and prepares it for shipping
+ta finalize
 
 # The appliance encrypts all data at rest using AES-256
-# Encryption keys are managed by Google and stored separately from the appliance
+# Encryption uses your customer-managed encryption key (CMEK)
 ```
 
-Schedule the return shipment through the Google Cloud Console. Google provides pre-paid shipping labels and tracking.
+Enter the passcode returned by `ta finalize` in the return instructions form from the Transfer Appliance Team. Google then provides the shipping label for returning the appliance.
 
 ## Step 6 - Monitor Ingestion
 
 Once Google receives the appliance, data is ingested into your Cloud Storage buckets:
 
 ```bash
-# Monitor ingestion progress in the Cloud Console
-# Transfer Appliance section shows:
-# - Appliance received status
-# - Data ingestion progress
-# - Estimated completion time
+# Monitor appliance status in the Cloud Console
+# The Transfer Appliance Team emails you when:
+# - Google receives the appliance
+# - Transfer to Cloud Storage is complete
 
-# You can also set up Pub/Sub notifications for ingestion events
+# You can also set up Pub/Sub notifications before ingestion starts
 gcloud storage buckets notifications create gs://my-data-lake-warehouse \
   --topic transfer-notifications \
   --event-types OBJECT_FINALIZE
@@ -244,7 +244,7 @@ echo "Source files: $(find /data/warehouse -type f | wc -l)"
 echo "GCS objects: $(gcloud storage ls --recursive gs://my-data-lake-warehouse/ | wc -l)"
 
 # Spot-check random files by comparing checksums
-gcloud storage hash gs://my-data-lake-warehouse/sample-file.parquet
+gcloud storage hash gs://my-data-lake-warehouse/sample-file.parquet --skip-crc32c --hex
 md5sum /data/warehouse/sample-file.parquet
 ```
 
@@ -253,8 +253,10 @@ md5sum /data/warehouse/sample-file.parquet
 Transfer Appliance pricing includes:
 
 - **Appliance fee** - charged per appliance per use
-- **No data transfer charges** - unlike network-based transfer, you do not pay egress or ingress fees
-- **Shipping costs** - included in the appliance fee
+- **Onsite usage fee** - included for a fixed number of days, then charged per weekday
+- **Shipping costs** - charged separately and vary by location and carrier rates
+- **No Transfer Service fee for physical ingest** - Transfer Service fees are not incurred when data is ingested by physically shipping the appliance to Google
+- **Operations costs** - Class A and Class B request charges apply during ingestion
 - **Cloud Storage costs** - standard storage costs apply once data is ingested
 
 Compare this against network transfer costs:
