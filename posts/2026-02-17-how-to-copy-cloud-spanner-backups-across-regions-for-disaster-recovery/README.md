@@ -56,7 +56,7 @@ Before you can copy backups cross-region, you need a destination instance. This 
 # Create a minimal instance in the DR region for storing backup copies
 gcloud spanner instances create my-dr-instance \
     --config=regional-us-east1 \
-    --display-name="DR Instance (US East)" \
+    --description="DR Instance (US East)" \
     --processing-units=100
 ```
 
