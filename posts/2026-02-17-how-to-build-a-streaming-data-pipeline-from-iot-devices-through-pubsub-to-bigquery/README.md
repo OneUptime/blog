@@ -251,11 +251,10 @@ python iot_pipeline.py \
   --streaming \
   --num_workers=2 \
   --max_num_workers=10 \
-  --autoscaling_algorithm=THROUGHPUT_BASED \
-  --experiments=enable_streaming_engine
+  --autoscaling_algorithm=THROUGHPUT_BASED
 ```
 
-The `enable_streaming_engine` flag offloads shuffling to the Dataflow service, which reduces costs and improves performance.
+For current Python 3 pipelines, Dataflow Streaming Engine is enabled by default when the job meets the supported conditions. Streaming Engine runs more of the streaming pipeline in the Dataflow service backend, which reduces worker CPU, memory, and persistent disk usage.
 
 ## Step 6: Simulate Device Data
 
@@ -314,10 +313,10 @@ For production deployments handling millions of devices:
 
 - **Pub/Sub scales automatically** - no need to provision capacity
 - **Dataflow autoscaling** adjusts worker count based on throughput
-- **BigQuery streaming inserts** handle up to 1 million rows per second per table
+- **BigQuery streaming inserts** are governed by project-level throughput quotas, such as bytes per second per project and request-size limits
 - **Partition and cluster** BigQuery tables to keep query costs low
-- **Use table decorators** for time-bounded queries to avoid scanning entire tables
+- **Filter on the partitioning column** for time-bounded queries to avoid scanning unnecessary partitions
 
 ## Wrapping Up
 
-This pipeline handles the full journey from device to dashboard. Pub/Sub absorbs the bursty nature of IoT traffic, Dataflow processes and validates the stream in real time, and BigQuery stores everything in a format optimized for analytics. The anomaly detection layer catches bad readings before they pollute your data, and the dead letter queue makes sure nothing gets silently dropped. Once this foundation is in place, you can layer on more sophisticated processing - aggregation windows, ML-based anomaly detection, or real-time dashboards - without changing the underlying architecture.
+This pipeline handles the full journey from device to dashboard. Pub/Sub absorbs the bursty nature of IoT traffic, Dataflow processes and validates the stream in real time, and BigQuery stores everything in a format optimized for analytics. The anomaly detection layer flags bad readings for follow-up, and the dead letter queue makes sure nothing gets silently dropped. Once this foundation is in place, you can layer on more sophisticated processing - aggregation windows, ML-based anomaly detection, or real-time dashboards - without changing the underlying architecture.
