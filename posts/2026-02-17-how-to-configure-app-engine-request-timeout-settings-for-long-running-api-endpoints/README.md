@@ -46,18 +46,18 @@ basic_scaling:
 # No explicit timeout setting needed - basic scaling allows up to 24 hours
 ```
 
-For App Engine Flexible, you can configure the timeout in the health check and network settings:
+For App Engine Flexible, the App Engine request timeout is fixed at 60 minutes. There is no `app.yaml` setting that raises it. Health check timeout settings only control health check probes, and application-level timeouts are configured in your web server or framework:
 
 ```yaml
-# app.yaml - App Engine Flex with custom timeout
+# app.yaml - App Engine Flex with custom runtime settings
 runtime: custom
 env: flex
 
-# Network timeout configuration
+# Network configuration
 network:
   session_affinity: false
 
-# Health checks with appropriate timeouts
+# Health check probe timeouts, not request handler timeouts
 readiness_check:
   path: "/_ah/ready"
   check_interval_sec: 5
@@ -66,9 +66,7 @@ readiness_check:
   success_threshold: 2
   app_start_timeout_sec: 300
 
-# The request timeout is controlled at the application level
-env_variables:
-  REQUEST_TIMEOUT: "3600"  # 60 minutes in seconds
+# Configure request timeouts in your application server.
 ```
 
 ## Handling Timeouts in Your Application
@@ -98,8 +96,12 @@ const server = app.listen(process.env.PORT || 8080, () => {
   console.log("Server started");
 });
 
-// Increase the server timeout (default is 2 minutes in Node.js)
-server.timeout = 600000; // 10 minutes in milliseconds
+// Increase the time allowed for receiving the request body.
+// Node.js 18+ defaults server.requestTimeout to 5 minutes.
+server.requestTimeout = 600000; // 10 minutes in milliseconds
+
+// Increase the socket inactivity timeout for new connections.
+server.setTimeout(600000);
 
 // For specific routes that need longer timeouts
 app.post("/api/generate-report", (req, res) => {
@@ -118,8 +120,9 @@ The most common solution for long-running operations is to move them to backgrou
 ```python
 # api.py - Offload long work to a background task
 from google.cloud import tasks_v2
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import json
+import uuid
 
 app = Flask(__name__)
 tasks_client = tasks_v2.CloudTasksClient()
@@ -182,7 +185,7 @@ basic_scaling:
 
 ## Strategy 2: Streaming Responses
 
-For endpoints that aggregate data, streaming the response keeps the connection alive and avoids timeouts:
+For endpoints that aggregate data on App Engine Flex, streaming the response can reduce buffering and let clients start receiving data earlier:
 
 ```python
 # Streaming response to avoid timeout
@@ -211,11 +214,14 @@ def export_data():
     return Response(
         stream_with_context(generate()),
         mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=export.csv"}
+        headers={
+            "Content-Disposition": "attachment; filename=export.csv",
+            "X-Accel-Buffering": "no"
+        }
     )
 ```
 
-Streaming keeps the connection active as long as data is being sent. Each chunk resets the idle timeout, so even a 10-minute overall process works on Standard automatic scaling as long as data keeps flowing.
+Streaming does not extend the one-hour App Engine Flex response time limit. App Engine Standard does not support streaming responses to the client, so use background tasks or chunked processing there instead.
 
 ## Strategy 3: Chunked Processing
 
@@ -259,7 +265,7 @@ def process_batch():
 
 ## Strategy 4: Using DeadlineExceededError
 
-In App Engine Standard, you can catch the timeout before it kills your request:
+In App Engine Standard, your code can catch `DeadlineExceededError` when the request reaches its deadline:
 
 ```python
 # Catch timeout and save partial progress
@@ -277,7 +283,7 @@ def long_process():
             mark_item_complete(item.id)
             processed += 1
     except DeadlineExceededError:
-        # App Engine is about to kill this request
+        # The request has reached its App Engine deadline
         # Save progress and return what we have
         return jsonify({
             "status": "partial",
@@ -291,7 +297,7 @@ def long_process():
     })
 ```
 
-Note that `DeadlineExceededError` is raised a few seconds before the actual deadline, giving you time to save state and return a response.
+Note that `DeadlineExceededError` is raised when the request reaches its overall deadline. If you catch it, generate a response very quickly; otherwise App Engine returns an error and may terminate the instance.
 
 ## Client-Side Timeout Handling
 
@@ -322,4 +328,4 @@ def call_long_api(params):
 
 ## Summary
 
-App Engine Standard with automatic scaling gives you a 10-minute request timeout, while basic/manual scaling extends that to 24 hours. App Engine Flex allows up to 60 minutes. For most long-running operations, the best approach is not to increase the timeout but to restructure the work. Move heavy processing to background tasks with Cloud Tasks, use streaming responses for data exports, or break large jobs into chunks. These patterns work within the timeout limits while providing a better user experience since clients do not have to wait for a response.
+App Engine Standard with automatic scaling gives you a 10-minute request timeout, while basic/manual scaling extends that to 24 hours. App Engine Flex allows up to 60 minutes. For most long-running operations, the best approach is not to increase the timeout but to restructure the work. Move heavy processing to background tasks with Cloud Tasks, use streaming responses for data exports on Flex, or break large jobs into chunks. These patterns work within the timeout limits while providing a better user experience since clients do not have to wait for a response.
