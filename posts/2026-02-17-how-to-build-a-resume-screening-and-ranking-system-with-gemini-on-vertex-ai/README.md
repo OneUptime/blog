@@ -34,15 +34,16 @@ graph TB
 
 ## Extracting Text from Resumes
 
-Resumes come in various formats. Use Document AI to handle PDFs and images:
+Resumes come in various formats. Use a Document AI processor such as Layout Parser to handle PDFs, images, and DOCX files:
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1
-from google.cloud import storage
 
-def extract_resume_text(project_id, processor_id, file_path):
+def extract_resume_text(project_id, location, processor_id, file_path):
     """Extract text from a resume file using Document AI"""
-    client = documentai_v1.DocumentProcessorServiceClient()
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
 
     # Read the file content
     with open(file_path, "rb") as f:
@@ -58,8 +59,9 @@ def extract_resume_text(project_id, processor_id, file_path):
     else:
         mime_type = "application/pdf"
 
+    processor_name = client.processor_path(project_id, location, processor_id)
     request = documentai_v1.ProcessRequest(
-        name=f"projects/{project_id}/locations/us/processors/{processor_id}",
+        name=processor_name,
         raw_document=documentai_v1.RawDocument(
             content=content,
             mime_type=mime_type,
@@ -75,17 +77,27 @@ def extract_resume_text(project_id, processor_id, file_path):
 Use Gemini to convert raw resume text into structured profiles:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel
+from google import genai
+from google.genai.types import GenerateContentConfig, HttpOptions
 import json
+
+MODEL_NAME = "gemini-2.5-pro"
+
+def make_genai_client(project_id):
+    return genai.Client(
+        vertexai=True,
+        project=project_id,
+        location="us-central1",
+        http_options=HttpOptions(api_version="v1"),
+    )
 
 def parse_resume(project_id, resume_text):
     """Parse resume text into a structured candidate profile"""
-    vertexai.init(project=project_id, location="us-central1")
-    model = GenerativeModel("gemini-1.5-pro")
+    client = make_genai_client(project_id)
 
-    response = model.generate_content(
-        f"""Parse this resume into a structured format. Extract all available
+    response = client.models.generate_content(
+        model=MODEL_NAME,
+        contents=f"""Parse this resume into a structured format. Extract all available
 information accurately. Do not infer or make up information that isn't present.
 
 Resume:
@@ -104,7 +116,11 @@ Output as JSON with these fields:
 - notable_achievements: array of standout accomplishments
 
 Only output valid JSON.""",
-        generation_config={"temperature": 0.1, "max_output_tokens": 3000},
+        config=GenerateContentConfig(
+            temperature=0.1,
+            max_output_tokens=3000,
+            response_mime_type="application/json",
+        ),
     )
 
     try:
@@ -126,11 +142,11 @@ Convert job descriptions into structured requirements for consistent evaluation:
 ```python
 def parse_job_requirements(project_id, job_description):
     """Extract structured requirements from a job description"""
-    vertexai.init(project=project_id, location="us-central1")
-    model = GenerativeModel("gemini-1.5-pro")
+    client = make_genai_client(project_id)
 
-    response = model.generate_content(
-        f"""Extract structured hiring requirements from this job description.
+    response = client.models.generate_content(
+        model=MODEL_NAME,
+        contents=f"""Extract structured hiring requirements from this job description.
 Separate requirements into must-have and nice-to-have categories.
 
 Job Description:
@@ -156,7 +172,11 @@ Output as JSON with fields:
 
 Generate 5-8 evaluation criteria based on what this role values most.
 Only output valid JSON.""",
-        generation_config={"temperature": 0.1, "max_output_tokens": 2000},
+        config=GenerateContentConfig(
+            temperature=0.1,
+            max_output_tokens=2000,
+            response_mime_type="application/json",
+        ),
     )
 
     try:
@@ -172,13 +192,14 @@ Score candidates against job requirements:
 ```python
 class CandidateEvaluator:
     def __init__(self, project_id):
-        vertexai.init(project=project_id, location="us-central1")
-        self.model = GenerativeModel("gemini-1.5-pro")
+        self.client = make_genai_client(project_id)
+        self.model_name = MODEL_NAME
 
     def evaluate_candidate(self, candidate_profile, job_requirements):
         """Score a candidate against job requirements"""
-        response = self.model.generate_content(
-            f"""You are an unbiased hiring evaluator. Evaluate this candidate
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=f"""You are an unbiased hiring evaluator. Evaluate this candidate
 against the job requirements. Be objective and focus only on
 qualifications, skills, and experience.
 
@@ -214,7 +235,11 @@ Output as JSON with fields:
 Be fair and consistent. Do not factor in name, gender, age, or any
 demographic information. Focus solely on qualifications and experience.
 Only output valid JSON.""",
-            generation_config={"temperature": 0.1, "max_output_tokens": 3000},
+            config=GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=3000,
+                response_mime_type="application/json",
+            ),
         )
 
         try:
@@ -260,7 +285,7 @@ def process_application_batch(project_id, job_id, resume_files):
         try:
             # Extract text
             resume_text = extract_resume_text(
-                project_id, "your-processor-id", file_path
+                project_id, "us", "your-processor-id", file_path
             )
 
             # Parse into structured profile
