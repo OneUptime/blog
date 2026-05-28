@@ -14,7 +14,7 @@ Google App Engine Standard Environment is one of the simplest ways to get a Pyth
 
 App Engine Standard is a fully managed serverless platform. You push your code, and Google takes care of provisioning instances, scaling them up during traffic spikes, and scaling them back down to zero when nobody is visiting your site. For Flask applications, which are typically lightweight and stateless, this is a natural fit.
 
-The Standard Environment supports Python 3.7 through 3.12 runtimes, and it starts up instances extremely fast because it uses a sandboxed environment rather than full virtual machines. This means cold starts are measured in milliseconds rather than seconds.
+The Standard Environment supports multiple Python 3 runtimes, including Python 3.12 and newer supported versions, and it runs apps in a container secured by gVisor rather than full virtual machines. This helps keep startup overhead low, although cold start times still depend on your application and its dependencies.
 
 ## Prerequisites
 
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8080, debug=True)
 ```
 
-App Engine Standard expects an `app` variable in your `main.py` file. It uses this WSGI-compatible object to handle incoming requests. You do not need to configure Gunicorn or any other WSGI server - App Engine handles that internally.
+App Engine Standard expects an `app` variable in your `main.py` file when you rely on the default Python 3 startup behavior. It uses this WSGI-compatible object to handle incoming requests. You do not need to configure Gunicorn yourself for this simple case - App Engine starts the default Gunicorn web server for you.
 
 ## Creating the Requirements File
 
@@ -64,10 +64,9 @@ App Engine installs dependencies from a `requirements.txt` file during deploymen
 ```text
 # requirements.txt - Python dependencies for the application
 Flask==3.0.0
-gunicorn==21.2.0
 ```
 
-While App Engine Standard uses its own request handling, including gunicorn is good practice for local testing and in case you ever move to the Flexible environment.
+If you later add a custom `entrypoint` that starts Gunicorn, add `gunicorn` to `requirements.txt` as well.
 
 ## Configuring app.yaml
 
@@ -77,14 +76,14 @@ Here is a solid starting configuration for a Flask app:
 
 ```yaml
 # app.yaml - App Engine configuration file
-runtime: python312  # Use Python 3.12 runtime
+runtime: python312  # Use the Python 3.12 runtime
 
 # Instance class determines CPU and memory allocation
-instance_class: F1  # 256MB memory, 600MHz CPU - good for small apps
+instance_class: F1  # 384MB memory, 600MHz CPU tier - good for small apps
 
 # Automatic scaling configuration
 automatic_scaling:
-  min_idle_instances: 0      # Scale to zero when no traffic
+  min_instances: 0           # Allow scaling to zero when no requests are being served
   max_idle_instances: 2      # Keep up to 2 idle instances warm
   min_pending_latency: 30ms  # Wait 30ms before spinning up new instances
   max_pending_latency: automatic
@@ -93,7 +92,7 @@ automatic_scaling:
 
 # Environment variables available to your application
 env_variables:
-  FLASK_ENV: "production"
+  APP_ENV: "production"
 
 # Request handlers
 handlers:
@@ -103,7 +102,7 @@ handlers:
     script: auto             # Route everything else to Flask
 ```
 
-A few things worth noting here. The `instance_class: F1` is the smallest (and cheapest) instance type. For most Flask APIs, it is more than enough. The `min_idle_instances: 0` setting means your app can scale to zero, which saves money but introduces cold starts for the first request after a period of inactivity.
+A few things worth noting here. The `instance_class: F1` is the smallest (and cheapest) automatic scaling instance type. For most Flask APIs, it is more than enough. The `min_instances: 0` setting means your app can scale to zero, which saves money but introduces cold starts for the first request after a period of inactivity.
 
 ## Adding an .gcloudignore File
 
@@ -203,9 +202,9 @@ A few issues that trip people up regularly:
 
 First, make sure your `main.py` is in the root of your project directory, right next to `app.yaml`. App Engine looks for the `app` variable in `main.py` by default.
 
-Second, if you are using packages that require C extensions (like `numpy` or `pillow`), check that they are compatible with the App Engine Standard sandbox. Some packages need the Flexible environment instead.
+Second, if you are using packages that require C extensions (like `numpy` or `pillow`), make sure they are Linux-compatible and can be installed during the App Engine build.
 
-Third, watch your memory usage. The F1 instance class only has 256MB of RAM. If your Flask app loads large datasets or models into memory, you will hit out-of-memory errors. Bump up to F2 or F4 if needed.
+Third, watch your memory usage. The F1 instance class has a 384MB memory limit, including memory used by the runtime. If your Flask app loads large datasets or models into memory, you will hit out-of-memory errors. Bump up to F2 or F4 if needed.
 
 ## Monitoring Your Deployment
 
