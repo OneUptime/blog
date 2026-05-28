@@ -8,15 +8,15 @@ Description: Learn how to build extremely small Docker images for Go microservic
 
 ---
 
-Go has a superpower that most languages do not: it compiles to a single static binary with zero runtime dependencies. This means you can put a Go binary in a Docker image that contains literally nothing else - no operating system, no shell, no package manager. Just your binary.
+Go has a superpower that most languages do not: it can compile to a single static binary with no runtime dependencies. This means you can put a Go binary in a Docker image that contains literally nothing else - no operating system, no shell, no package manager. Just your binary.
 
 This is what the `scratch` base image gives you. It is an empty image, zero bytes, a blank canvas. When you copy a statically compiled Go binary into a scratch image, you end up with a Docker image that is typically 5-15MB. Compare that to an image based on Ubuntu (70MB+) or even Alpine (5MB base + your app).
 
-For Cloud Run, where you pay per request and cold starts matter, a tiny image means faster pulls, faster startup, and lower costs.
+For Cloud Run, where request-based billing and cold starts matter, a tiny image means faster pulls, faster startup, and lower image storage costs.
 
 ## Building a Static Go Binary
 
-The key to making scratch images work is building a fully static binary. By default, Go links against some C libraries (like DNS resolution). You need to disable CGO for a pure Go binary.
+The key to making scratch images work is building a fully static binary. On systems where CGO is enabled, some standard-library behavior can use C libraries, including the native DNS resolver. You need to disable CGO for a pure Go binary.
 
 Here is a simple HTTP server.
 
@@ -76,7 +76,7 @@ Here is the Dockerfile that builds this into a scratch-based image.
 ```dockerfile
 # Stage 1: Build the static binary
 
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
@@ -118,7 +118,7 @@ A few things to note about this Dockerfile:
 
 **CA certificates**: Without these, your application cannot make HTTPS requests to external services. Scratch has no certificates at all, so we copy them from the builder stage.
 
-**Timezone data**: If your application uses `time.LoadLocation()` or similar functions, you need timezone data. Without it, you will get runtime panics.
+**Timezone data**: If your application uses `time.LoadLocation()` or similar functions, you need timezone data. Without it, location loading can fail at runtime.
 
 **Binary stripping**: The `-ldflags="-s -w"` flags strip the symbol table and debug information. This can reduce binary size by 20-30%.
 
@@ -150,12 +150,13 @@ gcloud run deploy go-service \
     --allow-unauthenticated \
     --memory=128Mi \
     --cpu=1 \
+    --execution-environment=gen1 \
     --min-instances=0 \
     --max-instances=100 \
     --port=8080
 ```
 
-Notice the `--memory=128Mi`. Go applications compiled statically use very little memory. A simple web server like this will use about 10-20MB at runtime.
+Notice the `--memory=128Mi`. Go applications compiled statically use very little memory. Cloud Run supports 128 MiB in the first-generation execution environment, so the command explicitly sets `--execution-environment=gen1`. A simple web server like this will use about 10-20MB at runtime.
 
 ## Making It Even Smaller with UPX
 
@@ -163,7 +164,7 @@ If you want to squeeze every last byte, you can compress the binary with UPX (Ul
 
 ```dockerfile
 # Stage 1: Build
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Install UPX for binary compression
 RUN apk add --no-cache upx
@@ -204,7 +205,7 @@ One approach is to use a debug build target.
 
 ```dockerfile
 # Add a debug stage for troubleshooting
-FROM alpine:3.19 AS debug
+FROM alpine:3.23 AS debug
 COPY --from=builder /app/server /server
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 RUN apk add --no-cache curl
@@ -224,7 +225,7 @@ docker build --target debug -t my-app:debug .
 Scratch has no `/etc/passwd` file. If you want to run as a non-root user (which is a good security practice), you need to create the user file in the builder stage.
 
 ```dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 # Create a non-root user
 RUN echo "appuser:x:65534:65534:App User:/:" > /etc/passwd.app
 
@@ -244,25 +245,25 @@ ENTRYPOINT ["/server"]
 
 ### DNS Resolution
 
-Go's pure Go DNS resolver works fine in scratch containers. However, if you need CGO for any reason (like using SQLite), you cannot use scratch. In that case, use distroless instead.
+Go's pure Go DNS resolver works fine in scratch containers. However, if you need CGO for any reason (like using SQLite), you cannot use scratch unless you fully statically link the C dependencies. In that case, use a distroless image with libc instead.
 
 ```dockerfile
-# Alternative: Distroless for when you need some system libraries
-FROM gcr.io/distroless/static-debian12
+# Alternative: Distroless for when you need libc or other system libraries
+FROM gcr.io/distroless/base-debian13
 COPY --from=builder /app/server /server
 EXPOSE 8080
 ENTRYPOINT ["/server"]
 ```
 
-Distroless adds only about 2MB to the image size but includes CA certificates, timezone data, and basic system files.
+Distroless remains much smaller than full distributions and includes CA certificates, timezone data, and basic system files. Use `gcr.io/distroless/static-debian13` for fully static binaries, or `gcr.io/distroless/base-debian13` when you need libc for CGO.
 
 ## Image Size Comparison
 
 Here is a comparison of the same Go application built with different base images:
 
-- `golang:1.22` (build image left in): ~850MB
+- `golang:1.26` (build image left in): ~850MB
 - `ubuntu:22.04` base: ~85MB
-- `alpine:3.19` base: ~13MB
+- `alpine:3.23` base: ~13MB
 - `gcr.io/distroless/static`: ~9MB
 - `scratch`: ~7MB
 - `scratch` + UPX: ~3MB
