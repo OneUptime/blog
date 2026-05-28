@@ -16,11 +16,11 @@ Error Reporting provides filtering capabilities that let you narrow down errors 
 
 Error Reporting organizes errors using two key labels: service name and service version. These come from the `serviceContext` in your error reports.
 
-If you are using GCP services that integrate automatically with Error Reporting (like App Engine, Cloud Run, or Cloud Functions), these labels are set automatically:
+If you are using GCP services that integrate automatically with Error Reporting (like App Engine, Cloud Run, or Cloud Functions), some environment metadata is captured automatically. For best filtering, make sure your reported errors include the right service and version values:
 
 - **App Engine**: Service name is the App Engine service name, version is the App Engine version
-- **Cloud Run**: Service name is the Cloud Run service name, version is the revision name
-- **Cloud Functions**: Service name is the function name, version is set by you
+- **Cloud Run**: Use the Cloud Run service name and revision name when setting `serviceContext`
+- **Cloud Functions**: Use the function name as the service name and set the version yourself
 - **GKE/Compute Engine**: You set both service and version in your application code
 
 For custom error reports, you set these when initializing the client:
@@ -38,15 +38,15 @@ client = error_reporting.Client(
 
 ## Filtering by Service in the Console
 
-In the Cloud Error Reporting console, the service filter is at the top of the page. By default, it shows "All Services."
+In the Cloud Error Reporting console, service filtering is part of the resource filter. Open the "All Resources" menu and select the affected resource.
 
-Click the dropdown to see a list of all services that have reported errors. Select a specific service to narrow the view. This is the first thing you should do when investigating an issue - narrow down to the affected service.
+For resources that expose service labels, such as Kubernetes Container Services, you can filter first by service and then by version. This is the first thing you should do when investigating an issue - narrow down to the affected service.
 
-You can also bookmark filtered URLs. The service filter is encoded in the URL, so you can create bookmarks for each service's error view for quick access.
+You can also bookmark filtered URLs. The resource filter is encoded in the URL, so you can create bookmarks for common error views for quick access.
 
 ## Filtering by Version
 
-The version filter appears next to the service filter. This is particularly useful when you are trying to determine if a new deployment introduced errors.
+Where the selected resource exposes a version label, the version filter appears after you select the service. This is particularly useful when you are trying to determine if a new deployment introduced errors.
 
 A common workflow during incident investigation:
 
@@ -78,8 +78,6 @@ Here is how to query errors filtered by service, version, and time range using P
 # Query errors filtered by service, version, and time range
 from google.cloud import errorreporting_v1beta1
 from google.cloud.errorreporting_v1beta1 import types
-from google.protobuf import timestamp_pb2
-from datetime import datetime, timedelta, timezone
 
 def search_errors(project_id, service_name=None, version=None, hours_back=24):
     client = errorreporting_v1beta1.ErrorStatsServiceClient()
@@ -94,7 +92,7 @@ def search_errors(project_id, service_name=None, version=None, hours_back=24):
     elif hours_back <= 24:
         time_range.period = types.QueryTimeRange.Period.PERIOD_1_DAY
     elif hours_back <= 168:
-        time_range.period = types.QueryTimeRange.Period.PERIOD_7_DAYS
+        time_range.period = types.QueryTimeRange.Period.PERIOD_1_WEEK
     else:
         time_range.period = types.QueryTimeRange.Period.PERIOD_30_DAYS
 
@@ -106,19 +104,20 @@ def search_errors(project_id, service_name=None, version=None, hours_back=24):
         service_filter.version = version
 
     # List error group stats with filters applied
-    response = client.list_group_stats(
+    request = types.ListGroupStatsRequest(
         project_name=project_name,
         time_range=time_range,
         service_filter=service_filter,
         order=types.ErrorGroupOrder.LAST_SEEN_DESC
     )
+    response = client.list_group_stats(request=request)
 
     for group_stats in response:
         print(f"Error: {group_stats.representative.message[:80]}")
         print(f"  Count: {group_stats.count}")
         print(f"  First seen: {group_stats.first_seen_time}")
         print(f"  Last seen: {group_stats.last_seen_time}")
-        print(f"  Services: {group_stats.affected_services_count}")
+        print(f"  Services: {group_stats.num_affected_services}")
         print("---")
 
 # Search for errors in a specific service and version from the last 6 hours
@@ -136,6 +135,9 @@ One of the most valuable uses of version filtering is comparing error rates betw
 
 ```python
 # Compare error counts between two versions of a service
+from google.cloud import errorreporting_v1beta1
+from google.cloud.errorreporting_v1beta1 import types
+
 def compare_versions(project_id, service_name, old_version, new_version):
     client = errorreporting_v1beta1.ErrorStatsServiceClient()
     project_name = f"projects/{project_id}"
@@ -149,11 +151,12 @@ def compare_versions(project_id, service_name, old_version, new_version):
         service=service_name,
         version=old_version
     )
-    old_response = client.list_group_stats(
+    old_request = types.ListGroupStatsRequest(
         project_name=project_name,
         time_range=time_range,
         service_filter=old_filter
     )
+    old_response = client.list_group_stats(request=old_request)
     old_errors = {gs.group.group_id: gs for gs in old_response}
 
     # Get errors for the new version
@@ -161,11 +164,12 @@ def compare_versions(project_id, service_name, old_version, new_version):
         service=service_name,
         version=new_version
     )
-    new_response = client.list_group_stats(
+    new_request = types.ListGroupStatsRequest(
         project_name=project_name,
         time_range=time_range,
         service_filter=new_filter
     )
+    new_response = client.list_group_stats(request=new_request)
     new_errors = {gs.group.group_id: gs for gs in new_response}
 
     # Find errors that only appear in the new version
@@ -201,21 +205,21 @@ The search is a substring match, so you can search for:
 
 ## Using gcloud for Quick Searches
 
-For quick lookups from the command line:
+Error Reporting does not have a `gcloud` command for listing error groups. For quick command-line checks, query the underlying log entries with Cloud Logging:
 
 ```bash
-# List recent errors for a specific service
-gcloud beta error-reporting events list \
+# List recent error logs for a specific serviceContext service
+gcloud logging read \
+  'severity>=ERROR AND jsonPayload.serviceContext.service="order-service"' \
   --project=my-gcp-project \
-  --service=order-service \
-  --sort-by=LAST_SEEN \
+  --freshness=24h \
   --limit=10
 
-# List errors with a specific message pattern
-gcloud beta error-reporting events list \
+# List recent error logs with a specific message pattern
+gcloud logging read \
+  'severity>=ERROR AND jsonPayload.serviceContext.service="order-service" AND jsonPayload.message:"connection refused"' \
   --project=my-gcp-project \
-  --service=order-service \
-  --filter="message:connection refused" \
+  --freshness=24h \
   --limit=20
 ```
 
@@ -225,9 +229,25 @@ For teams that need a more customized error search experience, you can build one
 
 ```bash
 # Create a log-based metric for error counting by service and version
+cat > errors-by-service-version.yaml <<'EOF'
+name: errors-by-service-version
+description: Error count by service and version
+filter: 'severity>=ERROR AND jsonPayload.serviceContext.service!=""'
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  labels:
+  - key: service
+    valueType: STRING
+  - key: version
+    valueType: STRING
+labelExtractors:
+  service: EXTRACT(jsonPayload.serviceContext.service)
+  version: EXTRACT(jsonPayload.serviceContext.version)
+EOF
+
 gcloud logging metrics create errors-by-service-version \
-  --description="Error count by service and version" \
-  --log-filter='severity>=ERROR AND jsonPayload.serviceContext.service!=""' \
+  --config-from-file=errors-by-service-version.yaml \
   --project=my-gcp-project
 ```
 
