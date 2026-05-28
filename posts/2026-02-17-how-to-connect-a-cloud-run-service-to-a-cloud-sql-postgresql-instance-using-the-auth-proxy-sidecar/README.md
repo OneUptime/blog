@@ -43,6 +43,8 @@ gcloud sql instances create my-postgres \
 
 The `--no-assign-ip` flag means the instance only has a private IP. Combined with the Auth Proxy, this keeps the database off the public internet entirely.
 
+This assumes private services access is already configured for the `default` VPC. Because the instance has only a private IP, the Cloud Run service also needs VPC egress to the same VPC network.
+
 Create a database and user:
 
 ```bash
@@ -201,6 +203,8 @@ spec:
     metadata:
       annotations:
         run.googleapis.com/container-dependencies: '{"my-app":["cloud-sql-proxy"]}'
+        run.googleapis.com/network-interfaces: '[{"network":"default"}]'
+        run.googleapis.com/vpc-access-egress: private-ranges-only
     spec:
       containers:
         # Main application container
@@ -231,10 +235,10 @@ spec:
 
         # Cloud SQL Auth Proxy sidecar
         - name: cloud-sql-proxy
-          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0
           args:
             - "--port=5432"
-            - "--auto-iam-authn"
+            - "--private-ip"
             - "my-project:us-central1:my-postgres"
           resources:
             limits:
@@ -256,7 +260,7 @@ gcloud run services replace service.yaml --region=us-central1
 
 ## Step 6: Alternative - Using the Built-in Cloud SQL Connection
 
-Cloud Run also has a built-in Cloud SQL connection feature that does not require a sidecar. This is simpler but uses Unix sockets:
+Cloud Run also has a built-in Cloud SQL connection feature that does not require a sidecar. This is simpler but uses Unix sockets for public IP paths:
 
 ```bash
 # Deploy with built-in Cloud SQL connection (no sidecar needed)
@@ -264,7 +268,7 @@ gcloud run deploy my-app \
   --image=us-central1-docker.pkg.dev/my-project/my-repo/my-app:v1 \
   --region=us-central1 \
   --add-cloudsql-instances=my-project:us-central1:my-postgres \
-  --set-env-vars="DB_NAME=myapp,DB_USER=appuser" \
+  --set-env-vars="DB_NAME=myapp,DB_USER=appuser,INSTANCE_CONNECTION_NAME=my-project:us-central1:my-postgres" \
   --set-secrets="DB_PASSWORD=db-password:latest"
 ```
 
