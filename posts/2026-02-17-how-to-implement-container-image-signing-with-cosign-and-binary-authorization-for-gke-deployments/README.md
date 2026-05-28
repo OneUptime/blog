@@ -8,9 +8,9 @@ Description: Learn how to sign container images with Cosign and enforce image ve
 
 ---
 
-Software supply chain attacks are a real threat. An attacker who compromises your CI/CD pipeline can inject malicious code into your container images, and those images get deployed to production without anyone noticing. Container image signing addresses this by creating a cryptographic attestation that an image was built by a trusted process.
+Software supply chain attacks are a real threat. An attacker who compromises your CI/CD pipeline can inject malicious code into your container images, and those images get deployed to production without anyone noticing. Container image signing addresses this by creating a cryptographic signature that an image was built by a trusted process.
 
-Google Cloud's Binary Authorization takes this further. It acts as a gatekeeper on your GKE cluster, refusing to run any container image that does not have a valid signature. Together, Cosign (for signing) and Binary Authorization (for enforcement) create a chain of trust from your build pipeline to your production cluster.
+Google Cloud's Binary Authorization takes this further. It acts as a gatekeeper on your GKE cluster, refusing to run any container image that does not have a valid Binary Authorization attestation. Together, Cosign (for image signing) and Binary Authorization (for attestation enforcement) create a chain of trust from your build pipeline to your production cluster.
 
 ## How the Flow Works
 
@@ -19,8 +19,9 @@ The process looks like this:
 1. Cloud Build builds your container image
 2. Cosign signs the image with a cryptographic key
 3. The signature is stored alongside the image in Artifact Registry
-4. When you deploy to GKE, Binary Authorization checks for a valid signature
-5. If the signature is valid, the pod runs. If not, it is rejected.
+4. Cloud Build creates a Binary Authorization attestation for the image digest
+5. When you deploy to GKE, Binary Authorization checks for a valid attestation
+6. If the attestation is valid, the pod runs. If not, it is rejected.
 
 ```mermaid
 flowchart LR
@@ -28,10 +29,11 @@ flowchart LR
     B --> C[Build Image]
     C --> D[Sign with Cosign]
     D --> E[Push to Artifact Registry]
-    E --> F[Deploy to GKE]
-    F --> G{Binary Authorization}
-    G -->|Valid Signature| H[Pod Runs]
-    G -->|No Signature| I[Pod Rejected]
+    E --> F[Create Binary Authorization Attestation]
+    F --> G[Deploy to GKE]
+    G --> H{Binary Authorization}
+    H -->|Valid Attestation| I[Pod Runs]
+    H -->|No Attestation| J[Pod Rejected]
 ```
 
 ## Setting Up the Key Pair
@@ -103,6 +105,8 @@ Enable the Binary Authorization API and configure a policy.
 gcloud services enable binaryauthorization.googleapis.com
 gcloud services enable containeranalysis.googleapis.com
 gcloud services enable container.googleapis.com
+gcloud services enable cloudkms.googleapis.com
+gcloud services enable artifactregistry.googleapis.com
 ```
 
 Create an attestor. An attestor is an entity that can vouch for an image.
@@ -113,7 +117,7 @@ cat > /tmp/note.json << 'EOF'
 {
   "attestation": {
     "hint": {
-      "humanReadableName": "Build Attestor"
+      "human_readable_name": "Build Attestor"
     }
   }
 }
@@ -124,7 +128,33 @@ curl -X POST \
     -H "Authorization: Bearer $(gcloud auth print-access-token)" \
     -H "Content-Type: application/json" \
     --data-binary @/tmp/note.json \
-    "https://containeranalysis.googleapis.com/v1/projects/my-project/notes/build-attestor"
+    "https://containeranalysis.googleapis.com/v1/projects/my-project/notes/?noteId=build-attestor"
+
+# Grant the Binary Authorization service agent access to note occurrences
+PROJECT_NUMBER=$(gcloud projects describe my-project --format='value(projectNumber)')
+ATTESTOR_SERVICE_ACCOUNT="service-${PROJECT_NUMBER}@gcp-sa-binaryauthorization.iam.gserviceaccount.com"
+
+cat > /tmp/iam_request.json << EOF
+{
+  "resource": "projects/my-project/notes/build-attestor",
+  "policy": {
+    "bindings": [
+      {
+        "role": "roles/containeranalysis.notes.occurrences.viewer",
+        "members": [
+          "serviceAccount:${ATTESTOR_SERVICE_ACCOUNT}"
+        ]
+      }
+    ]
+  }
+}
+EOF
+
+curl -X POST \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    -H "Content-Type: application/json" \
+    --data-binary @/tmp/iam_request.json \
+    "https://containeranalysis.googleapis.com/v1/projects/my-project/notes/build-attestor:setIamPolicy"
 
 # Create the attestor
 gcloud container binauthz attestors create build-attestor \
@@ -147,18 +177,14 @@ Create a policy that requires attestation for all images.
 
 ```yaml
 # policy.yaml - Binary Authorization policy
+name: projects/my-project/policy
 defaultAdmissionRule:
   evaluationMode: REQUIRE_ATTESTATION
   enforcementMode: ENFORCED_BLOCK_AND_AUDIT_LOG
   requireAttestationsBy:
     - projects/my-project/attestors/build-attestor
-# Allow GKE system images without attestation
+# Allow Google-managed system images without attestation
 globalPolicyEvaluationMode: ENABLE
-# Exempt specific image patterns (like system images)
-admissionWhitelistPatterns:
-  - namePattern: 'gcr.io/google_containers/*'
-  - namePattern: 'gcr.io/gke-release/*'
-  - namePattern: 'k8s.gcr.io/*'
 ```
 
 Apply the policy.
@@ -241,7 +267,7 @@ steps:
       - '-c'
       - |
         # Create the attestation for Binary Authorization
-        gcloud container binauthz attestations sign-and-create \
+        gcloud beta container binauthz attestations sign-and-create \
           --artifact-url=$(cat /workspace/image-digest.txt) \
           --attestor=build-attestor \
           --attestor-project=$PROJECT_ID \
@@ -292,4 +318,4 @@ gcloud logging read \
 
 ## Wrapping Up
 
-Container image signing with Cosign and Binary Authorization creates a strong verification chain for your GKE deployments. Every image must be signed by your build pipeline before GKE allows it to run. This prevents unauthorized images, whether from supply chain attacks, compromised registries, or accidental deployments of untested code, from reaching production. The Cloud Build integration makes signing automatic, so it adds security without adding friction to your deployment process.
+Container image signing with Cosign and Binary Authorization creates a strong verification chain for your GKE deployments. Every image must be signed and attested by your build pipeline before GKE allows it to run. This prevents unauthorized images, whether from supply chain attacks, compromised registries, or accidental deployments of untested code, from reaching production. The Cloud Build integration makes signing automatic, so it adds security without adding friction to your deployment process.
