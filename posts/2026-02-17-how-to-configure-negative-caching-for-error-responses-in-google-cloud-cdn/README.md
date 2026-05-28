@@ -8,15 +8,15 @@ Description: Learn how to configure negative caching in Google Cloud CDN to cach
 
 ---
 
-When your origin returns an error - a 404 Not Found, a 500 Internal Server Error, or any other error status code - Cloud CDN can cache that error response for a short time instead of forwarding every subsequent request to your already-struggling origin. This is called negative caching, and it is one of those features that does not seem important until your origin starts failing under load and every error request makes things worse.
+When your origin returns a cacheable error - such as a 404 Not Found, a 410 Gone, or a 501 Not Implemented - Cloud CDN can cache that error response for a short time instead of forwarding every subsequent request to your already-struggling origin. This is called negative caching, and it is one of those features that does not seem important until your origin starts failing under load and every error request makes things worse.
 
 In this guide, I will explain how negative caching works, how to configure it, and when to use or avoid it.
 
 ## Why Negative Caching Matters
 
-Consider this scenario: your origin server starts returning 500 errors because of a database connection issue. Without negative caching, every single request still goes to the origin, which is already overloaded. The CDN provides zero relief because it does not cache error responses.
+Consider this scenario: users start requesting a missing page because of a broken link in a popular campaign. Without negative caching, every single request still goes to the origin, even though the response is the same 404. The CDN provides zero relief because it does not cache the error response.
 
-With negative caching enabled, Cloud CDN caches the 500 response for a short period (say, 30 seconds). During that window, subsequent requests get the cached error without hitting the origin. This gives the origin breathing room to recover.
+With negative caching enabled, Cloud CDN caches the 404 response for a short period (say, 60 seconds). During that window, subsequent requests get the cached error without hitting the origin. This gives the origin breathing room.
 
 The same logic applies to 404 errors. If a user shares a broken link and it goes viral, thousands of requests for a non-existent resource hammer your origin. Caching the 404 response stops the flood.
 
@@ -25,8 +25,11 @@ The same logic applies to 404 errors. If a user shares a broken link and it goes
 By default, Cloud CDN has some built-in negative caching behavior:
 
 - 404 responses are cached for 120 seconds
-- 405 and 410 responses are cached for 120 seconds
-- Other error codes (5xx, 403, etc.) are not cached by default
+- 405 responses are cached for 60 seconds
+- 410, 451, and 501 responses are cached for 120, 120, and 60 seconds respectively
+- 300, 301, and 308 redirects are cached for 10 minutes
+- 302 and 307 redirects are supported by negative caching, but are not cached by default
+- Other error codes (500, 502, 503, 403, etc.) are not supported by Cloud CDN negative caching
 
 You can override these defaults or add caching for additional status codes.
 
@@ -43,7 +46,7 @@ gcloud compute backend-services update my-backend \
     --project=my-project
 ```
 
-This enables negative caching with Cloud CDN's default policy, which caches 404, 405, and 410 responses for 120 seconds.
+This enables negative caching with Cloud CDN's default policy, including 404 responses for 120 seconds, 405 and 501 responses for 60 seconds, 410 and 451 responses for 120 seconds, and 300, 301, and 308 redirects for 10 minutes.
 
 ## Step 2: Configure Custom Negative Caching Policies
 
@@ -53,7 +56,7 @@ To customize which status codes are cached and for how long, use the `--negative
 # Set custom negative caching for specific status codes
 gcloud compute backend-services update my-backend \
     --negative-caching \
-    --negative-caching-policy='[{"code":404,"ttl":60},{"code":405,"ttl":60},{"code":500,"ttl":10},{"code":502,"ttl":10},{"code":503,"ttl":10}]' \
+    --negative-caching-policy='404=60,405=60,410=120,451=120,501=60' \
     --global \
     --project=my-project
 ```
@@ -61,7 +64,8 @@ gcloud compute backend-services update my-backend \
 This configuration:
 - Caches 404 responses for 60 seconds
 - Caches 405 responses for 60 seconds
-- Caches 500, 502, and 503 responses for 10 seconds
+- Caches 410 and 451 responses for 120 seconds
+- Caches 501 responses for 60 seconds
 
 The TTLs for error responses should be much shorter than for successful responses. You want to protect the origin from thundering herd problems, not serve stale errors for hours.
 
@@ -96,16 +100,12 @@ resource "google_compute_backend_service" "cdn_backend" {
       ttl  = 120
     }
     negative_caching_policy {
-      code = 500
-      ttl  = 10
+      code = 451
+      ttl  = 120
     }
     negative_caching_policy {
-      code = 502
-      ttl  = 10
-    }
-    negative_caching_policy {
-      code = 503
-      ttl  = 15
+      code = 501
+      ttl  = 60
     }
   }
 
@@ -127,23 +127,23 @@ Cache for 30-120 seconds. This protects against broken link floods while allowin
 
 ### 410 Gone
 
-Cache for 120-3600 seconds. The resource is permanently removed, so a longer cache time is appropriate.
+Cache for 120-1800 seconds. The resource is permanently removed, so a longer cache time is appropriate, but Cloud CDN negative caching TTLs are limited to 1800 seconds.
 
-### 500 Internal Server Error
+### 451 Unavailable For Legal Reasons
 
-Cache for 5-15 seconds. Just enough to absorb a traffic spike during an outage, but short enough that recovery is noticed quickly.
+Cache for 120-1800 seconds if the restriction is expected to be stable. Keep the TTL shorter if the legal or policy state changes frequently.
 
-### 502 Bad Gateway
+### 501 Not Implemented
 
-Cache for 5-15 seconds. Similar to 500 - temporary protection during upstream failures.
+Cache for 30-120 seconds. This is the only 5xx status code supported by Cloud CDN negative caching policy.
 
-### 503 Service Unavailable
+### 500, 502, and 503 Server Errors
 
-Cache for 10-30 seconds. If the origin is intentionally returning 503 (rate limiting, maintenance), a slightly longer TTL helps.
+Cloud CDN negative caching policy does not support these status codes. If you need resilience during backend failures, look at serve-while-stale, origin caching headers where appropriate, or custom error response handling instead.
 
 ### 403 Forbidden
 
-Be careful with this one. Caching a 403 could prevent legitimate users from accessing content after a permissions change. If you cache it, keep the TTL very short (5-10 seconds).
+Cloud CDN negative caching policy does not support 403 responses. Be careful with caching authorization-dependent responses in general, because a cached 403 could prevent legitimate users from accessing content after a permissions change.
 
 ## Step 5: Disable Negative Caching When Needed
 
@@ -172,7 +172,7 @@ Monitor negative caching behavior to make sure it is working as expected and not
 ```bash
 # Check for cached error responses in logs
 gcloud logging read \
-    'resource.type="http_load_balancer" AND httpRequest.status>=400 AND jsonPayload.cacheHit=true' \
+    'resource.type="http_load_balancer" AND httpRequest.status>=400 AND httpRequest.cacheHit=true' \
     --format="table(timestamp,httpRequest.requestUrl,httpRequest.status)" \
     --limit=20 \
     --project=my-project
@@ -184,7 +184,7 @@ This query shows requests where an error response was served from cache, which c
 # Check the volume of cached errors vs origin errors
 gcloud logging read \
     'resource.type="http_load_balancer" AND httpRequest.status>=400' \
-    --format="value(jsonPayload.cacheHit)" \
+    --format="value(httpRequest.cacheHit)" \
     --limit=1000 \
     --project=my-project | sort | uniq -c
 ```
@@ -202,7 +202,7 @@ gcloud compute url-maps invalidate-cdn-cache my-url-map \
 
 ## Custom Error Pages
 
-If you want Cloud CDN to serve a custom error page when the origin returns certain errors, combine negative caching with custom error response rules in the URL map.
+If you want Cloud CDN to serve a custom error page when the origin returns certain errors, combine custom error response rules in the URL map with a negative caching policy for the supported status codes you want to cache.
 
 ```bash
 # Configure a custom error response in the URL map
@@ -213,36 +213,32 @@ Add the custom error response to the URL map configuration:
 
 ```yaml
 # Custom error responses in the URL map
-defaultRouteAction:
-  faultInjectionPolicy: {}
-defaultService: projects/my-project/global/backendServices/cdn-backend
+defaultService: https://www.googleapis.com/compute/v1/projects/my-project/global/backendServices/cdn-backend
 defaultCustomErrorResponsePolicy:
   errorResponseRules:
     - matchResponseCodes:
-        - '404'
+        - 404
       path: '/errors/404.html'
       overrideResponseCode: 404
     - matchResponseCodes:
-        - '500'
-        - '502'
-        - '503'
-      path: '/errors/500.html'
-      overrideResponseCode: 503
-  errorService: projects/my-project/global/backendBuckets/error-pages-bucket
+        - 501
+      path: '/errors/501.html'
+      overrideResponseCode: 501
+  errorService: https://www.googleapis.com/compute/v1/projects/my-project/global/backendBuckets/error-pages-bucket
 ```
 
 ## Performance Impact
 
 Negative caching has a measurable impact on origin load during error scenarios:
 
-| Scenario | Without Negative Caching | With Negative Caching (10s TTL) |
+| Scenario | Without Negative Caching | With Negative Caching |
 |----------|------------------------|-------------------------------|
-| 1000 requests/sec to 404 | 1000 req/sec to origin | ~100 req/sec to origin |
-| Origin returning 500 | All requests hit origin | Origin gets breathing room |
+| 1000 requests/sec to 404 | 1000 req/sec to origin | About one cache fill per cache key, per edge, during each TTL window |
+| Origin returning 501 | All requests hit origin | Repeated requests for the same cache key can be served from cache |
 | Broken link goes viral | Full traffic spike to origin | Spike absorbed by CDN |
 
-The reduction depends on the TTL and the request rate. Even a 10-second TTL provides significant relief during a traffic spike.
+The reduction depends on the TTL, request rate, cache key, and which edge caches receive traffic. Even a short TTL provides significant relief during a traffic spike.
 
 ## Wrapping Up
 
-Negative caching is a simple but powerful feature that protects your origin from being overwhelmed by error traffic. The configuration takes a few minutes, and the payoff is significant during outages and traffic spikes. Keep TTLs short for server errors (5-15 seconds) so recovery is detected quickly, and use moderate TTLs for client errors like 404 (30-120 seconds). Monitor your cached error responses to make sure you are not accidentally serving stale errors to users who should be getting fresh content.
+Negative caching is a simple but powerful feature that protects your origin from being overwhelmed by repeated cacheable error traffic. The configuration takes a few minutes, and the payoff is significant during traffic spikes. Use moderate TTLs for client errors like 404 (30-120 seconds), remember that Cloud CDN negative caching supports only specific status codes, and monitor your cached error responses to make sure you are not accidentally serving stale errors to users who should be getting fresh content.
