@@ -36,7 +36,7 @@ Here is a Jenkins pipeline for a Node.js application:
 pipeline {
     agent any
     environment {
-        REGISTRY = 'gcr.io/my-project'
+        REGISTRY = 'us-central1-docker.pkg.dev/my-project/my-repo'
         IMAGE_NAME = 'my-app'
     }
     stages {
@@ -110,20 +110,21 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/my-app:$BUILD_ID'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$BUILD_ID'
       - '.'
 
-  # Push the image to Container Registry
+  # Push the image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/my-app:$BUILD_ID'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$BUILD_ID'
 
   # Deploy to GKE
   - name: 'gcr.io/cloud-builders/gke-deploy'
     args:
       - 'run'
-      - '--image=gcr.io/$PROJECT_ID/my-app:$BUILD_ID'
+      - '--filename=k8s/deployment.yaml'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$BUILD_ID'
       - '--location=us-central1'
       - '--cluster=my-cluster'
 
@@ -140,7 +141,7 @@ options:
 
 # Push the built image to the registry
 images:
-  - 'gcr.io/$PROJECT_ID/my-app:$BUILD_ID'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$BUILD_ID'
 ```
 
 ## Setting Up Build Triggers
@@ -187,23 +188,23 @@ Jenkins plugins do not have direct equivalents in Cloud Build. Instead, you use 
 # Cloud Build: Use the SonarQube Docker image
 steps:
   - name: 'sonarsource/sonar-scanner-cli:latest'
+    entrypoint: 'sh'
     args:
-      - '-Dsonar.projectKey=my-app'
-      - '-Dsonar.host.url=https://sonarqube.mycompany.com'
-      - '-Dsonar.login=$$SONAR_TOKEN'
+      - '-c'
+      - 'sonar-scanner -Dsonar.projectKey=my-app -Dsonar.host.url=https://sonarqube.mycompany.com -Dsonar.login=$$SONAR_TOKEN'
     secretEnv: ['SONAR_TOKEN']
 
 # Jenkins plugin: Slack Notification
 # Cloud Build: Use a custom step with curl or a Cloud Function
   - name: 'gcr.io/cloud-builders/curl'
+    entrypoint: 'sh'
     args:
-      - '-X'
-      - 'POST'
-      - '-H'
-      - 'Content-type: application/json'
-      - '--data'
-      - '{"text":"Build $BUILD_ID completed successfully"}'
-      - '$$SLACK_WEBHOOK_URL'
+      - '-c'
+      - |
+        curl -X POST \
+          -H 'Content-type: application/json' \
+          --data "{\"text\":\"Build $BUILD_ID completed successfully\"}" \
+          "$$SLACK_WEBHOOK_URL"
     secretEnv: ['SLACK_WEBHOOK_URL']
 
 # Secret references from Secret Manager
@@ -224,9 +225,13 @@ Jenkins stores credentials in its credential store. Cloud Build uses Secret Mana
 echo -n "my-sonar-token" | gcloud secrets create sonar-token --data-file=-
 echo -n "https://hooks.slack.com/..." | gcloud secrets create slack-webhook --data-file=-
 
-# Grant Cloud Build access to the secrets
+# Grant your Cloud Build service account access to the secrets
+CLOUD_BUILD_SA=$(gcloud builds get-default-service-account | sed 's|.*/||')
 gcloud secrets add-iam-policy-binding sonar-token \
-  --member "serviceAccount:<project-number>@cloudbuild.gserviceaccount.com" \
+  --member "serviceAccount:${CLOUD_BUILD_SA}" \
+  --role "roles/secretmanager.secretAccessor"
+gcloud secrets add-iam-policy-binding slack-webhook \
+  --member "serviceAccount:${CLOUD_BUILD_SA}" \
   --role "roles/secretmanager.secretAccessor"
 ```
 
@@ -259,7 +264,7 @@ steps:
   # Build runs after both lint and test pass
   - id: 'build'
     name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/my-app:$BUILD_ID', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$BUILD_ID', '.']
     waitFor: ['lint', 'test']  # Depends on both lint and test
 ```
 
@@ -269,19 +274,19 @@ Jenkins caches dependencies on the build agent's disk. Cloud Build needs explici
 
 ```yaml
 steps:
-  # Pull cached node_modules from Cloud Storage
+  # Pull the npm cache from Cloud Storage
   - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['-m', 'rsync', '-r', 'gs://my-build-cache/node_modules/', 'node_modules/']
+    args: ['-m', 'rsync', '-r', 'gs://my-build-cache/npm/', '.npm-cache/']
     allowFailure: true  # First build will not have a cache
 
   # Install dependencies (fast with cache)
   - name: 'node:18'
     entrypoint: 'npm'
-    args: ['ci']
+    args: ['ci', '--cache', '.npm-cache', '--prefer-offline']
 
-  # Push updated node_modules to cache
+  # Push the updated npm cache
   - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['-m', 'rsync', '-r', 'node_modules/', 'gs://my-build-cache/node_modules/']
+    args: ['-m', 'rsync', '-r', '.npm-cache/', 'gs://my-build-cache/npm/']
 ```
 
 ## Migration Strategy
@@ -322,8 +327,8 @@ Jenkins costs:
 - Build agent scaling overhead
 
 Cloud Build costs:
-- $0.003 per build-minute for the default machine type
-- First 120 build-minutes per day are free
+- $0.006 per build-minute for the default `e2-standard-2` machine type in the default pool
+- 2,500 free build-minutes per billing account per month for `e2-standard-2` builds in the default pool
 - No cost when idle
 
 For most teams, Cloud Build is cheaper because you are not paying for idle build servers. The breakeven point depends on your build volume, but the operational savings from not managing Jenkins often outweigh any compute cost differences.
