@@ -17,7 +17,7 @@ When Principal A wants to impersonate Service Account B, two things need to be t
 1. Principal A needs the `iam.serviceAccounts.getAccessToken` permission on Service Account B (or the broader `roles/iam.serviceAccountTokenCreator` role)
 2. Service Account B needs the appropriate permissions on the target resource
 
-The impersonation permission is checked on the service account resource itself, not on the project or the target resource. This means you need to set up IAM on the service account, which lives in a specific project.
+The impersonation permission is checked against the service account resource, not the target resource. You can grant the role directly on the service account, which is usually the least-privilege choice, or at a broader ancestor such as the project if you intentionally want the caller to impersonate all service accounts covered by that policy.
 
 ## Step 1: Understand the Error
 
@@ -72,7 +72,7 @@ gcloud iam service-accounts get-iam-policy \
     --format="json(bindings)"
 ```
 
-Look for bindings that include `roles/iam.serviceAccountTokenCreator` or `roles/iam.serviceAccountUser`. The calling principal should be listed as a member in one of these bindings.
+Look for bindings that include `roles/iam.serviceAccountTokenCreator`. The calling principal should be listed as a member in one of these bindings. A `roles/iam.serviceAccountUser` binding can explain why the principal is allowed to attach the service account to a resource, but it does not satisfy `iam.serviceAccounts.getAccessToken`.
 
 ## Step 4: Understand the Difference Between Token Creator and Service Account User
 
@@ -108,7 +108,7 @@ When making the impersonated call, you specify the delegation chain:
 # Using gcloud with impersonation and delegation
 gcloud compute instances list \
     --project=target-project \
-    --impersonate-service-account=sa-b@project-b.iam.gserviceaccount.com \
+    --impersonate-service-account=sa-a@project-a.iam.gserviceaccount.com,sa-b@project-b.iam.gserviceaccount.com \
     --verbosity=debug
 ```
 
@@ -119,7 +119,7 @@ With the client libraries, you specify delegates in the credential chain:
 from google.auth import impersonated_credentials
 import google.auth
 
-# Get the default credentials (User or SA-A)
+# Get the default credentials for the user
 source_credentials, _ = google.auth.default()
 
 # Create impersonated credentials for SA-B through SA-A
@@ -146,7 +146,7 @@ gcloud resource-manager org-policies describe \
     --effective
 ```
 
-If the constraint restricts to specific domains and the calling principal's domain is not included, you need to either add the domain or use a service account within the allowed domain as an intermediary.
+If the constraint restricts to specific domains or organizations and the calling principal is not included, you need to either add the appropriate organization principal set or Google Workspace customer ID, override the policy where appropriate, or use a service account within an allowed organization as an intermediary.
 
 ## Step 7: Debug with the IAM Policy Troubleshooter
 
@@ -177,12 +177,12 @@ resource "google_service_account_iam_member" "impersonation" {
 }
 ```
 
-A common Terraform mistake is putting this binding in the wrong project or using `google_project_iam_member` instead of `google_service_account_iam_member`. The role needs to be on the service account resource, not on the project.
+A common Terraform mistake is managing this binding in the wrong project, or using `google_project_iam_member` when you only meant to grant impersonation for one service account. A project-level binding can work through IAM inheritance, but it grants the caller token-creation access for all service accounts in that project, which is usually broader than intended.
 
 ## Common Mistakes
 
 1. Granting `serviceAccountUser` instead of `serviceAccountTokenCreator`
-2. Granting the role at the project level instead of on the specific service account
+2. Granting the role at the project level when you only intended to allow impersonation of one service account
 3. Missing intermediate delegates in a delegation chain
 4. Organization policy blocking cross-domain IAM bindings
 5. Using the wrong service account email (typos, wrong project)
