@@ -23,7 +23,7 @@ View the watermark in the Dataflow monitoring UI or via the command line:
 ```bash
 # Get the watermark and other timing info for the job
 
-gcloud dataflow metrics list JOB_ID \
+gcloud beta dataflow metrics list JOB_ID \
     --region=us-central1 \
     --source=service \
     --format="table(name.name, scalar)" | grep -i watermark
@@ -35,7 +35,7 @@ Also check the system lag metric:
 
 ```bash
 # Check system lag
-gcloud dataflow metrics list JOB_ID \
+gcloud beta dataflow metrics list JOB_ID \
     --region=us-central1 \
     --source=service \
     --format="table(name.name, scalar)" | grep -i lag
@@ -56,44 +56,35 @@ Common causes of stuck watermarks:
 
 ## Step 3: Handle Idle Sources
 
-This is the most common cause. If your pipeline reads from multiple sources (or a single source with multiple partitions) and one of them goes idle (no new messages), its watermark stays at the timestamp of the last message received. This holds back the global watermark.
+This is a common cause for sources or custom connectors that don't mark idle partitions correctly. If your pipeline reads from multiple sources (or a single source with multiple partitions) and one of them goes idle (no new messages), that source can hold back the global watermark if its source implementation doesn't report idleness or advance its watermark.
 
-In Apache Beam, you can configure the source to advance the watermark even when idle:
+Apache Beam source APIs are source-specific. For Pub/Sub, there is no `withIdleTimeout` option on `PubsubIO.Read`; make sure the source is using the intended event-time attribute so Dataflow can compute the source watermark correctly:
 
 ```java
-// Java: Configure Pub/Sub source to advance watermark when idle
+// Java: Read Pub/Sub messages with event time from a message attribute
 PCollection<PubsubMessage> messages = pipeline
-    .apply(PubsubIO.readMessages()
+    .apply(PubsubIO.readMessagesWithAttributes()
         .fromSubscription("projects/my-project/subscriptions/my-sub")
-        .withIdleTimeout(Duration.standardMinutes(2)));  // Advance watermark after 2 min idle
+        .withTimestampAttribute("event_timestamp"));
 ```
 
 For Python pipelines:
 
 ```python
-# Python: Handle idle sources with a watermark estimator
+# Python: Read Pub/Sub messages with event time from a message attribute
 from apache_beam.io import ReadFromPubSub
 
 messages = (
     pipeline
     | 'ReadPubSub' >> ReadFromPubSub(
         subscription='projects/my-project/subscriptions/my-sub',
-        with_attributes=True
+        with_attributes=True,
+        timestamp_attribute='event_timestamp'
     )
 )
 ```
 
-If the built-in idle timeout is not available for your source, you can use the Dataflow pipeline option:
-
-```bash
-# Set watermark idle timeout at the pipeline level
-gcloud dataflow jobs run your-job \
-    --gcs-location=gs://your-bucket/templates/your-template \
-    --region=us-central1 \
-    --additional-experiments=watermark_idle_timeout_ms=120000
-```
-
-This tells Dataflow to advance the watermark after 2 minutes of idleness on any source.
+The timestamp attribute must contain either milliseconds since the Unix epoch or an RFC 3339 timestamp such as `2015-10-29T23:41:41.123Z`. If you're using Kafka or another source, check that source connector's documentation for its supported watermark and idle-partition options. If you're using a custom source, implement watermark estimation correctly as shown in Step 8.
 
 ## Step 4: Check Timestamp Assignment
 
@@ -109,8 +100,8 @@ class BadTimestampDoFn(beam.DoFn):
 # Good: Extract event time from the data
 class GoodTimestampDoFn(beam.DoFn):
     def process(self, element):
-        # Use the timestamp from the event payload
-        event_time = element['event_timestamp']
+        # Use the event-time timestamp from the payload, in Unix seconds
+        event_time = element['event_timestamp_seconds']
         yield beam.window.TimestampedValue(element, event_time)
 ```
 
@@ -126,7 +117,7 @@ class FilterOldEvents(beam.DoFn):
             yield element
         else:
             # Log and count dropped elements for monitoring
-            Metrics.counter('pipeline', 'dropped_old_events').inc()
+            beam.metrics.Metrics.counter('pipeline', 'dropped_old_events').inc()
 ```
 
 ## Step 5: Configure Allowed Lateness
@@ -143,7 +134,7 @@ windowed = (
             early=beam.trigger.AfterProcessingTime(60),  # Early results every minute
             late=beam.trigger.AfterCount(1)               # Re-fire for each late element
         ),
-        allowed_lateness=beam.utils.timestamp.Duration.of(3600),  # 1-hour lateness
+        allowed_lateness=3600,  # 1-hour lateness, in seconds
         accumulation_mode=beam.trigger.AccumulationMode.ACCUMULATING
     )
 )
@@ -181,7 +172,7 @@ source_b = pipeline | 'ReadB' >> ReadFromPubSub(subscription=sub_b)
 combined = (source_a, source_b) | 'Flatten' >> beam.Flatten()
 ```
 
-If source B goes idle or falls behind, it drags down the watermark for the entire pipeline, including data from source A. Make sure all sources have idle timeout configured.
+If source B goes idle or falls behind, it can drag down the watermark for the entire pipeline, including data from source A. Make sure all sources use correct event timestamps, and check each source connector's documentation for supported idle-partition behavior.
 
 ## Step 8: Use Watermark Estimation in Custom Sources
 
@@ -202,8 +193,11 @@ public class MySource extends UnboundedSource<MyRecord, MyCheckpoint> {
 
         @Override
         public Instant getWatermark() {
-            // Watermark should be the oldest unprocessed event time
-            // minus some slack for out-of-order data
+            if (currentWatermark.equals(BoundedWindow.TIMESTAMP_MIN_VALUE)) {
+                return currentWatermark;
+            }
+            // Keep the watermark monotonic and behind observed event time
+            // by some slack for out-of-order data.
             return currentWatermark.minus(Duration.standardSeconds(30));
         }
 
@@ -212,7 +206,10 @@ public class MySource extends UnboundedSource<MyRecord, MyCheckpoint> {
             // Process next record and update watermark
             MyRecord record = fetchNextRecord();
             if (record != null) {
-                currentWatermark = Instant.ofEpochMilli(record.getTimestamp());
+                Instant recordTimestamp = Instant.ofEpochMilli(record.getTimestamp());
+                currentWatermark = currentWatermark.isBefore(recordTimestamp)
+                    ? recordTimestamp
+                    : currentWatermark;
                 return true;
             }
             return false;
@@ -226,7 +223,7 @@ public class MySource extends UnboundedSource<MyRecord, MyCheckpoint> {
 ```mermaid
 flowchart TD
     A[Watermark Stuck] --> B{Any idle sources?}
-    B -->|Yes| C[Set watermark_idle_timeout]
+    B -->|Yes| C[Check source-specific idle partition handling]
     B -->|No| D{Old timestamps in data?}
     D -->|Yes| E[Filter old events or fix timestamp assignment]
     D -->|No| F{Slow worker?}
