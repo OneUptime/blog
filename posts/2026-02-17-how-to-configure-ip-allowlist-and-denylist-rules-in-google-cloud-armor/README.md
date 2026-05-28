@@ -144,29 +144,29 @@ gcloud compute security-policies rules create 1000 \
 
 ## Step 5: Manage Large IP Lists
 
-For large-scale IP management, use named IP lists or manage rules programmatically.
+For large-scale IP management, use Threat Intelligence feeds or manage rules programmatically.
 
-### Using Google's Named IP Lists
+### Using Google Threat Intelligence Feeds
 
-Cloud Armor includes pre-built named IP lists for known services.
+Cloud Armor Enterprise includes maintained Threat Intelligence feeds for known services.
 
 ```bash
 # Allow only traffic from Cloudflare's IP ranges
 gcloud compute security-policies rules create 500 \
     --security-policy=ip-access-policy \
-    --expression="evaluatePreconfiguredExpr('sourceiplist-cloudflare')" \
+    --expression="evaluateThreatIntelligence('iplist-cloudflare')" \
     --action=allow \
     --description="Allow Cloudflare proxy IPs" \
     --project=my-project
 ```
 
-Available named IP lists include:
-- `sourceiplist-cloudflare` - Cloudflare proxy IPs
-- `sourceiplist-fastly` - Fastly CDN IPs
-- `sourceiplist-imperva` - Imperva/Incapsula IPs
-- `sourceiplist-public-cloud-aws` - AWS IP ranges
-- `sourceiplist-public-cloud-azure` - Azure IP ranges
-- `sourceiplist-public-cloud-gcp` - GCP IP ranges
+Available Threat Intelligence feeds include:
+- `iplist-cloudflare` - Cloudflare proxy IPs
+- `iplist-fastly` - Fastly CDN IPs
+- `iplist-imperva` - Imperva proxy IPs
+- `iplist-public-clouds-aws` - AWS IP ranges
+- `iplist-public-clouds-azure` - Azure IP ranges
+- `iplist-public-clouds-gcp` - GCP IP ranges
 
 ### Programmatic IP List Management
 
@@ -182,7 +182,8 @@ def update_deny_rule(policy_name, priority, ip_list, description, project):
     # Cloud Armor limits to 10 IP ranges per rule,
     # so we need to split large lists into multiple rules
 
-    # Remove existing rules in our priority range first
+    # Use a dedicated priority range for these generated rules.
+    # Delete stale rules separately if the list later shrinks.
     chunks = [ip_list[i:i+10] for i in range(0, len(ip_list), 10)]
 
     for idx, chunk in enumerate(chunks):
@@ -361,10 +362,10 @@ During maintenance, allow only your team to access the site.
 
 ```bash
 # Temporary maintenance mode - block everyone except your team
-gcloud compute security-policies rules create 50 \
+gcloud compute security-policies rules create 10000 \
     --security-policy=ip-access-policy \
     --src-ip-ranges="0.0.0.0/0" \
-    --action=deny-503 \
+    --action=deny-403 \
     --description="Maintenance mode - temporary" \
     --project=my-project
 
@@ -375,7 +376,7 @@ Remove the maintenance rule when done:
 
 ```bash
 # Remove maintenance mode
-gcloud compute security-policies rules delete 50 \
+gcloud compute security-policies rules delete 10000 \
     --security-policy=ip-access-policy \
     --project=my-project
 ```
