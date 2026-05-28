@@ -16,7 +16,7 @@ Network Policies in GKE let you define firewall-like rules at the pod level. You
 
 Network Policies require a network policy enforcement mechanism. In GKE, you have two options:
 
-1. **Calico** (enabled with `--enable-network-policy` flag)
+1. **Calico** (enabled with the `NetworkPolicy` add-on and `--enable-network-policy` flag)
 2. **Dataplane V2 / Cilium** (enabled with `--enable-dataplane-v2` flag)
 
 For new clusters, I recommend Dataplane V2 as it provides better performance and additional observability features.
@@ -30,6 +30,10 @@ gcloud container clusters create my-cluster \
   --num-nodes 3
 
 # Or enable Calico on an existing cluster
+gcloud container clusters update my-cluster \
+  --region us-central1 \
+  --update-addons=NetworkPolicy=ENABLED
+
 gcloud container clusters update my-cluster \
   --region us-central1 \
   --enable-network-policy
@@ -143,6 +147,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
@@ -170,6 +177,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
@@ -365,8 +375,13 @@ spec:
 If you are using Dataplane V2 (Cilium), you can observe network policy decisions.
 
 ```bash
-# View network policy logs (with Dataplane V2)
-kubectl -n kube-system logs -l k8s-app=cilium --tail 100 | grep "policy-verdict"
+# Enable network policy logging, then view policy-action logs in Cloud Logging
+kubectl edit networklogging default
+
+gcloud logging read --project "PROJECT_ID" 'resource.type="k8s_node"
+  resource.labels.location="us-central1"
+  resource.labels.cluster_name="my-cluster"
+  logName="projects/PROJECT_ID/logs/policy-action"'
 ```
 
 ## Wrapping Up
