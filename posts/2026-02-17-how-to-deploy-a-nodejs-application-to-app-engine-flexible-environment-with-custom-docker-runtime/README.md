@@ -58,7 +58,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Install production dependencies only
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application source code
 COPY src/ ./src/
@@ -114,11 +114,6 @@ app.get("/", (req, res) => {
   });
 });
 
-// Health check endpoint - App Engine Flex checks this periodically
-app.get("/_ah/health", (req, res) => {
-  res.status(200).send("OK");
-});
-
 // Liveness check - confirms the process is running
 app.get("/_ah/live", (req, res) => {
   res.status(200).send("OK");
@@ -142,7 +137,7 @@ process.on("SIGTERM", () => {
 });
 ```
 
-Two critical things to note. First, the app must listen on the port specified by the `PORT` environment variable (defaults to 8080). Second, the health check endpoints (`/_ah/health`, `/_ah/live`, `/_ah/ready`) are how App Engine determines if your instance is healthy.
+Two critical things to note. First, the app must listen on the port specified by the `PORT` environment variable (defaults to 8080). Second, the split health check endpoints configured in `app.yaml` (`/_ah/live` and `/_ah/ready` in this example) are how App Engine determines if your instance is healthy.
 
 ## Creating the .dockerignore
 
@@ -176,7 +171,7 @@ env: flex
 # Resource allocation per instance
 resources:
   cpu: 1
-  memory_gb: 0.5
+  memory_gb: 0.6
   disk_size_gb: 10
 
 # Scaling configuration
@@ -206,11 +201,6 @@ readiness_check:
 # Environment variables
 env_variables:
   NODE_ENV: "production"
-
-# Network configuration
-network:
-  forwarded_ports:
-    # Add any additional ports if needed
 ```
 
 The `runtime: custom` tells App Engine to use your Dockerfile. The `env: flex` specifies the Flexible environment.
@@ -228,7 +218,7 @@ The deployment process for Flex with a custom runtime involves several steps:
 
 1. Uploading your source code to Cloud Storage
 2. Building the Docker image using Cloud Build
-3. Pushing the image to Container Registry
+3. Pushing the image to Artifact Registry
 4. Creating new VM instances with your image
 5. Running health checks until instances pass
 6. Routing traffic to the new instances
@@ -261,7 +251,7 @@ docker build -t my-app .
 docker run -p 8080:8080 -e PORT=8080 -e NODE_ENV=production my-app
 
 # Test the health endpoint
-curl http://localhost:8080/_ah/health
+curl http://localhost:8080/_ah/ready
 ```
 
 This catches most issues before you spend time on a full deployment cycle.
