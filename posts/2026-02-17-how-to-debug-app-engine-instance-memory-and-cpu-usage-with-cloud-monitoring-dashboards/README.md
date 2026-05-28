@@ -16,8 +16,9 @@ In this post, I will show you how to set up monitoring dashboards for App Engine
 
 App Engine exposes several critical metrics through Cloud Monitoring:
 
-- `appengine.googleapis.com/system/cpu/usage` - CPU utilization per instance
-- `appengine.googleapis.com/system/memory/usage` - Memory usage per instance
+- `appengine.googleapis.com/system/cpu/utilization` - Average CPU utilization across active instances
+- `appengine.googleapis.com/system/cpu/usage` - CPU usage in megacycles across all instances
+- `appengine.googleapis.com/system/memory/usage` - Total memory used by running instances
 - `appengine.googleapis.com/system/instance_count` - Number of running instances
 - `appengine.googleapis.com/http/server/response_latencies` - Request latency distribution
 - `appengine.googleapis.com/http/server/response_count` - Request count by status code
@@ -50,16 +51,16 @@ Here is a comprehensive dashboard definition:
         "width": 6,
         "height": 4,
         "widget": {
-          "title": "CPU Usage by Instance",
+          "title": "CPU Utilization",
           "xyChart": {
             "dataSets": [
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "resource.type=\"gae_app\" AND metric.type=\"appengine.googleapis.com/system/cpu/usage\"",
+                    "filter": "resource.type=\"gae_app\" AND metric.type=\"appengine.googleapis.com/system/cpu/utilization\"",
                     "aggregation": {
                       "alignmentPeriod": "60s",
-                      "perSeriesAligner": "ALIGN_RATE"
+                      "perSeriesAligner": "ALIGN_MEAN"
                     }
                   }
                 }
@@ -73,7 +74,7 @@ Here is a comprehensive dashboard definition:
         "width": 6,
         "height": 4,
         "widget": {
-          "title": "Memory Usage by Instance",
+          "title": "Memory Usage",
           "xyChart": {
             "dataSets": [
               {
@@ -133,6 +134,28 @@ Here is a comprehensive dashboard definition:
                     }
                   }
                 }
+              },
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "resource.type=\"gae_app\" AND metric.type=\"appengine.googleapis.com/http/server/response_latencies\"",
+                    "aggregation": {
+                      "alignmentPeriod": "60s",
+                      "perSeriesAligner": "ALIGN_PERCENTILE_95"
+                    }
+                  }
+                }
+              },
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "resource.type=\"gae_app\" AND metric.type=\"appengine.googleapis.com/http/server/response_latencies\"",
+                    "aggregation": {
+                      "alignmentPeriod": "60s",
+                      "perSeriesAligner": "ALIGN_PERCENTILE_99"
+                    }
+                  }
+                }
               }
             ]
           }
@@ -163,15 +186,19 @@ For more detailed metrics, go to Cloud Monitoring:
 Query metrics directly from the command line:
 
 ```bash
-# Get CPU usage for the last hour
+# Get CPU utilization for the last hour
 gcloud monitoring time-series list \
-  --filter='metric.type="appengine.googleapis.com/system/cpu/usage"' \
+  --filter='resource.type="gae_app" AND metric.type="appengine.googleapis.com/system/cpu/utilization"' \
+  --interval-start-time=$(date -u -d "1 hour ago" +%Y-%m-%dT%H:%M:%SZ) \
+  --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --project=your-project-id \
-  --format="table(metric.labels, points.values)"
+  --format="table(resource.labels.module_id, resource.labels.version_id, points[].value.doubleValue, points[].interval.endTime)"
 
 # Get memory usage for a specific service
 gcloud monitoring time-series list \
   --filter='metric.type="appengine.googleapis.com/system/memory/usage" AND resource.labels.module_id="default"' \
+  --interval-start-time=$(date -u -d "1 hour ago" +%Y-%m-%dT%H:%M:%SZ) \
+  --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --project=your-project-id
 ```
 
@@ -181,13 +208,12 @@ Create alerts for critical resource thresholds:
 
 ```bash
 # Create an alert for high memory usage
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="App Engine High Memory" \
-  --condition-display-name="Memory usage above 80%" \
+  --condition-display-name="Memory usage above budget" \
   --condition-filter='resource.type="gae_app" AND metric.type="appengine.googleapis.com/system/memory/usage"' \
-  --condition-threshold-value=0.8 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --if='> 419430400' \
+  --duration=300s \
   --notification-channels=CHANNEL_ID \
   --project=your-project-id
 ```
@@ -195,7 +221,7 @@ gcloud alpha monitoring policies create \
 Here are the alerts every App Engine application should have:
 
 ```text
-1. High Memory Usage (>80% of instance class limit)
+1. High Memory Usage (set a byte threshold for the service or version you are monitoring)
    - Indicates potential memory leaks or undersized instances
    - Action: Check for memory leaks, consider upgrading instance class
 
@@ -314,6 +340,9 @@ Add profiling to identify CPU-intensive code paths:
 import cProfile
 import pstats
 import io
+import logging
+
+logger = logging.getLogger(__name__)
 
 def profile_request(func):
     """Decorator to profile CPU usage of a request handler."""
@@ -373,7 +402,7 @@ def write_custom_metric(metric_type, value, project_id):
 
     series = monitoring_v3.TimeSeries()
     series.metric.type = f"custom.googleapis.com/{metric_type}"
-    series.resource.type = "gae_app"
+    series.resource.type = "global"
     series.resource.labels["project_id"] = project_id
 
     now = time.time()
@@ -400,7 +429,7 @@ When debugging a performance issue, follow this workflow:
 
 1. Check the App Engine dashboard for overall health
 2. Look at instance count - is it scaling more than expected?
-3. Check memory usage per instance - are they hitting limits?
+3. Check memory usage - are services or versions approaching their limits?
 4. Check CPU usage - is it consistently high?
 5. Look at response latency distribution - are p95/p99 elevated?
 6. Correlate with request logs to find slow endpoints
@@ -409,4 +438,4 @@ When debugging a performance issue, follow this workflow:
 
 ## Summary
 
-Cloud Monitoring dashboards give you visibility into App Engine instance health. Set up dashboards tracking CPU, memory, instance count, and latency. Create alerts for high memory (above 80%), sustained high CPU (above 90%), and elevated error rates. When debugging issues, start with the high-level dashboard, then drill into instance-level metrics, then correlate with request logs to find the root cause. Use custom metrics for application-specific monitoring like queue depth or cache hit ratios. Regular monitoring helps you right-size your instances and catch performance issues before they affect users.
+Cloud Monitoring dashboards give you visibility into App Engine health. Set up dashboards tracking CPU, memory, instance count, and latency. Create alerts for high memory using byte thresholds for the service or version you are monitoring, sustained high CPU (above 90%), and elevated error rates. When debugging issues, start with the high-level dashboard, then drill into service, version, and instance details, then correlate with request logs to find the root cause. Use custom metrics for application-specific monitoring like queue depth or cache hit ratios. Regular monitoring helps you right-size your instances and catch performance issues before they affect users.
