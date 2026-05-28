@@ -36,7 +36,7 @@ For Linux:
 # Download the latest Cloud SQL Auth Proxy for Linux
 
 curl -o cloud-sql-proxy \
-    https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.linux.amd64
+    https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.22.0/cloud-sql-proxy.linux.amd64
 
 # Make it executable
 chmod +x cloud-sql-proxy
@@ -50,7 +50,7 @@ For macOS:
 ```bash
 # Download the Auth Proxy for macOS (Apple Silicon)
 curl -o cloud-sql-proxy \
-    https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.darwin.arm64
+    https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.22.0/cloud-sql-proxy.darwin.arm64
 
 chmod +x cloud-sql-proxy
 sudo mv cloud-sql-proxy /usr/local/bin/
@@ -60,7 +60,7 @@ Using Docker:
 
 ```bash
 # Pull the official Auth Proxy Docker image
-docker pull gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+docker pull gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0
 ```
 
 ## Finding Your Instance Connection Name
@@ -103,8 +103,8 @@ If you need to connect to multiple instances or use a non-default port:
 # Run the proxy with explicit port mappings
 # MySQL instance on port 3306, PostgreSQL instance on port 5432
 cloud-sql-proxy \
-    --port=3306 my-project:us-central1:mysql-instance \
-    --port=5432 my-project:us-central1:postgres-instance
+    "my-project:us-central1:mysql-instance?port=3306" \
+    "my-project:us-central1:postgres-instance?port=5432"
 ```
 
 You can also use a different port to avoid conflicts:
@@ -233,7 +233,7 @@ services:
       - cloud-sql-proxy
 
   cloud-sql-proxy:
-    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0
     command:
       - "--private-ip"
       - "--port=5432"
@@ -258,9 +258,9 @@ cloud-sql-proxy \
 
 The health check endpoints are:
 
-- `/startup` - Returns 200 when the proxy is ready to accept connections
-- `/readiness` - Returns 200 when connections to all instances are established
-- `/liveness` - Returns 200 when the proxy process is running
+- `/startup` - Returns 200 when the proxy has finished starting up
+- `/readiness` - Returns 200 when the proxy has started, has available connection capacity, and can connect to all registered instances
+- `/liveness` - Always returns 200; if it stops responding, the proxy is in a bad state and should be restarted
 
 These are essential for Kubernetes liveness and readiness probes.
 
@@ -303,7 +303,7 @@ cloud-sql-proxy --debug-logs my-project:us-central1:my-instance
 
 ### Slow Connections
 
-If initial connections are slow, the proxy might be doing IAM authentication on each connection. Consider using the `--auto-iam-authn` flag to cache IAM tokens.
+If initial connections are slow, the proxy might be fetching connection information and certificates. Use connection pooling where possible. If you are using IAM database authentication, start the proxy with the `--auto-iam-authn` flag.
 
 ## Auth Proxy vs Direct Connection
 
