@@ -43,6 +43,7 @@ Use `mysqldump` to create a dump from your source MySQL database:
 # --single-transaction ensures consistency without locking tables
 # --routines includes stored procedures and functions
 # --triggers includes triggers
+# --hex-blob ensures binary columns are exported safely
 # --set-gtid-purged=OFF avoids GTID-related issues during import
 mysqldump \
     --host=source-db-host \
@@ -51,6 +52,7 @@ mysqldump \
     --single-transaction \
     --routines \
     --triggers \
+    --hex-blob \
     --set-gtid-purged=OFF \
     --databases mydb > mydb-dump.sql
 ```
@@ -58,7 +60,8 @@ mysqldump \
 Important flags to know:
 
 - `--single-transaction` takes a consistent snapshot without locking (InnoDB only)
-- `--set-gtid-purged=OFF` is critical for Cloud SQL imports - without it, the import will fail
+- `--hex-blob` ensures binary fields are imported correctly
+- `--set-gtid-purged=OFF` prevents GTID statements and binary logging changes from being written to the dump
 - Do not use `--all-databases` unless you know what you are doing, as it includes system databases
 
 ### PostgreSQL Dump
@@ -89,7 +92,7 @@ Before uploading, review and possibly modify the dump file.
 
 Cloud SQL does not support all SQL statements. Remove or comment out:
 
-- `CREATE DATABASE` statements (create the database separately)
+- For PostgreSQL dumps, `CREATE DATABASE` statements (create the database separately)
 - `ALTER DATABASE` statements that set unsupported parameters
 - References to system tablespaces
 - Any `DEFINER` clauses in views or routines (MySQL)
@@ -135,7 +138,7 @@ gsutil -o GSUtil:parallel_composite_upload_threshold=150M \
 
 ## Grant Access to Cloud SQL
 
-Cloud SQL uses a per-project service account to access Cloud Storage. You need to grant this service account read access to your bucket.
+Cloud SQL uses a per-project service account to access Cloud Storage. You need to grant this service account access to your bucket.
 
 First, find your Cloud SQL service account:
 
@@ -150,10 +153,10 @@ This returns something like `p123456789-abcdef@gcp-sa-cloud-sql.iam.gserviceacco
 Grant it access to the bucket:
 
 ```bash
-# Grant the Cloud SQL service account read access to the bucket
-gsutil iam ch \
-    serviceAccount:p123456789-abcdef@gcp-sa-cloud-sql.iam.gserviceaccount.com:objectViewer \
-    gs://my-db-imports/
+# Grant the Cloud SQL service account access to the bucket
+gcloud storage buckets add-iam-policy-binding gs://my-db-imports/ \
+    --member=serviceAccount:p123456789-abcdef@gcp-sa-cloud-sql.iam.gserviceaccount.com \
+    --role=roles/storage.objectAdmin
 ```
 
 ## Running the Import
@@ -205,7 +208,7 @@ The Cloud SQL service account does not have access to the Cloud Storage bucket. 
 
 ```bash
 # Verify the service account has access
-gsutil iam get gs://my-db-imports/ | grep gcp-sa-cloud-sql
+gcloud storage buckets get-iam-policy gs://my-db-imports/ | grep gcp-sa-cloud-sql
 ```
 
 ### Error: "Unknown database"
@@ -251,21 +254,19 @@ done
 
 Import schema first, then data files one at a time.
 
-### Disable Binary Logging During Import
+### Manage Binary Logging Carefully
 
-For MySQL, temporarily disable binary logging to speed up the import:
+For MySQL, binary logging supports point-in-time recovery and read replicas. Do not use `--no-backup` as a shortcut to disable binary logging during imports. If you intentionally need to change binary logging, use the binary logging flag and plan for the recovery and replication impact:
 
 ```bash
-# Disable binary logging during import (reduces overhead)
-gcloud sql instances patch my-instance \
-    --no-backup
+# Disable binary logging only if you have planned for the PITR and replica impact
+gcloud sql instances patch my-instance --no-enable-bin-log
 
 # Run the import
 gcloud sql import sql my-instance gs://my-db-imports/mydb-dump.sql.gz --database=mydb
 
-# Re-enable backups after import
-gcloud sql instances patch my-instance \
-    --backup-start-time=03:00
+# Re-enable binary logging after import
+gcloud sql instances patch my-instance --enable-bin-log
 ```
 
 ### Use a Larger Machine Type
