@@ -50,21 +50,21 @@ First, check what encryption your source dataset is using.
 bq show --format=prettyjson project_id:source_dataset | grep -A 5 "encryptionConfiguration"
 ```
 
-This tells you the exact KMS key being used. Note the key's location - it should match the source dataset's region.
+This tells you the exact KMS key being used. Note the key's location - it should match the source dataset's location. For BigQuery multi-regions, use the matching Cloud KMS multi-region location, such as `us` for `US` or `europe` for `EU`.
 
 ## Step 2: Create a Matching Key in the Destination Region
 
-For cross-region copies, you need a Cloud KMS key in the destination region. BigQuery cannot use a key from one region to encrypt data in another.
+For cross-region copies, you need a Cloud KMS key in the destination dataset's location. BigQuery cannot use a key from one location to encrypt data in another.
 
 ```bash
 # Create a key ring in the destination region
 gcloud kms keyrings create my-keyring-dest \
-    --location=eu \
+    --location=europe \
     --project=my-project
 
 # Create a key in the destination region key ring
 gcloud kms keys create my-bq-key-dest \
-    --location=eu \
+    --location=europe \
     --keyring=my-keyring-dest \
     --purpose=encryption \
     --project=my-project
@@ -84,9 +84,11 @@ PROJECT_NUMBER=$(gcloud projects describe my-project --format='value(projectNumb
 # The service account email
 BQ_SA="bq-${PROJECT_NUMBER}@bigquery-encryption.iam.gserviceaccount.com"
 
-# Grant the encrypter/decrypter role on the destination key
+# Grant the encrypter/decrypter role on the destination key.
+# Repeat this for the source key if the BigQuery service account
+# does not already have access to decrypt the source tables.
 gcloud kms keys add-iam-policy-binding my-bq-key-dest \
-    --location=eu \
+    --location=europe \
     --keyring=my-keyring-dest \
     --member="serviceAccount:${BQ_SA}" \
     --role="roles/cloudkms.cryptoKeyEncrypterDecrypter" \
@@ -100,7 +102,7 @@ When you run the dataset copy, you need to specify the destination encryption ke
 ```bash
 # Copy dataset across regions with the destination CMEK key
 bq cp --destination_kms_key \
-    "projects/my-project/locations/eu/keyRings/my-keyring-dest/cryptoKeys/my-bq-key-dest" \
+    "projects/my-project/locations/europe/keyRings/my-keyring-dest/cryptoKeys/my-bq-key-dest" \
     my-project:us_dataset.my_table \
     my-project:eu_dataset.my_table
 ```
@@ -119,7 +121,7 @@ bq mk --transfer_config \
         "source_project_id":"my-project",
         "overwrite_destination_table":"true"
     }' \
-    --destination_kms_key="projects/my-project/locations/eu/keyRings/my-keyring-dest/cryptoKeys/my-bq-key-dest"
+    --destination_kms_key="projects/my-project/locations/europe/keyRings/my-keyring-dest/cryptoKeys/my-bq-key-dest"
 ```
 
 ## Step 5: Check for Disabled or Destroyed Keys
@@ -131,7 +133,7 @@ If the key exists and permissions look correct, verify the key is actually activ
 gcloud kms keys versions list \
     --key=my-bq-key-dest \
     --keyring=my-keyring-dest \
-    --location=eu \
+    --location=europe \
     --project=my-project \
     --format="table(name, state)"
 ```
@@ -143,7 +145,7 @@ You should see `ENABLED` for at least one key version. If all versions show `DIS
 gcloud kms keys versions enable 1 \
     --key=my-bq-key-dest \
     --keyring=my-keyring-dest \
-    --location=eu \
+    --location=europe \
     --project=my-project
 ```
 
