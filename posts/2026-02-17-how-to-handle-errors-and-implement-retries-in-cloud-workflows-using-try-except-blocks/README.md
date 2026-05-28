@@ -33,7 +33,7 @@ main:
             - log_error:
                 call: sys.log
                 args:
-                  text: ${"API call failed: " + e.message}
+                  text: '${"API call failed: " + e.message}'
                   severity: "ERROR"
             - set_default:
                 assign:
@@ -71,6 +71,10 @@ main:
           steps:
             - check_error_type:
                 switch:
+                  # Non-HTTP errors (network, timeout, auth)
+                  - condition: ${not("HttpError" in default(map.get(e, "tags"), []))}
+                    next: handle_unknown_error
+
                   # Rate limited - should retry after a delay
                   - condition: ${e.code == 429}
                     next: handle_rate_limit
@@ -83,7 +87,7 @@ main:
                   - condition: ${e.code >= 400 and e.code < 500}
                     next: handle_client_error
 
-                  # Other errors (network, timeout)
+                  # Other HTTP errors
                   - condition: true
                     next: handle_unknown_error
 
@@ -97,19 +101,19 @@ main:
     - handle_server_error:
         call: sys.log
         args:
-          text: ${"Server error: " + string(e.code)}
+          text: '${"Server error: " + string(e.code)}'
           severity: "ERROR"
         next: return_error
 
     - handle_client_error:
         raise:
           code: ${e.code}
-          message: ${"Client error - cannot retry: " + e.message}
+          message: '${"Client error - cannot retry: " + e.message}'
 
     - handle_unknown_error:
         call: sys.log
         args:
-          text: ${"Unknown error: " + e.message}
+          text: '${"Unknown error: " + e.message}'
           severity: "ERROR"
         next: return_error
 
@@ -121,86 +125,62 @@ main:
     - return_error:
         return:
           status: "error"
-          error_code: ${e.code}
+          error_code: ${map.get(e, "code")}
           message: ${e.message}
 ```
 
 ## Implementing Retry Logic
 
-Cloud Workflows does not have built-in retry syntax on individual steps, but you can build retry logic using loops and try/except.
+Cloud Workflows has built-in retry syntax on `try` blocks. Use it with a retry predicate and backoff policy when you want retries for specific errors.
 
 ```yaml
 # retry-with-backoff.yaml
-# Retry an API call up to 3 times with increasing delays
+# Retry an API call up to 3 times after the initial attempt with increasing delays
 
 main:
   steps:
-    - init_retry:
-        assign:
-          - max_retries: 3
-          - retry_count: 0
-          - base_delay: 1  # Starting delay in seconds
-          - last_error: null
-
-    - retry_loop:
-        for:
-          value: attempt
-          range: [0, ${max_retries}]
+    - try_call:
+        try:
+          call: http.post
+          args:
+            url: https://api.example.com/unreliable-endpoint
+            body:
+              request_id: "req-123"
+            timeout: 30
+          result: api_response
+        retry:
+          predicate: ${retry_transient_errors}
+          max_retries: 3
+          backoff:
+            initial_delay: 1
+            max_delay: 8
+            multiplier: 2
+        except:
+          as: e
           steps:
-            - try_call:
-                try:
-                  call: http.post
-                  args:
-                    url: https://api.example.com/unreliable-endpoint
-                    body:
-                      request_id: "req-123"
-                    timeout: 30
-                  result: api_response
-                except:
-                  as: e
-                  steps:
-                    - record_error:
-                        assign:
-                          - last_error: ${e}
-                          - retry_count: ${retry_count + 1}
+            - log_failure:
+                call: sys.log
+                args:
+                  text: '${"API call failed after retries: " + e.message}'
+                  severity: "ERROR"
+            - raise_failure:
+                raise: ${e}
 
-                    - check_if_retryable:
-                        switch:
-                          # Only retry on transient errors
-                          - condition: ${e.code == 429 or e.code >= 500}
-                            next: wait_before_retry
-                          # Non-retryable error - fail immediately
-                          - condition: true
-                            raise: ${e}
+    - success:
+        return:
+          status: "success"
+          data: ${api_response.body}
 
-                    - wait_before_retry:
-                        call: sys.sleep
-                        args:
-                          # Exponential backoff: 1s, 2s, 4s
-                          seconds: ${base_delay * int(math.pow(2, attempt))}
-
-                    - log_retry:
-                        call: sys.log
-                        args:
-                          text: ${"Retry " + string(retry_count) + "/" + string(max_retries) + " after error: " + e.message}
-                          severity: "WARNING"
-
-                    # Continue to next iteration of the retry loop
-                    - continue_loop:
-                        next: continue
-
-            # If we reach here without error, the call succeeded
-            - success:
-                return:
-                  status: "success"
-                  data: ${api_response.body}
-                  attempts: ${retry_count + 1}
-
-    # If we exit the loop, all retries failed
-    - all_retries_failed:
-        raise:
-          code: 503
-          message: ${"All " + string(max_retries) + " retries failed. Last error: " + last_error.message}
+retry_transient_errors:
+  params: [e]
+  steps:
+    - check_error:
+        switch:
+          # Only retry HTTP rate-limit and server errors
+          - condition: ${"HttpError" in default(map.get(e, "tags"), []) and (e.code == 429 or e.code >= 500)}
+            return: true
+    - otherwise:
+        return: false
 ```
 
 ## Reusable Retry Subworkflow
@@ -220,6 +200,7 @@ main:
           method: "GET"
           max_retries: 5
           initial_delay: 2
+          body: null
         result: api_result
 
     - return_result:
@@ -227,79 +208,69 @@ main:
 
 # Reusable subworkflow for retrying HTTP calls
 retry_http_call:
-  params: [url, method, max_retries, initial_delay, body]
+  params: [url, method, max_retries, initial_delay, body: null]
   steps:
-    - init:
-        assign:
-          - attempt: 0
-          - last_error: null
-
-    - retry_loop:
-        for:
-          value: i
-          range: [0, ${max_retries}]
+    - attempt_call:
+        try:
           steps:
-            - attempt_call:
-                try:
-                  steps:
-                    - make_request:
-                        switch:
-                          - condition: ${method == "GET"}
-                            steps:
-                              - do_get:
-                                  call: http.get
-                                  args:
-                                    url: ${url}
-                                    auth:
-                                      type: OIDC
-                                    timeout: 60
-                                  result: response
-                          - condition: ${method == "POST"}
-                            steps:
-                              - do_post:
-                                  call: http.post
-                                  args:
-                                    url: ${url}
-                                    auth:
-                                      type: OIDC
-                                    body: ${body}
-                                    timeout: 60
-                                  result: response
+            - make_request:
+                switch:
+                  - condition: ${method == "GET"}
+                    steps:
+                      - do_get:
+                          call: http.get
+                          args:
+                            url: ${url}
+                            auth:
+                              type: OIDC
+                            timeout: 60
+                          result: response
+                  - condition: ${method == "POST"}
+                    steps:
+                      - do_post:
+                          call: http.post
+                          args:
+                            url: ${url}
+                            auth:
+                              type: OIDC
+                            body: ${body}
+                            timeout: 60
+                          result: response
+                  - condition: true
+                    raise:
+                      code: 400
+                      message: '${"Unsupported HTTP method: " + method}'
+                      type: "ValidationError"
+        retry:
+          predicate: ${retry_transient_errors}
+          max_retries: ${max_retries}
+          backoff:
+            initial_delay: ${initial_delay}
+            max_delay: 60
+            multiplier: 2
+        except:
+          as: e
+          steps:
+            - log_failure:
+                call: sys.log
+                args:
+                  text: '${"HTTP call failed after retries: " + e.message}'
+                  severity: "ERROR"
+            - raise_failure:
+                raise: ${e}
 
-                    - return_success:
-                        return: ${response}
+    - return_success:
+        return: ${response}
 
-                except:
-                  as: e
-                  steps:
-                    - update_attempt:
-                        assign:
-                          - attempt: ${attempt + 1}
-                          - last_error: ${e}
-
-                    - check_retryable:
-                        switch:
-                          - condition: ${e.code == 429 or e.code >= 500}
-                            next: do_backoff
-                          - condition: true
-                            raise: ${e}
-
-                    - do_backoff:
-                        call: sys.sleep
-                        args:
-                          seconds: ${initial_delay * int(math.pow(2, i))}
-
-                    - log_retry:
-                        call: sys.log
-                        args:
-                          text: ${"Attempt " + string(attempt) + " failed: " + e.message}
-                          severity: "WARNING"
-                        next: continue
-
-    - exhausted:
-        raise:
-          code: 503
-          message: ${"Exhausted " + string(max_retries) + " retries. Last error: " + last_error.message}
+retry_transient_errors:
+  params: [e]
+  steps:
+    - check_error:
+        switch:
+          - condition: ${"HttpError" in default(map.get(e, "tags"), []) and (e.code == 429 or e.code >= 500)}
+            return: true
+    - otherwise:
+        return: false
 ```
 
 ## Nested Try/Except for Multi-Step Error Handling
@@ -349,7 +320,7 @@ main:
                     - log_process_failure:
                         call: sys.log
                         args:
-                          text: ${"Processing failed: " + process_error.message}
+                          text: '${"Processing failed: " + process_error.message}'
                           severity: "ERROR"
                     - raise_process_error:
                         raise: ${process_error}
@@ -386,7 +357,7 @@ main:
             - final_error_handler:
                 call: sys.log
                 args:
-                  text: ${"Workflow failed: " + outer_error.message}
+                  text: '${"Workflow failed: " + outer_error.message}'
                   severity: "CRITICAL"
             - return_failure:
                 return:
@@ -425,21 +396,21 @@ main:
         try:
           call: http.get
           args:
-            url: ${"https://api.example.com/users/" + args.user_id}
+            url: '${"https://api.example.com/users/" + args.user_id}'
           result: user_response
         except:
           as: e
           steps:
             - check_not_found:
                 switch:
-                  - condition: ${e.code == 404}
+                  - condition: ${"HttpError" in default(map.get(e, "tags"), []) and e.code == 404}
                     raise:
                       code: 404
-                      message: ${"User not found: " + args.user_id}
+                      message: '${"User not found: " + args.user_id}'
                       type: "NotFoundError"
                   - condition: true
                     raise:
-                      code: ${e.code}
+                      code: ${map.get(e, "code")}
                       message: ${e.message}
                       type: "APIError"
 
@@ -449,4 +420,4 @@ main:
 
 ## Wrapping Up
 
-Error handling in Cloud Workflows requires explicit try/except blocks, but the patterns are straightforward once you learn them. For transient errors (rate limits, server errors), implement retry loops with exponential backoff. For permanent errors (bad requests, not found), fail fast with clear error messages. Use nested try/except when different steps need different error handling strategies, and create reusable retry subworkflows to avoid duplicating logic. The combination of try/except, switch conditions, and sys.sleep gives you everything you need to build resilient workflows that handle real-world failure modes gracefully.
+Error handling in Cloud Workflows requires explicit try/except blocks, but the patterns are straightforward once you learn them. For transient errors (rate limits, server errors), implement retry policies with exponential backoff. For permanent errors (bad requests, not found), fail fast with clear error messages. Use nested try/except when different steps need different error handling strategies, and create reusable retry subworkflows to avoid duplicating logic. The combination of try/except, retry policies, and switch conditions gives you everything you need to build resilient workflows that handle real-world failure modes gracefully.
