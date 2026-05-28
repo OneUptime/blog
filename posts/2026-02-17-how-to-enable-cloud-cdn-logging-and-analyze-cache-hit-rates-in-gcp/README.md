@@ -37,10 +37,10 @@ gcloud compute backend-services update my-backend \
     --project=my-project
 ```
 
-For backend buckets, the syntax is similar.
+For backend buckets, logging is automatically enabled for the load balancer and cannot be modified or disabled. You only need to enable Cloud CDN on the backend bucket.
 
 ```bash
-# Enable logging on a backend bucket
+# Enable Cloud CDN on a backend bucket
 gcloud compute backend-buckets update my-bucket-backend \
     --enable-cdn \
     --project=my-project
@@ -52,15 +52,14 @@ Cloud CDN logs are part of the HTTP load balancer logs. The key fields for CDN a
 
 | Field | Description |
 |-------|-------------|
-| `jsonPayload.cacheHit` | Boolean - whether the response was served from cache |
-| `jsonPayload.cacheLookup` | Boolean - whether Cloud CDN attempted a cache lookup |
-| `jsonPayload.cacheFillBytes` | Bytes written to cache from origin response |
-| `jsonPayload.cacheValidatedWithOriginServer` | Whether CDN validated a stale entry with the origin |
+| `httpRequest.cacheHit` | Boolean - whether the response was served from cache |
+| `httpRequest.cacheLookup` | Boolean - whether Cloud CDN attempted a cache lookup |
+| `httpRequest.cacheFillBytes` | Bytes written to cache from origin response |
+| `httpRequest.cacheValidatedWithOriginServer` | Whether CDN validated a stale entry with the origin |
 | `jsonPayload.statusDetails` | Detailed status (e.g., "response_from_cache", "response_sent_by_backend") |
 | `httpRequest.requestUrl` | The full request URL |
 | `httpRequest.status` | HTTP response status code |
 | `httpRequest.latency` | Total request latency |
-| `httpRequest.cacheHit` | Same as jsonPayload.cacheHit |
 
 ## Step 3: Query CDN Logs
 
@@ -71,7 +70,7 @@ Use Cloud Logging to query and analyze your CDN performance.
 ```bash
 # Query for cache hits in the last hour
 gcloud logging read \
-    'resource.type="http_load_balancer" AND jsonPayload.cacheHit=true AND timestamp>="2026-02-17T00:00:00Z"' \
+    'resource.type="http_load_balancer" AND httpRequest.cacheHit=true AND timestamp>="2026-02-17T00:00:00Z"' \
     --format="table(timestamp,httpRequest.requestUrl,httpRequest.status)" \
     --limit=50 \
     --project=my-project
@@ -82,7 +81,7 @@ gcloud logging read \
 ```bash
 # Query for cache misses
 gcloud logging read \
-    'resource.type="http_load_balancer" AND jsonPayload.cacheLookup=true AND jsonPayload.cacheHit=false' \
+    'resource.type="http_load_balancer" AND httpRequest.cacheLookup=true AND NOT httpRequest.cacheHit=true' \
     --format="table(timestamp,httpRequest.requestUrl,httpRequest.status,jsonPayload.statusDetails)" \
     --limit=50 \
     --project=my-project
@@ -93,7 +92,7 @@ gcloud logging read \
 ```bash
 # Find responses that Cloud CDN did not even try to cache
 gcloud logging read \
-    'resource.type="http_load_balancer" AND jsonPayload.cacheLookup=false' \
+    'resource.type="http_load_balancer" AND NOT httpRequest.cacheLookup=true' \
     --format="table(timestamp,httpRequest.requestUrl,httpRequest.status)" \
     --limit=50 \
     --project=my-project
@@ -112,9 +111,9 @@ gcloud logging read \
 
 Common status details include:
 - `response_from_cache` - served from CDN cache
+- `byte_range_caching` - served using Cloud CDN byte range caching
+- `response_from_cache_validated` - cached entry validated with the origin before serving
 - `response_sent_by_backend` - fetched from origin
-- `cache_fill` - response stored in cache for future requests
-- `cache_revalidated` - stale entry validated with origin
 
 ## Step 4: Calculate Cache Hit Ratios
 
@@ -138,12 +137,12 @@ Then query BigQuery for cache hit ratios.
 -- Calculate hourly cache hit ratio
 SELECT
   TIMESTAMP_TRUNC(timestamp, HOUR) AS hour,
-  COUNTIF(jsonPayload.cacheHit = true) AS cache_hits,
-  COUNTIF(jsonPayload.cacheLookup = true AND jsonPayload.cacheHit = false) AS cache_misses,
+  COUNTIF(httpRequest.cacheHit IS TRUE) AS cache_hits,
+  COUNTIF(httpRequest.cacheLookup IS TRUE AND httpRequest.cacheHit IS NOT TRUE) AS cache_misses,
   COUNT(*) AS total_requests,
   SAFE_DIVIDE(
-    COUNTIF(jsonPayload.cacheHit = true),
-    COUNTIF(jsonPayload.cacheLookup = true)
+    COUNTIF(httpRequest.cacheHit IS TRUE),
+    COUNTIF(httpRequest.cacheLookup IS TRUE)
   ) * 100 AS hit_ratio_percent
 FROM
   `my-project.cdn_logs.requests_*`
@@ -162,16 +161,16 @@ ORDER BY
 SELECT
   REGEXP_EXTRACT(httpRequest.requestUrl, r'https?://[^/]+(\/[^?]*)') AS path,
   COUNT(*) AS total,
-  COUNTIF(jsonPayload.cacheHit = true) AS hits,
+  COUNTIF(httpRequest.cacheHit IS TRUE) AS hits,
   SAFE_DIVIDE(
-    COUNTIF(jsonPayload.cacheHit = true),
-    COUNTIF(jsonPayload.cacheLookup = true)
+    COUNTIF(httpRequest.cacheHit IS TRUE),
+    COUNTIF(httpRequest.cacheLookup IS TRUE)
   ) * 100 AS hit_ratio
 FROM
   `my-project.cdn_logs.requests_*`
 WHERE
   timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
-  AND jsonPayload.cacheLookup = true
+  AND httpRequest.cacheLookup IS TRUE
 GROUP BY
   path
 HAVING
@@ -250,11 +249,14 @@ gcloud monitoring dashboards create --config='
 Create alerts for when cache performance degrades.
 
 ```bash
-# Alert when cache hit ratio drops below 70%
+# Alert when the cache-hit request rate drops below an expected baseline
 gcloud monitoring policies create \
-    --display-name="Low CDN Cache Hit Ratio" \
-    --condition-display-name="Cache hit ratio below threshold" \
+    --display-name="Low CDN Cache Hit Request Rate" \
+    --condition-display-name="Cache hit request rate below threshold" \
     --condition-filter='resource.type="https_lb_rule" AND metric.type="loadbalancing.googleapis.com/https/request_count" AND metric.labels.cache_result="HIT"' \
+    --aggregation='{"alignmentPeriod":"300s","perSeriesAligner":"ALIGN_RATE"}' \
+    --duration=300s \
+    --if="< 10" \
     --notification-channels=projects/my-project/notificationChannels/12345 \
     --project=my-project
 ```
@@ -267,7 +269,7 @@ Compare latency between cache hits and misses to quantify the CDN's value.
 -- Compare latency for cache hits vs misses
 SELECT
   CASE
-    WHEN jsonPayload.cacheHit = true THEN 'Cache Hit'
+    WHEN httpRequest.cacheHit IS TRUE THEN 'Cache Hit'
     ELSE 'Cache Miss'
   END AS cache_status,
   COUNT(*) AS request_count,
@@ -279,7 +281,7 @@ FROM
   `my-project.cdn_logs.requests_*`
 WHERE
   timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
-  AND jsonPayload.cacheLookup = true
+  AND httpRequest.cacheLookup IS TRUE
 GROUP BY
   cache_status;
 ```
@@ -291,7 +293,7 @@ GROUP BY
 ```bash
 # Requests where CDN did not attempt caching - usually due to request method or headers
 gcloud logging read \
-    'resource.type="http_load_balancer" AND jsonPayload.cacheLookup=false AND httpRequest.requestMethod="GET"' \
+    'resource.type="http_load_balancer" AND NOT httpRequest.cacheLookup=true AND httpRequest.requestMethod="GET"' \
     --format="table(httpRequest.requestUrl,httpRequest.status)" \
     --limit=20 \
     --project=my-project
@@ -302,7 +304,7 @@ gcloud logging read \
 ```bash
 # Large responses that are not being cached - potential optimization targets
 gcloud logging read \
-    'resource.type="http_load_balancer" AND jsonPayload.cacheHit=false AND httpRequest.responseSize>1000000' \
+    'resource.type="http_load_balancer" AND NOT httpRequest.cacheHit=true AND httpRequest.responseSize>1000000' \
     --format="table(httpRequest.requestUrl,httpRequest.responseSize)" \
     --limit=20 \
     --project=my-project
