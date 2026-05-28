@@ -30,9 +30,10 @@ You need:
 
 - Cloud DLP API enabled
 - Source Cloud Storage bucket with files to de-identify
-- Destination Cloud Storage bucket for de-identified output
-- The DLP User role (`roles/dlp.user`)
-- Read access on the source bucket and write access on the destination bucket
+- Destination Cloud Storage bucket for de-identified output in a different bucket than the source
+- The DLP User role (`roles/dlp.user`) to create jobs
+- The DLP De-identify Templates Editor role (`roles/dlp.deidentifyTemplatesEditor`) if you create reusable templates
+- Read access for the DLP service agent on the source bucket and write access on the destination bucket
 
 ## Step 1: Set Up Your Buckets
 
@@ -44,91 +45,135 @@ Create separate buckets for source and destination to keep things clean:
 gsutil mb -p PROJECT_ID -l us-central1 gs://my-project-deidentified/
 
 # Set appropriate permissions - restrict access to the de-identified bucket
-gsutil iam ch serviceAccount:DLP_SERVICE_ACCOUNT@PROJECT_ID.iam.gserviceaccount.com:roles/storage.objectCreator gs://my-project-deidentified/
+gsutil iam ch serviceAccount:service-PROJECT_NUMBER@dlp-api.iam.gserviceaccount.com:roles/storage.objectUser gs://my-project-deidentified/
 ```
 
-## Step 2: Create a De-Identification Job with gcloud
+## Step 2: Create a De-Identification Job with the API
 
-For a quick de-identification, you can use `gcloud`:
+For a quick de-identification, you can create a DLP job with the REST API. If you do not provide a de-identify template, Sensitive Data Protection replaces findings in text and structured files with their InfoType names:
 
 ```bash
-# Run a de-identification job that redacts PII from files in a GCS bucket
-gcloud dlp jobs create \
-  --project=PROJECT_ID \
-  --storage-url="gs://my-source-bucket/customer-data/" \
-  --info-types="EMAIL_ADDRESS,PHONE_NUMBER,PERSON_NAME,US_SOCIAL_SECURITY_NUMBER" \
-  --deidentify-config='{"infoTypeTransformations":{"transformations":[{"primitiveTransformation":{"replaceConfig":{"newValue":{"stringValue":"[REDACTED]"}}}}]}}'
+cat > dlp-job.json <<'EOF'
+{
+  "inspectJob": {
+    "storageConfig": {
+      "cloudStorageOptions": {
+        "fileSet": {
+          "url": "gs://my-source-bucket/customer-data/"
+        },
+        "fileTypes": ["TEXT_FILE", "CSV"]
+      }
+    },
+    "inspectConfig": {
+      "infoTypes": [
+        {"name": "EMAIL_ADDRESS"},
+        {"name": "PHONE_NUMBER"},
+        {"name": "PERSON_NAME"},
+        {"name": "US_SOCIAL_SECURITY_NUMBER"}
+      ]
+    },
+    "actions": [
+      {
+        "deidentify": {
+          "cloudStorageOutput": "gs://my-project-deidentified/customer-data-clean/",
+          "fileTypesToTransform": ["TEXT_FILE", "CSV"]
+        }
+      }
+    ]
+  }
+}
+EOF
+
+curl -s \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://dlp.googleapis.com/v2/projects/PROJECT_ID/dlpJobs" \
+  -d @dlp-job.json
 ```
 
 ## Step 3: Define a Detailed De-Identification Configuration
 
-For production use, you want different de-identification methods for different types of data. Here is a JSON configuration that applies specific transformations per InfoType:
+For production use, you want different de-identification methods for different types of data. Store those rules in a de-identify template, then reference the template from the Cloud Storage de-identification job. Here is a JSON request body for a template that applies specific transformations per InfoType:
 
 ```json
 {
-  "deidentifyConfig": {
-    "infoTypeTransformations": {
-      "transformations": [
-        {
-          "infoTypes": [{"name": "EMAIL_ADDRESS"}],
-          "primitiveTransformation": {
-            "characterMaskConfig": {
-              "maskingCharacter": "*",
-              "numberToMask": 0,
-              "reverseOrder": false
-            }
-          }
-        },
-        {
-          "infoTypes": [{"name": "PHONE_NUMBER"}],
-          "primitiveTransformation": {
-            "replaceConfig": {
-              "newValue": {
-                "stringValue": "[PHONE REDACTED]"
+  "templateId": "pii-storage-deidentify",
+  "deidentifyTemplate": {
+    "displayName": "PII storage de-identification",
+    "deidentifyConfig": {
+      "infoTypeTransformations": {
+        "transformations": [
+          {
+            "infoTypes": [{"name": "EMAIL_ADDRESS"}],
+            "primitiveTransformation": {
+              "characterMaskConfig": {
+                "maskingCharacter": "*",
+                "numberToMask": 0,
+                "reverseOrder": false
               }
             }
-          }
-        },
-        {
-          "infoTypes": [{"name": "US_SOCIAL_SECURITY_NUMBER"}],
-          "primitiveTransformation": {
-            "replaceConfig": {
-              "newValue": {
-                "stringValue": "XXX-XX-XXXX"
-              }
-            }
-          }
-        },
-        {
-          "infoTypes": [{"name": "PERSON_NAME"}],
-          "primitiveTransformation": {
-            "characterMaskConfig": {
-              "maskingCharacter": "#",
-              "numberToMask": 0
-            }
-          }
-        },
-        {
-          "infoTypes": [{"name": "CREDIT_CARD_NUMBER"}],
-          "primitiveTransformation": {
-            "cryptoReplaceFfxFpeConfig": {
-              "cryptoKey": {
-                "kmsWrapped": {
-                  "wrappedKey": "BASE64_WRAPPED_KEY",
-                  "cryptoKeyName": "projects/PROJECT_ID/locations/global/keyRings/dlp-keyring/cryptoKeys/dlp-key"
+          },
+          {
+            "infoTypes": [{"name": "PHONE_NUMBER"}],
+            "primitiveTransformation": {
+              "replaceConfig": {
+                "newValue": {
+                  "stringValue": "[PHONE REDACTED]"
                 }
-              },
-              "commonAlphabet": "NUMERIC"
+              }
+            }
+          },
+          {
+            "infoTypes": [{"name": "US_SOCIAL_SECURITY_NUMBER"}],
+            "primitiveTransformation": {
+              "replaceConfig": {
+                "newValue": {
+                  "stringValue": "XXX-XX-XXXX"
+                }
+              }
+            }
+          },
+          {
+            "infoTypes": [{"name": "PERSON_NAME"}],
+            "primitiveTransformation": {
+              "characterMaskConfig": {
+                "maskingCharacter": "#",
+                "numberToMask": 0
+              }
+            }
+          },
+          {
+            "infoTypes": [{"name": "CREDIT_CARD_NUMBER"}],
+            "primitiveTransformation": {
+              "cryptoReplaceFfxFpeConfig": {
+                "cryptoKey": {
+                  "kmsWrapped": {
+                    "wrappedKey": "BASE64_WRAPPED_KEY",
+                    "cryptoKeyName": "projects/PROJECT_ID/locations/global/keyRings/dlp-keyring/cryptoKeys/dlp-key"
+                  }
+                },
+                "commonAlphabet": "NUMERIC"
+              }
             }
           }
-        }
-      ]
+        ]
+      }
     }
   }
 }
 ```
 
-This config masks email addresses, replaces phone numbers with a placeholder, replaces SSNs with a fixed string, masks names, and applies format-preserving encryption to credit card numbers.
+Save the request body as `deidentify-template.json`, then create the template with:
+
+```bash
+curl -s \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://dlp.googleapis.com/v2/projects/PROJECT_ID/locations/global/deidentifyTemplates" \
+  -d @deidentify-template.json
+```
+
+This template masks email addresses, replaces phone numbers with a placeholder, replaces SSNs with a fixed string, masks names, and applies format-preserving encryption to credit card numbers.
 
 ## Step 4: Run a De-Identification Job with Python
 
@@ -138,7 +183,7 @@ Here is a Python script that creates a Cloud Storage de-identification job:
 from google.cloud import dlp_v2
 
 def deidentify_gcs_files(project_id, source_bucket, source_path,
-                          dest_bucket, dest_path):
+                          dest_bucket, dest_path, deidentify_template_id):
     """De-identify PII in Cloud Storage files and write output to a new location."""
 
     dlp_client = dlp_v2.DlpServiceClient()
@@ -159,84 +204,44 @@ def deidentify_gcs_files(project_id, source_bucket, source_path,
         "min_likelihood": dlp_v2.Likelihood.POSSIBLE,
     }
 
-    # Define how to de-identify each type of sensitive data
-    deidentify_config = {
-        "info_type_transformations": {
-            "transformations": [
-                {
-                    # Mask email addresses with asterisks
-                    "info_types": [{"name": "EMAIL_ADDRESS"}],
-                    "primitive_transformation": {
-                        "character_mask_config": {
-                            "masking_character": "*",
-                        }
-                    }
-                },
-                {
-                    # Replace phone numbers with a placeholder
-                    "info_types": [{"name": "PHONE_NUMBER"}],
-                    "primitive_transformation": {
-                        "replace_config": {
-                            "new_value": {"string_value": "[PHONE]"}
-                        }
-                    }
-                },
-                {
-                    # Replace SSNs completely
-                    "info_types": [{"name": "US_SOCIAL_SECURITY_NUMBER"}],
-                    "primitive_transformation": {
-                        "replace_config": {
-                            "new_value": {"string_value": "XXX-XX-XXXX"}
-                        }
-                    }
-                },
-                {
-                    # Redact names, addresses, and credit cards
-                    "info_types": [
-                        {"name": "PERSON_NAME"},
-                        {"name": "STREET_ADDRESS"},
-                        {"name": "CREDIT_CARD_NUMBER"},
-                    ],
-                    "primitive_transformation": {
-                        "replace_config": {
-                            "new_value": {"string_value": "[REDACTED]"}
-                        }
-                    }
-                },
-            ]
-        }
-    }
-
     # Configure the source and destination in Cloud Storage
     storage_config = {
         "cloud_storage_options": {
             "file_set": {
                 "url": f"gs://{source_bucket}/{source_path}"
             },
-            "file_types": ["TEXT_FILE", "CSV", "JSON"],
+            "file_types": ["TEXT_FILE", "CSV"],
         }
+    }
+
+    parent = f"projects/{project_id}/locations/global"
+    transformation_config = {
+        "deidentify_template": (
+            f"{parent}/deidentifyTemplates/{deidentify_template_id}"
+        )
     }
 
     # Build the job configuration
     job = {
         "inspect_config": inspect_config,
-        "deidentify_config": deidentify_config,
         "storage_config": storage_config,
         "actions": [
             {
                 "deidentify": {
                     "cloud_storage_output": f"gs://{dest_bucket}/{dest_path}",
-                    "file_types_to_transform": ["TEXT_FILE", "CSV", "JSON"],
+                    "transformation_config": transformation_config,
+                    "file_types_to_transform": ["TEXT_FILE", "CSV"],
                 }
             }
         ],
     }
 
     # Submit the job
-    parent = f"projects/{project_id}/locations/global"
     response = dlp_client.create_dlp_job(
-        parent=parent,
-        inspect_job=job,
+        request={
+            "parent": parent,
+            "inspect_job": job,
+        }
     )
 
     print(f"De-identification job created: {response.name}")
@@ -248,7 +253,8 @@ deidentify_gcs_files(
     source_bucket="my-source-bucket",
     source_path="customer-data/",
     dest_bucket="my-project-deidentified",
-    dest_path="customer-data-clean/"
+    dest_path="customer-data-clean/",
+    deidentify_template_id="pii-storage-deidentify"
 )
 ```
 
@@ -258,11 +264,11 @@ Cloud DLP handles different file types differently:
 
 **Text and CSV files**: DLP scans the content directly and replaces sensitive values inline. The de-identified file has the same structure as the original.
 
-**JSON files**: DLP understands JSON structure and can find sensitive data in nested fields. De-identification preserves the JSON structure.
+**JSON files**: DLP scans JSON files as text files. Inline replacements can preserve valid JSON when the transformed values remain properly quoted, but JSON is not a separate Cloud Storage de-identification file type.
 
 **Images**: DLP can redact text in images by blacking out regions. This is useful for scanned documents.
 
-**Structured files**: For Avro and Parquet files, DLP understands the columnar structure.
+**Structured files**: For CSV and TSV files, DLP treats the input as structured data.
 
 Specify which file types to scan:
 
@@ -273,15 +279,12 @@ storage_config = {
         "file_set": {
             "url": "gs://my-bucket/data/"
         },
-        # Only scan text, CSV, and JSON files
+        # Only scan file types supported for Cloud Storage de-identification
         "file_types": [
             "TEXT_FILE",
             "CSV",
-            "JSON",
-            "AVRO",
+            "TSV",
         ],
-        # Set a size limit per file (in bytes)
-        "bytes_limit_per_file": 1048576,  # 1 MB
     }
 }
 ```
@@ -333,13 +336,19 @@ def deidentify_on_upload(cloud_event):
             {
                 "deidentify": {
                     "cloud_storage_output": f"gs://{project_id}-deidentified/auto-cleaned/",
+                    "file_types_to_transform": ["TEXT_FILE", "CSV"],
                 }
             }
         ],
     }
 
     parent = f"projects/{project_id}/locations/global"
-    response = dlp_client.create_dlp_job(parent=parent, inspect_job=job)
+    response = dlp_client.create_dlp_job(
+        request={
+            "parent": parent,
+            "inspect_job": job,
+        }
+    )
     print(f"Created de-identification job: {response.name} for file: {file_name}")
 ```
 
@@ -347,7 +356,7 @@ def deidentify_on_upload(cloud_event):
 
 **Test with sample data first.** Before running de-identification on production data, try it on a small sample and verify the output looks right. Misconfigured transformations can corrupt data in ways that are hard to fix.
 
-**Watch your costs.** Cloud DLP charges per byte processed. De-identification scans the data twice - once to find sensitive data and once to transform it. Use file type filters and size limits to control costs.
+**Watch your costs.** Cloud DLP charges for bytes inspected, and de-identification jobs can also incur transformation charges based on bytes transformed. Use file type filters to control costs.
 
 **Preserve file metadata.** De-identified files get new metadata. If the original file metadata matters (timestamps, custom metadata), you will need to copy it separately.
 
