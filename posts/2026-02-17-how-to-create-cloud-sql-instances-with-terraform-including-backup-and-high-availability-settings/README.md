@@ -33,13 +33,16 @@ resource "google_sql_database_instance" "main" {
     disk_autoresize = true
     disk_autoresize_limit = 500  # Max 500GB
 
+    # Prevent deletion through the Cloud SQL API, gcloud, Console, and Terraform
+    deletion_protection_enabled = true
+
     ip_configuration {
       ipv4_enabled = false  # Disable public IP
       private_network = google_compute_network.main.id
     }
   }
 
-  # Prevent accidental deletion
+  # Prevent accidental Terraform deletion
   deletion_protection = true
 }
 ```
@@ -68,6 +71,9 @@ resource "google_sql_database_instance" "main" {
     disk_type       = "PD_SSD"
     disk_size       = 100
     disk_autoresize = true
+
+    # Prevent deletion through the Cloud SQL API, gcloud, Console, and Terraform
+    deletion_protection_enabled = true
 
     # Backup configuration
     backup_configuration {
@@ -123,6 +129,8 @@ resource "google_sql_database_instance" "main" {
     disk_size       = 100
     disk_autoresize = true
 
+    deletion_protection_enabled = true
+
     backup_configuration {
       enabled                        = true
       start_time                     = "03:00"
@@ -145,7 +153,7 @@ resource "google_sql_database_instance" "main" {
 }
 ```
 
-The `availability_type = "REGIONAL"` setting is all it takes. Cloud SQL handles the standby instance, replication, and failover automatically. Keep in mind that HA doubles your cost since you are running two instances.
+The `availability_type = "REGIONAL"` setting, together with enabled backups and PITR for PostgreSQL, enables HA. Cloud SQL handles the standby instance, replication, and failover automatically. Keep in mind that HA doubles your cost since you are running two instances.
 
 ## Read Replicas
 
@@ -160,17 +168,14 @@ resource "google_sql_database_instance" "read_replica" {
   region               = var.region
   project              = var.project_id
 
-  # Replicas inherit many settings from the primary
-  replica_configuration {
-    failover_target = false
-  }
-
   settings {
     tier = "db-custom-2-8192"  # Can be smaller than primary
 
     disk_type       = "PD_SSD"
     disk_size       = 100
     disk_autoresize = true
+
+    deletion_protection_enabled = true
 
     ip_configuration {
       ipv4_enabled    = false
@@ -200,18 +205,19 @@ resource "google_sql_database" "analytics_db" {
   project  = var.project_id
 }
 
-# Generate a random password for the database user
-resource "random_password" "db_password" {
+# Generate a random password for the database user without storing it in state
+ephemeral "random_password" "db_password" {
   length  = 32
   special = true
 }
 
 # Create the application database user
 resource "google_sql_user" "app_user" {
-  name     = "app-service"
-  instance = google_sql_database_instance.main.name
-  password = random_password.db_password.result
-  project  = var.project_id
+  name                = "app-service"
+  instance            = google_sql_database_instance.main.name
+  password_wo         = ephemeral.random_password.db_password.result
+  password_wo_version = 1
+  project             = var.project_id
 }
 
 # Store the password in Secret Manager
@@ -225,10 +231,13 @@ resource "google_secret_manager_secret" "db_password" {
 }
 
 resource "google_secret_manager_secret_version" "db_password" {
-  secret      = google_secret_manager_secret.db_password.id
-  secret_data = random_password.db_password.result
+  secret                 = google_secret_manager_secret.db_password.id
+  secret_data_wo         = ephemeral.random_password.db_password.result
+  secret_data_wo_version = 1
 }
 ```
+
+The write-only password arguments require Terraform 1.11 or later and a recent Google provider. If you use the older `password` or `secret_data` arguments, protect your Terraform state because those secret values are stored there.
 
 ## Maintenance Window Configuration
 
@@ -350,11 +359,11 @@ output "database_name" {
 
 ## Best Practices
 
-1. **Always enable deletion_protection.** Accidentally destroying a production database is a career-defining event you want to avoid.
+1. **Always enable deletion protection.** Use Terraform `deletion_protection` and Cloud SQL `deletion_protection_enabled` for production databases.
 2. **Use private IP only.** Never expose Cloud SQL to the public internet.
 3. **Enable PITR.** Point-in-time recovery is your safety net for data corruption and accidental deletions.
 4. **Use REGIONAL availability** for production databases. The cost of HA is worth the uptime.
-5. **Store passwords in Secret Manager**, not in Terraform state or code.
+5. **Store passwords in Secret Manager**, and use write-only Terraform arguments or tightly protected remote state for secret values.
 6. **Enable disk autoresize** to prevent out-of-space failures.
 7. **Set maintenance windows** during low-traffic periods.
 8. **Log slow queries** using database flags to identify performance issues early.
