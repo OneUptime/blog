@@ -14,7 +14,7 @@ If you have ever set up a Shared VPC in Google Cloud, you probably know the pain
 
 Shared VPC lets you connect multiple projects to a common VPC network. The project that owns the network is called the host project, and the projects that consume it are called service projects. This setup is great for centralized network management, but it introduces a layer of IAM complexity that trips people up regularly.
 
-When a service project tries to create a resource - say, a Compute Engine instance - in a subnet belonging to the host project, the service account performing the creation needs specific permissions on that subnet. This is where things usually break.
+When a service project tries to create a resource - say, a Compute Engine instance - in a subnet belonging to the host project, the IAM principal or service agent performing the creation needs specific permissions on that subnet. This is where things usually break.
 
 ## Common Error Messages
 
@@ -41,8 +41,7 @@ The following command lists all service projects associated with a host project:
 ```bash
 # List all service projects attached to the host project
 
-gcloud compute shared-vpc associated-projects list \
-    --project=host-project-id
+gcloud compute shared-vpc associated-projects list host-project-id
 ```
 
 If your service project is not in the list, attach it:
@@ -57,7 +56,7 @@ You need the `compute.organizations.enableXpnResource` permission or the Shared 
 
 ## Step 2: Grant the Correct Subnet-Level Permissions
 
-This is the most common fix. The service project's service accounts need the `compute.networkUser` role on either the entire host project or on specific subnets. Granting it at the subnet level is more secure and follows the principle of least privilege.
+This is the most common fix. The IAM principal or service agent creating resources needs the `compute.networkUser` role on either the entire host project or on specific subnets. Granting it at the subnet level is more secure and follows the principle of least privilege.
 
 Here is how to grant it at the subnet level:
 
@@ -70,20 +69,23 @@ gcloud compute networks subnets add-iam-policy-binding shared-subnet \
     --role='roles/compute.networkUser'
 ```
 
-Notice the service account format. You need to use the Google APIs service account, which follows the pattern `PROJECT_NUMBER@cloudservices.gserviceaccount.com`. This is not the default Compute Engine service account - it is a different one that Google Cloud uses internally to manage resources on your behalf.
+Notice the service account format. For managed instance groups, you need to use the Google APIs service account, which follows the pattern `PROJECT_NUMBER@cloudservices.gserviceaccount.com`. This is not the default Compute Engine service account - it is a different one that Google Cloud uses internally to manage resources on your behalf.
 
 ## Step 3: Grant Permissions to the Correct Service Accounts
 
 This is where most people get confused. Depending on what you are creating, you might need to grant permissions to different service accounts:
 
-For Compute Engine VMs, grant the role to:
+For Compute Engine VMs created directly by a user or automation service account, grant the role to:
+- The user or service account that creates the VM
+
+For managed instance groups, grant the role to:
 - `PROJECT_NUMBER@cloudservices.gserviceaccount.com` (Google APIs service account)
 
 For GKE clusters, you also need to grant the role to:
 - `service-PROJECT_NUMBER@container-engine-robot.iam.gserviceaccount.com` (GKE service agent)
 
 For internal load balancers, grant the role to:
-- `PROJECT_NUMBER@cloudservices.gserviceaccount.com`
+- The user or service account that creates the load balancer
 
 Here is an example granting the GKE service agent access:
 
@@ -113,12 +115,13 @@ Another constraint to check is `compute.restrictSharedVpcHostProjects`, which li
 
 ## Step 5: Verify Network and Subnet Visibility
 
-From the service project, try listing available subnets:
+As the service project admin, try listing available subnets from the host project:
 
 ```bash
 # List subnets available to the service project from the host project
 gcloud compute networks subnets list-usable \
-    --project=service-project-id
+    --project=host-project-id \
+    --service-project=service-project-id
 ```
 
 This command shows subnets that the current caller can actually use. If the subnet you need does not show up here, there is a permissions problem somewhere in the chain.
@@ -132,7 +135,8 @@ If permissions look correct but resource creation still fails, the subnet might 
 gcloud compute networks subnets describe shared-subnet \
     --project=host-project-id \
     --region=us-central1 \
-    --format="json(ipCidrRange, secondaryIpRanges, purpose)"
+    --view=WITH_UTILIZATION \
+    --format="json(ipCidrRange, secondaryIpRanges, utilizationDetails)"
 ```
 
 If the CIDR range is small and you have many resources, consider expanding the subnet or creating a new one.
@@ -161,14 +165,14 @@ Add a `depends_on` to your compute resources referencing this IAM binding to avo
 When you are stuck, run through this list:
 
 1. Is the service project attached to the host project?
-2. Does the Google APIs service account have `compute.networkUser` on the target subnet?
+2. Does the IAM principal or service agent creating the resource have `compute.networkUser` on the target subnet?
 3. If using GKE, does the GKE service agent also have that role?
 4. Are there org policies restricting subnet usage?
 5. Does `subnets list-usable` show the target subnet?
 6. Is there IP space available in the subnet?
 7. Are you targeting the correct region?
 
-Most Shared VPC permission issues come down to granting the wrong service account the right role, or the right service account the wrong role. Double-check the project number (not the project ID) and the service account suffix, and you should be able to sort it out.
+Most Shared VPC permission issues come down to granting the wrong principal the right role, or the right principal the wrong role. For service agents, double-check the project number (not the project ID) and the service account suffix, and you should be able to sort it out.
 
 ## Monitoring with OneUptime
 
