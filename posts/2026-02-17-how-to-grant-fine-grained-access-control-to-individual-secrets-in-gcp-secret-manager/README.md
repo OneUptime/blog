@@ -165,7 +165,7 @@ To audit all access across all secrets in a project, use Asset Inventory:
 # Search all IAM policies related to Secret Manager
 gcloud asset search-all-iam-policies \
   --scope="projects/my-project-id" \
-  --query="policy.role.permissions:secretmanager" \
+  --query="policy.role.permissions:secretmanager.*" \
   --format="table(resource, policy.bindings.role, policy.bindings.members)"
 ```
 
@@ -207,7 +207,7 @@ gcloud recommender recommendations list \
   --format="table(name, description, priority)"
 ```
 
-If a service account has project-level `secretAccessor` but only accesses two specific secrets, the recommender will suggest scoping the access down to those specific secrets.
+IAM Recommender can help identify roles with excess permissions, but it does not replace an explicit per-secret access review. Use its recommendations as a signal, then update the secret-level bindings yourself.
 
 ## Naming Conventions for Secrets
 
