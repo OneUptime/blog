@@ -32,7 +32,7 @@ bq ls --transfer_config --transfer_location=us
 bq show --transfer_config <config-id>
 ```
 
-You can also check in the Cloud Console under BigQuery > Scheduled Queries.
+You can also check in the Cloud Console under BigQuery > Scheduling.
 
 Look at the "Credentials" section. It shows which account is used to run the query.
 
@@ -69,17 +69,16 @@ If you never had access to the dataset, or access was revoked, you need the appr
 
 ```bash
 # Grant BigQuery Data Viewer on the source dataset
-bq show --format=prettyjson my_project:my_dataset
-
-# Add yourself to the dataset ACL
-bq update --source my_project:source_dataset \
-    --set_label="description:Updated access"
+bq query --use_legacy_sql=false \
+    'GRANT `roles/bigquery.dataViewer`
+     ON SCHEMA `my_project`.source_dataset
+     TO "user:your-email@company.com";'
 ```
 
-Or use gcloud.
+Or use gcloud to grant access at the project level.
 
 ```bash
-# Grant BigQuery Data Viewer role at the dataset level
+# Grant BigQuery Data Viewer role at the project level
 gcloud projects add-iam-policy-binding my-project \
     --member="user:your-email@company.com" \
     --role="roles/bigquery.dataViewer"
@@ -109,17 +108,10 @@ gcloud projects add-iam-policy-binding my-project \
     --role="roles/bigquery.dataViewer"
 
 # Grant BigQuery Data Editor on the destination dataset
-bq update \
-    --dataset \
-    --source <(echo '{
-      "access": [
-        {
-          "role": "WRITER",
-          "userByEmail": "bq-scheduler@my-project.iam.gserviceaccount.com"
-        }
-      ]
-    }') \
-    my_project:destination_dataset
+bq query --use_legacy_sql=false \
+    'GRANT `roles/bigquery.dataEditor`
+     ON SCHEMA `my_project`.destination_dataset
+     TO "serviceAccount:bq-scheduler@my-project.iam.gserviceaccount.com";'
 ```
 
 Then update the scheduled query to use the service account.
@@ -127,6 +119,7 @@ Then update the scheduled query to use the service account.
 ```bash
 # Update the scheduled query to use the service account
 bq update --transfer_config \
+    --update_credentials \
     --service_account_name=bq-scheduler@my-project.iam.gserviceaccount.com \
     <config-id>
 ```
@@ -148,7 +141,7 @@ Or grant access at the dataset level if you want finer control.
 ```sql
 -- Grant access at the dataset level using BigQuery SQL
 GRANT `roles/bigquery.dataViewer`
-ON SCHEMA `project-b.shared_dataset`
+ON SCHEMA `project-b`.shared_dataset
 TO "serviceAccount:bq-scheduler@project-a.iam.gserviceaccount.com";
 ```
 
@@ -166,7 +159,7 @@ for entry in ds.get('access', []):
 "
 ```
 
-The service account needs either the `WRITER` role on the destination dataset or the `roles/bigquery.dataEditor` role at the project level.
+The service account needs either the `roles/bigquery.dataEditor` role on the destination dataset or the project.
 
 ## Step 7 - Check for VPC Service Controls
 
@@ -181,7 +174,7 @@ gcloud logging read \
     --format="table(timestamp, protoPayload.status.message)"
 ```
 
-If you see VPC-SC violations, you need to add the Data Transfer Service and the service account to the access level of your service perimeter.
+If you see VPC-SC violations, you need to configure the appropriate ingress or egress rules, or add an access level that allows the scheduled query's service account to reach the protected resources.
 
 ## Common Permissions Required
 
