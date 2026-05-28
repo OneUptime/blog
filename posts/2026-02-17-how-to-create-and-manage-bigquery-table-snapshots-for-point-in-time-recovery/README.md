@@ -10,7 +10,7 @@ Description: Learn how to create and manage BigQuery table snapshots for point-i
 
 Mistakes happen. Someone runs a DELETE without a WHERE clause, an ETL pipeline overwrites a table with bad data, or a schema migration goes sideways. Without backups, recovering from these situations can be painful or impossible. BigQuery table snapshots solve this by letting you capture a read-only copy of a table at a specific point in time.
 
-Snapshots are storage-efficient because they only store the delta from the source table. If your 1 TB table has not changed since the snapshot was created, the snapshot uses nearly zero additional storage. You can create them instantly, and restoring a table from a snapshot takes seconds.
+Snapshots are storage-efficient because they only store the delta from the source table. If your 1 TB table has not changed since the snapshot was created, the snapshot uses nearly zero additional storage. You can create them quickly, and restoring a table from a snapshot is typically fast.
 
 ## How Snapshots Work
 
@@ -45,6 +45,7 @@ You can also use the `bq` command:
 # Create a table snapshot using bq
 
 bq cp --snapshot \
+    --no_clobber \
     my-project-id:production.orders \
     my-project-id:backups.orders_snapshot_20260217
 ```
@@ -86,7 +87,7 @@ You can also set expiration on an existing snapshot:
 
 ```sql
 -- Update the expiration on an existing snapshot
-ALTER SNAPSHOT TABLE `my-project-id.backups.orders_snapshot_20260217`
+ALTER TABLE `my-project-id.backups.orders_snapshot_20260217`
 SET OPTIONS (
     expiration_timestamp = TIMESTAMP('2026-06-01')
 );
@@ -144,7 +145,7 @@ EXECUTE IMMEDIATE FORMAT("""
 """, snapshot_name);
 ```
 
-### Using a Shell Script with Cloud Scheduler
+### Using a Shell Script from a Scheduled Runtime
 
 ```bash
 #!/bin/bash
@@ -171,6 +172,7 @@ for TABLE in "${TABLES[@]}"; do
     echo "Creating snapshot: ${SNAPSHOT_NAME}"
 
     bq cp --snapshot \
+        --no_clobber \
         "${PROJECT}:${TABLE}" \
         "${PROJECT}:${SNAPSHOT_NAME}"
 
@@ -250,10 +252,12 @@ Snapshots use incremental storage. Here is how billing works:
 - When created, a snapshot shares storage with the source table (no additional cost)
 - When the source table is modified, the snapshot stores the old data blocks
 - When the source table is deleted, the snapshot stores all the data independently
-- Storage is billed at BigQuery's active storage rate
+- Storage is billed according to the dataset's BigQuery storage billing model
 
 ```sql
--- Check snapshot storage usage
+-- Check the logical size of snapshot tables.
+-- For snapshots, TABLE_STORAGE shows size as if each snapshot were a complete table,
+-- so this overestimates the delta storage that is actually billed.
 SELECT
     table_name,
     ROUND(total_rows) AS total_rows,
@@ -273,7 +277,7 @@ Snapshots and table copies both create backups, but they work differently:
 | Feature | Snapshot | Table Copy |
 |---------|----------|------------|
 | Storage | Incremental (efficient) | Full copy (expensive) |
-| Speed | Instant | Depends on table size |
+| Speed | Typically fast | Depends on table size |
 | Read-only | Yes | No |
 | Time travel support | Yes (at creation time) | No |
 | Can be queried | Yes | Yes |
@@ -290,7 +294,7 @@ CREATE SNAPSHOT TABLE `backup-project.backups.orders_snapshot_20260217`
 CLONE `production-project.production.orders`;
 ```
 
-The user needs `bigquery.tables.getData` on the source table and `bigquery.tables.create` on the destination dataset.
+The user needs `bigquery.tables.get`, `bigquery.tables.getData`, `bigquery.tables.createSnapshot`, `bigquery.datasets.get`, and `bigquery.jobs.create` on the source table, plus `bigquery.tables.create` and `bigquery.tables.updateData` on the destination dataset. If the snapshot has an expiration, the user also needs `bigquery.tables.deleteSnapshot`.
 
 ## Disaster Recovery Strategy
 
@@ -321,4 +325,4 @@ CLONE `my-project-id.backups.orders_pre_migration_20260217`;
 
 ## Summary
 
-BigQuery table snapshots give you instant, storage-efficient backups with point-in-time recovery. Create snapshots before risky operations, set up scheduled snapshots for ongoing protection, and use time travel to capture table state from up to 7 days ago. The incremental storage model means snapshots are cheap to maintain, and restoring a table from a snapshot takes seconds regardless of table size. Build a layered snapshot strategy with different retention periods for different recovery scenarios, and always create a snapshot before running schema migrations or bulk data operations.
+BigQuery table snapshots give you fast, storage-efficient backups with point-in-time recovery. Create snapshots before risky operations, set up scheduled snapshots for ongoing protection, and use time travel to capture table state from up to 7 days ago. The incremental storage model means snapshots are cheap to maintain, and restoring a table from a snapshot is typically fast. Build a layered snapshot strategy with different retention periods for different recovery scenarios, and always create a snapshot before running schema migrations or bulk data operations.
