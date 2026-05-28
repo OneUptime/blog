@@ -19,7 +19,7 @@ Create a Micronaut project with the required dependencies. Here is the Gradle bu
 ```groovy
 // build.gradle
 plugins {
-    id("io.micronaut.application") version "4.2.1"
+    id("io.micronaut.application") version "5.0.0"
 }
 
 dependencies {
@@ -33,7 +33,7 @@ dependencies {
     runtimeOnly("com.mysql:mysql-connector-j")
 
     // Cloud SQL Socket Factory for secure connection
-    runtimeOnly("com.google.cloud.sql:mysql-socket-factory-connector-j-8:1.15.2")
+    runtimeOnly("com.google.cloud.sql:mysql-socket-factory-connector-j-8:1.28.3")
 
     // Serialization
     annotationProcessor("io.micronaut.serde:micronaut-serde-processor")
@@ -62,7 +62,7 @@ Configure the datasource in `application.yml`:
 datasources:
   default:
     # Cloud SQL connection via socket factory
-    url: jdbc:mysql:///mydb?cloudSqlInstance=my-project:us-central1:my-instance&socketFactory=com.google.cloud.sql.mysql.SocketFactory
+    url: jdbc:mysql:///mydb?cloudSqlInstance=my-project:us-central1:my-instance&socketFactory=com.google.cloud.sql.mysql.SocketFactory&cloudSqlRefreshStrategy=lazy
     username: app_user
     password: ${DB_PASSWORD}
     dialect: MYSQL
@@ -86,10 +86,11 @@ datasources:
 
 ## Defining the Entity
 
-Micronaut Data JDBC entities use annotations similar to JPA but from the Micronaut Data package:
+Micronaut Data JDBC entities use annotations similar to JPA from the Micronaut Data package, plus `@Serdeable` for JSON serialization:
 
 ```java
 // Entity representing a customer record in the database
+@Serdeable
 @MappedEntity("customers")
 public class Customer {
 
@@ -97,24 +98,24 @@ public class Customer {
     @GeneratedValue(GeneratedValue.Type.AUTO)
     private Long id;
 
-    @Column("full_name")
+    @MappedProperty("full_name")
     private String fullName;
 
-    @Column("email")
+    @MappedProperty("email")
     private String email;
 
-    @Column("phone")
+    @MappedProperty("phone")
     private String phone;
 
-    @Column("tier")
+    @MappedProperty("tier")
     private String tier;
 
     @DateCreated
-    @Column("created_at")
+    @MappedProperty("created_at")
     private Instant createdAt;
 
     @DateUpdated
-    @Column("updated_at")
+    @MappedProperty("updated_at")
     private Instant updatedAt;
 
     // Default constructor
@@ -150,7 +151,7 @@ Micronaut Data repositories look like Spring Data repositories, but the implemen
 ```java
 // Repository interface - Micronaut Data generates the implementation at compile time
 @JdbcRepository(dialect = Dialect.MYSQL)
-public interface CustomerRepository extends CrudRepository<Customer, Long> {
+public interface CustomerRepository extends PageableRepository<Customer, Long> {
 
     // Find customers by tier - query derived from method name
     List<Customer> findByTier(String tier);
@@ -361,7 +362,6 @@ docker push gcr.io/my-project/customer-service
 
 gcloud run deploy customer-service \
     --image gcr.io/my-project/customer-service:latest \
-    --add-cloudsql-instances my-project:us-central1:my-instance \
     --set-env-vars DB_PASSWORD=secret \
     --memory 256Mi \
     --region us-central1
