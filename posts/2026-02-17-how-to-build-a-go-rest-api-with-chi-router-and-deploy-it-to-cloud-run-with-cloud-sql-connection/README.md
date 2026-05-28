@@ -25,7 +25,6 @@ go get github.com/go-chi/chi/v5
 go get github.com/go-chi/chi/v5/middleware
 go get github.com/jackc/pgx/v5/pgxpool
 go get cloud.google.com/go/cloudsqlconn
-go get cloud.google.com/go/cloudsqlconn/postgres/pgxv5
 ```
 
 ## The Data Model
@@ -45,7 +44,7 @@ CREATE TABLE tasks (
 
 ## Database Connection
 
-Cloud Run connects to Cloud SQL through the Cloud SQL Auth Proxy, which the Go connector handles for you. No need to run a sidecar.
+Cloud Run can connect to Cloud SQL securely through the Cloud SQL Go connector. No need to run a sidecar.
 
 ```go
 package main
@@ -58,45 +57,36 @@ import (
     "os"
 
     "cloud.google.com/go/cloudsqlconn"
-    "cloud.google.com/go/cloudsqlconn/postgres/pgxv5"
     "github.com/jackc/pgx/v5/pgxpool"
 )
 
 // connectDB creates a connection pool to Cloud SQL using the Go connector
-func connectDB(ctx context.Context) (*pgxpool.Pool, error) {
+func connectDB(ctx context.Context) (*pgxpool.Pool, func() error, error) {
     // These come from environment variables set in Cloud Run
     instanceConnection := os.Getenv("INSTANCE_CONNECTION_NAME")
     dbUser := os.Getenv("DB_USER")
     dbPass := os.Getenv("DB_PASS")
     dbName := os.Getenv("DB_NAME")
 
-    // Build the DSN using the Cloud SQL Go connector
+    // Build the DSN. The connector supplies the network connection.
     dsn := fmt.Sprintf(
         "user=%s password=%s dbname=%s sslmode=disable",
         dbUser, dbPass, dbName,
     )
 
-    // Register the Cloud SQL dialer so pgx knows how to connect
-    cleanup, err := pgxv5.RegisterDriver("cloudsql-postgres",
-        cloudsqlconn.WithDefaultDialOptions(cloudsqlconn.WithPrivateIP()),
-    )
+    d, err := cloudsqlconn.NewDialer(ctx, cloudsqlconn.WithLazyRefresh())
     if err != nil {
-        return nil, fmt.Errorf("failed to register driver: %w", err)
+        return nil, nil, fmt.Errorf("failed to create Cloud SQL dialer: %w", err)
     }
-    // Note: cleanup should be called when the app shuts down
-    _ = cleanup
 
     config, err := pgxpool.ParseConfig(dsn)
     if err != nil {
-        return nil, fmt.Errorf("failed to parse config: %w", err)
+        d.Close()
+        return nil, nil, fmt.Errorf("failed to parse config: %w", err)
     }
 
     // Override the dial function to use the Cloud SQL connector
     config.ConnConfig.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
-        d, dialErr := cloudsqlconn.NewDialer(ctx)
-        if dialErr != nil {
-            return nil, dialErr
-        }
         return d.Dial(ctx, instanceConnection)
     }
 
@@ -106,16 +96,19 @@ func connectDB(ctx context.Context) (*pgxpool.Pool, error) {
 
     pool, err := pgxpool.NewWithConfig(ctx, config)
     if err != nil {
-        return nil, fmt.Errorf("failed to create pool: %w", err)
+        d.Close()
+        return nil, nil, fmt.Errorf("failed to create pool: %w", err)
     }
 
     // Verify the connection works
     if err := pool.Ping(ctx); err != nil {
-        return nil, fmt.Errorf("failed to ping database: %w", err)
+        pool.Close()
+        d.Close()
+        return nil, nil, fmt.Errorf("failed to ping database: %w", err)
     }
 
     log.Println("Connected to Cloud SQL")
-    return pool, nil
+    return pool, d.Close, nil
 }
 ```
 
@@ -244,6 +237,7 @@ Chi shines when you organize routes with groups and middleware.
 package main
 
 import (
+    "context"
     "log"
     "net/http"
     "os"
@@ -257,10 +251,11 @@ func main() {
     ctx := context.Background()
 
     // Connect to Cloud SQL
-    db, err := connectDB(ctx)
+    db, cleanup, err := connectDB(ctx)
     if err != nil {
         log.Fatalf("Database connection failed: %v", err)
     }
+    defer cleanup()
     defer db.Close()
 
     handler := &TaskHandler{DB: db}
@@ -322,12 +317,18 @@ CMD ["/server"]
 Build and deploy with these commands.
 
 ```bash
+# Create an Artifact Registry repository for the container image
+gcloud artifacts repositories create chi-api \
+  --repository-format=docker \
+  --location=us-central1 \
+  --description="Docker repository for chi-api"
+
 # Build the container image using Cloud Build
-gcloud builds submit --tag gcr.io/YOUR_PROJECT/chi-api
+gcloud builds submit --tag us-central1-docker.pkg.dev/YOUR_PROJECT/chi-api/chi-api
 
 # Deploy to Cloud Run with Cloud SQL connection
 gcloud run deploy chi-api \
-  --image gcr.io/YOUR_PROJECT/chi-api \
+  --image us-central1-docker.pkg.dev/YOUR_PROJECT/chi-api/chi-api \
   --region us-central1 \
   --add-cloudsql-instances YOUR_PROJECT:us-central1:your-instance \
   --set-env-vars "INSTANCE_CONNECTION_NAME=YOUR_PROJECT:us-central1:your-instance" \
