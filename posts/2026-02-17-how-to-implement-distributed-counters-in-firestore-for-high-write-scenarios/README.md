@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Firestore, Distributed Counter, Scalability, Firebase
 
-Description: Learn how to build distributed counters in Firestore to handle high write throughput beyond the single-document limit of one write per second.
+Description: Learn how to build distributed counters in Firestore to handle high write throughput beyond the practical single-document write-rate limit.
 
 ---
 
-Firestore has a hard limit: you can write to a single document at most once per second on a sustained basis. For a simple page view counter or a like button on a viral post, that limit gets blown through instantly. The solution is distributed counters - instead of one document holding the count, you spread the count across multiple "shard" documents and sum them up when you need the total.
+Firestore cannot update a single document at an unlimited rate. The exact maximum depends on your workload, but high sustained update rates to one document create contention, higher latency, or errors. For a simple page view counter or a like button on a viral post, that limit gets blown through instantly. The solution is distributed counters - instead of one document holding the count, you spread the count across multiple "shard" documents and sum them up when you need the total.
 
 This pattern is well-documented by Google, and once you understand it, you can apply it to any high-write counter scenario. Let me walk through the implementation from scratch.
 
@@ -18,7 +18,7 @@ Say you have a blog post and you want to track how many times it has been viewed
 
 ```javascript
 // This works fine at low traffic, but breaks at scale
-// A single document can only sustain ~1 write per second
+// A single document can only sustain a limited update rate
 import { doc, updateDoc, increment } from 'firebase/firestore';
 
 async function incrementViews(postId) {
@@ -51,7 +51,7 @@ graph TD
     G[Increment Request] -->|Random Pick| C
 ```
 
-With 10 shards, you can handle 10 writes per second. With 100 shards, 100 writes per second. You trade write throughput for read complexity.
+Write throughput increases roughly linearly with the number of shards. With 10 shards, you can handle about 10x as many writes as a single-document counter; with 100 shards, about 100x. You trade write throughput for read complexity.
 
 ## Creating the Counter
 
@@ -60,7 +60,7 @@ First, let us set up the counter with a configurable number of shards.
 ```javascript
 // Initialize a distributed counter with the specified number of shards
 // Call this once when creating a new counter
-import { doc, setDoc, collection } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 
 async function createCounter(counterPath, numShards) {
   // Store metadata about the counter
@@ -214,27 +214,42 @@ For the best of both worlds, you can use a Cloud Function that listens to shard 
 
 ```javascript
 // Cloud Function that maintains a rollup total whenever a shard changes
-// This means reading the total is always a single document read
-const functions = require('firebase-functions');
-const admin = require('firebase-admin');
-admin.initializeApp();
+// This means reading the total is a single document read
+const { onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { initializeApp } = require('firebase-admin/app');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
-exports.updateCounterRollup = functions.firestore
-  .document('counters/{counterId}/shards/{shardId}')
-  .onWrite(async (change, context) => {
-    const counterId = context.params.counterId;
-    const counterRef = admin.firestore().collection('counters').doc(counterId);
+initializeApp();
+const db = getFirestore();
+
+exports.updateCounterRollup = onDocumentWritten(
+  'counters/{counterId}/shards/{shardId}',
+  async (event) => {
+    const counterId = event.params.counterId;
+    const counterRef = db.collection('counters').doc(counterId);
+    const eventRef = counterRef.collection('_rollupEvents').doc(event.id);
 
     // Calculate the difference
-    const oldCount = change.before.exists ? change.before.data().count : 0;
-    const newCount = change.after.exists ? change.after.data().count : 0;
+    const oldCount = event.data.before.exists ? event.data.before.data().count : 0;
+    const newCount = event.data.after.exists ? event.data.after.data().count : 0;
     const diff = newCount - oldCount;
 
-    // Update the rollup total atomically
-    await counterRef.update({
-      total: admin.firestore.FieldValue.increment(diff)
+    // Firestore triggers are delivered at least once, so make the rollup idempotent.
+    await db.runTransaction(async (transaction) => {
+      const eventDoc = await transaction.get(eventRef);
+      if (eventDoc.exists) {
+        return;
+      }
+
+      transaction.update(counterRef, {
+        total: FieldValue.increment(diff)
+      });
+      transaction.set(eventRef, {
+        processedAt: FieldValue.serverTimestamp()
+      });
     });
-  });
+  }
+);
 ```
 
 Now reading the total is just:
@@ -247,7 +262,7 @@ const total = counterDoc.data().total;
 
 ## Choosing the Right Number of Shards
 
-The number of shards determines your maximum write throughput. Each shard can handle about 1 write per second sustained. So 10 shards gives you 10 writes per second, 50 shards gives you 50.
+The number of shards determines your maximum write throughput. Each shard is still a single document with a practical sustained write-rate limit, so 10 shards gives you about 10x the throughput of one counter document, and 50 shards gives you about 50x.
 
 But more shards means more documents to read when summing (unless you use the rollup pattern). There is also a cost consideration - each shard read is a billed document read.
 
@@ -258,6 +273,8 @@ A good starting point is to estimate your peak writes per second and add a 2x bu
 Distributed counters are not limited to incrementing. You can decrement the same way.
 
 ```javascript
+import { doc, writeBatch } from 'firebase/firestore';
+
 // Decrement by passing a negative value
 await viewCounter.increment(-1);
 
