@@ -30,7 +30,7 @@ Start with a basic environment using the gcloud CLI:
 
 gcloud composer environments create my-composer3-env \
   --location=us-central1 \
-  --image-version=composer-3-airflow-2.9.3 \
+  --image-version=composer-3-airflow-2.11.1-build.5 \
   --environment-size=small
 ```
 
@@ -38,13 +38,13 @@ The `--environment-size` flag accepts `small`, `medium`, or `large`, which contr
 
 ## Step 2: Configure Airflow Properties
 
-Airflow has hundreds of configuration options. You can override any of them when creating the environment. Here are the most commonly customized settings:
+Airflow has hundreds of configuration options. You can override many of the supported options when creating the environment, although some options are blocked or limited in Composer. Here are the most commonly customized settings:
 
 ```bash
 # Create an environment with custom Airflow configuration overrides
 gcloud composer environments create prod-composer3 \
   --location=us-central1 \
-  --image-version=composer-3-airflow-2.9.3 \
+  --image-version=composer-3-airflow-2.11.1-build.5 \
   --environment-size=medium \
   --airflow-configs="\
 core-dags_are_paused_at_creation=True,\
@@ -76,7 +76,7 @@ gcloud composer environments update my-composer3-env \
   --update-airflow-configs="\
 core-parallelism=64,\
 core-max_active_tasks_per_dag=32,\
-scheduler-min_file_process_interval=15"
+scheduler-min_file_process_interval=30"
 ```
 
 To remove a configuration override and revert to the default:
@@ -145,7 +145,7 @@ For production environments, you typically want private IP networking:
 # Create a Composer 3 environment with private IP
 gcloud composer environments create private-composer3 \
   --location=us-central1 \
-  --image-version=composer-3-airflow-2.9.3 \
+  --image-version=composer-3-airflow-2.11.1-build.5 \
   --environment-size=medium \
   --network=my-vpc \
   --subnetwork=my-subnet \
@@ -159,8 +159,8 @@ If you need to restrict access to the Airflow web server:
 # Configure web server access controls
 gcloud composer environments update private-composer3 \
   --location=us-central1 \
-  --web-server-allow-ip="description=Office,ip_range=203.0.113.0/24" \
-  --web-server-allow-ip="description=VPN,ip_range=198.51.100.0/24"
+  --update-web-server-allow-ip="description=Office,ip_range=203.0.113.0/24" \
+  --update-web-server-allow-ip="description=VPN,ip_range=198.51.100.0/24"
 ```
 
 ## Step 7: Configure Email and Alerting
@@ -176,21 +176,22 @@ smtp-smtp_host=smtp.sendgrid.net,\
 smtp-smtp_port=587,\
 smtp-smtp_starttls=True,\
 smtp-smtp_user=apikey,\
-smtp-smtp_mail_from=airflow@mycompany.com"
+smtp-smtp_mail_from=airflow@mycompany.com,\
+email-email_backend=airflow.utils.email.send_email_smtp"
 ```
 
 Store the SMTP password as a Secret:
 
 ```bash
 # Store SMTP password in Secret Manager
-echo -n "your-smtp-password" | gcloud secrets create airflow-smtp-password \
+echo -n "your-smtp-password" | gcloud beta secrets create airflow-config-smtp-password \
   --data-file=- \
   --replication-policy=automatic
 
 # Configure Composer to use the secret
 gcloud composer environments update my-composer3-env \
   --location=us-central1 \
-  --update-airflow-configs="smtp-smtp_password_secret=projects/my-project/secrets/airflow-smtp-password/versions/latest"
+  --update-airflow-configs="smtp-smtp_password_secret=smtp-password"
 ```
 
 ## Step 8: Set Up Maintenance Windows
@@ -201,8 +202,8 @@ Define when Composer can perform maintenance operations to avoid disrupting crit
 # Configure a maintenance window (Sundays 2-6 AM UTC)
 gcloud composer environments update my-composer3-env \
   --location=us-central1 \
-  --maintenance-window-start="2025-01-05T02:00:00Z" \
-  --maintenance-window-end="2025-01-05T06:00:00Z" \
+  --maintenance-window-start="2026-06-07T02:00:00Z" \
+  --maintenance-window-end="2026-06-07T06:00:00Z" \
   --maintenance-window-recurrence="FREQ=WEEKLY;BYDAY=SU"
 ```
 
