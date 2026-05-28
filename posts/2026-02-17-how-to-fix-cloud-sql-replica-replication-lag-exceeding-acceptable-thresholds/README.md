@@ -19,24 +19,27 @@ Replication lag is the delay between when a write happens on the primary instanc
 Start by measuring the actual lag.
 
 ```bash
-# Check replica status and lag using gcloud
+# Check replica configuration using gcloud
 
 gcloud sql instances describe my-replica \
     --project=my-project \
     --format="json(replicaConfiguration, state, settings.databaseFlags)"
 ```
 
+Use the Cloud SQL `replica_lag` metric in Cloud Monitoring to see the current lag in seconds.
+
 For MySQL replicas, connect and check directly:
 
 ```sql
 -- Check replication status on a MySQL replica
-SHOW SLAVE STATUS\G
+SHOW REPLICA STATUS\G
 
 -- Key fields to look at:
--- Seconds_Behind_Master: current lag in seconds
--- Slave_IO_Running: should be Yes
--- Slave_SQL_Running: should be Yes
--- Last_Error: any replication errors
+-- Seconds_Behind_Source: current lag in seconds
+-- Replica_IO_Running: should be Yes
+-- Replica_SQL_Running: should be Yes
+-- Last_SQL_Error: any SQL thread replication errors
+-- Last_IO_Error: any I/O thread replication errors
 ```
 
 For PostgreSQL replicas:
@@ -93,7 +96,7 @@ WHERE state != 'idle'
 ORDER BY duration DESC;
 ```
 
-### 3. Missing Indexes on Replica
+### 3. Missing Primary Keys or Indexes
 
 For row-based replication (MySQL default), the replica needs to find and update individual rows. Without proper indexes, every update requires a full table scan on the replica.
 
@@ -177,18 +180,26 @@ MySQL supports parallel replication where multiple threads apply changes concurr
 ```bash
 # Enable parallel replication on the replica
 gcloud sql instances patch my-replica \
-    --database-flags=slave_parallel_workers=8,slave_parallel_type=LOGICAL_CLOCK \
+    --no-enable-database-replication \
+    --project=my-project
+
+gcloud sql instances patch my-replica \
+    --database-flags=replica_parallel_workers=8,replica_parallel_type=LOGICAL_CLOCK \
+    --project=my-project
+
+gcloud sql instances patch my-replica \
+    --enable-database-replication \
     --project=my-project
 ```
 
 ### Solution 4: Tune PostgreSQL Replication Settings
 
-For PostgreSQL replicas, adjust WAL-related settings:
+For PostgreSQL replicas, adjust standby delay settings so conflicting read queries are canceled instead of blocking WAL replay indefinitely:
 
 ```bash
-# Increase WAL receiver and replay performance
+# Cancel conflicting standby queries after 30 seconds
 gcloud sql instances patch my-replica \
-    --database-flags=max_standby_streaming_delay=30s,wal_receiver_timeout=60s \
+    --database-flags=max_standby_streaming_delay=30000,max_standby_archive_delay=30000 \
     --project=my-project
 ```
 
@@ -202,8 +213,7 @@ gcloud alpha monitoring policies create \
     --display-name="Cloud SQL Replication Lag Alert" \
     --condition-display-name="Replication lag > 60s" \
     --condition-filter='resource.type="cloudsql_database" AND metric.type="cloudsql.googleapis.com/database/replication/replica_lag"' \
-    --condition-threshold-value=60 \
-    --condition-threshold-comparison=COMPARISON_GT \
+    --if="> 60" \
     --duration="300s" \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
