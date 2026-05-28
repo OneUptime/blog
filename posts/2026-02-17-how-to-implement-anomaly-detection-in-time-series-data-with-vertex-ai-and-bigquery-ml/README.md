@@ -54,9 +54,7 @@ OPTIONS(
     -- Decompose the series to handle trend and seasonality
     decompose_time_series = TRUE,
     -- Set the holiday region for calendar effects
-    holiday_region = 'US',
-    -- Confidence level for anomaly bounds
-    confidence_level = 0.95
+    holiday_region = 'US'
 ) AS
 SELECT
     minute_timestamp,
@@ -70,30 +68,15 @@ WHERE metric_name = 'api_response_time_ms'
 
 ```sql
 -- Detect anomalies in the most recent data
-SELECT
-    *,
-    -- Flag points outside the prediction interval as anomalies
-    CASE
-        WHEN actual_value > upper_bound THEN 'HIGH_ANOMALY'
-        WHEN actual_value < lower_bound THEN 'LOW_ANOMALY'
-        ELSE 'NORMAL'
-    END AS anomaly_status,
-    -- Calculate how far outside the bounds the anomaly is
-    CASE
-        WHEN actual_value > upper_bound
-            THEN ROUND((actual_value - upper_bound) / (upper_bound - predicted_value), 2)
-        WHEN actual_value < lower_bound
-            THEN ROUND((lower_bound - actual_value) / (predicted_value - lower_bound), 2)
-        ELSE 0
-    END AS anomaly_severity
-FROM (
+WITH detected AS (
     SELECT
         minute_timestamp,
         metric_name,
         avg_value AS actual_value,
-        forecast_value AS predicted_value,
-        prediction_interval_lower_bound AS lower_bound,
-        prediction_interval_upper_bound AS upper_bound
+        lower_bound,
+        upper_bound,
+        anomaly_probability,
+        is_anomaly
     FROM ML.DETECT_ANOMALIES(
         MODEL `your-project.monitoring.response_time_model`,
         STRUCT(0.95 AS anomaly_prob_threshold),
@@ -106,7 +89,22 @@ FROM (
         )
     )
 )
-WHERE anomaly_status != 'NORMAL'
+SELECT
+    *,
+    CASE
+        WHEN actual_value > upper_bound THEN 'HIGH_ANOMALY'
+        WHEN actual_value < lower_bound THEN 'LOW_ANOMALY'
+        ELSE 'NORMAL'
+    END AS anomaly_status,
+    CASE
+        WHEN actual_value > upper_bound
+            THEN ROUND((actual_value - upper_bound) / NULLIF(upper_bound - lower_bound, 0), 2)
+        WHEN actual_value < lower_bound
+            THEN ROUND((lower_bound - actual_value) / NULLIF(upper_bound - lower_bound, 0), 2)
+        ELSE 0
+    END AS anomaly_severity
+FROM detected
+WHERE is_anomaly
 ORDER BY minute_timestamp DESC
 ```
 
@@ -115,7 +113,7 @@ ORDER BY minute_timestamp DESC
 For detecting anomalies across multiple metrics simultaneously:
 
 ```sql
--- Train separate models for each metric, then combine results
+-- Train one model that fits a separate time series for each metric
 CREATE OR REPLACE MODEL `your-project.monitoring.multi_metric_model`
 OPTIONS(
     model_type = 'ARIMA_PLUS',
@@ -123,8 +121,7 @@ OPTIONS(
     time_series_data_col = 'avg_value',
     time_series_id_col = 'metric_name',
     auto_arima = TRUE,
-    decompose_time_series = TRUE,
-    confidence_level = 0.99
+    decompose_time_series = TRUE
 ) AS
 SELECT
     minute_timestamp,
@@ -147,9 +144,12 @@ For more complex anomaly patterns, build a custom model on Vertex AI:
 ```python
 import vertexai
 from google.cloud import bigquery
+from google.cloud import storage
 from google.cloud import aiplatform
 import numpy as np
 import pandas as pd
+from pathlib import Path
+import tempfile
 from tensorflow import keras
 
 def build_autoencoder_model(sequence_length, num_features):
@@ -182,28 +182,34 @@ def prepare_training_data(project_id, metric_names, lookback_days=60):
     bq_client = bigquery.Client(project=project_id)
 
     # Fetch clean historical data (known normal periods)
-    metrics_str = ", ".join([f"'{m}'" for m in metric_names])
-    query = f"""
+    query = """
         SELECT
             minute_timestamp,
             metric_name,
             avg_value
         FROM `{project_id}.monitoring.clean_metrics`
-        WHERE metric_name IN ({metrics_str})
+        WHERE metric_name IN UNNEST(@metric_names)
           AND minute_timestamp > TIMESTAMP_SUB(
-              CURRENT_TIMESTAMP(), INTERVAL {lookback_days} DAY
+              CURRENT_TIMESTAMP(), INTERVAL @lookback_days DAY
           )
         ORDER BY minute_timestamp
-    """
+    """.format(project_id=project_id)
 
-    df = bq_client.query(query).to_dataframe()
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ArrayQueryParameter("metric_names", "STRING", metric_names),
+            bigquery.ScalarQueryParameter("lookback_days", "INT64", lookback_days),
+        ]
+    )
+
+    df = bq_client.query(query, job_config=job_config).to_dataframe()
 
     # Pivot so each metric is a column
     pivoted = df.pivot_table(
         index='minute_timestamp',
         columns='metric_name',
         values='avg_value'
-    ).fillna(method='ffill')
+    ).ffill()
 
     # Normalize the data
     mean = pivoted.mean()
@@ -219,7 +225,21 @@ def prepare_training_data(project_id, metric_names, lookback_days=60):
 
     return np.array(sequences), mean, std
 
-def train_and_deploy(project_id):
+def upload_directory_to_gcs(local_dir, gcs_uri):
+    """Upload a local SavedModel directory to Cloud Storage"""
+    if not gcs_uri.startswith("gs://"):
+        raise ValueError("gcs_uri must start with gs://")
+
+    bucket_name, prefix = gcs_uri[5:].split("/", 1)
+    bucket = storage.Client().bucket(bucket_name)
+
+    for local_path in Path(local_dir).rglob("*"):
+        if local_path.is_file():
+            relative_path = local_path.relative_to(local_dir)
+            blob = bucket.blob(f"{prefix.rstrip('/')}/{relative_path}")
+            blob.upload_from_filename(local_path)
+
+def train_and_deploy(project_id, model_artifact_uri):
     """Train the anomaly detection model and deploy to Vertex AI"""
     metric_names = [
         'api_response_time_ms',
@@ -254,13 +274,16 @@ def train_and_deploy(project_id):
 
     print(f"Anomaly threshold: {threshold}")
 
-    # Save and deploy to Vertex AI
-    model.save("/tmp/anomaly_model")
+    # Export a TensorFlow SavedModel and upload it to Cloud Storage for Vertex AI
+    with tempfile.TemporaryDirectory() as tmpdir:
+        export_dir = f"{tmpdir}/anomaly_model"
+        model.export(export_dir)
+        upload_directory_to_gcs(export_dir, model_artifact_uri)
 
     aiplatform.init(project=project_id, location="us-central1")
     vertex_model = aiplatform.Model.upload(
         display_name="time-series-anomaly-detector",
-        artifact_uri="/tmp/anomaly_model",
+        artifact_uri=model_artifact_uri,
         serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-12:latest",
     )
 
@@ -279,14 +302,12 @@ Set up a streaming pipeline that detects anomalies as data arrives:
 
 ```python
 from google.cloud import pubsub_v1
+import base64
 import json
 
 def detect_anomalies_realtime(event, context):
     """Cloud Function triggered by new metric data"""
-    message = json.loads(
-        event["data"].decode("utf-8") if isinstance(event["data"], bytes)
-        else event["data"]
-    )
+    message = json.loads(base64.b64decode(event["data"]).decode("utf-8"))
 
     metric_name = message["metric_name"]
     value = message["value"]
@@ -308,7 +329,7 @@ def detect_anomalies_realtime(event, context):
                 "metric": metric_name,
                 "value": value,
                 "expected_range": bq_anomaly["expected_range"],
-                "severity": max(
+                "severity_score": max(
                     bq_anomaly["severity"],
                     vertex_anomaly["severity"]
                 ),
@@ -330,12 +351,12 @@ def publish_alert(alert):
     publisher.publish(
         topic,
         json.dumps(alert).encode("utf-8"),
-        severity=alert["severity"],
+        severity_score=str(alert["severity_score"]),
         metric=alert["metric"],
     )
 
     # For high severity, also trigger immediate notification
-    if alert["severity"] == "critical":
+    if alert["severity_score"] >= 3:
         send_pagerduty_alert(alert)
 ```
 
