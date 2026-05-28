@@ -35,7 +35,7 @@ Make sure you have the network firewall policy API enabled:
 ```bash
 # Enable the required API for network firewall policies
 
-gcloud services enable networksecurity.googleapis.com
+gcloud services enable compute.googleapis.com
 ```
 
 ## Creating a Global Network Firewall Policy
@@ -96,7 +96,7 @@ gcloud compute network-firewall-policies rules create 1000 \
     --dest-fqdns="api.example.com,auth.example.com" \
     --description="Allow traffic to our external APIs"
 
-# Allow DNS resolution (required for FQDN rules to work)
+# Allow DNS resolution for workloads that connect by domain name
 gcloud compute network-firewall-policies rules create 1500 \
     --firewall-policy=fqdn-policy \
     --global-firewall-policy \
@@ -127,7 +127,7 @@ gcloud compute network-firewall-policies rules create 2000 \
     --description="Default deny all egress"
 ```
 
-This setup ensures your VMs can only connect to explicitly approved external services. The DNS allow rule is essential because FQDN resolution needs DNS queries to work.
+This setup ensures your VMs can only connect to explicitly approved external services. The DNS allow rule is still important for workloads that connect by domain name, even though Cloud NGFW resolves FQDN objects separately when it programs the firewall rule.
 
 ## Adding Ingress Rules with FQDN Sources
 
@@ -145,7 +145,7 @@ gcloud compute network-firewall-policies rules create 500 \
     --description="Allow webhook traffic from partner API"
 ```
 
-Keep in mind that source FQDN matching on ingress relies on reverse DNS, which is less reliable than destination matching on egress. Use it carefully and prefer IP-based rules for ingress when possible.
+Keep in mind that source FQDN matching on ingress is still enforced against IP addresses resolved from the FQDN. If multiple domains resolve to the same IP address, traffic from that IP address can match the higher-priority rule. Use it carefully and prefer IP-based rules for ingress when possible.
 
 ## Associating the Policy with Your VPC
 
@@ -240,11 +240,10 @@ resource "google_compute_network_firewall_policy_association" "default" {
 
 ## Monitoring and Troubleshooting
 
-Check which IPs are resolved for your FQDN objects:
+Check the effective firewall rules on a VM network interface:
 
 ```bash
 # View the effective firewall rules on a specific instance
-# This shows the resolved IPs for FQDN objects
 gcloud compute instances network-interfaces get-effective-firewalls my-instance \
     --zone=us-central1-a
 
@@ -268,7 +267,7 @@ gcloud compute network-firewall-policies rules update 1000 \
 
 **Resolution latency.** FQDN objects rely on DNS resolution, which introduces a small delay when IPs change. If a domain's IP changes and your firewall has not refreshed yet, traffic may be briefly blocked or allowed incorrectly.
 
-**Wildcard support.** You can use wildcard FQDNs like `*.googleapis.com` to match all subdomains. This is useful for cloud services that use many subdomains.
+**Wildcard support.** Cloud NGFW FQDN objects do not support wildcard characters such as `*.googleapis.com`. List the specific FQDNs you need, or use IP addresses or address groups when domain-based matching is not a good fit.
 
 **Maximum FQDNs per rule.** Each rule can reference up to 100 FQDN objects. If you need more, split them across multiple rules.
 
