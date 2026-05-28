@@ -10,13 +10,13 @@ Description: Learn how to configure redundant VLAN attachments across different 
 
 If you are running production workloads over Cloud Interconnect in GCP, a single VLAN attachment is a single point of failure. Google designed the Interconnect infrastructure with Edge Availability Domains to provide physical redundancy, but you need to set up your VLAN attachments correctly to take advantage of it.
 
-In this post, I will explain what Edge Availability Domains are, why they matter, and how to configure your VLAN attachments to get the full 99.99% availability SLA.
+In this post, I will explain what Edge Availability Domains are, why they matter, and how to configure a redundant pair of VLAN attachments. This two-attachment pattern is the basis for the 99.9% availability topology; the full 99.99% production topology requires two such pairs across two Google Cloud regions and two metros.
 
 ## What Are Edge Availability Domains?
 
-Each Cloud Interconnect location has multiple Edge Availability Domains. These are physically separate failure domains within the same metro area. They have independent power, cooling, and networking infrastructure. If one domain has an outage, the other domain keeps running.
+Each Cloud Interconnect metro has two Edge Availability Domains. These are independent maintenance domains within the same metro area. If one domain has a maintenance event or outage, the other domain keeps running.
 
-Think of them like availability zones for interconnect infrastructure. Google typically has two domains per metro (named `availability-domain-1` and `availability-domain-2`), though some metros may have more.
+Think of them like availability zones for interconnect infrastructure. For Dedicated Interconnect location names, the domain is shown as `zone1` or `zone2`, such as `iad-zone1-1` and `iad-zone2-1`. For Partner Interconnect VLAN attachments, the gcloud flag values are `availability-domain-1` and `availability-domain-2`.
 
 ```mermaid
 graph TB
@@ -42,16 +42,16 @@ graph TB
 
 ## SLA Requirements
 
-Google defines clear rules for what qualifies for the 99.99% SLA:
+Google defines clear rules for what qualifies for the Cloud Interconnect SLA:
 
 | Configuration | SLA |
 |--------------|-----|
 | Single attachment, single domain | No SLA |
-| Two attachments, same domain | 99.9% |
-| Two attachments, different domains | 99.99% |
-| Four attachments, two per domain | 99.99% (with on-prem redundancy) |
+| Two attachments, same domain | No SLA |
+| Two attachments, different domains in one region and one metro | 99.9% |
+| Four attachments across two regions and two metros, with each metro pair in different domains | 99.99% |
 
-The critical point: **both Edge Availability Domains must have at least one active attachment** for the 99.99% SLA.
+The critical point: **both Edge Availability Domains must have at least one active attachment** for the redundant pair to qualify. For the 99.99% production SLA, you need two redundant pairs in separate Google Cloud regions and metros.
 
 ## Step 1: Identify Available Edge Availability Domains
 
@@ -92,7 +92,7 @@ The location names typically indicate the domain. For example, `iad-zone1-1` is 
 
 ## Step 3: Create Cloud Router
 
-Create a single Cloud Router that both VLAN attachments will connect to. Using the same Cloud Router enables automatic failover through ECMP:
+Create a single Cloud Router that both VLAN attachments in this region will connect to. Using the same Cloud Router enables automatic failover through ECMP:
 
 ```bash
 # Create Cloud Router for both attachments
@@ -101,6 +101,8 @@ gcloud compute routers create ic-router \
     --region=us-east4 \
     --asn=16550
 ```
+
+For a full 99.99% production topology, repeat this pattern with another Cloud Router and another pair of VLAN attachments in a second Google Cloud region and metro. The VPC network must use global dynamic routing so routes can fail over across regions.
 
 ## Step 4: Create VLAN Attachments in Each Domain
 
@@ -126,7 +128,7 @@ gcloud compute interconnects attachments dedicated create attachment-domain2 \
     --description="Redundant attachment - Edge Domain 2"
 ```
 
-For Partner Interconnect, specify the domain explicitly:
+For Partner Interconnect, specify the domain explicitly. Google automatically adds the Cloud Router interface and BGP peer for Partner Interconnect attachments:
 
 ```bash
 # Partner attachment in Domain 1
@@ -144,9 +146,17 @@ gcloud compute interconnects attachments partner create partner-domain2 \
 
 ## Step 5: Configure BGP Sessions
 
-Each attachment needs its own BGP session:
+Each Dedicated Interconnect attachment needs its own BGP session. After creating the attachments, describe each one and use the allocated `cloudRouterIpAddress`, `customerRouterIpAddress`, and `vlanTag8021q` values in your router configuration. The IP addresses in the commands below are examples; replace them with the values from your attachments:
 
 ```bash
+gcloud compute interconnects attachments describe attachment-domain1 \
+    --region=us-east4 \
+    --format="yaml(cloudRouterIpAddress, customerRouterIpAddress, vlanTag8021q)"
+
+gcloud compute interconnects attachments describe attachment-domain2 \
+    --region=us-east4 \
+    --format="yaml(cloudRouterIpAddress, customerRouterIpAddress, vlanTag8021q)"
+
 # BGP for Domain 1 attachment
 gcloud compute routers add-interface ic-router \
     --interface-name=if-domain1 \
@@ -204,7 +214,7 @@ router bgp 65001
 
 ## Step 7: Verify Redundancy Status
 
-GCP provides a direct way to check if your configuration meets the SLA requirements:
+GCP provides a direct way to inspect the physical Interconnect links:
 
 ```bash
 # Check interconnect diagnostics
@@ -271,14 +281,14 @@ Cloud Router respects MED values, so traffic from GCP to on-premises will prefer
 
 ## Monitoring Redundancy Health
 
-Set up alerts for BGP session drops so you know immediately when you lose redundancy:
+Set up alerts for Interconnect operational status changes, and alert separately on Cloud Router BGP peer status so you know immediately when you lose redundancy:
 
 ```bash
-# Create alert for BGP peer down
+# Create alert for Interconnect down
 gcloud alpha monitoring policies create \
-    --display-name="Interconnect BGP Down" \
-    --condition-display-name="BGP peer not established" \
-    --condition-filter='metric.type="compute.googleapis.com/interconnect/link/operational_status" AND resource.type="interconnect"' \
+    --display-name="Interconnect Down" \
+    --condition-display-name="Interconnect not operational" \
+    --condition-filter='metric.type="interconnect.googleapis.com/network/interconnect/operational" AND resource.type="interconnect"' \
     --condition-comparison=COMPARISON_LT \
     --condition-threshold-value=1 \
     --condition-duration=60s \
@@ -289,4 +299,4 @@ Also monitor bandwidth utilization on each attachment. If one attachment fails a
 
 ## Wrapping Up
 
-Configuring redundant VLAN attachments across Edge Availability Domains is not optional for production Cloud Interconnect deployments. The setup requires attachments in at least two different domains, each with active BGP sessions. Cloud Router handles failover automatically through BGP convergence, typically within seconds. Always verify your redundancy status after initial setup and monitor BGP health continuously. Losing redundancy silently is worse than losing connectivity loudly - at least with the latter, you know there is a problem.
+Configuring redundant VLAN attachments across Edge Availability Domains is not optional for resilient Cloud Interconnect deployments. The setup requires attachments in at least two different domains, each with active BGP sessions. Cloud Router handles failover automatically through BGP convergence, typically within seconds. For the full 99.99% production SLA, deploy the same pattern across two Google Cloud regions and two metros. Always verify your redundancy status after initial setup and monitor BGP health continuously. Losing redundancy silently is worse than losing connectivity loudly - at least with the latter, you know there is a problem.
