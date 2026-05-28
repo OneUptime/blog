@@ -8,11 +8,17 @@ Description: Understand the relationship between Firebase Cloud Storage and GCP 
 
 ---
 
-Here is something that confuses a lot of developers when they first start with Firebase: Firebase Cloud Storage and Google Cloud Storage are the same thing. When you create a Firebase project and use Cloud Storage through the Firebase SDK, you are using a regular Google Cloud Storage bucket. The Firebase SDK just provides a friendlier client-side API with built-in security rules integration. This means you can access the same bucket from both the Firebase client SDK and the GCP server-side SDK, and that opens up a lot of possibilities.
+Here is something that confuses a lot of developers when they first start with Firebase: Firebase Cloud Storage is built on Google Cloud Storage. When you create a Firebase project and use Cloud Storage through the Firebase SDK, you are using a regular Google Cloud Storage bucket. The Firebase SDK just provides a friendlier client-side API with built-in security rules integration. This means you can access the same bucket from both the Firebase client SDK and the GCP server-side SDK, and that opens up a lot of possibilities.
 
 ## The Default Firebase Storage Bucket
 
 When you enable Cloud Storage in Firebase, it creates a default bucket named after your project:
+
+```text
+YOUR_PROJECT_ID.firebasestorage.app
+```
+
+Older Firebase projects may still use the legacy default bucket name:
 
 ```text
 YOUR_PROJECT_ID.appspot.com
@@ -114,43 +120,48 @@ This Cloud Function processes files that were uploaded through the Firebase clie
 
 ```typescript
 // functions/src/process-upload.ts
-import * as functions from "firebase-functions";
+import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { Storage } from "@google-cloud/storage";
 
 // The GCP Storage client connects to the same buckets
 const storage = new Storage();
 
-export const processUpload = functions.storage
-  .object()
-  .onFinalize(async (object) => {
-    const bucket = storage.bucket(object.bucket);
-    const file = bucket.file(object.name!);
+export const processUpload = onObjectFinalized(async (event) => {
+  const object = event.data;
 
-    console.log(`Processing uploaded file: ${object.name}`);
-    console.log(`Content type: ${object.contentType}`);
-    console.log(`Size: ${object.size} bytes`);
+  if (!object.name) {
+    console.log("No file name found in event");
+    return;
+  }
 
-    // Read the file metadata (same metadata set by Firebase SDK)
-    const [metadata] = await file.getMetadata();
-    console.log("Custom metadata:", metadata.metadata);
+  const bucket = storage.bucket(object.bucket);
+  const file = bucket.file(object.name);
 
-    // Download the file for processing
-    const [contents] = await file.download();
+  console.log(`Processing uploaded file: ${object.name}`);
+  console.log(`Content type: ${object.contentType}`);
+  console.log(`Size: ${object.size} bytes`);
 
-    // Process the file (example: validate a CSV)
-    if (object.contentType === "text/csv") {
-      const rows = contents.toString().split("\n");
-      console.log(`CSV has ${rows.length} rows`);
+  // Read the file metadata (same metadata set by Firebase SDK)
+  const [metadata] = await file.getMetadata();
+  console.log("Custom metadata:", metadata.metadata);
 
-      // Write processed results to another location
-      const resultFile = bucket.file(`processed/${object.name}.json`);
-      await resultFile.save(JSON.stringify({
-        originalFile: object.name,
-        rowCount: rows.length,
-        processedAt: new Date().toISOString()
-      }));
-    }
-  });
+  // Download the file for processing
+  const [contents] = await file.download();
+
+  // Process the file (example: validate a CSV)
+  if (object.contentType === "text/csv") {
+    const rows = contents.toString().split("\n");
+    console.log(`CSV has ${rows.length} rows`);
+
+    // Write processed results to another location
+    const resultFile = bucket.file(`processed/${object.name}.json`);
+    await resultFile.save(JSON.stringify({
+      originalFile: object.name,
+      rowCount: rows.length,
+      processedAt: new Date().toISOString()
+    }));
+  }
+});
 ```
 
 ## Configuring Firebase Security Rules for Storage
@@ -163,6 +174,15 @@ Here are comprehensive security rules for a multi-bucket setup:
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    function isTeamMember(teamId) {
+      return request.auth.token.teamIds != null
+             && request.auth.token.teamIds.hasAny([teamId]);
+    }
+
+    function isTeamAdmin(teamId) {
+      return request.auth.token.adminTeamIds != null
+             && request.auth.token.adminTeamIds.hasAny([teamId]);
+    }
 
     // User profile images - users can only manage their own
     match /avatars/{userId}/{fileName} {
@@ -205,10 +225,10 @@ These commands demonstrate common administrative tasks:
 
 ```bash
 # List all files in a specific path
-gsutil ls -la gs://YOUR_PROJECT_ID.appspot.com/uploads/
+gsutil ls -la gs://YOUR_PROJECT_ID.firebasestorage.app/uploads/
 
 # Copy files between buckets
-gsutil -m cp -r gs://YOUR_PROJECT_ID.appspot.com/uploads/* \
+gsutil -m cp -r gs://YOUR_PROJECT_ID.firebasestorage.app/uploads/* \
   gs://YOUR_PROJECT_ID-backup/uploads/
 
 # Set lifecycle rules to auto-delete old temp files
@@ -234,10 +254,10 @@ cat > lifecycle.json << 'EOF'
   }
 }
 EOF
-gsutil lifecycle set lifecycle.json gs://YOUR_PROJECT_ID.appspot.com
+gsutil lifecycle set lifecycle.json gs://YOUR_PROJECT_ID.firebasestorage.app
 
 # Enable versioning for the bucket
-gsutil versioning set on gs://YOUR_PROJECT_ID.appspot.com
+gsutil versioning set on gs://YOUR_PROJECT_ID.firebasestorage.app
 
 # Set CORS configuration for the bucket
 cat > cors.json << 'EOF'
@@ -250,7 +270,7 @@ cat > cors.json << 'EOF'
   }
 ]
 EOF
-gsutil cors set cors.json gs://YOUR_PROJECT_ID.appspot.com
+gsutil cors set cors.json gs://YOUR_PROJECT_ID.firebasestorage.app
 ```
 
 ## Generating Signed URLs for Temporary Access
@@ -261,25 +281,25 @@ This Cloud Function generates signed URLs for files:
 
 ```typescript
 // functions/src/signed-url.ts
-import * as functions from "firebase-functions";
+import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { Storage } from "@google-cloud/storage";
 
 const storage = new Storage();
 
-export const getSignedUrl = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError("unauthenticated", "Must be logged in");
+export const getSignedUrl = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Must be logged in");
   }
 
-  const { filePath, action = "read" } = data;
+  const { filePath, action = "read" } = request.data;
 
-  const bucket = storage.bucket("YOUR_PROJECT_ID.appspot.com");
+  const bucket = storage.bucket("YOUR_PROJECT_ID.firebasestorage.app");
   const file = bucket.file(filePath);
 
   // Check if the file exists
   const [exists] = await file.exists();
   if (!exists) {
-    throw new functions.https.HttpsError("not-found", "File not found");
+    throw new HttpsError("not-found", "File not found");
   }
 
   // Generate a signed URL valid for 15 minutes
@@ -300,20 +320,26 @@ This function copies processed files from a staging bucket to a production bucke
 
 ```typescript
 // functions/src/promote-assets.ts
-export const promoteAsset = functions.https.onCall(async (data, context) => {
+import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { Storage } from "@google-cloud/storage";
+
+const storage = new Storage();
+
+export const promoteAsset = onCall(async (request) => {
   // Verify admin role
-  if (context.auth?.token.role !== "admin") {
-    throw new functions.https.HttpsError("permission-denied", "Admins only");
+  if (request.auth?.token.role !== "admin") {
+    throw new HttpsError("permission-denied", "Admins only");
   }
 
-  const { filePath } = data;
+  const { filePath } = request.data;
   const sourceBucket = storage.bucket("YOUR_PROJECT_ID-staging");
   const destBucket = storage.bucket("YOUR_PROJECT_ID-production");
 
   // Copy the file from staging to production
   await sourceBucket.file(filePath).copy(destBucket.file(filePath));
 
-  // Make the production copy publicly readable
+  // Make the production copy publicly readable. This requires fine-grained
+  // object ACLs; use IAM instead for buckets with uniform bucket-level access.
   await destBucket.file(filePath).makePublic();
 
   const publicUrl = `https://storage.googleapis.com/YOUR_PROJECT_ID-production/${filePath}`;
@@ -323,4 +349,4 @@ export const promoteAsset = functions.https.onCall(async (data, context) => {
 
 ## Summary
 
-Firebase Cloud Storage and GCP Cloud Storage are the same service viewed through different lenses. The Firebase SDK gives you client-side uploads with security rules, while the GCP SDK gives you server-side power with signed URLs, lifecycle management, and cross-bucket operations. Use them together - upload through Firebase on the client, process with GCP tools on the server, manage with gsutil for admin tasks. The data is always in the same place, just accessed through whichever API makes sense for the context.
+Firebase Cloud Storage is built on GCP Cloud Storage. The Firebase SDK gives you client-side uploads with security rules, while the GCP SDK gives you server-side power with signed URLs, lifecycle management, and cross-bucket operations. Use them together - upload through Firebase on the client, process with GCP tools on the server, manage with gsutil for admin tasks. The data is always in the same place, just accessed through whichever API makes sense for the context.
