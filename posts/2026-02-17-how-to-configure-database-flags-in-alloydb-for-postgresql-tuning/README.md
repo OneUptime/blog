@@ -68,17 +68,17 @@ SHOW work_mem;
 
 ### max_connections
 
-Controls the maximum number of concurrent connections. The default is typically 100, which is often not enough for production.
+Controls the maximum number of concurrent connections. In AlloyDB, the default is 1000.
 
 ```bash
-# Increase max connections for a busy application
+# Set max connections for a busy application
 gcloud alloydb instances update my-primary \
   --cluster=my-alloydb-cluster \
   --region=us-central1 \
   --database-flags=max_connections=500
 ```
 
-Keep in mind that each connection consumes memory (approximately `work_mem` per query). If you set max_connections very high, you also need sufficient memory. A better approach for high connection counts is to use a connection pooler like PgBouncer.
+Keep in mind that each connection consumes memory, and each query can use up to `work_mem` for each sort or hash operation. If you set max_connections very high, you also need sufficient memory. A better approach for high connection counts is to use a connection pooler like PgBouncer.
 
 ### idle_in_transaction_session_timeout
 
@@ -98,7 +98,7 @@ The value is in milliseconds. 300000 = 5 minutes.
 
 ### work_mem
 
-Controls the amount of memory used for sort operations and hash tables per query operation. The default is usually 4 MB, which is low for complex queries.
+Controls the amount of memory used for sort operations and hash tables per query operation. In AlloyDB, the default is `N MB`, where `N` is either 4 or the number of instance vCPUs, whichever is greater.
 
 ```bash
 # Increase work_mem for better sort and join performance
@@ -185,7 +185,7 @@ gcloud alloydb instances update my-primary \
 
 ### random_page_cost
 
-Controls the planner's estimate of the cost of a random disk page read. The default is 4.0, which is calibrated for spinning disks. Since AlloyDB uses SSDs, you should lower this:
+Controls the planner's estimate of the cost of a random disk page read. The PostgreSQL default is 4.0, which is calibrated for spinning disks. Since AlloyDB uses SSDs, you can consider lowering this:
 
 ```bash
 # Lower random_page_cost for SSD storage
@@ -225,16 +225,16 @@ gcloud alloydb instances update my-primary \
   --database-flags=google_columnar_engine.enabled=on
 ```
 
-### google_columnar_engine.memory_size_percentage
+### google_columnar_engine.memory_size_in_mb
 
 Controls how much instance memory goes to the columnar engine:
 
 ```bash
-# Allocate 25% of memory to the columnar engine
+# Allocate 8192 MiB of memory to the columnar engine
 gcloud alloydb instances update my-primary \
   --cluster=my-alloydb-cluster \
   --region=us-central1 \
-  --database-flags=google_columnar_engine.enabled=on,google_columnar_engine.memory_size_percentage=25
+  --database-flags=google_columnar_engine.enabled=on,google_columnar_engine.memory_size_in_mb=8192
 ```
 
 ## Recommended Flag Configurations
@@ -271,19 +271,19 @@ effective_cache_size=24GB,\
 random_page_cost=1.1,\
 default_statistics_target=500,\
 google_columnar_engine.enabled=on,\
-google_columnar_engine.memory_size_percentage=40
+google_columnar_engine.memory_size_in_mb=12288
 ```
 
 ## Resetting Flags to Defaults
 
-To reset all flags back to their defaults:
+To reset a flag back to its default with `gcloud`, run the update command with the remaining flags you want to keep. Any flag not included in `--database-flags` is reset to its default:
 
 ```bash
-# Clear all custom database flags
+# Keep only work_mem and reset previously set flags not listed here
 gcloud alloydb instances update my-primary \
   --cluster=my-alloydb-cluster \
   --region=us-central1 \
-  --clear-database-flags
+  --database-flags=work_mem=64MB
 ```
 
 ## Best Practices
