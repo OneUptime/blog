@@ -20,7 +20,7 @@ The backup and restore flow involves several steps:
 flowchart TD
     subgraph Backup Phase
         A[Backup Plan Triggered] --> B[Snapshot PersistentVolumes]
-        B --> C[Serialize K8s Resources to GCS]
+        B --> C[Store Kubernetes Resource Manifests]
         C --> D[Backup Complete]
     end
     subgraph Restore Phase
@@ -56,7 +56,9 @@ gcloud beta container backup-restore restores describe your-restore-name \
 ```
 
 Look at the `state` field and `stateReason`. Common states:
+- `CREATING` - restore resource created and restore job injected into the target cluster
 - `IN_PROGRESS` - still running
+- `VALIDATING` - restored Kubernetes resources are being validated
 - `SUCCEEDED` - completed successfully
 - `FAILED` - failed with an error
 - `DELETING` - being cleaned up
@@ -70,7 +72,7 @@ Volume snapshot errors are the most common restore failure. The backup creates d
 If the snapshot was deleted or is in a different project:
 
 ```bash
-# List available volume snapshots from the backup
+# List volume restore records for the failed restore
 gcloud beta container backup-restore volume-restores list \
   --restore=your-restore-name \
   --restore-plan=your-restore-plan \
@@ -108,7 +110,7 @@ gcloud container clusters describe target-cluster \
 
 ## Step 3 - Fix Permission Errors
 
-The Backup for GKE service agent needs specific permissions. Check and fix IAM bindings:
+The Backup for GKE service agent needs the Backup for GKE Service Agent role. Check and fix IAM bindings:
 
 ```bash
 # Find the Backup for GKE service agent
@@ -122,21 +124,19 @@ gcloud projects get-iam-policy your-project-id \
   --format="table(bindings.role)"
 ```
 
-The service agent needs these roles:
-- `roles/gkebackup.agent` on the project
-- `roles/compute.storageAdmin` for creating disks from snapshots
-- `roles/container.developer` for creating Kubernetes resources
+The service agent needs this role:
+- `roles/gkebackup.serviceAgent` on the project
 
 If permissions are missing:
 
 ```bash
-# Grant the required roles to the service agent
+# Grant the required role to the service agent
 gcloud projects add-iam-policy-binding your-project-id \
   --member="serviceAccount:${AGENT_EMAIL}" \
-  --role="roles/compute.storageAdmin"
+  --role="roles/gkebackup.serviceAgent"
 ```
 
-For cross-project restores (backup from project A, restore to project B), the service agent from project B needs access to project A's snapshots.
+For cross-project restores (backup from project A, restore to project B), configure a restore channel in the backup project and grant the documented cross-project Backup for GKE service-agent permissions.
 
 ## Step 4 - Fix Resource Conflicts
 
@@ -150,18 +150,22 @@ gcloud beta container backup-restore restore-plans describe your-restore-plan \
 ```
 
 Options:
-- `USE_EXISTING_VERSION` - keep the existing resource
-- `USE_BACKUP_VERSION` - overwrite with the backup version
+- `use-existing-version` - keep the existing resource
+- `use-backup-version` - overwrite with the backup version
 
 If you are restoring to a fresh cluster, conflicts should not be an issue. For restoring to an existing cluster:
 
-```yaml
+```bash
 # Restore plan that overwrites existing resources
-restoreConfig:
-  namespacedResourceRestoreMode: DELETE_AND_RESTORE
-  clusterResourceConflictPolicy: USE_BACKUP_VERSION
-  allNamespaces: true
-  volumeDataRestorePolicy: RESTORE_VOLUME_DATA_FROM_BACKUP
+gcloud beta container backup-restore restore-plans create your-restore-plan \
+  --location=us-central1 \
+  --backup-plan=projects/your-project-id/locations/us-central1/backupPlans/your-backup-plan \
+  --cluster=projects/your-project-id/locations/us-central1-a/clusters/target-cluster \
+  --namespaced-resource-restore-mode=delete-and-restore \
+  --all-namespaces \
+  --cluster-resource-conflict-policy=use-backup-version \
+  --cluster-resource-scope-all-group-kinds \
+  --volume-data-restore-policy=restore-volume-data-from-backup
 ```
 
 ## Step 5 - Fix Namespace Restoration Issues
@@ -197,18 +201,40 @@ kubectl get storageclass
 # You can find this in the PVC definitions from the backup
 ```
 
-Create the missing StorageClass or configure the restore plan to map StorageClasses:
+Create the missing StorageClass or configure the restore plan to transform StorageClasses:
 
 ```yaml
-# Restore plan with StorageClass substitution
-restoreConfig:
-  substitutionRules:
-  - targetJsonPath: ".spec.storageClassName"
-    originalValuePattern: "premium-rw"
-    newValue: "standard-rw"
+# transformation-rules.yaml
+transformationRules:
+- description: Change StorageClass in PVC from premium-rw to standard-rw
+  resourceFilter:
+    namespaces: []
+    jsonPath: ".spec[?(@.storageClassName == 'premium-rw')]"
+    groupKinds:
+    - resourceGroup: ""
+      resourceKind: PersistentVolumeClaim
+  fieldActions:
+  - op: REPLACE
+    path: "/spec/storageClassName"
+    value: "standard-rw"
 ```
 
-This replaces `premium-rw` with `standard-rw` in all restored PVCs, which is useful when restoring to a cluster with different storage options.
+Then include the file when you create the restore plan:
+
+```bash
+gcloud beta container backup-restore restore-plans create your-restore-plan \
+  --location=us-central1 \
+  --backup-plan=projects/your-project-id/locations/us-central1/backupPlans/your-backup-plan \
+  --cluster=projects/your-project-id/locations/us-central1-a/clusters/target-cluster \
+  --namespaced-resource-restore-mode=fail-on-conflict \
+  --all-namespaces \
+  --cluster-resource-conflict-policy=use-existing-version \
+  --cluster-resource-scope-selected-group-kinds=storage.k8s.io/StorageClass \
+  --volume-data-restore-policy=restore-volume-data-from-backup \
+  --transformation-rules-file=transformation-rules.yaml
+```
+
+This replaces `premium-rw` with `standard-rw` in restored PVCs, which is useful when restoring to a cluster with different storage options.
 
 ## Step 7 - Handle CRD Dependencies
 
@@ -250,7 +276,7 @@ gcloud beta container backup-restore volume-restores list \
   --restore=your-restore-name \
   --restore-plan=your-restore-plan \
   --location=us-central1 \
-  --format="table(name, state, stateReason, volumeType)"
+  --format="table(name, state, stateMessage, volumeType)"
 ```
 
 ## Step 9 - Validate After Restore
@@ -291,7 +317,7 @@ gcloud container clusters create restore-test \
 # Run a test restore to this cluster
 gcloud beta container backup-restore restores create test-restore \
   --restore-plan=test-restore-plan \
-  --backup="projects/your-project/locations/us-central1/backupPlans/your-plan/backups/latest" \
+  --backup="projects/your-project/locations/us-central1/backupPlans/your-plan/backups/your-backup-name" \
   --location=us-central1
 ```
 
@@ -305,7 +331,7 @@ When Backup for GKE restore fails:
 2. Verify volume snapshots exist and are accessible
 3. Check IAM permissions for the backup service agent
 4. Resolve resource naming conflicts with the right conflict policy
-5. Ensure StorageClasses match or configure substitution rules
+5. Ensure StorageClasses match or configure transformation rules
 6. Pre-install required CRDs in the target cluster
 7. Monitor volume restore progress individually
 8. Validate the restored workloads after completion
