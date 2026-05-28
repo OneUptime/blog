@@ -69,10 +69,12 @@ gcloud container binauthz policy export
 The policy YAML looks something like:
 
 ```yaml
+name: projects/your-project/policy
 admissionWhitelistPatterns:
-- namePattern: gcr.io/google_containers/*
 - namePattern: gcr.io/google-containers/*
-- namePattern: gke.gcr.io/*
+- namePattern: k8s.gcr.io/**
+- namePattern: gke.gcr.io/**
+globalPolicyEvaluationMode: ENABLE
 clusterAdmissionRules:
   us-central1-a.your-cluster:
     enforcementMode: ENFORCED_BLOCK_AND_AUDIT_LOG
@@ -86,7 +88,7 @@ defaultAdmissionRule:
 ```
 
 This policy says:
-- Allowlisted Google images are always allowed
+- Matching allowlisted images are always allowed, and Google-maintained system images are exempted by `globalPolicyEvaluationMode: ENABLE`
 - Images deployed to this specific cluster must have two attestations
 - Everything else is denied by default
 
@@ -119,7 +121,7 @@ IMAGE_DIGEST=$(gcloud container images describe \
 echo "Image digest: $IMAGE_DIGEST"
 
 # Create the attestation using a KMS key
-gcloud container binauthz attestations sign-and-create \
+gcloud beta container binauthz attestations sign-and-create \
   --artifact-url="gcr.io/your-project/your-image@${IMAGE_DIGEST}" \
   --attestor="projects/your-project/attestors/build-attestor" \
   --attestor-project="your-project" \
@@ -140,6 +142,24 @@ gcloud kms keys create attestor-key \
   --location global \
   --purpose asymmetric-signing \
   --default-algorithm ec-sign-p256-sha256
+
+# Create the Artifact Analysis note used by the attestor
+cat > /tmp/build-note.json <<EOF
+{
+  "name": "projects/your-project/notes/build-note",
+  "attestation": {
+    "hint": {
+      "human_readable_name": "Build attestor note"
+    }
+  }
+}
+EOF
+
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --data-binary @/tmp/build-note.json \
+  "https://containeranalysis.googleapis.com/v1/projects/your-project/notes/?noteId=build-note"
 
 # Create the attestor
 gcloud container binauthz attestors create build-attestor \
@@ -170,7 +190,7 @@ Edit the policy to add the image pattern:
 ```yaml
 # Add the image to the allowlist
 admissionWhitelistPatterns:
-- namePattern: gcr.io/google_containers/*
+- namePattern: gcr.io/google-containers/*
 - namePattern: gcr.io/your-project/your-image*  # add this line
 ```
 
@@ -209,18 +229,23 @@ This lets you identify all images that need attestations before switching to enf
 
 ## Step 7 - Use Break-Glass for Emergencies
 
-GKE supports a break-glass annotation that bypasses Binary Authorization for emergency deployments:
+GKE supports a break-glass label that bypasses Binary Authorization for emergency deployments:
 
 ```yaml
-# Emergency deployment with break-glass annotation
+# Emergency deployment with break-glass label
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: emergency-fix
-  annotations:
-    alpha.image-policy.k8s.io/break-glass: "true"
 spec:
+  selector:
+    matchLabels:
+      app: emergency-fix
   template:
+    metadata:
+      labels:
+        app: emergency-fix
+        image-policy.k8s.io/break-glass: "true"
     spec:
       containers:
       - name: app
@@ -247,7 +272,7 @@ IMAGE_DIGEST=$(gcloud container images describe \
   --format='value(image_summary.digest)')
 
 # Step 3: Create attestation
-gcloud container binauthz attestations sign-and-create \
+gcloud beta container binauthz attestations sign-and-create \
   --artifact-url="gcr.io/$PROJECT_ID/my-app@${IMAGE_DIGEST}" \
   --attestor="projects/$PROJECT_ID/attestors/build-attestor" \
   --attestor-project="$PROJECT_ID" \
@@ -258,7 +283,7 @@ gcloud container binauthz attestations sign-and-create \
   --keyversion="1"
 ```
 
-For Cloud Build, you can use the built-in Binary Authorization integration that automatically attests images built by Cloud Build.
+For Cloud Build, you can also use the built-in `built-by-cloud-build` attestor. If the build specifies a location, set `requestedVerifyOption` to `VERIFY_REQUESTED` so Cloud Build creates the attestation.
 
 ## Step 9 - Handle Third-Party Images
 
@@ -282,7 +307,7 @@ docker push gcr.io/your-project/nginx:1.25
 When Binary Authorization blocks a deployment:
 
 1. Read the full error message to identify which attestor is missing
-2. Check if the image reference uses a digest (required for attestation)
+2. Check the image digest that Binary Authorization evaluated
 3. List existing attestations for the image
 4. Create the missing attestation or add to allowlist
 5. Verify attestor keys are valid and not expired
