@@ -49,18 +49,21 @@ gcloud pubsub subscriptions create scc-siem-subscription \
 
 I set a 7-day message retention so that if your SIEM connector goes down for a weekend, you do not lose findings. The 120-second ack deadline gives the connector enough time to process each message.
 
-## Step 2: Grant SCC Permission to Publish
+## Step 2: Make Sure SCC Can Publish
 
 ```bash
 # Get your org ID
 ORG_ID=$(gcloud organizations list --format="value(ID)" --limit=1)
 
-# Grant SCC the ability to publish to the topic
+# Optional: grant the SCC notification service agent explicitly if your
+# notification config creator cannot update the topic IAM policy automatically
 gcloud pubsub topics add-iam-policy-binding scc-siem-feed \
-  --member="serviceAccount:service-org-${ORG_ID}@security-center-api.iam.gserviceaccount.com" \
-  --role="roles/pubsub.publisher" \
+  --member="serviceAccount:service-org-${ORG_ID}@gcp-sa-scc-notification.iam.gserviceaccount.com" \
+  --role="roles/securitycenter.notificationServiceAgent" \
   --project=my-security-project
 ```
+
+When you create the first SCC notification config, Google creates the `service-org-${ORG_ID}@gcp-sa-scc-notification.iam.gserviceaccount.com` service agent. If the account creating the notification config has permission to set IAM policy on the Pub/Sub topic, SCC automatically grants this service agent the role it needs on the topic.
 
 ## Step 3: Create the SCC Notification Config
 
@@ -132,18 +135,9 @@ index=gcp_security sourcetype="google:gcp:scc:finding"
 
 Chronicle (Google's own SIEM) has native integration with SCC. You can set it up directly without the Pub/Sub middleman, but the Pub/Sub approach gives you more control.
 
-For Chronicle, use the Chronicle Forwarder:
+For existing Chronicle Forwarder deployments, configure the collector in Google SecOps rather than hand-writing the YAML. Select a Pub/Sub collector, point it at the `scc-siem-subscription`, and choose the Security Command Center findings log type.
 
-```yaml
-# Chronicle forwarder configuration
-collectors:
-  - pubsub:
-      subscription:
-        project_id: my-security-project
-        subscription_id: scc-siem-subscription
-      log_type: GCP_SECURITY_COMMAND_CENTER
-      service_account_key: /path/to/siem-key.json
-```
+The forwarder is being phased out, so new Google SecOps customers should use the current Google SecOps ingestion path or the native SCC integration instead of starting a new forwarder deployment.
 
 ## Integration with Microsoft Sentinel
 
@@ -154,7 +148,7 @@ Microsoft Sentinel has a GCP connector that pulls SCC findings via Pub/Sub.
 3. Configure the connector with your GCP project ID and service account credentials
 4. Map the Pub/Sub subscription
 
-Alternatively, use a Logic App to pull from Pub/Sub:
+Alternatively, use a Logic App to pull from Pub/Sub. The HTTP action must authenticate to Google APIs with a Google OAuth 2.0 bearer token, for example by using workload identity federation or a service account token exchange before calling the Pub/Sub `pull` method:
 
 ```json
 {
@@ -175,7 +169,9 @@ Alternatively, use a Logic App to pull from Pub/Sub:
           "maxMessages": 100
         },
         "authentication": {
-          "type": "ManagedServiceIdentity"
+          "type": "Raw",
+          "scheme": "Bearer",
+          "parameter": "@{variables('googleAccessToken')}"
         }
       }
     }
@@ -255,8 +251,8 @@ gcloud monitoring policies create \
   --display-name="SCC SIEM Subscription Backlog" \
   --condition-display-name="Messages piling up" \
   --condition-filter='resource.type="pubsub_subscription" AND metric.type="pubsub.googleapis.com/subscription/num_undelivered_messages"' \
-  --condition-threshold-value=1000 \
-  --condition-threshold-duration=300s \
+  --if='> 1000' \
+  --duration=300s \
   --project=my-security-project
 ```
 
