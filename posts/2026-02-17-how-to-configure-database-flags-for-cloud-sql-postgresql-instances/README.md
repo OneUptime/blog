@@ -8,7 +8,7 @@ Description: A comprehensive guide to configuring PostgreSQL database flags in C
 
 ---
 
-Tuning PostgreSQL on Cloud SQL means working with database flags. These are the equivalent of `postgresql.conf` settings, but managed through the Cloud SQL API. You cannot SSH into a Cloud SQL instance and edit config files, so flags are your only mechanism for adjusting server parameters. This guide covers the flags that matter most and how to configure them for different workloads.
+Tuning PostgreSQL on Cloud SQL means working with database flags. These are the equivalent of `postgresql.conf` settings, but managed through the Cloud SQL API. You cannot SSH into a Cloud SQL instance and edit config files, so flags are your main mechanism for adjusting instance-level server parameters. This guide covers the flags that matter most and how to configure them for different workloads.
 
 ## Setting Database Flags
 
@@ -18,7 +18,7 @@ Tuning PostgreSQL on Cloud SQL means working with database flags. These are the 
 # Set database flags for a PostgreSQL Cloud SQL instance
 
 gcloud sql instances patch my-pg-instance \
-    --database-flags=max_connections=200,work_mem=64MB,shared_preload_libraries=pg_stat_statements
+    --database-flags=max_connections=200,work_mem=65536,log_min_duration_statement=1000
 ```
 
 Like MySQL, this replaces all existing flags. Always include your complete flag list.
@@ -50,12 +50,7 @@ resource "google_sql_database_instance" "postgres" {
 
     database_flags {
       name  = "work_mem"
-      value = "67108864"  # 64 MB in bytes
-    }
-
-    database_flags {
-      name  = "shared_preload_libraries"
-      value = "pg_stat_statements"
+      value = "65536"  # 64 MB in KB
     }
 
     database_flags {
@@ -70,7 +65,7 @@ resource "google_sql_database_instance" "postgres" {
 
 ### shared_buffers
 
-Cloud SQL manages `shared_buffers` automatically based on your machine type. You generally cannot set this flag directly - Cloud SQL picks a value that is about 25-40% of the instance's RAM, which aligns with PostgreSQL best practices.
+Cloud SQL manages `shared_buffers` automatically based on your machine type. You can set this flag if you need to, but Cloud SQL constrains it to a supported range based on the instance's RAM, so the automatic value is usually the right starting point.
 
 ### work_mem
 
@@ -80,7 +75,7 @@ Controls memory allocated per-operation for sorting and hash tables. Each query 
 # Set work_mem to 64 MB
 # Be careful: total memory = work_mem x active_operations x connections
 gcloud sql instances patch my-pg-instance \
-    --database-flags=work_mem=67108864
+    --database-flags=work_mem=65536
 ```
 
 The default is 4 MB, which causes many sort operations to spill to disk. For analytical queries, increasing this to 64-256 MB can dramatically improve performance. But be cautious - if you have 200 connections and each runs a complex query with multiple sorts, memory can balloon quickly.
@@ -93,7 +88,7 @@ Memory for maintenance operations like VACUUM, CREATE INDEX, and ALTER TABLE:
 # Set maintenance_work_mem to 512 MB
 # This only affects maintenance operations, not regular queries
 gcloud sql instances patch my-pg-instance \
-    --database-flags=maintenance_work_mem=536870912
+    --database-flags=maintenance_work_mem=524288
 ```
 
 This is safe to set high because only a few maintenance operations run simultaneously.
@@ -103,10 +98,10 @@ This is safe to set high because only a few maintenance operations run simultane
 Tells the query planner how much memory is available for disk caching (shared buffers plus OS cache):
 
 ```bash
-# Set to about 75% of total instance memory
-# For a 16 GB instance, use 12 GB
+# Set to about 60-70% of total instance memory
+# For a 16 GB instance, use 10 GB
 gcloud sql instances patch my-pg-instance \
-    --database-flags=effective_cache_size=12884901888
+    --database-flags=effective_cache_size=10485760
 ```
 
 This does not allocate memory - it just helps the planner make better decisions about index usage versus sequential scans.
@@ -118,13 +113,12 @@ This does not allocate memory - it just helps the planner make better decisions 
 Controls how expensive the planner considers random I/O versus sequential I/O:
 
 ```bash
-# Set to 1.1 for SSD storage (default is 4.0 which assumes spinning disks)
-# Cloud SQL uses SSD, so the default is too high
+# Set to 1.1 for SSD-backed workloads after testing
 gcloud sql instances patch my-pg-instance \
     --database-flags=random_page_cost=1.1
 ```
 
-Since Cloud SQL uses SSD storage, the default value of 4.0 is too conservative. Setting it to 1.1 encourages the planner to use indexes more aggressively, which is appropriate for SSDs.
+For SSD-backed workloads, the default value of 4.0 can be too conservative. Setting it to 1.1 encourages the planner to use indexes more aggressively, which can be appropriate for SSDs.
 
 ### effective_io_concurrency
 
@@ -195,15 +189,7 @@ gcloud sql instances patch my-pg-instance \
 
 ## pg_stat_statements
 
-This extension is essential for query performance analysis. Enable it:
-
-```bash
-# Enable pg_stat_statements extension
-gcloud sql instances patch my-pg-instance \
-    --database-flags=shared_preload_libraries=pg_stat_statements
-```
-
-After the instance restarts, create the extension in your database:
+This extension is essential for query performance analysis. Cloud SQL supports `pg_stat_statements`, but it does not expose `shared_preload_libraries` as a database flag. Create the extension in your database:
 
 ```sql
 -- Create the pg_stat_statements extension
@@ -251,13 +237,12 @@ Idle transactions are a common cause of lock contention and table bloat (because
 
 Set a maximum query execution time:
 
-```bash
-# Kill queries running longer than 30 seconds
-gcloud sql instances patch my-pg-instance \
-    --database-flags=statement_timeout=30000
+```sql
+-- Kill queries running longer than 30 seconds for this database
+ALTER DATABASE my_database SET statement_timeout = '30s';
 ```
 
-This prevents runaway queries from consuming resources indefinitely. Applications can override this per-session if they need longer timeouts for specific operations.
+This prevents runaway queries from consuming resources indefinitely. Applications can override this per-session if they need longer timeouts for specific operations. Cloud SQL does not expose `statement_timeout` as a database flag, so configure it at the database, role, or session level.
 
 ## Autovacuum Flags
 
@@ -306,12 +291,11 @@ For a `db-custom-4-16384` (4 vCPU, 16 GB) production instance:
 gcloud sql instances patch my-pg-instance \
     --database-flags=\
 max_connections=200,\
-work_mem=67108864,\
-maintenance_work_mem=536870912,\
-effective_cache_size=12884901888,\
+work_mem=65536,\
+maintenance_work_mem=524288,\
+effective_cache_size=10485760,\
 random_page_cost=1.1,\
 effective_io_concurrency=200,\
-shared_preload_libraries=pg_stat_statements,\
 log_min_duration_statement=1000,\
 log_checkpoints=on,\
 log_lock_waits=on,\
