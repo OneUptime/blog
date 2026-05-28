@@ -266,7 +266,7 @@ steps:
       - |
         # Read the version file created in the previous step
         VERSION=$(cat /workspace/version.txt)
-        echo "Building version: $VERSION"
+        echo "Building version: $$VERSION"
 ```
 
 For parallel steps that both need to write to the workspace, be careful about file conflicts. Each parallel step should write to its own subdirectory or use unique file names.
@@ -287,7 +287,7 @@ steps:
       - |
         # Compute a version tag and save to workspace
         TAG="v$(date +%Y%m%d)-$SHORT_SHA"
-        echo $TAG > /workspace/image_tag.txt
+        echo $$TAG > /workspace/image_tag.txt
 
   # Step 2: Read the value and use it
   - name: 'gcr.io/cloud-builders/docker'
