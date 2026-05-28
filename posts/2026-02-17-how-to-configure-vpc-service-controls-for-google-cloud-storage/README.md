@@ -166,15 +166,16 @@ gcloud access-context-manager perimeters update my-storage-perimeter \
 
 ## Step 4: Test with Dry Run Mode
 
-Before enforcing the perimeter, use dry run mode to see what would be blocked:
+Before enforcing a perimeter, use dry run mode to see what would be blocked. If you want to test before enforcing, create the perimeter in dry run mode instead of using the enforced command above:
 
 ```bash
 # Create a perimeter in dry run mode first
 gcloud access-context-manager perimeters dry-run create my-storage-perimeter \
-  --title="Storage Security Perimeter (Dry Run)" \
-  --resources="projects/PROJECT_NUMBER" \
-  --restricted-services="storage.googleapis.com" \
-  --access-levels="accessPolicies/POLICY_ID/accessLevels/corp-network" \
+  --perimeter-title="Storage Security Perimeter (Dry Run)" \
+  --perimeter-type="regular" \
+  --perimeter-resources="projects/PROJECT_NUMBER" \
+  --perimeter-restricted-services="storage.googleapis.com" \
+  --perimeter-access-levels="accessPolicies/POLICY_ID/accessLevels/corp-network" \
   --policy=POLICY_ID
 ```
 
@@ -345,13 +346,13 @@ gcloud logging read \
 
 Common violation reasons:
 
-- `RESOURCES_NOT_IN_SAME_SERVICE_PERIMETER` - trying to copy data between perimeters
-- `ACCESS_LEVEL_VIOLATION` - request does not meet access level conditions
-- `SERVICE_NOT_ALLOWED` - the service is restricted by the perimeter
+- `RESOURCE_NOT_IN_SAME_SERVICE_PERIMETER` - trying to copy data between perimeters
+- `NO_MATCHING_ACCESS_LEVEL` - request does not meet access level conditions
+- `SERVICE_NOT_ALLOWED_FROM_VPC` - the service is not allowed by the perimeter's VPC accessible services configuration
 
 ### Common Issues
 
-**Cloud Console access blocked.** The Cloud Console makes API calls from Google's infrastructure, not your corporate network. You need to create an access level that includes the Console's identity.
+**Cloud Console access blocked.** To use the Cloud Console with resources inside a perimeter, create an access level that allows the user's IP range or user account.
 
 **CI/CD pipeline failures.** Add your CI/CD service accounts to an access level or ingress rule.
 
