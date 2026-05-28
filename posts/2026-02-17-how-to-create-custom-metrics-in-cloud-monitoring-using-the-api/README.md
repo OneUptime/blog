@@ -16,7 +16,7 @@ This guide covers creating custom metrics using the Cloud Monitoring API.
 
 Custom metrics in Cloud Monitoring follow the same structure as built-in metrics. They have a metric type, labels, and time-series data points. The main differences are:
 
-- Custom metric types start with `custom.googleapis.com/` (or `workload.googleapis.com/` for OpenCensus/OpenTelemetry)
+- Custom metric types created directly with the Cloud Monitoring API start with `custom.googleapis.com/`. Other user-defined metric domains include `workload.googleapis.com/`, `external.googleapis.com/user`, and `external.googleapis.com/prometheus`.
 - You define the metric descriptor (what the metric is)
 - You write the data points from your application code
 
@@ -30,6 +30,7 @@ Here is how to create a metric descriptor using the Python client library.
 # create_metric.py - Creates a custom metric descriptor
 
 from google.cloud import monitoring_v3
+from google.api import label_pb2
 from google.api import metric_pb2
 
 def create_metric_descriptor(project_id):
@@ -48,12 +49,12 @@ def create_metric_descriptor(project_id):
     # Add labels to allow filtering by order type and region
     label1 = descriptor.labels.add()
     label1.key = "order_type"
-    label1.value_type = metric_pb2.LabelDescriptor.ValueType.STRING
+    label1.value_type = label_pb2.LabelDescriptor.ValueType.STRING
     label1.description = "Type of order (standard, express, wholesale)"
 
     label2 = descriptor.labels.add()
     label2.key = "region"
-    label2.value_type = metric_pb2.LabelDescriptor.ValueType.STRING
+    label2.value_type = label_pb2.LabelDescriptor.ValueType.STRING
     label2.description = "Region where the order was processed"
 
     # Create the metric descriptor
@@ -129,7 +130,7 @@ write_metric("my-project", "express", "europe-west1", 182.3)
 
 ## Writing Cumulative Metrics
 
-For counters, you need to track the start time of the cumulative period.
+For counters, create the metric descriptor with `metric_kind` set to `CUMULATIVE` and `value_type` set to `INT64`. You also need to track the start time of the cumulative period.
 
 ```python
 # write_counter.py - Writing a cumulative (counter) metric
@@ -149,6 +150,8 @@ def write_order_count(project_id):
 
     series = monitoring_v3.TimeSeries()
     series.metric.type = "custom.googleapis.com/app/total_orders"
+    series.metric_kind = monitoring_v3.MetricDescriptor.MetricKind.CUMULATIVE
+    series.value_type = monitoring_v3.MetricDescriptor.ValueType.INT64
     series.resource.type = "global"
     series.resource.labels["project_id"] = project_id
 
@@ -318,15 +321,15 @@ You can write up to 200 time series in a single API call. Batch writes reduce AP
 
 Cloud Monitoring has rate limits for custom metrics:
 
-- One data point per metric time series per 10 seconds for GAUGE metrics
-- One data point per metric time series per minute is recommended
+- One data point per metric time series per 5 seconds
+- One data point per time series in a single write request
 - Up to 200 time series per write request
-- Up to 500 metric descriptors per project
+- Up to 10,000 custom metric descriptors per project
 
 To stay within limits:
 
 - Buffer data points and write them in batches
-- Do not write more than once every 10 seconds per unique time series
+- Do not write more than once every 5 seconds per unique time series
 - Use labels wisely - each unique combination of labels creates a separate time series
 
 ## Listing and Deleting Custom Metrics
@@ -335,12 +338,16 @@ Manage your custom metric descriptors through the API.
 
 ```bash
 # List all custom metric descriptors
-gcloud monitoring metrics-descriptors list \
-  --filter='metric.type = starts_with("custom.googleapis.com")'
+ACCESS_TOKEN=$(gcloud auth print-access-token)
+
+curl -X GET \
+  "https://monitoring.googleapis.com/v3/projects/my-project/metricDescriptors?filter=metric.type%20%3D%20starts_with%28%22custom.googleapis.com%2F%22%29" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
 
 # Delete a custom metric descriptor
-gcloud monitoring metrics-descriptors delete \
-  "custom.googleapis.com/app/order_processing_time_ms"
+curl -X DELETE \
+  "https://monitoring.googleapis.com/v3/projects/my-project/metricDescriptors/custom.googleapis.com/app/order_processing_time_ms" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
 ## Summary
