@@ -20,7 +20,7 @@ App Engine Standard offers three scaling modes:
 2. **Basic scaling** - Instances are created on demand and shut down after idle
 3. **Manual scaling** - You specify a fixed number of instances
 
-App Engine Flexible only supports automatic scaling (or manual, but that defeats the purpose).
+App Engine Flexible supports automatic and manual scaling, but it uses different scaling fields than the Standard environment.
 
 ## Automatic Scaling (Standard Environment)
 
@@ -160,7 +160,7 @@ basic_scaling:
   idle_timeout: 5m
 ```
 
-Basic scaling instances use the B instance classes (B1, B2, B4, B4_1G, B8) which bill per hour rather than per request. They also support requests up to 24 hours, making them suitable for long-running tasks.
+Basic scaling instances use the B instance classes (B1, B2, B4, B4_1G, B8), which are reported as Backend Instances in instance-hour billing. They also support requests up to 24 hours, making them suitable for long-running tasks.
 
 ## Manual Scaling (Standard Environment)
 
@@ -210,13 +210,13 @@ The instance class affects how much CPU and memory each instance has:
 
 ```yaml
 # For lightweight API endpoints
-instance_class: F1  # 128MB, 600MHz
+instance_class: F1  # 384MB, 600MHz
 
 # For standard web applications
-instance_class: F2  # 256MB, 1.2GHz
+instance_class: F2  # 768MB, 1.2GHz
 
 # For memory-intensive applications
-instance_class: F4_1G  # 1024MB, 2.4GHz
+instance_class: F4_1G  # 3072MB, 2.4GHz
 ```
 
 Bigger instances handle more traffic per instance, potentially reducing total instance count. But they cost more per hour. The right choice depends on your application's resource profile.
