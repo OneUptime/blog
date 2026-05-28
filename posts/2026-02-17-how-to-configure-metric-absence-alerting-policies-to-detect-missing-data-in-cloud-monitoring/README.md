@@ -65,7 +65,7 @@ Apply the policy.
 ```bash
 # Create the metric-absence alert
 
-gcloud alpha monitoring policies create --policy-from-file=absence-alert.json
+gcloud monitoring policies create --policy-from-file=absence-alert.json
 ```
 
 ## Key Difference from Threshold Alerts
@@ -153,7 +153,7 @@ Detecting broken log pipelines. If logs are supposed to flow continuously and th
 
 ## Monitoring VM Agent Metrics
 
-If you use the Ops Agent on your VMs, a metric-absence alert detects when the agent stops reporting. This catches agent crashes, VM shutdowns, or network issues.
+If you use the Ops Agent on your VMs, a metric-absence alert detects when the agent stops reporting. This catches agent crashes, network issues, or metric collection problems. Metric-absence policies do not detect `TERMINATED` or `DELETED` Google Cloud VMs.
 
 ```json
 {
@@ -217,6 +217,11 @@ while True:
     series = monitoring_v3.TimeSeries()
     series.metric.type = "custom.googleapis.com/app/heartbeat"
     series.resource.type = "k8s_container"
+    series.resource.labels["project_id"] = "my-project"
+    series.resource.labels["location"] = "us-central1"
+    series.resource.labels["cluster_name"] = "my-cluster"
+    series.resource.labels["namespace_name"] = "production"
+    series.resource.labels["pod_name"] = "my-app-pod"
     series.resource.labels["container_name"] = "my-app"
 
     point = monitoring_v3.Point()
