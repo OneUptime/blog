@@ -20,7 +20,7 @@ Understanding the architectural differences helps you avoid pitfalls during migr
 
 **Table distribution**: Synapse lets you choose hash-distributed, round-robin, or replicated tables. BigQuery has no equivalent concept - it handles data distribution automatically. You can influence performance through partitioning and clustering.
 
-**Indexing**: Synapse supports clustered columnstore indexes and heap tables. BigQuery has no indexes but uses partitioning and clustering to optimize query performance.
+**Indexing**: Synapse supports clustered columnstore indexes and heap tables. BigQuery does not use traditional table indexes for general query tuning; it uses partitioning and clustering to optimize most analytical queries. BigQuery also supports specialized search and vector indexes for specific workloads.
 
 ## Step 1: Schema Migration
 
@@ -53,7 +53,7 @@ CREATE TABLE dbo.sales_fact (
     unit_price DECIMAL(10, 2) NOT NULL,
     total_amount DECIMAL(12, 2) NOT NULL,
     region NVARCHAR(50),
-    created_at DATETIME2 DEFAULT GETDATE()
+    created_at DATETIME2
 )
 WITH (
     DISTRIBUTION = HASH(customer_id),
@@ -77,7 +77,7 @@ CREATE TABLE my_dataset.sales_fact (
     unit_price NUMERIC(10, 2) NOT NULL,
     total_amount NUMERIC(12, 2) NOT NULL,
     region STRING,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
+    created_at TIMESTAMP
 )
 PARTITION BY sale_date
 CLUSTER BY customer_id, region
@@ -100,7 +100,7 @@ This is the most common approach for large datasets. Export from Synapse to Parq
 ```bash
 # In Synapse, use CETAS (CREATE EXTERNAL TABLE AS SELECT) to export to Parquet
 
-# Run this in Synapse SQL:
+# Run this in Synapse SQL after creating an external data source and external file format:
 # CREATE EXTERNAL TABLE export_sales
 # WITH (
 #     LOCATION = 'export/sales/',
@@ -109,12 +109,13 @@ This is the most common approach for large datasets. Export from Synapse to Parq
 # )
 # AS SELECT * FROM dbo.sales_fact;
 
-# Transfer the Parquet files from Azure Blob to GCS using gsutil
-gsutil -m cp -r \
-    "https://mystorageaccount.blob.core.windows.net/export/sales/*" \
-    gs://my-migration-bucket/sales/
+# Transfer the Parquet files from Azure Blob to GCS using Storage Transfer Service
+gcloud transfer jobs create \
+    https://mystorageaccount.blob.core.windows.net/export/sales/ \
+    gs://my-migration-bucket/sales/ \
+    --source-creds-file=azure-creds.json
 
-# Load the Parquet files into BigQuery
+# Load the Parquet files into BigQuery after the transfer completes
 bq load \
     --source_format=PARQUET \
     --autodetect \
@@ -127,10 +128,9 @@ For very large datasets, use the BigQuery Data Transfer Service or the Storage T
 ```bash
 # Create a transfer job from Azure Blob Storage to GCS
 gcloud transfer jobs create \
-    --source-agent-pool="" \
-    --source-creds-file=azure-creds.json \
-    azure://mystorageaccount/export/sales/ \
-    gs://my-migration-bucket/sales/
+    https://mystorageaccount.blob.core.windows.net/export/sales/ \
+    gs://my-migration-bucket/sales/ \
+    --source-creds-file=azure-creds.json
 ```
 
 ### Option B: Use BigQuery Data Transfer Service
@@ -148,7 +148,7 @@ bq mk --transfer_config \
         "destination_table_name_template": "sales_fact",
         "data_path_template": "gs://my-migration-bucket/sales/*.parquet",
         "file_format": "PARQUET",
-        "write_disposition": "WRITE_TRUNCATE"
+        "write_disposition": "MIRROR"
     }'
 ```
 
@@ -227,7 +227,7 @@ FROM my_dataset.sales_fact;
 
 ### Temporary Tables and CTEs
 
-Synapse temp tables (#temp) do not exist in BigQuery. Use CTEs or temporary tables with expiration:
+Synapse temp table syntax (`#temp`) does not exist in BigQuery. Use CTEs, BigQuery temporary tables in scripts or sessions, or short-lived permanent tables with expiration:
 
 ```sql
 -- Synapse: temporary table
@@ -266,12 +266,12 @@ Synapse stored procedures need to be converted to BigQuery scripting or BigQuery
 -- END;
 
 -- BigQuery equivalent using a stored procedure
-CREATE OR REPLACE PROCEDURE my_dataset.daily_sales_report(report_date DATE)
+CREATE OR REPLACE PROCEDURE my_dataset.daily_sales_report(p_report_date DATE)
 BEGIN
     -- Generate daily sales summary by region
     SELECT region, SUM(total_amount) as daily_total
     FROM my_dataset.sales_fact
-    WHERE sale_date = report_date
+    WHERE sale_date = p_report_date
     GROUP BY region
     ORDER BY daily_total DESC;
 END;
@@ -291,9 +291,9 @@ bq query --use_legacy_sql=false \
     --display_name="Daily sales aggregation" \
     --destination_table=my_dataset.daily_summary \
     --replace=true \
-    'SELECT DATE(sale_date) as day, region, SUM(total_amount) as total
+    'SELECT sale_date as day, region, SUM(total_amount) as total
      FROM my_dataset.sales_fact
-     WHERE sale_date = CURRENT_DATE() - 1
+     WHERE sale_date = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
      GROUP BY day, region'
 ```
 
