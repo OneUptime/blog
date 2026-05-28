@@ -23,7 +23,7 @@ flowchart LR
     C --> D[Scheduled Queries]
     D --> E[Compliance Report Tables]
     E --> F[Cloud Function]
-    F --> G[PDF Report / Email]
+    F --> G[CSV Report / Email]
     F --> H[Cloud Storage Archive]
 ```
 
@@ -50,6 +50,8 @@ gcloud logging sinks create compliance-audit-sink \
 ```
 
 The `--use-partitioned-tables` flag is important. It creates daily partitioned tables, which makes queries faster and cheaper when you are scanning specific date ranges.
+
+If you need Data Access audit logs in your reports, make sure they are enabled for the services and permissions you need to monitor. Admin Activity audit logs are enabled by default, but most Data Access audit logs must be explicitly enabled.
 
 Grant the log sink's service account write access to the BigQuery dataset:
 
@@ -82,14 +84,12 @@ SELECT
     protopayload_auditlog.authenticationInfo.principalEmail AS actor,
     protopayload_auditlog.methodName AS action,
     protopayload_auditlog.resourceName AS resource,
-    protopayload_auditlog.request.policy.bindings AS new_bindings,
-    protopayload_auditlog.servicedata.policyDelta.bindingDeltas AS changes
+    JSON_QUERY(protopayload_auditlog.requestJson, '$.policy.bindings') AS new_bindings,
+    protopayload_auditlog.servicedata_v1_iam.policyDelta.bindingDeltas AS changes
 FROM
-    `audit_logs.cloudaudit_googleapis_com_activity_*`
+    `audit_logs.cloudaudit_googleapis_com_activity`
 WHERE
-    _TABLE_SUFFIX BETWEEN
-        FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY))
-        AND FORMAT_DATE('%Y%m%d', CURRENT_DATE())
+    DATE(timestamp) BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY) AND CURRENT_DATE()
     AND protopayload_auditlog.methodName LIKE '%SetIamPolicy%'
 ORDER BY timestamp DESC
 ```
@@ -108,11 +108,9 @@ SELECT
     protopayload_auditlog.requestMetadata.callerIp AS source_ip,
     protopayload_auditlog.requestMetadata.callerSuppliedUserAgent AS user_agent
 FROM
-    `audit_logs.cloudaudit_googleapis_com_data_access_*`
+    `audit_logs.cloudaudit_googleapis_com_data_access`
 WHERE
-    _TABLE_SUFFIX BETWEEN
-        FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY))
-        AND FORMAT_DATE('%Y%m%d', CURRENT_DATE())
+    DATE(timestamp) BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY) AND CURRENT_DATE()
     AND (
         protopayload_auditlog.resourceName LIKE '%healthcare%'
         OR protopayload_auditlog.resourceName LIKE '%sensitive-data%'
@@ -131,14 +129,12 @@ SELECT
     protopayload_auditlog.authenticationInfo.principalEmail AS admin,
     protopayload_auditlog.methodName AS action,
     protopayload_auditlog.resourceName AS resource,
-    protopayload_auditlog.status.code AS status_code,
+    protopayload_auditlog.statuscode AS status_code,
     protopayload_auditlog.status.message AS status_message
 FROM
-    `audit_logs.cloudaudit_googleapis_com_activity_*`
+    `audit_logs.cloudaudit_googleapis_com_activity`
 WHERE
-    _TABLE_SUFFIX BETWEEN
-        FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY))
-        AND FORMAT_DATE('%Y%m%d', CURRENT_DATE())
+    DATE(timestamp) BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY) AND CURRENT_DATE()
     AND (
         protopayload_auditlog.methodName LIKE '%delete%'
         OR protopayload_auditlog.methodName LIKE '%Delete%'
@@ -162,12 +158,10 @@ SELECT
     protopayload_auditlog.requestMetadata.callerIp AS source_ip,
     protopayload_auditlog.status.message AS failure_reason
 FROM
-    `audit_logs.cloudaudit_googleapis_com_activity_*`
+    `audit_logs.cloudaudit_googleapis_com_activity`
 WHERE
-    _TABLE_SUFFIX BETWEEN
-        FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY))
-        AND FORMAT_DATE('%Y%m%d', CURRENT_DATE())
-    AND protopayload_auditlog.status.code != 0
+    DATE(timestamp) BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY) AND CURRENT_DATE()
+    AND protopayload_auditlog.statuscode != 0
     AND protopayload_auditlog.authenticationInfo.principalEmail IS NOT NULL
 ORDER BY timestamp DESC
 ```
@@ -177,13 +171,19 @@ ORDER BY timestamp DESC
 Create scheduled queries that run these reports automatically:
 
 ```bash
+# Create a BigQuery dataset for generated report tables
+bq mk --dataset \
+    --location=US \
+    --description="Generated compliance report tables" \
+    my-project:compliance_reports
+
 # Schedule the access review report to run monthly
 bq query --schedule="1 of month 02:00" \
     --display_name="Monthly Access Review Report" \
     --destination_table="my-project:compliance_reports.access_review" \
     --use_legacy_sql=false \
     --replace=true \
-    @access_review_report.sql
+    < access_review_report.sql
 
 # Schedule the data access report to run weekly
 bq query --schedule="every monday 03:00" \
@@ -191,7 +191,7 @@ bq query --schedule="every monday 03:00" \
     --destination_table="my-project:compliance_reports.data_access" \
     --use_legacy_sql=false \
     --replace=true \
-    @data_access_report.sql
+    < data_access_report.sql
 ```
 
 Alternatively, use the BigQuery API through Terraform:
@@ -364,15 +364,15 @@ Set up real-time alerts for events that need immediate attention:
 gcloud logging metrics create iam-policy-changes \
     --project=my-project \
     --description="Count of IAM policy changes" \
-    --log-filter='protoPayload.methodName="SetIamPolicy"'
+    --log-filter='protoPayload.methodName:"SetIamPolicy"'
 
 # Create an alerting policy for the metric
 gcloud monitoring policies create \
     --display-name="IAM Policy Change Alert" \
     --condition-display-name="IAM policy changed" \
     --condition-filter='metric.type="logging.googleapis.com/user/iam-policy-changes"' \
-    --condition-threshold-value=0 \
-    --condition-threshold-comparison=COMPARISON_GT \
+    --if='> 0' \
+    --duration=0s \
     --notification-channels=projects/my-project/notificationChannels/CHANNEL_ID
 ```
 
