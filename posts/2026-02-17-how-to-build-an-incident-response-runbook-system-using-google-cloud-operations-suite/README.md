@@ -84,18 +84,18 @@ Here is how to create an alerting policy with embedded runbook documentation:
 ```bash
 # Create an alerting policy with inline runbook documentation
 
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="High Error Rate - API Gateway" \
-  --condition-display-name="5xx error rate above 5%" \
+  --condition-display-name="5xx errors above 0.05 requests/second" \
   --condition-filter='resource.type="cloud_run_revision" AND resource.labels.service_name="api-gateway" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="5xx"' \
-  --condition-threshold-value=0.05 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_RATE"}' \
+  --if='> 0.05' \
+  --duration=300s \
   --notification-channels=projects/my-project/notificationChannels/12345 \
-  --documentation-content='## Runbook: High Error Rate - API Gateway
+  --documentation='## Runbook: High Error Rate - API Gateway
 
 ### What is happening
-The API Gateway is returning more than 5% 5xx errors. Users are likely experiencing failures.
+The API Gateway is returning more than 0.05 5xx responses per second. Users are likely experiencing failures.
 
 ### Check first
 1. Open the [API Gateway Dashboard](https://console.cloud.google.com/monitoring/dashboards/custom/api-gateway?project=my-project)
@@ -109,7 +109,7 @@ The API Gateway is returning more than 5% 5xx errors. Users are likely experienc
 
 ### Escalation
 If not resolved in 30 minutes, escalate to the Platform Team lead.' \
-  --documentation-mime-type="text/markdown"
+  --documentation-format="text/markdown"
 ```
 
 ## Step 3: Build Diagnostic Dashboards
@@ -204,7 +204,8 @@ httpRequest.latency>"5s"
 # Check for recent deployment events
 resource.type="cloud_run_revision"
 resource.labels.service_name="api-gateway"
-protoPayload.methodName="google.cloud.run.v1.Services.ReplaceService"
+protoPayload.serviceName="run.googleapis.com"
+(protoPayload.methodName="google.cloud.run.v1.Services.ReplaceService" OR protoPayload.methodName="google.cloud.run.v2.Services.UpdateService")
 ```
 
 You can generate clickable Cloud Logging links that pre-populate the query. The URL format is:
