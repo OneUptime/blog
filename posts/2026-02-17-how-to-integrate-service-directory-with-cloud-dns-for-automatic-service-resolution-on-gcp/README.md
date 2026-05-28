@@ -14,7 +14,7 @@ Google Cloud Service Directory provides a managed registry where you register yo
 
 ## How It Works
 
-Service Directory acts as a managed service registry. You register namespaces, services, and endpoints. When integrated with Cloud DNS, it creates a special DNS zone that resolves service names to their registered endpoints. Applications just do a DNS lookup for `my-service.my-namespace.example.com` and get back the IP address and port of a healthy endpoint.
+Service Directory acts as a managed service registry. You register namespaces, services, and endpoints. When integrated with Cloud DNS, it creates a special DNS zone that resolves service names to their registered endpoints. Applications can do an A or AAAA DNS lookup for `my-service.my-namespace.example.com` to get endpoint IP addresses, or an SRV lookup to get endpoint names and ports.
 
 The key benefit is that this works with any application language or framework. If it can do DNS, it can use Service Directory.
 
@@ -54,7 +54,7 @@ Register a service with one or more endpoints. Each endpoint has an IP address a
 gcloud service-directory services create user-api \
   --namespace=production \
   --location=us-central1 \
-  --metadata=version=v2,team=backend \
+  --annotations=version=v2,team=backend \
   --project=my-project
 
 # Add endpoints for the service (multiple endpoints for high availability)
@@ -64,7 +64,7 @@ gcloud service-directory endpoints create user-api-1 \
   --location=us-central1 \
   --address=10.0.1.10 \
   --port=8080 \
-  --metadata=zone=us-central1-a \
+  --annotations=zone=us-central1-a \
   --project=my-project
 
 gcloud service-directory endpoints create user-api-2 \
@@ -73,7 +73,7 @@ gcloud service-directory endpoints create user-api-2 \
   --location=us-central1 \
   --address=10.0.1.11 \
   --port=8080 \
-  --metadata=zone=us-central1-b \
+  --annotations=zone=us-central1-b \
   --project=my-project
 ```
 
@@ -84,7 +84,7 @@ Register additional services.
 gcloud service-directory services create order-service \
   --namespace=production \
   --location=us-central1 \
-  --metadata=version=v1,team=commerce \
+  --annotations=version=v1,team=commerce \
   --project=my-project
 
 gcloud service-directory endpoints create order-service-1 \
@@ -99,7 +99,7 @@ gcloud service-directory endpoints create order-service-1 \
 gcloud service-directory services create redis-cache \
   --namespace=production \
   --location=us-central1 \
-  --metadata=type=cache,engine=redis \
+  --annotations=type=cache,engine=redis \
   --project=my-project
 
 gcloud service-directory endpoints create redis-cache-1 \
@@ -123,8 +123,8 @@ Now the important part - creating a Cloud DNS zone that resolves queries against
 gcloud dns managed-zones create sd-production \
   --dns-name=production.internal. \
   --visibility=private \
-  --networks=my-vpc \
-  --service-directory-namespace=projects/my-project/locations/us-central1/namespaces/production \
+  --networks=https://www.googleapis.com/compute/v1/projects/my-project/global/networks/my-vpc \
+  --service-directory-namespace=https://servicedirectory.googleapis.com/v1/projects/my-project/locations/us-central1/namespaces/production \
   --description="Service Directory backed zone for production services" \
   --project=my-project
 ```
@@ -137,7 +137,7 @@ dig user-api.production.internal +short
 # Returns: 10.0.1.10 and 10.0.1.11
 
 # Resolve with SRV records to get port information
-dig _http._tcp.user-api.production.internal SRV +short
+dig _user-api._tcp.user-api.production.internal SRV +short
 # Returns: 0 0 8080 user-api-1.user-api.production.internal.
 #          0 0 8080 user-api-2.user-api.production.internal.
 ```
@@ -151,8 +151,8 @@ Create separate DNS zones for each namespace so services in staging resolve diff
 gcloud dns managed-zones create sd-staging \
   --dns-name=staging.internal. \
   --visibility=private \
-  --networks=my-vpc \
-  --service-directory-namespace=projects/my-project/locations/us-central1/namespaces/staging \
+  --networks=https://www.googleapis.com/compute/v1/projects/my-project/global/networks/my-vpc \
+  --service-directory-namespace=https://servicedirectory.googleapis.com/v1/projects/my-project/locations/us-central1/namespaces/staging \
   --project=my-project
 ```
 
@@ -164,16 +164,19 @@ Manually registering services gets old fast. Here are two approaches to automate
 
 ### Using a Cloud Function for GKE Services
 
-Deploy a Cloud Function that watches GKE service events and automatically registers them in Service Directory.
+Deploy a Cloud Function that consumes GKE service-change events from Pub/Sub and automatically registers them in Service Directory.
 
 ```python
 # main.py
 # Cloud Function that syncs GKE services to Service Directory
 from google.cloud import servicedirectory_v1
-from google.cloud import container_v1
+from google.api_core.exceptions import NotFound
+from google.protobuf.field_mask_pb2 import FieldMask
+import base64
+import json
 import os
 
-PROJECT = os.environ["GCP_PROJECT"]
+PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ["GCP_PROJECT"]
 LOCATION = os.environ["SD_LOCATION"]
 NAMESPACE = os.environ["SD_NAMESPACE"]
 
@@ -184,8 +187,9 @@ def sync_gke_services(event, context):
     namespace_path = sd_client.namespace_path(PROJECT, LOCATION, NAMESPACE)
 
     # Parse the GKE event to get service details
-    service_name = event.get("service_name")
-    endpoints = event.get("endpoints", [])
+    payload = json.loads(base64.b64decode(event["data"]).decode("utf-8"))
+    service_name = payload["service_name"]
+    endpoints = payload.get("endpoints", [])
 
     # Create or update the service in Service Directory
     service_path = f"{namespace_path}/services/{service_name}"
@@ -193,12 +197,12 @@ def sync_gke_services(event, context):
     try:
         # Try to get existing service
         sd_client.get_service(name=service_path)
-    except Exception:
+    except NotFound:
         # Service does not exist, create it
         sd_client.create_service(
             parent=namespace_path,
             service=servicedirectory_v1.Service(
-                metadata={"source": "gke-sync"}
+                annotations={"source": "gke-sync"}
             ),
             service_id=service_name
         )
@@ -212,13 +216,16 @@ def sync_gke_services(event, context):
         endpoint = servicedirectory_v1.Endpoint(
             address=ep["ip"],
             port=ep["port"],
-            metadata={"zone": ep.get("zone", "unknown")}
+            annotations={"zone": ep.get("zone", "unknown")}
         )
 
         if ep_id in existing_names:
             # Update existing endpoint
             endpoint.name = f"{service_path}/endpoints/{ep_id}"
-            sd_client.update_endpoint(endpoint=endpoint)
+            sd_client.update_endpoint(
+                endpoint=endpoint,
+                update_mask=FieldMask(paths=["address", "port", "annotations"])
+            )
         else:
             # Create new endpoint
             sd_client.create_endpoint(
@@ -317,7 +324,7 @@ import dns.resolver
 
 def discover_service(service_name, namespace="production"):
     """Discover a service using SRV DNS records."""
-    srv_name = f"_http._tcp.{service_name}.{namespace}.internal"
+    srv_name = f"_{service_name}._tcp.{service_name}.{namespace}.internal"
     answers = dns.resolver.resolve(srv_name, "SRV")
 
     endpoints = []
