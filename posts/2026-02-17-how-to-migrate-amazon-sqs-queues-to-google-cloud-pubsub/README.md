@@ -8,7 +8,7 @@ Description: Migrate your Amazon SQS message queues to Google Cloud Pub/Sub with
 
 ---
 
-Amazon SQS and Google Cloud Pub/Sub both handle asynchronous messaging, but they work differently under the hood. SQS is a pull-based queue where consumers poll for messages. Pub/Sub uses a push-based model where subscribers receive messages through push endpoints or streaming pulls. Understanding these differences is key to a successful migration.
+Amazon SQS and Google Cloud Pub/Sub both handle asynchronous messaging, but they work differently under the hood. SQS is a pull-based queue where consumers poll for messages. Pub/Sub separates publishers from subscribers and supports pull subscriptions, StreamingPull clients, and push subscriptions. Understanding these differences is key to a successful migration.
 
 In this post, I will cover how to map SQS concepts to Pub/Sub, set up equivalent configurations, and migrate without losing messages or causing downtime.
 
@@ -25,7 +25,7 @@ Before diving into code, here is how SQS concepts translate to Pub/Sub:
 | Dead Letter Queue | Dead Letter Topic |
 | Max Receive Count | Max Delivery Attempts |
 | Delay Queue | Not native (use Cloud Tasks) |
-| FIFO Queue | Subscription with ordering |
+| FIFO Queue | Ordering keys + subscription with ordering |
 | Long Polling | Streaming Pull |
 
 The biggest architectural difference is that SQS has one queue with one consumer group, while Pub/Sub separates topics (publishers) from subscriptions (consumers). This means multiple independent consumers can subscribe to the same topic without competing for messages.
@@ -44,7 +44,7 @@ resource "google_pubsub_topic" "order_events" {
   name    = "order-events"
   project = var.project_id
 
-  # Enable message ordering (equivalent to FIFO queue)
+  # Constrain where Pub/Sub stores messages
   message_storage_policy {
     allowed_persistence_regions = [var.region]
   }
@@ -112,6 +112,14 @@ resource "google_pubsub_topic_iam_member" "dlq_publisher" {
   role    = "roles/pubsub.publisher"
   member  = "serviceAccount:service-${var.project_number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
+
+# Grant Pub/Sub permission to acknowledge messages on the source subscription
+resource "google_pubsub_subscription_iam_member" "dlq_subscriber" {
+  project      = var.project_id
+  subscription = google_pubsub_subscription.order_processor.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${var.project_number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
 ```
 
 ## Migrating Producer Code
@@ -152,7 +160,8 @@ Migrated Pub/Sub producer:
 from google.cloud import pubsub_v1
 import json
 
-publisher = pubsub_v1.PublisherClient()
+publisher_options = pubsub_v1.types.PublisherOptions(enable_message_ordering=True)
+publisher = pubsub_v1.PublisherClient(publisher_options=publisher_options)
 topic_path = publisher.topic_path('my-gcp-project', 'order-events')
 
 def send_order_event(order_data):
@@ -301,10 +310,16 @@ class DualPublisher:
         self.pubsub_enabled = pubsub_enabled
 
         if pubsub_enabled:
-            self.publisher = pubsub_v1.PublisherClient()
+            publisher_options = pubsub_v1.types.PublisherOptions(
+                enable_message_ordering=True
+            )
+            self.publisher = pubsub_v1.PublisherClient(
+                publisher_options=publisher_options
+            )
             self.topic_path = pubsub_topic_path
 
-    def publish(self, message_data, ordering_key=None, attributes=None):
+    def publish(self, message_data, ordering_key=None, deduplication_id=None,
+                attributes=None):
         """Publish to both SQS and Pub/Sub."""
         attributes = attributes or {}
         message_json = json.dumps(message_data)
@@ -317,6 +332,8 @@ class DualPublisher:
             }
             if ordering_key:
                 sqs_kwargs['MessageGroupId'] = ordering_key
+            if deduplication_id:
+                sqs_kwargs['MessageDeduplicationId'] = deduplication_id
 
             self.sqs.send_message(**sqs_kwargs)
         except Exception as e:
@@ -357,42 +374,42 @@ Follow this sequence for a safe migration:
 
 ## Handling Message Deduplication
 
-SQS FIFO queues have built-in deduplication. For Pub/Sub, use exactly-once delivery or implement idempotency in your consumer:
+SQS FIFO queues have built-in publish-side deduplication within the deduplication interval. Pub/Sub exactly-once delivery helps prevent duplicate redelivery after a successful acknowledgment, but it does not deduplicate separate publish attempts with different message IDs. For migration, keep your consumer idempotent with an application-level key such as the order ID:
 
 ```python
 def callback_with_dedup(message):
     """Process message with idempotency check."""
-    message_id = message.message_id
+    body = json.loads(message.data.decode('utf-8'))
+    dedup_key = body['order_id']
 
     # Check if we already processed this message
-    if is_already_processed(message_id):
+    if is_already_processed(dedup_key):
         message.ack()
         return
 
     try:
-        body = json.loads(message.data.decode('utf-8'))
         process_order(body)
 
         # Mark as processed
-        mark_as_processed(message_id)
+        mark_as_processed(dedup_key)
         message.ack()
     except Exception as e:
         message.nack()
 
 
-def is_already_processed(message_id):
+def is_already_processed(dedup_key):
     """Check Redis/Memorystore for duplicate detection."""
     # Use Redis with TTL for deduplication window
     from redis import Redis
     r = Redis(host='redis-host')
-    return r.exists(f"processed:{message_id}")
+    return r.exists(f"processed:{dedup_key}")
 
 
-def mark_as_processed(message_id):
+def mark_as_processed(dedup_key):
     """Mark message as processed with TTL."""
     from redis import Redis
     r = Redis(host='redis-host')
-    r.setex(f"processed:{message_id}", 86400, "1")  # 24h TTL
+    r.setex(f"processed:{dedup_key}", 86400, "1")  # 24h TTL
 ```
 
 ## Wrapping Up
