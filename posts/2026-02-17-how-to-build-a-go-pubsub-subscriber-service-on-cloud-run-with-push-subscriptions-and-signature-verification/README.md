@@ -41,9 +41,12 @@ Create the topic, push subscription, and a service account for authentication.
 gcloud iam service-accounts create pubsub-pusher \
   --display-name="Pub/Sub Push Service Account"
 
-# Grant the service account permission to create tokens
+# Grant the Pub/Sub service agent permission to create tokens
+PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT --format="value(projectNumber)")
+PUBSUB_SERVICE_ACCOUNT="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+
 gcloud projects add-iam-policy-binding YOUR_PROJECT \
-  --member="serviceAccount:pubsub-pusher@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
   --role="roles/iam.serviceAccountTokenCreator"
 
 # Create the topic
@@ -124,7 +127,7 @@ This is the critical security piece. We use Google's idtoken library to verify t
 
 ```go
 // verifyPushToken validates the JWT token from the Pub/Sub push request
-func verifyPushToken(r *http.Request, expectedAudience string) error {
+func verifyPushToken(r *http.Request, expectedAudience, expectedEmail string) error {
     // Extract the Bearer token from the Authorization header
     authHeader := r.Header.Get("Authorization")
     if authHeader == "" {
@@ -145,10 +148,18 @@ func verifyPushToken(r *http.Request, expectedAudience string) error {
         return fmt.Errorf("token validation failed: %w", err)
     }
 
-    // Optionally verify the email claim matches your service account
+    // Verify the email claim matches your service account
     email, ok := payload.Claims["email"].(string)
     if !ok {
         return fmt.Errorf("missing email claim in token")
+    }
+    if email != expectedEmail {
+        return fmt.Errorf("unexpected email claim: %s", email)
+    }
+
+    emailVerified, ok := payload.Claims["email_verified"].(bool)
+    if !ok || !emailVerified {
+        return fmt.Errorf("email claim is not verified")
     }
 
     log.Printf("Verified push from service account: %s", email)
@@ -169,19 +180,23 @@ func handlePush(w http.ResponseWriter, r *http.Request) {
 
     // Verify the JWT signature
     audience := os.Getenv("PUSH_AUDIENCE")
-    if audience != "" {
-        if err := verifyPushToken(r, audience); err != nil {
-            log.Printf("Authentication failed: %v", err)
-            http.Error(w, "Unauthorized", http.StatusUnauthorized)
-            return
-        }
+    expectedEmail := os.Getenv("PUSH_AUTH_SERVICE_ACCOUNT")
+    if audience == "" || expectedEmail == "" {
+        log.Printf("PUSH_AUDIENCE and PUSH_AUTH_SERVICE_ACCOUNT must be configured")
+        http.Error(w, "Server misconfigured", http.StatusInternalServerError)
+        return
+    }
+    if err := verifyPushToken(r, audience, expectedEmail); err != nil {
+        log.Printf("Authentication failed: %v", err)
+        http.Error(w, "Unauthorized", http.StatusUnauthorized)
+        return
     }
 
     // Parse the push request body
     var pushReq PushRequest
     if err := json.NewDecoder(r.Body).Decode(&pushReq); err != nil {
         log.Printf("Failed to decode push request: %v", err)
-        http.Error(w, "Bad request", http.StatusBadRequest)
+        w.WriteHeader(http.StatusNoContent)
         return
     }
 
@@ -189,7 +204,7 @@ func handlePush(w http.ResponseWriter, r *http.Request) {
     data, err := pushReq.Message.DecodedData()
     if err != nil {
         log.Printf("Failed to decode message data: %v", err)
-        http.Error(w, "Bad request", http.StatusBadRequest)
+        w.WriteHeader(http.StatusNoContent)
         return
     }
 
@@ -204,7 +219,7 @@ func handlePush(w http.ResponseWriter, r *http.Request) {
     }
 
     // Return 200 to acknowledge the message
-    // Any 2xx status code tells Pub/Sub the message was processed
+    // Status 200 tells Pub/Sub the message was processed
     w.WriteHeader(http.StatusOK)
 }
 
@@ -256,26 +271,25 @@ func main() {
 
 Your response code tells Pub/Sub what to do:
 
-- **2xx** - Message acknowledged, will not be redelivered
-- **4xx** - Message acknowledged (consider it a permanent failure)
-- **5xx** - Message not acknowledged, Pub/Sub will retry
+- **102, 200, 201, 202, or 204** - Message acknowledged, will not be redelivered
+- **Any other status code** - Message not acknowledged, Pub/Sub will retry
 
-Be thoughtful about which status code you return. If the message data is malformed and will never succeed, return 400 so it does not get retried forever. If your database is temporarily down, return 500 so Pub/Sub retries later.
+Be thoughtful about which status code you return. If the message data is malformed and will never succeed, return 204 or 200 after logging it so it does not get retried forever. If your database is temporarily down, return 500 so Pub/Sub retries later.
 
 ```go
 // handlePushWithRetryLogic demonstrates nuanced error handling
 func handlePushWithRetryLogic(w http.ResponseWriter, r *http.Request) {
     var pushReq PushRequest
     if err := json.NewDecoder(r.Body).Decode(&pushReq); err != nil {
-        // Malformed request - do not retry
-        w.WriteHeader(http.StatusBadRequest)
+        // Malformed Pub/Sub message - do not retry
+        w.WriteHeader(http.StatusNoContent)
         return
     }
 
     data, err := pushReq.Message.DecodedData()
     if err != nil {
         // Bad data - do not retry
-        w.WriteHeader(http.StatusBadRequest)
+        w.WriteHeader(http.StatusNoContent)
         return
     }
 
@@ -335,7 +349,7 @@ gcloud builds submit --tag gcr.io/YOUR_PROJECT/push-subscriber
 gcloud run deploy push-subscriber \
   --image gcr.io/YOUR_PROJECT/push-subscriber \
   --region us-central1 \
-  --set-env-vars "PUSH_AUDIENCE=https://push-subscriber-xxxxx.run.app" \
+  --set-env-vars "PUSH_AUDIENCE=https://push-subscriber-xxxxx.run.app,PUSH_AUTH_SERVICE_ACCOUNT=pubsub-pusher@YOUR_PROJECT.iam.gserviceaccount.com" \
   --no-allow-unauthenticated
 
 # Grant Pub/Sub permission to invoke the Cloud Run service
