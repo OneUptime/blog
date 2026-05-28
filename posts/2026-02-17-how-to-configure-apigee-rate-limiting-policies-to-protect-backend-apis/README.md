@@ -28,7 +28,6 @@ This policy limits each API key to 1000 requests per hour:
 
 ```xml
 <!-- apiproxy/policies/EnforceQuota.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Quota name="EnforceQuota" type="calendar">
     <DisplayName>Enforce Quota - 1000/hour</DisplayName>
 
@@ -40,7 +39,7 @@ This policy limits each API key to 1000 requests per hour:
     <TimeUnit>hour</TimeUnit>
 
     <!-- Use the API key as the identifier so each consumer gets their own quota -->
-    <Identifier ref="client_id"/>
+    <Identifier ref="verifyapikey.VerifyAPIKey.client_id"/>
 
     <!-- When the quota starts counting (calendar-based) -->
     <StartTime>2026-01-01 00:00:00</StartTime>
@@ -83,23 +82,16 @@ This policy uses the quota values from the API Product:
 
 ```xml
 <!-- apiproxy/policies/ProductQuota.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Quota name="ProductQuota">
     <DisplayName>Product-Based Quota</DisplayName>
 
     <!-- These variables are populated from the API Product configuration -->
-    <Allow countRef="verifyapikey.VerifyAPIKey.apiproduct.developer.quota.limit">
-        <!-- Fallback if the product does not have a quota defined -->
-        <Allow count="100"/>
-    </Allow>
-    <Interval ref="verifyapikey.VerifyAPIKey.apiproduct.developer.quota.interval">
-        <Interval>1</Interval>
-    </Interval>
-    <TimeUnit ref="verifyapikey.VerifyAPIKey.apiproduct.developer.quota.timeunit">
-        <TimeUnit>day</TimeUnit>
-    </TimeUnit>
+    <!-- The literal values are fallbacks if the product does not define a quota -->
+    <Allow count="100" countRef="verifyapikey.VerifyAPIKey.apiproduct.developer.quota.limit"/>
+    <Interval ref="verifyapikey.VerifyAPIKey.apiproduct.developer.quota.interval">1</Interval>
+    <TimeUnit ref="verifyapikey.VerifyAPIKey.apiproduct.developer.quota.timeunit">day</TimeUnit>
 
-    <Identifier ref="client_id"/>
+    <Identifier ref="verifyapikey.VerifyAPIKey.client_id"/>
     <Distributed>true</Distributed>
     <Synchronous>true</Synchronous>
 </Quota>
@@ -115,16 +107,13 @@ This policy limits traffic to 30 requests per second:
 
 ```xml
 <!-- apiproxy/policies/SpikeArrest.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <SpikeArrest name="SpikeArrest">
     <DisplayName>Spike Arrest - 30/s</DisplayName>
 
     <!-- Maximum sustained rate -->
     <Rate>30ps</Rate>
 
-    <!-- Optional: use a variable for the identifier -->
     <!-- Without an identifier, the rate applies globally -->
-    <Identifier ref="client_id"/>
 </SpikeArrest>
 ```
 
@@ -197,9 +186,9 @@ Create the custom error response policies:
 
 ```xml
 <!-- apiproxy/policies/QuotaViolationResponse.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <AssignMessage name="QuotaViolationResponse">
     <DisplayName>Quota Violation Response</DisplayName>
+    <AssignTo createNew="false" transport="http" type="response"/>
     <Set>
         <StatusCode>429</StatusCode>
         <ReasonPhrase>Too Many Requests</ReasonPhrase>
@@ -224,9 +213,9 @@ Create the custom error response policies:
 
 ```xml
 <!-- apiproxy/policies/SpikeArrestResponse.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <AssignMessage name="SpikeArrestResponse">
     <DisplayName>Spike Arrest Response</DisplayName>
+    <AssignTo createNew="false" transport="http" type="response"/>
     <Set>
         <StatusCode>429</StatusCode>
         <ReasonPhrase>Too Many Requests</ReasonPhrase>
@@ -253,7 +242,6 @@ Create a policy that adds rate limit headers to all successful responses:
 
 ```xml
 <!-- apiproxy/policies/AddRateLimitHeaders.xml -->
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <AssignMessage name="AddRateLimitHeaders">
     <DisplayName>Add Rate Limit Headers</DisplayName>
     <AssignTo createNew="false" transport="http" type="response"/>
