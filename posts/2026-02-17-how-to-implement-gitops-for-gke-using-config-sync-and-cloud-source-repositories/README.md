@@ -29,13 +29,15 @@ graph LR
 
 Set up the Git repository that will hold your cluster configurations:
 
+Cloud Source Repositories is only available to organizations that used it before June 17, 2024. If you are setting this up in a new organization, use Secure Source Manager or another Git provider instead.
+
 ```bash
 # Create the repository
 
 gcloud source repos create gke-config
 
 # Clone it locally
-gcloud source repos clone gke-config
+gcloud source repos clone gke-config --project=my-project
 
 cd gke-config
 ```
@@ -92,8 +94,6 @@ metadata:
   labels:
     env: production
     managed-by: config-sync
-  annotations:
-    configsync.gke.io/cluster-name-selector: ""
 ```
 
 Add a deployment:
@@ -145,7 +145,7 @@ Add a network policy:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: default-deny-ingress
+  name: allow-production-namespace-ingress
   namespace: production
 spec:
   podSelector: {}
@@ -168,50 +168,17 @@ git push origin main
 
 ## Step 3: Enable Config Sync on GKE
 
-Install Config Sync on your GKE cluster using the GKE Hub feature:
+Install Config Sync on your GKE cluster using the fleet Config Management feature:
 
 ```bash
 # Enable the required APIs
 gcloud services enable \
   container.googleapis.com \
   gkehub.googleapis.com \
-  anthosconfigmanagement.googleapis.com
+  anthosconfigmanagement.googleapis.com \
+  source.googleapis.com
 
-# Register the cluster with the Hub (if not already registered)
-gcloud container hub memberships register my-cluster \
-  --gke-cluster=us-central1/my-cluster \
-  --enable-workload-identity
-
-# Apply the Config Sync configuration
-cat > config-sync-config.yaml << 'EOF'
-apiVersion: configmanagement.gke.io/v1
-kind: ConfigManagement
-metadata:
-  name: config-management
-spec:
-  configSync:
-    enabled: true
-    sourceFormat: unstructured
-    syncRepo: https://source.developers.google.com/p/my-project/r/gke-config
-    syncBranch: main
-    secretType: gcpserviceaccount
-    gcpServiceAccountEmail: config-sync-sa@my-project.iam.gserviceaccount.com
-    policyDir: "."
-    syncWait: 15
-  preventDrift: true
-EOF
-
-gcloud beta container hub config-management apply \
-  --membership=my-cluster \
-  --config=config-sync-config.yaml
-```
-
-## Step 4: Set Up Authentication
-
-Config Sync needs permission to read from Cloud Source Repositories. Create a service account and bind it:
-
-```bash
-# Create the service account
+# Create the service account that Config Sync will use to read the repository
 gcloud iam service-accounts create config-sync-sa \
   --display-name="Config Sync Service Account"
 
@@ -220,11 +187,47 @@ gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:config-sync-sa@my-project.iam.gserviceaccount.com" \
   --role="roles/source.reader"
 
-# Bind the Kubernetes service account to the GCP service account
+# Register the cluster with the fleet (if not already registered)
+gcloud container fleet memberships register my-cluster \
+  --gke-cluster=us-central1/my-cluster \
+  --enable-workload-identity
+
+# Apply the Config Sync configuration
+cat > apply-spec.yaml << 'EOF'
+applySpecVersion: 1
+spec:
+  configSync:
+    enabled: true
+    sourceFormat: unstructured
+    syncRepo: https://source.developers.google.com/p/my-project/r/gke-config
+    syncRev: main
+    secretType: gcpserviceaccount
+    gcpServiceAccountEmail: config-sync-sa@my-project.iam.gserviceaccount.com
+    policyDir: "."
+    syncWait: 15
+    preventDrift: true
+EOF
+
+gcloud beta container fleet config-management enable
+
+gcloud beta container fleet config-management apply \
+  --membership=my-cluster \
+  --config=apply-spec.yaml \
+  --project=my-project
+```
+
+## Step 4: Set Up Authentication
+
+Config Sync needs permission to read from Cloud Source Repositories. Complete the Workload Identity binding after Config Sync creates its reconciler service account:
+
+```bash
+# After Config Sync creates the root-sync Kubernetes service account,
+# bind it to the GCP service account
 gcloud iam service-accounts add-iam-policy-binding \
   config-sync-sa@my-project.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
-  --member="serviceAccount:my-project.svc.id.goog[config-management-system/root-reconciler]"
+  --member="serviceAccount:my-project.svc.id.goog[config-management-system/root-sync]" \
+  --project=my-project
 ```
 
 ## Step 5: Verify Sync Status
@@ -233,8 +236,7 @@ Check that Config Sync is working:
 
 ```bash
 # Check the sync status
-gcloud beta container hub config-management status \
-  --membership=my-cluster
+gcloud beta container fleet config-management status
 
 # For more detail, use nomos (the Config Sync CLI)
 # Install nomos
@@ -272,9 +274,12 @@ git push origin update-api-replicas
 Config Sync can prevent manual changes to managed resources. This is critical for maintaining the GitOps guarantee:
 
 ```bash
-# Drift prevention is enabled in the ConfigManagement spec
+# Drift prevention is enabled in the apply spec at spec.configSync.preventDrift
 # When preventDrift is true, Config Sync uses an admission webhook
-# to reject manual changes to managed resources
+# to reject manual changes to fields declared in the source of truth
+
+# Wait until the admission webhook is ready
+kubectl get validatingwebhookconfiguration admission-webhook.configsync.gke.io
 
 # Test it by trying to manually scale a deployment
 kubectl scale deployment api-server -n production --replicas=10
@@ -287,7 +292,7 @@ One challenge with GitOps is that you should not store secrets in Git. Use Seale
 
 ```yaml
 # namespaces/production/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-credentials
@@ -302,10 +307,12 @@ spec:
   data:
     - secretKey: database-url
       remoteRef:
-        key: projects/my-project/secrets/db-url/versions/latest
+        key: db-url
+        version: latest
     - secretKey: api-key
       remoteRef:
-        key: projects/my-project/secrets/api-key/versions/latest
+        key: api-key
+        version: latest
 ```
 
 ## Monitoring Config Sync
@@ -314,13 +321,13 @@ Set up alerts for sync failures:
 
 ```bash
 # Config Sync exports metrics to Cloud Monitoring
-# Create an alert for sync errors
-gcloud alpha monitoring policies create \
+# Create an alert for reconciler errors
+gcloud monitoring policies create \
   --display-name="Config Sync Error" \
   --condition-display-name="Config Sync has sync errors" \
-  --condition-filter='resource.type="k8s_container" AND resource.labels.container_name="reconciler" AND metric.type="logging.googleapis.com/log_entry_count" AND metric.labels.severity="ERROR"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --condition-filter='resource.type="k8s_container" AND metric.type="custom.googleapis.com/opencensus/config_sync/reconciler_errors"' \
+  --if='> 0' \
+  --duration=300s \
   --notification-channels=projects/my-project/notificationChannels/oncall
 ```
 
