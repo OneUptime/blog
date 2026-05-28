@@ -10,11 +10,11 @@ Description: A practical migration guide for moving from self-managed Istio open
 
 Running self-managed Istio in production is a serious operational commitment. You handle version upgrades, control plane scaling, security patches, and debugging when things go wrong. Google Cloud Managed Service Mesh takes all of that off your plate while keeping the same Istio API surface. The migration is not trivial, but it is doable with zero downtime if you plan it correctly.
 
-This guide walks through the complete migration process from a self-managed Istio installation to Google Cloud Managed Service Mesh on GKE.
+This guide walks through the migration process from a self-managed Istio installation to Google Cloud Managed Service Mesh on GKE. For current Cloud Service Mesh installations, Google supports direct migration from open source Istio to managed Cloud Service Mesh by using a canary cluster migration. The same-cluster namespace-by-namespace procedure below applies after the existing installation has first been moved to a supported in-cluster Cloud Service Mesh control plane.
 
 ## Migration Strategy Overview
 
-The migration uses a revision-based approach. You install the managed control plane alongside your existing Istio control plane, migrate workloads namespace by namespace, and then remove the old control plane. At no point do you have a gap in mesh coverage.
+The migration uses a canary approach. For open source Istio, provision managed Cloud Service Mesh on a new GKE cluster, replicate workloads and mesh configuration, shift traffic to the new cluster, and then remove the old cluster or old control plane. If you are already on a supported in-cluster Cloud Service Mesh control plane, you can use a namespace-by-namespace migration inside the same cluster.
 
 ```mermaid
 graph TD
@@ -28,11 +28,11 @@ graph TD
 
 Before starting, verify these requirements:
 
-- GKE cluster running version 1.25 or later
+- GKE cluster running a Cloud Service Mesh-supported GKE version
 - Workload Identity enabled on the cluster
 - VPC-native networking (alias IP ranges)
 - Cluster registered with a GKE Fleet
-- Current Istio version is 1.17 or later (for API compatibility)
+- Current Istio version is 1.11 or later for the canary cluster migration path, or a supported in-cluster Cloud Service Mesh version for same-cluster migration
 
 ```bash
 # Check current Istio version
@@ -41,7 +41,7 @@ istioctl version
 
 # Check cluster configuration
 gcloud container clusters describe YOUR_CLUSTER \
-    --zone=YOUR_ZONE \
+    --location=YOUR_LOCATION \
     --project=YOUR_PROJECT \
     --format="yaml(workloadIdentityConfig, ipAllocationPolicy, releaseChannel)"
 ```
@@ -73,7 +73,7 @@ Document each resource and note any custom EnvoyFilters, as these are the most l
 
 ### Check for Unsupported Features
 
-Cloud Managed Service Mesh supports the standard Istio API, but some advanced configurations may need adjustment.
+Cloud Managed Service Mesh supports many standard Istio APIs, but some advanced configurations may need adjustment. In particular, the managed control plane does not support the IstioOperator API, and EnvoyFilter support depends on the managed control plane implementation.
 
 ```bash
 # Check for EnvoyFilters that might need modification
@@ -83,20 +83,23 @@ kubectl get envoyfilter --all-namespaces -o yaml
 kubectl get istiooperator --all-namespaces -o yaml
 ```
 
-EnvoyFilters that reference specific Envoy filter versions or internal configuration structures may need updates for the managed mesh version.
+EnvoyFilters that reference specific Envoy filter versions or internal configuration structures may need updates, replacement, or removal for the managed mesh version.
 
 ### Enable Required APIs
 
 ```bash
 # Enable APIs needed for managed mesh
 gcloud services enable \
-    mesh.googleapis.com \
+    container.googleapis.com \
+    meshconfig.googleapis.com \
+    meshca.googleapis.com \
     gkehub.googleapis.com \
     monitoring.googleapis.com \
-    logging.googleapis.com \
-    cloudtrace.googleapis.com \
-    meshca.googleapis.com \
-    meshconfig.googleapis.com \
+    stackdriver.googleapis.com \
+    connectgateway.googleapis.com \
+    trafficdirector.googleapis.com \
+    networkservices.googleapis.com \
+    networksecurity.googleapis.com \
     --project=YOUR_PROJECT_ID
 ```
 
@@ -107,7 +110,7 @@ If your cluster is not already registered with a Fleet.
 ```bash
 # Register the cluster
 gcloud container fleet memberships register YOUR_CLUSTER \
-    --gke-cluster=YOUR_ZONE/YOUR_CLUSTER \
+    --gke-cluster=YOUR_LOCATION/YOUR_CLUSTER \
     --enable-workload-identity \
     --project=YOUR_PROJECT_ID
 ```
@@ -124,7 +127,8 @@ gcloud container fleet mesh enable --project=YOUR_PROJECT_ID
 gcloud container fleet mesh update \
     --management=automatic \
     --memberships=YOUR_CLUSTER \
-    --project=YOUR_PROJECT_ID
+    --project=YOUR_PROJECT_ID \
+    --location=YOUR_MEMBERSHIP_LOCATION
 ```
 
 Wait for the managed control plane to become active.
@@ -138,13 +142,14 @@ Verify that the managed revision is installed alongside your existing Istio revi
 
 ```bash
 # List all control plane revisions
-kubectl get controlplanerevision -n istio-system
+kubectl get controlplanerevisions -n istio-system
 
-# You should see both your old revision and the new asm-managed revision
+# Same-cluster migration is only supported from in-cluster Cloud Service Mesh.
+# You should see the managed control plane revision for that migration path.
 kubectl get mutatingwebhookconfiguration | grep istio
 ```
 
-At this point, you have two control planes running side by side. Your existing workloads continue to use the old Istio control plane.
+At this point, same-cluster migration users have the managed control plane available while existing workloads continue to use the old in-cluster Cloud Service Mesh control plane. If you are migrating directly from open source Istio, use a separate managed Cloud Service Mesh cluster instead of installing managed Cloud Service Mesh into the same cluster.
 
 ## Phase 3: Migrate Namespaces
 
@@ -158,9 +163,8 @@ Pick a low-risk namespace for the first migration.
 # Check the current injection label
 kubectl get namespace test-ns --show-labels
 
-# Remove the old injection label and add the managed one
-kubectl label namespace test-ns istio-injection- --overwrite
-kubectl label namespace test-ns istio.io/rev=asm-managed --overwrite
+# Switch the namespace to managed Cloud Service Mesh default injection
+kubectl label namespace test-ns istio.io/rev- istio-injection=enabled --overwrite
 ```
 
 ### Step 2: Restart Pods to Pick Up the New Control Plane
@@ -178,7 +182,7 @@ kubectl get pods -n test-ns -w
 Check that pods are connected to the managed control plane.
 
 ```bash
-# Check proxy status - pods should show the asm-managed revision
+# Check the proxy status for the namespace
 istioctl proxy-status | grep test-ns
 
 # Verify the sidecar version matches the managed version
@@ -205,8 +209,7 @@ for ns in $NAMESPACES; do
     echo "Migrating $ns..."
 
     # Update labels
-    kubectl label namespace $ns istio-injection- --overwrite 2>/dev/null
-    kubectl label namespace $ns istio.io/rev=asm-managed --overwrite
+    kubectl label namespace $ns istio.io/rev- istio-injection=enabled --overwrite
 
     # Restart deployments
     kubectl rollout restart deployment -n $ns
@@ -227,7 +230,7 @@ Ingress and egress gateways need special attention because they handle external 
 
 ### Deploy New Gateway Pods
 
-Create new gateway deployments that use the managed control plane injection.
+Create or update gateway deployments that use the managed control plane injection. If you already use injected gateways, changing the gateway Deployment revision or restarting the Deployment is usually enough.
 
 ```yaml
 # managed-gateway.yaml
@@ -250,6 +253,7 @@ spec:
       labels:
         app: istio-ingressgateway-managed
         istio: ingressgateway
+        istio.io/rev: asm-managed
     spec:
       containers:
       - name: istio-proxy
@@ -262,7 +266,7 @@ spec:
 
 ### Shift Traffic to the New Gateway
 
-Update the gateway Service to point to the new deployment.
+Update the gateway Service to point to the new deployment if you deploy a separate canary gateway. Another supported approach is to run both gateway Deployments behind the same Service selector and control the distribution by changing the replica counts.
 
 ```bash
 # Update the gateway service selector to include the new deployment
@@ -294,8 +298,8 @@ After all namespaces and gateways are migrated to the managed control plane, rem
 ### Verify Everything Is Migrated
 
 ```bash
-# Check that no pods are still using the old control plane
-istioctl proxy-status | grep -v "asm-managed"
+# Check that no workload proxies are still using the old control plane
+istioctl proxy-status | grep YOUR_OLD_REVISION
 
 # If this shows any pods, they still need to be migrated
 ```
@@ -303,7 +307,7 @@ istioctl proxy-status | grep -v "asm-managed"
 ### Remove Old Istio
 
 ```bash
-# If you installed with istioctl
+# If this was an open source Istio installation managed with istioctl
 istioctl uninstall --revision YOUR_OLD_REVISION
 
 # If you installed with Helm
@@ -350,9 +354,8 @@ gcloud monitoring dashboards list --project=YOUR_PROJECT_ID | grep -i mesh
 If something goes wrong during migration, you can roll back individual namespaces.
 
 ```bash
-# Roll back a namespace to the old control plane
-kubectl label namespace problem-ns istio.io/rev- --overwrite
-kubectl label namespace problem-ns istio-injection=enabled --overwrite
+# Roll back a namespace to the old revision
+kubectl label namespace problem-ns istio-injection- istio.io/rev=YOUR_OLD_REVISION --overwrite
 kubectl rollout restart deployment -n problem-ns
 ```
 
@@ -362,9 +365,9 @@ Keep the old control plane running until you have verified all namespaces are wo
 
 **Migrate during low-traffic periods.** The pod restarts during namespace migration cause brief connection drops. Schedule for your lowest-traffic window.
 
-**Watch for certificate issues.** The managed mesh uses a different CA (Mesh CA) than your self-managed Istio. During the transition, pods on different control planes may have certificates from different CAs. Permissive mTLS mode handles this, but strict mode can cause issues.
+**Watch for certificate issues.** Managed Cloud Service Mesh commonly uses Mesh CA or Certificate Authority Service. During the transition, pods on different control planes may have certificates from different CAs. Permissive mTLS mode can help during a migration, but strict mode can cause issues if trust domains and certificate authorities are not planned carefully.
 
-**EnvoyFilters are the biggest risk.** Custom EnvoyFilters that work with one Envoy version may not work with the managed mesh's Envoy version. Test these thoroughly.
+**EnvoyFilters are the biggest risk.** Custom EnvoyFilters that work with one Envoy version may not work with the managed mesh's Envoy version, and they are not supported on every managed control plane implementation. Test these thoroughly.
 
 **Keep the old control plane running longer than you think you need.** It is much easier to roll back a single namespace than to reinstall the entire old control plane. Give yourself at least a week of overlap.
 
