@@ -30,8 +30,8 @@ Each security policy has an ordered list of rules. Rules are evaluated from high
 ## Prerequisites
 
 - An external HTTP(S) load balancer with at least one backend service
-- The `compute.securityAdmin` role or equivalent permissions
-- The Cloud Armor API enabled (it is enabled by default with Compute Engine)
+- The `roles/compute.securityAdmin` role or equivalent permissions to manage security policies, and `roles/compute.networkAdmin` or equivalent permissions to attach them to backend services
+- The Compute Engine API enabled
 
 ## Step 1: Create a Security Policy
 
@@ -119,7 +119,7 @@ gcloud compute security-policies rules create 2000 \
 # Block requests with suspicious user agents
 gcloud compute security-policies rules create 3000 \
     --security-policy=my-security-policy \
-    --expression="request.headers['user-agent'].contains('BadBot')" \
+    --expression="has(request.headers['user-agent']) && request.headers['user-agent'].contains('BadBot')" \
     --action=deny-403 \
     --description="Block BadBot user agent" \
     --project=my-project
@@ -228,7 +228,7 @@ resource "google_compute_security_policy" "production" {
 
     match {
       expr {
-        expression = "request.headers['user-agent'].contains('BadBot')"
+        expression = "has(request.headers['user-agent']) && request.headers['user-agent'].contains('BadBot')"
       }
     }
   }
@@ -271,6 +271,13 @@ This structure makes it easy to insert new rules without renumbering existing on
 Cloud Armor logs are crucial for understanding what traffic is being blocked.
 
 ```bash
+# Enable request logging on the backend service
+gcloud compute backend-services update my-backend-service \
+    --enable-logging \
+    --logging-sample-rate=1.0 \
+    --global \
+    --project=my-project
+
 # View recent Cloud Armor log entries
 gcloud logging read \
     'resource.type="http_load_balancer" AND jsonPayload.enforcedSecurityPolicy.name="my-security-policy"' \
@@ -330,7 +337,7 @@ To remove a security policy from a backend service:
 ```bash
 # Remove the security policy from the backend service
 gcloud compute backend-services update my-backend-service \
-    --no-security-policy \
+    --security-policy="" \
     --global \
     --project=my-project
 ```
