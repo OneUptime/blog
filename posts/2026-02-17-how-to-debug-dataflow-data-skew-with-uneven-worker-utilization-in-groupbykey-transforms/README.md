@@ -12,7 +12,7 @@ Data skew is one of those problems that sneaks up on you. Your Dataflow pipeline
 
 ## Understanding Data Skew in Dataflow
 
-Data skew occurs when the distribution of elements across keys is uneven. In Dataflow, GroupByKey, CoGroupByKey, and stateful ParDos all partition data by key. Each key is processed by exactly one worker. If the key distribution is skewed, the workload distribution is skewed.
+Data skew occurs when the distribution of elements across keys is uneven. In Dataflow, GroupByKey, CoGroupByKey, and stateful ParDos all partition data by key and window. A single key and window is processed by one worker at a time. If the key distribution is skewed, the workload distribution is skewed.
 
 The typical symptoms are:
 - Some workers show high CPU and memory usage while others are nearly idle
@@ -81,10 +81,10 @@ From the command line, check worker metrics:
 
 ```bash
 # Get job metrics including per-stage timing
-gcloud dataflow metrics list JOB_ID \
+gcloud beta dataflow metrics list JOB_ID \
     --region=us-central1 \
     --source=service \
-    --format="table(name.name, scalar.integerValue, scalar.meanValue)"
+    --format="table(name, scalar)"
 ```
 
 ## Step 3: Use Approximate Quantiles to Profile Keys
@@ -100,6 +100,7 @@ key_profile = (
     | 'ReadInput' >> beam.io.ReadFromPubSub(topic='your-topic')
     | 'ParseAndExtractKey' >> beam.Map(lambda msg: extract_key(msg))
     | 'CountPerKey' >> beam.combiners.Count.PerElement()
+    | 'ExtractCounts' >> beam.Map(lambda key_count: key_count[1])
     | 'ComputeQuantiles' >> beam.combiners.ApproximateQuantiles.Globally(10)
     | 'WriteProfile' >> beam.Map(lambda q: logging.info(
         "Key count distribution quantiles: %s", q))
@@ -152,7 +153,7 @@ class StatsAccumulator(beam.CombineFn):
 # Apply the combiner - Dataflow handles skew through partial aggregation
 stats = (
     keyed_values
-    | 'ComputeStats' >> beam.CombinePerKey(StatsAccumulator())
+    | 'ComputeStats' >> beam.CombinePerKey(StatsAccumulator()).with_hot_key_fanout(50)
 )
 ```
 
@@ -234,14 +235,18 @@ all_results = (normal_results, hot_results) | beam.Flatten()
 For streaming pipelines, stateful DoFns can sometimes handle skew better than GroupByKey because they process elements one at a time per key:
 
 ```python
+from apache_beam.transforms import userstate
+from apache_beam.transforms.timeutil import TimeDomain
+from apache_beam.utils.timestamp import Duration, Timestamp
+
 class StatefulCounter(beam.DoFn):
     """Count elements per key using state instead of GroupByKey."""
 
     COUNT_STATE = beam.transforms.userstate.CombiningValueStateSpec(
         'count', combine_fn=sum
     )
-    TIMER = beam.transforms.userstate.TimerSpec(
-        'emit', beam.transforms.userstate.TimeDomain.PROCESSING_TIME
+    TIMER = userstate.TimerSpec(
+        'emit', TimeDomain.REAL_TIME
     )
 
     def process(self, element,
@@ -250,13 +255,15 @@ class StatefulCounter(beam.DoFn):
         key, value = element
         count_state.add(1)
         # Set a timer to emit results periodically
-        timer.set(time.time() + 60)  # Emit every 60 seconds
+        timer.set(Timestamp.now() + Duration(seconds=60))
 
-    @beam.transforms.userstate.on_timer(TIMER)
-    def emit(self, count_state=beam.DoFn.StateParam(COUNT_STATE)):
+    @userstate.on_timer(TIMER)
+    def emit(self,
+             key=beam.DoFn.KeyParam,
+             count_state=beam.DoFn.StateParam(COUNT_STATE)):
         count = count_state.read()
         count_state.clear()
-        yield count
+        yield (key, count)
 ```
 
 Stateful processing avoids the shuffle entirely, which sidesteps the skew problem for cases where you do not need all values at once.
