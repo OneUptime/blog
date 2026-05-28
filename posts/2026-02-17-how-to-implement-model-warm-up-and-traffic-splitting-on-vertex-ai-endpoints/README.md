@@ -104,8 +104,12 @@ import os
 import numpy as np
 from flask import Flask, request, jsonify
 import time
+import threading
 
 app = Flask(__name__)
+
+HEALTH_ROUTE = os.environ.get("AIP_HEALTH_ROUTE", "/health")
+PREDICT_ROUTE = os.environ.get("AIP_PREDICT_ROUTE", "/predict")
 
 model = None
 is_warm = False  # Track warm-up status
@@ -134,28 +138,31 @@ def load_and_warm_model():
 
     is_warm = True
 
-@app.route("/health", methods=["GET"])
+@app.route(HEALTH_ROUTE, methods=["GET"])
 def health():
     """Only report healthy after warm-up is complete."""
     if is_warm:
         return jsonify({"status": "healthy", "warm": True}), 200
     return jsonify({"status": "warming_up", "warm": False}), 503
 
-@app.route("/predict", methods=["POST"])
+@app.route(PREDICT_ROUTE, methods=["POST"])
 def predict():
     """Handle prediction requests."""
+    if model is None or not is_warm:
+        return jsonify({"error": "model is not ready"}), 503
+
     data = request.get_json()
     instances = np.array(data.get("instances", []))
     predictions = model.predict(instances, verbose=0)
     return jsonify({"predictions": predictions.tolist()})
 
 if __name__ == "__main__":
-    load_and_warm_model()
+    threading.Thread(target=load_and_warm_model, daemon=True).start()
     port = int(os.environ.get("AIP_HTTP_PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 ```
 
-The key insight here is that the health endpoint returns 503 until warm-up is complete. Vertex AI will not route traffic to the replica until the health check passes, so users never see cold-start latency.
+The key insight here is that the health endpoint returns 503 until warm-up is complete. Vertex AI sends health checks to the configured health route, which is available in the container as `AIP_HEALTH_ROUTE`, and stops routing traffic to replicas whose health checks fail. That keeps users from seeing cold-start latency.
 
 ## Setting Up Traffic Splitting
 
@@ -173,7 +180,7 @@ endpoint = aiplatform.Endpoint.create(
     display_name="recommendation-endpoint"
 )
 
-# Deploy the current production model with 90% traffic
+# Deploy the current production model first
 model_v1 = aiplatform.Model("projects/your-project-id/locations/us-central1/models/MODEL_V1_ID")
 model_v1.deploy(
     endpoint=endpoint,
@@ -181,10 +188,11 @@ model_v1.deploy(
     machine_type="n1-standard-4",
     min_replica_count=2,
     max_replica_count=5,
-    traffic_percentage=90
+    traffic_percentage=100
 )
 
-# Deploy the new model with 10% traffic (canary)
+# Deploy the new model with 10% traffic (canary). The SDK scales the
+# existing deployed model's traffic down, giving you a 90/10 split.
 model_v2 = aiplatform.Model("projects/your-project-id/locations/us-central1/models/MODEL_V2_ID")
 model_v2.deploy(
     endpoint=endpoint,
@@ -202,14 +210,14 @@ print(f"Endpoint with traffic split: {endpoint.resource_name}")
 
 For production deployments, automate the traffic shifting with health checks at each stage.
 
-This code implements an automated rollout with monitoring:
+This code implements an automated rollout with monitoring. Pass deployed model IDs from the endpoint, not Model Registry model IDs:
 
 ```python
 import time
-from google.cloud import aiplatform, monitoring_v3
+from google.cloud import monitoring_v3
 import datetime
 
-def get_error_rate(project_id, endpoint_id, model_id, window_minutes=15):
+def get_error_rate(project_id, endpoint_id, deployed_model_id, window_minutes=15):
     """Check the error rate for a deployed model over a time window."""
     client = monitoring_v3.MetricServiceClient()
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -227,7 +235,7 @@ def get_error_rate(project_id, endpoint_id, model_id, window_minutes=15):
                 f'resource.type="aiplatform.googleapis.com/Endpoint" '
                 f'AND metric.type="aiplatform.googleapis.com/prediction/online/error_count" '
                 f'AND resource.labels.endpoint_id="{endpoint_id}" '
-                f'AND metric.labels.deployed_model_id="{model_id}"'
+                f'AND metric.labels.deployed_model_id="{deployed_model_id}"'
             ),
             "interval": interval,
             "aggregation": monitoring_v3.Aggregation(
@@ -245,7 +253,7 @@ def get_error_rate(project_id, endpoint_id, model_id, window_minutes=15):
 
     return total_errors
 
-def safe_rollout(endpoint, new_model_id, old_model_id, project_id, endpoint_id):
+def safe_rollout(endpoint, new_deployed_model_id, old_deployed_model_id, project_id, endpoint_id):
     """Perform a safe rollout with automatic rollback on errors."""
     stages = [
         {"new_pct": 10, "wait_minutes": 15, "max_errors": 5},
@@ -262,9 +270,9 @@ def safe_rollout(endpoint, new_model_id, old_model_id, project_id, endpoint_id):
         # Update traffic split
         traffic = {}
         if new_pct > 0:
-            traffic[new_model_id] = new_pct
+            traffic[new_deployed_model_id] = new_pct
         if old_pct > 0:
-            traffic[old_model_id] = old_pct
+            traffic[old_deployed_model_id] = old_pct
 
         endpoint.update(traffic_split=traffic)
         print(f"Traffic: new={new_pct}%, old={old_pct}%")
@@ -275,13 +283,13 @@ def safe_rollout(endpoint, new_model_id, old_model_id, project_id, endpoint_id):
 
             # Check error rate
             errors = get_error_rate(
-                project_id, endpoint_id, new_model_id,
+                project_id, endpoint_id, new_deployed_model_id,
                 window_minutes=stage["wait_minutes"]
             )
 
             if errors > stage["max_errors"]:
                 print(f"Too many errors ({errors}), rolling back!")
-                endpoint.update(traffic_split={old_model_id: 100})
+                endpoint.update(traffic_split={old_deployed_model_id: 100})
                 return False
 
             print(f"Errors in window: {errors} (threshold: {stage['max_errors']})")
@@ -314,33 +322,90 @@ model_v2.deploy(
 Track key metrics for each model version to make informed rollout decisions.
 
 ```python
-def compare_model_performance(endpoint, deployed_models):
+import datetime
+from google.cloud import monitoring_v3
+
+def get_metric(project_id, endpoint_id, metric_type, deployed_model_id, aligner, window_minutes=15, extra_filter=""):
+    """Read a Vertex AI endpoint metric from Cloud Monitoring."""
+    client = monitoring_v3.MetricServiceClient()
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    metric_filter = (
+        f'resource.type="aiplatform.googleapis.com/Endpoint" '
+        f'AND metric.type="{metric_type}" '
+        f'AND resource.labels.endpoint_id="{endpoint_id}" '
+        f'AND metric.labels.deployed_model_id="{deployed_model_id}"'
+    )
+    if extra_filter:
+        metric_filter += f" AND {extra_filter}"
+
+    results = client.list_time_series(
+        request={
+            "name": f"projects/{project_id}",
+            "filter": metric_filter,
+            "interval": monitoring_v3.TimeInterval({
+                "start_time": {"seconds": int((now - datetime.timedelta(minutes=window_minutes)).timestamp())},
+                "end_time": {"seconds": int(now.timestamp())}
+            }),
+            "aggregation": monitoring_v3.Aggregation(
+                alignment_period={"seconds": window_minutes * 60},
+                per_series_aligner=aligner
+            )
+        }
+    )
+
+    values = []
+    for series in results:
+        for point in series.points:
+            value = point.value
+            values.append(value.double_value if value.double_value else value.int64_value)
+
+    return sum(values) / len(values) if values else None
+
+def compare_model_performance(project_id, endpoint_id, deployed_models):
     """Compare latency and error rates across deployed models."""
     for dm in deployed_models:
         print(f"\nModel: {dm.display_name} (ID: {dm.id})")
 
-        # Get latency metrics
-        # These come from Cloud Monitoring
-        latency = get_metric(
+        # Get latency metrics from Cloud Monitoring
+        p50_latency = get_metric(
+            project_id,
+            endpoint_id,
             "aiplatform.googleapis.com/prediction/online/prediction_latencies",
-            dm.id
+            dm.id,
+            monitoring_v3.Aggregation.Aligner.ALIGN_PERCENTILE_50,
+            extra_filter='metric.labels.latency_type="total"'
         )
-        print(f"  P50 Latency: {latency.get('p50', 'N/A')}ms")
-        print(f"  P99 Latency: {latency.get('p99', 'N/A')}ms")
+        p99_latency = get_metric(
+            project_id,
+            endpoint_id,
+            "aiplatform.googleapis.com/prediction/online/prediction_latencies",
+            dm.id,
+            monitoring_v3.Aggregation.Aligner.ALIGN_PERCENTILE_99,
+            extra_filter='metric.labels.latency_type="total"'
+        )
+        print(f"  P50 Latency: {p50_latency if p50_latency is not None else 'N/A'}ms")
+        print(f"  P99 Latency: {p99_latency if p99_latency is not None else 'N/A'}ms")
 
         # Get prediction count
         count = get_metric(
+            project_id,
+            endpoint_id,
             "aiplatform.googleapis.com/prediction/online/prediction_count",
-            dm.id
+            dm.id,
+            monitoring_v3.Aggregation.Aligner.ALIGN_SUM
         )
-        print(f"  Prediction Count: {count}")
+        print(f"  Prediction Count: {count if count is not None else 'N/A'}")
 
         # Get error count
         errors = get_metric(
+            project_id,
+            endpoint_id,
             "aiplatform.googleapis.com/prediction/online/error_count",
-            dm.id
+            dm.id,
+            monitoring_v3.Aggregation.Aligner.ALIGN_SUM
         )
-        print(f"  Error Count: {errors}")
+        print(f"  Error Count: {errors if errors is not None else 'N/A'}")
 ```
 
 Model warm-up eliminates the cold-start penalty that would otherwise affect your first users after a deployment or scale-up event. Traffic splitting gives you the safety net to deploy with confidence, catching issues while they affect only a small fraction of your traffic. Together, they make Vertex AI model deployments production-ready.
