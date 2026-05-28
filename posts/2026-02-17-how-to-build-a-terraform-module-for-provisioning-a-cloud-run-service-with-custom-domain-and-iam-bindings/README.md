@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Terraform, Cloud Run, IAM, Infrastructure as Code, Google Cloud
 
-Description: Build a reusable Terraform module that provisions a Cloud Run service with custom domain mapping, IAM bindings, and production-ready configuration.
+Description: Build a reusable Terraform module that provisions a Cloud Run service with custom domain mapping, IAM bindings, and reusable configuration.
 
 ---
 
@@ -72,8 +72,8 @@ variable "service_name" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{0,48}[a-z0-9]$", var.service_name))
-    error_message = "Service name must be lowercase alphanumeric with hyphens, 2-50 characters."
+    condition     = can(regex("^[a-z]([a-z0-9-]{0,47}[a-z0-9])?$", var.service_name))
+    error_message = "Service name must be lowercase alphanumeric with hyphens, 1-49 characters."
   }
 }
 
@@ -256,6 +256,15 @@ resource "google_cloud_run_v2_service" "service" {
         }
       }
 
+      # Cloud SQL socket mount
+      dynamic "volume_mounts" {
+        for_each = length(var.cloudsql_connections) > 0 ? [1] : []
+        content {
+          name       = "cloudsql"
+          mount_path = "/cloudsql"
+        }
+      }
+
       # Startup probe
       startup_probe {
         http_get {
@@ -360,6 +369,8 @@ resource "google_cloud_run_domain_mapping" "custom_domain" {
   }
 }
 ```
+
+Cloud Run domain mappings are a Preview feature and are not recommended for production services. For production custom domains, use a global external Application Load Balancer in front of Cloud Run.
 
 ## Outputs
 
