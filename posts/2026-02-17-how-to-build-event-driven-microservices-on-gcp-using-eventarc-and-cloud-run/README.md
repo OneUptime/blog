@@ -38,13 +38,22 @@ Before diving into code, enable the required APIs and set up the environment.
 gcloud services enable run.googleapis.com
 gcloud services enable eventarc.googleapis.com
 gcloud services enable cloudbuild.googleapis.com
+gcloud services enable artifactregistry.googleapis.com
 gcloud services enable storage.googleapis.com
+gcloud services enable pubsub.googleapis.com
+gcloud services enable vision.googleapis.com
+gcloud services enable firestore.googleapis.com
 
 # Create a storage bucket for image uploads
 gcloud storage buckets create gs://my-project-image-uploads \
   --location=us-central1
 
-# Grant Eventarc permission to invoke Cloud Run
+# Grant the trigger service account permission to invoke Cloud Run
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:$(gcloud projects describe my-project --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
+  --role="roles/run.invoker"
+
+# Grant the trigger service account permission to receive events
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:$(gcloud projects describe my-project --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
   --role="roles/eventarc.eventReceiver"
@@ -74,8 +83,8 @@ def resize_image():
     bucket_name = cloud_event['bucket']
     file_name = cloud_event['name']
 
-    # Skip if this is not an image file
-    if not file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+    # Skip generated files and non-image files
+    if file_name.startswith('resized/') or not file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
         return 'Not an image, skipping', 200
 
     # Download the original image from Cloud Storage
@@ -219,7 +228,7 @@ if __name__ == '__main__':
 
 ## Publishing Custom Events
 
-Eventarc also supports custom events through Pub/Sub. This lets your services emit their own domain events.
+Eventarc also supports routing Pub/Sub messages. This lets your services emit their own domain events as Pub/Sub message payloads and attributes.
 
 ```python
 # Publishing a custom event that Eventarc can route
@@ -232,7 +241,7 @@ def publish_custom_event(project_id, event_type, data):
     """Publish a custom domain event via Pub/Sub for Eventarc routing."""
     topic_path = publisher.topic_path(project_id, 'custom-events')
 
-    # Include the event type as a message attribute for filtering
+    # Include the event type as a message attribute for the receiver to inspect
     future = publisher.publish(
         topic_path,
         data=json.dumps(data).encode('utf-8'),
@@ -243,7 +252,7 @@ def publish_custom_event(project_id, event_type, data):
     print(f'Published event {event_type}: {future.result()}')
 ```
 
-Then create an Eventarc trigger that filters on the custom event type.
+Then create an Eventarc trigger that routes messages published to the Pub/Sub topic.
 
 ```bash
 # Create a Pub/Sub topic for custom events
