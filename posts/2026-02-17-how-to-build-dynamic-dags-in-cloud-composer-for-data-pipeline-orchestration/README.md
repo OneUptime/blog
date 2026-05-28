@@ -14,7 +14,7 @@ I started using dynamic DAGs in Cloud Composer when I needed to build an ETL pip
 
 ## How Dynamic DAGs Work in Airflow
 
-Airflow parses DAG files every 30 seconds (configurable) to detect changes. During parsing, your Python code executes and generates the DAG object. This means you can use any Python logic - loops, conditionals, reading files, querying databases - to construct your DAG dynamically.
+Airflow parses DAG files repeatedly to detect changes. During parsing, your top-level Python code executes and generates the DAG object. This means you can use lightweight Python logic - loops, conditionals, and reading local files - to construct your DAG dynamically. Avoid database calls, API calls, and other heavy work at the top level because Airflow and Cloud Composer run that code repeatedly while parsing DAG files.
 
 The key constraint is that DAG generation must be deterministic for a given input. If your DAG structure changes randomly between parses, Airflow gets confused about task states and dependencies.
 
@@ -62,7 +62,7 @@ default_args = {
 with DAG(
     dag_id="dynamic_etl_pipeline",
     default_args=default_args,
-    schedule_interval="@daily",
+    schedule="@daily",
     catchup=False,
     tags=["etl", "dynamic"],
 ) as dag:
@@ -114,35 +114,35 @@ with DAG(
 
 ## Dynamic DAGs from Database Metadata
 
-Generate tasks based on what exists in your database:
+Generate tasks based on what exists in your database. To keep DAG parsing fast and reliable, export the database metadata to a DAG-local configuration file before parsing instead of querying the database from top-level DAG code:
 
 ```python
 # dags/dynamic_from_metadata.py
-# Generate tasks dynamically by querying metadata tables
+# Generate tasks dynamically from exported metadata
+import json
+import os
 from datetime import datetime
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
 
 def get_active_pipelines():
-    """Query a metadata table to get the list of active pipelines."""
-    hook = BigQueryHook(gcp_conn_id="google_cloud_default")
-    # Read from a configuration table in BigQuery
-    sql = """
-        SELECT pipeline_id, source_table, target_table, transform_type
-        FROM `my-project.metadata.pipeline_config`
-        WHERE is_active = TRUE
-        ORDER BY pipeline_id
-    """
-    result = hook.get_pandas_df(sql)
-    return result.to_dict("records")
+    """Load active pipelines exported from the metadata table."""
+    metadata_path = os.path.join(
+        os.path.dirname(__file__), "config", "pipeline_config.json"
+    )
+    with open(metadata_path, "r") as f:
+        pipelines = json.load(f)
+    return sorted(
+        [pipeline for pipeline in pipelines if pipeline.get("is_active")],
+        key=lambda pipeline: pipeline["pipeline_id"],
+    )
 
-# Get the pipeline configurations at parse time
+# Load the pipeline configurations at parse time
 # This runs every time Airflow parses the DAG file
 try:
     pipelines = get_active_pipelines()
 except Exception:
-    # Fallback to empty list if metadata query fails
+    # Fallback to empty list if metadata loading fails
     # This prevents the DAG from disappearing during transient errors
     pipelines = []
 
@@ -162,7 +162,7 @@ default_args = {
 with DAG(
     dag_id="metadata_driven_pipeline",
     default_args=default_args,
-    schedule_interval="@daily",
+    schedule="@daily",
     catchup=False,
     tags=["dynamic", "metadata-driven"],
 ) as dag:
@@ -209,7 +209,7 @@ def create_customer_dag(customer):
     dag = DAG(
         dag_id=f"customer_etl_{customer['id']}",
         default_args=default_args,
-        schedule_interval=customer["schedule"],
+        schedule=customer["schedule"],
         catchup=False,
         tags=["customer-etl", customer["priority"]],
         description=f"ETL pipeline for customer {customer['id']}",
@@ -276,7 +276,7 @@ default_args = {
 with DAG(
     dag_id="grouped_dynamic_pipeline",
     default_args=default_args,
-    schedule_interval="@daily",
+    schedule="@daily",
     catchup=False,
 ) as dag:
 
@@ -313,7 +313,7 @@ with DAG(
 
 ## Dynamic Task Mapping (Airflow 2.3+)
 
-Cloud Composer 2 supports dynamic task mapping, which generates tasks at runtime instead of parse time:
+Cloud Composer 2 environments running Airflow 2.3 or later support dynamic task mapping, which generates tasks at runtime instead of parse time:
 
 ```python
 # dags/dynamic_task_mapping.py
@@ -331,7 +331,7 @@ default_args = {
 with DAG(
     dag_id="dynamic_task_mapping_example",
     default_args=default_args,
-    schedule_interval="@daily",
+    schedule="@daily",
     catchup=False,
 ) as dag:
 
