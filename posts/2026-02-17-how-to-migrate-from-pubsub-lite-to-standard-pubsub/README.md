@@ -8,7 +8,7 @@ Description: A practical guide to migrating from Google Cloud Pub/Sub Lite to st
 
 ---
 
-Pub/Sub Lite was Google's lower-cost alternative to standard Pub/Sub, offering reduced pricing in exchange for zonal availability and capacity-based provisioning. Google has announced that Pub/Sub Lite is being deprecated, which means teams running on Pub/Sub Lite need to migrate to standard Pub/Sub.
+Pub/Sub Lite was Google's lower-cost alternative to standard Pub/Sub, offering reduced pricing in exchange for zonal or regional Lite topics and capacity-based provisioning. Google announced that Pub/Sub Lite was deprecated and scheduled for turn-down on March 18, 2026, which means teams running on Pub/Sub Lite need to migrate to standard Pub/Sub.
 
 The good news is that the concepts are similar enough that the migration is straightforward. The harder part is understanding the behavioral differences so your application works correctly after the switch. This guide covers the key differences, migration strategies, and practical steps to make the transition.
 
@@ -18,7 +18,7 @@ Before migrating, understand what changes:
 
 | Feature | Pub/Sub Lite | Standard Pub/Sub |
 |---------|-------------|-----------------|
-| Availability | Zonal | Global |
+| Availability | Zonal or regional | Global routing with regional storage replication |
 | Capacity | Pre-provisioned | Auto-scaled |
 | Pricing | Capacity-based | Usage-based |
 | Message ordering | By partition | By ordering key |
@@ -60,6 +60,8 @@ Create the equivalent standard Pub/Sub topic and subscriptions:
 ```hcl
 # Standard Pub/Sub topic to replace Pub/Sub Lite
 
+data "google_project" "current" {}
+
 resource "google_pubsub_topic" "events" {
   name = "events-standard"
 
@@ -69,6 +71,10 @@ resource "google_pubsub_topic" "events" {
     migrated_from = "pubsub-lite"
     environment   = "production"
   }
+}
+
+resource "google_pubsub_topic" "events_dlq" {
+  name = "events-standard-dlq"
 }
 
 # Create subscriptions that mirror your Lite subscriptions
@@ -94,6 +100,19 @@ resource "google_pubsub_subscription" "processor" {
   expiration_policy {
     ttl = ""
   }
+}
+
+# Pub/Sub needs these permissions to forward messages to the dead-letter topic.
+resource "google_pubsub_topic_iam_member" "dlq_publisher" {
+  topic  = google_pubsub_topic.events_dlq.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+resource "google_pubsub_subscription_iam_member" "processor_subscriber" {
+  subscription = google_pubsub_subscription.processor.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 ```
 
@@ -156,7 +175,8 @@ def get_ordering_key(event_data):
     """Generate an ordering key that replaces partition assignment.
 
     In Pub/Sub Lite, you might have used a partition key function.
-    In standard Pub/Sub, the ordering key serves a similar purpose.
+    In standard Pub/Sub, the ordering key serves a similar purpose for
+    per-entity ordering, but it is not a direct replacement for a partition.
     """
     # If you were partitioning by entity ID, use that as the ordering key
     entity_id = event_data.get('entity_id') or event_data.get('user_id')
@@ -183,6 +203,7 @@ Update your subscriber code from the Pub/Sub Lite client to the standard Pub/Sub
 
 # After: Standard Pub/Sub subscriber
 from google.cloud import pubsub_v1
+import json
 
 subscriber = pubsub_v1.SubscriberClient()
 subscription_path = subscriber.subscription_path("my-project", "event-processor-standard")
@@ -216,13 +237,13 @@ streaming_pull.result()
 Before decommissioning Pub/Sub Lite, verify that the standard Pub/Sub path is working correctly:
 
 ```python
-# Validation script to compare processing between Lite and Standard
+# Validation script to check backlog in the standard Pub/Sub path
 import time
 from google.cloud import monitoring_v3
 from google.protobuf.timestamp_pb2 import Timestamp
 
-def compare_metrics(project_id, lite_sub, standard_sub):
-    """Compare message processing metrics between Lite and Standard."""
+def check_standard_backlog(project_id, standard_sub):
+    """Check the standard Pub/Sub subscription backlog."""
     client = monitoring_v3.MetricServiceClient()
 
     now = time.time()
@@ -248,7 +269,7 @@ def compare_metrics(project_id, lite_sub, standard_sub):
             latest = series.points[0].value.int64_value if series.points else 0
             print(f"{sub_id}: backlog = {latest}")
 
-compare_metrics("my-project", "event-processor-lite", "event-processor-standard")
+check_standard_backlog("my-project", "event-processor-standard")
 ```
 
 Check these things during validation:
@@ -285,7 +306,7 @@ Run a cost estimate before migrating by analyzing your current message volume an
 
 2. **Throughput provisioning**: Standard Pub/Sub scales automatically, but there are per-project quotas. Check your quotas before migrating high-throughput workloads.
 
-3. **Regional vs zonal**: Pub/Sub Lite was zonal. Standard Pub/Sub is regional/global. This is an availability improvement, but it means slightly different latency characteristics.
+3. **Regional vs zonal**: Pub/Sub Lite used zonal or regional Lite topics. Standard Pub/Sub uses global routing with regional storage replication. This is an availability improvement, but it means slightly different latency characteristics.
 
 4. **Client library differences**: The Pub/Sub Lite client library is different from the standard one. Update all imports and API calls.
 
