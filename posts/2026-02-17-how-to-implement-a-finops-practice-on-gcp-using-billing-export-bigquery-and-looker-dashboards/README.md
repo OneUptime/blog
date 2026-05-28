@@ -32,7 +32,7 @@ flowchart TD
 
 ## Step 1: Enable Billing Export to BigQuery
 
-Set up the billing export from the GCP Console or using the CLI:
+Set up the billing export target datasets with the CLI, then enable export in the GCP Console:
 
 ```bash
 # Create a BigQuery dataset for billing data
@@ -42,6 +42,11 @@ bq mk --dataset \
   --description="GCP billing export data" \
   my-billing-project:billing_export
 
+bq mk --dataset \
+  --location=us \
+  --description="FinOps analytics views" \
+  my-billing-project:finops
+
 # Enable detailed billing export (must be done through Console)
 # Go to Billing > Billing Export > BigQuery Export
 # Select the dataset and enable both Standard and Detailed exports
@@ -49,11 +54,11 @@ bq mk --dataset \
 
 GCP exports three types of billing data:
 
-- Standard export: Daily cost summaries by service and SKU
-- Detailed export: Resource-level costs with labels and project breakdown
+- Standard export: Usage cost records with services, SKUs, projects, labels, locations, usage, credits, and costs
+- Detailed export: Standard export fields plus resource-level costs for supported services
 - Pricing export: The rate card for all GCP services
 
-The detailed export is what you want for FinOps - it includes labels, project IDs, and resource-level cost attribution.
+The detailed export is what you want for FinOps - it includes resource-level cost attribution in addition to the standard billing fields.
 
 ## Step 2: Understand the Billing Data Schema
 
@@ -63,8 +68,7 @@ The billing export table has a rich schema. Here are the key columns:
 -- Explore the billing export schema
 SELECT
   column_name,
-  data_type,
-  description
+  data_type
 FROM `my-billing-project.billing_export.INFORMATION_SCHEMA.COLUMNS`
 WHERE table_name = 'gcp_billing_export_resource_v1_BILLING_ACCOUNT_ID'
 ORDER BY ordinal_position;
@@ -156,12 +160,12 @@ ORDER BY week DESC, net_cost DESC;
 
 ## Step 4: Identify Optimization Opportunities
 
-Find wasted spend with targeted queries:
+Find cost areas that are worth investigating with targeted queries:
 
 ```sql
--- Find idle Compute Engine instances (high cost, low CPU utilization)
--- Cross-reference billing with monitoring data
-CREATE OR REPLACE VIEW `my-billing-project.finops.idle_compute_instances` AS
+-- Find high-cost Compute Engine instance usage for right-sizing review
+-- Cross-reference these results with Cloud Monitoring CPU and memory metrics
+CREATE OR REPLACE VIEW `my-billing-project.finops.compute_instances_to_review` AS
 SELECT
   resource.name AS instance_name,
   project.id AS project_id,
@@ -177,10 +181,10 @@ HAVING monthly_cost > 100
 ORDER BY monthly_cost DESC;
 ```
 
-Find unattached persistent disks:
+Find persistent disk storage to review:
 
 ```sql
--- Identify potentially unattached disks (storage cost with no compute)
+-- Identify persistent disk storage spend to investigate for unattached disks
 SELECT
   resource.name AS disk_name,
   project.id AS project_id,
@@ -260,9 +264,13 @@ Set up automated alerts using Cloud Scheduler and Cloud Functions:
 
 ```python
 # cost_alert.py - Cloud Function that checks for cost anomalies
+import os
+
 import functions_framework
 from google.cloud import bigquery
 import requests
+
+SLACK_WEBHOOK = os.environ["SLACK_WEBHOOK"]
 
 @functions_framework.http
 def check_cost_anomalies(request):
