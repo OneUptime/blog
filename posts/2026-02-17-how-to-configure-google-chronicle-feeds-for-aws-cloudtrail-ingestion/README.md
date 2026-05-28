@@ -49,16 +49,21 @@ Create a dedicated IAM user in AWS that Chronicle will use to access the S3 buck
     "Version": "2012-10-17",
     "Statement": [
         {
-            "Sid": "ChronicleS3ReadAccess",
+            "Sid": "ChronicleS3BucketAccess",
             "Effect": "Allow",
             "Action": [
-                "s3:GetObject",
+                "s3:GetBucketLocation",
                 "s3:ListBucket"
             ],
-            "Resource": [
-                "arn:aws:s3:::your-cloudtrail-bucket",
-                "arn:aws:s3:::your-cloudtrail-bucket/*"
-            ]
+            "Resource": "arn:aws:s3:::your-cloudtrail-bucket"
+        },
+        {
+            "Sid": "ChronicleS3ObjectAccess",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject"
+            ],
+            "Resource": "arn:aws:s3:::your-cloudtrail-bucket/*"
         }
     ]
 }
@@ -105,14 +110,13 @@ Each file is a gzipped JSON document containing a batch of events.
 
 In the Chronicle console, go to Settings, then SIEM Settings, then Feeds. Create a new feed with these settings:
 
-- **Source Type**: Amazon S3
+- **Source Type**: Amazon S3 V2
 - **Log Type**: AWS CloudTrail
 - **S3 URI**: `s3://your-cloudtrail-bucket/AWSLogs/`
-- **URI is a**: Directory with subdirectories
 - **Source Deletion Option**: Never delete (keep your original logs)
+- **Maximum File Age**: Include files modified in the last number of days (default is 180 days)
 - **Access Key ID**: The key from Step 1
 - **Secret Access Key**: The secret from Step 1
-- **Region**: The AWS region where your bucket is located
 
 Chronicle will start polling the bucket and ingesting new CloudTrail log files.
 
@@ -148,7 +152,7 @@ First, update the SQS queue policy to allow S3 to send messages.
             "Principal": {
                 "Service": "s3.amazonaws.com"
             },
-            "Action": "SQS:SendMessage",
+            "Action": "sqs:SendMessage",
             "Resource": "arn:aws:sqs:us-east-1:YOUR_ACCOUNT_ID:chronicle-cloudtrail-notifications",
             "Condition": {
                 "ArnEquals": {
@@ -161,10 +165,12 @@ First, update the SQS queue policy to allow S3 to send messages.
 ```
 
 ```bash
-# Set the queue policy
+# Set the queue policy saved in queue-policy.json
+QUEUE_POLICY=$(tr -d '\n' < queue-policy.json)
+
 aws sqs set-queue-attributes \
     --queue-url https://sqs.us-east-1.amazonaws.com/YOUR_ACCOUNT_ID/chronicle-cloudtrail-notifications \
-    --attributes '{"Policy": "PASTE_POLICY_JSON_HERE"}'
+    --attributes Policy="$QUEUE_POLICY"
 ```
 
 Then configure the S3 notification.
@@ -202,16 +208,21 @@ Add SQS permissions to the Chronicle IAM user's policy.
     "Version": "2012-10-17",
     "Statement": [
         {
-            "Sid": "ChronicleS3ReadAccess",
+            "Sid": "ChronicleS3BucketAccess",
             "Effect": "Allow",
             "Action": [
-                "s3:GetObject",
+                "s3:GetBucketLocation",
                 "s3:ListBucket"
             ],
-            "Resource": [
-                "arn:aws:s3:::your-cloudtrail-bucket",
-                "arn:aws:s3:::your-cloudtrail-bucket/*"
-            ]
+            "Resource": "arn:aws:s3:::your-cloudtrail-bucket"
+        },
+        {
+            "Sid": "ChronicleS3ObjectAccess",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject"
+            ],
+            "Resource": "arn:aws:s3:::your-cloudtrail-bucket/*"
         },
         {
             "Sid": "ChronicleQueueAccess",
@@ -232,12 +243,14 @@ Add SQS permissions to the Chronicle IAM user's policy.
 
 In the Chronicle console, create a new feed:
 
-- **Source Type**: Amazon SQS
+- **Source Type**: Amazon SQS V2
 - **Log Type**: AWS CloudTrail
-- **SQS Queue URL**: `https://sqs.us-east-1.amazonaws.com/YOUR_ACCOUNT_ID/chronicle-cloudtrail-notifications`
-- **Access Key ID**: Your Chronicle IAM user's access key
-- **Secret Access Key**: The corresponding secret
-- **Region**: us-east-1 (or your queue's region)
+- **Queue ARN**: `arn:aws:sqs:us-east-1:YOUR_ACCOUNT_ID:chronicle-cloudtrail-notifications`
+- **S3 URI**: `s3://your-cloudtrail-bucket/AWSLogs/`
+- **Source Deletion Option**: Never delete (keep your original logs)
+- **Maximum File Age**: Include files modified in the last number of days (default is 180 days)
+- **SQS Queue Access Key ID**: Your Chronicle IAM user's access key
+- **SQS Queue Secret Access Key**: The corresponding secret
 
 ## Verifying Ingestion
 
@@ -246,13 +259,13 @@ After configuring the feed, wait a few minutes and then check the Chronicle Data
 Run a quick UDM search to verify the data.
 
 ```text
-metadata.product_name = "AWS CloudTrail" AND metadata.event_timestamp.seconds > timestamp("2026-02-17T00:00:00Z")
+metadata.product_name = "AWS CloudTrail" and timestamp.get_date(metadata.event_timestamp.seconds, "UTC") = "2026-02-17"
 ```
 
 You can also search for specific event types to confirm proper parsing.
 
 ```text
-metadata.product_name = "AWS CloudTrail" AND metadata.product_event_type = "ConsoleLogin"
+metadata.product_name = "AWS CloudTrail" and metadata.product_event_type = "ConsoleLogin"
 ```
 
 ## Writing Cross-Cloud Detection Rules
