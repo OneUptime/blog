@@ -19,7 +19,7 @@ Imagine you have a Pub/Sub topic that multiple services publish to and multiple 
   "user_id": "u123",
   "event_type": "purchase",
   "amount": 49.99,
-  "timestamp": "2026-02-17T10:00:00Z"
+  "timestamp": 1771322400000
 }
 ```
 
@@ -40,7 +40,7 @@ flowchart TD
 
 - Backward compatible: New schema can read data written with old schema (add fields with defaults)
 - Forward compatible: Old schema can read data written with new schema (remove optional fields)
-- Full compatible: Both backward and forward (safest for evolving schemas)
+- Full compatible: Both backward and forward. Pub/Sub schema revisions must satisfy Avro schema resolution in both directions.
 
 ## Step 1: Create an Avro Schema
 
@@ -112,9 +112,8 @@ Here is how to publish schema-validated messages:
 ```python
 # publisher.py - Publish Avro-validated messages to Pub/Sub
 from google.cloud import pubsub_v1
-from google.pubsub_v1.types import Encoding
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 publisher = pubsub_v1.PublisherClient()
 topic_path = publisher.topic_path('my-project', 'user-events')
@@ -125,7 +124,7 @@ def publish_event(user_id, event_type, amount=None):
         "user_id": user_id,
         "event_type": event_type,
         "amount": amount,  # null/None for non-purchase events
-        "timestamp": int(datetime.utcnow().timestamp() * 1000)
+        "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000)
     }
 
     # Publish with JSON encoding (Pub/Sub validates against the schema)
@@ -183,7 +182,7 @@ Now let us add a `currency` field. To maintain backward compatibility, the new f
       "name": "currency",
       "type": ["null", "string"],
       "default": null,
-      "doc": "ISO 4217 currency code, null defaults to USD"
+      "doc": "ISO 4217 currency code, null when unspecified"
     },
     {
       "name": "session_id",
@@ -198,21 +197,28 @@ Now let us add a `currency` field. To maintain backward compatibility, the new f
 Key rules for backward compatibility:
 - New fields must have default values (typically `null` using a union type)
 - You cannot remove existing required fields
-- You cannot change field types (except widening, like int to long)
+- Treat field type changes as incompatible unless Avro schema resolution supports them. Widening, like `int` to `long`, is backward compatible but not necessarily forward compatible.
 
 ## Step 5: Validate and Commit the Schema Revision
 
-Before updating the schema in production, validate compatibility:
+Before updating the schema in production, validate the new schema and a sample message. The commit step checks whether the new Avro revision can be resolved in both directions with existing revisions:
 
 ```bash
-# Validate that the new schema is compatible with the existing one
-gcloud pubsub schemas validate-message \
-  --schema=user-event-schema \
-  --message-encoding=JSON \
-  --message='{"user_id":"test","event_type":"view","amount":null,"timestamp":1708171200000}' \
+# Validate the new schema definition
+gcloud pubsub schemas validate-schema \
+  --type=AVRO \
+  --definition-file=schemas/user_event_v2.avsc \
   --project=my-project
 
-# If validation passes, commit the new revision
+# Validate that a representative message matches the new schema
+gcloud pubsub schemas validate-message \
+  --type=AVRO \
+  --definition-file=schemas/user_event_v2.avsc \
+  --message-encoding=JSON \
+  --message='{"user_id":"test","event_type":"view","amount":null,"timestamp":1708171200000,"currency":"USD","session_id":null}' \
+  --project=my-project
+
+# If validation passes and the revision is compatible, commit the new revision
 gcloud pubsub schemas commit user-event-schema \
   --type=AVRO \
   --definition-file=schemas/user_event_v2.avsc \
@@ -254,7 +260,7 @@ def process_message(message):
     timestamp = data['timestamp']
 
     # New fields - use defaults for old messages that lack these fields
-    currency = data.get('currency', 'USD')  # Default to USD for old messages
+    currency = data.get('currency') or 'USD'  # Default to USD for old or null values
     session_id = data.get('session_id')     # None if not present
 
     # Process the event
