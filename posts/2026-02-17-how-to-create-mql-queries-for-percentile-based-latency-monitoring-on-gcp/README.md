@@ -8,7 +8,7 @@ Description: Learn how to write MQL queries for percentile-based latency monitor
 
 ---
 
-Average latency is a terrible metric for understanding user experience. An average of 100ms could mean every request takes 100ms, or it could mean 99% take 10ms and 1% take 9 seconds. Percentile-based monitoring tells you the real story. On Google Cloud, Monitoring Query Language (MQL) gives you the tools to calculate and alert on percentiles like P50, P95, and P99 latency. In this post, I will show you exactly how to write these queries and build alerts around them.
+Average latency is a terrible metric for understanding user experience. An average of 100ms could mean every request takes 100ms, or it could mean 99% take 10ms and 1% take 9 seconds. Percentile-based monitoring tells you the real story. On Google Cloud, Monitoring Query Language (MQL) gives you the tools to calculate and alert on percentiles like P50, P95, and P99 latency. Google no longer recommends MQL for new Cloud Monitoring work, and new MQL dashboards and alerting policies can't be created in the Google Cloud console, but existing MQL assets still work and you can still create them through the Cloud Monitoring API and Google Cloud CLI. In this post, I will show you exactly how to write these queries and build alerts around them.
 
 ## Why Percentiles Matter
 
@@ -26,7 +26,7 @@ Here is the simplest possible percentile query.
 # P95 latency for HTTP load balancer requests
 
 fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
-| percentile(val(), 95)
+| group_by [], percentile(val(), 95)
 | every 1m
 ```
 
@@ -34,35 +34,26 @@ This fetches the total latency distribution from your HTTPS load balancer, calcu
 
 ## Querying Multiple Percentiles Together
 
-To see P50, P95, and P99 on the same chart, use the `union` operation.
+To see P50, P95, and P99 on the same chart, return multiple named value columns from the same `group_by` operation.
 
 ```text
 # Multiple percentile lines on a single chart
-{
-  # P50 - median latency
-  fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
-  | group_by [resource.url_map_name], percentile(val(), 50)
-  | every 1m
-  ;
-  # P95 - 95th percentile latency
-  fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
-  | group_by [resource.url_map_name], percentile(val(), 95)
-  | every 1m
-  ;
-  # P99 - 99th percentile latency
-  fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
-  | group_by [resource.url_map_name], percentile(val(), 99)
-  | every 1m
-}
-| union
+fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
+| group_by [resource.url_map_name],
+    [
+      p50: percentile(val(), 50),
+      p95: percentile(val(), 95),
+      p99: percentile(val(), 99)
+    ]
+| every 1m
 ```
 
-## Filtering by Backend Service
+## Filtering by Backend Target
 
-In real deployments, you usually want to see latency broken down by service.
+In real deployments, you usually want to see latency broken down by backend target.
 
 ```text
-# P95 latency broken down by backend service
+# P95 latency broken down by backend target
 fetch https_lb_rule::loadbalancing.googleapis.com/https/backend_latencies
 | filter resource.url_map_name = "my-url-map"
 | group_by [resource.backend_target_name], percentile(val(), 95)
@@ -149,7 +140,7 @@ cat > latency-dashboard.json << 'EOF'
         "width": 6,
         "height": 4,
         "widget": {
-          "title": "P95 Latency by Backend",
+          "title": "P95 Latency by Backend Target",
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
@@ -232,15 +223,15 @@ A useful debugging technique is comparing total latency (what the client sees) w
 {
   # Total latency - what the client experiences
   fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
-  | group_by [resource.url_map_name], percentile(val(), 95)
+  | group_by [resource.url_map_name], [total_p95: percentile(val(), 95)]
   | every 5m
   ;
   # Backend latency - just the server processing time
   fetch https_lb_rule::loadbalancing.googleapis.com/https/backend_latencies
-  | group_by [resource.url_map_name], percentile(val(), 95)
+  | group_by [resource.url_map_name], [backend_p95: percentile(val(), 95)]
   | every 5m
 }
-| union
+| join
 ```
 
 ## Latency Heatmap Visualization
@@ -273,10 +264,10 @@ fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
 | top 10
 ```
 
-**Detect latency regressions** by comparing current values to a rolling baseline.
+**Detect latency regressions** by comparing current values to the same time last week.
 
 ```text
-# Current P95 vs 7-day average P95
+# Current P95 vs same time last week
 {
   fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
   | group_by [], percentile(val(), 95)
@@ -287,7 +278,7 @@ fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
   | every 5m
   | time_shift 7d
 }
-| outer_join 0
+| join
 | div
 ```
 
