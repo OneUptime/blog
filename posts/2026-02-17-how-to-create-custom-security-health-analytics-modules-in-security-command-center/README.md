@@ -30,8 +30,8 @@ Each custom module has these components:
 
 Before creating custom modules, make sure you have:
 
-1. Security Command Center Premium or Enterprise tier enabled at the organization level
-2. The `securitycentermanagement.securityHealthAnalyticsCustomModules.create` permission
+1. Security Command Center Premium or Enterprise tier with Security Health Analytics enabled
+2. The `securitycenter.securityhealthanalyticscustommodules.create` permission
 3. Familiarity with CEL (Common Expression Language)
 
 ## Creating Your First Custom Module
@@ -45,7 +45,7 @@ This gcloud command creates a custom module that checks for the required label o
 
 gcloud scc custom-modules sha create \
   --organization=123456789 \
-  --display-name="missing-cost-center-label" \
+  --display-name="missing_cost_center_label" \
   --enablement-state="ENABLED" \
   --custom-config-from-file=missing-label-module.yaml
 ```
@@ -56,21 +56,21 @@ The YAML configuration file defines the detection logic and finding details.
 # missing-label-module.yaml
 # Detects Compute Engine instances missing the cost-center label
 predicate:
-  expression: "!has(resource.labels.cost-center)"
-resourceSelector:
-  resourceTypes:
+  expression: "!(has(resource.labels) && 'cost-center' in resource.labels)"
+resource_selector:
+  resource_types:
     - compute.googleapis.com/Instance
 severity: MEDIUM
 description: "Compute Engine instance is missing the required cost-center label."
 recommendation: "Add a cost-center label to this instance for proper cost tracking."
-customOutput:
+custom_output:
   properties:
-    - name: "instance_name"
-      valueExpression:
+    - name: instance_name
+      value_expression:
         expression: "resource.name"
-    - name: "project_id"
-      valueExpression:
-        expression: "resource.project"
+    - name: machine_type
+      value_expression:
+        expression: "resource.machineType"
 ```
 
 ## Writing CEL Expressions for Detection Logic
@@ -113,7 +113,8 @@ If you manage infrastructure as code, Terraform is the better path for deploying
 # Detects Cloud Storage buckets without uniform bucket-level access
 resource "google_scc_management_organization_security_health_analytics_custom_module" "uniform_access" {
   organization = "123456789"
-  display_name = "bucket-missing-uniform-access"
+  location = "global"
+  display_name = "bucket_missing_uniform_access"
   enablement_state = "ENABLED"
 
   custom_config {
@@ -152,35 +153,32 @@ This command runs a test against a specific module using sample resource data.
 gcloud scc custom-modules sha simulate \
   --organization=123456789 \
   --custom-config-from-file=missing-label-module.yaml \
-  --resource-from-file=test-resource.json
+  --resource-from-file=test-resource.yaml
 ```
 
 The test resource file contains a mock version of the resource you want to evaluate.
 
-```json
-{
-  "resourceType": "compute.googleapis.com/Instance",
-  "resourceData": {
-    "name": "projects/my-project/zones/us-central1-a/instances/test-vm",
-    "machineType": "projects/my-project/zones/us-central1-a/machineTypes/n2-standard-2",
-    "labels": {}
-  }
-}
+```yaml
+resourceType: compute.googleapis.com/Instance
+resourceData:
+  name: projects/my-project/zones/us-central1-a/instances/test-vm
+  machineType: projects/my-project/zones/us-central1-a/machineTypes/n2-standard-2
+  labels: {}
 ```
 
 Since this test instance has an empty labels map and no `cost-center` key, the module should trigger a finding.
 
 ## Managing Module Lifecycle
 
-Custom modules have three enablement states: ENABLED, DISABLED, and TEST. The TEST state is useful during development because findings generated in test mode are marked with a test indicator and do not show up in normal SCC dashboards.
+Custom modules can be enabled or disabled when you create them. When you create modules lower in the resource hierarchy, they can also inherit their effective state from a parent module. To avoid noisy findings during development, use simulation before enabling a module broadly.
 
 Here is the flow I recommend:
 
 ```mermaid
 graph LR
     A[Write CEL Logic] --> B[Simulate with Test Data]
-    B --> C[Deploy in TEST State]
-    C --> D[Review Test Findings]
+    B --> C[Deploy Disabled or to a Narrow Scope]
+    C --> D[Review Simulated Results]
     D --> E{Findings Accurate?}
     E -- Yes --> F[Enable Module]
     E -- No --> A
@@ -189,7 +187,7 @@ graph LR
 To update a module's state, use this command.
 
 ```bash
-# Move a module from TEST to ENABLED after validating findings
+# Enable a module after validating its logic
 gcloud scc custom-modules sha update MODULE_ID \
   --organization=123456789 \
   --enablement-state="ENABLED"
@@ -205,37 +203,36 @@ This module detects GKE clusters that do not have Workload Identity enabled.
 # detect-gke-without-workload-identity.yaml
 predicate:
   expression: "!has(resource.workloadIdentityConfig) || resource.workloadIdentityConfig.workloadPool == ''"
-resourceSelector:
-  resourceTypes:
+resource_selector:
+  resource_types:
     - container.googleapis.com/Cluster
 severity: HIGH
 description: "GKE cluster does not have Workload Identity enabled."
 recommendation: "Enable Workload Identity to avoid using node service accounts for workload authentication."
 ```
 
-This module detects Cloud SQL instances without SSL enforcement.
+This module detects Cloud SQL instances without SSL/TLS enforcement.
 
 ```yaml
 # detect-sql-without-ssl.yaml
 predicate:
-  expression: "!has(resource.settings.ipConfiguration.requireSsl) || resource.settings.ipConfiguration.requireSsl == false"
-resourceSelector:
-  resourceTypes:
+  expression: "!has(resource.settings.ipConfiguration.sslMode) || resource.settings.ipConfiguration.sslMode == 'ALLOW_UNENCRYPTED_AND_ENCRYPTED'"
+resource_selector:
+  resource_types:
     - sqladmin.googleapis.com/Instance
 severity: HIGH
-description: "Cloud SQL instance does not require SSL for connections."
-recommendation: "Enable the requireSsl setting to enforce encrypted connections."
+description: "Cloud SQL instance does not require SSL/TLS for connections."
+recommendation: "Set sslMode to ENCRYPTED_ONLY or TRUSTED_CLIENT_CERTIFICATE_REQUIRED to enforce encrypted connections."
 ```
 
 ## Monitoring Custom Module Performance
 
-After deploying custom modules, keep an eye on their behavior. You can list all findings from your custom modules using this command.
+After deploying custom modules, keep an eye on their behavior. You can list active findings for a custom module category using this command.
 
 ```bash
-# List findings generated by custom SHA modules in the last 24 hours
+# List active findings generated by a custom SHA module category
 gcloud scc findings list 123456789 \
-  --source=SECURITY_HEALTH_ANALYTICS \
-  --filter="category=\"missing-cost-center-label\" AND state=\"ACTIVE\"" \
+  --filter="category=\"missing_cost_center_label\" AND state=\"ACTIVE\"" \
   --format="table(resourceName, category, severity, createTime)"
 ```
 
