@@ -70,14 +70,14 @@ gcloud run services update my-service \
 ```
 
 The `--vpc-egress` flag is important:
-- `private-ranges-only` routes only RFC 1918 traffic through the connector (default)
+- `private-ranges-only` routes traffic to internal IPv4 destinations through the connector (default), including RFC 1918 ranges, RFC 6598 ranges, and the private Google access ranges `199.36.153.4/30` and `199.36.153.8/30`
 - `all-traffic` routes all egress traffic through the connector
 
-If your target resource uses a private IP that falls within RFC 1918 ranges (10.x.x.x, 172.16.x.x-172.31.x.x, 192.168.x.x), then `private-ranges-only` works fine. But if you are trying to reach something with a non-standard private IP or need DNS resolution through your VPC, use `all-traffic`.
+If your target resource uses an internal IP that falls within those ranges, then `private-ranges-only` works fine. But if you are trying to reach a privately used external IP address that is routable within your VPC, such as some Private Service Connect endpoints or custom routed destinations, use `all-traffic`.
 
 ## Step 3 - Check Firewall Rules
 
-This is the most common cause of connection refused errors. VPC firewall rules control traffic flow, and you need rules that allow traffic from the connector subnet to your target resource.
+This is one of the most common causes of connector connection failures. VPC firewall rules control traffic flow, and you need rules that allow traffic from the connector subnet to your target resource. A firewall drop often appears as a timeout rather than a literal TCP "connection refused", but it is still worth checking early.
 
 ```bash
 # Find the connector's IP range
@@ -183,11 +183,11 @@ gcloud compute networks vpc-access connectors create my-connector-v2 \
 
 ## Debugging with VPC Flow Logs
 
-If you are still stuck, enable VPC Flow Logs to see exactly what traffic is flowing and where it is being dropped.
+If you are still stuck, enable VPC Flow Logs on the subnet that contains the target resource, or on the connector subnet if you created the connector with an existing subnet. VPC Flow Logs can show whether traffic is reaching a subnet, but ingress packets that are denied by firewall rules can be absent from flow logs.
 
 ```bash
-# Enable flow logs on the connector subnet
-gcloud compute networks subnets update my-connector-subnet \
+# Enable flow logs on the target subnet
+gcloud compute networks subnets update my-target-subnet \
     --region=us-central1 \
     --enable-flow-logs \
     --logging-flow-sampling=1.0
@@ -196,14 +196,14 @@ gcloud compute networks subnets update my-connector-subnet \
 Then query the flow logs in Cloud Logging.
 
 ```bash
-# Query VPC flow logs for the connector subnet
+# Query VPC flow logs for traffic from the connector IP range
 gcloud logging read \
-    'resource.type="gce_subnetwork" AND logName:"vpc_flows" AND jsonPayload.connection.src_ip:"10.8.0"' \
+    'resource.type="gce_subnetwork" AND logName="projects/my-project/logs/compute.googleapis.com%2Fvpc_flows" AND ip_in_net(jsonPayload.connection.src_ip, "10.8.0.0/28")' \
     --project=my-project \
     --limit=20
 ```
 
-Look for entries where the `reporter` is "DEST" and the `disposition` is "DENIED" - these indicate traffic that was dropped by a firewall rule.
+If you suspect firewall drops, enable Firewall Rules Logging on the relevant firewall rule and query the `compute.googleapis.com/firewall` log instead. Firewall rule logs include a `disposition` field such as `ALLOWED` or `DENIED`; VPC Flow Logs do not.
 
 ## Common Patterns
 
@@ -226,4 +226,4 @@ flowchart TD
 
 ## Summary
 
-VPC connector connection refused errors on Cloud Run are almost always caused by one of these issues: the connector is not attached to the service, firewall rules block the traffic, the target service is only listening on localhost, or there is a region mismatch. Work through the diagnostic steps in order, starting with the simplest checks first. Enable VPC Flow Logs if you need deeper visibility into where traffic is being dropped.
+VPC connector connection errors on Cloud Run are often caused by one of these issues: the connector is not attached to the service, firewall rules block the traffic, the target service is only listening on localhost, or there is a region mismatch. Work through the diagnostic steps in order, starting with the simplest checks first. Enable VPC Flow Logs if you need deeper visibility into where traffic is flowing, and use Firewall Rules Logging when you need to confirm firewall allow or deny decisions.
