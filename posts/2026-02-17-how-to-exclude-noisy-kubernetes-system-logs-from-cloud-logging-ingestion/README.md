@@ -37,15 +37,15 @@ If you have Log Analytics enabled, this SQL query gives you exact numbers:
 ```sql
 -- Top system containers by log entry count in the last 24 hours
 SELECT
-  resource.labels.namespace_name AS namespace,
-  resource.labels.container_name AS container,
+  JSON_VALUE(resource.labels.namespace_name) AS namespace,
+  JSON_VALUE(resource.labels.container_name) AS container,
   COUNT(*) AS entry_count,
   ROUND(SUM(LENGTH(COALESCE(text_payload, TO_JSON_STRING(json_payload)))) / 1048576, 2) AS approx_mb
 FROM
   `my-project.global._Default._AllLogs`
 WHERE
   resource.type = 'k8s_container'
-  AND resource.labels.namespace_name IN ('kube-system', 'gke-managed-system', 'config-management-system', 'gke-gmp-system', 'istio-system')
+  AND JSON_VALUE(resource.labels.namespace_name) IN ('kube-system', 'gke-system', 'config-management-system', 'gke-gmp-system', 'istio-system')
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
 GROUP BY
   namespace, container
@@ -122,7 +122,7 @@ GKE uses several system namespaces beyond kube-system:
 ```bash
 # Exclude info logs from all GKE system namespaces
 gcloud logging sinks update _Default \
-  --add-exclusion="name=all-system-namespaces-info,filter=resource.type=\"k8s_container\" AND (resource.labels.namespace_name=\"kube-system\" OR resource.labels.namespace_name=\"gke-managed-system\" OR resource.labels.namespace_name=\"config-management-system\" OR resource.labels.namespace_name=\"gke-gmp-system\") AND severity<WARNING" \
+  --add-exclusion="name=all-system-namespaces-info,filter=resource.type=\"k8s_container\" AND (resource.labels.namespace_name=\"kube-system\" OR resource.labels.namespace_name=\"gke-system\" OR resource.labels.namespace_name=\"config-management-system\" OR resource.labels.namespace_name=\"gke-gmp-system\" OR resource.labels.namespace_name=\"istio-system\") AND severity<WARNING" \
   --project=my-project
 ```
 
@@ -166,21 +166,23 @@ After applying exclusions, check the impact:
 ### Check Ingestion Volume
 
 ```bash
-# View log ingestion metrics
-gcloud logging metrics list --project=my-project
+# Confirm the Cloud Logging ingestion billing metric is available
+gcloud monitoring metrics-descriptors list \
+  --filter='metric.type="logging.googleapis.com/billing/bytes_ingested"' \
+  --project=my-project
 ```
 
 In the Cloud Console, go to **Logging** > **Log Storage** to see current ingestion rates.
 
 ### Monitor Costs with a Dashboard
 
-Create a monitoring dashboard with this metric:
+If you already use MQL-based dashboards, or create dashboards through the Cloud Monitoring API, this query tracks the ingestion metric:
 
 ```text
 # Track log ingestion bytes over time
 fetch global
 | metric 'logging.googleapis.com/billing/bytes_ingested'
-| group_by [resource.labels.log], [val: sum(value.bytes_ingested)]
+| group_by [metric.resource_type], [val: sum(value.bytes_ingested)]
 | every 1h
 ```
 
@@ -199,10 +201,10 @@ resource "google_logging_project_exclusion" "kube_system_info" {
 }
 
 # Exclude other GKE system namespace info logs
-resource "google_logging_project_exclusion" "gke_managed_system_info" {
-  name        = "gke-managed-system-info-logs"
-  description = "Exclude informational logs from gke-managed-system"
-  filter      = "resource.type=\"k8s_container\" AND resource.labels.namespace_name=\"gke-managed-system\" AND severity<WARNING"
+resource "google_logging_project_exclusion" "gke_system_info" {
+  name        = "gke-system-info-logs"
+  description = "Exclude informational logs from gke-system"
+  filter      = "resource.type=\"k8s_container\" AND resource.labels.namespace_name=\"gke-system\" AND severity<WARNING"
 }
 
 # Exclude node-level info logs
@@ -220,22 +222,23 @@ resource "google_logging_project_exclusion" "pod_info" {
 }
 ```
 
-## Alternative: Use GKE System Log Configuration
+## Alternative: Use GKE Log Collection Configuration
 
-GKE also provides cluster-level configuration for which system logs are collected. You can disable system log collection entirely or configure which components send logs:
+GKE also provides cluster-level configuration for broad log collection sources. You can disable Cloud Logging entirely on Standard clusters, disable workload log collection while keeping required system logs, or configure which optional control plane components send logs. You cannot collect workload logs on their own; `SYSTEM` is required whenever Cloud Logging is enabled.
 
 ```bash
-# Configure GKE logging to only collect workload logs (no system logs)
+# Disable Cloud Logging collection entirely on a Standard cluster
 gcloud container clusters update prod-cluster \
-  --logging=WORKLOAD \
+  --logging=NONE \
   --region=us-central1 \
   --project=my-project
 ```
 
 The available logging options are:
 
+- **NONE**: No logs sent to Cloud Logging (Standard clusters only)
 - **SYSTEM**: System component logs only
-- **WORKLOAD**: Application workload logs only
+- **WORKLOAD**: Application workload logs, when combined with SYSTEM
 - **SYSTEM,WORKLOAD**: Both (default)
 - **API_SERVER**: API server logs
 - **SCHEDULER**: Scheduler logs
@@ -244,14 +247,14 @@ The available logging options are:
 You can combine these:
 
 ```bash
-# Collect workload logs and only critical system component logs
+# Collect the required system logs, workload logs, and API server control plane logs
 gcloud container clusters update prod-cluster \
-  --logging=WORKLOAD,API_SERVER \
+  --logging=SYSTEM,WORKLOAD,API_SERVER \
   --region=us-central1 \
   --project=my-project
 ```
 
-This approach is more coarse-grained than exclusion filters but completely prevents system logs from being collected, which means zero ingestion cost for those log types.
+This approach is more coarse-grained than exclusion filters. Use `NONE` only if you are comfortable disabling all Cloud Logging collection for the cluster; otherwise, use exclusion filters to reduce system log ingestion while keeping workload logs.
 
 ## Recommended Strategy
 
