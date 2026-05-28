@@ -156,7 +156,7 @@ This is verbose, but the payoff is significant. The deps stage (which runs `npm 
 
 ## Using BuildKit Cache Mounts
 
-Docker BuildKit provides a more elegant caching mechanism with `--mount=type=cache`. This stores cache in named volumes that persist across build steps.
+Docker BuildKit provides a more elegant caching mechanism with `--mount=type=cache`. This stores package-manager cache directories in the builder's cache so they can be reused by later build steps in the same build.
 
 ```dockerfile
 # Dockerfile - Using BuildKit cache mounts for npm
@@ -197,7 +197,7 @@ steps:
       - 'DOCKER_BUILDKIT=1'
 ```
 
-Note that BuildKit cache mounts only persist within a single Cloud Build execution. For cross-build caching, you still need the `--cache-from` approach.
+Note that BuildKit cache mounts only persist within a single Cloud Build execution in Cloud Build. For cross-build caching, you still need an external cache such as the `--cache-from` approach.
 
 ## Using Kaniko for Better Caching
 
@@ -206,19 +206,20 @@ Kaniko offers a different approach to caching that works well in Cloud Build. It
 ```yaml
 # cloudbuild.yaml - Kaniko with remote layer caching
 steps:
-  - name: 'gcr.io/kaniko-project/executor:latest'
+  - name: 'ghcr.io/osscontainertools/kaniko:latest'
     args:
       - '--dockerfile=Dockerfile'
-      - '--context=.'
+      - '--context=dir://.'
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
       # Enable Kaniko's built-in cache
       - '--cache=true'
       - '--cache-repo=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app/cache'
+      - '--cache-copy-layers=true'
       - '--cache-ttl=168h'
 ```
 
-Kaniko's caching is simpler to set up because you do not need to manage per-stage cache images. Kaniko automatically caches each layer and checks the cache before rebuilding.
+Kaniko's caching is simpler to set up because you do not need to manage per-stage cache images. Kaniko caches eligible `RUN` and `COPY` layers in the remote cache repository and checks the cache before rebuilding them.
 
 ## Measuring the Impact
 
@@ -268,9 +269,24 @@ Cache images accumulate over time. Set up a cleanup policy in Artifact Registry.
 
 ```bash
 # Create a cleanup policy to delete old cache images
+cat > policy.json <<'EOF'
+[
+  {
+    "name": "delete-old-cache",
+    "action": {"type": "Delete"},
+    "condition": {
+      "tagState": "tagged",
+      "tagPrefixes": ["deps-cache", "builder-cache"],
+      "olderThan": "7d"
+    }
+  }
+]
+EOF
+
 gcloud artifacts repositories set-cleanup-policies my-repo \
     --location=us-central1 \
-    --policy='{"name": "delete-old-cache", "action": {"type": "Delete"}, "condition": {"tagState": "TAGGED", "tagPrefixes": ["deps-cache", "builder-cache"], "olderThan": "604800s"}}'
+    --policy=policy.json \
+    --no-dry-run
 ```
 
 This deletes cache images older than 7 days.
