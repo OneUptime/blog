@@ -10,7 +10,7 @@ Description: Learn how to detect, measure, and mitigate bias in tabular machine 
 
 Every ML model has the potential to encode biases from its training data. A loan approval model might discriminate by race. A hiring model might penalize certain genders. A pricing model might treat different regions unfairly. These biases aren't always intentional - they often emerge from historical data that reflects existing societal inequalities. Detecting and mitigating these biases isn't just an ethical obligation; in many jurisdictions, it's a legal one.
 
-Vertex AI provides fairness evaluation tools that let you measure bias across sensitive attributes, visualize disparities, and take corrective action. In this post, I'll walk through the full lifecycle of fairness evaluation for a tabular ML model.
+Vertex AI provides model evaluation and model monitoring tools that can help you measure performance across slices of tabular data. Vertex AI also provides fairness-focused bias metrics through model evaluation pipeline components. In this post, I'll walk through the full lifecycle of fairness evaluation for a tabular ML model.
 
 ## Understanding Fairness Metrics
 
@@ -153,68 +153,30 @@ def compute_fairness_metrics(df, sensitive_attribute, label_col="label",
 
 ## Using Vertex AI Model Evaluation
 
-Vertex AI has built-in fairness evaluation for models:
+Vertex AI can run model evaluation jobs for registered models. Use the evaluation output together with your sensitive-attribute slices, or use the fairness-specific pipeline components for data and model bias metrics:
 
 ```python
 def evaluate_model_fairness(project_id, model_id, evaluation_data_uri):
-    """Run Vertex AI model evaluation with fairness metrics"""
+    """Run Vertex AI model evaluation and retrieve evaluation metrics"""
     aiplatform.init(project=project_id, location="us-central1")
 
-    model = aiplatform.Model(model_id)
+    model = aiplatform.Model(model_name=model_id)
 
-    # Create a batch prediction job for evaluation
-    batch_prediction_job = model.batch_predict(
-        job_display_name="fairness-evaluation",
-        gcs_source=evaluation_data_uri,
-        gcs_destination_prefix="gs://your-bucket/fairness-eval/",
-        instances_format="jsonl",
-        predictions_format="jsonl",
-    )
-
-    batch_prediction_job.wait()
-
-    # Now evaluate with fairness slices
-    eval_job = aiplatform.ModelEvaluation.create(
-        model=model,
+    # evaluation_data_uri should point to CSV or JSONL data that includes
+    # the target label and the model prediction columns.
+    evaluation_job = model.evaluate(
         prediction_type="classification",
-        # Define evaluation slices by sensitive attributes
-        evaluation_slices=[
-            {
-                "dimension": "gender",
-                "value": "male",
-            },
-            {
-                "dimension": "gender",
-                "value": "female",
-            },
-            {
-                "dimension": "race_ethnicity",
-                "value": "white",
-            },
-            {
-                "dimension": "race_ethnicity",
-                "value": "black",
-            },
-            {
-                "dimension": "race_ethnicity",
-                "value": "hispanic",
-            },
-            {
-                "dimension": "age_group",
-                "value": "18-30",
-            },
-            {
-                "dimension": "age_group",
-                "value": "31-50",
-            },
-            {
-                "dimension": "age_group",
-                "value": "51+",
-            },
-        ],
+        target_field_name="label",
+        gcs_source_uris=[evaluation_data_uri],
+        prediction_label_column="model_prediction",
+        prediction_score_column="model_probability",
+        staging_bucket="gs://your-bucket/fairness-eval-staging/",
     )
+    evaluation_job.wait()
 
-    return eval_job
+    model_evaluation = evaluation_job.get_model_evaluation()
+
+    return model_evaluation.metrics
 ```
 
 ## Bias Mitigation Strategies
@@ -258,43 +220,54 @@ def rebalance_training_data(df, sensitive_attr, target_col):
     return balanced
 ```
 
-### In-processing: Fairness Constraints During Training
+### Model Training: Exclude Sensitive Attributes
 
 ```python
-def train_with_fairness_constraints(
-    training_data,
+def train_without_sensitive_attributes(
+    project_id,
+    gcs_source,
     sensitive_attrs,
-    fairness_metric="demographic_parity",
-    max_disparity=0.1,
+    target_column="approved",
 ):
-    """Train a model with fairness constraints using Vertex AI"""
-    aiplatform.init(project="your-project-id", location="us-central1")
+    """Train a model while excluding sensitive attributes as features"""
+    aiplatform.init(project=project_id, location="us-central1")
 
     # Upload the balanced training data
     dataset = aiplatform.TabularDataset.create(
         display_name="fairness-aware-lending-data",
-        gcs_source="gs://your-bucket/balanced-training-data.csv",
+        gcs_source=gcs_source,
     )
 
-    # Train with AutoML which includes fairness-aware optimization
+    feature_columns = [
+        "income",
+        "debt_to_income_ratio",
+        "credit_score",
+        "employment_years",
+        "loan_amount",
+        "loan_purpose",
+        "zip_code_region",
+    ]
+    column_specs = {
+        col: "auto" for col in feature_columns if col not in sensitive_attrs
+    }
+
+    # Vertex AI AutoML optimizes predictive objectives. It does not enforce
+    # fairness constraints directly, so mitigation is handled through data,
+    # feature selection, evaluation, and post-processing.
     job = aiplatform.AutoMLTabularTrainingJob(
         display_name="fair-lending-model",
         optimization_prediction_type="classification",
         optimization_objective="maximize-au-prc",
+        column_specs=column_specs,
     )
 
     model = job.run(
         dataset=dataset,
-        target_column="approved",
+        target_column=target_column,
         training_fraction_split=0.8,
         validation_fraction_split=0.1,
         test_fraction_split=0.1,
         budget_milli_node_hours=2000,
-        # Exclude sensitive attributes from model features
-        column_specs={
-            "gender": "categorical",  # Include for monitoring but exclude from training
-            "race_ethnicity": "categorical",
-        },
     )
 
     return model
@@ -351,34 +324,9 @@ def apply_calibrated_predictions(df, sensitive_attr, probability_col, thresholds
 
 ## Continuous Monitoring
 
-Set up ongoing fairness monitoring for the deployed model:
+Set up ongoing monitoring for the deployed model, then run the same fairness report on the logged prediction data by sensitive-attribute slice. Vertex AI Model Monitoring detects feature skew and drift; it does not calculate the fairness ratios in this post for you:
 
 ```python
-def monitor_fairness(project_id, model_endpoint_id, monitoring_data):
-    """Set up continuous fairness monitoring"""
-    aiplatform.init(project=project_id, location="us-central1")
-
-    # Create a model monitoring job
-    monitoring_job = aiplatform.ModelDeploymentMonitoringJob.create(
-        display_name="fairness-monitoring",
-        endpoint=aiplatform.Endpoint(model_endpoint_id),
-        logging_sampling_strategy={
-            "random_sample_config": {"sample_rate": 0.1}
-        },
-        # Monitor for prediction drift that could indicate fairness degradation
-        model_monitoring_alert_config={
-            "email_alert_config": {
-                "user_emails": ["ml-team@company.com"]
-            },
-        },
-        # Check fairness metrics weekly
-        model_monitoring_schedule_config={
-            "monitor_interval": {"seconds": 604800}  # 7 days
-        },
-    )
-
-    return monitoring_job
-
 def generate_fairness_report(df, sensitive_attributes, model_name):
     """Generate a comprehensive fairness report"""
     report = {
@@ -442,7 +390,7 @@ def full_fairness_evaluation(project_id):
     # Step 3: If bias detected, apply mitigation
     # (This would depend on which issues were found)
 
-    return report
+    return generate_fairness_report(df, sensitive_attrs, "lending-model")
 ```
 
 ## Wrapping Up
