@@ -115,13 +115,18 @@ If your data in Cloud Storage follows a Hive partitioning scheme (like `year=202
 -- Create a BigLake table with Hive partition detection
 -- The source_uri_prefix tells BigLake where partitioning starts
 CREATE OR REPLACE EXTERNAL TABLE `my-project.data_lake.web_events`
+WITH PARTITION COLUMNS (
+  year INT64,
+  month INT64,
+  day INT64
+)
 WITH CONNECTION `my-project.US.my-biglake-connection`
 OPTIONS (
   format = 'PARQUET',
   uris = ['gs://my-data-lake/web_events/*'],
   hive_partition_uri_prefix = 'gs://my-data-lake/web_events/',
   require_hive_partition_filter = true,
-  max_staleness = INTERVAL 15 MINUTE,
+  max_staleness = INTERVAL 30 MINUTE,
   metadata_cache_mode = 'AUTOMATIC'
 );
 ```
@@ -140,19 +145,17 @@ LIMIT 100;
 
 The real value of BigLake comes from unified governance. You can now manage access to Cloud Storage data using BigQuery's permission model.
 
-```bash
-# Grant a user read access to the BigLake table
-# They do NOT need Cloud Storage permissions
-bq update \
-  --grant_access \
-  --user:analyst@example.com:READER \
-  my-project:data_lake
+```sql
+-- Grant a user read access to all tables in the dataset
+-- They do NOT need Cloud Storage permissions
+GRANT `roles/bigquery.dataViewer`
+ON SCHEMA `my-project`.data_lake
+TO "user:analyst@example.com";
 
-# Alternatively, use IAM roles at the dataset level
-gcloud projects add-iam-policy-binding my-project \
-  --member="user:analyst@example.com" \
-  --role="roles/bigquery.dataViewer" \
-  --condition="expression=resource.name.startsWith('projects/my-project/datasets/data_lake'),title=data-lake-access"
+-- Or grant access only to a specific BigLake table
+GRANT `roles/bigquery.dataViewer`
+ON EXTERNAL TABLE `my-project`.data_lake.sales_data
+TO "user:analyst@example.com";
 ```
 
 Users with BigQuery access to the table can now query the data without ever having direct access to the underlying Cloud Storage bucket. The BigLake connection service account handles all the storage access behind the scenes.
