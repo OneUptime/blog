@@ -16,7 +16,7 @@ The trick is configuring them correctly - broad enough to cover what you need, b
 
 ## How Allowlist Patterns Work
 
-When GKE tries to admit a pod, Binary Authorization checks the image against the allowlist patterns first. If the image matches any pattern, it is admitted without checking attestations. If it does not match, the normal attestation check applies.
+When GKE tries to admit a pod, Binary Authorization evaluates the Google-managed system policy first if `globalPolicyEvaluationMode` is enabled, then checks your configured allowlist patterns. If the image matches any allowlist pattern, it is admitted without checking attestations. If it does not match, the normal attestation check applies.
 
 ```mermaid
 graph TD
@@ -27,20 +27,26 @@ graph TD
     D -->|No| E[Deny Pod]
 ```
 
-## Default Allowlist Patterns
+## GKE System Image Handling
 
-When you first set up Binary Authorization, the default policy includes patterns for GKE system images:
+For GKE system images, Google recommends leaving `globalPolicyEvaluationMode` set to `ENABLE`, which is the default. This applies a Google-managed system policy that exempts Google-maintained system images and is updated with GKE releases.
+
+```yaml
+globalPolicyEvaluationMode: ENABLE
+```
+
+If you disable system policy evaluation, you must manage the required GKE system image patterns yourself. Google documents patterns like these:
 
 ```yaml
 admissionWhitelistPatterns:
-  - namePattern: gcr.io/google_containers/*
   - namePattern: gcr.io/google-containers/*
   - namePattern: k8s.gcr.io/**
-  - namePattern: gke.gcr.io/**
+  - namePattern: gke.gcr.io/*
+  - namePattern: gcr.io/gke-release/someproject/*
   - namePattern: gcr.io/stackdriver-agents/*
 ```
 
-These are essential. Without them, GKE system components like kube-proxy, metrics-server, and the Istio sidecar would be blocked.
+These are essential only when `globalPolicyEvaluationMode` is disabled. Without either the Google-managed system policy or the required manual patterns, GKE system components can be blocked.
 
 ## Step 1: View Your Current Policy
 
@@ -52,10 +58,10 @@ gcloud container binauthz policy export --project=my-project-id
 
 ## Step 2: Understanding Pattern Syntax
 
-Allowlist patterns support two wildcard types:
+Allowlist patterns support two trailing wildcard types:
 
-- `*` matches a single path segment (everything between slashes)
-- `**` matches zero or more path segments
+- `*` matches images at the specified path, but it does not match `/`
+- `**` matches images in subdirectories
 
 Examples:
 
@@ -67,22 +73,18 @@ Examples:
 
 The `**` pattern is more permissive and should be used carefully.
 
+Wildcards are valid only at the end of the pattern. For example, `gcr.io/my-project/nginx*` is valid, but `gcr.io/my-project/n*x` is not.
+
 ## Step 3: Add Your Organization's Registries
 
-Add patterns for your own container registries where images go through your CI/CD pipeline.
+Add patterns for your own container registries that you intentionally trust without attestation.
 
 ```yaml
 # policy.yaml
+name: projects/my-project-id/policy
 admissionWhitelistPatterns:
-  # GKE system images (keep these)
-  - namePattern: gcr.io/google_containers/*
-  - namePattern: gcr.io/google-containers/*
-  - namePattern: k8s.gcr.io/**
-  - namePattern: gke.gcr.io/**
-  - namePattern: gcr.io/stackdriver-agents/*
-
   # Your organization's Container Registry
-  - namePattern: gcr.io/my-project-id/*
+  - namePattern: gcr.io/my-project-id/trusted-tools/*
 
   # Your Artifact Registry repositories
   - namePattern: us-central1-docker.pkg.dev/my-project-id/production-images/*
@@ -107,15 +109,8 @@ If you use images from trusted third-party vendors, add their registries.
 
 ```yaml
 admissionWhitelistPatterns:
-  # GKE system images
-  - namePattern: gcr.io/google_containers/*
-  - namePattern: gcr.io/google-containers/*
-  - namePattern: k8s.gcr.io/**
-  - namePattern: gke.gcr.io/**
-  - namePattern: gcr.io/stackdriver-agents/*
-
   # Your registries
-  - namePattern: gcr.io/my-project-id/*
+  - namePattern: gcr.io/my-project-id/trusted-tools/*
 
   # Datadog agent images
   - namePattern: gcr.io/datadoghq/*
@@ -137,10 +132,9 @@ Be selective here. Every pattern you add is a potential bypass of your attestati
 Different clusters may need different allowlist patterns. Use cluster-specific admission rules.
 
 ```yaml
+name: projects/my-project-id/policy
 admissionWhitelistPatterns:
-  - namePattern: gcr.io/google_containers/*
-  - namePattern: k8s.gcr.io/**
-  - namePattern: gke.gcr.io/**
+  - namePattern: gcr.io/my-project-id/trusted-tools/*
 
 # Default rule for all clusters
 defaultAdmissionRule:
@@ -178,13 +172,18 @@ globalPolicyEvaluationMode: ENABLE
 Track which allowlisted images are being deployed.
 
 ```bash
-# Check audit logs for images admitted via allowlist
-gcloud logging read \
-  'resource.type="k8s_cluster" AND protoPayload.serviceName="binaryauthorization.googleapis.com"' \
+# Query recent GKE pod create/update audit logs, then inspect pod image fields
+gcloud logging read --order="desc" --freshness=7d \
+  'resource.type="k8s_cluster"
+   logName:"cloudaudit.googleapis.com%2Factivity"
+   (protoPayload.methodName="io.k8s.core.v1.pods.create" OR
+    protoPayload.methodName="io.k8s.core.v1.pods.update")' \
   --limit=20 \
-  --format="table(timestamp, protoPayload.response.allowed, protoPayload.request.image)" \
+  --format=json \
   --project=my-project-id
 ```
+
+Cloud Audit Logs do not expose a dedicated "allowed by allowlist" field for GKE admission. Use the pod image data in these audit entries and compare it with your allowlist patterns.
 
 ## Step 7: Tighten Patterns Over Time
 
@@ -205,7 +204,7 @@ Use this output to create precise allowlist patterns rather than overly broad on
 
 1. **Using `docker.io/**` as an allowlist pattern**: This allows any image from Docker Hub, defeating the purpose of Binary Authorization entirely.
 
-2. **Forgetting GKE system image patterns**: If you remove the default GKE patterns, system components will be blocked and your cluster will malfunction.
+2. **Disabling system policy evaluation without adding GKE system image patterns**: If you disable `globalPolicyEvaluationMode` and do not maintain the required GKE patterns, system components can be blocked and your cluster can malfunction.
 
 3. **Using `*` when you mean `**`**: `gcr.io/my-org/*` only matches one-level paths. If your images are at `gcr.io/my-org/team/app`, you need `gcr.io/my-org/**`.
 
@@ -220,7 +219,7 @@ After updating the policy, test it.
 ```bash
 # This should succeed (matches allowlist)
 kubectl run test-allowed \
-  --image=gcr.io/my-project-id/my-app:latest \
+  --image=gcr.io/my-project-id/trusted-tools/test-image:latest \
   --restart=Never
 
 # This should be blocked (not in allowlist, no attestation)
@@ -234,4 +233,4 @@ kubectl delete pod test-allowed test-blocked --ignore-not-found
 
 ## Conclusion
 
-Allowlist patterns are a necessary part of any Binary Authorization setup, but they require careful management. Every pattern is an exception to your attestation requirements, so keep them as narrow as possible. Start with the GKE system patterns, add your own registries, and only add third-party patterns when you have a clear need. Review your allowlist periodically and remove patterns you no longer need. The goal is to have every image either attested by your pipeline or coming from a registry you explicitly trust.
+Allowlist patterns are a necessary part of many Binary Authorization setups, but they require careful management. Every pattern is an exception to your attestation requirements, so keep them as narrow as possible. Leave Google-managed system policy evaluation enabled for GKE system images, add your own registry patterns only when you intentionally trust them without attestation, and only add third-party patterns when you have a clear need. Review your allowlist periodically and remove patterns you no longer need. The goal is to have every image either attested by your pipeline or coming from a registry you explicitly trust.
