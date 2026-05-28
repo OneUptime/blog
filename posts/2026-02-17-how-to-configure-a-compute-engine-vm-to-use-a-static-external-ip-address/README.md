@@ -57,6 +57,7 @@ gcloud compute instances create web-server \
   --image-family=debian-12 \
   --image-project=debian-cloud \
   --address=my-static-ip \
+  --network-tier=PREMIUM \
   --tags=http-server,https-server
 ```
 
@@ -91,7 +92,8 @@ Then add a new access config with the static IP:
 gcloud compute instances add-access-config web-server \
   --zone=us-central1-a \
   --access-config-name="External NAT" \
-  --address=34.123.45.67
+  --address=34.123.45.67 \
+  --network-tier=PREMIUM
 ```
 
 Note that removing and adding the access config causes a brief network interruption. Plan accordingly if the VM is serving live traffic.
@@ -130,9 +132,9 @@ The `status` column shows whether the IP is `IN_USE` (attached to a resource) or
 
 ## Handling the Cost Implications
 
-Here is something that catches a lot of people off guard: static IPs that are reserved but not attached to a running VM are billed at a higher rate than IPs that are in use. Google charges for idle static IPs to discourage hoarding.
+Here is something that catches a lot of people off guard: static IPs that are reserved but not assigned to a resource are billed at a higher rate than IPs that are in use. Google charges for idle static IPs to discourage hoarding.
 
-As of this writing, an unused static IP costs about $7.20 per month. An IP attached to a running VM has no additional charge beyond normal networking costs.
+As of this writing, an unused static IP costs about $7.30 per month in many regions. An external IPv4 address attached to a standard VM also has an hourly charge, but at a lower rate than an idle static IP. Google considers a static external IP address to be in use if it is associated with a VM instance, whether the VM is running or stopped.
 
 To find unused static IPs that are costing you money:
 
@@ -158,7 +160,7 @@ Once you have a static IP, you can configure DNS records. If you are using Cloud
 
 ```bash
 # Create a DNS A record pointing to the static IP
-gcloud dns record-sets create www.example.com \
+gcloud dns record-sets create www.example.com. \
   --zone=my-dns-zone \
   --type=A \
   --ttl=300 \
@@ -182,15 +184,17 @@ IP_NAME="app-server-ip"
 INSTANCE_NAME="app-server"
 
 # Reserve a static IP if it does not already exist
-if ! gcloud compute addresses describe "${IP_NAME}" --region="${REGION}" &>/dev/null; then
+if ! gcloud compute addresses describe "${IP_NAME}" --project="${PROJECT_ID}" --region="${REGION}" &>/dev/null; then
   echo "Reserving static IP: ${IP_NAME}"
   gcloud compute addresses create "${IP_NAME}" \
+    --project="${PROJECT_ID}" \
     --region="${REGION}" \
     --network-tier=PREMIUM
 fi
 
 # Get the reserved IP address
 STATIC_IP=$(gcloud compute addresses describe "${IP_NAME}" \
+  --project="${PROJECT_ID}" \
   --region="${REGION}" \
   --format="value(address)")
 
@@ -198,11 +202,13 @@ echo "Using static IP: ${STATIC_IP}"
 
 # Create the VM with the static IP
 gcloud compute instances create "${INSTANCE_NAME}" \
+  --project="${PROJECT_ID}" \
   --zone="${ZONE}" \
   --machine-type=e2-medium \
   --image-family=debian-12 \
   --image-project=debian-cloud \
   --address="${IP_NAME}" \
+  --network-tier=PREMIUM \
   --tags=http-server,https-server
 
 echo "Instance ${INSTANCE_NAME} created with static IP ${STATIC_IP}"
@@ -227,8 +233,8 @@ gcloud compute addresses create lb-ip --global
 
 ## What Happens When You Stop a VM
 
-When you stop a VM that has a static IP, the IP stays reserved to your project but is detached from the VM. When you start the VM again, the static IP is automatically reattached. You do not need to do anything manually.
+When you stop a VM that has a static IP, the IP stays reserved to your project and associated with the VM. When you start the VM again, the same static IP is still attached. You do not need to do anything manually.
 
-However, if you delete the VM, the IP becomes unattached (status changes to RESERVED) and you are billed for it. You will need to either attach it to a new VM or release it.
+However, if you delete the VM, the IP becomes unattached (status changes to RESERVED) and is billed at the idle static IP rate. You will need to either attach it to a new VM or release it.
 
 Static external IPs are one of those fundamental networking building blocks that every production deployment needs. They take five minutes to set up and save you from the headache of chasing ephemeral IPs across restarts and redeployments.
