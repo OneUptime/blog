@@ -41,24 +41,19 @@ ORDER BY n_dead_tup DESC;
 
 A healthy table should have a dead tuple percentage well under 10%. If you see tables with 50% or more dead tuples, VACUUM is seriously behind.
 
-For a more accurate bloat estimate:
+For a more accurate bloat estimate, use the `pgstattuple` extension, which is supported by Cloud SQL for PostgreSQL:
 
 ```sql
--- Estimate actual table bloat using page-level statistics
+CREATE EXTENSION IF NOT EXISTS pgstattuple;
+
+-- Estimate actual table bloat using tuple-level statistics
 SELECT
-  current_database() AS db,
-  schemaname,
-  tablename,
-  pg_size_pretty(pg_relation_size(schemaname || '.' || tablename)) AS table_size,
-  ROUND(
-    (1 - (pg_relation_size(schemaname || '.' || tablename)::float /
-           GREATEST(pg_total_relation_size(schemaname || '.' || tablename), 1))) * 100,
-    2
-  ) AS index_overhead_pct
-FROM pg_tables
-WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
-ORDER BY pg_relation_size(schemaname || '.' || tablename) DESC
-LIMIT 20;
+  pg_size_pretty(table_len) AS table_size,
+  dead_tuple_count,
+  ROUND(dead_tuple_percent::numeric, 2) AS dead_tuple_pct,
+  pg_size_pretty(dead_tuple_len) AS dead_tuple_size,
+  ROUND(approx_free_percent::numeric, 2) AS free_space_pct
+FROM pgstattuple_approx('events'::regclass);
 ```
 
 ## Step 2: Check If VACUUM Is Running or Stuck
@@ -88,7 +83,7 @@ SELECT
   p.heap_blks_total,
   p.heap_blks_scanned,
   p.heap_blks_vacuumed,
-  ROUND(p.heap_blks_vacuumed::numeric / GREATEST(p.heap_blks_total, 1) * 100, 2) AS pct_complete,
+  ROUND(p.heap_blks_scanned::numeric / GREATEST(p.heap_blks_total, 1) * 100, 2) AS pct_complete,
   now() - s.query_start AS duration
 FROM pg_stat_progress_vacuum p
 JOIN pg_stat_activity s ON p.pid = s.pid
@@ -178,6 +173,8 @@ gcloud sql instances describe my-instance \
 
 Here are the key settings to tune:
 
+Be careful: `gcloud sql instances patch --database-flags` replaces the full database flag list. Include any existing flags you want to keep in the same command.
+
 ```bash
 # Make autovacuum more aggressive
 gcloud sql instances patch my-instance \
@@ -231,7 +228,7 @@ For large tables, `VACUUM FULL` can take hours and blocks all reads and writes. 
 
 ## Step 6: Monitor Transaction ID Wraparound Risk
 
-The ultimate consequence of VACUUM not running is transaction ID wraparound, where PostgreSQL shuts down to prevent data corruption.
+The ultimate consequence of VACUUM not running is transaction ID wraparound risk, where PostgreSQL refuses commands that assign new transaction IDs to avoid data loss.
 
 ```sql
 -- Check how close each database is to transaction ID wraparound
@@ -244,7 +241,7 @@ FROM pg_database
 ORDER BY age(datfrozenxid) DESC;
 ```
 
-If `pct_to_wraparound` exceeds 50%, you need to run VACUUM FREEZE urgently:
+If `pct_to_wraparound` exceeds 50%, investigate blockers immediately and run VACUUM. Use `VACUUM FREEZE` only when you intentionally need an aggressive freeze:
 
 ```sql
 -- Force VACUUM to freeze old tuples
