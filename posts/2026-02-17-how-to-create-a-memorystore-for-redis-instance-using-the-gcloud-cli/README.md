@@ -8,7 +8,7 @@ Description: Step-by-step guide to creating a Google Cloud Memorystore for Redis
 
 ---
 
-If you need a managed Redis instance on Google Cloud, Memorystore for Redis is the way to go. It gives you a fully managed Redis service without the operational overhead of running and patching Redis servers yourself. Google handles replication, failover, patching, and monitoring while you focus on using Redis for caching, session management, or real-time analytics.
+If you need a managed Redis instance on Google Cloud, Memorystore for Redis is the way to go. It gives you a fully managed Redis service without the operational overhead of running and patching Redis servers yourself. Google handles patching and monitoring, and Standard tier instances include replication and automatic failover, while you focus on using Redis for caching, session management, or real-time analytics.
 
 In this post, I will walk you through creating a Memorystore for Redis instance using the `gcloud` CLI. I prefer the CLI over the console because it is scriptable, repeatable, and easy to integrate into infrastructure-as-code workflows.
 
@@ -86,7 +86,7 @@ The `--zone` and `--alternative-zone` flags control where the primary and replic
 
 ## Configuring Network Settings
 
-By default, Memorystore creates instances on the default VPC network. To use a specific network or enable private IP:
+By default, Memorystore creates instances on the default VPC network. To use a specific network with private services access:
 
 ```bash
 # Create an instance on a specific VPC network with a reserved IP range
@@ -103,6 +103,9 @@ gcloud redis instances create my-redis-private \
 For private service access, you first need to create a reserved IP range and establish a private connection:
 
 ```bash
+# Enable the Service Networking API
+gcloud services enable servicenetworking.googleapis.com
+
 # Allocate a private IP range for Memorystore
 gcloud compute addresses create redis-reserved-range \
   --global \
@@ -167,7 +170,7 @@ After creation, check the instance details:
 gcloud redis instances describe my-redis-production --region=us-central1
 ```
 
-This shows the host IP, port, current status, memory usage, and all configuration details.
+This shows the host IP, port, current status, memory size, and configuration details.
 
 List all Redis instances in a region:
 
@@ -231,8 +234,8 @@ gcloud redis instances create "${INSTANCE_NAME}" \
   --display-name="Application Cache" \
   --labels=env=production,team=backend
 
-# Wait for the instance to be ready
-echo "Waiting for instance to become ready..."
+# Check that the instance is ready
+echo "Checking instance state..."
 gcloud redis instances describe "${INSTANCE_NAME}" \
   --region="${REGION}" \
   --format="value(state)"
@@ -279,12 +282,12 @@ graph TD
     A --> C[Tier Selection]
     A --> D[Region]
     B --> E[1 GB Basic: ~$0.049/hr]
-    B --> F[1 GB Standard: ~$0.098/hr]
+    B --> F[1 GB Standard: ~$0.064/hr]
     C --> G[Basic: single instance, no HA]
     C --> H[Standard: primary + replica, auto failover]
 ```
 
-For a 5 GB standard tier instance, expect roughly $350-400/month. Check the pricing calculator for exact numbers in your region.
+For a 5 GB standard tier instance in `us-central1`, expect roughly $200/month before discounts and any applicable network charges. Check the pricing calculator for exact numbers in your region.
 
 ## Common Creation Errors
 
