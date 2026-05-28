@@ -100,6 +100,7 @@ console.log('Orders:', orders);
 
 ```python
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 db = firestore.Client()
 
@@ -120,7 +121,7 @@ def get_user_orders(user_id, status_filter=None):
 
     if status_filter:
         # Query with a filter on the subcollection
-        query = orders_ref.where('status', '==', status_filter)
+        query = orders_ref.where(filter=FieldFilter('status', '==', status_filter))
     else:
         query = orders_ref.order_by('orderedAt', direction=firestore.Query.DESCENDING)
 
@@ -136,8 +137,8 @@ create_user_with_orders('user-001', {
     'order-002': {'product': 'Keyboard', 'amount': 79.99, 'status': 'shipped'}
 })
 
-# Get pending orders for this user
-pending = get_user_orders('user-001', status_filter='shipped')
+# Get shipped orders for this user
+shipped = get_user_orders('user-001', status_filter='shipped')
 ```
 
 ## Deeper Nesting: Multi-Level Subcollections
@@ -219,9 +220,9 @@ For collection group queries to work, you need a collection group index. Firesto
 # Create a collection group index for orders
 gcloud firestore indexes composite create \
     --collection-group=orders \
-    --query-scope=COLLECTION_GROUP \
-    --field-config=field-path=status,order=ASCENDING \
-    --field-config=field-path=orderedAt,order=DESCENDING
+    --query-scope=collection-group \
+    --field-config=field-path=status,order=ascending \
+    --field-config=field-path=orderedAt,order=descending
 ```
 
 ## Subcollections vs Embedded Arrays
@@ -260,20 +261,29 @@ Firestore does not automatically delete subcollections when you delete a parent 
 async function deleteUserAndOrders(userId) {
     const userRef = db.collection('users').doc(userId);
 
-    // First, delete all documents in the orders subcollection
-    const ordersSnapshot = await userRef.collection('orders').get();
-    const batch = db.batch();
+    // First, delete all documents in the orders subcollection in batches
+    let deletedOrders = 0;
 
-    ordersSnapshot.forEach(doc => {
-        batch.delete(doc.ref);
-    });
+    while (true) {
+        const ordersSnapshot = await userRef.collection('orders').limit(500).get();
+
+        if (ordersSnapshot.empty) {
+            break;
+        }
+
+        const batch = db.batch();
+
+        ordersSnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
+        await batch.commit();
+        deletedOrders += ordersSnapshot.size;
+    }
 
     // Delete the parent user document
-    batch.delete(userRef);
-
-    // Commit all deletes in a single batch
-    await batch.commit();
-    console.log(`Deleted user ${userId} and ${ordersSnapshot.size} orders`);
+    await userRef.delete();
+    console.log(`Deleted user ${userId} and ${deletedOrders} orders`);
 }
 ```
 
