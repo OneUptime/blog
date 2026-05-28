@@ -90,8 +90,8 @@ Reference the target servers in your proxy's TargetEndpoint configuration with a
 This configuration distributes traffic across three backend servers:
 
 ```xml
-<!-- apiproxy/targets/default.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- apiproxy/targets/default.xml -->
 <TargetEndpoint name="default">
     <Description>Load balanced target endpoint</Description>
 
@@ -190,7 +190,7 @@ This is useful when backend requests have variable processing times. Servers tha
 
 Health checks let Apigee automatically remove unhealthy servers from the rotation and add them back when they recover.
 
-Add a HealthMonitor to your LoadBalancer:
+Add a HealthMonitor to your HTTPTargetConnection:
 
 ```xml
 <HTTPTargetConnection>
@@ -210,6 +210,7 @@ Add a HealthMonitor to your LoadBalancer:
 
         <HTTPMonitor>
             <Request>
+                <UseTargetServerSSLInfo>true</UseTargetServerSSLInfo>
                 <Verb>GET</Verb>
                 <Path>/health</Path>
                 <Header name="Accept">application/json</Header>
@@ -226,7 +227,7 @@ Add a HealthMonitor to your LoadBalancer:
 </HTTPTargetConnection>
 ```
 
-The health monitor periodically sends requests to the `/health` endpoint on each target server. If a server returns a non-200 response or times out, it is removed from the rotation. When it starts responding correctly again, it is added back.
+The health monitor periodically sends requests to the `/health` endpoint on each target server. If a server returns a response that does not match the SuccessResponse configuration or times out, Apigee increments the failure count for that target server. After the configured `MaxFailures` threshold is reached, the server is removed from the rotation. When it starts responding correctly again, it is added back.
 
 ## Failover Configuration
 
@@ -234,9 +235,11 @@ Configure how the load balancer handles failures:
 
 ```xml
 <LoadBalancer>
-    <Server name="backend-server-1" isFallback="false"/>
-    <Server name="backend-server-2" isFallback="false"/>
-    <Server name="backend-server-3" isFallback="true"/>
+    <Server name="backend-server-1"/>
+    <Server name="backend-server-2"/>
+    <Server name="backend-server-3">
+        <IsFallback>true</IsFallback>
+    </Server>
     <Algorithm>RoundRobin</Algorithm>
 
     <!-- After 5 consecutive failures, mark the server as down -->
@@ -245,14 +248,14 @@ Configure how the load balancer handles failures:
     <!-- Retry on a different server if the first fails -->
     <RetryEnabled>true</RetryEnabled>
 
-    <!-- Mark the server as available again after this delay -->
+    <!-- Count these HTTP response codes as target failures -->
     <ServerUnhealthyResponse>
         <ResponseCode>503</ResponseCode>
     </ServerUnhealthyResponse>
 </LoadBalancer>
 ```
 
-The `isFallback="true"` setting on server-3 means it only receives traffic when the primary servers (1 and 2) are both down. This is useful for disaster recovery or overflow scenarios.
+The `<IsFallback>true</IsFallback>` setting on server-3 means it only receives traffic when the primary servers (1 and 2) are both down. This is useful for disaster recovery or overflow scenarios.
 
 ## Managing Target Servers Without Redeployment
 
@@ -341,12 +344,12 @@ The proxy references `backend-server-1` by name, and Apigee resolves it to the c
 Track how traffic is distributed and which servers are handling requests:
 
 ```bash
-# Check traffic distribution per target server
-curl "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/prod/stats/target?select=sum(message_count)&timeRange=02/10/2026+00:00~02/17/2026+23:59&timeUnit=hour" \
+# Check traffic distribution per target host
+curl "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/prod/stats/target_host?select=sum(message_count)&timeRange=02/10/2026+00:00~02/17/2026+23:59&timeUnit=hour" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)"
 ```
 
-Use the Trace tool to see which target server handled a specific request. The trace shows the `target.url` variable with the resolved server address.
+Use the Trace tool to see which target server handled a specific request. The trace shows load balancing variables such as `loadbalancing.targetserver` and target variables such as `target.host` with the resolved server details.
 
 ## Summary
 
