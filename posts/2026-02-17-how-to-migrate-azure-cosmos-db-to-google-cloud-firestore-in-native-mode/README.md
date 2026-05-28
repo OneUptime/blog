@@ -8,7 +8,7 @@ Description: Learn how to migrate your Azure Cosmos DB databases to Google Cloud
 
 ---
 
-Azure Cosmos DB and Google Cloud Firestore are both globally distributed NoSQL databases, but they have different data models and query capabilities. Cosmos DB offers multiple API options (SQL, MongoDB, Cassandra, Gremlin, Table), while Firestore uses a document-collection model with real-time synchronization capabilities. This migration guide focuses on Cosmos DB's SQL (Core) API to Firestore Native Mode, which is the most common migration path.
+Azure Cosmos DB and Google Cloud Firestore are both scalable NoSQL databases, but they have different data models and query capabilities. Cosmos DB offers multiple API options (NoSQL, MongoDB, Cassandra, Gremlin, Table), while Firestore uses a document-collection model with real-time synchronization capabilities. This migration guide focuses on Cosmos DB for NoSQL (formerly SQL/Core API) to Firestore Native Mode, which is the most common migration path.
 
 ## Data Model Differences
 
@@ -16,21 +16,21 @@ Understanding the model differences is essential before migrating:
 
 | Cosmos DB Concept | Firestore Equivalent |
 |------------------|---------------------|
-| Database | Project (one Firestore per project) |
+| Database | Firestore database (default or named) in a project |
 | Container | Collection |
 | Item (document) | Document |
-| Partition key | Collection group + document hierarchy |
+| Partition key | No direct equivalent; model with document paths and indexes |
 | SQL-like queries | Firestore query language |
 | Stored procedures | Cloud Functions |
 | Change feed | Real-time listeners / Firestore triggers |
-| TTL | TTL policies on collections |
-| Global distribution | Multi-region (automatic) |
+| TTL | TTL policies on collection groups |
+| Global distribution | Regional or multi-region location |
 
 Key differences to note:
 
 - Cosmos DB containers are schema-flexible with a partition key. Firestore collections do not have partition keys - the document ID serves as the primary key and Firestore handles distribution automatically.
 - Cosmos DB uses Request Units (RUs) for throughput. Firestore charges per read/write/delete operation.
-- Cosmos DB supports cross-partition queries. Firestore requires composite indexes for complex queries and does not support inequality filters on multiple fields.
+- Cosmos DB supports cross-partition queries. Firestore requires composite indexes for complex queries and supports range or inequality filters on multiple fields with index and ordering constraints.
 
 ## Step 1: Analyze Your Cosmos DB Data
 
@@ -66,7 +66,7 @@ Cosmos DB uses a flat container model with partition keys. Firestore uses a hier
 
 Example Cosmos DB structure:
 
-```json
+```jsonc
 // Cosmos DB container: "orders"
 // Partition key: /customerId
 {
@@ -174,10 +174,10 @@ export_cosmos_container(container, 'orders-export.ndjson')
 
 ## Step 4: Import Data into Firestore
 
-Load the exported data into Firestore using the Admin SDK.
+Load the exported data into Firestore using the Google Cloud Firestore Python client library.
 
 ```python
-# Import data into Firestore using the Admin SDK
+# Import data into Firestore using the Google Cloud Firestore Python client library
 from google.cloud import firestore
 import json
 
@@ -206,7 +206,7 @@ def import_to_firestore(input_file, collection_name):
             count += 1
             batch_count += 1
 
-            # Firestore batches support up to 500 operations
+            # Keep batches small enough for Firestore request-size limits and easier retries
             if batch_count >= 450:
                 batch.commit()
                 batch = db.batch()
@@ -228,16 +228,19 @@ Cosmos DB SQL queries need to be translated to Firestore queries.
 
 ```python
 # Cosmos DB SQL query examples and Firestore equivalents
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 # Cosmos DB: SELECT * FROM c WHERE c.status = 'shipped'
 # Firestore:
 orders_ref = db.collection('orders')
-shipped = orders_ref.where('status', '==', 'shipped').stream()
+shipped = orders_ref.where(filter=FieldFilter('status', '==', 'shipped')).stream()
 
 # Cosmos DB: SELECT * FROM c WHERE c.total > 100 ORDER BY c.createdAt DESC
-# Firestore (requires a composite index):
+# Firestore (requires ordering by the inequality field first; sort by createdAt
+# in application code if you need createdAt as the primary sort key):
 large_orders = (orders_ref
-    .where('total', '>', 100)
+    .where(filter=FieldFilter('total', '>', 100))
+    .order_by('total')
     .order_by('createdAt', direction=firestore.Query.DESCENDING)
     .stream())
 
@@ -251,16 +254,16 @@ recent = (orders_ref
 # Cosmos DB: SELECT * FROM c WHERE c.customerId = 'cust-456' AND c.status IN ('pending', 'processing')
 # Firestore:
 customer_orders = (orders_ref
-    .where('customerId', '==', 'cust-456')
-    .where('status', 'in', ['pending', 'processing'])
+    .where(filter=FieldFilter('customerId', '==', 'cust-456'))
+    .where(filter=FieldFilter('status', 'in', ['pending', 'processing']))
     .stream())
 ```
 
 Firestore query limitations to be aware of:
 
-- You cannot use inequality operators on multiple fields in a single query
-- Range filters and orderBy must be on the same field
-- Array-contains can only be used once per query
+- You can use range or inequality filters on multiple fields, but Firestore limits the number of range or inequality fields to 10
+- Queries with range or inequality filters must account for Firestore's ordering rules; ordering by a different field can require additional ordering or application-side sorting
+- You can use at most one `array-contains` clause per disjunction, and you cannot combine `array-contains` with `array-contains-any` in the same disjunction
 - Composite indexes must be created for complex queries
 
 ## Step 6: Create Composite Indexes
@@ -287,8 +290,8 @@ Firestore automatically creates single-field indexes. For compound queries, crea
       "collectionGroup": "orders",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "total", "order": "DESCENDING" }
+        { "fieldPath": "total", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     }
   ]
@@ -301,7 +304,7 @@ Deploy indexes:
 # Deploy Firestore indexes
 gcloud firestore indexes composite create \
   --collection-group=orders \
-  --field-config=field-path=customerId,order=ascending \
+  --field-config=field-path=total,order=ascending \
   --field-config=field-path=createdAt,order=descending
 ```
 
