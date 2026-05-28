@@ -167,12 +167,6 @@ gcloud compute ssl-certificates create acme-cert \
   --domains="app.acmecorp.com" \
   --global \
   --project=my-project
-
-# Create a wildcard certificate for dynamic tenant subdomains
-gcloud compute ssl-certificates create wildcard-tenants-cert \
-  --domains="*.tenants.example.com" \
-  --global \
-  --project=my-project
 ```
 
 Note that Google-managed certificates do not support wildcard domains directly. For wildcard certificates, you need to use Certificate Manager with DNS authorization.
@@ -193,6 +187,8 @@ gcloud certificate-manager certificates create wildcard-tenants-cert \
   --dns-authorizations=tenants-dns-auth \
   --project=my-project
 ```
+
+If you use Certificate Manager certificates on the same target HTTPS proxy, attach them with a certificate map or the `--certificate-manager-certificates` flag instead of mixing them with Compute Engine SSL certificates.
 
 ## Setting Up the Load Balancer Frontend
 
@@ -239,7 +235,6 @@ hostRules:
 
 pathMatchers:
   - name: tenant1-matcher
-    defaultService: projects/my-project/global/backendServices/premium-tenant-backend
     defaultRouteAction:
       weightedBackendServices:
         - backendService: projects/my-project/global/backendServices/premium-tenant-backend
@@ -255,9 +250,12 @@ Your backend application reads this header to identify the tenant.
 
 ```python
 # Backend application reads tenant ID from the header
-from flask import Flask, request
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
+
+def fetch_tenant_data(tenant_id):
+    return {"tenant": tenant_id}
 
 @app.route("/api/data")
 def get_data():
@@ -330,9 +328,9 @@ resource "google_compute_managed_ssl_certificate" "tenant_cert" {
 
 ## Scaling Considerations
 
-Google-managed SSL certificates support up to 100 domains per certificate and you can attach up to 15 certificates to a single load balancer, giving you 1,500 custom domains. For larger deployments, use Certificate Manager with certificate maps that support more domains.
+Google-managed SSL certificates support up to 100 domains per certificate and you can attach up to 15 Compute Engine SSL certificates to a target proxy, giving you 1,500 custom domains. For larger deployments, use Certificate Manager with certificate maps that support more domains.
 
-The URL map itself supports up to 100 host rules. If you exceed this, consider using a wildcard host rule with dynamic tenant detection in your application layer.
+The URL map itself supports up to 1,000 host rules and path matchers for external Application Load Balancers. If you exceed this, consider using a wildcard host rule with dynamic tenant detection in your application layer.
 
 Monitor per-host metrics in Cloud Monitoring to track tenant-specific traffic volume and latency. This data helps you make decisions about which tenants need dedicated backends versus shared resources.
 
