@@ -10,13 +10,13 @@ Description: A step-by-step guide to configuring and running custom model traini
 
 TPUs (Tensor Processing Units) are Google's custom-designed accelerators built specifically for matrix operations that dominate neural network training. When configured properly, TPUs can deliver significantly higher throughput than GPUs for certain workloads - particularly large batch training with models that are heavy on matrix multiplications like Transformers and CNNs.
 
-Vertex AI lets you submit training jobs to TPU pods without managing the TPU infrastructure yourself. But TPU training is not a drop-in replacement for GPU training. Your code needs specific adjustments to run efficiently on TPUs.
+Vertex AI lets you submit training jobs to TPU VMs and TPU Pod slices without managing the TPU infrastructure yourself. But TPU training is not a drop-in replacement for GPU training. Your code needs specific adjustments to run efficiently on TPUs.
 
 ## Understanding TPU Architecture
 
-A single TPU v3 chip has two cores, each with a 128x128 matrix multiply unit. TPUs come in configurations called "pods" where multiple chips are connected through a high-bandwidth interconnect. A TPU v3-8 has 4 chips (8 cores), while a TPU v3-32 has 16 chips (32 cores).
+A single TPU v3 chip has two TensorCores. Each TensorCore includes matrix multiply units, and TPU versions before v6e use 128x128 MXUs. TPUs come in configurations called "pods" and "pod slices" where multiple chips are connected through a high-bandwidth interconnect. A TPU v3-8 has 4 chips (8 cores), while a TPU v3-32 has 16 chips (32 cores).
 
-The key difference from GPUs is that TPUs require static shapes. Every tensor flowing through your computation graph must have a known shape at compile time. Dynamic shapes cause recompilation, which kills performance.
+The key difference from GPUs is that TPUs get the best performance when shapes are static. XLA compiles computations for concrete tensor shapes, so dynamic batch or sequence shapes can cause recompilation and kill performance.
 
 ```mermaid
 graph TD
@@ -29,8 +29,8 @@ graph TD
         B --- D
     end
     subgraph "Each Chip"
-        E[Core 0: 128x128 MXU] --- F[Core 1: 128x128 MXU]
-        E --- G[16 GB HBM]
+        E[TensorCore 0: MXUs] --- F[TensorCore 1: MXUs]
+        E --- G[32 GiB HBM2]
         F --- G
     end
 ```
@@ -51,9 +51,9 @@ def create_model():
     """Build a model that works well on TPU.
 
     Key considerations:
-    - Use batch normalization instead of layer normalization when possible
+    - Prefer standard TensorFlow ops that XLA can compile efficiently
     - Avoid operations that require dynamic shapes
-    - Use powers of 128 for layer sizes (matches TPU MXU dimensions)
+    - Use dimensions that are multiples of 128 when practical
     """
     model = tf.keras.Sequential([
         tf.keras.layers.Dense(1024, activation="relu", input_shape=(512,)),
@@ -144,7 +144,7 @@ if __name__ == "__main__":
 
 Configure and submit the TPU training job to Vertex AI.
 
-This code submits a job using TPU v3-8:
+This code submits a job using TPU v3-8. The container image should be a TPU-capable custom image, such as one built from Vertex AI's TPU Pod base image with the TensorFlow and libtpu versions required by your workload:
 
 ```python
 from google.cloud import aiplatform
@@ -163,11 +163,9 @@ job = aiplatform.CustomJob(
                 "accelerator_count": 8  # TPU v3-8 (4 chips, 8 cores)
             },
             "replica_count": 1,
-            "python_package_spec": {
-                "executor_image_uri": "us-docker.pkg.dev/vertex-ai/training/tf-tpu.2-13:latest",
-                "package_uris": ["gs://your-bucket/packages/trainer-0.1.tar.gz"],
-                "python_module": "trainer.tpu_train",
-                "args": []
+            "container_spec": {
+                "image_uri": "us-central1-docker.pkg.dev/your-project-id/training/tf-tpu-custom:latest",
+                "command": ["python3", "-m", "trainer.tpu_train"]
             }
         }
     ]
@@ -193,14 +191,21 @@ This PyTorch script runs on TPU:
 import torch
 import torch_xla
 import torch_xla.core.xla_model as xm
+import torch_xla.runtime as xr
 import torch_xla.distributed.parallel_loader as pl
 import torch_xla.distributed.xla_multiprocessing as xmp
+
+def create_dataset():
+    """Replace this example dataset with your real training data."""
+    features = torch.randn(8192, 512)
+    labels = torch.randint(0, 10, (8192,))
+    return torch.utils.data.TensorDataset(features, labels)
 
 def train_fn(index):
     """Training function that runs on each TPU core."""
 
     # Get the XLA device for this core
-    device = xm.xla_device()
+    device = torch_xla.device()
 
     # Create model and move to TPU
     model = torch.nn.Sequential(
@@ -218,21 +223,21 @@ def train_fn(index):
     dataset = create_dataset()
     sampler = torch.utils.data.distributed.DistributedSampler(
         dataset,
-        num_replicas=xm.xrt_world_size(),
-        rank=xm.get_ordinal(),
+        num_replicas=xr.world_size(),
+        rank=xr.global_ordinal(),
         shuffle=True
     )
     loader = torch.utils.data.DataLoader(
         dataset, batch_size=128, sampler=sampler, drop_last=True
     )
 
-    # Wrap with ParallelLoader for TPU prefetching
-    para_loader = pl.ParallelLoader(loader, [device])
+    # Wrap with MpDeviceLoader for TPU prefetching
+    device_loader = pl.MpDeviceLoader(loader, device)
 
     for epoch in range(50):
         sampler.set_epoch(epoch)
 
-        for batch_x, batch_y in para_loader.per_device_loader(device):
+        for batch_x, batch_y in device_loader:
             optimizer.zero_grad()
             output = model(batch_x)
             loss = criterion(output, batch_y)
@@ -251,7 +256,7 @@ def train_fn(index):
 
 # Launch training across all TPU cores
 if __name__ == "__main__":
-    xmp.spawn(train_fn, args=(), nprocs=8)  # 8 cores for TPU v3-8
+    xmp.spawn(train_fn, args=())  # Uses the available TPU devices
 ```
 
 ## TPU Performance Optimization Tips
