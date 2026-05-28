@@ -12,7 +12,7 @@ Your Dataflow streaming pipeline crashes with an OutOfMemoryError during windowe
 
 ## Why Windowed Aggregations Cause OOM
 
-In a windowed aggregation, Dataflow collects all elements for a key within a window before processing them. For a 1-hour fixed window with 10,000 events per second for a single key, that is 36 million elements sitting in memory before the window closes and the aggregation runs.
+In a windowed `GroupByKey` aggregation, Beam groups all values for a key within a window before your aggregation code consumes them. For a 1-hour fixed window with 10,000 events per second for a single key, that is 36 million elements associated with one key-window before the window closes and the aggregation runs.
 
 The problem is compounded by:
 - Large element sizes (each element has significant payload)
@@ -32,7 +32,7 @@ gcloud dataflow jobs describe JOB_ID \
     --format="json(environment.workerPools)"
 ```
 
-If you are using the default `n1-standard-1` workers (3.75 GB RAM), that might not be enough. Upgrade to a larger machine type:
+Dataflow selects a worker machine type by default. If the selected worker does not have enough memory, upgrade to a larger machine type:
 
 ```bash
 # Launch with larger workers
@@ -47,19 +47,19 @@ The `n2-highmem` family provides more memory per CPU, which is ideal for memory-
 
 ## Step 2: Switch from GroupByKey to CombinePerKey
 
-The most impactful fix. If your aggregation can be expressed as a combiner, it uses far less memory because it maintains a single accumulator per key instead of storing all elements:
+The most impactful fix. If your aggregation can be expressed as a combiner, it uses far less memory because Beam can pre-aggregate values into compact accumulators instead of passing all elements to your aggregation code:
 
 ```python
-# Bad: GroupByKey stores all elements in memory
+# Bad: GroupByKey exposes all values for the key-window to your aggregation
 results = (
     events
     | 'Window' >> beam.WindowInto(beam.window.FixedWindows(3600))
     | 'KeyByUser' >> beam.Map(lambda e: (e['user_id'], e))
-    | 'Group' >> beam.GroupByKey()  # Stores ALL elements per key per window
+    | 'Group' >> beam.GroupByKey()  # Groups ALL values per key per window
     | 'Aggregate' >> beam.Map(lambda kv: (kv[0], compute_stats(kv[1])))
 )
 
-# Good: CombinePerKey maintains one small accumulator per key
+# Good: CombinePerKey maintains compact accumulators per key
 class StatsAccumulator(beam.CombineFn):
     """Memory-efficient aggregation using a fixed-size accumulator."""
 
@@ -98,7 +98,7 @@ results = (
 )
 ```
 
-The combiner accumulator stays constant size regardless of how many elements are in the window. For a window with 36 million elements, instead of storing 36 million objects, you store one small dictionary.
+The combiner accumulator stays constant size regardless of how many elements are in the window. For a window with 36 million elements, instead of processing an iterable of 36 million objects, the combiner works with small dictionaries that can be merged.
 
 ## Step 3: Use Triggering to Emit Partial Results
 
@@ -147,10 +147,10 @@ This two-stage approach keeps each individual window small, preventing memory is
 
 ## Step 5: Handle Sliding Windows Carefully
 
-Sliding windows are particularly memory-hungry because each element belongs to multiple windows. A 1-hour window sliding every 5 minutes means each element exists in 12 windows simultaneously:
+Sliding windows are particularly memory-hungry because each element belongs to multiple windows. A 1-hour window sliding every 5 minutes assigns each element to 12 windows:
 
 ```python
-# This creates 12 copies of each element in memory
+# This assigns each element to 12 overlapping windows
 sliding = beam.WindowInto(
     beam.window.SlidingWindows(3600, 300)  # 1-hour window, 5-minute slide
 )
@@ -197,46 +197,45 @@ capped_sessions = beam.WindowInto(
 
 ## Step 7: Profile Memory Usage
 
-Enable Dataflow profiling to understand where memory is being consumed:
+Enable Dataflow profiling to understand where memory is being consumed. For Java heap profiling, include both the profiler and heap sampling flags:
 
 ```bash
 # Enable profiling when launching the job
 gcloud dataflow jobs run your-job \
     --gcs-location=gs://your-bucket/templates/your-template \
     --region=us-central1 \
-    --additional-experiments=enable_google_cloud_profiler
+    --additional-experiments=enable_google_cloud_profiler,enable_google_cloud_heap_sampling
 ```
 
-Then check the profiler in the Google Cloud Console under Profiler. Look at heap usage broken down by class to identify which objects are consuming the most memory.
+Then check the profiler in the Google Cloud Console under Profiler. Look at heap allocation data to identify which objects are consuming the most memory. For Python pipelines, Cloud Profiler supports CPU profiling but not heap profiling.
 
 ## Step 8: Tune JVM Settings (Java Pipelines)
 
-For Java pipelines, the default JVM heap might not be optimally sized:
+For Java pipelines, cache and grouping-table settings can affect how much heap the SDK harness uses:
 
 ```java
-// Set JVM flags for better memory handling
+import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
+import org.apache.beam.sdk.options.PipelineOptions;
+import org.apache.beam.sdk.options.PipelineOptionsFactory;
+import org.apache.beam.sdk.options.SdkHarnessOptions;
+
+// Reduce caches that can contribute to worker heap pressure
 PipelineOptions options = PipelineOptionsFactory.create();
-options.as(DataflowPipelineWorkerPoolOptions.class)
+options.as(DataflowPipelineOptions.class)
     .setWorkerCacheMb(128);  // Reduce cache to free heap for data
 
-// Launch with custom JVM flags
-// --jdkAddOpenModules and heap settings
-options.as(DataflowPipelineOptions.class)
-    .setJdkAddOpenModules(Arrays.asList(
-        "java.base/java.lang=ALL-UNNAMED"
-    ));
+options.as(SdkHarnessOptions.class)
+    .setMaxCacheMemoryUsageMb(512);
+
+options.as(SdkHarnessOptions.class)
+    .setGroupingTableMaxSizeMb(50);
 ```
 
-You can also pass JVM arguments when launching:
+If you see Java 16+ module-access errors from libraries that use reflection, configure SDK harness module opens:
 
 ```bash
-# Set JVM heap explicitly
-gcloud dataflow jobs run your-job \
-    --gcs-location=gs://your-bucket/templates/your-template \
-    --region=us-central1 \
-    --worker-machine-type=n2-highmem-4 \
-    --additional-experiments=use_runner_v2 \
-    --worker-harness-container-image=gcr.io/your-project/custom-worker:latest
+# Open a JDK module/package to the library that needs reflective access
+--jdkAddOpenModules=java.base/java.lang=jamm
 ```
 
 ## Quick Decision Guide
