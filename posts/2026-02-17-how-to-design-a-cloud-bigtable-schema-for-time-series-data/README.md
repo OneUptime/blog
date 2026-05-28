@@ -75,7 +75,7 @@ cbt setgcpolicy sensor-data stats maxversions=1
 # Keep metadata indefinitely (no GC policy)
 ```
 
-The key insight is that Bigtable reads data at the column family level. If you read the `raw` family, it does not touch the `stats` or `meta` data. Keeping hot data in its own family improves read performance.
+The key insight is that Bigtable lets you filter reads by column family. If you read only the `raw` family, Bigtable does not return the `stats` or `meta` data. Keeping hot data in its own family improves read performance.
 
 ## Detailed Schema Example
 
@@ -87,7 +87,7 @@ Here is a complete schema for an IoT monitoring system:
 # Reverse timestamp puts newest data first for efficient recent-data queries
 
 import time
-import struct
+from datetime import datetime, timezone
 
 MAX_TS = 9999999999  # Far-future Unix timestamp
 
@@ -101,7 +101,11 @@ def create_row_key(sensor_id, timestamp):
 def write_sensor_reading(table, sensor_id, timestamp, readings):
     """Write a sensor reading to Bigtable."""
     row_key = create_row_key(sensor_id, timestamp)
-    row = table.direct_row(row_key)
+    row = table.direct_row(row_key.encode())
+    timestamp_dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+    timestamp_dt = timestamp_dt.replace(
+        microsecond=(timestamp_dt.microsecond // 1000) * 1000
+    )
 
     # Raw reading values in the 'raw' column family
     for metric_name, value in readings.items():
@@ -109,7 +113,7 @@ def write_sensor_reading(table, sensor_id, timestamp, readings):
             'raw',
             metric_name.encode(),          # Column qualifier
             str(value).encode(),           # Cell value
-            timestamp=int(timestamp * 1e6) # Microsecond timestamp
+            timestamp=timestamp_dt         # Bigtable cell timestamp
         )
 
     # Commit the row
@@ -135,11 +139,12 @@ The schema above supports several common time-series query patterns efficiently.
 # Since we use reverse timestamps, the first row for a sensor prefix is the newest
 def get_latest_reading(table, sensor_id):
     prefix = sensor_id + '#'
+    start_key = prefix.encode()
+    end_key = start_key + b'\xff'
     row = None
 
     # Read just one row with the sensor prefix - this is the newest reading
-    for r in table.read_rows(row_set=RowRange(start_key=prefix.encode()),
-                              limit=1):
+    for r in table.read_rows(start_key=start_key, end_key=end_key, limit=1):
         row = r
 
     if row:
@@ -163,8 +168,9 @@ def get_readings_in_range(table, sensor_id, start_time, end_time):
 
     readings = []
     for row in table.read_rows(
-        row_set=RowRange(start_key=start_key.encode(),
-                         end_key=end_key.encode())
+        start_key=start_key.encode(),
+        end_key=end_key.encode(),
+        end_inclusive=True
     ):
         timestamp = MAX_TS - int(row.row_key.decode().split('#')[1])
         reading = {'timestamp': timestamp}
@@ -206,7 +212,7 @@ def write_hourly_summary(table, sensor_id, hour_bucket, stats):
     """Write a pre-aggregated hourly summary."""
     # Use a different prefix to distinguish from raw data
     row_key = f"agg#hourly#{sensor_id}#{hour_bucket}"
-    row = table.direct_row(row_key)
+    row = table.direct_row(row_key.encode())
 
     # Write stats to the 'stats' column family
     row.set_cell('stats', b'min_temp', str(stats['min_temp']).encode())
@@ -224,8 +230,8 @@ def get_daily_summaries(table, sensor_id, date_start, date_end):
 
     summaries = []
     for row in table.read_rows(
-        row_set=RowRange(start_key=start_key.encode(),
-                         end_key=end_key.encode())
+        start_key=start_key.encode(),
+        end_key=end_key.encode()
     ):
         summary = {}
         for column, cells in row.cells['stats'].items():
