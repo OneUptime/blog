@@ -14,7 +14,7 @@ Private Service Connect (PSC) lets you create private endpoints in your VPC that
 
 There are two sides to every PSC connection. The producer publishes a service by creating a service attachment that fronts an internal load balancer. The consumer creates a forwarding rule (the endpoint) that points to the service attachment. Traffic from the consumer goes to the endpoint IP, which is privately routed to the producer's service attachment and then to the backing load balancer.
 
-The connection between consumer and producer must be explicitly accepted. This is an important detail - PSC is not like VPC peering where both sides just enable it. The producer controls who can connect.
+The connection between consumer and producer must be accepted by the producer side, either automatically or through an explicit accept list. This is an important detail - PSC is not like VPC peering where both sides just enable it. The producer controls who can connect.
 
 ## Step 1: Check the Endpoint Status
 
@@ -30,10 +30,11 @@ gcloud compute forwarding-rules describe your-psc-endpoint \
 
 The `pscConnectionStatus` field tells you the state of the connection:
 
-- `ACCEPTED` - The producer accepted the connection. It should work.
+- `ACCEPTED` - The producer accepted the connection. The PSC connection is established, though traffic can still fail because of DNS, firewall, or backend health issues.
 - `PENDING` - Waiting for the producer to accept or reject.
 - `REJECTED` - The producer rejected the connection.
 - `CLOSED` - The producer deleted the service attachment or the connection was terminated.
+- `NEEDS_ATTENTION` - The producer accepted the connection, but the producer must take further action before the forwarding rule can serve traffic.
 
 If the status is `PENDING`, the producer needs to accept the connection. If it is `REJECTED`, you need to work with the producer to whitelist your project.
 
@@ -80,7 +81,8 @@ gcloud compute service-attachments describe your-service-attachment \
 gcloud compute networks subnets describe your-nat-subnet \
     --region=us-central1 \
     --project=producer-project-id \
-    --format="json(ipCidrRange, purpose)"
+    --view=WITH_UTILIZATION \
+    --format="json(ipCidrRange, purpose, utilizationDetails)"
 ```
 
 The `purpose` should be `PRIVATE_SERVICE_CONNECT`. If the NAT subnet is running out of IPs, create an additional one and add it to the service attachment:
@@ -204,6 +206,7 @@ flowchart TD
     B -->|PENDING| C[Producer needs to accept]
     B -->|REJECTED| D[Add consumer to accept list]
     B -->|ACCEPTED| E{Can you reach endpoint IP?}
+    B -->|NEEDS_ATTENTION| K[Producer must fix attachment or backend]
     E -->|No| F[Check consumer firewall rules]
     E -->|Yes but timeout| G{Check producer LB health}
     G -->|Unhealthy| H[Fix producer backends]
