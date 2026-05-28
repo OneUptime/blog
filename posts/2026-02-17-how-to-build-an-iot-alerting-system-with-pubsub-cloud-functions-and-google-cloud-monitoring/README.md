@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, IoT, Alerting, Cloud Function, Cloud Monitoring
+Tags: GCP, IoT, Alerting, Cloud Function, Pub/Sub
 
-Description: Build a real-time IoT alerting system using Pub/Sub for message ingestion, Cloud Functions for processing, and Cloud Monitoring for alerting.
+Description: Build a real-time IoT alerting system using Pub/Sub for message ingestion, Cloud Functions for processing, and Slack or PagerDuty for notifications.
 
 ---
 
 IoT systems generate data constantly, but not all data points are equal. When a temperature sensor reads 22C, that is business as usual. When it reads 85C, something is probably on fire. You need an alerting system that processes sensor data in real time and triggers notifications when thresholds are crossed or anomalous patterns emerge.
 
-In this guide, I will build a complete IoT alerting pipeline using Pub/Sub for data ingestion, Cloud Functions for alert evaluation, and Cloud Monitoring for notification delivery.
+In this guide, I will build a complete IoT alerting pipeline using Pub/Sub for data ingestion, Cloud Functions for alert evaluation, and Slack or PagerDuty for notification delivery.
 
 ## System Architecture
 
@@ -20,25 +20,22 @@ The system has three layers: data ingestion, alert evaluation, and notification 
 graph TB
     A[IoT Devices] -->|Telemetry| B[Pub/Sub: sensor-data]
     B --> C[Cloud Function: Alert Evaluator]
-    C -->|Threshold Alerts| D[Pub/Sub: alerts]
-    C -->|Custom Metrics| E[Cloud Monitoring]
+    C -->|Threshold Alerts| D[Pub/Sub: sensor-alerts]
+    C --> I[Firestore: Alert Log]
     D --> F[Cloud Function: Alert Router]
-    F --> G[Email / SMS]
-    F --> H[Slack / PagerDuty]
-    F --> I[Firestore: Alert Log]
-    E --> J[Monitoring Alert Policies]
-    J --> G
+    F --> G[Slack / PagerDuty]
 ```
 
 ## Prerequisites
 
-- GCP project with Cloud Functions, Pub/Sub, Cloud Monitoring, and Firestore APIs enabled
-- Notification channels configured in Cloud Monitoring (email, Slack, PagerDuty, etc.)
+- GCP project with Cloud Functions, Cloud Run, Eventarc, Cloud Build, Artifact Registry, Pub/Sub, and Firestore APIs enabled
+- Firestore database created in Native mode
+- Slack incoming webhook and PagerDuty Events API v2 integration key for notifications
 - IoT devices publishing telemetry to Pub/Sub
 
 ## Step 1: Create the Infrastructure
 
-Set up the Pub/Sub topics and Firestore collections:
+Set up the Pub/Sub topics:
 
 ```bash
 # Topic for incoming sensor data
@@ -47,13 +44,6 @@ gcloud pubsub topics create sensor-data
 
 # Topic for evaluated alerts
 gcloud pubsub topics create sensor-alerts
-
-# Topic for resolved alerts (when conditions return to normal)
-gcloud pubsub topics create alert-resolved
-
-# Subscription for alert processing
-gcloud pubsub subscriptions create sensor-alerts-sub \
-  --topic=sensor-alerts
 ```
 
 ## Step 2: Define Alert Rules
@@ -109,16 +99,6 @@ alert_rules = [
         "cooldown_seconds": 1800,
         "enabled": True,
     },
-    {
-        "rule_id": "device-offline",
-        "sensor_type": "heartbeat",
-        "condition": "missing",
-        "threshold": 300,  # No heartbeat for 5 minutes
-        "severity": "critical",
-        "message": "Device has stopped sending data",
-        "cooldown_seconds": 900,
-        "enabled": True,
-    },
 ]
 
 # Write rules to Firestore
@@ -138,12 +118,13 @@ import json
 import time
 import base64
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 from google.cloud import pubsub_v1
 import functions_framework
 
 db = firestore.Client()
 publisher = pubsub_v1.PublisherClient()
-PROJECT_ID = "your-project-id"
+PROJECT_ID = db.project
 
 # Cache alert rules to avoid reading Firestore on every invocation
 _rules_cache = None
@@ -159,7 +140,9 @@ def get_alert_rules():
         return _rules_cache
 
     rules = {}
-    docs = db.collection("alert_rules").where("enabled", "==", True).stream()
+    docs = db.collection("alert_rules").where(
+        filter=FieldFilter("enabled", "==", True)
+    ).stream()
     for doc in docs:
         rule = doc.to_dict()
         sensor_type = rule["sensor_type"]
@@ -278,15 +261,13 @@ The router sends alerts to the appropriate notification channels based on severi
 
 import json
 import base64
+import os
 import requests
-from google.cloud import firestore
 import functions_framework
 
-db = firestore.Client()
-
 # Notification channel configuration
-SLACK_WEBHOOK = "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
-PAGERDUTY_KEY = "your-pagerduty-integration-key"
+SLACK_WEBHOOK = os.environ["SLACK_WEBHOOK"]
+PAGERDUTY_KEY = os.environ["PAGERDUTY_KEY"]
 
 def send_slack_notification(alert):
     """Sends an alert notification to Slack with color coding by severity."""
@@ -349,6 +330,21 @@ def route_alert(cloud_event):
     print(f"Routed {severity} alert for device {alert['device_id']}")
 ```
 
+Each function directory also needs a `requirements.txt` file. For the alert evaluator, use:
+
+```text
+functions-framework
+google-cloud-firestore
+google-cloud-pubsub
+```
+
+For the alert router, use:
+
+```text
+functions-framework
+requests
+```
+
 Deploy both functions:
 
 ```bash
@@ -359,7 +355,8 @@ gcloud functions deploy evaluate-alerts \
   --trigger-topic=sensor-data \
   --region=us-central1 \
   --memory=256MB \
-  --entry-point=evaluate_alerts
+  --entry-point=evaluate_alerts \
+  --source=alert_evaluator
 
 # Deploy the alert router
 gcloud functions deploy route-alerts \
@@ -368,7 +365,9 @@ gcloud functions deploy route-alerts \
   --trigger-topic=sensor-alerts \
   --region=us-central1 \
   --memory=256MB \
-  --entry-point=route_alert
+  --entry-point=route_alert \
+  --source=alert_router \
+  --set-env-vars=SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK,PAGERDUTY_KEY=your-pagerduty-integration-key
 ```
 
 ## Step 5: Test the Alerting System
