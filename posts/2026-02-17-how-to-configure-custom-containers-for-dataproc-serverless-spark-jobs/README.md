@@ -10,7 +10,7 @@ Description: Build and configure custom Docker containers for Dataproc Serverles
 
 Dataproc Serverless provides a default runtime environment with common libraries pre-installed. But what happens when your PySpark job needs a specific version of TensorFlow, a compiled C extension, or a proprietary library that is not available through pip? The default environment falls short.
 
-Custom containers solve this. You build a Docker image with exactly the dependencies you need, push it to Artifact Registry, and tell Dataproc Serverless to use it as the runtime for your Spark jobs. Your jobs run with the exact same environment every time, with full control over installed packages.
+Custom containers solve this. You build a Docker image with exactly the dependencies you need, push it to Artifact Registry, and tell Dataproc Serverless to use it as the runtime for your Spark jobs. Your jobs run with the exact same added dependencies every time, while Dataproc Serverless still mounts the managed Spark and Java runtime.
 
 ## Why Custom Containers
 
@@ -26,26 +26,24 @@ You want reproducible builds. A Dockerfile pins every dependency explicitly, so 
 
 ## The Base Image
 
-Dataproc Serverless custom containers must be based on a specific Spark base image provided by Google. The base image includes the Spark runtime, Hadoop libraries, and the Dataproc agent.
+Dataproc Serverless custom containers can use your own Linux base image. Do not install Spark, Hadoop, or Java in the image; Dataproc Serverless mounts the supported Spark runtime into the container at job startup. The image does need basic Linux utilities required by the runtime, including `procps` and `tini`. Google's examples also install `libjemalloc2` and enable it as the default memory allocator.
 
 ```bash
-# List available base images
-
-gcloud artifacts docker images list \
-  us-docker.pkg.dev/cloud-dataproc/container/spark \
-  --include-tags
+# Use a Linux base image that matches the CPU architecture used by Dataproc Serverless.
+# The examples below use Debian 12 through the official Python slim image.
+docker pull python:3.11-slim-bookworm
 ```
 
-The base image tag follows the format: `us-docker.pkg.dev/cloud-dataproc/container/spark:<version>`. Choose the version that matches your Dataproc Serverless runtime version.
+Choose a Python version supported by the Dataproc Serverless runtime you submit the job with, and keep the container architecture compatible with Dataproc Serverless.
 
 ## Building a Custom Container
 
-Here is a Dockerfile that extends the Spark base image with custom dependencies.
+Here is a Dockerfile that builds a custom runtime image with additional dependencies.
 
 ```dockerfile
 # Dockerfile for custom Dataproc Serverless container
-# Start from the official Dataproc Serverless Spark base image
-FROM us-docker.pkg.dev/cloud-dataproc/container/spark:2.1.27-debian11
+# Start from a Linux base image. Dataproc Serverless mounts Spark at runtime.
+FROM python:3.11-slim-bookworm
 
 # Switch to root for installations
 USER root
@@ -53,6 +51,9 @@ USER root
 # Install system-level dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    procps \
+    tini \
+    libjemalloc2 \
     libgdal-dev \
     gdal-bin \
     libproj-dev \
@@ -76,31 +77,35 @@ RUN pip3 install --no-cache-dir \
     google-cloud-storage==2.11.0
 
 # Copy any custom JARs needed by Spark
-COPY jars/ /opt/spark/jars/
+COPY jars/ /opt/custom-jars/
+ENV SPARK_EXTRA_CLASSPATH="/opt/custom-jars/*"
 
-# Copy custom Spark configuration
-COPY spark-defaults.conf /opt/spark/conf/spark-defaults.conf
+# Create the user Dataproc Serverless expects inside the container
+RUN groupadd -g 1099 spark && \
+    useradd -u 1099 -g 1099 -d /home/spark -m spark && \
+    chown -R spark:spark /opt/custom-jars
 
-# Switch back to the default Spark user
+# Set file ownership checks to match the runtime Spark user
 USER spark
 
 # Set environment variables
-ENV PYTHONPATH="/opt/spark/python/lib/py4j-*-src.zip:/opt/spark/python:$PYTHONPATH"
+ENV PYSPARK_PYTHON="/usr/local/bin/python"
+ENV LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libjemalloc.so.2"
 ENV GDAL_DATA="/usr/share/gdal"
 ```
 
-## Creating the Spark Configuration File
+## Creating the Spark Configuration
 
-Include a custom Spark configuration in your container.
+Pass Spark configuration as batch properties when you submit the job. Dataproc Serverless mounts Spark and its configuration into the container at runtime, so a `spark-defaults.conf` file baked into the image is not the reliable way to configure a serverless batch.
 
-```properties
-# spark-defaults.conf - Custom Spark settings baked into the container
-spark.serializer=org.apache.spark.serializer.KryoSerializer
-spark.sql.adaptive.enabled=true
-spark.sql.adaptive.coalescePartitions.enabled=true
-spark.sql.adaptive.skewJoin.enabled=true
-spark.hadoop.fs.gs.implicit.dir.repair.enable=false
-spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version=2
+```bash
+# Custom Spark settings passed at submit time
+--properties="\
+spark.serializer=org.apache.spark.serializer.KryoSerializer,\
+spark.sql.adaptive.enabled=true,\
+spark.sql.adaptive.coalescePartitions.enabled=true,\
+spark.sql.adaptive.skewJoin.enabled=true,\
+spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version=2"
 ```
 
 ## Building and Pushing the Image
@@ -174,15 +179,21 @@ def process_geospatial(spark, input_path, output_path):
     @F.udf(returnType=StringType())
     def reverse_geocode(lat, lon):
         """Convert lat/lon to a region name using shapely."""
-        from shapely.geometry import Point
-        import json
+        from shapely.geometry import Point, Polygon
 
         # Create a point from coordinates
         point = Point(lon, lat)
+        region_a = Polygon([
+            (-125.0, 24.0),
+            (-66.0, 24.0),
+            (-66.0, 50.0),
+            (-125.0, 50.0),
+            (-125.0, 24.0),
+        ])
 
         # Simple region classification based on coordinates
         # In production, this would use actual boundary data
-        if point.within(some_polygon):
+        if point.within(region_a):
             return "Region A"
         return "Unknown"
 
@@ -285,13 +296,24 @@ RUN pip install --user \
     scikit-learn==1.3.0
 
 # Final stage - copy only the built packages
-FROM us-docker.pkg.dev/cloud-dataproc/container/spark:2.1.27-debian11
+FROM python:3.10-slim
 
 USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    procps \
+    tini \
+    libjemalloc2 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy pre-built Python packages from builder stage
 COPY --from=builder /root/.local /root/.local
 ENV PATH="/root/.local/bin:$PATH"
+ENV PYSPARK_PYTHON="/usr/local/bin/python"
+ENV LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libjemalloc.so.2"
+
+RUN groupadd -g 1099 spark && \
+    useradd -u 1099 -g 1099 -d /home/spark -m spark
 
 USER spark
 ```
@@ -320,11 +342,11 @@ In your job submission scripts, reference the specific version, not `latest`. Th
 
 When a job fails with a custom container, check these common issues.
 
-The container must run as the `spark` user, not root. If you switch to root for installations, switch back to `spark` before the end of the Dockerfile.
+Create a `spark` user with UID and GID 1099 in the image and make sure files needed at runtime are readable by that user.
 
-The Spark base image must match the Dataproc Serverless runtime version. Mismatches cause startup failures.
+Do not install Spark, Hadoop, or Java in the image. Dataproc Serverless mounts the runtime version you choose when the batch starts.
 
-If Python packages conflict with packages in the base image, you may need to force reinstall them. Use `pip install --force-reinstall` for packages that conflict.
+If Python packages conflict with packages in your custom Python environment, you may need to force reinstall them. Use `pip install --force-reinstall` for packages that conflict.
 
 Check the batch job logs for container pull errors.
 
@@ -335,4 +357,4 @@ gcloud dataproc batches describe BATCH_ID \
   --format="yaml(stateHistory, runtimeInfo)"
 ```
 
-Custom containers give you full control over the Dataproc Serverless runtime environment. They are essential for production jobs with complex dependencies and for teams that need reproducible, versioned execution environments.
+Custom containers give you control over the Dataproc Serverless workload dependencies you add to the managed runtime. They are essential for production jobs with complex dependencies and for teams that need reproducible, versioned execution environments.
