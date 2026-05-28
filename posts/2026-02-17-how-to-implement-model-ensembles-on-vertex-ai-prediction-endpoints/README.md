@@ -8,13 +8,13 @@ Description: A practical guide to implementing model ensembles on Vertex AI pred
 
 ---
 
-A single model gives you a single perspective on your data. An ensemble of models gives you multiple perspectives, and the combined prediction is almost always better than any individual model. This is not just theory - ensemble methods consistently win ML competitions and power critical production systems at companies like Netflix, Uber, and Google.
+A single model gives you a single perspective on your data. An ensemble of models gives you multiple perspectives, and the combined prediction can often be better than any individual model when the models make different errors. This is not just theory - ensemble methods consistently win ML competitions and power critical production systems at companies like Netflix, Uber, and Google.
 
-On Vertex AI, you can implement ensembles in several ways: through a custom container that calls multiple models, by deploying models to separate endpoints and combining results in your application, or by using a routing layer that dispatches to different models. This guide walks through practical implementations of each approach.
+On Vertex AI, you can implement ensembles in several ways: through a custom container that calls multiple models, by deploying models to separate endpoints and combining results in your application, or by training a stacking meta-model. This guide walks through practical implementations of each approach.
 
 ## Why Ensembles Work
 
-Different model architectures make different kinds of errors. A gradient boosted tree might struggle with rare patterns that a neural network captures. A neural network might overfit to noise that the tree model ignores. When you average their predictions, the errors tend to cancel out.
+Different model architectures make different kinds of errors. A gradient boosted tree might struggle with rare patterns that a neural network captures. A neural network might overfit to noise that the tree model ignores. When their errors are not strongly correlated, averaging their predictions can reduce variance and improve robustness.
 
 ```mermaid
 graph TD
@@ -41,6 +41,7 @@ This code implements an ensemble server:
 
 import os
 import pickle
+import shutil
 import numpy as np
 import torch
 import xgboost as xgb
@@ -53,9 +54,13 @@ app = Flask(__name__)
 
 models = {}
 
-def download_from_gcs(gcs_uri, local_path):
-    """Download a file from GCS."""
-    parts = gcs_uri.replace("gs://", "").split("/", 1)
+def copy_model_file(model_uri, local_path):
+    """Copy a model file from GCS or a local path."""
+    if not model_uri.startswith("gs://"):
+        shutil.copyfile(model_uri, local_path)
+        return
+
+    parts = model_uri.replace("gs://", "").split("/", 1)
     bucket_name = parts[0]
     blob_path = parts[1]
 
@@ -69,18 +74,18 @@ def load_models():
     model_dir = os.environ.get("AIP_STORAGE_URI", "/models")
 
     # Load XGBoost model
-    download_from_gcs(f"{model_dir}/xgboost_model.json", "/tmp/xgb.json")
+    copy_model_file(f"{model_dir}/xgboost_model.json", "/tmp/xgb.json")
     models["xgboost"] = xgb.Booster()
     models["xgboost"].load_model("/tmp/xgb.json")
 
     # Load scikit-learn Random Forest
-    download_from_gcs(f"{model_dir}/random_forest.pkl", "/tmp/rf.pkl")
+    copy_model_file(f"{model_dir}/random_forest.pkl", "/tmp/rf.pkl")
     with open("/tmp/rf.pkl", "rb") as f:
         models["random_forest"] = pickle.load(f)
 
     # Load PyTorch neural network
-    download_from_gcs(f"{model_dir}/neural_net.pt", "/tmp/nn.pt")
-    models["neural_net"] = torch.jit.load("/tmp/nn.pt")
+    copy_model_file(f"{model_dir}/neural_net.pt", "/tmp/nn.pt")
+    models["neural_net"] = torch.jit.load("/tmp/nn.pt", map_location="cpu")
     models["neural_net"].eval()
 
     print(f"Loaded {len(models)} models for ensemble")
@@ -218,6 +223,18 @@ class MultiEndpointEnsemble:
             print(f"Error from {endpoint_config['name']}: {e}")
             return None
 
+    def _extract_score(self, prediction):
+        """Extract a numeric score from common Vertex AI prediction formats."""
+        if isinstance(prediction, (int, float)):
+            return float(prediction)
+        if isinstance(prediction, list):
+            return float(prediction[0])
+        if isinstance(prediction, dict):
+            for key in ("score", "prediction", "ensemble_prediction"):
+                if key in prediction:
+                    return float(prediction[key])
+        raise ValueError(f"Unsupported prediction format: {prediction!r}")
+
     def predict(self, instances):
         """Get ensemble prediction by querying all endpoints in parallel."""
         # Submit all predictions in parallel
@@ -242,8 +259,7 @@ class MultiEndpointEnsemble:
         for result in valid_results:
             normalized_weight = result["weight"] / total_weight
             for i, pred in enumerate(result["predictions"]):
-                # Handle different prediction formats
-                score = pred if isinstance(pred, (int, float)) else pred[0]
+                score = self._extract_score(pred)
                 ensemble_preds[i] += score * normalized_weight
 
         return {
@@ -284,6 +300,7 @@ This code implements a stacking approach:
 ```python
 # stacking_server.py - Stacking ensemble with a meta-learner
 
+import os
 import pickle
 import numpy as np
 from flask import Flask, request, jsonify
@@ -308,6 +325,13 @@ def load_models():
     # Load the meta-learner (trained on base model outputs)
     with open("/tmp/meta_model.pkl", "rb") as f:
         meta_model = pickle.load(f)
+
+@app.route("/health", methods=["GET"])
+def health():
+    """Health check."""
+    if len(base_models) == 3 and meta_model is not None:
+        return jsonify({"status": "healthy"}), 200
+    return jsonify({"status": "loading"}), 503
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -336,6 +360,11 @@ def predict():
     ]
 
     return jsonify({"predictions": results}), 200
+
+if __name__ == "__main__":
+    load_models()
+    port = int(os.environ.get("AIP_HTTP_PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
 ```
 
 ## Training the Stacking Meta-Model
@@ -345,6 +374,7 @@ The meta-model is trained on out-of-fold predictions from the base models to avo
 ```python
 from sklearn.model_selection import cross_val_predict
 from sklearn.linear_model import LogisticRegression
+import numpy as np
 
 def train_stacking_ensemble(X_train, y_train, base_models):
     """Train a stacking ensemble with cross-validated base predictions."""
