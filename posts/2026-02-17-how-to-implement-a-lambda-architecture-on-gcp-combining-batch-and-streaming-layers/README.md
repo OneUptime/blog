@@ -58,7 +58,7 @@ import functions_framework
 import base64
 import json
 from google.cloud import storage
-from datetime import datetime
+from datetime import datetime, timezone
 
 client = storage.Client()
 ARCHIVE_BUCKET = "raw-data-lake"
@@ -71,8 +71,8 @@ def archive_event(cloud_event):
     event = json.loads(message_data)
 
     # Partition by date and hour for efficient batch processing
-    now = datetime.utcnow()
-    path = f"events/year={now.year}/month={now.month:02d}/day={now.day:02d}/hour={now.hour:02d}"
+    now = datetime.now(timezone.utc)
+    path = f"events/{now:%Y/%m/%d/%H}"
 
     # Use a unique filename to avoid collisions
     message_id = cloud_event.data["message"]["messageId"]
@@ -91,6 +91,7 @@ gcloud pubsub subscriptions create archive-gcs-sub \
   --topic=raw-events \
   --cloud-storage-bucket=raw-data-lake \
   --cloud-storage-file-prefix=events/ \
+  --cloud-storage-file-datetime-format=YYYY/MM/DD/hh/ \
   --cloud-storage-file-suffix=.json \
   --cloud-storage-max-duration=5m \
   --cloud-storage-max-bytes=1000000000
@@ -104,12 +105,22 @@ The streaming pipeline processes events in real-time and writes aggregated resul
 # streaming_pipeline.py - Dataflow streaming pipeline
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
-from apache_beam.transforms.window import FixedWindows, SlidingWindows
+from apache_beam.transforms.window import FixedWindows
 from apache_beam.transforms.trigger import AfterWatermark, AccumulationMode
+from datetime import datetime
 import json
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def parse_event_timestamp(value):
+    """Convert an event timestamp to Unix seconds for Beam event time."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    raise ValueError(f"Unsupported timestamp value: {value!r}")
 
 
 class ParseEvent(beam.DoFn):
@@ -119,14 +130,15 @@ class ParseEvent(beam.DoFn):
             event = json.loads(element.decode("utf-8"))
             # Validate required fields
             if "event_type" in event and "timestamp" in event:
+                event["_event_ts"] = parse_event_timestamp(event["timestamp"])
                 yield event
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, ValueError, TypeError):
             logger.warning(f"Failed to parse event: {element[:100]}")
 
 
 class ComputeMetrics(beam.DoFn):
     """Compute per-window metrics from events."""
-    def process(self, element):
+    def process(self, element, window=beam.DoFn.WindowParam):
         # element is a tuple of (key, list of events)
         key, events = element
         event_list = list(events)
@@ -134,8 +146,8 @@ class ComputeMetrics(beam.DoFn):
         yield {
             "metric_key": key,
             "event_count": len(event_list),
-            "window_start": min(e.get("timestamp", "") for e in event_list),
-            "window_end": max(e.get("timestamp", "") for e in event_list),
+            "window_start": window.start.to_utc_datetime().isoformat(),
+            "window_end": window.end.to_utc_datetime().isoformat(),
             "unique_users": len(set(e.get("user_id", "") for e in event_list)),
         }
 
@@ -166,7 +178,7 @@ def run_streaming_pipeline():
         windowed = (
             events
             | "AddTimestamps" >> beam.Map(
-                lambda e: beam.window.TimestampedValue(e, e.get("timestamp", 0))
+                lambda e: beam.window.TimestampedValue(e, e["_event_ts"])
             )
             | "Window" >> beam.WindowInto(
                 FixedWindows(300),  # 5-minute windows
@@ -206,16 +218,17 @@ The batch layer runs periodically to produce accurate, complete views from the r
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 def run_batch_pipeline(process_date=None):
     """Run the batch pipeline on the complete dataset."""
     if process_date is None:
-        process_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y/%m/%d")
+        process_date = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y/%m/%d")
 
     year, month, day = process_date.split("/")
-    input_pattern = f"gs://raw-data-lake/events/year={year}/month={month}/day={day}/**/*.json"
+    input_pattern = f"gs://raw-data-lake/events/{year}/{month}/{day}/**/*.json"
+    process_date_sql = f"{year}-{month}-{day}"
 
     options = PipelineOptions([
         "--project=YOUR_PROJECT",
@@ -236,10 +249,12 @@ def run_batch_pipeline(process_date=None):
             events
             | "KeyByEventType" >> beam.Map(lambda e: (e.get("event_type"), e))
             | "GroupAll" >> beam.GroupByKey()
-            | "ComputeDailyMetrics" >> beam.Map(compute_daily_metrics)
+            | "ComputeDailyMetrics" >> beam.Map(
+                lambda element: compute_daily_metrics(element, process_date_sql)
+            )
         )
 
-        # Write to the batch layer table, replacing previous results for this date
+        # Append the daily results to the batch layer table.
         daily_metrics | "WriteBatchLayer" >> beam.io.WriteToBigQuery(
             table="YOUR_PROJECT:analytics.batch_layer_metrics",
             schema="date:DATE,metric_key:STRING,total_events:INTEGER,"
@@ -249,30 +264,33 @@ def run_batch_pipeline(process_date=None):
         )
 
 
-def compute_daily_metrics(element):
+def compute_daily_metrics(element, process_date):
     """Compute accurate daily metrics from all events."""
     key, events = element
     event_list = list(events)
 
     return {
-        "date": datetime.utcnow().strftime("%Y-%m-%d"),
+        "date": process_date,
         "metric_key": key,
         "total_events": len(event_list),
         "unique_users": len(set(e.get("user_id", "") for e in event_list)),
-        "computed_at": datetime.utcnow().isoformat(),
+        "computed_at": datetime.now(timezone.utc).isoformat(),
     }
 ```
 
-Schedule the batch pipeline to run daily.
+After packaging the batch pipeline as a Dataflow Flex Template, schedule it to run daily.
 
 ```bash
 # Schedule the batch pipeline to run daily at 6 AM
 gcloud scheduler jobs create http daily-batch-pipeline \
   --location=us-central1 \
   --schedule="0 6 * * *" \
-  --uri="https://dataflow.googleapis.com/v1b3/projects/YOUR_PROJECT/locations/us-central1/templates:launch" \
+  --uri="https://dataflow.googleapis.com/v1b3/projects/YOUR_PROJECT/locations/us-central1/flexTemplates:launch" \
   --http-method=POST \
-  --oauth-service-account-email=batch-sa@YOUR_PROJECT.iam.gserviceaccount.com
+  --headers="Content-Type=application/json" \
+  --message-body='{"launchParameter":{"jobName":"daily-batch-pipeline","containerSpecGcsPath":"gs://dataflow-templates/batch_pipeline_flex_template.json"}}' \
+  --oauth-service-account-email=batch-sa@YOUR_PROJECT.iam.gserviceaccount.com \
+  --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform"
 ```
 
 ## Creating the Serving Layer
