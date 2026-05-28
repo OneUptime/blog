@@ -8,7 +8,7 @@ Description: A hands-on guide to setting up Pub/Sub notifications for Google Clo
 
 ---
 
-When a file lands in a Cloud Storage bucket, you often want something to happen automatically - trigger a data pipeline, send a notification, update a database, or kick off a processing job. Google Cloud Pub/Sub notifications for Cloud Storage give you exactly this: real-time event delivery whenever objects are created, deleted, archived, or have their metadata updated.
+When a file lands in a Cloud Storage bucket, you often want something to happen automatically - trigger a data pipeline, send a notification, update a database, or kick off a processing job. Google Cloud Pub/Sub notifications for Cloud Storage give you exactly this: real-time event delivery whenever objects are created, deleted, archived, have their metadata updated, or, for zonal buckets, begin creation.
 
 This guide walks through setting up Pub/Sub notifications from scratch, handling the events, and building practical automated workflows.
 
@@ -84,6 +84,7 @@ gcloud storage buckets notifications create gs://my-data-bucket \
 Available event types:
 
 - `OBJECT_FINALIZE` - object created or overwritten
+- `OBJECT_INITIALIZE` - object started creation in a zonal bucket
 - `OBJECT_METADATA_UPDATE` - object metadata changed
 - `OBJECT_DELETE` - object permanently deleted
 - `OBJECT_ARCHIVE` - object became noncurrent (versioned bucket)
@@ -249,7 +250,7 @@ const storage = new Storage();
 
 /**
  * Process GCS notifications from Pub/Sub.
- * Triggered by a Pub/Sub push subscription.
+ * Triggered by a Pub/Sub Cloud Function trigger.
  */
 exports.processNotification = async (message, context) => {
   // Parse the notification payload
