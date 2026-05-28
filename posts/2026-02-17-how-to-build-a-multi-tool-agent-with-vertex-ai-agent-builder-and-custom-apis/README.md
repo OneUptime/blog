@@ -8,7 +8,7 @@ Description: Build a multi-tool AI agent using Vertex AI Agent Builder that conn
 
 ---
 
-An AI agent that can only talk is limited. The real value comes when the agent can take action - look up an order, create a support ticket, update a customer record, or check inventory. Vertex AI Agent Builder supports connecting agents to custom APIs through tool definitions, allowing the agent to call your existing backend services as part of its reasoning process. This guide shows how to build an agent with multiple custom API tools.
+An AI agent that can only talk is limited. The real value comes when the agent can take action - look up an order, create a support ticket, update a customer record, or check inventory. Vertex AI supports connecting agents to custom APIs through extensions and custom tool definitions, allowing the agent to call your existing backend services as part of its reasoning process. This guide shows how to build an agent with multiple custom API tools.
 
 ## The Tool Architecture
 
@@ -31,12 +31,12 @@ graph LR
 - Python 3.9+
 
 ```bash
-pip install google-cloud-aiplatform langchain-google-vertexai
+pip install langchain langchain-google-vertexai requests google-auth
 ```
 
 ## Defining Custom Tools with OpenAPI
 
-Each tool is defined using an OpenAPI specification. This tells the agent what the API does and how to call it.
+When you register APIs as Vertex AI extensions, each tool is defined using an OpenAPI 3.0 specification. This tells Vertex AI what the API does and how to call it. The LangChain example later in this guide mirrors these same operations as Python tool functions.
 
 ### Order Management Tool
 
@@ -274,7 +274,7 @@ Now let us wire these tools into an agent using LangChain with Vertex AI.
 ```python
 from langchain_google_vertexai import ChatVertexAI
 from langchain_core.tools import tool
-from langchain.agents import create_react_agent, AgentExecutor
+from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import requests
 
@@ -307,7 +307,7 @@ def create_ticket(customer_id: str, subject: str, description: str, priority: st
 
 # Initialize the model
 llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+    model_name="gemini-2.5-pro",
     project="your-project-id",
     location="us-central1",
     temperature=0.1,
@@ -333,7 +333,7 @@ Guidelines:
 ])
 
 # Build the agent
-agent = create_react_agent(llm=llm, tools=tools, prompt=prompt)
+agent = create_tool_calling_agent(llm=llm, tools=tools, prompt=prompt)
 agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
@@ -380,7 +380,8 @@ def get_authenticated_response(url: str) -> dict:
     """Call a Cloud Run service with proper authentication."""
     # Get an ID token for the target service
     auth_req = google.auth.transport.requests.Request()
-    id_token = google.oauth2.id_token.fetch_id_token(auth_req, url)
+    audience = "https://orders-api-xxxxx.run.app"
+    id_token = google.oauth2.id_token.fetch_id_token(auth_req, audience)
 
     # Make the authenticated request
     headers = {"Authorization": f"Bearer {id_token}"}
@@ -422,4 +423,4 @@ def safe_get_order(order_id: str) -> str:
 
 ## Summary
 
-Building a multi-tool agent with Vertex AI Agent Builder connects your AI to the real systems that power your business. Define each tool with a clear OpenAPI spec so the agent understands what it can do, implement proper authentication and error handling, and give the agent clear guidelines on when and how to use each tool. The result is an agent that can handle complex, multi-step requests across your order management, CRM, and ticketing systems in a single conversation. Start with read-only tools to build confidence, then add write operations once you trust the agent's decision-making.
+Building a multi-tool agent with Vertex AI connects your AI to the real systems that power your business. Define each API operation clearly, either with an OpenAPI spec for Vertex AI extensions or as typed LangChain tools, implement proper authentication and error handling, and give the agent clear guidelines on when and how to use each tool. The result is an agent that can handle complex, multi-step requests across your order management, CRM, and ticketing systems in a single conversation. Start with read-only tools to build confidence, then add write operations once you trust the agent's decision-making.
