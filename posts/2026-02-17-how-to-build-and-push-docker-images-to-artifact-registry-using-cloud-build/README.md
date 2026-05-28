@@ -12,7 +12,7 @@ Artifact Registry is Google Cloud's recommended service for storing container im
 
 ## Artifact Registry vs Container Registry
 
-Before diving in, a quick note on why Artifact Registry. Google Container Registry (gcr.io) still works but is in maintenance mode. Artifact Registry provides:
+Before diving in, a quick note on why Artifact Registry. Google Container Registry (gcr.io) is deprecated, and writing images to Container Registry is no longer available. Artifact Registry provides:
 
 - Regional and multi-regional repositories
 - Fine-grained IAM permissions at the repository level
@@ -63,16 +63,16 @@ gcloud artifacts repositories list --location=us-central1
 
 ### Step 4: Grant Cloud Build Permissions
 
-The Cloud Build service account needs permission to push images. By default, Cloud Build has the `Artifact Registry Writer` role at the project level. If you are using a custom service account or need to verify:
+The Cloud Build service account needs permission to push images. The default Cloud Build service account can upload and download artifacts in Artifact Registry repositories in the same project. If Cloud Build and Artifact Registry are in different projects, or if you use a user-specified service account, grant the `Artifact Registry Writer` role to the build service account:
 
 ```bash
-# Grant the Artifact Registry Writer role to Cloud Build
+# Grant the Artifact Registry Writer role to a build service account
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+BUILD_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
 gcloud artifacts repositories add-iam-policy-binding my-docker-repo \
   --location=us-central1 \
-  --member="serviceAccount:${CB_SA}" \
+  --member="serviceAccount:${BUILD_SA}" \
   --role="roles/artifactregistry.writer"
 ```
 
@@ -134,10 +134,14 @@ steps:
       - '.'
 
   # Run tests using the built image
-  - name: 'us-central1-docker.pkg.dev/$PROJECT_ID/my-docker-repo/my-app:$SHORT_SHA'
+  - name: 'gcr.io/cloud-builders/docker'
     id: 'test'
-    entrypoint: 'npm'
-    args: ['test']
+    args:
+      - 'run'
+      - '--rm'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-docker-repo/my-app:$SHORT_SHA'
+      - 'npm'
+      - 'test'
 
   # Push only if tests pass
   - name: 'gcr.io/cloud-builders/docker'
@@ -171,6 +175,9 @@ images:
 
 substitutions:
   _AR_REPO: 'us-central1-docker.pkg.dev/${PROJECT_ID}/my-docker-repo'
+
+options:
+  dynamicSubstitutions: true
 ```
 
 ## Multi-Architecture Builds
@@ -233,9 +240,17 @@ For development and feature branch builds:
 ```yaml
 # Tag with the branch name for easy identification
 images:
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-docker-repo/my-app:$BRANCH_NAME-$SHORT_SHA'
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-docker-repo/my-app:$BRANCH_NAME-latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-docker-repo/my-app:${_SAFE_BRANCH}-$SHORT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-docker-repo/my-app:${_SAFE_BRANCH}-latest'
+
+substitutions:
+  _SAFE_BRANCH: '${BRANCH_NAME//\//-}'
+
+options:
+  dynamicSubstitutions: true
 ```
+
+Branch names can contain `/`, which is not valid in a Docker tag, so sanitize branch-based tags before using them.
 
 ## Setting Up Cleanup Policies
 
@@ -251,22 +266,29 @@ gcloud artifacts repositories set-cleanup-policies my-docker-repo \
 The cleanup policy JSON:
 
 ```json
-// Cleanup policy to keep repositories manageable
 [
   {
     "name": "delete-old-images",
     "action": {"type": "Delete"},
     "condition": {
-      "olderThan": "7776000s",
-      "tagState": "ANY"
+      "olderThan": "90d",
+      "tagState": "any"
+    }
+  },
+  {
+    "name": "keep-last-10",
+    "action": {"type": "Keep"},
+    "mostRecentVersions": {
+      "keepCount": 10
     }
   },
   {
     "name": "keep-recent-tagged",
     "action": {"type": "Keep"},
     "condition": {
+      "tagState": "tagged",
       "tagPrefixes": ["v", "release"],
-      "newerThan": "15552000s"
+      "newerThan": "180d"
     }
   }
 ]
@@ -274,13 +296,18 @@ The cleanup policy JSON:
 
 ## Vulnerability Scanning
 
-Artifact Registry integrates with Container Analysis for vulnerability scanning. Enable it on your repository:
+Artifact Registry integrates with Artifact Analysis for vulnerability scanning. Enable the Container Scanning API, then allow scanning on your repository:
+
+```bash
+# Enable the Container Scanning API
+gcloud services enable containerscanning.googleapis.com
+```
 
 ```bash
 # Enable vulnerability scanning on the repository
 gcloud artifacts repositories update my-docker-repo \
   --location=us-central1 \
-  --enable-vulnerability-scanning
+  --allow-vulnerability-scanning
 ```
 
 After enabling, every pushed image is automatically scanned. You can check scan results:
