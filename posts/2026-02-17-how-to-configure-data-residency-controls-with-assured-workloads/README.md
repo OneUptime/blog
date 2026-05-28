@@ -10,7 +10,7 @@ Description: Learn how to configure and enforce data residency controls in GCP u
 
 Data residency requirements are becoming more common as regulations like GDPR, data sovereignty laws, and industry-specific compliance frameworks mandate that data stays within specific geographic boundaries. If you are operating in healthcare, government, or financial services, you likely have strict rules about where your data can be stored and processed.
 
-GCP Assured Workloads provides built-in data residency controls that enforce these restrictions at the infrastructure level. This post covers how to configure data residency, what it actually controls, and how to verify your data stays where it belongs.
+GCP Assured Workloads provides built-in data residency controls that enforce these restrictions for supported services. This post covers how to configure data residency, what it actually controls, and how to verify your data stays where it belongs.
 
 ## What Data Residency Controls Cover
 
@@ -18,11 +18,11 @@ When you configure data residency in Assured Workloads, it controls where:
 
 - Compute resources (VMs, containers) run
 - Storage resources (buckets, disks, databases) are located
-- Data processing occurs
-- Encryption keys are stored
-- Backups and replicas are placed
+- Data processing for configured services occurs
+- Encryption keys are stored when you use service-specific or customer-managed keys
+- Backups and replicas are placed for services with restrictable backup and replica locations
 
-It does this through organization policies that restrict resource creation to specific regions.
+It does this through organization policies that restrict resource creation to allowed locations for supported resource types.
 
 ## Setting Up Data Residency with Assured Workloads
 
@@ -31,21 +31,16 @@ Create an Assured Workloads folder with the appropriate compliance regime and lo
 ```bash
 # Create an Assured Workloads folder for EU data residency
 
-# Using the EU_REGIONS_AND_SUPPORT compliance regime
+# Using the EU_DATA_BOUNDARY_AND_SUPPORT compliance regime
 gcloud assured workloads create \
   --organization=ORG_ID \
-  --location=eu \
+  --location=europe \
   --display-name="EU Data Residency Workloads" \
-  --compliance-regime=EU_REGIONS_AND_SUPPORT \
-  --billing-account=BILLING_ACCOUNT_ID \
-  --provisioned-resources-parent=organizations/ORG_ID \
-  --resource-settings='[{
-    "resourceType": "CONSUMER_FOLDER",
-    "displayName": "eu-data-residency"
-  }]'
+  --compliance-regime=EU_DATA_BOUNDARY_AND_SUPPORT \
+  --billing-account=billingAccounts/BILLING_ACCOUNT_ID
 ```
 
-For US data residency (common for FedRAMP or ITAR):
+For US data residency:
 
 ```bash
 # Create an Assured Workloads folder for US data residency
@@ -53,13 +48,8 @@ gcloud assured workloads create \
   --organization=ORG_ID \
   --location=us \
   --display-name="US Data Residency Workloads" \
-  --compliance-regime=FEDRAMP_MODERATE \
-  --billing-account=BILLING_ACCOUNT_ID \
-  --provisioned-resources-parent=organizations/ORG_ID \
-  --resource-settings='[{
-    "resourceType": "CONSUMER_FOLDER",
-    "displayName": "us-data-residency"
-  }]'
+  --compliance-regime=US_DATA_BOUNDARY_AND_SUPPORT \
+  --billing-account=billingAccounts/BILLING_ACCOUNT_ID
 ```
 
 ## Understanding the Resource Location Policy
@@ -84,7 +74,7 @@ listPolicy:
     - in:eu-locations
 ```
 
-This means any attempt to create a resource in a non-EU region will be rejected at the API level.
+This means any attempt to create a supported resource in a non-EU region will be rejected at the API level.
 
 ## Customizing Location Restrictions
 
@@ -174,7 +164,7 @@ Some GCP services use multi-region configurations by default. You need to be car
 
 ### Cloud Storage
 
-Use regional buckets, not multi-region:
+Use regional buckets when your requirement is a specific region or country, not just the EU multi-region:
 
 ```bash
 # Create a regional bucket in a specific EU location
@@ -182,7 +172,7 @@ gcloud storage buckets create gs://eu-data-bucket \
   --location=europe-west1 \
   --project=eu-residency-project
 
-# Avoid: gs://eu-data-bucket --location=EU  (multi-region, data could be in any EU location)
+# Avoid for country-specific residency: --location=EU  (multi-region, data could be in any EU location)
 ```
 
 ### BigQuery
@@ -229,7 +219,7 @@ gcloud kms keys create data-key \
   --project=eu-residency-project
 ```
 
-If you use a global key location, the key material might be replicated outside your desired region. Always use regional key locations for data residency compliance.
+If you use a global key location, your keys have no geographic residency requirements. Always use regional or compliant multi-regional key locations for data residency compliance.
 
 ## Monitoring Data Residency Compliance
 
@@ -247,9 +237,8 @@ gcloud monitoring policies create \
   --display-name="Data Residency Violation Attempt" \
   --condition-display-name="Resource creation attempted in wrong region" \
   --condition-filter='metric.type="logging.googleapis.com/user/wrong-region-attempts"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=0s \
+  --duration=60s \
+  --if="> 0" \
   --notification-channels="projects/eu-residency-project/notificationChannels/CHANNEL_ID" \
   --combiner=OR \
   --project=eu-residency-project
@@ -277,4 +266,4 @@ gcloud sql instances patch my-db \
 
 ## Summary
 
-Data residency controls in Assured Workloads enforce geographic restrictions on where your GCP resources can be created. The setup involves creating an Assured Workloads folder with the right compliance regime and location, which automatically applies the resource location organization policy. Verify the controls by attempting to create resources in non-compliant regions, audit existing resources with Cloud Asset Inventory, and set up monitoring for violation attempts. Remember that data residency extends beyond just compute and storage - encryption keys, backups, and replicas all need to be in compliant locations too.
+Data residency controls in Assured Workloads enforce geographic restrictions on where supported GCP resources can be created. The setup involves creating an Assured Workloads folder with the right compliance regime and location, which automatically applies the resource location organization policy. Verify the controls by attempting to create resources in non-compliant regions, audit existing resources with Cloud Asset Inventory, and set up monitoring for violation attempts. Remember that data residency extends beyond just compute and storage - encryption keys, backups, and replicas all need to be in compliant locations too.
