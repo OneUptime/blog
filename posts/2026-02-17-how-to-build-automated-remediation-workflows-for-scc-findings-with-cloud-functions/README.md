@@ -41,26 +41,21 @@ resource "google_pubsub_topic" "scc_findings" {
   project = var.project_id
 }
 
-resource "google_scc_notification_config" "high_severity" {
+resource "google_scc_v2_organization_notification_config" "high_severity" {
   config_id    = "high-severity-findings"
   organization = var.org_id
+  location     = "global"
   description  = "Notifications for high and critical severity SCC findings"
   pubsub_topic = google_pubsub_topic.scc_findings.id
 
   # Only notify on high and critical findings that are active
   streaming_config {
-    filter = "severity=\"HIGH\" OR severity=\"CRITICAL\" AND state=\"ACTIVE\""
+    filter = "(severity = \"HIGH\" OR severity = \"CRITICAL\") AND state = \"ACTIVE\""
   }
 }
-
-# Grant SCC permission to publish to the topic
-resource "google_pubsub_topic_iam_member" "scc_publisher" {
-  project = var.project_id
-  topic   = google_pubsub_topic.scc_findings.name
-  role    = "roles/pubsub.publisher"
-  member  = "serviceAccount:service-org-${var.org_id}@gcp-sa-scc-notification.iam.gserviceaccount.com"
-}
 ```
+
+When the notification config is created, Security Command Center creates the notification service account and grants it the required `securitycenter.notificationServiceAgent` role on the Pub/Sub topic.
 
 ## Building the Remediation Cloud Function
 
@@ -74,10 +69,17 @@ This is the main function entry point that routes findings to specific handlers:
 import base64
 import json
 import logging
-from google.cloud import compute_v1
-from google.cloud import storage
-from google.cloud import iam_admin_v1
-from google.cloud import logging as cloud_logging
+import functions_framework
+from cloudevents.http import CloudEvent
+
+from notification_helpers import log_remediation, send_notification
+from remediation_handlers import (
+    remediate_open_firewall,
+    remediate_open_rdp,
+    remediate_open_ssh,
+    remediate_over_privileged_account,
+    remediate_public_bucket,
+)
 
 # Set up structured logging
 logging.basicConfig(level=logging.INFO)
@@ -94,10 +96,13 @@ REMEDIATION_MAP = {
     "PUBLIC_IP_ADDRESS": "notify_only",
 }
 
-def handle_scc_finding(event, context):
+@functions_framework.cloud_event
+def handle_scc_finding(cloud_event: CloudEvent):
     """Main entry point - triggered by Pub/Sub message."""
     # Decode the Pub/Sub message
-    pubsub_message = base64.b64decode(event['data']).decode('utf-8')
+    pubsub_message = base64.b64decode(
+        cloud_event.data["message"]["data"]
+    ).decode("utf-8")
     finding_data = json.loads(pubsub_message)
 
     finding = finding_data.get('finding', {})
@@ -136,6 +141,14 @@ Here are the individual remediation handlers for common finding types:
 ```python
 # remediation_handlers.py
 # Individual handlers for each SCC finding type
+import logging
+
+from google.cloud import compute_v1
+from google.cloud import storage
+
+from notification_helpers import send_notification
+
+logger = logging.getLogger(__name__)
 
 def remediate_public_bucket(finding):
     """Remove public access from a Cloud Storage bucket."""
@@ -163,7 +176,7 @@ def remediate_public_bucket(finding):
     policy.bindings = new_bindings
     bucket.set_iam_policy(policy)
 
-    # Also disable uniform bucket-level access override
+    # Also enforce public access prevention for ACL-based public access
     bucket.iam_configuration.public_access_prevention = "enforced"
     bucket.patch()
 
@@ -229,6 +242,11 @@ def remediate_open_ssh(finding):
     logger.info(f"Restricted SSH rule {firewall_name} to IAP range only")
 
 
+def remediate_open_rdp(finding):
+    """Disable RDP access from the public internet."""
+    remediate_open_firewall(finding)
+
+
 def remediate_over_privileged_account(finding):
     """Remove overly broad roles from service accounts."""
     resource_name = finding['resourceName']
@@ -257,8 +275,13 @@ And the notification and logging helpers:
 # notification_helpers.py
 # Helpers for logging and sending alerts about remediations
 
-from google.cloud import pubsub_v1
 import json
+import logging
+import os
+
+from google.cloud import pubsub_v1
+
+logger = logging.getLogger(__name__)
 
 def log_remediation(category, resource, status, error=None):
     """Log remediation action to Cloud Logging with structured data."""
@@ -277,7 +300,8 @@ def send_notification(category, resource, severity,
                       remediated=False, error=None, action_required=False):
     """Send notification about the finding to a Pub/Sub topic."""
     publisher = pubsub_v1.PublisherClient()
-    topic_path = publisher.topic_path("your-project", "security-notifications")
+    project_id = os.environ["GOOGLE_CLOUD_PROJECT"]
+    topic_path = publisher.topic_path(project_id, "security-notifications")
 
     message = {
         "category": category,
@@ -291,10 +315,20 @@ def send_notification(category, resource, severity,
     publisher.publish(
         topic_path,
         data=json.dumps(message).encode('utf-8')
-    )
+    ).result()
 ```
 
 ## Deploying the Cloud Function
+
+Include the runtime dependencies in `requirements.txt`:
+
+```text
+cloudevents
+functions-framework
+google-cloud-compute
+google-cloud-pubsub
+google-cloud-storage
+```
 
 Deploy the function with the right permissions using gcloud:
 
@@ -324,6 +358,11 @@ resource "google_service_account" "remediation" {
   project      = var.project_id
 }
 
+resource "google_pubsub_topic" "security_notifications" {
+  name    = "security-notifications"
+  project = var.project_id
+}
+
 # Only grant the specific permissions needed for remediation
 resource "google_organization_iam_member" "storage_admin" {
   org_id = var.org_id
@@ -341,6 +380,13 @@ resource "google_organization_iam_member" "logging_writer" {
   org_id = var.org_id
   role   = "roles/logging.logWriter"
   member = "serviceAccount:${google_service_account.remediation.email}"
+}
+
+resource "google_pubsub_topic_iam_member" "notification_publisher" {
+  project = var.project_id
+  topic   = google_pubsub_topic.security_notifications.name
+  role    = "roles/pubsub.publisher"
+  member  = "serviceAccount:${google_service_account.remediation.email}"
 }
 ```
 
