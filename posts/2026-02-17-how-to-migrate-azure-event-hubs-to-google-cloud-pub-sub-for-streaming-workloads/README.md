@@ -12,7 +12,7 @@ Azure Event Hubs and Google Cloud Pub/Sub are both managed messaging services de
 
 ## Architecture Differences
 
-Event Hubs uses a partitioned log model inspired by Apache Kafka. Messages go to partitions, consumers read from partitions using consumer groups, and you manage throughput units to scale.
+Event Hubs uses a partitioned log model inspired by Apache Kafka. Messages go to partitions, consumers read from partitions using consumer groups, and you manage throughput or capacity units to scale, depending on the tier.
 
 Pub/Sub uses a topic and subscription model. Publishers send messages to topics, and each subscription gets its own copy of every message. There are no partitions to manage - Pub/Sub handles parallelism automatically.
 
@@ -136,7 +136,13 @@ for event in events:
     print(f"Published message {message_id}")
 ```
 
-If you relied on Event Hubs partition keys for ordering, use Pub/Sub ordering keys:
+If you relied on Event Hubs partition keys for ordering, use Pub/Sub ordering keys. Ordered delivery also has to be enabled on the subscription that receives those messages:
+
+```bash
+gcloud pubsub subscriptions create ordered-analytics-sub \
+    --topic=events-stream \
+    --enable-message-ordering
+```
 
 ```python
 # Enable message ordering for ordered delivery
@@ -231,7 +237,7 @@ If you use Event Hubs Capture to archive events to Blob Storage, replace it with
 # Create a BigQuery subscription that auto-writes messages to a table
 gcloud pubsub subscriptions create archive-sub \
     --topic=events-stream \
-    --bigquery-table=my-project:events_dataset.raw_events \
+    --bigquery-table=my-project.events_dataset.raw_events \
     --write-metadata
 ```
 
@@ -267,8 +273,8 @@ Pub/Sub scales automatically without throughput unit management. However, keep t
 
 - **Publish throughput** can reach millions of messages per second per topic
 - **Subscriber throughput** scales with the number of subscriber clients - add more to increase parallelism
-- **Message size** is limited to 10 MB per message (Event Hubs allows up to 1 MB by default, 1 MB per event)
-- **Message retention** can be set up to 31 days (Event Hubs offers 1-90 days depending on tier)
+- **Message size** is limited to 10 MB per message (Event Hubs allows up to 256 KB in Basic, 1 MB in Standard and Premium, and 20 MB in Dedicated)
+- **Message retention** can be set up to 31 days (Event Hubs offers up to 1, 7, or 90 days depending on tier)
 
 ## Migration Strategy
 
