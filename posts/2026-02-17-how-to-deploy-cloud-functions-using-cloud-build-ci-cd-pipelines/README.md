@@ -29,19 +29,29 @@ Make sure you have the following set up:
 
 gcloud services enable cloudbuild.googleapis.com
 gcloud services enable cloudfunctions.googleapis.com
-gcloud services enable cloudfunctions.googleapis.com
+gcloud services enable run.googleapis.com
+gcloud services enable artifactregistry.googleapis.com
 
-# Grant Cloud Build permission to deploy Cloud Functions
+# Grant the Cloud Build service account permission to deploy Cloud Functions
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+CB_SA=$(gcloud builds get-default-service-account --region=us-central1 --format='value(serviceAccountEmail)' | sed 's#.*/serviceAccounts/##')
+RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/cloudfunctions.developer"
+for ROLE in \
+  roles/cloudfunctions.developer \
+  roles/run.admin \
+  roles/storage.admin \
+  roles/artifactregistry.writer \
+  roles/logging.logWriter \
+  roles/cloudbuild.builds.editor; do
+  gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:${CB_SA}" \
+    --role="${ROLE}"
+done
 
 # Cloud Build needs to act as the function's runtime service account
 gcloud iam service-accounts add-iam-policy-binding \
-  "${PROJECT_ID}@appspot.gserviceaccount.com" \
+  "${RUNTIME_SA}" \
   --member="serviceAccount:${CB_SA}" \
   --role="roles/iam.serviceAccountUser"
 ```
@@ -101,17 +111,17 @@ The simplest pipeline that tests and deploys a Cloud Function:
 # cloudbuild.yaml - Test and deploy a Cloud Function
 steps:
   # Step 1: Install dependencies
-  - name: 'node:20'
+  - name: 'node:22'
     id: 'install'
     args: ['npm', 'ci']
 
   # Step 2: Run linting
-  - name: 'node:20'
+  - name: 'node:22'
     id: 'lint'
     args: ['npm', 'run', 'lint']
 
   # Step 3: Run tests
-  - name: 'node:20'
+  - name: 'node:22'
     id: 'test'
     args: ['npm', 'test']
 
@@ -125,7 +135,7 @@ steps:
       - 'hello-world'
       - '--gen2'
       - '--runtime'
-      - 'nodejs20'
+      - 'nodejs22'
       - '--region'
       - 'us-central1'
       - '--source'
@@ -145,10 +155,10 @@ Cloud Functions 2nd generation is built on Cloud Run and offers more features. T
 ```yaml
 # Deploy a 2nd gen Cloud Function with full configuration
 steps:
-  - name: 'node:20'
+  - name: 'node:22'
     args: ['npm', 'ci']
 
-  - name: 'node:20'
+  - name: 'node:22'
     args: ['npm', 'test']
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -159,7 +169,7 @@ steps:
       - 'process-orders'
       - '--gen2'
       - '--runtime'
-      - 'nodejs20'
+      - 'nodejs22'
       - '--region'
       - 'us-central1'
       - '--source'
@@ -172,7 +182,7 @@ steps:
       - '--cpu'
       - '1'
       - '--timeout'
-      - '120'
+      - '120s'
       - '--min-instances'
       - '1'
       - '--max-instances'
@@ -197,7 +207,7 @@ For functions triggered by Pub/Sub, Cloud Storage, or Firestore events:
       - 'process-messages'
       - '--gen2'
       - '--runtime'
-      - 'nodejs20'
+      - 'nodejs22'
       - '--region'
       - 'us-central1'
       - '--source'
@@ -221,7 +231,7 @@ For functions triggered by Pub/Sub, Cloud Storage, or Firestore events:
       - 'process-uploads'
       - '--gen2'
       - '--runtime'
-      - 'nodejs20'
+      - 'nodejs22'
       - '--region'
       - 'us-central1'
       - '--source'
@@ -242,11 +252,11 @@ If your repository contains multiple functions, deploy them all in one pipeline:
 # Deploy multiple functions from a single repository
 steps:
   # Install and test everything
-  - name: 'node:20'
+  - name: 'node:22'
     id: 'install'
     args: ['npm', 'ci']
 
-  - name: 'node:20'
+  - name: 'node:22'
     id: 'test'
     args: ['npm', 'test']
 
@@ -262,7 +272,7 @@ steps:
       - 'api'
       - '--gen2'
       - '--runtime'
-      - 'nodejs20'
+      - 'nodejs22'
       - '--region'
       - 'us-central1'
       - '--source'
@@ -283,7 +293,7 @@ steps:
       - 'worker'
       - '--gen2'
       - '--runtime'
-      - 'nodejs20'
+      - 'nodejs22'
       - '--region'
       - 'us-central1'
       - '--source'
@@ -305,7 +315,7 @@ steps:
       - 'webhook'
       - '--gen2'
       - '--runtime'
-      - 'nodejs20'
+      - 'nodejs22'
       - '--region'
       - 'us-central1'
       - '--source'
@@ -324,10 +334,10 @@ Use substitution variables for environment-specific configuration:
 ```yaml
 # Environment-aware function deployment
 steps:
-  - name: 'node:20'
+  - name: 'node:22'
     args: ['npm', 'ci']
 
-  - name: 'node:20'
+  - name: 'node:22'
     args: ['npm', 'test']
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -338,7 +348,7 @@ steps:
       - 'my-function-$_ENV'
       - '--gen2'
       - '--runtime'
-      - 'nodejs20'
+      - 'nodejs22'
       - '--region'
       - '$_REGION'
       - '--source'
@@ -367,6 +377,7 @@ Create environment-specific triggers:
 # Dev trigger
 gcloud builds triggers create github \
   --name="deploy-function-dev" \
+  --region="us-central1" \
   --repo-name="my-functions" \
   --repo-owner="my-org" \
   --branch-pattern="^develop$" \
@@ -376,6 +387,7 @@ gcloud builds triggers create github \
 # Production trigger
 gcloud builds triggers create github \
   --name="deploy-function-prod" \
+  --region="us-central1" \
   --repo-name="my-functions" \
   --repo-owner="my-org" \
   --branch-pattern="^main$" \
@@ -398,7 +410,7 @@ If your function needs secrets, reference them from Secret Manager in the deploy
       - 'my-function'
       - '--gen2'
       - '--runtime'
-      - 'nodejs20'
+      - 'nodejs22'
       - '--region'
       - 'us-central1'
       - '--source'
