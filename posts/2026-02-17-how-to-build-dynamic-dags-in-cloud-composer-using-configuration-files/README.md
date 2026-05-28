@@ -76,8 +76,11 @@ from airflow.operators.python import PythonOperator
 # The config file should be in the DAGs folder alongside this script
 config_path = os.path.join(os.path.dirname(__file__), "pipeline_config.yaml")
 
-with open(config_path, "r") as f:
-    config = yaml.safe_load(f)
+try:
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f) or {"pipelines": []}
+except (OSError, yaml.YAMLError):
+    config = {"pipelines": []}
 
 
 def create_etl_dag(pipeline_config):
@@ -97,7 +100,7 @@ def create_etl_dag(pipeline_config):
         dag_id=dag_id,
         default_args=default_args,
         description=f"ETL pipeline for {pipeline_config['name']}",
-        schedule_interval=pipeline_config["schedule"],
+        schedule=pipeline_config["schedule"],
         start_date=datetime(2025, 1, 1),
         catchup=False,
         tags=pipeline_config.get("tags", ["etl"]),
@@ -219,8 +222,22 @@ from airflow.providers.google.cloud.transfers.bigquery_to_gcs import BigQueryToG
 from airflow.operators.python import PythonOperator
 
 config_path = os.path.join(os.path.dirname(__file__), "complex_config.json")
-with open(config_path, "r") as f:
-    config = json.load(f)
+
+try:
+    with open(config_path, "r") as f:
+        config = json.load(f)
+except (OSError, json.JSONDecodeError):
+    config = {"pipelines": []}
+
+
+def cleanup_task(**context):
+    """Example Python task callable."""
+    print(f"Cleaning up after run {context['ds']}")
+
+
+PYTHON_TASKS = {
+    "cleanup_task": cleanup_task,
+}
 
 
 def read_sql_file(sql_file):
@@ -261,7 +278,7 @@ def create_task(task_config, dag):
     elif task_type == "python":
         return PythonOperator(
             task_id=task_config["id"],
-            python_callable=task_config["callable"],
+            python_callable=PYTHON_TASKS[task_config["callable_name"]],
             dag=dag,
         )
 
@@ -280,7 +297,7 @@ def create_complex_dag(pipeline_config):
             "retries": 2,
             "retry_delay": timedelta(minutes=10),
         },
-        schedule_interval=pipeline_config["schedule"],
+        schedule=pipeline_config["schedule"],
         start_date=datetime(2025, 1, 1),
         catchup=False,
     )
@@ -306,7 +323,7 @@ for pipeline in config["pipelines"]:
 
 ## Approach 3: Using Airflow Variables for Configuration
 
-Instead of config files, you can store the configuration in Airflow Variables. This lets you update pipeline configs through the UI without redeploying DAGs:
+Instead of config files, you can store small configuration values in Airflow Variables. This lets you update pipeline configs through the UI without redeploying DAGs, but avoid reading Variables at the top level for large dynamic DAG configurations because each parse can query the Airflow metadata database:
 
 ```python
 # variable_driven_dags.py - Generate DAGs from Airflow Variables
@@ -314,7 +331,6 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.models import Variable
 from airflow.operators.python import PythonOperator
-import json
 
 # Read pipeline configuration from an Airflow Variable
 # Set this in the UI: Admin > Variables > pipelines_config
@@ -332,7 +348,7 @@ def create_dag_from_variable(config):
     dag = DAG(
         dag_id=dag_id,
         default_args={"retries": 1},
-        schedule_interval=config.get("schedule", "@daily"),
+        schedule=config.get("schedule", "@daily"),
         start_date=datetime(2025, 1, 1),
         catchup=False,
         tags=config.get("tags", []),
