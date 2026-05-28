@@ -2,27 +2,21 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Video Intelligence API, Content Moderation, SafeSearch, Video Analysis
+Tags: GCP, Video Intelligence API, Content Moderation, Explicit Content Detection, Video Analysis
 
-Description: Automatically detect explicit and inappropriate content in uploaded videos using Google Cloud Video Intelligence API SafeSearch detection.
+Description: Automatically detect explicit adult content in uploaded videos using Google Cloud Video Intelligence API explicit content detection.
 
 ---
 
-If your platform accepts user-uploaded videos, content moderation is not optional. Manual review does not scale, and missing explicit content creates legal and brand risks. The Video Intelligence API's SafeSearch detection feature analyzes video frames and flags content across five categories: adult, spoof, medical, violence, and racy. You can use these signals to automatically quarantine, flag, or reject problematic uploads.
+If your platform accepts user-uploaded videos, content moderation is not optional. Manual review does not scale, and missing explicit content creates legal and brand risks. The Video Intelligence API's explicit content detection feature analyzes video frames and flags adult content. You can use this signal to automatically quarantine, flag, or reject problematic uploads.
 
 In this guide, I will build an automated content moderation pipeline that screens every uploaded video and takes action based on the detection results.
 
-## What SafeSearch Detects
+## What Explicit Content Detection Finds
 
-The API evaluates each frame against five categories:
+The API evaluates sampled video frames for adult content, including nudity, sexual activities, and pornography. It returns a `pornography_likelihood` value for each analyzed frame.
 
-- **Adult**: Explicit sexual content
-- **Spoof**: Parody or comic content
-- **Medical**: Medical or surgical content
-- **Violence**: Violent or graphic content
-- **Racy**: Suggestive or provocative content (not explicit, but borderline)
-
-Each category returns a likelihood level: UNKNOWN, VERY_UNLIKELY, UNLIKELY, POSSIBLE, LIKELY, or VERY_LIKELY.
+Each frame returns a likelihood level: UNKNOWN, VERY_UNLIKELY, UNLIKELY, POSSIBLE, LIKELY, or VERY_LIKELY.
 
 ## Prerequisites
 
@@ -32,10 +26,10 @@ Each category returns a likelihood level: UNKNOWN, VERY_UNLIKELY, UNLIKELY, POSS
 
 ```bash
 gcloud services enable videointelligence.googleapis.com
-pip install google-cloud-videointelligence google-cloud-storage google-cloud-firestore
+pip install google-cloud-videointelligence google-cloud-storage google-cloud-firestore google-cloud-pubsub functions-framework
 ```
 
-## Step 1: Basic SafeSearch Detection
+## Step 1: Basic Explicit Content Detection
 
 ```python
 # safesearch.py - Detects explicit content in a video
@@ -43,7 +37,7 @@ pip install google-cloud-videointelligence google-cloud-storage google-cloud-fir
 from google.cloud import videointelligence_v1 as vi
 
 def detect_explicit_content(video_uri):
-    """Analyzes a video for explicit content across all SafeSearch categories.
+    """Analyzes a video for explicit adult content.
     Returns frame-level annotations with likelihood ratings.
 
     Args:
@@ -115,11 +109,6 @@ from collections import Counter
 
 SEVERITY_THRESHOLDS = {
     "adult": {
-        vi.Likelihood.VERY_LIKELY: "block",
-        vi.Likelihood.LIKELY: "review",
-        vi.Likelihood.POSSIBLE: "flag",
-    },
-    "violence": {
         vi.Likelihood.VERY_LIKELY: "block",
         vi.Likelihood.LIKELY: "review",
         vi.Likelihood.POSSIBLE: "flag",
@@ -207,10 +196,8 @@ Set up an event-driven pipeline that automatically screens uploaded videos:
 # moderation_pipeline/main.py - Cloud Function for automatic video moderation
 
 import json
-import base64
 from google.cloud import videointelligence_v1 as vi
 from google.cloud import firestore, storage, pubsub_v1
-from collections import Counter
 import functions_framework
 
 db = firestore.Client()
@@ -221,7 +208,7 @@ PROJECT_ID = "your-project-id"
 @functions_framework.cloud_event
 def moderate_video(cloud_event):
     """Triggered when a new video is uploaded to the upload bucket.
-    Runs SafeSearch detection and takes moderation action."""
+    Runs explicit content detection and takes moderation action."""
 
     data = cloud_event.data
     bucket = data["bucket"]
@@ -245,7 +232,7 @@ def moderate_video(cloud_event):
         "uploaded_at": firestore.SERVER_TIMESTAMP,
     })
 
-    # Run SafeSearch detection
+    # Run explicit content detection
     client = vi.VideoIntelligenceServiceClient()
     operation = client.annotate_video(
         request={
@@ -331,18 +318,16 @@ def moderate_video(cloud_event):
 Deploy the pipeline:
 
 ```bash
-# Create the upload notification topic
-gsutil notification create -t video-uploads -f json \
-  -e OBJECT_FINALIZE gs://your-upload-bucket
-
-# Deploy the moderation function
+# Deploy the moderation function with a direct Cloud Storage trigger
 gcloud functions deploy moderate-video \
   --gen2 \
   --runtime=python311 \
-  --trigger-topic=video-uploads \
   --region=us-central1 \
+  --trigger-location=us-central1 \
+  --trigger-event-filters="type=google.cloud.storage.object.v1.finalized" \
+  --trigger-event-filters="bucket=your-upload-bucket" \
   --memory=512MB \
-  --timeout=540s \
+  --timeout=900s \
   --entry-point=moderate_video
 ```
 
@@ -365,6 +350,9 @@ def get_moderation_stats():
 
     total = approved + blocked + reviewing + analyzing
     print(f"Total videos processed: {total}")
+    if total == 0:
+        return
+
     print(f"  Approved: {approved} ({approved/total*100:.1f}%)")
     print(f"  Blocked: {blocked} ({blocked/total*100:.1f}%)")
     print(f"  Needs review: {reviewing} ({reviewing/total*100:.1f}%)")
@@ -374,11 +362,11 @@ def get_moderation_stats():
 ## Tips for Production
 
 - **Sample rate**: The API does not analyze every frame. It samples at regular intervals, which is sufficient for detecting sustained explicit content but might miss brief flashes.
-- **Combine with label detection**: Use label detection alongside SafeSearch for a more complete content understanding.
+- **Combine with label detection**: Use label detection alongside explicit content detection for a more complete content understanding.
 - **Human review loop**: Always have a human review path for borderline content. Automated systems make mistakes, and false positives frustrate legitimate users.
 - **Appeals process**: Let users appeal blocked content. Store the original video in quarantine rather than deleting it immediately.
 - **Regional compliance**: Different regions have different content standards. You might need stricter thresholds for some markets.
 
 ## Wrapping Up
 
-The Video Intelligence API SafeSearch detection gives you a scalable first line of defense for content moderation. By automating the initial screening and routing flagged content to human reviewers, you can handle high upload volumes without a massive moderation team. The key is setting appropriate thresholds for your platform - too strict and you frustrate users with false positives, too lenient and you miss genuinely problematic content. Start conservative and adjust based on the false positive rate in your review queue.
+The Video Intelligence API explicit content detection gives you a scalable first line of defense for content moderation. By automating the initial screening and routing flagged content to human reviewers, you can handle high upload volumes without a massive moderation team. The key is setting appropriate thresholds for your platform - too strict and you frustrate users with false positives, too lenient and you miss genuinely problematic content. Start conservative and adjust based on the false positive rate in your review queue.
