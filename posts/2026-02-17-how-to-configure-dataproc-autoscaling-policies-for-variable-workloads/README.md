@@ -14,7 +14,7 @@ Dataproc autoscaling uses YARN metrics to make scaling decisions. When pending c
 
 ## How Dataproc Autoscaling Works
 
-Dataproc's autoscaler monitors YARN (Yet Another Resource Negotiator) metrics, specifically the ratio of pending memory and available memory. When jobs request more resources than the cluster can provide, pending containers accumulate. The autoscaler sees this and adds workers.
+Dataproc's autoscaler monitors YARN (Yet Another Resource Negotiator) resource metrics, including pending, available, allocated, and reserved resources. On Dataproc 2.2 and later, it evaluates both YARN memory and cores by default; on earlier image versions it uses YARN memory unless cores-based autoscaling is enabled. When jobs request more resources than the cluster can provide, pending containers accumulate. The autoscaler sees this and adds workers.
 
 ```mermaid
 graph TD
@@ -79,7 +79,7 @@ Let me break down what each parameter does, because the names are not always int
 
 **scaleDownFactor**: Same concept for scaling down. A value of 1.0 removes all unnecessary workers immediately. A lower value makes scale-down more gradual.
 
-**scaleUpMinWorkerFraction**: The minimum fraction of workers to add in a single scaling event. This prevents adding just 1 worker at a time, which can be slow for large spikes. A value of 0.1 means "always add at least 10% of the current cluster size."
+**scaleUpMinWorkerFraction**: The minimum worker-count change, as a fraction of the current cluster size, that is required before scaling up. This prevents tiny scale-up changes. A value of 0.1 means "only scale up if the recommended increase is at least 10% of the current cluster size."
 
 **gracefulDecommissionTimeout**: How long to wait for running tasks to finish before removing a worker during scale-down. This prevents killing in-progress tasks.
 
@@ -173,7 +173,7 @@ basicAlgorithm:
   yarnConfig:
     # Scale up aggressively - add all needed workers at once
     scaleUpFactor: 1.0
-    scaleUpMinWorkerFraction: 0.2  # Add at least 20% more workers
+    scaleUpMinWorkerFraction: 0.2  # Scale up only when the recommended increase is at least 20%
 
     # Scale down gradually - remove only 25% of excess at a time
     scaleDownFactor: 0.25
@@ -196,26 +196,25 @@ Watch the autoscaling behavior to validate your policy.
 # View autoscaling events in the cluster's logs
 gcloud logging read 'resource.type="cloud_dataproc_cluster" AND
   resource.labels.cluster_name="my-cluster" AND
-  jsonPayload.message:"scaling"' \
+  logName:"dataproc.googleapis.com%2Fautoscaler"' \
   --project=my-project \
-  --region=us-central1 \
   --limit=20 \
-  --format="table(timestamp, jsonPayload.message)"
+  --format="table(timestamp, jsonPayload.status)"
 ```
 
 Key metrics to monitor in Cloud Monitoring:
 
 ```text
-cloud.google.com/dataproc/cluster/yarn/nodemanagers  # Current worker count
-cloud.google.com/dataproc/cluster/yarn/pending_memory_mb  # Pending memory
-cloud.google.com/dataproc/cluster/yarn/available_memory_mb  # Available memory
+dataproc.googleapis.com/cluster/yarn/nodemanagers  # Current NodeManagers
+dataproc.googleapis.com/cluster/yarn/pending_memory_size  # Pending memory
+dataproc.googleapis.com/cluster/yarn/memory_size{status="available"}  # Available memory
 ```
 
 Set up alerts for when pending memory stays high for more than a few cooldown periods. This indicates the cluster is at max capacity and cannot scale further.
 
 ## Common Autoscaling Issues
 
-**Scaling too slowly for short-lived jobs.** If your jobs only take 5 minutes and the cooldown is 2 minutes, the cluster might not scale up before the job finishes. For short jobs, reduce the cooldown period and increase scaleUpFactor.
+**Scaling too slowly for short-lived jobs.** If your jobs only take 5 minutes and the cooldown is 2 minutes, the cluster might not scale up before the job finishes. For short jobs, use a higher scaleUpFactor and make sure there is enough pending work to keep new workers busy for several minutes.
 
 **Workers being removed during shuffle.** Spark shuffle data is stored on local disks. If a worker is removed during a shuffle-heavy stage, the shuffle data is lost and the stage needs to restart. Set gracefulDecommissionTimeout to be longer than your longest shuffle stage.
 
