@@ -15,8 +15,8 @@ Batch processing is fine for daily reports, but when your business needs to reac
 Each component plays a specific role:
 
 - Pub/Sub handles message ingestion at any scale. It decouples producers from consumers and buffers messages during traffic spikes.
-- Dataflow (Apache Beam) provides exactly-once processing, windowing for time-based aggregations, and auto-scaling.
-- BigQuery gives you a SQL interface for querying streaming data with sub-second latency when using the streaming buffer.
+- Dataflow (Apache Beam) provides exactly-once processing within the pipeline, windowing for time-based aggregations, and auto-scaling.
+- BigQuery gives you a SQL interface for querying streaming data as soon as it is available in the streaming buffer.
 
 ```mermaid
 flowchart LR
@@ -100,11 +100,10 @@ Here is the Apache Beam pipeline in Python that reads from Pub/Sub, processes ev
 # streaming_pipeline.py - Real-time event processing pipeline
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
-from apache_beam.transforms.window import FixedWindows
-from apache_beam.transforms.trigger import AfterWatermark, AfterProcessingTime, AccumulationMode
+from apache_beam.transforms.window import FixedWindows, TimestampedValue
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Define the pipeline options
 class StreamingOptions(PipelineOptions):
@@ -124,6 +123,21 @@ class StreamingOptions(PipelineOptions):
                           help='Pub/Sub topic for failed messages')
 
 
+def parse_event_timestamp(value):
+    """Parse an event timestamp string and return a UTC datetime."""
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+
+    if isinstance(value, str):
+        normalized = value.replace('Z', '+00:00')
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    raise ValueError("event_timestamp must be an ISO-8601 string or Unix timestamp")
+
+
 class ParseEventFn(beam.DoFn):
     """Parse raw Pub/Sub messages into structured event dictionaries."""
 
@@ -139,21 +153,23 @@ class ParseEventFn(beam.DoFn):
                 if field not in event:
                     raise ValueError(f"Missing required field: {field}")
 
+            event_time = parse_event_timestamp(event['event_timestamp'])
+
             # Normalize and enrich the event
             parsed = {
                 'event_id': str(event['event_id']),
                 'user_id': str(event['user_id']),
-                'event_type': event['event_type'].lower(),
-                'event_timestamp': event['event_timestamp'],
+                'event_type': str(event['event_type']).lower(),
+                'event_timestamp': event_time.isoformat(),
                 'page_url': event.get('page_url', ''),
                 'session_id': event.get('session_id', ''),
                 'device_type': event.get('device_type', 'unknown'),
                 'country': event.get('country', 'unknown'),
                 'properties': json.dumps(event.get('properties', {})),
-                'processing_timestamp': datetime.utcnow().isoformat()
+                'processing_timestamp': datetime.now(timezone.utc).isoformat()
             }
 
-            yield beam.pvalue.TaggedOutput('parsed', parsed)
+            yield TimestampedValue(parsed, event_time.timestamp())
 
         except Exception as e:
             # Send failed messages to the dead letter queue
@@ -161,7 +177,7 @@ class ParseEventFn(beam.DoFn):
             yield beam.pvalue.TaggedOutput('failed', {
                 'raw_message': str(element),
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
 
 
@@ -198,7 +214,7 @@ def run():
         parsed_results = (
             raw_messages
             | 'ParseEvents' >> beam.ParDo(ParseEventFn())
-                .with_outputs('parsed', 'failed')
+                .with_outputs('failed', main='parsed')
         )
 
         # Write parsed events to BigQuery (raw events table)
@@ -214,11 +230,7 @@ def run():
         (
             parsed_results.parsed
             | 'AddWindow' >> beam.WindowInto(
-                FixedWindows(60),  # 1-minute windows
-                trigger=AfterWatermark(
-                    early=AfterProcessingTime(30)  # Emit partial results every 30 seconds
-                ),
-                accumulation_mode=AccumulationMode.DISCARDING
+                FixedWindows(60)  # 1-minute event-time windows
             )
             | 'KeyByType' >> beam.Map(lambda e: (e['event_type'], e))
             | 'GroupByType' >> beam.GroupByKey()
@@ -262,7 +274,6 @@ python streaming_pipeline.py \
   --dead_letter_topic=projects/my-project/topics/user-events-dlq \
   --max_num_workers=10 \
   --autoscaling_algorithm=THROUGHPUT_BASED \
-  --experiments=enable_streaming_engine \
   --streaming
 ```
 
@@ -275,7 +286,7 @@ Publish some test events to verify the pipeline:
 from google.cloud import pubsub_v1
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 publisher = pubsub_v1.PublisherClient()
 topic_path = publisher.topic_path('my-project', 'user-events')
@@ -287,7 +298,7 @@ for i in range(100):
         'event_id': str(uuid.uuid4()),
         'user_id': f'user_{i % 20}',
         'event_type': event_types[i % len(event_types)],
-        'event_timestamp': datetime.utcnow().isoformat(),
+        'event_timestamp': datetime.now(timezone.utc).isoformat(),
         'page_url': f'https://example.com/page/{i % 10}',
         'session_id': f'session_{i % 5}',
         'device_type': 'desktop' if i % 2 == 0 else 'mobile',
@@ -348,16 +359,18 @@ Set up alerts for the subscription backlog:
 ```bash
 # Alert when message backlog exceeds 10,000
 gcloud monitoring policies create \
+  --display-name="PubSub backlog too high" \
   --notification-channels="projects/my-project/notificationChannels/12345" \
   --condition-display-name="PubSub backlog too high" \
   --condition-filter='resource.type="pubsub_subscription" AND metric.type="pubsub.googleapis.com/subscription/num_undelivered_messages"' \
-  --condition-threshold-value=10000 \
-  --condition-threshold-duration=300s
+  --if="> 10000" \
+  --duration=300s \
+  --combiner=OR
 ```
 
 ## Performance Considerations
 
-1. Use the Streaming Engine (`enable_streaming_engine` experiment) to offload shuffle and state management from worker VMs. This reduces costs and improves performance.
+1. Use Streaming Engine to offload shuffle and state management from worker VMs. For current Python 3 streaming pipelines, Dataflow enables Streaming Engine by default when the supported conditions are met; it can reduce worker resource usage, but it has separate service charges.
 
 2. Choose the right window size for your aggregations. Shorter windows give you fresher data but create more writes to BigQuery. One-minute windows are a good starting point for most dashboards.
 
@@ -365,6 +378,6 @@ gcloud monitoring policies create \
 
 4. Monitor the Dataflow watermark lag. If it keeps growing, your pipeline cannot keep up with the input rate and you need more workers.
 
-5. Use Pub/Sub ordering keys if event ordering matters for your use case. This ensures events with the same key are processed in order, though it reduces parallelism.
+5. Avoid enabling Pub/Sub ordering keys on subscriptions used by Dataflow unless you have a specific reason. Dataflow performs event-time ordering for windowing, and Pub/Sub ordered delivery can reduce pipeline performance.
 
 This stack handles everything from a few events per second to millions. The auto-scaling capabilities of both Dataflow and BigQuery mean you do not need to pre-provision capacity for peak loads. Start small, watch your metrics, and the pipeline will scale as your traffic grows.
