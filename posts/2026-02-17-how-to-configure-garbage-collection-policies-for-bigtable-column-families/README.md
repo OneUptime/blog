@@ -8,7 +8,7 @@ Description: Learn how to configure garbage collection policies in Cloud Bigtabl
 
 ---
 
-Cloud Bigtable stores every version of every cell by default. If you update a cell 100 times, all 100 versions are retained. Without garbage collection policies, your storage grows without bound, your reads slow down as they wade through old versions, and your bills climb steadily. Garbage collection (GC) policies tell Bigtable which old versions to discard, keeping your tables lean and your queries fast.
+Cloud Bigtable stores every version of every cell by default for column families created with most client libraries and tools, including `gcloud` and the `cbt` CLI. If you update a cell 100 times, all 100 versions are retained. Without garbage collection policies, your storage grows without bound, your reads slow down as they wade through old versions, and your bills climb steadily. Garbage collection (GC) policies tell Bigtable which old versions to discard, keeping your tables lean and your queries fast.
 
 GC policies are set per column family, which gives you fine-grained control. You can keep raw sensor data for 30 days while retaining summary statistics forever. Let me walk through all the options and how to set them up.
 
@@ -86,6 +86,8 @@ For programmatic setup, here is how to set GC policies using the Python client l
 
 ```python
 # Set garbage collection policies using the Python client library
+import datetime
+
 from google.cloud import bigtable
 from google.cloud.bigtable import column_family
 
@@ -226,7 +228,7 @@ For most use cases, union policies are what you want. They ensure data does not 
 Here are GC policies for common scenarios:
 
 ```bash
-# Session store: keep only the current session, delete old ones immediately
+# Session store: keep only the current session version
 cbt setgcpolicy sessions data maxversions=1
 
 # Audit log: keep everything for 7 years (regulatory requirement)
@@ -258,8 +260,8 @@ The output will show each column family with its configured GC rule.
 
 GC does not happen immediately after you set a policy. Bigtable applies GC policies during compaction, which happens in the background. This means:
 
-- After setting a new policy, existing data that matches the criteria will be cleaned up eventually (usually within hours)
-- Deleted data may still appear in reads briefly after it should have been garbage collected
+- After setting a new policy, existing data that matches the criteria will be cleaned up eventually, typically within a few days but sometimes up to a week
+- Data that is eligible for garbage collection may still appear in reads until compaction deletes it
 - New writes that immediately exceed the policy are cleaned up during the next compaction
 - You cannot force GC to run immediately
 
