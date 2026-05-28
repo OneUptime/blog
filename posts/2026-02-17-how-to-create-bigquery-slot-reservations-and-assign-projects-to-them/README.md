@@ -35,37 +35,42 @@ First, purchase the total number of slots you need.
 
 ```bash
 # Create a 500-slot Enterprise commitment with annual pricing
-
-gcloud bq reservations create-capacity-commitment \
-  --project=my-admin-project \
+bq mk \
+  --project_id=my-admin-project \
   --location=us-central1 \
+  --capacity_commitment=true \
   --edition=ENTERPRISE \
-  --slots=500 \
-  --commitment-plan=ANNUAL
+  --plan=ANNUAL \
+  --renewal_plan=NONE \
+  --slots=500
 ```
 
-Annual commitments give you the best per-slot pricing, but you are locked in for a year. If you are not sure about the right size, start with a monthly commitment.
+Three-year commitments give you the best per-slot pricing, but you are locked in for three years. Annual commitments are a shorter option for committed Enterprise capacity. If you are not sure about the right size, start with a smaller annual commitment and rely on autoscaling reservations for variable demand.
 
 ```bash
-# Start with a monthly commitment for flexibility
-gcloud bq reservations create-capacity-commitment \
-  --project=my-admin-project \
+# Start with a smaller annual commitment
+bq mk \
+  --project_id=my-admin-project \
   --location=us-central1 \
+  --capacity_commitment=true \
   --edition=ENTERPRISE \
-  --slots=500 \
-  --commitment-plan=MONTHLY
+  --plan=ANNUAL \
+  --renewal_plan=NONE \
+  --slots=300
 ```
 
 You can have multiple commitments, and slots from all commitments in the same edition are pooled together. So if you bought 300 slots last month and need 200 more, just create another commitment.
 
 ```bash
 # Add another 200 slots on top of existing commitments
-gcloud bq reservations create-capacity-commitment \
-  --project=my-admin-project \
+bq mk \
+  --project_id=my-admin-project \
   --location=us-central1 \
+  --capacity_commitment=true \
   --edition=ENTERPRISE \
-  --slots=200 \
-  --commitment-plan=MONTHLY
+  --plan=ANNUAL \
+  --renewal_plan=NONE \
+  --slots=200
 ```
 
 ## Step 2 - Create Reservations
@@ -74,29 +79,35 @@ Now carve up your total slot pool into named reservations for different workload
 
 ```bash
 # Create a reservation for dashboard/BI queries
-gcloud bq reservations create dashboard-queries \
-  --project=my-admin-project \
+bq mk \
+  --project_id=my-admin-project \
   --location=us-central1 \
+  --reservation \
   --slots=200 \
-  --edition=ENTERPRISE
+  --edition=ENTERPRISE \
+  dashboard-queries
 
 # Create a reservation for ETL and pipeline jobs
-gcloud bq reservations create etl-pipelines \
-  --project=my-admin-project \
+bq mk \
+  --project_id=my-admin-project \
   --location=us-central1 \
+  --reservation \
   --slots=200 \
-  --edition=ENTERPRISE
+  --edition=ENTERPRISE \
+  etl-pipelines
 
 # Create a reservation for ad-hoc analysis with autoscaling
-gcloud bq reservations create adhoc-analysis \
-  --project=my-admin-project \
+bq mk \
+  --project_id=my-admin-project \
   --location=us-central1 \
+  --reservation \
   --slots=100 \
   --edition=ENTERPRISE \
-  --autoscale-max-slots=200
+  --autoscale_max_slots=200 \
+  adhoc-analysis
 ```
 
-The total slots across all reservations should not exceed your total committed slots (though autoscaling can go beyond that at flex rates). In this example, 200 + 200 + 100 = 500, which matches the commitment.
+The total baseline slots across all reservations should not exceed your purchased commitments unless you want to pay for additional baseline capacity at edition rates. Autoscaling slots are charged at capacity compute pricing for the associated edition while scaling up. In this example, 200 + 200 + 100 = 500, which matches the commitment.
 
 You can also use the Python client for more programmatic control.
 
@@ -126,43 +137,53 @@ With reservations created, assign your projects to them.
 
 ```bash
 # Assign the analytics production project to the dashboard reservation
-gcloud bq reservations assignments create \
-  --project=my-admin-project \
+bq mk \
+  --project_id=my-admin-project \
   --location=us-central1 \
-  --reservation=dashboard-queries \
-  --assignee=projects/analytics-prod \
-  --job-type=QUERY
+  --reservation_assignment \
+  --reservation_id=dashboard-queries \
+  --assignee_id=analytics-prod \
+  --assignee_type=PROJECT \
+  --job_type=QUERY
 
 # Assign the data pipeline project to the ETL reservation
-gcloud bq reservations assignments create \
-  --project=my-admin-project \
+bq mk \
+  --project_id=my-admin-project \
   --location=us-central1 \
-  --reservation=etl-pipelines \
-  --assignee=projects/data-pipeline \
-  --job-type=QUERY
+  --reservation_assignment \
+  --reservation_id=etl-pipelines \
+  --assignee_id=data-pipeline \
+  --assignee_type=PROJECT \
+  --job_type=QUERY
 
 # Assign the data pipeline project's LOAD jobs separately
-gcloud bq reservations assignments create \
-  --project=my-admin-project \
+bq mk \
+  --project_id=my-admin-project \
   --location=us-central1 \
-  --reservation=etl-pipelines \
-  --assignee=projects/data-pipeline \
-  --job-type=PIPELINE
+  --reservation_assignment \
+  --reservation_id=etl-pipelines \
+  --assignee_id=data-pipeline \
+  --assignee_type=PROJECT \
+  --job_type=PIPELINE
 
 # Assign data science and dev projects to ad-hoc reservation
-gcloud bq reservations assignments create \
-  --project=my-admin-project \
+bq mk \
+  --project_id=my-admin-project \
   --location=us-central1 \
-  --reservation=adhoc-analysis \
-  --assignee=projects/data-science \
-  --job-type=QUERY
+  --reservation_assignment \
+  --reservation_id=adhoc-analysis \
+  --assignee_id=data-science \
+  --assignee_type=PROJECT \
+  --job_type=QUERY
 
-gcloud bq reservations assignments create \
-  --project=my-admin-project \
+bq mk \
+  --project_id=my-admin-project \
   --location=us-central1 \
-  --reservation=adhoc-analysis \
-  --assignee=projects/analytics-dev \
-  --job-type=QUERY
+  --reservation_assignment \
+  --reservation_id=adhoc-analysis \
+  --assignee_id=analytics-dev \
+  --assignee_type=PROJECT \
+  --job_type=QUERY
 ```
 
 Notice that you can assign different job types to different reservations for the same project. This lets you handle QUERY, PIPELINE (load), and ML_EXTERNAL jobs with different capacity pools.
@@ -174,12 +195,14 @@ Assignments follow the GCP resource hierarchy. An assignment at the organization
 ```bash
 # Assign an entire folder to a reservation
 # All projects in this folder will use this reservation
-gcloud bq reservations assignments create \
-  --project=my-admin-project \
+bq mk \
+  --project_id=my-admin-project \
   --location=us-central1 \
-  --reservation=adhoc-analysis \
-  --assignee=folders/123456789 \
-  --job-type=QUERY
+  --reservation_assignment \
+  --reservation_id=adhoc-analysis \
+  --assignee_id=123456789 \
+  --assignee_type=FOLDER \
+  --job_type=QUERY
 ```
 
 This is useful for setting a default reservation for all projects and then overriding specific projects that need different capacity.
@@ -190,20 +213,22 @@ Check the current state of your reservations and assignments.
 
 ```bash
 # List all capacity commitments
-gcloud bq reservations list-capacity-commitments \
-  --project=my-admin-project \
-  --location=us-central1
+bq ls \
+  --project_id=my-admin-project \
+  --location=us-central1 \
+  --capacity_commitment=true
 
 # List all reservations
-gcloud bq reservations list \
-  --project=my-admin-project \
-  --location=us-central1
-
-# List all assignments for a specific reservation
-gcloud bq reservations assignments list \
-  --project=my-admin-project \
+bq ls \
+  --project_id=my-admin-project \
   --location=us-central1 \
-  --reservation=dashboard-queries
+  --reservation=true
+
+# List all assignments in a project and location
+bq ls \
+  --project_id=my-admin-project \
+  --location=us-central1 \
+  --reservation_assignment=true
 ```
 
 ## Updating Slot Allocations
@@ -212,26 +237,32 @@ As your workload changes, you can redistribute slots between reservations withou
 
 ```bash
 # Increase dashboard reservation from 200 to 250 slots
-gcloud bq reservations update dashboard-queries \
-  --project=my-admin-project \
+bq update \
+  --project_id=my-admin-project \
   --location=us-central1 \
-  --slots=250
+  --reservation \
+  --slots=250 \
+  dashboard-queries
 
 # Decrease ETL reservation to compensate
-gcloud bq reservations update etl-pipelines \
-  --project=my-admin-project \
+bq update \
+  --project_id=my-admin-project \
   --location=us-central1 \
-  --slots=150
+  --reservation \
+  --slots=150 \
+  etl-pipelines
 ```
 
 You can also enable idle slot sharing so that unused slots in one reservation can be temporarily used by other reservations.
 
 ```bash
 # Enable idle slot sharing by setting ignore_idle_slots to false (default)
-gcloud bq reservations update etl-pipelines \
-  --project=my-admin-project \
+bq update \
+  --project_id=my-admin-project \
   --location=us-central1 \
-  --ignore-idle-slots=false
+  --reservation \
+  --ignore_idle_slots=false \
+  etl-pipelines
 ```
 
 When idle slot sharing is enabled, if the ETL reservation is not using all 150 of its slots, the unused capacity can be borrowed by the dashboard or ad-hoc reservations. When ETL jobs ramp up, the slots are reclaimed.
@@ -246,16 +277,17 @@ SELECT
   reservation_id,
   TIMESTAMP_TRUNC(period_start, HOUR) AS hour,
   -- Average slots consumed
-  AVG(period_slot_ms / 1000) AS avg_slots_used,
+  SUM(period_slot_ms) / (1000 * 60 * 60) AS avg_slots_used,
   -- Peak slots consumed
-  MAX(period_slot_ms / 1000) AS peak_slots_used,
-  -- Number of concurrent jobs
+  MAX(period_slot_ms / 1000) AS peak_slots_used_in_one_second,
+  -- Number of jobs
   COUNT(DISTINCT job_id) AS job_count
 FROM
   `region-us-central1`.INFORMATION_SCHEMA.JOBS_TIMELINE
 WHERE
   period_start > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
   AND reservation_id IS NOT NULL
+  AND (statement_type != "SCRIPT" OR statement_type IS NULL)
 GROUP BY
   reservation_id, hour
 ORDER BY
@@ -268,24 +300,27 @@ If you need to clean up, remove assignments first, then reservations, then commi
 
 ```bash
 # Remove a project assignment (get the assignment ID first)
-gcloud bq reservations assignments list \
-  --project=my-admin-project \
+bq ls \
+  --project_id=my-admin-project \
   --location=us-central1 \
-  --reservation=adhoc-analysis
+  --reservation_assignment=true
 
 # Delete the assignment using its ID
-gcloud bq reservations assignments delete ASSIGNMENT_ID \
-  --project=my-admin-project \
+bq rm \
+  --project_id=my-admin-project \
   --location=us-central1 \
-  --reservation=adhoc-analysis
+  --reservation_assignment=true \
+  ASSIGNMENT_ID
 
 # Delete the reservation (must have no assignments)
-gcloud bq reservations delete adhoc-analysis \
-  --project=my-admin-project \
-  --location=us-central1
+bq rm \
+  --project_id=my-admin-project \
+  --location=us-central1 \
+  --reservation=true \
+  adhoc-analysis
 ```
 
-Capacity commitments cannot be deleted before their commitment period ends (annual commitments last a year, monthly commitments last a month). Plan accordingly.
+Capacity commitments cannot be deleted before their commitment period ends. Annual commitments last a year, and three-year commitments last three years. Plan accordingly.
 
 ## Wrapping Up
 
