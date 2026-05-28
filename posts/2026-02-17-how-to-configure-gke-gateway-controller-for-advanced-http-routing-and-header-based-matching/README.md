@@ -37,7 +37,13 @@ This separation lets infrastructure teams manage Gateways while application team
 
 ## Prerequisites
 
-The Gateway API controller is available on GKE clusters running version 1.24 or later. It is enabled by default on most clusters.
+The Gateway API controller is available on GKE Autopilot and Standard clusters. Before using Gateway resources, make sure Gateway API is enabled on your cluster. Custom request and response headers, path redirects, and URL rewrites require GKE version 1.27 or later.
+
+```bash
+gcloud container clusters update CLUSTER_NAME \
+  --location=CLUSTER_LOCATION \
+  --gateway-api=standard
+```
 
 ```bash
 # Verify the GatewayClass resources are available
@@ -75,15 +81,15 @@ spec:
       allowedRoutes:
         namespaces:
           from: All  # Allow HTTPRoutes from any namespace
-    # HTTPS listener with managed certificate
+    # HTTPS listener with a Kubernetes TLS Secret
     - name: https
       protocol: HTTPS
       port: 443
       tls:
         mode: Terminate
         certificateRefs:
-          - kind: ManagedCertificate
-            name: my-cert
+          - kind: Secret
+            name: app-tls
       allowedRoutes:
         namespaces:
           from: All
@@ -297,8 +303,8 @@ spec:
             add:
               - name: X-Gateway-Source
                 value: gke-external
-              - name: X-Request-Start
-                value: "%START_TIME%"
+              - name: X-Client-Region
+                value: "{client_region}"
             # Remove headers before forwarding
             remove:
               - X-Debug-Token
