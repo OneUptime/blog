@@ -64,7 +64,7 @@ runtime: nodejs20
 service: default
 
 # Instance configuration
-instance_class: F2  # Roughly equivalent to t3.small
+instance_class: F2  # 768 MB memory limit, automatic scaling only
 
 # Automatic scaling (equivalent to Beanstalk auto scaling)
 automatic_scaling:
@@ -81,27 +81,6 @@ env_variables:
   NODE_ENV: "production"
   # Secrets should use Secret Manager, not env vars
   # DATABASE_URL and SECRET_KEY go in Secret Manager
-
-# Health check configuration
-liveness_check:
-  path: "/health"
-  check_interval_sec: 30
-  timeout_sec: 4
-  failure_threshold: 2
-  success_threshold: 2
-
-readiness_check:
-  path: "/health"
-  check_interval_sec: 5
-  timeout_sec: 4
-  failure_threshold: 2
-  success_threshold: 2
-  app_start_timeout_sec: 300
-
-# Network settings
-network:
-  forwarded_ports:
-    - "8080/tcp"
 
 # VPC connector for private resources
 vpc_access_connector:
@@ -189,8 +168,8 @@ automatic_scaling:
   min_instances: 2
   max_instances: 10
 
-# Java apps need more memory
-instance_class: F4  # 1GB RAM
+# Java apps often need more memory
+instance_class: F4  # 1536 MB memory limit
 ```
 
 ## Migrating Worker Environments
@@ -202,7 +181,8 @@ Beanstalk Worker environments process messages from SQS. On GCP, use Cloud Tasks
 runtime: python311
 service: worker
 
-# Basic scaling for worker (processes tasks, not HTTP traffic)
+# Basic scaling uses B-class instances and handles Cloud Tasks HTTP requests
+instance_class: B2
 basic_scaling:
   max_instances: 5
   idle_timeout: 5m
@@ -304,14 +284,14 @@ steps:
       - '--no-promote'  # Deploy without routing traffic
 
   # Run smoke tests against the new version
-  - name: 'python:3.11'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
-        pip install requests
-        python smoke_tests.py \
-          "https://${SHORT_SHA}-dot-${PROJECT_ID}.appspot.com"
+        python3 -m pip install requests
+        VERSION_URL="$(gcloud app versions describe ${SHORT_SHA} --service=default --project=${PROJECT_ID} --format='value(versionUrl)')"
+        python3 smoke_tests.py "$VERSION_URL"
 
   # Promote traffic to the new version
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -358,11 +338,11 @@ App Engine integrates with Cloud Logging and Cloud Monitoring automatically. Set
 # App Engine monitoring equivalent to Beanstalk health monitoring
 
 resource "google_monitoring_alert_policy" "app_engine_errors" {
-  display_name = "App Engine High Error Rate"
+  display_name = "App Engine High 5xx Responses"
   project      = var.project_id
 
   conditions {
-    display_name = "5xx error rate above 1%"
+    display_name = "5xx response count above 1 per minute"
     condition_threshold {
       filter = <<-EOT
         resource.type = "gae_app"
@@ -370,12 +350,13 @@ resource "google_monitoring_alert_policy" "app_engine_errors" {
         AND metric.labels.response_code >= 500
       EOT
       comparison      = "COMPARISON_GT"
-      threshold_value = 0.01
+      threshold_value = 0.0167
       duration        = "300s"
 
       aggregations {
-        alignment_period   = "60s"
-        per_series_aligner = "ALIGN_RATE"
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
       }
     }
   }
