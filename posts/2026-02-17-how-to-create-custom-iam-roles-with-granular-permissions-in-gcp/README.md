@@ -8,7 +8,7 @@ Description: Learn how to create custom IAM roles in Google Cloud Platform with 
 
 ---
 
-GCP comes with hundreds of predefined IAM roles, but they often grant more permissions than you actually need. The Storage Object Viewer role lets someone list all buckets in the project, even if you only want them to read objects. The Compute Instance Admin role lets someone delete VMs, even if you only want them to start and stop. Custom IAM roles let you pick exactly the permissions you need and bundle them together.
+GCP comes with hundreds of predefined IAM roles, but they often grant more permissions than you actually need. The Storage Object Viewer role lets someone list objects in a bucket, even if you only want them to download known objects. The Compute Instance Admin role lets someone delete VMs, even if you only want them to start and stop. Custom IAM roles let you pick exactly the permissions you need and bundle them together.
 
 In this post, I will show you how to create, manage, and use custom IAM roles for tighter access control.
 
@@ -88,7 +88,9 @@ The `--stage` flag indicates the role's lifecycle stage:
 - `ALPHA`: Experimental, may change
 - `BETA`: Feature complete but may change
 - `GA`: Stable, production-ready
+- `DEPRECATED`: Supported but no longer recommended
 - `DISABLED`: Role exists but cannot be granted
+- `EAP`: Early access preview
 
 ## Creating a Custom Role at the Organization Level
 
@@ -233,12 +235,12 @@ includedPermissions:
   - container.pods.list
 ```
 
-### Log Viewer Without Sensitive Logs
+### Basic Log Viewer Without Data Access Logs
 
 ```yaml
 # restricted-log-viewer.yaml
-title: "Restricted Log Viewer"
-description: "Can view application logs but not data access or admin activity logs"
+title: "Basic Log Viewer"
+description: "Can view logs without the private log entries permission required for Data Access audit logs"
 stage: "GA"
 includedPermissions:
   - logging.logEntries.list
@@ -252,7 +254,7 @@ includedPermissions:
 
 Custom roles have some constraints:
 
-- **Maximum 3000 permissions per role** at the project level
+- **Maximum 3000 permissions per custom role**
 - **Maximum 300 custom roles per project**, 300 per organization
 - Some permissions **cannot be used in custom roles** (they are only available in predefined roles). These are marked as `NOT_SUPPORTED` in the permission listing.
 - Custom roles do not automatically get **new permissions** when Google adds them. You need to update roles manually.
@@ -282,7 +284,7 @@ gcloud iam roles delete vmOperator \
     --project=my-project
 ```
 
-Deleted roles can be undeleted within 7 days. After that, the role ID becomes available for reuse after 30 days.
+Deleted roles can be undeleted within 7 days. After that, the role is scheduled for permanent deletion, and the permanent deletion process takes 30 days. You cannot create a new role with the same role ID until the role has been permanently deleted, which can take up to 44 days after the initial deletion request.
 
 ## Wrapping Up
 
