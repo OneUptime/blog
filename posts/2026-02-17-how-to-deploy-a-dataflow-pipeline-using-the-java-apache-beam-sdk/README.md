@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Dataflow, Apache Beam, Java, Data Pipeline, ETL
 
-Description: A complete guide to building and deploying a Google Cloud Dataflow pipeline using the Java Apache Beam SDK with Maven or Gradle.
+Description: A complete guide to building and deploying a Google Cloud Dataflow pipeline using the Java Apache Beam SDK with Maven.
 
 ---
 
@@ -17,7 +17,6 @@ In this post, I will walk through building and deploying a Dataflow pipeline usi
 Start by creating a Maven project with the Apache Beam dependencies.
 
 ```xml
-<!-- pom.xml -->
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -30,7 +29,7 @@ Start by creating a Maven project with the Apache Beam dependencies.
     <packaging>jar</packaging>
 
     <properties>
-        <beam.version>2.53.0</beam.version>
+        <beam.version>2.73.0</beam.version>
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
     </properties>
@@ -64,6 +63,13 @@ Start by creating a Maven project with the Apache Beam dependencies.
             <version>${beam.version}</version>
         </dependency>
 
+        <!-- JSON parsing -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.13.2</version>
+        </dependency>
+
         <!-- Testing -->
         <dependency>
             <groupId>junit</groupId>
@@ -85,12 +91,22 @@ Start by creating a Maven project with the Apache Beam dependencies.
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>3.5.1</version>
+                <version>3.6.2</version>
                 <executions>
                     <execution>
                         <phase>package</phase>
                         <goals><goal>shade</goal></goals>
                         <configuration>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
@@ -111,9 +127,7 @@ Create a custom options interface that extends the standard Dataflow options.
 // src/main/java/com/mycompany/pipeline/PipelineConfig.java
 package com.mycompany.pipeline;
 
-import org.apache.beam.sdk.options.Default;
 import org.apache.beam.sdk.options.Description;
-import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.Validation;
 import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
 
@@ -133,10 +147,6 @@ public interface PipelineConfig extends DataflowPipelineOptions {
     String getOutputTable();
     void setOutputTable(String value);
 
-    @Description("Maximum number of parse errors before failing the pipeline")
-    @Default.Integer(1000)
-    Integer getMaxParseErrors();
-    void setMaxParseErrors(Integer value);
 }
 ```
 
@@ -173,11 +183,11 @@ public class ParseEventFn extends DoFn<String, TableRow> {
     @ProcessElement
     public void processElement(@Element String line, MultiOutputReceiver out) {
         try {
-            // Parse the JSON line into a map
+            // Parse the JSON line into a POJO
             Event event = GSON.fromJson(line, Event.class);
 
             // Validate required fields
-            if (event.userId == null || event.eventType == null) {
+            if (event == null || event.userId == null || event.eventType == null) {
                 LOG.warn("Missing required fields in record");
                 out.get(DEAD_LETTER_TAG).output(line);
                 return;
@@ -339,7 +349,7 @@ Deploy to Dataflow using the packaged JAR.
 
 ```bash
 # Deploy to Dataflow
-java -cp target/dataflow-pipeline-1.0.0-shaded.jar \
+java -cp target/dataflow-pipeline-1.0.0.jar \
   com.mycompany.pipeline.EventPipeline \
   --runner=DataflowRunner \
   --project=my-project \
