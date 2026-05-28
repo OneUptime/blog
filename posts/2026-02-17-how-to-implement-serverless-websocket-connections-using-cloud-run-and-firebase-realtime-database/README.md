@@ -10,7 +10,7 @@ Description: Learn how to implement real-time WebSocket connections using Cloud 
 
 Real-time features like live chat, notifications, collaborative editing, and live dashboards typically require WebSocket connections. The challenge with serverless platforms is that WebSocket connections are long-lived, and serverless functions are designed for short-lived request-response cycles. Cloud Run bridges this gap - it supports WebSocket connections with configurable timeouts up to 60 minutes.
 
-Combined with Firebase Realtime Database for state synchronization, you can build a real-time system that scales automatically and costs nothing when idle. This post shows how to set it up.
+Combined with Firebase Realtime Database for state synchronization, you can build a real-time system that scales automatically and can scale to zero when idle if you leave minimum instances at 0. This post shows how to set it up.
 
 ## The Challenge with WebSockets on Serverless
 
@@ -51,8 +51,9 @@ const wss = new WebSocket.Server({ server });
 
 // Track connected clients per room
 const rooms = new Map();
+const roomSubscriptions = new Map();
 
-// Health check endpoint (required for Cloud Run)
+// Optional health check endpoint
 app.get("/health", (req, res) => {
   res.json({
     status: "healthy",
@@ -113,7 +114,13 @@ wss.on("connection", (ws, req) => {
       if (room.size === 0) {
         rooms.delete(roomId);
         // Unsubscribe from Firebase for this room
-        db.ref(`rooms/${roomId}/messages`).off();
+        const subscriptions = roomSubscriptions.get(roomId);
+        if (subscriptions) {
+          subscriptions.messagesQuery.off("child_added", subscriptions.onMessageAdded);
+          subscriptions.typingRef.off("child_added", subscriptions.onTypingChanged);
+          subscriptions.typingRef.off("child_changed", subscriptions.onTypingChanged);
+          roomSubscriptions.delete(roomId);
+        }
       }
     }
 
@@ -165,9 +172,11 @@ function subscribeToRoom(roomId) {
    * broadcast it to all locally connected clients.
    */
   const messagesRef = db.ref(`rooms/${roomId}/messages`);
+  const messagesQuery = messagesRef.orderByChild("timestamp").limitToLast(1);
+  const typingRef = db.ref(`rooms/${roomId}/typing`);
 
   // Listen for new messages
-  messagesRef.orderByChild("timestamp").limitToLast(1).on("child_added", (snapshot) => {
+  const onMessageAdded = (snapshot) => {
     const message = snapshot.val();
     if (!message) return;
 
@@ -188,10 +197,12 @@ function subscribeToRoom(roomId) {
         }
       });
     }
-  });
+  };
+
+  messagesQuery.on("child_added", onMessageAdded);
 
   // Listen for typing indicators
-  db.ref(`rooms/${roomId}/typing`).on("child_changed", (snapshot) => {
+  const onTypingChanged = (snapshot) => {
     const typing = snapshot.val();
     const room = rooms.get(roomId);
     if (room) {
@@ -207,6 +218,16 @@ function subscribeToRoom(roomId) {
         }
       });
     }
+  };
+
+  typingRef.on("child_added", onTypingChanged);
+  typingRef.on("child_changed", onTypingChanged);
+
+  roomSubscriptions.set(roomId, {
+    messagesQuery,
+    typingRef,
+    onMessageAdded,
+    onTypingChanged,
   });
 }
 
@@ -229,10 +250,12 @@ async function sendRecentMessages(ws, roomId) {
     });
   });
 
-  ws.send(JSON.stringify({
-    type: "history",
-    messages: messages,
-  }));
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: "history",
+      messages: messages,
+    }));
+  }
 }
 
 
@@ -248,12 +271,12 @@ server.listen(PORT, () => {
 ```dockerfile
 # Dockerfile for the WebSocket server
 
-FROM node:20-slim
+FROM node:24-slim
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY . .
 
@@ -281,12 +304,18 @@ The `package.json`:
 Deploy with WebSocket support and increased timeout:
 
 ```bash
+# Create the Artifact Registry repository once
+gcloud artifacts repositories create websocket \
+  --repository-format=docker \
+  --location=us-central1 \
+  --project=my-project
+
 # Build the container
-gcloud builds submit --tag gcr.io/my-project/websocket-server:latest
+gcloud builds submit --tag us-central1-docker.pkg.dev/my-project/websocket/websocket-server:latest
 
 # Deploy to Cloud Run with WebSocket-friendly settings
 gcloud run deploy websocket-server \
-  --image=gcr.io/my-project/websocket-server:latest \
+  --image=us-central1-docker.pkg.dev/my-project/websocket/websocket-server:latest \
   --region=us-central1 \
   --allow-unauthenticated \
   --min-instances=1 \
@@ -300,8 +329,8 @@ gcloud run deploy websocket-server \
 
 Key settings for WebSocket support:
 - `--timeout=3600`: Allows connections to stay open for up to 1 hour
-- `--session-affinity`: Keeps the same client connected to the same instance
-- `--min-instances=1`: Keeps at least one instance warm to avoid cold start delays
+- `--session-affinity`: Helps reconnecting clients return to the same instance on a best-effort basis
+- `--min-instances=1`: Keeps at least one instance warm to avoid cold start delays, but prevents the service from scaling to zero while configured
 
 ## Step 4: Build the Client
 
@@ -402,7 +431,7 @@ Here is a browser-based WebSocket client:
 
 ## Step 5: Set Up Firebase Realtime Database Rules
 
-Secure your Firebase Realtime Database:
+If browser or mobile clients also access Firebase Realtime Database directly, secure those client-side reads and writes with Realtime Database Rules. The server code above uses the Firebase Admin SDK, which has administrative access and is not restricted by these rules.
 
 ```json
 {
@@ -410,6 +439,7 @@ Secure your Firebase Realtime Database:
     "rooms": {
       "$roomId": {
         "messages": {
+          ".indexOn": ["timestamp"],
           ".read": true,
           ".write": true,
           "$messageId": {
@@ -463,4 +493,4 @@ process.on("SIGTERM", () => {
 
 ## Summary
 
-WebSocket support on Cloud Run combined with Firebase Realtime Database gives you a scalable, serverless real-time communication system. Cloud Run handles the WebSocket connections and scales based on demand. Firebase Realtime Database synchronizes state across all instances, ensuring messages reach all connected clients regardless of which instance they are connected to. The system scales to zero when nobody is connected and handles thousands of concurrent connections when demand is high. Start with a simple chat implementation and expand to notifications, collaborative features, or live dashboards.
+WebSocket support on Cloud Run combined with Firebase Realtime Database gives you a scalable, serverless real-time communication system. Cloud Run handles the WebSocket connections and scales based on demand. Firebase Realtime Database synchronizes state across all instances, ensuring messages reach all connected clients regardless of which instance they are connected to. With minimum instances set to 0, the system scales to zero when nobody is connected; with `--min-instances=1`, it keeps one instance warm to reduce cold starts. Start with a simple chat implementation and expand to notifications, collaborative features, or live dashboards.
