@@ -56,19 +56,18 @@ And the Dockerfile.
 ```dockerfile
 # Dockerfile - Multi-architecture compatible
 
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY . .
-# Let Go handle cross-compilation
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /server main.go
 
-FROM alpine:3.19
+FROM alpine:3.23
 COPY --from=builder /server /server
 EXPOSE 8080
 CMD ["/server"]
 ```
 
-Both `golang:1.22-alpine` and `alpine:3.19` support multiple architectures, so this Dockerfile works for both amd64 and arm64.
+Both `golang:1.26-alpine` and `alpine:3.23` support multiple architectures, so this Dockerfile works for both amd64 and arm64.
 
 ## Building Multi-Arch Images with Cloud Build
 
@@ -83,10 +82,10 @@ steps:
     args:
       - 'run'
       - '--privileged'
-      - 'multiarch/qemu-user-static'
-      - '--reset'
-      - '-p'
-      - 'yes'
+      - '--rm'
+      - 'tonistiigi/binfmt'
+      - '--install'
+      - 'all'
 
   # Create a Buildx builder instance
   - name: 'gcr.io/cloud-builders/docker'
@@ -122,7 +121,7 @@ options:
 
 ## Building Each Architecture Separately
 
-If emulation is too slow, you can build each architecture natively and then combine them into a manifest list.
+If a single multi-platform Buildx invocation is too slow or hard to debug, you can build each architecture as a separate tag and then combine them into a manifest list. In this Cloud Build example, the arm64 build still uses QEMU emulation unless you run it on a native Arm builder.
 
 ```yaml
 # cloudbuild.yaml - Build architectures separately and combine
@@ -148,7 +147,7 @@ steps:
   # Build arm64 image using QEMU emulation
   - name: 'gcr.io/cloud-builders/docker'
     id: 'setup-qemu'
-    args: ['run', '--privileged', 'multiarch/qemu-user-static', '--reset', '-p', 'yes']
+    args: ['run', '--privileged', '--rm', 'tonistiigi/binfmt', '--install', 'all']
 
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-arm64'
@@ -209,7 +208,7 @@ The T2A machine type is Google's ARM-based offering. Kubernetes automatically la
 
 ## Deploying to Mixed Architecture
 
-With multi-arch images, you do not need to change your deployment manifests. The container runtime pulls the correct architecture variant automatically.
+With multi-arch images, the container runtime pulls the correct architecture variant automatically. In GKE Standard clusters, Arm nodes are tainted by default, so add the Arm toleration if you want the workload to run on both x86 and Arm nodes.
 
 ```yaml
 # k8s/deployment.yaml - Works on both x86 and ARM nodes
@@ -227,6 +226,11 @@ spec:
       labels:
         app: my-app
     spec:
+      tolerations:
+        - key: kubernetes.io/arch
+          operator: Equal
+          value: arm64
+          effect: NoSchedule
       containers:
         - name: my-app
           image: us-central1-docker.pkg.dev/my-project/my-repo/my-app:latest
@@ -246,7 +250,7 @@ spec:
               app: my-app
 ```
 
-The `topologySpreadConstraints` section ensures pods are distributed across both x86 and ARM nodes.
+The toleration lets GKE schedule the workload onto Arm nodes, and the `topologySpreadConstraints` section asks the scheduler to prefer a balanced spread across x86 and ARM nodes.
 
 ## Verifying the Multi-Arch Image
 
