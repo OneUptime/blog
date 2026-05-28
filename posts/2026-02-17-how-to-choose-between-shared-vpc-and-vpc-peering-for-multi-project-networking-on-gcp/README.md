@@ -14,9 +14,9 @@ When your GCP environment grows beyond a single project, you need a way for reso
 
 **Shared VPC** lets multiple projects share a single VPC network. One project (the host project) owns the network, and other projects (service projects) deploy resources into subnets of that shared network. All resources share the same IP space, firewall rules, and routes.
 
-**VPC Peering** connects two independent VPC networks. Each project keeps its own VPC with its own IP ranges, firewall rules, and routes. Peering creates a tunnel between them so resources can communicate using internal IP addresses.
+**VPC Peering** connects two independent VPC networks. Each project keeps its own VPC with its own IP ranges, firewall rules, and routes. Peering exchanges routes between them so resources can communicate using internal IP addresses.
 
-Think of Shared VPC as multiple teams working in the same office building (shared infrastructure). VPC Peering is like two separate office buildings connected by a private tunnel.
+Think of Shared VPC as multiple teams working in the same office building (shared infrastructure). VPC Peering is like two separate office buildings connected by a private route.
 
 ## Feature Comparison
 
@@ -27,7 +27,7 @@ Think of Shared VPC as multiple teams working in the same office building (share
 | Firewall rules | Centralized (host project) | Per project |
 | Routes | Shared across projects | Exchanged between peers |
 | Transitive connectivity | Yes (all service projects can communicate) | No (A-B and B-C does not mean A-C) |
-| Max connections | 1000 service projects per host | 25 peering connections per network |
+| Max connections | Quota-based service project attachments per host | Quota-based peerings per VPC network |
 | Cross-organization | No (same organization only) | Yes |
 | Admin overhead | Higher (central network team needed) | Lower (teams manage their own) |
 | DNS resolution | Automatic (same VPC) | Requires configuration |
@@ -60,7 +60,8 @@ gcloud compute networks subnets create backend-subnet \
     --project=host-project \
     --network=shared-network \
     --region=us-central1 \
-    --range=10.0.2.0/24
+    --range=10.0.2.0/24 \
+    --secondary-range=pods=10.4.0.0/14,services=10.0.32.0/20
 
 gcloud compute networks subnets create data-subnet \
     --project=host-project \
@@ -291,7 +292,7 @@ graph TD
 1. **How many projects need to communicate?** More than 5? Shared VPC is likely better.
 2. **Do you have a central network team?** Yes? Shared VPC fits your model.
 3. **Do teams need network independence?** Yes? VPC Peering gives them autonomy.
-4. **Cross-organization?** VPC Peering is your only option.
+4. **Cross-organization?** Between these two options, VPC Peering is the one that works across organizations.
 5. **Need transitive connectivity?** Shared VPC provides it; peering does not.
 6. **Compliance requires centralized controls?** Shared VPC centralizes everything.
 
