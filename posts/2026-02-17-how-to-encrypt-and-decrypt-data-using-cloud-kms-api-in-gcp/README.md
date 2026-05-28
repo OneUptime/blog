@@ -8,7 +8,7 @@ Description: Learn how to encrypt and decrypt data using the Google Cloud KMS AP
 
 ---
 
-Cloud KMS provides a simple API for encrypting and decrypting data. You send plaintext to the encrypt endpoint, it returns ciphertext. You send ciphertext to the decrypt endpoint, it returns plaintext. The key material never leaves Google's infrastructure, and every operation is logged in Cloud Audit Logs.
+Cloud KMS provides a simple API for encrypting and decrypting data. You send plaintext to the encrypt endpoint, it returns ciphertext. You send ciphertext to the decrypt endpoint, it returns plaintext. The key material never leaves Google's infrastructure, and encrypt and decrypt operations can be logged in Cloud Audit Logs when Data Access audit logs are enabled.
 
 This direct encrypt/decrypt pattern works well for small pieces of data - passwords, tokens, configuration values, small documents. For larger data, you should use envelope encryption instead (encrypting the data with a local key, then encrypting that local key with KMS). This post focuses on the direct API approach.
 
@@ -327,7 +327,7 @@ encrypted = encrypt_with_aad(
 
 ## Size Limits and Considerations
 
-Cloud KMS has a 64 KiB plaintext size limit per encrypt call. For data larger than this, use envelope encryption (encrypt the data locally with a random key, then encrypt that random key with KMS).
+Cloud KMS has a 64 KiB plaintext size limit per encrypt call for software, external, and external VPC keys. For HSM keys, the combined plaintext and AAD size limit is 8 KiB. For data larger than these limits, use envelope encryption (encrypt the data locally with a random key, then encrypt that random key with KMS).
 
 Each encrypt and decrypt call is an API request. High-throughput applications should consider:
 
@@ -341,7 +341,7 @@ Every encrypt and decrypt operation has a cost. At high volumes, this adds up. F
 
 ## Monitoring Encryption Operations
 
-Track KMS usage through Cloud Audit Logs:
+Track KMS usage through Cloud Audit Logs after enabling Data Access audit logs for Cloud KMS:
 
 ```bash
 # View recent encrypt/decrypt operations
