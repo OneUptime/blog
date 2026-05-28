@@ -10,11 +10,11 @@ Description: Learn how to implement Redis Pub/Sub messaging patterns on GCP Memo
 
 Redis Pub/Sub is one of the simplest ways to add real-time messaging to your application. A publisher sends a message to a channel, and every subscriber listening on that channel receives it instantly. On GCP, Memorystore for Redis gives you a fully managed Redis instance that handles the operational overhead while you focus on building the messaging logic.
 
-I have used this pattern for everything from live notification systems to chat features and real-time dashboard updates. The latency is typically sub-millisecond within the same region, which makes it feel truly instant from the user's perspective.
+I have used this pattern for everything from live notification systems to chat features and real-time dashboard updates. Redis Pub/Sub fan-out is typically very low latency within the same region, which makes it feel truly instant from the user's perspective.
 
 ## Redis Pub/Sub vs Google Cloud Pub/Sub
 
-Before diving in, let me clarify the difference. Google Cloud Pub/Sub is a managed messaging service with guaranteed delivery, persistence, and exactly-once processing. Redis Pub/Sub is fire-and-forget - if a subscriber is not connected when a message is published, that message is lost. Redis Pub/Sub is the right choice when you need ultra-low latency and can tolerate occasional message loss, such as real-time UI updates, typing indicators, or live cursors.
+Before diving in, let me clarify the difference. Google Cloud Pub/Sub is a managed messaging service with durable storage, at-least-once delivery by default, and optional exactly-once delivery for pull subscriptions. Redis Pub/Sub is fire-and-forget - if a subscriber is not connected when a message is published, that message is lost. Redis Pub/Sub is the right choice when you need ultra-low latency and can tolerate occasional message loss, such as real-time UI updates, typing indicators, or live cursors.
 
 ## Setting Up Memorystore for Redis
 
@@ -27,7 +27,7 @@ Create a Memorystore instance for your Pub/Sub workload:
 gcloud redis instances create realtime-messaging \
   --size=2 \
   --region=us-central1 \
-  --tier=STANDARD_HA \
+  --tier=STANDARD \
   --redis-version=redis_7_0 \
   --network=default
 
@@ -172,6 +172,7 @@ class ChatRoom:
         self.channel = f"chat:{room_id}"
         self.pubsub = r.pubsub()
         self.callbacks = []
+        self.listener_thread = None
 
     def join(self, username, on_message):
         """Join the chat room and start receiving messages."""
@@ -189,9 +190,10 @@ class ChatRoom:
                     for callback in self.callbacks:
                         callback(data)
 
-        thread = threading.Thread(target=listen, daemon=True)
-        thread.start()
-        return thread
+        if self.listener_thread is None or not self.listener_thread.is_alive():
+            self.listener_thread = threading.Thread(target=listen, daemon=True)
+            self.listener_thread.start()
+        return self.listener_thread
 
     def send_message(self, username, text):
         """Send a message to the chat room."""
@@ -275,8 +277,8 @@ def get_pubsub_stats():
     """Get current Pub/Sub statistics from the Redis server."""
     info = r.info("clients")
     stats = {
-        # Number of clients in Pub/Sub mode
-        "pubsub_subscribers": r.pubsub_numsub(),
+        # Number of Pub/Sub client connections and pattern subscriptions
+        "pubsub_clients": info.get("pubsub_clients", 0),
         "pubsub_patterns": r.pubsub_numpat(),
         "connected_clients": info.get("connected_clients", 0),
         "blocked_clients": info.get("blocked_clients", 0),
@@ -287,8 +289,8 @@ def get_pubsub_stats():
 def get_channel_subscribers():
     """List all active channels and their subscriber counts."""
     channels = r.pubsub_channels("*")
-    for channel in channels:
-        count = r.pubsub_numsub(channel)
+    counts = dict(r.pubsub_numsub(*channels)) if channels else {}
+    for channel, count in counts.items():
         print(f"Channel: {channel}, Subscribers: {count}")
 
 get_channel_subscribers()
@@ -297,7 +299,7 @@ get_channel_subscribers()
 Key scaling points to remember:
 - Each subscriber receives a copy of every message on its channel, so bandwidth scales linearly with subscribers
 - A single Redis instance can handle tens of thousands of connected Pub/Sub clients
-- For Memorystore Standard tier, the failover replica also handles Pub/Sub, providing high availability
+- For Memorystore Standard tier, automatic failover promotes a replica if the primary fails, so clients should reconnect after failover
 - If you need message persistence or replay, combine Redis Pub/Sub with Redis Streams
 
 ## Adding Message History with Redis Streams
@@ -319,7 +321,7 @@ def send_with_history(channel, message_data):
 
     # Store in a Stream for history (keeps last 1000 messages)
     stream_key = f"history:{channel}"
-    r.xadd(stream_key, {"data": message_json}, maxlen=1000)
+    r.xadd(stream_key, {"data": message_json}, maxlen=1000, approximate=False)
 
     # Publish for real-time delivery
     r.publish(channel, message_json)
@@ -334,4 +336,4 @@ def get_message_history(channel, count=50):
 
 ## Summary
 
-Redis Pub/Sub on Memorystore is ideal for real-time messaging where low latency matters more than guaranteed delivery. Set up a Memorystore instance, use channel naming conventions to organize your messages, and connect subscribers through WebSockets for browser-based applications. For production systems, combine Pub/Sub with Redis Streams when you need message history, monitor subscriber counts to plan capacity, and use the Standard HA tier for automatic failover. The pattern works well for notifications, chat, live dashboards, and any feature where sub-millisecond messaging makes the user experience feel responsive.
+Redis Pub/Sub on Memorystore is ideal for real-time messaging where low latency matters more than guaranteed delivery. Set up a Memorystore instance, use channel naming conventions to organize your messages, and connect subscribers through WebSockets for browser-based applications. For production systems, combine Pub/Sub with Redis Streams when you need message history, monitor subscriber counts to plan capacity, and use the Standard tier for automatic failover. The pattern works well for notifications, chat, live dashboards, and any feature where low-latency messaging makes the user experience feel responsive.
