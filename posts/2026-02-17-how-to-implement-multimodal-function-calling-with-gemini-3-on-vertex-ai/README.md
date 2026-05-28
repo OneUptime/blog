@@ -41,21 +41,22 @@ sequenceDiagram
 Define tools that complement visual or audio analysis.
 
 ```python
-import vertexai
-from vertexai.generative_models import (
-    GenerativeModel,
-    FunctionDeclaration,
-    Part,
-    Tool,
-    Image,
-)
+import mimetypes
+
+from google import genai
+from google.genai import types
 
 # Initialize Vertex AI
 
-vertexai.init(project="your-project-id", location="us-central1")
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="global",
+)
+MODEL_ID = "gemini-3-flash-preview"
 
 # Define tools that work with visual context
-product_lookup = FunctionDeclaration(
+product_lookup = types.FunctionDeclaration(
     name="lookup_product",
     description=(
         "Look up product details by name, barcode, or description. "
@@ -81,7 +82,7 @@ product_lookup = FunctionDeclaration(
     }
 )
 
-location_info = FunctionDeclaration(
+location_info = types.FunctionDeclaration(
     name="get_location_info",
     description=(
         "Get information about a location identified in an image. "
@@ -103,7 +104,7 @@ location_info = FunctionDeclaration(
     }
 )
 
-search_error = FunctionDeclaration(
+search_error = types.FunctionDeclaration(
     name="search_error_database",
     description=(
         "Search the error database for solutions to error messages. "
@@ -126,13 +127,12 @@ search_error = FunctionDeclaration(
 )
 
 # Bundle all tools
-visual_tools = Tool(
+visual_tools = types.Tool(
     function_declarations=[product_lookup, location_info, search_error]
 )
 
-# Create the model
-model = GenerativeModel(
-    "gemini-3.0-flash",
+# Configure the model request
+visual_config = types.GenerateContentConfig(
     tools=[visual_tools],
     system_instruction=(
         "You are a visual analysis assistant with access to external tools. "
@@ -185,34 +185,54 @@ def execute_visual_tool(function_name, args):
     return {"error": f"Unknown tool: {function_name}"}
 
 
+def load_image_part(image_path):
+    """Load a local image as a Gemini request part."""
+    mime_type = mimetypes.guess_type(image_path)[0] or "image/jpeg"
+    with open(image_path, "rb") as image_file:
+        image_bytes = image_file.read()
+
+    return types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+
+
 def process_image_with_tools(image_path, user_query):
     """Process an image with potential function calls."""
     # Load the image
-    image = Image.load_from_file(image_path)
+    image_part = load_image_part(image_path)
+    contents = [
+        types.Content(
+            role="user",
+            parts=[image_part, types.Part(text=user_query)],
+        )
+    ]
 
     # Send to Gemini
-    chat = model.start_chat()
-    response = chat.send_message([image, user_query])
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=contents,
+        config=visual_config,
+    )
 
     # Check for function calls
     function_responses = []
-    for part in response.candidates[0].content.parts:
-        if part.function_call:
-            fc = part.function_call
-            print(f"Tool called: {fc.name}({dict(fc.args)})")
-            result = execute_visual_tool(fc.name, fc.args)
-            function_responses.append(
-                Part.from_function_response(
-                    name=fc.name,
-                    response={"result": result}
-                )
+    for fc in response.function_calls or []:
+        print(f"Tool called: {fc.name}({dict(fc.args)})")
+        result = execute_visual_tool(fc.name, fc.args)
+        function_responses.append(
+            types.Part.from_function_response(
+                name=fc.name,
+                response={"result": result}
             )
-        elif part.text:
-            print(f"Direct response: {part.text}")
+        )
 
     # If tools were called, send results back
     if function_responses:
-        final_response = chat.send_message(function_responses)
+        contents.append(response.candidates[0].content)
+        contents.append(types.Content(role="user", parts=function_responses))
+        final_response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=contents,
+            config=visual_config,
+        )
         return final_response.text
 
     return response.text
@@ -232,27 +252,32 @@ Gemini can watch a video and call tools based on what it observes.
 ```python
 def analyze_video_with_tools(video_uri, analysis_request):
     """Analyze a video and use tools for additional context."""
-    video_part = Part.from_uri(uri=video_uri, mime_type="video/mp4")
+    video_part = types.Part.from_uri(file_uri=video_uri, mime_type="video/mp4")
+    contents = [
+        types.Content(
+            role="user",
+            parts=[video_part, types.Part(text=analysis_request)],
+        )
+    ]
 
-    chat = model.start_chat()
-    response = chat.send_message([video_part, analysis_request])
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=contents,
+        config=visual_config,
+    )
 
     # Handle potential function calls
     all_tool_results = []
     max_rounds = 3
 
     for round_num in range(max_rounds):
-        function_calls = [
-            part for part in response.candidates[0].content.parts
-            if part.function_call
-        ]
+        function_calls = response.function_calls or []
 
         if not function_calls:
             break
 
         function_responses = []
-        for part in function_calls:
-            fc = part.function_call
+        for fc in function_calls:
             result = execute_visual_tool(fc.name, fc.args)
             all_tool_results.append({
                 "tool": fc.name,
@@ -260,13 +285,19 @@ def analyze_video_with_tools(video_uri, analysis_request):
                 "result": result
             })
             function_responses.append(
-                Part.from_function_response(
+                types.Part.from_function_response(
                     name=fc.name,
                     response={"result": result}
                 )
             )
 
-        response = chat.send_message(function_responses)
+        contents.append(response.candidates[0].content)
+        contents.append(types.Content(role="user", parts=function_responses))
+        response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=contents,
+            config=visual_config,
+        )
 
     return {
         "analysis": response.text,
@@ -291,7 +322,7 @@ class VisualSearchAgent:
 
     def __init__(self):
         # Define search-oriented tools
-        web_search = FunctionDeclaration(
+        web_search = types.FunctionDeclaration(
             name="web_search",
             description="Search the web for information about something seen in an image.",
             parameters={
@@ -306,7 +337,7 @@ class VisualSearchAgent:
             }
         )
 
-        price_check = FunctionDeclaration(
+        price_check = types.FunctionDeclaration(
             name="check_price",
             description="Check the current market price for an item identified in an image.",
             parameters={
@@ -322,10 +353,10 @@ class VisualSearchAgent:
             }
         )
 
-        search_tools = Tool(function_declarations=[web_search, price_check])
+        search_tools = types.Tool(function_declarations=[web_search, price_check])
 
-        self.model = GenerativeModel(
-            "gemini-3.0-flash",
+        self.client = client
+        self.config = types.GenerateContentConfig(
             tools=[search_tools],
             system_instruction=(
                 "You are a visual search assistant. Analyze images and "
@@ -336,37 +367,48 @@ class VisualSearchAgent:
 
     def search(self, image_path, context=""):
         """Analyze an image and search for related information."""
-        image = Image.load_from_file(image_path)
+        image_part = load_image_part(image_path)
 
         prompt = "Analyze this image and search for relevant information."
         if context:
             prompt += f" Context: {context}"
 
-        chat = self.model.start_chat()
-        response = chat.send_message([image, prompt])
+        contents = [
+            types.Content(
+                role="user",
+                parts=[image_part, types.Part(text=prompt)],
+            )
+        ]
+        response = self.client.models.generate_content(
+            model=MODEL_ID,
+            contents=contents,
+            config=self.config,
+        )
 
         # Handle tool calls
         while True:
-            calls = [
-                p for p in response.candidates[0].content.parts
-                if p.function_call
-            ]
+            calls = response.function_calls or []
 
             if not calls:
                 break
 
             responses = []
-            for part in calls:
-                fc = part.function_call
+            for fc in calls:
                 result = self._execute(fc.name, dict(fc.args))
                 responses.append(
-                    Part.from_function_response(
+                    types.Part.from_function_response(
                         name=fc.name,
                         response={"result": result}
                     )
                 )
 
-            response = chat.send_message(responses)
+            contents.append(response.candidates[0].content)
+            contents.append(types.Content(role="user", parts=responses))
+            response = self.client.models.generate_content(
+                model=MODEL_ID,
+                contents=contents,
+                config=self.config,
+            )
 
         return response.text
 
@@ -394,10 +436,10 @@ Process audio input and make tool calls based on what the model hears.
 ```python
 def process_audio_with_tools(audio_uri, instruction):
     """Process audio and call tools based on audio content."""
-    audio_part = Part.from_uri(uri=audio_uri, mime_type="audio/mp3")
+    audio_part = types.Part.from_uri(file_uri=audio_uri, mime_type="audio/mp3")
 
     # Define audio-appropriate tools
-    create_task = FunctionDeclaration(
+    create_task = types.FunctionDeclaration(
         name="create_task",
         description="Create a task or action item mentioned in the audio.",
         parameters={
@@ -412,22 +454,27 @@ def process_audio_with_tools(audio_uri, instruction):
         }
     )
 
-    audio_tools = Tool(function_declarations=[create_task])
+    audio_tools = types.Tool(function_declarations=[create_task])
 
-    audio_model = GenerativeModel("gemini-3.0-flash", tools=[audio_tools])
-    chat = audio_model.start_chat()
-
-    response = chat.send_message([audio_part, instruction])
+    audio_config = types.GenerateContentConfig(tools=[audio_tools])
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=[
+            types.Content(
+                role="user",
+                parts=[audio_part, types.Part(text=instruction)],
+            )
+        ],
+        config=audio_config,
+    )
 
     # Collect all function calls
     tasks_created = []
-    for part in response.candidates[0].content.parts:
-        if part.function_call:
-            fc = part.function_call
-            tasks_created.append(dict(fc.args))
+    for fc in response.function_calls or []:
+        tasks_created.append(dict(fc.args))
 
     return {
-        "text_response": response.text if any(p.text for p in response.candidates[0].content.parts) else "",
+        "text_response": response.text if not tasks_created else "",
         "tasks_created": tasks_created
     }
 
