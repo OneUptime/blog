@@ -36,7 +36,8 @@ aws elasticache describe-replication-groups \
   --query 'ReplicationGroups[*].{
     ID:ReplicationGroupId,
     Status:Status,
-    Engine:MemberClusters,
+    Version:EngineVersion,
+    ClusterMode:ClusterEnabled,
     NodeType:CacheNodeType,
     NumNodes:MemberClusters | length(@)
   }' \
@@ -49,7 +50,7 @@ aws elasticache describe-cache-parameters \
   --output table
 ```
 
-Take note of the node type, number of replicas, Redis version, and any custom parameter group settings. You will need these to configure Memorystore appropriately.
+Take note of the node type, number of replicas, Redis version, cluster mode setting, and any custom parameter group settings. You will need these to configure Memorystore appropriately.
 
 ## Step 2: Create an RDB Snapshot from ElastiCache
 
@@ -73,7 +74,7 @@ aws elasticache copy-snapshot \
   --target-bucket my-migration-bucket
 ```
 
-The exported RDB file lands in your S3 bucket. This is the standard Redis dump format that Memorystore can import.
+The S3 bucket must be in the same AWS Region as the ElastiCache backup and must grant ElastiCache access before you export. The exported RDB file lands in your S3 bucket. This is the standard Redis dump format that Memorystore can import.
 
 ## Step 3: Transfer the RDB File to Google Cloud Storage
 
@@ -100,7 +101,7 @@ gcloud transfer jobs create \
 
 ## Step 4: Create the Memorystore Instance
 
-Set up the Memorystore Redis instance with specifications that match your ElastiCache cluster.
+Set up the Memorystore Redis instance with specifications that match your ElastiCache cluster. Choose a Redis version that is the same as, or newer than, the version that produced the RDB file because Memorystore can import RDB files from the same Redis version or an older Redis version, but not from a newer one.
 
 ```bash
 # Create a Memorystore Redis instance
@@ -114,14 +115,14 @@ gcloud redis instances create my-redis-instance \
   --redis-config maxmemory-policy=allkeys-lru
 ```
 
-Here is a rough mapping of ElastiCache node types to Memorystore sizes:
+Here is a rough mapping of ElastiCache node types to minimum Memorystore sizes:
 
-| ElastiCache Node Type | Memory   | Memorystore Size (GB) |
-|----------------------|----------|-----------------------|
-| cache.r6g.large      | 13.07 GB | 13                    |
-| cache.r6g.xlarge     | 26.32 GB | 26                    |
-| cache.m6g.large      | 6.38 GB  | 7                     |
-| cache.t3.medium      | 3.09 GB  | 3                     |
+| ElastiCache Node Type | Memory    | Minimum Memorystore Size (GiB) |
+|----------------------|-----------|--------------------------------|
+| cache.r6g.large      | 13.07 GiB | 14                             |
+| cache.r6g.xlarge     | 26.32 GiB | 27                             |
+| cache.m6g.large      | 6.38 GiB  | 7                              |
+| cache.t3.medium      | 3.09 GiB  | 4                              |
 
 ## Step 5: Import the RDB File into Memorystore
 
@@ -146,7 +147,7 @@ Common mappings include:
 # Set configuration parameters on Memorystore
 gcloud redis instances update my-redis-instance \
   --region=us-central1 \
-  --redis-config=maxmemory-policy=volatile-lru,notify-keyspace-events=Ex
+  --update-redis-config=maxmemory-policy=volatile-lru,notify-keyspace-events=Ex
 
 # Check current configuration
 gcloud redis instances describe my-redis-instance \
@@ -222,7 +223,7 @@ For in-transit encryption, Memorystore supports TLS. Enable it during instance c
 
 ## Handling Cluster Mode Migrations
 
-If your ElastiCache setup uses cluster mode enabled (sharding), Memorystore for Redis Cluster is the target. The migration is more involved because you need to handle slot assignments and resharding. Export each shard separately, create a Memorystore Cluster, and import data per shard.
+If your ElastiCache setup uses cluster mode enabled (sharding), Memorystore for Redis Cluster is the target. The migration is more involved because you need to handle slot assignments and resharding. Export the shard RDB files, grant the Memorystore for Redis Cluster service agent access to the Cloud Storage bucket, and create the cluster from the Cloud Storage folder that contains those RDB files.
 
 ## Monitoring After Migration
 
