@@ -29,8 +29,8 @@ The simplest way to create a component is with the `@dsl.component` decorator. T
 ```python
 # components/data_validation.py
 
-from kfp.v2 import dsl
-from kfp.v2.dsl import Dataset, Input, Output, Metrics
+from kfp import dsl
+from kfp.dsl import Dataset, Input, Output, Metrics
 
 @dsl.component(
     base_image="python:3.10-slim",
@@ -135,7 +135,6 @@ def main():
         learning_rate=args.learning_rate,
         max_depth=args.max_depth,
         eval_metric="logloss",
-        use_label_encoder=False,
     )
     model.fit(X, y, verbose=True)
 
@@ -192,8 +191,8 @@ Now define the component specification that tells KFP how to use this container.
 
 ```python
 # components/custom_training/component.py
-from kfp.v2 import dsl
-from kfp.v2.dsl import Dataset, Input, Output, Model, Metrics
+from kfp import dsl
+from kfp.dsl import Dataset, Input, Output, Model, Metrics
 
 @dsl.container_component
 def custom_training_component(
@@ -246,8 +245,8 @@ __all__ = [
 
 ```python
 # ml_components/evaluation.py
-from kfp.v2 import dsl
-from kfp.v2.dsl import Dataset, Input, Output, Model, Metrics, ClassificationMetrics
+from kfp import dsl
+from kfp.dsl import Dataset, Input, Output, Model, Metrics, ClassificationMetrics
 
 @dsl.component(
     base_image="python:3.10-slim",
@@ -300,7 +299,12 @@ def evaluate_classification_model(
 
     # Log ROC curve for binary classification
     if len(labels) == 2:
-        fpr, tpr, thresholds = roc_curve(y, probabilities[:, 1])
+        positive_label = labels[1]
+        fpr, tpr, thresholds = roc_curve(
+            y,
+            probabilities[:, 1],
+            pos_label=positive_label,
+        )
         classification_metrics.log_roc_curve(
             fpr=fpr.tolist(),
             tpr=tpr.tolist(),
@@ -402,7 +406,7 @@ Here is how all the components come together in a pipeline definition.
 
 ```python
 # pipeline.py
-from kfp.v2 import dsl, compiler
+from kfp import dsl, compiler
 from ml_components import (
     validate_data,
     compute_features,
@@ -420,14 +424,20 @@ def training_pipeline(
     dataset_uri: str,
     endpoint_id: str,
 ):
+    dataset = dsl.importer(
+        artifact_uri=dataset_uri,
+        artifact_class=dsl.Dataset,
+        reimport=True,
+    )
+
     # Validate the input data
     validation = validate_data(
-        input_data=dataset_uri,
+        input_data=dataset.output,
         min_rows=5000,
     )
 
     # Only proceed if validation passes
-    with dsl.Condition(validation.output == True):
+    with dsl.If(validation.output == True):
         features = compute_features(
             validated_data=validation.outputs["validation_report"],
         )
@@ -444,7 +454,7 @@ def training_pipeline(
             accuracy_threshold=0.85,
         )
 
-        with dsl.Condition(evaluation.output == True):
+        with dsl.If(evaluation.output == True):
             deploy_to_endpoint(
                 model=model.outputs["model_output"],
                 endpoint_id=endpoint_id,
@@ -453,7 +463,7 @@ def training_pipeline(
 # Compile the pipeline
 compiler.Compiler().compile(
     pipeline_func=training_pipeline,
-    package_path="training_pipeline.json",
+    package_path="training_pipeline.yaml",
 )
 ```
 
