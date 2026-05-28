@@ -45,7 +45,7 @@ gcloud sql instances create my-db \
     --region=us-central1 \
     --availability-type=REGIONAL \
     --storage-type=SSD \
-    --storage-size=100GB \
+    --storage-size=100 \
     --storage-auto-increase \
     --backup-start-time=02:00 \
     --enable-point-in-time-recovery
@@ -71,7 +71,7 @@ Cloud Spanner is a globally distributed relational database that provides strong
 - ACID transactions across shards and regions
 
 **Limitations**:
-- Expensive (starts at around $0.90/node-hour for regional, higher for multi-region)
+- Expensive compared with Cloud SQL (regional Standard edition is priced per node-hour, with granular instances available below one node)
 - Schema design requires careful attention to avoid hotspots
 - GoogleSQL dialect has some differences from standard SQL
 - PostgreSQL interface available but not 100% compatible
@@ -143,7 +143,7 @@ AlloyDB is Google's PostgreSQL-compatible database designed for high-performance
 - PostgreSQL only (no MySQL or SQL Server)
 - Single-region (cross-region replicas available)
 - Higher cost than Cloud SQL
-- No free tier or small instance options
+- Free trial clusters are available, but paid clusters start at larger instance sizes than Cloud SQL's smallest tiers
 - Relatively newer service (less community documentation)
 
 ```bash
@@ -169,12 +169,15 @@ gcloud alloydb instances create my-alloydb-read-pool \
     --read-pool-node-count=2
 ```
 
-AlloyDB's columnar engine is a standout feature. It automatically identifies columns that benefit from columnar storage and creates in-memory columnar representations:
+AlloyDB's columnar engine is a standout feature. After you enable it on an instance, auto-columnarization can identify columns that benefit from columnar storage and create columnar representations. You can also add columns manually:
 
 ```sql
--- Enable the columnar engine on specific tables for analytical queries
--- AlloyDB handles this automatically, but you can also set it explicitly
-ALTER TABLE sales_data SET (google_columnar_engine.enabled = true);
+-- Add specific table columns to the columnar engine for analytical queries
+-- AlloyDB can handle this automatically, but you can also add columns explicitly
+SELECT google_columnar_engine_add(
+    relation => 'sales_data',
+    columns => 'sale_date,region,amount'
+);
 
 -- Analytical queries on these tables run much faster
 -- because they use the columnar engine instead of row-based storage
@@ -200,11 +203,11 @@ ORDER BY month, total_sales DESC;
 | Max vCPUs | 128 | Scales with nodes | 128 per instance |
 | Horizontal write scaling | No | Yes | No |
 | Multi-region writes | No | Yes | No |
-| Scale to zero | No | Yes (with autoscaler) | No |
-| Availability SLA | 99.95% | 99.999% (multi-region) | 99.99% |
-| Starting cost (monthly) | ~$50 | ~$650 | ~$350 |
+| Scale to zero | No | No (autoscaler scales down to a configured minimum) | No |
+| Availability SLA | 99.95% or 99.99% depending on edition and HA configuration | 99.999% (dual-region or multi-region) | 99.99% |
+| Starting cost (monthly) | ~$50 | ~$55+ for a small regional instance | ~$350 |
 | PostgreSQL compatible | Yes | Partial | Yes |
-| Connection method | Cloud SQL Proxy, IP | Client libraries | Cloud SQL Proxy, IP |
+| Connection method | Cloud SQL Auth Proxy, IP | Client libraries | AlloyDB Auth Proxy, IP |
 
 ## Decision Flow
 
