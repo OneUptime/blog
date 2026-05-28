@@ -226,7 +226,7 @@ def handle_customer_lookup(params, full_request):
     """Looks up customer information."""
     email = params.get("customer_email", "")
 
-    response = requests.get(f"{CUSTOMER_API}?email={email}", timeout=5)
+    response = requests.get(CUSTOMER_API, params={"email": email}, timeout=5)
 
     if response.status_code == 200 and response.json():
         customer = response.json()[0]
@@ -289,6 +289,15 @@ gcloud functions deploy dialogflow-webhook \
   --max-instances=10
 ```
 
+Get the deployed function URL before adding it to Dialogflow CX:
+
+```bash
+gcloud functions describe dialogflow-webhook \
+  --gen2 \
+  --region=us-central1 \
+  --format="value(serviceConfig.uri)"
+```
+
 Setting `min-instances=1` avoids cold starts that could cause webhook timeouts. Dialogflow CX has a 5-second default webhook timeout, so keeping an instance warm is important.
 
 ## Step 3: Register the Webhook in Dialogflow CX
@@ -322,7 +331,7 @@ def create_webhook(agent_name, display_name, webhook_url):
 webhook = create_webhook(
     "projects/my-project/locations/us-central1/agents/AGENT_ID",
     "Order Management Webhook",
-    "https://us-central1-my-project.cloudfunctions.net/dialogflow-webhook"
+    "https://dialogflow-webhook-abc123-uc.a.run.app"
 )
 ```
 
@@ -377,17 +386,9 @@ def configure_webhook_error_handling(page_name):
     client = dialogflowcx_v3.PagesClient()
     page = client.get_page(name=page_name)
 
-    # Set webhook error message
-    page.entry_fulfillment.set_parameter_actions = [
-        dialogflowcx_v3.Fulfillment.SetParameterAction(
-            parameter="webhook_error",
-            value=False,
-        )
-    ]
-
-    # Add a transition route for webhook failure
-    error_route = dialogflowcx_v3.TransitionRoute(
-        condition="$webhook.error",
+    # Add an event handler for webhook failures
+    error_handler = dialogflowcx_v3.EventHandler(
+        event="webhook.error",
         trigger_fulfillment=dialogflowcx_v3.Fulfillment(
             messages=[
                 dialogflowcx_v3.ResponseMessage(
@@ -403,8 +404,8 @@ def configure_webhook_error_handling(page_name):
         ),
     )
 
-    page.transition_routes.append(error_route)
-    client.update_page(page=page, update_mask={"paths": ["transition_routes"]})
+    page.event_handlers.append(error_handler)
+    client.update_page(page=page, update_mask={"paths": ["event_handlers"]})
 ```
 
 ## Summary
