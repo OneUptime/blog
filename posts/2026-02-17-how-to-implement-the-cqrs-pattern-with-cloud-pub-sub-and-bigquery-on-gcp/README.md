@@ -47,7 +47,9 @@ Set up the write database:
 
 gcloud sql instances create orders-write-db \
   --database-version POSTGRES_15 \
-  --tier db-custom-4-16384 \
+  --cpu 4 \
+  --memory 16GB \
+  --edition ENTERPRISE \
   --region us-central1 \
   --availability-type REGIONAL
 
@@ -90,7 +92,7 @@ Build the command handler that writes data and publishes events:
 from google.cloud import pubsub_v1
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 publisher = pubsub_v1.PublisherClient()
 topic_path = publisher.topic_path('my-project', 'order-events')
@@ -132,7 +134,7 @@ class OrderCommandHandler:
         event = {
             "event_type": "OrderCreated",
             "event_id": str(uuid.uuid4()),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "aggregate_id": order_id,
             "data": {
                 "order_id": order_id,
@@ -144,11 +146,12 @@ class OrderCommandHandler:
         }
 
         # Publish to Pub/Sub for the read side to process
-        publisher.publish(
+        publish_future = publisher.publish(
             topic_path,
             json.dumps(event).encode('utf-8'),
             event_type="OrderCreated"
         )
+        publish_future.result(timeout=30)
 
         return {"order_id": order_id, "status": "pending"}
 
@@ -168,7 +171,7 @@ class OrderCommandHandler:
         event = {
             "event_type": "OrderStatusUpdated",
             "event_id": str(uuid.uuid4()),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "aggregate_id": order_id,
             "data": {
                 "order_id": order_id,
@@ -176,11 +179,12 @@ class OrderCommandHandler:
             }
         }
 
-        publisher.publish(
+        publish_future = publisher.publish(
             topic_path,
             json.dumps(event).encode('utf-8'),
             event_type="OrderStatusUpdated"
         )
+        publish_future.result(timeout=30)
 
         return {"order_id": order_id, "status": new_status}
 ```
@@ -192,6 +196,7 @@ Configure Pub/Sub to deliver events to the projection service:
 ```bash
 # Create the event topic
 gcloud pubsub topics create order-events
+gcloud pubsub topics create order-events-dlq
 
 # Create a subscription for the BigQuery projection service
 gcloud pubsub subscriptions create bigquery-projection \
@@ -201,10 +206,10 @@ gcloud pubsub subscriptions create bigquery-projection \
   --max-delivery-attempts 10
 
 # Option: Use Pub/Sub's built-in BigQuery subscription
-# This writes messages directly to BigQuery without a custom subscriber
+# This writes messages directly to a pre-created BigQuery table without a custom subscriber
 gcloud pubsub subscriptions create bigquery-direct \
   --topic order-events \
-  --bigquery-table my-project:order_analytics.raw_events \
+  --bigquery-table my-project.order_analytics.raw_events \
   --write-metadata
 ```
 
@@ -215,6 +220,15 @@ Create BigQuery tables optimized for query patterns:
 ```sql
 -- BigQuery read model schema - denormalized for fast queries
 -- This is a different structure than the write model
+
+-- Raw event table for the optional Pub/Sub BigQuery subscription
+CREATE TABLE `my-project.order_analytics.raw_events` (
+    subscription_name STRING,
+    message_id STRING,
+    publish_time TIMESTAMP,
+    data JSON,
+    attributes JSON
+);
 
 CREATE TABLE `my-project.order_analytics.orders_view` (
     order_id STRING NOT NULL,
@@ -261,6 +275,7 @@ The projection service consumes events and updates the BigQuery read model:
 from google.cloud import bigquery
 from google.cloud import pubsub_v1
 import json
+from datetime import datetime, timezone
 
 bq_client = bigquery.Client()
 subscriber = pubsub_v1.SubscriberClient()
@@ -303,17 +318,27 @@ def handle_order_created(data):
             }
             for item in data["items"]
         ],
-        "created_at": data.get("created_at", datetime.utcnow().isoformat()),
-        "updated_at": data.get("created_at", datetime.utcnow().isoformat()),
-        "_partition_date": datetime.utcnow().strftime("%Y-%m-%d")
+        "created_at": data.get("created_at", datetime.now(timezone.utc).isoformat()),
+        "updated_at": data.get("created_at", datetime.now(timezone.utc).isoformat()),
+        "_partition_date": datetime.now(timezone.utc).date().isoformat()
     }
 
-    # Insert into BigQuery using the streaming API for real-time updates
-    table_ref = bq_client.dataset("order_analytics").table("orders_view")
-    errors = bq_client.insert_rows_json(table_ref, [row])
+    # Load into BigQuery. For high-throughput systems, batch these rows
+    # or use the BigQuery Storage Write API.
+    table_ref = "my-project.order_analytics.orders_view"
+    job_config = bigquery.LoadJobConfig(
+        source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+        write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+    )
+    load_job = bq_client.load_table_from_json(
+        [row],
+        table_ref,
+        job_config=job_config
+    )
+    load_job.result()
 
-    if errors:
-        raise Exception(f"BigQuery insert errors: {errors}")
+    if load_job.errors:
+        raise Exception(f"BigQuery load errors: {load_job.errors}")
 
 def handle_order_status_updated(data):
     """Update order status in the BigQuery read model using DML."""
@@ -406,8 +431,8 @@ def daily_summary():
 # After creating an order, return the data from the write side
 # Do not immediately query BigQuery - it might not have the new order yet
 @app.route("/api/orders", methods=["POST"])
-def create_order():
-    result = command_handler.create_order(request.json)
+async def create_order():
+    result = await command_handler.create_order(request.json)
     # Return the command result directly, not a BigQuery query
     return jsonify(result), 202
 ```
@@ -428,8 +453,8 @@ def create_order():
 ## Cost on GCP
 
 - **Cloud SQL** for the write side: based on instance size and storage
-- **Pub/Sub**: $0.04 per million messages
-- **BigQuery**: $0 for storage of first 10 GB; $5 per TB queried (or flat-rate pricing)
+- **Pub/Sub**: based on throughput, with the first 10 GiB of basic message delivery throughput free each month and standard delivery priced per TiB after that
+- **BigQuery**: $0 for storage of first 10 GiB and the first 1 TiB of query data processed each month; on-demand analysis is then priced per TiB, or you can use capacity pricing
 
 For most applications, the Pub/Sub costs are negligible, and BigQuery's pay-per-query pricing is very cost-effective for read-heavy workloads.
 
