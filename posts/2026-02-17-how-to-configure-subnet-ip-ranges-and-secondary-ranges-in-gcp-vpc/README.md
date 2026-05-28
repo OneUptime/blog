@@ -8,7 +8,7 @@ Description: Learn how to configure primary and secondary IP ranges for GCP VPC 
 
 ---
 
-Every subnet in a GCP VPC has a primary IP range, and optionally one or more secondary ranges. Getting these right from the start is important because changing them later can be tricky. Primary ranges determine the IPs assigned to VMs and internal load balancers. Secondary ranges are primarily used by GKE for pod and service IPs.
+Every subnet in a GCP VPC has a primary IP range, and optionally one or more secondary ranges. Getting these right from the start is important because changing them later can be tricky. Primary ranges determine the IPs assigned to VMs and internal load balancers. Secondary ranges are commonly used by GKE for pod and service IPs.
 
 In this post, I will cover how to plan and configure both primary and secondary IP ranges, common sizing mistakes, and how to expand ranges when you run out of space.
 
@@ -16,13 +16,13 @@ In this post, I will cover how to plan and configure both primary and secondary 
 
 A GCP subnet has:
 
-- **One primary IP range**: VMs in this subnet get their internal IPs from this range. The range must be an RFC 1918 block (10.0.0.0/8, 172.16.0.0/12, or 192.168.0.0/16) or a privately used public range.
-- **Up to 30 secondary ranges**: These are additional CIDR blocks associated with the subnet. GKE uses them for pod and service IPs. VMs do not get addresses from secondary ranges unless you configure alias IPs.
+- **One primary IP range**: VMs in this subnet get their internal IPs from this range. The range must be a valid internal IPv4 range, such as an RFC 1918 block (10.0.0.0/8, 172.16.0.0/12, or 192.168.0.0/16), another supported private range, or a privately used public range.
+- **Up to 170 secondary ranges**: These are additional CIDR blocks associated with the subnet. GKE can use them for pod and service IPs. VMs do not get addresses from secondary ranges unless you configure alias IPs.
 
 ```mermaid
 graph TD
     A[Subnet: prod-us-central1] --> B[Primary Range: 10.10.0.0/20<br/>VM IPs, ILB IPs]
-    A --> C[Secondary Range: gke-pods<br/>10.10.16.0/14<br/>Pod IPs]
+    A --> C[Secondary Range: gke-pods<br/>10.10.64.0/18<br/>Pod IPs]
     A --> D[Secondary Range: gke-services<br/>10.10.128.0/20<br/>Service IPs]
 ```
 
@@ -32,24 +32,24 @@ IP planning is one of those things that seems tedious but saves enormous pain la
 
 ### Calculate VM Capacity
 
-A /20 primary range gives you 4,094 usable IPs. That is enough for most workloads. Here is a quick reference:
+A /20 primary range gives you 4,092 usable IPs. That is enough for most workloads. Here is a quick reference:
 
 | CIDR | Total IPs | Usable IPs | Good For |
 |------|-----------|------------|----------|
-| /24  | 256       | 251        | Small dev environments |
-| /22  | 1,024     | 1,019      | Medium workloads |
-| /20  | 4,096     | 4,091      | Production workloads |
-| /18  | 16,384    | 16,379     | Large deployments |
-| /16  | 65,536    | 65,531     | Very large deployments |
+| /24  | 256       | 252        | Small dev environments |
+| /22  | 1,024     | 1,020      | Medium workloads |
+| /20  | 4,096     | 4,092      | Production workloads |
+| /18  | 16,384    | 16,380     | Large deployments |
+| /16  | 65,536    | 65,532     | Very large deployments |
 
-GCP reserves 4 IPs in each subnet (network address, default gateway, second-to-last, and broadcast), plus one for the gateway.
+GCP reserves 4 IPs in each primary subnet range: the network address, default gateway, second-to-last address, and broadcast address.
 
 ### Calculate GKE Pod and Service Ranges
 
 GKE needs significantly more IPs than you might expect:
 
-- **Pod range**: Each node gets a /24 by default (110 pods max per node). For 100 nodes, you need a /14 or /15.
-- **Service range**: You need one IP per Kubernetes service. A /20 (4,096 services) is usually plenty.
+- **Pod range**: Each node gets a /24 by default (110 pods max per node). For 100 nodes, you need at least a /17, and a /16 gives more room to grow.
+- **Service range**: For clusters that use a user-managed Services range, you need one IP per Kubernetes service. A /20 (4,096 services) is usually plenty.
 
 ```bash
 # Example: for a GKE cluster with up to 256 nodes
@@ -97,10 +97,10 @@ gcloud container clusters create prod-cluster \
   --cluster-secondary-range-name=gke-pods \
   --services-secondary-range-name=gke-services \
   --enable-ip-alias \
-  --max-pods-per-node=110
+  --default-max-pods-per-node=110
 ```
 
-The `--max-pods-per-node` flag affects how many IPs each node consumes from the pod range. The default is 110, which uses a /24 per node. If you set it to 32, each node uses a /26, letting you pack more nodes into the same pod range.
+The `--default-max-pods-per-node` flag affects how many IPs each node consumes from the pod range. The default is 110, which uses a /24 per node. If you set it to 32, each node uses a /26, letting you pack more nodes into the same pod range.
 
 ## Viewing Subnet Configuration
 
@@ -137,13 +137,13 @@ gcloud compute networks subnets expand-ip-range prod-us-central1 \
 ```
 
 Important constraints:
-- The new range must be a superset of the current range. You cannot change the starting address.
+- The new range must be a superset of the current range.
 - You can only make the range larger, never smaller.
 - The expanded range must not overlap with other subnets or peered networks.
 
 ## Managing Multiple Secondary Ranges
 
-You can have up to 30 secondary ranges per subnet. This is useful when multiple GKE clusters share a subnet but need separate pod ranges:
+You can have up to 170 secondary ranges per subnet. This is useful when multiple GKE clusters share a subnet but need separate pod ranges:
 
 ```bash
 # Add secondary ranges for a second GKE cluster
@@ -172,10 +172,10 @@ gcloud compute networks subnets list \
   --format="table(name, region, ipCidrRange, secondaryIpRanges[].ipCidrRange:label=SECONDARY_RANGES)"
 ```
 
-Also check for overlaps with VPC peering ranges:
+Also identify peered VPC networks and check their subnet ranges for overlaps:
 
 ```bash
-# List peering connections and their imported routes
+# List peering connections and their route import/export settings
 gcloud compute networks peerings list \
   --network=production-vpc \
   --format="table(name, network, importCustomRoutes, exportCustomRoutes)"
