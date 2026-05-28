@@ -43,32 +43,59 @@ This is the main prediction server code:
 # app.py - Custom prediction server for Vertex AI
 
 import os
-import json
 import pickle
 import numpy as np
 from flask import Flask, request, jsonify
+from google.cloud import storage
 
 app = Flask(__name__)
-
-# Load model artifacts at startup
-
-# AIP_STORAGE_URI points to the GCS location of your model artifacts
-MODEL_DIR = os.environ.get("AIP_STORAGE_URI", "/models")
 
 # Global variables for model components
 preprocessor = None
 model = None
 
+def download_model_from_gcs(model_uri):
+    """Download model artifacts from GCS to a local directory."""
+    local_dir = "/tmp/model"
+    os.makedirs(local_dir, exist_ok=True)
+
+    parts = model_uri.replace("gs://", "").split("/", 1)
+    bucket_name = parts[0]
+    prefix = parts[1].rstrip("/") + "/" if len(parts) > 1 and parts[1] else ""
+
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blobs = bucket.list_blobs(prefix=prefix)
+
+    for blob in blobs:
+        relative_path = blob.name[len(prefix):].lstrip("/")
+        if not relative_path:
+            continue
+        local_path = os.path.join(local_dir, relative_path)
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        blob.download_to_filename(local_path)
+
+    return local_dir
+
+def get_model_dir():
+    """Return the local directory containing model artifacts."""
+    model_uri = os.environ.get("AIP_STORAGE_URI", "")
+    if model_uri.startswith("gs://"):
+        return download_model_from_gcs(model_uri)
+    return model_uri or "/models"
+
 def load_model():
     """Load the model and preprocessor from disk."""
     global preprocessor, model
 
+    model_dir = get_model_dir()
+
     # Load the sklearn preprocessor
-    with open(os.path.join(MODEL_DIR, "preprocessor.pkl"), "rb") as f:
+    with open(os.path.join(model_dir, "preprocessor.pkl"), "rb") as f:
         preprocessor = pickle.load(f)
 
     # Load the model weights
-    with open(os.path.join(MODEL_DIR, "model.pkl"), "rb") as f:
+    with open(os.path.join(model_dir, "model.pkl"), "rb") as f:
         model = pickle.load(f)
 
     print("Model and preprocessor loaded successfully")
@@ -117,10 +144,10 @@ def predict():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if __name__ == "__main__":
-    # Load the model before starting the server
-    load_model()
+# Load the model when gunicorn imports app:app
+load_model()
 
+if __name__ == "__main__":
     # Start the server on the port Vertex AI expects
     port = int(os.environ.get("AIP_HTTP_PORT", 8080))
     app.run(host="0.0.0.0", port=port)
@@ -151,16 +178,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application code
 COPY app.py .
 
-# Set environment variables
-ENV AIP_HTTP_PORT=8080
-ENV AIP_HEALTH_ROUTE=/health
-ENV AIP_PREDICT_ROUTE=/predict
-
 # Expose the port
 EXPOSE 8080
 
 # Run the server using gunicorn for production
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "120", "app:app"]
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${AIP_HTTP_PORT:-8080} --workers 2 --timeout 120 app:app"]
 ```
 
 The requirements.txt file for this container:
@@ -170,6 +192,7 @@ flask==3.0.0
 gunicorn==21.2.0
 numpy==1.26.0
 scikit-learn==1.3.2
+google-cloud-storage==2.14.0
 ```
 
 ## Building and Pushing to Artifact Registry
@@ -187,10 +210,11 @@ IMAGE_NAME="custom-predictor"
 IMAGE_TAG="v1"
 
 # Create an Artifact Registry repository if it does not exist
-gcloud artifacts repositories create $REPO_NAME \
-    --repository-format=docker \
-    --location=$REGION \
-    --description="ML serving containers"
+gcloud artifacts repositories describe $REPO_NAME --location=$REGION >/dev/null 2>&1 || \
+    gcloud artifacts repositories create $REPO_NAME \
+        --repository-format=docker \
+        --location=$REGION \
+        --description="ML serving containers"
 
 # Configure Docker authentication for Artifact Registry
 gcloud auth configure-docker ${REGION}-docker.pkg.dev
@@ -268,7 +292,7 @@ for prediction in response.predictions:
     print(f"Class: {prediction['class']}, Probabilities: {prediction['probabilities']}")
 ```
 
-## Advanced: Multi-Stage Containers with Model Download
+## Advanced: Containers with Model Download
 
 For larger models, you might want the container to download model artifacts from GCS at startup rather than baking them into the image.
 
@@ -278,7 +302,6 @@ This updated app.py handles GCS model download:
 # app.py - Advanced version with GCS model download
 
 import os
-import json
 import pickle
 import numpy as np
 from flask import Flask, request, jsonify
@@ -299,7 +322,7 @@ def download_model_from_gcs():
         # Parse bucket and prefix from the URI
         parts = model_uri.replace("gs://", "").split("/", 1)
         bucket_name = parts[0]
-        prefix = parts[1] if len(parts) > 1 else ""
+        prefix = parts[1].rstrip("/") + "/" if len(parts) > 1 and parts[1] else ""
 
         # Download all files from the GCS prefix
         client = storage.Client()
@@ -309,6 +332,8 @@ def download_model_from_gcs():
         for blob in blobs:
             # Compute local path preserving directory structure
             relative_path = blob.name[len(prefix):].lstrip("/")
+            if not relative_path:
+                continue
             local_path = os.path.join(local_dir, relative_path)
             os.makedirs(os.path.dirname(local_path), exist_ok=True)
             blob.download_to_filename(local_path)
@@ -336,7 +361,7 @@ def load_model():
 When your container fails to start on Vertex AI, checking the logs is the first step. Use this command to view container logs:
 
 ```bash
-# View logs for your deployed model
+# View metadata for your uploaded model
 gcloud ai models describe YOUR_MODEL_ID \
     --region=us-central1 \
     --format="json"
