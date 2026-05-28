@@ -43,19 +43,12 @@ graph TB
 Restrict access to specific time windows. This is useful for operations that should only happen during business hours:
 
 ```bash
-# Grant compute admin access only during business hours (9 AM - 6 PM EST, weekdays)
+# Grant compute admin access only during business hours (9 AM - 6 PM Eastern Time, weekdays)
 
 gcloud projects add-iam-policy-binding my-project \
     --member="group:ops-team@example.com" \
     --role="roles/compute.admin" \
-    --condition-title="business-hours-only" \
-    --condition-description="Access limited to weekday business hours EST" \
-    --condition-expression='
-        request.time.getHours("America/New_York") >= 9 &&
-        request.time.getHours("America/New_York") < 18 &&
-        request.time.getDayOfWeek("America/New_York") >= 1 &&
-        request.time.getDayOfWeek("America/New_York") <= 5
-    '
+    --condition='title=business-hours-only,description=Access limited to weekday business hours Eastern Time,expression=request.time.getHours("America/New_York") >= 9 && request.time.getHours("America/New_York") < 18 && request.time.getDayOfWeek("America/New_York") >= 1 && request.time.getDayOfWeek("America/New_York") <= 5'
 ```
 
 This means the ops team can manage Compute Engine resources only from 9 AM to 6 PM Eastern Time on weekdays. Outside that window, the binding is effectively invisible.
@@ -65,15 +58,11 @@ This means the ops team can manage Compute Engine resources only from 9 AM to 6 
 Grant access that automatically expires on a specific date:
 
 ```bash
-# Grant temporary project viewer access that expires on March 1, 2026
+# Grant temporary Logs Viewer access that expires on March 1, 2026
 gcloud projects add-iam-policy-binding my-project \
     --member="user:contractor@external.com" \
-    --role="roles/viewer" \
-    --condition-title="temp-access-march-2026" \
-    --condition-description="Temporary access for audit engagement" \
-    --condition-expression='
-        request.time < timestamp("2026-03-01T00:00:00Z")
-    '
+    --role="roles/logging.viewer" \
+    --condition='title=temp-access-march-2026,description=Temporary access for audit engagement,expression=request.time < timestamp("2026-03-01T00:00:00Z")'
 ```
 
 This is perfect for contractors, auditors, or anyone who needs temporary access. You do not need to remember to revoke it - the condition handles expiration automatically.
@@ -88,15 +77,10 @@ Restrict access to specific resources based on naming conventions:
 gcloud projects add-iam-policy-binding my-project \
     --member="group:junior-devs@example.com" \
     --role="roles/compute.instanceAdmin.v1" \
-    --condition-title="staging-instances-only" \
-    --condition-description="Can only manage staging instances" \
-    --condition-expression='
-        resource.name.startsWith("projects/my-project/zones/") &&
-        resource.name.contains("/instances/staging-")
-    '
+    --condition='title=staging-instances-only,description=Can only manage staging instances in us-central1-a,expression=resource.type == "compute.googleapis.com/Instance" && resource.name.startsWith("projects/my-project/zones/us-central1-a/instances/staging-")'
 ```
 
-Now junior developers can manage instances that follow the staging naming convention but cannot touch production instances.
+Now junior developers can manage instances in `us-central1-a` that follow the staging naming convention but cannot touch production instances.
 
 ## Step 4: Tag-Based Access Control
 
@@ -109,20 +93,16 @@ gcloud resource-manager tags keys create environment \
     --description="Deployment environment"
 
 gcloud resource-manager tags values create development \
-    --parent=organizations/ORG_ID/tagKeys/environment
+    --parent=ORG_ID/environment
 
 gcloud resource-manager tags values create production \
-    --parent=organizations/ORG_ID/tagKeys/environment
+    --parent=ORG_ID/environment
 
 # Grant access only to resources tagged as development
 gcloud projects add-iam-policy-binding my-project \
     --member="group:developers@example.com" \
     --role="roles/compute.admin" \
-    --condition-title="dev-resources-only" \
-    --condition-description="Access limited to development-tagged resources" \
-    --condition-expression='
-        resource.matchTag("ORG_ID/environment", "development")
-    '
+    --condition='^:^title=dev-resources-only:description=Access limited to development-tagged resources:expression=resource.matchTag("ORG_ID/environment", "development")'
 ```
 
 Tag-based conditions are powerful because they decouple access control from resource naming. You can change a resource's tag to move it between access boundaries without renaming anything.
@@ -137,15 +117,7 @@ Real-world policies often combine multiple conditions. CEL supports logical oper
 gcloud projects add-iam-policy-binding my-project \
     --member="group:senior-engineers@example.com" \
     --role="roles/compute.admin" \
-    --condition-title="prod-business-hours" \
-    --condition-description="Production access during business hours only" \
-    --condition-expression='
-        resource.matchTag("ORG_ID/environment", "production") &&
-        request.time.getHours("America/New_York") >= 9 &&
-        request.time.getHours("America/New_York") < 18 &&
-        request.time.getDayOfWeek("America/New_York") >= 1 &&
-        request.time.getDayOfWeek("America/New_York") <= 5
-    '
+    --condition='^:^title=prod-business-hours:description=Production access during business hours only:expression=resource.matchTag("ORG_ID/environment", "production") && request.time.getHours("America/New_York") >= 9 && request.time.getHours("America/New_York") < 18 && request.time.getDayOfWeek("America/New_York") >= 1 && request.time.getDayOfWeek("America/New_York") <= 5'
 ```
 
 ## Step 6: Access Level Conditions
@@ -159,34 +131,25 @@ gcloud access-context-manager levels create corp-network \
     --title="Corporate Network" \
     --basic-level-spec=corp-network-spec.yaml
 
-# Then use the access level in an IAM condition
+# Then use the access level in an IAM condition for IAP
 gcloud projects add-iam-policy-binding my-project \
     --member="group:all-employees@example.com" \
-    --role="roles/bigquery.dataViewer" \
-    --condition-title="corp-network-required" \
-    --condition-description="BigQuery data access requires corporate network" \
-    --condition-expression='
-        "accessPolicies/POLICY_ID/accessLevels/corp-network" in request.auth.accessLevels
-    '
+    --role="roles/iap.httpsResourceAccessor" \
+    --condition='title=corp-network-required,description=IAP access requires corporate network,expression="accessPolicies/POLICY_ID/accessLevels/corp-network" in request.auth.access_levels'
 ```
 
-This ensures that sensitive data can only be accessed from the corporate network or VPN, adding a network-based control to the IAM policy.
+This ensures that IAP-protected applications can only be accessed from the corporate network or VPN, adding a network-based control to the IAM policy.
 
 ## Step 7: API-Specific Conditions
 
-Some conditions are specific to particular APIs. For example, restricting Cloud Storage access to specific operations:
+Some conditions are specific to particular APIs. For example, restricting which roles an IAM admin can grant:
 
 ```bash
-# Allow reading objects from a bucket but not listing them
-# Useful for direct link access without directory browsing
-gcloud storage buckets add-iam-policy-binding gs://sensitive-data-bucket \
-    --member="group:analysts@example.com" \
-    --role="roles/storage.objectViewer" \
-    --condition-title="get-only-no-list" \
-    --condition-description="Can get specific objects but cannot list bucket contents" \
-    --condition-expression='
-        api.getAttribute("storage.googleapis.com/objectListPrefix", "") != ""
-    '
+# Allow IAM admins to grant or revoke only the Billing Account Administrator role
+gcloud projects add-iam-policy-binding my-project \
+    --member="group:billing-iam-admins@example.com" \
+    --role="roles/resourcemanager.projectIamAdmin" \
+    --condition='^:^title=billing-admin-grants-only:description=Can grant or revoke only Billing Account Administrator:expression=api.getAttribute("iam.googleapis.com/modifiedGrantsByRole", []).hasOnly(["roles/billing.admin"])'
 ```
 
 ## Step 8: Validate and Test Conditions
@@ -195,9 +158,9 @@ Before applying conditions in production, validate them:
 
 ```bash
 # Test a condition expression using the Policy Troubleshooter
-gcloud policy-intelligence troubleshoot-iam-policy \
-    --member="user:developer@example.com" \
-    --resource="//compute.googleapis.com/projects/my-project/zones/us-central1-a/instances/staging-web-1" \
+gcloud policy-intelligence troubleshoot-policy iam \
+    //compute.googleapis.com/projects/my-project/zones/us-central1-a/instances/staging-web-1 \
+    --principal-email="developer@example.com" \
     --permission="compute.instances.stop" \
     --project=my-project
 ```
@@ -226,7 +189,7 @@ resource "google_project_iam_member" "staging_compute_admin" {
 
 resource "google_project_iam_member" "temp_contractor_access" {
   project = "my-project"
-  role    = "roles/viewer"
+  role    = "roles/logging.viewer"
   member  = "user:contractor@external.com"
 
   condition {
