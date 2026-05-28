@@ -16,9 +16,9 @@ The difference between polling every few minutes and reacting to events might no
 
 **Sensors** are Airflow operators that wait for a condition to be true. They periodically check (poke) for the condition and block until it is satisfied or a timeout is reached. Classic sensors keep a worker slot occupied while waiting.
 
-**Triggers** (also called deferrable operators) are the newer, more efficient approach. Instead of occupying a worker, a deferrable operator suspends itself and registers a trigger with the Airflow triggerer process. The triggerer checks the condition asynchronously, and when it is met, the task resumes. This frees up worker resources while waiting.
+**Triggers** are the lower-level async components used by deferrable operators. Instead of occupying a worker, a deferrable operator suspends itself and registers a trigger with the Airflow triggerer process. The triggerer checks the condition asynchronously, and when it is met, the task resumes. This frees up worker resources while waiting.
 
-Cloud Composer 2 supports both, but you should prefer deferrable operators whenever available.
+Cloud Composer 2 supports both. Deferrable operators require Composer 2.0.31 or later, a supported Airflow 2 version, and at least one Airflow triggerer instance in the environment. When those requirements are met, you should prefer deferrable operators whenever available.
 
 ## Using a GCS Sensor to Wait for File Arrival
 
@@ -43,7 +43,7 @@ default_args = {
 with DAG(
     'process_daily_upload',
     default_args=default_args,
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2026, 1, 1),
     catchup=False,
 ) as dag:
@@ -86,24 +86,25 @@ The deferrable version frees up the worker while waiting:
 
 ```python
 # Same DAG but using the deferrable GCS sensor
-from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceAsyncSensor
+from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceSensor
 
 with DAG(
     'process_daily_upload_async',
     default_args=default_args,
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2026, 1, 1),
     catchup=False,
 ) as dag:
 
     # Deferrable sensor - does not occupy a worker while waiting
-    wait_for_file = GCSObjectExistenceAsyncSensor(
+    wait_for_file = GCSObjectExistenceSensor(
         task_id='wait_for_daily_file',
         bucket='incoming-data-bucket',
         object='uploads/{{ ds }}/daily-report.csv',
         # Check interval for the triggerer
         poke_interval=60,
         timeout=43200,
+        deferrable=True,
     )
 
     process_file = DataflowStartFlexTemplateOperator(
@@ -128,6 +129,8 @@ with DAG(
 ## Building a Custom Trigger
 
 Sometimes the built-in sensors do not cover your use case. You can build custom triggers for Cloud Composer 2. Here is an example that waits for a BigQuery table to have new rows:
+
+In Cloud Composer 2, custom trigger code must be importable by the triggerer. The `dags/` and `/plugins` folders in your environment bucket are not synchronized to triggerer pods, so package custom triggers as an installable Python dependency, for example through a private PyPI package or a custom environment image.
 
 ```python
 # custom_triggers/bigquery_row_trigger.py
@@ -171,7 +174,7 @@ class BigQueryNewRowsTrigger(BaseTrigger):
         """Poll BigQuery until the row count threshold is met."""
         while True:
             # Run the BigQuery check in a thread to avoid blocking
-            row_count = await asyncio.get_event_loop().run_in_executor(
+            row_count = await asyncio.get_running_loop().run_in_executor(
                 None, self._check_row_count
             )
 
@@ -248,34 +251,35 @@ Real-world workflows often need to wait for multiple conditions. Airflow handles
 
 ```python
 # DAG that waits for multiple conditions before starting processing
-from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceAsyncSensor
-from airflow.providers.google.cloud.sensors.bigquery import BigQueryTableExistenceAsyncSensor
+from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceSensor
 from airflow.operators.python import PythonOperator
 
 with DAG(
     'multi_condition_pipeline',
     default_args=default_args,
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2026, 1, 1),
     catchup=False,
 ) as dag:
 
     # Wait for the raw data file
-    wait_for_raw_data = GCSObjectExistenceAsyncSensor(
+    wait_for_raw_data = GCSObjectExistenceSensor(
         task_id='wait_for_raw_data',
         bucket='raw-data-bucket',
         object='daily/{{ ds }}/events.parquet',
         poke_interval=120,
         timeout=36000,
+        deferrable=True,
     )
 
     # Wait for the reference table to be updated
-    wait_for_reference = GCSObjectExistenceAsyncSensor(
+    wait_for_reference = GCSObjectExistenceSensor(
         task_id='wait_for_reference_data',
         bucket='reference-data-bucket',
         object='latest/customer-segments.csv',
         poke_interval=300,
         timeout=36000,
+        deferrable=True,
     )
 
     # Both conditions must be met before processing starts
@@ -298,28 +302,29 @@ For truly event-driven workflows where you do not want any polling at all, you c
 ```python
 # Cloud Function that triggers a Composer DAG via Pub/Sub
 import functions_framework
+import base64
+import google.auth
 from google.auth.transport.requests import AuthorizedSession
-from google.oauth2 import id_token
 import json
 
 # The Airflow web server URL from your Composer environment
 AIRFLOW_URL = 'https://your-composer-environment-url.composer.googleusercontent.com'
+AUTH_SCOPE = 'https://www.googleapis.com/auth/cloud-platform'
+CREDENTIALS, _ = google.auth.default(scopes=[AUTH_SCOPE])
 
 @functions_framework.cloud_event
 def trigger_dag(cloud_event):
     """Triggered by a Pub/Sub message to start an Airflow DAG."""
     # Decode the Pub/Sub message
     message_data = json.loads(
-        cloud_event.data['message']['data'].decode('base64')
+        base64.b64decode(cloud_event.data['message']['data']).decode('utf-8')
     )
 
     dag_id = message_data.get('dag_id', 'default_pipeline')
     conf = message_data.get('conf', {})
 
     # Get an authenticated session for the Airflow API
-    authed_session = AuthorizedSession(
-        id_token.fetch_id_token_credentials(AIRFLOW_URL)
-    )
+    authed_session = AuthorizedSession(CREDENTIALS)
 
     # Trigger the DAG via the Airflow REST API
     response = authed_session.post(
