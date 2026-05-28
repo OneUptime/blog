@@ -19,12 +19,12 @@ Let me walk you through setting this up properly.
 Without state locking, here is what can happen:
 
 1. Developer A runs `terraform plan` and sees changes to make
-2. Developer B runs `terraform apply` and modifies infrastructure
-3. Developer A runs `terraform apply` based on the stale plan
+2. Developer B runs `terraform apply` and starts modifying infrastructure
+3. Developer A starts another `terraform apply` at the same time
 4. Resources get created twice or configuration conflicts arise
 5. The state file becomes inconsistent with reality
 
-State locking prevents step 3. When Developer B starts their apply, a lock is acquired. Developer A's apply will fail immediately with a message saying the state is locked.
+State locking prevents overlapping state writes. When Developer B starts their apply, a lock is acquired. Developer A's apply will fail or wait, depending on the configured lock timeout, with a message saying the state is locked.
 
 GCS does not have native locking like DynamoDB for AWS backends. Instead, Terraform uses a lock file stored alongside the state file in the bucket. This works reliably for most team sizes.
 
@@ -33,7 +33,7 @@ GCS does not have native locking like DynamoDB for AWS backends. Instead, Terraf
 The state bucket needs to be created before Terraform can use it. This is a chicken-and-egg problem - you cannot use Terraform to create the bucket that Terraform needs. I recommend creating it with gcloud or a simple bootstrap script.
 
 ```bash
-# Create the state bucket with versioning enabled
+# Create the state bucket
 
 # Versioning is critical - it lets you recover previous state versions
 gcloud storage buckets create gs://my-org-terraform-state \
@@ -45,7 +45,7 @@ gcloud storage buckets create gs://my-org-terraform-state \
 gcloud storage buckets update gs://my-org-terraform-state \
   --versioning
 
-# Set a lifecycle policy to clean up old versions after 90 days
+# Set a lifecycle policy to keep only the most recent 10 noncurrent versions
 # This prevents the bucket from growing indefinitely
 cat > /tmp/lifecycle.json << 'EOF'
 {
@@ -102,10 +102,10 @@ resource "google_storage_bucket_iam_member" "cicd_admin" {
   member = "serviceAccount:terraform-cicd@my-terraform-admin.iam.gserviceaccount.com"
 }
 
-# Developers need read access for plan operations
-resource "google_storage_bucket_iam_member" "dev_viewer" {
+# Developers who run Terraform locally need read/write access for state and lock files
+resource "google_storage_bucket_iam_member" "dev_object_admin" {
   bucket = "my-org-terraform-state"
-  role   = "roles/storage.objectViewer"
+  role   = "roles/storage.objectAdmin"
   member = "group:developers@myorg.com"
 }
 
@@ -144,19 +144,27 @@ resource "google_kms_crypto_key" "terraform_state" {
 }
 ```
 
+Before the backend can write CMEK-encrypted state, authorize the Cloud Storage service agent for your project to use the key:
+
+```bash
+gcloud storage service-agent \
+  --project=my-terraform-admin \
+  --authorize-cmek=projects/my-terraform-admin/locations/us/keyRings/terraform-state-keyring/cryptoKeys/terraform-state-key
+```
+
 Then reference the key in your backend configuration:
 
 ```hcl
 terraform {
   backend "gcs" {
-    bucket               = "my-org-terraform-state"
-    prefix               = "environments/prod/networking"
-    encryption_key       = ""  # Set via GOOGLE_ENCRYPTION_KEY env var
+    bucket             = "my-org-terraform-state"
+    prefix             = "environments/prod/networking"
+    kms_encryption_key = "projects/my-terraform-admin/locations/us/keyRings/terraform-state-keyring/cryptoKeys/terraform-state-key"
   }
 }
 ```
 
-In practice, most teams set the encryption key through an environment variable rather than hardcoding it.
+In practice, most teams set the encryption key through the `GOOGLE_KMS_ENCRYPTION_KEY` environment variable rather than hardcoding it.
 
 ## Step 5: Initialize the Backend
 
@@ -249,8 +257,11 @@ data "terraform_remote_state" "networking" {
 
 # Use the outputs from the networking state
 resource "google_container_cluster" "primary" {
-  network    = data.terraform_remote_state.networking.outputs.network_self_link
-  subnetwork = data.terraform_remote_state.networking.outputs.subnet_self_link
+  name               = "prod-primary"
+  location           = "us-central1"
+  initial_node_count = 1
+  network            = data.terraform_remote_state.networking.outputs.network_self_link
+  subnetwork         = data.terraform_remote_state.networking.outputs.subnet_self_link
 }
 ```
 
