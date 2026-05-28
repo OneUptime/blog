@@ -30,13 +30,18 @@ flowchart LR
 
 ## Prerequisites
 
-You need gRPC version 1.41 or later for xDS support. The feature is available in Go, Java, C++, and Python.
+Use a current supported gRPC release for your language. The xDS feature set varies by language and version, so check the gRPC xDS feature matrix before you rely on advanced routing features.
 
 ```bash
 # Enable the required APIs
 
 gcloud services enable trafficdirector.googleapis.com
 gcloud services enable compute.googleapis.com
+
+# Grant proxyless gRPC clients access to Traffic Director configuration
+gcloud projects add-iam-policy-binding my-project \
+    --member=serviceAccount:my-service-account@my-project.iam.gserviceaccount.com \
+    --role=roles/trafficdirector.client
 ```
 
 ## Step 1 - Create the GCP Networking Resources
@@ -46,12 +51,22 @@ Traffic Director uses standard GCP networking primitives. You need a health chec
 ```bash
 # Create a health check for your gRPC service
 gcloud compute health-checks create grpc td-grpc-health-check \
-    --port=50051
+    --use-serving-port
+
+# Allow Google Cloud health check probes to reach your backends
+gcloud compute firewall-rules create allow-td-grpc-health-checks \
+    --network=my-vpc \
+    --action=allow \
+    --direction=INGRESS \
+    --source-ranges=35.191.0.0/16,130.211.0.0/22 \
+    --target-tags=allow-health-checks \
+    --rules=tcp:50051
 
 # Create a backend service for the gRPC service
 gcloud compute backend-services create grpc-echo-service \
     --global \
     --protocol=GRPC \
+    --port-name=grpc \
     --health-checks=td-grpc-health-check \
     --load-balancing-scheme=INTERNAL_SELF_MANAGED
 
@@ -71,7 +86,7 @@ gcloud compute forwarding-rules create td-grpc-forwarding-rule \
     --network=my-vpc \
     --target-grpc-proxy=td-grpc-proxy \
     --address=0.0.0.0 \
-    --ports=50051
+    --ports=80
 ```
 
 The `--validate-for-proxyless` flag on the target gRPC proxy ensures that the configuration is compatible with proxyless gRPC clients.
@@ -87,13 +102,14 @@ gcloud compute instance-templates create grpc-server-template \
     --network=my-vpc \
     --subnet=my-subnet \
     --scopes=cloud-platform \
+    --tags=allow-health-checks \
     --image-family=debian-11 \
     --image-project=debian-cloud \
     --metadata=startup-script='#!/bin/bash
 # Install dependencies and start the gRPC server
 apt-get update && apt-get install -y python3 python3-pip
 pip3 install grpcio grpcio-health-checking grpcio-reflection
-# Start your gRPC server on port 50051
+# Start your packaged gRPC server on port 50051
 python3 /opt/app/server.py &'
 
 # Create a managed instance group
@@ -122,14 +138,16 @@ The gRPC client needs a bootstrap file that tells it how to connect to Traffic D
 
 ```bash
 # Download the bootstrap generator
-wget https://storage.googleapis.com/traffic-director/td-grpc-bootstrap-0.16.0.tar.gz
-tar xzf td-grpc-bootstrap-0.16.0.tar.gz
+wget https://storage.googleapis.com/traffic-director/td-grpc-bootstrap-0.20.0.tar.gz
+tar xzf td-grpc-bootstrap-0.20.0.tar.gz
 
 # Generate the bootstrap configuration
 # This creates a JSON file with Traffic Director connection details
-./td-grpc-bootstrap \
-    --gcp-project-number=$(gcloud projects describe my-project --format="value(projectNumber)") \
-    --output=/tmp/td-grpc-bootstrap.json
+./td-grpc-bootstrap-0.20.0/td-grpc-bootstrap \
+    -gcp-project-number=$(gcloud projects describe my-project --format="value(projectNumber)") \
+    -vpc-network-name=my-vpc \
+    -locality-zone=us-central1-a \
+    -output=/tmp/td-grpc-bootstrap.json
 
 # Set the environment variable that gRPC clients look for
 export GRPC_XDS_BOOTSTRAP=/tmp/td-grpc-bootstrap.json
@@ -223,7 +241,8 @@ import echo_pb2_grpc
 
 def main():
     # Use the xds:/// scheme to resolve through Traffic Director
-    # The service name must match the host in your URL map
+    # The service name must match the host in your URL map.
+    # With no port in the URI, gRPC uses the forwarding rule on port 80.
     target = "xds:///grpc-echo-service"
 
     # Create the channel - gRPC will contact Traffic Director
@@ -277,9 +296,9 @@ EOF
 
 ## Performance Benefits
 
-The proxyless approach has measurable benefits. In benchmarks, removing the Envoy sidecar reduces p99 latency by 20-40% and eliminates the resource overhead of running sidecar containers. For high-throughput gRPC services, this adds up quickly.
+The proxyless approach can reduce latency and eliminates the resource overhead of running sidecar containers. For high-throughput gRPC services, this adds up quickly.
 
-However, there are tradeoffs. Proxyless gRPC only works with gRPC - if your services also handle REST or other protocols, you still need Envoy for those. Additionally, advanced features like mTLS and observability are more mature in the Envoy-based approach.
+However, there are tradeoffs. Proxyless gRPC only works with gRPC - if your services also handle REST or other protocols, you still need Envoy for those. Additionally, advanced features like mTLS and observability depend on the supported gRPC language, version, and Cloud Service Mesh configuration.
 
 ## Wrapping Up
 
