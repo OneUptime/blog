@@ -8,7 +8,7 @@ Description: A step-by-step guide to connecting Grafana Cloud to Google Cloud Mo
 
 ---
 
-Google Cloud Monitoring has decent built-in dashboards, but if your organization has standardized on Grafana for visualization, you probably want to pull GCP metrics into Grafana rather than maintaining dashboards in two places. Grafana has a native Google Cloud Monitoring data source plugin that lets you query GCP metrics using MQL or the filter-based query builder and visualize them alongside metrics from other cloud providers and on-premises systems. In this post, I will walk through the setup and show you how to build effective dashboards.
+Google Cloud Monitoring has decent built-in dashboards, but if your organization has standardized on Grafana for visualization, you probably want to pull GCP metrics into Grafana rather than maintaining dashboards in two places. Grafana includes a native Google Cloud Monitoring data source that lets you query GCP metrics using MQL or the filter-based query builder and visualize them alongside metrics from other cloud providers and on-premises systems. In this post, I will walk through the setup and show you how to build effective dashboards.
 
 ## Why Grafana for GCP Monitoring?
 
@@ -83,11 +83,12 @@ curl -X POST "https://your-grafana-instance.grafana.net/api/datasources" \
         \"jsonData\": {
             \"authenticationType\": \"jwt\",
             \"defaultProject\": \"my-gcp-project\",
-            \"tokenUri\": \"https://oauth2.googleapis.com/token\"
+            \"tokenUri\": \"https://oauth2.googleapis.com/token\",
+            \"clientEmail\": \"$(echo $SA_KEY | jq -r .client_email)\",
+            \"universeDomain\": \"googleapis.com\"
         },
         \"secureJsonData\": {
-            \"privateKey\": $(echo $SA_KEY | jq .private_key),
-            \"clientEmail\": \"$(echo $SA_KEY | jq -r .client_email)\"
+            \"privateKey\": $(echo $SA_KEY | jq .private_key)
         }
     }"
 ```
@@ -110,11 +111,12 @@ resource "grafana_data_source" "gcp_monitoring" {
     authenticationType = "jwt"
     defaultProject     = var.gcp_project_id
     tokenUri           = "https://oauth2.googleapis.com/token"
+    clientEmail        = var.gcp_sa_email
+    universeDomain     = "googleapis.com"
   })
 
   secure_json_data_encoded = jsonencode({
-    privateKey  = var.gcp_sa_private_key
-    clientEmail = var.gcp_sa_email
+    privateKey = var.gcp_sa_private_key
   })
 }
 ```
@@ -146,7 +148,7 @@ Here is a Grafana dashboard JSON for GCP golden signals that you can import.
         }]
       },
       {
-        "title": "Error Rate (%)",
+        "title": "5xx Request Rate",
         "type": "timeseries",
         "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
         "targets": [{
@@ -203,7 +205,7 @@ Here is a Grafana dashboard JSON for GCP golden signals that you can import.
 
 ## Step 6: Using MQL in Grafana
 
-Grafana supports MQL queries against Google Cloud Monitoring. Switch to the MQL query editor for complex queries.
+Grafana supports MQL queries against Google Cloud Monitoring, but Google no longer recommends MQL for new Cloud Monitoring work and recommends PromQL instead. If you still use MQL, switch to the MQL query editor for complex queries.
 
 Example MQL queries you can use in Grafana panels.
 
@@ -239,36 +241,7 @@ fetch cloudsql_database::cloudsql.googleapis.com/database/cpu/utilization
 
 ## Step 7: Set Up Grafana Alerts on GCP Metrics
 
-Grafana can alert on GCP metrics, routing notifications through your existing Grafana notification channels.
-
-```json
-{
-  "alert": {
-    "name": "GCP High Error Rate",
-    "conditions": [{
-      "evaluator": {
-        "type": "gt",
-        "params": [1]
-      },
-      "operator": {
-        "type": "and"
-      },
-      "query": {
-        "params": ["A", "5m", "now"]
-      },
-      "reducer": {
-        "type": "avg"
-      }
-    }],
-    "frequency": "60s",
-    "handler": 1,
-    "notifications": [
-      {"uid": "slack-channel-uid"},
-      {"uid": "pagerduty-uid"}
-    ]
-  }
-}
-```
+Grafana can alert on GCP metrics, routing notifications through your existing Grafana contact points and notification policies. In Grafana, go to Alerts & IRM, create a Grafana-managed alert rule, select the Google Cloud Monitoring data source, add the GCP metric query, and set the threshold condition. For automated alerting-as-code, use the Grafana Alerting provisioning API or the Terraform `grafana_rule_group` resource rather than the legacy dashboard alert JSON format.
 
 ## Data Source Architecture
 
@@ -304,7 +277,7 @@ graph TD
 
 If you monitor multiple GCP projects, you can create template variables for project selection.
 
-In Grafana, create a dashboard variable of type "Query" with the Google Cloud Monitoring data source. Set the query to list projects. Then reference the variable in your panel queries using `$project`.
+In Grafana, create a dashboard variable for the project IDs you want to switch between, such as a Custom variable with values like `project-a,project-b,project-c`. Then reference the variable in your panel queries using `$project`.
 
 This lets you switch between projects using a dropdown at the top of the dashboard without duplicating panels.
 
