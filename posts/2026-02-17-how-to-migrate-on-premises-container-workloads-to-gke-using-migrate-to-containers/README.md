@@ -8,115 +8,118 @@ Description: Learn how to use Google Migrate to Containers to move on-premises V
 
 ---
 
-Google's Migrate to Containers tool does something genuinely useful - it takes workloads running on VMs (whether on-premises, on AWS, or on Azure) and converts them into containers that run on GKE. This is not just about moving containers from one orchestrator to another. The real value is when you have applications running on VMs that you want to containerize without rewriting them from scratch. The tool analyzes the VM, extracts the application layer, generates a container image, and produces Kubernetes deployment manifests.
+Google's Migrate to Containers tool does something genuinely useful - it takes workloads running on VMs and converts them into containers that run on GKE. This is not just about moving containers from one orchestrator to another. The real value is when you have applications running on VMs that you want to containerize without rewriting them from scratch. The tool copies the VM filesystem, analyzes the application, generates a container image build configuration, and produces Kubernetes deployment manifests.
 
 ## What Migrate to Containers Actually Does
 
-The tool works in three phases:
+The tool works in four phases:
 
-1. **Assessment** - Analyzes source VMs to determine migration feasibility
-2. **Migration** - Creates a container image from the VM's filesystem and generates Kubernetes YAML
-3. **Optimization** - Iteratively refines the container image to reduce size and improve startup time
+1. **Copy** - Copies the source VM filesystem locally
+2. **Analyze** - Creates a migration plan from the copied filesystem
+3. **Generate** - Generates migration artifacts, including Kubernetes YAML and image build files
+4. **Optimization** - Iteratively refines the container image to reduce size and improve startup time
 
 It supports migrating from:
 - VMware vSphere VMs
-- AWS EC2 instances
-- Azure VMs
 - Compute Engine VMs
-- Physical servers (via VMware conversion)
+- Linux machines that can be copied over SSH
 
 ## Prerequisites
 
-Set up the migration infrastructure:
+Set up a GKE cluster and a Linux machine where you will run the migration CLI:
 
 ```bash
-# Create a GKE cluster that will run the migration processing components
+# Create a GKE cluster where you will deploy the migrated workload
 
 gcloud container clusters create migration-cluster \
   --zone us-central1-a \
-  --machine-type e2-standard-4 \
-  --num-nodes 3 \
-  --enable-ip-alias
+  --machine-type e2-medium \
+  --image-type ubuntu_containerd \
+  --num-nodes 1 \
+  --logging=SYSTEM,WORKLOAD,API_SERVER,SCHEDULER,CONTROLLER_MANAGER
 
-# Install Migrate to Containers on the cluster
-migctl setup install --gke-cluster migration-cluster --gke-zone us-central1-a
+# Install Docker and Skaffold on the machine where you will run the migration
+curl -fsSL https://get.docker.com -o install-docker.sh
+sudo sh install-docker.sh
+sudo usermod -aG docker $USER
+newgrp docker
 
-# Verify the installation
-migctl doctor
+curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
+sudo install skaffold /usr/local/bin/
+
+# Download the Migrate to Containers CLI
+curl -O "https://m2c-cli-release.storage.googleapis.com/$(curl -s https://m2c-cli-release.storage.googleapis.com/latest)/linux/amd64/m2c"
+chmod +x ./m2c
 ```
 
 ## Step 1 - Set Up the Source
 
-Connect Migrate to Containers to your on-premises VMware environment:
+Connect Migrate to Containers to your on-premises VM over SSH by copying the VM filesystem locally:
 
 ```bash
-# Create a source for VMware vSphere
-migctl source create vsphere my-vsphere-source \
-  --manager-address vcenter.internal.mycompany.com \
-  --username migration-user@mycompany.com \
-  --password-file /path/to/password-file \
-  --dc my-datacenter
+# Start from the default rsync filters
+./m2c copy default-filters > filters.txt
 
-# Verify the source connection
-migctl source status my-vsphere-source
+# Copy the source machine's filesystem over SSH
+./m2c copy ssh migration-user@app-server.internal.mycompany.com \
+  --identity-file /path/to/private-key \
+  --remote-sudo \
+  --output my-app-filesystem \
+  --filters filters.txt
 ```
 
-For AWS sources:
+For Compute Engine sources:
 
 ```bash
-# Create a source for AWS EC2
-migctl source create aws my-aws-source \
-  --region us-east-1 \
-  --access-key-id AKIAIOSFODNN7EXAMPLE \
-  --secret-access-key-file /path/to/secret-key-file
+./m2c copy gcloud \
+  --project my-project \
+  --zone us-central1-a \
+  --vm-name my-app-vm \
+  --remote-sudo \
+  --output my-app-filesystem \
+  --filters filters.txt
 ```
 
 ## Step 2 - Assess Workloads
 
-Before migrating, assess which VMs are good candidates:
+Before migrating, assess which VMs are good candidates. For a technical fit assessment, use Migration Center discovery tools; for the containerization step itself, run `m2c analyze` to inspect the copied filesystem and produce a migration plan:
 
 ```bash
-# Create a migration assessment
-migctl assessment create my-app-assessment \
-  --source my-vsphere-source \
-  --vm-id vm-12345 \
-  --os-type linux
+# Analyze the copied filesystem and create a migration plan
+./m2c analyze \
+  --source my-app-filesystem \
+  --plugin linux-vm-container \
+  --output analysis-output
 
-# Check the assessment status
-migctl assessment status my-app-assessment
-
-# Download the assessment report
-migctl assessment get my-app-assessment -o assessment-report.yaml
+# Review the generated migration plan
+less analysis-output/config.yaml
 ```
 
-The assessment report tells you:
+The analysis output helps you review:
 
-- Whether the VM is compatible with containerization
-- Estimated container image size
+- Whether the VM is a reasonable candidate for containerization
 - Detected services and listening ports
-- Recommended Kubernetes resource requirements
 - Potential issues (like kernel dependencies or hardware-specific drivers)
+- Filesystem paths that are included or excluded from the generated artifacts
 
-Review the assessment carefully:
+Review the generated `config.yaml` carefully:
 
 ```yaml
-# Example assessment report highlights
-assessment:
-  compatibility: COMPATIBLE
-  detected_services:
-    - name: nginx
-      ports: [80, 443]
-    - name: my-java-app
-      ports: [8080]
-  estimated_image_size: 2.1 GB
-  warnings:
-    - "NFS mounts detected - will need PersistentVolume configuration"
-    - "Cron jobs detected - consider Kubernetes CronJob resources"
-  recommendations:
-    cpu_request: "500m"
-    memory_request: "1Gi"
-    cpu_limit: "2000m"
-    memory_limit: "4Gi"
+# Example areas to review in analysis-output/config.yaml
+services:
+  nginx:
+    enabled: true
+  my-java-app:
+    enabled: true
+  ssh:
+    enabled: false
+endpoints:
+  - name: http
+    port: 80
+    protocol: TCP
+  - name: app
+    port: 8080
+    protocol: TCP
 ```
 
 ## Step 3 - Create the Migration
@@ -124,88 +127,63 @@ assessment:
 Start the actual migration process:
 
 ```bash
-# Create a migration for a Linux VM
-migctl migration create my-app-migration \
-  --source my-vsphere-source \
-  --vm-id vm-12345 \
-  --intent Image
-
-# Monitor the migration progress
-migctl migration status my-app-migration
+# Generate the migration artifacts from the analysis output
+./m2c generate --input analysis-output --output migration-artifacts
 
 # The migration goes through these phases:
-# 1. Extracting - copies the VM filesystem
-# 2. Generating - creates the container image
-# 3. Completed - image is ready in the artifact repository
+# 1. Copying - copies the VM filesystem
+# 2. Analyzing - creates the migration plan
+# 3. Generating - creates the deployment and image artifacts
 ```
 
 The tool generates several artifacts:
 
 ```bash
-# Download the generated Kubernetes manifests
-migctl migration get-artifacts my-app-migration -o /tmp/migration-artifacts/
+# Inspect the generated artifacts
+ls migration-artifacts/
 
 # The artifacts directory contains:
-# - Dockerfile - the generated Dockerfile
+# - Dockerfile or Skaffold build files for the generated image
 # - deployment_spec.yaml - Kubernetes Deployment
-# - service.yaml - Kubernetes Service
-# - migration-plan.yaml - customizable migration plan
+# - skaffold.yaml - build and deploy configuration
+# - services-config.yaml - service initialization configuration when applicable
 ```
 
 ## Step 4 - Customize the Migration Plan
 
-Before generating the final image, customize the migration plan:
+Before generating the final image, customize the migration plan in `analysis-output/config.yaml`:
 
 ```yaml
-# migration-plan.yaml - customize before generating the image
-apiVersion: anthos-migrate.cloud.google.com/v1
-kind: MigrationPlan
-metadata:
-  name: my-app-migration
-spec:
-  # Exclude unnecessary files from the container image
-  dataVolumes:
-    - folders:
-        # Exclude log files and temp directories to reduce image size
-        - /var/log/*
-        - /tmp/*
-        - /var/cache/*
-        # Exclude system directories not needed in containers
-        - /boot/*
-        - /usr/src/*
+# config.yaml - customize before generating the image
+# Configure which services should start in the container
+services:
+  nginx:
+    enabled: true
+  my-java-app:
+    enabled: true
+  # Disable services that are not needed in the container
+  ssh:
+    enabled: false
+  cron:
+    enabled: false
+  rsyslog:
+    enabled: false
 
-  # Configure which services should start in the container
-  services:
-    nginx:
-      enabled: true
-    my-java-app:
-      enabled: true
-    # Disable services that are not needed in the container
-    sshd:
-      enabled: false
-    cron:
-      enabled: false
-    rsyslog:
-      enabled: false
-
-  # Map VM ports to container ports
-  endpoints:
-    - name: http
-      port: 80
-      protocol: TCP
-    - name: app
-      port: 8080
-      protocol: TCP
+# Map VM ports to container ports
+endpoints:
+  - name: http
+    port: 80
+    protocol: TCP
+  - name: app
+    port: 8080
+    protocol: TCP
 ```
 
 Apply the customized plan:
 
 ```bash
-# Update the migration with the customized plan
-migctl migration update my-app-migration --plan /tmp/migration-artifacts/migration-plan.yaml
-
-# Generate the container image with the updated plan
-migctl migration generate-artifacts my-app-migration
+# Generate the container artifacts with the updated plan
+./m2c generate --input analysis-output --output migration-artifacts
 ```
 
 ## Step 5 - Deploy to GKE
@@ -234,7 +212,7 @@ spec:
     spec:
       containers:
         - name: my-app
-          image: gcr.io/my-project/my-app-migration:v1
+          image: gcr.io/my-project/my-app-migration
           ports:
             - containerPort: 80
               name: http
@@ -266,15 +244,20 @@ spec:
 Deploy to your target GKE cluster:
 
 ```bash
-# Deploy to the production GKE cluster (not the migration cluster)
-kubectl apply -f /tmp/migration-artifacts/deployment_spec.yaml
-kubectl apply -f /tmp/migration-artifacts/service.yaml
+# Connect to the target GKE cluster
+gcloud container clusters get-credentials migration-cluster \
+  --zone us-central1-a \
+  --project my-project
+
+# Build and deploy the generated workload
+cd migration-artifacts
+skaffold run -d gcr.io/my-project
 
 # Verify the deployment
 kubectl get pods -l app=my-app
 kubectl logs -l app=my-app --tail=50
 
-# Check that the application is healthy
+# Check that the application is healthy, if you configured a Service named my-app
 kubectl port-forward svc/my-app 8080:8080
 curl http://localhost:8080/health
 ```
@@ -292,7 +275,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
-  storageClassName: filestore-standard
+  storageClassName: enterprise-rwx
   resources:
     requests:
       storage: 100Gi
@@ -324,7 +307,7 @@ spec:
         spec:
           containers:
             - name: cleanup
-              image: gcr.io/my-project/my-app-migration:v1
+              image: gcr.io/my-project/my-app-migration
               command: ["/usr/local/bin/cleanup.sh"]
           restartPolicy: OnFailure
 ```
@@ -335,11 +318,11 @@ The initial migrated image is often larger than necessary because it contains th
 
 ```bash
 # Check the initial image size
-docker images gcr.io/my-project/my-app-migration:v1
+docker images gcr.io/my-project/my-app-migration
 
 # Common optimizations:
 # 1. Remove unnecessary packages
-# 2. Exclude more filesystem paths in the migration plan
+# 2. Exclude more filesystem paths in the copy filters
 # 3. Multi-stage builds for compiled applications
 # 4. Eventually, create a proper Dockerfile from scratch
 
