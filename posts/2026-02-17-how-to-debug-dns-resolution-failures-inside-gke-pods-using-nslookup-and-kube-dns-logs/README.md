@@ -10,7 +10,7 @@ Description: A practical troubleshooting guide for diagnosing and fixing DNS res
 
 Your application is throwing connection errors. Services cannot find each other. External API calls are timing out. The root cause? DNS resolution is failing inside your GKE pods. This is one of the most frustrating issues to debug because DNS is invisible when it works and everything breaks when it does not.
 
-Let me walk you through a systematic approach to diagnosing DNS issues in GKE, from basic checks inside a pod to analyzing kube-dns logs.
+Let me walk you through a systematic approach to diagnosing DNS issues in GKE, from basic checks inside a pod to analyzing kube-dns logs. The kube-dns-specific steps apply to GKE Standard clusters that use kube-dns; Autopilot clusters and some Standard clusters can use Cloud DNS for GKE or NodeLocal DNSCache, so the DNS nameserver you see in a pod might be different.
 
 ## Step 1: Check DNS from Inside a Pod
 
@@ -34,13 +34,14 @@ kubectl exec dns-debug -- nslookup my-service.my-namespace.svc.cluster.local
 # Test external DNS resolution
 kubectl exec dns-debug -- nslookup google.com
 
-# Test with a specific DNS server (kube-dns service IP)
-kubectl exec dns-debug -- nslookup google.com 10.96.0.10
+# Test with the kube-dns Service IP in your cluster
+KUBE_DNS_IP=$(kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIP}')
+kubectl exec dns-debug -- nslookup google.com "$KUBE_DNS_IP"
 ```
 
 The results tell you a lot:
 
-- If internal resolution fails but external works: problem with kube-dns cluster zone
+- If internal resolution fails but external works: problem with cluster DNS records or service discovery
 - If external resolution fails but internal works: problem with upstream DNS forwarding
 - If everything fails: problem with network connectivity to kube-dns
 - If everything works: the problem might be specific to your application pod's configuration
@@ -58,11 +59,11 @@ You should see something like:
 
 ```text
 nameserver 10.96.0.10
-search default.svc.cluster.local svc.cluster.local cluster.local
+search default.svc.cluster.local svc.cluster.local cluster.local c.PROJECT_ID.internal google.internal
 options ndots:5
 ```
 
-If the nameserver IP is wrong or the file is empty, there is a problem with how the pod was configured. Check the pod spec for custom `dnsPolicy` or `dnsConfig` settings:
+The nameserver IP is cluster-specific. In a GKE Standard cluster that uses kube-dns, it should match the `ClusterIP` of the `kube-dns` Service. If you use Cloud DNS for GKE or NodeLocal DNSCache, the nameserver can instead be a link-local address such as `169.254.169.254` or `169.254.20.10`. If the nameserver IP does not match your cluster's DNS provider or the file is empty, there is a problem with how the pod was configured. Check the pod spec for custom `dnsPolicy` or `dnsConfig` settings:
 
 ```bash
 # Check if the pod has custom DNS settings
@@ -70,7 +71,7 @@ kubectl get pod dns-debug -o jsonpath='{.spec.dnsPolicy}' && echo
 kubectl get pod dns-debug -o jsonpath='{.spec.dnsConfig}' && echo
 ```
 
-The default `dnsPolicy` is `ClusterFirst`, which uses kube-dns. If someone set it to `Default`, the pod uses the node's DNS instead of the cluster DNS.
+The default `dnsPolicy` is `ClusterFirst`, which uses the cluster DNS provider. In a GKE Standard cluster that uses kube-dns, that means the pod uses kube-dns. If someone set it to `Default`, the pod uses the node's DNS instead of the cluster DNS.
 
 ## Step 3: Verify kube-dns Is Running
 
@@ -139,14 +140,14 @@ kubectl exec dns-dig -- dig +trace google.com
 
 ### Issue: ndots:5 Causing Slow External Resolution
 
-By default, Kubernetes sets `ndots:5` in resolv.conf. This means any domain with fewer than 5 dots gets the search suffixes appended before trying the raw domain. So when your app resolves `api.stripe.com`, Kubernetes first tries:
+By default, Kubernetes sets `ndots:5` in resolv.conf. This means any domain with fewer than 5 dots is usually tried with search suffixes before the raw domain. So when your app resolves `api.stripe.com`, a minimal Kubernetes search list first tries:
 
 1. `api.stripe.com.default.svc.cluster.local` (fails)
 2. `api.stripe.com.svc.cluster.local` (fails)
 3. `api.stripe.com.cluster.local` (fails)
 4. `api.stripe.com` (succeeds)
 
-That is three unnecessary DNS lookups for every external name resolution. Fix it by lowering ndots or adding a trailing dot to external domains:
+That is three unnecessary DNS lookups for every external name resolution, and GKE clusters can add more search suffixes such as `google.internal` and `c.PROJECT_ID.internal`. Fix it by lowering ndots or adding a trailing dot to external domains:
 
 ```yaml
 # pod-spec.yaml - Reduce ndots to speed up external DNS resolution
@@ -218,14 +219,14 @@ kubectl get configmap kube-dns-autoscaler -n kube-system -o yaml
 
 ### Issue: Stale DNS Cache
 
-If a service IP changed but pods still resolve the old IP, you might have a caching issue. Check the TTL of the response:
+If a Service was recreated with a different ClusterIP but pods still resolve the old IP, you might have a caching issue. Check the TTL of the response:
 
 ```bash
 # Check DNS response TTL
 kubectl exec dns-dig -- dig my-service.default.svc.cluster.local +noall +answer
 ```
 
-Cluster-internal records typically have a 30-second TTL. If you are seeing stale results beyond that, restart the kube-dns pods:
+Cluster DNS responses often have short TTLs, commonly around 30 seconds in GKE examples. If kube-dns itself is returning stale results beyond that, restart the kube-dns pods; also check whether the application or NodeLocal DNSCache is caching the old answer:
 
 ```bash
 # Restart kube-dns pods to clear the cache
@@ -237,11 +238,15 @@ kubectl rollout restart deployment kube-dns -n kube-system
 Prevent future DNS issues by monitoring kube-dns health:
 
 ```bash
-# Check kube-dns metrics endpoint
-kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=kube-dns -o name | head -1) \
-  -c sidecar -- wget -qO- http://localhost:10054/metrics | grep dns
+# Check kube-dns metrics endpoints in GKE 1.35 and earlier
+POD=$(kubectl get pods -n kube-system -l k8s-app=kube-dns -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward pod/$POD -n kube-system 10054:10054 &
+PF_PID=$!
+sleep 2
+curl http://127.0.0.1:10054/metrics | grep kubedns
+kill $PF_PID
 ```
 
-Key metrics to watch include `skydns_skydns_dns_request_count_total`, `skydns_skydns_dns_error_count_total`, and `skydns_skydns_dns_response_size_bytes`.
+Port `10054` exposes dnsmasq metrics and port `10055` exposes kube-dns metrics in GKE 1.35 and earlier. In GKE 1.36 and later, kube-dns is CoreDNS-based and exposes metrics on port `9153`. Key metrics to watch include `kubedns_dnsmasq_errors`, `kubedns_dnsmasq_hits`, and `kubedns_dnsmasq_misses` on legacy kube-dns, or the CoreDNS metrics exposed on port `9153` on newer clusters.
 
 DNS debugging is tedious but methodical. Start from the pod, work your way to kube-dns, and check the network in between. Nine times out of ten, the problem is a typo in the service name, a missing network policy rule, or kube-dns being overwhelmed. The tools and approach described here will help you find and fix the issue quickly.
