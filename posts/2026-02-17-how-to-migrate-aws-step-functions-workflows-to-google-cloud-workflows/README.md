@@ -229,7 +229,7 @@ The equivalent in Cloud Workflows:
         body: ${inputData}
       result: response
     retry:
-      predicate: ${default_retry_predicate}
+      predicate: ${http.default_retry_predicate}
       max_retries: 3
       backoff:
         initial_delay: 3
@@ -311,8 +311,8 @@ gcloud eventarc triggers create my-workflow-trigger \
 
 A few gotchas that tend to come up during migration:
 
-- Cloud Workflows has a 32KB limit on variable sizes, and a 512KB limit on the total memory. For large payloads, store data in Cloud Storage or Firestore and pass references.
-- Step Functions Express Workflows (synchronous, short-duration) map better to Cloud Workflows than Standard Workflows (long-running with exactly-once processing).
+- Cloud Workflows has a 512KB limit on the cumulative size of variables, arguments, and events, and a 256KB maximum string length. For large payloads, store data in Cloud Storage or Firestore and pass references.
+- Step Functions Express Workflows are short-duration workflows, while Standard Workflows can run for up to one year with exactly-once workflow execution. Cloud Workflows can also wait or run for up to one year, so choose the mapping based on duration, throughput, and execution guarantees.
 - Cloud Workflows has a maximum execution duration of one year, which should cover most use cases.
 - The pricing models differ significantly. Step Functions charges per state transition; Cloud Workflows charges per step executed and per internal/external API call.
 
