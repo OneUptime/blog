@@ -8,11 +8,11 @@ Description: Learn how to add manual approval gates to your Cloud Build pipeline
 
 ---
 
-Fully automated deployments are great for development environments, but pushing to production without a human checkpoint makes a lot of teams nervous. Cloud Build supports approval gates that pause a build and wait for someone to manually approve before continuing. In this post, I will walk through how to set up approval-based triggers, configure who can approve, and integrate approvals into a multi-stage deployment pipeline.
+Fully automated deployments are great for development environments, but pushing to production without a human checkpoint makes a lot of teams nervous. Cloud Build supports approval gates that pause a build and wait for someone to manually approve before continuing. In this post, I will walk through how to set up approval-based triggers, grant approval permissions, and integrate approvals into a multi-stage deployment pipeline.
 
 ## How Approval Gates Work
 
-When you enable approval on a Cloud Build trigger, the build does not run automatically when the trigger event occurs. Instead, the build enters a "pending approval" state. A designated approver reviews the build and either approves it (the build runs) or rejects it (the build is cancelled).
+When you enable approval on a Cloud Build trigger, the build does not run automatically when the trigger event occurs. Instead, the build enters a "pending approval" state. A designated approver reviews the build and either approves it (the build runs) or rejects it (the build does not start).
 
 The flow looks like this:
 
@@ -25,7 +25,7 @@ sequenceDiagram
     Dev->>GH: Push to main
     GH->>CB: Trigger event
     CB->>CB: Build enters pending state
-    CB->>Approver: Notification sent
+    CB->>Approver: Notification or dashboard alert
     Approver->>CB: Approve build
     CB->>CB: Build runs
 ```
@@ -52,19 +52,19 @@ For an existing trigger, update it:
 
 ```bash
 # Add approval requirement to an existing trigger
-gcloud builds triggers update deploy-production \
+gcloud builds triggers update github deploy-production \
   --require-approval
 ```
 
 ### Step 2: Configure the Approval Settings via the Console
 
-The GCP Console provides more granular control over approval settings. Navigate to Cloud Build > Triggers, click on your trigger, and scroll to the "Approval" section.
+The GCP Console also lets you turn approval on or off for a trigger. Navigate to Cloud Build > Triggers, click on your trigger, and edit the trigger's approval setting.
 
 Here you can configure:
 
 - **Require approval** - Toggle the approval gate on/off
-- **Approvers** - Specify who can approve builds from this trigger
-- **Comment required** - Whether the approver must provide a reason
+
+Who can approve is controlled through IAM permissions, not a per-trigger approver list.
 
 ### Step 3: Set Up Approver Permissions
 
@@ -74,15 +74,15 @@ Approvers need the `cloudbuild.builds.approve` IAM permission. The easiest way t
 # Grant the Cloud Build Approver role to a user
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="user:approver@company.com" \
-  --role="roles/cloudbuild.builds.approve"
+  --role="roles/cloudbuild.builds.approver"
 
 # Grant to a group (recommended for teams)
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="group:deploy-approvers@company.com" \
-  --role="roles/cloudbuild.builds.approve"
+  --role="roles/cloudbuild.builds.approver"
 ```
 
-You can also restrict approval to specific triggers by using IAM conditions, but for most teams, the project-level role is sufficient.
+For most teams, granting the role to a deployment approvers group at the project level is the simplest approach.
 
 ## Approving and Rejecting Builds
 
@@ -90,7 +90,7 @@ You can also restrict approval to specific triggers by using IAM conditions, but
 
 When a build is pending approval, it appears in the Cloud Build dashboard with an "Awaiting approval" badge. Click on the build to see details about what triggered it - the commit SHA, branch, author, and the trigger that caught it.
 
-Click "Approve" to start the build or "Reject" to cancel it. If comment-required is enabled, you will need to enter a justification.
+Click "Approve" to start the build or "Reject" to prevent it from starting. The approval dialog lets you add an optional message and URL.
 
 ### Through the gcloud CLI
 
@@ -148,25 +148,25 @@ gcloud builds triggers create github \
   --require-approval
 ```
 
-The staging cloudbuild.yaml deploys automatically:
+The staging cloudbuild.yaml deploys automatically. This example assumes you have an Artifact Registry Docker repository named `my-app-repo` in `us-central1`.
 
 ```yaml
 # cloudbuild-staging.yaml - deploys to staging automatically
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-app-repo/my-app:$SHORT_SHA', '.']
 
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA']
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-app-repo/my-app:$SHORT_SHA']
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
     args:
-      - 'gcloud'
       - 'run'
       - 'deploy'
       - 'my-app-staging'
       - '--image'
-      - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-app-repo/my-app:$SHORT_SHA'
       - '--region'
       - 'us-central1'
 ```
@@ -177,19 +177,19 @@ The production cloudbuild.yaml is similar but deploys to the production service:
 # cloudbuild-production.yaml - runs only after manual approval
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-app-repo/my-app:$SHORT_SHA', '.']
 
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA']
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-app-repo/my-app:$SHORT_SHA']
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
     args:
-      - 'gcloud'
       - 'run'
       - 'deploy'
       - 'my-app-production'
       - '--image'
-      - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-app-repo/my-app:$SHORT_SHA'
       - '--region'
       - 'us-central1'
       - '--min-instances'
@@ -202,21 +202,31 @@ Pending approvals are only useful if approvers know about them. Set up notificat
 
 ### Pub/Sub Notification
 
-Cloud Build publishes events to the `cloud-builds` Pub/Sub topic. Create a subscription that triggers a Cloud Function to send notifications:
+Cloud Build publishes events to the `cloud-builds` Pub/Sub topic after you create the topic. Deploy a Cloud Function that listens to that topic and sends notifications:
 
 ```bash
-# Create a Pub/Sub subscription for build events
-gcloud pubsub subscriptions create build-approval-notifications \
-  --topic=cloud-builds \
-  --push-endpoint="https://us-central1-$PROJECT_ID.cloudfunctions.net/notify-approval"
+# Create the default Pub/Sub topic for build events
+gcloud pubsub topics create cloud-builds
+
+# Deploy a Pub/Sub-triggered Cloud Function for build events
+gcloud functions deploy notify-approval \
+  --gen2 \
+  --runtime=nodejs22 \
+  --region=us-central1 \
+  --source=. \
+  --entry-point=notifyApproval \
+  --trigger-topic=cloud-builds \
+  --set-env-vars=SLACK_WEBHOOK_URL=$SLACK_WEBHOOK_URL
 ```
 
 The Cloud Function filters for pending builds and sends notifications:
 
 ```javascript
 // Cloud Function to notify approvers about pending builds
-exports.notifyApproval = async (event, context) => {
-  const build = JSON.parse(Buffer.from(event.data, 'base64').toString());
+exports.notifyApproval = async (cloudEvent) => {
+  const build = JSON.parse(
+    Buffer.from(cloudEvent.data.message.data, 'base64').toString()
+  );
 
   // Only notify for builds pending approval
   if (build.status !== 'PENDING') {
@@ -241,9 +251,9 @@ exports.notifyApproval = async (event, context) => {
 
 ## Approval Timeout
 
-Pending builds do not wait forever. Cloud Build has a default approval timeout after which the build is automatically cancelled. Check your organization's settings for the specific timeout value.
+Pending builds do not wait forever. Cloud Build does not let you approve or reject pending builds older than 2 months.
 
-If you need longer approval windows (for example, a build submitted on Friday that gets approved on Monday), you can configure the timeout in the trigger settings.
+If you need shorter approval windows, handle that in your notification or operational process by rejecting stale pending builds and resubmitting them when they are still needed.
 
 ## Audit Trail
 
@@ -251,21 +261,21 @@ Every approval and rejection is logged, including:
 
 - Who approved or rejected the build
 - When the decision was made
-- The comment provided (if required)
+- The comment provided (if any)
 - The build configuration that was approved
 
 This audit trail is accessible through the Cloud Build API and Cloud Logging, making it suitable for compliance requirements.
 
 ```bash
 # Query Cloud Logging for approval events
-gcloud logging read 'resource.type="build" AND jsonPayload.status="QUEUED" AND jsonPayload.approval.decision="APPROVED"' \
+gcloud logging read 'resource.type="build" AND jsonPayload.status="QUEUED" AND jsonPayload.approval.result.decision="APPROVED"' \
   --limit=10 \
-  --format="table(timestamp, jsonPayload.id, jsonPayload.approval.approverAccount)"
+  --format="table(timestamp, jsonPayload.id, jsonPayload.approval.result.approverAccount)"
 ```
 
 ## Best Practices
 
-Keep the time between approval and deployment short. If a build is approved on Monday but the code has changed by Tuesday, the deployment may no longer be appropriate. Consider setting short approval timeouts and requiring re-submission.
+Keep the time between approval and deployment short. If a build is approved on Monday but the code has changed by Tuesday, the deployment may no longer be appropriate. Consider rejecting stale pending builds and requiring re-submission.
 
 Require approval only where it matters. Every approval gate adds latency and friction to the deployment process. Development and staging environments should deploy automatically; save approval gates for production and other sensitive environments.
 
