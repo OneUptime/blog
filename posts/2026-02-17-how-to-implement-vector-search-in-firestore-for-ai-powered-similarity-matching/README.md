@@ -14,7 +14,7 @@ Vector search has become a core building block for AI-powered applications. Whet
 
 Before diving into the implementation, a quick refresher. A vector embedding is a list of numbers (a float array) that represents a piece of content - text, images, audio, or anything else - in a high-dimensional space. Items that are semantically similar have embeddings that are close together in this space.
 
-For example, the sentences "How do I reset my password?" and "I forgot my login credentials" would have similar embeddings even though they share few words. You generate these embeddings using models like OpenAI's text-embedding-ada-002, Google's textembedding-gecko, or any other embedding model.
+For example, the sentences "How do I reset my password?" and "I forgot my login credentials" would have similar embeddings even though they share few words. You generate these embeddings using models like OpenAI's text-embedding-3-small, Google's text-embedding-005, or any other embedding model.
 
 ## Storing Vector Embeddings in Firestore
 
@@ -50,7 +50,7 @@ await storeProductWithEmbedding(
 );
 ```
 
-In Python with the Admin SDK:
+In Python with the Cloud Firestore client library:
 
 ```python
 from google.cloud import firestore
@@ -75,7 +75,7 @@ def store_article_with_embedding(article_id, title, content, embedding):
 
 Before you can run vector search queries, you need to create a vector index on the embedding field. This tells Firestore to build the data structures needed for efficient nearest-neighbor search.
 
-You can create the index using the Firebase CLI or the Google Cloud Console:
+You can create the index using the Google Cloud CLI or the Google Cloud Console:
 
 ```bash
 # Create a vector index on the descriptionEmbedding field
@@ -83,10 +83,11 @@ You can create the index using the Firebase CLI or the Google Cloud Console:
 gcloud firestore indexes composite create \
   --collection-group=products \
   --query-scope=COLLECTION \
-  --field-config="vector-config={dimension:768,flat},field-path=descriptionEmbedding"
+  --field-config field-path=descriptionEmbedding,vector-config='{"dimension":"768", "flat": "{}"}' \
+  --database="(default)"
 ```
 
-The dimension parameter must match the number of dimensions in your embedding model's output. Common values are 768 (for models like textembedding-gecko) and 1536 (for text-embedding-ada-002).
+The dimension parameter must match the number of dimensions in your embedding model's output and must be no more than 2048. Common values are 768 (for models like text-embedding-005) and 1536 (for text-embedding-3-small).
 
 ## Running Vector Search Queries
 
@@ -118,7 +119,7 @@ async function searchSimilarProducts(queryText, limit = 10) {
     products.push({
       id: doc.id,
       ...doc.data(),
-      // The distance/similarity score is available on the result
+      // Add distanceResultField to findNearest() if you need the distance score
     });
   });
 
@@ -143,7 +144,7 @@ def find_similar_articles(query_text, limit=5):
     query_embedding = generate_embedding(query_text)
 
     # Run vector nearest-neighbor search
-    # COSINE distance is the most common choice for text embeddings
+    # COSINE distance is a safe default if you are unsure whether vectors are normalized
     results = (
         db.collection('articles')
         .find_nearest(
@@ -178,6 +179,7 @@ async function searchProductsInCategory(queryText, category, maxPrice) {
 
   // Combine where() filters with findNearest()
   // Firestore applies the filters first, then searches within the filtered set
+  // This requires a composite vector index that includes the filter fields
   const results = await db.collection('products')
     .where('category', '==', category)
     .where('price', '<=', maxPrice)
@@ -207,18 +209,31 @@ Here is a more complete example of building a semantic search feature for a know
 ```javascript
 // Complete semantic search implementation for a knowledge base
 const { Firestore, FieldValue } = require('@google-cloud/firestore');
-const { VertexAI } = require('@google-cloud/vertexai');
+const aiplatform = require('@google-cloud/aiplatform');
+const { PredictionServiceClient } = aiplatform.v1;
+const { helpers } = aiplatform;
 
 const db = new Firestore();
 
-// Initialize the Vertex AI embedding model
-const vertexai = new VertexAI({ project: 'my-project', location: 'us-central1' });
-const embeddingModel = vertexai.getGenerativeModel({ model: 'textembedding-gecko@003' });
+// Initialize the Vertex AI text embedding model
+const predictionClient = new PredictionServiceClient({
+  apiEndpoint: 'us-central1-aiplatform.googleapis.com'
+});
+const embeddingEndpoint = 'projects/my-project/locations/us-central1/publishers/google/models/text-embedding-005';
 
 // Generate an embedding using Vertex AI
-async function generateEmbedding(text) {
-  const result = await embeddingModel.embedContent(text);
-  return result.embedding.values;
+async function generateEmbedding(text, taskType = 'RETRIEVAL_DOCUMENT') {
+  const [response] = await predictionClient.predict({
+    endpoint: embeddingEndpoint,
+    instances: [helpers.toValue({ content: text, task_type: taskType })]
+  });
+
+  const values = response.predictions[0]
+    .structValue.fields.embeddings
+    .structValue.fields.values
+    .listValue.values;
+
+  return values.map(value => value.numberValue);
 }
 
 // Index a new knowledge base article
@@ -238,7 +253,7 @@ async function indexArticle(articleId, title, content, tags) {
 
 // Search the knowledge base semantically
 async function searchKnowledgeBase(query, options = {}) {
-  const queryEmbedding = await generateEmbedding(query);
+  const queryEmbedding = await generateEmbedding(query, 'RETRIEVAL_QUERY');
   const limit = options.limit || 5;
 
   let queryRef = db.collection('knowledge_base');
@@ -283,6 +298,7 @@ import vertexai
 from vertexai.generative_models import GenerativeModel
 
 db = firestore.Client()
+vertexai.init(project="my-project", location="us-central1")
 
 def answer_question_with_context(question):
     # Step 1: Find relevant documents using vector search
@@ -308,7 +324,7 @@ def answer_question_with_context(question):
     context = "\n\n---\n\n".join(context_parts)
 
     # Step 3: Pass context + question to the language model
-    model = GenerativeModel("gemini-pro")
+    model = GenerativeModel("gemini-2.0-flash-001")
     prompt = f"""Based on the following context, answer the user's question.
 
 Context:
@@ -326,11 +342,11 @@ Answer:"""
 
 Firestore supports three distance measures for vector search:
 
-- COSINE: Best for text embeddings. Measures the angle between vectors, ignoring magnitude. Most commonly used.
+- COSINE: Measures the angle between vectors, ignoring magnitude. A safe default when you are unsure whether your vectors are normalized.
 - EUCLIDEAN: Measures straight-line distance. Useful when magnitude matters.
 - DOT_PRODUCT: Measures the dot product. Fast and works well when vectors are normalized.
 
-For most text-based applications, COSINE is the right choice.
+For normalized text embeddings, all three measures produce the same ranking, and DOT_PRODUCT is usually the most computationally efficient. If you are not sure whether your embeddings are normalized, COSINE is the safer choice.
 
 ## Wrapping Up
 
