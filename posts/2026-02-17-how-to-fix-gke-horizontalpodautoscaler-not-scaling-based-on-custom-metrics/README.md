@@ -90,13 +90,15 @@ If you are using the Stackdriver adapter, the metric must exist in Cloud Monitor
 
 ```bash
 # List available custom metrics
-gcloud monitoring metrics list --filter='metric.type=starts_with("custom.googleapis.com")'
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://monitoring.googleapis.com/v3/projects/your-project-id/metricDescriptors?filter=metric.type%20%3D%20starts_with(%22custom.googleapis.com%22)"
 
 # Check specific metric data points
-gcloud monitoring time-series list \
-  --filter='metric.type="custom.googleapis.com/your_metric_name"' \
-  --interval-start-time=$(date -u -v-10M '+%Y-%m-%dT%H:%M:%SZ') \
-  --format json
+curl -G -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --data-urlencode 'filter=metric.type="custom.googleapis.com/your_metric_name"' \
+  --data-urlencode "interval.startTime=$(date -u -d '10 minutes ago' '+%Y-%m-%dT%H:%M:%SZ')" \
+  --data-urlencode "interval.endTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+  "https://monitoring.googleapis.com/v3/projects/your-project-id/timeSeries"
 ```
 
 If the metric does not appear, your application is not pushing it correctly. Here is an example of pushing a custom metric from a Python application:
@@ -245,18 +247,22 @@ The Stackdriver adapter needs permissions to read metrics from Cloud Monitoring.
 # Check the adapter's service account
 kubectl get serviceaccount custom-metrics-stackdriver-adapter -n custom-metrics -o yaml
 
-# Verify the GCP service account has monitoring.viewer role
+# Verify the adapter's Workload Identity principal has monitoring.viewer role
+export PROJECT_NUMBER=$(gcloud projects describe your-project-id --format='value(projectNumber)')
+
 gcloud projects get-iam-policy your-project-id \
   --flatten="bindings[].members" \
-  --filter="bindings.role:roles/monitoring.viewer"
+  --filter="bindings.role:roles/monitoring.viewer AND bindings.members:principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/your-project-id.svc.id.goog/subject/ns/custom-metrics/sa/custom-metrics-stackdriver-adapter"
 ```
 
 Grant the necessary permissions:
 
 ```bash
-# Grant monitoring viewer to the adapter's GCP service account
-gcloud projects add-iam-policy-binding your-project-id \
-  --member="serviceAccount:adapter-sa@your-project-id.iam.gserviceaccount.com" \
+# Grant monitoring viewer to the adapter's Workload Identity principal
+export PROJECT_NUMBER=$(gcloud projects describe your-project-id --format='value(projectNumber)')
+
+gcloud projects add-iam-policy-binding projects/your-project-id \
+  --member="principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/your-project-id.svc.id.goog/subject/ns/custom-metrics/sa/custom-metrics-stackdriver-adapter" \
   --role="roles/monitoring.viewer"
 ```
 
