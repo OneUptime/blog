@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Google Cloud, Bare Metal Solution, Oracle Database, Database Deployment, Enterprise
 
-Description: Learn how to deploy Oracle Database on Google Cloud Bare Metal Solution following best practices for performance, licensing, and high availability.
+Description: Learn how to deploy Oracle Database on Google Cloud Bare Metal Solution following best practices for performance, licensing, and connectivity.
 
 ---
 
 Running Oracle Database in the cloud has always been complicated. Licensing restrictions, performance requirements, and the need for bare-metal hardware make it a poor fit for virtual machines. Google Cloud Bare Metal Solution (BMS) was built for exactly this scenario - it gives you dedicated physical servers in a Google Cloud region, connected to your GCP environment through a low-latency network extension. You get the hardware Oracle needs to run properly, with the network connectivity and management benefits of being in Google Cloud.
 
-This guide walks through deploying Oracle Database on BMS from initial server provisioning through database creation and high availability configuration.
+This guide walks through deploying Oracle Database on BMS from initial server provisioning through database creation and connectivity configuration.
 
 ## Understanding Bare Metal Solution for Oracle
 
-Bare Metal Solution provides certified hardware for Oracle Database workloads. The servers come in several configurations, from 16-core machines for smaller databases to massive 224-core systems for enterprise OLTP and data warehouse workloads.
+Bare Metal Solution provides certified hardware for Oracle Database workloads. The servers come in several configurations, from 8-core machines with 16 vCPUs for smaller databases to memory-optimized systems with hundreds of cores for enterprise OLTP and data warehouse workloads.
 
 ```mermaid
 graph TB
@@ -22,7 +22,7 @@ graph TB
         subgraph "Bare Metal Solution Extension"
             A[BMS Server 1 - Primary DB]
             B[BMS Server 2 - Standby DB]
-            C[Shared Storage - NetApp/Dell]
+            C[Shared Storage - Fibre Channel/NFS]
         end
         subgraph "Google Cloud VPC"
             D[Application VMs]
@@ -51,17 +51,19 @@ The BMS servers are connected to your GCP VPC through a Partner Interconnect, gi
 BMS servers are provisioned through the GCP Console or API. Choose a server configuration based on your database sizing requirements:
 
 ```bash
-# List available BMS server configurations in your region
+# List provisioned BMS servers in your region
 
 gcloud bms instances list \
     --project=my-project \
-    --location=us-central1
+    --region=us-central1
 
-# The server is provisioned through a support request or the BMS API
+# The server is provisioned through the Google Cloud console intake form
+# or through the BMS API after ordering the required resources.
 # Typical configurations for Oracle:
-# - o2-standard-16-metal: 16 cores, 384 GB RAM (small databases)
-# - o2-standard-32-metal: 32 cores, 768 GB RAM (medium databases)
-# - o2-standard-112-metal: 112 cores, 3 TB RAM (large OLTP/DW)
+# - o2-standard-16-metal: 8 cores, 16 vCPUs, 192 GB RAM (small databases)
+# - o2-standard-32-metal: 16 cores, 32 vCPUs, 384 GB RAM (medium databases)
+# - o2-standard-112-metal: 56 cores, 112 vCPUs, 1.5 TB RAM (large OLTP/DW)
+# - o2-highmem-224-metal: 112 cores, 224 vCPUs, 3 TB RAM (large in-memory workloads)
 ```
 
 Once provisioned, get the server details:
@@ -70,39 +72,54 @@ Once provisioned, get the server details:
 # Get the server IP and connection details
 gcloud bms instances describe my-oracle-server \
     --project=my-project \
-    --location=us-central1
+    --region=us-central1
 ```
 
 ## Step 2: Prepare the Operating System
 
-SSH into the BMS server and prepare the OS for Oracle installation. BMS servers come with either Oracle Linux or RHEL pre-installed.
+SSH into the BMS server and prepare the OS for Oracle installation. Oracle deployments on BMS commonly use Oracle Linux or RHEL.
 
 ```bash
 # SSH into the BMS server
 ssh customeradmin@10.200.0.10
 
 # Verify the OS version - Oracle Linux 8 is recommended
-cat /etc/oracle-release
+cat /etc/os-release
 
-# Install required Oracle prerequisites package
-# This sets all kernel parameters and creates required groups
+# Install required Oracle prerequisites package on Oracle Linux
+# This sets kernel parameters and creates the standard oracle user and groups
 sudo dnf install -y oracle-database-preinstall-19c
+
+# Create the additional groups used by the installer options below
+sudo groupadd -f oper
+sudo groupadd -f backupdba
+sudo groupadd -f dgdba
+sudo groupadd -f kmdba
+sudo groupadd -f racdba
+sudo groupadd -f asmadmin
+sudo groupadd -f asmdba
+sudo groupadd -f asmoper
+sudo usermod -aG oper,backupdba,dgdba,kmdba,racdba,asmadmin,asmdba,asmoper oracle
 
 # Verify kernel parameters are set correctly
 sudo sysctl -a | grep -E "shm|sem|file-max|ip_local_port"
 ```
 
-Configure storage for Oracle. BMS typically uses shared storage (NetApp or Dell) presented as block devices:
+Configure storage for Oracle. BMS uses Fibre Channel LUNs or NFS storage volumes, and Oracle ASM is typically configured on Fibre Channel LUNs:
 
 ```bash
 # List available block devices
 lsblk
 
-# Create an ASM disk group for Oracle data
-# First, configure the disks for ASM
-sudo /usr/sbin/oracleasm createdisk DATA1 /dev/sdb1
-sudo /usr/sbin/oracleasm createdisk DATA2 /dev/sdc1
-sudo /usr/sbin/oracleasm createdisk FRA1 /dev/sdd1
+# If using ASMLib, configure it to scan multipath devices and skip single paths
+sudo /usr/sbin/oracleasm configure -i
+sudo sed -i 's/^ORACLEASM_SCANORDER=.*/ORACLEASM_SCANORDER="dm"/' /etc/sysconfig/oracleasm
+sudo sed -i 's/^ORACLEASM_SCANEXCLUDE=.*/ORACLEASM_SCANEXCLUDE="sd"/' /etc/sysconfig/oracleasm
+
+# Create ASM disks using /dev/mapper or dm devices, not /dev/sd* paths
+sudo /usr/sbin/oracleasm createdisk DATA1 /dev/mapper/DATA_LUN_1
+sudo /usr/sbin/oracleasm createdisk DATA2 /dev/mapper/DATA_LUN_2
+sudo /usr/sbin/oracleasm createdisk FRA1 /dev/mapper/FRA_LUN_1
 
 # Verify ASM disks are visible
 sudo /usr/sbin/oracleasm listdisks
@@ -110,7 +127,7 @@ sudo /usr/sbin/oracleasm listdisks
 
 ## Step 3: Install Oracle Grid Infrastructure
 
-Grid Infrastructure provides ASM (Automatic Storage Management) and Clusterware for high availability:
+Grid Infrastructure for a standalone server provides ASM (Automatic Storage Management) and Oracle Restart:
 
 ```bash
 # Switch to the oracle user
@@ -219,8 +236,6 @@ dbca -silent -createDatabase \
     -pdbName PDB1 \
     -pdbAdminPassword YourSecurePdbPassword \
     -storageType ASM \
-    -diskGroupName DATA \
-    -recoveryGroupName FRA \
     -characterSet AL32UTF8 \
     -nationalCharacterSet AL16UTF16 \
     -memoryPercentage 70 \
@@ -241,7 +256,7 @@ cat > $ORACLE_HOME/network/admin/listener.ora << 'EOF'
 LISTENER =
   (DESCRIPTION_LIST =
     (DESCRIPTION =
-      (ADDRESS = (PROTOCOL = TCP)(HOST = 0.0.0.0)(PORT = 1521))
+      (ADDRESS = (PROTOCOL = TCP)(HOST = 10.200.0.10)(PORT = 1521))
     )
   )
 
@@ -287,7 +302,7 @@ sqlplus system/YourSecureSystemPassword@10.200.0.10:1521/PDB1
 
 **Memory**: Set the SGA and PGA appropriately. A common starting point is 70% of total RAM for SGA and 10% for PGA, but tune based on your workload.
 
-**Storage**: Use ASM with External redundancy when your shared storage (NetApp/Dell) already provides redundancy. Avoid double-redundancy which wastes space.
+**Storage**: Use ASM with External redundancy when your shared storage already provides redundancy. Avoid double-redundancy which wastes space. On BMS, use multipath device names such as `/dev/mapper/*` for ASM instead of `/dev/sd*` paths.
 
 **Patching**: Apply Oracle quarterly security patches (CPU/PSU) following Oracle's recommended patching procedures. BMS OS patches are managed separately.
 
