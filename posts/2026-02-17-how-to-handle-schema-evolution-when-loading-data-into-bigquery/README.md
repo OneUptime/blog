@@ -28,13 +28,12 @@ BigQuery handles some of these gracefully and others not at all. Let me go throu
 
 This is the easiest case. BigQuery supports adding columns to existing tables without any downtime.
 
-**Automatic with auto-detect**: When loading with auto-detection and the `schema_update_options` flag, BigQuery automatically adds new columns.
+**Automatic with schema update options**: When loading self-describing formats like Parquet, Avro, or ORC, BigQuery infers the schema from the source files. With the `schema_update_options` flag, BigQuery can add new nullable columns during append loads.
 
 ```bash
 # Load data and allow new columns to be added automatically
 
 bq load \
-  --autodetect \
   --source_format=PARQUET \
   --schema_update_option=ALLOW_FIELD_ADDITION \
   my_project:my_dataset.events \
@@ -79,7 +78,7 @@ load_job.result()
 print(f"Schema updated. New column count: {len(client.get_table('my_project.my_dataset.events').schema)}")
 ```
 
-When new columns are added, existing rows get NULL values for the new fields. This is usually fine for analytics.
+When new nullable columns are added, existing rows get NULL values for the new fields. This is usually fine for analytics.
 
 ## Relaxing Column Modes
 
@@ -102,7 +101,7 @@ ALTER COLUMN user_id DROP NOT NULL;
 
 ## Handling Type Changes
 
-Changing a column's data type is the hardest schema evolution to handle. BigQuery does not support changing a column type directly with ALTER TABLE. Here are the workarounds.
+Changing a column's data type is the hardest schema evolution to handle. BigQuery supports only limited in-place type changes with `ALTER COLUMN SET DATA TYPE`, such as `INT64` to `NUMERIC`, `BIGNUMERIC`, or `FLOAT64`, and `NUMERIC` to `BIGNUMERIC` or `FLOAT64`. For other changes, such as `STRING` to `INT64`, use one of these workarounds.
 
 **Approach 1: Create a new column and migrate data**
 
@@ -159,7 +158,7 @@ FROM `my_project.my_dataset.events`;
 
 When a source stops sending a column, BigQuery handles it depending on your load approach.
 
-**Loading with explicit schema**: If your schema includes the column but the source data does not have it, the column gets NULL values for the loaded rows.
+**Loading with explicit schema**: For nullable fields in named or self-describing formats, if your schema includes the column but the source data does not have it, the column gets NULL values for the loaded rows. Required missing fields still fail the load.
 
 **Loading with auto-detect**: New loads might not include the column, but existing data retains it. This is generally safe.
 
@@ -188,8 +187,6 @@ For production systems, I use a pipeline that detects and handles schema changes
 ```python
 # schema_evolution.py - Automated schema evolution handler
 from google.cloud import bigquery
-from google.cloud import storage
-import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -245,10 +242,30 @@ class SchemaEvolutionHandler:
 
     def apply_safe_changes(self, changes):
         """Apply schema changes that are safe (adding columns, relaxing modes)."""
-        if changes['added']:
-            logger.info(f"Adding {len(changes['added'])} new columns")
-            # Use schema_update_options on next load
-            return True
+        unsafe_additions = [
+            field.name for field in changes['added']
+            if field.mode == 'REQUIRED'
+        ]
+        if unsafe_additions:
+            logger.warning(
+                f"Required columns cannot be added to an existing table: "
+                f"{unsafe_additions}. Manual intervention required."
+            )
+            return False
+
+        unsafe_mode_changes = [
+            change for change in changes['mode_changed']
+            if not (
+                change['old_mode'] == 'REQUIRED'
+                and change['new_mode'] == 'NULLABLE'
+            )
+        ]
+        if unsafe_mode_changes:
+            logger.warning(
+                f"Unsupported mode changes detected: {unsafe_mode_changes}. "
+                f"Manual intervention required."
+            )
+            return False
 
         if changes['type_changed']:
             logger.warning(
@@ -256,6 +273,16 @@ class SchemaEvolutionHandler:
                 f"Manual intervention required."
             )
             return False
+
+        if changes['added']:
+            logger.info(f"Adding {len(changes['added'])} new columns")
+            # Use schema_update_options on next load
+            return True
+
+        if changes['mode_changed']:
+            logger.info(f"Relaxing {len(changes['mode_changed'])} columns")
+            # Use schema_update_options on next load
+            return True
 
         return True
 ```
@@ -318,8 +345,8 @@ This approach trades query performance for schema flexibility. JSON columns are 
 ## Best Practices
 
 1. **Use Parquet or Avro**: Self-describing formats make schema evolution more predictable.
-2. **Enable ALLOW_FIELD_ADDITION**: For append-mode loads, always enable this option.
-3. **Never change column types in place**: Always create new columns and migrate data.
+2. **Enable ALLOW_FIELD_ADDITION**: For append-mode loads where new nullable fields are expected, enable this option.
+3. **Be careful with column type changes**: Use `ALTER COLUMN SET DATA TYPE` only for BigQuery's supported widening conversions. For other changes, create new columns and migrate data.
 4. **Monitor schema changes**: Track when schemas change so you can update downstream queries.
 5. **Use views as an abstraction layer**: Views can present a stable interface even when the underlying schema evolves.
 6. **Test schema changes in a staging environment**: Load new data into a test table first to verify the schema works.
