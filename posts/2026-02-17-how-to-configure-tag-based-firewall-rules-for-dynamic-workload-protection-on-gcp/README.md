@@ -8,7 +8,7 @@ Description: Learn how to use tag-based firewall rules on Google Cloud Platform 
 
 ---
 
-Managing firewall rules in a growing GCP environment quickly becomes unmanageable if you rely on IP-based rules. VMs get created and destroyed, IPs change, and suddenly your firewall rules are out of date. Tag-based firewall rules solve this by letting you define rules based on labels attached to your workloads rather than specific IP addresses. When a new VM spins up with the right tag, it automatically gets the right firewall rules applied to it.
+Managing firewall rules in a growing GCP environment quickly becomes unmanageable if you rely on IP-based rules. VMs get created and destroyed, IPs change, and suddenly your firewall rules are out of date. Tag-based firewall rules solve this by letting you define rules based on tags attached to your workloads rather than specific IP addresses. When a new VM spins up with the right tag, it automatically gets the right firewall rules applied to it.
 
 This post covers how to set up and manage tag-based firewall rules effectively, including both the older network tags and the newer secure tags introduced with network firewall policies.
 
@@ -139,6 +139,8 @@ Secure tags offer better governance because they are IAM-controlled. Here is how
 # Create a tag key for workload classification
 gcloud resource-manager tags keys create workload-type \
     --parent=organizations/123456789 \
+    --purpose=GCE_FIREWALL \
+    --purpose-data=network=my-project/my-vpc \
     --description="Classifies workload type for firewall rules"
 
 # Create tag values for each workload type
@@ -176,7 +178,7 @@ gcloud compute network-firewall-policies create my-firewall-policy \
 # Add a rule allowing HTTP to web servers using secure tags
 gcloud compute network-firewall-policies rules create 1000 \
     --firewall-policy=my-firewall-policy \
-    --region=us-central1 \
+    --firewall-policy-region=us-central1 \
     --direction=INGRESS \
     --action=allow \
     --layer4-configs=tcp:80,tcp:443 \
@@ -186,7 +188,7 @@ gcloud compute network-firewall-policies rules create 1000 \
 # Add a rule allowing web-to-api traffic using secure tags on both sides
 gcloud compute network-firewall-policies rules create 1100 \
     --firewall-policy=my-firewall-policy \
-    --region=us-central1 \
+    --firewall-policy-region=us-central1 \
     --direction=INGRESS \
     --action=allow \
     --layer4-configs=tcp:8080 \
@@ -197,7 +199,7 @@ gcloud compute network-firewall-policies rules create 1100 \
 gcloud compute network-firewall-policies associations create \
     --firewall-policy=my-firewall-policy \
     --network=my-vpc \
-    --region=us-central1
+    --firewall-policy-region=us-central1
 ```
 
 ## Tags in Instance Templates for Auto-Scaling
@@ -215,7 +217,7 @@ gcloud compute instance-templates create web-server-template \
     --metadata-from-file=startup-script=startup.sh
 ```
 
-For secure tags with managed instance groups, bind the tags at the instance group level or use tag bindings in your deployment automation.
+For secure tags with managed instance groups, add resource manager tags to the instance template or use tag bindings in your deployment automation.
 
 ## Terraform Configuration
 
