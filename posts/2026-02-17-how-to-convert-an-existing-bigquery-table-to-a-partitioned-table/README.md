@@ -126,7 +126,7 @@ UNION ALL
 SELECT 'partitioned' AS source, COUNT(*) AS row_count
 FROM `my_project.my_dataset.orders_partitioned_new`;
 
--- Step 3: Verify data integrity with checksums on key columns
+-- Step 3: Verify data integrity with aggregate checks on key columns
 SELECT
   'original' AS source,
   SUM(amount) AS total_amount,
@@ -144,23 +144,16 @@ Once you have verified the data matches, you can do the swap.
 
 ```sql
 -- Step 4: Rename tables to complete the swap
--- Note: BigQuery does not have RENAME TABLE, so we use copy and delete
--- First, back up the original just in case
-CREATE TABLE `my_project.my_dataset.orders_backup`
-COPY `my_project.my_dataset.orders`;
+-- First, rename the original as a backup just in case
+ALTER TABLE `my_project.my_dataset.orders`
+RENAME TO orders_backup;
 
--- Then drop the original
-DROP TABLE `my_project.my_dataset.orders`;
-
--- Rename the new table to the original name using copy
-CREATE TABLE `my_project.my_dataset.orders`
-COPY `my_project.my_dataset.orders_partitioned_new`;
-
--- Drop the temp table
-DROP TABLE `my_project.my_dataset.orders_partitioned_new`;
+-- Then rename the new table to the original name
+ALTER TABLE `my_project.my_dataset.orders_partitioned_new`
+RENAME TO orders;
 ```
 
-Alternatively, you can use the `bq` command-line tool which supports table copy operations that effectively rename tables.
+Alternatively, you can use the `bq` command-line tool to copy the partitioned table to the original table name.
 
 ```bash
 # Copy the partitioned table to the original table name
@@ -188,9 +181,10 @@ CREATE TABLE `my_project.my_dataset.orders_partitioned`
 PARTITION BY DATE(order_timestamp)
 AS
 SELECT *
-FROM `my_project.my_dataset.orders`;
+FROM `my_project.my_dataset.orders`
+WHERE order_timestamp <= '2026-02-17 10:30:00';
 
--- Step 3: After CTAS completes, copy rows that arrived during migration
+-- Step 3: After CTAS completes, copy rows newer than the cutoff
 INSERT INTO `my_project.my_dataset.orders_partitioned`
 SELECT *
 FROM `my_project.my_dataset.orders`
