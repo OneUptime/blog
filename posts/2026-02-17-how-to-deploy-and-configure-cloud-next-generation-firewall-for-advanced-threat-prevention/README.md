@@ -26,14 +26,15 @@ Cloud NGFW operates at the network level as a Google-managed service. You do not
 
 ## Enabling Cloud NGFW
 
-Cloud NGFW requires enabling the Network Security API and creating firewall endpoints.
+Cloud NGFW requires enabling the Compute Engine API, Network Security API, and Certificate Authority Service API before creating firewall endpoints.
 
 ```bash
 # Enable the required APIs
 
-gcloud services enable networksecurity.googleapis.com \
+gcloud services enable compute.googleapis.com networksecurity.googleapis.com privateca.googleapis.com \
   --project=my-network-project
 
+# Optional: enable Certificate Manager if you use trust configs for private upstream CAs.
 gcloud services enable certificatemanager.googleapis.com \
   --project=my-network-project
 
@@ -51,17 +52,18 @@ Firewall endpoints are zonal resources. You need one in each zone where you want
 Security profiles define what the NGFW inspects and how it responds to threats. A security profile contains threat prevention settings including IPS signatures and severity-based actions.
 
 ```bash
-# Create a security profile group for threat prevention
-gcloud network-security security-profile-groups create prod-security-group \
-  --organization=123456789 \
-  --threat-prevention-profile=organizations/123456789/locations/global/securityProfiles/prod-threat-profile \
-  --description="Production threat prevention profile group"
-
 # Create the threat prevention profile with custom overrides
 gcloud network-security security-profiles threat-prevention create prod-threat-profile \
   --organization=123456789 \
   --location=global \
   --description="Threat prevention with IPS for production"
+
+# Create a security profile group for threat prevention
+gcloud network-security security-profile-groups create prod-security-group \
+  --organization=123456789 \
+  --location=global \
+  --threat-prevention-profile=organizations/123456789/locations/global/securityProfiles/prod-threat-profile \
+  --description="Production threat prevention profile group"
 ```
 
 ### Configuring Threat Override Actions
@@ -70,13 +72,23 @@ You can customize how the IPS handles different severity levels of threats.
 
 ```bash
 # Set severity-based actions for the threat prevention profile
-gcloud network-security security-profiles threat-prevention update prod-threat-profile \
+gcloud network-security security-profiles threat-prevention add-override prod-threat-profile \
   --organization=123456789 \
   --location=global \
-  --severity-overrides="severity=CRITICAL,action=DENY" \
-  --severity-overrides="severity=HIGH,action=DENY" \
-  --severity-overrides="severity=MEDIUM,action=ALERT" \
-  --severity-overrides="severity=LOW,action=ALLOW"
+  --severities=CRITICAL,HIGH \
+  --action=DENY
+
+gcloud network-security security-profiles threat-prevention add-override prod-threat-profile \
+  --organization=123456789 \
+  --location=global \
+  --severities=MEDIUM \
+  --action=ALERT
+
+gcloud network-security security-profiles threat-prevention add-override prod-threat-profile \
+  --organization=123456789 \
+  --location=global \
+  --severities=LOW \
+  --action=ALLOW
 ```
 
 This configuration blocks critical and high-severity threats, alerts on medium, and allows low-severity traffic to pass.
@@ -91,7 +103,6 @@ gcloud network-security firewall-endpoint-associations create prod-association \
   --endpoint=organizations/123456789/locations/us-central1-a/firewallEndpoints/ngfw-endpoint-1 \
   --network=projects/my-network-project/global/networks/prod-vpc \
   --zone=us-central1-a \
-  --tls-inspection-policy=projects/my-network-project/locations/global/tlsInspectionPolicies/prod-tls-policy \
   --project=my-network-project
 ```
 
@@ -114,6 +125,7 @@ gcloud compute network-firewall-policies rules create 1000 \
   --security-profile-group=organizations/123456789/locations/global/securityProfileGroups/prod-security-group \
   --src-ip-ranges=0.0.0.0/0 \
   --layer4-configs=tcp:80,tcp:443,tcp:8080 \
+  --tls-inspect \
   --description="Inspect inbound web traffic for threats" \
   --global-firewall-policy \
   --project=my-network-project
@@ -123,7 +135,7 @@ gcloud compute network-firewall-policies rules create 900 \
   --firewall-policy=prod-ngfw-policy \
   --direction=INGRESS \
   --action=deny \
-  --src-threat-intelligences=iplist-known-malicious-ips \
+  --src-threat-intelligence=iplist-known-malicious-ips \
   --layer4-configs=all \
   --description="Block traffic from known malicious IPs" \
   --global-firewall-policy \
@@ -159,23 +171,51 @@ gcloud privateca roots create ngfw-root-ca \
   --subject="CN=NGFW Inspection CA, O=My Organization" \
   --key-algorithm=ec-p256-sha256 \
   --max-chain-length=1 \
+  --auto-enable \
+  --project=my-network-project
+
+# Allow the Cloud NGFW service agent to request certificates from the CA pool
+gcloud beta services identity create \
+  --service=networksecurity.googleapis.com \
+  --project=my-network-project
+
+PROJECT_NUMBER=$(gcloud projects describe my-network-project --format="value(projectNumber)")
+
+gcloud privateca pools add-iam-policy-binding ngfw-ca-pool \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-networksecurity.iam.gserviceaccount.com" \
+  --role=roles/privateca.certificateRequester \
+  --location=us-central1 \
   --project=my-network-project
 ```
 
 ### Step 2: Create a TLS Inspection Policy
 
 ```bash
-# Create the TLS inspection policy
-gcloud network-security tls-inspection-policies create prod-tls-policy \
-  --ca-pool=projects/my-network-project/locations/us-central1/caPools/ngfw-ca-pool \
-  --location=global \
-  --description="TLS inspection policy for production traffic" \
+# Create the TLS inspection policy definition
+cat > prod-tls-policy.yaml <<'EOF'
+name: projects/my-network-project/locations/us-central1/tlsInspectionPolicies/prod-tls-policy
+caPool: projects/my-network-project/locations/us-central1/caPools/ngfw-ca-pool
+minTlsVersion: TLS_1_2
+tlsFeatureProfile: PROFILE_MODERN
+excludePublicCaSet: false
+EOF
+
+# Import the TLS inspection policy
+gcloud network-security tls-inspection-policies import prod-tls-policy \
+  --source=prod-tls-policy.yaml \
+  --location=us-central1 \
+  --project=my-network-project
+
+# Attach the TLS inspection policy to the firewall endpoint association
+gcloud network-security firewall-endpoint-associations update prod-association \
+  --zone=us-central1-a \
+  --tls-inspection-policy=projects/my-network-project/locations/us-central1/tlsInspectionPolicies/prod-tls-policy \
   --project=my-network-project
 ```
 
 ### Step 3: Exclude Sensitive Domains
 
-Some traffic should not be decrypted - banking sites, healthcare portals, or domains where certificate pinning would break.
+Some traffic should not be decrypted - banking sites, healthcare portals, or domains where certificate pinning would break. Create higher-priority allow rules without `--tls-inspect` before broader egress inspection rules.
 
 ```bash
 # Add a rule to bypass TLS inspection for sensitive domains
@@ -221,13 +261,23 @@ resource "google_network_security_security_profile_group" "prod" {
   description               = "Production security profile group"
 }
 
+# TLS inspection policy using an existing CA pool in the same region
+resource "google_network_security_tls_inspection_policy" "prod" {
+  name        = "prod-tls-policy"
+  project     = "my-network-project"
+  location    = "us-central1"
+  ca_pool     = "projects/my-network-project/locations/us-central1/caPools/ngfw-ca-pool"
+  description = "TLS inspection policy for production traffic"
+}
+
 # Firewall endpoint association with VPC
 resource "google_network_security_firewall_endpoint_association" "prod" {
-  name              = "prod-association"
-  parent            = "projects/my-network-project"
-  location          = "us-central1-a"
-  firewall_endpoint = google_network_security_firewall_endpoint.main.id
-  network           = google_compute_network.prod.id
+  name                  = "prod-association"
+  parent                = "projects/my-network-project"
+  location              = "us-central1-a"
+  firewall_endpoint     = google_network_security_firewall_endpoint.main.id
+  network               = google_compute_network.prod.id
+  tls_inspection_policy = google_network_security_tls_inspection_policy.prod.id
 }
 
 # Network firewall policy
@@ -245,7 +295,8 @@ resource "google_compute_network_firewall_policy_rule" "inspect_inbound" {
   direction       = "INGRESS"
   action          = "apply_security_profile_group"
 
-  security_profile_group = google_network_security_security_profile_group.prod.id
+  security_profile_group = "//networksecurity.googleapis.com/${google_network_security_security_profile_group.prod.id}"
+  tls_inspect            = true
 
   match {
     src_ip_ranges = ["0.0.0.0/0"]
@@ -263,10 +314,10 @@ Monitor Cloud NGFW through Cloud Logging to track blocked threats and inspection
 
 ```bash
 # View recent threat detections
-gcloud logging read 'resource.type="networksecurity.googleapis.com/FirewallEndpoint" AND jsonPayload.threatType!=""' \
+gcloud logging read 'resource.type="networksecurity.googleapis.com/FirewallEndpoint" AND logName:"networksecurity.googleapis.com%2Ffirewall_threat"' \
   --project=my-network-project \
   --limit=20 \
-  --format="table(timestamp, jsonPayload.threatType, jsonPayload.threatId, jsonPayload.action, jsonPayload.srcIp, jsonPayload.destIp)"
+  --format="table(timestamp, jsonPayload.type, jsonPayload.threat_id, jsonPayload.action, jsonPayload.source_ip_address, jsonPayload.destination_ip_address)"
 ```
 
 Cloud NGFW brings enterprise-grade network security to Google Cloud without the operational burden of managing virtual appliances. The combination of IPS, TLS inspection, and threat intelligence integration gives you deep visibility and protection at the network layer, complementing your application-level security controls.
