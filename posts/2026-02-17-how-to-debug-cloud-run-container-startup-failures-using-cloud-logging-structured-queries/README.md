@@ -38,7 +38,7 @@ timestamp >= "2026-02-17T00:00:00Z"
 Run it with gcloud:
 
 ```bash
-# Query for startup errors in the last hour
+# Query for startup errors since a specific timestamp
 
 gcloud logging read '
   resource.type="cloud_run_revision"
@@ -147,13 +147,13 @@ gcloud logging read '
 ' --limit=10 --format="table(timestamp, textPayload)"
 ```
 
-Increase the startup timeout if your app needs more time to initialize:
+Increase the startup probe timeout if your app needs more time to initialize:
 
 ```bash
-# Increase startup CPU boost and configure startup probe timeout
+# Configure a TCP startup probe with a longer timeout
 gcloud run services update my-service \
   --region=us-central1 \
-  --startup-cpu-boost
+  --startup-probe=tcpSocket.port=8080,periodSeconds=240,timeoutSeconds=240,failureThreshold=1
 ```
 
 ## Using the Log Explorer for Advanced Debugging
@@ -173,8 +173,8 @@ resource.labels.revision_name = "my-service-00005-abc"
 ```text
 resource.type = "cloud_run_revision"
 resource.labels.service_name = "my-service"
-logName = "projects/MY_PROJECT/logs/run.googleapis.com%2Frequests"
-httpRequest.status >= 500
+logName = "projects/MY_PROJECT/logs/run.googleapis.com%2Fvarlog%2Fsystem"
+severity >= WARNING
 ```
 
 ### Combining Application and System Logs
@@ -195,15 +195,12 @@ If your application writes structured JSON logs, you get much better querying ca
 # structured_logging.py - JSON logging for Cloud Run
 import json
 import sys
-import os
 
 def log(severity, message, **kwargs):
     """Write a structured log entry that Cloud Logging can parse."""
     entry = {
         "severity": severity,
         "message": message,
-        # Include trace context if available
-        "logging.googleapis.com/trace": os.environ.get("TRACE_CONTEXT", ""),
     }
     entry.update(kwargs)
     print(json.dumps(entry), file=sys.stderr)
