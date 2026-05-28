@@ -33,7 +33,7 @@ gcloud artifacts docker images list \
 The most commonly used base images are:
 
 - `us-central1-docker.pkg.dev/cloud-workstations-images/predefined/code-oss` - VS Code (Code OSS)
-- `us-central1-docker.pkg.dev/cloud-workstations-images/predefined/base-image` - Minimal base without an IDE
+- `us-central1-docker.pkg.dev/cloud-workstations-images/predefined/base` - Minimal base without an IDE
 - `us-central1-docker.pkg.dev/cloud-workstations-images/predefined/intellij-ultimate` - JetBrains IntelliJ
 
 ## Step 2: Write Your Dockerfile
@@ -51,14 +51,16 @@ USER root
 # Install system dependencies and common tools
 RUN apt-get update && apt-get install -y \
     build-essential \
+    ca-certificates \
     curl \
     wget \
     git \
     jq \
+    vim \
     unzip \
     postgresql-client \
     redis-tools \
-    mysql-client \
+    default-mysql-client \
     htop \
     tmux \
     ripgrep \
@@ -95,8 +97,10 @@ RUN go install golang.org/x/tools/gopls@latest \
     && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 # Install Docker CLI (for building images from within the workstation)
-RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
-    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list \
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list \
     && apt-get update && apt-get install -y docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
@@ -110,20 +114,21 @@ RUN wget -q https://releases.hashicorp.com/terraform/1.7.0/terraform_1.7.0_linux
     && unzip terraform_1.7.0_linux_amd64.zip -d /usr/local/bin \
     && rm terraform_1.7.0_linux_amd64.zip
 
-# Install VS Code extensions that should be pre-installed
-# These get installed into the image so they are available immediately
-RUN code-oss-cloud-workstations --install-extension golang.go \
-    && code-oss-cloud-workstations --install-extension ms-python.python \
-    && code-oss-cloud-workstations --install-extension dbaeumer.vscode-eslint \
-    && code-oss-cloud-workstations --install-extension esbenp.prettier-vscode \
-    && code-oss-cloud-workstations --install-extension hashicorp.terraform
+# Install VS Code extensions at workstation startup
+# Running this after the default user is created makes them visible in Code OSS
+RUN printf '%s\n' \
+    '#!/bin/bash' \
+    'sudo -u user /opt/code-oss/bin/codeoss-cloudworkstations --install-extension golang.go \' \
+    '    --install-extension ms-python.python \' \
+    '    --install-extension dbaeumer.vscode-eslint \' \
+    '    --install-extension esbenp.prettier-vscode \' \
+    '    --install-extension hashicorp.terraform' \
+    > /etc/workstation-startup.d/120_install_extensions.sh \
+    && chmod +x /etc/workstation-startup.d/120_install_extensions.sh
 
 # Copy custom shell configuration
 COPY bashrc-additions /etc/bashrc-additions
 RUN echo "source /etc/bashrc-additions" >> /etc/bash.bashrc
-
-# Switch back to the default user
-USER user
 ```
 
 Create the accompanying bashrc additions file:
@@ -177,6 +182,8 @@ docker tag us-central1-docker.pkg.dev/my-project/workstation-images/backend-dev:
 docker push us-central1-docker.pkg.dev/my-project/workstation-images/backend-dev:latest
 ```
 
+If your Artifact Registry repository is private, make sure the service account used by the workstation configuration has permission to pull the image, such as the Artifact Registry Reader role on the repository.
+
 ## Step 4: Update the Workstation Configuration
 
 Point your workstation configuration at the custom image:
@@ -214,7 +221,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/$PROJECT_ID/workstation-images/backend-dev']
 
-# Build images in the same region as your Artifact Registry
+# Use a larger machine type for faster builds
 options:
   machineType: 'E2_HIGHCPU_8'  # Faster builds with more CPU
 ```
