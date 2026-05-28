@@ -14,13 +14,13 @@ This guide covers how to set up the connector, read and write data, handle commo
 
 ## How the BigQuery Connector Works
 
-The Spark BigQuery connector uses the BigQuery Storage Read API and the BigQuery Storage Write API under the hood. When you read a table, it streams data directly from BigQuery storage into Spark executors in parallel. When you write, it uses the Storage Write API to load data back into BigQuery efficiently.
+The Spark BigQuery connector uses the BigQuery Storage Read API when reading from BigQuery. When you read a table, it streams data directly from BigQuery storage into Spark executors in parallel. When you write with `writeMethod` set to `direct`, it uses the BigQuery Storage Write API to load data back into BigQuery efficiently.
 
-This is different from the older approach of exporting data to GCS as a temporary step. The connector still uses a temporary GCS bucket for some operations, but the read path is direct and significantly faster.
+This is different from the older approach of exporting data to GCS as a temporary step. The connector still uses a temporary GCS bucket for indirect writes, but the table read path is direct and significantly faster.
 
 ## Step 1: Create a Cluster with the BigQuery Connector
 
-The simplest way to get started is to include the connector when creating your Dataproc cluster:
+The simplest way to get started is to use a Dataproc 2.1 or later image, where the connector is already available to Spark jobs:
 
 ```bash
 # Create a Dataproc cluster with the BigQuery connector pre-installed
@@ -30,24 +30,35 @@ gcloud dataproc clusters create bq-spark-cluster \
   --image-version=2.1-debian11 \
   --num-workers=2 \
   --worker-machine-type=n2-standard-4 \
-  --optional-components=JUPYTER \
-  --metadata="spark-bigquery-connector-url=gs://spark-lib/bigquery/spark-bigquery-with-dependencies_2.12-0.36.1.jar" \
-  --initialization-actions=gs://goog-dataproc-initialization-actions-us-central1/connectors/connectors.sh
+  --optional-components=JUPYTER
 ```
 
-Alternatively, you can specify the connector JAR when submitting individual jobs, which gives you more flexibility:
+If you need a different connector version on a Dataproc 2.1 or later cluster, set the connector metadata when you create the cluster:
+
+```bash
+# Create a Dataproc cluster with a specific BigQuery connector version
+gcloud dataproc clusters create bq-spark-cluster \
+  --region=us-central1 \
+  --image-version=2.1-debian11 \
+  --num-workers=2 \
+  --worker-machine-type=n2-standard-4 \
+  --optional-components=JUPYTER \
+  --metadata=SPARK_BQ_CONNECTOR_VERSION=0.44.2
+```
+
+On older Dataproc images, you can specify the connector JAR when submitting individual jobs:
 
 ```bash
 # Submit a job with the BigQuery connector JAR
 gcloud dataproc jobs submit pyspark gs://my-bucket/scripts/bq_job.py \
   --cluster=bq-spark-cluster \
   --region=us-central1 \
-  --jars=gs://spark-lib/bigquery/spark-bigquery-with-dependencies_2.12-0.36.1.jar
+  --jars=gs://spark-lib/bigquery/spark-bigquery-with-dependencies_2.12-0.44.2.jar
 ```
 
 ## Step 2: Set Up a Temporary GCS Bucket
 
-The BigQuery connector needs a GCS bucket for temporary data during write operations. Create one if you do not already have a staging bucket:
+The BigQuery connector needs a GCS bucket for indirect writes. Create one if you do not already have a staging bucket:
 
 ```bash
 # Create a temporary bucket for BigQuery connector staging
@@ -76,13 +87,9 @@ spark = SparkSession.builder \
     .appName("ReadFromBigQuery") \
     .getOrCreate()
 
-# Set the temporary GCS bucket for the connector
-spark.conf.set("temporaryGcsBucket", "my-project-bq-temp")
-
 # Read an entire BigQuery table
 df = spark.read.format("bigquery") \
-    .option("table", "my-project.my_dataset.sales_data") \
-    .load()
+    .load("my-project.my_dataset.sales_data")
 
 # Show the schema and first few rows
 df.printSchema()
@@ -97,14 +104,12 @@ You can also push down filters to BigQuery so only relevant data is transferred:
 # Read with a filter pushed down to BigQuery
 # Only matching rows are transferred from BigQuery to Spark
 df = spark.read.format("bigquery") \
-    .option("table", "my-project.my_dataset.sales_data") \
-    .option("filter", "sale_date >= '2025-01-01' AND region = 'US'") \
-    .load()
+    .load("my-project.my_dataset.sales_data") \
+    .filter("sale_date >= DATE '2025-01-01' AND region = 'US'")
 
 # Or use column selection to reduce data transfer
 df = spark.read.format("bigquery") \
-    .option("table", "my-project.my_dataset.sales_data") \
-    .load() \
+    .load("my-project.my_dataset.sales_data") \
     .select("order_id", "customer_id", "amount", "sale_date")
 ```
 
@@ -121,7 +126,7 @@ query = """
         DATE_TRUNC(sale_date, MONTH) as sale_month,
         SUM(amount) as total_sales,
         COUNT(*) as transaction_count
-    FROM my-project.my_dataset.sales_data
+    FROM `my-project.my_dataset.sales_data`
     WHERE sale_date >= '2025-01-01'
     GROUP BY region, product_category, sale_month
 """
@@ -149,12 +154,9 @@ spark = SparkSession.builder \
     .appName("WriteToBigQuery") \
     .getOrCreate()
 
-spark.conf.set("temporaryGcsBucket", "my-project-bq-temp")
-
 # Read source data
 df = spark.read.format("bigquery") \
-    .option("table", "my-project.my_dataset.raw_events") \
-    .load()
+    .load("my-project.my_dataset.raw_events")
 
 # Apply transformations
 processed = df \
@@ -167,17 +169,16 @@ processed = df \
 
 # Write the processed data to a new BigQuery table
 processed.write.format("bigquery") \
-    .option("table", "my-project.my_dataset.processed_events") \
     .option("writeMethod", "direct") \
     .mode("overwrite") \
-    .save()
+    .save("my-project.my_dataset.processed_events")
 
 print("Data written to BigQuery successfully")
 ```
 
 The `writeMethod` option controls how data is written:
 - `direct` - Uses the BigQuery Storage Write API (faster, recommended)
-- `indirect` - Writes to GCS first, then loads into BigQuery (legacy approach)
+- `indirect` - Writes to GCS first, then loads into BigQuery
 
 ## Step 6: Handle Write Modes
 
@@ -186,21 +187,18 @@ Spark supports several write modes that map to different BigQuery behaviors:
 ```python
 # Overwrite mode - replaces the entire table
 df.write.format("bigquery") \
-    .option("table", "my-project.my_dataset.output_table") \
     .mode("overwrite") \
-    .save()
+    .save("my-project.my_dataset.output_table")
 
 # Append mode - adds rows to an existing table
 df.write.format("bigquery") \
-    .option("table", "my-project.my_dataset.output_table") \
     .mode("append") \
-    .save()
+    .save("my-project.my_dataset.output_table")
 
 # ErrorIfExists mode - fails if the table already exists (default)
 df.write.format("bigquery") \
-    .option("table", "my-project.my_dataset.output_table") \
     .mode("errorifexists") \
-    .save()
+    .save("my-project.my_dataset.output_table")
 ```
 
 ## Step 7: Configure Partitioned and Clustered Tables
@@ -210,13 +208,13 @@ When writing to BigQuery, you can create partitioned and clustered tables for be
 ```python
 # Write data as a partitioned and clustered BigQuery table
 df.write.format("bigquery") \
-    .option("table", "my-project.my_dataset.events_partitioned") \
     .option("partitionField", "event_date") \
     .option("partitionType", "DAY") \
     .option("clusteredFields", "event_type,user_id") \
-    .option("writeMethod", "direct") \
+    .option("writeMethod", "indirect") \
+    .option("temporaryGcsBucket", "my-project-bq-temp") \
     .mode("overwrite") \
-    .save()
+    .save("my-project.my_dataset.events_partitioned")
 ```
 
 This creates a BigQuery table partitioned by `event_date` and clustered by `event_type` and `user_id`, which dramatically improves query performance for filtered queries.
@@ -225,14 +223,22 @@ This creates a BigQuery table partitioned by `event_date` and clustered by `even
 
 A few things that commonly go wrong:
 
-**Missing temporary bucket** - If you see errors about a missing temporary GCS bucket, make sure you set the `temporaryGcsBucket` configuration or pass it as an option.
+**Missing temporary bucket** - If you see errors about a missing temporary GCS bucket during indirect writes, make sure you set the `temporaryGcsBucket` configuration or pass it as an option.
 
-**Permission errors** - The Dataproc service account needs `bigquery.dataEditor` and `bigquery.jobUser` roles in addition to the default Dataproc roles.
+**Permission errors** - The Dataproc service account needs appropriate BigQuery roles, such as `bigquery.dataViewer` for reading, `bigquery.readSessionUser` for the Storage Read API, `bigquery.dataEditor` for writing, and `bigquery.jobUser` for running query and load jobs. If you use a temporary GCS bucket, it also needs permission to create and delete objects in that bucket.
 
 ```bash
-# Grant BigQuery permissions to the Dataproc service account
+# Grant common BigQuery permissions to the Dataproc service account
 PROJECT_NUMBER=$(gcloud projects describe my-project --format="value(projectNumber)")
 SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:${SA}" \
+  --role="roles/bigquery.dataViewer"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:${SA}" \
+  --role="roles/bigquery.readSessionUser"
 
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:${SA}" \
@@ -241,6 +247,10 @@ gcloud projects add-iam-policy-binding my-project \
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:${SA}" \
   --role="roles/bigquery.jobUser"
+
+gcloud storage buckets add-iam-policy-binding gs://my-project-bq-temp \
+  --member="serviceAccount:${SA}" \
+  --role="roles/storage.objectUser"
 ```
 
 **Schema mismatches** - When writing to an existing table, make sure the DataFrame schema matches the BigQuery table schema. Mismatched column names or types will cause failures.
@@ -250,8 +260,8 @@ gcloud projects add-iam-policy-binding my-project \
 - Use `filter` pushdown to minimize data transfer from BigQuery to Spark
 - Select only the columns you need instead of reading entire wide tables
 - For large writes, use the `direct` write method with the Storage Write API
-- Set `spark.sql.sources.parallelPartitions` to control read parallelism
-- Use `materializationDataset` option to control where temporary views are materialized
+- Set `maxParallelism` or `preferredMinParallelism` to control read parallelism
+- On connector versions before 0.42.1, use the `materializationDataset` option to control where temporary views and query results are materialized
 
 ## Wrapping Up
 
