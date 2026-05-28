@@ -17,7 +17,7 @@ Cloud SQL for PostgreSQL uses streaming replication based on WAL (Write-Ahead Lo
 Key characteristics:
 
 - Replicas are read-only (you cannot write to them)
-- Each primary supports up to 10 replicas
+- Google recommends limiting a primary to 10 or fewer direct replicas; you can use cascading replicas if you need more
 - Replicas can be in the same region or a different region
 - Replication lag is typically under a second but can vary with write volume
 
@@ -160,8 +160,8 @@ gcloud monitoring policies create \
     --display-name="PG Replica Lag Alert" \
     --condition-display-name="Lag > 10s" \
     --condition-filter='resource.type="cloudsql_database" AND metric.type="cloudsql.googleapis.com/database/replication/replica_lag"' \
-    --condition-threshold-value=10 \
-    --condition-threshold-duration=300s \
+    --if="> 10" \
+    --duration=300s \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -258,17 +258,17 @@ After promotion:
 - The replica becomes a fully independent instance
 - It starts accepting writes
 - Replication from the old primary stops permanently
-- Other replicas still point to the old primary - they will not follow the promoted instance
+- Sibling replicas still point to the old primary - they will not follow the promoted instance
 
-If you promote a replica for disaster recovery, you will need to create new replicas from the newly promoted instance and update your application's connection strings.
+If you promote a replica for disaster recovery, you will need to create new replicas from the newly promoted instance and update your application's connection strings. Cascading replicas under the promoted replica continue to replicate from it.
 
 ## Cascading Replicas
 
-Cloud SQL does not support cascading replication (replica of a replica) directly. Each replica must replicate from the primary instance. This means:
+Cloud SQL supports cascading replication (replica of a replica) up to four levels including the primary instance. This means:
 
-- All replication traffic comes from the primary
-- Adding many replicas increases the primary's network and I/O load
-- If you need more than 10 replicas, consider using an external read proxy layer
+- You can reduce replication load on the primary by putting some replicas under another replica
+- Cascading replicas can be in the same region or a different region
+- If you need more than 10 direct replicas from a primary, use cascading replicas and a read proxy or load-balancing layer for application traffic
 
 ## Database Flags for Replicas
 
@@ -276,12 +276,12 @@ You can customize certain PostgreSQL parameters on replicas independently:
 
 ```bash
 # Set specific database flags on a replica
-# For example, increase work_mem for analytical queries on replicas
+# For example, increase work_mem to 256 MB for analytical queries on replicas
 gcloud sql instances patch pg-replica-1 \
-    --database-flags=work_mem=256MB,max_parallel_workers_per_gather=4
+    --database-flags=work_mem=262144,max_parallel_workers_per_gather=4
 ```
 
-This is useful when your replicas serve different workloads than the primary - for instance, analytical queries that benefit from more memory or parallelism.
+This is useful when your replicas serve different workloads than the primary - for instance, analytical queries that benefit from more memory or parallelism. The `--database-flags` option replaces the instance's existing flag list, so include any flags you want to keep.
 
 ## Best Practices
 
