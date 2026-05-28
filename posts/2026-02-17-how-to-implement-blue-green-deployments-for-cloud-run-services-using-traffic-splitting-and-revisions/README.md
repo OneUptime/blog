@@ -8,7 +8,7 @@ Description: Learn how to implement blue-green deployments for Cloud Run service
 
 ---
 
-Blue-green deployments let you release new versions of your application with zero downtime and instant rollback. The idea is simple: you run two identical environments (blue and green), deploy the new version to the inactive one, test it, then switch traffic over. If anything goes wrong, you switch back.
+Blue-green deployments let you release new versions of your application with zero downtime and fast rollback. The idea is simple: you run two identical environments (blue and green), deploy the new version to the inactive one, test it, then switch traffic over. If anything goes wrong, you switch back.
 
 Cloud Run makes blue-green deployments particularly easy because of its built-in revision management and traffic splitting. Every deployment creates a new revision, and you control exactly how much traffic each revision gets. In this post, I will walk through implementing this pattern step by step.
 
@@ -87,7 +87,9 @@ Use the tagged URL to run your verification suite against the new revision:
 # Get the tagged URL
 GREEN_URL=$(gcloud run services describe my-service \
   --region=us-central1 \
-  --format='value(status.traffic[1].url)')
+  --flatten='status.traffic[]' \
+  --filter='status.traffic.tag=green' \
+  --format='value(status.traffic.url)')
 
 echo "Green revision URL: $GREEN_URL"
 
@@ -154,24 +156,17 @@ fi
 Once verification passes, route all traffic to the green revision:
 
 ```bash
-# Get the latest revision name (the green one)
-GREEN_REVISION=$(gcloud run revisions list \
-  --service=my-service \
-  --region=us-central1 \
-  --format='value(name)' \
-  --limit=1)
-
-# Switch 100% of traffic to the green revision
+# Switch 100% of traffic to the green revision tag
 gcloud run services update-traffic my-service \
   --region=us-central1 \
-  --to-revisions=$GREEN_REVISION=100
+  --to-tags=green=100
 
-echo "Traffic switched to $GREEN_REVISION"
+echo "Traffic switched to the green revision"
 ```
 
-## Step 5: Set Up Instant Rollback
+## Step 5: Set Up Fast Rollback
 
-If something goes wrong after the switch, roll back instantly:
+If something goes wrong after the switch, roll back quickly:
 
 ```bash
 # Get the previous (blue) revision name
@@ -181,7 +176,7 @@ BLUE_REVISION=$(gcloud run revisions list \
   --format='value(name)' \
   --limit=2 | tail -1)
 
-# Roll back to the blue revision instantly
+# Roll back to the blue revision
 gcloud run services update-traffic my-service \
   --region=us-central1 \
   --to-revisions=$BLUE_REVISION=100
@@ -189,7 +184,7 @@ gcloud run services update-traffic my-service \
 echo "Rolled back to $BLUE_REVISION"
 ```
 
-This is instant because the blue revision is still running - Cloud Run just changes the traffic routing.
+This is fast because Cloud Run changes the traffic routing without redeploying. Traffic routing adjustments are not instantaneous, and in-flight requests continue to completion during the transition.
 
 ## Automating the Full Process with Cloud Build
 
@@ -230,7 +225,9 @@ steps:
       - |
         GREEN_URL=$(gcloud run services describe my-service \
           --region=$_REGION \
-          --format='value(status.traffic[].url)' | grep green)
+          --flatten='status.traffic[]' \
+          --filter='status.traffic.tag=green' \
+          --format='value(status.traffic.url)')
 
         echo "Testing green revision at: $GREEN_URL"
 
@@ -251,16 +248,11 @@ steps:
     args:
       - '-c'
       - |
-        LATEST=$(gcloud run revisions list \
-          --service=my-service \
-          --region=$_REGION \
-          --format='value(name)' --limit=1)
-
         gcloud run services update-traffic my-service \
           --region=$_REGION \
-          --to-revisions=$LATEST=100
+          --to-tags=green=100
 
-        echo "Traffic switched to $LATEST"
+        echo "Traffic switched to the green revision"
     id: 'switch-traffic'
     waitFor: ['verify-green']
 
@@ -301,7 +293,7 @@ gcloud logging read \
 # Compare latency between revisions
 gcloud monitoring time-series list \
   --filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_latencies"' \
-  --interval-start-time=$(date -u -v-30M +%Y-%m-%dT%H:%M:%SZ) \
+  --interval-start-time=$(date -u -d '30 minutes ago' +%Y-%m-%dT%H:%M:%SZ) \
   --format="table(resource.labels.revision_name, points[0].value.distributionValue.mean)"
 ```
 
@@ -318,6 +310,6 @@ Never drop columns or rename tables in the same release as the code change. That
 
 ## Wrapping Up
 
-Blue-green deployments on Cloud Run are straightforward thanks to the built-in revision and traffic management. Deploy with `--no-traffic`, test using tagged URLs, switch traffic when verified, and roll back instantly if needed. The whole process can be automated in a Cloud Build pipeline that runs on every push to main.
+Blue-green deployments on Cloud Run are straightforward thanks to the built-in revision and traffic management. Deploy with `--no-traffic`, test using tagged URLs, switch traffic when verified, and roll back quickly if needed. The whole process can be automated in a Cloud Build pipeline that runs on every push to main.
 
 The most important thing is testing the green revision thoroughly before switching traffic. Automate as many checks as possible - health checks, API contract tests, performance baselines - so you catch issues before your users do.
