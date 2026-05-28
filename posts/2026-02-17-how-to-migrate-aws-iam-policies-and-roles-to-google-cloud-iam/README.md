@@ -63,7 +63,7 @@ aws iam get-policy-version \
 
 ## Step 2: Map AWS Managed Policies to GCP Predefined Roles
 
-AWS managed policies have GCP predefined role equivalents. Here are common mappings:
+AWS managed policies have approximate GCP predefined role equivalents. Here are common starting points:
 
 | AWS Managed Policy | GCP Predefined Role |
 |-------------------|---------------------|
@@ -99,8 +99,9 @@ gcloud projects add-iam-policy-binding my-project \
 
 AWS custom policies translate to GCP custom roles. Here is an example:
 
+AWS custom policy - allows specific S3 and DynamoDB actions:
+
 ```json
-// AWS custom policy - allows specific S3 and DynamoDB actions
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -184,16 +185,17 @@ gcloud iam workload-identity-pools create aws-pool \
   --location=global \
   --display-name="AWS Workload Pool"
 
-# Create a provider for AWS
+# Create a provider for AWS and map AWS role names to attribute.aws_role
 gcloud iam workload-identity-pools providers create-aws aws-provider \
   --location=global \
   --workload-identity-pool=aws-pool \
-  --account-id=123456789012
+  --account-id=123456789012 \
+  --attribute-mapping="google.subject=assertion.arn,attribute.aws_role=assertion.arn.extract('assumed-role/{role}/')"
 
 # Allow the AWS identity to impersonate a GCP service account
 gcloud iam service-accounts add-iam-policy-binding \
   my-app-sa@my-project.iam.gserviceaccount.com \
-  --member="principalSet://iam.googleapis.com/projects/my-project-num/locations/global/workloadIdentityPools/aws-pool/attribute.aws_role/arn:aws:sts::123456789012:assumed-role/my-role" \
+  --member="principalSet://iam.googleapis.com/projects/123456789012/locations/global/workloadIdentityPools/aws-pool/attribute.aws_role/my-role" \
   --role="roles/iam.workloadIdentityUser"
 ```
 
@@ -219,13 +221,6 @@ gcloud storage buckets add-iam-policy-binding gs://my-shared-bucket \
 
 AWS Service Control Policies (SCPs) restrict what actions can be performed in member accounts. GCP Organization Policy constraints serve a similar purpose.
 
-```bash
-# Restrict VM creation to specific regions (like SCP restricting EC2 to specific regions)
-gcloud resource-manager org-policies set-policy \
-  --organization=123456789 \
-  policy.yaml
-```
-
 Create the policy file:
 
 ```yaml
@@ -234,6 +229,13 @@ constraint: constraints/gcp.resourceLocations
 listPolicy:
   allowedValues:
     - in:us-locations
+```
+
+```bash
+# Restrict VM creation to specific regions (like SCP restricting EC2 to specific regions)
+gcloud resource-manager org-policies set-policy \
+  policy.yaml \
+  --organization=123456789
 ```
 
 ```bash
@@ -253,12 +255,12 @@ gcloud resource-manager org-policies enable-enforce \
 After setting up IAM, validate that the permissions work as expected.
 
 ```bash
-# Test if a service account has a specific permission
-gcloud asset check-iam-policy \
-  --scope=projects/my-project \
+# Analyze whether a service account has a specific permission
+gcloud asset analyze-iam-policy \
+  --project=my-project \
   --identity="serviceAccount:my-app-sa@my-project.iam.gserviceaccount.com" \
-  --resource="//storage.googleapis.com/my-bucket" \
-  --permission="storage.objects.get"
+  --full-resource-name="//storage.googleapis.com/projects/_/buckets/my-bucket" \
+  --permissions="storage.objects.get"
 
 # List all IAM bindings for a project
 gcloud projects get-iam-policy my-project \
@@ -275,8 +277,8 @@ gcloud policy-troubleshoot iam \
 
 1. GCP does not have IAM users the same way AWS does. Users come from Google Workspace or Cloud Identity.
 2. Service account keys are discouraged in GCP. Use workload identity, metadata server, or impersonation instead.
-3. GCP IAM changes can take up to 60 seconds to propagate.
-4. The roles/owner role cannot be granted via gcloud for security reasons on organization resources.
+3. GCP IAM policy changes are eventually consistent. They generally take effect within 2 minutes, but can take 7 minutes or longer; group membership changes can take longer.
+4. The roles/owner role has special restrictions. For example, granting it on a project to a user outside your organization, or on a project that is not part of an organization, must be done in the Google Cloud console rather than the gcloud CLI.
 
 ## Summary
 
