@@ -8,19 +8,17 @@ Description: Fix BigQuery export to Cloud Storage failing with exceeded maximum 
 
 ---
 
-You tried to export a large BigQuery table to Cloud Storage and got an error about exceeding the maximum file size. BigQuery EXPORT DATA and the bq extract command have a limit of 1 GB per file for CSV and JSON formats, and this limit catches people off guard when exporting tables that are larger than a few gigabytes.
+You tried to export a large BigQuery table to Cloud Storage and got an error about exceeding the maximum file size. BigQuery extract jobs have a limit of 1 GB of table data when exporting to a single file, and this limit catches people off guard when exporting tables that are larger than a few gigabytes.
 
-The good news is that BigQuery has built-in support for splitting exports into multiple files, and with the right approach you can export tables of any size. Let me walk through the solutions.
+The good news is that BigQuery has built-in support for splitting exports into multiple files, and with the right approach you can export very large tables within BigQuery's export quotas. Let me walk through the solutions.
 
 ## Understanding the Export Limits
 
-BigQuery enforces these per-file limits during export:
-- CSV format: 1 GB per file
-- JSON (newline-delimited): 1 GB per file
-- Avro format: 1 GB per file (but Avro is much more compact)
-- Parquet format: 1 GB per file
+BigQuery enforces this limit for single-file exports:
+- Single destination file: up to 1 GB of table data
+- Multiple destination files: use a wildcard URI, and BigQuery shards the output into files whose sizes can vary
 
-If your export would produce a single file larger than 1 GB, the operation fails. The fix is to tell BigQuery to split the output into multiple files using a wildcard URI.
+If your export would write more than 1 GB of table data to a single destination URI, the operation fails. The fix is to tell BigQuery to split the output into multiple files using a wildcard URI.
 
 ## Fix 1 - Use Wildcard URIs for File Splitting
 
@@ -83,11 +81,11 @@ EXPORT DATA OPTIONS(
 SELECT * FROM `my_dataset.large_table`;
 ```
 
-GZIP compression typically achieves 5-10x compression ratios on tabular data, so a 10 GB table might compress to 1-2 GB across just a couple of files.
+GZIP compression can significantly reduce tabular data size, so a 10 GB table might compress to far less data depending on the columns and values.
 
 ## Fix 3 - Use Parquet or Avro Format
 
-Binary formats like Parquet and Avro are much more compact than CSV or JSON, reducing the number of output files and making downstream processing faster.
+Binary formats like Parquet and Avro are often more compact than CSV or JSON, reducing the number of output files and making downstream processing faster.
 
 ```sql
 -- Export as Parquet (highly recommended for analytics workloads)
@@ -140,7 +138,7 @@ END_DATE="2024-06-30"
 
 # Loop through each date in the range
 current="$START_DATE"
-while [[ "$current" < "$END_DATE" ]]; do
+while [[ "$current" < "$END_DATE" || "$current" == "$END_DATE" ]]; do
     # Format the date for the export path
     year=$(date -d "$current" +%Y)
     month=$(date -d "$current" +%m)
@@ -219,7 +217,7 @@ def export_table_to_gcs(dataset_id, table_id, bucket_name, prefix):
     extract_job.result()
 
     print(f"Exported {table_id} to {destination_uri}")
-    print(f"  Bytes transferred: {extract_job.destination_uri_file_counts}")
+    print(f"  Output file counts: {extract_job.destination_uri_file_counts}")
 
     return extract_job
 
@@ -259,7 +257,7 @@ def read_exported_files(bucket_name, prefix):
 ```mermaid
 flowchart TD
     A[Export BigQuery Table] --> B{Table size?}
-    B -->|Under 1 GB| C[Single file export - any format]
+    B -->|Under 1 GB| C[Single URI with bq extract, or wildcard with EXPORT DATA]
     B -->|1-100 GB| D[Wildcard URI with compression]
     B -->|100+ GB| E[Partition-based export with Parquet]
     D --> F{Downstream tool?}
@@ -271,4 +269,4 @@ flowchart TD
 
 ## Summary
 
-The maximum file size error is solved by using wildcard URIs in the destination path, which tells BigQuery to split the export into multiple files. For best results, use Parquet or Avro format with compression, export by partition for very large tables, and filter to only the data you need. The wildcard approach scales to tables of any size, and the resulting files can be easily processed by downstream tools.
+The maximum file size error is solved by using wildcard URIs in the destination path, which tells BigQuery to split the export into multiple files. For best results, use Parquet or Avro format with compression, export by partition for very large tables, and filter to only the data you need. The wildcard approach scales to large tables within BigQuery's export quotas, and the resulting files can be easily processed by downstream tools.
