@@ -16,23 +16,28 @@ Istio, the service mesh for Kubernetes, implements circuit breakers at the infra
 
 ## Installing Istio on GKE
 
-GKE offers a managed Istio installation through Anthos Service Mesh, or you can install open-source Istio.
+GKE offers a managed Istio-compatible service mesh through Cloud Service Mesh, or you can install open-source Istio.
 
 ```bash
-# Option 1: Install Anthos Service Mesh (managed)
+# Option 1: Install Cloud Service Mesh (managed)
 
 gcloud container fleet mesh enable --project=my-project
-gcloud container fleet memberships register my-cluster \
-    --gke-cluster=us-central1/my-cluster \
-    --enable-workload-identity
+gcloud container clusters update my-cluster \
+    --location=us-central1 \
+    --fleet-project=my-project
+gcloud container fleet mesh update \
+    --management automatic \
+    --memberships my-cluster \
+    --location=us-central1 \
+    --project=my-project
 
 # Option 2: Install open-source Istio
 curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.20.0
+cd istio-*
 export PATH=$PWD/bin:$PATH
 
 # Install Istio with the default profile
-istioctl install --set profile=default -y
+istioctl install --set profile=default --set values.global.platform=gke -y
 ```
 
 Enable automatic sidecar injection for your namespace.
@@ -44,7 +49,7 @@ kubectl label namespace default istio-injection=enabled
 
 ## Setting Up the Microservices
 
-Let me create a scenario with three services: a frontend, a backend API, and a database service.
+Let me create a scenario with two services: a frontend and a backend API.
 
 ```yaml
 # k8s/backend-service.yaml - The service we will protect with a circuit breaker
@@ -137,7 +142,7 @@ Istio uses a `DestinationRule` to configure circuit breakers. Here is a configur
 
 ```yaml
 # istio/circuit-breaker.yaml - Circuit breaker configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-api-circuit-breaker
@@ -164,7 +169,7 @@ spec:
       # Number of consecutive 5xx errors before ejecting a host
       consecutive5xxErrors: 5
       # Number of consecutive gateway errors before ejecting
-      consecutiveGatewayErrors: 5
+      consecutiveGatewayErrors: 3
       # How long a host stays ejected
       baseEjectionTime: 30s
       # Maximum percentage of hosts that can be ejected
@@ -180,7 +185,7 @@ These settings limit the number of connections and requests to the backend servi
 - `maxConnections: 100`: No more than 100 TCP connections
 - `http1MaxPendingRequests: 50`: No more than 50 requests waiting in queue
 - `http2MaxRequests: 100`: No more than 100 active requests
-- `maxRequestsPerConnection: 10`: Close connections after 10 requests (prevents connection reuse issues)
+- `maxRequestsPerConnection: 10`: Close connections after 10 requests (limits connection reuse)
 
 When these limits are reached, additional requests are rejected immediately with a 503 error instead of queuing up and causing timeouts.
 
@@ -193,7 +198,7 @@ This is the actual circuit breaker logic:
 - `baseEjectionTime: 30s`: Keep the pod ejected for at least 30 seconds
 - `maxEjectionPercent: 50`: Never eject more than half the pods (to maintain availability)
 
-An ejected pod does not receive traffic. After the ejection time, Istio tries the pod again. If it is still failing, the ejection time doubles.
+An ejected pod does not receive traffic. After the ejection time, Istio tries the pod again. If it is still failing, the ejection time increases based on the number of times the pod has been ejected.
 
 ## Applying the Configuration
 
@@ -258,7 +263,7 @@ Combine circuit breakers with retries for better resilience.
 
 ```yaml
 # istio/virtual-service.yaml - Retry configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-api-retry
@@ -285,7 +290,7 @@ Timeouts prevent requests from hanging indefinitely.
 
 ```yaml
 # istio/timeouts.yaml - Request timeout configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-api-timeout
@@ -319,7 +324,7 @@ For a more visual approach, use Kiali (Istio's dashboard).
 
 ```bash
 # Install Kiali
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f samples/addons/kiali.yaml
 
 # Access the Kiali dashboard
 istioctl dashboard kiali
@@ -331,7 +336,7 @@ If you are running canary deployments, you can configure different circuit break
 
 ```yaml
 # istio/circuit-breaker-versions.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-api-versioned
