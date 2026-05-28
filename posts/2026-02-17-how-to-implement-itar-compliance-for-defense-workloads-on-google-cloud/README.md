@@ -8,7 +8,7 @@ Description: A guide to implementing ITAR compliance for defense workloads on Go
 
 ---
 
-ITAR (International Traffic in Arms Regulations) governs the export of defense articles, services, and technical data. If your organization handles ITAR-controlled data, you need to ensure that only US persons can access it and that the data never leaves US jurisdiction - even accidentally through a cloud misconfiguration. Google Cloud supports ITAR compliance through Assured Workloads with the IL4 (Impact Level 4) compliance regime, which covers both ITAR and CUI (Controlled Unclassified Information) requirements.
+ITAR (International Traffic in Arms Regulations) governs the export of defense articles, services, and technical data. If your organization handles ITAR-controlled data, you need to ensure that only US persons can access it and that the data never leaves US jurisdiction - even accidentally through a cloud misconfiguration. Google Cloud supports ITAR compliance through the Assured Workloads ITAR control package, which applies data residency and personnel access controls for regulated workloads.
 
 This post covers the specific steps to set up and maintain an ITAR-compliant environment on Google Cloud.
 
@@ -16,7 +16,7 @@ This post covers the specific steps to set up and maintain an ITAR-compliant env
 
 ITAR compliance on cloud platforms comes down to three core requirements:
 
-1. **US person access only** - Only US citizens and permanent residents can access ITAR data and the infrastructure that processes it
+1. **US person access only** - Only US persons, as defined by ITAR, can access ITAR data and the infrastructure that processes it
 2. **US jurisdiction only** - Data must be stored and processed within the United States
 3. **Access controls** - Strong authentication, authorization, and audit logging
 
@@ -36,31 +36,30 @@ flowchart TD
 
 ## Step 1: Create an Assured Workloads Environment for ITAR
 
-Google Cloud's Assured Workloads with the IL4 compliance regime satisfies the infrastructure requirements for ITAR:
+Google Cloud's Assured Workloads with the ITAR control package helps satisfy the infrastructure requirements for ITAR:
 
 ```bash
 # Enable the Assured Workloads API
 
 gcloud services enable assuredworkloads.googleapis.com
 
-# Create an Assured Workloads folder with IL4 compliance
-# IL4 covers ITAR and CUI requirements
+# Create an Assured Workloads folder with the ITAR control package
 gcloud assured workloads create \
     --organization=123456789 \
     --location=us \
     --display-name="ITAR Defense Workloads" \
-    --compliance-regime=IL4 \
-    --billing-account=BILLING_ACCOUNT_ID \
+    --compliance-regime=itar \
+    --billing-account=billingAccounts/BILLING_ACCOUNT_ID \
     --next-rotation-time="2026-03-01T00:00:00Z" \
     --rotation-period=7776000s \
     --labels="compliance=itar,classification=cui"
 ```
 
-When you create an IL4 workload, Google Cloud automatically:
+When you create an ITAR workload, Google Cloud automatically:
 - Restricts resources to US regions
 - Ensures only US-person Google staff can access the infrastructure
 - Applies organization policies that prevent non-compliant configurations
-- Configures encryption to meet FIPS 140-2 requirements
+- Configures encryption settings for the workload's supported services
 
 ## Step 2: Create Projects for ITAR Workloads
 
@@ -153,17 +152,20 @@ gcloud resource-manager org-policies set-policy - \
 constraint: constraints/gcp.restrictNonCmekServices
 listPolicy:
   deniedValues:
-    - "compute.googleapis.com"
-    - "storage.googleapis.com"
-    - "bigquery.googleapis.com"
-    - "container.googleapis.com"
-    - "sqladmin.googleapis.com"
+    - "is:compute.googleapis.com"
+    - "is:storage.googleapis.com"
+    - "is:bigquery.googleapis.com"
+    - "is:container.googleapis.com"
+    - "is:sqladmin.googleapis.com"
 EOF
 
 # Disable external IP addresses on VMs
-gcloud resource-manager org-policies enable-enforce \
-    compute.vmExternalIpAccess \
-    --folder=ASSURED_WORKLOAD_FOLDER_ID
+gcloud resource-manager org-policies set-policy - \
+    --folder=ASSURED_WORKLOAD_FOLDER_ID <<'EOF'
+constraint: constraints/compute.vmExternalIpAccess
+listPolicy:
+  allValues: DENY
+EOF
 
 # Disable serial port access
 gcloud resource-manager org-policies enable-enforce \
@@ -239,7 +241,7 @@ gcloud resource-manager org-policies set-policy - \
 constraint: constraints/iam.allowedPolicyMemberDomains
 listPolicy:
   allowedValues:
-    - "C0123abc456"
+    - "is:C0123abc456"
 EOF
 
 # Create custom IAM roles with minimal permissions
@@ -265,7 +267,7 @@ gcloud logging sinks create itar-audit-sink \
     --project=itar-app-prod \
     --log-filter='logName:"cloudaudit.googleapis.com"'
 
-# Create the audit log bucket with 7-year retention (ITAR requirement)
+# Create the audit log bucket with retention aligned to your records policy
 gcloud storage buckets create gs://itar-audit-logs-bucket \
     --project=itar-shared-services \
     --location=us \
@@ -280,10 +282,8 @@ gcloud storage buckets update gs://itar-audit-logs-bucket \
 ## Step 8: Security Monitoring
 
 ```bash
-# Enable Security Command Center Premium for continuous monitoring
-gcloud scc settings update \
-    --organization=123456789 \
-    --enable-modules=SECURITY_HEALTH_ANALYTICS,EVENT_THREAT_DETECTION,CONTAINER_THREAT_DETECTION
+# Enable Security Command Center Premium or Enterprise from the Google Cloud console
+# or through your organization-level Security Command Center onboarding process.
 
 # Create a notification config for critical findings
 gcloud scc notifications create itar-critical-findings \
@@ -295,10 +295,10 @@ gcloud scc notifications create itar-critical-findings \
 ## Terraform Configuration
 
 ```hcl
-# Assured Workloads for ITAR (IL4)
+# Assured Workloads for ITAR
 resource "google_assured_workloads_workload" "itar" {
   display_name      = "ITAR Defense Workloads"
-  compliance_regime = "IL4"
+  compliance_regime = "ITAR"
   billing_account   = "billingAccounts/BILLING_ID"
   organization      = "123456789"
   location          = "us"
