@@ -30,8 +30,7 @@ sequenceDiagram
     RE-->>FE: Session token (cookie)
     User->>LB: Send request (with token)
     LB->>CA: Evaluate security policy
-    CA->>RE: Assess token
-    RE-->>CA: Score + reasons
+    CA->>CA: Decode token attributes
     CA-->>LB: Allow / Block / Redirect
     LB->>BE: Forward (if allowed)
     BE-->>User: Response
@@ -46,7 +45,7 @@ There are two token types for WAF integration:
 
 - A GCP project with both Cloud Armor and reCAPTCHA Enterprise APIs enabled
 - An external HTTP(S) load balancer with backend services
-- Cloud Armor Admin and reCAPTCHA Enterprise Admin roles
+- Compute Security Admin, Compute Network Admin, and reCAPTCHA Enterprise Admin roles
 
 ## Step 1: Create a WAF Site Key
 
@@ -58,22 +57,22 @@ WAF integration requires a specific type of reCAPTCHA key:
 gcloud recaptcha keys create \
   --display-name="Cloud Armor WAF Key" \
   --web \
-  --integration-type=SCORE \
-  --waf-feature=SESSION_TOKEN \
-  --waf-service=CA \
+  --integration-type=score \
+  --waf-feature=session-token \
+  --waf-service=ca \
   --domains="example.com,www.example.com" \
   --project=PROJECT_ID
 ```
 
-The `--waf-feature` flag specifies the token type:
+The `--waf-feature` flag specifies the WAF feature:
 
-- `SESSION_TOKEN` for session-based protection
-- `ACTION_TOKEN` for action-specific protection
-- `CHALLENGE_PAGE` for showing a challenge page to suspicious users
+- `session-token` for session-based protection
+- `action-token` for action-specific protection
+- `challenge-page` for showing a challenge page to suspicious users
 
-The `--waf-service=CA` tells reCAPTCHA this key is for Cloud Armor integration.
+The `--waf-service=ca` tells reCAPTCHA this key is for Cloud Armor integration.
 
-Save the key ID from the output.
+Save the key ID from the output. If you use more than one WAF feature, create a separate key for each feature.
 
 ## Step 2: Add the Session Token Script to Your Frontend
 
@@ -81,7 +80,7 @@ For session token integration, add the reCAPTCHA JavaScript that sets a session 
 
 ```html
 <!-- Load reCAPTCHA Enterprise session token script -->
-<script src="https://www.google.com/recaptcha/enterprise.js?render=YOUR_WAF_SITE_KEY&waf=session" async defer></script>
+<script src="https://www.google.com/recaptcha/enterprise.js?render=YOUR_SESSION_TOKEN_SITE_KEY&waf=session" async defer></script>
 ```
 
 This script automatically creates a `recaptcha-ca-t` cookie on the user's browser. Cloud Armor reads this cookie from incoming requests.
@@ -89,13 +88,13 @@ This script automatically creates a `recaptcha-ca-t` cookie on the user's browse
 For action tokens on specific pages:
 
 ```html
-<script src="https://www.google.com/recaptcha/enterprise.js?render=YOUR_WAF_SITE_KEY&waf=session"></script>
+<script src="https://www.google.com/recaptcha/enterprise.js?render=YOUR_ACTION_TOKEN_SITE_KEY"></script>
 
 <script>
 // Generate an action token when the user clicks login
 async function handleLogin() {
     grecaptcha.enterprise.ready(async function() {
-        const token = await grecaptcha.enterprise.execute('YOUR_WAF_SITE_KEY', {
+        const token = await grecaptcha.enterprise.execute('YOUR_ACTION_TOKEN_SITE_KEY', {
             action: 'login'
         });
 
@@ -128,9 +127,11 @@ gcloud compute security-policies create recaptcha-bot-policy \
 
 # Associate the reCAPTCHA key with the security policy
 gcloud compute security-policies update recaptcha-bot-policy \
-  --recaptcha-redirect-site-key=YOUR_WAF_SITE_KEY \
+  --recaptcha-redirect-site-key=YOUR_CHALLENGE_PAGE_SITE_KEY \
   --project=PROJECT_ID
 ```
+
+Use a `challenge-page` key for `--recaptcha-redirect-site-key`. Session-token and action-token keys are associated with the individual rules that evaluate those tokens.
 
 ## Step 4: Add Bot Management Rules
 
@@ -140,7 +141,8 @@ Now add rules to the security policy that take action based on reCAPTCHA scores:
 # Rule 1: Block requests with very low scores (likely bots)
 gcloud compute security-policies rules create 1000 \
   --security-policy=recaptcha-bot-policy \
-  --expression="recaptcha.score < 0.2" \
+  --expression="token.recaptcha_session.score < 0.2" \
+  --recaptcha-session-site-keys=YOUR_SESSION_TOKEN_SITE_KEY \
   --action=deny-403 \
   --description="Block high-confidence bots" \
   --project=PROJECT_ID
@@ -148,22 +150,24 @@ gcloud compute security-policies rules create 1000 \
 # Rule 2: Redirect suspicious requests to a reCAPTCHA challenge page
 gcloud compute security-policies rules create 2000 \
   --security-policy=recaptcha-bot-policy \
-  --expression="recaptcha.score < 0.5" \
+  --expression="token.recaptcha_session.score < 0.5" \
+  --recaptcha-session-site-keys=YOUR_SESSION_TOKEN_SITE_KEY \
   --action=redirect \
-  --redirect-type=GOOGLE_RECAPTCHA \
+  --redirect-type=google-recaptcha \
   --description="Challenge suspicious traffic" \
   --project=PROJECT_ID
 
 # Rule 3: Allow good traffic through
 gcloud compute security-policies rules create 3000 \
   --security-policy=recaptcha-bot-policy \
-  --expression="recaptcha.score >= 0.5" \
+  --expression="token.recaptcha_session.score >= 0.5" \
+  --recaptcha-session-site-keys=YOUR_SESSION_TOKEN_SITE_KEY \
   --action=allow \
   --description="Allow likely human traffic" \
   --project=PROJECT_ID
 ```
 
-The `redirect` action with `GOOGLE_RECAPTCHA` type shows an interstitial challenge page. Users who pass the challenge get a new token with a higher score and are allowed through.
+The `redirect` action with `google-recaptcha` type shows an interstitial challenge page. Users who pass the assessment receive a reCAPTCHA exemption cookie and are allowed through.
 
 ## Step 5: Add Action-Specific Rules
 
@@ -173,7 +177,8 @@ You can create rules that target specific reCAPTCHA actions:
 # Block bots specifically on the login endpoint
 gcloud compute security-policies rules create 1500 \
   --security-policy=recaptcha-bot-policy \
-  --expression="recaptcha.action == 'login' && recaptcha.score < 0.4" \
+  --expression="token.recaptcha_action.action == 'login' && token.recaptcha_action.score < 0.4" \
+  --recaptcha-action-site-keys=YOUR_ACTION_TOKEN_SITE_KEY \
   --action=deny-403 \
   --description="Block bots on login" \
   --project=PROJECT_ID
@@ -181,9 +186,10 @@ gcloud compute security-policies rules create 1500 \
 # Stricter rules for checkout (financial risk)
 gcloud compute security-policies rules create 1600 \
   --security-policy=recaptcha-bot-policy \
-  --expression="recaptcha.action == 'checkout' && recaptcha.score < 0.6" \
+  --expression="token.recaptcha_action.action == 'checkout' && token.recaptcha_action.score < 0.6" \
+  --recaptcha-action-site-keys=YOUR_ACTION_TOKEN_SITE_KEY \
   --action=redirect \
-  --redirect-type=GOOGLE_RECAPTCHA \
+  --redirect-type=google-recaptcha \
   --description="Challenge suspicious checkout attempts" \
   --project=PROJECT_ID
 ```
@@ -235,7 +241,8 @@ gcloud compute security-policies rules create 700 \
 # reCAPTCHA bot detection (lower priority, evaluated after above rules)
 gcloud compute security-policies rules create 1000 \
   --security-policy=recaptcha-bot-policy \
-  --expression="recaptcha.score < 0.2" \
+  --expression="token.recaptcha_session.score < 0.2" \
+  --recaptcha-session-site-keys=YOUR_SESSION_TOKEN_SITE_KEY \
   --action=deny-403 \
   --description="Block confirmed bots" \
   --project=PROJECT_ID
@@ -262,13 +269,29 @@ resource "google_recaptcha_enterprise_key" "waf_key" {
   }
 }
 
+# reCAPTCHA Enterprise challenge-page key for redirect rules
+resource "google_recaptcha_enterprise_key" "challenge_key" {
+  display_name = "Cloud Armor Challenge Key"
+  project      = var.project_id
+
+  web_settings {
+    integration_type = "INVISIBLE"
+    allow_all_domains = true
+  }
+
+  waf_settings {
+    waf_feature = "CHALLENGE_PAGE"
+    waf_service = "CA"
+  }
+}
+
 # Cloud Armor security policy with reCAPTCHA
 resource "google_compute_security_policy" "bot_policy" {
   name    = "recaptcha-bot-policy"
   project = var.project_id
 
   recaptcha_options_config {
-    redirect_site_key = google_recaptcha_enterprise_key.waf_key.id
+    redirect_site_key = google_recaptcha_enterprise_key.challenge_key.name
   }
 
   # Block confirmed bots
@@ -277,7 +300,12 @@ resource "google_compute_security_policy" "bot_policy" {
     priority = 1000
     match {
       expr {
-        expression = "recaptcha.score < 0.2"
+        expression = "token.recaptcha_session.score < 0.2"
+      }
+      expr_options {
+        recaptcha_options {
+          session_token_site_keys = [google_recaptcha_enterprise_key.waf_key.name]
+        }
       }
     }
     description = "Block confirmed bots"
@@ -289,7 +317,12 @@ resource "google_compute_security_policy" "bot_policy" {
     priority = 2000
     match {
       expr {
-        expression = "recaptcha.score < 0.5"
+        expression = "token.recaptcha_session.score < 0.5"
+      }
+      expr_options {
+        recaptcha_options {
+          session_token_site_keys = [google_recaptcha_enterprise_key.waf_key.name]
+        }
       }
     }
     redirect_options {
@@ -325,7 +358,7 @@ gcloud logging read '
 ' --project=PROJECT_ID --limit=50
 ```
 
-Look at the `recaptchaActionToken` and `recaptchaSessionToken` fields in the logs to see scores and how rules were applied.
+Look at the `securityPolicyRequestData.recaptchaActionToken` and `securityPolicyRequestData.recaptchaSessionToken` fields in the logs to see scores and how rules were applied.
 
 ## Summary
 
