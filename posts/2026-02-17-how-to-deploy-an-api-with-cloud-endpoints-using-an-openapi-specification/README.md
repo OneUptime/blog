@@ -17,10 +17,10 @@ This guide walks through deploying an API with Cloud Endpoints from scratch, usi
 The architecture has three main components:
 
 1. **OpenAPI specification**: A YAML or JSON file describing your API
-2. **Extensible Service Proxy (ESP/ESPv2)**: A sidecar that sits in front of your backend, handling authentication and request validation
+2. **Extensible Service Proxy (ESP/ESPv2)**: A proxy that sits in front of your backend, handling authentication, routing, and telemetry
 3. **Service Management API**: Google's backend that manages your API configuration
 
-When a request comes in, ESP validates it against your OpenAPI spec, checks authentication, logs the request, and then forwards it to your backend.
+When a request comes in, ESP checks authentication and API key requirements from your OpenAPI configuration, logs the request, and then forwards it to your backend.
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ gcloud services enable \
 
 ## Step 1: Write the OpenAPI Specification
 
-Create an OpenAPI 2.0 specification that describes your API. Cloud Endpoints uses OpenAPI 2.0 (Swagger) with Google-specific extensions.
+Create an OpenAPI specification that describes your API. Cloud Endpoints supports OpenAPI 2.0 (Swagger) and OpenAPI 3.x; this example uses OpenAPI 2.0 with Google-specific extensions.
 
 ```yaml
 # openapi.yaml
@@ -50,8 +50,9 @@ info:
   title: "Task Management API"
   description: "API for managing tasks and projects"
   version: "1.0.0"
-# Replace with your actual Cloud Endpoints service name
-host: "my-api.endpoints.my-project-id.cloud.goog"
+# Replace with your actual Cloud Endpoints service name.
+# For Cloud Run with ESPv2, use the hostname of the ESPv2 Cloud Run service.
+host: "my-api-gateway-abc123-uc.a.run.app"
 basePath: "/"
 schemes:
   - "https"
@@ -63,6 +64,7 @@ produces:
 # Google Cloud Endpoints extension for backend configuration
 x-google-backend:
   address: "https://my-backend-service-abc123-uc.a.run.app"
+  protocol: "h2"
 
 paths:
   /tasks:
@@ -195,12 +197,12 @@ You can check the deployed configuration.
 
 ```bash
 # List deployed service configurations
-gcloud endpoints services describe my-api.endpoints.my-project-id.cloud.goog \
+gcloud endpoints services describe my-api-gateway-abc123-uc.a.run.app \
   --project=my-project-id
 
 # List configuration versions
 gcloud endpoints configs list \
-  --service=my-api.endpoints.my-project-id.cloud.goog \
+  --service=my-api-gateway-abc123-uc.a.run.app \
   --project=my-project-id
 ```
 
@@ -213,22 +215,22 @@ The Extensible Service Proxy v2 (ESPv2) acts as the API gateway. Deploy it along
 For Cloud Run, build a custom ESPv2 container with your configuration baked in.
 
 ```bash
-# Download the ESPv2 startup script
+# After downloading the ESPv2 gcloud_build_image script
 chmod +x gcloud_build_image
 
 # Build the ESPv2 image with your API config
-gcloud builds submit \
-  --tag gcr.io/my-project-id/endpoints-runtime-serverless:latest \
-  --project=my-project-id
+./gcloud_build_image \
+  -s my-api-gateway-abc123-uc.a.run.app \
+  -c 2026-02-17r0 \
+  -p my-project-id
 ```
 
-Alternatively, deploy ESPv2 as a separate Cloud Run service that proxies to your backend.
+Deploy ESPv2 as a separate Cloud Run service that proxies to your backend.
 
 ```bash
 # Deploy ESPv2 on Cloud Run
 gcloud run deploy my-api-gateway \
-  --image="gcr.io/endpoints-release/endpoints-runtime-serverless:2" \
-  --set-env-vars="ESPv2_ARGS=--service=my-api.endpoints.my-project-id.cloud.goog --rollout_strategy=managed --backend=https://my-backend-abc123-uc.a.run.app" \
+  --image="gcr.io/my-project-id/endpoints-runtime-serverless:ESPv2_VERSION-my-api-gateway-abc123-uc.a.run.app-2026-02-17r0" \
   --allow-unauthenticated \
   --platform=managed \
   --region=us-central1 \
@@ -237,7 +239,7 @@ gcloud run deploy my-api-gateway \
 
 ### On GKE
 
-On GKE, deploy ESP as a sidecar container in your pod.
+On GKE, deploy ESP as a sidecar container in your pod. If you use the local `--backend` sidecar pattern, remove the top-level `x-google-backend` block from the OpenAPI spec so ESPv2 forwards to the local backend.
 
 ```yaml
 # deployment-with-esp.yaml
@@ -261,9 +263,11 @@ spec:
         - name: esp
           image: gcr.io/endpoints-release/endpoints-runtime:2
           args:
-            - "--service=my-api.endpoints.my-project-id.cloud.goog"
+            - "--listener_port=8081"
+            - "--service=my-api-gateway-abc123-uc.a.run.app"
             - "--rollout_strategy=managed"
             - "--backend=http://127.0.0.1:8080"
+            - "--healthz=/healthz"
           ports:
             - containerPort: 8081
           readinessProbe:
@@ -283,15 +287,15 @@ Once deployed, test your API endpoints.
 
 ```bash
 # Test the list tasks endpoint
-curl -X GET "https://my-api.endpoints.my-project-id.cloud.goog/tasks"
+curl -X GET "https://my-api-gateway-abc123-uc.a.run.app/tasks"
 
 # Test creating a task
-curl -X POST "https://my-api.endpoints.my-project-id.cloud.goog/tasks" \
+curl -X POST "https://my-api-gateway-abc123-uc.a.run.app/tasks" \
   -H "Content-Type: application/json" \
   -d '{"title": "Write documentation", "description": "Update the API docs"}'
 
 # Test getting a specific task
-curl -X GET "https://my-api.endpoints.my-project-id.cloud.goog/tasks/abc123"
+curl -X GET "https://my-api-gateway-abc123-uc.a.run.app/tasks/abc123"
 ```
 
 ## Step 5: View API Metrics
@@ -303,7 +307,7 @@ Cloud Endpoints automatically provides metrics in Cloud Console.
 # Navigate to: APIs & Services > Endpoints > your service
 
 # Or use gcloud to see recent activity
-gcloud endpoints services describe my-api.endpoints.my-project-id.cloud.goog \
+gcloud endpoints services describe my-api-gateway-abc123-uc.a.run.app \
   --project=my-project-id
 ```
 
@@ -321,10 +325,10 @@ To update your API, modify the OpenAPI spec and redeploy.
 # After updating openapi.yaml
 gcloud endpoints services deploy openapi.yaml --project=my-project-id
 
-# ESPv2 with --rollout_strategy=managed will pick up the new config automatically
-# No need to restart the proxy
+# ESPv2 with --rollout_strategy=managed on non-serverless platforms will pick up
+# the new config automatically. For Cloud Run, rebuild and redeploy the ESPv2 image.
 ```
 
 ## Summary
 
-Cloud Endpoints gives you API management without building it yourself. The OpenAPI specification serves as both documentation and configuration, defining your API's structure and behavior. ESPv2 enforces the spec at the proxy level, while Google's backend handles service management. Deploy the spec, run ESPv2 in front of your backend, and you get authentication, monitoring, and logging out of the box. Updates are as simple as modifying the OpenAPI spec and redeploying.
+Cloud Endpoints gives you API management without building it yourself. The OpenAPI specification serves as both documentation and configuration, defining your API's structure and behavior. ESPv2 enforces configured authentication and API management rules at the proxy level, while Google's backend handles service management. Deploy the spec, run ESPv2 in front of your backend, and you get authentication, monitoring, and logging out of the box.
