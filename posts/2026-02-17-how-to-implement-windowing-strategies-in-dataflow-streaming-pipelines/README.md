@@ -59,8 +59,8 @@ This is useful for computing rolling averages or detecting trends.
 
 ```java
 // Apply 10-minute sliding windows with a 5-minute slide period
-PCollection<Double> windowedReadings = sensorReadings
-    .apply("SlidingWindow", Window.<Double>into(
+PCollection<KV<String, Double>> windowedReadings = sensorReadings
+    .apply("SlidingWindow", Window.<KV<String, Double>>into(
         SlidingWindows.of(Duration.standardMinutes(10))
             .every(Duration.standardMinutes(5))
     ));
@@ -74,7 +74,7 @@ The tradeoff with sliding windows is that each element gets duplicated into mult
 
 ## Session Windows
 
-Session windows are dynamic - they are based on activity gaps rather than fixed time intervals. A session window closes when no new data arrives for a specified gap duration. This makes them perfect for modeling user sessions, conversation threads, or any activity with natural pauses.
+Session windows are dynamic - they are based on event-time activity gaps rather than fixed time intervals. A session window closes when there are no events within the specified gap duration. This makes them perfect for modeling user sessions, conversation threads, or any activity with natural pauses.
 
 ```java
 // Apply session windows with a 30-minute inactivity gap
@@ -143,23 +143,17 @@ flowchart TD
 
 ## Timestamp Assignment
 
-For windowing to work correctly, your elements need accurate timestamps. When reading from Pub/Sub, Dataflow automatically uses the Pub/Sub publish time. But sometimes you need to use a timestamp from the data itself.
+For windowing to work correctly, your elements need accurate timestamps. When reading from Pub/Sub, Dataflow automatically uses the Pub/Sub publish time. But sometimes you need to use an event timestamp that was published as a Pub/Sub message attribute.
 
 ```java
-// Assign timestamps from the event data rather than Pub/Sub publish time
-PCollection<String> withEventTimestamps = events
-    .apply("AssignTimestamps", WithTimestamps.<String>of(
-        event -> {
-            // Extract the actual event timestamp from the JSON payload
-            JsonObject json = JsonParser.parseString(event).getAsJsonObject();
-            long epochMillis = json.get("event_timestamp").getAsLong();
-            return Instant.ofEpochMilli(epochMillis);
-        })
-        .withAllowedTimestampSkew(Duration.standardHours(1))
-    );
+// Use timestamps from a Pub/Sub message attribute rather than Pub/Sub publish time
+PCollection<String> events = pipeline
+    .apply("ReadFromPubSub", PubsubIO.readStrings()
+        .fromSubscription("projects/my-project/subscriptions/events-sub")
+        .withTimestampAttribute("event_timestamp"));
 ```
 
-The `withAllowedTimestampSkew` setting is important. It tells Beam how far back in time an element's timestamp can be compared to the current watermark. If your data can arrive significantly delayed, you need to set this appropriately.
+The timestamp attribute can be either milliseconds since the Unix epoch or an RFC 3339 timestamp string. If your data can arrive significantly delayed, configure allowed lateness on the windowing transform so Beam knows how long to keep accepting late elements for a window.
 
 ## Combining Windows with GroupByKey
 
