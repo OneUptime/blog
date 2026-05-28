@@ -22,7 +22,7 @@ Let me start with a practical FastAPI application. This is not a hello-world exa
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, UTC
 import os
 
 # Create the FastAPI app with metadata for documentation
@@ -91,7 +91,7 @@ def create_task(task: TaskCreate):
         "description": task.description,
         "priority": task.priority,
         "completed": False,
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.now(UTC),
         "due_date": task.due_date,
     }
     tasks_db[next_id] = task_data
@@ -172,7 +172,7 @@ RUN adduser --disabled-password --no-create-home appuser
 USER appuser
 
 # Cloud Run sets the PORT environment variable
-# Uvicorn reads it to determine which port to bind to
+# The shell expands it before starting Uvicorn
 ENV PORT=8080
 
 # Run with uvicorn - use 0.0.0.0 to accept external connections
@@ -271,7 +271,7 @@ When Cloud Run is behind a load balancer or API gateway with a path prefix, the 
 # main.py - Configure root_path for load balancer compatibility
 import os
 
-# Cloud Run sets this when behind a load balancer
+# Set this yourself when routing through a load balancer or gateway prefix
 root_path = os.environ.get("ROOT_PATH", "")
 
 app = FastAPI(
@@ -320,12 +320,14 @@ import os
 
 docs_url = "/docs" if os.environ.get("ENABLE_DOCS", "true") == "true" else None
 redoc_url = "/redoc" if os.environ.get("ENABLE_DOCS", "true") == "true" else None
+openapi_url = "/openapi.json" if os.environ.get("ENABLE_DOCS", "true") == "true" else None
 
 app = FastAPI(
     title="Task Management API",
     version="1.0.0",
     docs_url=docs_url,
     redoc_url=redoc_url,
+    openapi_url=openapi_url,
 )
 ```
 
