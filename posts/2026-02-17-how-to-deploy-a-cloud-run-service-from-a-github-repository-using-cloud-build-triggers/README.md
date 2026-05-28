@@ -24,11 +24,13 @@ You will need:
 Enable the required APIs:
 
 ```bash
-# Enable Cloud Build, Cloud Run, and Artifact Registry APIs
+# Enable Cloud Build, Cloud Run, Artifact Registry, Resource Manager, and Pub/Sub APIs
 
 gcloud services enable cloudbuild.googleapis.com \
   run.googleapis.com \
-  artifactregistry.googleapis.com
+  artifactregistry.googleapis.com \
+  cloudresourcemanager.googleapis.com \
+  pubsub.googleapis.com
 ```
 
 ## Step 1: Connect Your GitHub Repository
@@ -67,22 +69,37 @@ gcloud artifacts repositories create cloud-run-images \
 
 ## Step 3: Set Up IAM Permissions
 
-Cloud Build needs permission to deploy to Cloud Run. Grant the Cloud Build service account the necessary roles:
+Cloud Build needs permission to build images, push them to Artifact Registry, and deploy to Cloud Run. Grant the Cloud Build service account the necessary roles:
 
 ```bash
-# Get your project number
-PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) \
-  --format='value(projectNumber)')
+# Get the default Cloud Build service account
+BUILD_SERVICE_ACCOUNT=$(gcloud builds get-default-service-account \
+  --format='value(email)')
 
 # Grant Cloud Run Admin role to the Cloud Build service account
 gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
-  --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+  --member="serviceAccount:${BUILD_SERVICE_ACCOUNT}" \
   --role="roles/run.admin"
 
 # Grant Service Account User role so Cloud Build can act as the runtime service account
 gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
-  --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+  --member="serviceAccount:${BUILD_SERVICE_ACCOUNT}" \
   --role="roles/iam.serviceAccountUser"
+
+# Grant Artifact Registry Writer role so Cloud Build can push images
+gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
+  --member="serviceAccount:${BUILD_SERVICE_ACCOUNT}" \
+  --role="roles/artifactregistry.writer"
+
+# Grant Logs Writer role for Cloud Logging build logs
+gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
+  --member="serviceAccount:${BUILD_SERVICE_ACCOUNT}" \
+  --role="roles/logging.logWriter"
+
+# Grant Cloud Build Editor role so the service account can run builds
+gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
+  --member="serviceAccount:${BUILD_SERVICE_ACCOUNT}" \
+  --role="roles/cloudbuild.builds.editor"
 ```
 
 ## Step 4: Write the Cloud Build Configuration
@@ -236,10 +253,10 @@ gcloud builds triggers create github \
 Set up Pub/Sub notifications so you know when builds succeed or fail:
 
 ```bash
-# Create a Pub/Sub topic for build notifications
-gcloud pubsub topics create cloud-build-notifications
+# Create the default Pub/Sub topic for build notifications
+gcloud pubsub topics create cloud-builds
 
-# Cloud Build automatically publishes to cloud-builds topic
+# Cloud Build publishes to the cloud-builds topic by default
 # You can create a subscription to receive these events
 gcloud pubsub subscriptions create build-alerts \
   --topic=cloud-builds
