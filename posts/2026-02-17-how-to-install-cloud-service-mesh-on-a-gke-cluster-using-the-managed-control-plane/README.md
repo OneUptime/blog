@@ -16,39 +16,31 @@ In this guide, I will walk through the complete installation process, from clust
 
 Before starting, you need:
 
-- A GKE cluster running version 1.25 or later
+- A GKE cluster running a supported version of GKE
 - The cluster must be in a VPC-native (alias IP) configuration
 - Workload Identity must be enabled on the cluster
-- The GKE cluster must have at least 4 vCPUs available for the mesh components
-- Your Google Cloud project must have the following APIs enabled
+- The GKE cluster must have enough capacity for the Cloud Service Mesh components
+- Your Google Cloud project must have the Cloud Service Mesh API enabled
 
 Let me cover the setup steps for each prerequisite.
 
 ## Step 1: Enable Required APIs
 
-Enable all the APIs that Cloud Service Mesh depends on.
+Enable the Cloud Service Mesh API. Enabling `mesh.googleapis.com` also enables the APIs that Cloud Service Mesh depends on.
 
 ```bash
 # Enable required APIs for Cloud Service Mesh
 
 gcloud services enable \
     mesh.googleapis.com \
-    container.googleapis.com \
-    gkehub.googleapis.com \
-    monitoring.googleapis.com \
-    logging.googleapis.com \
-    cloudtrace.googleapis.com \
-    meshca.googleapis.com \
-    meshconfig.googleapis.com \
-    iamcredentials.googleapis.com \
     --project=YOUR_PROJECT_ID
 ```
 
 ## Step 2: Create or Prepare the GKE Cluster
 
-If you already have a cluster, skip to the verification section. Otherwise, create a new cluster with the required configuration.
+If you already have a cluster, skip the cluster creation command. Otherwise, create a new cluster with the required configuration.
 
-This command creates a GKE cluster with all the prerequisites for Cloud Service Mesh.
+This command creates a GKE cluster with the cluster-level prerequisites for Cloud Service Mesh.
 
 ```bash
 # Create a GKE cluster configured for Cloud Service Mesh
@@ -59,11 +51,8 @@ gcloud container clusters create mesh-cluster \
     --num-nodes=3 \
     --workload-pool=YOUR_PROJECT_ID.svc.id.goog \
     --enable-ip-alias \
-    --release-channel=regular \
-    --labels=mesh_id=proj-YOUR_PROJECT_NUMBER
+    --release-channel=regular
 ```
-
-The `mesh_id` label is required. The value must be `proj-` followed by your project number (not project ID).
 
 If you have an existing cluster, verify it meets the requirements.
 
@@ -79,6 +68,8 @@ Make sure:
 - `workloadIdentityConfig` is set (Workload Identity is enabled)
 - `ipAllocationPolicy` shows VPC-native configuration
 - `releaseChannel` is set to REGULAR, RAPID, or STABLE
+
+Cloud Service Mesh also installs in-cluster components. Make sure your cluster has capacity for the `mdp-controller` deployment and the `istio-cni-node` DaemonSet.
 
 If Workload Identity is not enabled, update the cluster.
 
@@ -96,9 +87,9 @@ Cloud Service Mesh uses GKE Fleet to manage mesh membership. Register your clust
 
 ```bash
 # Register the cluster with the fleet
-gcloud container fleet memberships register mesh-cluster \
-    --gke-cluster=us-central1-a/mesh-cluster \
-    --enable-workload-identity \
+gcloud container clusters update mesh-cluster \
+    --zone=us-central1-a \
+    --fleet-project=YOUR_PROJECT_ID \
     --project=YOUR_PROJECT_ID
 ```
 
@@ -125,10 +116,13 @@ Now apply the managed control plane configuration to your cluster.
 gcloud container fleet mesh update \
     --management=automatic \
     --memberships=mesh-cluster \
+    --location=us-central1 \
     --project=YOUR_PROJECT_ID
 ```
 
 The `--management=automatic` flag tells Google to manage the control plane, including automatic upgrades.
+
+For a zonal cluster, use the region that corresponds to the cluster's zone as the membership location. For example, a cluster in `us-central1-a` normally has a membership location of `us-central1`.
 
 ## Step 5: Wait for Provisioning
 
@@ -143,7 +137,7 @@ You are looking for the control plane state to show `ACTIVE`. The output will lo
 
 ```text
 membershipStates:
-  projects/YOUR_PROJECT_NUMBER/locations/us-central1-a/memberships/mesh-cluster:
+  projects/YOUR_PROJECT_NUMBER/locations/us-central1/memberships/mesh-cluster:
     servicemesh:
       controlPlaneManagement:
         details:
@@ -184,18 +178,18 @@ kubectl get mutatingwebhookconfiguration | grep istio
 For the mesh to work, your application pods need Envoy sidecar proxies. Enable automatic injection by labeling your namespaces.
 
 ```bash
+# Label your application namespace for automatic injection
+kubectl label namespace default istio.io/rev- istio-injection=enabled --overwrite
+```
+
+For existing managed Istiod users, revision-based injection is still supported. Get the available revision label and apply it to the namespace.
+
+```bash
 # Get the revision label from the control plane
 REVISION=$(kubectl get controlplanerevision -n istio-system -o jsonpath='{.items[0].metadata.name}')
 
-# Label your application namespace for automatic injection
-kubectl label namespace default istio.io/rev=$REVISION --overwrite
-```
-
-For the managed control plane, the revision label is typically `asm-managed`.
-
-```bash
-# Alternative: use the managed revision label directly
-kubectl label namespace default istio.io/rev=asm-managed --overwrite
+# Alternative: label the namespace with a specific managed revision
+kubectl label namespace default istio-injection- istio.io/rev=$REVISION --overwrite
 ```
 
 ## Step 8: Deploy a Test Application
@@ -203,8 +197,8 @@ kubectl label namespace default istio.io/rev=asm-managed --overwrite
 Deploy a simple application to verify the mesh is working. I will use the Bookinfo sample application that Istio provides.
 
 ```bash
-# Deploy the Bookinfo sample application
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/bookinfo/platform/kube/bookinfo.yaml
+# Deploy the Bookinfo sample application from the Cloud Service Mesh samples directory
+kubectl apply -f samples/bookinfo/platform/kube/bookinfo.yaml
 
 # Wait for pods to be ready
 kubectl get pods -w
@@ -223,6 +217,13 @@ You should see `istio-proxy` listed as a container in each pod.
 
 If you need external traffic to reach your mesh services, deploy an ingress gateway.
 
+As a security best practice, deploy gateways in a namespace that is separate from the control plane namespace. This example uses `istio-gateway`.
+
+```bash
+kubectl create namespace istio-gateway
+kubectl label namespace istio-gateway istio.io/rev- istio-injection=enabled --overwrite
+```
+
 ```yaml
 # ingress-gateway.yaml
 # Deploys an Istio ingress gateway for external traffic
@@ -230,7 +231,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: istio-ingressgateway
-  namespace: istio-system
+  namespace: istio-gateway
 spec:
   replicas: 2
   selector:
@@ -260,7 +261,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: istio-ingressgateway
-  namespace: istio-system
+  namespace: istio-gateway
 spec:
   type: LoadBalancer
   selector:
@@ -278,7 +279,7 @@ spec:
 kubectl apply -f ingress-gateway.yaml
 
 # Wait for the load balancer IP
-kubectl get svc istio-ingressgateway -n istio-system -w
+kubectl get svc istio-ingressgateway -n istio-gateway -w
 ```
 
 ## Monitoring the Mesh
@@ -296,7 +297,7 @@ Navigate to the Cloud Service Mesh section in the Google Cloud console to see th
 
 One of the biggest benefits of the managed control plane is automatic upgrades. Google handles upgrading the control plane components on a regular cadence, following the GKE release channels.
 
-When a new version is available, Google rolls it out to the control plane first. Your data plane (sidecar proxies) can be upgraded by restarting your pods.
+When a new version is available, Google rolls it out to the control plane first. If the managed data plane is enabled, Cloud Service Mesh actively updates sidecar proxies by gradually restarting eligible workloads. If you disable the managed data plane, you can upgrade sidecar proxies by restarting your pods.
 
 ```bash
 # Restart deployments to pick up new sidecar proxy versions
@@ -305,9 +306,9 @@ kubectl rollout restart deployment -n default
 
 ## Troubleshooting
 
-**Control plane state stuck in PROVISIONING**: Check that all required APIs are enabled and the cluster meets all prerequisites. The most common issue is missing the `mesh_id` label or not having Workload Identity enabled.
+**Control plane state stuck in PROVISIONING**: Check that the required API is enabled, the cluster is registered to the fleet, and the cluster meets all prerequisites. Common issues include missing Workload Identity or using the wrong membership location.
 
-**Sidecar not injected into pods**: Verify the namespace label matches the control plane revision. Check that the mutating webhook configuration exists. If pods were created before labeling the namespace, restart them.
+**Sidecar not injected into pods**: Verify the namespace has the correct injection label. Check that the mutating webhook configuration exists. If pods were created before labeling the namespace, restart them.
 
 **Mesh dashboard shows no data**: It can take 5-10 minutes for telemetry to start appearing. Verify that your pods have the sidecar by checking the container count.
 
