@@ -8,7 +8,7 @@ Description: Build a fully reactive REST API using Spring WebFlux on Cloud Run w
 
 ---
 
-Reactive programming and Cloud Run are a natural fit. Cloud Run charges you for request-processing time, and reactive applications make the most of that time by never blocking threads while waiting for I/O. Pair Spring WebFlux with Firestore - a serverless document database - and you get a stack that scales to zero when idle and handles bursts of traffic without wasting compute resources on blocked threads.
+Reactive programming and Cloud Run are a natural fit. With Cloud Run's default request-based billing, much of your CPU and memory cost is tied to time spent processing requests, and reactive applications make the most of that time by avoiding blocked application threads while waiting for I/O. Pair Spring WebFlux with Firestore - a serverless document database - and you get a stack that scales to zero when idle and handles bursts of traffic without wasting compute resources on blocked threads.
 
 In this post, I will build a reactive REST API with Spring WebFlux, connect it to Firestore, and deploy it to Cloud Run.
 
@@ -27,12 +27,6 @@ Set up the project with WebFlux and Firestore dependencies:
 <dependency>
     <groupId>com.google.cloud</groupId>
     <artifactId>spring-cloud-gcp-starter-data-firestore</artifactId>
-</dependency>
-
-<!-- Reactive Firestore support -->
-<dependency>
-    <groupId>com.google.cloud</groupId>
-    <artifactId>spring-cloud-gcp-data-firestore</artifactId>
 </dependency>
 ```
 
@@ -62,23 +56,23 @@ public class Product {
 
     private String name;
     private String description;
-    private BigDecimal price;
+    private Double price;
     private String category;
     private int stockCount;
-    private Instant createdAt;
-    private Instant updatedAt;
+    private Date createdAt;
+    private Date updatedAt;
 
     public Product() {}
 
-    public Product(String name, String description, BigDecimal price,
+    public Product(String name, String description, Double price,
                    String category, int stockCount) {
         this.name = name;
         this.description = description;
         this.price = price;
         this.category = category;
         this.stockCount = stockCount;
-        this.createdAt = Instant.now();
-        this.updatedAt = Instant.now();
+        this.createdAt = new Date();
+        this.updatedAt = new Date();
     }
 
     // Getters and setters
@@ -88,15 +82,15 @@ public class Product {
     public void setName(String name) { this.name = name; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
-    public BigDecimal getPrice() { return price; }
-    public void setPrice(BigDecimal price) { this.price = price; }
+    public Double getPrice() { return price; }
+    public void setPrice(Double price) { this.price = price; }
     public String getCategory() { return category; }
     public void setCategory(String category) { this.category = category; }
     public int getStockCount() { return stockCount; }
     public void setStockCount(int stockCount) { this.stockCount = stockCount; }
-    public Instant getCreatedAt() { return createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+    public Date getCreatedAt() { return createdAt; }
+    public Date getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(Date updatedAt) { this.updatedAt = updatedAt; }
 }
 ```
 
@@ -112,7 +106,7 @@ public interface ProductRepository extends FirestoreReactiveRepository<Product> 
     Flux<Product> findByCategory(String category);
 
     // Find products with price less than a threshold
-    Flux<Product> findByPriceLessThan(BigDecimal maxPrice);
+    Flux<Product> findByPriceLessThan(Double maxPrice);
 
     // Find products with stock below a threshold
     Flux<Product> findByStockCountLessThan(int threshold);
@@ -145,7 +139,7 @@ public class ProductService {
 
     // Create a new product
     public Mono<Product> createProduct(Product product) {
-        product.setUpdatedAt(Instant.now());
+        product.setUpdatedAt(new Date());
         return productRepository.save(product);
     }
 
@@ -158,7 +152,7 @@ public class ProductService {
                     existing.setPrice(updated.getPrice());
                     existing.setCategory(updated.getCategory());
                     existing.setStockCount(updated.getStockCount());
-                    existing.setUpdatedAt(Instant.now());
+                    existing.setUpdatedAt(new Date());
                     return productRepository.save(existing);
                 });
     }
@@ -312,7 +306,6 @@ gcloud builds submit --tag gcr.io/my-project/product-api
 # Deploy to Cloud Run
 gcloud run deploy product-api \
     --image gcr.io/my-project/product-api:latest \
-    --platform managed \
     --region us-central1 \
     --memory 512Mi \
     --cpu 1 \
