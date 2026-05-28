@@ -22,12 +22,12 @@ Think of it as having both OLTP and OLAP capabilities in the same database witho
 
 ## Enabling the Columnar Engine
 
-The columnar engine is controlled through AlloyDB instance flags. You can enable it when creating a cluster or add it to an existing one.
+The columnar engine is controlled through AlloyDB instance flags. You can enable it when creating an instance or add it to an existing one. Enabling the engine or changing its memory size restarts the instance.
 
 For a new cluster:
 
 ```bash
-# Create an AlloyDB cluster with the columnar engine enabled
+# Create an AlloyDB cluster
 
 gcloud alloydb clusters create my-analytics-cluster \
   --region=us-central1 \
@@ -40,7 +40,7 @@ gcloud alloydb instances create my-primary \
   --region=us-central1 \
   --instance-type=PRIMARY \
   --cpu-count=16 \
-  --database-flags="google_columnar_engine.enabled=on,google_columnar_engine.memory_size_in_bytes=4294967296"
+  --database-flags="google_columnar_engine.enabled=on,google_columnar_engine.memory_size_in_mb=4096"
 ```
 
 For an existing instance, update the database flags:
@@ -51,10 +51,10 @@ For an existing instance, update the database flags:
 gcloud alloydb instances update my-primary \
   --cluster=my-analytics-cluster \
   --region=us-central1 \
-  --database-flags="google_columnar_engine.enabled=on,google_columnar_engine.memory_size_in_bytes=4294967296"
+  --database-flags="google_columnar_engine.enabled=on,google_columnar_engine.memory_size_in_mb=4096"
 ```
 
-The memory size depends on how much data you want in the columnar store. Start with 25-50% of your instance memory and adjust based on workload.
+The memory size depends on how much data you want in the columnar store. AlloyDB defaults to 30% of instance memory; Google recommends staying at or below 50% for most workloads, although values up to 70% are allowed.
 
 ## Configuring Columnar Engine Memory
 
@@ -63,16 +63,20 @@ The memory allocation determines how much data can be held in columnar format. A
 ```sql
 -- Connect to your AlloyDB instance and check current settings
 SHOW google_columnar_engine.enabled;
-SHOW google_columnar_engine.memory_size_in_bytes;
+SHOW google_columnar_engine.memory_size_in_mb;
 
--- Check how much memory the columnar engine is currently using
+-- Check how much memory remains available to the columnar engine
 SELECT
-  google_columnar_engine_memory_used_bytes() AS used_bytes,
-  google_columnar_engine_memory_size_bytes() AS total_bytes,
+  current_setting('google_columnar_engine.memory_size_in_mb')::numeric AS total_mb,
+  google_columnar_engine_memory_available() AS available_mb,
   ROUND(
-    google_columnar_engine_memory_used_bytes()::numeric /
-    google_columnar_engine_memory_size_bytes()::numeric * 100, 2
-  ) AS usage_percent;
+    (
+      current_setting('google_columnar_engine.memory_size_in_mb')::numeric -
+      google_columnar_engine_memory_available()::numeric
+    ) /
+    current_setting('google_columnar_engine.memory_size_in_mb')::numeric * 100,
+    2
+  ) AS approximate_usage_percent;
 ```
 
 ## Automatic Column Selection
@@ -85,13 +89,12 @@ You can check what the auto-recommender suggests:
 -- View the columns automatically recommended for columnar caching
 -- The recommender analyzes recent query patterns
 SELECT
+  database_name,
   schema_name,
-  table_name,
-  column_name,
-  column_type,
-  estimated_benefit
-FROM google_columnar_engine_recommended_columns
-ORDER BY estimated_benefit DESC;
+  relation_name,
+  column_name
+FROM g_columnar_recommended_columns
+ORDER BY database_name, schema_name, relation_name, column_name;
 ```
 
 ## Manual Column Management
@@ -118,6 +121,8 @@ SELECT google_columnar_engine_drop(
 );
 ```
 
+Columns added with these SQL functions are managed on the connected node and do not persist across instance restarts. For persistent manual management, use the `google_columnar_engine.relations` database flag.
+
 ## Verifying Columnar Engine Usage
 
 After setting up the columnar engine, verify that your queries are actually using it:
@@ -125,7 +130,7 @@ After setting up the columnar engine, verify that your queries are actually usin
 ```sql
 -- Use EXPLAIN ANALYZE to check if a query uses the columnar engine
 -- Look for "Columnar Scan" in the output
-EXPLAIN ANALYZE
+EXPLAIN (ANALYZE, COLUMNAR_ENGINE, COSTS OFF, TIMING OFF, SUMMARY OFF, VERBOSE)
 SELECT
   DATE_TRUNC('month', order_date) AS month,
   status,
@@ -143,13 +148,14 @@ In the EXPLAIN output, look for nodes labeled "Custom Scan (columnar scan)" inst
 ```sql
 -- Check statistics about columnar engine usage
 SELECT
-  relation,
+  database_name,
+  schema_name,
+  relation_name,
   column_name,
-  rows_in_columnar,
-  bytes_in_columnar,
-  columnar_scan_count
-FROM google_columnar_engine_column_stats
-ORDER BY columnar_scan_count DESC;
+  size_in_bytes,
+  last_accessed_time
+FROM g_columnar_columns
+ORDER BY last_accessed_time DESC NULLS LAST;
 ```
 
 ## Tuning for Mixed Workloads
@@ -157,14 +163,11 @@ ORDER BY columnar_scan_count DESC;
 Most real-world databases handle both transactional and analytical queries. Here is how to tune the columnar engine for a mixed workload.
 
 ```sql
--- Set the cost threshold for columnar engine usage
--- Higher values mean only larger scans use the columnar engine
--- Lower values mean more queries can benefit
-SET google_columnar_engine.scan_cost_threshold = 1000;
+-- Check whether AlloyDB is allowed to use columnar scans for queries
+SHOW google_columnar_engine.enable_columnar_scan;
 
--- For analytical sessions, you might want to be more aggressive
--- about using the columnar engine
-SET google_columnar_engine.scan_cost_threshold = 100;
+-- On an analytics-focused instance, make sure columnar scans are enabled
+-- using the instance's database flags.
 ```
 
 For read replicas dedicated to analytics, configure them with more columnar memory:
@@ -178,7 +181,7 @@ gcloud alloydb instances create analytics-replica \
   --instance-type=READ_POOL \
   --cpu-count=32 \
   --read-pool-node-count=2 \
-  --database-flags="google_columnar_engine.enabled=on,google_columnar_engine.memory_size_in_bytes=17179869184"
+  --database-flags="google_columnar_engine.enabled=on,google_columnar_engine.memory_size_in_mb=16384"
 ```
 
 ## Performance Benchmarking
@@ -202,8 +205,8 @@ HAVING SUM(total_amount) > 1000
 ORDER BY lifetime_value DESC
 LIMIT 100;
 
--- Now disable columnar engine for this session to compare
-SET google_columnar_engine.enabled = off;
+-- On a test instance, temporarily prevent queries from using the column store
+-- by setting the instance flag google_columnar_engine.enable_columnar_scan=off.
 
 -- Run the same query again
 SELECT
@@ -218,8 +221,7 @@ HAVING SUM(total_amount) > 1000
 ORDER BY lifetime_value DESC
 LIMIT 100;
 
--- Re-enable columnar engine
-SET google_columnar_engine.enabled = on;
+-- Re-enable columnar scans after the comparison
 ```
 
 ## Monitoring Columnar Engine Health
@@ -228,18 +230,18 @@ Set up monitoring to track the columnar engine's effectiveness over time:
 
 ```sql
 -- Create a monitoring query you can run periodically
--- This shows hit rates and memory utilization
+-- This shows memory utilization and cached column counts
 SELECT
-  google_columnar_engine_memory_used_bytes() AS memory_used,
-  google_columnar_engine_memory_size_bytes() AS memory_total,
+  current_setting('google_columnar_engine.memory_size_in_mb')::numeric AS memory_total_mb,
+  google_columnar_engine_memory_available() AS memory_available_mb,
   (
-    SELECT COUNT(DISTINCT relation)
-    FROM google_columnar_engine_column_stats
+    SELECT COUNT(DISTINCT schema_name || '.' || relation_name)
+    FROM g_columnar_columns
   ) AS tables_cached,
   (
-    SELECT SUM(columnar_scan_count)
-    FROM google_columnar_engine_column_stats
-  ) AS total_columnar_scans;
+    SELECT COUNT(*)
+    FROM g_columnar_columns
+  ) AS columns_cached;
 ```
 
 ## Summary
