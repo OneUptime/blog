@@ -10,11 +10,11 @@ Description: Learn how to connect a Spring Boot application to Google Cloud SQL 
 
 If you have ever deployed a Spring Boot application that talks to a MySQL database, you know the drill: configure a datasource, set up credentials, and point the app at your database host. When that database lives on Cloud SQL, things change a bit. You need a secure connection path, and Google provides the Cloud SQL Socket Factory to handle that for you.
 
-In this post, I will walk through setting up a Spring Boot project that uses Spring Data JPA to interact with a Cloud SQL for MySQL instance, using the Cloud SQL JDBC Socket Factory for the connection layer. This approach avoids opening your database to public IPs and handles SSL certificates automatically.
+In this post, I will walk through setting up a Spring Boot project that uses Spring Data JPA to interact with a Cloud SQL for MySQL instance, using the Cloud SQL JDBC Socket Factory for the connection layer. This approach avoids configuring authorized networks or managing SSL certificates manually, and it can use private IP when your application already has network access to the instance.
 
 ## Why the Cloud SQL Socket Factory?
 
-The Cloud SQL Socket Factory is a Java library that creates secure connections to Cloud SQL instances without requiring you to manage SSL certificates or whitelist IP addresses. It works by using the Cloud SQL Admin API to establish a secure tunnel. When you deploy to Cloud Run, GKE, or App Engine, the library automatically picks up the service account credentials from the environment.
+The Cloud SQL Socket Factory is a Java library that creates secure connections to Cloud SQL instances without requiring you to manage SSL certificates or whitelist IP addresses. It uses the Cloud SQL Admin API for connection authorization and instance metadata, and then opens an encrypted connection to the instance. It does not create a new network path; for private IP connections, your application still needs VPC access to the Cloud SQL instance. When you deploy to Cloud Run, GKE, or App Engine, the library automatically picks up the service account credentials from the environment.
 
 This means you do not need to configure Cloud SQL Proxy as a sidecar. The socket factory is embedded in your JDBC connection string.
 
@@ -42,7 +42,7 @@ Here is the `pom.xml` snippet with the required dependencies:
 <dependency>
     <groupId>com.google.cloud.sql</groupId>
     <artifactId>mysql-socket-factory-connector-j-8</artifactId>
-    <version>1.15.2</version>
+    <version>1.28.4</version>
 </dependency>
 
 <!-- Spring Cloud GCP Starter for SQL (optional but helpful) -->
@@ -62,6 +62,7 @@ Here is the `application.properties` configuration:
 # Cloud SQL instance connection name in the format project:region:instance
 
 spring.cloud.gcp.sql.instance-connection-name=my-project:us-central1:my-instance
+spring.cloud.gcp.sql.refreshStrategy=lazy
 
 # Database name
 spring.cloud.gcp.sql.database-name=mydb
@@ -80,7 +81,7 @@ If you are not using the Spring Cloud GCP starter, you can configure the datasou
 
 ```properties
 # Direct JDBC URL with socket factory configuration
-spring.datasource.url=jdbc:mysql:///mydb?cloudSqlInstance=my-project:us-central1:my-instance&socketFactory=com.google.cloud.sql.mysql.SocketFactory
+spring.datasource.url=jdbc:mysql:///mydb?cloudSqlInstance=my-project:us-central1:my-instance&socketFactory=com.google.cloud.sql.mysql.SocketFactory&cloudSqlRefreshStrategy=lazy
 
 # Database credentials
 spring.datasource.username=app_user
@@ -210,15 +211,14 @@ The application will start up, connect to Cloud SQL through the socket factory, 
 When deploying to Cloud Run, you need to make sure the Cloud Run service account has the `Cloud SQL Client` role. Then configure the Cloud SQL connection in the deployment:
 
 ```bash
-# Deploy to Cloud Run with Cloud SQL connection
+# Deploy to Cloud Run
 gcloud run deploy my-app \
     --image gcr.io/my-project/my-app:latest \
-    --add-cloudsql-instances my-project:us-central1:my-instance \
     --set-env-vars DB_PASSWORD=your_password \
     --region us-central1
 ```
 
-The `--add-cloudsql-instances` flag tells Cloud Run to set up the Unix socket path that the socket factory needs.
+When you use the Cloud SQL Java Connector through the JDBC socket factory URL, the connector handles the Cloud SQL connection from your application. The `--add-cloudsql-instances` flag is only needed if you are using Cloud Run's Unix socket integration and connecting through the `/cloudsql/project:region:instance` socket path.
 
 ## Connection Pooling with HikariCP
 
@@ -239,7 +239,7 @@ Keep the pool size small. Cloud SQL has connection limits, and if you are runnin
 
 A few things that trip people up:
 
-The instance connection name must be in the exact format `project:region:instance`. If you get authentication errors, check that the Cloud SQL Admin API is enabled in your project. If you see connection timeouts, verify that the service account has the `Cloud SQL Client` role.
+The instance connection name must be in the exact format `project:region:instance`. If you get authentication errors, check that the Cloud SQL Admin API is enabled in your project and verify that the service account has the `Cloud SQL Client` role. If you see connection timeouts while using private IP, verify that the application has VPC access to the instance.
 
 When running in GKE, you can either use the socket factory in your JDBC URL or run the Cloud SQL Auth Proxy as a sidecar. The socket factory approach is simpler because it does not require an additional container, but the sidecar approach gives you more control over connection settings.
 
@@ -247,4 +247,4 @@ When running in GKE, you can either use the socket factory in your JDBC URL or r
 
 The Cloud SQL Socket Factory simplifies connecting Java applications to Cloud SQL. Combined with Spring Data JPA, you get a clean, production-ready setup where the connection security is handled for you. You write your entities and repositories the same way you always have, and the socket factory takes care of getting traffic to Cloud SQL safely.
 
-The main takeaway is that you do not need to manage SSL certificates, configure proxies, or open firewall rules. The socket factory handles all of that through the Cloud SQL Admin API. Just add the dependency, set the instance connection name, and your Spring Boot app connects to Cloud SQL as if the database were running locally.
+The main takeaway is that you do not need to manage SSL certificates, configure proxies, or open firewall rules. The socket factory handles connection authorization and encryption with the help of the Cloud SQL Admin API. Just add the dependency, set the instance connection name, and your Spring Boot app connects to Cloud SQL as if the database were running locally.
