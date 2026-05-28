@@ -14,7 +14,7 @@ By exporting trace data to BigQuery, you unlock SQL-based analysis over your ent
 
 ## Setting Up Trace Export to BigQuery
 
-There is no direct "export traces to BigQuery" button in Cloud Trace. Instead, you use Cloud Logging as an intermediary. Since trace spans also generate log entries, you can route those log entries to BigQuery through a logging sink.
+Cloud Trace supports BigQuery exports through trace sinks. As of February 18, 2026, Cloud Trace sinks for BigQuery export are deprecated and are scheduled for removal on or after February 18, 2027. For new long-term setups, Google recommends Observability Analytics instead. If you still need a direct BigQuery export while trace sinks are available, you can configure one with the Cloud Trace sink commands below.
 
 ### Step 1: Create the BigQuery Dataset
 
@@ -29,25 +29,22 @@ bq mk --dataset \
   YOUR_PROJECT_ID:trace_analytics
 ```
 
-### Step 2: Create a Logging Sink for Trace Logs
+### Step 2: Create a Cloud Trace Sink
 
-Cloud Trace generates log entries in the `cloudtrace.googleapis.com` log. Create a sink that routes these to BigQuery.
+Create a Cloud Trace sink that routes trace spans to BigQuery.
 
 ```bash
-# Create a sink that exports trace log entries to BigQuery
-gcloud logging sinks create trace-to-bigquery \
-  bigquery.googleapis.com/projects/YOUR_PROJECT_ID/datasets/trace_analytics \
-  --log-filter='logName:"cloudtrace.googleapis.com"' \
-  --description="Export Cloud Trace spans to BigQuery for analysis"
+# Create a sink that exports trace spans to BigQuery
+gcloud alpha trace sinks create trace-to-bigquery \
+  bigquery.googleapis.com/projects/YOUR_PROJECT_ID/datasets/trace_analytics
 
 # Get the sink's writer identity
-WRITER=$(gcloud logging sinks describe trace-to-bigquery --format='value(writerIdentity)')
+WRITER=$(gcloud alpha trace sinks describe trace-to-bigquery --format='value(writer_identity)')
 
 # Grant the writer identity BigQuery Data Editor access
-bq add-iam-policy-binding \
-  --member="$WRITER" \
-  --role="roles/bigquery.dataEditor" \
-  YOUR_PROJECT_ID:trace_analytics
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:${WRITER}" \
+  --role="roles/bigquery.dataEditor"
 ```
 
 ### Alternative: Export Using the Cloud Trace API
@@ -56,16 +53,16 @@ For more control over what gets exported, you can write a scheduled job that que
 
 ```python
 # export_traces.py - Export traces to BigQuery via the API
-from google.cloud import trace_v2
 from google.cloud import bigquery
-from datetime import datetime, timedelta
+from google.cloud import trace_v1
+from datetime import datetime, timedelta, timezone
 
 # Initialize clients
-trace_client = trace_v2.TraceServiceClient()
+trace_client = trace_v1.TraceServiceClient()
 bq_client = bigquery.Client()
 
 # Define the time range (last hour)
-end_time = datetime.utcnow()
+end_time = datetime.now(timezone.utc)
 start_time = end_time - timedelta(hours=1)
 
 # Fetch traces from Cloud Trace
@@ -74,7 +71,7 @@ traces = trace_client.list_traces(
         "project_id": "your-project-id",
         "start_time": start_time,
         "end_time": end_time,
-        "view": trace_v2.ListTracesRequest.ViewType.COMPLETE,
+        "view": trace_v1.ListTracesRequest.ViewType.COMPLETE,
     }
 )
 
@@ -82,6 +79,7 @@ traces = trace_client.list_traces(
 rows = []
 for trace_obj in traces:
     for span in trace_obj.spans:
+        labels = dict(span.labels) if span.labels else {}
         duration_ms = (
             span.end_time.timestamp() - span.start_time.timestamp()
         ) * 1000
@@ -94,8 +92,8 @@ for trace_obj in traces:
             "start_time": span.start_time.isoformat(),
             "end_time": span.end_time.isoformat(),
             "duration_ms": duration_ms,
-            "status": span.status.code if span.status else 0,
-            "labels": dict(span.labels) if span.labels else {},
+            "http_status_code": labels.get("/http/status_code", ""),
+            "labels": labels,
         })
 
 # Insert into BigQuery
@@ -116,12 +114,12 @@ If you are using the API-based approach, create a table with the right schema.
 # Create the spans table with appropriate schema
 bq mk --table \
   trace_analytics.spans \
-  trace_id:STRING,span_id:STRING,parent_span_id:STRING,span_name:STRING,start_time:TIMESTAMP,end_time:TIMESTAMP,duration_ms:FLOAT,status:INTEGER,labels:JSON
+  trace_id:STRING,span_id:STRING,parent_span_id:STRING,span_name:STRING,start_time:TIMESTAMP,end_time:TIMESTAMP,duration_ms:FLOAT,http_status_code:STRING,labels:JSON
 ```
 
 ## Useful BigQuery Queries for Trace Analysis
 
-Once data is flowing into BigQuery, here are the queries that provide the most value.
+Once data is flowing into the flattened `spans` table from the API-based approach, here are the queries that provide the most value.
 
 ### Latency Percentiles by Endpoint
 
@@ -207,8 +205,8 @@ Track which services have the highest error rates.
 SELECT
   span_name,
   COUNT(*) AS total,
-  COUNTIF(status = 2) AS errors,  -- Status code 2 = ERROR in OpenTelemetry
-  ROUND(COUNTIF(status = 2) / COUNT(*) * 100, 2) AS error_rate_pct
+  COUNTIF(SAFE_CAST(http_status_code AS INT64) >= 500) AS errors,
+  ROUND(COUNTIF(SAFE_CAST(http_status_code AS INT64) >= 500) / COUNT(*) * 100, 2) AS error_rate_pct
 FROM
   `your-project.trace_analytics.spans`
 WHERE
