@@ -8,7 +8,7 @@ Description: A developer's guide to implementing envelope encryption with Google
 
 ---
 
-Cloud KMS has a 64 KiB limit on the data you can encrypt directly through the API. For a password or an API key, that is more than enough. For a file, a database column full of records, or a message payload, it is not even close. You need a different approach.
+Cloud KMS software keys have a 64 KiB limit on the data you can encrypt directly through the API. HSM-backed keys have a smaller 8 KiB message size limit. For a password or an API key, that is more than enough. For a file, a database column full of records, or a message payload, it is not even close. You need a different approach.
 
 Envelope encryption solves this by splitting the problem into two layers. You generate a random data encryption key (DEK) locally and use it to encrypt your actual data with a fast symmetric cipher like AES. Then you use Cloud KMS to encrypt (wrap) the DEK itself. You store the wrapped DEK alongside the encrypted data. When you need to decrypt, you call KMS to unwrap the DEK, then use it locally to decrypt the data.
 
@@ -32,7 +32,7 @@ flowchart TD
     end
 ```
 
-The wrapped DEK is a small piece of ciphertext (a few hundred bytes) that can be stored in a database column, a file header, or metadata. The encrypted data can be any size.
+The wrapped DEK is a small piece of ciphertext (a few hundred bytes) that can be stored in a database column, a file header, or metadata. The encrypted data can be much larger than the KMS direct-encryption limit.
 
 ## Prerequisites
 
@@ -110,9 +110,7 @@ class EnvelopeEncryption:
         nonce = base64.b64decode(envelope["nonce"])
         ciphertext = base64.b64decode(envelope["ciphertext"])
         aesgcm = AESGCM(dek)
-        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
-
-        return plaintext.decode("utf-8")
+        return aesgcm.decrypt(nonce, ciphertext, None)
 
 
 # Usage example
@@ -132,7 +130,7 @@ def main():
     print(f"Envelope size: {len(envelope)} bytes")
 
     # Decrypt it back
-    decrypted = enc.decrypt(envelope)
+    decrypted = enc.decrypt(envelope).decode("utf-8")
     assert decrypted == document
     print("Decryption successful - data matches original")
 
@@ -162,9 +160,12 @@ class EnvelopeEncryption {
 
     // Step 2: Encrypt the data locally with AES-256-GCM
     const nonce = crypto.randomBytes(12);
+    const input = Buffer.isBuffer(plaintext)
+      ? plaintext
+      : Buffer.from(plaintext, "utf8");
     const cipher = crypto.createCipheriv("aes-256-gcm", dek, nonce);
     const encrypted = Buffer.concat([
-      cipher.update(plaintext, "utf8"),
+      cipher.update(input),
       cipher.final(),
     ]);
     const authTag = cipher.getAuthTag();
@@ -209,7 +210,7 @@ class EnvelopeEncryption {
       decipher.final(),
     ]);
 
-    return decrypted.toString("utf8");
+    return decrypted;
   }
 }
 
@@ -225,7 +226,7 @@ async function main() {
   const envelope = await enc.encrypt(document);
   console.log(`Envelope size: ${envelope.length} bytes`);
 
-  const decrypted = await enc.decrypt(envelope);
+  const decrypted = (await enc.decrypt(envelope)).toString("utf8");
   console.log(`Decryption successful: ${decrypted === document}`);
 }
 
@@ -378,7 +379,7 @@ def encrypt_file(input_path, output_path, encryptor):
     with open(input_path, "rb") as f:
         plaintext = f.read()
 
-    envelope_json = encryptor.encrypt(plaintext.decode("utf-8"))
+    envelope_json = encryptor.encrypt(plaintext)
     envelope = json.loads(envelope_json)
 
     with open(output_path, "wb") as f:
@@ -410,7 +411,7 @@ For a 100 MB file:
 
 ## DEK Caching
 
-If you are encrypting many small items with the same DEK (like individual database rows in a batch), you can reuse the DEK within a limited scope to reduce KMS API calls:
+If you are encrypting many small chunks within the same security boundary, you can reuse the DEK within a limited scope to reduce KMS API calls:
 
 ```python
 # DEK caching for batch encryption
@@ -433,6 +434,9 @@ class BatchEncryptor:
 
     def encrypt(self, plaintext):
         """Encrypt using a cached DEK, refreshing when needed."""
+        if isinstance(plaintext, str):
+            plaintext = plaintext.encode("utf-8")
+
         if self._dek is None or self._use_count >= self.max_uses:
             self._refresh_dek()
 
