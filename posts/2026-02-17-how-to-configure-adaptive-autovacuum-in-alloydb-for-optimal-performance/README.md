@@ -64,16 +64,18 @@ This query shows you which tables have the most dead tuples and when they were l
 
 ## Checking Adaptive Autovacuum Behavior
 
-AlloyDB exposes metrics about its adaptive autovacuum decisions:
+AlloyDB exposes the adaptive autovacuum setting through its database flags, and you can inspect the standard PostgreSQL vacuum settings alongside it:
 
 ```sql
 -- Check if adaptive autovacuum is enabled
-SHOW google_columnar_engine.enabled;  -- Different feature, just checking
+SHOW enable_google_adaptive_autovacuum;
 
 -- Check AlloyDB-specific vacuum settings
 SELECT name, setting, unit, short_desc
 FROM pg_settings
-WHERE name LIKE '%vacuum%' OR name LIKE '%autovacuum%'
+WHERE name = 'enable_google_adaptive_autovacuum'
+   OR name LIKE '%vacuum%'
+   OR name LIKE '%autovacuum%'
 ORDER BY name;
 ```
 
@@ -144,6 +146,8 @@ gcloud alloydb instances update my-primary \
   --database-flags=autovacuum_max_workers=5,autovacuum_vacuum_scale_factor=0.05,autovacuum_vacuum_cost_delay=2
 ```
 
+When you use `--database-flags`, include any existing database flags that you want to keep, because flags not included in the command are reset to their defaults. Some flags, including `autovacuum_max_workers`, also require an instance restart when changed.
+
 After updating database flags, check that they took effect:
 
 ```sql
@@ -161,7 +165,7 @@ Even with good autovacuum settings, it is worth monitoring table bloat over time
 -- Estimate table bloat using pgstattuple extension
 CREATE EXTENSION IF NOT EXISTS pgstattuple;
 
-SELECT * FROM pgstattuple('my_table');
+SELECT * FROM pgstattuple('my_table'::regclass);
 ```
 
 The `dead_tuple_percent` field tells you what fraction of the table is dead tuples. If this stays above 10-20% consistently, autovacuum is not keeping up.
