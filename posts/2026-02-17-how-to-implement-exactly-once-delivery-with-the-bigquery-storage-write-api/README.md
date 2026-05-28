@@ -8,7 +8,7 @@ Description: Learn how to implement exactly-once data delivery to BigQuery using
 
 ---
 
-Duplicate data in your analytics tables is a problem that compounds over time. Counts get inflated, revenue figures become unreliable, and downstream consumers lose trust in the data. The BigQuery Storage Write API's committed mode solves this by providing exactly-once delivery semantics at the API level.
+Duplicate data in your analytics tables is a problem that compounds over time. Counts get inflated, revenue figures become unreliable, and downstream consumers lose trust in the data. The BigQuery Storage Write API's committed mode helps solve retry-related duplicates by providing exactly-once delivery semantics within a write stream.
 
 Getting exactly-once right requires understanding how stream offsets work and how to handle failures properly. I have implemented this pattern for financial data pipelines where duplicates are unacceptable, and I want to share the approach.
 
@@ -19,8 +19,8 @@ The Storage Write API's committed mode uses stream offsets to track exactly whic
 1. You create a dedicated write stream (not the default stream).
 2. Each append request includes an offset that indicates where in the stream the data should be written.
 3. The server validates that the offset matches the expected next offset.
-4. If you retry a request with the same offset, the server recognizes it as a duplicate and does not write it again.
-5. You commit the stream to make the data visible.
+4. If you retry a request with an offset that was already written, the server returns an `ALREADY_EXISTS` offset error and does not write it again.
+5. Data in a committed stream is visible as soon as BigQuery acknowledges the append. You can finalize the stream when you are done to release it.
 
 ```mermaid
 sequenceDiagram
@@ -41,13 +41,10 @@ sequenceDiagram
     BQ-->>Client: Timeout
 
     Client->>BQ: Retry: AppendRows (offset=200, rows 201-300)
-    BQ-->>Client: ACK (offset=200, already processed)
+    BQ-->>Client: ALREADY_EXISTS (offset already processed)
 
     Client->>BQ: FinalizeWriteStream
     BQ-->>Client: Finalized (300 rows)
-
-    Client->>BQ: BatchCommitWriteStreams
-    BQ-->>Client: Committed
 ```
 
 ## Creating a Committed Write Stream
@@ -59,7 +56,8 @@ Here is how to create a committed write stream in Python.
 
 from google.cloud import bigquery_storage_v1
 from google.cloud.bigquery_storage_v1 import types
-from google.protobuf import descriptor_pb2
+from google.protobuf import wrappers_pb2
+from google.rpc import code_pb2
 from google.api_core import exceptions
 import logging
 import time
@@ -67,7 +65,7 @@ import time
 logger = logging.getLogger(__name__)
 
 class ExactlyOnceWriter:
-    """Writer that guarantees exactly-once delivery to BigQuery."""
+    """Writer that guarantees exactly-once delivery within a BigQuery stream."""
 
     def __init__(self, project, dataset, table):
         self.project = project
@@ -106,13 +104,35 @@ class ExactlyOnceWriter:
         for attempt in range(max_retries):
             try:
                 # The offset tells BigQuery where these rows should go
-                # If we retry with the same offset, BigQuery deduplicates
+                # If we retry with the same offset after a successful append,
+                # BigQuery returns ALREADY_EXISTS instead of writing duplicates
                 request = types.AppendRowsRequest()
                 request.write_stream = self.stream.name
-                request.offset = types.Int64Value(value=offset)
+                request.offset = wrappers_pb2.Int64Value(value=offset)
 
                 # Serialize and append rows
                 # (Protocol buffer serialization details omitted for clarity)
+                # request.proto_rows = build_proto_rows(rows)
+                response = next(self.client.append_rows(iter([request])))
+
+                if response.error.code == code_pb2.ALREADY_EXISTS:
+                    logger.info(
+                        f"Offset {offset} already written (duplicate request). "
+                        f"Treating as success."
+                    )
+                    self.current_offset += row_count
+                    return True
+
+                if response.error.code == code_pb2.OUT_OF_RANGE:
+                    raise RuntimeError(
+                        f"Offset {offset} is beyond the current end of the stream"
+                    )
+
+                if response.error.code:
+                    raise RuntimeError(
+                        f"Append failed at offset {offset}: {response.error.message}"
+                    )
+
                 logger.info(
                     f"Appending {row_count} rows at offset {offset} "
                     f"(attempt {attempt + 1})"
@@ -172,29 +192,17 @@ class ExactlyOnceWriter:
 
     def commit_stream(self):
         """
-        Commit the stream to make data visible in BigQuery.
-        For COMMITTED type streams, data is visible after each append,
-        but committing ensures it persists.
+        No commit step is needed for COMMITTED type streams.
+        Data is visible and durable after each successful append.
         """
         if not self.stream:
             return
 
-        commit_request = types.BatchCommitWriteStreamsRequest()
-        commit_request.parent = self.parent
-        commit_request.write_streams = [self.stream.name]
-
-        response = self.client.batch_commit_write_streams(
-            request=commit_request
-        )
-
-        if response.stream_errors:
-            logger.error(f"Commit errors: {response.stream_errors}")
-            raise RuntimeError("Stream commit failed")
-
         logger.info(
-            f"Stream committed at {response.commit_time}"
+            "Committed stream data is visible after successful append; "
+            "BatchCommitWriteStreams is only for PENDING streams."
         )
-        return response.commit_time
+        return None
 ```
 
 ## Using the Exactly-Once Writer
@@ -226,13 +234,14 @@ def process_batch(events):
         total_rows = writer.finalize_stream()
         print(f"Stream finalized with {total_rows} rows")
 
-        # Commit to make data permanently visible
-        commit_time = writer.commit_stream()
-        print(f"Data committed at {commit_time}")
+        # No commit step is needed for committed streams
+        writer.commit_stream()
+        print("Committed stream data is already visible")
 
     except Exception as e:
         print(f"Pipeline failed: {e}")
-        # The stream can be abandoned - uncommitted data will not be visible
+        # Successfully acknowledged appends are already visible.
+        # Retry only data after the last saved checkpoint.
         raise
 
 
@@ -280,8 +289,9 @@ def process_with_recovery(events, writer):
             )
             process_with_recovery(remaining_events, retry_writer)
 
-        # Option 2: Abandon and let the next pipeline run pick up the data
-        # This is safe because uncommitted data is not visible
+        # Option 2: Abandon this stream and let the next pipeline run pick up
+        # only the data after the last saved checkpoint. Acknowledged appends
+        # on committed streams are already visible.
 ```
 
 ## Offset Management for Long-Running Streams
@@ -317,7 +327,7 @@ class OffsetTracker:
             return json.load(f)
 
     def clear_checkpoint(self):
-        """Clear the checkpoint after successful commit."""
+        """Clear the checkpoint after successful finalization."""
         if os.path.exists(self.checkpoint_path):
             os.remove(self.checkpoint_path)
 ```
@@ -362,9 +372,7 @@ def parallel_write(events, project, dataset, table, num_streams=4):
                 print(f"Partition {partition_idx} failed: {e}")
                 raise
 
-    # Commit all streams atomically
-    commit_all_streams(project, dataset, table, stream_names)
-    print(f"All {num_streams} streams committed successfully")
+    print(f"All {num_streams} streams finalized successfully")
 
 
 def write_partition(writer, events):
@@ -375,19 +383,6 @@ def write_partition(writer, events):
         writer.append_rows(chunk)
     writer.finalize_stream()
 
-
-def commit_all_streams(project, dataset, table, stream_names):
-    """Commit multiple streams atomically."""
-    client = bigquery_storage_v1.BigQueryWriteClient()
-    parent = client.table_path(project, dataset, table)
-
-    request = types.BatchCommitWriteStreamsRequest()
-    request.parent = parent
-    request.write_streams = stream_names
-
-    response = client.batch_commit_write_streams(request=request)
-    if response.stream_errors:
-        raise RuntimeError(f"Commit failed: {response.stream_errors}")
 ```
 
 ## Verifying Exactly-Once Delivery
@@ -418,6 +413,6 @@ WHERE event_date = CURRENT_DATE();
 
 ## Wrapping Up
 
-Exactly-once delivery with the BigQuery Storage Write API requires more setup than the default stream, but it eliminates the duplicate data problem at its source. The key concepts are: use COMMITTED type streams, always include offsets in your append requests, handle retries by re-sending with the same offset, and commit streams atomically when all data is appended. For financial, billing, or any data where accuracy matters, this is the right approach.
+Exactly-once delivery with the BigQuery Storage Write API requires more setup than the default stream, but it eliminates retry-related duplicates within a stream. The key concepts are: use COMMITTED type streams, always include offsets in your append requests, handle retries by re-sending with the same offset, and finalize streams when you are done. If you need an atomic commit that makes a whole batch visible at once, use PENDING streams instead. For financial, billing, or any data where accuracy matters, this is the right approach.
 
 For monitoring your exactly-once delivery pipelines and alerting on any data integrity issues, [OneUptime](https://oneuptime.com) provides the observability tools needed to keep your data pipelines reliable.
