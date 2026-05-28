@@ -33,6 +33,7 @@ You need a GCP project with these APIs enabled:
 gcloud services enable bigquery.googleapis.com \
     aiplatform.googleapis.com \
     bigqueryconnection.googleapis.com \
+    bigquerydatatransfer.googleapis.com \
     --project=your-project-id
 ```
 
@@ -119,7 +120,7 @@ SELECT
     source,
     customer_id,
     feedback_text,
-    ml_generate_text_result['candidates'][0]['content']['parts'][0]['text'] AS analysis_result
+    ml_generate_text_llm_result AS analysis_result
 FROM ML.GENERATE_TEXT(
     MODEL `your-project.feedback_analysis.gemini_model`,
     (
@@ -142,7 +143,8 @@ FROM ML.GENERATE_TEXT(
     ),
     STRUCT(
         0.1 AS temperature,      -- Low temperature for consistent structured output
-        1024 AS max_output_tokens
+        1024 AS max_output_tokens,
+        TRUE AS flatten_json_output
     )
 );
 ```
@@ -162,7 +164,7 @@ WITH raw_analysis AS (
         feedback_text,
         submitted_at,
         -- Extract the JSON from Gemini's response
-        ml_generate_text_result['candidates'][0]['content']['parts'][0]['text'] AS raw_json
+        ml_generate_text_llm_result AS raw_json
     FROM ML.GENERATE_TEXT(
         MODEL `your-project.feedback_analysis.gemini_model`,
         (
@@ -179,7 +181,7 @@ WITH raw_analysis AS (
                 ) AS prompt
             FROM `your-project.feedback_analysis.raw_feedback`
         ),
-        STRUCT(0.1 AS temperature, 1024 AS max_output_tokens)
+        STRUCT(0.1 AS temperature, 1024 AS max_output_tokens, TRUE AS flatten_json_output)
     )
 )
 SELECT
@@ -191,9 +193,9 @@ SELECT
     -- Parse individual fields from the JSON response
     JSON_VALUE(raw_json, '$.sentiment') AS sentiment,
     CAST(JSON_VALUE(raw_json, '$.sentiment_score') AS FLOAT64) AS sentiment_score,
-    JSON_QUERY_ARRAY(raw_json, '$.topics') AS topics,
+    JSON_VALUE_ARRAY(raw_json, '$.topics') AS topics,
     JSON_VALUE(raw_json, '$.urgency') AS urgency,
-    JSON_QUERY_ARRAY(raw_json, '$.action_items') AS action_items,
+    JSON_VALUE_ARRAY(raw_json, '$.action_items') AS action_items,
     JSON_VALUE(raw_json, '$.summary') AS summary,
     CURRENT_TIMESTAMP() AS analyzed_at
 FROM raw_analysis;
@@ -237,12 +239,52 @@ Set up a scheduled query to process new feedback daily:
 ```bash
 # Create a scheduled query that runs daily at 6 AM UTC
 bq query --use_legacy_sql=false \
-    --schedule='every 24 hours' \
+    --schedule='every day 06:00' \
     --display_name='Daily Feedback Analysis' \
-    --destination_table='your-project.feedback_analysis.analyzed_feedback' \
+    --destination_table='your-project-id:feedback_analysis.analyzed_feedback' \
     --append_table=true \
-    'SELECT ... FROM ML.GENERATE_TEXT(...)
-     WHERE submitted_at > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)'
+    'WITH raw_analysis AS (
+        SELECT
+            feedback_id,
+            source,
+            customer_id,
+            feedback_text,
+            submitted_at,
+            ml_generate_text_llm_result AS raw_json
+        FROM ML.GENERATE_TEXT(
+            MODEL `your-project.feedback_analysis.gemini_model`,
+            (
+                SELECT
+                    feedback_id, source, customer_id, feedback_text, submitted_at,
+                    CONCAT(
+                        "Analyze this customer feedback. Return ONLY a valid JSON object with fields: ",
+                        "sentiment (positive/negative/neutral/mixed), ",
+                        "sentiment_score (float -1.0 to 1.0), ",
+                        "topics (string array), ",
+                        "urgency (low/medium/high/critical), ",
+                        "action_items (string array), ",
+                        "summary (one sentence).\n\nFeedback: ", feedback_text
+                    ) AS prompt
+                FROM `your-project.feedback_analysis.raw_feedback`
+                WHERE submitted_at > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
+            ),
+            STRUCT(0.1 AS temperature, 1024 AS max_output_tokens, TRUE AS flatten_json_output)
+        )
+    )
+    SELECT
+        feedback_id,
+        source,
+        customer_id,
+        feedback_text,
+        submitted_at,
+        JSON_VALUE(raw_json, "$.sentiment") AS sentiment,
+        CAST(JSON_VALUE(raw_json, "$.sentiment_score") AS FLOAT64) AS sentiment_score,
+        JSON_VALUE_ARRAY(raw_json, "$.topics") AS topics,
+        JSON_VALUE(raw_json, "$.urgency") AS urgency,
+        JSON_VALUE_ARRAY(raw_json, "$.action_items") AS action_items,
+        JSON_VALUE(raw_json, "$.summary") AS summary,
+        CURRENT_TIMESTAMP() AS analyzed_at
+    FROM raw_analysis'
 ```
 
 ## Scaling Considerations
