@@ -39,18 +39,17 @@ graph TD
 ## Prerequisites
 
 - Cloud Armor security policy attached to a backend service
-- The backend service must be behind an external HTTP(S) load balancer
-- Cloud Armor Managed Protection Plus tier (Adaptive Protection is a premium feature)
+- The backend service must be behind an external Application Load Balancer
+- Cloud Armor Enterprise tier for full alerts with attack signatures and suggested rules
 
-## Step 1: Enable Managed Protection Plus
+## Step 1: Enable Cloud Armor Enterprise
 
-Adaptive Protection requires the Managed Protection Plus tier.
+Full Adaptive Protection alerts with attack signatures and suggested rules require Cloud Armor Enterprise.
 
 ```bash
-# Enable Managed Protection Plus for your project
-
-gcloud compute security-policies update my-security-policy \
-    --enable-ml \
+# Enroll the project in Cloud Armor Enterprise Paygo
+gcloud compute project-info update \
+    --cloud-armor-tier=CA_ENTERPRISE_PAYGO \
     --project=my-project
 ```
 
@@ -59,17 +58,21 @@ gcloud compute security-policies update my-security-policy \
 ```bash
 # Enable Adaptive Protection
 gcloud compute security-policies update my-security-policy \
-    --enable-ml \
+    --enable-layer7-ddos-defense \
     --project=my-project
 ```
 
-You can also enable it when creating a new policy.
+Create the policy first, then enable Adaptive Protection on it.
 
 ```bash
-# Create a new policy with Adaptive Protection enabled
+# Create a new policy
 gcloud compute security-policies create adaptive-policy \
     --description="Security policy with Adaptive Protection" \
-    --enable-ml \
+    --project=my-project
+
+# Enable Adaptive Protection on the new policy
+gcloud compute security-policies update adaptive-policy \
+    --enable-layer7-ddos-defense \
     --project=my-project
 ```
 
@@ -78,10 +81,10 @@ gcloud compute security-policies create adaptive-policy \
 Adaptive Protection has configurable parameters that control its sensitivity and behavior.
 
 ```bash
-# Set Adaptive Protection to auto-deploy rules for high-confidence detections
+# Configure Adaptive Protection rule visibility
 gcloud compute security-policies update adaptive-policy \
-    --adaptive-protection-config-layer7-ddos-defense-enable \
-    --adaptive-protection-config-layer7-ddos-defense-rule-visibility=STANDARD \
+    --enable-layer7-ddos-defense \
+    --layer7-ddos-defense-rule-visibility=STANDARD \
     --project=my-project
 ```
 
@@ -90,12 +93,20 @@ gcloud compute security-policies update adaptive-policy \
 You can configure Adaptive Protection to automatically deploy mitigation rules when it detects an attack with sufficient confidence.
 
 ```bash
+# Create the placeholder rule required for auto-deploy
+gcloud compute security-policies rules create 1000 \
+    --security-policy=adaptive-policy \
+    --expression="evaluateAdaptiveProtectionAutoDeploy()" \
+    --action=deny-403 \
+    --description="Adaptive Protection auto-deploy placeholder" \
+    --project=my-project
+
 # Configure auto-deploy settings
-gcloud compute security-policies update adaptive-policy \
-    --adaptive-protection-config-auto-deploy-load-threshold=0.8 \
-    --adaptive-protection-config-auto-deploy-confidence-threshold=0.7 \
-    --adaptive-protection-config-auto-deploy-impacted-baseline-threshold=0.01 \
-    --adaptive-protection-config-auto-deploy-expiration-sec=7200 \
+gcloud beta compute security-policies update adaptive-policy \
+    --layer7-ddos-defense-auto-deploy-load-threshold=0.8 \
+    --layer7-ddos-defense-auto-deploy-confidence-threshold=0.7 \
+    --layer7-ddos-defense-auto-deploy-impacted-baseline-threshold=0.01 \
+    --layer7-ddos-defense-auto-deploy-expiration-sec=7200 \
     --project=my-project
 ```
 
@@ -123,9 +134,36 @@ Adaptive Protection events appear in Cloud Logging. Set up a log-based alert.
 
 ```bash
 # Create a log-based alert for Adaptive Protection detections
-gcloud logging sinks create adaptive-protection-alerts \
-    pubsub.googleapis.com/projects/my-project/topics/security-alerts \
-    --log-filter='resource.type="http_load_balancer" AND jsonPayload.adaptiveProtection.autoDeployAlertId!=""' \
+cat > adaptive-protection-alert-policy.json <<'EOF'
+{
+  "displayName": "Adaptive Protection detections",
+  "documentation": {
+    "content": "Adaptive Protection detected a potential Layer 7 DDoS attack.",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "Adaptive Protection alert log match",
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"network_security_policy\" AND jsonPayload.alertId!=\"\""
+      }
+    }
+  ],
+  "combiner": "OR",
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    },
+    "autoClose": "604800s"
+  },
+  "notificationChannels": [
+    "projects/my-project/notificationChannels/CHANNEL_ID"
+  ]
+}
+EOF
+
+gcloud alpha monitoring policies create \
+    --policy-from-file=adaptive-protection-alert-policy.json \
     --project=my-project
 ```
 
@@ -136,8 +174,8 @@ When Adaptive Protection detects an attack, it provides detailed information in 
 ```bash
 # View Adaptive Protection alerts
 gcloud logging read \
-    'resource.type="http_load_balancer" AND jsonPayload.adaptiveProtection.autoDeployAlertId!=""' \
-    --format="json(timestamp,jsonPayload.adaptiveProtection)" \
+    'resource.type="network_security_policy" AND jsonPayload.alertId!=""' \
+    --format="json(timestamp,jsonPayload.alertId,jsonPayload.backendService,jsonPayload.confidence,jsonPayload.suggestedRule)" \
     --limit=10 \
     --project=my-project
 ```
@@ -154,9 +192,7 @@ The alert includes:
 When Adaptive Protection generates a rule suggestion, it might look something like this:
 
 ```text
-evaluatePreconfiguredExpr('adaptive-protection-auto-deploy') &&
-origin.region_code in ['XX', 'YY'] &&
-request.headers['user-agent'].contains('BotPattern')
+evaluateAdaptiveProtection('11275630857957031521')
 ```
 
 This expression targets the specific traffic pattern that Adaptive Protection identified as malicious. It is designed to block the attack while minimizing impact on legitimate traffic.
@@ -169,9 +205,9 @@ If you have auto-deploy disabled or want to review rules before deployment, you 
 # Deploy the suggested rule manually
 gcloud compute security-policies rules create 100 \
     --security-policy=adaptive-policy \
-    --expression="origin.region_code in ['XX', 'YY'] && request.headers['user-agent'].contains('BotPattern')" \
+    --expression="evaluateAdaptiveProtection('11275630857957031521')" \
     --action=deny-403 \
-    --description="Adaptive Protection mitigation - attack from XX/YY" \
+    --description="Adaptive Protection mitigation - alert 11275630857957031521" \
     --project=my-project
 ```
 
@@ -207,6 +243,18 @@ resource "google_compute_security_policy" "adaptive" {
     }
   }
 
+  # Placeholder rule required for Adaptive Protection auto-deploy
+  rule {
+    action      = "deny(403)"
+    priority    = 1000
+    description = "Adaptive Protection auto-deploy placeholder"
+    match {
+      expr {
+        expression = "evaluateAdaptiveProtectionAutoDeploy()"
+      }
+    }
+  }
+
   # Default allow
   rule {
     action   = "allow"
@@ -223,7 +271,7 @@ resource "google_compute_security_policy" "adaptive" {
   # Standard WAF rules alongside Adaptive Protection
   rule {
     action   = "deny(403)"
-    priority = 1000
+    priority = 2000
     description = "Block SQL injection"
     match {
       expr {
@@ -234,7 +282,7 @@ resource "google_compute_security_policy" "adaptive" {
 
   rule {
     action   = "deny(403)"
-    priority = 2000
+    priority = 3000
     description = "Block XSS"
     match {
       expr {
@@ -259,8 +307,8 @@ Track how Adaptive Protection is performing over time.
 ```bash
 # View all Adaptive Protection events in the last 24 hours
 gcloud logging read \
-    'resource.type="http_load_balancer" AND jsonPayload.adaptiveProtection.autoDeployAlertId!="" AND timestamp>="2026-02-16T00:00:00Z"' \
-    --format="table(timestamp,jsonPayload.adaptiveProtection.autoDeployAlertId,jsonPayload.adaptiveProtection.autoDeployAlertState)" \
+    'resource.type="network_security_policy" AND jsonPayload.alertId!="" AND timestamp>="2026-02-16T00:00:00Z"' \
+    --format="table(timestamp,jsonPayload.alertId,jsonPayload.backendService,jsonPayload.confidence,jsonPayload.autoDeployed)" \
     --limit=50 \
     --project=my-project
 ```
