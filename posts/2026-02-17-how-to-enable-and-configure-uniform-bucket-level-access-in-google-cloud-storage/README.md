@@ -82,10 +82,10 @@ gcloud storage buckets update gs://my-existing-bucket \
 ```bash
 # Check if uniform bucket-level access is enabled
 gcloud storage buckets describe gs://my-bucket \
-  --format="json(iamConfiguration.uniformBucketLevelAccess)"
+  --format="default(uniform_bucket_level_access)"
 ```
 
-The output shows whether it is enabled and the lock time (when it becomes irreversible).
+The output shows whether it is enabled. The lock time (when it becomes irreversible) is shown separately below.
 
 ## The 90-Day Reversal Window
 
@@ -106,6 +106,7 @@ Check when the lock takes effect:
 ```bash
 # See the lock time for the uniform bucket-level access setting
 gcloud storage buckets describe gs://my-bucket \
+  --raw \
   --format="value(iamConfiguration.uniformBucketLevelAccess.lockedTime)"
 ```
 
@@ -118,8 +119,10 @@ Before enabling uniform bucket-level access, you need to ensure that all existin
 Check what ACLs are currently in use:
 
 ```bash
-# List objects and their ACLs to understand current access
-gcloud storage objects list gs://my-bucket/ --format="table(name, acl.entity, acl.role)"
+# List objects, then inspect ACLs on objects that need review
+gcloud storage objects list gs://my-bucket/
+gcloud storage objects describe gs://my-bucket/path/to/object \
+  --format="default(acl)"
 ```
 
 Look for objects with ACLs that differ from the bucket default. Common things to watch for:
@@ -136,17 +139,17 @@ For each unique access pattern found in ACLs, create an IAM binding:
 # If objects had public ACLs, make the bucket publicly readable via IAM
 gcloud storage buckets add-iam-policy-binding gs://my-bucket \
   --member="allUsers" \
-  --role="roles/storage.objectViewer"
+  --role="roles/storage.legacyObjectReader"
 
 # If specific users had read access via ACLs
 gcloud storage buckets add-iam-policy-binding gs://my-bucket \
   --member="user:alice@example.com" \
-  --role="roles/storage.objectViewer"
+  --role="roles/storage.legacyObjectReader"
 
-# If service accounts had write access via ACLs
+# If service accounts had object owner access via ACLs
 gcloud storage buckets add-iam-policy-binding gs://my-bucket \
   --member="serviceAccount:writer@project.iam.gserviceaccount.com" \
-  --role="roles/storage.objectCreator"
+  --role="roles/storage.legacyObjectOwner"
 ```
 
 ### Step 3: Enable Uniform Access
@@ -183,7 +186,7 @@ gcloud storage buckets add-iam-policy-binding gs://my-bucket \
   --condition='expression=resource.name.startsWith("projects/_/buckets/my-bucket/objects/reports/"),title=reports-only-access'
 ```
 
-This gives the analyst read access only to objects whose names start with `reports/`. It is not exactly per-object ACLs, but it covers most practical use cases where different teams need access to different parts of a bucket.
+This limits object read operations to objects whose names start with `reports/`. The `storage.objects.list` permission is checked at the bucket level, so IAM Conditions cannot restrict object listing to only that prefix. It is not exactly per-object ACLs, but it covers most practical use cases where different teams need access to different parts of a bucket.
 
 ## Terraform Configuration
 
