@@ -79,15 +79,19 @@ gcloud compute interconnects attachments dedicated create ic-attachment-1 \
     --interconnect=ic-primary \
     --router=existing-cloud-router \
     --region=us-central1 \
-    --bandwidth=BPS_5G \
-    --vlan=100
+    --bandwidth=5g \
+    --vlan=100 \
+    --candidate-cloud-router-ip-address=169.254.70.1/29 \
+    --candidate-customer-router-ip-address=169.254.70.2/29
 
 gcloud compute interconnects attachments dedicated create ic-attachment-2 \
     --interconnect=ic-secondary \
     --router=existing-cloud-router \
     --region=us-central1 \
-    --bandwidth=BPS_5G \
-    --vlan=100
+    --bandwidth=5g \
+    --vlan=100 \
+    --candidate-cloud-router-ip-address=169.254.71.1/29 \
+    --candidate-customer-router-ip-address=169.254.71.2/29
 ```
 
 ### Configure BGP for the Interconnect
@@ -121,11 +125,13 @@ gcloud compute routers add-bgp-peer existing-cloud-router \
 
 ## Phase 2: Configure On-Premises Routing
 
-On your on-premises routers, configure BGP sessions for the Interconnect. At this point, make the Interconnect routes less preferred than VPN so traffic stays on VPN:
+On your on-premises routers, configure BGP sessions for the Interconnect. At this point, make the Interconnect routes less preferred than VPN so traffic stays on VPN.
+
+MED values on routes you advertise to Cloud Router control the GCP-to-on-premises direction:
 
 ```text
-! On-prem router - make routes learned from Interconnect less preferred
-! Use higher MED values for Interconnect-advertised routes
+! On-prem router - make routes advertised over Interconnect less preferred by GCP
+! Use higher MED values for routes advertised to Cloud Router over Interconnect
 route-map IC-TO-GCP permit 10
   set metric 200
 
@@ -141,7 +147,21 @@ router bgp 65001
   neighbor 169.254.70.1 route-map IC-TO-GCP out
 ```
 
-With this configuration, both VPN and Interconnect are active, but VPN is preferred. Traffic still flows over VPN.
+For the on-premises-to-GCP direction, prefer the routes learned from the VPN peers by using your router's local preference or equivalent inbound routing policy:
+
+```text
+route-map GCP-FROM-VPN permit 10
+  set local-preference 100
+
+route-map GCP-FROM-IC permit 10
+  set local-preference 90
+
+router bgp 65001
+  neighbor 169.254.0.1 route-map GCP-FROM-VPN in
+  neighbor 169.254.70.1 route-map GCP-FROM-IC in
+```
+
+With this configuration, both VPN and Interconnect are active, but VPN is preferred in both directions.
 
 ## Phase 3: Verify Interconnect Connectivity
 
@@ -177,7 +197,7 @@ route-map IC-TO-GCP permit 10
   set metric 200
 ```
 
-Now traffic to `192.168.99.0/24` flows over the Interconnect while everything else stays on VPN. Test thoroughly.
+Now GCP-to-on-premises traffic to `192.168.99.0/24` flows over the Interconnect while everything else stays on VPN. If you need symmetric routing for the test, adjust the matching on-premises-to-GCP local preference policy for the same test path. Test thoroughly.
 
 ## Phase 4: Shift Traffic to Interconnect
 
@@ -188,7 +208,7 @@ Once you are confident the Interconnect works, start shifting traffic. There are
 Shift traffic for specific subnets first:
 
 ```text
-! On-prem: Lower MED for Interconnect for specific subnets
+! On-prem: Lower MED for Interconnect for specific on-premises subnets
 ip prefix-list BATCH-1 permit 192.168.1.0/24
 ip prefix-list BATCH-1 permit 192.168.2.0/24
 
@@ -198,6 +218,8 @@ route-map IC-TO-GCP permit 5
 route-map IC-TO-GCP permit 10
   set metric 200
 ```
+
+Apply the matching local preference change on your on-premises routers for the GCP prefixes you want to move in the same batch.
 
 Monitor each batch before moving the next one.
 
@@ -214,18 +236,20 @@ route-map VPN-TO-GCP permit 10
   set metric 200
 ```
 
-After this change, all traffic flows over the Interconnect and the VPN becomes the backup path.
+After this change, and the corresponding on-premises local preference change for routes learned from GCP, all traffic flows over the Interconnect and the VPN becomes the backup path.
 
 ## Phase 5: Monitor the New Path
 
 After shifting traffic, monitor closely for at least a week:
 
 ```bash
-# Check Interconnect bandwidth utilization
-gcloud monitoring time-series list \
-    --filter='metric.type="compute.googleapis.com/interconnect/attachment/transmitted_bytes_count"' \
-    --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
-    --format="table(points[].value.int64Value)"
+# Check Interconnect attachment egress bytes for the last hour
+PROJECT_ID=my-project
+START_TIME=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/timeSeries?filter=metric.type%3D%22interconnect.googleapis.com%2Fnetwork%2Fattachment%2Fsent_bytes_count%22&interval.startTime=${START_TIME}&interval.endTime=${END_TIME}"
 
 # Check VPN tunnels should show minimal traffic now
 gcloud compute vpn-tunnels describe tunnel-name \
@@ -301,7 +325,7 @@ route-map IC-TO-GCP permit 10
   set metric 500
 ```
 
-This shift happens within seconds as BGP reconverges. No infrastructure changes needed.
+Apply the matching local preference rollback on your on-premises routers for the on-premises-to-GCP direction. This shift happens within seconds as BGP reconverges. No infrastructure changes needed.
 
 ## Wrapping Up
 
