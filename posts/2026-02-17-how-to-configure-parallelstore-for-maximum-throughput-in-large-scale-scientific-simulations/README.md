@@ -47,32 +47,38 @@ Create a Parallelstore instance sized for your workload. The capacity determines
 ```bash
 # Create a Parallelstore instance
 
-# Throughput scales with capacity: ~1 GB/s per 12 TiB for large sequential I/O
-gcloud parallelstore instances create hpc-scratch \
+# Expected throughput scales with capacity: about 0.5 GiB/s write
+# and 1.15 GiB/s read per TiB with optimized striping
+gcloud beta parallelstore instances create hpc-scratch \
   --location=us-central1-a \
   --capacity-gib=12000 \
-  --network=projects/YOUR_PROJECT/global/networks/hpc-network \
-  --description="Scratch storage for scientific simulations"
+  --network=hpc-network \
+  --project=YOUR_PROJECT \
+  --directory-stripe-level=directory-stripe-level-max \
+  --file-stripe-level=file-stripe-level-balanced
 ```
 
 For larger workloads, scale the capacity to get more throughput.
 
 ```bash
-# For a simulation requiring 100+ GB/s throughput
-gcloud parallelstore instances create large-simulation-scratch \
+# For a simulation requiring 100+ GiB/s read throughput
+gcloud beta parallelstore instances create large-simulation-scratch \
   --location=us-central1-a \
-  --capacity-gib=120000 \
-  --network=projects/YOUR_PROJECT/global/networks/hpc-network \
-  --description="Large-scale simulation scratch space"
+  --capacity-gib=100000 \
+  --network=hpc-network \
+  --project=YOUR_PROJECT \
+  --directory-stripe-level=directory-stripe-level-max \
+  --file-stripe-level=file-stripe-level-max
 ```
 
 Check the instance status and access information.
 
 ```bash
 # Get the instance details including mount information
-gcloud parallelstore instances describe hpc-scratch \
+gcloud beta parallelstore instances describe hpc-scratch \
   --location=us-central1-a \
-  --format="yaml(name, state, capacityGib, daosVersion, accessPoints, network)"
+  --project=YOUR_PROJECT \
+  --format="yaml(name, state, capacityGib, accessPoints, network, directoryStripeLevel, fileStripeLevel)"
 ```
 
 ## Configuring Compute Nodes
@@ -81,9 +87,12 @@ Your compute nodes need the DAOS client library to mount Parallelstore. On GKE o
 
 ```bash
 # Install the DAOS client on a Compute Engine instance
-# For Debian/Ubuntu-based images
-sudo apt-get update
-sudo apt-get install -y daos-client
+# For Ubuntu 22.04 or Debian 12 images
+curl https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg | sudo apt-key add -
+echo "deb https://us-central1-apt.pkg.dev/projects/parallelstore-packages v2-6-deb main" | \
+  sudo tee -a /etc/apt/sources.list.d/artifact-registry.list
+sudo apt update
+sudo apt install -y daos-client
 
 # Configure the DAOS agent
 sudo mkdir -p /etc/daos
@@ -96,16 +105,16 @@ access_points:
   - ACCESS_POINT_1
   - ACCESS_POINT_2
   - ACCESS_POINT_3
-port: 10001
 transport_config:
   allow_insecure: true
+include_fabric_ifaces: ["eth0"]
 log_file: /var/log/daos/daos_agent.log
 control_log_file: /var/log/daos/daos_control.log
 EOF
 
 # Start the DAOS agent
-sudo systemctl enable daos_agent
-sudo systemctl start daos_agent
+sudo mkdir -p /var/run/daos_agent
+sudo daos_agent -o /etc/daos/daos_agent.yml &
 ```
 
 ## Mounting Parallelstore with Optimal Settings
@@ -117,100 +126,63 @@ The mount options significantly affect performance. Use the DAOS FUSE client wit
 sudo mkdir -p /mnt/parallelstore
 
 # Mount using dfuse with performance-optimized settings
-# --pool: The Parallelstore pool UUID
-# --container: The container UUID
+# default-pool: The Parallelstore pool label
+# default-container: The Parallelstore container label
 # --multi-user: Allow all users to access the mount
 # --thread-count: Number of FUSE threads (match to CPU count)
 # --eq-count: Event queue count for parallel I/O
 
-dfuse --mountpoint=/mnt/parallelstore \
-  --pool=POOL_UUID \
-  --container=CONTAINER_UUID \
+sudo sh -c 'grep -qxF user_allow_other /etc/fuse.conf || echo user_allow_other >> /etc/fuse.conf'
+
+dfuse -m /mnt/parallelstore \
   --multi-user \
   --thread-count=16 \
   --eq-count=8 \
-  --disable-caching=false
+  --disable-wb-cache \
+  default-pool \
+  default-container
 ```
 
 For maximum throughput with large sequential I/O (common in simulations), tune the caching parameters.
 
 ```bash
-# Mount with aggressive read-ahead for large sequential reads
-dfuse --mountpoint=/mnt/parallelstore \
-  --pool=POOL_UUID \
-  --container=CONTAINER_UUID \
+# Mount with recommended thread and event queue settings
+dfuse -m /mnt/parallelstore \
   --multi-user \
-  --thread-count=$(nproc) \
-  --eq-count=$(($(nproc) / 2)) \
-  --disable-caching=false
+  --thread-count=20 \
+  --eq-count=10 \
+  --disable-wb-cache \
+  default-pool \
+  default-container
+
+# Increase read-ahead after mounting if your workload benefits from it
+echo 4096 | sudo tee /sys/class/bdi/$(mountpoint -d /mnt/parallelstore)/read_ahead_kb
+echo 100 | sudo tee /sys/class/bdi/$(mountpoint -d /mnt/parallelstore)/max_ratio
 ```
 
 ## Optimizing Stripe Configuration
 
 Striping configuration controls how files are distributed across storage servers. The right settings depend on your I/O pattern.
 
-```python
-# configure_striping.py - Set optimal striping for different workload types
-import subprocess
-import os
+```bash
+# Large sequential files: maximum file striping can improve throughput
+gcloud beta parallelstore instances create checkpoint-scratch \
+  --location=us-central1-a \
+  --capacity-gib=100000 \
+  --network=hpc-network \
+  --project=YOUR_PROJECT \
+  --directory-stripe-level=directory-stripe-level-max \
+  --file-stripe-level=file-stripe-level-max
 
-MOUNT_POINT = "/mnt/parallelstore"
-
-
-def configure_directory_striping(directory, stripe_size, stripe_count):
-    """Set striping parameters for a directory.
-
-    All new files created in this directory will use these settings.
-
-    Args:
-        directory: Path to the directory
-        stripe_size: Size of each stripe in bytes (e.g., 1MB, 4MB)
-        stripe_count: Number of storage targets to stripe across (-1 for all)
-    """
-    os.makedirs(directory, exist_ok=True)
-
-    # Use daos command to set container properties
-    # For large sequential I/O, use larger stripes and more targets
-    print(f"Setting stripe_size={stripe_size}, stripe_count={stripe_count}")
-    print(f"Directory: {directory}")
-
-
-def setup_simulation_directories():
-    """Create directories with optimal striping for different data types."""
-
-    # Checkpoint files: Large sequential writes, read back in full
-    # Use large stripes across all servers for maximum bandwidth
-    configure_directory_striping(
-        f"{MOUNT_POINT}/checkpoints",
-        stripe_size=4 * 1024 * 1024,  # 4 MB stripes
-        stripe_count=-1,               # Stripe across all servers
-    )
-
-    # Input data: Read by many nodes simultaneously
-    # Stripe widely for maximum parallel read throughput
-    configure_directory_striping(
-        f"{MOUNT_POINT}/input",
-        stripe_size=1 * 1024 * 1024,  # 1 MB stripes
-        stripe_count=-1,
-    )
-
-    # Output data: Written by many nodes, each writing their own files
-    # Moderate striping since each file is accessed by one writer
-    configure_directory_striping(
-        f"{MOUNT_POINT}/output",
-        stripe_size=1 * 1024 * 1024,
-        stripe_count=4,  # Stripe across 4 servers per file
-    )
-
-    # Temporary scratch: Mixed I/O, small to medium files
-    # Less aggressive striping to avoid metadata overhead
-    configure_directory_striping(
-        f"{MOUNT_POINT}/scratch",
-        stripe_size=512 * 1024,  # 512 KB stripes
-        stripe_count=2,
-    )
-
-    print("Directory striping configured for simulation workload")
+# Many small files: minimum file striping can improve performance
+# when the average file size is less than 256 KiB
+gcloud beta parallelstore instances create postprocess-scratch \
+  --location=us-central1-a \
+  --capacity-gib=12000 \
+  --network=hpc-network \
+  --project=YOUR_PROJECT \
+  --directory-stripe-level=directory-stripe-level-balanced \
+  --file-stripe-level=file-stripe-level-min
 ```
 
 ## I/O Patterns and Performance Tuning
@@ -234,8 +206,8 @@ def write_checkpoint(state_array, checkpoint_dir, rank):
     filepath = os.path.join(checkpoint_dir, f"checkpoint_rank_{rank:06d}.bin")
 
     # Use a large buffer size for sequential writes
-    # This aligns with the stripe size for optimal performance
-    buffer_size = 4 * 1024 * 1024  # 4 MB to match stripe size
+    # to reduce the number of small POSIX write calls
+    buffer_size = 4 * 1024 * 1024  # 4 MiB
 
     with open(filepath, "wb", buffering=buffer_size) as f:
         # Write the array shape and dtype first
@@ -269,9 +241,9 @@ Some simulation phases generate many small files. For this pattern, reduce strip
 
 ```bash
 # For directories with many small files, use minimal striping
-# Each file should ideally live on a single server to reduce metadata overhead
+# On Parallelstore, choose file-stripe-level-min when creating an instance
+# dedicated to workloads with average file sizes below 256 KiB
 mkdir -p /mnt/parallelstore/postprocess
-# Configure with stripe_count=1 for small files
 ```
 
 ### Parallel I/O with MPI-IO
@@ -295,10 +267,8 @@ local_data = np.random.random((1000, 1000))
 # for optimal striping alignment
 filepath = "/mnt/parallelstore/output/collective_output.bin"
 
-# Set MPI-IO hints for Parallelstore
+# Set common ROMIO MPI-IO hints
 info = MPI.Info.Create()
-info.Set("striping_factor", "-1")        # Use all storage servers
-info.Set("striping_unit", "4194304")     # 4 MB stripe size
 info.Set("romio_cb_write", "enable")     # Enable collective buffering
 info.Set("romio_ds_write", "enable")     # Enable data sieving
 
@@ -321,7 +291,7 @@ Track your storage performance to identify bottlenecks.
 ```bash
 # Check Parallelstore instance metrics
 gcloud monitoring time-series list \
-  --filter='metric.type = starts_with("parallelstore.googleapis.com/")' \
+  --filter='metric.type="parallelstore.googleapis.com/instance/transferred_byte_count"' \
   --format="table(metric.type, points.value)" \
   --limit=20
 
@@ -349,9 +319,10 @@ spec:
     - ReadWriteMany  # Multiple pods can read and write simultaneously
   csi:
     driver: parallelstore.csi.storage.gke.io
-    volumeHandle: projects/YOUR_PROJECT/locations/us-central1-a/instances/hpc-scratch
+    volumeHandle: YOUR_PROJECT/us-central1-a/hpc-scratch/default-pool/default-container
     volumeAttributes:
-      ip: ACCESS_POINT_IP
+      accessPoints: ACCESS_POINT_1,ACCESS_POINT_2,ACCESS_POINT_3
+      network: hpc-network
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -425,4 +396,4 @@ mpirun -np 32 mdtest \
 
 ## Wrapping Up
 
-Getting maximum throughput from Parallelstore requires attention to three areas: instance sizing to provide enough aggregate bandwidth, striping configuration to match your I/O patterns, and client-side tuning to keep the pipeline full. For large sequential workloads like checkpointing, use large stripes across all servers. For many small files, minimize striping to reduce metadata overhead. And for MPI-based parallel I/O, use collective operations with appropriate MPI-IO hints. The combination of proper configuration at each layer unlocks the full performance potential of Parallelstore for demanding scientific simulations.
+Getting maximum throughput from Parallelstore requires attention to three areas: instance sizing to provide enough aggregate bandwidth, striping configuration to match your I/O patterns, and client-side tuning to keep the pipeline full. For large sequential workloads like checkpointing, use maximum file striping. For many small files, use minimum file striping to reduce overhead. And for MPI-based parallel I/O, use collective operations with appropriate MPI-IO hints. The combination of proper configuration at each layer unlocks the full performance potential of Parallelstore for demanding scientific simulations.
