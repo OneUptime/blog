@@ -79,15 +79,24 @@ This produces two important files in the target directory:
 - `my-custom-plugin-1.0.0.jar` - The plugin binary
 - `my-custom-plugin-1.0.0.json` - The plugin configuration metadata
 
-### Step 2: Upload the Plugin via the UI
+### Step 2: Prepare the Plugin Metadata
 
-In the Cloud Data Fusion UI, navigate to the "System Admin" page from the hamburger menu. Click on "Configuration" and then "Manage Artifacts."
+For a custom plugin JAR, the metadata needs to specify which parent artifacts can use the plugin. When you use the CDAP CLI, this metadata is supplied as a JSON configuration file with the same base name as the JAR.
 
-Click the "+" button to upload a new artifact. Select your plugin JAR file and the corresponding JSON file. Set the artifact name and version.
+For example, `my-custom-plugin-1.0.0.json` might contain:
+
+```json
+{
+  "parents": [
+    "system:cdap-data-pipeline[6.0.0,7.0.0)",
+    "system:cdap-data-streams[6.0.0,7.0.0)"
+  ]
+}
+```
 
 ### Step 3: Upload via REST API
 
-For automated deployments, use the CDAP REST API:
+For automated deployments, use the CDAP REST API. When using the REST API, pass the parent artifact information in the `Artifact-Extends` header:
 
 ```bash
 # Upload a plugin JAR to Cloud Data Fusion using the REST API
@@ -101,15 +110,11 @@ curl -X POST \
 
 The `Artifact-Extends` header tells Data Fusion which pipeline types the plugin is compatible with. Most plugins extend both `cdap-data-pipeline` (batch) and `cdap-data-streams` (real-time).
 
-After uploading the JAR, upload the plugin configuration:
+If you prefer to use the CDAP CLI, load the artifact with the JAR and the JSON configuration file:
 
 ```bash
-# Upload the plugin configuration JSON
-curl -X PUT \
-  "https://<CDAP_ENDPOINT>/v3/namespaces/default/artifacts/my-custom-plugin/versions/1.0.0/properties" \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/json" \
-  --data-binary @my-custom-plugin-1.0.0.json
+# Upload the plugin JAR with its configuration JSON using the CDAP CLI
+cdap cli load artifact my-custom-plugin-1.0.0.jar config-file my-custom-plugin-1.0.0.json
 ```
 
 ## Installing JDBC Drivers
@@ -125,7 +130,6 @@ Get the JDBC driver JAR from the database vendor's website. Make sure you downlo
 You need a JSON configuration file that tells Data Fusion about the driver. Here is an example for a DB2 JDBC driver:
 
 ```json
-// Plugin configuration for the DB2 JDBC driver
 {
   "parents": [
     "system:cdap-data-pipeline[6.0.0,7.0.0)",
@@ -135,8 +139,7 @@ You need a JSON configuration file that tells Data Fusion about the driver. Here
     {
       "name": "db2",
       "type": "jdbc",
-      "className": "com.ibm.db2.jcc.DB2Driver",
-      "description": "IBM DB2 JDBC Driver"
+      "className": "com.ibm.db2.jcc.DB2Driver"
     }
   ]
 }
@@ -144,13 +147,24 @@ You need a JSON configuration file that tells Data Fusion about the driver. Here
 
 ### Step 3: Upload the Driver
 
-Upload both the JAR and JSON using the same process as custom plugins - either through the UI or the REST API.
+Upload both the JAR and JSON using the CDAP CLI. If you use the REST API for a third-party JDBC driver, pass the driver metadata in the `Artifact-Plugins` header along with `Artifact-Extends`:
+
+```bash
+# Upload a DB2 JDBC driver as a plugin using the REST API
+curl -X POST \
+  "https://<CDAP_ENDPOINT>/v3/namespaces/default/artifacts/db2-jdbc-driver" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Artifact-Version: 1.0.0" \
+  -H "Artifact-Extends: system:cdap-data-pipeline[6.0.0,7.0.0)/system:cdap-data-streams[6.0.0,7.0.0)" \
+  -H 'Artifact-Plugins: [ { "name": "db2", "type": "jdbc", "className": "com.ibm.db2.jcc.DB2Driver" } ]' \
+  --data-binary @db2-jdbc-driver.jar
+```
 
 After installation, the Database source and sink plugins will show the new driver option in their configuration dropdown.
 
 ## Managing Plugin Versions
 
-Over time, you will accumulate multiple versions of plugins. Cloud Data Fusion lets you manage these from the System Admin page.
+Over time, you will accumulate multiple versions of plugins. You can manage these with the CDAP artifact APIs or the CDAP CLI.
 
 ### Listing Installed Plugins
 
@@ -185,7 +199,7 @@ If you need to build a completely custom plugin, here is the basic structure of 
 @Plugin(type = BatchSource.PLUGIN_TYPE)
 @Name("MyRestSource")
 @Description("Reads data from a custom REST API")
-public class MyRestSource extends BatchSource<NullWritable, StructuredRecord> {
+public class MyRestSource extends BatchSource<NullWritable, Text, StructuredRecord> {
 
     private final MyRestSourceConfig config;
 
