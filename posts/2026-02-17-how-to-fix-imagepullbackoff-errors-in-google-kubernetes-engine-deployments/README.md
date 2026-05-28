@@ -74,7 +74,7 @@ Common mistakes:
 
 ## Cause 2: Authentication and Permissions
 
-GKE nodes need permission to pull images from your registry. By default, GKE nodes use the node's service account, which has access to registries in the same project. But cross-project access and private registries need explicit configuration.
+GKE nodes need permission to pull images from your registry. By default, GKE nodes use the node's service account, which can access registries in the same project when the service account has the required IAM role and access scopes. Cross-project access and private registries need explicit configuration.
 
 ### Same-Project Artifact Registry
 
@@ -149,7 +149,7 @@ spec:
 
 ## Cause 3: GKE Scope Limitations
 
-Older GKE clusters might have been created without the `cloud-platform` scope, which limits API access from nodes. Check the node pool scopes:
+Older GKE clusters might have been created without a storage read scope or the broader `cloud-platform` scope, which limits API access from nodes. Check the node pool scopes:
 
 ```bash
 # Check node pool OAuth scopes
@@ -159,7 +159,7 @@ gcloud container node-pools describe default-pool \
     --format="yaml(config.oauthScopes)"
 ```
 
-If the scope `https://www.googleapis.com/auth/devstorage.read_only` is missing (needed for gcr.io) or `https://www.googleapis.com/auth/cloud-platform` is not present, you need to create a new node pool with the right scopes:
+If the node pool does not have `https://www.googleapis.com/auth/devstorage.read_only` or another scope that includes storage read access, such as `https://www.googleapis.com/auth/cloud-platform`, you need to create a new node pool with the right scopes:
 
 ```bash
 # Create a new node pool with the correct scopes
