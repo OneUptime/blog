@@ -28,7 +28,7 @@ The key feed categories include:
 Start by creating a Cloud Armor security policy attached to your backend service:
 
 ```bash
-# Create a security policy with adaptive protection enabled
+# Create a security policy
 
 gcloud compute security-policies create web-app-policy \
     --description="Security policy with threat intelligence" \
@@ -38,6 +38,11 @@ gcloud compute security-policies create web-app-policy \
 gcloud compute security-policies update web-app-policy \
     --enable-layer7-ddos-defense \
     --layer7-ddos-defense-rule-visibility=STANDARD
+
+# Attach the policy to your backend service
+gcloud compute backend-services update YOUR_BACKEND_SERVICE \
+    --security-policy=web-app-policy \
+    --global
 ```
 
 ## Adding Threat Intelligence Rules
@@ -67,6 +72,9 @@ gcloud compute security-policies rules create 1200 \
     --rate-limit-threshold-count=100 \
     --rate-limit-threshold-interval-sec=60 \
     --ban-duration-sec=600 \
+    --conform-action=allow \
+    --exceed-action=deny-429 \
+    --enforce-on-key=IP \
     --description="Rate limit public cloud IPs"
 ```
 
@@ -90,6 +98,9 @@ gcloud compute security-policies rules create 950 \
     --rate-limit-threshold-count=10 \
     --rate-limit-threshold-interval-sec=60 \
     --ban-duration-sec=3600 \
+    --conform-action=allow \
+    --exceed-action=deny-429 \
+    --enforce-on-key=IP \
     --description="Strict rate limit on cloud IPs hitting auth"
 ```
 
@@ -131,17 +142,20 @@ This Cloud Function processes Cloud Armor events and takes automated action:
 
 ```python
 import base64
+from collections import defaultdict, deque
+import ipaddress
 import json
+import time
+
+from google.api_core.exceptions import NotFound
 from google.cloud import compute_v1
-from google.cloud import pubsub_v1
-from collections import defaultdict
 
 # Threshold for automatic IP blocking
 BLOCK_THRESHOLD = 50  # Number of denied requests before auto-blocking
 TIME_WINDOW_SECONDS = 300  # 5-minute window
 
 # In-memory counter (use Redis or Firestore in production)
-ip_counters = defaultdict(int)
+ip_counters = defaultdict(deque)
 
 def process_armor_event(event, context):
     """Process Cloud Armor deny events and take automated action"""
@@ -150,63 +164,69 @@ def process_armor_event(event, context):
     log_entry = json.loads(pubsub_message)
 
     # Extract relevant fields from the log entry
-    source_ip = log_entry.get("jsonPayload", {}).get(
-        "enforcedSecurityPolicy", {}
-    ).get("matchedField", "")
+    source_ip = log_entry.get("httpRequest", {}).get("remoteIp")
+    policy = log_entry.get("jsonPayload", {}).get("enforcedSecurityPolicy", {})
+    rule_name = f"{policy.get('name', '')}:{policy.get('priority', '')}"
 
-    rule_name = log_entry.get("jsonPayload", {}).get(
-        "enforcedSecurityPolicy", {}
-    ).get("name", "")
+    if not source_ip:
+        return
 
     # Count occurrences from this IP
-    ip_counters[source_ip] += 1
+    now = time.time()
+    recent_requests = ip_counters[source_ip]
+    recent_requests.append(now)
 
-    if ip_counters[source_ip] >= BLOCK_THRESHOLD:
+    while recent_requests and now - recent_requests[0] > TIME_WINDOW_SECONDS:
+        recent_requests.popleft()
+
+    if len(recent_requests) >= BLOCK_THRESHOLD:
         # This IP has exceeded our threshold - add it to the blocklist
         add_ip_to_blocklist(source_ip)
-        send_notification(source_ip, ip_counters[source_ip], rule_name)
-        ip_counters[source_ip] = 0  # Reset counter
+        send_notification(source_ip, len(recent_requests), rule_name)
+        recent_requests.clear()  # Reset counter
 
 def add_ip_to_blocklist(ip_address):
     """Add an IP to the Cloud Armor deny list"""
     client = compute_v1.SecurityPoliciesClient()
     project = "your-project-id"
     policy_name = "web-app-policy"
+    priority = 500
+    ip_network = ipaddress.ip_network(ip_address, strict=False)
+    ip_expr = f"inIpRange(origin.ip, '{ip_network}')"
 
-    # Get the current policy
-    policy = client.get(project=project, security_policy=policy_name)
-
-    # Find the custom blocklist rule or create one
-    blocklist_rule = None
-    for rule in policy.rules:
-        if rule.description == "Auto-generated blocklist":
-            blocklist_rule = rule
-            break
-
-    if blocklist_rule:
+    try:
+        blocklist_rule = client.get_rule(request=compute_v1.GetRuleSecurityPolicyRequest(
+            project=project,
+            security_policy=policy_name,
+            priority=priority,
+        ))
         # Append the new IP to the existing expression
         current_expr = blocklist_rule.match.expr.expression
-        new_expr = f"{current_expr} || inIpRange(origin.ip, '{ip_address}/32')"
+        new_expr = f"{current_expr} || {ip_expr}"
         blocklist_rule.match.expr.expression = new_expr
-    else:
+
+        client.patch_rule(request=compute_v1.PatchRuleSecurityPolicyRequest(
+            project=project,
+            security_policy=policy_name,
+            priority=priority,
+            security_policy_rule_resource=blocklist_rule,
+        ))
+    except NotFound:
         # Create a new rule for auto-blocked IPs
         new_rule = compute_v1.SecurityPolicyRule()
-        new_rule.priority = 500
+        new_rule.priority = priority
         new_rule.action = "deny(403)"
         new_rule.description = "Auto-generated blocklist"
         new_rule.match = compute_v1.SecurityPolicyRuleMatcher()
         new_rule.match.expr = compute_v1.Expr()
-        new_rule.match.expr.expression = (
-            f"inIpRange(origin.ip, '{ip_address}/32')"
-        )
-        policy.rules.append(new_rule)
+        new_rule.match.expr.expression = ip_expr
 
-    # Update the policy
-    client.patch(
-        project=project,
-        security_policy=policy_name,
-        security_policy_resource=policy
-    )
+        client.add_rule(
+            project=project,
+            security_policy=policy_name,
+            security_policy_rule_resource=new_rule,
+        )
+
     print(f"Blocked IP: {ip_address}")
 ```
 
@@ -248,17 +268,19 @@ def send_notification(ip_address, request_count, rule_name):
 Cloud Armor's Adaptive Protection uses machine learning to detect anomalous traffic patterns. When it detects a potential attack, it generates alerts with suggested rules:
 
 ```bash
-# Enable adaptive protection with automatic rule deployment
-gcloud compute security-policies update web-app-policy \
-    --enable-layer7-ddos-defense \
-    --layer7-ddos-defense-rule-visibility=STANDARD \
-    --layer7-ddos-defense-threshold-configs='[{
-        "name": "high-confidence",
-        "autoDeployLoadThreshold": 0.7,
-        "autoDeployConfidenceThreshold": 0.8,
-        "autoDeployImpactedBaselineThreshold": 0.01,
-        "autoDeployExpirationSec": 7200
-    }]'
+# Create a placeholder rule for automatic rule deployment
+gcloud compute security-policies rules create 800 \
+    --security-policy=web-app-policy \
+    --expression="evaluateAdaptiveProtectionAutoDeploy()" \
+    --action=deny-403 \
+    --description="Adaptive Protection auto-deploy placeholder"
+
+# Tune the automatic deployment thresholds
+gcloud beta compute security-policies update web-app-policy \
+    --layer7-ddos-defense-auto-deploy-load-threshold=0.7 \
+    --layer7-ddos-defense-auto-deploy-confidence-threshold=0.8 \
+    --layer7-ddos-defense-auto-deploy-impacted-baseline-threshold=0.01 \
+    --layer7-ddos-defense-auto-deploy-expiration-sec=7200
 ```
 
 This tells Cloud Armor to automatically deploy blocking rules when it detects an attack with high confidence, and to expire those rules after 2 hours.
@@ -273,8 +295,9 @@ gcloud alpha monitoring policies create \
     --display-name="Cloud Armor High Block Rate" \
     --condition-display-name="Blocked requests spike" \
     --condition-filter='resource.type="http_load_balancer" AND metric.type="loadbalancing.googleapis.com/https/request_count" AND metric.labels.response_code_class="400"' \
-    --condition-threshold-value=1000 \
-    --condition-threshold-duration=300s \
+    --duration=300s \
+    --if='> 1000' \
+    --combiner=AND \
     --notification-channels=YOUR_CHANNEL_ID
 ```
 
@@ -290,7 +313,7 @@ gcloud compute security-policies rules update 1000 \
     --preview
 
 # Check the logs to see what traffic would have been blocked
-gcloud logging read 'resource.type="http_load_balancer" AND jsonPayload.previewSecurityPolicy.matchedFieldValue!=""' \
+gcloud logging read 'resource.type="http_load_balancer" AND jsonPayload.previewSecurityPolicy.outcome="DENY"' \
     --limit=50 \
     --format=json
 ```
