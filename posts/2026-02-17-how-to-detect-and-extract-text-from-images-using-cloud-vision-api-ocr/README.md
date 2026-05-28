@@ -139,7 +139,7 @@ def detect_text_from_gcs(gcs_uri):
 
     # Reference the image in GCS by URI
     image = vision.Image(
-        source=vision.ImageSource(gcs_image_uri=gcs_uri)
+        source=vision.ImageSource(image_uri=gcs_uri)
     )
 
     response = client.text_detection(image=image)
@@ -198,6 +198,8 @@ detect_text_with_language("japanese_menu.jpg")
 Cloud Vision API can handle handwritten text, though accuracy depends on handwriting legibility. Use DOCUMENT_TEXT_DETECTION for handwritten content and check the confidence scores:
 
 ```python
+from google.cloud import vision
+
 def process_handwriting(image_path):
     """Extract handwritten text with confidence filtering."""
     client = vision.ImageAnnotatorClient()
@@ -233,7 +235,7 @@ def process_handwriting(image_path):
 
 ## Batch Processing Multiple Images
 
-When you need to process many images, batch them to improve throughput:
+When you need to process many images, process them concurrently to improve throughput:
 
 ```python
 from google.cloud import vision
@@ -281,11 +283,11 @@ A few things I have learned from using Vision API OCR in production:
 - Always check the confidence scores. Low confidence results are often wrong, and it is better to flag them for manual review.
 - Preprocess images when possible. Increasing contrast, converting to grayscale, and removing noise all improve OCR accuracy.
 - Set appropriate timeouts. Large images can take a few seconds to process.
-- Keep image sizes reasonable. The API accepts images up to 20MB, but you will get faster responses with smaller files. Resize images larger than 4MP before sending them.
+- Keep image sizes reasonable. The API accepts image files up to 20MB, but OCR images must not exceed 75 megapixels. You will usually get faster responses with smaller files, and Google recommends about 1024x768 pixels for OCR.
 
 ## Pricing Considerations
 
-Vision API charges per feature per image. Text detection costs around $1.50 per 1,000 images for the first 5 million units per month, with discounts at higher volumes. Document text detection has the same pricing. If you are processing high volumes, the costs can add up, so batch processing and caching results is worthwhile.
+Vision API charges per feature per image. Text detection costs around $1.50 per 1,000 images for units 1,001 through 5,000,000 each month after the monthly free tier, with discounts at higher volumes. Document text detection has the same pricing. If you are processing high volumes, the costs can add up, so batch processing and caching results is worthwhile.
 
 ## Wrapping Up
 
