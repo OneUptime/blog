@@ -61,6 +61,8 @@ gcloud container clusters create private-cluster \
   --master-ipv4-cidr 172.16.0.0/28 \
   --enable-ip-alias \
   --enable-master-authorized-networks \
+  --enable-authorized-networks-on-private-endpoint \
+  --master-authorized-networks 10.0.0.0/20 \
   --no-enable-basic-auth \
   --no-issue-client-certificate \
   --workload-pool YOUR_PROJECT_ID.svc.id.goog \
@@ -73,6 +75,7 @@ Key flags explained:
 - `--enable-private-nodes`: Nodes only get internal IPs
 - `--enable-private-endpoint`: The API server only gets an internal IP
 - `--master-ipv4-cidr`: The CIDR block for the control plane's VPC peering connection
+- `--enable-authorized-networks-on-private-endpoint`: Enforces authorized networks on the internal API endpoint
 - `--workload-pool`: Enables Workload Identity for secure pod-to-GCP-service authentication
 
 ## Step 3: Set Up a Proxy VM for IAP Access
@@ -80,6 +83,17 @@ Key flags explained:
 Since the API server has no public IP, you need a way to reach it. We will create a small VM in the same VPC that acts as a tunnel endpoint.
 
 ```bash
+# Create Cloud NAT so the private VM can install packages during startup
+gcloud compute routers create private-gke-router \
+  --network private-gke-vpc \
+  --region us-central1
+
+gcloud compute routers nats create private-gke-nat \
+  --router private-gke-router \
+  --region us-central1 \
+  --nat-all-subnet-ip-ranges \
+  --auto-allocate-nat-external-ips
+
 # Create a small VM that will serve as the IAP tunnel endpoint
 gcloud compute instances create gke-proxy-vm \
   --zone us-central1-a \
@@ -89,14 +103,14 @@ gcloud compute instances create gke-proxy-vm \
   --no-address \
   --metadata startup-script='#!/bin/bash
     apt-get update
-    apt-get install -y kubectl google-cloud-sdk-gke-gcloud-auth-plugin tinyproxy
-    # Configure tinyproxy to listen on all interfaces
-    sed -i "s/^Allow 127.0.0.1$/Allow 10.0.0.0\/8/" /etc/tinyproxy/tinyproxy.conf
-    sed -i "s/^Port 8888$/Port 8888/" /etc/tinyproxy/tinyproxy.conf
+    apt-get install -y tinyproxy
+    # Allow TCP connections forwarded by IAP
+    sed -i "s/^Listen 127.0.0.1$/Listen 0.0.0.0/" /etc/tinyproxy/tinyproxy.conf
+    grep -q "^Allow 35.235.240.0/20$" /etc/tinyproxy/tinyproxy.conf || echo "Allow 35.235.240.0/20" >> /etc/tinyproxy/tinyproxy.conf
     systemctl restart tinyproxy'
 ```
 
-Notice `--no-address` - this VM also has no public IP. Everything stays internal.
+Notice `--no-address` - this VM also has no public IP. Cloud NAT gives it outbound access for package installation and updates, but it does not allow inbound connections from the internet.
 
 ## Step 4: Configure IAP for TCP Forwarding
 
@@ -167,9 +181,9 @@ kpriv get pods
 kpriv apply -f deployment.yaml
 ```
 
-## Alternative: Direct IAP Tunnel to the API Server
+## Alternative: Connect Gateway
 
-If you do not want to maintain a proxy VM, you can use the `connect-gateway` feature which lets you access the cluster through Google's Connect service.
+If you do not want to maintain a proxy VM, you can use the Connect Gateway feature, which lets you access a registered cluster through Google's Connect service.
 
 ```bash
 # Register the cluster with the Connect gateway
@@ -184,7 +198,7 @@ gcloud container fleet memberships get-credentials private-cluster
 kubectl get nodes
 ```
 
-This approach is cleaner but requires GKE Enterprise (formerly Anthos) features.
+This approach is cleaner, but it requires fleet registration, the Connect Gateway API, IAM permissions for the gateway, and Kubernetes RBAC permissions in the cluster.
 
 ## CI/CD Access
 
@@ -194,7 +208,8 @@ Your CI/CD pipeline also needs to reach the private cluster. If you use Cloud Bu
 # Create a Cloud Build private worker pool in the same VPC
 gcloud builds worker-pools create gke-deploy-pool \
   --region us-central1 \
-  --peered-network projects/YOUR_PROJECT_ID/global/networks/private-gke-vpc
+  --peered-network projects/YOUR_PROJECT_ID/global/networks/private-gke-vpc \
+  --peered-network-ip-range 10.1.0.0/20
 
 # In your cloudbuild.yaml, specify the worker pool
 # options:
@@ -211,6 +226,7 @@ Even though the endpoint is private, you should still configure authorized netwo
 gcloud container clusters update private-cluster \
   --region us-central1 \
   --enable-master-authorized-networks \
+  --enable-authorized-networks-on-private-endpoint \
   --master-authorized-networks 10.0.0.0/20,10.1.0.0/20
 ```
 
