@@ -84,16 +84,16 @@ Now the team can view resources anytime but can only make changes during the mai
 
 ## Example 4: Emergency Break-Glass Access
 
-Create a time-limited escalation mechanism. An admin grants temporary broad access that expires after a few hours:
+Create a time-limited escalation mechanism. An admin grants temporary elevated access that expires after a few hours:
 
 ```bash
 # Grant emergency admin access for 4 hours from now
 # Calculate the expiry time (4 hours from current time)
-EXPIRY=$(date -u -v+4H +%Y-%m-%dT%H:%M:%SZ)
+EXPIRY=$(python3 -c 'from datetime import datetime, timedelta, timezone; print((datetime.now(timezone.utc) + timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%SZ"))')
 
 gcloud projects add-iam-policy-binding my-project \
     --member="user:oncall@example.com" \
-    --role="roles/editor" \
+    --role="roles/compute.admin" \
     --condition="expression=request.time < timestamp('${EXPIRY}'),title=Emergency Access,description=Temporary emergency access expiring at ${EXPIRY}"
 ```
 
@@ -130,17 +130,16 @@ For conditions that are too complex for a single command line, use a YAML file:
 ```yaml
 # complex-condition.yaml
 # Condition: Business hours OR during a scheduled maintenance window
-condition:
-  title: "Business Hours or Maintenance"
-  description: "Access during business hours Mon-Fri or Saturday maintenance window"
-  expression: >
-    (request.time.getHours('America/New_York') >= 9 &&
-     request.time.getHours('America/New_York') < 17 &&
-     request.time.getDayOfWeek('America/New_York') >= 1 &&
-     request.time.getDayOfWeek('America/New_York') <= 5) ||
-    (request.time.getDayOfWeek('America/New_York') == 6 &&
-     request.time.getHours('America/New_York') >= 2 &&
-     request.time.getHours('America/New_York') < 6)
+title: "Business Hours or Maintenance"
+description: "Access during business hours Mon-Fri or Saturday maintenance window"
+expression: >
+  (request.time.getHours('America/New_York') >= 9 &&
+   request.time.getHours('America/New_York') < 17 &&
+   request.time.getDayOfWeek('America/New_York') >= 1 &&
+   request.time.getDayOfWeek('America/New_York') <= 5) ||
+  (request.time.getDayOfWeek('America/New_York') == 6 &&
+   request.time.getHours('America/New_York') >= 2 &&
+   request.time.getHours('America/New_York') < 6)
 ```
 
 ## Terraform Configuration
@@ -180,16 +179,16 @@ resource "google_project_iam_member" "contractor_access" {
 }
 ```
 
-## Combining Time Conditions with IP Restrictions
+## Combining Time Conditions with Access Levels
 
-For the strongest controls, combine time and IP conditions:
+For IAP-secured apps or tunnels, combine time conditions with Access Context Manager access levels. Access levels can include IP restrictions, device requirements, or other request attributes:
 
 ```bash
-# Access only from office, only during business hours
+# IAP access only from office, only during business hours
 gcloud projects add-iam-policy-binding my-project \
     --member="user:admin@example.com" \
-    --role="roles/owner" \
-    --condition="expression=request.auth.access_levels.exists(level, level == 'accessPolicies/POLICY_ID/accessLevels/office-network') && request.time.getHours('America/New_York') >= 9 && request.time.getHours('America/New_York') < 17 && request.time.getDayOfWeek('America/New_York') >= 1 && request.time.getDayOfWeek('America/New_York') <= 5,title=Office Hours from Office,description=Admin access only from office during business hours"
+    --role="roles/iap.httpsResourceAccessor" \
+    --condition="expression='accessPolicies/POLICY_NUMBER/accessLevels/office-network' in request.auth.access_levels && request.time.getHours('America/New_York') >= 9 && request.time.getHours('America/New_York') < 17 && request.time.getDayOfWeek('America/New_York') >= 1 && request.time.getDayOfWeek('America/New_York') <= 5,title=Office Hours from Office,description=IAP access only from office during business hours"
 ```
 
 ## Auditing Time-Based Bindings
@@ -255,4 +254,4 @@ Time conditions apply to the time of the API request, not when a job was schedul
 
 ## Wrapping Up
 
-Time-based IAM conditions give you precise control over when access is granted. They are perfect for maintenance windows, contractor access periods, business-hour restrictions, and emergency break-glass scenarios. The CEL expressions are straightforward once you get the syntax right. Remember to always specify timezones, clean up expired bindings, and test your conditions before applying them to production. When combined with IP restrictions, time-based conditions provide a solid multi-factor access control layer without any additional tooling.
+Time-based IAM conditions give you precise control over when access is granted. They are perfect for maintenance windows, contractor access periods, business-hour restrictions, and emergency break-glass scenarios. The CEL expressions are straightforward once you get the syntax right. Remember to always specify timezones, clean up expired bindings, and test your conditions before applying them to production. When combined with access levels, time-based conditions provide a solid multi-factor access control layer.
