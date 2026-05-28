@@ -44,7 +44,7 @@ In this post, I will walk through setting up Flyway for Cloud SQL in a GKE-deplo
 <dependency>
     <groupId>com.google.cloud.sql</groupId>
     <artifactId>mysql-socket-factory-connector-j-8</artifactId>
-    <version>1.15.2</version>
+    <version>1.28.4</version>
 </dependency>
 ```
 
@@ -152,7 +152,6 @@ spec:
     spec:
       serviceAccountName: my-app-sa
       containers:
-        # Application container
         - name: app
           image: gcr.io/my-project/my-app:latest
           ports:
@@ -173,9 +172,10 @@ spec:
               memory: "512Mi"
               cpu: "250m"
 
-        # Cloud SQL Auth Proxy sidecar
+      initContainers:
         - name: cloud-sql-proxy
-          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          restartPolicy: Always
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0
           args:
             - "--structured-logs"
             - "--port=3306"
@@ -214,6 +214,13 @@ spec:
     spec:
       serviceAccountName: my-app-sa
       restartPolicy: Never
+      initContainers:
+        - name: cloud-sql-proxy
+          restartPolicy: Always
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0
+          args:
+            - "--port=3306"
+            - "my-project:us-central1:my-instance"
       containers:
         - name: migrate
           image: gcr.io/my-project/my-app:latest
@@ -231,12 +238,6 @@ spec:
             # Only run migrations, then exit
             - name: SPRING_FLYWAY_ENABLED
               value: "true"
-
-        - name: cloud-sql-proxy
-          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
-          args:
-            - "--port=3306"
-            - "my-project:us-central1:my-instance"
   backoffLimit: 3
 ```
 
@@ -266,22 +267,31 @@ Never enable `clean-disabled=false` in production. The `clean` operation drops a
 
 ## Java-Based Migrations
 
-For complex migrations that cannot be expressed in SQL, use Java-based migrations:
+For complex migrations that cannot be expressed in SQL, use Java-based migrations. With the default `classpath:db/migration` location, place Java migration classes under the `db.migration` package:
 
 ```java
 // V5__populate_default_categories.java
 // Java-based migration for complex data operations
+package db.migration;
+
+import org.flywaydb.core.api.migration.BaseJavaMigration;
+import org.flywaydb.core.api.migration.Context;
+
+import java.sql.PreparedStatement;
+import java.util.Locale;
+
 public class V5__populate_default_categories extends BaseJavaMigration {
 
     @Override
     public void migrate(Context context) throws Exception {
-        try (Statement stmt = context.getConnection().createStatement()) {
+        try (PreparedStatement stmt = context.getConnection().prepareStatement(
+                "INSERT INTO categories (name, slug) VALUES (?, ?)")) {
             String[] categories = {"Electronics", "Clothing", "Books", "Home", "Sports"};
 
             for (String category : categories) {
-                stmt.execute(String.format(
-                        "INSERT INTO categories (name, slug) VALUES ('%s', '%s')",
-                        category, category.toLowerCase()));
+                stmt.setString(1, category);
+                stmt.setString(2, category.toLowerCase(Locale.ROOT));
+                stmt.executeUpdate();
             }
         }
     }
