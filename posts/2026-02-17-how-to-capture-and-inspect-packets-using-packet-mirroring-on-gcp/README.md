@@ -8,13 +8,13 @@ Description: Learn how to set up Packet Mirroring on Google Cloud to capture and
 
 ---
 
-Sometimes VPC Flow Logs are not enough. Flow logs tell you metadata about connections - who talked to whom, how much data was transferred - but they do not show you the actual packet contents. When you need to see the payload of network traffic, whether for security analysis, regulatory compliance, or deep debugging, you need packet-level capture. Packet Mirroring on GCP duplicates traffic from specific VMs and sends it to a collector for inspection without affecting the original traffic flow.
+Sometimes VPC Flow Logs are not enough. Flow logs tell you metadata about connections - who talked to whom, how much data was transferred - but they do not show you the actual packet contents. When you need to see the payload of network traffic, whether for security analysis, regulatory compliance, or deep debugging, you need packet-level capture. Packet Mirroring on GCP duplicates traffic from specific VMs and sends it to a collector for inspection without changing the original traffic path.
 
 In this guide, I will show you how to set up Packet Mirroring, deploy a collector running an intrusion detection system, and analyze captured traffic.
 
 ## How Packet Mirroring Works
 
-Packet Mirroring creates a copy of network traffic from mirrored sources (VMs or subnets) and forwards it to a collector destination (an internal load balancer fronting your analysis VMs). The mirrored traffic is encapsulated and delivered out-of-band, so there is no performance impact on the original traffic.
+Packet Mirroring creates a copy of network traffic from mirrored sources (VMs or subnets) and forwards it to a collector destination (an internal load balancer fronting your analysis VMs). The mirrored traffic is delivered to the collector without changing the original traffic path, but it does consume additional bandwidth on the mirrored VMs.
 
 ```mermaid
 flowchart LR
@@ -25,7 +25,7 @@ flowchart LR
     C --> F[Collector VM - IDS/Packet Analyzer]
 ```
 
-The mirrored packets are full copies, including headers and payload. You can filter what gets mirrored by protocol, IP range, or direction.
+The mirrored packets include headers and payload, subject to any application-layer encryption already present in the traffic. You can filter what gets mirrored by protocol, IP range, or direction.
 
 ## Prerequisites
 
@@ -52,16 +52,35 @@ gcloud compute instances create packet-collector \
     --machine-type=e2-standard-4 \
     --network=my-vpc \
     --subnet=my-subnet \
+    --tags=packet-collector \
     --image-family=debian-11 \
     --image-project=debian-cloud \
     --can-ip-forward \
     --metadata=startup-script='#!/bin/bash
 apt-get update
-apt-get install -y tcpdump tshark suricata
+apt-get install -y tcpdump tshark suricata jq
 # Configure Suricata to listen on the right interface
 sed -i "s/interface: eth0/interface: ens4/" /etc/suricata/suricata.yaml
 systemctl enable suricata
 systemctl start suricata'
+
+# Allow mirrored traffic and health checks to reach the collector.
+# Replace 10.0.0.0/8 with the CIDR ranges of your mirrored sources.
+gcloud compute firewall-rules create allow-packet-mirroring-to-collector \
+    --network=my-vpc \
+    --direction=INGRESS \
+    --action=ALLOW \
+    --target-tags=packet-collector \
+    --source-ranges=10.0.0.0/8 \
+    --rules=all
+
+gcloud compute firewall-rules create allow-health-checks-to-collector \
+    --network=my-vpc \
+    --direction=INGRESS \
+    --action=ALLOW \
+    --target-tags=packet-collector \
+    --source-ranges=130.211.0.0/22,35.191.0.0/16 \
+    --rules=tcp:22
 
 # Create an unmanaged instance group for the collector
 gcloud compute instance-groups unmanaged create collector-group \
@@ -77,7 +96,7 @@ Now create the internal load balancer:
 ```bash
 # Create a health check for the collector
 gcloud compute health-checks create tcp collector-hc \
-    --port=80
+    --port=22
 
 # Create a backend service for the collector
 gcloud compute backend-services create collector-backend \
@@ -148,7 +167,7 @@ gcloud compute packet-mirrorings create mirror-tagged-vms \
 You usually do not want to mirror all traffic. Filters let you narrow down what gets captured.
 
 ```bash
-# Mirror only TCP traffic on specific ports
+# Mirror only TCP traffic
 gcloud compute packet-mirrorings create mirror-web-traffic \
     --region=us-central1 \
     --network=my-vpc \
@@ -156,7 +175,7 @@ gcloud compute packet-mirrorings create mirror-web-traffic \
     --mirrored-subnets=prod-subnet \
     --filter-protocols=tcp \
     --filter-cidr-ranges=0.0.0.0/0 \
-    --filter-direction=BOTH \
+    --filter-direction=both \
     --enable
 ```
 
@@ -186,7 +205,7 @@ packet_mirroring.mirrored_resources = compute_v1.PacketMirroringMirroredResource
 # Filter to only capture traffic to/from specific IP ranges
 packet_mirroring.filter = compute_v1.PacketMirroringFilter(
     cidr_ranges=["10.0.1.0/24", "10.0.2.0/24"],
-    IP_protocols=["tcp"],
+    I_p_protocols=["tcp"],
     direction="BOTH"
 )
 
@@ -255,25 +274,29 @@ sudo systemctl restart suricata
 For production use, send Suricata alerts to Cloud Logging for centralized monitoring.
 
 ```bash
-# Install the Cloud Logging agent on the collector
-curl -sSO https://dl.google.com/cloudagents/add-logging-agent-repo.sh
-sudo bash add-logging-agent-repo.sh
-sudo apt-get update && sudo apt-get install -y google-fluentd
+# Install the Ops Agent on the collector
+curl -sSO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
+sudo bash add-google-cloud-ops-agent-repo.sh --also-install
 
-# Configure fluentd to ship Suricata alerts
-sudo tee /etc/google-fluentd/config.d/suricata.conf <<'EOF'
-<source>
-  @type tail
-  path /var/log/suricata/eve.json
-  pos_file /var/lib/google-fluentd/pos/suricata.pos
-  tag suricata
-  <parse>
-    @type json
-  </parse>
-</source>
+# Configure the Ops Agent to ship Suricata alerts
+sudo tee /etc/google-cloud-ops-agent/config.yaml <<'EOF'
+logging:
+  receivers:
+    suricata_eve:
+      type: files
+      include_paths:
+        - /var/log/suricata/eve.json
+  processors:
+    parse_suricata_json:
+      type: parse_json
+  service:
+    pipelines:
+      suricata_pipeline:
+        receivers: [suricata_eve]
+        processors: [parse_suricata_json]
 EOF
 
-sudo systemctl restart google-fluentd
+sudo systemctl restart google-cloud-ops-agent"*"
 ```
 
 ## Scaling the Collector
@@ -286,6 +309,7 @@ gcloud compute instance-templates create collector-template \
     --machine-type=e2-standard-8 \
     --network=my-vpc \
     --subnet=my-subnet \
+    --tags=packet-collector \
     --can-ip-forward \
     --image-family=debian-11 \
     --image-project=debian-cloud \
@@ -304,7 +328,8 @@ gcloud compute instance-groups managed create collector-mig \
 
 Packet Mirroring generates additional network traffic equal to the volume being mirrored. You pay for:
 
-- The network bandwidth consumed by mirrored traffic (intra-zone is free, cross-zone is not)
+- The data processed by Packet Mirroring
+- Egress for mirrored traffic that travels between zones
 - The collector VM compute resources
 - Storage for captured packet data
 
