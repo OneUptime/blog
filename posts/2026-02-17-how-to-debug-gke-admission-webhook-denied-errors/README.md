@@ -14,7 +14,7 @@ Let's figure out which webhook is causing the problem and how to fix it.
 
 ## How Admission Webhooks Work
 
-When you send any request to the Kubernetes API server (create, update, delete), it passes through a chain of admission controllers. Webhooks are external admission controllers that get called via HTTP:
+When you send any request to the Kubernetes API server (create, update, delete), it passes through a chain of admission controllers. Webhooks are external admission controllers that get called through a service reference or HTTPS URL:
 
 ```mermaid
 flowchart LR
@@ -147,6 +147,9 @@ If the webhook service is unreachable and its `failurePolicy` is set to `Fail`, 
 kubectl get validatingwebhookconfiguration WEBHOOK_NAME \
   -o jsonpath='{.webhooks[0].clientConfig.service.name}'
 
+kubectl get validatingwebhookconfiguration WEBHOOK_NAME \
+  -o jsonpath='{.webhooks[0].clientConfig.service.namespace}'
+
 # Check if the webhook service and pods are running
 kubectl get svc -n WEBHOOK_NAMESPACE
 kubectl get pods -n WEBHOOK_NAMESPACE
@@ -214,7 +217,7 @@ kubectl label namespace staging webhook-enabled=true
 
 ## Step 7 - Debug Webhook Timeout Issues
 
-Webhooks have a timeout (default 10 seconds in GKE). If the webhook service is slow, requests get denied due to timeout:
+Webhooks have a timeout (the Kubernetes default is 10 seconds). If the webhook service is slow, requests get denied due to timeout:
 
 ```bash
 # Check the timeout setting
@@ -242,7 +245,7 @@ kubectl top pods -n webhook-namespace
 
 ## Step 8 - Handle GKE-Specific Webhooks
 
-GKE adds its own admission webhooks for managed features. If you see denials from these, the fix depends on the feature:
+GKE adds admission controls for managed features. If you see denials from these, the fix depends on the feature:
 
 **Binary Authorization**: Denied because the container image is not attested.
 
@@ -258,7 +261,7 @@ gcloud container binauthz policy export
 kubectl get constraints
 ```
 
-**Workload Identity**: May deny pods that do not have proper service account annotations.
+**Workload Identity Federation for GKE**: Pod creation is not normally denied just because a Kubernetes service account is missing a Google IAM annotation. Those issues usually appear later as Google Cloud API authentication or authorization failures from the workload. If an admission error mentions identity requirements, check whether it is coming from Policy Controller, Gatekeeper, or another installed policy engine.
 
 For GKE-managed webhooks, do not delete the webhook configuration directly. Instead, configure the feature through the GKE API or Cloud Console.
 
