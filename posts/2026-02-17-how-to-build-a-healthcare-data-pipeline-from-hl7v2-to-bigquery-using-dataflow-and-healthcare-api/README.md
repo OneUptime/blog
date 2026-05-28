@@ -54,29 +54,28 @@ gcloud pubsub topics create hl7v2-messages
 gcloud healthcare hl7v2-stores create hl7v2-ingest \
   --dataset=healthcare-pipeline \
   --location=us-central1 \
-  --notification-config=pubsubTopic=projects/MY_PROJECT/topics/hl7v2-messages
+  --parser-version=v3 \
+  --notification-config=pubsub-topic=projects/MY_PROJECT/topics/hl7v2-messages
 ```
 
 ## Step 2: Configure the HL7v2 Store Parser
 
-The parser configuration tells the Healthcare API how to handle incoming HL7v2 messages. You can configure which message types to accept and how to parse them.
+The parser configuration tells the Healthcare API how to handle incoming HL7v2 messages. You can configure the parser version and enable schematized parsing for messages that conform to the HL7v2 standard.
 
-This configuration enables parsing for common message types and sets up the schema:
+This configuration enables default schematized parsing with soft failure handling:
 
 ```bash
 # Update the HL7v2 store with parser configuration
 curl -X PATCH \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/json" \
-  "https://healthcare.googleapis.com/v1/projects/MY_PROJECT/locations/us-central1/datasets/healthcare-pipeline/hl7V2Stores/hl7v2-ingest?updateMask=parserConfig" \
+  -H "Content-Type: application/json; charset=utf-8" \
+  "https://healthcare.googleapis.com/v1/projects/MY_PROJECT/locations/us-central1/datasets/healthcare-pipeline/hl7V2Stores/hl7v2-ingest?updateMask=parser_config.schema" \
   -d '{
     "parserConfig": {
-      "allowNullHeader": false,
-      "segmentTerminator": "DQ==",
       "schema": {
-        "schematizedParsingType": "SOFT_FAIL",
-        "ignoreMinOccurs": true
-      }
+        "schematizedParsingType": "SOFT_FAIL"
+      },
+      "version": "V3"
     }
   }'
 ```
@@ -157,16 +156,45 @@ This Python Dataflow pipeline handles the entire transformation:
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from google.cloud import healthcare_v1
-import json
-import logging
+from datetime import datetime, timezone
+
+def hl7_timestamp_to_rfc3339(value):
+    """Convert common HL7 TS values to a BigQuery TIMESTAMP-compatible string."""
+    if not value:
+        return None
+
+    value = str(value)
+    if "T" in value:
+        return value.replace("Z", "+00:00")
+
+    for pattern in ("%Y%m%d%H%M%S", "%Y%m%d%H%M", "%Y%m%d"):
+        try:
+            parsed = datetime.strptime(value[:len(datetime.now().strftime(pattern))], pattern)
+            return parsed.replace(tzinfo=timezone.utc).isoformat()
+        except ValueError:
+            continue
+
+    return None
+
+def index_segments(parsed_data):
+    """Group Healthcare API ParsedData segments by segment ID."""
+    segments = {}
+    for segment in parsed_data.segments:
+        segments.setdefault(segment.segment_id, []).append(dict(segment.fields))
+    return segments
+
+def first_segment(segments, segment_id):
+    return segments.get(segment_id, [{}])[0]
+
+def segment_field(segment, field_number):
+    return segment.get(str(field_number), segment.get(f"{field_number}.1", ""))
 
 class FetchHL7Message(beam.DoFn):
     """Fetches the full HL7v2 message from Healthcare API."""
 
     def process(self, pubsub_message):
-        # Parse the Pub/Sub notification to get the message name
-        notification = json.loads(pubsub_message)
-        message_name = notification.get("name", "")
+        # Healthcare API HL7v2 Pub/Sub notification data is the message resource name.
+        message_name = pubsub_message
 
         if not message_name:
             return
@@ -178,7 +206,7 @@ class FetchHL7Message(beam.DoFn):
         yield {
             "name": message_name,
             "data": message.data,
-            "parsed_data": message.parsed_data,
+            "parsed_data": index_segments(message.parsed_data),
             "message_type": message.message_type
         }
 
@@ -192,18 +220,21 @@ class ParseADTMessage(beam.DoFn):
         parsed = message.get("parsed_data", {})
 
         # Extract patient identification from PID segment
-        pid = parsed.get("PID", {})
-        evn = parsed.get("EVN", {})
-        pv1 = parsed.get("PV1", {})
+        pid = first_segment(parsed, "PID")
+        msh = first_segment(parsed, "MSH")
+        evn = first_segment(parsed, "EVN")
+        pv1 = first_segment(parsed, "PV1")
+        trigger_event = segment_field(msh, "8.2")
+        event_type = f"{message['message_type']}^{trigger_event}" if trigger_event else message["message_type"]
 
         yield {
             "message_id": message["name"].split("/")[-1],
-            "event_type": message["message_type"],
-            "patient_id": str(pid.get("3", "")),
-            "patient_name": str(pid.get("5", "")),
-            "department": str(pv1.get("3", "")),
-            "attending_physician": str(pv1.get("7", "")),
-            "message_timestamp": str(evn.get("2", ""))
+            "event_type": event_type,
+            "patient_id": str(segment_field(pid, 3)),
+            "patient_name": str(segment_field(pid, 5)),
+            "department": str(segment_field(pv1, 3)),
+            "attending_physician": str(segment_field(pv1, 7)),
+            "message_timestamp": hl7_timestamp_to_rfc3339(segment_field(evn, 2))
         }
 
 class ParseORUMessage(beam.DoFn):
@@ -214,23 +245,21 @@ class ParseORUMessage(beam.DoFn):
             return
 
         parsed = message.get("parsed_data", {})
-        pid = parsed.get("PID", {})
+        pid = first_segment(parsed, "PID")
 
         # Each ORU can contain multiple OBX (observation) segments
         obx_segments = parsed.get("OBX", [])
-        if not isinstance(obx_segments, list):
-            obx_segments = [obx_segments]
 
         for obx in obx_segments:
             yield {
                 "message_id": message["name"].split("/")[-1],
-                "patient_id": str(pid.get("3", "")),
-                "test_code": str(obx.get("3", "")),
-                "test_name": str(obx.get("3", "")),
-                "result_value": str(obx.get("5", "")),
-                "result_units": str(obx.get("6", "")),
-                "reference_range": str(obx.get("7", "")),
-                "abnormal_flag": str(obx.get("8", ""))
+                "patient_id": str(segment_field(pid, 3)),
+                "test_code": str(segment_field(obx, 3)),
+                "test_name": str(segment_field(obx, 3)),
+                "result_value": str(segment_field(obx, 5)),
+                "result_units": str(segment_field(obx, 6)),
+                "reference_range": str(segment_field(obx, 7)),
+                "abnormal_flag": str(segment_field(obx, 8))
             }
 
 def run_pipeline():
