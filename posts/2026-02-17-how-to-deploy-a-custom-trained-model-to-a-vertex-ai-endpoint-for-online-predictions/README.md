@@ -47,7 +47,7 @@ model = aiplatform.Model.upload(
     # Path to your saved model in GCS
     artifact_uri='gs://your-bucket/models/classification-model/',
     # Pre-built serving container for TensorFlow
-    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-14:latest',
+    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-15:latest',
     # Optional: define the prediction route and health check
     serving_container_predict_route='/v1/models/default:predict',
     serving_container_health_route='/v1/models/default',
@@ -144,7 +144,7 @@ aiplatform.init(
 model = aiplatform.Model.upload(
     display_name='my-classification-model',
     artifact_uri='gs://your-bucket/models/classification-model/',
-    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-14:latest',
+    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-15:latest',
 )
 
 # Create an endpoint
@@ -227,7 +227,7 @@ endpoint = aiplatform.Endpoint('projects/your-project-id/locations/us-central1/e
 new_model = aiplatform.Model.upload(
     display_name='my-classification-model-v2',
     artifact_uri='gs://your-bucket/models/classification-model-v2/',
-    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-14:latest',
+    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-15:latest',
 )
 
 # Deploy the new model with 20% of traffic (canary deployment)
@@ -257,18 +257,24 @@ Start with a smaller machine and scale up based on your latency and throughput r
 
 ## Monitoring Your Deployed Model
 
-Vertex AI provides built-in monitoring. You can check prediction latency, error rates, and traffic volume in the Cloud Console. You can also set up model monitoring to detect data drift and prediction skew:
+Vertex AI provides built-in monitoring. You can check prediction latency, error rates, and traffic volume in the Cloud Console. You can also set up model monitoring for supported models and schemas to detect data drift and prediction skew:
 
 ```python
 # Set up model monitoring
 from google.cloud import aiplatform
+from google.cloud.aiplatform import model_monitoring
 
 # Create a monitoring job for your endpoint
 monitoring_job = aiplatform.ModelDeploymentMonitoringJob.create(
     display_name='classification-model-monitoring',
     endpoint=endpoint,
-    logging_sampling_strategy={'random_sample_config': {'sample_rate': 0.1}},
-    schedule_config={'monitor_interval': {'seconds': 3600}},
+    logging_sampling_strategy=model_monitoring.RandomSampleConfig(sample_rate=0.1),
+    schedule_config=model_monitoring.ScheduleConfig(monitor_interval=1),
+    objective_configs=model_monitoring.ObjectiveConfig(
+        drift_detection_config=model_monitoring.DriftDetectionConfig(
+            drift_thresholds={'class_probability': 0.3},
+        ),
+    ),
 )
 ```
 
