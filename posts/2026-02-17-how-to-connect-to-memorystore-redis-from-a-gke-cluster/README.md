@@ -14,17 +14,17 @@ In this post, I will cover the full setup - from network configuration to deploy
 
 ## Network Prerequisites
 
-GKE pods can connect to Memorystore Redis only if the cluster's VPC network matches (or peers with) the Redis instance's network. There are two networking modes in GKE that affect this:
+GKE pods can connect to Memorystore Redis only if the cluster uses the same authorized VPC network as the Redis instance. There are two networking modes in GKE that affect this:
 
-**VPC-native clusters (recommended):** Pods get IP addresses from a VPC subnet. They can connect directly to Memorystore.
+**VPC-native clusters (recommended):** Pods get IP addresses from secondary ranges in a VPC subnet. They can connect directly to Memorystore.
 
 **Routes-based clusters:** Pods use a separate IP range. You may need additional configuration for Memorystore connectivity.
 
-Always use VPC-native clusters for new deployments. If you already have a routes-based cluster, you can still connect but it requires creating a custom route.
+Always use VPC-native clusters for new deployments. If you already have a routes-based cluster, you can still connect to instances that use direct peering by applying Google's custom iptables workaround.
 
 ```mermaid
 graph TD
-    A[GKE Pod] -->|Pod IP from VPC subnet| B[VPC Network]
+    A[GKE Pod] -->|Pod IP from VPC secondary range| B[VPC Network]
     B -->|Private connection| C[Memorystore Redis]
     D[GKE Cluster] -.->|VPC-native mode| B
 ```
@@ -306,7 +306,7 @@ If connections time out instead of being refused, the issue is usually network-l
 
 - Verify the pod can reach the Redis IP: `kubectl exec -it <pod> -- nc -zv <redis-ip> 6379`
 - Check if network policies in GKE are blocking egress traffic
-- Ensure the Redis instance is in the same region as the GKE cluster
+- For lower latency, keep the Redis instance close to the GKE cluster, typically in the same region
 
 ### AUTH Errors
 
@@ -345,10 +345,14 @@ Then reference both the ConfigMap and Secret in your deployment:
 envFrom:
   - configMapRef:
       name: redis-config
-  - secretRef:
-      name: redis-credentials
+env:
+  - name: REDIS_AUTH
+    valueFrom:
+      secretKeyRef:
+        name: redis-credentials
+        key: redis-auth
 ```
 
 ## Wrapping Up
 
-Connecting GKE to Memorystore Redis requires matching VPC networks and using VPC-native clusters. Once the networking is configured, store your Redis credentials in Kubernetes secrets, inject them as environment variables, and use connection pooling in your application code. The combination gives you a production-grade caching layer that your GKE pods can access with sub-millisecond latency.
+Connecting GKE to Memorystore Redis requires matching VPC networks and using VPC-native clusters. Once the networking is configured, store your Redis credentials in Kubernetes secrets, inject them as environment variables, and use connection pooling in your application code. The combination gives you a production-grade caching layer that your GKE pods can access with low latency.
