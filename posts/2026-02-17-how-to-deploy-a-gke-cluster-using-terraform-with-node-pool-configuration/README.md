@@ -26,7 +26,10 @@ Enable the required APIs:
 ```bash
 # Enable the APIs needed for GKE
 
-gcloud services enable container.googleapis.com compute.googleapis.com
+gcloud services enable \
+  container.googleapis.com \
+  compute.googleapis.com \
+  binaryauthorization.googleapis.com
 ```
 
 ## Creating the VPC Network
@@ -47,6 +50,9 @@ resource "google_compute_subnetwork" "gke_subnet" {
   region        = var.region
   network       = google_compute_network.gke_vpc.id
   project       = var.project_id
+
+  # Required for private nodes to reach Google APIs without public IPs
+  private_ip_google_access = true
 
   # Secondary ranges for GKE pods and services
   secondary_ip_range {
@@ -288,9 +294,11 @@ resource "google_service_account" "gke_nodes" {
 # Grant only the permissions nodes actually need
 resource "google_project_iam_member" "gke_node_roles" {
   for_each = toset([
+    "roles/container.defaultNodeServiceAccount",
     "roles/logging.logWriter",
     "roles/monitoring.metricWriter",
     "roles/monitoring.viewer",
+    "roles/autoscaling.metricsWriter",
     "roles/stackdriver.resourceMetadata.writer",
     "roles/artifactregistry.reader",
   ])
