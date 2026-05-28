@@ -65,6 +65,8 @@ For a web application behind a backend service on a load balancer:
 gcloud iap web enable \
   --resource-type=backend-services \
   --service=my-backend-service \
+  --oauth2-client-id=CLIENT_ID \
+  --oauth2-client-secret=CLIENT_SECRET \
   --project=my-project-id
 ```
 
@@ -74,6 +76,8 @@ For App Engine applications:
 # Enable IAP on App Engine
 gcloud iap web enable \
   --resource-type=app-engine \
+  --oauth2-client-id=CLIENT_ID \
+  --oauth2-client-secret=CLIENT_SECRET \
   --project=my-project-id
 ```
 
@@ -156,30 +160,32 @@ gcloud compute forwarding-rules create my-forwarding-rule \
 Access levels define the conditions under which access is granted. They go beyond just identity - you can require specific networks, device states, or geographic regions.
 
 ```yaml
-# access-level.yaml
-# Defines an access level that requires a corporate device and managed browser
-- accessLevel:
-    name: accessPolicies/POLICY_ID/accessLevels/corp-device-required
-    title: Corporate Device Required
-    basic:
-      conditions:
-        - devicePolicy:
-            requireScreenlock: true
-            osConstraints:
-              - osType: DESKTOP_CHROME_OS
-              - osType: DESKTOP_WINDOWS
-                minimumVersion: "10.0.0"
-              - osType: DESKTOP_MAC
-                minimumVersion: "12.0.0"
-            allowedEncryptionStatuses:
-              - ENCRYPTED
+# corp-device-spec.yaml
+# Defines conditions that require a secured corporate device
+- devicePolicy:
+    requireScreenlock: true
+    requireCorpOwned: true
+    osConstraints:
+      - osType: DESKTOP_CHROME_OS
+      - osType: DESKTOP_WINDOWS
+        minimumVersion: "10.0.0"
+      - osType: DESKTOP_MAC
+        minimumVersion: "12.0.0"
+    allowedEncryptionStatuses:
+      - ENCRYPTED
 ```
 
 Create the access level using gcloud.
 
 ```bash
+# Create an access level requiring a secured corporate device
+gcloud access-context-manager levels create corp_device_required \
+  --title="Corporate Device Required" \
+  --basic-level-spec=corp-device-spec.yaml \
+  --policy=POLICY_ID
+
 # Create an access level requiring corporate IP range
-gcloud access-context-manager levels create corp-network \
+gcloud access-context-manager levels create corp_network \
   --title="Corporate Network" \
   --basic-level-spec=corp-network-spec.yaml \
   --policy=POLICY_ID
@@ -201,17 +207,17 @@ Bind the access level to your IAP-protected resource.
 
 ```bash
 # Apply the access level to the backend service
-gcloud iap web set-iam-policy \
+gcloud iap web set-iam-policy policy.json \
   --resource-type=backend-services \
   --service=my-backend-service \
-  --project=my-project-id \
-  policy.json
+  --project=my-project-id
 ```
 
 The policy file combines IAM roles with access level conditions.
 
 ```json
 {
+  "version": 3,
   "bindings": [
     {
       "role": "roles/iap.httpsResourceAccessor",
@@ -219,7 +225,7 @@ The policy file combines IAM roles with access level conditions.
         "group:engineering@example.com"
       ],
       "condition": {
-        "expression": "\"accessPolicies/POLICY_ID/accessLevels/corp-device-required\" in request.auth.access_levels",
+        "expression": "\"accessPolicies/POLICY_ID/accessLevels/corp_device_required\" in request.auth.access_levels",
         "title": "Require Corporate Device"
       }
     }
@@ -240,7 +246,7 @@ Test the access flow.
 5. If any check fails, you see a 403 Forbidden page
 
 ```bash
-# Check the IAP status on your backend service
+# Check the IAP IAM policy on your backend service
 gcloud iap web get-iam-policy \
   --resource-type=backend-services \
   --service=my-backend-service \
