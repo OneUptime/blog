@@ -16,11 +16,11 @@ In this post, I will walk you through enabling CORS for Cloud Endpoints APIs on 
 
 Cross-Origin Resource Sharing is a security mechanism built into web browsers. When your frontend at `https://app.example.com` tries to call an API at `https://api.example.com`, the browser first sends a preflight OPTIONS request to check whether the API server allows requests from that origin. If the server does not respond with the right headers, the browser blocks the actual request.
 
-For Cloud Endpoints, you need to handle this at the proxy level. The ESP or ESPv2 proxy sits in front of your backend and handles authentication, rate limiting, and - relevant here - CORS headers.
+For Cloud Endpoints, you need to decide whether CORS is handled by your backend or by the proxy. The ESP or ESPv2 proxy sits in front of your backend and handles authentication, rate limiting, and - when configured with CORS startup flags - CORS headers.
 
 ## Option 1: Configuring CORS in the OpenAPI Specification
 
-The most straightforward approach is to add CORS configuration directly in your OpenAPI spec file. This is what Cloud Endpoints uses to configure the ESP proxy.
+If your backend already supports CORS, the most straightforward approach is to add CORS pass-through configuration directly in your OpenAPI spec file. This is what Cloud Endpoints uses to configure the ESP or ESPv2 proxy.
 
 Here is a basic OpenAPI spec with CORS enabled for a simple API:
 
@@ -54,7 +54,7 @@ paths:
           description: "CORS preflight response"
 ```
 
-The key part here is `allowCors: true` under the `x-google-endpoints` section. This tells ESP to handle CORS preflight requests automatically.
+The key part here is `allowCors: true` under the `x-google-endpoints` section. This tells ESP or ESPv2 to pass CORS requests through to your backend, so your application still needs to return the appropriate CORS response headers.
 
 ## Option 2: Configuring CORS in ESPv2
 
@@ -65,22 +65,18 @@ Here is how to configure ESPv2 with specific CORS settings in your Cloud Run dep
 ```bash
 # Deploy ESPv2 to Cloud Run with custom CORS configuration
 gcloud run deploy my-api-gateway \
-  --image="gcr.io/endpoints-release/endpoints-runtime-serverless:2" \
-  --set-env-vars="ESPv2_ARGS=--cors_preset=basic \
-    --cors_allow_origin=https://app.example.com \
-    --cors_allow_methods=GET,POST,PUT,DELETE,OPTIONS \
-    --cors_allow_headers=Content-Type,Authorization \
-    --cors_max_age=3600" \
+  --image="gcr.io/my-project/endpoints-runtime-serverless:2-api.example.com-config-id" \
+  --set-env-vars=ESPv2_ARGS=^++^--cors_preset=basic++--cors_allow_origin=https://app.example.com++--cors_max_age=1h \
   --platform=managed \
   --region=us-central1 \
   --allow-unauthenticated
 ```
 
-The `--cors_preset=basic` flag enables basic CORS handling. If you want to allow all origins during development, you can use `--cors_preset=cors_with_regex` along with a pattern.
+The `--cors_preset=basic` flag enables basic CORS handling. If you want to use a regular expression for allowed origins, use `--cors_preset=cors_with_regex` together with `--cors_allow_origin_regex`. If you need to set flags with comma-separated values, such as `--cors_allow_methods` or `--cors_allow_headers`, configure `ESPv2_ARGS` in the ESPv2 image build script instead of passing those values directly through `gcloud run deploy`.
 
 ## Handling Preflight Requests
 
-Even with `allowCors: true`, you sometimes need to explicitly handle OPTIONS requests in your API spec. This is especially true if your API requires custom headers or uses non-simple HTTP methods.
+When you use `allowCors: true` to pass CORS through to your backend, you sometimes need to explicitly handle OPTIONS requests in your API spec and backend. This is especially true if your API requires custom headers or uses non-simple HTTP methods.
 
 Here is an expanded example that explicitly defines the OPTIONS method:
 
@@ -139,13 +135,15 @@ gcloud endpoints services deploy openapi-spec.yaml
 gcloud endpoints services describe api.example.com
 ```
 
-Then redeploy your backend service to pick up the new configuration:
+Then redeploy the ESP or ESPv2 proxy so it uses the new service configuration. Redeploy the backend only if you changed backend CORS code:
 
 ```bash
-# Redeploy the backend to apply the new endpoint configuration
+# Redeploy App Engine when ESP is configured through app.yaml
 gcloud app deploy  # for App Engine
 # or
-gcloud run deploy my-api --image=gcr.io/my-project/my-api  # for Cloud Run
+# Redeploy the ESPv2 Cloud Run service with an image built for the new config
+gcloud run deploy my-api-gateway \
+  --image=gcr.io/my-project/endpoints-runtime-serverless:2-api.example.com-config-id
 ```
 
 ## Testing CORS Configuration
@@ -220,4 +218,4 @@ This gives you fine-grained control but means you are responsible for handling p
 
 ## Wrapping Up
 
-Enabling CORS for Cloud Endpoints is mostly about getting the `allowCors: true` flag in your OpenAPI spec and making sure OPTIONS requests are not blocked by authentication requirements. For ESPv2 deployments, you get additional flags to control specific origins, methods, and headers. Start with the basic configuration, test with curl, and then tighten down the allowed origins for production.
+Enabling CORS for Cloud Endpoints is mostly about choosing where CORS is handled. Use `allowCors: true` in your OpenAPI spec when your backend handles CORS, and make sure OPTIONS requests are not blocked by authentication requirements. For ESPv2 deployments, you get additional flags to control specific origins, methods, and headers at the proxy. Start with the basic configuration, test with curl, and then tighten down the allowed origins for production.
