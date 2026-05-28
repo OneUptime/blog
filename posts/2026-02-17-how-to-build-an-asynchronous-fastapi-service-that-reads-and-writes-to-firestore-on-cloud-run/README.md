@@ -56,6 +56,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 from google.cloud.firestore_v1 import AsyncClient, SERVER_TIMESTAMP
+from google.cloud.firestore_v1.base_query import FieldFilter
 from contextlib import asynccontextmanager
 import uuid
 import os
@@ -65,12 +66,12 @@ db: Optional[AsyncClient] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize and cleanup the Firestore client."""
+    """Initialize and release the Firestore client reference."""
     global db
     project = os.environ.get("GCP_PROJECT")
     db = AsyncClient(project=project)
     yield
-    # Close the client on shutdown
+    # Release the module-level reference on shutdown
     db = None
 
 app = FastAPI(
@@ -187,11 +188,11 @@ async def list_tasks(
 
     # Apply filters based on query parameters
     if status:
-        query = query.where("status", "==", status)
+        query = query.where(filter=FieldFilter("status", "==", status))
     if priority:
-        query = query.where("priority", "==", priority)
+        query = query.where(filter=FieldFilter("priority", "==", priority))
     if assigned_to:
-        query = query.where("assigned_to", "==", assigned_to)
+        query = query.where(filter=FieldFilter("assigned_to", "==", assigned_to))
 
     # Order by creation date and limit results
     query = query.order_by("created_at", direction="DESCENDING").limit(limit)
@@ -231,7 +232,7 @@ async def update_task(task_id: str, update: TaskUpdate):
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
 
     # Build update dict with only provided fields
-    update_data = {k: v for k, v in update.dict().items() if v is not None}
+    update_data = update.model_dump(exclude_none=True)
     update_data["updated_at"] = SERVER_TIMESTAMP
 
     # Perform the async update
