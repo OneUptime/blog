@@ -71,9 +71,9 @@ hadoop distcp \
 
 # Option 2: Transfer via Transfer Service for on-premises data
 gcloud transfer jobs create \
+  hdfs:///data/warehouse/ \
+  gs://my-data-lake/warehouse/ \
   --source-agent-pool=my-agent-pool \
-  --source-directory=/hadoop-data/ \
-  --destination-bucket=gs://my-data-lake \
   --name=hadoop-migration
 ```
 
@@ -102,19 +102,32 @@ gcloud dataproc clusters create my-batch-cluster \
   --num-workers 4 \
   --worker-machine-type n2-standard-8 \
   --worker-boot-disk-size 200GB \
-  --image-version 2.1-debian11 \
+  --image-version 2.3-debian12 \
   --optional-components HIVE_WEBHCAT,JUPYTER \
   --enable-component-gateway \
   --properties "hive:hive.metastore.warehouse.dir=gs://my-data-lake/warehouse"
+```
 
-# Create a cluster with autoscaling for variable workloads
-gcloud dataproc autoscaling-policies create my-scaling-policy \
+Create a cluster with autoscaling for variable workloads. Save the policy as `autoscaling-policy.yaml`, then import it:
+
+```yaml
+workerConfig:
+  minInstances: 2
+  maxInstances: 2
+secondaryWorkerConfig:
+  minInstances: 0
+  maxInstances: 20
+basicAlgorithm:
+  yarnConfig:
+    scaleUpFactor: 1.0
+    scaleDownFactor: 0.5
+  cooldownPeriod: 120s
+```
+
+```bash
+gcloud dataproc autoscaling-policies import my-scaling-policy \
   --region us-central1 \
-  --min-secondary-workers 0 \
-  --max-secondary-workers 20 \
-  --scale-up-factor 1.0 \
-  --scale-down-factor 0.5 \
-  --cooldown-period 120s
+  --source autoscaling-policy.yaml
 
 gcloud dataproc clusters create my-scaling-cluster \
   --region us-central1 \
@@ -142,7 +155,7 @@ gcloud sql databases create hive_metastore --instance hive-metastore
 gcloud dataproc clusters create my-cluster \
   --region us-central1 \
   --properties "\
-hive:javax.jdo.option.ConnectionURL=jdbc:mysql:///<hive_metastore>?cloudSqlInstance=my-project:us-central1:hive-metastore&socketFactory=com.google.cloud.sql.mysql.SocketFactory,\
+hive:javax.jdo.option.ConnectionURL=jdbc:mysql:///hive_metastore?cloudSqlInstance=my-project:us-central1:hive-metastore&socketFactory=com.google.cloud.sql.mysql.SocketFactory,\
 hive:javax.jdo.option.ConnectionDriverName=com.mysql.cj.jdbc.Driver,\
 hive:javax.jdo.option.ConnectionUserName=root,\
 hive:javax.jdo.option.ConnectionPassword=password"
@@ -154,7 +167,7 @@ Alternatively, use Dataproc Metastore, a fully managed metastore service:
 # Create a Dataproc Metastore service
 gcloud metastore services create my-metastore \
   --location us-central1 \
-  --tier DEVELOPER \
+  --tier developer \
   --hive-metastore-version 3.1.2
 
 # Create a cluster that uses the managed metastore
@@ -231,13 +244,15 @@ gcloud dataproc workflow-templates add-job spark \
   --region us-central1 \
   --step-id daily-aggregation \
   --class com.mycompany.etl.DailyAggregation \
-  --jars gs://my-data-lake/jars/etl-jobs-1.0.jar
+  --jar gs://my-data-lake/jars/etl-jobs-1.0.jar
 
 # Schedule with Cloud Scheduler
 gcloud scheduler jobs create http daily-etl-trigger \
+  --location us-central1 \
   --schedule "0 2 * * *" \
-  --uri "https://dataproc.googleapis.com/v1/projects/my-project/regions/us-central1/workflowTemplates/daily-etl:instantiate" \
+  --uri "https://dataproc.googleapis.com/v1/projects/my-project/regions/us-central1/workflowTemplates/daily-etl:instantiate?alt=json" \
   --http-method POST \
+  --message-body "{}" \
   --oauth-service-account-email my-sa@my-project.iam.gserviceaccount.com
 ```
 
