@@ -8,11 +8,11 @@ Description: How to handle Cloud SQL instances that get stuck in maintenance sta
 
 ---
 
-You logged in on Monday morning to find your Cloud SQL instance stuck in a maintenance state. The scheduled patch update started over the weekend and never completed. Your application is either completely down or running on a stale failover instance. This post covers what to do when this happens and how to reduce the chances of it happening again.
+You logged in on Monday morning to find your Cloud SQL instance stuck in a maintenance state. The scheduled patch update started over the weekend and never completed. Your application is either completely down or running on a stale fallback path. This post covers what to do when this happens and how to reduce the chances of it happening again.
 
 ## Recognizing the Problem
 
-Your instance status shows `MAINTENANCE` or `PENDING_MAINTENANCE` and has been in that state for much longer than expected. Normal maintenance operations typically complete within 10-30 minutes.
+Your instance status shows `MAINTENANCE` or `PENDING_MAINTENANCE` and has been in that state for much longer than expected. Google Cloud documentation says maintenance updates usually take approximately 5-10 minutes for each instance, although the overall operation can take longer for instances with read replicas, high activity, or very large datasets.
 
 ```bash
 # Check the instance state
@@ -71,25 +71,25 @@ Not every slow maintenance is stuck. Large instances with lots of data legitimat
 
 General guidelines for how long maintenance should take:
 
-- Small instances (db-f1-micro to db-n1-standard-4): 5-15 minutes
-- Medium instances (db-n1-standard-8 to db-n1-standard-16): 10-30 minutes
-- Large instances (db-n1-standard-32+): 15-60 minutes
-- Instances with 500GB+ data: Can take over an hour
+- Most single-instance maintenance updates: approximately 5-10 minutes
+- Instances with read replicas: the overall maintenance operation can take longer because replicas are maintained too
+- Instances with high activity or very large datasets: downtime and maintenance duration can be longer than average
+- Legacy MySQL HA instances: can experience significantly higher downtime during maintenance
 
-If your instance has been in maintenance for more than 2x these estimates, it is likely stuck.
+If your instance has been in maintenance for significantly longer than these estimates, especially more than an hour, it is likely stuck.
 
 ## Step 4: Contact Google Cloud Support
 
 For a truly stuck maintenance operation, there is limited action you can take from outside the instance. Google Cloud Support can:
 
 - Check the internal state of the maintenance operation
-- Force-complete or cancel the stuck operation
-- Restart the instance if needed
-- Provide information about what went wrong
+- Escalate an internal Google Cloud service issue if one is involved
+- Advise whether recovery should continue on the existing instance or from backup
+- Provide information about what went wrong when details are available
 
 ```bash
-# Create a support case through gcloud (if you have a support plan)
-# Or go to console.cloud.google.com/support
+# Create a support case in the Google Cloud console (if you have a support plan)
+# Go to console.cloud.google.com/support/cases
 ```
 
 While waiting for support, document:
@@ -101,7 +101,7 @@ While waiting for support, document:
 
 ## Step 5: Check If HA Failover Can Help
 
-If your instance has high availability enabled, the standby might be functional even if the primary is stuck in maintenance.
+If your instance has high availability enabled, check the HA status, but do not rely on manual failover while the primary is undergoing maintenance. Cloud SQL requires the primary instance to be in a normal operating state for failover, and maintenance is one of the states that can block failover.
 
 ```bash
 # Check if the instance has HA
@@ -117,7 +117,7 @@ gcloud sql instances failover my-instance \
     --project=my-project
 ```
 
-This might fail because the instance is in maintenance mode, but it is worth trying.
+This is expected to fail if the primary is still undergoing maintenance, but it can confirm whether failover is blocked or available after the instance returns to a normal state.
 
 ## Step 6: Prepare for Data Recovery (Worst Case)
 
@@ -160,7 +160,7 @@ You cannot avoid maintenance entirely, but you can control when it happens.
 ```bash
 # Set a specific maintenance window
 gcloud sql instances patch my-instance \
-    --maintenance-window-day=SUN \
+    --maintenance-window-day=SUNDAY \
     --maintenance-window-hour=2 \
     --maintenance-release-channel=week5 \
     --project=my-project
@@ -186,17 +186,25 @@ PROJECT="my-project"
 
 echo "=== Pre-Maintenance Checklist ==="
 
-# 1. Check disk space (should have at least 20% free)
+# 1. Check disk space. Cloud SQL skips maintenance if disk usage is higher than 97%.
 echo "Checking disk utilization..."
-gcloud monitoring time-series list \
-    --filter="resource.type=cloudsql_database AND resource.labels.database_id=${PROJECT}:${INSTANCE} AND metric.type=cloudsql.googleapis.com/database/disk/utilization" \
-    --interval-start-time=$(date -u -v-10M +%Y-%m-%dT%H:%M:%SZ) \
-    --format="value(points.value.doubleValue)" | head -1
+START_TIME=$(date -u -d '10 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+curl -sS -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    --get "https://monitoring.googleapis.com/v3/projects/${PROJECT}/timeSeries" \
+    --data-urlencode "filter=resource.type=\"cloudsql_database\" AND resource.labels.database_id=\"${PROJECT}:${INSTANCE}\" AND metric.type=\"cloudsql.googleapis.com/database/disk/utilization\"" \
+    --data-urlencode "interval.startTime=${START_TIME}" \
+    --data-urlencode "interval.endTime=${END_TIME}" \
+    --data-urlencode "aggregation.alignmentPeriod=60s" \
+    --data-urlencode "aggregation.perSeriesAligner=ALIGN_MEAN" \
+    | sed -n 's/.*"doubleValue": *"\{0,1\}\([^",}]*\).*/\1/p' | head -1
 
 # 2. Check for long-running transactions
 echo "Checking for long transactions..."
-gcloud sql connect $INSTANCE --user=root --project=$PROJECT \
-    --quiet -- -e "SELECT id, time, state, LEFT(info, 80) FROM information_schema.processlist WHERE command != 'Sleep' AND time > 60;"
+MYSQL_HOST="your-cloud-sql-ip-or-proxy-host"
+MYSQL_USER="root"
+mysql --host="$MYSQL_HOST" --user="$MYSQL_USER" --password \
+    --execute="SELECT id, time, state, LEFT(info, 80) FROM information_schema.processlist WHERE command != 'Sleep' AND time > 60;"
 
 # 3. Verify backups are recent
 echo "Checking latest backup..."
@@ -237,7 +245,7 @@ flowchart TD
 - Always have automated backups and point-in-time recovery enabled
 - Take a manual backup before known maintenance windows
 - Kill long-running transactions before the maintenance window
-- Make sure you have adequate disk space (at least 20% free) before maintenance
+- Make sure disk usage is comfortably below 97% before maintenance
 - If stuck for more than 2 hours, contact Google Cloud Support immediately
 - Have a documented recovery procedure so you do not waste time figuring it out during an outage
 
