@@ -186,9 +186,10 @@ from vertexai.generative_models import (
     FunctionDeclaration,
     Tool,
     Part,
-    Content,
 )
 import json
+import datetime
+import random
 
 vertexai.init(
     project='your-project-id',
@@ -215,9 +216,21 @@ ops_tool = Tool(function_declarations=[get_server_status])
 
 # Create the model with the tool
 model = GenerativeModel(
-    'gemini-1.5-pro',
+    'gemini-2.5-flash',
     tools=[ops_tool],
 )
+
+def handle_get_server_status(hostname):
+    """Simulate getting server status from a monitoring system."""
+    return {
+        'hostname': hostname,
+        'status': 'healthy',
+        'cpu_usage': f'{random.randint(20, 80)}%',
+        'memory_usage': f'{random.randint(30, 70)}%',
+        'disk_usage': f'{random.randint(10, 60)}%',
+        'uptime': '45 days, 12 hours',
+        'last_health_check': datetime.datetime.now().isoformat(),
+    }
 
 # Map function names to their handlers
 function_handlers = {
@@ -231,10 +244,11 @@ chat = model.start_chat()
 response = chat.send_message('Can you check the status of web-server-01?')
 
 # Check if the model wants to call a function
-function_call = response.candidates[0].content.parts[0].function_call
+function_calls = response.candidates[0].function_calls
 
-if function_call:
+if function_calls:
     # Extract the function name and arguments
+    function_call = function_calls[0]
     function_name = function_call.name
     function_args = dict(function_call.args)
 
@@ -268,46 +282,52 @@ Sometimes the model needs to call multiple functions to answer a question:
 # Handle conversations that require multiple function calls
 
 import vertexai
-from vertexai.generative_models import GenerativeModel, Tool, Part
-import json
+from vertexai.generative_models import GenerativeModel, Part
+from define_functions import ops_tool
+from function_handlers import handle_get_server_status, handle_list_deployments
 
 vertexai.init(project='your-project-id', location='us-central1')
 
 # Create model with all tools
-model = GenerativeModel('gemini-1.5-pro', tools=[ops_tool])
+model = GenerativeModel('gemini-2.5-flash', tools=[ops_tool])
 chat = model.start_chat()
+
+function_handlers = {
+    'get_server_status': handle_get_server_status,
+    'list_deployments': handle_list_deployments,
+}
 
 def process_response(response):
     """Process a response, handling function calls if present."""
     while True:
         # Check for function calls in the response
-        parts = response.candidates[0].content.parts
+        function_calls = response.candidates[0].function_calls
 
-        has_function_call = False
-        for part in parts:
-            if hasattr(part, 'function_call') and part.function_call.name:
-                has_function_call = True
-                fc = part.function_call
-
-                print(f"Calling: {fc.name}({dict(fc.args)})")
-
-                # Execute the function
-                handler = function_handlers.get(fc.name)
-                if handler:
-                    result = handler(**dict(fc.args))
-
-                    # Send result back
-                    response = chat.send_message(
-                        Part.from_function_response(
-                            name=fc.name,
-                            response={'result': result},
-                        )
-                    )
-                break
-
-        if not has_function_call:
+        if not function_calls:
             # No more function calls - return the text response
             return response.text
+
+        function_response_parts = []
+
+        for fc in function_calls:
+            print(f"Calling: {fc.name}({dict(fc.args)})")
+
+            # Execute the function
+            handler = function_handlers.get(fc.name)
+            if handler:
+                result = handler(**dict(fc.args))
+            else:
+                result = {'error': f'Unknown function: {fc.name}'}
+
+            # Collect all function responses before sending them back
+            function_response_parts.append(
+                Part.from_function_response(
+                    name=fc.name,
+                    response={'result': result},
+                )
+            )
+
+        response = chat.send_message(function_response_parts)
 
 # Ask a question that might require multiple function calls
 response = chat.send_message(
@@ -374,7 +394,7 @@ functions = [
 infra_tool = Tool(function_declarations=functions)
 
 model = GenerativeModel(
-    'gemini-1.5-pro',
+    'gemini-2.5-flash',
     tools=[infra_tool],
     system_instruction=[
         'You are an infrastructure operations assistant.',
@@ -386,6 +406,26 @@ model = GenerativeModel(
 # Interactive chat loop
 chat = model.start_chat()
 
+function_handlers = {
+    'get_instance_list': lambda project_id, zone=None: {
+        'instances': [
+            {'name': 'web-1', 'zone': zone or 'us-central1-a', 'status': 'RUNNING'},
+            {'name': 'web-2', 'zone': zone or 'us-central1-a', 'status': 'RUNNING'},
+        ]
+    },
+    'get_billing_summary': lambda project_id: {
+        'project_id': project_id,
+        'month_to_date_cost': 124.57,
+        'currency': 'USD',
+    },
+    'scale_instance_group': lambda instance_group, target_size, zone: {
+        'instance_group': instance_group,
+        'target_size': target_size,
+        'zone': zone,
+        'status': 'scale request submitted',
+    },
+}
+
 print("Infrastructure Assistant ready. Type 'quit' to exit.")
 while True:
     user_input = input("\nYou: ")
@@ -395,17 +435,18 @@ while True:
     response = chat.send_message(user_input)
 
     # Process function calls
-    parts = response.candidates[0].content.parts
-    for part in parts:
-        if hasattr(part, 'function_call') and part.function_call.name:
-            fc = part.function_call
+    function_calls = response.candidates[0].function_calls
+    if function_calls:
+        function_response_parts = []
+        for fc in function_calls:
             print(f"\n[Calling {fc.name} with {dict(fc.args)}]")
 
             # Execute and return result
             result = function_handlers.get(fc.name, lambda **k: {'error': 'Unknown function'})(**dict(fc.args))
-            response = chat.send_message(
+            function_response_parts.append(
                 Part.from_function_response(name=fc.name, response={'result': result})
             )
+        response = chat.send_message(function_response_parts)
 
     print(f"\nAssistant: {response.text}")
 ```
