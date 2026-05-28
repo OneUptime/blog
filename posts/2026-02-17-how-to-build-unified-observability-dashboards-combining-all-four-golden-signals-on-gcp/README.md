@@ -10,6 +10,8 @@ Description: Learn how to build unified observability dashboards on Google Cloud
 
 Google's SRE book introduced the four golden signals as the essential metrics for monitoring any user-facing system: latency, traffic, errors, and saturation. These four signals, when viewed together, tell you the health story of your service at a glance. On Google Cloud Monitoring, you can build dashboards that present all four signals in a single view, making it easy to spot problems and understand their nature. In this post, I will show you how to build these dashboards for different GCP service types.
 
+One important note before we start: MQL is no longer Google's recommended query language for new Cloud Monitoring work, and new MQL charts and alerts are no longer created from the Google Cloud console. The MQL examples below still work when you create dashboards and alert policies through the Cloud Monitoring API or `gcloud`.
+
 ## The Four Golden Signals
 
 Let me define each signal clearly before we start building.
@@ -74,8 +76,9 @@ Here are the MQL queries for each golden signal when your service runs on GKE be
 ```text
 # Requests per second through the load balancer
 fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count
-| group_by [resource.url_map_name], rate(val())
+| align rate(1m)
 | every 1m
+| group_by [resource.url_map_name], sum(val())
 ```
 
 ### Errors
@@ -207,7 +210,7 @@ cat > golden-signals-dashboard.json << 'EOF'
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
-                "timeSeriesQueryLanguage": "fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count | group_by [resource.url_map_name], rate(val()) | every 1m"
+                "timeSeriesQueryLanguage": "fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count | align rate(1m) | every 1m | group_by [resource.url_map_name], sum(val())"
               },
               "plotType": "LINE"
             }]
@@ -224,7 +227,7 @@ cat > golden-signals-dashboard.json << 'EOF'
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
-                "timeSeriesQueryLanguage": "fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count | group_by [metric.response_code_class], rate(val()) | every 1m"
+                "timeSeriesQueryLanguage": "fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count | align rate(1m) | every 1m | group_by [metric.response_code_class], sum(val())"
               },
               "plotType": "STACKED_AREA"
             }]
@@ -269,7 +272,7 @@ cat > golden-signals-dashboard.json << 'EOF'
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
-                "timeSeriesQueryLanguage": "fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count | filter metric.response_code >= 400 | group_by [metric.response_code], rate(val()) | every 1m"
+                "timeSeriesQueryLanguage": "fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count | filter metric.response_code >= 400 | align rate(1m) | every 1m | group_by [metric.response_code], sum(val())"
               },
               "plotType": "STACKED_BAR"
             }]
@@ -331,7 +334,7 @@ cat > golden-signals-dashboard.json << 'EOF'
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
-                "timeSeriesQueryLanguage": "fetch k8s_container::kubernetes.io/container/restart_count | group_by [resource.namespace_name, resource.pod_name], rate(val()) | every 5m | top 10"
+                "timeSeriesQueryLanguage": "fetch k8s_container::kubernetes.io/container/restart_count | align rate(5m) | every 5m | group_by [resource.namespace_name, resource.pod_name], sum(val()) | top 10"
               },
               "plotType": "LINE"
             }]
@@ -358,8 +361,9 @@ fetch cloud_run_revision::run.googleapis.com/request_latencies
 
 # Traffic - requests per second for Cloud Run
 fetch cloud_run_revision::run.googleapis.com/request_count
-| group_by [resource.service_name], rate(val())
+| align rate(1m)
 | every 1m
+| group_by [resource.service_name], sum(val())
 
 # Errors - 5xx error rate for Cloud Run
 {
@@ -438,4 +442,4 @@ When building golden signal dashboards, follow these principles. Put the most ac
 
 ## Wrapping Up
 
-A golden signals dashboard gives you the essential health view of your service at a glance. Instead of having dozens of charts that you need to mentally correlate, you have four clear categories that answer the fundamental questions: Is it fast? Is there demand? Is it failing? Is it about to fall over? On Google Cloud, MQL makes it straightforward to build these dashboards for any service type, and the alert policies ensure you are notified when any signal goes out of bounds. Build one of these for each of your critical services and make it the first thing you look at when an alert fires.
+A golden signals dashboard gives you the essential health view of your service at a glance. Instead of having dozens of charts that you need to mentally correlate, you have four clear categories that answer the fundamental questions: Is it fast? Is there demand? Is it failing? Is it about to fall over? On Google Cloud, MQL can still build these dashboards through the API and `gcloud`, and the alert policies ensure you are notified when any signal goes out of bounds. Build one of these for each of your critical services and make it the first thing you look at when an alert fires.
