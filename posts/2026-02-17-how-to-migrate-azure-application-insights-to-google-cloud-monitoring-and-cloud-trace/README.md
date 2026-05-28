@@ -20,7 +20,7 @@ This separation actually gives you more flexibility in how you collect and analy
 | Distributed traces | Cloud Trace |
 | Application logs | Cloud Logging |
 | Availability tests | Cloud Monitoring uptime checks |
-| Application Map | Cloud Trace service graph |
+| Application Map | Cloud Trace Trace Explorer |
 | Smart detection | Cloud Monitoring anomaly detection |
 | Alerts | Cloud Monitoring alerting policies |
 | Workbooks | Cloud Monitoring dashboards |
@@ -69,7 +69,9 @@ pip install opentelemetry-api \
   opentelemetry-exporter-gcp-trace \
   opentelemetry-exporter-gcp-monitoring \
   opentelemetry-instrumentation-flask \
-  opentelemetry-instrumentation-requests
+  opentelemetry-instrumentation-requests \
+  opentelemetry-instrumentation-sqlalchemy \
+  google-cloud-logging
 ```
 
 Configure OpenTelemetry to export to Google Cloud:
@@ -249,18 +251,22 @@ Convert Application Insights availability tests to Cloud Monitoring uptime check
 
 ```bash
 # Create an HTTPS uptime check (equivalent to URL ping test)
-gcloud monitoring uptime-checks create https \
-  --display-name="API Health Check" \
-  --uri="https://api.example.com/health" \
-  --check-every=300 \
+gcloud monitoring uptime create "API Health Check" \
+  --resource-type=uptime-url \
+  --resource-labels=host=api.example.com,project_id=my-project \
+  --protocol=https \
+  --path=/health \
+  --period=5 \
   --timeout=10 \
-  --regions=USA,EUROPE,ASIA_PACIFIC
+  --regions=usa-iowa,europe,asia-pacific
 
 # Create an uptime check with custom headers
-gcloud monitoring uptime-checks create https \
-  --display-name="Authenticated Endpoint Check" \
-  --uri="https://api.example.com/status" \
-  --check-every=60 \
+gcloud monitoring uptime create "Authenticated Endpoint Check" \
+  --resource-type=uptime-url \
+  --resource-labels=host=api.example.com,project_id=my-project \
+  --protocol=https \
+  --path=/status \
+  --period=1 \
   --headers="Authorization=Bearer test-token"
 ```
 
@@ -271,11 +277,12 @@ Convert Application Insights alert rules to Cloud Monitoring alerting policies.
 ```bash
 # Alert on high error rate (equivalent to Application Insights failure rate alert)
 gcloud monitoring policies create \
-  --display-name="High Error Rate" \
-  --condition-display-name="Error rate above 5%" \
+  --display-name="High 5xx Request Rate" \
+  --condition-display-name="5xx request rate above 5/sec" \
   --condition-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="5xx"' \
-  --condition-threshold-value=5 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_RATE"}' \
+  --if='> 5' \
+  --duration=300s \
   --notification-channels=projects/my-project/notificationChannels/12345 \
   --combiner=OR
 
@@ -284,16 +291,18 @@ gcloud monitoring policies create \
   --display-name="High Latency Alert" \
   --condition-display-name="P95 latency above 2s" \
   --condition-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_latencies"' \
-  --condition-threshold-value=2000 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_PERCENTILE_95"}' \
+  --if='> 2000' \
+  --duration=300s
 
 # Alert on custom metric
 gcloud monitoring policies create \
   --display-name="Order Processing Slow" \
   --condition-display-name="Order processing time above 5s" \
-  --condition-filter='metric.type="custom.googleapis.com/order_processing_time"' \
-  --condition-threshold-value=5 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --condition-filter='metric.type="workload.googleapis.com/order_processing_time"' \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_PERCENTILE_95"}' \
+  --if='> 5' \
+  --duration=300s
 ```
 
 ## Step 7: Create Dashboards
@@ -362,14 +371,15 @@ Verify you have equivalent coverage to Application Insights.
 
 ```bash
 # Check that traces are flowing to Cloud Trace
-gcloud trace traces list --project=my-project --limit=10
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://cloudtrace.googleapis.com/v1/projects/my-project/traces?pageSize=10"
 
 # Check that custom metrics are being recorded
-gcloud monitoring metrics list \
-  --filter='metric.type=starts_with("custom.googleapis.com")'
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://monitoring.googleapis.com/v3/projects/my-project/metricDescriptors?filter=metric.type%3Dstarts_with(%22workload.googleapis.com%22)"
 
 # Check uptime check results
-gcloud monitoring uptime-checks list-configs
+gcloud monitoring uptime list-configs
 ```
 
 ## Summary
