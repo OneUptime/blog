@@ -14,13 +14,13 @@ This post is a practical deployment guide. I will cover the end-to-end setup on 
 
 ## The Proxyless Architecture on GKE
 
-In a standard GKE service mesh setup with Traffic Director, you have Envoy sidecars injected into every pod. With proxyless gRPC, you remove the sidecar entirely. The gRPC runtime in your application connects to Traffic Director's xDS API and uses the received configuration for routing, load balancing, and health checking.
+In a standard GKE service mesh setup with Traffic Director, you have Envoy sidecars injected into every pod. With proxyless gRPC, you remove the sidecar from the gRPC client path. The gRPC runtime in your client connects to Traffic Director's xDS API and uses the received configuration for routing and load balancing, while Traffic Director uses health check results to avoid unhealthy backends.
 
 ```mermaid
 flowchart TB
     TD[Traffic Director] -->|xDS| A[Pod A - gRPC Client]
-    TD -->|xDS| B[Pod B - gRPC Server]
-    TD -->|xDS| C[Pod C - gRPC Server]
+    TD -.->|Health checks| B[Pod B - gRPC Server]
+    TD -.->|Health checks| C[Pod C - gRPC Server]
     A -->|Direct Connection| B
     A -->|Direct Connection| C
 ```
@@ -29,9 +29,16 @@ The benefit is clear: one fewer network hop per request, less CPU and memory ove
 
 ## Step 1 - Set Up the GKE Cluster
 
-You need a GKE cluster with workload identity enabled, since the gRPC bootstrap needs GCP credentials to authenticate with Traffic Director.
+You need a GKE cluster with workload identity enabled, since the proxyless gRPC client needs GCP credentials to authenticate with Traffic Director.
 
 ```bash
+# Enable the required Google Cloud APIs
+gcloud services enable \
+    container.googleapis.com \
+    compute.googleapis.com \
+    iamcredentials.googleapis.com \
+    trafficdirector.googleapis.com
+
 # Create a GKE cluster with workload identity
 
 gcloud container clusters create proxyless-grpc-cluster \
@@ -39,6 +46,7 @@ gcloud container clusters create proxyless-grpc-cluster \
     --num-nodes=3 \
     --machine-type=e2-standard-4 \
     --workload-pool=my-project.svc.id.goog \
+    --tags=allow-health-checks \
     --enable-ip-alias
 
 # Get credentials for kubectl
@@ -53,7 +61,16 @@ Set up the GCP networking resources that Traffic Director needs.
 ```bash
 # Create a health check for the gRPC service
 gcloud compute health-checks create grpc grpc-hc \
-    --port=50051
+    --use-serving-port
+
+# Allow Google Cloud health check probes to reach the GKE nodes
+gcloud compute firewall-rules create grpc-allow-health-checks \
+    --network=default \
+    --action=allow \
+    --direction=INGRESS \
+    --source-ranges=35.191.0.0/16,130.211.0.0/22 \
+    --target-tags=allow-health-checks \
+    --rules=tcp:50051
 
 # Create a backend service
 gcloud compute backend-services create grpc-backend \
@@ -65,6 +82,12 @@ gcloud compute backend-services create grpc-backend \
 # Create a URL map
 gcloud compute url-maps create grpc-url-map \
     --default-service=grpc-backend
+
+# Add the host rule that the proxyless client resolves with xds:///
+gcloud compute url-maps add-path-matcher grpc-url-map \
+    --default-service=grpc-backend \
+    --path-matcher-name=grpc-path-matcher \
+    --new-hosts=grpc-backend:50051
 
 # Create a target gRPC proxy with proxyless validation
 gcloud compute target-grpc-proxies create grpc-proxy \
@@ -158,7 +181,7 @@ kubectl annotate serviceaccount grpc-ksa \
 
 ## Step 5 - Deploy the gRPC Server
 
-Here is a deployment manifest for the gRPC server with the xDS bootstrap configuration.
+Here is a deployment manifest for the gRPC server. The server is registered as a Traffic Director backend through the NEG; it does not need an xDS bootstrap file for this load-balancing setup.
 
 ```yaml
 # k8s/server-deployment.yaml
@@ -177,30 +200,11 @@ spec:
         app: grpc-server
     spec:
       serviceAccountName: grpc-ksa
-      # Init container generates the xDS bootstrap file
-      initContainers:
-        - name: td-bootstrap
-          image: gcr.io/trafficdirector-prod/td-grpc-bootstrap:0.16.0
-          args:
-            - "--output=/bootstrap/td-grpc-bootstrap.json"
-            - "--gcp-project-number=123456789"
-            - "--vpc-network-name=default"
-          volumeMounts:
-            - name: bootstrap
-              mountPath: /bootstrap
       containers:
         - name: grpc-server
           image: gcr.io/my-project/grpc-server:latest
           ports:
             - containerPort: 50051
-          env:
-            # Tell gRPC where to find the bootstrap config
-            - name: GRPC_XDS_BOOTSTRAP
-              value: "/bootstrap/td-grpc-bootstrap.json"
-          volumeMounts:
-            - name: bootstrap
-              mountPath: /bootstrap
-              readOnly: true
           resources:
             requests:
               cpu: 250m
@@ -208,9 +212,6 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-      volumes:
-        - name: bootstrap
-          emptyDir: {}
 ```
 
 ```bash
@@ -241,11 +242,9 @@ spec:
       serviceAccountName: grpc-ksa
       initContainers:
         - name: td-bootstrap
-          image: gcr.io/trafficdirector-prod/td-grpc-bootstrap:0.16.0
+          image: gcr.io/trafficdirector-prod/td-grpc-bootstrap:0.19.0
           args:
             - "--output=/bootstrap/td-grpc-bootstrap.json"
-            - "--gcp-project-number=123456789"
-            - "--vpc-network-name=default"
           volumeMounts:
             - name: bootstrap
               mountPath: /bootstrap
@@ -257,7 +256,7 @@ spec:
               value: "/bootstrap/td-grpc-bootstrap.json"
             # Target using xDS resolution
             - name: GRPC_SERVER_TARGET
-              value: "xds:///grpc-backend"
+              value: "xds:///grpc-backend:50051"
           volumeMounts:
             - name: bootstrap
               mountPath: /bootstrap
@@ -269,10 +268,10 @@ spec:
 
 ## Step 7 - Implement the Server in Go
 
-Here is a Go implementation that demonstrates the server-side xDS integration.
+Here is a Go implementation for the backend server with gRPC health checking.
 
 ```go
-// server/main.go - gRPC server with xDS and health checking
+// server/main.go - gRPC server with health checking
 package main
 
 import (
@@ -283,7 +282,6 @@ import (
     "google.golang.org/grpc"
     "google.golang.org/grpc/health"
     healthpb "google.golang.org/grpc/health/grpc_health_v1"
-    "google.golang.org/grpc/xds"
 
     pb "myproject/echo"
 )
@@ -302,12 +300,7 @@ func main() {
         log.Fatalf("Failed to listen: %v", err)
     }
 
-    // Use xds.NewGRPCServer instead of grpc.NewServer
-    // This enables the server to receive xDS configuration
-    server, err := xds.NewGRPCServer()
-    if err != nil {
-        log.Fatalf("Failed to create xDS server: %v", err)
-    }
+    server := grpc.NewServer()
 
     // Register the echo service
     pb.RegisterEchoServiceServer(server, &echoServer{})
@@ -315,9 +308,10 @@ func main() {
     // Register health checking
     healthServer := health.NewServer()
     healthpb.RegisterHealthServer(server, healthServer)
+    healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
     healthServer.SetServingStatus("echo.EchoService", healthpb.HealthCheckResponse_SERVING)
 
-    log.Println("Starting gRPC xDS server on :50051")
+    log.Println("Starting gRPC server on :50051")
     if err := server.Serve(lis); err != nil {
         log.Fatalf("Failed to serve: %v", err)
     }
@@ -347,11 +341,11 @@ import (
 func main() {
     target := os.Getenv("GRPC_SERVER_TARGET")
     if target == "" {
-        target = "xds:///grpc-backend"
+        target = "xds:///grpc-backend:50051"
     }
 
     // Create the connection using xDS resolution
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         target,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
@@ -407,4 +401,4 @@ If things are not working, check these areas:
 
 ## Wrapping Up
 
-Proxyless gRPC with Traffic Director on GKE gives you service mesh features without sidecar overhead. The setup is more involved than a basic Kubernetes service, but the latency and resource savings are real. The init container pattern for bootstrap generation keeps things clean, and Workload Identity handles authentication. Once deployed, you get Traffic Director's full traffic management capabilities - routing, load balancing, fault injection - all handled natively by the gRPC library in your application.
+Proxyless gRPC with Traffic Director on GKE gives you service mesh features without sidecar overhead. The setup is more involved than a basic Kubernetes service, but the latency and resource savings are real. The init container pattern for bootstrap generation keeps things clean, and Workload Identity handles authentication. Once deployed, you get Traffic Director's supported traffic management capabilities - routing, load balancing, and compatible advanced policies - handled natively by the gRPC library in your application.
