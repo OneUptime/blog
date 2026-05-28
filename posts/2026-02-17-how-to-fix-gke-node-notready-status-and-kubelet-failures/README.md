@@ -12,7 +12,7 @@ If you have spent any time running workloads on Google Kubernetes Engine (GKE), 
 
 ## What Does NotReady Actually Mean?
 
-When a node shows as NotReady, it means the Kubernetes control plane has lost communication with the kubelet running on that node. The kubelet is the agent that runs on every node and is responsible for managing pods, reporting node status, and communicating with the API server. When the kubelet stops sending heartbeats, the control plane marks the node as NotReady after a configurable timeout (default is 40 seconds).
+When a node shows as NotReady, it means the kubelet on that node is not reporting to the Kubernetes control plane correctly. The kubelet is the agent that runs on every node and is responsible for managing pods, reporting node status, and communicating with the API server. When the node controller has not heard from the node within the configurable node monitor grace period, the node's Ready condition becomes Unknown (default is 50 seconds).
 
 You can check node status with a simple kubectl command.
 
@@ -37,7 +37,7 @@ Check for resource pressure conditions on the node.
 
 ```bash
 # Check node conditions for resource pressure
-kubectl get node <node-name> -o jsonpath='{.status.conditions[*]}' | python3 -m json.tool
+kubectl get node <node-name> -o jsonpath='{range .status.conditions[*]}{.type}={.status}{"\n"}{end}'
 
 # Check actual resource usage on the node
 kubectl top node <node-name>
@@ -202,15 +202,14 @@ gcloud container node-pools update default-pool \
 
 ### Monitor with Cloud Monitoring
 
-Set up alerts for node conditions so you catch issues before they become outages.
+Set up alerts for node conditions so you catch issues before they become outages. For clusters that expose the GKE system metric, you can use a PromQL alert condition like this.
 
-```bash
-# Create an alerting policy for node NotReady conditions
-gcloud alpha monitoring policies create \
-    --notification-channels=<channel-id> \
-    --display-name="GKE Node NotReady Alert" \
-    --condition-display-name="Node is NotReady" \
-    --condition-filter='resource.type="k8s_node" AND metric.type="kubernetes.io/node/status_condition" AND metric.labels.condition="Ready" AND metric.labels.status="false"'
+```promql
+kubernetes_io:node_status_condition{
+    monitored_resource="k8s_node",
+    cluster_name="my-cluster",
+    condition="Ready",
+    status="False"}
 ```
 
 ## When All Else Fails - Cordon, Drain, and Replace
