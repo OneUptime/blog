@@ -38,8 +38,8 @@ With a GCS backend, workspaces store state at different paths:
 
 ```text
 gs://terraform-state-bucket/
-  env:/staging/terraform.tfstate
-  env:/production/terraform.tfstate
+  infrastructure/app/staging.tfstate
+  infrastructure/app/production.tfstate
 ```
 
 ## Backend Configuration
@@ -64,7 +64,7 @@ terraform {
 }
 ```
 
-The `prefix` defines the base path. Each workspace creates a subdirectory under this path. The default workspace uses `infrastructure/app/default.tfstate`, staging uses `infrastructure/app/env:/staging/default.tfstate`, and so on.
+The `prefix` defines the base path. Each workspace creates a named state object under this path. The default workspace uses `infrastructure/app/default.tfstate`, staging uses `infrastructure/app/staging.tfstate`, and so on.
 
 ## Environment-Specific Variables
 
@@ -250,15 +250,13 @@ resource "null_resource" "workspace_check" {
 }
 
 # Verify we are targeting the right project
-data "google_project" "current" {
-  project_id = local.config.project_id
-}
+data "google_project" "current" {}
 
 resource "null_resource" "project_check" {
   lifecycle {
     precondition {
       condition     = data.google_project.current.project_id == local.config.project_id
-      error_message = "Workspace '${terraform.workspace}' should target project '${local.config.project_id}' but current credentials target '${data.google_project.current.project_id}'"
+      error_message = "Workspace '${terraform.workspace}' should target project '${local.config.project_id}' but the provider default project is '${data.google_project.current.project_id}'"
     }
   }
 }
@@ -301,7 +299,7 @@ jobs:
         run: terraform init
 
       - name: Select Workspace
-        run: terraform workspace select ${{ steps.env.outputs.workspace }}
+        run: terraform workspace select -or-create ${{ steps.env.outputs.workspace }}
 
       - name: Terraform Plan
         run: terraform plan -var-file=${{ steps.env.outputs.vars_file }} -out=tfplan
