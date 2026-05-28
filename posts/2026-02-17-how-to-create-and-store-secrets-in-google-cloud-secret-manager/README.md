@@ -227,7 +227,7 @@ gcloud secrets versions destroy 1 \
   --project=my-project-id
 ```
 
-## Adding Labels and Annotations
+## Adding Labels
 
 Labels help you organize and filter secrets:
 
@@ -277,7 +277,7 @@ Always reference secrets by `latest` version in your application code unless you
 
 Grant the minimum IAM roles needed. Use `roles/secretmanager.secretAccessor` for applications that only need to read secrets, and `roles/secretmanager.admin` only for the pipeline or person that manages secret lifecycle.
 
-Never log secret values. This sounds obvious, but it is easy to accidentally log them during debugging. Use the client library's built-in protections and avoid printing response payloads.
+Never log secret values. This sounds obvious, but it is easy to accidentally log them during debugging. Avoid printing response payloads in application code.
 
 Treat Secret Manager as the single source of truth for all secrets. If a secret lives in Secret Manager, it should not also live in a `.env` file, a Kubernetes ConfigMap, or a CI/CD variable store. One copy, one source.
 
