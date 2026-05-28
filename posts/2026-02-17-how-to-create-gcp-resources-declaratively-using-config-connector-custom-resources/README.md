@@ -32,7 +32,7 @@ metadata:
     # Controls deletion behavior - abandon means the GCP resource persists
     # even if the Kubernetes resource is deleted
     cnrm.cloud.google.com/deletion-policy: "abandon"
-    # Prevents Config Connector from managing an existing resource
+    # Prevents Config Connector from populating unspecified fields into spec
     cnrm.cloud.google.com/state-into-spec: "absent"
 ```
 
@@ -64,8 +64,10 @@ spec:
         type: Delete
       condition:
         age: 90
-  # Prevent public access
+  # Use uniform bucket-level IAM access
   uniformBucketLevelAccess: true
+  # Prevent public access
+  publicAccessPrevention: enforced
 ```
 
 Apply it just like any Kubernetes resource.
@@ -159,11 +161,6 @@ spec:
   # Retain acknowledged messages for replay capability
   retainAckedMessages: true
   messageRetentionDuration: "86400s"
-  # Configure dead letter policy for failed messages
-  deadLetterPolicy:
-    deadLetterTopicRef:
-      name: order-events-dlq
-    maxDeliveryAttempts: 5
 ```
 
 ## Creating a Service Account with IAM Bindings
@@ -218,7 +215,7 @@ spec:
 # Reference by external name for pre-existing resources not managed by CC
 spec:
   networkRef:
-    external: projects/my-project-id/global/networks/existing-network
+    external: https://www.googleapis.com/compute/v1/projects/my-project-id/global/networks/existing-network
 ```
 
 The `external` form is useful when you want to reference resources that already exist and are not managed by Config Connector.
