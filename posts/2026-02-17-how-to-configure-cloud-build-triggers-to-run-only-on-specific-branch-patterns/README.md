@@ -89,19 +89,25 @@ gcloud builds triggers create github \
 
 ### Excluding Specific Branches
 
-Cloud Build does not have a native "exclude" pattern, but you can use negative lookahead in your regex:
+The basic `gcloud builds triggers create github` flags do not provide a separate "exclude branch" flag, and Cloud Build's RE2 regex syntax does not support negative lookahead. If you need inverse matching, define the trigger with a trigger config and set `invertRegex`:
 
-```bash
+```yaml
 # Match all branches except main and develop
-gcloud builds triggers create github \
-  --name="test-all-except-main" \
-  --repo-name="my-app" \
-  --repo-owner="my-org" \
-  --branch-pattern="^(?!main$|develop$).*" \
-  --build-config="cloudbuild-test.yaml"
+name: test-all-except-main
+github:
+  owner: my-org
+  name: my-app
+  push:
+    branch: "^(main|develop)$"
+    invertRegex: true
+filename: cloudbuild-test.yaml
 ```
 
-This uses `(?!main$|develop$)` which is a negative lookahead that excludes exact matches for "main" and "develop."
+Then create the trigger from that file:
+
+```bash
+gcloud builds triggers create github --trigger-config="trigger.yaml"
+```
 
 ### Semantic Version Release Branches
 
@@ -241,7 +247,7 @@ Before deploying a trigger to production, test that your regex pattern matches w
 
 ```bash
 # List all triggers and their branch patterns
-gcloud builds triggers list --format="table(name, triggerTemplate.branchName, triggerTemplate.tagName)"
+gcloud builds triggers list --format="table(name, github.push.branch, github.push.tag)"
 ```
 
 To test your regex without creating a trigger, use a simple command:
@@ -249,7 +255,7 @@ To test your regex without creating a trigger, use a simple command:
 ```bash
 # Test a regex pattern against branch names
 for branch in main develop feature/login hotfix/bug-123 release/1.0.0; do
-  if echo "$branch" | grep -Pq "^feature/.*"; then
+  if echo "$branch" | grep -Eq "^feature/.*"; then
     echo "MATCH: $branch"
   else
     echo "NO MATCH: $branch"
