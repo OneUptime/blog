@@ -8,7 +8,7 @@ Description: Learn how to build a serverless file processing system on GCP using
 
 ---
 
-Cloud Functions are great for quick, lightweight tasks, but they have limitations - a 10-minute timeout for Gen 1 and 60 minutes for Gen 2, limited memory, and a single request processing model. When you need to process large files that take more time or more resources, Cloud Run Jobs are a better fit. They can run for up to 24 hours, use up to 32 GB of memory, and support task parallelism.
+Cloud Functions are great for quick, lightweight tasks, but they have limitations - a 9-minute timeout for Gen 1 and 60 minutes for Gen 2 HTTP functions, limited memory, and a request processing model. When you need to process large files that take more time or more resources, Cloud Run Jobs are a better fit. They can run for up to 7 days, use up to 32 GiB of memory, and support task parallelism.
 
 In this post, I will show how to build a file processing system where Cloud Storage triggers launch Cloud Run Jobs to process uploaded files. This gives you the best of both worlds - automatic triggering from file uploads and long-running, resource-intensive processing.
 
@@ -32,11 +32,11 @@ The flow works in two stages. First, a lightweight Cloud Run service receives th
 
 Cloud Run Jobs are designed for batch processing workloads. Compared to Cloud Functions:
 
-- **Longer timeout**: Up to 24 hours vs 60 minutes
-- **More memory**: Up to 32 GB vs 32 GB (comparable, but Jobs are optimized for batch)
+- **Longer timeout**: Up to 7 days vs 60 minutes
+- **More memory**: Up to 32 GiB vs 32 GiB (comparable, but Jobs are optimized for batch)
 - **Task parallelism**: Built-in support for splitting work across multiple tasks
 - **No request timeout**: Jobs run until completion, not tied to HTTP request lifecycle
-- **Better for large files**: Can process multi-gigabyte files without worrying about timeouts
+- **Better for large files**: Can process larger files when you stream or partition the input appropriately
 
 ## Step 1: Create the Cloud Run Job
 
@@ -307,18 +307,31 @@ google-cloud-firestore==2.14.0
 Build and create the Cloud Run Job:
 
 ```bash
+# Create an Artifact Registry repository for container images
+gcloud artifacts repositories create file-processing \
+  --repository-format=docker \
+  --location=us-central1 \
+  --project=my-project
+
 # Build the container
-gcloud builds submit --tag gcr.io/my-project/file-processor:latest ./processor
+gcloud builds submit \
+  --tag us-central1-docker.pkg.dev/my-project/file-processing/file-processor:latest \
+  ./processor
+
+# Create a service account for the processor job
+gcloud iam service-accounts create file-processor-sa \
+  --project=my-project
 
 # Create the Cloud Run Job
 gcloud run jobs create file-processor \
-  --image=gcr.io/my-project/file-processor:latest \
+  --image=us-central1-docker.pkg.dev/my-project/file-processing/file-processor:latest \
   --region=us-central1 \
   --memory=4Gi \
   --cpu=2 \
   --task-timeout=3600s \
   --max-retries=2 \
   --tasks=1 \
+  --service-account=file-processor-sa@my-project.iam.gserviceaccount.com \
   --project=my-project
 ```
 
@@ -329,7 +342,6 @@ The dispatcher is a lightweight Cloud Run service that receives storage events a
 ```python
 # dispatcher/main.py
 import os
-import json
 import logging
 import uuid
 from flask import Flask, request, jsonify
@@ -349,12 +361,12 @@ def dispatch():
     # Extract file information
     bucket = event_data.get("bucket", "")
     file_name = event_data.get("name", "")
-    content_type = event_data.get("contentType", "")
     size = int(event_data.get("size", 0))
+    extension = os.path.splitext(file_name)[1].lower()
 
     # Only process supported file types
     supported_extensions = [".csv", ".json", ".parquet"]
-    if not any(file_name.endswith(ext) for ext in supported_extensions):
+    if extension not in supported_extensions:
         logger.info(f"Skipping unsupported file: {file_name}")
         return jsonify({"status": "skipped"}), 200
 
@@ -364,12 +376,13 @@ def dispatch():
     logger.info(f"Dispatching job {job_id} for {file_name} ({size_mb:.1f} MB)")
 
     # Determine the number of tasks based on file size
-    # Use more tasks for larger files
-    if size_mb > 500:
+    # Use more tasks for larger CSV files. JSON and Parquet processing below is not partitioned,
+    # so keep those formats to a single task to avoid duplicate writes.
+    if extension == ".csv" and size_mb > 500:
         task_count = 10
-    elif size_mb > 100:
+    elif extension == ".csv" and size_mb > 100:
         task_count = 5
-    elif size_mb > 10:
+    elif extension == ".csv" and size_mb > 10:
         task_count = 2
     else:
         task_count = 1
@@ -417,15 +430,28 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=port)
 ```
 
+The dispatcher `requirements.txt`:
+
+```text
+Flask==3.0.2
+gunicorn==21.2.0
+google-cloud-run==0.16.0
+```
+
 Deploy the dispatcher:
 
 ```bash
+# Create a service account for the dispatcher
+gcloud iam service-accounts create file-dispatcher-sa \
+  --project=my-project
+
 # Build and deploy the dispatcher
 gcloud run deploy file-dispatcher \
   --source=./dispatcher \
   --region=us-central1 \
   --no-allow-unauthenticated \
   --memory=256Mi \
+  --service-account=file-dispatcher-sa@my-project.iam.gserviceaccount.com \
   --project=my-project
 ```
 
@@ -443,6 +469,16 @@ gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:eventarc-trigger-sa@my-project.iam.gserviceaccount.com" \
   --role="roles/run.invoker"
 
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:eventarc-trigger-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/eventarc.eventReceiver"
+
+# Allow Cloud Storage direct events to publish through Eventarc
+STORAGE_SERVICE_ACCOUNT="$(gcloud storage service-agent --project=my-project)"
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:${STORAGE_SERVICE_ACCOUNT}" \
+  --role="roles/pubsub.publisher"
+
 # Create the Eventarc trigger
 gcloud eventarc triggers create file-upload-trigger \
   --location=us-central1 \
@@ -459,16 +495,31 @@ gcloud eventarc triggers create file-upload-trigger \
 The dispatcher service account needs permission to run Cloud Run Jobs:
 
 ```bash
-# Get the dispatcher service account
-DISPATCHER_SA=$(gcloud run services describe file-dispatcher \
-  --region=us-central1 \
-  --format="value(spec.template.spec.serviceAccountName)" \
-  --project=my-project)
-
-# Grant permission to execute Cloud Run Jobs
+# Grant permission to execute Cloud Run Jobs with per-execution overrides
 gcloud projects add-iam-policy-binding my-project \
-  --member="serviceAccount:${DISPATCHER_SA}" \
-  --role="roles/run.developer"
+  --member="serviceAccount:file-dispatcher-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/run.jobsExecutorWithOverrides"
+```
+
+The Cloud Run Job service account also needs access to the services it uses:
+
+```bash
+# Grant permissions for Cloud Storage reads/writes, BigQuery writes, and Firestore status updates
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:file-processor-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/storage.objectUser"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:file-processor-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/bigquery.dataEditor"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:file-processor-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/bigquery.jobUser"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:file-processor-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/datastore.user"
 ```
 
 ## Step 5: Test the System
@@ -490,12 +541,11 @@ gcloud run jobs executions list \
   --project=my-project
 
 # Check the job logs
-gcloud run jobs executions logs read EXECUTION_NAME \
-  --job=file-processor \
+gcloud run jobs logs read file-processor \
   --region=us-central1 \
   --project=my-project
 ```
 
 ## Summary
 
-Cloud Run Jobs with Cloud Storage triggers give you a powerful serverless file processing system. The dispatcher handles event routing and determines the level of parallelism based on file size. Cloud Run Jobs handle the heavy processing with up to 24-hour timeouts and 32 GB of memory. The system scales from a single task for small files to many parallel tasks for large files, and costs nothing when idle. Use this pattern for ETL pipelines, data migration, log processing, or any batch workload triggered by file uploads.
+Cloud Run Jobs with Cloud Storage triggers give you a powerful serverless file processing system. The dispatcher handles event routing and determines the level of parallelism based on file size. Cloud Run Jobs handle the heavy processing with up to 7-day task timeouts and 32 GiB of memory. The system scales from a single task for small files to many parallel tasks for large files, and costs nothing when idle. Use this pattern for ETL pipelines, data migration, log processing, or any batch workload triggered by file uploads.
