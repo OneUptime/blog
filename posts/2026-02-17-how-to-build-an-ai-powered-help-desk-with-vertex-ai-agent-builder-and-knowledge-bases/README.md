@@ -12,7 +12,7 @@ Most help desk tickets are repetitive. The same questions about password resets,
 
 ## What Vertex AI Agent Builder Provides
 
-Agent Builder is Google's platform for creating conversational AI agents that are grounded in your data. Unlike a raw LLM that might hallucinate answers, Agent Builder retrieves relevant documents from your knowledge base and generates responses based only on that content. If the answer is not in your docs, it says so instead of making something up.
+Agent Builder is Google's platform for creating conversational AI agents that are grounded in your data. Unlike a raw LLM that might hallucinate answers, Agent Builder retrieves relevant documents from your knowledge base and uses them to generate grounded responses. You can configure the agent to say when the answer is not in your docs instead of making something up.
 
 ```mermaid
 graph LR
@@ -40,13 +40,12 @@ gcloud services enable \
 
 ## Step 1: Prepare Your Knowledge Base Content
 
-Organize your support documentation for ingestion. Agent Builder supports various formats, but structured markdown or HTML works best:
+Organize your support documentation for ingestion. Agent Builder supports unstructured documents such as TXT, HTML, and PDF files. If your source documentation is Markdown, convert it to TXT or HTML before ingestion:
 
 ```python
 # prepare_knowledge_base.py - Organize and upload support docs to Cloud Storage
 from google.cloud import storage
 import os
-import json
 
 storage_client = storage.Client()
 bucket = storage_client.bucket("your-knowledge-base-bucket")
@@ -55,10 +54,8 @@ def upload_knowledge_base(docs_directory):
     """Upload support documentation to Cloud Storage for Agent Builder ingestion.
     Each document should be a separate file with clear titles and sections."""
 
-    metadata_entries = []
-
     for filename in os.listdir(docs_directory):
-        if not filename.endswith((".md", ".html", ".txt")):
+        if not filename.endswith((".html", ".txt", ".pdf")):
             continue
 
         filepath = os.path.join(docs_directory, filename)
@@ -68,21 +65,9 @@ def upload_knowledge_base(docs_directory):
         # Upload the file
         blob.upload_from_filename(filepath)
 
-        # Track metadata for each document
-        metadata_entries.append({
-            "id": filename.replace(".", "_"),
-            "uri": f"gs://your-knowledge-base-bucket/{blob_name}",
-            "title": filename.replace("-", " ").replace(".md", "").title(),
-        })
-
         print(f"Uploaded: {blob_name}")
 
-    # Upload the metadata index
-    metadata_blob = bucket.blob("knowledge-base/metadata.jsonl")
-    metadata_content = "\n".join(json.dumps(entry) for entry in metadata_entries)
-    metadata_blob.upload_from_string(metadata_content)
-
-    print(f"Uploaded {len(metadata_entries)} documents to the knowledge base")
+    print("Uploaded documents to the knowledge base")
 
 # Run the upload
 upload_knowledge_base("./support-docs")
@@ -100,7 +85,7 @@ client = discoveryengine.DataStoreServiceClient()
 parent = f"projects/your-project-id/locations/global/collections/default_collection"
 
 # Create the data store
-data_store = client.create_data_store(
+operation = client.create_data_store(
     parent=parent,
     data_store=discoveryengine.DataStore(
         display_name="Support Knowledge Base",
@@ -111,6 +96,7 @@ data_store = client.create_data_store(
     data_store_id="support-knowledge-base",
 )
 
+data_store = operation.result()  # Wait for data store creation to complete
 print(f"Data store created: {data_store.name}")
 ```
 
@@ -127,7 +113,11 @@ parent = f"projects/your-project-id/locations/global/collections/default_collect
 import_request = discoveryengine.ImportDocumentsRequest(
     parent=parent,
     gcs_source=discoveryengine.GcsSource(
-        input_uris=["gs://your-knowledge-base-bucket/knowledge-base/*"],
+        input_uris=[
+            "gs://your-knowledge-base-bucket/knowledge-base/*.html",
+            "gs://your-knowledge-base-bucket/knowledge-base/*.txt",
+            "gs://your-knowledge-base-bucket/knowledge-base/*.pdf",
+        ],
         data_schema="content",
     ),
     reconciliation_mode=discoveryengine.ImportDocumentsRequest.ReconciliationMode.INCREMENTAL,
@@ -151,7 +141,7 @@ client = discoveryengine.EngineServiceClient()
 parent = f"projects/your-project-id/locations/global/collections/default_collection"
 
 # Create the conversational search engine (agent)
-engine = client.create_engine(
+operation = client.create_engine(
     parent=parent,
     engine=discoveryengine.Engine(
         display_name="Help Desk Agent",
@@ -168,6 +158,7 @@ engine = client.create_engine(
     engine_id="help-desk-agent",
 )
 
+engine = operation.result()  # Wait for engine creation to complete
 print(f"Agent created: {engine.name}")
 ```
 
@@ -177,7 +168,7 @@ Customize how the agent responds to different types of questions:
 
 ```python
 # configure_agent.py - Set up agent behavior and responses
-from google.cloud import dialogflow_v2 as dialogflow
+from google.cloud import dialogflowcx_v3 as dialogflow
 
 # The agent creation generates a Dialogflow CX agent automatically
 # Configure its behavior through the Dialogflow API
@@ -212,9 +203,12 @@ app = Flask(__name__)
 app.secret_key = "your-secret-key"
 
 client = discoveryengine.ConversationalSearchServiceClient()
-SERVING_CONFIG = (
+DATA_STORE = (
     f"projects/your-project-id/locations/global/collections/default_collection"
-    f"/engines/help-desk-agent/servingConfigs/default_config"
+    f"/dataStores/support-knowledge-base"
+)
+SERVING_CONFIG = (
+    f"{DATA_STORE}/servingConfigs/default_config"
 )
 
 
@@ -230,7 +224,7 @@ def chat():
     if not conversation_id:
         # Start a new conversation
         conversation = client.create_conversation(
-            parent=f"projects/your-project-id/locations/global/collections/default_collection/engines/help-desk-agent",
+            parent=DATA_STORE,
             conversation=discoveryengine.Conversation(),
         )
         conversation_id = conversation.name
@@ -304,7 +298,12 @@ def sync_knowledge_base():
         request=discoveryengine.ImportDocumentsRequest(
             parent=parent,
             gcs_source=discoveryengine.GcsSource(
-                input_uris=["gs://your-knowledge-base-bucket/knowledge-base/*"],
+                input_uris=[
+                    "gs://your-knowledge-base-bucket/knowledge-base/*.html",
+                    "gs://your-knowledge-base-bucket/knowledge-base/*.txt",
+                    "gs://your-knowledge-base-bucket/knowledge-base/*.pdf",
+                ],
+                data_schema="content",
             ),
             reconciliation_mode=discoveryengine.ImportDocumentsRequest.ReconciliationMode.FULL,
         )
@@ -345,4 +344,4 @@ Use OneUptime to monitor the agent's availability and response latency. Set aler
 
 ## Summary
 
-Vertex AI Agent Builder gives you an AI help desk agent that is grounded in your actual documentation, reducing hallucination and ensuring accurate answers. The key to success is the quality of your knowledge base - the better organized and more comprehensive your documentation is, the better the agent performs. Start by loading your most frequently asked questions, measure the resolution rate, and iteratively expand the knowledge base to cover more topics.
+Vertex AI Agent Builder gives you an AI help desk agent that is grounded in your actual documentation, reducing hallucination risk and improving answer accuracy. The key to success is the quality of your knowledge base - the better organized and more comprehensive your documentation is, the better the agent performs. Start by loading your most frequently asked questions, measure the resolution rate, and iteratively expand the knowledge base to cover more topics.
