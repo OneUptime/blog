@@ -8,7 +8,7 @@ Description: Learn how to tune Cloud Run concurrency settings to maximize throug
 
 ---
 
-Cloud Run's concurrency setting controls how many requests a single container instance handles simultaneously. The default is 80, which works well for I/O-bound workloads like web APIs that spend most of their time waiting on databases. But for CPU-bound applications - image processing, data transformation, PDF generation - that default can tank your performance.
+Cloud Run's concurrency setting controls how many requests a single container instance handles simultaneously. Many services use the default of 80, which works well for I/O-bound workloads like web APIs that spend most of their time waiting on databases. But for CPU-bound applications - image processing, data transformation, PDF generation - a high default can tank your performance.
 
 This guide explains how concurrency works under the hood, how to find the right value for CPU-bound workloads, and how to configure it properly.
 
@@ -16,7 +16,7 @@ This guide explains how concurrency works under the hood, how to find the right 
 
 When a request comes into Cloud Run, the platform routes it to an available container instance. The concurrency setting determines how many requests can be routed to a single instance at the same time.
 
-With a concurrency of 80 (the default), a single container can be processing up to 80 requests simultaneously. For an I/O-bound app that spends 95% of its time waiting on network calls, this is fine because the CPU is mostly idle between requests.
+With a concurrency of 80, a single container can be processing up to 80 requests simultaneously. For an I/O-bound app that spends 95% of its time waiting on network calls, this is fine because the CPU is mostly idle between requests.
 
 For a CPU-bound app, this is a disaster. If each request needs significant CPU time, 80 concurrent requests will all compete for the same CPU cores. Each request gets a tiny slice of CPU time, everything slows down, and latency goes through the roof.
 
@@ -54,7 +54,7 @@ The optimal concurrency depends on your CPU allocation and the nature of your wo
 - 1 vCPU: concurrency = 2 to 4
 - 2 vCPUs: concurrency = 4 to 8
 
-**For I/O-bound workloads** (typical web APIs, proxy services), the default of 80 is usually fine or even conservative.
+**For I/O-bound workloads** (typical web APIs, proxy services), the default is usually fine or even conservative.
 
 ## Configuring Concurrency
 
@@ -226,21 +226,21 @@ The sweet spot is where latency is still acceptable and cost is reasonable.
 
 ## How Concurrency Affects Autoscaling
 
-Concurrency directly affects how aggressively Cloud Run scales. With concurrency=1, every new concurrent request needs a new instance. With concurrency=80, Cloud Run can pack 80 requests into one instance before scaling.
+Concurrency directly affects how aggressively Cloud Run scales. With concurrency=1, every new concurrent request needs a new instance slot. With concurrency=80, Cloud Run can route up to 80 requests to one instance, although it may scale earlier based on CPU utilization, concurrency utilization targets, and adaptive concurrency tuning.
 
 This means lower concurrency leads to more instances and higher costs, but better per-request performance. Higher concurrency means fewer instances and lower costs, but potentially worse latency for CPU-bound work.
 
-Here is the math. If you have 100 concurrent requests:
+Here is the capacity math before autoscaler targets and CPU pressure are considered. If you have 100 concurrent requests:
 
-- Concurrency 1: Cloud Run needs ~100 instances
-- Concurrency 10: Cloud Run needs ~10 instances
-- Concurrency 80: Cloud Run needs ~2 instances
+- Concurrency 1: Cloud Run needs at least ~100 instance slots
+- Concurrency 10: Cloud Run needs at least ~10 instance slots
+- Concurrency 80: Cloud Run needs at least ~2 instance slots
 
 You need to find the balance between cost and latency that works for your application.
 
 ## Concurrency and Max Instances
 
-When you lower concurrency, you should also consider your max instances limit. If concurrency is 1 and you get a burst of 200 requests, Cloud Run needs to scale to 200 instances. If your max instances is set to 100, half those requests will queue up or get 429 errors.
+When you lower concurrency, you should also consider your max instances limit. If concurrency is 1 and you get a burst of 200 requests, Cloud Run needs capacity for 200 instance slots. If your max instances is set to 100, the excess requests can wait for available capacity and eventually fail if no instance becomes available.
 
 ```bash
 # Set a higher max instances limit when using low concurrency
@@ -259,14 +259,10 @@ After deploying, monitor these metrics in Cloud Monitoring:
 - **CPU utilization**: Should be high but not maxed at 100% constantly
 - **Billable instance time**: Shows cost impact
 
-```bash
-# Quick check on instance count over the last hour
-gcloud monitoring metrics list \
-  --filter='metric.type="run.googleapis.com/container/instance_count"'
-```
+Use Metrics Explorer or the Cloud Monitoring API to chart `run.googleapis.com/container/instance_count` over time.
 
 If p99 latency is creeping up, lower the concurrency. If instance count seems excessively high for your traffic volume, you might be able to increase concurrency without hurting latency.
 
 ## Summary
 
-For CPU-bound Cloud Run applications, the default concurrency of 80 is almost always too high. Start with concurrency equal to your vCPU count, load test to find the right balance between latency and cost, and adjust max instances to handle your expected traffic. The small configuration change can make a dramatic difference in your application's response times and reliability under load.
+For CPU-bound Cloud Run applications, a high concurrency setting is almost always too high. Start with concurrency equal to your vCPU count, load test to find the right balance between latency and cost, and adjust max instances to handle your expected traffic. The small configuration change can make a dramatic difference in your application's response times and reliability under load.
