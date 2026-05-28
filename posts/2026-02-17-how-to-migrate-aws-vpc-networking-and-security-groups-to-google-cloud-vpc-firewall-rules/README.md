@@ -157,7 +157,7 @@ gcloud compute firewall-rules create allow-mysql-from-app \
 
 ### Converting NACLs
 
-AWS Network ACLs are stateless and use numbered priority rules - which is actually closer to how GCP firewall rules work. Convert NACLs by mapping rule numbers to firewall priorities.
+AWS Network ACLs are stateless and use numbered priority rules. GCP firewall rules also use priority ordering, but they are stateful and apply at the VPC level to selected targets instead of being associated with subnets. Start by mapping NACL rule numbers to firewall priorities, then adjust for the difference in stateful behavior and target scope.
 
 ```bash
 # AWS NACL: Rule 100 - Allow HTTP inbound from 0.0.0.0/0
@@ -218,7 +218,7 @@ For hub-and-spoke topologies that use AWS Transit Gateway, consider GCP's Shared
 
 ## Step 6: Set Up Private Google Access
 
-Equivalent to AWS VPC endpoints, Private Google Access lets VMs without external IPs reach Google APIs.
+For Google APIs, Private Google Access covers a common AWS VPC endpoint use case by letting VMs without external IPs reach Google APIs.
 
 ```bash
 # Enable Private Google Access on a subnet
@@ -232,6 +232,12 @@ gcloud compute addresses create google-apis-endpoint \
   --purpose=PRIVATE_SERVICE_CONNECT \
   --addresses=10.0.100.1 \
   --network=my-vpc
+
+gcloud compute forwarding-rules create googleapisendpoint \
+  --global \
+  --network=my-vpc \
+  --address=google-apis-endpoint \
+  --target-google-apis-bundle=all-apis
 ```
 
 ## Step 7: Validate the Network Configuration
@@ -263,30 +269,55 @@ A script to bulk-convert security groups to firewall rules:
 
 ```python
 import boto3
-import subprocess
-import json
+import re
+import shlex
+
+
+def sanitize_name(value):
+    name = re.sub(r'[^a-z0-9-]', '-', value.lower()).strip('-')
+    if not name or not name[0].isalpha():
+        name = f"sg-{name}"
+    return name[:63].rstrip('-')
+
+
+def gcp_rule_spec(rule):
+    protocol = rule.get('IpProtocol', 'all')
+    if protocol == '-1':
+        return 'all'
+
+    from_port = rule.get('FromPort')
+    to_port = rule.get('ToPort')
+    if protocol in ['tcp', 'udp'] and from_port is not None and to_port is not None:
+        return f"{protocol}:{from_port}" if from_port == to_port else f"{protocol}:{from_port}-{to_port}"
+
+    return protocol
 
 # Read security groups from AWS and generate GCP firewall commands
 ec2 = boto3.client('ec2')
 response = ec2.describe_security_groups()
 
 for sg in response['SecurityGroups']:
-    sg_name = sg['GroupName'].lower().replace(' ', '-')
+    sg_name = sanitize_name(sg['GroupName'])
 
-    for rule in sg['IpPermissions']:
-        protocol = rule.get('IpProtocol', 'all')
-        from_port = rule.get('FromPort', '')
-        to_port = rule.get('ToPort', '')
+    for index, rule in enumerate(sg['IpPermissions'], start=1):
+        rule_spec = gcp_rule_spec(rule)
 
         for ip_range in rule.get('IpRanges', []):
             cidr = ip_range['CidrIp']
-            rule_spec = f"tcp:{from_port}" if from_port == to_port else f"tcp:{from_port}-{to_port}"
+            rule_name = sanitize_name(f"{sg_name}-{rule_spec.replace(':', '-')}-{index}")
 
             # Print the gcloud command for review before execution
-            print(f"gcloud compute firewall-rules create {sg_name}-{from_port} "
-                  f"--network=my-vpc --direction=INGRESS --priority=1000 "
-                  f"--action=ALLOW --rules={rule_spec} "
-                  f"--source-ranges={cidr} --target-tags={sg_name}")
+            command = [
+                "gcloud", "compute", "firewall-rules", "create", rule_name,
+                "--network=my-vpc",
+                "--direction=INGRESS",
+                "--priority=1000",
+                "--action=ALLOW",
+                f"--rules={rule_spec}",
+                f"--source-ranges={cidr}",
+                f"--target-tags={sg_name}",
+            ]
+            print(shlex.join(command))
 ```
 
 ## Summary
