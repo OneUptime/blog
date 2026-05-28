@@ -37,7 +37,7 @@ The flapping happens when the "underutilized long enough" window is too short. A
 
 ## Configuring Scale-Down Parameters
 
-GKE exposes cluster autoscaler tuning through the `autoscaling-profile` and cluster update commands.
+GKE exposes cluster autoscaler tuning through the `autoscaling-profile`, cluster update commands, and node pool settings.
 
 ### Method 1: Using Autoscaling Profile
 
@@ -56,25 +56,25 @@ gcloud container clusters update my-cluster \
   --autoscaling-profile optimize-utilization
 ```
 
-The `optimize-utilization` profile sets the utilization threshold higher (closer to 100%), meaning nodes must be nearly empty before being removed. This prevents flapping but may leave underutilized nodes running longer.
+The `optimize-utilization` profile helps GKE identify and remove underutilized nodes more aggressively. It also uses GKE's optimize-utilization scheduler for pods that do not specify a custom scheduler, which encourages tighter packing onto existing nodes. This is better for cost optimization, but it can increase disruption if workloads are not prepared for rescheduling.
 
 ### Method 2: Fine-Tuning Specific Parameters
 
-For more control, configure individual parameters.
+For more control over scale-down timing, configure the node pool consolidation delay.
 
 ```bash
-# Configure autoscaler behavior with specific parameters
-gcloud container clusters update my-cluster \
+# Wait longer before scaling down underutilized nodes
+gcloud container node-pools update default-pool \
+  --cluster my-cluster \
   --region us-central1 \
-  --enable-autoscaling \
-  --autoscaling-profile balanced
+  --consolidation-delay 3600s
 ```
 
-Unfortunately, GKE does not expose all cluster autoscaler flags directly through `gcloud`. For fine-grained control, you need to configure the autoscaler through the node pool or use the Kubernetes cluster autoscaler ConfigMap.
+GKE does not expose every upstream Cluster Autoscaler flag directly through `gcloud`, but current GKE node pools do expose `--consolidation-delay` for the delay after which the autoscaler can scale down underutilized nodes.
 
 ```yaml
 # cluster-autoscaler-config.yaml
-# Applied via ConfigMap in the kube-system namespace
+# This ConfigMap is status output, not a tuning interface.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -86,7 +86,7 @@ data:
     # This is read-only - autoscaler updates this automatically
 ```
 
-The actual tuning is done through node pool configuration and cluster-level settings.
+Do not edit `cluster-autoscaler-status` to configure scale-down behavior. The actual tuning is done through node pool configuration and cluster-level settings.
 
 ## Practical Scale-Down Tuning
 
@@ -106,7 +106,7 @@ gcloud container node-pools update default-pool \
   --max-nodes 20
 ```
 
-Setting `--min-nodes 3` means the autoscaler will never scale below 3 nodes, even if the cluster is nearly empty. This prevents the "scale to zero then back up" pattern.
+Setting `--min-nodes 3` means the autoscaler will never scale the node pool below 3 nodes per zone, even if the cluster is nearly empty. This prevents the "scale to zero then back up" pattern. For GKE 1.24 and later, use `--total-min-nodes` if you want to set the minimum across the entire node pool instead of per zone.
 
 ### 2. Pod Resource Requests
 
@@ -162,12 +162,12 @@ spec:
 
 With this PDB and pods spread across nodes, the autoscaler can only remove one node at a time (since removing more would violate the PDB). This naturally slows down scale-down.
 
-### 4. Pod Anti-Affinity
+### 4. Topology Spread Constraints
 
-Spread pods across nodes so the autoscaler cannot find "empty" nodes to remove.
+Spread pods across nodes when availability matters, so a single node removal does not concentrate too many replicas on the same node.
 
 ```yaml
-# Spread pods across nodes - prevents autoscaler from emptying nodes
+# Prefer spreading pods across nodes without blocking autoscaler simulation
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -179,13 +179,13 @@ spec:
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: DoNotSchedule
+          whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels:
               app: web-app
 ```
 
-When pods are evenly spread, no single node becomes underutilized enough to trigger removal. This is the most effective anti-flapping technique.
+When pods are evenly spread, the scheduler prefers not to concentrate replicas on the same node. Use `ScheduleAnyway` for this pattern on GKE, because the GKE Cluster Autoscaler does not support strict topology spread constraints with `whenUnsatisfiable: DoNotSchedule`.
 
 ### 5. Safe Scale-Down Annotations
 
@@ -204,12 +204,12 @@ spec:
       image: my-job:latest
 ```
 
-Nodes running pods with `safe-to-evict: false` will not be considered for removal. Use this for long-running batch jobs or pods with local state.
+Nodes running pods with `safe-to-evict: false` will not be considered for removal. Use this sparingly for long-running batch jobs or pods that cannot tolerate voluntary eviction.
 
 Conversely, mark ephemeral pods as safe to evict:
 
 ```yaml
-# Allow autoscaler to evict this pod freely
+# Allow autoscaler to evict this pod when other constraints allow it
 metadata:
   annotations:
     cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
@@ -232,14 +232,14 @@ If you see ScaleDown and ScaleUp events alternating every few minutes, you have 
 
 ## Monitoring Autoscaler Decisions
 
-Use Cloud Monitoring to track autoscaler behavior over time.
+Use Cloud Logging to track autoscaler behavior over time.
 
 ```bash
 # View autoscaler logs
 gcloud logging read \
-  'resource.type="k8s_cluster" AND log_name:"cluster-autoscaler-visibility"' \
+  'resource.type="k8s_cluster" AND log_id("container.googleapis.com/cluster-autoscaler-visibility")' \
   --limit 50 \
-  --format "table(timestamp, jsonPayload.decision)"
+  --format "table(timestamp, jsonPayload)"
 ```
 
 Set up alerts for unusual scaling patterns:
@@ -252,12 +252,12 @@ Set up alerts for unusual scaling patterns:
 
 The `optimize-utilization` profile changes several defaults:
 
-- Scale-down utilization threshold is higher (nodes must be less utilized to be removed)
-- Scale-down delay after add is shorter
-- Prefers to schedule pods on already-running nodes more aggressively
+- Helps the autoscaler identify and remove underutilized nodes
+- Uses GKE's optimize-utilization scheduler for pods that do not specify a custom scheduler
+- Prefers tighter packing on already-running nodes
 
 ```bash
-# Switch to optimize-utilization if flapping is your main issue
+# Switch to optimize-utilization if cost optimization is your main issue
 gcloud container clusters update my-cluster \
   --region us-central1 \
   --autoscaling-profile optimize-utilization
@@ -267,4 +267,4 @@ This profile is better for cost optimization but can lead to bin-packing pods on
 
 ## Wrapping Up
 
-Cluster autoscaler flapping is one of the most common operational issues on GKE. The fix is almost always a combination of: right-sizing pod resource requests so the autoscaler has accurate data, using topology spread constraints to prevent nodes from becoming empty, setting appropriate min-node counts so you always have baseline capacity, and using PDBs to slow down the rate of node removal. Start with the `balanced` profile, right-size your resource requests (use VPA recommendations), and add topology spread constraints to your deployments. Most flapping issues resolve with just these three changes.
+Cluster autoscaler flapping is one of the most common operational issues on GKE. The fix is almost always a combination of: right-sizing pod resource requests so the autoscaler has accurate data, setting an appropriate consolidation delay, setting appropriate min-node counts so you always have baseline capacity, and using PDBs to slow down the rate of node removal. Start with the `balanced` profile, right-size your resource requests (use VPA recommendations), and increase the consolidation delay for node pools that flap. Most flapping issues resolve with just these three changes.
