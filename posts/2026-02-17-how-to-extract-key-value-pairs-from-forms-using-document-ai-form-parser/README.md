@@ -28,12 +28,17 @@ The parser uses machine learning to understand spatial relationships between lab
 Start by creating a Form Parser processor instance.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1
 
 def create_form_parser(project_id, location="us"):
     """Create a Form Parser processor in Document AI."""
-    client = documentai_v1.DocumentProcessorServiceClient()
-    parent = f"projects/{project_id}/locations/{location}"
+    client = documentai_v1.DocumentProcessorServiceClient(
+        client_options=ClientOptions(
+            api_endpoint=f"{location}-documentai.googleapis.com"
+        )
+    )
+    parent = client.common_location_path(project_id, location)
 
     # FORM_PARSER_PROCESSOR is the type for form extraction
     processor = client.create_processor(
@@ -55,12 +60,17 @@ processor = create_form_parser("my-gcp-project")
 Send a form document to the processor and get back structured data.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1
 
 def process_form(project_id, location, processor_id, file_path, mime_type):
     """Send a form to Document AI and get the processed result."""
-    client = documentai_v1.DocumentProcessorServiceClient()
-    name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
+    client = documentai_v1.DocumentProcessorServiceClient(
+        client_options=ClientOptions(
+            api_endpoint=f"{location}-documentai.googleapis.com"
+        )
+    )
+    name = client.processor_path(project_id, location, processor_id)
 
     # Read the form image or PDF
     with open(file_path, "rb") as f:
@@ -153,23 +163,16 @@ def extract_checkboxes(document):
     for page_num, page in enumerate(document.pages):
         for field in page.form_fields:
             field_name = get_field_text(field.field_name, document.text)
-            field_value = get_field_text(field.field_value, document.text)
 
-            # Checkboxes have special value types
-            # The value text will be something like "filled_checkbox" or "unfilled_checkbox"
-            if hasattr(field.field_value, 'value_type'):
-                value_type = field.field_value.value_type
-            else:
-                value_type = None
-
-            # Check if this looks like a checkbox based on the value
-            is_checkbox = field_value.lower() in [
-                "filled_checkbox", "unfilled_checkbox",
-                "checked", "unchecked"
+            # Checkboxes have special value types on the form field.
+            # The value_type will be "filled_checkbox" or "unfilled_checkbox".
+            value_type = field.value_type
+            is_checkbox = value_type in [
+                "filled_checkbox", "unfilled_checkbox"
             ]
 
             if is_checkbox:
-                is_checked = field_value.lower() in ["filled_checkbox", "checked"]
+                is_checked = value_type == "filled_checkbox"
                 checkboxes.append({
                     "page": page_num + 1,
                     "label": field_name,
@@ -239,13 +242,18 @@ Here is a more complete example that processes a form and outputs a clean JSON s
 
 ```python
 import json
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1, storage
 
 def process_and_structure_form(project_id, location, processor_id,
                                 gcs_uri, output_bucket):
     """Full pipeline: read form from GCS, extract data, save structured JSON."""
-    client = documentai_v1.DocumentProcessorServiceClient()
-    name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
+    client = documentai_v1.DocumentProcessorServiceClient(
+        client_options=ClientOptions(
+            api_endpoint=f"{location}-documentai.googleapis.com"
+        )
+    )
+    name = client.processor_path(project_id, location, processor_id)
 
     # Process the document from GCS
     gcs_document = documentai_v1.GcsDocument(
@@ -267,7 +275,7 @@ def process_and_structure_form(project_id, location, processor_id,
         "page_count": len(document.pages),
         "fields": {},
         "tables": [],
-        "checkboxes": {}
+        "checkboxes": []
     }
 
     # Process all form fields into a clean dictionary
@@ -283,6 +291,9 @@ def process_and_structure_form(project_id, location, processor_id,
                     "value": field_value,
                     "confidence": round(field.field_value.confidence, 3)
                 }
+
+    structured_data["tables"] = extract_tables(document)
+    structured_data["checkboxes"] = extract_checkboxes(document)
 
     # Save the result to Cloud Storage
     storage_client = storage.Client()
