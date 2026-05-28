@@ -8,7 +8,7 @@ Description: Learn how to efficiently import training data from Google Cloud Sto
 
 ---
 
-Training machine learning models at scale means dealing with massive datasets, and where that data lives has a direct impact on how fast your training runs. Google Cloud Storage is the natural landing zone for most training data - it is cheap, durable, and accessible from anywhere. But when your training job needs to read millions of small files or stream hundreds of gigabytes per second, GCS alone cannot keep up. That is why the typical pattern is to stage your data into Parallelstore before kicking off a training run.
+Training machine learning models at scale means dealing with massive datasets, and where that data lives has a direct impact on how fast your training runs. Google Cloud Storage is the natural landing zone for most training data - it is cheap, durable, and accessible from anywhere. But when your training job needs to read millions of small files or needs very high file-system throughput, GCS alone cannot keep up. That is why the typical pattern is to stage your data into Parallelstore before kicking off a training run.
 
 Parallelstore is Google Cloud's managed high-performance parallel file system, designed specifically for workloads that need massive throughput and low-latency file access. The built-in data import functionality makes it straightforward to pull data from Cloud Storage into Parallelstore, and once it is there, your training jobs can access it at speeds that would not be possible from GCS directly.
 
@@ -51,7 +51,7 @@ If your data is stored as TFRecords, Parquet files, or other large sequential fi
 
 ## Step 2: Set Up IAM Permissions
 
-The Parallelstore service agent needs permission to read from your GCS bucket. This is a step people often miss.
+The Parallelstore service agent needs permission to access your GCS bucket. This is a step people often miss.
 
 ```bash
 # Get the Parallelstore service agent email for your project
@@ -59,23 +59,26 @@ The Parallelstore service agent needs permission to read from your GCS bucket. T
 PROJECT_NUMBER=$(gcloud projects describe my-project --format="value(projectNumber)")
 SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-parallelstore.iam.gserviceaccount.com"
 
-# Grant the service agent read access to your GCS bucket
-gsutil iam ch serviceAccount:${SERVICE_AGENT}:objectViewer gs://my-training-data
+# Grant the service agent the required access to your GCS bucket
+gcloud storage buckets add-iam-policy-binding gs://my-training-data \
+    --member=serviceAccount:${SERVICE_AGENT} \
+    --role=roles/storage.admin
 ```
 
 ## Step 3: Start the Data Import
 
-Use the gcloud CLI to initiate the import operation. The import runs asynchronously, so you get an operation ID back immediately.
+Use the gcloud CLI to initiate the import operation. Use `--async` so you get an operation ID back immediately.
 
 ```bash
 # Start the import from GCS to Parallelstore
 # source-gcs-bucket-uri specifies the GCS path to import from
 # destination-parallelstore-path is where files land in the Parallelstore instance
-gcloud parallelstore instances import-data my-parallelstore \
+gcloud beta parallelstore instances import-data my-parallelstore \
     --project=my-project \
     --location=us-central1-a \
     --source-gcs-bucket-uri=gs://my-training-data/imagenet/ \
-    --destination-parallelstore-path=/imagenet/
+    --destination-parallelstore-path=/imagenet/ \
+    --async
 ```
 
 The command returns an operation ID that you can use to track progress.
@@ -87,12 +90,12 @@ Data imports can take a while depending on the size of your dataset. Track the p
 ```bash
 # Check the status of the import operation
 # Replace OPERATION_ID with the ID returned from the import command
-gcloud parallelstore operations describe OPERATION_ID \
+gcloud beta parallelstore operations describe OPERATION_ID \
     --project=my-project \
     --location=us-central1-a
 ```
 
-For large datasets, the import throughput depends on the Parallelstore instance size. Larger instances have more servers and can ingest data faster. A 12 TiB instance can typically import data at around 10-20 GB/s from GCS, so a 1 TB dataset would take roughly a minute or two.
+For large datasets, import throughput depends on the transfer limit and the number of files being copied. Parallelstore supports Cloud Storage transfer speeds up to 20 GiBps or 5,000 files per second, so a 1 TB dataset can take roughly a minute at the upper end, but datasets with many small files can take longer.
 
 ## Step 5: Verify the Imported Data
 
@@ -104,7 +107,7 @@ Once the import completes, verify that all your data made it across correctly.
 kubectl exec -it my-training-pod -- ls -la /data/imagenet/ | head -20
 
 # Count the total number of files to compare with GCS
-kubectl exec -it my-training-pod -- find /data/imagenet/ -type f | wc -l
+kubectl exec -it my-training-pod -- sh -c 'find /data/imagenet/ -type f | wc -l'
 ```
 
 Compare the file count and total size against what is in GCS. They should match exactly.
@@ -159,18 +162,19 @@ PS_PATH="/imagenet/"
 echo "Starting data import from ${GCS_PATH}..."
 
 # Start the import and capture the operation name
-OPERATION=$(gcloud parallelstore instances import-data ${INSTANCE} \
+OPERATION=$(gcloud beta parallelstore instances import-data ${INSTANCE} \
     --project=${PROJECT} \
     --location=${ZONE} \
     --source-gcs-bucket-uri=${GCS_PATH} \
     --destination-parallelstore-path=${PS_PATH} \
-    --format="value(name)")
+    --async \
+    --format="value(name)" | sed 's|.*/||')
 
 echo "Import operation: ${OPERATION}"
 
 # Poll until the operation completes
 while true; do
-    STATUS=$(gcloud parallelstore operations describe ${OPERATION} \
+    STATUS=$(gcloud beta parallelstore operations describe ${OPERATION} \
         --project=${PROJECT} \
         --location=${ZONE} \
         --format="value(done)")
@@ -195,7 +199,7 @@ A few things to keep in mind for getting the best import and training performanc
 
 Keep your Parallelstore instance and GCS bucket in the same region. Cross-region imports work but are slower and incur egress charges.
 
-Size your Parallelstore instance appropriately. The throughput scales with instance size, so a larger instance imports data faster and serves it to training jobs at higher bandwidth.
+Size your Parallelstore instance appropriately. Read and write throughput scale with instance size, so a larger instance can serve data to training jobs at higher bandwidth.
 
 For datasets with millions of small files, consider packing them into larger files (like TFRecords or WebDataset format) before importing. The import operation handles large files more efficiently than millions of tiny ones.
 
