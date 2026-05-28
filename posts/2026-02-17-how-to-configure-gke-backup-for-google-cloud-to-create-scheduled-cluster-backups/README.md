@@ -56,8 +56,7 @@ gcloud beta container backup-restore backup-plans create my-backup-plan \
   --include-volume-data \
   --backup-retain-days=30 \
   --backup-delete-lock-days=7 \
-  --cron-schedule="0 2 * * *" \
-  --backup-order=DEFAULT
+  --cron-schedule="0 2 * * *"
 ```
 
 Let me break down the important flags:
@@ -66,7 +65,7 @@ Let me break down the important flags:
 - `--include-volume-data` includes the actual data from Persistent Volumes, not just the PVC definitions
 - `--backup-retain-days=30` keeps each backup for 30 days before automatically deleting it
 - `--backup-delete-lock-days=7` prevents anyone from deleting a backup for 7 days after creation
-- `--cron-schedule="0 2 * * *"` runs the backup daily at 2 AM
+- `--cron-schedule="0 2 * * *"` runs the backup daily at 2 AM UTC
 
 ## Backing Up Specific Namespaces
 
@@ -88,12 +87,12 @@ gcloud beta container backup-restore backup-plans create prod-backup-plan \
 
 This runs every 6 hours and keeps backups for two weeks.
 
-## Selective Backup with Labels
+## Selective Backup with ProtectedApplications
 
-You can also back up resources based on labels, which is useful when your application spans multiple namespaces:
+You can also back up specific ProtectedApplications, which is useful when your application spans multiple namespaces:
 
 ```bash
-# Back up only resources with a specific label across all namespaces
+# Back up only specific ProtectedApplications
 gcloud beta container backup-restore backup-plans create app-backup-plan \
   --project=my-project \
   --location=us-central1 \
@@ -103,6 +102,8 @@ gcloud beta container backup-restore backup-plans create app-backup-plan \
   --backup-retain-days=7 \
   --cron-schedule="0 * * * *"
 ```
+
+To use `--selected-applications`, create the corresponding `ProtectedApplication` resources in the cluster first.
 
 ## Creating a Manual Backup
 
@@ -151,18 +152,19 @@ gcloud beta container backup-restore restore-plans create my-restore-plan \
   --cluster=projects/my-project/locations/us-central1-a/clusters/my-cluster \
   --backup-plan=projects/my-project/locations/us-central1/backupPlans/my-backup-plan \
   --all-namespaces \
-  --volume-data-restore-policy=RESTORE_VOLUME_DATA_FROM_BACKUP \
-  --namespaced-resource-restore-mode=DELETE_AND_RESTORE \
-  --cluster-resource-restore-scope='{allGroupKinds: true}'
+  --volume-data-restore-policy=restore-volume-data-from-backup \
+  --namespaced-resource-restore-mode=delete-and-restore \
+  --cluster-resource-conflict-policy=use-existing-version \
+  --cluster-resource-scope-all-group-kinds
 ```
 
 The `--namespaced-resource-restore-mode` flag is important:
 
-- `DELETE_AND_RESTORE` deletes existing resources and recreates them from the backup
-- `FAIL_ON_CONFLICT` fails if a resource already exists
-- `MERGE_SKIP_ON_CONFLICT` restores only resources that do not already exist
-- `MERGE_REPLACE_VOLUME_ON_CONFLICT` keeps existing resources but replaces volume data
-- `MERGE_REPLACE_ON_CONFLICT` overwrites existing resources with backup data
+- `delete-and-restore` deletes existing resources and recreates them from the backup
+- `fail-on-conflict` fails if a resource already exists
+- `merge-skip-on-conflict` restores only resources that do not already exist
+- `merge-replace-volume-on-conflict` keeps existing resources but replaces volume data
+- `merge-replace-on-conflict` overwrites existing resources with backup data
 
 ## Performing a Restore
 
