@@ -45,8 +45,8 @@ An initialization action is a regular bash script. Here is one that installs Pyt
 
 set -euxo pipefail
 
-# Install pip packages on all nodes
-pip3 install \
+# Install pip packages into the default Dataproc 2.x Python environment on all nodes
+/opt/conda/default/bin/pip install \
     pandas==2.1.0 \
     numpy==1.25.0 \
     scikit-learn==1.3.0 \
@@ -75,14 +75,14 @@ gcloud dataproc clusters create my-cluster \
   --num-workers=4 \
   --worker-machine-type=n1-standard-4 \
   --master-machine-type=n1-standard-4 \
-  --image-version=2.1-debian11
+  --image-version=2.3-debian12
 ```
 
 The `--initialization-action-timeout` flag sets how long Dataproc waits for the script to complete. The default is 10 minutes. If your script installs large packages or compiles software, increase this.
 
 ## Running Different Scripts on Master vs. Workers
 
-Sometimes you need to install different software on master nodes versus worker nodes. Use the `ROLE` environment variable that Dataproc sets on each node.
+Sometimes you need to install different software on master nodes versus worker nodes. Read the `dataproc-role` metadata value that Dataproc sets on each node.
 
 ```bash
 #!/bin/bash
@@ -105,13 +105,13 @@ if [[ "${ROLE}" == 'Master' ]]; then
     echo "Installing master-specific software"
 
     # Install Jupyter for interactive development
-    pip3 install jupyter jupyterlab
+    /opt/conda/default/bin/pip install jupyter jupyterlab
 
     # Install monitoring tools
     apt-get install -y prometheus-node-exporter
 
     # Start Jupyter on port 8888
-    nohup jupyter lab --ip=0.0.0.0 --port=8888 \
+    nohup /opt/conda/default/bin/jupyter lab --ip=0.0.0.0 --port=8888 \
         --no-browser --allow-root &
 
 elif [[ "${ROLE}" == 'Worker' ]]; then
@@ -198,26 +198,29 @@ fi
 echo "Configuration complete"
 ```
 
-## Pre-built Initialization Actions
+## Sample Initialization Actions
 
-Google provides a collection of community-maintained initialization actions for common software. These are stored in a public GCS bucket.
+Google provides a collection of sample initialization actions for common software. These are stored in public regional GCS buckets. For production clusters, copy the scripts you need to your own versioned bucket path before using them.
 
 ```bash
-# Use Google's pre-built init action for Conda
+# Use Google's sample init actions for Conda
 gcloud dataproc clusters create my-cluster \
   --region=us-central1 \
   --initialization-actions=\
-gs://goog-dataproc-initialization-actions-us-central1/conda/bootstrap-conda.sh \
-  --metadata='CONDA_PACKAGES=scipy numpy pandas' \
+gs://goog-dataproc-initialization-actions-us-central1/conda/bootstrap-conda.sh,\
+gs://goog-dataproc-initialization-actions-us-central1/conda/install-conda-env.sh \
+  --metadata='CONDA_PACKAGES="scipy numpy pandas"' \
   --num-workers=2
 ```
 
-Some commonly used pre-built actions include:
+Some commonly used sample actions include:
 
-- `conda/bootstrap-conda.sh` - Install Conda and Python packages
+- `conda/bootstrap-conda.sh` and `conda/install-conda-env.sh` - Install Conda and Python packages
 - `hue/hue.sh` - Install Hue web interface
 - `connectors/connectors.sh` - Install BigQuery and GCS connectors
 - `gpu/install_gpu_driver.sh` - Install NVIDIA GPU drivers
+
+The Conda initialization action is deprecated for new clusters. On Dataproc 2.x clusters, prefer the built-in conda environment with the `dataproc:conda.packages` and `dataproc:pip.packages` cluster properties when that meets your needs.
 
 ## Debugging Failed Initialization Actions
 
@@ -228,13 +231,10 @@ When an init action fails, the cluster creation fails too. Debugging requires ch
 gcloud dataproc clusters describe my-cluster \
   --region=us-central1
 
-# The output includes the GCS location of init action logs
-# Usually at: gs://dataproc-staging-REGION-PROJECT_NUM/google-cloud-dataproc-metainfo/CLUSTER_UUID/
-
-# Download and inspect the init action output
-gsutil cat gs://dataproc-staging-us-central1-123456/\
-google-cloud-dataproc-metainfo/CLUSTER_UUID/\
-m/dataproc-initialization-script-0_output
+# SSH to a cluster node and inspect the init action output
+gcloud compute ssh my-cluster-m \
+  --zone=us-central1-a \
+  --command='sudo cat /var/log/dataproc-initialization-script-0.log'
 ```
 
 Common reasons for init action failures:
