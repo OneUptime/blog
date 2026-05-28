@@ -10,7 +10,7 @@ Description: Learn how to create SQL User-Defined Functions in BigQuery and shar
 
 Every analytics team ends up with the same problem: the same transformation logic scattered across dozens of queries. Maybe it is a revenue calculation that accounts for refunds and discounts, or a customer segmentation formula. Someone writes it one way in one query, someone else writes it slightly differently in another, and soon you have inconsistent results.
 
-SQL UDFs in BigQuery solve this by letting you define reusable functions that live in a dataset and can be called from any query. Unlike JavaScript UDFs, SQL UDFs run natively within BigQuery's SQL engine, so there is no performance overhead.
+SQL UDFs in BigQuery solve this by letting you define reusable functions that live in a dataset and can be called from any query. Unlike JavaScript UDFs, SQL UDFs run natively within BigQuery's SQL engine, so they avoid the JavaScript sandbox overhead.
 
 ## Creating a Basic SQL UDF
 
@@ -50,7 +50,7 @@ Before diving deeper, it is worth understanding when to use SQL UDFs versus Java
 
 SQL UDFs:
 - Run natively in the BigQuery SQL engine
-- No performance overhead compared to inline SQL
+- Avoid the JavaScript sandbox overhead
 - Support all standard SQL functions
 - Cannot use loops or complex procedural logic
 
@@ -111,8 +111,8 @@ AS (
     '-Q',
     CAST(
       CASE
-        WHEN EXTRACT(MONTH FROM d) >= 4 THEN (EXTRACT(MONTH FROM d) - 4) / 3 + 1
-        ELSE (EXTRACT(MONTH FROM d) + 8) / 3 + 1
+        WHEN EXTRACT(MONTH FROM d) >= 4 THEN DIV(EXTRACT(MONTH FROM d) - 4, 3) + 1
+        ELSE DIV(EXTRACT(MONTH FROM d) + 8, 3) + 1
       END AS STRING
     )
   )
@@ -123,28 +123,24 @@ AS (
 
 For other teams or projects to use your shared UDFs, they need the appropriate IAM permissions on the dataset.
 
-```bash
-# Grant BigQuery Data Viewer role on the UDF dataset
+```sql
+-- Grant BigQuery Data Viewer role on the UDF dataset
+-- This allows users to call the functions
 
-# This allows users to call the functions
-bq update --dataset \
-  --default_table_expiration 0 \
-  my_project:shared_udfs
+-- Add a specific user
+GRANT `roles/bigquery.dataViewer`
+ON SCHEMA `my_project`.shared_udfs
+TO "user:analyst@company.com";
 
-# Add a specific user
-bq add-iam-policy-binding \
-  --member="user:analyst@company.com" \
-  --role="roles/bigquery.dataViewer" \
-  my_project:shared_udfs
-
-# Or add an entire group
-bq add-iam-policy-binding \
-  --member="group:data-team@company.com" \
-  --role="roles/bigquery.dataViewer" \
-  my_project:shared_udfs
+-- Or add an entire group
+GRANT `roles/bigquery.dataViewer`
+ON SCHEMA `my_project`.shared_udfs
+TO "group:data-team@company.com";
 ```
 
-Users from other projects can then call the functions using the full qualified name.
+Users also need permission to run query jobs, such as the BigQuery Job User role, in the project where they execute the query.
+
+Users from other projects can then call the functions using the fully qualified name.
 
 ```sql
 -- Calling a shared UDF from a different project
@@ -277,16 +273,16 @@ Always test UDFs with edge cases before making them available to the team.
 -- Test the net_revenue UDF with various edge cases
 SELECT
   'normal' AS test_case,
-  `my_project.shared_udfs.net_revenue`(100, 10, 5) AS result,
+  `my_project.my_dataset.net_revenue`(100, 10, 5) AS result,
   85 AS expected
 UNION ALL
-SELECT 'zero discount', `my_project.shared_udfs.net_revenue`(100, 0, 0), 100
+SELECT 'zero discount', `my_project.my_dataset.net_revenue`(100, 0, 0), 100
 UNION ALL
-SELECT 'full refund', `my_project.shared_udfs.net_revenue`(100, 0, 150), 0
+SELECT 'full refund', `my_project.my_dataset.net_revenue`(100, 0, 150), 0
 UNION ALL
-SELECT 'null discount', `my_project.shared_udfs.net_revenue`(100, NULL, 10), 90
+SELECT 'null discount', `my_project.my_dataset.net_revenue`(100, NULL, 10), 90
 UNION ALL
-SELECT 'null refund', `my_project.shared_udfs.net_revenue`(100, 10, NULL), 90;
+SELECT 'null refund', `my_project.my_dataset.net_revenue`(100, 10, NULL), 90;
 ```
 
 ## Versioning UDFs
@@ -339,6 +335,6 @@ ORDER BY routine_name;
 
 ## Wrapping Up
 
-SQL UDFs in BigQuery are the best way to centralize business logic and ensure consistency across your analytics. Put them in a shared dataset, grant access to your teams, and treat them like any other shared code - with testing, versioning, and documentation. The performance is identical to inline SQL, so there is no reason not to use them for any calculation that appears in more than one query.
+SQL UDFs in BigQuery are the best way to centralize business logic and ensure consistency across your analytics. Put them in a shared dataset, grant access to your teams, and treat them like any other shared code - with testing, versioning, and documentation. They avoid the JavaScript sandbox overhead, but you should still test performance for important production queries.
 
 For monitoring the queries and pipelines that depend on your shared UDFs, [OneUptime](https://oneuptime.com) can help you track performance and catch issues across your BigQuery workloads.
