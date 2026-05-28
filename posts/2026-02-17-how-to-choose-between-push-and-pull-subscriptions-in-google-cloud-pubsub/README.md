@@ -63,7 +63,7 @@ except TimeoutError:
 
 ## How Push Subscriptions Work
 
-With a push subscription, Pub/Sub takes the initiative. It sends messages as HTTP POST requests to an endpoint you specify. Your application exposes an HTTP endpoint, and Pub/Sub delivers messages to it.
+With a push subscription, Pub/Sub takes the initiative. It sends messages as HTTPS POST requests to an endpoint you specify. Your application exposes a publicly accessible HTTPS endpoint, and Pub/Sub delivers messages to it.
 
 The flow looks like this:
 
@@ -107,7 +107,7 @@ def receive_message():
         return jsonify({'status': 'ok'}), 200  # 200 = acknowledge
     except Exception as e:
         print(f"Processing failed: {e}")
-        return jsonify({'error': str(e)}), 500  # Non-2xx = nack
+        return jsonify({'error': str(e)}), 500  # Any non-ack status = nack
 
 def handle_event(data):
     """Your business logic here."""
@@ -125,7 +125,7 @@ Pull subscriptions are the better choice in several scenarios:
 
 **Your subscriber is a long-running process.** Applications like worker services, data pipelines, or background processors that run continuously are natural fits for pull. They maintain a streaming connection and process messages as fast as they can.
 
-**You are running on GKE or Compute Engine.** If your application is deployed on infrastructure that does not have a public HTTP endpoint, pull is simpler. There is no need to expose ports or configure load balancers.
+**You are running on GKE or Compute Engine.** If your application is deployed on infrastructure that does not have a public HTTPS endpoint, pull is simpler. There is no need to expose ports or configure load balancers.
 
 **You need to process messages in batches.** Pull lets you accumulate messages and process them together, which is efficient for batch-oriented workloads like writing to a database in bulk.
 
@@ -137,7 +137,7 @@ Push subscriptions shine in different situations:
 
 **You are using Cloud Run or Cloud Functions.** These serverless platforms are designed to handle HTTP requests. Push subscriptions trigger them naturally, and the platform handles scaling automatically. This is probably the most common use case for push.
 
-**You want Pub/Sub to handle retries and backoff.** Push subscriptions have built-in retry with exponential backoff. If your endpoint returns a non-success status code, Pub/Sub retries automatically. You do not need to implement retry logic yourself.
+**You want Pub/Sub to handle retries and backoff.** Push subscriptions have built-in retry with exponential backoff. If your endpoint returns a status code that Pub/Sub does not treat as an acknowledgement, Pub/Sub retries automatically. You do not need to implement retry logic yourself.
 
 **Your endpoint is behind a load balancer.** Push works well when you have multiple instances behind a load balancer. Pub/Sub sends messages to the load balancer URL, and the load balancer distributes them across instances.
 
@@ -152,8 +152,8 @@ Here is a quick comparison table to help with the decision:
 | Factor | Pull | Push |
 |--------|------|------|
 | Who initiates | Subscriber | Pub/Sub |
-| Requires public endpoint | No | Yes |
-| Client library needed | Yes | No (just HTTP) |
+| Requires public HTTPS endpoint | No | Yes |
+| Client library needed | Yes | No (just HTTPS) |
 | Flow control | Fine-grained | Coarse (rate limiting) |
 | Scaling | You manage | Pub/Sub manages delivery |
 | Best for serverless | No | Yes |
@@ -187,6 +187,7 @@ resource "google_pubsub_subscription" "notifications" {
     push_endpoint = "https://notification-svc.run.app/events"
     oidc_token {
       service_account_email = "pubsub-sa@my-project.iam.gserviceaccount.com"
+      audience              = "https://notification-svc.run.app/events"
     }
   }
 }
@@ -210,10 +211,12 @@ def verify_push_request(request):
         claim = id_token.verify_oauth2_token(
             token,
             google_requests.Request(),
-            audience='https://my-service.run.app'
+            audience='https://my-service.run.app/webhook/messages'
         )
         # Verify the sender is the expected service account
         if claim['email'] != 'pubsub-sa@my-project.iam.gserviceaccount.com':
+            return False
+        if not claim.get('email_verified', False):
             return False
         return True
     except Exception:
