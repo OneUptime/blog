@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, App Engine, Memorystore, Redis, Caching, Migration
 
-Description: A practical migration guide for moving from the deprecated App Engine Memcache service to Cloud Memorystore Redis with code examples and architecture tips.
+Description: A practical migration guide for moving from the legacy App Engine Memcache service to Cloud Memorystore Redis with code examples and architecture tips.
 
 ---
 
-If you have been running an application on App Engine for a while, there is a good chance you are using the built-in Memcache service. Google deprecated Memcache as part of the move away from the legacy App Engine bundled services. The recommended replacement is Cloud Memorystore for Redis, which gives you a fully managed Redis instance that works with both App Engine Standard and Flexible environments.
+If you have been running an application on App Engine for a while, there is a good chance you are using the built-in Memcache service. Memcache is part of the legacy App Engine bundled services, and Google recommends migrating to an unbundled alternative when you move away from those services. A common replacement is Cloud Memorystore for Redis, which gives you a fully managed Redis instance that works with both App Engine Standard and Flexible environments.
 
 This migration is not just a search-and-replace of API calls. Memorystore runs on a separate instance in your VPC, so there is some networking setup involved. Let me walk through the entire migration process.
 
@@ -16,7 +16,7 @@ This migration is not just a search-and-replace of API calls. Memorystore runs o
 
 The old App Engine Memcache had some significant limitations. The shared memcache was free but offered no guarantees - your cached data could be evicted at any time. Dedicated memcache cost money but still ran on Google-managed infrastructure you could not tune.
 
-Memorystore Redis gives you a dedicated Redis instance with configurable memory, persistence options, and support for the full Redis command set. You get data structures like sorted sets, lists, and pub/sub that Memcache never supported. You can also connect to the same Redis instance from multiple services - Cloud Run, Compute Engine, GKE, and App Engine can all share the cache.
+Memorystore Redis gives you a dedicated Redis instance with configurable memory, RDB snapshot support, and support for most Redis commands. You get data structures like sorted sets, lists, and pub/sub that Memcache never supported. You can also connect to the same Redis instance from multiple services - Cloud Run, Compute Engine, GKE, and App Engine can all share the cache.
 
 ## Step 1: Create a Memorystore Redis Instance
 
@@ -88,7 +88,7 @@ env_variables:
   REDIS_PORT: "6379"
 ```
 
-The `egress_setting: private-ranges-only` is important - it means only traffic destined for private IP ranges goes through the connector. Public internet traffic goes directly, which keeps latency low for external API calls.
+The `egress_setting: private-ranges-only` is important - it means only traffic destined for private IP ranges and internal DNS names goes through the connector. Public internet traffic goes directly, which keeps latency low for external API calls.
 
 ## Step 4: Replace Memcache Code with Redis
 
@@ -200,7 +200,7 @@ def increment_counter(key, delta=1):
     return r.incrby(key, delta)
 ```
 
-Redis counters are actually better than Memcache counters because they persist across cache evictions (as long as your instance has memory).
+Redis counters are useful for this pattern because `INCRBY` initializes missing keys to zero and updates them atomically. They are still in-memory cache entries, so they can be lost during evictions or instance events unless you design for that behavior.
 
 ## Step 7: Replace Memcache Compare-and-Set
 
@@ -273,7 +273,7 @@ def test_cache_operations():
 
 Once you are running in production, monitor your Redis instance through Cloud Monitoring. Key metrics to watch:
 
-- Memory usage percentage - if it hits 100%, Redis starts evicting keys
+- Memory usage percentage - if it hits the instance limit, Redis evicts keys or rejects writes based on your configured maxmemory policy
 - Connected clients - watch for connection leaks
 - Cache hit ratio - calculate this from `keyspace_hits / (keyspace_hits + keyspace_misses)`
 - Command latency - should be sub-millisecond for most operations
