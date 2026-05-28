@@ -14,7 +14,7 @@ Vertex AI Studio provides an interactive environment for testing and refining pr
 
 ## Getting Started with Vertex AI Studio
 
-Vertex AI Studio is accessible from the Google Cloud Console. Navigate to Vertex AI and select "Generative AI Studio" from the left menu. You will find options for text, chat, and multimodal prompts, each with controls for model selection, temperature, and other generation parameters.
+Vertex AI Studio is accessible from the Google Cloud Console. Navigate to the Vertex AI section and open the prompt gallery or create prompt page. You will find options for text, chat, and multimodal prompts, each with controls for model selection, temperature, and other generation parameters.
 
 You can also work programmatically, which is what we will focus on here:
 
@@ -23,15 +23,17 @@ You can also work programmatically, which is what we will focus on here:
 
 # Initialize Vertex AI for prompt testing
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+from google import genai
+from google.genai.types import GenerateContentConfig, HttpOptions
 
-vertexai.init(
+client = genai.Client(
+    vertexai=True,
     project='your-project-id',
-    location='us-central1',
+    location='global',
+    http_options=HttpOptions(api_version='v1'),
 )
 
-model = GenerativeModel('gemini-1.5-pro')
+MODEL_ID = 'gemini-2.5-flash'
 ```
 
 ## Technique 1: Be Specific and Explicit
@@ -54,15 +56,17 @@ for a deployment called "web-app" with min 2 and max 10 replicas.
 # specific_prompt.py
 # Demonstrate the impact of specificity
 
-model = GenerativeModel('gemini-1.5-pro')
-
 # Vague prompt
-vague_response = model.generate_content('Tell me about load balancing on GCP.')
+vague_response = client.models.generate_content(
+    model=MODEL_ID,
+    contents='Tell me about load balancing on GCP.',
+)
 
 # Specific prompt
-specific_response = model.generate_content(
-    """Explain the differences between the three types of Google Cloud load balancers:
-    HTTP(S) Load Balancer, TCP/SSL Proxy Load Balancer, and Network Load Balancer.
+specific_response = client.models.generate_content(
+    model=MODEL_ID,
+    contents="""Explain the differences between these Google Cloud load balancer families:
+    Application Load Balancers, proxy Network Load Balancers, and passthrough Network Load Balancers.
 
     For each type, provide:
     1. Primary use case
@@ -84,20 +88,19 @@ System instructions set the model's persona and behavior for the entire conversa
 # system_instructions.py
 # Use system instructions to shape responses
 
-model = GenerativeModel(
-    'gemini-1.5-pro',
-    system_instruction=[
-        'You are a senior site reliability engineer at a large tech company.',
-        'You have deep expertise in Google Cloud Platform, Kubernetes, and Terraform.',
-        'Always provide actionable advice with concrete examples.',
-        'When suggesting solutions, consider cost, complexity, and team skill level.',
-        'Use bullet points for lists. Keep explanations concise.',
-        'If a question is ambiguous, ask for clarification rather than guessing.',
-    ],
-)
-
-response = model.generate_content(
-    'We are seeing intermittent 502 errors on our GKE-hosted API. What should we investigate?'
+response = client.models.generate_content(
+    model=MODEL_ID,
+    contents='We are seeing intermittent 502 errors on our GKE-hosted API. What should we investigate?',
+    config=GenerateContentConfig(
+        system_instruction=[
+            'You are a senior site reliability engineer at a large tech company.',
+            'You have deep expertise in Google Cloud Platform, Kubernetes, and Terraform.',
+            'Always provide actionable advice with concrete examples.',
+            'When suggesting solutions, consider cost, complexity, and team skill level.',
+            'Use bullet points for lists. Keep explanations concise.',
+            'If a question is ambiguous, ask for clarification rather than guessing.',
+        ],
+    ),
 )
 
 print(response.text)
@@ -117,18 +120,17 @@ Example 1:
 Description: A GCS bucket named "data-lake" in US multi-region with standard storage class
 
 Terraform:
-```hcl
+HCL:
 resource "google_storage_bucket" "data_lake" {
   name          = "data-lake"
   location      = "US"
   storage_class = "STANDARD"
 }
-```bash
 
 Example 2:
 Description: A Cloud SQL PostgreSQL 14 instance named "app-db" with 4 vCPUs and 16 GB RAM in us-central1
 Terraform:
-```hcl
+HCL:
 resource "google_sql_database_instance" "app_db" {
   name             = "app-db"
   database_version = "POSTGRES_14"
@@ -138,15 +140,17 @@ resource "google_sql_database_instance" "app_db" {
     tier = "db-custom-4-16384"
   }
 }
-```bash
 
 Now convert this:
 Description: A VPC network named "production-vpc" with auto-create subnetworks disabled, and a subnet named "app-subnet" in us-central1 with CIDR range 10.0.0.0/24
 Terraform:"""
 
-response = model.generate_content(prompt)
+response = client.models.generate_content(
+    model=MODEL_ID,
+    contents=prompt,
+)
 print(response.text)
-```text
+```
 
 ## Technique 4: Chain of Thought
 
@@ -172,12 +176,16 @@ Think through this step by step:
 3. Consider the RPO and RTO requirements when choosing strategies
 4. Finally, recommend a specific DR architecture with estimated costs"""
 
-config = GenerationConfig(
+config = GenerateContentConfig(
     temperature=0.3,  # Lower temperature for analytical tasks
     max_output_tokens=2048,
 )
 
-response = model.generate_content(prompt, generation_config=config)
+response = client.models.generate_content(
+    model=MODEL_ID,
+    contents=prompt,
+    config=config,
+)
 print(response.text)
 ```
 
@@ -204,7 +212,10 @@ Service: Cloud Run
 
 Return only the JSON object, no additional text."""
 
-response = model.generate_content(json_prompt)
+response = client.models.generate_content(
+    model=MODEL_ID,
+    contents=json_prompt,
+)
 print(response.text)
 ```
 
@@ -218,7 +229,10 @@ Columns: Service | Min Scale | Max Scale | GPU Support | Pricing Model | Best Fo
 
 Format as a Markdown table."""
 
-response = model.generate_content(table_prompt)
+response = client.models.generate_content(
+    model=MODEL_ID,
+    contents=table_prompt,
+)
 print(response.text)
 ```
 
@@ -235,7 +249,7 @@ security_prompt = """You are a cloud security auditor performing a security revi
 
 Review this GKE cluster configuration and identify security issues:
 
-```yaml
+YAML:
 apiVersion: v1
 kind: Pod
 metadata:
@@ -251,16 +265,18 @@ spec:
     env:
     - name: DB_PASSWORD
       value: "supersecret123"
-```bash
 
 For each issue found:
 1. Describe the vulnerability
 2. Explain the risk level (critical, high, medium, low)
 3. Provide the corrected configuration"""
 
-response = model.generate_content(security_prompt)
+response = client.models.generate_content(
+    model=MODEL_ID,
+    contents=security_prompt,
+)
 print(response.text)
-```text
+```
 
 ## Technique 7: Iterative Refinement
 
@@ -274,8 +290,12 @@ def test_prompt(prompt, num_runs=3):
     """Test a prompt multiple times to check consistency."""
     responses = []
     for i in range(num_runs):
-        config = GenerationConfig(temperature=0.7)
-        response = model.generate_content(prompt, generation_config=config)
+        config = GenerateContentConfig(temperature=0.7)
+        response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=prompt,
+            config=config,
+        )
         responses.append(response.text)
         print(f"\n--- Run {i + 1} ---")
         print(response.text[:500])
@@ -324,7 +344,10 @@ Important:
 - Do NOT use placeholder values; use realistic example values
 - Keep the explanation under 500 words"""
 
-response = model.generate_content(prompt)
+response = client.models.generate_content(
+    model=MODEL_ID,
+    contents=prompt,
+)
 print(response.text)
 ```
 
@@ -337,24 +360,27 @@ Temperature controls randomness. Here is when to use different values:
 # Different temperatures for different tasks
 
 # Factual/deterministic tasks (temperature 0.0 - 0.3)
-config_factual = GenerationConfig(temperature=0.1)
-response = model.generate_content(
-    'What are the exact steps to enable the Cloud SQL Admin API?',
-    generation_config=config_factual,
+config_factual = GenerateContentConfig(temperature=0.1)
+response = client.models.generate_content(
+    model=MODEL_ID,
+    contents='What are the exact steps to enable the Cloud SQL Admin API?',
+    config=config_factual,
 )
 
 # Balanced tasks (temperature 0.4 - 0.7)
-config_balanced = GenerationConfig(temperature=0.5)
-response = model.generate_content(
-    'Suggest a monitoring strategy for a microservices architecture on GKE.',
-    generation_config=config_balanced,
+config_balanced = GenerateContentConfig(temperature=0.5)
+response = client.models.generate_content(
+    model=MODEL_ID,
+    contents='Suggest a monitoring strategy for a microservices architecture on GKE.',
+    config=config_balanced,
 )
 
 # Creative tasks (temperature 0.8 - 1.0)
-config_creative = GenerationConfig(temperature=0.9)
-response = model.generate_content(
-    'Come up with creative names for our new internal developer platform.',
-    generation_config=config_creative,
+config_creative = GenerateContentConfig(temperature=0.9)
+response = client.models.generate_content(
+    model=MODEL_ID,
+    contents='Come up with creative names for our new internal developer platform.',
+    config=config_creative,
 )
 ```
 
@@ -391,9 +417,9 @@ Provide:
 4. Best practice violations
 
 Code:
-```{language}
+{language}:
 {code}
-```""",
+""",
     },
 }
 
@@ -405,11 +431,13 @@ prompt = PROMPTS['incident_analysis']['template'].format(
     duration='23 minutes',
 )
 
-model_with_system = GenerativeModel(
-    'gemini-1.5-pro',
-    system_instruction=[PROMPTS['incident_analysis']['system_instruction']],
+response = client.models.generate_content(
+    model=MODEL_ID,
+    contents=prompt,
+    config=GenerateContentConfig(
+        system_instruction=[PROMPTS['incident_analysis']['system_instruction']],
+    ),
 )
-response = model_with_system.generate_content(prompt)
 print(response.text)
 ```
 
