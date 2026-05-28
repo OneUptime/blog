@@ -10,13 +10,13 @@ Description: Learn how to use GKE release channels to manage automatic Kubernete
 
 Keeping GKE clusters up to date is one of those tasks that nobody wants to think about but everyone needs to do. Kubernetes releases new versions roughly every four months, and each version has a limited support window. Fall too far behind and you are running an unsupported version with known vulnerabilities.
 
-GKE release channels automate this entirely. You pick a channel that matches your risk tolerance, and GKE handles version upgrades for both the control plane and node pools. No more manually planning upgrade windows or tracking which version each cluster is running.
+GKE release channels automate most of this. You pick a channel that matches your risk tolerance, and GKE handles version upgrades for both the control plane and node pools. You still need to configure maintenance windows and exclusions, but you do not need to manually track every eligible version.
 
-I manage clusters across all three channels, and the system works well once you understand how each channel behaves. Let me walk through the setup and the tradeoffs.
+I manage clusters across the main channels, and the system works well once you understand how each channel behaves. Let me walk through the setup and the tradeoffs.
 
-## The Three Release Channels
+## The Release Channels
 
-GKE offers three release channels, each with different upgrade cadences:
+GKE offers several release channels, each with different upgrade cadences:
 
 ```mermaid
 graph LR
@@ -32,15 +32,22 @@ graph LR
         E[Most tested versions]
         F[~2-3 months after Regular]
     end
+    subgraph Extended
+        G[Longer support]
+        H[Standard clusters only]
+    end
     A --> C --> E
+    E --> G
     style A fill:#ff9999
     style C fill:#99ccff
     style E fill:#99ff99
+    style G fill:#ffcc99
 ```
 
 - **Rapid**: Gets new Kubernetes versions first. Good for development and testing environments where you want early access to new features.
 - **Regular**: Gets versions after they have been validated in the Rapid channel. This is the default and best for most production workloads.
 - **Stable**: Gets versions only after extended validation in both Rapid and Regular. Best for critical production systems that prioritize stability above all else.
+- **Extended**: Available for Standard clusters that need long-term support for a minor version. This can be useful for regulated or migration-heavy environments, but review the pricing and feature limitations before using it.
 
 ## Enrolling a Cluster in a Release Channel
 
@@ -83,7 +90,7 @@ gcloud container clusters update legacy-cluster \
   --release-channel regular
 ```
 
-When you switch channels, the cluster does not immediately upgrade or downgrade. It stays on its current version until the next scheduled upgrade for the new channel.
+When you switch channels, the cluster's current control plane minor version must be available in the target channel. GKE might automatically upgrade the cluster if the new channel has an eligible auto-upgrade target, so configure a maintenance exclusion first if you need to delay that change.
 
 ## Understanding Version Availability
 
@@ -110,7 +117,7 @@ gcloud container get-server-config \
 
 ## Configuring Maintenance Windows
 
-Release channel upgrades happen during maintenance windows. Configure these to match your low-traffic periods.
+Automatic release channel upgrades are scheduled according to your maintenance window when one is configured. Configure these to match your low-traffic periods.
 
 ```bash
 # Set a daily maintenance window (4 AM to 8 AM UTC)
@@ -152,7 +159,7 @@ gcloud container node-pools update default-pool \
   --max-unavailable-upgrade 0
 ```
 
-With `--max-surge-upgrade 2 --max-unavailable-upgrade 0`, GKE creates 2 extra nodes, drains old nodes, and deletes them. Your workload capacity never drops.
+With `--max-surge-upgrade 2 --max-unavailable-upgrade 0`, GKE can create up to 2 extra nodes, drain old nodes, and delete them while keeping the configured number of nodes available, assuming your project has enough capacity and quota for the surge nodes.
 
 ## Notifications for Upcoming Upgrades
 
@@ -165,7 +172,7 @@ gcloud pubsub topics create gke-cluster-notifications
 # Enable notifications on the cluster
 gcloud container clusters update prod-cluster \
   --region us-central1 \
-  --notification-config pubsub=ENABLED,pubsub-topic=projects/YOUR_PROJECT_ID/topics/gke-cluster-notifications
+  --notification-config pubsub=ENABLED,pubsub-topic=projects/YOUR_PROJECT_ID/topics/gke-cluster-notifications,filter="UpgradeEvent|UpgradeAvailableEvent|UpgradeInfoEvent"
 ```
 
 You can then subscribe to this topic with a Cloud Function, email, or Slack integration to alert your team before upgrades happen.
@@ -173,19 +180,21 @@ You can then subscribe to this topic with a Cloud Function, email, or Slack inte
 ```javascript
 // Cloud Function to forward GKE notifications to Slack
 exports.gkeNotificationHandler = async (message) => {
-  const data = JSON.parse(Buffer.from(message.data, "base64").toString());
+  const typeUrl = message.attributes?.type_url || "";
+  const payload = JSON.parse(message.attributes?.payload || "{}");
 
   // Filter for upgrade notifications
-  if (data.type_url.includes("UpgradeEvent")) {
-    const payload = data.payload;
+  if (typeUrl.includes("Upgrade")) {
+    const targetVersion = payload.targetVersion || payload.version || "unknown";
     const slackMessage = {
-      text: `GKE Upgrade Notification: Cluster ${payload.cluster} ` +
-            `upgrading from ${payload.currentVersion} to ${payload.targetVersion}`,
+      text: `GKE Upgrade Notification: Cluster ${message.attributes.cluster_name} ` +
+            `moving from ${payload.currentVersion || "current version"} to ${targetVersion}`,
     };
 
     // Post to Slack webhook
     await fetch(process.env.SLACK_WEBHOOK_URL, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(slackMessage),
     });
   }
@@ -219,9 +228,9 @@ This creates a natural progression: new versions hit dev first, then staging, th
 
 Sometimes upgrades fail or cause application issues. GKE handles this differently depending on the component.
 
-For control plane upgrades, GKE performs them automatically and rolls back if the upgrade fails. You generally do not need to intervene.
+For control plane upgrades, GKE performs them automatically, but failed or stuck upgrades can still require troubleshooting. Check the operation details and Cloud Logging if the control plane does not complete the upgrade.
 
-For node pool upgrades, if a node fails to drain (perhaps because of a PDB that cannot be satisfied), GKE retries for a configured period before marking the upgrade as failed.
+For node pool upgrades, GKE respects PodDisruptionBudgets and Pod termination grace periods for up to one hour during node drain. If Pods still cannot be rescheduled after that period, GKE proceeds with the upgrade.
 
 ```bash
 # Check upgrade status
@@ -236,7 +245,7 @@ gcloud container operations describe OPERATION_ID \
 
 ## Opting Out of Release Channels
 
-While I recommend using release channels, you can opt out if you need complete control over versions.
+While I recommend using release channels, Standard clusters can opt out if you need more manual control over selected node pool upgrades.
 
 ```bash
 # Remove a cluster from its release channel
@@ -245,7 +254,7 @@ gcloud container clusters update prod-cluster \
   --release-channel None
 ```
 
-Without a release channel, you are responsible for manually upgrading the cluster. GKE will still auto-upgrade the control plane for security patches, but major version upgrades are on you. This adds operational overhead but gives maximum control.
+Without a release channel, GKE still automatically upgrades clusters over time for security updates, fixes, new features, and supported-version compliance. For Standard clusters, you can disable node auto-upgrades on selected node pools and manage those node upgrades manually, but this adds operational overhead and gives you less control over granular maintenance exclusion scopes than release channels.
 
 ## Checking Your Current Setup
 
