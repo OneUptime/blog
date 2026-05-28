@@ -69,11 +69,11 @@ mongorestore \
 For continuous replication before cutover:
 
 ```bash
-# Atlas Live Migration uses MongoDB change streams to replicate
-# changes from your source to Atlas in real-time.
+# Atlas Live Migration uses Mongosync behind the scenes for
+# continuous synchronization from your source to Atlas.
 # The process:
 # 1. Initial sync copies all data
-# 2. Change streams capture new writes
+# 2. Continuous synchronization keeps applying new writes
 # 3. When replication lag is near zero, you cut over
 # 4. Update your application's connection string
 
@@ -111,10 +111,10 @@ Migrating to Firestore means changing your database technology. Your data model 
 | Feature | MongoDB | Firestore |
 |---------|---------|-----------|
 | Query language | MQL (MongoDB Query Language) | Firestore query API |
-| Aggregation | Aggregation pipeline | Limited (use BigQuery for analytics) |
+| Aggregation | Aggregation pipeline | Limited read-time count, sum, and average queries (use BigQuery for analytics) |
 | Indexes | Compound, text, geospatial | Auto single-field, manual composite |
-| Transactions | Multi-document ACID | Multi-document ACID (up to 500 docs) |
-| Max document size | 16 MB | 1 MB |
+| Transactions | Multi-document ACID | Multi-document ACID (subject to request size and transaction time limits) |
+| Max document size | 16 MiB | 1 MiB |
 | Joins/lookups | $lookup aggregation | Not supported (denormalize) |
 | Real-time updates | Change streams | Built-in real-time listeners |
 | Nested arrays | Deeply nested, queryable | Limited query support on nested arrays |
@@ -261,10 +261,12 @@ MongoDB queries need to be rewritten for Firestore's API:
 # ])
 
 # Firestore equivalent: Query the orders subcollection
+from google.cloud.firestore_v1 import FieldFilter
+
 customer_ref = fs_client.collection("customers").document(customer_id)
 expensive_orders = (
     customer_ref.collection("orders")
-    .where("total", ">", 100)
+    .where(filter=FieldFilter("total", ">", 100))
     .order_by("total", direction=firestore.Query.DESCENDING)
     .stream()
 )
@@ -281,7 +283,7 @@ for order in expensive_orders:
 2. You have extensive MongoDB-specific logic in your application
 3. The migration timeline is tight and you cannot afford to rewrite data access code
 4. You need features like change streams, aggregation pipelines, or text search
-5. Your documents exceed 1 MB in size
+5. Your documents exceed 1 MiB in size
 
 ### Choose Firestore when:
 
@@ -289,7 +291,7 @@ for order in expensive_orders:
 2. You want deep integration with Firebase, Cloud Functions, and other GCP services
 3. Real-time synchronization to mobile or web clients is important
 4. You want to eliminate database operations entirely (Firestore is fully managed with auto-scaling)
-5. Your data model can work within Firestore's constraints (1 MB document size, limited query operators)
+5. Your data model can work within Firestore's constraints (1 MiB document size, limited query operators)
 
 ## Hybrid Approach
 
@@ -297,7 +299,7 @@ Some teams migrate to Atlas initially for speed, then gradually move specific co
 
 ## Cost Comparison
 
-- **MongoDB Atlas M30 on GCP**: starts around $380/month for a 3-node replica set
+- **MongoDB Atlas M30 on GCP**: fixed hourly cluster pricing that varies by region, storage, backup, and configuration
 - **Firestore**: pay-per-operation pricing with a generous free tier (50K reads, 20K writes per day free)
 
 For read-heavy workloads with moderate data volume, Firestore can be significantly cheaper. For write-heavy workloads with complex queries, Atlas pricing may be more predictable.
