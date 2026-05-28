@@ -15,7 +15,7 @@ Dataflow Flex Templates package your pipeline code into a Docker container, givi
 When you build a Flex Template, these steps happen:
 
 1. Cloud Build builds a Docker image from your code
-2. The image is pushed to Artifact Registry (or Container Registry)
+2. The image is pushed to Artifact Registry (including `gcr.io` repositories hosted on Artifact Registry)
 3. A template spec file is written to GCS
 4. When you launch the template, Dataflow pulls the image to run on workers
 
@@ -42,32 +42,32 @@ The error will be in one of these categories:
 
 ## Step 2: Fix Cloud Build Service Account Permissions
 
-Cloud Build uses a service account to execute builds. By default, it uses `PROJECT_NUMBER@cloudbuild.gserviceaccount.com`. This account needs permission to push images to Artifact Registry.
+Cloud Build uses a service account to execute builds. Depending on your project and organization settings, the default build service account can be the Compute Engine default service account (`PROJECT_NUMBER-compute@developer.gserviceaccount.com`) or the legacy Cloud Build service account (`PROJECT_NUMBER@cloudbuild.gserviceaccount.com`). You can also specify a build service account with `--cloud-build-service-account`. The build service account needs permission to push images to Artifact Registry.
 
 ```bash
-# Check the Cloud Build service account's permissions
+# Check the build service account's permissions
 gcloud projects get-iam-policy YOUR_PROJECT \
     --flatten="bindings[].members" \
-    --filter="bindings.members:cloudbuild.gserviceaccount.com" \
-    --format="table(bindings.role)"
+    --filter="bindings.members:BUILD_SERVICE_ACCOUNT_EMAIL" \
+    --format="table(bindings.members, bindings.role)"
 ```
 
 If the `roles/artifactregistry.writer` role is missing, grant it:
 
 ```bash
-# Grant Artifact Registry Writer to Cloud Build SA
+# Grant Artifact Registry Writer to the build service account
 gcloud projects add-iam-policy-binding YOUR_PROJECT \
-    --member="serviceAccount:PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
+    --member="serviceAccount:BUILD_SERVICE_ACCOUNT_EMAIL" \
     --role="roles/artifactregistry.writer"
 ```
 
-Also make sure the Cloud Build SA has storage permissions for the GCS bucket where the template spec is stored:
+Also make sure the build service account has read and write access to the GCS bucket where the template spec is stored:
 
 ```bash
-# Grant Storage Object Creator for the template bucket
+# Grant Storage Object Admin for the template bucket
 gcloud projects add-iam-policy-binding YOUR_PROJECT \
-    --member="serviceAccount:PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
-    --role="roles/storage.objectCreator"
+    --member="serviceAccount:BUILD_SERVICE_ACCOUNT_EMAIL" \
+    --role="roles/storage.objectAdmin"
 ```
 
 ## Step 3: Fix Artifact Registry Repository Permissions
@@ -83,13 +83,13 @@ gcloud artifacts repositories get-iam-policy your-repo \
 # Grant writer access on the specific repository
 gcloud artifacts repositories add-iam-policy-binding your-repo \
     --location=us-central1 \
-    --member="serviceAccount:PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
+    --member="serviceAccount:BUILD_SERVICE_ACCOUNT_EMAIL" \
     --role="roles/artifactregistry.writer"
 ```
 
 ## Step 4: Fix Dataflow Worker Image Pull Permissions
 
-When you launch the Flex Template, Dataflow workers need to pull the container image. The Dataflow service account needs read access to the Artifact Registry repository.
+When you launch the Flex Template, Dataflow launcher and worker VMs need to pull the container image. The worker service account needs read access to the Artifact Registry repository.
 
 The Dataflow service agent is `service-PROJECT_NUMBER@dataflow-service-producer-prod.iam.gserviceaccount.com`. The Compute Engine default SA (used by workers) is `PROJECT_NUMBER-compute@developer.gserviceaccount.com`.
 
@@ -149,7 +149,7 @@ Verify the image exists:
 # List images in the repository
 gcloud artifacts docker images list \
     us-central1-docker.pkg.dev/your-project/your-repo \
-    --format="table(package, version, createTime)"
+    --include-tags
 
 # Check if a specific tag exists
 gcloud artifacts docker tags list \
