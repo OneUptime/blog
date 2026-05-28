@@ -1,14 +1,14 @@
-# How to Implement Data Lineage Tracking in GCP Using Data Catalog and Dataplex
+# How to Implement Data Lineage Tracking in GCP Using Dataplex
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Data Catalog, Dataplex, Data Lineage, Data Governance
+Tags: GCP, Dataplex, Knowledge Catalog, Data Lineage, Data Governance
 
-Description: Learn how to implement data lineage tracking in GCP using Data Catalog and Dataplex to visualize how data flows through your pipelines from source to consumption.
+Description: Learn how to implement data lineage tracking in GCP using Dataplex and Knowledge Catalog to visualize how data flows through your pipelines from source to consumption.
 
 ---
 
-When something goes wrong with your data, the first question is always "where did this data come from?" Data lineage answers that question by mapping the flow of data from source systems through transformations to final consumption points. In GCP, Data Catalog and Dataplex provide the tools to track, visualize, and query this lineage automatically.
+When something goes wrong with your data, the first question is always "where did this data come from?" Data lineage answers that question by mapping the flow of data from source systems through transformations to final consumption points. In GCP, Dataplex and the Data Lineage API provide the tools to track, visualize, and query this lineage automatically.
 
 Without lineage, debugging a data issue means tracing through pipeline code, asking around, and piecing together the path manually. With lineage, you open a dashboard and see exactly which sources fed into a table, what transformations were applied, and which downstream assets are affected.
 
@@ -16,18 +16,18 @@ Without lineage, debugging a data issue means tracing through pipeline code, ask
 
 GCP captures data lineage at two levels:
 
-**Automatic lineage**: BigQuery, Dataflow, Dataproc, and other GCP services automatically report lineage events when they read from or write to datasets. This happens without any configuration.
+**Automatic lineage**: BigQuery, Dataflow, Dataproc, and other GCP services report lineage events when they read from or write to supported sources and sinks after you enable the Data Lineage API. Some services also have service-specific lineage controls.
 
 **Custom lineage**: For external systems, custom ETL jobs, or transformations that GCP cannot track automatically, you can report lineage events through the Data Lineage API.
 
-The lineage data is stored in Data Catalog and can be explored through the Cloud Console, the Data Lineage API, or Dataplex's data governance features.
+The lineage data is available through Dataplex, the Cloud Console, and the Data Lineage API. Data Catalog is deprecated in favor of Dataplex Universal Catalog, which is called Knowledge Catalog in current Google Cloud documentation.
 
 ## Enabling Automatic Lineage
 
-Automatic lineage capture is enabled by default for supported GCP services. The main services that report lineage are:
+Automatic lineage capture starts after you enable the Data Lineage API in the project, depending on each service's product-level lineage controls. The main services that report lineage are:
 
-- BigQuery (queries, views, scheduled queries, CTAS operations)
-- Dataflow (Apache Beam pipelines)
+- BigQuery (copy jobs, Cloud Storage load jobs, and supported GoogleSQL DDL and DML operations)
+- Dataflow (Apache Beam pipelines with lineage enabled on the job)
 - Dataproc (Spark jobs)
 - Cloud Data Fusion
 
@@ -37,10 +37,15 @@ To verify that lineage is being captured for your BigQuery tables:
 # List lineage links for a specific BigQuery table
 
 # This shows what data flows into and out of the table
-gcloud data-lineage search-links \
-  --project=my-project \
-  --location=us \
-  --target="bigquery:my-project.analytics.customer_orders"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://datalineage.googleapis.com/v1/projects/my-project/locations/us:searchLinks" \
+  -d '{
+    "target": {
+      "fullyQualifiedName": "bigquery:my-project.analytics.customer_orders"
+    }
+  }'
 ```
 
 ## Viewing Lineage in the Console
@@ -178,8 +183,7 @@ For transformations that run outside GCP's managed services (custom Python scrip
 ```python
 # Report custom lineage for a Python ETL script
 from google.cloud import datacatalog_lineage_v1
-from google.protobuf import timestamp_pb2
-import time
+from google.protobuf import struct_pb2, timestamp_pb2
 
 client = datacatalog_lineage_v1.LineageClient()
 parent = "projects/my-project/locations/us"
@@ -188,10 +192,10 @@ parent = "projects/my-project/locations/us"
 process = datacatalog_lineage_v1.Process()
 process.display_name = "Customer Data Enrichment Script"
 process.attributes = {
-    "script": datacatalog_lineage_v1.types.AttributeValue(
+    "script": struct_pb2.Value(
         string_value="scripts/enrich_customers.py"
     ),
-    "team": datacatalog_lineage_v1.types.AttributeValue(
+    "team": struct_pb2.Value(
         string_value="data-engineering"
     )
 }
@@ -242,7 +246,7 @@ client.create_lineage_event(request=create_event_request)
 
 ## Lineage with Dataplex
 
-Dataplex extends Data Catalog's lineage with data governance features. You can use Dataplex to organize your data assets into lakes and zones, and lineage flows through this organizational structure.
+Dataplex extends lineage with data governance features. You can use Dataplex to organize your data assets into lakes and zones, and lineage flows through this organizational structure.
 
 ### Setting Up Dataplex for Lineage-Aware Governance
 
@@ -317,4 +321,4 @@ for item in affected:
 
 ## Wrapping Up
 
-Data lineage in GCP provides visibility into how data flows through your pipelines. Automatic lineage capture handles BigQuery, Dataflow, and Dataproc without any setup. The Data Lineage API lets you report lineage for custom transformations and query lineage programmatically. Dataplex adds organizational structure through lakes and zones. Together, these tools give you the ability to answer "where did this data come from?" and "what breaks if I change this?" - two questions that come up constantly in data engineering and that are nearly impossible to answer without lineage tracking.
+Data lineage in GCP provides visibility into how data flows through your pipelines. Automatic lineage capture handles supported BigQuery, Dataflow, and Dataproc operations after the Data Lineage API and any required service-level lineage settings are enabled. The Data Lineage API lets you report lineage for custom transformations and query lineage programmatically. Dataplex adds organizational structure through lakes and zones. Together, these tools give you the ability to answer "where did this data come from?" and "what breaks if I change this?" - two questions that come up constantly in data engineering and that are nearly impossible to answer without lineage tracking.
