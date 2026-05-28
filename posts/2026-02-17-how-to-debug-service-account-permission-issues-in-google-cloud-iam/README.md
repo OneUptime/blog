@@ -31,7 +31,7 @@ returned "Required 'compute.instances.list' permission for 'projects/my-project'
 Error: caller does not have permission to act as service account 'my-sa@my-project.iam.gserviceaccount.com'
 ```
 
-Each tells you something different. The first two mean the service account lacks a specific permission. The third means a user or another service account cannot impersonate the target service account.
+Each tells you something different. The first two mean the service account lacks a specific permission. The third usually means a user or another service account cannot attach or impersonate the target service account.
 
 ## Step 1: Identify Which Service Account Is Being Used
 
@@ -95,7 +95,7 @@ gcloud policy-troubleshoot iam \
     --permission=compute.instances.list
 ```
 
-The troubleshooter output shows you every IAM policy that affects the decision, including organization-level policies and conditional bindings.
+The troubleshooter output shows the effective IAM policy evaluation, including inherited policies and conditional bindings that affect the decision.
 
 ## Step 4: Grant the Required Role
 
@@ -128,7 +128,7 @@ gcloud projects add-iam-binding my-project \
 
 ### Default Service Account Confusion
 
-GCP creates default service accounts automatically. Compute Engine creates `PROJECT_NUMBER-compute@developer.gserviceaccount.com` and App Engine creates `PROJECT_ID@appspot.gserviceaccount.com`. These have the Editor role by default, but Google recommends removing that and assigning specific roles.
+GCP creates default service accounts automatically. Compute Engine creates `PROJECT_NUMBER-compute@developer.gserviceaccount.com` and App Engine creates `PROJECT_ID@appspot.gserviceaccount.com`. Depending on your organization policy configuration, these might automatically receive the Editor role. Google recommends disabling automatic Editor grants and assigning specific roles instead.
 
 ```bash
 # List all service accounts in a project
@@ -148,7 +148,7 @@ gcloud projects add-iam-binding project-b \
 
 ### Impersonation Chain
 
-Sometimes service account A needs to act as service account B. This requires the `iam.serviceAccountTokenCreator` role:
+Sometimes service account A needs to impersonate service account B by creating short-lived credentials. This requires the `iam.serviceAccountTokenCreator` role:
 
 ```bash
 # Allow service account A to impersonate service account B
@@ -168,6 +168,11 @@ gcloud iam service-accounts add-iam-policy-binding \
     my-gsa@my-project.iam.gserviceaccount.com \
     --member="serviceAccount:my-project.svc.id.goog[my-namespace/my-ksa]" \
     --role="roles/iam.workloadIdentityUser"
+
+# Annotate the Kubernetes service account with the Google service account
+kubectl annotate serviceaccount my-ksa \
+    --namespace my-namespace \
+    iam.gke.io/gcp-service-account=my-gsa@my-project.iam.gserviceaccount.com
 ```
 
 ## Debugging Flowchart
@@ -190,7 +195,7 @@ graph TD
 
 ## Audit Logging
 
-When all else fails, check the audit logs. They show every API call and whether it succeeded or failed, along with the identity that made the request:
+When all else fails, check the audit logs. They show many administrative and access activities, along with the identity that made the request. For read-only and data-access operations, make sure the relevant Data Access audit logs are enabled:
 
 ```bash
 # Query audit logs for permission denied events
@@ -202,4 +207,4 @@ gcloud logging read \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.methodName, protoPayload.status.message)"
 ```
 
-The audit logs are your best friend for debugging service account issues. They tell you exactly what happened, when, and why it failed. Make it your first stop after checking the basic IAM bindings.
+The audit logs are your best friend for debugging service account issues. When the relevant audit logs are available, they tell you exactly what happened, when, and why it failed. Make them your first stop after checking the basic IAM bindings.
