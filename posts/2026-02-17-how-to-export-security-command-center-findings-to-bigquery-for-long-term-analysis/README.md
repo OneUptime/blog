@@ -22,7 +22,7 @@ Here is the flow of data through the pipeline:
 graph LR
     A[Security Command Center] -->|Notifications| B[Pub/Sub Topic]
     B -->|Subscription| C[Pub/Sub to BigQuery]
-    C -->|Streaming Insert| D[BigQuery Table]
+    C -->|Storage Write API| D[BigQuery Table]
     D -->|Queries| E[Dashboards / Reports]
 ```
 
@@ -32,6 +32,8 @@ You will need:
 
 - Security Command Center enabled (Standard or Premium)
 - Organization-level access with `roles/securitycenter.admin`
+- Pub/Sub Admin on the Pub/Sub topic project
+- BigQuery Data Editor for the Pub/Sub service agent on the BigQuery project or table
 - A GCP project for the BigQuery dataset
 - The BigQuery and Pub/Sub APIs enabled
 
@@ -56,13 +58,13 @@ bq mk --dataset \
   my-analytics-project:scc_findings
 ```
 
-Now create the table with a schema that matches the SCC finding structure.
+Now create the table that will receive the raw Pub/Sub messages.
 
 ```bash
-# Create the findings table with the appropriate schema
+# Create the raw findings table for a Pub/Sub BigQuery subscription
 bq mk --table \
   my-analytics-project:scc_findings.raw_findings \
-  finding_name:STRING,category:STRING,severity:STRING,state:STRING,resource_name:STRING,source_properties:STRING,event_time:TIMESTAMP,create_time:TIMESTAMP,external_uri:STRING,project_display_name:STRING,parent_display_name:STRING,notification_config:STRING,raw_json:STRING
+  subscription_name:STRING,message_id:STRING,publish_time:TIMESTAMP,data:JSON,attributes:JSON
 ```
 
 ## Step 2: Create the Pub/Sub Topic and Subscription
@@ -74,28 +76,37 @@ Set up a Pub/Sub topic for SCC to publish to, along with a BigQuery subscription
 gcloud pubsub topics create scc-to-bigquery \
   --project=my-analytics-project
 
+# Grant the Pub/Sub service agent permission to write to BigQuery
+PROJECT_NUMBER=$(gcloud projects describe my-analytics-project \
+  --format="value(projectNumber)")
+
+gcloud projects add-iam-policy-binding my-analytics-project \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+  --role="roles/bigquery.dataEditor"
+
 # Create a BigQuery subscription that writes directly to the table
 gcloud pubsub subscriptions create scc-bq-subscription \
   --topic=scc-to-bigquery \
-  --bigquery-table=my-analytics-project:scc_findings.raw_findings \
+  --bigquery-table=my-analytics-project.scc_findings.raw_findings \
   --write-metadata \
   --project=my-analytics-project
 ```
 
-The BigQuery subscription is the simplest approach - Pub/Sub handles the streaming inserts directly without needing a Cloud Function or Dataflow job in between.
+The BigQuery subscription is the simplest approach - Pub/Sub writes messages to BigQuery directly without needing a Cloud Function or Dataflow job in between.
 
 ## Step 3: Grant SCC Publish Permissions
 
-Grant the SCC service account permission to publish to your topic.
+When you create the notification config, Security Command Center creates a notification service agent and automatically grants it the required role on the Pub/Sub topic. The account creating the notification config needs permission to set the topic IAM policy, so grant Pub/Sub Admin on the topic to that account if it does not already have it.
 
 ```bash
 # Get your organization ID
 ORG_ID=$(gcloud organizations list --format="value(ID)" --limit=1)
+GOOGLE_ACCOUNT=$(gcloud config get-value account)
 
-# Grant publisher role to the SCC service account
+# Grant Pub/Sub Admin on the topic to the account creating the notification config
 gcloud pubsub topics add-iam-policy-binding scc-to-bigquery \
-  --member="serviceAccount:service-org-${ORG_ID}@security-center-api.iam.gserviceaccount.com" \
-  --role="roles/pubsub.publisher" \
+  --member="user:${GOOGLE_ACCOUNT}" \
+  --role="roles/pubsub.admin" \
   --project=my-analytics-project
 ```
 
@@ -107,15 +118,22 @@ Now link SCC to the Pub/Sub topic.
 # Create notification config to export all findings
 gcloud scc notifications create export-to-bigquery \
   --organization=$ORG_ID \
-  --pubsub-topic=projects/my-analytics-project/topics/scc-to-bigquery \
-  --filter=""
+  --location=global \
+  --pubsub-topic=projects/my-analytics-project/topics/scc-to-bigquery
 ```
 
-For this use case, I recommend using an empty filter to capture everything. You can always filter at query time in BigQuery, and having all the data gives you flexibility for future analysis.
+For this use case, I recommend omitting the filter to capture everything. You can always filter at query time in BigQuery, and having all the data gives you flexibility for future analysis.
 
 ## Step 5: Use a Cloud Function for Better Data Shaping
 
 The direct Pub/Sub-to-BigQuery subscription works but stores the raw JSON blob. For better queryability, use a Cloud Function to parse findings into structured columns.
+
+```bash
+# Create the structured findings table used by the Cloud Function
+bq mk --table \
+  my-analytics-project:scc_findings.structured_findings \
+  finding_name:STRING,category:STRING,severity:STRING,state:STRING,resource_name:STRING,source_properties:STRING,event_time:TIMESTAMP,create_time:TIMESTAMP,external_uri:STRING,project_id:STRING,notification_config:STRING,raw_json:STRING
+```
 
 ```python
 import base64
@@ -134,6 +152,14 @@ def process_scc_finding(event, context):
     message = json.loads(raw_data)
 
     finding = message.get('finding', {})
+    resource = message.get('resource', {})
+    resource_path = resource.get('resourcePathString', '')
+    resource_path_parts = resource_path.split('/')
+    project_id = ''
+    if 'projects' in resource_path_parts:
+        project_index = resource_path_parts.index('projects')
+        if project_index + 1 < len(resource_path_parts):
+            project_id = resource_path_parts[project_index + 1]
 
     # Build a structured row for BigQuery
     row = {
@@ -146,7 +172,7 @@ def process_scc_finding(event, context):
         'create_time': finding.get('createTime', ''),
         'external_uri': finding.get('externalUri', ''),
         'source_properties': json.dumps(finding.get('sourceProperties', {})),
-        'project_display_name': finding.get('projectDisplayName', ''),
+        'project_id': project_id,
         'notification_config': message.get('notificationConfigName', ''),
         'raw_json': raw_data
     }
@@ -172,7 +198,14 @@ SELECT
   category,
   severity,
   COUNT(*) as finding_count
-FROM `my-analytics-project.scc_findings.structured_findings`
+FROM (
+  SELECT *
+  FROM `my-analytics-project.scc_findings.structured_findings`
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY finding_name
+    ORDER BY event_time DESC
+  ) = 1
+)
 WHERE event_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
   AND state = 'ACTIVE'
 GROUP BY category, severity
@@ -185,12 +218,19 @@ Track how your security posture changes over time:
 ```sql
 -- Weekly trend of active findings by severity
 SELECT
-  DATE_TRUNC(DATE(event_time), WEEK) as week,
+  DATE_TRUNC(DATE(create_time), WEEK) as week,
   severity,
-  COUNT(*) as new_findings
-FROM `my-analytics-project.scc_findings.structured_findings`
-WHERE state = 'ACTIVE'
-  AND event_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
+  COUNT(DISTINCT finding_name) as new_findings
+FROM (
+  SELECT *
+  FROM `my-analytics-project.scc_findings.structured_findings`
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY finding_name
+    ORDER BY event_time DESC
+  ) = 1
+)
+WHERE create_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
+  AND state = 'ACTIVE'
 GROUP BY week, severity
 ORDER BY week DESC, severity;
 ```
@@ -200,13 +240,20 @@ Identify the projects with the most security issues:
 ```sql
 -- Projects with the highest finding counts
 SELECT
-  project_display_name,
+  project_id,
   COUNT(*) as total_findings,
   COUNTIF(severity = 'CRITICAL') as critical_count,
   COUNTIF(severity = 'HIGH') as high_count
-FROM `my-analytics-project.scc_findings.structured_findings`
+FROM (
+  SELECT *
+  FROM `my-analytics-project.scc_findings.structured_findings`
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY finding_name
+    ORDER BY event_time DESC
+  ) = 1
+)
 WHERE state = 'ACTIVE'
-GROUP BY project_display_name
+GROUP BY project_id
 ORDER BY critical_count DESC, high_count DESC
 LIMIT 20;
 ```
