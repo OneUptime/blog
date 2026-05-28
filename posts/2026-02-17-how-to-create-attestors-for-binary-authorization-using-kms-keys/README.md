@@ -10,7 +10,7 @@ Description: Learn how to create and manage attestors for Binary Authorization u
 
 In Binary Authorization, attestors are the gatekeepers. They are the entities that vouch for a container image by creating a cryptographic signature that says "this image is approved." Before GKE will admit an image, it checks that all required attestors have signed off on it.
 
-Each attestor uses a cryptographic key to sign attestations. Cloud KMS is the natural choice for key management since it provides hardware-backed key storage, access controls, and audit logging. You do not have to manage key material yourself.
+Each attestor uses a cryptographic key to sign attestations. Cloud KMS is the natural choice for key management since it provides managed key storage, access controls, optional HSM-backed protection, and audit logging. You do not have to manage key material yourself.
 
 In this post, I will cover how to set up attestors with KMS keys, how to create different attestors for different pipeline stages, and how to manage the lifecycle of keys and attestors.
 
@@ -210,6 +210,7 @@ Configure your policy to require attestations from all three attestors.
 
 ```yaml
 # policy.yaml - Require all three attestors
+name: projects/my-project-id/policy
 admissionWhitelistPatterns:
   - namePattern: gcr.io/google_containers/*
   - namePattern: k8s.gcr.io/**
@@ -315,18 +316,17 @@ gcloud kms keys add-iam-policy-binding security-signer \
 
 ## Key Rotation
 
-KMS supports automatic key rotation. When a key is rotated, a new key version is created, but old versions remain valid for verification. You need to update the attestor to include the new key version.
+Cloud KMS does not support automatic rotation for asymmetric signing keys. To rotate an attestor signing key, create a new key version manually, then update the attestor to include the new public key version. Old versions remain usable for verification as long as they stay enabled.
 
 ```bash
-# Rotate a KMS key (creates a new version)
-gcloud kms keys update build-signer \
+# Create a new key version
+gcloud kms keys versions create \
   --location=global \
   --keyring=binauthz-keys \
-  --rotation-period=90d \
-  --next-rotation-time=$(date -u -d "+1 day" +%Y-%m-%dT%H:%M:%SZ) \
+  --key=build-signer \
   --project=my-project-id
 
-# After rotation, add the new key version to the attestor
+# Add the new key version to the attestor
 gcloud container binauthz attestors public-keys add \
   --attestor=build-attestor \
   --keyversion-project=my-project-id \
