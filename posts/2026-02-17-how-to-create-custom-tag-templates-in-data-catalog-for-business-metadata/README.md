@@ -14,6 +14,8 @@ Custom tag templates in Data Catalog let you capture this business context and a
 
 This guide covers how to design effective tag templates, create them, and use them in practice.
 
+Note: Data Catalog is deprecated in favor of Dataplex Universal Catalog. These examples are still useful for existing Data Catalog tag template workflows, but new implementations should evaluate Dataplex aspect types and aspects.
+
 ## Designing Your Tag Templates
 
 Before writing any code, think about what metadata your organization needs. Most teams benefit from three to four templates covering different concerns:
@@ -56,9 +58,9 @@ Captures usage information:
 gcloud data-catalog tag-templates create data_classification \
   --location=us-central1 \
   --display-name="Data Classification" \
-  --field=id=sensitivity_level,display-name="Sensitivity Level",type='enum(PUBLIC,INTERNAL,CONFIDENTIAL,RESTRICTED)',required=true \
+  --field=id=sensitivity_level,display-name="Sensitivity Level",type='enum(PUBLIC|INTERNAL|CONFIDENTIAL|RESTRICTED)',required=true \
   --field=id=contains_pii,display-name="Contains PII",type=bool,required=true \
-  --field=id=regulatory_scope,display-name="Regulatory Scope",type='enum(NONE,GDPR,HIPAA,SOC2,CCPA,MULTIPLE)' \
+  --field=id=regulatory_scope,display-name="Regulatory Scope",type='enum(NONE|GDPR|HIPAA|SOC2|CCPA|MULTIPLE)' \
   --field=id=retention_days,display-name="Data Retention (Days)",type=double
 
 # Data Ownership template
@@ -68,7 +70,7 @@ gcloud data-catalog tag-templates create data_ownership \
   --field=id=owner_team,display-name="Owner Team",type=string,required=true \
   --field=id=data_steward,display-name="Data Steward",type=string \
   --field=id=support_channel,display-name="Support Channel",type=string \
-  --field=id=business_domain,display-name="Business Domain",type='enum(COMMERCE,FINANCE,MARKETING,ENGINEERING,CUSTOMER_SUCCESS,OPERATIONS)'
+  --field=id=business_domain,display-name="Business Domain",type='enum(COMMERCE|FINANCE|MARKETING|ENGINEERING|CUSTOMER_SUCCESS|OPERATIONS)'
 
 # Data Quality template
 gcloud data-catalog tag-templates create data_quality \
@@ -77,7 +79,7 @@ gcloud data-catalog tag-templates create data_quality \
   --field=id=freshness_sla_hours,display-name="Freshness SLA (Hours)",type=double,required=true \
   --field=id=last_validated,display-name="Last Validated",type=timestamp \
   --field=id=quality_score,display-name="Quality Score (0-100)",type=double \
-  --field=id=validation_status,display-name="Validation Status",type='enum(PASSING,FAILING,NOT_VALIDATED)',required=true \
+  --field=id=validation_status,display-name="Validation Status",type='enum(PASSING|FAILING|NOT_VALIDATED)',required=true \
   --field=id=known_issues,display-name="Known Issues",type=string
 ```
 
@@ -259,15 +261,15 @@ updated = client.create_tag_template_field(
 print(f"Added field: {updated.name}")
 ```
 
-You can also rename fields or update their display names:
+You can also update field display names:
 
 ```python
 # Update a field's display name
 field = datacatalog_v1.TagTemplateField()
-field.display_name = "Data Owner (Team Email)"
+field.display_name = "Sensitivity Level (Classification)"
 
 client.update_tag_template_field(
-    name=f"{template_name}/fields/data_owner",
+    name=f"{template_name}/fields/sensitivity_level",
     tag_template_field=field,
     update_mask={"paths": ["display_name"]},
 )
