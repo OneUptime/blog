@@ -27,7 +27,7 @@ For most migrations under a few TB, gsutil works well and gives you the most con
 
 ## Step 1: Set Up Authentication
 
-gsutil needs access to both Azure Blob Storage and Google Cloud Storage.
+gsutil needs access to Google Cloud Storage, and your Azure download or Storage Transfer Service job needs access to Azure Blob Storage.
 
 ```bash
 # Authenticate with Google Cloud
@@ -37,23 +37,22 @@ gcloud config set project my-gcp-project
 
 # For Azure Blob Storage, you will need a SAS token or connection string
 # Generate a SAS token with read and list permissions
-az storage container generate-sas \
+SAS_TOKEN=$(az storage container generate-sas \
   --account-name mystorageaccount \
   --name my-container \
   --permissions rl \
-  --expiry 2026-03-17 \
-  --output tsv
+  --expiry "$(date -u -d "30 days" '+%Y-%m-%dT%H:%MZ')" \
+  --output tsv)
 ```
 
-Configure your .boto file to include Azure credentials:
+Configure gsutil for Google Cloud Storage:
 
 ```bash
 # Create or edit the gsutil configuration
-# Add Azure credentials for cross-cloud transfer
 gsutil config
 ```
 
-However, gsutil does not natively support Azure as a source. The recommended approach is to use AzCopy to download to local/intermediate storage, or use the Storage Transfer Service. For direct transfers with gsutil, you can mount Azure Blob Storage using blobfuse and then copy from the mount point.
+However, gsutil does not natively support Azure Blob Storage as a source. The recommended approach is to use AzCopy to download to local/intermediate storage, or use the Storage Transfer Service. For direct transfers with gsutil, you can mount Azure Blob Storage using blobfuse and then copy from the mount point.
 
 The most practical approach for gsutil specifically is a two-step process:
 
@@ -65,7 +64,7 @@ Use AzCopy or the Azure CLI to download data locally or to an intermediate machi
 # Install AzCopy if not already available
 # Download from Azure Blob Storage
 azcopy copy \
-  "https://mystorageaccount.blob.core.windows.net/my-container/*?sv=2021-06-08&ss=b&srt=co&sp=rl&se=2026-03-17&sig=YOUR_SAS_TOKEN" \
+  "https://mystorageaccount.blob.core.windows.net/my-container/*?$SAS_TOKEN" \
   "/data/migration/" \
   --recursive
 
@@ -85,7 +84,7 @@ Now use gsutil to upload the data to GCS.
 
 ```bash
 # Create the destination GCS bucket
-gsutil mb -l us-central1 -c standard gs://my-gcs-bucket
+gsutil mb -l us-central1 -c STANDARD gs://my-gcs-bucket
 
 # Upload data using gsutil with parallel composite uploads for large files
 gsutil -m cp -r /data/migration/* gs://my-gcs-bucket/
@@ -142,10 +141,7 @@ The azure-creds.json file should contain:
 
 ```json
 {
-  "azureCredentials": {
-    "sasToken": "your-sas-token-here",
-    "storageAccount": "mystorageaccount"
-  }
+  "sasToken": "?YOUR_SAS_TOKEN"
 }
 ```
 
@@ -174,7 +170,7 @@ Set the storage class during upload or configure lifecycle rules:
 
 ```bash
 # Upload directly to a specific storage class
-gsutil -m cp -r -s nearline /data/migration/archive/* gs://my-gcs-bucket/archive/
+gsutil -m cp -r -s NEARLINE /data/migration/archive/* gs://my-gcs-bucket/archive/
 
 # Set a lifecycle policy to automatically transition objects
 gsutil lifecycle set lifecycle.json gs://my-gcs-bucket
@@ -213,7 +209,7 @@ Create a lifecycle configuration:
 
 ## Step 7: Preserve Metadata
 
-Azure Blob Storage metadata should be preserved during transfer. gsutil handles Content-Type automatically, but custom metadata needs explicit handling.
+Azure Blob Storage metadata should be handled explicitly during transfer. gsutil can infer Content-Type during local uploads, but custom Azure metadata needs explicit handling.
 
 ```bash
 # Check metadata on Azure blobs
@@ -234,6 +230,7 @@ from azure.storage.blob import BlobServiceClient
 from google.cloud import storage
 
 # Transfer metadata from Azure to GCS
+azure_conn_str = "DefaultEndpointsProtocol=https;AccountName=mystorageaccount;AccountKey=ACCOUNT_KEY;EndpointSuffix=core.windows.net"
 azure_client = BlobServiceClient.from_connection_string(azure_conn_str)
 gcs_client = storage.Client()
 
