@@ -50,7 +50,7 @@ gcloud healthcare datasets create medical-documents \
 gcloud healthcare fhir-stores create processed-documents \
     --dataset=medical-documents \
     --location=us-central1 \
-    --version=R4
+    --version=r4
 ```
 
 ## Document Ingestion and OCR
@@ -62,7 +62,9 @@ from google.cloud import documentai_v1
 
 def extract_text_from_document(project_id, location, processor_id, file_path):
     """Extract text from a medical document using Document AI"""
-    client = documentai_v1.DocumentProcessorServiceClient()
+    client = documentai_v1.DocumentProcessorServiceClient(
+        client_options={"api_endpoint": f"{location}-documentai.googleapis.com"}
+    )
 
     # Read the file
     with open(file_path, "rb") as f:
@@ -70,8 +72,9 @@ def extract_text_from_document(project_id, location, processor_id, file_path):
 
     # Determine the MIME type
     mime_type = "application/pdf"
-    if file_path.endswith(".png") or file_path.endswith(".jpg"):
-        mime_type = "image/png" if file_path.endswith(".png") else "image/jpeg"
+    lower_path = file_path.lower()
+    if lower_path.endswith(".png") or lower_path.endswith(".jpg") or lower_path.endswith(".jpeg"):
+        mime_type = "image/png" if lower_path.endswith(".png") else "image/jpeg"
 
     # Process the document
     request = documentai_v1.ProcessRequest(
@@ -111,7 +114,6 @@ def extract_text_from_document(project_id, location, processor_id, file_path):
 The Healthcare Natural Language API understands medical terminology and can extract clinical entities:
 
 ```python
-from google.cloud import language_v1
 import requests
 
 def extract_clinical_entities(project_id, text):
@@ -140,8 +142,6 @@ def extract_clinical_entities(project_id, text):
         "licensedVocabularies": [
             "ICD10CM",      # International Classification of Diseases
             "SNOMEDCT_US",  # SNOMED Clinical Terms
-            "RXNORM",       # Medication terminology
-            "LOINC",        # Lab test codes
         ],
     }
 
@@ -149,41 +149,61 @@ def extract_clinical_entities(project_id, text):
     response.raise_for_status()
     result = response.json()
 
-    # Parse the extracted entities
+    concepts_by_id = {
+        entity["entityId"]: entity
+        for entity in result.get("entities", [])
+    }
+
+    # Parse the extracted entity mentions
     entities = []
-    for entity in result.get("entities", []):
+    for mention in result.get("entityMentions", []):
+        text_span = mention.get("text", {})
         parsed_entity = {
-            "text": entity.get("mentionText", ""),
-            "type": entity.get("entityType", ""),
-            "certainty": entity.get("certaintyAssessment", {}).get(
-                "confidence", 0
-            ),
-            "temporal": entity.get("temporalAssessment", {}).get(
+            "mention_id": mention.get("mentionId", ""),
+            "text": text_span.get("content", ""),
+            "type": mention.get("type", ""),
+            "confidence": mention.get("confidence", 0),
+            "certainty": mention.get("certaintyAssessment", {}).get(
                 "value", ""
             ),
-            "subject": entity.get("subjectAssessment", {}).get(
+            "temporal": mention.get("temporalAssessment", {}).get(
+                "value", ""
+            ),
+            "subject": mention.get("subject", {}).get(
                 "value", "PATIENT"
             ),
             "vocabulary_codes": [],
         }
 
         # Extract mapped vocabulary codes
-        for vocab in entity.get("linkedEntities", []):
-            parsed_entity["vocabulary_codes"].append({
-                "vocabulary": vocab.get("vocabulary", ""),
-                "code": vocab.get("entityId", ""),
-                "preferred_term": vocab.get("preferredTerm", ""),
-            })
+        for linked in mention.get("linkedEntities", []):
+            concept = concepts_by_id.get(linked.get("entityId"), {})
+            for vocabulary_code in concept.get("vocabularyCodes", []):
+                vocabulary, _, code = vocabulary_code.partition("/")
+                parsed_entity["vocabulary_codes"].append({
+                    "vocabulary": vocabulary,
+                    "code": code,
+                    "preferred_term": concept.get("preferredTerm", ""),
+                    "entity_id": concept.get("entityId", ""),
+                })
 
         entities.append(parsed_entity)
 
     # Parse relationships between entities
+    mentions_by_id = {
+        entity["mention_id"]: entity
+        for entity in entities
+    }
     relationships = []
     for relation in result.get("relationships", []):
+        subject = mentions_by_id.get(relation.get("subjectId"), {})
+        obj = mentions_by_id.get(relation.get("objectId"), {})
         relationships.append({
-            "type": relation.get("relationType", ""),
-            "subject": relation.get("subject", {}).get("mentionText", ""),
-            "object": relation.get("object", {}).get("mentionText", ""),
+            "subject_id": relation.get("subjectId", ""),
+            "object_id": relation.get("objectId", ""),
+            "subject": subject.get("text", ""),
+            "object": obj.get("text", ""),
+            "confidence": relation.get("confidence", 0),
         })
 
     return {
@@ -198,13 +218,12 @@ def extract_clinical_entities(project_id, text):
 Map extracted entities to FHIR (Fast Healthcare Interoperability Resources) format:
 
 ```python
-import json
-import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-def create_fhir_resources(document_id, entities, patient_id):
+def create_fhir_resources(document_id, entities, patient_id, relationships=None):
     """Convert extracted clinical entities to FHIR resources"""
     resources = []
+    relationships = relationships or []
 
     for entity in entities:
         entity_type = entity["type"]
@@ -213,7 +232,6 @@ def create_fhir_resources(document_id, entities, patient_id):
             # Create a Condition resource
             condition = {
                 "resourceType": "Condition",
-                "id": str(uuid.uuid4()),
                 "subject": {"reference": f"Patient/{patient_id}"},
                 "code": _build_codeable_concept(entity),
                 "clinicalStatus": {
@@ -222,7 +240,7 @@ def create_fhir_resources(document_id, entities, patient_id):
                         "code": "active",
                     }]
                 },
-                "recordedDate": datetime.utcnow().isoformat(),
+                "recordedDate": datetime.now(timezone.utc).isoformat(),
                 "note": [{"text": f"Extracted from document {document_id}"}],
             }
             resources.append(condition)
@@ -231,15 +249,14 @@ def create_fhir_resources(document_id, entities, patient_id):
             # Create a MedicationStatement resource
             medication = {
                 "resourceType": "MedicationStatement",
-                "id": str(uuid.uuid4()),
                 "subject": {"reference": f"Patient/{patient_id}"},
                 "medicationCodeableConcept": _build_codeable_concept(entity),
                 "status": "active",
-                "dateAsserted": datetime.utcnow().isoformat(),
+                "dateAsserted": datetime.now(timezone.utc).isoformat(),
             }
 
             # Add dosage if relationship data is available
-            dosage_info = _find_related_dosage(entity, entities)
+            dosage_info = _find_related_dosage(entity, entities, relationships)
             if dosage_info:
                 medication["dosage"] = [{
                     "text": dosage_info,
@@ -251,7 +268,6 @@ def create_fhir_resources(document_id, entities, patient_id):
             # Create a Procedure resource
             procedure = {
                 "resourceType": "Procedure",
-                "id": str(uuid.uuid4()),
                 "subject": {"reference": f"Patient/{patient_id}"},
                 "code": _build_codeable_concept(entity),
                 "status": "completed",
@@ -268,6 +284,7 @@ def _build_codeable_concept(entity):
             "ICD10CM": "http://hl7.org/fhir/sid/icd-10-cm",
             "SNOMEDCT_US": "http://snomed.info/sct",
             "RXNORM": "http://www.nlm.nih.gov/research/umls/rxnorm",
+            "LOINC": "http://loinc.org",
         }
         system = system_map.get(code["vocabulary"], code["vocabulary"])
         codings.append({
@@ -280,6 +297,38 @@ def _build_codeable_concept(entity):
         "coding": codings,
         "text": entity["text"],
     }
+
+def _find_related_dosage(medication_entity, entities, relationships):
+    """Find dosage-related entity mentions linked to a medication mention."""
+    dosage_types = {
+        "MED_DOSE",
+        "MED_DURATION",
+        "MED_FORM",
+        "MED_FREQUENCY",
+        "MED_ROUTE",
+        "MED_STRENGTH",
+        "MED_TOTALDOSE",
+        "MED_UNIT",
+    }
+    entity_by_id = {
+        entity["mention_id"]: entity
+        for entity in entities
+    }
+
+    related_text = []
+    medication_id = medication_entity.get("mention_id")
+    for relationship in relationships:
+        if relationship.get("subject_id") == medication_id:
+            related = entity_by_id.get(relationship.get("object_id"))
+        elif relationship.get("object_id") == medication_id:
+            related = entity_by_id.get(relationship.get("subject_id"))
+        else:
+            continue
+
+        if related and related.get("type") in dosage_types:
+            related_text.append(related["text"])
+
+    return ", ".join(related_text)
 ```
 
 ## Storing Results in FHIR Store
@@ -287,6 +336,8 @@ def _build_codeable_concept(entity):
 Push the generated FHIR resources to the Healthcare API FHIR store:
 
 ```python
+import requests
+
 def store_fhir_resources(project_id, location, dataset_id, fhir_store_id, resources):
     """Store FHIR resources in Cloud Healthcare API"""
     import google.auth
@@ -336,13 +387,18 @@ def store_fhir_resources(project_id, location, dataset_id, fhir_store_id, resour
 Use Gemini on Vertex AI for more nuanced understanding that the structured NLP might miss:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel
+import json
+from google import genai
+from google.genai.types import GenerateContentConfig, HttpOptions
 
 def enrich_with_gemini(clinical_text, extracted_entities):
     """Use Gemini to add context and catch entities the NLP API might miss"""
-    vertexai.init(project="your-project-id", location="us-central1")
-    model = GenerativeModel("gemini-1.5-pro")
+    client = genai.Client(
+        vertexai=True,
+        project="your-project-id",
+        location="us-central1",
+        http_options=HttpOptions(api_version="v1"),
+    )
 
     prompt = f"""You are a medical document analysis assistant. Review this clinical text
 and the entities that were already extracted. Identify any important clinical
@@ -362,12 +418,14 @@ Provide your analysis as JSON with these fields:
 
 Important: Only output valid JSON. Do not include any explanatory text outside the JSON."""
 
-    response = model.generate_content(
-        prompt,
-        generation_config={
-            "temperature": 0.1,
-            "max_output_tokens": 2000,
-        },
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config=GenerateContentConfig(
+            temperature=0.1,
+            max_output_tokens=2000,
+            response_mime_type="application/json",
+        ),
     )
 
     return json.loads(response.text)
