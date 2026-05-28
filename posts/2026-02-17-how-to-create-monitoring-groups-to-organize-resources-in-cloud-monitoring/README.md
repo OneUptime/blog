@@ -44,7 +44,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "displayName": "Production VMs",
-    "filter": "resource.type = \"gce_instance\" AND resource.metadata.user_labels.env = \"production\"",
+    "filter": "resource.type = \"gce_instance\" AND metadata.user_labels.\"env\" = \"production\"",
     "isCluster": false
   }'
 ```
@@ -58,7 +58,7 @@ To group all resources for a specific application:
 ```json
 {
   "displayName": "Order Service",
-  "filter": "resource.metadata.user_labels.app = \"order-service\""
+  "filter": "metadata.user_labels.\"app\" = \"order-service\""
 }
 ```
 
@@ -67,7 +67,7 @@ To group all resources in a specific environment:
 ```json
 {
   "displayName": "Staging Environment",
-  "filter": "resource.metadata.user_labels.env = \"staging\""
+  "filter": "metadata.user_labels.\"env\" = \"staging\""
 }
 ```
 
@@ -76,7 +76,7 @@ To combine multiple criteria:
 ```json
 {
   "displayName": "Production Frontend",
-  "filter": "resource.metadata.user_labels.env = \"production\" AND resource.metadata.user_labels.tier = \"frontend\""
+  "filter": "metadata.user_labels.\"env\" = \"production\" AND metadata.user_labels.\"tier\" = \"frontend\""
 }
 ```
 
@@ -96,7 +96,7 @@ Or combine resource type with labels:
 ```json
 {
   "displayName": "Production Databases",
-  "filter": "resource.type = \"cloudsql_database\" AND resource.metadata.user_labels.env = \"production\""
+  "filter": "resource.type = \"cloudsql_database\" AND metadata.user_labels.\"env\" = \"production\""
 }
 ```
 
@@ -107,7 +107,7 @@ Group resources by name using the `has_substring` or `starts_with` functions.
 ```json
 {
   "displayName": "API Servers",
-  "filter": "resource.type = \"gce_instance\" AND resource.metadata.name = starts_with(\"api-\")"
+  "filter": "resource.type = \"gce_instance\" AND metadata.system_labels.\"name\" = starts_with(\"api-\")"
 }
 ```
 
@@ -125,7 +125,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "displayName": "Production",
-    "filter": "resource.metadata.user_labels.env = \"production\""
+    "filter": "metadata.user_labels.\"env\" = \"production\""
   }'
 
 # Note the group ID from the response (e.g., "projects/my-project/groups/1234567890")
@@ -137,7 +137,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "displayName": "Production - Web Tier",
-    "filter": "resource.metadata.user_labels.env = \"production\" AND resource.metadata.user_labels.tier = \"web\"",
+    "filter": "metadata.user_labels.\"env\" = \"production\" AND metadata.user_labels.\"tier\" = \"web\"",
     "parentName": "projects/my-project/groups/1234567890"
   }'
 ```
@@ -221,7 +221,7 @@ curl -s \
 # List members (resources) of a group
 curl -s \
   "https://monitoring.googleapis.com/v3/projects/my-project/groups/GROUP_ID/members" \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" | jq '.members[].displayName'
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" | jq '.members[]'
 
 # Update a group's filter
 curl -X PUT \
@@ -230,7 +230,7 @@ curl -X PUT \
   -H "Content-Type: application/json" \
   -d '{
     "displayName": "Production VMs",
-    "filter": "resource.type = \"gce_instance\" AND resource.metadata.user_labels.env = \"production\" AND resource.metadata.user_labels.team = \"platform\""
+    "filter": "resource.type = \"gce_instance\" AND metadata.user_labels.\"env\" = \"production\" AND metadata.user_labels.\"team\" = \"platform\""
   }'
 
 # Delete a group
@@ -263,7 +263,7 @@ Setting `isCluster: true` on a group tells Cloud Monitoring to display its membe
 ```json
 {
   "displayName": "API Server Cluster",
-  "filter": "resource.type = \"gce_instance\" AND resource.metadata.user_labels.app = \"api-server\"",
+  "filter": "resource.type = \"gce_instance\" AND metadata.user_labels.\"app\" = \"api-server\"",
   "isCluster": true
 }
 ```
