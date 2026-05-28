@@ -32,7 +32,7 @@ Before starting, make sure you have:
 - A GitHub repository connected to Cloud Build
 - A Dockerfile in your repository
 - An Artifact Registry repository for Docker images
-- The Cloud Run API enabled
+- The Cloud Build, Cloud Run, Artifact Registry, and Resource Manager APIs enabled
 
 ```bash
 # Enable required APIs
@@ -40,6 +40,7 @@ Before starting, make sure you have:
 gcloud services enable cloudbuild.googleapis.com
 gcloud services enable run.googleapis.com
 gcloud services enable artifactregistry.googleapis.com
+gcloud services enable cloudresourcemanager.googleapis.com
 ```
 
 ## Setting Up IAM Permissions
@@ -47,14 +48,24 @@ gcloud services enable artifactregistry.googleapis.com
 The Cloud Build service account needs permission to deploy to Cloud Run. Grant the required roles:
 
 ```bash
-# Get the Cloud Build service account
+# Get the project number
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+
+# Set this to the service account used by your Cloud Build trigger.
+# Depending on your project settings, the default can be the Compute Engine
+# default service account or the legacy Cloud Build service account.
+CB_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+# CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
 
 # Grant Cloud Run Admin role for deploying services
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:${CB_SA}" \
   --role="roles/run.admin"
+
+# Grant Artifact Registry Writer role for building and pushing images
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CB_SA}" \
+  --role="roles/artifactregistry.writer"
 
 # Grant Service Account User role (needed to act as the Cloud Run runtime service account)
 gcloud iam service-accounts add-iam-policy-binding \
@@ -82,10 +93,14 @@ steps:
       - '.'
 
   # Step 2: Run tests using the built image
-  - name: 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
+  - name: 'gcr.io/cloud-builders/docker'
     id: 'test'
-    entrypoint: 'npm'
-    args: ['test']
+    args:
+      - 'run'
+      - '--rm'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
+      - 'npm'
+      - 'test'
 
   # Step 3: Push the image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
@@ -97,8 +112,8 @@ steps:
   # Step 4: Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy'
+    entrypoint: 'gcloud'
     args:
-      - 'gcloud'
       - 'run'
       - 'deploy'
       - 'my-app'
@@ -122,8 +137,8 @@ The gcloud run deploy command accepts many configuration options. Here are the m
 # Deploy with full configuration options
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy'
+    entrypoint: 'gcloud'
     args:
-      - 'gcloud'
       - 'run'
       - 'deploy'
       - 'my-app'
@@ -161,13 +176,13 @@ The gcloud run deploy command accepts many configuration options. Here are the m
 
 ### Setting Environment Variables from Secrets
 
-For environment variables that contain sensitive values, reference Secret Manager:
+For environment variables that contain sensitive values, reference Secret Manager. If you use this option, enable the Secret Manager API and grant the Cloud Run runtime service account the Secret Manager Secret Accessor role on each secret.
 
 ```yaml
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy'
+    entrypoint: 'gcloud'
     args:
-      - 'gcloud'
       - 'run'
       - 'deploy'
       - 'my-app'
@@ -218,8 +233,8 @@ steps:
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
     args:
-      - 'gcloud'
       - 'run'
       - 'deploy'
       - 'my-app-$_ENV'
@@ -278,8 +293,8 @@ steps:
   # Deploy the new revision with a tag but no traffic
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-canary'
+    entrypoint: 'gcloud'
     args:
-      - 'gcloud'
       - 'run'
       - 'deploy'
       - 'my-app'
@@ -294,8 +309,8 @@ steps:
   # Route 10% of traffic to the canary
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'route-canary-traffic'
+    entrypoint: 'gcloud'
     args:
-      - 'gcloud'
       - 'run'
       - 'services'
       - 'update-traffic'
