@@ -18,27 +18,32 @@ Document AI uses visual understanding to find tables in documents. It does not r
 
 1. Identifies table boundaries using visual cues like lines, alignment, and spacing
 2. Detects header rows versus body rows
-3. Handles merged cells and multi-line cell content
+3. Represents cell spans when the processor output includes them, along with multi-line cell content
 4. Preserves row/column structure even in complex layouts
 
 This works on both native PDFs (where text is selectable) and scanned documents (where text is an image).
 
 ## Setting Up for Table Extraction
 
-Any Document AI processor can detect tables, but the Form Parser and OCR Processor are the most common choices for table-heavy documents.
+Use a processor that returns table structure. The Form Parser and Layout Parser are common choices for table-heavy documents.
 
 ```bash
 # Install the required libraries
 
-pip install google-cloud-documentai pandas
+pip install google-cloud-documentai google-cloud-bigquery functions-framework pandas
 ```
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1
 
 def create_processor_for_tables(project_id, location="us"):
     """Create a Form Parser processor - good for table extraction."""
-    client = documentai_v1.DocumentProcessorServiceClient()
+    client = documentai_v1.DocumentProcessorServiceClient(
+        client_options=ClientOptions(
+            api_endpoint=f"{location}-documentai.googleapis.com"
+        )
+    )
     parent = f"projects/{project_id}/locations/{location}"
 
     processor = client.create_processor(
@@ -58,11 +63,16 @@ def create_processor_for_tables(project_id, location="us"):
 Process your document and inspect the tables found on each page.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1
 
 def find_tables_in_document(project_id, location, processor_id, file_path):
     """Process a document and report all tables found."""
-    client = documentai_v1.DocumentProcessorServiceClient()
+    client = documentai_v1.DocumentProcessorServiceClient(
+        client_options=ClientOptions(
+            api_endpoint=f"{location}-documentai.googleapis.com"
+        )
+    )
     name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
 
     with open(file_path, "rb") as f:
@@ -223,7 +233,7 @@ export_tables_to_csv(all_tables)
 
 ## Handling Merged Cells
 
-Tables with merged cells require special handling. Document AI reports the row and column span for each cell.
+Tables with spanning cells require special handling when the processor output includes them. Document AI table cells include row and column span fields.
 
 ```python
 def extract_table_with_spans(table, document_text):
@@ -271,6 +281,7 @@ Here is a Cloud Function that automatically extracts tables from uploaded docume
 
 ```python
 import functions_framework
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1, bigquery
 import json
 
@@ -285,7 +296,12 @@ def extract_tables_to_bigquery(cloud_event):
         return
 
     # Process document
-    docai_client = documentai_v1.DocumentProcessorServiceClient()
+    location = "us"
+    docai_client = documentai_v1.DocumentProcessorServiceClient(
+        client_options=ClientOptions(
+            api_endpoint=f"{location}-documentai.googleapis.com"
+        )
+    )
     processor_name = "projects/my-project/locations/us/processors/my-processor"
 
     gcs_doc = documentai_v1.GcsDocument(
