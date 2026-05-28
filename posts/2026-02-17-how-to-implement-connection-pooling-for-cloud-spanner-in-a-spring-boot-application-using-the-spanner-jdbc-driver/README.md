@@ -8,13 +8,13 @@ Description: Learn how to configure connection pooling for Cloud Spanner in a Sp
 
 ---
 
-Cloud Spanner is a distributed database, and connecting to it through JDBC is different from connecting to a traditional database like PostgreSQL or MySQL. The Spanner JDBC driver creates gRPC sessions under the hood, and how you configure your connection pool has a direct impact on performance and cost. Get it wrong and you end up with session leaks, high latency, or unnecessary resource consumption.
+Cloud Spanner is a distributed database, and connecting to it through JDBC is different from connecting to a traditional database like PostgreSQL or MySQL. The Spanner JDBC driver creates and uses Spanner sessions over gRPC under the hood, and how you configure your connection pool has a direct impact on performance and cost. Get it wrong and you end up with session leaks, high latency, or unnecessary resource consumption.
 
 This post covers how to set up connection pooling for Cloud Spanner in a Spring Boot application using the official Spanner JDBC driver and HikariCP.
 
 ## Understanding Spanner Sessions
 
-Before diving into configuration, it helps to understand what happens when you open a JDBC connection to Spanner. The Spanner JDBC driver manages a session pool internally. Each JDBC connection maps to a Spanner session, and sessions are the unit of work on Spanner. Sessions hold resources on the Spanner servers, so having too many idle sessions wastes resources.
+Before diving into configuration, it helps to understand what happens when you open a JDBC connection to Spanner. The Spanner JDBC driver manages a session pool internally, and connections that use the same database and connection settings share that pool in the same JVM. Sessions are the unit of work on Spanner. Sessions hold resources on the Spanner servers, so having too many idle sessions wastes resources.
 
 The tricky part is that you effectively have two levels of pooling: HikariCP pools JDBC connections, and the Spanner JDBC driver pools Spanner sessions. You need to coordinate these two layers.
 
@@ -27,7 +27,7 @@ Start with the Spanner JDBC driver dependency:
 <dependency>
     <groupId>com.google.cloud</groupId>
     <artifactId>google-cloud-spanner-jdbc</artifactId>
-    <version>2.15.0</version>
+    <version>2.38.0</version>
 </dependency>
 
 <!-- Spring Boot JDBC starter (includes HikariCP) -->
@@ -40,6 +40,13 @@ Start with the Spanner JDBC driver dependency:
 <dependency>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-data-jpa</artifactId>
+</dependency>
+
+<!-- Spanner Hibernate dialect if you want ORM support -->
+<dependency>
+    <groupId>com.google.cloud</groupId>
+    <artifactId>google-cloud-spanner-hibernate-dialect</artifactId>
+    <version>4.2.2</version>
 </dependency>
 ```
 
@@ -54,6 +61,9 @@ spring.datasource.url=jdbc:cloudspanner:/projects/my-project/instances/my-instan
 
 # The Spanner JDBC driver class
 spring.datasource.driver-class-name=com.google.cloud.spanner.jdbc.JdbcDriver
+
+# If you use Spring Data JPA, configure the Spanner Hibernate dialect
+spring.jpa.properties.hibernate.dialect=com.google.cloud.spanner.hibernate.SpannerDialect
 ```
 
 You do not need a username or password. The driver uses Application Default Credentials or the service account attached to the GCP environment.
@@ -71,13 +81,12 @@ spring.datasource.hikari.max-lifetime=1800000
 spring.datasource.hikari.connection-timeout=10000
 spring.datasource.hikari.keepalive-time=300000
 
-# Disable connection test query - Spanner handles this differently
-spring.datasource.hikari.connection-test-query=SELECT 1
+# Leave connection-test-query unset so HikariCP uses JDBC4 Connection.isValid()
 ```
 
 Let me explain the key settings:
 
-**maximum-pool-size**: Keep this modest. Each connection consumes a Spanner session, and sessions hold server-side resources. For most applications, 10-20 connections is plenty. If you are running multiple replicas, multiply this by the replica count to get the total sessions against your Spanner instance.
+**maximum-pool-size**: Keep this modest. Each connection can execute work that uses a session from the driver's backing pool, and sessions hold server-side resources. For most applications, 10-20 connections is plenty. If you are running multiple replicas, multiply this by the replica count to estimate the possible application-side concurrency against your Spanner instance.
 
 **minimum-idle**: Set this to match or be slightly less than the maximum pool size. Spanner session creation has some overhead, so you want to avoid creating sessions on every request.
 
@@ -130,25 +139,22 @@ public class SpannerDataSourceConfig {
         // Pool name for monitoring
         config.setPoolName("spanner-pool");
 
-        // Validation query
-        config.setConnectionTestQuery("SELECT 1");
-
         return new HikariDataSource(config);
     }
 }
 ```
 
-The JDBC URL parameters `minSessions`, `maxSessions`, and `numChannels` control the Spanner session pool that sits underneath HikariCP.
+The JDBC URL parameters `minSessions` and `maxSessions` control the Spanner session pool that sits underneath HikariCP. The `numChannels` parameter controls the number of gRPC channels used by the driver.
 
 ## Coordinating the Two Pool Layers
 
 This is the most important part. You need to align the HikariCP pool size with the Spanner session pool size.
 
 ```text
-HikariCP Pool (JDBC connections) --> Spanner Session Pool (gRPC sessions) --> Spanner Backend
+HikariCP Pool (JDBC connections) --> Spanner Session Pool --> gRPC Channels --> Spanner Backend
 ```
 
-The rule is: set the Spanner session pool `maxSessions` equal to or slightly larger than the HikariCP `maximum-pool-size`. If HikariCP can hand out 10 connections, the Spanner session pool needs at least 10 sessions.
+The rule is: size the Spanner session pool for the maximum number of concurrent transactions or queries that one application instance can execute. In a typical HikariCP setup, that means setting `maxSessions` at least as large as the HikariCP `maximum-pool-size`.
 
 Here is a well-coordinated configuration:
 
@@ -231,7 +237,7 @@ management.metrics.enable.hikaricp=true
 management.endpoints.web.exposure.include=health,metrics
 ```
 
-You can then query metrics like `hikaricp_connections_active`, `hikaricp_connections_idle`, and `hikaricp_connections_pending` to understand pool utilization.
+You can then query metrics like `hikaricp.connections.active`, `hikaricp.connections.idle`, and `hikaricp.connections.pending` to understand pool utilization.
 
 ```java
 // Custom monitoring endpoint for pool diagnostics
@@ -261,9 +267,9 @@ public class PoolStatsController {
 
 A few things that catch people off guard:
 
-Do not set `max-lifetime` too low. When HikariCP retires a connection, the underlying Spanner session is destroyed and a new one must be created. Session creation involves a round trip to the Spanner servers.
+Do not set `max-lifetime` too low. When HikariCP retires connections too aggressively, the driver has to reopen JDBC connections and reacquire sessions from the backing pool more often. Session creation involves a round trip to the Spanner servers.
 
-Do not disable connection validation. Spanner sessions can become stale if the server-side resources are cleaned up. The validation query ensures you get a working session.
+Do not disable connection validation. HikariCP can validate connections through JDBC4 `Connection.isValid()`, and you can set `connection-test-query=SELECT 1` only if you need an explicit validation query. Spanner sessions can become stale if the server-side resources are cleaned up.
 
 Watch out for session leaks. If your code opens a connection but does not return it to the pool (for example, by not closing it in a finally block), you will eventually exhaust the pool. Spring's `JdbcTemplate` handles this automatically, but if you are using raw JDBC connections, always close them.
 
