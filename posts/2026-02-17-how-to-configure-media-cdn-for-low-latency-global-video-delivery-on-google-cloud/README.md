@@ -20,7 +20,7 @@ Standard CDNs work fine for web content, but video has different requirements:
 - **Sequential access**: Viewers request segments in order, creating predictable patterns
 - **Partial content**: Range requests are common for seeking
 - **Cache efficiency**: Popular content should be cached aggressively at the edge
-- **Low latency**: Live streams need sub-second CDN latency
+- **Low latency**: Live streams need low CDN latency and fast cache fills
 
 Media CDN addresses all of these with a cache hierarchy designed for media workloads and edge nodes optimized for throughput.
 
@@ -29,14 +29,15 @@ Media CDN addresses all of these with a cache hierarchy designed for media workl
 - GCP project with Media CDN API enabled
 - Video content served from Cloud Storage, Live Stream API, or an external origin
 - A domain name with DNS management access
+- An active Certificate Manager certificate with `EDGE_CACHE` scope for your CDN hostname
 
 ```bash
 # Enable Media CDN API
 
 gcloud services enable networkservices.googleapis.com
 
-# Install gcloud beta components for Media CDN commands
-gcloud components install beta
+# Make sure the gcloud CLI is up to date for Media CDN commands
+gcloud components update
 ```
 
 ## Step 1: Create an Edge Cache Origin
@@ -45,11 +46,9 @@ The origin is where Media CDN fetches content when it is not cached at the edge:
 
 ```bash
 # Create an origin pointing to a Cloud Storage bucket
-gcloud beta network-services edge-cache-origins create video-origin \
-  --origin-address="storage.googleapis.com" \
-  --description="Cloud Storage origin for video content" \
-  --protocol=HTTPS \
-  --port=443
+gcloud edge-cache origins create video-origin \
+  --origin-address="gs://your-video-bucket" \
+  --description="Cloud Storage origin for video content"
 ```
 
 For more control, create the origin with a configuration file:
@@ -58,9 +57,7 @@ For more control, create the origin with a configuration file:
 # origin-config.yaml - Media CDN origin configuration
 
 name: video-origin
-originAddress: storage.googleapis.com
-protocol: HTTPS
-port: 443
+originAddress: gs://your-video-bucket
 
 # Retry configuration for origin fetch failures
 retryConditions:
@@ -69,11 +66,11 @@ retryConditions:
   - NOT_FOUND
 maxAttempts: 3
 
-# Origin shield reduces load on your origin by caching at a mid-tier
+# Flexible origin shielding reduces load on your origin by caching at a mid-tier
 # This significantly reduces origin requests for popular content
-originOverrideAction:
-  urlRewrite:
-    hostRewrite: "your-video-bucket.storage.googleapis.com"
+flexShielding:
+  flexShieldingRegions:
+    - ME_CENTRAL1
 
 # Timeout settings
 timeout:
@@ -85,7 +82,7 @@ timeout:
 
 ```bash
 # Create the origin from the config file
-gcloud beta network-services edge-cache-origins import video-origin \
+gcloud edge-cache origins import video-origin \
   --source=origin-config.yaml
 ```
 
@@ -98,6 +95,9 @@ The service defines routing rules, caching behavior, and security settings:
 
 name: video-cdn-service
 description: "Video delivery CDN service"
+requireTls: true
+edgeSslCertificates:
+  - projects/PROJECT_ID/locations/global/certificates/cdn-yourdomain-com
 
 routing:
   hostRules:
@@ -111,7 +111,7 @@ routing:
         # Route for HLS manifests - short cache, frequent updates
         - priority: 1
           matchRules:
-            - pathTemplateMatch: "/**/*.m3u8"
+            - pathTemplateMatch: "/**.m3u8"
           headerAction:
             responseHeadersToAdd:
               - headerName: "Access-Control-Allow-Origin"
@@ -124,29 +124,25 @@ routing:
               cacheKeyPolicy:
                 includeProtocol: false
                 excludeHost: true
-            urlRewrite:
-              hostRewrite: "your-video-bucket.storage.googleapis.com"
           origin: video-origin
 
         # Route for DASH manifests
         - priority: 2
           matchRules:
-            - pathTemplateMatch: "/**/*.mpd"
+            - pathTemplateMatch: "/**.mpd"
           routeAction:
             cdnPolicy:
               cacheMode: FORCE_CACHE_ALL
               defaultTtl: 2s
               maxTtl: 10s
-            urlRewrite:
-              hostRewrite: "your-video-bucket.storage.googleapis.com"
           origin: video-origin
 
         # Route for video segments - long cache since segments are immutable
         - priority: 3
           matchRules:
-            - pathTemplateMatch: "/**/*.ts"
-            - pathTemplateMatch: "/**/*.m4s"
-            - pathTemplateMatch: "/**/*.mp4"
+            - pathTemplateMatch: "/**.ts"
+            - pathTemplateMatch: "/**.m4s"
+            - pathTemplateMatch: "/**.mp4"
           routeAction:
             cdnPolicy:
               cacheMode: FORCE_CACHE_ALL
@@ -155,8 +151,6 @@ routing:
               cacheKeyPolicy:
                 includeProtocol: false
                 excludeHost: true
-            urlRewrite:
-              hostRewrite: "your-video-bucket.storage.googleapis.com"
           origin: video-origin
 
         # Default route for everything else
@@ -167,8 +161,6 @@ routing:
             cdnPolicy:
               cacheMode: CACHE_ALL_STATIC
               defaultTtl: 3600s
-            urlRewrite:
-              hostRewrite: "your-video-bucket.storage.googleapis.com"
           origin: video-origin
 
 # Enable logging for debugging and analytics
@@ -179,7 +171,7 @@ logConfig:
 
 ```bash
 # Create the service from the config
-gcloud beta network-services edge-cache-services import video-cdn-service \
+gcloud edge-cache services import video-cdn-service \
   --source=service-config.yaml
 ```
 
@@ -188,11 +180,30 @@ gcloud beta network-services edge-cache-services import video-cdn-service \
 Protect your content from unauthorized access using signed URLs:
 
 ```bash
-# Generate a signing key pair
-openssl rand -base64 64 > media-cdn-key.secret
+# Generate an Ed25519 signing key pair
+python3 -m pip install cryptography
+python3 - <<'PY'
+import base64
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
+
+private_key = ed25519.Ed25519PrivateKey.generate()
+private_bytes = private_key.private_bytes(
+    encoding=serialization.Encoding.Raw,
+    format=serialization.PrivateFormat.Raw,
+    encryption_algorithm=serialization.NoEncryption(),
+)
+public_bytes = private_key.public_key().public_bytes(
+    encoding=serialization.Encoding.Raw,
+    format=serialization.PublicFormat.Raw,
+)
+
+print("PRIVATE_KEY=" + base64.urlsafe_b64encode(private_bytes).decode("utf-8"))
+print("PUBLIC_KEY=" + base64.urlsafe_b64encode(public_bytes).decode("utf-8"))
+PY
 
 # Create a keyset in Media CDN
-gcloud beta network-services edge-cache-keysets create video-keyset \
+gcloud edge-cache keysets create video-keyset \
   --public-key='id=key-1,value=YOUR_BASE64_PUBLIC_KEY'
 ```
 
@@ -214,31 +225,34 @@ Generate signed URLs in your application:
 
 import base64
 import datetime
-import hashlib
-import hmac
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlsplit
 
-def sign_url(url, key_name, key_value, expiration_time):
+from cryptography.hazmat.primitives.asymmetric import ed25519
+
+def sign_url(url, key_name, private_key_value, expiration_time):
     """Signs a URL for Media CDN using Ed25519 signatures.
 
     Args:
         url: The URL to sign
         key_name: The key name configured in the keyset
-        key_value: Base64-encoded key value
+        private_key_value: Base64-encoded Ed25519 private key value
         expiration_time: When the signed URL expires (datetime)
     """
 
     # Calculate expiration as Unix timestamp
-    epoch = datetime.datetime(1970, 1, 1)
+    epoch = datetime.datetime.utcfromtimestamp(0)
     expiration = int((expiration_time - epoch).total_seconds())
 
     # Add expiration to the URL
-    separator = "&" if "?" in url else "?"
+    query_params = parse_qs(urlsplit(url).query, keep_blank_values=True)
+    separator = "&" if query_params else "?"
     url_to_sign = f"{url}{separator}Expires={expiration}&KeyName={key_name}"
 
     # Sign the URL
-    decoded_key = base64.urlsafe_b64decode(key_value)
-    digest = hmac.new(decoded_key, url_to_sign.encode("utf-8"), hashlib.sha1).digest()
+    decoded_key = base64.urlsafe_b64decode(private_key_value)
+    digest = ed25519.Ed25519PrivateKey.from_private_bytes(decoded_key).sign(
+        url_to_sign.encode("utf-8")
+    )
     signature = base64.urlsafe_b64encode(digest).decode("utf-8")
 
     return f"{url_to_sign}&Signature={signature}"
@@ -247,7 +261,7 @@ def sign_url(url, key_name, key_value, expiration_time):
 signed = sign_url(
     url="https://cdn.yourdomain.com/videos/movie-001/manifest.m3u8",
     key_name="key-1",
-    key_value="YOUR_BASE64_KEY",
+    private_key_value="YOUR_BASE64_PRIVATE_KEY",
     expiration_time=datetime.datetime.utcnow() + datetime.timedelta(hours=1),
 )
 print(f"Signed URL: {signed}")
@@ -259,10 +273,10 @@ Point your CDN domain to the Media CDN service:
 
 ```bash
 # Get the IP addresses for your Media CDN service
-gcloud beta network-services edge-cache-services describe video-cdn-service \
+gcloud edge-cache services describe video-cdn-service \
   --format='value(ipv4Addresses)'
 
-# Create DNS records pointing to these IPs
+# Create DNS records pointing to these IPs after your EDGE_CACHE certificate is active
 # A record: cdn.yourdomain.com -> <IP addresses>
 ```
 
@@ -288,7 +302,7 @@ headerAction:
 
 ```bash
 # View CDN metrics
-gcloud beta network-services edge-cache-services describe video-cdn-service \
+gcloud edge-cache services describe video-cdn-service \
   --format=json
 
 # Check cache hit rates in Cloud Monitoring
@@ -308,8 +322,8 @@ Key metrics to monitor:
 
 1. **Segment size**: Use 4-6 second segments. Shorter segments mean more requests but lower latency; longer segments improve cache efficiency.
 2. **Cache key simplification**: Remove unnecessary query parameters from cache keys to improve hit rates.
-3. **Origin shielding**: Enable origin shielding to reduce load on your Cloud Storage bucket during cache misses.
-4. **Prefetching**: For live streams, the CDN can prefetch the next segment before the player requests it.
+3. **Origin shielding**: Enable flexible shielding when you need to control the shielding region for cache misses.
+4. **Cache warming**: For major live events, pre-warm popular manifests or segments before viewers request them.
 5. **Compression**: Enable gzip/brotli for manifests but not for video segments (they are already compressed).
 
 ## Wrapping Up
