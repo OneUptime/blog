@@ -145,12 +145,11 @@ async function runMigrations() {
 
       case 'status':
         // Show migration status without making changes
-        const [completed, pending] = await Promise.all([
-          db.migrate.list(),
-          db.migrate.list(),
-        ]);
+        const [completed, pending] = await db.migrate.list();
         const currentVersion = await db.migrate.currentVersion();
         console.log(`Current version: ${currentVersion}`);
+        console.log(`Completed migrations: ${completed.length}`);
+        console.log(`Pending migrations: ${pending.length}`);
         break;
 
       default:
@@ -184,7 +183,7 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install the Cloud SQL Auth Proxy client library dependencies
+# Install production Node.js dependencies
 COPY package*.json ./
 RUN npm ci --production
 
@@ -201,11 +200,11 @@ CMD ["node", "run-migration.js"]
 
 ```bash
 # Build the container image
-gcloud builds submit --tag gcr.io/my-project/db-migrations:latest .
+gcloud builds submit --tag us-central1-docker.pkg.dev/my-project/db-migrations/db-migrations:latest .
 
 # Create the Cloud Run Job with Cloud SQL connection
 gcloud run jobs create run-migrations \
-  --image=gcr.io/my-project/db-migrations:latest \
+  --image=us-central1-docker.pkg.dev/my-project/db-migrations/db-migrations:latest \
   --region=us-central1 \
   --set-cloudsql-instances=my-project:us-central1:my-database \
   --set-env-vars="DB_NAME=myapp,DB_USER=migration_user,INSTANCE_CONNECTION_NAME=my-project:us-central1:my-database,MIGRATION_ACTION=latest" \
@@ -245,11 +244,11 @@ Add the migration step to your Cloud Build pipeline so migrations run automatica
 steps:
   # Step 1: Build the migration container
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/db-migrations:$COMMIT_SHA', '-f', 'Dockerfile.migrations', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/db-migrations/db-migrations:$COMMIT_SHA', '-f', 'Dockerfile', '.']
 
   # Step 2: Push the migration image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/db-migrations:$COMMIT_SHA']
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/db-migrations/db-migrations:$COMMIT_SHA']
 
   # Step 3: Run the migration using Cloud Run Jobs
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -258,7 +257,7 @@ steps:
       - '-c'
       - |
         gcloud run jobs update run-migrations \
-          --image=gcr.io/$PROJECT_ID/db-migrations:$COMMIT_SHA \
+          --image=us-central1-docker.pkg.dev/$PROJECT_ID/db-migrations/db-migrations:$COMMIT_SHA \
           --region=us-central1
 
         gcloud run jobs execute run-migrations \
@@ -271,7 +270,7 @@ steps:
       - 'run'
       - 'deploy'
       - 'my-app'
-      - '--image=gcr.io/$PROJECT_ID/my-app:$COMMIT_SHA'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/apps/my-app:$COMMIT_SHA'
       - '--region=us-central1'
 ```
 
@@ -306,6 +305,11 @@ echo -n 'secure-password' | gcloud secrets create db-migration-password --data-f
 gcloud secrets add-iam-policy-binding db-migration-password \
   --member="serviceAccount:$(gcloud projects describe my-project --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
+
+# Grant the Cloud Run service account permission to connect to Cloud SQL
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:$(gcloud projects describe my-project --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
+  --role="roles/cloudsql.client"
 ```
 
 ## Wrapping Up
