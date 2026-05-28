@@ -20,8 +20,9 @@ GKE generates several types of logs that flow to Cloud Logging:
 |--------------|-----------------|
 | `k8s_container` | Application logs from containers running in pods |
 | `k8s_pod` | Pod lifecycle events |
-| `k8s_node` | Node-level system logs |
-| `k8s_cluster` | Cluster-level events (autoscaling, upgrades) |
+| `k8s_node` | Node events |
+| `k8s_cluster` | Kubernetes cluster events that are not Pod or Node events |
+| `gke_cluster` | GKE cluster operations logs |
 
 For most application analysis, `k8s_container` is what you want. These are the stdout/stderr output from your containerized applications.
 
@@ -96,16 +97,16 @@ WRITER=$(gcloud logging sinks describe gke-containers-to-bigquery \
   --project=my-project \
   --format='value(writerIdentity)')
 
-# Grant BigQuery Data Editor access
-bq add-iam-policy-binding \
-  --member="$WRITER" \
-  --role="roles/bigquery.dataEditor" \
-  my-project:gke_logs
+# Grant BigQuery Data Editor access on the dataset
+bq query --use_legacy_sql=false \
+  "GRANT \`roles/bigquery.dataEditor\`
+   ON SCHEMA \`my-project\`.gke_logs
+   TO \"$WRITER\""
 ```
 
 ## Understanding the BigQuery Schema
 
-After logs start flowing, BigQuery creates tables with a specific schema. For `k8s_container` logs, the table name will be something like `k8s_container`. Key columns:
+After logs start flowing, BigQuery creates tables with a specific schema. Cloud Logging names BigQuery tables from the log ID, not the monitored resource type. For GKE container stdout/stderr logs with partitioned tables enabled, the table names are usually `stdout` and `stderr`. The examples below use a wildcard table and `_TABLE_SUFFIX IN ('stdout', 'stderr')` to query both. Key columns:
 
 | Column | Type | What It Contains |
 |--------|------|-----------------|
@@ -115,8 +116,8 @@ After logs start flowing, BigQuery creates tables with a specific schema. For `k
 | `resource.labels.namespace_name` | STRING | Kubernetes namespace |
 | `resource.labels.pod_name` | STRING | Pod name |
 | `resource.labels.container_name` | STRING | Container name |
-| `text_payload` | STRING | Unstructured log text |
-| `json_payload` | JSON | Structured JSON log data |
+| `textPayload` | STRING | Unstructured log text |
+| `jsonPayload` | RECORD | Structured JSON log data |
 | `labels` | RECORD | Kubernetes labels |
 
 ## Practical BigQuery Queries
@@ -132,9 +133,10 @@ SELECT
   resource.labels.container_name AS container,
   COUNT(*) AS error_count
 FROM
-  `my-project.gke_logs.k8s_container`
+  `my-project.gke_logs.*`
 WHERE
-  severity IN ('ERROR', 'CRITICAL')
+  _TABLE_SUFFIX IN ('stdout', 'stderr')
+  AND severity IN ('ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY')
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
 GROUP BY
   namespace, container
@@ -151,12 +153,13 @@ Find the most common error messages across your cluster:
 -- Most frequent error messages in GKE containers
 SELECT
   resource.labels.container_name AS container,
-  SUBSTR(COALESCE(text_payload, JSON_VALUE(json_payload, '$.message')), 0, 200) AS error_message,
+  SUBSTR(COALESCE(textPayload, jsonPayload.message), 1, 200) AS error_message,
   COUNT(*) AS occurrences
 FROM
-  `my-project.gke_logs.k8s_container`
+  `my-project.gke_logs.*`
 WHERE
-  severity >= 'ERROR'
+  _TABLE_SUFFIX IN ('stdout', 'stderr')
+  AND severity IN ('ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY')
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
 GROUP BY
   container, error_message
@@ -179,9 +182,10 @@ SELECT
   MAX(timestamp) AS last_error,
   COUNT(*) AS error_count
 FROM
-  `my-project.gke_logs.k8s_container`
+  `my-project.gke_logs.*`
 WHERE
-  severity >= 'ERROR'
+  _TABLE_SUFFIX IN ('stdout', 'stderr')
+  AND severity IN ('ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY')
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
 GROUP BY
   namespace, pod, container
@@ -202,9 +206,10 @@ SELECT
   resource.labels.namespace_name AS namespace,
   COUNT(*) AS error_count
 FROM
-  `my-project.gke_logs.k8s_container`
+  `my-project.gke_logs.*`
 WHERE
-  severity >= 'ERROR'
+  _TABLE_SUFFIX IN ('stdout', 'stderr')
+  AND severity IN ('ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY')
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
 GROUP BY
   hour, namespace
@@ -221,14 +226,15 @@ If your application writes structured JSON logs:
 SELECT
   timestamp,
   resource.labels.pod_name AS pod,
-  JSON_VALUE(json_payload, '$.event_type') AS event_type,
-  JSON_VALUE(json_payload, '$.user_id') AS user_id,
-  JSON_VALUE(json_payload, '$.message') AS message
+  jsonPayload.event_type AS event_type,
+  jsonPayload.user_id AS user_id,
+  jsonPayload.message AS message
 FROM
-  `my-project.gke_logs.k8s_container`
+  `my-project.gke_logs.*`
 WHERE
-  resource.labels.container_name = 'my-api'
-  AND JSON_VALUE(json_payload, '$.event_type') = 'order_failed'
+  _TABLE_SUFFIX IN ('stdout', 'stderr')
+  AND resource.labels.container_name = 'my-api'
+  AND jsonPayload.event_type = 'order_failed'
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
 ORDER BY
   timestamp DESC
@@ -244,12 +250,13 @@ Understand which namespaces generate the most log data:
 SELECT
   resource.labels.namespace_name AS namespace,
   COUNT(*) AS entry_count,
-  SUM(LENGTH(COALESCE(text_payload, TO_JSON_STRING(json_payload)))) AS approx_bytes,
-  ROUND(SUM(LENGTH(COALESCE(text_payload, TO_JSON_STRING(json_payload)))) / 1073741824, 2) AS approx_gb
+  SUM(LENGTH(COALESCE(textPayload, TO_JSON_STRING(jsonPayload)))) AS approx_bytes,
+  ROUND(SUM(LENGTH(COALESCE(textPayload, TO_JSON_STRING(jsonPayload)))) / 1073741824, 2) AS approx_gb
 FROM
-  `my-project.gke_logs.k8s_container`
+  `my-project.gke_logs.*`
 WHERE
-  timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
+  _TABLE_SUFFIX IN ('stdout', 'stderr')
+  AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
 GROUP BY
   namespace
 ORDER BY
@@ -320,9 +327,10 @@ SELECT
   COUNT(*) AS error_count,
   COUNT(DISTINCT resource.labels.pod_name) AS affected_pods
 FROM
-  `my-project.gke_logs.k8s_container`
+  `my-project.gke_logs.*`
 WHERE
-  severity >= 'ERROR'
+  _TABLE_SUFFIX IN ('stdout', 'stderr')
+  AND severity IN ('ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY')
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
 GROUP BY
   namespace, container
