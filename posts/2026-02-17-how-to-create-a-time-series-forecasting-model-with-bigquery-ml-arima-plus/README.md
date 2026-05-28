@@ -8,7 +8,7 @@ Description: Learn how to build time series forecasting models using BigQuery ML
 
 ---
 
-Time series forecasting is one of those problems that comes up constantly in production systems. You need to predict future request volumes for capacity planning, forecast revenue for budgeting, or estimate inventory needs. BigQuery ML includes ARIMA_PLUS, which is an enhanced ARIMA model that automatically handles seasonality, holiday effects, and trend changes. The best part is you can build and use these models entirely within BigQuery using SQL.
+Time series forecasting is one of those problems that comes up constantly in production systems. You need to predict future request volumes for capacity planning, forecast revenue for budgeting, or estimate inventory needs. BigQuery ML includes ARIMA_PLUS, which is an enhanced ARIMA model that automatically handles seasonality, holiday effects, and abrupt step changes. The best part is you can build and use these models entirely within BigQuery using SQL.
 
 In this post, I will walk through building a time series forecasting model with ARIMA_PLUS, from preparing the input data to generating and visualizing forecasts.
 
@@ -16,11 +16,11 @@ In this post, I will walk through building a time series forecasting model with 
 
 ARIMA_PLUS is not a single algorithm but a pipeline of techniques. Under the hood, it runs automatic preprocessing that decomposes your time series, detects and handles anomalies, identifies seasonal patterns, selects the best ARIMA parameters, and fits the model. It also supports multiple time series in a single model, which is useful when you want to forecast many related metrics at once, like sales per product category.
 
-The "PLUS" part adds holiday effects, spike and dip detection, and trend change point detection on top of standard ARIMA. For most business forecasting tasks, this gives you production-quality forecasts without tuning.
+The "PLUS" part adds holiday effects, spike and dip detection, and abrupt step change detection on top of standard ARIMA. For most business forecasting tasks, this gives you production-quality forecasts without tuning.
 
 ## Preparing Your Time Series Data
 
-ARIMA_PLUS expects data with a timestamp column and a numeric value column. Each row represents one observation at one point in time. The data should be at a consistent granularity - daily, hourly, weekly, etc.
+ARIMA_PLUS expects data with a time point column and a numeric value column. The time point column can be a TIMESTAMP, DATE, or DATETIME. Each row represents one observation at one point in time. The data should be at a consistent granularity - daily, hourly, weekly, etc.
 
 Here is an example of preparing daily website traffic data for forecasting.
 
@@ -47,7 +47,7 @@ A few guidelines for the input data. You want at least two full seasonal cycles 
 
 ## Training the Forecasting Model
 
-Creating an ARIMA_PLUS model is a single CREATE MODEL statement. You specify the time series column, the data column, and optionally the forecast horizon and confidence level.
+Creating an ARIMA_PLUS model is a single CREATE MODEL statement. You specify the time series column, the data column, and optionally the forecast horizon.
 
 This query trains an ARIMA_PLUS model on daily pageview data with a 30-day forecast horizon.
 
@@ -62,12 +62,10 @@ OPTIONS(
   time_series_data_col='daily_pageviews',
   -- How far ahead to forecast (30 days)
   horizon=30,
-  -- Automatically clean up anomalies in historical data
+  -- Automatically select the best non-seasonal ARIMA order
   auto_arima=TRUE,
-  -- Detect holiday effects (uses the region's holidays)
-  holiday_region='US',
-  -- Set confidence interval width
-  confidence_level=0.95
+  -- Model holiday effects for the selected region
+  holiday_region='US'
 ) AS
 SELECT
   date,
@@ -76,7 +74,7 @@ FROM
   `my_project.forecasting.daily_traffic`;
 ```
 
-The `holiday_region` parameter is worth calling out. When you set this, ARIMA_PLUS automatically accounts for holidays like Thanksgiving, Christmas, and July 4th that might cause spikes or dips in your data. This can significantly improve forecast accuracy for metrics that are affected by holidays.
+The `holiday_region` parameter is worth calling out. When you set this for daily or weekly time series longer than a year, ARIMA_PLUS automatically accounts for holidays like Thanksgiving, Christmas, and July 4th that might cause spikes or dips in your data. This can significantly improve forecast accuracy for metrics that are affected by holidays.
 
 ## Inspecting the Model
 
@@ -104,15 +102,15 @@ This returns metrics like AIC (Akaike Information Criterion), variance, log_like
 
 ## Generating Forecasts
 
-To generate predictions, use the ML.FORECAST function. This returns predicted values along with confidence intervals.
+To generate predictions, use the ML.FORECAST function. This returns forecast values along with prediction intervals.
 
 ```sql
--- Generate a 30-day forecast with confidence intervals
+-- Generate a 30-day forecast with prediction intervals
 SELECT
   forecast_timestamp,
   -- The predicted value
   forecast_value,
-  -- Lower and upper bounds of the 95% confidence interval
+  -- Lower and upper bounds of the 95% prediction interval
   prediction_interval_lower_bound,
   prediction_interval_upper_bound
 FROM
@@ -122,7 +120,7 @@ ORDER BY
   forecast_timestamp;
 ```
 
-The confidence intervals are crucial for practical use. Instead of planning for a single point estimate, you can use the upper bound for capacity planning (to make sure you have enough resources) and the lower bound for revenue forecasting (to set conservative targets).
+The prediction intervals are crucial for practical use. Instead of planning for a single point estimate, you can use the upper bound for capacity planning (to make sure you have enough resources) and the lower bound for revenue forecasting (to set conservative targets).
 
 ## Forecasting Multiple Time Series
 
@@ -178,6 +176,21 @@ For production use, you probably want forecasts regenerated on a regular schedul
 
 ```sql
 -- Scheduled query: Retrain model and write fresh forecasts to a table
+CREATE OR REPLACE MODEL `my_project.forecasting.traffic_forecast_model`
+OPTIONS(
+  model_type='ARIMA_PLUS',
+  time_series_timestamp_col='date',
+  time_series_data_col='daily_pageviews',
+  horizon=30,
+  auto_arima=TRUE,
+  holiday_region='US'
+) AS
+SELECT
+  date,
+  daily_pageviews
+FROM
+  `my_project.forecasting.daily_traffic`;
+
 CREATE OR REPLACE TABLE `my_project.forecasting.latest_forecast` AS
 SELECT
   forecast_timestamp,
