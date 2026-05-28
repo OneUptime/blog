@@ -10,17 +10,17 @@ Description: Learn how to create and use HSM-protected cryptographic keys in Goo
 
 Software-backed encryption keys are secure enough for most workloads. The key material is stored in Google's infrastructure, protected by layers of software encryption, and never exposed in plaintext outside of Google's servers. But some compliance requirements - FIPS 140-2 Level 3, PCI DSS for certain use cases, financial regulations in various jurisdictions - mandate that cryptographic keys be generated and used within a certified hardware security module (HSM).
 
-Cloud HSM is Google's managed HSM service, integrated directly into Cloud KMS. You create keys with a protection level of `HSM` instead of `SOFTWARE`, and all cryptographic operations happen inside FIPS 140-2 Level 3 certified hardware. The API is identical to regular Cloud KMS - your application code does not change at all. The only differences are the protection level specification and the pricing.
+Cloud HSM is Google's managed HSM service, integrated directly into Cloud KMS. You create keys with a protection level of `HSM` instead of `SOFTWARE`, and supported operations that use secret or private key material happen inside FIPS 140-2 Level 3 certified hardware. The API is identical to regular Cloud KMS - your application code does not change at all. The only differences are the protection level specification and the pricing.
 
 ## What Cloud HSM Provides
 
 Cloud HSM guarantees that:
 
 - Key material is generated inside the HSM and never leaves it
-- All cryptographic operations (encrypt, decrypt, sign, verify) happen inside the HSM
+- Supported secret-key and private-key cryptographic operations happen inside the HSM
 - The HSM hardware is FIPS 140-2 Level 3 certified
 - Key material cannot be extracted, even by Google
-- Operations are logged in Cloud Audit Logs
+- Administrative activity is logged in Cloud Audit Logs, and cryptographic operations can be logged by enabling Data Access audit logs
 
 This matters for compliance because you can demonstrate to auditors that your keys are hardware-protected, without operating your own HSM infrastructure.
 
@@ -53,7 +53,7 @@ gcloud kms keys create hsm-encryption-key \
   --purpose=encryption \
   --protection-level=hsm \
   --rotation-period=7776000s \
-  --next-rotation-time="2026-05-17T00:00:00Z" \
+  --next-rotation-time="$(date -u -d '+90 days' '+%Y-%m-%dT%H:%M:%SZ')" \
   --project=my-project-id
 ```
 
@@ -230,7 +230,7 @@ gcloud kms keys versions describe 1 \
   --keyring=hsm-keyring \
   --location=us-central1 \
   --project=my-project-id \
-  --format=json | jq '.attestation'
+  --attestation-file=attestation.dat
 ```
 
 The attestation includes:
@@ -238,15 +238,16 @@ The attestation includes:
 - The key's attributes (algorithm, purpose, etc.)
 - A signature over the attestation data
 
-You can verify the attestation offline using the HSM manufacturer's root certificate. This provides auditable proof that the key material never existed outside of hardware protection.
+You can verify the attestation offline using the certificate chains and Google's attestation verification script. This provides auditable proof that the key material never existed outside of hardware protection.
 
 ```bash
-# Download the attestation content for offline verification
+# Download the certificate chains for offline verification
 gcloud kms keys versions get-certificate-chain 1 \
   --key=hsm-encryption-key \
   --keyring=hsm-keyring \
   --location=us-central1 \
-  --project=my-project-id
+  --project=my-project-id \
+  --output-file=certificates.pem
 ```
 
 ## Using HSM Keys with CMEK
