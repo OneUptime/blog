@@ -8,7 +8,7 @@ Description: A practical guide to migrating your Google Cloud infrastructure man
 
 ---
 
-Deployment Manager served its purpose, but there are real reasons teams migrate to Terraform. Multi-cloud support, a richer module ecosystem, better state management, and a larger community are the most common motivators. Google itself has signaled that Terraform is the recommended path forward for infrastructure as code on GCP. But migrating is not as simple as rewriting your YAML in HCL - you need a strategy for handling existing resources without recreating them.
+Deployment Manager served its purpose, but there are real reasons teams migrate to Terraform. Multi-cloud support, a richer module ecosystem, better state management, and a larger community are the most common motivators. Google discontinued support for Deployment Manager on March 31, 2026, and recommends migrating to Infrastructure Manager or another deployment technology; Infrastructure Manager uses Terraform configurations. But migrating is not as simple as rewriting your YAML in HCL - you need a strategy for handling existing resources without recreating them.
 
 This guide walks through the migration process from planning through execution, including how to import existing resources into Terraform state.
 
@@ -22,13 +22,13 @@ Before diving into the how, let me be clear about the why. You should migrate if
 - You want access to the Terraform module registry
 - You are hitting limitations with Deployment Manager's templating
 
-If you are purely on GCP with simple deployments, Deployment Manager still works fine. Do not migrate for migration's sake.
+If you are purely on GCP with simple deployments, evaluate whether Infrastructure Manager is a better fit than running Terraform yourself. Do not migrate to a Terraform CLI workflow for migration's sake.
 
 ## Migration Strategy
 
 There are two approaches:
 
-1. **Greenfield** - New resources go in Terraform. Old resources stay in Deployment Manager until they are replaced.
+1. **Greenfield** - New resources go in Terraform. Old resources stay as-is until they are replaced or imported.
 2. **Import** - Import existing resources into Terraform state and manage them going forward with Terraform.
 
 Most teams use a combination: import critical long-lived resources (networks, clusters) and let transient resources (VMs in autoscaling groups) get recreated naturally.
@@ -86,7 +86,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 7.0"
     }
   }
 
@@ -322,7 +322,7 @@ resource "google_compute_instance" "web_server" {
 
 ## Step 7: Abandon the Deployment Manager Deployment
 
-Once Terraform is managing the resources, remove them from Deployment Manager without deleting the actual resources.
+Once Terraform is managing the resources, remove them from Deployment Manager without deleting the actual resources. If you still have access to Deployment Manager, use the abandon delete policy.
 
 ```bash
 # Abandon the deployment - removes DM management but keeps resources
@@ -440,7 +440,7 @@ module "web_server_2" {
 
 **Use terraform plan religiously.** After every import, run a plan. Any differences between your config and the actual state mean the import is not complete. Fix every difference before proceeding.
 
-**Keep Deployment Manager running during migration.** Do not delete DM deployments until Terraform is confirmed working. The abandon policy lets you hand off management without deleting resources.
+**Do not abandon Deployment Manager too early.** If you still have access to your DM deployments, do not delete them until Terraform is confirmed working. The abandon policy lets you hand off management without deleting resources.
 
 **Watch for dependencies.** If Deployment Manager resource A references resource B, import them in the right order. Import the dependency first.
 
@@ -454,22 +454,34 @@ module "web_server_2" {
 DEPLOYMENT=$1
 PROJECT=$2
 
-gcloud deployment-manager deployments describe $DEPLOYMENT \
-    --project=$PROJECT \
-    --format=json | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
+python3 - "$DEPLOYMENT" "$PROJECT" <<'PY'
+import json, re, subprocess, sys
+
+deployment, project = sys.argv[1], sys.argv[2]
+
+data = json.loads(subprocess.check_output([
+    'gcloud', 'deployment-manager', 'deployments', 'describe', deployment,
+    '--project', project,
+    '--format', 'json',
+], text=True))
+
+def tf_name(name):
+    return re.sub(r'[^A-Za-z0-9_]', '_', name)
+
 for resource in data.get('resources', []):
     rtype = resource['type']
     name = resource['name']
-    rid = resource.get('id', '')
+    url = resource.get('url', '')
+    label = tf_name(name)
     # Map DM types to terraform import commands
     # Extend this mapping as needed
     if rtype == 'compute.v1.instance':
-        print(f'terraform import google_compute_instance.{name} {PROJECT}/{rid}')
+        match = re.search(r'/projects/([^/]+)/zones/([^/]+)/instances/([^/]+)$', url)
+        if match:
+            print(f'terraform import google_compute_instance.{label} projects/{match.group(1)}/zones/{match.group(2)}/instances/{match.group(3)}')
     elif rtype == 'compute.v1.network':
-        print(f'terraform import google_compute_network.{name} projects/{PROJECT}/global/networks/{name}')
-"
+        print(f'terraform import google_compute_network.{label} projects/{project}/global/networks/{name}')
+PY
 ```
 
 The migration from Deployment Manager to Terraform is a one-time investment that pays off in better tooling, broader ecosystem support, and a path to multi-cloud management. Take it step by step, validate thoroughly at each stage, and you will have a smooth transition.
