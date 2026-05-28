@@ -16,60 +16,32 @@ This matters for financial services companies under SOX or Basel III, healthcare
 
 Access Transparency logs are different from Cloud Audit Logs. Audit Logs capture actions taken by your users and service accounts. Access Transparency logs capture actions taken by Google personnel - support engineers, site reliability engineers, and automated systems.
 
-Each log entry includes the justification for the access (such as a support ticket number), the resource that was accessed, the Google employee's office location (by country), and the time and duration of access.
+Each log entry includes the justification for the access (such as a support ticket number), the resource and action, the time of the action, and accessor information such as the Google employee's office country, physical location country, employing entity, and job category.
 
 ## Prerequisites
 
-Access Transparency requires one of the following support levels: Premium Support, Enhanced Support, or a support package that includes Access Transparency. It also requires an organization resource - you cannot use it with standalone projects.
+Access Transparency is included for all Google Cloud organizations at no extra charge. It requires an organization resource - you cannot use it with standalone projects. You also need the Access Transparency Admin role at the organization level to verify or change the setting.
 
 ```bash
 # Verify your organization setup
 
 gcloud organizations list
 
-# Check your support level (this needs to be done in the console)
-# Navigate to: console.cloud.google.com/support
+# Verify that you have roles/axt.admin at the organization level
+# Navigate to: console.cloud.google.com/iam-admin/iam
 ```
 
 ## Step 1: Enable Access Transparency
 
-Access Transparency is enabled at the organization level. Once enabled, it applies to all projects in the organization.
+Access Transparency is an organization-level control. In the Google Cloud console, verify it from IAM > Settings. If it is not enabled in your environment, use the console workflow with the Access Transparency Admin role.
 
 ```bash
-# Enable Access Transparency for your organization
-gcloud access-transparency enable \
-  --organization=ORG_ID
-
-# Verify it is enabled
-gcloud access-transparency get \
-  --organization=ORG_ID
+# There is no gcloud access-transparency enable command.
+# Verify from the console instead:
+# IAM > Settings > Access Transparency
 ```
 
-You can also enable it using the API:
-
-```python
-from google.cloud import accessapproval_v1
-
-def enable_access_transparency(org_id):
-    """Enable Access Transparency at the organization level."""
-    # Note: Access Transparency is separate from Access Approval
-    # but they complement each other well
-    client = accessapproval_v1.AccessApprovalClient()
-
-    settings = accessapproval_v1.AccessApprovalSettings()
-    settings.name = f"organizations/{org_id}/accessApprovalSettings"
-
-    # Enable notifications for all services
-    settings.enrolled_services = [
-        accessapproval_v1.EnrolledService(
-            cloud_product="all",
-            enrollment_level=accessapproval_v1.EnrollmentLevel.BLOCK_ALL,
-        )
-    ]
-
-    response = client.update_access_approval_settings(settings=settings)
-    print(f"Access Transparency configured: {response.name}")
-```
+Access Transparency is separate from Access Approval, but they complement each other well. Use the Access Approval API only for Access Approval settings, not for enabling Access Transparency.
 
 ## Step 2: Configure Log Routing
 
@@ -85,7 +57,7 @@ bq mk --dataset \
 # Create an organization-level log sink for Access Transparency logs
 gcloud logging sinks create access-transparency-sink \
   --organization=ORG_ID \
-  --log-filter='logName:"accessTransparency"' \
+  --log-filter='log_id("cloudaudit.googleapis.com/access_transparency")' \
   --destination="bigquery.googleapis.com/projects/audit-project/datasets/access_transparency_logs" \
   --include-children
 
@@ -111,9 +83,17 @@ gcloud storage buckets create gs://access-transparency-archive \
 # Create a second sink for archival
 gcloud logging sinks create access-transparency-archive \
   --organization=ORG_ID \
-  --log-filter='logName:"accessTransparency"' \
+  --log-filter='log_id("cloudaudit.googleapis.com/access_transparency")' \
   --destination="storage.googleapis.com/access-transparency-archive" \
   --include-children
+
+# Grant the archive sink permission to write to the bucket
+ARCHIVE_SINK_SA=$(gcloud logging sinks describe access-transparency-archive \
+  --organization=ORG_ID --format="value(writerIdentity)")
+
+gcloud storage buckets add-iam-policy-binding gs://access-transparency-archive \
+  --member="$ARCHIVE_SINK_SA" \
+  --role="roles/storage.objectCreator"
 ```
 
 ## Step 3: Set Up Access Approval
@@ -124,11 +104,13 @@ Access Approval goes one step further than Access Transparency by requiring your
 # Enable Access Approval at the organization level
 gcloud access-approval settings update \
   --organization=ORG_ID \
-  --enrolled-services=all \
-  --notification-emails="security-team@company.com,compliance@company.com"
+  --enrolled_services=all \
+  --notification_emails="security-team@company.com,compliance@company.com"
 ```
 
 ```python
+from google.cloud import accessapproval_v1
+
 def configure_access_approval(org_id):
     """Configure Access Approval with notification settings."""
     client = accessapproval_v1.AccessApprovalClient()
@@ -162,22 +144,24 @@ Create a BigQuery-based dashboard that gives your compliance team visibility int
 ```sql
 -- Query to summarize Access Transparency events by justification type
 SELECT
-  JSON_EXTRACT_SCALAR(protopayload_auditlog.requestMetadata, '$.callerSuppliedUserAgent') AS access_tool,
-  JSON_EXTRACT_SCALAR(protopayload_auditlog.servicedata, '$.accessReason.type') AS reason_type,
-  JSON_EXTRACT_SCALAR(protopayload_auditlog.servicedata, '$.accessReason.detail') AS reason_detail,
+  reason.type AS reason_type,
+  reason.detail AS reason_detail,
+  access.methodname AS access_method,
   COUNT(*) AS access_count,
   MIN(timestamp) AS first_access,
   MAX(timestamp) AS last_access
-FROM `audit-project.access_transparency_logs.cloudaudit_googleapis_com_access_transparency_*`
+FROM `audit-project.access_transparency_logs.cloudaudit_googleapis_com_access_transparency_*`,
+UNNEST(jsonpayload_audit_transparencylog.reason) AS reason,
+UNNEST(jsonpayload_audit_transparencylog.accesses) AS access
 WHERE _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY))
-GROUP BY access_tool, reason_type, reason_detail
+GROUP BY reason_type, reason_detail, access_method
 ORDER BY access_count DESC;
 ```
 
 ```sql
 -- Query to identify access events by Google personnel location
 SELECT
-  JSON_EXTRACT_SCALAR(protopayload_auditlog.servicedata, '$.accessorLocation.countryCode') AS accessor_country,
+  jsonpayload_audit_transparencylog.location.principalphysicallocationcountry AS accessor_country,
   resource.type AS resource_type,
   COUNT(*) AS access_count
 FROM `audit-project.access_transparency_logs.cloudaudit_googleapis_com_access_transparency_*`
@@ -192,6 +176,7 @@ Configure alerts for access patterns that might indicate a problem or that your 
 
 ```python
 from google.cloud import monitoring_v3
+from google.protobuf import duration_pb2
 
 def create_access_alerts(project_id):
     """Create monitoring alerts for unusual Access Transparency events."""
@@ -205,8 +190,11 @@ def create_access_alerts(project_id):
             display_name="Access from non-standard location",
             condition_matched_log=monitoring_v3.AlertPolicy.Condition.LogMatch(
                 filter=(
-                    'logName:"accessTransparency" AND '
-                    'NOT protoPayload.servicedata.accessorLocation.countryCode=("US" OR "IE" OR "GB" OR "DE")'
+                    'log_id("cloudaudit.googleapis.com/access_transparency") AND '
+                    'jsonPayload.location.principalPhysicalLocationCountry!="US" AND '
+                    'jsonPayload.location.principalPhysicalLocationCountry!="IE" AND '
+                    'jsonPayload.location.principalPhysicalLocationCountry!="GB" AND '
+                    'jsonPayload.location.principalPhysicalLocationCountry!="DE"'
                 ),
             ),
         )
@@ -217,30 +205,45 @@ def create_access_alerts(project_id):
     unexpected_location_alert.notification_channels = [
         f"projects/{project_id}/notificationChannels/CHANNEL_ID"
     ]
+    unexpected_location_alert.alert_strategy = monitoring_v3.AlertPolicy.AlertStrategy(
+        notification_rate_limit=monitoring_v3.AlertPolicy.AlertStrategy.NotificationRateLimit(
+            period=duration_pb2.Duration(seconds=300),
+        ),
+        auto_close=duration_pb2.Duration(seconds=604800),
+    )
 
     client.create_alert_policy(
         name=f"projects/{project_id}",
         alert_policy=unexpected_location_alert,
     )
 
-    # Alert for high volume of access events
-    high_volume_alert = monitoring_v3.AlertPolicy()
-    high_volume_alert.display_name = "AT - High Volume Access"
-    high_volume_alert.conditions = [
+    # Alert for any Access Transparency event that should be reviewed
+    access_event_alert = monitoring_v3.AlertPolicy()
+    access_event_alert.display_name = "AT - Access Transparency Event"
+    access_event_alert.conditions = [
         monitoring_v3.AlertPolicy.Condition(
-            display_name="More than 10 access events in an hour",
+            display_name="Access Transparency event observed",
             condition_matched_log=monitoring_v3.AlertPolicy.Condition.LogMatch(
-                filter='logName:"accessTransparency"',
+                filter='log_id("cloudaudit.googleapis.com/access_transparency")',
             ),
         )
     ]
-    high_volume_alert.combiner = (
+    access_event_alert.combiner = (
         monitoring_v3.AlertPolicy.ConditionCombinerType.OR
+    )
+    access_event_alert.notification_channels = [
+        f"projects/{project_id}/notificationChannels/CHANNEL_ID"
+    ]
+    access_event_alert.alert_strategy = monitoring_v3.AlertPolicy.AlertStrategy(
+        notification_rate_limit=monitoring_v3.AlertPolicy.AlertStrategy.NotificationRateLimit(
+            period=duration_pb2.Duration(seconds=300),
+        ),
+        auto_close=duration_pb2.Duration(seconds=604800),
     )
 
     client.create_alert_policy(
         name=f"projects/{project_id}",
-        alert_policy=high_volume_alert,
+        alert_policy=access_event_alert,
     )
     print("Access Transparency alerts created")
 ```
@@ -251,8 +254,7 @@ Automate the generation of compliance reports that auditors can review.
 
 ```python
 from google.cloud import bigquery
-import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 def generate_compliance_report(project_id, dataset_id, start_date, end_date):
     """Generate a compliance report of all Access Transparency events."""
@@ -263,14 +265,14 @@ def generate_compliance_report(project_id, dataset_id, start_date, end_date):
         timestamp,
         resource.type AS resource_type,
         resource.labels.project_id AS project_id,
-        JSON_EXTRACT_SCALAR(protopayload_auditlog.servicedata,
-            '$.accessReason.type') AS access_reason,
-        JSON_EXTRACT_SCALAR(protopayload_auditlog.servicedata,
-            '$.accessReason.detail') AS access_detail,
-        JSON_EXTRACT_SCALAR(protopayload_auditlog.servicedata,
-            '$.accessorLocation.countryCode') AS accessor_country,
-        protopayload_auditlog.methodName AS method
-    FROM `{project_id}.{dataset_id}.cloudaudit_googleapis_com_access_transparency_*`
+        reason.type AS access_reason,
+        reason.detail AS access_detail,
+        jsonpayload_audit_transparencylog.location.principalphysicallocationcountry AS accessor_country,
+        access.methodname AS method,
+        access.resourcename AS accessed_resource
+    FROM `{project_id}.{dataset_id}.cloudaudit_googleapis_com_access_transparency_*`,
+    UNNEST(jsonpayload_audit_transparencylog.reason) AS reason,
+    UNNEST(jsonpayload_audit_transparencylog.accesses) AS access
     WHERE timestamp BETWEEN '{start_date}' AND '{end_date}'
     ORDER BY timestamp
     """
@@ -280,7 +282,7 @@ def generate_compliance_report(project_id, dataset_id, start_date, end_date):
     report = {
         "report_type": "Access Transparency Compliance Report",
         "period": {"start": start_date, "end": end_date},
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "total_events": 0,
         "events": [],
     }
@@ -295,6 +297,7 @@ def generate_compliance_report(project_id, dataset_id, start_date, end_date):
             "detail": row.access_detail,
             "country": row.accessor_country,
             "method": row.method,
+            "accessed_resource": row.accessed_resource,
         })
 
     return report
