@@ -48,22 +48,24 @@ graph TD
 ```bash
 # Install required packages
 
-pip install langchain langchain-google-vertexai langchain-community google-cloud-aiplatform faiss-cpu
+pip install langchain langchain-google-vertexai langchain-google-genai langchain-community google-cloud-aiplatform faiss-cpu
 ```
 
 ## Setting Up the Knowledge Base
 
-First, let us create a searchable knowledge base using FAISS as the vector store and Vertex AI for embeddings.
+First, let us create a searchable knowledge base using FAISS as the vector store and Gemini embeddings through Vertex AI.
 
 ```python
-from langchain_google_vertexai import VertexAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 
 # Initialize embeddings
-embeddings = VertexAIEmbeddings(
-    model_name="text-embedding-004",
+embeddings = GoogleGenerativeAIEmbeddings(
+    model="gemini-embedding-001",
+    vertexai=True,
     project="your-project-id",
+    location="us-central1",
 )
 
 # Create a knowledge base with sample documents
@@ -95,9 +97,9 @@ def semantic_search(query: str) -> str:
     questions where you need to find conceptually related information."""
     results = vector_store.similarity_search_with_score(query, k=3)
     formatted = []
-    for doc, score in results:
+    for doc, distance in results:
         formatted.append(
-            f"[Score: {score:.3f}] [{doc.metadata.get('category', '')}] {doc.page_content}"
+            f"[Distance: {distance:.3f}] [{doc.metadata.get('category', '')}] {doc.page_content}"
         )
     return "\n\n".join(formatted) if formatted else "No relevant documents found."
 
@@ -142,12 +144,11 @@ Now we create an agent that uses these retrieval functions through Vertex AI fun
 
 ```python
 from langchain_google_vertexai import ChatVertexAI
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
 
 # Initialize Gemini with function calling support
 llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+    model_name="gemini-2.5-pro",
     project="your-project-id",
     location="us-central1",
     temperature=0.1,
@@ -156,9 +157,8 @@ llm = ChatVertexAI(
 # Collect all retrieval tools
 tools = [semantic_search, filtered_search, compare_plans]
 
-# Create the agent prompt with retrieval strategy guidance
-prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are a helpful assistant with access to a knowledge base through multiple search tools.
+# Create the agent with retrieval strategy guidance
+system_prompt = """You are a helpful assistant with access to a knowledge base through multiple search tools.
 
 Retrieval strategy:
 1. For general questions, start with semantic_search
@@ -169,71 +169,68 @@ Retrieval strategy:
 6. Always base your answer on retrieved information, not your own knowledge
 7. If the knowledge base does not contain the answer, say so clearly
 
-Be thorough but avoid redundant searches."""),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad"),
-])
+Be thorough but avoid redundant searches."""
 
 # Create the agent
-agent = create_react_agent(llm=llm, tools=tools, prompt=prompt)
-
-agent_executor = AgentExecutor(
-    agent=agent,
+agent = create_agent(
+    model=llm,
     tools=tools,
-    verbose=True,
-    max_iterations=5,
-    handle_parsing_errors=True,
-    return_intermediate_steps=True,
+    system_prompt=system_prompt,
 )
 ```
 
 ## Testing Different Query Types
 
 ```python
+def tool_names(result):
+    return [
+        tool_call["name"]
+        for message in result["messages"]
+        for tool_call in getattr(message, "tool_calls", [])
+    ]
+
+def final_answer(result):
+    return result["messages"][-1].content
+
 # Simple factual query - should use semantic_search
-result1 = agent_executor.invoke({
-    "input": "How do I reset my password?",
-    "chat_history": [],
+result1 = agent.invoke({
+    "messages": [{"role": "user", "content": "How do I reset my password?"}]
 })
-print(f"Answer: {result1['output']}")
-print(f"Tools used: {[step[0].tool for step in result1['intermediate_steps']]}")
+print(f"Answer: {final_answer(result1)}")
+print(f"Tools used: {tool_names(result1)}")
 
 # Category-specific query - should use filtered_search
-result2 = agent_executor.invoke({
-    "input": "What security certifications do you have?",
-    "chat_history": [],
+result2 = agent.invoke({
+    "messages": [{"role": "user", "content": "What security certifications do you have?"}]
 })
-print(f"Answer: {result2['output']}")
-print(f"Tools used: {[step[0].tool for step in result2['intermediate_steps']]}")
+print(f"Answer: {final_answer(result2)}")
+print(f"Tools used: {tool_names(result2)}")
 
 # Comparison query - should use compare_plans
-result3 = agent_executor.invoke({
-    "input": "Compare the standard and professional plans for me",
-    "chat_history": [],
+result3 = agent.invoke({
+    "messages": [{"role": "user", "content": "Compare the standard and professional plans for me"}]
 })
-print(f"Answer: {result3['output']}")
-print(f"Tools used: {[step[0].tool for step in result3['intermediate_steps']]}")
+print(f"Answer: {final_answer(result3)}")
+print(f"Tools used: {tool_names(result3)}")
 
 # Complex multi-part query - should use multiple tools
-result4 = agent_executor.invoke({
-    "input": "I need a plan with API access and at least 99.9% uptime SLA. What are my options and how much do they cost?",
-    "chat_history": [],
+result4 = agent.invoke({
+    "messages": [{"role": "user", "content": "I need a plan with API access and at least 99.9% uptime SLA. What are my options and how much do they cost?"}]
 })
-print(f"Answer: {result4['output']}")
-print(f"Tools used: {[step[0].tool for step in result4['intermediate_steps']]}")
+print(f"Answer: {final_answer(result4)}")
+print(f"Tools used: {tool_names(result4)}")
 ```
 
 ## Using Vertex AI Native Function Calling
 
-For tighter integration with Vertex AI, you can use the native function calling API instead of LangChain's ReAct pattern.
+For tighter integration with Vertex AI, you can bind tools directly to the model instead of using LangChain's agent wrapper.
 
 ```python
 from langchain_google_vertexai import ChatVertexAI
 
 # Gemini models support native function calling
 llm_with_tools = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+    model_name="gemini-2.5-pro",
     project="your-project-id",
     location="us-central1",
     temperature=0.1,
@@ -245,7 +242,7 @@ llm_with_tools = llm_with_tools.bind_tools(tools)
 # The model will return tool calls in its response
 response = llm_with_tools.invoke("What is the pricing for the professional plan?")
 
-# Check if the model wants to call a tool
+# Check if the model wants to call a tool, then run the requested tool in your application
 if response.tool_calls:
     for tool_call in response.tool_calls:
         print(f"Tool: {tool_call['name']}")
@@ -275,8 +272,8 @@ def evaluate_retrieval(question: str, retrieved_info: str) -> str:
 
 Agentic RAG makes more LLM calls than standard RAG since the model reasons about each retrieval step. Here are ways to keep costs and latency manageable:
 
-- Use `gemini-1.5-flash` for the retrieval reasoning steps and `gemini-1.5-pro` for the final answer generation
-- Set `max_iterations` to prevent runaway loops
+- Use `gemini-2.5-flash` for the retrieval reasoning steps and `gemini-2.5-pro` for the final answer generation
+- Set graph recursion limits or other call limits to prevent runaway loops
 - Cache retrieval results for identical queries
 - Pre-filter the vector store when possible to reduce search space
 
