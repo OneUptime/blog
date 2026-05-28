@@ -144,7 +144,7 @@ steps:
         echo "Signing image: $IMAGE_URL with digest: $DIGEST"
 
         # Create the attestation (this is the signing step)
-        gcloud container binauthz attestations sign-and-create \
+        gcloud beta container binauthz attestations sign-and-create \
           --artifact-url="us-central1-docker.pkg.dev/YOUR_PROJECT/app/myservice@${DIGEST}" \
           --attestor="image-signing-attestor" \
           --attestor-project="YOUR_PROJECT" \
@@ -184,7 +184,7 @@ kubectl run test-signed \
 
 ## Break-Glass Procedure
 
-Sometimes you need to deploy an unsigned image in an emergency. Binary Authorization supports a break-glass annotation:
+Sometimes you need to deploy an unsigned image in an emergency. Binary Authorization supports a break-glass label:
 
 ```yaml
 # emergency-deployment.yaml
@@ -192,9 +192,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: emergency-fix
-  annotations:
-    # This annotation bypasses Binary Authorization
-    alpha.image-policy.k8s.io/break-glass: "Emergency fix for incident INC-1234"
 spec:
   replicas: 1
   selector:
@@ -204,6 +201,8 @@ spec:
     metadata:
       labels:
         app: emergency-fix
+        # This label bypasses Binary Authorization
+        image-policy.k8s.io/break-glass: "true"
     spec:
       containers:
         - name: app
@@ -219,11 +218,13 @@ def check_break_glass_usage():
     """Monitor for break-glass deployments and alert the security team"""
     client = logging_v2.Client()
 
-    # Query for break-glass events in the last 24 hours
+    # Query for break-glass events
     filter_str = (
         'resource.type="k8s_cluster" '
-        'protoPayload.request.metadata.annotations.'
-        '"alpha.image-policy.k8s.io/break-glass" != ""'
+        'logName:"cloudaudit.googleapis.com%2Factivity" '
+        '(protoPayload.methodName="io.k8s.core.v1.pods.create" OR '
+        'protoPayload.methodName="io.k8s.core.v1.pods.update") '
+        '"image-policy.k8s.io/break-glass"'
     )
 
     entries = client.list_entries(
@@ -257,15 +258,21 @@ Set up alerting for when Binary Authorization blocks a deployment:
 # Create a log-based metric for blocked deployments
 gcloud logging metrics create binauthz-blocked-deployments \
     --description="Count of deployments blocked by Binary Authorization" \
-    --log-filter='resource.type="k8s_cluster" protoPayload.response.status.message:"denied by attestor"'
+    --log-filter='resource.type="k8s_cluster"
+logName:"cloudaudit.googleapis.com%2Factivity"
+(protoPayload.methodName="io.k8s.core.v1.pods.create" OR
+ protoPayload.methodName="io.k8s.core.v1.pods.update")
+protoPayload.response.status="Failure"
+(protoPayload.response.reason="VIOLATES_POLICY" OR
+ protoPayload.response.reason="Forbidden")'
 
 # Create an alert policy
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
     --display-name="Binary Auth Blocked Deployment" \
     --condition-display-name="Unsigned image deployment attempted" \
-    --condition-filter='metric.type="logging.googleapis.com/user/binauthz-blocked-deployments"' \
-    --condition-threshold-value=1 \
-    --condition-threshold-duration=0s \
+    --condition-filter='metric.type="logging.googleapis.com/user/binauthz-blocked-deployments" AND resource.type="k8s_cluster"' \
+    --if='> 0' \
+    --duration=0s \
     --notification-channels=YOUR_NOTIFICATION_CHANNEL
 ```
 
@@ -290,16 +297,17 @@ gcloud container binauthz attestations list \
 If you're adding Binary Authorization to an existing cluster, start with dry-run mode to see what would be blocked without actually blocking anything:
 
 ```bash
-# Enable dry-run mode first
-gcloud container clusters update my-cluster \
-    --zone us-central1-a \
-    --binauthz-evaluation-mode=POLICY_BINDINGS_AND_PROJECT_SINGLETON_POLICY_ENFORCE
+# Export the policy, then set enforcementMode to DRYRUN_AUDIT_LOG_ONLY
+gcloud container binauthz policy export > binauthz-policy-dryrun.yaml
+
+# After editing the policy file, import it
+gcloud container binauthz policy import binauthz-policy-dryrun.yaml
 
 # Monitor the audit logs for what would be blocked
 gcloud logging read \
-    'resource.type="k8s_cluster" AND jsonPayload.enforcementMode="DRYRUN_AUDIT_LOG_ONLY"' \
+    'resource.type="k8s_cluster" AND labels."imagepolicywebhook.image-policy.k8s.io/dry-run"="true"' \
     --limit=50 \
-    --format="table(timestamp, jsonPayload.podName, jsonPayload.imageName)"
+    --format="table(timestamp, protoPayload.resourceName, protoPayload.response.reason)"
 ```
 
 ## Wrapping Up
