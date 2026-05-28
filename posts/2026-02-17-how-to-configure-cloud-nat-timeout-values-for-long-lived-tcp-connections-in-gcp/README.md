@@ -8,11 +8,11 @@ Description: Tune Cloud NAT timeout settings for applications with long-lived TC
 
 ---
 
-Cloud NAT has several timeout settings that control how long it keeps NAT translations alive. The defaults work well for typical web traffic with short-lived HTTP connections. But if your applications maintain long-lived TCP connections - database connections, WebSocket sessions, gRPC streams, MQTT connections, or SSH tunnels - those defaults will cause unexpected disconnections. Understanding and tuning these timeouts is essential for reliable connectivity.
+Cloud NAT has several timeout settings that control how long it keeps NAT translations alive. The defaults work well for typical web traffic with short-lived HTTP connections. But if your applications maintain long-lived TCP connections - database connections, WebSocket sessions, gRPC streams, MQTT connections, or SSH tunnels - those defaults can cause unexpected disconnections when connections sit idle longer than the configured timeout. Understanding and tuning these timeouts is essential for reliable connectivity.
 
 ## The Timeout Settings
 
-Cloud NAT has four configurable timeout values:
+Cloud NAT has five configurable timeout values:
 
 | Setting | Default | What It Controls |
 |---------|---------|-----------------|
@@ -20,6 +20,7 @@ Cloud NAT has four configurable timeout values:
 | `tcp-transitory-idle-timeout` | 30s | How long a TCP connection in a transitory state (SYN, FIN) can be idle |
 | `tcp-time-wait-timeout` | 120s | How long the port stays reserved after a connection enters TIME_WAIT |
 | `udp-idle-timeout` | 30s | How long an idle UDP mapping is maintained |
+| `icmp-idle-timeout` | 30s | How long an idle ICMP mapping is maintained for Public NAT |
 
 The most important one for long-lived connections is `tcp-established-idle-timeout`. When this timer expires on an idle connection, Cloud NAT silently drops the NAT mapping. The connection appears to hang because neither side knows the mapping is gone.
 
@@ -56,7 +57,7 @@ gcloud compute routers nats describe your-nat-gateway \
   --router=your-router \
   --region=us-central1 \
   --project=your-project-id \
-  --format="yaml(tcpEstablishedIdleTimeoutSec, tcpTransitoryIdleTimeoutSec, tcpTimeWaitTimeoutSec, udpIdleTimeoutSec)"
+  --format="yaml(tcpEstablishedIdleTimeoutSec, tcpTransitoryIdleTimeoutSec, tcpTimeWaitTimeoutSec, udpIdleTimeoutSec, icmpIdleTimeoutSec)"
 ```
 
 If the fields are not shown, the defaults are in use.
@@ -70,11 +71,11 @@ For applications that maintain persistent TCP connections, increase the establis
 gcloud compute routers nats update your-nat-gateway \
   --router=your-router \
   --region=us-central1 \
-  --tcp-established-idle-timeout=43200 \
+  --tcp-established-idle-timeout=43200s \
   --project=your-project-id
 ```
 
-The maximum value is 1,200,000 seconds (about 14 days). Here are some recommended values for common use cases:
+Choose the smallest value that matches your workload. Here are some recommended values for common use cases:
 
 | Use Case | Recommended Timeout |
 |----------|-------------------|
@@ -94,10 +95,11 @@ For a comprehensive configuration, set all timeout values at once:
 gcloud compute routers nats update your-nat-gateway \
   --router=your-router \
   --region=us-central1 \
-  --tcp-established-idle-timeout=7200 \
-  --tcp-transitory-idle-timeout=30 \
-  --tcp-time-wait-timeout=120 \
-  --udp-idle-timeout=30 \
+  --tcp-established-idle-timeout=7200s \
+  --tcp-transitory-idle-timeout=30s \
+  --tcp-time-wait-timeout=120s \
+  --udp-idle-timeout=30s \
+  --icmp-idle-timeout=30s \
   --project=your-project-id
 ```
 
@@ -106,6 +108,7 @@ In this example:
 - Connections in SYN/FIN states have 30 seconds (usually fine as-is)
 - TIME_WAIT keeps the port reserved for 2 minutes after close
 - UDP mappings time out after 30 seconds of inactivity
+- ICMP mappings time out after 30 seconds of inactivity for Public NAT
 
 ## Balancing Timeouts vs Port Usage
 
@@ -116,24 +119,25 @@ There is a tradeoff: longer timeouts mean NAT ports are held longer. If you set 
 gcloud compute routers nats update your-nat-gateway \
   --router=your-router \
   --region=us-central1 \
-  --tcp-established-idle-timeout=7200 \
+  --tcp-established-idle-timeout=7200s \
+  --no-enable-endpoint-independent-mapping \
   --enable-dynamic-port-allocation \
   --min-ports-per-vm=256 \
   --max-ports-per-vm=8192 \
   --project=your-project-id
 ```
 
-Dynamic port allocation helps here because idle connections still hold ports, but VMs that do not need long-lived connections return their ports to the pool.
+Dynamic port allocation requires endpoint-independent mapping to be disabled. It helps here because idle connections still hold ports, but port allocations can grow and shrink between the configured minimum and maximum as each VM's usage changes.
 
 ## The Application-Level Solution: TCP Keep-Alive
 
 Instead of setting very long NAT timeouts, a better approach is to use TCP keep-alive at the application or OS level. Keep-alive probes send small packets at regular intervals, preventing the connection from appearing idle to Cloud NAT.
 
-Configure TCP keep-alive on your VMs:
+Configure TCP keep-alive timing on your VMs. These sysctl settings control the timing for sockets that have TCP keep-alive enabled; applications still need to enable TCP keep-alive on their sockets:
 
 ```bash
-# Set TCP keep-alive interval to 60 seconds on the VM
-# This ensures the connection is never idle for more than 60 seconds
+# Set TCP keep-alive timing to 60 seconds on the VM
+# This applies to sockets that have SO_KEEPALIVE enabled
 sudo sysctl -w net.ipv4.tcp_keepalive_time=60
 sudo sysctl -w net.ipv4.tcp_keepalive_intvl=60
 sudo sysctl -w net.ipv4.tcp_keepalive_probes=5
@@ -154,7 +158,7 @@ EOF
 sudo sysctl --system
 ```
 
-With these settings, a keep-alive probe is sent every 60 seconds after the connection has been idle for 60 seconds. This is well within the default 20-minute NAT timeout, so the connection stays alive.
+With these settings, a socket with TCP keep-alive enabled sends its first keep-alive probe after the connection has been idle for 60 seconds, then sends additional probes every 60 seconds if the peer does not respond. This is well within the default 20-minute NAT timeout, so the connection stays alive.
 
 ## Application-Level Keep-Alive Examples
 
@@ -179,6 +183,7 @@ const pool = new Pool({
 For a Redis connection:
 
 ```python
+import socket
 import redis
 
 # Configure Redis client with keep-alive
@@ -188,9 +193,9 @@ client = redis.Redis(
     # Send keep-alive probes to prevent NAT timeout
     socket_keepalive=True,
     socket_keepalive_options={
-        1: 60,   # TCP_KEEPIDLE: start probes after 60s idle
-        2: 60,   # TCP_KEEPINTVL: probe interval 60s
-        3: 5,    # TCP_KEEPCNT: 5 probes before giving up
+        socket.TCP_KEEPIDLE: 60,   # Start probes after 60s idle
+        socket.TCP_KEEPINTVL: 60,  # Probe interval 60s
+        socket.TCP_KEEPCNT: 5,     # 5 probes before giving up
     }
 )
 ```
@@ -227,11 +232,11 @@ If your workloads create and close many connections rapidly, reducing the TIME_W
 gcloud compute routers nats update your-nat-gateway \
   --router=your-router \
   --region=us-central1 \
-  --tcp-time-wait-timeout=15 \
+  --tcp-time-wait-timeout=15s \
   --project=your-project-id
 ```
 
-This is safe for most workloads because TIME_WAIT primarily prevents old packets from being confused with new connections to the same destination. With short-lived connections to many different destinations, reducing this timer has minimal risk.
+This can be acceptable for many high-throughput workloads, but it increases the chance that retransmitted packets from a previously closed connection are received by an unrelated new connection. If you use dynamic port allocation, keep this timeout at 15 seconds or higher to avoid dropped packets.
 
 ## Wrapping Up
 
