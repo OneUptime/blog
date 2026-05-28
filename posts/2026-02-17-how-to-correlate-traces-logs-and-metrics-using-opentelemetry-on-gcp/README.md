@@ -14,7 +14,7 @@ One of the most frustrating things about debugging production issues is having t
 
 Traces, logs, and metrics are often called the three pillars of observability. But pillars standing alone are not very useful. The real value comes when you can correlate them. When a metric shows elevated error rates, you want to click through to the traces that contain errors, and from those traces, see the exact log lines that explain what went wrong.
 
-OpenTelemetry solves this by using a shared context - the trace ID and span ID - across all three signals. When you emit a log line during a traced request, the trace ID gets attached to that log. When you record a metric, exemplars link it back to specific traces.
+OpenTelemetry solves this by using a shared context - the trace ID and span ID - across traces and logs, and by keeping consistent resource and request attributes across all three signals. When you emit a log line during a traced request, the trace ID gets attached to that log. When you use an exporter path that preserves metric exemplars, histogram samples can link back to specific traces.
 
 ## Architecture
 
@@ -24,7 +24,7 @@ Here is how the correlation works end to end.
 graph TD
     A[Application Code] -->|Generates| B[Traces with Span Context]
     A -->|Emits| C[Logs with Trace ID/Span ID]
-    A -->|Records| D[Metrics with Exemplars]
+    A -->|Records| D[Metrics with Shared Attributes]
 
     B --> E[OpenTelemetry SDK]
     C --> E
@@ -35,8 +35,8 @@ graph TD
     E -->|Exports Metrics| H[Cloud Monitoring]
 
     F <-.->|Trace ID Correlation| G
-    F <-.->|Exemplar Links| H
-    G <-.->|Trace ID Correlation| H
+    F <-.->|Exemplar Links, When Supported| H
+    G <-.->|Shared Resource and Request Attributes| H
 ```
 
 ## Step 1: Set Up the OpenTelemetry SDK with All Three Signals
@@ -48,11 +48,13 @@ Here is a Python example that configures traces, logs, and metrics together with
 
 import logging
 from opentelemetry import trace, metrics
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 from opentelemetry.exporter.cloud_monitoring import CloudMonitoringMetricsExporter
@@ -83,15 +85,15 @@ def setup_opentelemetry(project_id: str, service_name: str):
     # --- Logs ---
     log_exporter = CloudLoggingExporter(project_id=project_id)
     logger_provider = LoggerProvider(resource=resource)
+    set_logger_provider(logger_provider)
     logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
 
     # Bridge Python's logging module to OpenTelemetry
-    # This automatically injects trace_id and span_id into log records
-    handler = LoggingHandler(
-        level=logging.INFO,
-        logger_provider=logger_provider,
+    # This injects trace context into log records and exports them as OTel logs
+    LoggingInstrumentor().instrument(
+        set_logging_format=True,
+        log_handler_level=logging.INFO,
     )
-    logging.getLogger().addHandler(handler)
 
     return tracer_provider, meter_provider, logger_provider
 ```
@@ -106,6 +108,7 @@ Now use all three signals in your application code. The key is that logs emitted
 import logging
 import time
 from opentelemetry import trace, metrics
+from opentelemetry.trace import StatusCode
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -142,7 +145,7 @@ def handle_request(request):
         try:
             result = process_business_logic(request)
 
-            # Record success metric with exemplar
+            # Record success metrics with the same request attributes
             duration_ms = (time.time() - start_time) * 1000
             request_counter.add(1, {"http.status_code": "200", "http.method": request.method})
             request_duration.record(duration_ms, {"http.method": request.method})
@@ -154,7 +157,7 @@ def handle_request(request):
             # The error log gets correlated with the same trace
             logger.error(f"Request failed: {e}", exc_info=True)
             span.record_exception(e)
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(StatusCode.ERROR, str(e))
 
             request_counter.add(1, {"http.status_code": "500", "http.method": request.method})
             raise
@@ -191,14 +194,14 @@ log_entry = {
 
 Once telemetry is flowing, go to Cloud Trace in the Google Cloud Console. Select a trace, and you should see a "Logs" tab that shows all log entries associated with that trace. Similarly, in Cloud Logging, each log entry that was emitted during a traced request will have a clickable trace link that takes you to the corresponding trace.
 
-For metrics, Cloud Monitoring supports exemplars that link metric data points to specific traces. When you click on a metric point in a chart, you can see exemplars that link to the actual traces that contributed to that data point.
+For metrics, Cloud Monitoring supports exemplars that link metric data points to specific traces when the ingestion path preserves them, such as Google Cloud Managed Service for Prometheus histograms with exemplar labels. When exemplars are available, clicking an exemplar in a chart opens the linked trace. With the direct Python Cloud Monitoring exporter, use consistent resource and request attributes to pivot between metric series, logs, and traces.
 
 ## Step 5: Use Log-Based Metrics for Deeper Integration
 
-You can also create log-based metrics in Cloud Logging that automatically correlate with traces.
+You can also create log-based metrics in Cloud Logging from logs that already contain trace context. The metric itself counts matching log entries; use the same filter in Logs Explorer when you need to jump back to the traced log entries.
 
 ```bash
-# Create a log-based metric for error logs, preserving trace context
+# Create a log-based metric for error logs
 gcloud logging metrics create error-rate \
     --description="Rate of error logs" \
     --log-filter='severity>=ERROR' \
@@ -219,7 +222,7 @@ Find error logs that have trace context attached.
 
 ```text
 severity>=ERROR
-jsonPayload.trace_id!=""
+trace:*
 ```
 
 ## The Investigation Workflow
