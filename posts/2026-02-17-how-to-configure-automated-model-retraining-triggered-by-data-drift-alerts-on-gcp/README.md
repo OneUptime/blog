@@ -53,28 +53,29 @@ def setup_drift_monitoring(endpoint_id, training_data_uri):
     # These should be tuned based on your model's sensitivity
     drift_config = model_monitoring.DriftDetectionConfig(
         drift_thresholds={
-            "user_age": model_monitoring.ThresholdConfig(value=0.2),
-            "session_duration": model_monitoring.ThresholdConfig(value=0.2),
-            "purchase_count_30d": model_monitoring.ThresholdConfig(value=0.15),
-            "avg_order_value": model_monitoring.ThresholdConfig(value=0.15),
+            "user_age": 0.2,
+            "session_duration": 0.2,
+            "purchase_count_30d": 0.15,
+            "avg_order_value": 0.15,
         },
         attribute_drift_thresholds={
-            "device_type": model_monitoring.ThresholdConfig(value=0.25),
-            "region": model_monitoring.ThresholdConfig(value=0.25),
+            "device_type": 0.25,
+            "region": 0.25,
         }
     )
 
     skew_config = model_monitoring.SkewDetectionConfig(
         data_source=training_data_uri,
         skew_thresholds={
-            "user_age": model_monitoring.ThresholdConfig(value=0.3),
-            "session_duration": model_monitoring.ThresholdConfig(value=0.3),
+            "user_age": 0.3,
+            "session_duration": 0.3,
         },
     )
 
-    # Configure email alerts (we will also use Cloud Monitoring for Pub/Sub)
+    # Configure email alerts and send anomaly logs to Cloud Logging
     email_config = model_monitoring.EmailAlertConfig(
-        user_emails=["ml-team@company.com"]
+        user_emails=["ml-team@company.com"],
+        enable_logging=True,
     )
 
     monitoring_job = aiplatform.ModelDeploymentMonitoringJob.create(
@@ -84,13 +85,13 @@ def setup_drift_monitoring(endpoint_id, training_data_uri):
             sample_rate=0.8
         ),
         schedule_config=model_monitoring.ScheduleConfig(
-            monitor_interval=3600  # Check every hour
+            monitor_interval=1  # Check every hour
         ),
         alert_config=email_config,
         objective_configs={
             deployed_model_id: model_monitoring.ObjectiveConfig(
-                prediction_drift_detection_config=drift_config,
-                training_prediction_skew_detection_config=skew_config,
+                drift_detection_config=drift_config,
+                skew_detection_config=skew_config,
             )
         },
     )
@@ -99,9 +100,24 @@ def setup_drift_monitoring(endpoint_id, training_data_uri):
     return monitoring_job
 ```
 
-## Step 2: Create a Cloud Monitoring Alert Policy
+## Step 2: Set Up the Pub/Sub Topic
 
-Set up a Cloud Monitoring alert that fires when drift scores exceed your threshold and publishes to a Pub/Sub topic.
+Create the Pub/Sub infrastructure and the Cloud Monitoring notification channel that will receive drift alerts.
+
+```bash
+# Create the Pub/Sub topic for drift alerts
+gcloud pubsub topics create model-drift-alerts
+
+# Create a notification channel that publishes to Pub/Sub
+gcloud beta monitoring channels create \
+  --display-name="Drift Alert to Pub/Sub" \
+  --type=pubsub \
+  --channel-labels=topic=projects/my-project/topics/model-drift-alerts
+```
+
+## Step 3: Create a Cloud Monitoring Alert Policy and Cloud Function
+
+Set up a Cloud Monitoring alert that fires when drift scores exceed your threshold and publishes to the Pub/Sub notification channel you created.
 
 ```python
 # setup_alert_policy.py
@@ -124,7 +140,7 @@ def create_drift_alert_policy(project_id, notification_channel_id):
                 condition_threshold=monitoring_v3.AlertPolicy.Condition.MetricThreshold(
                     filter=(
                         'metric.type="aiplatform.googleapis.com/'
-                        'prediction/online/feature_attribution_drift_score"'
+                        'model_monitoring/feature_drift_deviation"'
                     ),
                     comparison=monitoring_v3.ComparisonType.COMPARISON_GT,
                     threshold_value=0.3,
@@ -151,37 +167,23 @@ def create_drift_alert_policy(project_id, notification_channel_id):
     return result.name
 ```
 
-## Step 3: Set Up the Pub/Sub Topic and Cloud Function
-
-Create the Pub/Sub infrastructure and the Cloud Function that evaluates drift severity and triggers retraining.
-
-```bash
-# Create the Pub/Sub topic for drift alerts
-gcloud pubsub topics create model-drift-alerts
-
-# Create a notification channel that publishes to Pub/Sub
-# Note: You may need to use the API directly for Pub/Sub notification channels
-gcloud monitoring channels create \
-  --display-name="Drift Alert to Pub/Sub" \
-  --type=pubsub \
-  --channel-labels=topic=projects/my-project/topics/model-drift-alerts
-```
-
 Now create the Cloud Function that processes drift alerts.
 
 ```python
 # cloud_function/main.py
 import json
 import base64
+import os
+from datetime import datetime, timezone
 from google.cloud import aiplatform
 from google.cloud import bigquery
 import functions_framework
 
 # Configuration
-PROJECT_ID = "my-project"
-LOCATION = "us-central1"
-PIPELINE_TEMPLATE = "gs://my-bucket/pipelines/retraining_pipeline.json"
-STAGING_BUCKET = "gs://my-bucket/pipeline-staging"
+PROJECT_ID = os.environ["PROJECT_ID"]
+LOCATION = os.environ.get("LOCATION", "us-central1")
+PIPELINE_TEMPLATE = os.environ["PIPELINE_TEMPLATE"]
+STAGING_BUCKET = os.environ["STAGING_BUCKET"]
 
 # Minimum interval between retraining runs (in hours)
 MIN_RETRAIN_INTERVAL_HOURS = 24
@@ -223,7 +225,6 @@ def evaluate_retraining_need(alert_data):
     result = list(bq_client.query(query).result())
 
     if result and result[0]["last_retrain"]:
-        from datetime import datetime, timedelta, timezone
         last_retrain = result[0]["last_retrain"]
         hours_since_retrain = (
             datetime.now(timezone.utc) - last_retrain
@@ -300,7 +301,7 @@ def log_drift_event(alert_data, triggered_retrain, pipeline_job=None):
         "alert_data": json.dumps(alert_data),
         "triggered_retrain": triggered_retrain,
         "pipeline_job": pipeline_job,
-        "triggered_at": "AUTO",  # BigQuery will use CURRENT_TIMESTAMP()
+        "triggered_at": datetime.now(timezone.utc).isoformat(),
     }
 
     errors = bq_client.insert_rows_json("ml_ops.retraining_log", [row])
@@ -314,7 +315,7 @@ The retraining pipeline should fetch fresh data, train a new model, compare it a
 
 ```python
 # pipeline/retraining_pipeline.py
-from kfp.v2 import dsl, compiler
+from kfp import dsl, compiler
 
 @dsl.pipeline(
     name="drift-triggered-retraining",
@@ -352,7 +353,7 @@ def retraining_pipeline(
     )
 
     # Step 5: Deploy only if the new model is better
-    with dsl.Condition(compare_task.output == True):
+    with dsl.If(compare_task.output == True):
         deploy_task = deploy_model(
             model=train_task.outputs["model"],
             endpoint_id=endpoint_id,
@@ -371,8 +372,8 @@ Here is the comparison component that checks whether the new model beats the cur
 
 ```python
 # components/compare_models.py
-from kfp.v2 import dsl
-from kfp.v2.dsl import Input, Metrics
+from kfp import dsl
+from kfp.dsl import Input, Metrics
 
 @dsl.component(
     base_image="python:3.10",
@@ -403,10 +404,11 @@ def compare_with_production(
     new_accuracy = new_model_metrics.metadata.get("accuracy", 0)
     new_f1 = new_model_metrics.metadata.get("f1_score", 0)
 
-    # Get current model metrics from labels or metadata
+    # Get current model metrics from labels.
+    # Store metric labels as basis points, for example accuracy_bp="9300".
     current_model = aiplatform.Model(current_models[0].model)
-    current_accuracy = float(current_model.labels.get("accuracy", "0"))
-    current_f1 = float(current_model.labels.get("f1_score", "0"))
+    current_accuracy = float(current_model.labels.get("accuracy_bp", "0")) / 10000
+    current_f1 = float(current_model.labels.get("f1_score_bp", "0")) / 10000
 
     print(f"Current model - Accuracy: {current_accuracy}, F1: {current_f1}")
     print(f"New model     - Accuracy: {new_accuracy}, F1: {new_f1}")
@@ -436,7 +438,7 @@ gcloud functions deploy drift-alert-handler \
   --entry-point handle_drift_alert \
   --region us-central1 \
   --service-account ml-pipeline-sa@my-project.iam.gserviceaccount.com \
-  --set-env-vars PROJECT_ID=my-project
+  --set-env-vars PROJECT_ID=my-project,LOCATION=us-central1,PIPELINE_TEMPLATE=gs://my-bucket/pipelines/retraining_pipeline.json,STAGING_BUCKET=gs://my-bucket/pipeline-staging
 ```
 
 ## Tuning the Retraining Triggers
