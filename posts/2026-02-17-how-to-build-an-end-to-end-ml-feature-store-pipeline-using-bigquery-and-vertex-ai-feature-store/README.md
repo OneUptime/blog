@@ -25,12 +25,12 @@ flowchart LR
     A[Raw Data Sources] --> B[BigQuery]
     B --> C[Feature Engineering SQL]
     C --> D[BigQuery Feature Tables]
-    D --> E[Vertex AI Feature Store]
+    D --> E[Vertex AI Feature Store Feature View]
     E --> F[Online Serving]
-    E --> G[Offline Training]
+    D --> G[Offline Training]
 ```
 
-The pipeline flows from raw data ingestion into BigQuery, through SQL-based feature engineering, into feature tables, and finally into the Vertex AI Feature Store where features are available for both online and offline consumption.
+The pipeline flows from raw data ingestion into BigQuery, through SQL-based feature engineering, into feature tables, and finally into a Vertex AI Feature Store feature view for online serving. BigQuery remains the offline store for training data.
 
 ## Setting Up Your Environment
 
@@ -59,9 +59,10 @@ The first step is writing SQL queries that transform your raw data into features
 
 ```sql
 -- Compute user-level features from raw transaction data
-CREATE OR REPLACE TABLE `my_project.features.user_features` AS
+CREATE OR REPLACE TABLE `my-project.features.user_features` AS
 SELECT
     user_id,
+    CURRENT_TIMESTAMP() AS feature_timestamp,
     -- Aggregate purchase behavior
     COUNT(*) AS total_purchases,
     AVG(order_total) AS avg_order_value,
@@ -75,7 +76,7 @@ SELECT
     -- Time-based features
     AVG(EXTRACT(HOUR FROM order_timestamp)) AS avg_purchase_hour
 FROM
-    `my_project.raw_data.transactions`
+    `my-project.raw_data.transactions`
 WHERE
     order_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
 GROUP BY
@@ -84,12 +85,13 @@ GROUP BY
 
 This query computes several features from raw transaction data: purchase counts, average order values, recency, frequency, and category preferences. You can schedule this query to run on a regular cadence using BigQuery scheduled queries or Cloud Composer.
 
-## Step 2 - Create a Feature Store and Entity Type
+## Step 2 - Create an Online Store and Feature Group
 
 Now let us set up the Vertex AI Feature Store resources.
 
 ```python
 from google.cloud import aiplatform
+from vertexai.resources.preview import feature_store
 
 # Initialize the SDK with your project details
 aiplatform.init(
@@ -97,107 +99,125 @@ aiplatform.init(
     location="us-central1"
 )
 
-# Create a feature store instance
-feature_store = aiplatform.Featurestore.create(
-    featurestore_id="ecommerce_features",
-    online_serving_config=aiplatform.Featurestore.OnlineServingConfig(
-        # Number of nodes for online serving - scale based on your QPS needs
-        fixed_node_count=1
-    ),
+# Create an online store for Bigtable online serving
+online_store = feature_store.FeatureOnlineStore.create_bigtable_store(
+    "ecommerce_features"
 )
 
-# Create an entity type for users
-user_entity_type = feature_store.create_entity_type(
-    entity_type_id="users",
-    description="User-level features for the ecommerce platform"
+# Register the BigQuery table as a feature group
+user_feature_group = feature_store.FeatureGroup.create(
+    name="ecommerce_user_features",
+    source=feature_store.utils.FeatureGroupBigQuerySource(
+        uri="bq://my-project.features.user_features",
+        entity_id_columns=["user_id"],
+    ),
 )
 ```
 
 ## Step 3 - Define Features
 
-With the entity type created, you now define the individual features.
+With the feature group created, you now define the individual features. Each feature maps to a column in the BigQuery source table.
 
 ```python
-# Define each feature with its value type and description
+# Define each feature with its BigQuery source column and description
 features_config = {
     "total_purchases": {
-        "value_type": "INT64",
+        "version_column_name": "total_purchases",
         "description": "Total number of purchases in the last 90 days"
     },
     "avg_order_value": {
-        "value_type": "DOUBLE",
+        "version_column_name": "avg_order_value",
         "description": "Average order value in the last 90 days"
     },
     "max_order_value": {
-        "value_type": "DOUBLE",
+        "version_column_name": "max_order_value",
         "description": "Maximum single order value in the last 90 days"
     },
     "days_since_last_purchase": {
-        "value_type": "INT64",
+        "version_column_name": "days_since_last_purchase",
         "description": "Days since the most recent purchase"
     },
     "unique_purchase_days": {
-        "value_type": "INT64",
+        "version_column_name": "unique_purchase_days",
         "description": "Number of unique days with at least one purchase"
     },
     "top_category": {
-        "value_type": "STRING",
+        "version_column_name": "top_category",
         "description": "Most frequently purchased product category"
     },
     "avg_purchase_hour": {
-        "value_type": "DOUBLE",
+        "version_column_name": "avg_purchase_hour",
         "description": "Average hour of day when purchases happen"
     }
 }
 
 # Create all features in a batch
 for feature_id, config in features_config.items():
-    user_entity_type.create_feature(
-        feature_id=feature_id,
-        value_type=config["value_type"],
+    user_feature_group.create_feature(
+        name=feature_id,
+        version_column_name=config["version_column_name"],
         description=config["description"]
     )
 ```
 
-## Step 4 - Ingest Features from BigQuery
+## Step 4 - Create a Feature View from BigQuery
 
-This is where BigQuery and Vertex AI Feature Store connect. You ingest the computed features directly from your BigQuery table.
+This is where BigQuery and Vertex AI Feature Store connect. You create a feature view that syncs the latest feature values from the registered BigQuery table into the online store.
 
-```python
-# Ingest features from the BigQuery table into the feature store
-user_entity_type.ingest_from_bq(
-    feature_ids=[
-        "total_purchases",
-        "avg_order_value",
-        "max_order_value",
-        "days_since_last_purchase",
-        "unique_purchase_days",
-        "top_category",
-        "avg_purchase_hour"
-    ],
-    feature_time="feature_timestamp",  # Column in BQ table with the feature timestamp
-    bq_source_uri="bq://my-project.features.user_features",
-    entity_id_field="user_id",  # Column that maps to the entity ID
-)
+```json
+{
+  "feature_registry_source": {
+    "feature_groups": [
+      {
+        "feature_group_id": "ecommerce_user_features",
+        "feature_ids": [
+          "total_purchases",
+          "avg_order_value",
+          "max_order_value",
+          "days_since_last_purchase",
+          "unique_purchase_days",
+          "top_category",
+          "avg_purchase_hour"
+        ]
+      }
+    ]
+  },
+  "sync_config": {
+    "cron": "0 * * * *"
+  }
+}
 ```
 
-The ingestion job runs asynchronously and can handle large volumes of data. For production pipelines, you would trigger this after your scheduled BigQuery feature engineering queries complete.
+Save this JSON as `feature_view.json`, then create the feature view:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json; charset=utf-8" \
+  -d @feature_view.json \
+  "https://us-central1-aiplatform.googleapis.com/v1/projects/my-project/locations/us-central1/featureOnlineStores/ecommerce_features/featureViews?feature_view_id=ecommerce_user_view"
+```
+
+The feature view syncs from BigQuery on the schedule you configure. For production pipelines, you would schedule the sync after your BigQuery feature engineering query completes, or manually trigger a sync when the feature table is updated.
 
 ## Step 5 - Serve Features Online
 
-Once features are ingested, you can read them with low latency for online predictions.
+Once the feature view has synced, you can read features with low latency for online predictions.
 
 ```python
-# Read features for a specific user during online prediction
-online_features = feature_store.read(
-    entity_type_id="users",
-    entity_ids=["user_12345"],
-    feature_ids=[
-        "total_purchases",
-        "avg_order_value",
-        "days_since_last_purchase"
-    ]
+from google.cloud import aiplatform
+from vertexai.resources.preview.feature_store import FeatureOnlineStore, FeatureView
+
+aiplatform.init(project="my-project", location="us-central1")
+
+online_store = FeatureOnlineStore("ecommerce_features")
+feature_view = FeatureView(
+    "ecommerce_user_view",
+    feature_online_store_id=online_store.name,
 )
+
+# Read features for a specific user during online prediction
+online_features = feature_view.read("user_12345")
 
 # The response contains feature values you can pass to your model
 print(online_features)
@@ -205,28 +225,27 @@ print(online_features)
 
 ## Step 6 - Serve Features Offline for Training
 
-For training, you can perform a batch read that joins features with your training labels based on point-in-time correctness.
+For training, you can use BigQuery to join features with your training labels based on point-in-time correctness.
 
-```python
-from google.cloud.aiplatform_v1.types import FeatureSelector, IdMatcher
-
-# Define the serving config for batch reads
-batch_read = feature_store.batch_serve_to_bq(
-    bq_destination_output_uri="bq://my-project.training_data.training_set",
-    serving_feature_ids={
-        "users": [
-            "total_purchases",
-            "avg_order_value",
-            "max_order_value",
-            "days_since_last_purchase",
-            "unique_purchase_days",
-            "top_category",
-            "avg_purchase_hour"
-        ]
-    },
-    # This table has entity_ids and timestamps for point-in-time joins
-    read_instances_uri="bq://my-project.training_data.training_instances",
-)
+```sql
+-- Build a point-in-time training set in BigQuery.
+-- training_instances contains user_id, label_timestamp, and labels.
+CREATE OR REPLACE TABLE `my-project.training_data.training_set` AS
+SELECT
+    labels.*,
+    features.* EXCEPT (user_id, feature_timestamp)
+FROM
+    `my-project.training_data.training_instances` AS labels
+LEFT JOIN
+    `my-project.features.user_features_history` AS features
+ON
+    labels.user_id = features.user_id
+    AND features.feature_timestamp <= labels.label_timestamp
+QUALIFY
+    ROW_NUMBER() OVER (
+        PARTITION BY labels.user_id, labels.label_timestamp
+        ORDER BY features.feature_timestamp DESC
+    ) = 1;
 ```
 
 Point-in-time correctness matters because you want training features to reflect what was known at the time of each training example, not what is known now. This prevents data leakage.
@@ -236,33 +255,36 @@ Point-in-time correctness matters because you want training features to reflect 
 To run this end-to-end, you can wire everything together using Cloud Composer (Airflow) or Vertex AI Pipelines.
 
 ```python
-from kfp import dsl
-from kfp.v2 import compiler
+from kfp import compiler, dsl
+
+@dsl.container_component
+def compute_features():
+    return dsl.ContainerSpec(
+        image="google/cloud-sdk:latest",
+        command=["bq", "query"],
+        args=[
+            "--use_legacy_sql=false",
+            "--destination_table=my-project:features.user_features",
+            "SELECT ... FROM raw_data.transactions ..."
+        ],
+    )
+
+@dsl.container_component
+def sync_feature_view():
+    return dsl.ContainerSpec(
+        image="python:3.11",
+        command=["python", "sync_feature_view.py"],
+    )
 
 @dsl.pipeline(name="feature-pipeline")
 def feature_pipeline():
-    # Step 1: Run the BigQuery feature engineering query
-    bq_task = dsl.ContainerOp(
-        name="compute-features",
-        image="google/cloud-sdk:latest",
-        command=["bq", "query", "--use_legacy_sql=false"],
-        arguments=["--destination_table=my_project:features.user_features",
-                    "SELECT ... FROM raw_data.transactions ..."]
-    )
-
-    # Step 2: Ingest features into the feature store
-    ingest_task = dsl.ContainerOp(
-        name="ingest-features",
-        image="python:3.9",
-        command=["python", "ingest_features.py"],
-    )
-    # Make sure ingestion happens after computation
-    ingest_task.after(bq_task)
+    bq_task = compute_features()
+    sync_feature_view().after(bq_task)
 
 # Compile the pipeline
 compiler.Compiler().compile(
     pipeline_func=feature_pipeline,
-    package_path="feature_pipeline.json"
+    package_path="feature_pipeline.yaml"
 )
 ```
 
@@ -270,11 +292,11 @@ compiler.Compiler().compile(
 
 A few things to keep in mind when running this in production:
 
-- **Feature freshness**: Monitor how stale your features are. Set up alerts if ingestion jobs fail or run late.
-- **Schema evolution**: Plan for adding new features. Vertex AI Feature Store supports adding features to existing entity types without downtime.
-- **Cost management**: Online serving nodes cost money even when idle. Size them based on actual QPS requirements and consider scaling down during off-peak hours.
-- **Data quality**: Add validation checks between the BigQuery computation and the ingestion step. Bad features lead to bad predictions.
+- **Feature freshness**: Monitor how stale your features are. Set up alerts if feature view sync jobs fail or run late.
+- **Schema evolution**: Plan for adding new features. Vertex AI Feature Store supports adding features to existing feature groups.
+- **Cost management**: Online store resources cost money while provisioned. Size them based on actual QPS requirements and avoid overly frequent sync schedules.
+- **Data quality**: Add validation checks between the BigQuery computation and the feature view sync step. Bad features lead to bad predictions.
 
 ## Wrapping Up
 
-Building a feature store pipeline with BigQuery and Vertex AI Feature Store gives you a solid foundation for serving ML features at scale. BigQuery handles the compute-heavy feature engineering work, while the feature store provides consistent, low-latency access for both training and serving. The tight integration between these two services means less glue code and fewer opportunities for training-serving skew. Once this pipeline is in place, adding new features becomes a matter of writing a SQL query and registering the new feature - your serving infrastructure stays the same.
+Building a feature store pipeline with BigQuery and Vertex AI Feature Store gives you a solid foundation for serving ML features at scale. BigQuery handles the compute-heavy feature engineering work and offline training data, while the feature store provides consistent, low-latency access for online serving. The tight integration between these two services means less glue code and fewer opportunities for training-serving skew. Once this pipeline is in place, adding new features becomes a matter of writing a SQL query and registering the new feature - your serving infrastructure stays the same.
