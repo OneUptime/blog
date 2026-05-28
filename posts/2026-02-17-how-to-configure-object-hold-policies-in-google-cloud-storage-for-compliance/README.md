@@ -8,7 +8,7 @@ Description: A practical guide to configuring object hold policies in Google Clo
 
 ---
 
-Retention policies apply uniformly to an entire bucket, but sometimes you need more granular control. Object holds let you prevent deletion or modification of individual objects, independent of any bucket-level retention policy. This is especially useful for legal holds where specific documents must be preserved, or for event-based retention where the hold period should start from a business event rather than the upload time.
+Retention policies apply uniformly to an entire bucket, but sometimes you need more granular control. Object holds let you prevent deletion or replacement of individual objects, independent of any bucket-level retention policy. This is especially useful for legal holds where specific documents must be preserved, or for event-based retention where the hold period should start from a business event rather than the upload time.
 
 This guide covers both types of object holds - temporary holds and event-based holds - with practical examples for compliance workflows.
 
@@ -18,7 +18,7 @@ Google Cloud Storage offers two types of holds:
 
 **Temporary Hold** - A simple flag on an object that prevents it from being deleted or overwritten. Anyone with the right permissions can place or remove a temporary hold. There is no automatic release.
 
-**Event-Based Hold** - A hold that is placed automatically when an object is uploaded (if configured on the bucket) and must be explicitly released when a business event occurs. When released, the retention period starts counting from the release time.
+**Event-Based Hold** - A hold that can be placed on an object automatically when it is uploaded (if configured on the bucket) and must be explicitly released when a business event occurs. When released, the retention period starts counting from the release time.
 
 ```mermaid
 graph TD
@@ -171,7 +171,7 @@ gcloud storage objects update gs://financial-records/accounts/acct-12345/stateme
 
 ```python
 from google.cloud import storage
-from datetime import datetime
+from datetime import datetime, timezone
 
 def upload_with_event_hold(bucket_name, file_path, destination, metadata=None):
     """Upload a file to a bucket that has default event-based holds."""
@@ -208,7 +208,7 @@ def release_event_hold(bucket_name, blob_name, event_type, event_id):
     current_metadata.update({
         "hold-released-by-event": event_type,
         "event-id": event_id,
-        "hold-released-at": datetime.utcnow().isoformat(),
+        "hold-released-at": datetime.now(timezone.utc).isoformat(),
     })
     blob.metadata = current_metadata
 
@@ -217,7 +217,7 @@ def release_event_hold(bucket_name, blob_name, event_type, event_id):
     blob.patch()
 
     print(f"Released event-based hold on: {blob_name}")
-    print(f"Retention period now starts from: {datetime.utcnow().isoformat()}")
+    print(f"Retention period now starts from: {datetime.now(timezone.utc).isoformat()}")
 
 def release_holds_for_account(bucket_name, account_id, event_type, event_id):
     """Release holds on all objects for a specific account."""
@@ -289,12 +289,12 @@ resource "google_storage_bucket" "compliance_bucket" {
 
 ## Auditing Hold Operations
 
-Track hold operations using Cloud Audit Logs. Every hold placement and release is logged:
+Track hold operations using Cloud Audit Logs. Hold placement and release operations update object metadata, which are Data Access audit logs; enable Data Access audit logging for Cloud Storage before relying on these logs:
 
 ```bash
-# Query audit logs for hold operations
+# Query object metadata updates and inspect request/response details for hold fields
 gcloud logging read \
-  'resource.type="gcs_bucket" AND protoPayload.methodName="storage.objects.update" AND protoPayload.request.updateMask="temporaryHold"' \
+  'resource.type="gcs_bucket" AND protoPayload.serviceName="storage.googleapis.com" AND protoPayload.methodName=~"storage\\.objects\\.(update|patch)"' \
   --limit=50 \
   --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.resourceName)"
 ```
