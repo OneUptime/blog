@@ -123,6 +123,7 @@ And here is the new version using Cloud Tasks:
 # NEW CODE - Using Cloud Tasks API
 from google.cloud import tasks_v2
 import json
+import time
 
 # Create a reusable client
 tasks_client = tasks_v2.CloudTasksClient()
@@ -173,7 +174,7 @@ def send_welcome_email(user_id, email):
 ## Step 4: Update Task Creation Code - Node.js
 
 ```javascript
-// OLD CODE - Using App Engine Task Queue (deprecated)
+// OLD CODE - Example wrapper-style code that added tasks to an App Engine queue
 const { TaskQueue } = require("appengine-api");
 const queue = new TaskQueue("email-queue");
 await queue.add({
@@ -223,16 +224,16 @@ async function enqueueEmail(userId, email) {
 
 ## Step 5: Update Task Handlers
 
-The task handler code usually does not need significant changes. Cloud Tasks delivers the task as an HTTP POST request, just like the old Task Queue. However, the request headers are different:
+The task handler code usually does not need significant changes. Cloud Tasks delivers the task as an HTTP POST request, just like the old Task Queue. For App Engine targets, Cloud Tasks uses the App Engine task request headers:
 
 ```python
 # Task handler - works with both old and new task systems
 @app.route("/tasks/send-email", methods=["POST"])
 def handle_send_email():
     # Cloud Tasks sends these headers
-    task_name = request.headers.get("X-CloudTasks-TaskName", "unknown")
-    queue_name = request.headers.get("X-CloudTasks-QueueName", "unknown")
-    retry_count = int(request.headers.get("X-CloudTasks-TaskRetryCount", "0"))
+    task_name = request.headers.get("X-AppEngine-TaskName", "unknown")
+    queue_name = request.headers.get("X-AppEngine-QueueName", "unknown")
+    retry_count = int(request.headers.get("X-AppEngine-TaskRetryCount", "0"))
 
     # Parse the task payload
     data = request.get_json()
@@ -250,10 +251,10 @@ def handle_send_email():
         return "Failed", 500
 ```
 
-The key header changes:
-- Old: `X-AppEngine-TaskName` becomes `X-CloudTasks-TaskName`
-- Old: `X-AppEngine-QueueName` becomes `X-CloudTasks-QueueName`
-- Old: `X-AppEngine-TaskRetryCount` becomes `X-CloudTasks-TaskRetryCount`
+The key headers to check are:
+- `X-AppEngine-TaskName`
+- `X-AppEngine-QueueName`
+- `X-AppEngine-TaskRetryCount`
 
 ## Step 6: Route Tasks to Specific Services
 
@@ -286,8 +287,8 @@ def require_cloud_tasks(f):
 
     @wraps(f)
     def decorated(*args, **kwargs):
-        # Cloud Tasks sets this header - it cannot be spoofed from external requests
-        task_name = request.headers.get("X-CloudTasks-TaskName")
+        # Cloud Tasks sets this App Engine task header internally.
+        task_name = request.headers.get("X-AppEngine-TaskName")
         if not task_name:
             # Check for App Engine cron header as well
             if not request.headers.get("X-Appengine-Cron"):
