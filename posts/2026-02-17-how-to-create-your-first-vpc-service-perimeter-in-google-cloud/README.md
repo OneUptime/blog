@@ -8,9 +8,9 @@ Description: A beginner-friendly guide to creating your first VPC Service Contro
 
 ---
 
-VPC Service Controls is one of the most powerful - and most misunderstood - security features in Google Cloud. At its core, it creates a security boundary around GCP services that prevents data from leaving the perimeter without explicit authorization. Think of it as a firewall, but for API calls instead of network traffic.
+VPC Service Controls is one of the most powerful - and most misunderstood - security features in Google Cloud. At its core, it creates a security boundary around supported GCP services that prevents data from leaving the perimeter without explicit authorization. Think of it as a firewall, but for API calls instead of network traffic.
 
-Without VPC Service Controls, a compromised service account or insider threat could copy your BigQuery data to a project they control, exfiltrate Cloud Storage objects, or access sensitive APIs from outside your network. VPC Service Controls blocks all of that.
+Without VPC Service Controls, a compromised service account or insider threat could copy your BigQuery data to a project they control, exfiltrate Cloud Storage objects, or access sensitive APIs from outside your network. VPC Service Controls helps block that for the supported services you restrict in the perimeter.
 
 In this guide, I will walk you through creating your very first perimeter from scratch.
 
@@ -20,7 +20,7 @@ Here is what changes when a service is inside a perimeter:
 
 - API calls from outside the perimeter are blocked (even with valid credentials)
 - Data cannot be copied to projects outside the perimeter
-- Service accounts in the perimeter cannot access resources outside it
+- Calls to restricted services from inside the perimeter to resources outside it are blocked unless egress rules allow them
 - API calls from outside your corporate network can be blocked
 
 ```mermaid
@@ -86,10 +86,10 @@ Always start in dry-run mode. This logs what would be blocked without actually b
 ```bash
 # Create a perimeter in dry-run mode
 gcloud access-context-manager perimeters dry-run create my-first-perimeter \
+  --perimeter-title="My First Perimeter" \
   --perimeter-type=regular \
-  --resources="projects/PROJECT_NUMBER_1,projects/PROJECT_NUMBER_2" \
-  --restricted-services="bigquery.googleapis.com,storage.googleapis.com" \
-  --title="My First Perimeter" \
+  --perimeter-resources="projects/PROJECT_NUMBER_1,projects/PROJECT_NUMBER_2" \
+  --perimeter-restricted-services="bigquery.googleapis.com,storage.googleapis.com" \
   --policy=$ACCESS_POLICY_ID
 ```
 
@@ -121,7 +121,7 @@ If you need to allow access from your corporate network, create an access level.
 
 ```bash
 # Create an access level for your corporate IP range
-gcloud access-context-manager levels create corporate-network \
+gcloud access-context-manager levels create corporate_network \
   --title="Corporate Network" \
   --basic-level-spec=level-spec.yaml \
   --policy=$ACCESS_POLICY_ID
@@ -147,7 +147,7 @@ gcloud access-context-manager perimeters create my-first-perimeter \
   --perimeter-type=regular \
   --resources="projects/PROJECT_NUMBER_1,projects/PROJECT_NUMBER_2" \
   --restricted-services="bigquery.googleapis.com,storage.googleapis.com" \
-  --access-levels="accessPolicies/$ACCESS_POLICY_ID/accessLevels/corporate-network" \
+  --access-levels="accessPolicies/$ACCESS_POLICY_ID/accessLevels/corporate_network" \
   --title="My First Perimeter" \
   --policy=$ACCESS_POLICY_ID
 ```
@@ -181,7 +181,7 @@ You can update the perimeter to restrict additional services.
 ```bash
 # Add more restricted services to the perimeter
 gcloud access-context-manager perimeters update my-first-perimeter \
-  --add-restricted-services="cloudsql.googleapis.com,spanner.googleapis.com,pubsub.googleapis.com" \
+  --add-restricted-services="sqladmin.googleapis.com,spanner.googleapis.com,pubsub.googleapis.com" \
   --policy=$ACCESS_POLICY_ID
 ```
 
@@ -189,7 +189,7 @@ Here are the services you should consider restricting:
 
 - `bigquery.googleapis.com` - Prevent data exfiltration via BigQuery
 - `storage.googleapis.com` - Protect Cloud Storage objects
-- `cloudsql.googleapis.com` - Protect database instances
+- `sqladmin.googleapis.com` - Protect the Cloud SQL Admin API
 - `spanner.googleapis.com` - Protect Spanner databases
 - `pubsub.googleapis.com` - Prevent message interception
 - `logging.googleapis.com` - Protect audit logs
@@ -225,4 +225,4 @@ gcloud access-context-manager perimeters delete my-first-perimeter \
 
 ## Conclusion
 
-Creating your first VPC Service Perimeter is a significant step toward securing your GCP environment against data exfiltration. The key is to start small, use dry-run mode extensively, and gradually expand the perimeter's scope as you gain confidence. VPC Service Controls adds a layer of protection that IAM alone cannot provide - even if credentials are stolen, the perimeter prevents data from leaving your organization's boundary.
+Creating your first VPC Service Perimeter is a significant step toward securing your GCP environment against data exfiltration. The key is to start small, use dry-run mode extensively, and gradually expand the perimeter's scope as you gain confidence. VPC Service Controls adds a layer of protection that IAM alone cannot provide - even if credentials are stolen, the perimeter can prevent data in supported restricted services from leaving your organization's boundary.
