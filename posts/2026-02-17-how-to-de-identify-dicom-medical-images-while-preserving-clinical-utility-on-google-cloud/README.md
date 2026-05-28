@@ -29,7 +29,7 @@ You will need:
 - A Google Cloud project with the Healthcare API enabled
 - A DICOM store with test data loaded
 - Cloud DLP API enabled (for burned-in text redaction)
-- Appropriate IAM roles: `healthcare.dicomStores.deidentify` and `dlp.user`
+- Appropriate IAM permissions on the source and destination stores, including `healthcare.dicomStores.deidentify` on the source store and `healthcare.dicomStores.dicomWebWrite` on the destination store
 
 ## Step 1: Set Up Source and Destination Stores
 
@@ -47,16 +47,15 @@ gcloud healthcare dicom-stores create deidentified-dicom-store \
 
 ## Step 2: Configure Tag-Level De-Identification
 
-The tag-level configuration controls what happens to each DICOM metadata tag. The Healthcare API supports several tag filtering profiles.
+The tag-level configuration controls what happens to each DICOM metadata tag. The Healthcare API supports several tag filtering methods and profiles.
 
-Save this configuration as `dicom-deid-config.json`. It uses the standard DICOM de-identification profile with some customizations:
+Save this configuration as `dicom-deid-config.json`. It uses the tag-content de-identification profile with pixel text redaction:
 
 ```json
 {
   "dicom": {
     "filterProfile": "DEIDENTIFY_TAG_CONTENTS"
   },
-  "tag_filter_profile": "DEIDENTIFY_TAG_CONTENTS",
   "image": {
     "textRedactionMode": "REDACT_ALL_TEXT"
   }
@@ -75,20 +74,12 @@ The `filterProfile` options are:
 
 Burned-in text is the trickiest part. Some modalities like ultrasound routinely burn patient demographics right into the pixel data. The Healthcare API uses Cloud DLP under the hood to detect and redact this text.
 
-This expanded configuration enables both tag de-identification and burned-in text redaction:
+This expanded configuration enables both tag de-identification and burned-in text redaction, and configures how sensitive text found in DICOM tag contents is transformed:
 
 ```json
 {
   "dicom": {
-    "filterProfile": "DEIDENTIFY_TAG_CONTENTS",
-    "keepList": {
-      "tags": [
-        "StudyDescription",
-        "SeriesDescription",
-        "Modality",
-        "BodyPartExamined"
-      ]
-    }
+    "filterProfile": "DEIDENTIFY_TAG_CONTENTS"
   },
   "image": {
     "textRedactionMode": "REDACT_ALL_TEXT"
@@ -183,12 +174,12 @@ This script retrieves a study from both the original and de-identified stores fo
 # Fetch metadata from the original store
 curl -X GET \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  "https://healthcare.googleapis.com/v1/projects/MY_PROJECT/locations/us-central1/datasets/my-dataset/dicomStores/my-dicom-store/dicomWeb/studies?limit=1&includefield=PatientName&includefield=PatientID"
+  "https://healthcare.googleapis.com/v1/projects/MY_PROJECT/locations/us-central1/datasets/my-dataset/dicomStores/my-dicom-store/dicomWeb/studies?limit=1&includefield=PatientName,PatientID"
 
 # Fetch the same study from the de-identified store
 curl -X GET \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  "https://healthcare.googleapis.com/v1/projects/MY_PROJECT/locations/us-central1/datasets/my-dataset/dicomStores/deidentified-dicom-store/dicomWeb/studies?limit=1&includefield=PatientName&includefield=PatientID"
+  "https://healthcare.googleapis.com/v1/projects/MY_PROJECT/locations/us-central1/datasets/my-dataset/dicomStores/deidentified-dicom-store/dicomWeb/studies?limit=1&includefield=PatientName,PatientID"
 ```
 
 For pixel data verification, retrieve the actual images and visually inspect them, especially for modalities known to have burned-in text.
@@ -217,7 +208,7 @@ The whole point of careful de-identification configuration is keeping the data u
 - **Window center and width** - needed for proper display
 - **Relative dates** - shifted but preserving intervals between studies
 
-Use the `keepList` in your configuration to explicitly preserve these tags while scrubbing everything else.
+If you choose a keep-list based configuration instead of a tag filtering profile, use the `keepList` to explicitly preserve these tags while removing everything else.
 
 ## Cost Considerations
 
