@@ -8,7 +8,7 @@ Description: A practical guide to configuring Vertex AI Vector Search indexes fo
 
 ---
 
-Searching through a billion vectors to find the nearest neighbors in milliseconds sounds like it should be impossible. Brute force comparison would take minutes. But with the right index configuration, Vertex AI Vector Search uses approximate nearest neighbor (ANN) algorithms to return highly accurate results in single-digit millisecond latency. The catch is that you need to understand the configuration parameters and tune them for your specific use case.
+Searching through a billion vectors to find the nearest neighbors in milliseconds sounds like it should be impossible. Brute force comparison would take minutes. But with the right index configuration, Vertex AI Vector Search uses approximate nearest neighbor (ANN) algorithms to return highly accurate results with low latency. The catch is that you need to understand the configuration parameters and tune them for your specific use case.
 
 This guide walks through the full process of setting up, configuring, and deploying a Vector Search index on Vertex AI that can handle billion-scale datasets.
 
@@ -20,21 +20,21 @@ The tree-AH algorithm works by partitioning the vector space into regions using 
 
 ## Preparing Your Vector Data
 
-Before creating an index, your embeddings need to be in a specific format. Vertex AI accepts JSONL files where each line contains a vector ID and the embedding values.
+Before creating an index, your embeddings need to be in a specific format. Vertex AI accepts newline-delimited JSON files with a `.json` suffix, where each line contains a vector ID and the embedding values.
 
-This code generates the required JSONL format from your embeddings:
+This code generates the required newline-delimited JSON format from your embeddings:
 
 ```python
 import json
 import numpy as np
 
 def prepare_vectors_for_index(embeddings, ids, output_path):
-    """Convert embeddings to JSONL format for Vertex AI Vector Search.
+    """Convert embeddings to newline-delimited JSON format for Vertex AI Vector Search.
 
     Args:
         embeddings: numpy array of shape (n_vectors, dimensions)
         ids: list of string IDs for each vector
-        output_path: path to write the JSONL file
+        output_path: path to write the JSON file
     """
     with open(output_path, "w") as f:
         for vector_id, embedding in zip(ids, embeddings):
@@ -51,14 +51,14 @@ def prepare_vectors_for_index(embeddings, ids, output_path):
 embeddings = np.random.randn(1_000_000, 768).astype(np.float32)
 ids = [f"doc_{i}" for i in range(1_000_000)]
 
-prepare_vectors_for_index(embeddings, ids, "vectors.jsonl")
+prepare_vectors_for_index(embeddings, ids, "vectors.json")
 ```
 
-Upload the JSONL file to GCS before creating the index:
+Upload the JSON file to GCS before creating the index:
 
 ```bash
 # Upload to GCS
-gsutil -m cp vectors.jsonl gs://your-bucket/vector-data/vectors.jsonl
+gsutil -m cp vectors.json gs://your-bucket/vector-data/vectors.json
 ```
 
 ## Creating a Tree-AH Index
@@ -75,10 +75,10 @@ aiplatform.init(project="your-project-id", location="us-central1")
 # Create the Vector Search index
 index = aiplatform.MatchingEngineIndex.create_tree_ah_index(
     display_name="product-embeddings-index",
-    contents_delta_uri="gs://your-bucket/vector-data/",  # Directory with JSONL files
+    contents_delta_uri="gs://your-bucket/vector-data/",  # Directory with JSON files
     dimensions=768,  # Must match your embedding dimensions
     approximate_neighbors_count=150,  # Candidates to consider during search
-    distance_measure_type="DOT_PRODUCT_DISTANCE",  # Or COSINE_DISTANCE, L2_DISTANCE
+    distance_measure_type="DOT_PRODUCT_DISTANCE",  # Or COSINE_DISTANCE, SQUARED_L2_DISTANCE
 
     # Tree-AH specific parameters
     leaf_node_embedding_count=1000,  # Vectors per leaf node
@@ -91,12 +91,12 @@ index = aiplatform.MatchingEngineIndex.create_tree_ah_index(
 )
 
 print(f"Index created: {index.resource_name}")
-print(f"Index state: {index.update_time}")
+print(f"Index updated at: {index.update_time}")
 ```
 
 ## Understanding the Key Parameters
 
-The `approximate_neighbors_count` sets how many candidate neighbors the algorithm considers before returning the final results. Higher values improve recall but slow down queries. For most use cases, 100-200 works well.
+The `approximate_neighbors_count` sets the default number of neighbors to find through approximate search before exact reordering is performed. Higher values can improve recall but slow down queries. For most use cases, 100-200 works well.
 
 The `leaf_node_embedding_count` controls how many vectors are stored in each leaf of the tree. Smaller leaf nodes mean more granular partitioning but a larger tree. For billion-scale datasets, values between 500 and 5000 are typical.
 
@@ -182,22 +182,22 @@ records = [
         "id": "product_001",
         "embedding": [0.1, 0.2, ...],  # 768 dimensions
         "restricts": [
-            {"namespace": "category", "allow_list": ["electronics"]},
-            {"namespace": "price_range", "allow_list": ["mid"]}
+            {"namespace": "category", "allow": ["electronics"]},
+            {"namespace": "price_range", "allow": ["mid"]}
         ]
     },
     {
         "id": "product_002",
         "embedding": [0.3, 0.4, ...],
         "restricts": [
-            {"namespace": "category", "allow_list": ["clothing"]},
-            {"namespace": "price_range", "allow_list": ["low"]}
+            {"namespace": "category", "allow": ["clothing"]},
+            {"namespace": "price_range", "allow": ["low"]}
         ]
     }
 ]
 
-# Write to JSONL
-with open("vectors_with_restricts.jsonl", "w") as f:
+# Write to newline-delimited JSON
+with open("vectors_with_restricts.json", "w") as f:
     for record in records:
         f.write(json.dumps(record) + "\n")
 
@@ -221,13 +221,13 @@ response = index_endpoint.find_neighbors(
 
 When your dataset grows past 100 million vectors, the configuration becomes more critical. Here are the adjustments that matter at scale.
 
-Use `SHARD_SIZE_LARGE` for datasets over 500 million vectors. This distributes the index across more shards for parallel query processing.
+Use `SHARD_SIZE_LARGE` when you need larger shards for very large datasets. Each large shard is 50 GiB, and each shard is served on a separate node and scales independently.
 
-Increase the machine type for the deployed index. At billion scale, `e2-highmem-16` or `n2-standard-32` machines provide the memory needed to hold the index shards in RAM.
+Increase the machine type for the deployed index. At billion scale, `e2-highmem-16` or `n2d-standard-32` machines provide the memory needed to serve large index shards.
 
 Set `leaf_node_embedding_count` higher (2000-5000) to reduce tree depth. A deeper tree means more traversal time per query.
 
-Reduce `leaf_nodes_to_search_percent` to 3-5% at billion scale. Even 3% of a billion-vector index searches millions of candidates, which is usually enough for high recall.
+Reduce `leaf_nodes_to_search_percent` to 3-5% at billion scale. Even a small percentage of leaf nodes can still produce a large candidate set, but you should measure recall on your data before lowering it.
 
 ```python
 # Billion-scale configuration
@@ -276,4 +276,4 @@ def measure_recall(index_endpoint, brute_force_results, query_embeddings, k=10):
 
 For most production use cases, you want recall above 0.95. If you are below that threshold, increase `leaf_nodes_to_search_percent` or `approximate_neighbors_count` until you hit your target, keeping an eye on the latency impact.
 
-The combination of tree-AH indexing with the right parameters lets Vertex AI Vector Search handle billion-scale datasets with single-digit millisecond query latency. The key is understanding the trade-offs and measuring recall against your specific data distribution.
+The combination of tree-AH indexing with the right parameters lets Vertex AI Vector Search handle billion-scale datasets with low query latency. The key is understanding the trade-offs and measuring recall against your specific data distribution.
