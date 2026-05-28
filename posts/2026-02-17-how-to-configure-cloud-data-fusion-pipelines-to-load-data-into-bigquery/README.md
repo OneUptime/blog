@@ -14,7 +14,7 @@ Loading data into BigQuery is one of the most common use cases for Cloud Data Fu
 
 Before you start building, make sure you have:
 
-- A Cloud Data Fusion instance running (Enterprise or Developer edition)
+- A Cloud Data Fusion instance running (Developer, Basic, or Enterprise edition)
 - A BigQuery dataset created where your tables will land
 - The appropriate IAM permissions - your Data Fusion service account needs BigQuery Data Editor and BigQuery Job User roles
 - Your source data accessible from the Data Fusion instance (network connectivity configured if using private instances)
@@ -47,18 +47,16 @@ Let's use a GCS source as our example. Drag the "GCS" source from the left panel
 Reference Name: customer_data_source
 Path: gs://my-data-bucket/customer_exports/
 Format: csv
-Delimiter: ","
-Skip Header: true
+Use First Row as Header: true
 ```
 
-Set the reference name to something descriptive. The path should point to your GCS location. If your files are CSV, set the format and delimiter accordingly. Enable "Skip Header" if your CSV files have a header row.
+Set the reference name to something descriptive. The path should point to your GCS location. If your files are CSV, set the format accordingly. Enable "Use First Row as Header" if your CSV files have a header row.
 
 ### Setting the Schema
 
 Click "Get Schema" to let Data Fusion infer the schema from your data, or define it manually. For a CSV source, you will typically want to specify the schema explicitly to avoid type inference issues:
 
 ```json
-// Define the schema with proper data types for each column
 {
   "fields": [
     {"name": "customer_id", "type": "long"},
@@ -81,14 +79,9 @@ If your data needs cleaning or restructuring before loading into BigQuery, you c
 Drag a Wrangler transform onto the canvas and connect it between the source and sink. You can add directives like:
 
 ```text
-// Parse the signup_date string into a proper date format
-parse-as-datetime signup_date "yyyy-MM-dd"
-
-// Convert total_spend to a decimal type
-set-type total_spend decimal
-
-// Drop any rows where customer_id is null
-filter-rows-on condition-if-matched customer_id =~ '^\s*$'
+parse-as-datetime :signup_date "yyyy-MM-dd'T'HH:mm:ss"
+set-type :total_spend decimal
+filter-row-if-matched customer_id ^\s*$
 ```
 
 ## Configuring the BigQuery Sink
@@ -102,7 +95,7 @@ Click on the BigQuery sink to open its configuration panel. Here are the key set
 ```yaml
 # BigQuery sink basic configuration
 Reference Name: customer_data_bq_sink
-Project: my-gcp-project
+Project ID: my-gcp-project
 Dataset: analytics
 Table: customers
 ```
@@ -113,7 +106,7 @@ The reference name is for tracking lineage. The project, dataset, and table spec
 
 This is where you make important decisions about how the pipeline interacts with your BigQuery table:
 
-**Create Table if Not Found** - Set this to "true" if you want Data Fusion to create the table on the first run. The table schema will match the output schema of the pipeline.
+If the target table does not exist, the BigQuery Table sink can create it using the output schema of the pipeline, as long as the service account has permission to create BigQuery tables.
 
 **Truncate Table** - Set to "true" if you want to replace all existing data on each pipeline run. This is useful for full-refresh loads.
 
@@ -125,7 +118,7 @@ Cloud Data Fusion uses a temporary GCS bucket as a staging area when loading dat
 
 ```yaml
 # Staging configuration for the load job
-Temporary Bucket Name: my-temp-staging-bucket
+Temporary Bucket Name: gs://my-temp-staging-bucket
 ```
 
 Make sure your Data Fusion service account has write access to this bucket. The data is written here temporarily and then loaded into BigQuery using a load job.
@@ -137,8 +130,7 @@ For large tables, configure partitioning to improve query performance and reduce
 ```yaml
 # Partitioning configuration
 Partition Field: signup_date
-Partition Type: TIME
-Time Partitioning Type: DAY
+Partitioning Type: Time
 Require Partition Filter: true
 ```
 
@@ -168,13 +160,12 @@ For incremental loads where you only process new or changed records:
 
 - Use a source filter to select only records modified since the last run
 - Set "Truncate Table" to false
-- Consider using a merge key if you need upsert behavior
+- Set the sink operation to "Upsert" and configure "Table Key" if you need upsert behavior
 
-For the Database source, you can add a filter like:
+For the Database source, you can add a filter using a runtime argument that you supply when the pipeline runs:
 
 ```sql
--- Only select records modified since the last pipeline run
-WHERE modified_date > '${runtime:logical.start.time}'
+WHERE modified_date > '${last_successful_run_time}'
 ```
 
 ### Append-Only Loads
@@ -182,7 +173,7 @@ WHERE modified_date > '${runtime:logical.start.time}'
 If you are simply appending new records without worrying about duplicates:
 
 - Set "Truncate Table" to false
-- Leave merge keys empty
+- Use the default "Insert" operation
 - The pipeline will insert all records from the source
 
 ## Running and Testing the Pipeline
