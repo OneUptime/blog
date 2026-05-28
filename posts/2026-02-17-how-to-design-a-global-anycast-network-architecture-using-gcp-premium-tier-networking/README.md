@@ -8,13 +8,13 @@ Description: Learn how to design a global anycast network architecture on GCP us
 
 ---
 
-When a user in Tokyo hits your application and the nearest server is in Tokyo, but the traffic first routes to a point of presence in San Francisco before bouncing back to Tokyo, you have a latency problem. This is what happens with standard internet routing. GCP Premium Tier networking solves this with anycast - your application gets a single global IP address, and Google's network routes users to the nearest healthy backend automatically, using Google's private backbone instead of the public internet.
+When a user in Tokyo hits your application and the nearest server is in Tokyo, but the traffic first routes to a point of presence in San Francisco before bouncing back to Tokyo, you have a latency problem. This is what can happen with regional internet routing. GCP Premium Tier networking solves this with anycast - your application gets a single global IP address, and Google's network routes users to the nearest healthy backend with available capacity, using Google's private backbone instead of the public internet.
 
 In this post, I will walk through designing and deploying a global anycast architecture on GCP that provides low-latency access for users worldwide.
 
 ## What Is Anycast and Why It Matters
 
-With unicast, one IP maps to one specific server. If users are far from that server, they get high latency. With anycast, the same IP address is advertised from multiple locations. The network routes each user to the closest instance. GCP's Premium Tier network advertises your external IP from over 100 points of presence worldwide.
+With unicast, one IP maps to one specific server. If users are far from that server, they get high latency. With anycast, the same IP address is advertised from multiple locations. The network routes each user to a nearby edge, and the load balancer routes traffic to the closest healthy backend with available capacity. GCP's Premium Tier network advertises your external IP from over 100 points of presence worldwide.
 
 ```mermaid
 flowchart TD
@@ -53,14 +53,28 @@ for REGION in us-central1 europe-west1 asia-east1; do
         --network=my-vpc \
         --subnet=subnet-${REGION} \
         --region=${REGION} \
+        --tags=allow-health-check \
         --image-family=debian-11 \
         --image-project=debian-cloud \
         --metadata=startup-script='#!/bin/bash
 apt-get update && apt-get install -y nginx
 ZONE=$(curl -s http://metadata.google.internal/computeMetadata/v1/instance/zone -H "Metadata-Flavor: Google")
 echo "Served from: ${ZONE}" > /var/www/html/index.html
+echo "ok" > /var/www/html/healthz
 systemctl start nginx'
 done
+```
+
+Allow the load balancer proxies and health check systems to reach the backends:
+
+```bash
+gcloud compute firewall-rules create fw-allow-lb-and-health-check \
+    --network=my-vpc \
+    --action=allow \
+    --direction=ingress \
+    --source-ranges=130.211.0.0/22,35.191.0.0/16 \
+    --target-tags=allow-health-check \
+    --rules=tcp:80
 ```
 
 Now create managed instance groups in each region:
@@ -108,6 +122,7 @@ gcloud compute health-checks create http global-http-hc \
 # Create the backend service
 gcloud compute backend-services create global-app-backend \
     --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
     --protocol=HTTP \
     --health-checks=global-http-hc \
     --port-name=http \
@@ -159,11 +174,14 @@ gcloud compute target-https-proxies create global-app-https-proxy \
 # Reserve a global static IP - this is your anycast IP
 gcloud compute addresses create global-app-ip \
     --global \
+    --network-tier=PREMIUM \
     --ip-version=IPV4
 
 # Create the forwarding rule
 gcloud compute forwarding-rules create global-app-https-rule \
     --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
+    --network-tier=PREMIUM \
     --address=global-app-ip \
     --target-https-proxy=global-app-https-proxy \
     --ports=443
@@ -173,7 +191,7 @@ gcloud compute addresses describe global-app-ip \
     --global --format="value(address)"
 ```
 
-The IP address you get back is an anycast address. When a user anywhere in the world connects to this IP, Google's network routes them to the nearest healthy backend.
+The IP address you get back is an anycast address. When a user anywhere in the world connects to this IP, Google's network routes them to the nearest healthy backend with available capacity.
 
 ## Step 4 - Configure Autoscaling per Region
 
@@ -244,12 +262,18 @@ gcloud monitoring dashboards create --config-from-file=- <<'EOF'
   "gridLayout": {
     "widgets": [
       {
-        "title": "Request Count by Backend Region",
+        "title": "Request Count by Backend",
         "xyChart": {
           "dataSets": [{
             "timeSeriesQuery": {
               "timeSeriesFilter": {
-                "filter": "resource.type=\"https_lb_rule\" AND metric.type=\"loadbalancing.googleapis.com/https/request_count\""
+                "filter": "resource.type=\"https_lb_rule\" AND metric.type=\"loadbalancing.googleapis.com/https/backend_request_count\"",
+                "aggregation": {
+                  "alignmentPeriod": "60s",
+                  "perSeriesAligner": "ALIGN_RATE",
+                  "crossSeriesReducer": "REDUCE_SUM",
+                  "groupByFields": ["resource.label.backend_target_name"]
+                }
               }
             }
           }]
@@ -265,10 +289,10 @@ EOF
 
 The anycast behavior only works with Premium Tier networking, which is the default. If you switch to Standard Tier, your external IP becomes a regional unicast address and traffic routes over the public internet. Here is the difference:
 
-- **Premium Tier**: Traffic enters Google's network at the nearest POP, travels over Google's backbone, reaches the closest backend. Anycast IP works globally.
+- **Premium Tier**: Traffic enters Google's network at the nearest POP, travels over Google's backbone, reaches the closest healthy backend with available capacity. Anycast IP works globally.
 - **Standard Tier**: Traffic routes over the public internet to the region where the IP is assigned. Regional IP only, no global anycast.
 
-For a global application, Premium Tier is the clear choice. The additional cost (about $0.01 more per GB) is well worth the latency improvement.
+For a global application, Premium Tier is the clear choice. The additional cost varies by region and usage volume, so check the current Network Service Tiers pricing before estimating production spend.
 
 ## Failover Behavior
 
@@ -289,4 +313,4 @@ Traffic that was going to Asia will automatically shift to the next closest regi
 
 ## Wrapping Up
 
-A global anycast architecture on GCP gives you a single IP that routes users to the nearest healthy backend, all over Google's private backbone. The setup combines global external load balancing, multi-region backends, autoscaling, and edge security through Cloud Armor. This is the architecture that Google uses for its own services, and it is available to any GCP customer using Premium Tier networking. The investment in deploying to multiple regions pays off with lower latency, better availability, and built-in DDoS protection at the network edge.
+A global anycast architecture on GCP gives you a single IP that routes users to the nearest healthy backend with available capacity, all over Google's private backbone. The setup combines global external load balancing, multi-region backends, autoscaling, and edge security through Cloud Armor. It uses the same global edge and backbone capabilities behind many Google services, and it is available to any GCP customer using Premium Tier networking. The investment in deploying to multiple regions pays off with lower latency, better availability, and built-in DDoS protection at the network edge.
