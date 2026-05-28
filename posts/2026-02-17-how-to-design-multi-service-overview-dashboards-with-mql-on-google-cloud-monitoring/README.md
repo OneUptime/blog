@@ -8,17 +8,17 @@ Description: Learn how to design multi-service overview dashboards using Monitor
 
 ---
 
-When you are running a dozen services on GCP, having individual dashboards for each one is not enough. You need a single pane of glass that shows you the health of your entire system at a glance. Google Cloud Monitoring's Monitoring Query Language (MQL) is the tool for building these kinds of cross-service dashboards.
+When you are running a dozen services on GCP, having individual dashboards for each one is not enough. You need a single pane of glass that shows you the health of your entire system at a glance. Google Cloud Monitoring's Monitoring Query Language (MQL) can still be used for existing dashboards and for dashboards created through the Cloud Monitoring API, although Google now recommends PromQL or the interactive query builder for new dashboard work.
 
 MQL gives you the expressiveness to aggregate, filter, and transform metrics from multiple services into unified visualizations. In this post, I will walk through designing a multi-service overview dashboard from scratch.
 
 ## What MQL Brings to Dashboards
 
-Before MQL, you were limited to the point-and-click metric explorer, which works for simple charts but gets unwieldy for cross-service views. MQL lets you:
+Compared with simple point-and-click metric explorer charts, MQL lets you:
 
 - Aggregate metrics across multiple services into a single chart
 - Compute ratios and derived metrics (like error rates)
-- Apply conditional formatting and thresholds
+- Apply threshold conditions
 - Join different metric types together
 - Create summary tables with one row per service
 
@@ -54,29 +54,28 @@ This gives you a table or chart showing the error rate for each service, making 
 Next, show the P50 and P99 latency for each service side by side:
 
 ```text
-# P99 latency by service
+# P50 and P99 latency by service
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_latencies'
-| align delta(5m)
 | group_by [resource.service_name],
-    [latency_p99: percentile(val(), 99)]
+    [latency_p50: percentile(val(), 50),
+     latency_p99: percentile(val(), 99)]
 ```
 
 For GKE services using custom metrics:
 
 ```text
-# P99 latency for services reporting via OpenTelemetry
+# P50 and P99 latency for services reporting via OpenTelemetry
 fetch k8s_container
 | metric 'custom.googleapis.com/http/server/request_duration'
-| align delta(5m)
 | group_by [metric.service_name],
     [p50: percentile(val(), 50),
      p99: percentile(val(), 99)]
 ```
 
-## Request Volume Heatmap
+## Request Volume Chart
 
-A traffic heatmap shows how request volume is distributed across services over time:
+A traffic volume chart shows how request volume is distributed across services over time:
 
 ```text
 # Requests per second by service
@@ -93,7 +92,6 @@ You can create dashboards programmatically using the Cloud Monitoring API. Here 
 ```python
 # create_dashboard.py - Build a multi-service overview dashboard
 from google.cloud import monitoring_dashboard_v1
-import json
 
 def create_overview_dashboard(project_id):
     """Create a multi-service overview dashboard."""
@@ -123,8 +121,15 @@ def create_overview_dashboard(project_id):
                                             | align rate(5m)
                                             | group_by [resource.service_name, metric.response_code_class],
                                                 [val: aggregate(val())]
-                                            | filter metric.response_code_class = '5xx'
-                                            | group_by [resource.service_name], [errors: aggregate(val)]
+                                            | {
+                                                filter metric.response_code_class != '5xx'
+                                                | group_by [resource.service_name], [good: aggregate(val)]
+                                              ;
+                                                filter metric.response_code_class = '5xx'
+                                                | group_by [resource.service_name], [bad: aggregate(val)]
+                                              }
+                                            | outer_join 0
+                                            | value [error_rate: bad / (good + bad) * 100]
                                         """,
                                     ),
                                 ),
@@ -147,7 +152,6 @@ def create_overview_dashboard(project_id):
                                         time_series_query_language="""
                                             fetch cloud_run_revision
                                             | metric 'run.googleapis.com/request_latencies'
-                                            | align delta(5m)
                                             | group_by [resource.service_name],
                                                 [p99: percentile(val(), 99)]
                                         """,
@@ -248,10 +252,9 @@ fetch cloud_run_revision
 ```
 
 ```text
-# Latency SLI - percentage of requests under 500ms
+# Latency SLI proxy - services whose P99 latency is under 500ms
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_latencies'
-| align delta(30d)
 | group_by [resource.service_name],
     [p99: percentile(val(), 99)]
 | value [meets_slo: if(p99 < 500, 1, 0)]
