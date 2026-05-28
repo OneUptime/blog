@@ -22,7 +22,7 @@ Key services covered under the Google Cloud BAA include:
 - Cloud SQL
 - Cloud Storage
 - BigQuery
-- Cloud Functions
+- Cloud Run functions
 - Pub/Sub
 - Cloud KMS
 - Cloud Logging
@@ -33,9 +33,9 @@ Check the current list at Google's HIPAA compliance page, as it is updated regul
 ```bash
 # Verify your organization has accepted the BAA
 
-# This is done through the Google Cloud Console under
-# Organization > Settings > HIPAA BAA
-# There is no gcloud command for this - it requires manual acceptance
+# This is done through the Google Cloud Console's
+# Compliance > Privacy compliance and records page.
+# There is no gcloud command for this - it requires manual acceptance.
 ```
 
 ## Project Structure for PHI Workloads
@@ -50,12 +50,10 @@ gcloud resource-manager folders create \
 
 # Create the PHI processing project
 gcloud projects create hipaa-phi-project \
-  --organization=123456789 \
   --folder=HIPAA_FOLDER_ID
 
 # Create a separate project for de-identified data and analytics
 gcloud projects create hipaa-analytics-project \
-  --organization=123456789 \
   --folder=HIPAA_FOLDER_ID
 ```
 
@@ -112,7 +110,7 @@ gcloud compute firewall-rules create phi-app-to-db \
 
 ## Encryption Requirements
 
-HIPAA requires encryption of PHI at rest and in transit. Use CMEK for encryption at rest and TLS for all communications.
+HIPAA treats encryption as an addressable implementation specification, but for PHI workloads on Google Cloud you should encrypt PHI at rest and in transit. Use CMEK when you need customer-managed keys for encryption at rest and TLS for communications.
 
 ```bash
 # Create a dedicated key ring for PHI encryption
@@ -133,6 +131,38 @@ gcloud kms keys create phi-database-key \
   --location=us-central1 \
   --purpose=encryption \
   --rotation-period=7776000s \
+  --project=hipaa-phi-project
+
+# Grant service agents permission to use the CMEK keys
+PROJECT_NUMBER=$(gcloud projects describe hipaa-phi-project \
+  --format="value(projectNumber)")
+
+gcloud kms keys add-iam-policy-binding phi-database-key \
+  --keyring=phi-keyring \
+  --location=us-central1 \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-cloud-sql.iam.gserviceaccount.com" \
+  --role=roles/cloudkms.cryptoKeyEncrypterDecrypter \
+  --project=hipaa-phi-project
+
+gcloud storage service-agent \
+  --authorize-cmek=projects/hipaa-phi-project/locations/us-central1/keyRings/phi-keyring/cryptoKeys/phi-storage-key \
+  --project=hipaa-phi-project
+
+# Configure private services access before creating a private IP Cloud SQL instance
+gcloud services enable servicenetworking.googleapis.com \
+  --project=hipaa-phi-project
+
+gcloud compute addresses create google-managed-services-phi-vpc \
+  --global \
+  --purpose=VPC_PEERING \
+  --prefix-length=16 \
+  --network=phi-vpc \
+  --project=hipaa-phi-project
+
+gcloud services vpc-peerings connect \
+  --service=servicenetworking.googleapis.com \
+  --ranges=google-managed-services-phi-vpc \
+  --network=phi-vpc \
   --project=hipaa-phi-project
 
 # Create Cloud SQL with CMEK and private IP only
@@ -170,12 +200,12 @@ gcloud identity groups create hipaa-admins@yourcompany.com \
   --organization=yourcompany.com \
   --display-name="HIPAA System Admins"
 
-# Grant clinical staff access to read PHI
+# Allow clinical staff to connect to Cloud SQL; database privileges still control PHI access
 gcloud projects add-iam-policy-binding hipaa-phi-project \
   --member="group:hipaa-clinical@yourcompany.com" \
   --role="roles/cloudsql.client"
 
-# Grant admins operational access without direct data access
+# Grant admins Cloud SQL operational access; pair this with database credential controls
 gcloud projects add-iam-policy-binding hipaa-phi-project \
   --member="group:hipaa-admins@yourcompany.com" \
   --role="roles/cloudsql.admin"
@@ -189,7 +219,7 @@ gcloud projects add-iam-policy-binding hipaa-phi-project \
 
 ## Comprehensive Audit Logging
 
-HIPAA requires logging of all access to PHI. Enable Data Access audit logs for all relevant services.
+HIPAA's audit controls require mechanisms to record and examine activity in systems that contain or use ePHI. Enable Data Access audit logs for all relevant services.
 
 ```bash
 # Enable comprehensive audit logging for the PHI project
@@ -211,20 +241,30 @@ EOF
 
 # Apply to the project (merge with existing policy)
 gcloud projects get-iam-policy hipaa-phi-project --format=json > current-policy.json
-# Merge audit configs and apply
+# Add the auditConfigs from audit-config.json to current-policy.json,
+# preserving existing bindings, then apply the merged file.
 gcloud projects set-iam-policy hipaa-phi-project merged-policy.json
 
-# Create a log sink for long-term retention (HIPAA requires 6 years)
-gcloud logging sinks create hipaa-audit-archive \
-  storage.googleapis.com/hipaa-audit-archive-bucket \
-  --project=hipaa-phi-project \
-  --include-children
-
-# Create the archive bucket with a 6-year retention policy
+# Create the archive bucket with a 6-year retention policy for HIPAA documentation
 gcloud storage buckets create gs://hipaa-audit-archive-bucket \
   --location=us-central1 \
   --retention-period=189216000 \
   --uniform-bucket-level-access \
+  --project=hipaa-audit-project
+
+# Create a project-level log sink for long-term retention
+gcloud logging sinks create hipaa-audit-archive \
+  storage.googleapis.com/hipaa-audit-archive-bucket \
+  --project=hipaa-phi-project
+
+# Grant the sink's writer identity permission to write to the archive bucket
+SINK_WRITER=$(gcloud logging sinks describe hipaa-audit-archive \
+  --project=hipaa-phi-project \
+  --format="value(writerIdentity)")
+
+gcloud storage buckets add-iam-policy-binding gs://hipaa-audit-archive-bucket \
+  --member="$SINK_WRITER" \
+  --role=roles/storage.objectCreator \
   --project=hipaa-audit-project
 ```
 
@@ -272,7 +312,7 @@ resource "google_container_cluster" "hipaa" {
   # Enable Security Posture
   security_posture_config {
     mode               = "BASIC"
-    vulnerability_mode = "VULNERABILITY_ENTERPRISE"
+    vulnerability_mode = "VULNERABILITY_BASIC"
   }
 
   # Master authorized networks - restrict API access
@@ -318,10 +358,10 @@ Use Cloud DLP to identify and protect PHI in your data stores.
 
 ```bash
 # Create a DLP inspection job to scan for PHI
-gcloud dlp jobs create \
+gcloud alpha dlp datasources gcs inspect "gs://hipaa-phi-documents/*" \
   --project=hipaa-phi-project \
-  --inspect-config='{"infoTypes":[{"name":"PERSON_NAME"},{"name":"PHONE_NUMBER"},{"name":"EMAIL_ADDRESS"},{"name":"US_SOCIAL_SECURITY_NUMBER"},{"name":"MEDICAL_RECORD_NUMBER"}],"minLikelihood":"LIKELY"}' \
-  --storage-config='{"cloudStorageOptions":{"fileSet":{"url":"gs://hipaa-phi-documents/*"}}}'
+  --info-types=PERSON_NAME,PHONE_NUMBER,EMAIL_ADDRESS,US_SOCIAL_SECURITY_NUMBER,MEDICAL_RECORD_NUMBER \
+  --min-likelihood=likely
 ```
 
 ## Monitoring and Alerting
@@ -330,22 +370,62 @@ Set up alerts for security events that could indicate a breach.
 
 ```bash
 # Alert on unauthorized access attempts
-gcloud monitoring policies create \
-  --display-name="PHI Unauthorized Access Alert" \
-  --condition-display-name="Permission denied on PHI resources" \
-  --condition-filter='resource.type="gce_instance" AND protoPayload.status.code=7' \
-  --condition-threshold-value=5 \
-  --condition-threshold-duration=300s \
-  --notification-channels=projects/hipaa-phi-project/notificationChannels/CHANNEL_ID
+cat > phi-unauthorized-access-alert.json << 'EOF'
+{
+  "displayName": "PHI Unauthorized Access Alert",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Permission denied on PHI resources",
+      "conditionMatchedLog": {
+        "filter": "protoPayload.status.code=7"
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    },
+    "autoClose": "604800s"
+  },
+  "notificationChannels": [
+    "projects/hipaa-phi-project/notificationChannels/CHANNEL_ID"
+  ]
+}
+EOF
+
+gcloud alpha monitoring policies create \
+  --policy-from-file=phi-unauthorized-access-alert.json \
+  --project=hipaa-phi-project
 
 # Alert on data export attempts
-gcloud monitoring policies create \
-  --display-name="PHI Data Export Alert" \
-  --condition-display-name="Large data export from PHI project" \
-  --condition-filter='resource.type="gcs_bucket" AND protoPayload.methodName="storage.objects.get"' \
-  --condition-threshold-value=100 \
-  --condition-threshold-duration=600s \
-  --notification-channels=projects/hipaa-phi-project/notificationChannels/CHANNEL_ID
+cat > phi-data-export-alert.json << 'EOF'
+{
+  "displayName": "PHI Data Export Alert",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Cloud Storage object reads from PHI buckets",
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"gcs_bucket\" AND protoPayload.methodName=\"storage.objects.get\""
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "600s"
+    },
+    "autoClose": "604800s"
+  },
+  "notificationChannels": [
+    "projects/hipaa-phi-project/notificationChannels/CHANNEL_ID"
+  ]
+}
+EOF
+
+gcloud alpha monitoring policies create \
+  --policy-from-file=phi-data-export-alert.json \
+  --project=hipaa-phi-project
 ```
 
 ## Breach Notification Preparation
@@ -365,7 +445,7 @@ Here is a mapping of key HIPAA safeguards to Google Cloud configurations:
 | HIPAA Requirement | Google Cloud Control |
 |-------------------|---------------------|
 | Access controls | IAM, groups, conditions |
-| Audit controls | Cloud Audit Logs, 6-year retention |
+| Audit controls | Cloud Audit Logs, retained audit documentation |
 | Integrity controls | CMEK, Binary Authorization |
 | Transmission security | TLS, Private connectivity |
 | Encryption at rest | CMEK with Cloud KMS |
