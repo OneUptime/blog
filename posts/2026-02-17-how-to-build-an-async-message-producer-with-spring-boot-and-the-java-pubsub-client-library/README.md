@@ -50,9 +50,17 @@ public class PubSubPublisherConfig {
     private String topicId;
 
     // Create a Publisher bean with optimized batching settings
-    @Bean
+    @Bean(destroyMethod = "")
     public Publisher publisher() throws IOException {
         TopicName topicName = TopicName.of(projectId, topicId);
+
+        // Flow control to prevent the publisher from buffering too many messages
+        FlowControlSettings flowControlSettings = FlowControlSettings.newBuilder()
+                .setMaxOutstandingElementCount(10000L)
+                .setMaxOutstandingRequestBytes(100 * 1024 * 1024L) // 100MB
+                .setLimitExceededBehavior(
+                        FlowController.LimitExceededBehavior.Block)
+                .build();
 
         // Configure batching to group messages before sending
         BatchingSettings batchingSettings = BatchingSettings.newBuilder()
@@ -61,40 +69,34 @@ public class PubSubPublisherConfig {
                 // Or when the batch reaches 1MB
                 .setRequestByteThreshold(1024 * 1024L) // 1MB
                 // Or after 50ms, whichever comes first
-                .setDelayThreshold(Duration.ofMillis(50))
+                .setDelayThreshold(org.threeten.bp.Duration.ofMillis(50))
+                .setFlowControlSettings(flowControlSettings)
                 .build();
 
         // Configure retry settings for failed publishes
         RetrySettings retrySettings = RetrySettings.newBuilder()
-                .setInitialRetryDelay(Duration.ofMillis(100))
+                .setInitialRetryDelay(org.threeten.bp.Duration.ofMillis(100))
                 .setRetryDelayMultiplier(2.0)
-                .setMaxRetryDelay(Duration.ofSeconds(60))
-                .setTotalTimeout(Duration.ofSeconds(600))
-                .setInitialRpcTimeout(Duration.ofSeconds(10))
-                .setMaxRpcTimeout(Duration.ofSeconds(60))
-                .build();
-
-        // Flow control to prevent the publisher from buffering too many messages
-        FlowControlSettings flowControlSettings = FlowControlSettings.newBuilder()
-                .setMaxOutstandingElementCount(10000L)
-                .setMaxOutstandingRequestBytes(100 * 1024 * 1024L) // 100MB
-                .setLimitExceededBehavior(
-                        FlowControlSettings.LimitExceededBehavior.Block)
+                .setMaxRetryDelay(org.threeten.bp.Duration.ofSeconds(60))
+                .setTotalTimeout(org.threeten.bp.Duration.ofSeconds(600))
+                .setInitialRpcTimeout(org.threeten.bp.Duration.ofSeconds(10))
+                .setMaxRpcTimeout(org.threeten.bp.Duration.ofSeconds(60))
                 .build();
 
         return Publisher.newBuilder(topicName)
                 .setBatchingSettings(batchingSettings)
                 .setRetrySettings(retrySettings)
-                .setFlowControlSettings(flowControlSettings)
                 .setEnableMessageOrdering(false) // Enable if you need ordering
                 .build();
     }
 
     // Shutdown the publisher gracefully when the application stops
-    @PreDestroy
-    public void shutdownPublisher() throws Exception {
-        publisher().shutdown();
-        publisher().awaitTermination(30, TimeUnit.SECONDS);
+    @Bean
+    public DisposableBean publisherShutdown(Publisher publisher) {
+        return () -> {
+            publisher.shutdown();
+            publisher.awaitTermination(30, TimeUnit.SECONDS);
+        };
     }
 }
 ```
@@ -237,7 +239,7 @@ public CompletableFuture<String> publishOrderedEvent(String entityId, EventPaylo
 }
 ```
 
-When message ordering is enabled in the Publisher configuration, all messages with the same ordering key are guaranteed to be delivered to subscribers in the order they were published.
+When message ordering is enabled in the Publisher configuration, and the subscription also has message ordering enabled, messages with the same ordering key that are published in the same region are delivered to subscribers in the order Pub/Sub receives them.
 
 ## REST Controller
 
