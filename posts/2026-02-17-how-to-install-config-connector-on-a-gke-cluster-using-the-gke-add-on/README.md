@@ -25,7 +25,8 @@ Before you begin, make sure you have the following ready:
 - A GCP project with billing enabled
 - The gcloud CLI installed and authenticated
 - kubectl configured to interact with your cluster
-- A GKE cluster running version 1.15 or later
+- A GKE Standard cluster running a supported version for the Config Connector add-on
+- Workload Identity Federation for GKE and Kubernetes Engine Monitoring enabled on the cluster
 - The following APIs enabled in your project: container.googleapis.com and cloudresourcemanager.googleapis.com
 
 Let me show you how to enable those APIs if you have not already done so.
@@ -46,8 +47,11 @@ If you are creating a new cluster, you can enable Config Connector right from th
 # Create a new GKE cluster with Config Connector add-on enabled
 gcloud container clusters create my-cluster \
   --region=us-central1 \
+  --release-channel=regular \
   --workload-pool=my-project-id.svc.id.goog \
   --addons=ConfigConnector \
+  --logging=SYSTEM \
+  --monitoring=SYSTEM \
   --project=my-project-id
 ```
 
@@ -62,6 +66,17 @@ If you already have a GKE cluster running, you can enable the add-on on it. Firs
 gcloud container clusters update my-cluster \
   --region=us-central1 \
   --workload-pool=my-project-id.svc.id.goog \
+  --project=my-project-id
+```
+
+Enabling Workload Identity Federation on an existing cluster does not automatically update existing node pools, so update each node pool that Config Connector might run on.
+
+```bash
+# Enable Workload Identity Federation metadata on an existing node pool
+gcloud container node-pools update my-node-pool \
+  --cluster=my-cluster \
+  --region=us-central1 \
+  --workload-metadata=GKE_METADATA \
   --project=my-project-id
 ```
 
@@ -111,25 +126,26 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 ## Step 5: Create the ConfigConnector Resource
 
-Now you need to tell Config Connector which GCP service account to use. You do this by creating a ConfigConnectorContext resource.
+Now you need to tell Config Connector which GCP service account to use. You do this by creating a ConfigConnector resource.
 
 ```yaml
-# config-connector-context.yaml
-# This tells Config Connector which service account and project to use
+# configconnector.yaml
+# This tells Config Connector which service account to use
 apiVersion: core.cnrm.cloud.google.com/v1beta1
-kind: ConfigConnectorContext
+kind: ConfigConnector
 metadata:
-  name: configconnectorcontext.core.cnrm.cloud.google.com
-  namespace: default
+  name: configconnector.core.cnrm.cloud.google.com
 spec:
+  mode: cluster
   googleServiceAccount: "config-connector-sa@my-project-id.iam.gserviceaccount.com"
+  stateIntoSpec: Absent
 ```
 
 Apply it to your cluster.
 
 ```bash
-# Apply the ConfigConnectorContext to your cluster
-kubectl apply -f config-connector-context.yaml
+# Apply the ConfigConnector to your cluster
+kubectl apply -f configconnector.yaml
 ```
 
 ## Step 6: Verify the Installation
@@ -195,15 +211,18 @@ A few things can go wrong during setup. Here are the most common ones.
 
 **CRDs not appearing**: If you do not see any cnrm CRDs, the add-on might not be fully installed yet. Wait a few minutes and try again.
 
-**ConfigConnectorContext not reconciling**: Make sure the namespace you specified in the ConfigConnectorContext exists and that the service account email is correct.
+**ConfigConnector not reconciling**: Make sure the service account email is correct and that the Workload Identity binding uses the `cnrm-system/cnrm-controller-manager` Kubernetes service account.
 
 ## Clean Up
 
-If you are just testing and want to remove everything, delete the test bucket first, then disable the add-on.
+If you are just testing and want to remove everything, delete the test bucket first, then remove the ConfigConnector resource and disable the add-on.
 
 ```bash
 # Delete the test bucket
 kubectl delete storagebucket my-test-bucket-config-connector
+
+# Delete the ConfigConnector resource
+kubectl delete ConfigConnector configconnector.core.cnrm.cloud.google.com --wait=true
 
 # Disable Config Connector add-on
 gcloud container clusters update my-cluster \
