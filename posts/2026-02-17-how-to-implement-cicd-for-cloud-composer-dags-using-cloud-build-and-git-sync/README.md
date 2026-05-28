@@ -53,6 +53,7 @@ import pytest
 import os
 import sys
 from airflow.models import DagBag
+from airflow.utils.dag_cycle import test_cycle
 
 # Add the dags directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "dags"))
@@ -76,7 +77,7 @@ def test_dags_have_tags(dagbag):
 def test_dags_have_owner(dagbag):
     """Every DAG should have a non-default owner."""
     for dag_id, dag in dagbag.dags.items():
-        assert dag.default_args.get("owner") != "airflow", \
+        assert dag.owner and dag.owner != "airflow", \
             f"DAG {dag_id} has default owner 'airflow'"
 
 def test_dags_have_description(dagbag):
@@ -87,8 +88,8 @@ def test_dags_have_description(dagbag):
 def test_no_cycles(dagbag):
     """Verify that no DAGs have circular dependencies."""
     for dag_id, dag in dagbag.dags.items():
-        # dag.test_cycle() raises if there is a cycle
-        assert not dag.test_cycle(), f"DAG {dag_id} has a cycle"
+        # test_cycle() raises if there is a cycle
+        test_cycle(dag)
 
 def test_task_count_reasonable(dagbag):
     """Warn if a DAG has too many tasks which could hurt performance."""
@@ -180,7 +181,7 @@ steps:
         # Set Airflow home to a temp directory for testing
         export AIRFLOW_HOME=/tmp/airflow
         export AIRFLOW__CORE__LOAD_EXAMPLES=False
-        airflow db init
+        airflow db migrate
         pytest tests/test_dag_integrity.py -v
 
   # Run unit tests
@@ -217,7 +218,7 @@ steps:
         pip install -r requirements.txt pytest
         export AIRFLOW_HOME=/tmp/airflow
         export AIRFLOW__CORE__LOAD_EXAMPLES=False
-        airflow db init
+        airflow db migrate
         pytest tests/ -v
         echo "All tests passed"
 
@@ -316,7 +317,7 @@ steps:
         pip install -r requirements.txt pytest
         export AIRFLOW_HOME=/tmp/airflow
         export AIRFLOW__CORE__LOAD_EXAMPLES=False
-        airflow db init
+        airflow db migrate
         pytest tests/ -v
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
