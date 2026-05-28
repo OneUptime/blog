@@ -62,25 +62,23 @@ web#user2#event2
 If you need to query recent data first, use a reverse timestamp so the most recent data gets the lowest sort value.
 
 ```python
-# GOOD: Reverse timestamp distributes data better
-
-# and allows efficient "most recent first" scans
-import time
+# GOOD: Reverse timestamp allows efficient "most recent first" scans
+# within each high-cardinality prefix
 
 MAX_TIMESTAMP = 9999999999999  # Far-future timestamp in milliseconds
 
 def make_row_key(sensor_id, timestamp_ms):
     # Reverse the timestamp so newest data sorts first
     reversed_ts = MAX_TIMESTAMP - timestamp_ms
-    return f"{sensor_id}#{reversed_ts}"
+    return f"{sensor_id}#{reversed_ts:013d}"
 
 # Example row keys:
-# sensor-001#9999998373517599  (most recent)
-# sensor-001#9999998373517400  (slightly older)
-# sensor-001#9999998373516000  (even older)
+# sensor-001#8228675798999  (most recent)
+# sensor-001#8228675799543  (slightly older)
+# sensor-001#8228675799876  (even older)
 ```
 
-The sensor ID prefix ensures data is distributed across multiple tablets (one per sensor or group of sensors), while the reversed timestamp gives you efficient range scans for recent data.
+The sensor ID prefix helps distribute data across multiple tablets when writes are spread across many sensors, while the reversed timestamp gives you efficient range scans for recent data within a sensor.
 
 ## Pattern 2: Compound Keys with High-Cardinality Prefix
 
@@ -102,10 +100,10 @@ def make_row_key(user_id, event_timestamp):
 
 ## Pattern 3: Hash Prefix for Even Distribution
 
-If your natural keys are not well-distributed, add a hash prefix to force even distribution.
+If your natural keys are not well-distributed and write distribution matters more than scanning by the natural key, add a hash prefix to spread writes.
 
 ```python
-# GOOD: Hash prefix distributes data evenly across all tablets
+# GOOD: Hash prefix distributes data more evenly across key ranges
 import hashlib
 
 def make_row_key(entity_id, timestamp):
@@ -114,11 +112,11 @@ def make_row_key(entity_id, timestamp):
     return f"{hash_prefix}#{entity_id}#{timestamp}"
 
 # Row keys look like:
-# 2a5f#sensor-001#2026-02-17T10:00:00
-# 8c3d#sensor-002#2026-02-17T10:00:00
-# f1e9#sensor-001#2026-02-17T10:00:01
-# 4b7a#sensor-003#2026-02-17T10:00:00
-# The hash prefix ensures even distribution across the key space
+# 622b#sensor-001#2026-02-17T10:00:00
+# d757#sensor-002#2026-02-17T10:00:00
+# 622b#sensor-001#2026-02-17T10:00:01
+# 5e27#sensor-003#2026-02-17T10:00:00
+# The hash prefix helps spread writes across the key space
 ```
 
 The tradeoff is that you lose the ability to scan by entity ID directly. To read all data for `sensor-001`, you need to know its hash prefix. This works well when you always know the entity ID at query time.
@@ -130,11 +128,13 @@ Similar to hashing, but with a small fixed number of prefixes (salts). This give
 ```python
 # GOOD: Salt prefix with a small number of buckets
 # You scan all buckets in parallel when reading
+import hashlib
+
 NUM_SALT_BUCKETS = 10
 
 def make_row_key(entity_id, timestamp):
-    # Use a consistent salt based on the entity ID
-    salt = hash(entity_id) % NUM_SALT_BUCKETS
+    # Use a stable, consistent salt based on the entity ID
+    salt = int(hashlib.md5(entity_id.encode()).hexdigest(), 16) % NUM_SALT_BUCKETS
     return f"{salt:02d}#{entity_id}#{timestamp}"
 
 # Row keys look like:
@@ -180,8 +180,8 @@ Before committing to a row key design, test it with realistic data. Look at the 
 # - Bright horizontal lines (hotspots on specific key ranges)
 # - Uneven color distribution (unbalanced load)
 
-# You can also check the load on individual nodes
-gcloud bigtable instances list --project=your-project-id
+# You can also check for hot tablets
+gcloud bigtable hot-tablets list your-cluster-id --instance=your-instance-id
 ```
 
 The Key Visualizer is a heatmap that shows you exactly where your traffic is concentrated. A well-designed key space looks like a uniform gradient. A hotspot looks like a bright line cutting across the visualization.
