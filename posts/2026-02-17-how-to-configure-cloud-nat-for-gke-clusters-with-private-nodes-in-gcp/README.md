@@ -16,17 +16,17 @@ This guide covers configuring Cloud NAT specifically for GKE private clusters, i
 
 When you create a GKE cluster with `--enable-private-nodes`, the worker nodes get only internal IP addresses. Without Cloud NAT or another NAT solution, these nodes cannot:
 
-- Pull container images from Docker Hub, GCR, or other public registries
+- Pull container images from Docker Hub or other public registries
 - Download packages during container builds
 - Reach external APIs from your workloads
 - Send metrics to external monitoring services
 
-Note: Pulling images from Google Container Registry (gcr.io) and Artifact Registry works without Cloud NAT because GCP uses private connectivity for these. But any public registry like Docker Hub requires outbound internet access.
+Note: Pulling images from Artifact Registry, including `gcr.io` repositories hosted on Artifact Registry, works without Cloud NAT because GCP uses private connectivity for these. But any public registry like Docker Hub requires outbound internet access.
 
 ```mermaid
 flowchart TD
     A[GKE Private Node<br/>10.0.0.2] --> B{Destination}
-    B -->|gcr.io / Artifact Registry| C[Private Google Access<br/>No NAT needed]
+    B -->|Artifact Registry / gcr.io| C[Private Google Access<br/>No NAT needed]
     B -->|Docker Hub / External API| D[Cloud NAT Gateway]
     D --> E[Internet]
 ```
@@ -197,17 +197,17 @@ gcloud logging read \
 
 ## Private Google Access vs Cloud NAT
 
-Make sure you also enable Private Google Access on your GKE subnet. This allows nodes to reach Google APIs and services without going through Cloud NAT:
+If you want nodes to reach Google APIs and services without depending on Public NAT, enable Private Google Access on your GKE subnet:
 
 ```bash
 # Enable Private Google Access on the GKE subnet
 gcloud compute networks subnets update your-gke-subnet \
   --region=us-central1 \
-  --enable-private-google-access \
+  --enable-private-ip-google-access \
   --project=your-project-id
 ```
 
-With Private Google Access enabled, traffic to Google services (including GCR and Artifact Registry) uses internal routing and does not consume NAT ports.
+With Private Google Access enabled, traffic to Google services (including Artifact Registry and `gcr.io` repositories hosted on Artifact Registry) uses internal routing and does not consume NAT ports.
 
 ## Troubleshooting Common GKE NAT Issues
 
