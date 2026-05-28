@@ -24,7 +24,7 @@ Both are problems, but they have different root causes and different solutions. 
 
 ## Step 1: Prepare Your Training Data Baseline
 
-The first thing Vertex AI Model Monitoring needs is a baseline - the distribution of features from your training data. This is what it compares production requests against.
+The first thing Vertex AI Model Monitoring needs is your training data. Vertex AI calculates the baseline feature distributions from that data and compares production requests against them.
 
 ```python
 # prepare_baseline.py
@@ -40,7 +40,7 @@ def export_training_baseline(
     output_uri,
     feature_columns,
 ):
-    """Export training data statistics as a baseline for skew detection."""
+    """Export training data and optional summary statistics for skew detection."""
     client = bigquery.Client(project=project_id)
 
     # Query the training data to compute feature statistics
@@ -79,22 +79,24 @@ def export_training_baseline(
                 "unique_values": int(df[col].nunique()),
             }
 
-    # Save baseline to Cloud Storage
+    # Save optional summary statistics for your own inspection
     storage_client = storage.Client()
     blob_path = output_uri.replace("gs://", "").split("/", 1)
     bucket = storage_client.bucket(blob_path[0])
     blob = bucket.blob(blob_path[1])
     blob.upload_from_string(json.dumps(baseline_stats, indent=2))
 
-    print(f"Baseline exported to {output_uri}")
+    print(f"Summary statistics exported to {output_uri}")
     print(f"Features tracked: {len(baseline_stats)}")
 
-    # Also export the raw data for Vertex AI to compute its own statistics
-    df.to_csv(f"/tmp/training_baseline.csv", index=False)
+    # Export the raw data for Vertex AI to compute its own baseline statistics
+    df.to_csv("/tmp/training_baseline.csv", index=False)
     baseline_blob = bucket.blob(f"{blob_path[1]}_data.csv")
     baseline_blob.upload_from_filename("/tmp/training_baseline.csv")
+    raw_data_uri = f"gs://{blob_path[0]}/{blob_path[1]}_data.csv"
+    print(f"Training data exported to {raw_data_uri}")
 
-    return baseline_stats
+    return raw_data_uri, baseline_stats
 ```
 
 ## Step 2: Configure Skew Detection on Your Endpoint
@@ -109,6 +111,7 @@ from google.cloud.aiplatform import model_monitoring
 def setup_skew_detection(
     endpoint_id,
     training_data_uri,
+    target_field,
     feature_thresholds,
     notification_emails,
 ):
@@ -124,19 +127,21 @@ def setup_skew_detection(
 
     deployed_model_id = deployed_models[0].id
 
-    # Configure skew detection with per-feature thresholds
+    # Configure skew detection with per-feature thresholds.
+    # Numerical features use skew_thresholds; categorical features use
+    # attribute_skew_thresholds for the v1 endpoint monitoring API.
     skew_thresholds = {}
     attribute_skew_thresholds = {}
 
     for feature_name, config in feature_thresholds.items():
-        threshold = model_monitoring.ThresholdConfig(value=config["threshold"])
         if config["type"] == "numerical":
-            skew_thresholds[feature_name] = threshold
+            skew_thresholds[feature_name] = config["threshold"]
         else:
-            attribute_skew_thresholds[feature_name] = threshold
+            attribute_skew_thresholds[feature_name] = config["threshold"]
 
     skew_config = model_monitoring.SkewDetectionConfig(
         data_source=training_data_uri,
+        target_field=target_field,
         skew_thresholds=skew_thresholds,
         attribute_skew_thresholds=attribute_skew_thresholds,
     )
@@ -149,14 +154,14 @@ def setup_skew_detection(
             sample_rate=1.0  # Sample all predictions during initial detection
         ),
         schedule_config=model_monitoring.ScheduleConfig(
-            monitor_interval=3600  # Check hourly
+            monitor_interval=1  # Check hourly
         ),
         alert_config=model_monitoring.EmailAlertConfig(
             user_emails=notification_emails
         ),
         objective_configs={
             deployed_model_id: model_monitoring.ObjectiveConfig(
-                training_prediction_skew_detection_config=skew_config,
+                skew_detection_config=skew_config,
             )
         },
     )
@@ -177,6 +182,7 @@ feature_config = {
 setup_skew_detection(
     endpoint_id="ENDPOINT_ID",
     training_data_uri="bq://my-project.ml_data.training_features",
+    target_field="purchased",
     feature_thresholds=feature_config,
     notification_emails=["ml-team@company.com"],
 )
@@ -184,12 +190,12 @@ setup_skew_detection(
 
 ## Step 3: Understanding the Skew Metrics
 
-Vertex AI uses different distance metrics for different feature types:
+Vertex AI Model Monitoring v1 uses different distance metrics for different feature types:
 
-- **Jensen-Shannon divergence** for categorical features - measures how different two probability distributions are. Ranges from 0 (identical) to 1 (completely different).
+- **L-infinity distance** for categorical features - measures the largest absolute difference between category probabilities.
 - **Jensen-Shannon divergence** for numerical features (computed on histogram bins) - the feature values are binned into a histogram and then compared.
 
-A skew score of 0.0 means the production data matches training data perfectly. A score of 1.0 means they are completely different.
+A distance score of 0.0 means the production data matches the baseline distribution for that feature. Larger scores mean larger distribution differences, and Vertex AI flags skew when the score exceeds the threshold you configured.
 
 ## Step 4: Diagnose Skew When Detected
 
@@ -327,47 +333,33 @@ transformed = scaler.transform(serving_data)
 
 ## Step 6: Set Up Automated Skew Alerts
 
-Configure Cloud Monitoring to alert you when skew is detected.
+The monitoring job can send email alerts directly. If you also want Cloud Monitoring notification channels, pass them to the model monitoring alert configuration when creating or updating the monitoring job.
 
 ```python
 # alert_on_skew.py
-from google.cloud import monitoring_v3
+from google.cloud import aiplatform
+from google.cloud.aiplatform import model_monitoring
 
-def create_skew_alert(project_id, notification_channel_id):
-    """Create a Cloud Monitoring alert for training-serving skew."""
-    client = monitoring_v3.AlertPolicyServiceClient()
-
-    alert_policy = monitoring_v3.AlertPolicy(
-        display_name="Training-Serving Skew Alert",
-        conditions=[
-            monitoring_v3.AlertPolicy.Condition(
-                display_name="High Feature Skew Detected",
-                condition_threshold=monitoring_v3.AlertPolicy.Condition.MetricThreshold(
-                    filter='metric.type="aiplatform.googleapis.com/prediction/online/skew_score"',
-                    comparison=monitoring_v3.ComparisonType.COMPARISON_GT,
-                    threshold_value=0.5,
-                    duration={"seconds": 300},
-                    aggregations=[
-                        monitoring_v3.Aggregation(
-                            alignment_period={"seconds": 300},
-                            per_series_aligner=monitoring_v3.Aggregation.Aligner.ALIGN_MAX,
-                        )
-                    ],
-                ),
-            )
-        ],
-        notification_channels=[notification_channel_id],
-        alert_strategy=monitoring_v3.AlertPolicy.AlertStrategy(
-            auto_close={"seconds": 86400}
-        ),
+def add_notification_channel(
+    monitoring_job_name,
+    notification_channel_name,
+    notification_emails,
+):
+    """Route model monitoring anomaly alerts to a Cloud Monitoring channel."""
+    aiplatform.init(project="my-project", location="us-central1")
+    monitoring_job = aiplatform.ModelDeploymentMonitoringJob(
+        model_deployment_monitoring_job_name=monitoring_job_name
     )
 
-    policy = client.create_alert_policy(
-        name=f"projects/{project_id}",
-        alert_policy=alert_policy,
+    monitoring_job.update(
+        alert_config=model_monitoring.AlertConfig(
+            user_emails=notification_emails,
+            enable_logging=True,
+            notification_channels=[notification_channel_name],
+        )
     )
 
-    print(f"Alert policy created: {policy.name}")
+    print(f"Alert routing updated: {monitoring_job.resource_name}")
 ```
 
 ## Wrapping Up
