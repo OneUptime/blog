@@ -33,11 +33,11 @@ sequenceDiagram
     LB-->>Client: WebSocket frame
 ```
 
-The important thing to understand is that GCP does not do any WebSocket-specific processing. Once the connection upgrades, the load balancer acts as a transparent TCP proxy for that connection. This means WebSocket traffic works out of the box, but you need to handle timeouts and routing carefully.
+The important thing to understand is that GCP does not require WebSocket-specific load balancer configuration. Once the connection upgrades, the load balancer proxies bidirectional WebSocket traffic for the duration of that connection. This means WebSocket traffic works out of the box, but you need to handle timeouts and routing carefully.
 
 ## Step 1: Configure Backend Timeout
 
-The most critical setting for WebSocket is the backend service timeout. By default, this is 30 seconds - far too short for persistent connections. You need to increase it to match the maximum expected lifetime of your WebSocket connections:
+The most critical setting for idle WebSocket connections is the backend service timeout. By default, this is 30 seconds for most backend services - far too short for persistent connections that can sit idle. You need to increase it to match the maximum expected idle time of your WebSocket connections:
 
 ```bash
 # Set the backend service timeout to 3600 seconds (1 hour)
@@ -48,7 +48,7 @@ gcloud compute backend-services update ws-backend-service \
     --global
 ```
 
-This timeout applies to idle connections. If there is no data flowing in either direction for 3600 seconds, the load balancer closes the connection. Active connections with regular traffic are not affected.
+For global and regional external Application Load Balancers, this timeout applies to idle WebSocket connections. If there is no data flowing in either direction for 3600 seconds, the load balancer closes the connection. Active WebSocket connections are not affected by the configured backend service timeout, although global external Application Load Balancers close active WebSocket connections after 24 hours.
 
 For applications where connections can be idle for long periods (like monitoring dashboards), set this even higher or implement application-level keepalive pings.
 
@@ -192,6 +192,7 @@ gcloud compute health-checks create http ws-health-check \
 
 # 2. Create the backend service with WebSocket-appropriate settings
 gcloud compute backend-services create ws-backend-service \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
     --protocol=HTTP \
     --health-checks=ws-health-check \
     --timeout=3600s \
@@ -199,22 +200,27 @@ gcloud compute backend-services create ws-backend-service \
     --session-affinity=CLIENT_IP \
     --global
 
-# 3. Add your instance group as a backend
+# 3. Configure the named port used by the backend service
+gcloud compute instance-groups managed set-named-ports ws-instance-group \
+    --named-ports=http:8080 \
+    --zone=us-central1-a
+
+# 4. Add your instance group as a backend
 gcloud compute backend-services add-backend ws-backend-service \
     --instance-group=ws-instance-group \
     --instance-group-zone=us-central1-a \
     --global
 
-# 4. Create a URL map
+# 5. Create a URL map
 gcloud compute url-maps create ws-url-map \
     --default-service=ws-backend-service
 
-# 5. Create a target HTTPS proxy (WebSocket over TLS is recommended)
+# 6. Create a target HTTPS proxy (WebSocket over TLS is recommended)
 gcloud compute target-https-proxies create ws-proxy \
     --url-map=ws-url-map \
     --ssl-certificates=my-ssl-cert
 
-# 6. Create the forwarding rule
+# 7. Create the forwarding rule
 gcloud compute forwarding-rules create ws-forwarding-rule \
     --load-balancing-scheme=EXTERNAL_MANAGED \
     --target-https-proxy=ws-proxy \
@@ -227,10 +233,11 @@ gcloud compute forwarding-rules create ws-forwarding-rule \
 ```hcl
 # Backend service configured for WebSocket connections
 resource "google_compute_backend_service" "websocket" {
-  name                  = "ws-backend-service"
-  protocol              = "HTTP"
-  timeout_sec           = 3600  # 1 hour idle timeout for WebSocket
-  session_affinity      = "CLIENT_IP"
+  name                            = "ws-backend-service"
+  load_balancing_scheme           = "EXTERNAL_MANAGED"
+  protocol                        = "HTTP"
+  timeout_sec                     = 3600  # 1 hour idle timeout for WebSocket
+  session_affinity                = "CLIENT_IP"
   connection_draining_timeout_sec = 3600
 
   health_checks = [google_compute_health_check.ws.id]
@@ -255,11 +262,11 @@ resource "google_compute_health_check" "ws" {
 
 ## Scaling Considerations
 
-WebSocket connections consume resources differently than HTTP requests. Each persistent connection holds a backend slot open. Plan your instance group sizing accordingly:
+WebSocket connections consume resources differently than HTTP requests. Each persistent connection consumes backend resources even when it is mostly idle. Plan your instance group sizing accordingly:
 
 ```bash
-# Configure autoscaling based on connection count rather than CPU
-# Each WebSocket connection uses minimal CPU but holds a connection slot
+# Configure autoscaling based on load balancing serving capacity rather than CPU
+# This can be a better signal when WebSocket connections hold backend capacity open
 gcloud compute instance-groups managed set-autoscaling ws-instance-group \
     --zone=us-central1-a \
     --max-num-replicas=20 \
@@ -268,7 +275,7 @@ gcloud compute instance-groups managed set-autoscaling ws-instance-group \
     --cool-down-period=300
 ```
 
-A load balancing utilization target of 0.6 means the autoscaler adds instances when backends reach 60% of their connection capacity. This gives headroom for connection spikes without over-provisioning.
+A load balancing utilization target of 0.6 means the autoscaler adds instances to maintain about 60% of the load balancing serving capacity. This gives headroom for traffic spikes without relying only on CPU utilization.
 
 ## Debugging WebSocket Issues
 
