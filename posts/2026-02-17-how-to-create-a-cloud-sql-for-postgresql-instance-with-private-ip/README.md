@@ -12,7 +12,7 @@ When running production databases on Google Cloud, you want your database traffi
 
 ## Why Private IP Matters
 
-With a public IP configuration, even though connections are encrypted and you can restrict access through authorized networks, your traffic still traverses the public internet. With private IP:
+With a public IP configuration, even though you can configure SSL/TLS and restrict access through authorized networks, your traffic still traverses the public internet. With private IP:
 
 - Traffic between your application and database never leaves Google's network
 - Lower latency since packets take a shorter path
@@ -81,15 +81,16 @@ Now you can create the PostgreSQL instance with private IP enabled and public IP
 
 ```bash
 # Create a Cloud SQL PostgreSQL instance with private IP only
-gcloud sql instances create myapp-postgres \
+gcloud beta sql instances create myapp-postgres \
     --database-version=POSTGRES_15 \
-    --tier=db-custom-4-16384 \
+    --cpu=4 \
+    --memory=16GB \
     --region=us-central1 \
     --network=projects/my-project-id/global/networks/my-vpc-network \
     --no-assign-ip \
     --allocated-ip-range-name=google-managed-services-range \
     --storage-type=SSD \
-    --storage-size=100GB \
+    --storage-size=100 \
     --storage-auto-increase \
     --availability-type=REGIONAL \
     --backup-start-time=03:00 \
@@ -103,7 +104,7 @@ Let me break down the key flags:
 - `--no-assign-ip` disables the public IP address
 - `--network` specifies which VPC to use (must be the full resource path)
 - `--allocated-ip-range-name` tells Cloud SQL which IP range to pick from
-- `--tier=db-custom-4-16384` gives you 4 vCPUs and 16 GB RAM
+- `--cpu=4` and `--memory=16GB` give you 4 vCPUs and 16 GB RAM
 - `--availability-type=REGIONAL` enables high availability with automatic failover
 
 The instance creation takes about 5-10 minutes.
@@ -141,7 +142,7 @@ Even with private IP, using the Cloud SQL Auth Proxy adds an extra layer of secu
 ```bash
 # Download the Cloud SQL Auth Proxy
 curl -o cloud-sql-proxy \
-    https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.linux.amd64
+    https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.22.0/cloud-sql-proxy.linux.amd64
 
 chmod +x cloud-sql-proxy
 
@@ -169,7 +170,8 @@ Set up the database for your application:
 CREATE DATABASE myapp
     WITH ENCODING 'UTF8'
     LC_COLLATE = 'en_US.UTF8'
-    LC_CTYPE = 'en_US.UTF8';
+    LC_CTYPE = 'en_US.UTF8'
+    TEMPLATE template0;
 
 -- Create an application user with a strong password
 CREATE USER myapp_user WITH PASSWORD 'strong-password-here';
@@ -246,7 +248,7 @@ gcloud compute firewall-rules create allow-cloudsql-private \
 
 Use Cloud SQL's built-in metrics to monitor your connections:
 
-- `database/network/connections` - Active connection count
+- `database/postgresql/num_backends` - Active connection count
 - `database/network/received_bytes_count` - Network bytes in
 - `database/network/sent_bytes_count` - Network bytes out
 
