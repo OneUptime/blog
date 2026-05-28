@@ -39,7 +39,8 @@ Before writing code, you need to set up IAP on your Cloud Run service.
 ```bash
 # Create a load balancer in front of Cloud Run
 
-# (IAP requires a load balancer - it does not work directly with Cloud Run URLs)
+# (Cloud Run also supports direct IAP enablement; this example uses a load balancer
+# because the proxy sits behind an external Application Load Balancer.)
 
 # Create a serverless NEG
 gcloud compute network-endpoint-groups create proxy-neg \
@@ -58,10 +59,28 @@ gcloud compute backend-services add-backend proxy-backend \
   --network-endpoint-group=proxy-neg \
   --network-endpoint-group-region=us-central1
 
+# Create the IAP service agent if it does not already exist
+gcloud beta services identity create \
+  --service=iap.googleapis.com \
+  --project=PROJECT_ID
+
+# Allow IAP to invoke the Cloud Run service
+gcloud run services add-iam-policy-binding my-proxy \
+  --region=us-central1 \
+  --member="serviceAccount:service-PROJECT_NUM@gcp-sa-iap.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+
 # Enable IAP on the backend service
 gcloud compute backend-services update proxy-backend \
   --global \
   --iap=enabled
+
+# Grant users or groups access through IAP
+gcloud iap web add-iam-policy-binding \
+  --resource-type=backend-services \
+  --service=proxy-backend \
+  --member="group:internal-tools@example.com" \
+  --role="roles/iap.httpsResourceAccessor"
 ```
 
 ## The Proxy Server
@@ -77,7 +96,6 @@ package main
 
 import (
     "context"
-    "encoding/json"
     "fmt"
     "log"
     "net/http"
@@ -117,12 +135,8 @@ func verifyIAPJWT(r *http.Request, expectedAudience string) (*IAPClaims, error) 
     if email, ok := payload.Claims["email"].(string); ok {
         claims.Email = email
     }
-    if sub, ok := payload.Claims["sub"].(string); ok {
-        claims.Sub = sub
-    }
-    if iss, ok := payload.Claims["iss"].(string); ok {
-        claims.Issuer = iss
-    }
+    claims.Sub = payload.Subject
+    claims.Issuer = payload.Issuer
 
     // Verify the issuer is Google
     if claims.Issuer != "https://cloud.google.com/iap" {
@@ -309,7 +323,8 @@ func isAuthorized(email string, rule AuthzRule) bool {
 
 ```go
 func main() {
-    // IAP audience is the OAuth client ID from Cloud Console
+    // For load-balancer-backed IAP, the audience is:
+    // /projects/PROJECT_NUM/global/backendServices/BACKEND_ID
     iapAudience := os.Getenv("IAP_AUDIENCE")
 
     // Configure routing
@@ -365,9 +380,7 @@ func main() {
 gcloud run deploy my-proxy \
   --image gcr.io/YOUR_PROJECT/iap-proxy \
   --region us-central1 \
-  --set-env-vars "IAP_AUDIENCE=/projects/PROJECT_NUM/global/backendServices/BACKEND_ID" \
-  --set-env-vars "ADMIN_BACKEND_URL=https://admin-service.run.app" \
-  --set-env-vars "API_BACKEND_URL=https://api-service.run.app" \
+  --set-env-vars "IAP_AUDIENCE=/projects/PROJECT_NUM/global/backendServices/BACKEND_ID,ADMIN_BACKEND_URL=https://admin-service.run.app,API_BACKEND_URL=https://api-service.run.app,GRAFANA_BACKEND_URL=https://grafana-service.run.app" \
   --no-allow-unauthenticated
 ```
 
