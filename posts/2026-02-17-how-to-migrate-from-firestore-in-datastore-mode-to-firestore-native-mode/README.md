@@ -10,7 +10,7 @@ Description: A practical guide to migrating your application from Firestore in D
 
 If you started on Google Cloud years ago, there is a good chance your application uses Firestore in Datastore mode (or the original Cloud Datastore). It works fine, but Firestore Native mode offers real-time listeners, offline support, better querying, and a more intuitive data model. At some point, the migration makes sense.
 
-The problem is that Google does not offer a one-click migration between these two modes. Once a project is set to Datastore mode, you cannot switch it to Native mode. You need to move your data to a different project or database, update your application code, and carefully cut over.
+The problem is that Google does not offer a one-click migration between these two modes. Once a database contains Datastore mode data, you cannot simply switch it to Native mode. You need to move your data to a different project or database, update your application code, and carefully cut over.
 
 Let me walk you through how to do this without losing data or breaking your production system.
 
@@ -40,7 +40,7 @@ The data model mapping looks like this:
 | Entity | Document |
 | Key | Document Reference |
 | Property | Field |
-| Ancestor path | Subcollection hierarchy |
+| Ancestor path | Document and subcollection path |
 
 ## Step 1: Export Data from Datastore Mode
 
@@ -58,7 +58,7 @@ gcloud firestore export gs://my-backup-bucket/datastore-export \
   --project=my-datastore-project
 ```
 
-This creates a managed export in Cloud Storage. The export format is the same regardless of which mode your Firestore is running in.
+This creates a managed export in Cloud Storage. The managed export service exists for both modes, but the exported data still represents the source database's entity or document model.
 
 ## Step 2: Set Up Firestore Native Mode
 
@@ -87,7 +87,7 @@ gcloud firestore databases create \
 
 Here is where it gets interesting. You cannot directly import a Datastore mode export into a Firestore Native mode database because the data structures differ. You need to transform the data.
 
-The most reliable approach is to read from the export and write to the new database using a script. Here is a Python script that handles the migration:
+The most reliable approach is to read from Datastore and write to the new database using a script. Here is a Python script that handles the migration:
 
 ```python
 # migrate_data.py - Read from Datastore and write to Firestore Native
@@ -98,6 +98,8 @@ import time
 # Initialize both clients
 ds_client = datastore.Client(project='my-datastore-project')
 fs_client = firestore.Client(project='my-new-project')
+# For a named Firestore database, use:
+# fs_client = firestore.Client(project='my-project', database='native-db')
 
 def migrate_kind(kind_name, collection_name, batch_size=500):
     """Migrate all entities of a given kind to a Firestore collection."""
@@ -154,7 +156,7 @@ Datastore uses ancestor paths to group entities. In Firestore Native, the equiva
 
 ```python
 # Migrate entities with ancestor relationships to subcollections
-def migrate_with_ancestors(parent_kind, child_kind, subcollection_name):
+def migrate_with_ancestors(parent_kind, parent_collection_name, child_kind, subcollection_name):
     """Migrate child entities into subcollections under their parents."""
     # First, get all parent entities
     parent_query = ds_client.query(kind=parent_kind)
@@ -174,7 +176,7 @@ def migrate_with_ancestors(parent_kind, child_kind, subcollection_name):
 
             # Write to a subcollection under the parent document
             doc_ref = (fs_client
-                      .collection('users')
+                      .collection(parent_collection_name)
                       .document(parent_id)
                       .collection(subcollection_name)
                       .document(child_id))
@@ -193,7 +195,7 @@ def migrate_with_ancestors(parent_kind, child_kind, subcollection_name):
         print(f"Migrated children for parent {parent_id}")
 
 # Example: Migrate OrderItems as subcollections of Orders
-migrate_with_ancestors('Order', 'OrderItem', 'items')
+migrate_with_ancestors('Order', 'orders', 'OrderItem', 'items')
 ```
 
 ## Step 5: Update Application Code
@@ -228,9 +230,11 @@ query.order = ['age']
 results = list(query.fetch(limit=50))
 
 # AFTER: Firestore Native mode
+from google.cloud.firestore_v1.base_query import FieldFilter
+
 query = (db.collection('users')
-         .where('age', '>=', 18)
-         .where('region', '==', 'us-east1')
+         .where(filter=FieldFilter('age', '>=', 18))
+         .where(filter=FieldFilter('region', '==', 'us-east1'))
          .order_by('age')
          .limit(50))
 results = query.stream()
@@ -240,11 +244,13 @@ Writing data:
 
 ```python
 # BEFORE: Datastore mode
+from datetime import datetime, timezone
+
 entity = datastore.Entity(key=ds.key('User'))
 entity.update({
     'name': 'Alice',
     'email': 'alice@example.com',
-    'created_at': datetime.utcnow(),
+    'created_at': datetime.now(timezone.utc),
 })
 ds.put(entity)
 
