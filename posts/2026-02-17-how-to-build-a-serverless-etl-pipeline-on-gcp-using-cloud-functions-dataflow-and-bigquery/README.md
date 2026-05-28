@@ -36,10 +36,10 @@ Create a bucket for incoming raw data:
 ```bash
 # Create a bucket for raw data files
 
-gsutil mb -l us-central1 gs://my-project-raw-data/
+gcloud storage buckets create gs://my-project-raw-data/ --location=us-central1
 
 # Create a bucket for Dataflow temporary files
-gsutil mb -l us-central1 gs://my-project-dataflow-temp/
+gcloud storage buckets create gs://my-project-dataflow-temp/ --location=us-central1
 ```
 
 ## Step 2: Create the BigQuery Dataset and Table
@@ -67,6 +67,16 @@ from apache_beam.io.gcp.bigquery import WriteToBigQuery, BigQueryDisposition
 import csv
 import io
 from datetime import datetime
+
+class ETLOptions(PipelineOptions):
+    """Runtime parameters for the ETL template."""
+
+    @classmethod
+    def _add_argparse_args(cls, parser):
+        parser.add_value_provider_argument(
+            "--input_file",
+            help="Cloud Storage path to the CSV file to process",
+        )
 
 class ParseCSVRow(beam.DoFn):
     """Parse a CSV row into a dictionary."""
@@ -136,10 +146,11 @@ class FilterInvalidTransactions(beam.DoFn):
         yield element
 
 
-def run_pipeline(input_file, project_id, region="us-central1"):
+def run_pipeline(project_id, region="us-central1"):
     """Run the ETL pipeline."""
     # Configure pipeline options
     options = PipelineOptions()
+    etl_options = options.view_as(ETLOptions)
 
     google_cloud_options = options.view_as(GoogleCloudOptions)
     google_cloud_options.project = project_id
@@ -169,7 +180,7 @@ def run_pipeline(input_file, project_id, region="us-central1"):
         (
             pipeline
             # Extract: Read the CSV file from Cloud Storage
-            | "Read CSV" >> beam.io.ReadFromText(input_file)
+            | "Read CSV" >> beam.io.ReadFromText(etl_options.input_file)
             # Transform: Parse CSV rows
             | "Parse CSV" >> beam.ParDo(ParseCSVRow())
             # Transform: Enrich with computed fields
@@ -186,9 +197,7 @@ def run_pipeline(input_file, project_id, region="us-central1"):
         )
 
 if __name__ == "__main__":
-    import sys
-    input_file = sys.argv[1]
-    run_pipeline(input_file, "my-project")
+    run_pipeline("my-project")
 ```
 
 ## Step 4: Create the Cloud Function Trigger
@@ -197,7 +206,7 @@ Write a Cloud Function that triggers the Dataflow pipeline whenever a new file i
 
 ```python
 # main.py - Cloud Function to trigger Dataflow pipeline
-import json
+import re
 from googleapiclient.discovery import build
 from google.auth import default
 
@@ -230,7 +239,8 @@ def trigger_dataflow_pipeline(event, context):
     dataflow = build("dataflow", "v1b3", credentials=credentials)
 
     # Template parameters for the Dataflow job
-    job_name = f"etl-{file_name.replace('/', '-').replace('.csv', '')}"
+    job_suffix = re.sub(r"[^a-z0-9-]+", "-", file_name.lower()).strip("-")
+    job_name = f"etl-{job_suffix}"[:40].rstrip("-")
 
     # Launch from a Dataflow template
     request = dataflow.projects().locations().templates().launch(
@@ -253,6 +263,13 @@ def trigger_dataflow_pipeline(event, context):
     print(f"Dataflow job launched: {response['job']['id']}")
 
     return f"Job {response['job']['id']} launched"
+```
+
+Add the Cloud Function dependency:
+
+```text
+# requirements.txt
+google-api-python-client>=2.0.0
 ```
 
 Deploy the Cloud Function:
@@ -282,8 +299,7 @@ python pipeline.py \
   --region=us-central1 \
   --staging_location=gs://my-project-dataflow-temp/staging \
   --temp_location=gs://my-project-dataflow-temp/tmp \
-  --template_location=gs://my-project-dataflow-temp/templates/etl-pipeline \
-  --input_file=gs://my-project-raw-data/placeholder.csv
+  --template_location=gs://my-project-dataflow-temp/templates/etl-pipeline
 ```
 
 ## Step 6: Test the Pipeline
@@ -300,7 +316,7 @@ TXN003,CUST102,PROD75,3,9.99,2026-02-17 12:00:00,europe,accessories
 EOF
 
 # Upload to Cloud Storage to trigger the pipeline
-gsutil cp test_data.csv gs://my-project-raw-data/
+gcloud storage cp test_data.csv gs://my-project-raw-data/
 ```
 
 Monitor the pipeline:
