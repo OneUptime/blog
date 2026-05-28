@@ -37,7 +37,7 @@ The key insight is that the developer or service never has persistent credential
 
 - A Google Cloud project
 - A service account that has the permissions you need
-- The IAM API enabled
+- The Service Account Credentials API enabled
 - Understanding of which principals need to impersonate which service accounts
 
 ## Step 1: Create the Target Service Account
@@ -60,6 +60,10 @@ gcloud projects add-iam-policy-binding my-project \
 gcloud projects add-iam-policy-binding my-project \
     --member="serviceAccount:cloud-run-deployer@my-project.iam.gserviceaccount.com" \
     --role="roles/artifactregistry.reader"
+
+gcloud projects add-iam-policy-binding my-project \
+    --member="serviceAccount:cloud-run-deployer@my-project.iam.gserviceaccount.com" \
+    --role="roles/iam.serviceAccountUser"
 ```
 
 ## Step 2: Grant the Token Creator Role
@@ -309,4 +313,4 @@ gcloud logging read \
 
 ## Summary
 
-Short-lived credentials through service account impersonation eliminate the need for persistent service account keys. The pattern is straightforward: grant the Token Creator role to principals that need temporary access, and use impersonation through the gcloud CLI or client libraries to generate time-limited tokens. The tokens expire automatically, cannot be stored or shared meaningfully, and create a clear audit trail showing who impersonated what and when. For any new workload, this should be the default approach instead of creating service account keys.
+Short-lived credentials through service account impersonation eliminate the need for persistent service account keys. The pattern is straightforward: grant the Token Creator role to principals that need temporary access, and use impersonation through the gcloud CLI or client libraries to generate time-limited tokens. The tokens expire automatically, have limited value after expiration, and create a clear audit trail showing who impersonated what and when. For any new workload, this should be the default approach instead of creating service account keys.
