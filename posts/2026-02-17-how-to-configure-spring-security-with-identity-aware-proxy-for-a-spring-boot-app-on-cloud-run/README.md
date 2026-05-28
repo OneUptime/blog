@@ -43,14 +43,7 @@ The JWT contains the user's email, subject ID, and other claims. Your applicatio
 <dependency>
     <groupId>com.google.auth</groupId>
     <artifactId>google-auth-library-oauth2-http</artifactId>
-    <version>1.22.0</version>
-</dependency>
-
-<!-- Nimbus JOSE JWT for token parsing -->
-<dependency>
-    <groupId>com.nimbusds</groupId>
-    <artifactId>nimbus-jose-jwt</artifactId>
-    <version>9.37.3</version>
+    <version>1.40.0</version>
 </dependency>
 ```
 
@@ -64,12 +57,10 @@ public class IapJwtValidator {
 
     // IAP uses ES256 keys for signing JWTs
     private static final String IAP_ISSUER = "https://cloud.google.com/iap";
-    private static final String PUBLIC_KEY_URL =
-            "https://www.gstatic.com/iap/verify/public_key-jwk";
-
     private final String expectedAudience;
 
-    // The audience is specific to your Cloud Run service
+    // The audience is specific to your Cloud Run service:
+    // /projects/PROJECT_NUMBER/locations/REGION/services/SERVICE_NAME
     public IapJwtValidator(@Value("${iap.audience}") String expectedAudience) {
         this.expectedAudience = expectedAudience;
     }
@@ -131,6 +122,12 @@ public class IapAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path.equals("/actuator/health") || path.startsWith("/actuator/health/");
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request,
                                      HttpServletResponse response,
                                      FilterChain filterChain)
@@ -161,6 +158,7 @@ public class IapAuthenticationFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
 
         } catch (SecurityException e) {
+            SecurityContextHolder.clearContext();
             response.sendError(HttpServletResponse.SC_FORBIDDEN,
                     "Invalid IAP JWT: " + e.getMessage());
         }
@@ -220,12 +218,14 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                // Disable CSRF - IAP handles this
+                // Disable CSRF for a stateless API; keep CSRF enabled for browser forms
                 .csrf(csrf -> csrf.disable())
 
                 // Disable form login - IAP handles authentication
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
                 // Add the IAP filter before the standard authentication filter
                 .addFilterBefore(iapFilter, UsernamePasswordAuthenticationFilter.class)
@@ -318,22 +318,31 @@ gcloud services enable iap.googleapis.com
 gcloud run deploy my-app \
     --image gcr.io/my-project/my-app:latest \
     --region us-central1 \
-    --no-allow-unauthenticated
+    --no-allow-unauthenticated \
+    --iap
 
-# Set up a load balancer and enable IAP through the console
-# or use the gcloud command
-gcloud iap web enable \
-    --resource-type=backend-services \
-    --service=my-backend-service
+# Grant IAP permission to invoke the Cloud Run service
+gcloud run services add-iam-policy-binding my-app \
+    --region us-central1 \
+    --member=serviceAccount:service-PROJECT_NUMBER@gcp-sa-iap.iam.gserviceaccount.com \
+    --role=roles/run.invoker
+
+# Grant users access to the IAP-protected service
+gcloud iap web add-iam-policy-binding \
+    --member=user:user@example.com \
+    --role=roles/iap.httpsResourceAccessor \
+    --region=us-central1 \
+    --resource-type=cloud-run \
+    --service=my-app
 ```
 
-The IAP audience value you need for JWT validation is in the format: `/projects/PROJECT_NUMBER/global/backendServices/BACKEND_SERVICE_ID`.
+The IAP audience value you need for direct Cloud Run JWT validation is in the format: `/projects/PROJECT_NUMBER/locations/REGION/services/SERVICE_NAME`. If you protect Cloud Run through a load balancer backend service instead, the audience is in the format `/projects/PROJECT_NUMBER/global/backendServices/BACKEND_SERVICE_ID`.
 
 ## Application Properties
 
 ```properties
 # IAP audience for JWT validation
-iap.audience=/projects/123456789/global/backendServices/987654321
+iap.audience=/projects/123456789/locations/us-central1/services/my-app
 
 # Actuator for health checks
 management.endpoints.web.exposure.include=health
