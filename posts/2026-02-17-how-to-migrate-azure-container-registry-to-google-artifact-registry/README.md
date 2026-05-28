@@ -18,8 +18,8 @@ Azure Container Registry (ACR) and Google Artifact Registry both store OCI conta
 |---------|------------------------|------------------------|
 | Image formats | Docker, OCI, Helm | Docker, OCI, Helm, plus Maven, npm, Python, Go, etc. |
 | Geo-replication | Yes (Premium SKU) | Multi-region repositories |
-| Vulnerability scanning | Microsoft Defender | Container Analysis |
-| Image signing | Content Trust | Binary Authorization |
+| Vulnerability scanning | Microsoft Defender | Artifact Analysis |
+| Image signing / deployment policy | Docker Content Trust (retiring March 31, 2028) or Notary Project | Binary Authorization attestations |
 | Retention policies | Yes | Cleanup policies |
 | Private endpoints | Yes | VPC Service Controls |
 | Build service | ACR Tasks | Cloud Build |
@@ -120,8 +120,10 @@ go install github.com/google/go-containerregistry/cmd/crane@latest
 # https://github.com/google/go-containerregistry/releases
 
 # Authenticate crane with both registries
-crane auth login myacr.azurecr.io -u $(az acr credential show --name myacr --query username -o tsv) \
-  -p $(az acr credential show --name myacr --query passwords[0].value -o tsv)
+ACR_TOKEN=$(az acr login --name myacr --expose-token --output tsv --query accessToken)
+echo "$ACR_TOKEN" | crane auth login myacr.azurecr.io \
+  -u 00000000-0000-0000-0000-000000000000 \
+  --password-stdin
 
 gcloud auth print-access-token | crane auth login us-central1-docker.pkg.dev -u oauth2accesstoken --password-stdin
 ```
@@ -129,7 +131,7 @@ gcloud auth print-access-token | crane auth login us-central1-docker.pkg.dev -u 
 Now use crane to copy images directly between registries:
 
 ```bash
-# Copy a single image (all tags) - server-to-server, no local download
+# Copy a single image tag - server-to-server, no local download
 crane copy myacr.azurecr.io/my-web-app:v1.2.3 \
   us-central1-docker.pkg.dev/my-project/docker-images/my-web-app:v1.2.3
 
@@ -244,10 +246,12 @@ steps:
 
 ## Step 8: Set Up Vulnerability Scanning
 
-Replace ACR's Microsoft Defender scanning with Container Analysis.
+Replace ACR's Microsoft Defender scanning with Artifact Analysis.
 
 ```bash
-# Vulnerability scanning is automatically enabled for Artifact Registry
+# Enable automatic vulnerability scanning for images pushed to Artifact Registry
+gcloud services enable containerscanning.googleapis.com
+
 # Check scan results for an image
 gcloud artifacts docker images describe \
   us-central1-docker.pkg.dev/my-project/docker-images/my-web-app:v1.2.3 \
@@ -275,16 +279,13 @@ gcloud artifacts repositories set-cleanup-policies docker-images \
     "name": "delete-old-images",
     "action": { "type": "Delete" },
     "condition": {
-      "olderThan": "2592000s",
-      "tagState": "UNTAGGED"
+      "olderThan": "30d",
+      "tagState": "untagged"
     }
   },
   {
-    "name": "keep-recent-tagged",
+    "name": "keep-recent",
     "action": { "type": "Keep" },
-    "condition": {
-      "tagState": "TAGGED"
-    },
     "mostRecentVersions": {
       "keepCount": 10
     }
