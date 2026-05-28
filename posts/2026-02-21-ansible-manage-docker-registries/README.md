@@ -148,33 +148,41 @@ For access control, the Docker registry supports htpasswd-based authentication. 
         name: apache2-utils
         state: present
 
+    - name: Create auth directory
+      ansible.builtin.file:
+        path: "{{ auth_dir }}"
+        state: directory
+        mode: '0755'
+
     - name: Create htpasswd file with first user
       ansible.builtin.command:
-        cmd: >
-          htpasswd -Bbn {{ registry_users[0].username }}
-          {{ registry_users[0].password }}
+        cmd: "htpasswd -Bin {{ registry_users[0].username }}"
+        stdin: "{{ registry_users[0].password }}"
       register: htpasswd_output
       changed_when: true
+      no_log: true
 
     - name: Write htpasswd file
       ansible.builtin.copy:
         content: "{{ htpasswd_output.stdout }}\n"
         dest: "{{ auth_dir }}/htpasswd"
         mode: '0644'
+      no_log: true
 
     - name: Add additional users to htpasswd
       ansible.builtin.command:
-        cmd: >
-          htpasswd -Bb {{ auth_dir }}/htpasswd
-          {{ item.username }} {{ item.password }}
+        cmd: "htpasswd -Bi {{ auth_dir }}/htpasswd {{ item.username }}"
+        stdin: "{{ item.password }}"
       loop: "{{ registry_users[1:] }}"
       changed_when: true
+      no_log: true
 
     - name: Deploy registry with auth and TLS
       community.docker.docker_container:
         name: docker-registry
         image: registry:2.8
         state: started
+        restart: true
         restart_policy: always
         ports:
           - "443:5000"
@@ -271,7 +279,7 @@ The Docker registry exposes a REST API that Ansible can interact with using the 
 
 ## Garbage Collection
 
-Over time, deleted image layers pile up on disk. The registry supports garbage collection to reclaim space:
+Over time, blobs that are no longer referenced by any manifest can remain on disk. The registry supports garbage collection to reclaim space:
 
 ```yaml
 # registry_gc.yml - Run garbage collection on the registry
@@ -326,7 +334,7 @@ flowchart TD
     C --> D[Distribute CA Certs to Clients]
     D --> E[Push/Pull Images]
     E --> F{Storage Growing?}
-    F -->|Yes| G[Delete Old Tags via API]
+    F -->|Yes| G[Delete Old Manifests via API]
     G --> H[Run Garbage Collection]
     H --> E
     F -->|No| E
