@@ -62,7 +62,7 @@ gcloud compute instances add-metadata my-vm \
     --metadata enable-oslogin=TRUE,enable-oslogin-2fa=TRUE
 ```
 
-When 2FA is enabled, users will be prompted for a verification code after providing their SSH key. The verification method depends on their Google account's 2FA configuration - it could be a phone prompt, a TOTP code from an authenticator app, or a security key.
+When 2FA is enabled, users will be prompted for a verification code after providing their SSH key. The verification method depends on their Google account's 2FA configuration - it could be a phone prompt, a TOTP code from an authenticator app, SMS or phone call verification, or a security key one-time password.
 
 ## Step 3: Configure IAM Roles
 
@@ -89,8 +89,8 @@ gcloud projects add-iam-policy-binding my-project \
 **For external users (outside your organization):**
 
 ```bash
-# Grant the External User role in addition to OS Login
-gcloud projects add-iam-policy-binding my-project \
+# Grant the External User role at the organization level in addition to OS Login
+gcloud organizations add-iam-policy-binding ORGANIZATION_ID \
     --member="user:contractor@external.com" \
     --role="roles/compute.osLoginExternalUser"
 
@@ -107,6 +107,8 @@ Here is a summary of the roles:
 | `roles/compute.osAdminLogin` | SSH access with sudo |
 | `roles/compute.osLoginExternalUser` | Required for users outside your org |
 
+If the VM has an attached service account, users also need `roles/iam.serviceAccountUser` on that service account.
+
 ## Step 4: Test the Setup
 
 Have a user try to SSH in:
@@ -119,7 +121,7 @@ gcloud compute ssh my-vm --zone=us-central1-a
 The first time a user connects with OS Login, GCP automatically:
 
 1. Creates a POSIX user account on the VM (username based on their email)
-2. Pushes their SSH public key to the VM
+2. Fetches their SSH public key from the OS Login service
 3. Sets up their home directory
 
 With 2FA enabled, after the SSH key is verified, the user sees a prompt like:
@@ -210,20 +212,20 @@ gcloud compute os-login describe-profile
 gcloud compute os-login describe-profile --format="value(posixAccounts[0].username)"
 ```
 
-The username format is the user's email with dots and @ replaced by underscores. For example, `user@example.com` becomes `user_example_com`.
+If your organization administrator has not configured a username for you, the default username format is based on your email address as `USERNAME_DOMAIN_SUFFIX`. For example, `user@example.com` becomes `user_example_com`. Usernames can be customized by administrators, external users are prefixed with `ext_`, service accounts are prefixed with `sa_`, and generated usernames are truncated if they exceed 32 characters.
 
 ## Audit Logging
 
-One of the biggest advantages of OS Login is the audit trail. Every SSH login attempt is logged in Cloud Audit Logs. You can view these in the Cloud Console under Logging, or query them:
+One of the biggest advantages of OS Login is the audit trail. OS Login activity is logged in Cloud Audit Logs. You can view these in the Cloud Console under Logging, or query them:
 
 ```bash
-# View SSH login audit logs
-gcloud logging read 'resource.type="gce_instance" AND protoPayload.methodName="google.ssh-serialport.v1.connect"' \
+# View OS Login audit logs
+gcloud logging read 'protoPayload.serviceName="oslogin.googleapis.com"' \
     --limit=20 \
     --format=json
 ```
 
-This gives you a complete record of who logged into which VM and when.
+This gives you a record of OS Login API activity, including SSH key import and signing events used during OS Login connections.
 
 ## Common Issues and Solutions
 
