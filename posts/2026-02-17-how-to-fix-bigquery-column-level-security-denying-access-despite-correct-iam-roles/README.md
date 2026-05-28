@@ -31,7 +31,7 @@ flowchart TD
     F -->|Yes| H[Query succeeds with all columns]
 ```
 
-The critical thing to understand is that column-level security is enforced in addition to table-level permissions. Even a project Owner will be denied access to protected columns if they do not have the Fine-Grained Reader role on the specific policy tag.
+The critical thing to understand is that column-level security is enforced in addition to table-level permissions. Even a project Owner will be denied access to protected columns if they do not have the Fine-Grained Reader permission for the relevant policy tag.
 
 ## Step 1 - Verify the Policy Tag Taxonomy
 
@@ -76,7 +76,7 @@ Look for the `policyTags` field in the column definitions.
 
 ## Step 3 - Verify the Fine-Grained Reader Role
 
-This is where most issues occur. The user needs the `roles/datacatalog.categoryFineGrainedReader` role on the specific policy tag, not on the project or dataset.
+This is where most issues occur. For least-privilege access, the user should have the `roles/datacatalog.categoryFineGrainedReader` role on the specific policy tag. Grants at the project, folder, or organization level can also satisfy the permission, but they apply broadly and are easy to misinterpret when you are troubleshooting a single tag.
 
 ```bash
 # Check who has the Fine-Grained Reader role on a policy tag
@@ -98,16 +98,16 @@ gcloud data-catalog taxonomies policy-tags add-iam-policy-binding \
     --role="roles/datacatalog.categoryFineGrainedReader"
 ```
 
-## Common Issue 1 - Role Granted at Wrong Level
+## Common Issue 1 - Role Checked at the Wrong Level
 
-A frequent mistake is granting the role at the project level instead of the policy tag level. The Fine-Grained Reader role must be granted on the specific policy tag.
+A frequent mistake is checking only dataset or table IAM and missing the policy tag permission entirely. Another common source of confusion is a broad project-level Fine-Grained Reader grant: it can work, but it grants access to all matching policy tags in the project and might not be visible when you inspect IAM on one policy tag. For least privilege, grant the role on the specific policy tag.
 
 ```bash
-# Wrong: granting at project level does not work for column-level security
+# Broad: works for policy tags in the project, but is usually too much access
 gcloud projects add-iam-policy-binding my-project \
     --member="user:analyst@company.com" \
     --role="roles/datacatalog.categoryFineGrainedReader"
-# This grants access to the Data Catalog API but NOT to specific policy tags
+# Prefer a narrower grant unless the user needs access to every protected tag
 
 # Correct: grant on the policy tag itself
 gcloud data-catalog taxonomies policy-tags add-iam-policy-binding \
@@ -203,23 +203,28 @@ gcloud data-catalog taxonomies policy-tags add-iam-policy-binding \
 BigQuery supports data masking as an alternative to access denial. With masking, users can still query the column but see masked values instead of getting an error.
 
 ```bash
-# Check if masking rules are configured
-gcloud data-catalog taxonomies policy-tags list \
-    --taxonomy=<taxonomy-id> \
-    --location=us \
-    --format="yaml"
+# Check if masking data policies are configured
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://bigquerydatapolicy.googleapis.com/v2/projects/my-project/locations/us/dataPolicies"
 ```
 
 If you want users to see masked data instead of being denied.
 
 ```bash
-# Grant the masked reader role instead of fine-grained reader
-gcloud data-catalog taxonomies policy-tags add-iam-policy-binding \
-    <policy-tag-id> \
-    --taxonomy=<taxonomy-id> \
-    --location=us \
-    --member="user:analyst@company.com" \
-    --role="roles/bigquerydatapolicy.maskedReader"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  --data '{
+    "policy": {
+      "bindings": [
+        {
+          "role": "roles/bigquerydatapolicy.maskedReader",
+          "members": ["user:analyst@company.com"]
+        }
+      ]
+    }
+  }' \
+  "https://bigquerydatapolicy.googleapis.com/v2/projects/my-project/locations/us/dataPolicies/<data-policy-id>:setIamPolicy"
 ```
 
 ## Debugging Checklist
@@ -229,7 +234,7 @@ Here is the systematic checklist I follow when column-level security is not work
 1. Verify the user has table-level access (bigquery.dataViewer)
 2. Identify which columns are protected (check INFORMATION_SCHEMA.COLUMN_FIELD_PATHS)
 3. Find the policy tag IDs on those columns
-4. Check the IAM policy on each policy tag (not the project)
+4. Check the IAM policy on each policy tag, and account for any inherited project, folder, or organization grants
 5. Verify the taxonomy location matches the dataset location
 6. Check for hierarchical tag inheritance issues
 7. If using views, ensure the user has access to underlying column tags
@@ -241,7 +246,7 @@ flowchart TD
     B -->|No| C[Grant bigquery.dataViewer on dataset]
     B -->|Yes| D{Check policy tag IAM}
     D --> E{Fine-Grained Reader on correct tag?}
-    E -->|No| F[Grant at policy tag level, not project level]
+    E -->|No| F[Grant or verify Fine-Grained Reader]
     E -->|Yes| G{Check taxonomy location}
     G -->|Wrong location| H[Recreate taxonomy in dataset location]
     G -->|Correct| I{Using parent or child tags?}
@@ -251,4 +256,4 @@ flowchart TD
 
 ## Summary
 
-BigQuery column-level security access denials despite correct-looking IAM roles are almost always caused by granting the Fine-Grained Reader role at the wrong level (project instead of policy tag), taxonomy location mismatches, or not understanding the parent-child tag inheritance model. Always grant the `roles/datacatalog.categoryFineGrainedReader` role directly on the policy tag, make sure the taxonomy is in the same location as your dataset, and remember that views do not bypass column-level security.
+BigQuery column-level security access denials despite correct-looking IAM roles are almost always caused by missing the Fine-Grained Reader permission for the relevant policy tag, taxonomy location mismatches, or not understanding the parent-child tag inheritance model. Prefer granting `roles/datacatalog.categoryFineGrainedReader` directly on the policy tag for least privilege, make sure the taxonomy is in the same location as your dataset, and remember that views do not bypass column-level security.
