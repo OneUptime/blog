@@ -149,9 +149,9 @@ resource "google_project_iam_binding" "viewers" {
   ]
 }
 
-resource "google_project_iam_binding" "editors" {
+resource "google_project_iam_binding" "network_admins" {
   project = var.project_id
-  role    = "roles/editor"
+  role    = "roles/compute.networkAdmin"
 
   members = [
     "group:platform-team@company.com",
@@ -159,7 +159,7 @@ resource "google_project_iam_binding" "editors" {
 
   condition {
     title       = "Business hours only"
-    description = "Allow editor access during business hours"
+    description = "Allow network administration during business hours"
     expression  = "request.time.getHours('America/New_York') >= 8 && request.time.getHours('America/New_York') <= 18"
   }
 }
@@ -167,23 +167,27 @@ resource "google_project_iam_binding" "editors" {
 # terraform/org-policies.tf
 # Organization policies managed through GitOps
 
-resource "google_project_organization_policy" "resource_locations" {
-  project    = var.project_id
-  constraint = "constraints/gcp.resourceLocations"
+resource "google_org_policy_policy" "resource_locations" {
+  name   = "projects/${var.project_id}/policies/gcp.resourceLocations"
+  parent = "projects/${var.project_id}"
 
-  list_policy {
-    allow {
-      values = ["in:us-locations"]
+  spec {
+    rules {
+      values {
+        allowed_values = ["in:us-locations"]
+      }
     }
   }
 }
 
-resource "google_project_organization_policy" "disable_sa_keys" {
-  project    = var.project_id
-  constraint = "iam.disableServiceAccountKeyCreation"
+resource "google_org_policy_policy" "disable_sa_keys" {
+  name   = "projects/${var.project_id}/policies/iam.disableServiceAccountKeyCreation"
+  parent = "projects/${var.project_id}"
 
-  boolean_policy {
-    enforced = true
+  spec {
+    rules {
+      enforce = "TRUE"
+    }
   }
 }
 ```
@@ -197,7 +201,7 @@ resource "google_project_organization_policy" "disable_sa_keys" {
 
 steps:
   # Step 1: Validate Terraform syntax
-  - name: 'hashicorp/terraform:1.7'
+  - name: 'hashicorp/terraform:1.14.6'
     entrypoint: 'sh'
     args:
       - '-c'
@@ -207,7 +211,20 @@ steps:
         terraform validate
     id: 'validate'
 
-  # Step 2: Check for policy compliance using OPA/Conftest
+  # Step 2: Run terraform plan
+  - name: 'hashicorp/terraform:1.14.6'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        cd terraform
+        terraform init
+        terraform plan -out=plan.tfplan
+        terraform show -json plan.tfplan > ../terraform/plan.json
+    id: 'plan'
+    waitFor: ['validate']
+
+  # Step 3: Check for policy compliance using OPA/Conftest
   - name: 'openpolicyagent/conftest:latest'
     args:
       - 'test'
@@ -217,31 +234,18 @@ steps:
     id: 'policy-check'
     waitFor: ['plan']
 
-  # Step 3: Run terraform plan
-  - name: 'hashicorp/terraform:1.7'
-    entrypoint: 'sh'
-    args:
-      - '-c'
-      - |
-        cd terraform
-        terraform init
-        terraform plan -out=plan.tfplan -json > plan.json
-        terraform show -json plan.tfplan > ../terraform/plan.json
-    id: 'plan'
-    waitFor: ['validate']
-
   # Step 4: Apply (only on main branch)
-  - name: 'hashicorp/terraform:1.7'
+  - name: 'hashicorp/terraform:1.14.6'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
-        if [ "$BRANCH_NAME" = "main" ]; then
+        if [ "$TRIGGER_NAME" = "security-policy-apply" ]; then
           cd terraform
           terraform init
-          terraform apply -auto-approve
+          terraform apply -auto-approve plan.tfplan
         else
-          echo "Skipping apply - not on main branch"
+          echo "Skipping apply - not the apply trigger"
         fi
     id: 'apply'
     waitFor: ['policy-check']
@@ -275,31 +279,31 @@ gcloud builds triggers create github \
 
 ## Approach 2: Config Sync for GKE Network Policies
 
-For Kubernetes-native security policies, use Config Sync with Anthos Config Management:
+For Kubernetes-native security policies, use Config Sync:
 
 ```bash
 # Install Config Sync on your GKE cluster
-gcloud container fleet config-management apply \
+gcloud beta container fleet config-management enable
+
+gcloud beta container fleet config-management apply \
     --membership=my-cluster-membership \
-    --config=config-management.yaml
+    --config=apply-spec.yaml \
+    --project=security-project
 ```
 
 ```yaml
-# config-management.yaml
+# apply-spec.yaml
 # Configures Config Sync to pull policies from Git
-apiVersion: configmanagement.gke.io/v1
-kind: ConfigManagement
-metadata:
-  name: config-management
+applySpecVersion: 1
 spec:
-  sourceFormat: unstructured
-  git:
+  configSync:
+    enabled: true
+    sourceType: git
+    sourceFormat: unstructured
     syncRepo: https://github.com/myorg/security-policies
-    syncBranch: main
+    syncRev: main
     secretType: token
     policyDir: k8s-policies
-  policyController:
-    enabled: true
 ```
 
 Define Kubernetes network policies in the repository:
@@ -346,10 +350,10 @@ Write policy checks that validate security policy changes before they are applie
 # policies/firewall.rego
 # OPA policy that validates firewall rule changes
 
-package firewall
+package main
 
 # Deny firewall rules that open SSH to the internet
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "google_compute_firewall"
     resource.change.after.source_ranges[_] == "0.0.0.0/0"
@@ -358,7 +362,7 @@ deny[msg] {
 }
 
 # Deny firewall rules without logging enabled
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "google_compute_firewall"
     not resource.change.after.log_config
@@ -366,7 +370,7 @@ deny[msg] {
 }
 
 # Require all IAM bindings to use groups, not individual users
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "google_project_iam_binding"
     member := resource.change.after.members[_]
@@ -394,12 +398,15 @@ gcloud scheduler jobs create http detect-security-drift \
 
 import functions_framework
 from google.cloud import compute_v1
-from google.cloud import asset_v1
+from google.cloud import storage
 import json
 import yaml
 import logging
+import os
 
 logger = logging.getLogger(__name__)
+PROJECT_ID = os.environ.get('PROJECT_ID', 'my-project')
+EXPECTED_STATE_BUCKET = os.environ['EXPECTED_STATE_BUCKET']
 
 @functions_framework.http
 def detect_drift(request):
@@ -410,10 +417,6 @@ def detect_drift(request):
     # Check firewall rules
     firewall_drift = check_firewall_drift()
     drift_findings.extend(firewall_drift)
-
-    # Check organization policies
-    org_policy_drift = check_org_policy_drift()
-    drift_findings.extend(org_policy_drift)
 
     if drift_findings:
         send_drift_alert(drift_findings)
@@ -433,7 +436,7 @@ def check_firewall_drift():
     expected_rules = load_expected_rules('firewall-rules/production/')
 
     # Get actual rules
-    request = compute_v1.ListFirewallsRequest(project='my-project')
+    request = compute_v1.ListFirewallsRequest(project=PROJECT_ID)
     actual_rules = {rule.name: rule for rule in client.list(request=request)}
 
     # Check for unexpected rules (rules in GCP but not in Git)
@@ -447,6 +450,29 @@ def check_firewall_drift():
             })
 
     return findings
+
+
+def load_expected_rules(prefix):
+    """Load expected firewall rule names from YAML files in Cloud Storage."""
+    storage_client = storage.Client()
+    expected = {}
+
+    for blob in storage_client.list_blobs(EXPECTED_STATE_BUCKET, prefix=prefix):
+        if not blob.name.endswith(('.yaml', '.yml')):
+            continue
+
+        data = yaml.safe_load(blob.download_as_text()) or {}
+        rules = data if isinstance(data, list) else data.get('rules', [])
+        for rule in rules:
+            if 'name' in rule:
+                expected[rule['name']] = rule
+
+    return expected
+
+
+def send_drift_alert(findings):
+    """Send drift findings to Cloud Logging."""
+    logger.warning("Security policy drift detected: %s", findings)
 ```
 
 ## Best Practices
