@@ -22,10 +22,8 @@ This is the complete serving application:
 # app.py - Flask-based PyTorch model server
 
 import os
-import json
 import torch
 import torch.nn as nn
-import numpy as np
 from flask import Flask, request, jsonify
 from google.cloud import storage
 
@@ -148,8 +146,9 @@ def predict():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+load_model()
+
 if __name__ == "__main__":
-    load_model()
     port = int(os.environ.get("AIP_HTTP_PORT", 8080))
     app.run(host="0.0.0.0", port=port, threaded=True)
 ```
@@ -166,11 +165,6 @@ RUN pip install flask gunicorn google-cloud-storage
 
 # Copy the application
 COPY app.py .
-
-# Environment variables for Vertex AI
-ENV AIP_HTTP_PORT=8080
-ENV AIP_HEALTH_ROUTE=/health
-ENV AIP_PREDICT_ROUTE=/predict
 
 EXPOSE 8080
 
@@ -212,9 +206,14 @@ class SentimentHandler(BaseHandler):
         for row in data:
             # Parse the request body
             if isinstance(row, dict):
-                body = row.get("body", row)
+                body = row.get("body") or row.get("data") or row
             else:
-                body = json.loads(row.get("data", "{}").decode("utf-8"))
+                body = row
+
+            if isinstance(body, (bytes, bytearray)):
+                body = json.loads(body.decode("utf-8"))
+            elif isinstance(body, str):
+                body = json.loads(body)
 
             instances = body.get("instances", [body.get("data", [])])
             inputs.extend(instances)
@@ -255,9 +254,9 @@ Package the model for TorchServe:
 torch-model-archiver \
     --model-name sentiment \
     --version 1.0 \
+    --model-file model.py \
     --serialized-file model_weights.pt \
     --handler handler.py \
-    --extra-files "model.py" \
     --export-path model_store/
 
 # Upload to GCS
@@ -266,7 +265,7 @@ gsutil cp model_store/sentiment.mar gs://your-bucket/models/sentiment/
 
 The TorchServe configuration file:
 
-```python
+```properties
 # config.properties - TorchServe configuration
 
 inference_address=http://0.0.0.0:8080
@@ -276,18 +275,29 @@ number_of_netty_threads=4
 job_queue_size=100
 model_store=/home/model-server/model-store
 
-# Batching configuration
-batch_size=8
-max_batch_delay=100
-
 # Model loading
-load_models=all
+load_models=sentiment.mar
+
+# Model-specific batching configuration
+models={\
+  "sentiment": {\
+    "1.0": {\
+      "defaultVersion": true,\
+      "marName": "sentiment.mar",\
+      "minWorkers": 1,\
+      "maxWorkers": 1,\
+      "batchSize": 8,\
+      "maxBatchDelay": 100,\
+      "responseTimeout": 120\
+    }\
+  }\
+}
 ```
 
 The Dockerfile for TorchServe:
 
 ```dockerfile
-FROM pytorch/torchserve:0.9.0-gpu
+FROM pytorch/torchserve:0.12.0-gpu
 
 # Copy configuration
 COPY config.properties /home/model-server/config.properties
@@ -324,6 +334,7 @@ aiplatform.init(project="your-project-id", location="us-central1")
 # Upload the model
 model = aiplatform.Model.upload(
     display_name="pytorch-sentiment-model",
+    artifact_uri="gs://your-bucket/models/sentiment",  # Flask only: contains model_weights.pt
     serving_container_image_uri=(
         "us-central1-docker.pkg.dev/your-project/ml-serving/pytorch-sentiment:v1"
     ),
@@ -383,7 +394,7 @@ def predict():
 
         with torch.no_grad():
             # Use autocast for mixed precision on GPU
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast("cuda", enabled=torch.cuda.is_available()):
                 logits = model(input_tensor)
                 probabilities = torch.softmax(logits, dim=1)
 
