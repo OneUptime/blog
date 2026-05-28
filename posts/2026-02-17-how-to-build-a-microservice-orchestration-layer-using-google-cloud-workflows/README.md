@@ -83,7 +83,7 @@ main:
             timeout: 30
           result: payment_result
         retry:
-          predicate: ${default_retry_predicate}
+          predicate: ${http.default_retry_predicate}
           max_retries: 3
           backoff:
             initial_delay: 2
@@ -256,19 +256,24 @@ Some steps might take minutes or hours (like manual approval). Cloud Workflows s
 
 ```yaml
 # Workflow with a human approval step
+- create_approval_callback:
+    call: events.create_callback_endpoint
+    args:
+      http_callback_method: "POST"
+    result: approval_callback
+
 - wait_for_approval:
     call: events.await_callback
     args:
-      callback:
-        url: ${approval_callback_url}
+      callback: ${approval_callback}
       timeout: 86400  # Wait up to 24 hours
     result: approval_result
 
 - check_approval:
     switch:
-      - condition: ${approval_result.body.approved == true}
+      - condition: ${approval_result.http_request.body.approved == true}
         next: ship_order
-      - condition: ${approval_result.body.approved == false}
+      - condition: ${approval_result.http_request.body.approved == false}
         next: cancel_order
 ```
 
