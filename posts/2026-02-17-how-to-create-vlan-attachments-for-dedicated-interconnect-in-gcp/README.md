@@ -48,7 +48,7 @@ Before creating VLAN attachments, you need:
 
 ## Step 1: Create a Cloud Router
 
-Each VLAN attachment requires a Cloud Router. The Cloud Router must be in the same region as the Dedicated Interconnect's location.
+Each VLAN attachment requires a Cloud Router. The Cloud Router must be in the Google Cloud region that contains the VPC subnets you want to reach.
 
 ```bash
 # Create a Cloud Router for the VLAN attachment
@@ -71,7 +71,7 @@ gcloud compute interconnects attachments dedicated create prod-attachment \
     --interconnect=my-interconnect-1 \
     --router=ic-router-prod \
     --region=us-east4 \
-    --bandwidth=BPS_1G \
+    --bandwidth=1g \
     --vlan=100 \
     --description="Production VPC attachment"
 ```
@@ -80,7 +80,7 @@ Let me break down the important parameters:
 
 - `--interconnect`: The name of your Dedicated Interconnect resource
 - `--router`: The Cloud Router to associate with
-- `--bandwidth`: The maximum bandwidth allocated to this attachment. Options are BPS_50M, BPS_100M, BPS_200M, BPS_300M, BPS_400M, BPS_500M, BPS_1G, BPS_2G, BPS_5G, BPS_10G, BPS_20G, BPS_50G
+- `--bandwidth`: The maximum bandwidth allocated to this attachment. Options include 50M, 100M, 200M, 300M, 400M, 500M, 1g, 2g, 5g, 10g, 20g, 50g, and 100g
 - `--vlan`: The VLAN ID (802.1Q tag) for this attachment. Must be unique per Interconnect
 
 ## Step 3: Note the BGP Peering Details
@@ -188,14 +188,14 @@ gcloud compute interconnects attachments dedicated create staging-attachment \
     --interconnect=my-interconnect-1 \
     --router=ic-router-staging \
     --region=us-east4 \
-    --bandwidth=BPS_200M \
+    --bandwidth=200M \
     --vlan=200 \
     --description="Staging VPC attachment"
 ```
 
 ## Bandwidth Allocation
 
-When you create multiple VLAN attachments on a single Interconnect, the bandwidth allocations are soft limits. They affect how Cloud Router distributes traffic but do not create hard rate limits. The total of all attachment bandwidths should not exceed the Interconnect link capacity.
+When you create multiple VLAN attachments on a single Interconnect, the bandwidth allocations are approximate maximums. They help control how much bandwidth each attachment can use, but an attachment might use more than the selected capacity. The total usable throughput is still limited by the Interconnect link capacity.
 
 For a 10 Gbps Interconnect, a typical allocation might be:
 
@@ -214,12 +214,12 @@ You can update certain properties of existing attachments without recreating the
 # Update the bandwidth allocation
 gcloud compute interconnects attachments dedicated update prod-attachment \
     --region=us-east4 \
-    --bandwidth=BPS_5G
+    --bandwidth=5g
 
 # Disable an attachment (stops traffic but preserves config)
 gcloud compute interconnects attachments dedicated update staging-attachment \
     --region=us-east4 \
-    --no-admin-enabled
+    --no-enable-admin
 ```
 
 Note that you cannot change the VLAN ID or the Interconnect it is attached to. For those changes, you need to delete and recreate the attachment.
@@ -234,7 +234,7 @@ gcloud compute interconnects attachments dedicated create prod-attachment-1 \
     --interconnect=my-interconnect-1 \
     --router=ic-router-prod \
     --region=us-east4 \
-    --bandwidth=BPS_5G \
+    --bandwidth=5g \
     --vlan=100
 
 # Attachment on second Interconnect (Edge Domain 2)
@@ -242,7 +242,7 @@ gcloud compute interconnects attachments dedicated create prod-attachment-2 \
     --interconnect=my-interconnect-2 \
     --router=ic-router-prod \
     --region=us-east4 \
-    --bandwidth=BPS_5G \
+    --bandwidth=5g \
     --vlan=100
 ```
 
