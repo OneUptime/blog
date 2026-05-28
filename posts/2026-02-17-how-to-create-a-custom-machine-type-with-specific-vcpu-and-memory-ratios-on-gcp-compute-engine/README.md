@@ -26,10 +26,10 @@ With custom machine types, you pick the exact vCPU count and memory allocation. 
 
 Before you start creating custom machine types, you need to know the rules:
 
-- **vCPU count**: Must be 1, or an even number between 2 and 96 (for N1 series). E2 custom types support 2 to 32 vCPUs.
-- **Memory per vCPU**: Between 0.9 GB and 6.5 GB per vCPU for standard custom types. If you need more, you can use extended memory (up to 624 GB total for N1).
-- **Memory increments**: Memory must be a multiple of 256 MB.
-- **Machine series**: Custom types are available for N1, N2, N2D, and E2 series.
+- **vCPU count**: Limits depend on the machine series. For example, N1 supports 1 vCPU, or an even number from 2 to 96 on Intel Skylake platforms, while E2 supports even vCPU counts from 2 to 32.
+- **Memory per vCPU**: The standard memory range depends on the machine series. N1 supports 0.9 GB to 6.5 GB per vCPU (with at least 1 GB per vCPU for 1 or 2 vCPU N1 VMs), while E2, N2, and N2D generally support 0.5 GB to 8 GB per vCPU. If you need more, supported series can use extended memory (up to 624 GB total for N1).
+- **Memory increments**: For N1, N2, N2D, E2, N4, and N4D custom machine types, memory must be a multiple of 256 MB. N4A uses 1 GB memory increments.
+- **Machine series**: Custom types are available for the N and E general-purpose machine series, including N1, N2, N2D, N4, N4A, N4D, and E2.
 
 ## Creating a Custom Machine Type via gcloud CLI
 
@@ -163,7 +163,7 @@ machine_type = "n2d-custom-4-8192"
 
 Let me give you a real example. Say you need a VM with 4 vCPUs and 10 GB of memory. The closest predefined type would be `n1-standard-4` which gives you 4 vCPUs and 15 GB of memory. You would be paying for 5 GB of memory you do not need.
 
-With custom machine types, you pay exactly for 4 vCPUs and 10 GB. Depending on the region, this can save you 10-15% on that particular VM. Across a fleet of hundreds of VMs, those savings add up quickly.
+With custom machine types, you pay for 4 vCPUs and 10 GB instead of the full predefined shape, but custom machine types include a pricing premium over predefined machine types. Depending on the region and machine series, this can still save money on that particular VM. Across a fleet of hundreds of VMs, those savings add up quickly.
 
 ## Changing the Machine Type of a Running VM
 
