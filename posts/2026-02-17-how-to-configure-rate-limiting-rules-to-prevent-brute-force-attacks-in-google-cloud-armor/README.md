@@ -17,7 +17,7 @@ Cloud Armor's rate limiting lets you cap the number of requests from a single IP
 Cloud Armor rate limiting works by counting requests that match a rule and comparing the count against a threshold. You configure:
 
 - **Threshold**: How many requests to allow in the time window
-- **Time window**: The counting interval (60 or 120 seconds)
+- **Time window**: The counting interval (for example, 60 seconds)
 - **Key**: What to count by (IP address, HTTP header, cookie, etc.)
 - **Conform action**: What to do when traffic is under the limit
 - **Exceed action**: What to do when traffic exceeds the limit
@@ -116,7 +116,7 @@ For overall protection against traffic floods, add a global rate limit that appl
 # Global rate limit - 1000 requests per minute per IP across all endpoints
 gcloud compute security-policies rules create 5000 \
     --security-policy=rate-limit-policy \
-    --src-ip-ranges="0.0.0.0/0" \
+    --src-ip-ranges="*" \
     --action=throttle \
     --rate-limit-threshold-count=1000 \
     --rate-limit-threshold-interval-sec=60 \
@@ -129,7 +129,7 @@ gcloud compute security-policies rules create 5000 \
 
 ## Step 6: Rate Limit with Ban
 
-For aggressive attackers, use the ban action instead of a simple deny. A ban blocks the offending IP for a specified duration, even after their request rate drops below the threshold.
+For aggressive attackers, use the ban action instead of a simple throttle rule. A ban blocks the offending IP for a specified duration, even after their request rate drops below the threshold.
 
 ```bash
 # Ban IPs that exceed 50 login attempts per minute for 10 minutes
@@ -137,7 +137,7 @@ gcloud compute security-policies rules create 900 \
     --security-policy=rate-limit-policy \
     --expression="request.path.matches('/login')" \
     --action=rate-based-ban \
-    --rate-limit-threshold-count=50 \
+    --rate-limit-threshold-count=10 \
     --rate-limit-threshold-interval-sec=60 \
     --ban-threshold-count=50 \
     --ban-threshold-interval-sec=60 \
@@ -145,7 +145,7 @@ gcloud compute security-policies rules create 900 \
     --conform-action=allow \
     --exceed-action=deny-403 \
     --enforce-on-key=IP \
-    --description="Ban IPs doing aggressive brute-force (50+ req/min)" \
+    --description="Throttle login attempts and ban aggressive brute-force (50+ req/min)" \
     --project=my-project
 ```
 
@@ -153,7 +153,9 @@ The ban parameters:
 - `ban-threshold-count` / `ban-threshold-interval-sec`: The threshold that triggers a ban
 - `ban-duration-sec`: How long the ban lasts (600 seconds = 10 minutes)
 
-This is useful for escalating responses. A regular rate limit kicks in at 10 requests per minute (returning 429), but if an IP pushes past 50 requests per minute, they get banned for 10 minutes.
+This is useful for escalating responses in one rule. The rate limit kicks in at 10 requests per minute (returning 403 in this example), but if an IP pushes past 50 requests per minute, they get banned for 10 minutes.
+
+If you add this rule for `/login`, remove `/login` from the basic throttle rule in Step 2 or keep the rules on different paths. Cloud Armor evaluates the lowest priority number first, so only the highest-priority matching rule is enforced for a request.
 
 ## Step 7: Rate Limit by Header for Distributed Attacks
 
@@ -207,7 +209,8 @@ for i in $(seq 1 20); do
     curl -s -o /dev/null -w "Request $i: HTTP %{http_code}\n" https://my-app.example.com/login
 done
 
-# After hitting the threshold, you should see 429 responses
+# After hitting the threshold, you should see 429 responses for throttle rules
+# or 403 responses for the rate-based ban example above
 ```
 
 ## Terraform Configuration
@@ -231,15 +234,15 @@ resource "google_compute_security_policy" "rate_limits" {
     }
   }
 
-  # Rate limit login - 10 per minute per IP
+  # Rate limit API login - 10 per minute per IP
   rule {
     action   = "throttle"
     priority = 1000
-    description = "Rate limit login attempts"
+    description = "Rate limit API login attempts"
 
     match {
       expr {
-        expression = "request.path.matches('/login')"
+        expression = "request.path.matches('/api/auth/login')"
       }
     }
 
@@ -268,7 +271,7 @@ resource "google_compute_security_policy" "rate_limits" {
 
     rate_limit_options {
       rate_limit_threshold {
-        count        = 50
+        count        = 10
         interval_sec = 60
       }
       ban_threshold {
