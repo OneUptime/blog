@@ -8,7 +8,7 @@ Description: Create and configure a Google Cloud Parallelstore instance for high
 
 ---
 
-High-performance computing workloads - scientific simulations, genomics processing, financial modeling, weather forecasting - need file systems that can handle massive parallel read/write throughput. Standard file storage like Filestore or Cloud Storage does not cut it when hundreds of compute nodes need simultaneous access to the same dataset with microsecond-level latency. Google Cloud Parallelstore is built specifically for this. It is a fully managed parallel file system based on Intel DAOS that delivers the kind of I/O performance HPC workloads demand.
+High-performance computing workloads - scientific simulations, genomics processing, financial modeling, weather forecasting - need file systems that can handle massive parallel read/write throughput. Standard file storage like Filestore or Cloud Storage does not cut it when hundreds of compute nodes need simultaneous access to the same dataset with low latency. Google Cloud Parallelstore is built specifically for this. It is a fully managed parallel file system based on Intel DAOS that delivers the kind of I/O performance HPC workloads demand.
 
 In this post, I will walk through creating a Parallelstore instance, configuring it for your workload, connecting compute instances, and importing data for processing.
 
@@ -16,8 +16,8 @@ In this post, I will walk through creating a Parallelstore instance, configuring
 
 Parallelstore is designed for workloads that need:
 
-- **High throughput** - hundreds of GB/s aggregate bandwidth
-- **Low latency** - sub-millisecond access times
+- **High throughput** - throughput that scales with provisioned capacity
+- **Low latency** - sub-millisecond access times for small reads
 - **Parallel access** - hundreds of compute nodes reading and writing simultaneously
 - **POSIX compatibility** - works with existing HPC applications without modification
 - **Scratch storage** - ideal for temporary datasets during computation
@@ -38,9 +38,10 @@ graph LR
 ## Prerequisites
 
 - A Google Cloud project with billing enabled
+- Access to Parallelstore in your Google Cloud project
 - Parallelstore API enabled
 - A VPC network with Private Service Access configured
-- Compute Engine instances in the same region as the Parallelstore instance
+- Compute Engine instances in the same zone as the Parallelstore instance
 - Sufficient quota for Parallelstore capacity
 
 ## Step 1: Enable the API and Configure Networking
@@ -52,13 +53,29 @@ Parallelstore requires Private Service Access on your VPC. Set this up first.
 
 gcloud services enable parallelstore.googleapis.com
 
+# Enable Service Networking for Private Service Access
+gcloud services enable servicenetworking.googleapis.com
+
 # Allocate an IP range for Private Service Access if you haven't already
 gcloud compute addresses create parallelstore-range \
   --global \
   --purpose=VPC_PEERING \
-  --addresses=10.100.0.0 \
   --prefix-length=24 \
+  --description="Parallelstore VPC Peering" \
   --network=default
+
+# Get the CIDR range for the firewall rule
+CIDR_RANGE=$(
+  gcloud compute addresses describe parallelstore-range \
+    --global \
+    --format="value[separator=/](address, prefixLength)"
+)
+
+# Allow TCP traffic from the peering range to client VMs
+gcloud compute firewall-rules create parallelstore-client-ingress \
+  --allow=tcp \
+  --network=default \
+  --source-ranges=$CIDR_RANGE
 
 # Create the private connection
 gcloud services vpc-peerings connect \
@@ -69,14 +86,16 @@ gcloud services vpc-peerings connect \
 
 ## Step 2: Create a Parallelstore Instance
 
-Create the instance with your desired capacity. Parallelstore instances come in predefined capacity tiers.
+Create the instance with your desired capacity. Parallelstore capacity can range from 12,000 GiB to 100,000 GiB in multiples of 4,000 GiB.
 
 ```bash
 # Create a Parallelstore instance
-gcloud parallelstore instances create my-hpc-scratch \
+gcloud beta parallelstore instances create my-hpc-scratch \
   --location=us-central1-a \
   --capacity-gib=12000 \
   --network=default \
+  --directory-stripe-level=directory-stripe-level-max \
+  --file-stripe-level=file-stripe-level-balanced \
   --description="Scratch storage for HPC simulation workloads"
 ```
 
@@ -95,6 +114,10 @@ def create_parallelstore_instance(project_id, zone, instance_id, capacity_gib):
         description="HPC scratch storage",
         capacity_gib=capacity_gib,
         network=f"projects/{project_id}/global/networks/default",
+        file_stripe_level=parallelstore_v1.FileStripeLevel.FILE_STRIPE_LEVEL_BALANCED,
+        directory_stripe_level=(
+            parallelstore_v1.DirectoryStripeLevel.DIRECTORY_STRIPE_LEVEL_MAX
+        ),
     )
 
     # Create the instance - this is a long-running operation
@@ -113,7 +136,6 @@ def create_parallelstore_instance(project_id, zone, instance_id, capacity_gib):
     print(f"Capacity: {result.capacity_gib} GiB")
     print(f"State: {result.state}")
     print(f"Access points: {result.access_points}")
-    print(f"DAOS version: {result.daos_version}")
 
     return result
 
@@ -132,9 +154,9 @@ After creation, get the access points needed for mounting:
 
 ```bash
 # Describe the instance to get access points
-gcloud parallelstore instances describe my-hpc-scratch \
+gcloud beta parallelstore instances describe my-hpc-scratch \
   --location=us-central1-a \
-  --format="yaml(name, state, capacityGib, accessPoints, network, daoVersion)"
+  --format="yaml(name, state, capacityGib, accessPoints, network)"
 ```
 
 ```python
@@ -169,16 +191,19 @@ This script installs the DAOS client and mounts the file system:
 # install-and-mount-parallelstore.sh
 # Run this on each compute instance that needs access
 
-# Install the DAOS client library
-# The package name and repo depend on your OS version
-sudo apt-get update
-sudo apt-get install -y daos-client
+# Install the DAOS client library on Ubuntu 22.04 or Debian 12
+curl https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg | sudo apt-key add -
+echo "deb https://us-central1-apt.pkg.dev/projects/parallelstore-packages v2-6-deb main" | \
+  sudo tee -a /etc/apt/sources.list.d/artifact-registry.list
+sudo apt update
+sudo apt install -y daos-client
 
 # Create the mount point
 sudo mkdir -p /mnt/parallelstore
 
 # Configure the DAOS agent
-# Replace ACCESS_POINT with your instance's access point IP
+# Replace the access points with your instance's access point IPs.
+# Replace eth0 if your VM uses a different interface to reach Parallelstore.
 cat << 'AGENT_CONFIG' | sudo tee /etc/daos/daos_agent.yml
 name: daos_agent
 access_points:
@@ -188,19 +213,26 @@ access_points:
 transport_config:
   allow_insecure: true
 
+include_fabric_ifaces: ["eth0"]
 log_file: /var/log/daos_agent.log
 AGENT_CONFIG
 
-# Start the DAOS agent service
-sudo systemctl enable daos_agent
-sudo systemctl start daos_agent
+# Start the DAOS agent on Ubuntu or Debian
+sudo mkdir -p /var/run/daos_agent
+sudo daos_agent -o /etc/daos/daos_agent.yml &
+
+# Allow dfuse to expose the mount to all users
+echo user_allow_other | sudo tee -a /etc/fuse.conf
 
 # Mount the Parallelstore file system using dfuse
+ulimit -n 131072
 sudo dfuse -m /mnt/parallelstore \
   --pool default-pool \
   --container default-container \
-  --disable-caching \
-  --thread-count 16
+  --disable-wb-cache \
+  --thread-count=20 \
+  --eq-count=10 \
+  --multi-user
 
 echo "Parallelstore mounted at /mnt/parallelstore"
 df -h /mnt/parallelstore
@@ -222,8 +254,11 @@ def create_hpc_instance_with_parallelstore(
     startup_script = f"""#!/bin/bash
 set -e
 
-# Install DAOS client
-apt-get update && apt-get install -y daos-client
+# Install DAOS client on Ubuntu 22.04
+curl https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg | apt-key add -
+echo "deb https://us-central1-apt.pkg.dev/projects/parallelstore-packages v2-6-deb main" \
+  > /etc/apt/sources.list.d/artifact-registry.list
+apt update && apt install -y daos-client
 
 # Configure DAOS agent
 cat > /etc/daos/daos_agent.yml << EOF
@@ -232,16 +267,27 @@ access_points:
   - {access_points_str}
 transport_config:
   allow_insecure: true
+include_fabric_ifaces: ["eth0"]
 log_file: /var/log/daos_agent.log
 EOF
 
-# Start DAOS agent
-systemctl enable daos_agent
-systemctl start daos_agent
+# Start DAOS agent on Ubuntu
+mkdir -p /var/run/daos_agent
+daos_agent -o /etc/daos/daos_agent.yml &
+
+# Allow dfuse to expose the mount to all users
+grep -qxF user_allow_other /etc/fuse.conf || echo user_allow_other >> /etc/fuse.conf
 
 # Mount Parallelstore
 mkdir -p /mnt/scratch
-dfuse -m /mnt/scratch --pool default-pool --container default-container --thread-count 16
+ulimit -n 131072
+dfuse -m /mnt/scratch \
+  --pool default-pool \
+  --container default-container \
+  --disable-wb-cache \
+  --thread-count=20 \
+  --eq-count=10 \
+  --multi-user
 
 echo "Parallelstore mounted successfully" >> /var/log/startup.log
 """
@@ -297,6 +343,7 @@ create_hpc_instance_with_parallelstore(
 ## Step 5: Import Data from Cloud Storage
 
 Before running your HPC workload, import the input data from Cloud Storage into Parallelstore.
+The Parallelstore service agent needs access to the Cloud Storage bucket, for example `roles/storage.admin`, before import or export operations can read or write objects.
 
 ```python
 from google.cloud import parallelstore_v1
@@ -384,7 +431,7 @@ Delete the Parallelstore instance when your workload is done to stop incurring c
 
 ```bash
 # Delete the Parallelstore instance
-gcloud parallelstore instances delete my-hpc-scratch \
+gcloud beta parallelstore instances delete my-hpc-scratch \
   --location=us-central1-a
 
 # Or programmatically
@@ -411,7 +458,7 @@ To get the most out of Parallelstore:
 
 - **Match capacity to throughput needs** - larger instances provide more aggregate bandwidth
 - **Use multiple access points** - distribute client connections across all available access points
-- **Tune thread count** - set dfuse thread count to match your workload's I/O parallelism
+- **Tune thread and event queue counts** - keep dfuse thread count at or below the number of vCPUs, and set event queue count to about half the thread count
 - **Minimize metadata operations** - Parallelstore excels at large sequential I/O; lots of small file creates will be slower
 - **Use the right machine type** - pair Parallelstore with compute-optimized (C2, C3) or HPC-optimized (H3) instances for best network throughput
 
