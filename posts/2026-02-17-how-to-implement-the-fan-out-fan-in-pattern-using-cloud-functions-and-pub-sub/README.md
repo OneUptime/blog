@@ -50,11 +50,8 @@ gcloud pubsub topics create validation-work-queue --project=my-project
 # Topic for collecting results
 gcloud pubsub topics create validation-results --project=my-project
 
-# Subscription for the results topic (used by the fan-in function)
-gcloud pubsub subscriptions create validation-results-sub \
-  --topic=validation-results \
-  --ack-deadline=60 \
-  --project=my-project
+# The Cloud Functions Pub/Sub triggers created in Step 5 create their own
+# subscriptions, so you do not need to create subscriptions manually here.
 ```
 
 ## Step 2: Write the Fan-Out Function
@@ -63,6 +60,7 @@ The fan-out function reads the input, splits it into chunks, and publishes each 
 
 ```python
 # fanout/main.py
+import csv
 import json
 import logging
 import uuid
@@ -99,10 +97,10 @@ def fan_out(event, context):
     blob = bucket.blob(file_name)
     content = blob.download_as_text()
 
-    # Split into lines and separate the header
-    lines = content.strip().split("\n")
-    header = lines[0]
-    data_rows = lines[1:]
+    # Parse the CSV and separate the header
+    reader = csv.reader(content.splitlines())
+    header = next(reader)
+    data_rows = list(reader)
 
     total_rows = len(data_rows)
     total_chunks = (total_rows + CHUNK_SIZE - 1) // CHUNK_SIZE
@@ -120,6 +118,7 @@ def fan_out(event, context):
         "valid_rows": 0,
         "invalid_rows": 0,
         "errors": [],
+        "processed_chunks": [],
     })
 
     # Fan out: publish each chunk to the work queue
@@ -133,6 +132,7 @@ def fan_out(event, context):
             "total_chunks": total_chunks,
             "header": header,
             "rows": chunk_rows,
+            "start_row": i + 2,  # Account for the CSV header row.
         }
 
         # Publish the chunk to the work queue
@@ -177,24 +177,19 @@ def validate_chunk(event, context):
 
     job_id = message["job_id"]
     chunk_index = message["chunk_index"]
-    header = message["header"]
+    columns = message["header"]
     rows = message["rows"]
+    start_row = message["start_row"]
 
     logger.info(f"Job {job_id}: processing chunk {chunk_index} ({len(rows)} rows)")
-
-    # Parse header columns
-    columns = [c.strip() for c in header.split(",")]
 
     valid_count = 0
     invalid_count = 0
     errors = []
 
-    for row_num, row in enumerate(rows):
-        # Parse the row
-        values = [v.strip() for v in row.split(",")]
-
+    for row_num, values in enumerate(rows):
         # Validate each field
-        row_errors = validate_row(columns, values, chunk_index * 1000 + row_num)
+        row_errors = validate_row(columns, values, start_row + row_num)
 
         if row_errors:
             invalid_count += 1
@@ -235,7 +230,7 @@ def validate_row(columns, values, row_number):
         return errors
 
     # Create a dict for easier access
-    data = dict(zip(columns, values))
+    data = dict(zip([c.strip() for c in columns], [v.strip() for v in values]))
 
     # Validate email format
     if "email" in data:
@@ -307,8 +302,14 @@ def aggregate_results(event, context):
 
         job_data = job_doc.to_dict()
 
+        processed_chunks = job_data.get("processed_chunks", [])
+        if chunk_index in processed_chunks:
+            logger.info(f"Job {job_id}: chunk {chunk_index} already processed")
+            return False
+
         # Update counts
-        new_completed = job_data["completed_chunks"] + 1
+        new_processed_chunks = processed_chunks + [chunk_index]
+        new_completed = len(new_processed_chunks)
         new_valid = job_data["valid_rows"] + valid_count
         new_invalid = job_data["invalid_rows"] + invalid_count
         new_errors = job_data.get("errors", []) + errors
@@ -321,6 +322,7 @@ def aggregate_results(event, context):
             "valid_rows": new_valid,
             "invalid_rows": new_invalid,
             "errors": new_errors,
+            "processed_chunks": new_processed_chunks,
         }
 
         # Check if all chunks are done
