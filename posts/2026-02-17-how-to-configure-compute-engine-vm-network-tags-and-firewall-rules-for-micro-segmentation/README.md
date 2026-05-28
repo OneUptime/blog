@@ -144,10 +144,10 @@ gcloud compute firewall-rules create allow-monitoring-scrape \
 
 ### Rule 6: Deny Everything Else
 
-GCP has an implied deny-all ingress rule at the lowest priority. But for extra clarity and to override any default "allow" rules:
+GCP has an implied deny-all ingress rule at the lowest priority. But for extra clarity and to override default network "allow" rules such as `default-allow-internal`:
 
 ```bash
-# Explicitly deny all other internal traffic (optional, for clarity)
+# Explicitly deny all other internal traffic in the default auto mode range (optional, for clarity)
 gcloud compute firewall-rules create deny-all-internal \
     --network=default \
     --action=deny \
@@ -277,6 +277,19 @@ resource "google_compute_firewall" "ssh_iap" {
 
   source_ranges = ["35.235.240.0/20"]
   target_tags   = ["web-server", "app-server", "database", "cache", "monitoring"]
+}
+
+# Explicit deny for other internal traffic in the default auto mode range
+resource "google_compute_firewall" "deny_all_internal" {
+  name     = "deny-all-internal"
+  network  = "default"
+  priority = 65534
+
+  deny {
+    protocol = "all"
+  }
+
+  source_ranges = ["10.128.0.0/9"]
 }
 ```
 
