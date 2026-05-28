@@ -56,9 +56,9 @@ gcloud resource-manager org-policies set-policy - \
 constraint: constraints/gcp.resourceLocations
 listPolicy:
   allowedValues:
-    - "europe-west1"
-    - "europe-west3"
-    - "europe-west4"
+    - "is:europe-west1"
+    - "is:europe-west3"
+    - "is:europe-west4"
 EOF
 ```
 
@@ -93,8 +93,8 @@ gcloud projects add-iam-policy-binding data-processing-project \
     --role=projects/data-processing-project/roles/personalDataProcessor \
     --member="group:data-processing-team@company.com"
 
-# Deny all other access to personal data storage
-# Use VPC Service Controls to create a data perimeter
+# Add a network and identity-based data perimeter around personal data services
+# Use IAM permissions with VPC Service Controls to restrict access
 gcloud access-context-manager perimeters create personal-data-perimeter \
     --policy=POLICY_ID \
     --title="Personal Data Processing Perimeter" \
@@ -105,16 +105,23 @@ gcloud access-context-manager perimeters create personal-data-perimeter \
 
 Create an access level that requires specific conditions:
 
+```bash
+gcloud access-context-manager levels create authorized-processors \
+    --policy=POLICY_ID \
+    --title="Authorized Personal Data Processors" \
+    --basic-level-spec=authorized-processors.yaml
+```
+
 ```yaml
 # authorized-processors.yaml
-# Only users from specific groups on managed devices can access personal data
-conditions:
-  - members:
-      - "group:data-processing-team@company.com"
-    requiredAccessLevels:
-      - "accessPolicies/POLICY_ID/accessLevels/managed-device"
-    ipSubnetworks:
-      - "203.0.113.0/24"  # Corporate office IP range
+# Only approved identities on managed devices can access personal data
+- members:
+    - "user:processor@example.com"
+    - "serviceAccount:data-processor@data-processing-project.iam.gserviceaccount.com"
+  requiredAccessLevels:
+    - "accessPolicies/POLICY_ID/accessLevels/managed-device"
+  ipSubnetworks:
+    - "203.0.113.0/24"  # Corporate office IP range
 ```
 
 ## Encryption Requirements
@@ -147,9 +154,9 @@ gcloud resource-manager org-policies set-policy - \
 constraint: constraints/gcp.restrictNonCmekServices
 listPolicy:
   deniedValues:
-    - "storage.googleapis.com"
-    - "bigquery.googleapis.com"
-    - "compute.googleapis.com"
+    - "is:storage.googleapis.com"
+    - "is:bigquery.googleapis.com"
+    - "is:compute.googleapis.com"
 EOF
 ```
 
@@ -260,11 +267,11 @@ def process_deletion_request(request):
     return json.dumps(deletion_log)
 ```
 
-Set up retention policies for automated data lifecycle management:
+Set up lifecycle policies for automated data lifecycle management:
 
 ```bash
-# Set retention policy on storage buckets
-# Data older than the retention period is automatically deleted
+# Set lifecycle rules on storage buckets
+# Matching objects older than the configured age are automatically deleted
 gcloud storage buckets update gs://personal-data-eu \
     --lifecycle-file=lifecycle-config.json
 ```
@@ -307,10 +314,14 @@ gcloud asset search-all-resources \
 DPAs require breach notification within specific timeframes (72 hours for GDPR):
 
 ```bash
-# Enable Security Command Center for breach detection
-gcloud scc settings update \
-    --organization=123456789 \
-    --enable-modules=SECURITY_HEALTH_ANALYTICS,EVENT_THREAT_DETECTION
+# Enable Security Command Center detection services
+gcloud scc manage services update security-health-analytics \
+    --organization=organizations/123456789 \
+    --enablement-state=ENABLED
+
+gcloud scc manage services update event-threat-detection \
+    --organization=organizations/123456789 \
+    --enablement-state=ENABLED
 
 # Create notification for potential breaches
 gcloud scc notifications create breach-alerts \
@@ -324,15 +335,23 @@ gcloud scc notifications create breach-alerts \
 ```bash
 # Enable comprehensive audit logging
 # All data access must be logged for DPA compliance
-gcloud projects set-iam-policy data-processing-project - <<'EOF'
+gcloud projects get-iam-policy data-processing-project \
+    --format=yaml > policy.yaml
+
+# Add the auditConfigs block shown below to policy.yaml, then apply the full policy.
+gcloud projects set-iam-policy data-processing-project policy.yaml
+```
+
+```yaml
 auditConfigs:
-  - service: allServices
-    auditLogConfigs:
+  - auditLogConfigs:
       - logType: ADMIN_READ
       - logType: DATA_READ
       - logType: DATA_WRITE
-EOF
+    service: allServices
+```
 
+```bash
 # Export audit logs for retention
 gcloud logging sinks create dpa-audit-sink \
     storage.googleapis.com/dpa-audit-logs \
@@ -363,8 +382,8 @@ resource "google_folder_organization_policy" "require_cmek" {
   list_policy {
     deny {
       values = [
-        "storage.googleapis.com",
-        "bigquery.googleapis.com",
+        "is:storage.googleapis.com",
+        "is:bigquery.googleapis.com",
       ]
     }
   }
