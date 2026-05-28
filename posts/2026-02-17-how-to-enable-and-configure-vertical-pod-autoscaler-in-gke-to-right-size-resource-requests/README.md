@@ -49,26 +49,27 @@ gcloud container clusters create my-cluster \
   --num-nodes 3
 ```
 
-After enabling, verify the VPA components are running.
+After enabling, verify that the cluster has VPA enabled and that the VPA API is available. In GKE, VPA runs as managed control plane processes rather than as visible `vpa-*` pods in `kube-system`.
 
 ```bash
-# Check that VPA components are deployed
-kubectl get pods -n kube-system | grep vpa
+# Check that VPA is enabled on the cluster
+gcloud container clusters describe my-cluster \
+  --region us-central1 \
+  --format="value(verticalPodAutoscaling.enabled)"
 
-# You should see:
-# vpa-admission-controller-...
-# vpa-recommender-...
-# vpa-updater-...
+# Check that the VPA resource type is available
+kubectl api-resources | grep -i verticalpodautoscaler
 ```
 
 ## VPA Update Modes
 
-VPA supports four update modes, and choosing the right one is important:
+VPA supports several update modes, and choosing the right one is important:
 
 - **Off**: VPA calculates recommendations but does not apply them. Best for starting out.
 - **Initial**: VPA sets resource requests only when pods are created. Existing pods are not touched.
 - **Recreate**: VPA evicts and recreates pods when their resource requests need changing.
-- **Auto**: Currently behaves like Recreate, but may use in-place updates in the future.
+- **Auto**: The default mode. In GKE, this currently behaves like Recreate.
+- **InPlaceOrRecreate**: Attempts to update pod resources in place, falling back to recreation if needed. This mode is available in GKE 1.34.0-gke.2201000 and later and is in Preview.
 
 I always recommend starting with "Off" mode to see what VPA recommends before letting it make changes.
 
@@ -219,10 +220,10 @@ Be aware that "Auto" mode works by evicting pods and letting the admission contr
 
 ## Using VPA with HPA
 
-You can use VPA and HPA together, but there is an important restriction: they should not both try to control the same resource metric.
+You can use VPA and HPA together, but there is an important restriction in GKE: do not use HPA together with VPA on CPU or memory. If you need HPA and VPA together, use HPA with custom or external metrics, or use multidimensional Pod autoscaling for supported CPU-and-memory combinations.
 
 ```yaml
-# VPA controls memory only, HPA controls scaling based on CPU
+# VPA controls CPU and memory requests, HPA scales based on an external metric
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
@@ -238,7 +239,8 @@ spec:
     containerPolicies:
       - containerName: my-app
         controlledResources:
-          - memory  # VPA only adjusts memory
+          - cpu
+          - memory
         controlledValues: RequestsOnly
 ---
 apiVersion: autoscaling/v2
@@ -253,15 +255,16 @@ spec:
   minReplicas: 2
   maxReplicas: 10
   metrics:
-    - type: Resource
-      resource:
-        name: cpu  # HPA scales based on CPU
+    - type: External
+      external:
+        metric:
+          name: queue_depth
         target:
-          type: Utilization
-          averageUtilization: 70
+          type: AverageValue
+          averageValue: "100"
 ```
 
-This way, VPA right-sizes memory requests while HPA handles scaling replicas based on CPU load.
+This way, VPA right-sizes pod resources while HPA handles replica count based on an application-level signal.
 
 ## Monitoring VPA Behavior
 
@@ -274,9 +277,11 @@ kubectl describe vpa my-app-vpa
 # Check if VPA is evicting pods
 kubectl get events --field-selector reason=EvictedByVPA
 
-# View VPA metrics in Cloud Monitoring
+# View VPA recommendations in Cloud Monitoring
 # Navigate to: Monitoring > Metrics Explorer
-# Search for: kubernetes.io/autoscaler/vpa
+# Resource: Kubernetes Scale
+# Metric category: Autoscaler
+# Metrics: Recommended per replica request bytes / core
 ```
 
 ## Best Practices
@@ -287,11 +292,11 @@ Some things I have learned from running VPA in production:
 
 2. **Set reasonable min/max bounds.** Without bounds, VPA might recommend 10m CPU for a service that has occasional spikes, causing timeouts during peak load.
 
-3. **Use PodDisruptionBudgets with auto mode.** VPA evicts pods to update them. Without a PDB, all replicas could be evicted simultaneously.
+3. **Use PodDisruptionBudgets with auto mode.** VPA evicts pods to update them, and a PDB gives Kubernetes an availability rule to respect during those evictions.
 
-4. **Right-size limits separately from requests.** VPA adjusts requests, not limits. Set limits based on the upper bound recommendation plus some headroom.
+4. **Be deliberate about limits.** VPA can control requests only or requests and limits, depending on `controlledValues`. If you use `RequestsOnly`, set limits separately based on your workload's behavior and headroom needs.
 
-5. **Do not use VPA on pods with fewer than 2 replicas in auto mode.** A single-replica deployment will have downtime when VPA evicts the pod.
+5. **Be careful with single-replica workloads in auto mode.** A single-replica deployment can have downtime when VPA has to evict and recreate the pod.
 
 ```yaml
 # PDB to protect availability during VPA updates
