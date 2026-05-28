@@ -8,7 +8,7 @@ Description: Learn how to configure Cloud Run request timeout settings and retry
 
 ---
 
-The default Cloud Run request timeout is 300 seconds (5 minutes). For a typical API call, that is more than enough. But if your service processes large files, runs complex reports, or handles long-running computations, 5 minutes can be too short. Your request gets killed mid-processing, the client gets a 504 error, and whatever work was done is lost.
+The default Cloud Run request timeout is 300 seconds (5 minutes). For a typical API call, that is more than enough. But if your service processes large files, runs complex reports, or handles long-running computations, 5 minutes can be too short. The client gets a 504 error, and the connection is closed. The container instance is not necessarily stopped, so your code might keep running unless you track the deadline and return early.
 
 This guide covers how to extend timeouts, set up retry policies for resilience, and design your service to handle long-running work properly.
 
@@ -18,7 +18,7 @@ There are several timeout values that affect your Cloud Run service, and they in
 
 **Request timeout**: How long Cloud Run waits for your container to respond to a single request. Default is 300 seconds, maximum is 3600 seconds (1 hour).
 
-**Container startup timeout**: How long Cloud Run waits for your container to start and begin listening for requests. Default is 300 seconds, configurable up to 3600 seconds.
+**Container startup timeout**: How long Cloud Run waits for your container to start and begin listening for requests. Cloud Run service instances must listen for requests within 4 minutes after being started. Startup probes also must succeed within 240 seconds.
 
 **Idle timeout**: How long Cloud Run keeps an instance alive after it finishes processing its last request. This is not configurable - Cloud Run manages it automatically.
 
@@ -90,7 +90,7 @@ resource "google_cloud_run_v2_service" "report_generator" {
 
 ## CPU Allocation for Long-Running Tasks
 
-By default, Cloud Run only allocates CPU while handling a request. For long-running tasks, make sure CPU stays allocated for the full duration:
+By default, Cloud Run allocates CPU while an instance is starting and while it is handling at least one request. If your service does background work after the response is sent or between requests, disable CPU throttling so CPU stays allocated for the full instance lifetime:
 
 ```bash
 # Combine extended timeout with always-on CPU
@@ -98,12 +98,12 @@ gcloud run deploy report-generator \
   --image=us-central1-docker.pkg.dev/MY_PROJECT/my-repo/report-generator:latest \
   --region=us-central1 \
   --timeout=3600 \
-  --cpu-always-allocated \
+  --no-cpu-throttling \
   --cpu=2 \
   --memory=2Gi
 ```
 
-Without `--cpu-always-allocated`, your long-running request might get throttled or slowed during processing.
+For a single long-running HTTP request, CPU is already allocated while the request is active. `--no-cpu-throttling` is useful when work continues outside the request lifecycle.
 
 ## Retry Policies with Cloud Tasks
 
@@ -122,14 +122,14 @@ gcloud tasks queues create report-queue \
 These settings mean:
 - Up to 5 attempts per task
 - First retry after 10 seconds
-- Backoff doubles each time (10s, 20s, 40s, 80s) up to 300s max
-- After 4 doublings, wait time stays at the max
+- Retry intervals double 4 times, then increase linearly until they reach the 300s maximum
 
 Create tasks that target your Cloud Run service:
 
 ```python
 # create_task.py - Create a Cloud Task that targets Cloud Run with retries
 from google.cloud import tasks_v2
+from google.protobuf import duration_pb2
 import json
 
 def create_report_task(report_id, parameters):
@@ -141,6 +141,8 @@ def create_report_task(report_id, parameters):
     queue = "report-queue"
 
     parent = client.queue_path(project, location, queue)
+    dispatch_deadline = duration_pb2.Duration()
+    dispatch_deadline.FromSeconds(1800)
 
     # Build the task
     task = {
@@ -160,7 +162,7 @@ def create_report_task(report_id, parameters):
             },
         },
         # Task-level timeout (how long the task runner waits)
-        "dispatch_deadline": "1800s",
+        "dispatch_deadline": dispatch_deadline,
     }
 
     response = client.create_task(parent=parent, task=task)
@@ -168,7 +170,7 @@ def create_report_task(report_id, parameters):
     return response
 ```
 
-The `dispatch_deadline` on the task should match or exceed your Cloud Run request timeout. If the task deadline is shorter than the request timeout, Cloud Tasks might consider the task failed while Cloud Run is still processing.
+The `dispatch_deadline` on an HTTP task can be up to 30 minutes. Set it to at most a few seconds more than the Cloud Run handler timeout. If the task deadline is shorter than the request timeout, Cloud Tasks might consider the task failed while Cloud Run is still processing. For Cloud Run requests longer than 30 minutes, do not use a single Cloud Tasks HTTP dispatch to wait for the whole operation.
 
 ## Retry Policies with Pub/Sub Push Subscriptions
 
@@ -185,7 +187,7 @@ gcloud pubsub subscriptions create my-sub \
   --push-auth-service-account=pubsub-sa@MY_PROJECT.iam.gserviceaccount.com
 ```
 
-The `ack-deadline` defines how long Pub/Sub waits for an acknowledgment before retrying. Set it to at least as long as your expected processing time.
+The `ack-deadline` defines how long Pub/Sub waits for an acknowledgment before retrying. Pub/Sub acknowledgment deadlines can be set up to 600 seconds, so push subscriptions are not a good fit for a single HTTP delivery that must run longer than 10 minutes.
 
 ## Handling Timeouts Gracefully
 
@@ -194,14 +196,16 @@ Your application should handle timeouts gracefully rather than just dying when t
 ```python
 # main.py - Graceful timeout handling for long-running tasks
 import signal
-import sys
-import os
+import time
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+REQUEST_TIMEOUT_SECONDS = 1800
+SAFETY_MARGIN_SECONDS = 30
+
 class TimeoutHandler:
-    """Handle SIGTERM and request timeouts gracefully."""
+    """Handle shutdown signals gracefully."""
 
     def __init__(self):
         self.shutting_down = False
@@ -218,12 +222,16 @@ timeout_handler = TimeoutHandler()
 @app.route("/generate", methods=["POST"])
 def generate_report():
     """Generate a report with progress tracking and graceful timeout handling."""
+    started_at = time.monotonic()
     data = request.get_json()
     report_id = data["report_id"]
     total_pages = data.get("total_pages", 100)
 
     for page in range(total_pages):
-        if timeout_handler.shutting_down:
+        elapsed = time.monotonic() - started_at
+        near_deadline = elapsed > REQUEST_TIMEOUT_SECONDS - SAFETY_MARGIN_SECONDS
+
+        if timeout_handler.shutting_down or near_deadline:
             # Save progress so the next attempt can resume
             save_progress(report_id, page)
             return jsonify({
@@ -294,7 +302,7 @@ def process_item(item):
     return {"id": item.get("id"), "processed": True}
 ```
 
-Streaming keeps the HTTP connection alive and gives the client visibility into progress. Each streamed chunk resets the client's timeout counter.
+Streaming keeps the HTTP connection active and gives the client visibility into progress. It does not extend Cloud Run's maximum request timeout, and clients or proxies might still have their own timeout behavior.
 
 ## Timeout Hierarchy
 
@@ -302,15 +310,15 @@ Keep this hierarchy in mind when setting timeouts:
 
 ```mermaid
 flowchart TD
-    A[Client Timeout] --> B[Load Balancer Timeout<br/>Default: 30s]
+    A[Client Timeout] --> B[Proxy or Load Balancer Timeout<br/>Varies by backend type]
     B --> C[Cloud Run Request Timeout<br/>Default: 300s]
     C --> D[Application-Level Timeout<br/>Your code]
     D --> E[Downstream Service Timeout<br/>Database, API calls]
 ```
 
-Each layer should have a timeout that is shorter than the layer above it. If your Cloud Run timeout is 1800s but the load balancer timeout is 30s, the load balancer will kill the connection before Cloud Run finishes.
+Each layer should have a timeout that is shorter than the layer above it. If your Cloud Run timeout is 1800s but an upstream proxy timeout is 30s, the proxy will close the connection before Cloud Run finishes.
 
-If using a global load balancer in front of Cloud Run, configure its timeout:
+If using a load balancer with backends that support configurable backend service timeouts, configure its timeout:
 
 ```bash
 # Set load balancer backend timeout to match Cloud Run
@@ -318,6 +326,8 @@ gcloud compute backend-services update my-backend \
   --global \
   --timeout=1800
 ```
+
+For Cloud Run behind a serverless NEG, the backend service timeout setting is not configurable; the serverless NEG backend timeout is 60 minutes.
 
 ## Best Practices
 
