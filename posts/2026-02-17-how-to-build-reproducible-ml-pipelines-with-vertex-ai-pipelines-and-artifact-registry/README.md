@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Vertex AI, Artifact Registry, MLOps, Reproducibility, Google Cloud
 
-Description: Learn how to build fully reproducible machine learning pipelines using Vertex AI Pipelines and Artifact Registry for consistent and auditable ML workflows.
+Description: Learn how to build reproducible machine learning pipelines using Vertex AI Pipelines and Artifact Registry for consistent and auditable ML workflows.
 
 ---
 
-Reproducibility is the foundation of trustworthy machine learning. If you cannot reproduce a training run and get the same results, you cannot debug issues, you cannot satisfy auditors, and you cannot confidently make decisions based on your models. Yet most ML teams struggle with reproducibility because there are so many moving parts - data versions, code versions, package versions, hyperparameters, random seeds, and hardware configurations.
+Reproducibility is the foundation of trustworthy machine learning. If you cannot reproduce a training run with the same pinned inputs and comparable results, you cannot debug issues, you cannot satisfy auditors, and you cannot confidently make decisions based on your models. Yet most ML teams struggle with reproducibility because there are so many moving parts - data versions, code versions, package versions, hyperparameters, random seeds, and hardware configurations.
 
-In this post, I will show you how to build fully reproducible ML pipelines on GCP using Vertex AI Pipelines for orchestration and Artifact Registry for versioning every component that goes into a pipeline run.
+In this post, I will show you how to build reproducible ML pipelines on GCP using Vertex AI Pipelines for orchestration and Artifact Registry for versioning every component that goes into a pipeline run.
 
 ## What Makes an ML Pipeline Reproducible?
 
@@ -43,7 +43,7 @@ Build deterministic container images with pinned package versions.
 ```dockerfile
 # Dockerfile.training
 # Pin the base image to a specific digest, not just a tag
-FROM python:3.10.13-slim@sha256:abc123...
+FROM python:3.10.13-slim@sha256:1326d0fd281d283b077fd249e618339a44c9ca5aae6e05cb4f069a087e827922
 
 # Pin system package versions
 RUN apt-get update && apt-get install -y \
@@ -69,7 +69,7 @@ pip-compile requirements.in --generate-hashes --output-file requirements.lock
 ```
 
 ```text
-# requirements.lock - every package pinned with hash verification
+# requirements.lock - excerpt; keep the full pip-compile output with every package pinned and hashed
 scikit-learn==1.3.2 \
     --hash=sha256:a2f54c76accc15a34bfb9066846c0d6af86e916206e199b2b3fe4b8fa2b1ca5
 xgboost==1.7.6 \
@@ -108,9 +108,6 @@ Use BigQuery snapshots or Cloud Storage versioning to pin training data.
 ```python
 # data_versioning.py
 from google.cloud import bigquery
-from google.cloud import storage
-import hashlib
-import json
 from datetime import datetime
 
 class DataVersioner:
@@ -118,7 +115,6 @@ class DataVersioner:
 
     def __init__(self, project_id):
         self.bq_client = bigquery.Client(project=project_id)
-        self.storage_client = storage.Client(project=project_id)
         self.project_id = project_id
 
     def create_data_snapshot(self, source_table, version_label=None):
@@ -145,9 +141,9 @@ class DataVersioner:
         hash_query = f"""
         SELECT
             COUNT(*) as row_count,
-            FARM_FINGERPRINT(
-                STRING_AGG(TO_JSON_STRING(t), '' ORDER BY ROWID)
-            ) as data_hash
+            TO_HEX(SHA256(STRING_AGG(
+                TO_JSON_STRING(t), '\\n' ORDER BY TO_JSON_STRING(t)
+            ))) as data_hash
         FROM `{snapshot_table}` t
         """
 
@@ -175,8 +171,8 @@ Each pipeline component should reference a specific container image and declare 
 
 ```python
 # components/versioned_training.py
-from kfp.v2 import dsl
-from kfp.v2.dsl import Input, Output, Dataset, Model, Metrics
+from kfp import dsl
+from kfp.dsl import Input, Output, Dataset, Model, Metrics
 
 # Use a specific image tag, never 'latest'
 TRAINING_IMAGE = "us-central1-docker.pkg.dev/my-project/ml-pipelines/trainer:v1.2.3-abc12345"
@@ -215,12 +211,12 @@ Use Vertex AI ML Metadata to record every input, output, and parameter.
 
 ```python
 # pipeline/reproducible_pipeline.py
-from kfp.v2 import dsl, compiler
+from kfp import dsl, compiler
 import json
 
 @dsl.pipeline(
     name="reproducible-training-pipeline",
-    description="Fully reproducible ML training pipeline"
+    description="Reproducible ML training pipeline"
 )
 def reproducible_pipeline(
     project_id: str,
@@ -246,7 +242,7 @@ def reproducible_pipeline(
     )
 
     # Step 3: Train with explicit configuration
-    with dsl.Condition(validate_task.output == True):
+    with dsl.If(validate_task.output == True):
         train_task = train_model_reproducible(
             training_data=export_task.outputs["dataset"],
             hyperparameters_json=hyperparameters,
@@ -355,7 +351,7 @@ def save_manifest(manifest, output_uri):
 
 ## Step 6: Reproduce a Previous Pipeline Run
 
-Given a manifest, you should be able to reproduce any previous run.
+Given a manifest, you should be able to re-run any previous run with the same pinned inputs. Bit-for-bit results still depend on deterministic training code, deterministic framework settings, and compatible hardware.
 
 ```python
 # pipeline/reproduce.py
@@ -410,20 +406,26 @@ def reproduce_pipeline_run(manifest_uri):
 Over time, you will accumulate many container images. Set up a cleanup policy that retains what you need and removes the rest.
 
 ```bash
-# Create a cleanup policy that keeps tagged versions and removes untagged
+# Create cleanup-policy.json first.
+cat > cleanup-policy.json <<'EOF'
+{
+  "name": "delete-old-untagged",
+  "action": {"type": "Delete"},
+  "condition": {
+    "olderThan": "90d",
+    "tagState": "untagged"
+  }
+}
+EOF
+
+# Apply a cleanup policy that removes old untagged versions.
 gcloud artifacts repositories set-cleanup-policies ml-pipelines \
   --project=my-project \
   --location=us-central1 \
-  --policy='{
-    "name": "keep-recent-versions",
-    "action": {"type": "DELETE"},
-    "condition": {
-      "olderThan": "7776000s",
-      "tagState": "UNTAGGED"
-    }
-  }'
+  --policy=cleanup-policy.json \
+  --no-dry-run
 ```
 
 ## Wrapping Up
 
-Reproducible ML pipelines require discipline across every dimension - code, data, dependencies, configuration, and environment. By using Artifact Registry for versioned container images, BigQuery snapshots for data versioning, pinned dependencies with hash verification, and comprehensive manifests, you create a system where any pipeline run can be exactly reproduced months or years later. This is not just good engineering practice - it is a requirement for regulated industries and a lifesaver when debugging production model issues.
+Reproducible ML pipelines require discipline across every dimension - code, data, dependencies, configuration, and environment. By using Artifact Registry for versioned container images, BigQuery snapshots for data versioning, pinned dependencies with hash verification, and comprehensive manifests, you create a system where any pipeline run can be re-run with the same pinned inputs months or years later. This is not just good engineering practice - it is a requirement for regulated industries and a lifesaver when debugging production model issues.
