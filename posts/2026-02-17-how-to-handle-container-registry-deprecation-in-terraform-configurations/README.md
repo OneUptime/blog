@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Terraform, Artifact Registry, Container Registry, Infrastructure as Code
 
-Description: Learn how to update your Terraform configurations to replace Google Container Registry resources with Artifact Registry before the GCR deprecation deadline.
+Description: Learn how to update your Terraform configurations to replace Google Container Registry resources with Artifact Registry after the GCR shutdown.
 
 ---
 
@@ -14,7 +14,7 @@ This guide covers the Terraform-specific changes you need to make, including res
 
 ## What Terraform Resources Are Affected
 
-Container Registry in Terraform is a bit unusual because GCR does not have a dedicated Terraform resource. Instead, GCR uses Google Cloud Storage buckets under the hood, and IAM is typically managed through `google_storage_bucket_iam_*` resources. Here is what to look for:
+Container Registry in Terraform is a bit unusual because the `google_container_registry` resource only ensures that the backing Google Cloud Storage bucket exists. GCR uses Cloud Storage buckets under the hood, and IAM is typically managed through `google_storage_bucket_iam_*` resources. Here is what to look for:
 
 - `google_container_registry` - The GCR resource itself
 - `google_storage_bucket_iam_*` - IAM bindings on the GCR storage bucket
@@ -56,7 +56,7 @@ resource "google_artifact_registry_repository" "docker" {
   format        = "DOCKER"
   description   = "Docker images repository (migrated from GCR)"
 
-  # Optional: enable vulnerability scanning
+  # Optional: configure Docker tag mutability
   docker_config {
     immutable_tags = false
   }
@@ -130,13 +130,13 @@ If your GKE cluster Terraform has image references, update them.
 
 ```hcl
 # gke.tf
-# GKE cluster with Artifact Registry access scope
+# GKE cluster with an Artifact Registry-compatible access scope
 resource "google_container_cluster" "primary" {
   name     = "my-cluster"
   location = var.region
   project  = var.project_id
 
-  # Workload Identity is required for proper AR authentication
+  # Workload Identity is optional for workload access to Google Cloud APIs
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
   }
@@ -252,27 +252,29 @@ terraform state rm google_container_registry.registry
 terraform state rm google_storage_bucket_iam_member.gcr_reader
 ```
 
-Then apply to create the new Artifact Registry resources.
+Then apply the updated configuration to create the new Artifact Registry resources.
 
 ```bash
-# Apply only the new Artifact Registry resources
+# Apply the updated configuration
 terraform apply
 ```
 
 ## Step 7: Enable gcr.io Redirection (Optional)
 
-You can manage the gcr.io redirection through Terraform too.
+If you are migrating to Artifact Registry `gcr.io` repositories, you can enable redirection for existing `gcr.io` paths with the Google Cloud CLI. This is separate from the `pkg.dev` repository path used in the examples above.
 
-```hcl
-# gcr-redirect.tf
-# Enable gcr.io redirection to Artifact Registry
-resource "google_artifact_registry_vpcsc_config" "gcr_redirect" {
-  project  = var.project_id
-  location = var.region
-}
+```bash
+# Validate the project setup first
+gcloud artifacts settings enable-upgrade-redirection \
+  --project="${PROJECT_ID}" \
+  --dry-run
+
+# Enable redirection for gcr.io traffic
+gcloud artifacts settings enable-upgrade-redirection \
+  --project="${PROJECT_ID}"
 ```
 
-Note: As of writing, the gcr.io redirection might need to be enabled through gcloud rather than Terraform, depending on your provider version. Check the latest google provider documentation.
+Note: This redirects `gcr.io`, `asia.gcr.io`, `eu.gcr.io`, and `us.gcr.io` traffic to corresponding Artifact Registry `gcr.io` repositories in the same project. It does not redirect requests to a `pkg.dev` repository such as `us-central1-docker.pkg.dev/PROJECT_ID/docker-images`.
 
 ## Finding All GCR References in Terraform
 
@@ -296,7 +298,7 @@ Follow this order to avoid downtime:
 1. Create Artifact Registry repositories (terraform apply the new resources)
 2. Copy images from GCR to Artifact Registry
 3. Set up IAM on the new repositories
-4. Enable gcr.io redirection (safety net)
+4. Enable gcr.io redirection if you are using Artifact Registry `gcr.io` repositories
 5. Update image references in Terraform
 6. Apply the updated Terraform
 7. Verify everything works
