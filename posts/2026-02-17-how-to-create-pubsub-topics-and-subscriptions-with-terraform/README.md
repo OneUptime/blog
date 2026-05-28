@@ -131,9 +131,18 @@ resource "google_service_account" "pubsub_invoker" {
   account_id   = "pubsub-invoker"
   display_name = "Pub/Sub Push Invoker"
 }
+
+# Allow Pub/Sub to mint OIDC tokens for this service account
+resource "google_service_account_iam_member" "pubsub_token_creator" {
+  service_account_id = google_service_account.pubsub_invoker.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+data "google_project" "current" {}
 ```
 
-The `oidc_token` block is important. Without it, your endpoint receives unauthenticated requests, which is a security risk. The receiving service should validate the OIDC token to ensure the request genuinely comes from Pub/Sub.
+The `oidc_token` block is important. Without it, your endpoint receives unauthenticated requests, which is a security risk. Pub/Sub also needs the Service Account Token Creator role on the user-managed service account so it can mint the OIDC token. The receiving service should validate the OIDC token to ensure the request genuinely comes from Pub/Sub.
 
 ## Adding Dead Letter Topics
 
@@ -228,6 +237,12 @@ variable "labels" {
   default = {}
 }
 
+data "google_project" "current" {}
+
+locals {
+  pubsub_service_account = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
 resource "google_pubsub_topic" "main" {
   name   = var.topic_name
   labels = var.labels
@@ -254,6 +269,20 @@ resource "google_pubsub_subscription" "subs" {
   expiration_policy {
     ttl = ""
   }
+}
+
+resource "google_pubsub_topic_iam_member" "dlq_publisher" {
+  topic  = google_pubsub_topic.dlq.name
+  role   = "roles/pubsub.publisher"
+  member = local.pubsub_service_account
+}
+
+resource "google_pubsub_subscription_iam_member" "dlq_subscriber" {
+  for_each = google_pubsub_subscription.subs
+
+  subscription = each.value.name
+  role         = "roles/pubsub.subscriber"
+  member       = local.pubsub_service_account
 }
 ```
 
