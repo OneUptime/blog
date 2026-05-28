@@ -8,7 +8,7 @@ Description: Implement DNS-based failover for GCP services using Cloud DNS routi
 
 ---
 
-DNS-based failover is one of the simplest and most effective ways to achieve high availability across regions. Instead of relying on a load balancer to route traffic, you use DNS to resolve your domain to the IP address of a healthy endpoint. When the primary endpoint goes down, DNS automatically resolves to a secondary endpoint. This approach works for any service that has an IP address - Compute Engine instances, Cloud Run custom domains, external load balancers, or even hybrid setups with on-premises servers.
+DNS-based failover is one of the simplest and most effective ways to achieve high availability across regions. Instead of relying on a load balancer to route traffic, you use DNS to resolve your domain to the IP address of a healthy endpoint. When the primary endpoint goes down, DNS automatically resolves to a secondary endpoint. This approach works for services that expose stable IP addresses - Compute Engine instances, external load balancers, or even hybrid setups with on-premises servers.
 
 Google Cloud DNS supports routing policies that combine health checks with DNS resolution to implement automatic failover. In this post, I will show you how to set it up end to end.
 
@@ -50,26 +50,30 @@ Cloud DNS uses Compute Engine health checks to determine endpoint availability. 
 ```bash
 # Create a health check for the primary endpoint
 
-gcloud compute health-checks create http primary-health-check \
+gcloud compute health-checks create https primary-health-check \
+  --global \
   --host=app.example.com \
   --port=443 \
-  --use-serving-port \
+  --source-regions=us-central1,europe-west1,asia-east1 \
   --request-path=/health \
-  --check-interval=10s \
+  --check-interval=30s \
   --timeout=5s \
   --healthy-threshold=2 \
-  --unhealthy-threshold=3
+  --unhealthy-threshold=3 \
+  --enable-logging
 
 # Create a health check for the secondary endpoint
-gcloud compute health-checks create http secondary-health-check \
+gcloud compute health-checks create https secondary-health-check \
+  --global \
   --host=app.example.com \
   --port=443 \
-  --use-serving-port \
+  --source-regions=us-central1,europe-west1,asia-east1 \
   --request-path=/health \
-  --check-interval=10s \
+  --check-interval=30s \
   --timeout=5s \
   --healthy-threshold=2 \
-  --unhealthy-threshold=3
+  --unhealthy-threshold=3 \
+  --enable-logging
 ```
 
 ## Creating the DNS Zone
@@ -92,22 +96,19 @@ gcloud dns managed-zones describe app-zone
 Set up a DNS record set with a failover routing policy. The primary record is served when healthy, and the backup record takes over when the primary fails.
 
 ```bash
-# Create the failover routing policy using a transaction
-gcloud dns record-sets transaction start --zone=app-zone
-
-# Add the record with a failover routing policy
+# Add the record with a failover routing policy.
+# For health-checked load balancer targets, use forwarding rule names here.
 gcloud dns record-sets create app.example.com. \
   --zone=app-zone \
   --type=A \
   --ttl=60 \
   --routing-policy-type=FAILOVER \
-  --routing-policy-primary-data="34.120.1.1" \
+  --routing-policy-primary-data="primary-forwarding-rule@global" \
   --routing-policy-backup-data-type=GEO \
-  --routing-policy-backup-data="us-central1=35.190.2.2;europe-west1=35.190.2.2" \
-  --health-check=primary-health-check \
+  --routing-policy-backup-item=location=us-central1,rrdatas=secondary-forwarding-rule@global \
+  --routing-policy-backup-item=location=europe-west1,rrdatas=secondary-forwarding-rule@global \
+  --enable-health-checking \
   --backup-data-trickle-ratio=0.0
-
-gcloud dns record-sets transaction execute --zone=app-zone
 ```
 
 The `backup-data-trickle-ratio` parameter controls what percentage of traffic goes to the backup even when the primary is healthy. Setting it to 0 means all traffic goes to the primary during normal operations. You can set it to a small value like 0.1 to send 10% of traffic to the backup for continuous validation.
@@ -117,16 +118,18 @@ The `backup-data-trickle-ratio` parameter controls what percentage of traffic go
 For a more sophisticated setup, combine geolocation routing with failover. Users are routed to the nearest region, with failover to another region if their local one is down.
 
 ```bash
-# Create health checks for each regional endpoint
-for region in us-central1 europe-west1 asia-east1; do
-  gcloud compute health-checks create http ${region}-health \
-    --host=app.example.com \
-    --port=443 \
-    --request-path=/health \
-    --check-interval=10s \
-    --timeout=5s \
-    --unhealthy-threshold=3
-done
+# Create a health check for the regional endpoints
+gcloud compute health-checks create https regional-endpoint-health \
+  --global \
+  --host=app.example.com \
+  --port=443 \
+  --source-regions=us-central1,europe-west1,asia-east1 \
+  --request-path=/health \
+  --check-interval=30s \
+  --timeout=5s \
+  --healthy-threshold=2 \
+  --unhealthy-threshold=3 \
+  --enable-logging
 
 # Set up geolocation routing with health checks
 gcloud dns record-sets create app.example.com. \
@@ -134,8 +137,10 @@ gcloud dns record-sets create app.example.com. \
   --type=A \
   --ttl=60 \
   --routing-policy-type=GEO \
-  --routing-policy-data="us-central1=34.120.1.1;europe-west1=35.190.2.2;asia-east1=34.80.3.3" \
-  --enable-health-checking
+  --routing-policy-item=location=us-central1,rrdatas=34.120.1.1,external_endpoints=34.120.1.1 \
+  --routing-policy-item=location=europe-west1,rrdatas=35.190.2.2,external_endpoints=35.190.2.2 \
+  --routing-policy-item=location=asia-east1,rrdatas=34.80.3.3,external_endpoints=34.80.3.3 \
+  --health-check=regional-endpoint-health
 ```
 
 ## Application Health Endpoint
@@ -146,7 +151,6 @@ Your health check endpoint should verify all critical dependencies, not just ret
 # health.py - Comprehensive health check endpoint
 import os
 from flask import Flask, jsonify
-from google.cloud import firestore
 import sqlalchemy
 from sqlalchemy import text
 
@@ -208,13 +212,21 @@ DNS TTL (Time To Live) determines how long clients cache the DNS response. Lower
 gcloud dns record-sets update app.example.com. \
   --zone=app-zone \
   --type=A \
-  --ttl=60
+  --ttl=60 \
+  --routing-policy-type=FAILOVER \
+  --routing-policy-primary-data="primary-forwarding-rule@global" \
+  --routing-policy-backup-data-type=GEO \
+  --routing-policy-backup-item=location=us-central1,rrdatas=secondary-forwarding-rule@global \
+  --routing-policy-backup-item=location=europe-west1,rrdatas=secondary-forwarding-rule@global \
+  --enable-health-checking \
+  --backup-data-trickle-ratio=0.0
 
 # For less critical services, a higher TTL reduces DNS query costs
 gcloud dns record-sets update docs.example.com. \
   --zone=app-zone \
   --type=A \
-  --ttl=300
+  --ttl=300 \
+  --rrdatas=203.0.113.10
 ```
 
 Keep in mind that some DNS resolvers and applications ignore TTL and cache longer than specified. Plan for this in your recovery time estimates.
@@ -225,40 +237,23 @@ Track health check status and DNS query patterns.
 
 ```python
 # dns_monitor.py - Monitor DNS health check status
-from google.cloud import monitoring_v3
-import time
+from google.cloud import logging_v2
 
-def monitor_dns_health_checks(project_id, health_check_name):
-    """Monitor the status of DNS health checks."""
-    client = monitoring_v3.MetricServiceClient()
-    project_name = f'projects/{project_id}'
-
-    now = time.time()
-    interval = monitoring_v3.TimeInterval({
-        'end_time': {'seconds': int(now)},
-        'start_time': {'seconds': int(now - 3600)},  # Last hour
-    })
-
-    # Query health check status
-    results = client.list_time_series(
-        request={
-            'name': project_name,
-            'filter': (
-                f'metric.type="compute.googleapis.com/https/health_check/healthy" '
-                f'AND resource.labels.health_check_name="{health_check_name}"'
-            ),
-            'interval': interval,
-        }
+def monitor_dns_health_checks(project_id, target_ip):
+    """Monitor health check transition logs."""
+    client = logging_v2.Client(project=project_id)
+    log_filter = (
+        f'logName="projects/{project_id}/logs/compute.googleapis.com%2Fhealthchecks" '
+        f'AND jsonPayload.healthCheckProbeResult.targetIp="{target_ip}" '
+        'AND jsonPayload.healthCheckProbeResult.healthState="UNHEALTHY"'
     )
 
-    for series in results:
-        for point in series.points:
-            healthy = point.value.bool_value
-            timestamp = point.interval.end_time
-            if not healthy:
-                print(f'UNHEALTHY: {health_check_name} at {timestamp}')
+    entries = client.list_entries(filter_=log_filter, order_by=logging_v2.DESCENDING)
+    for entry in entries:
+        result = entry.payload.get('healthCheckProbeResult', {})
+        print(f"UNHEALTHY: {target_ip} at {entry.timestamp}: {result}")
 
-    return results
+    return entries
 ```
 
 ## Setting Up Alerting
@@ -267,12 +262,16 @@ Create alerts for health check failures so you know when failover occurs.
 
 ```bash
 # Alert when the primary health check fails
-gcloud alpha monitoring policies create \
+gcloud logging metrics create primary_endpoint_unhealthy \
+  --description="Primary endpoint health check transitioned to unhealthy" \
+  --log-filter='logName="projects/PROJECT_ID/logs/compute.googleapis.com%2Fhealthchecks" AND jsonPayload.healthCheckProbeResult.targetIp="34.120.1.1" AND jsonPayload.healthCheckProbeResult.healthState="UNHEALTHY"'
+
+gcloud monitoring policies create \
   --display-name="Primary endpoint unhealthy" \
   --condition-display-name="Health check failing" \
-  --condition-filter='metric.type="compute.googleapis.com/https/health_check/healthy" AND resource.labels.health_check_name="primary-health-check"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-comparison=COMPARISON_LT \
+  --condition-filter='metric.type="logging.googleapis.com/user/primary_endpoint_unhealthy"' \
+  --if='> 0' \
+  --duration=60s \
   --notification-channels=CHANNEL_ID
 ```
 
@@ -292,12 +291,8 @@ echo "Current DNS resolution: $PRIMARY_IP"
 echo "Step 2: Make primary unhealthy"
 # You could do this by:
 # - Deploying a version that returns 503 on /health
-# - Blocking the health check port with a firewall rule
-gcloud compute firewall-rules create block-health-check-test \
-  --action=DENY \
-  --rules=tcp:443 \
-  --source-ranges=35.191.0.0/16,130.211.0.0/22 \
-  --target-tags=primary-server
+# - Temporarily blocking all test traffic to the primary endpoint in a controlled environment
+read -p "Make the primary endpoint unhealthy, then press Enter to continue."
 
 echo "Step 3: Wait for health check to detect failure (30-90 seconds)"
 sleep 90
@@ -312,8 +307,8 @@ else
   echo "FAIL: DNS still resolving to primary"
 fi
 
-echo "Step 5: Clean up - restore the firewall rule"
-gcloud compute firewall-rules delete block-health-check-test --quiet
+echo "Step 5: Clean up - restore the primary endpoint"
+read -p "Restore the primary endpoint, then press Enter to continue."
 
 echo "Step 6: Wait for failback"
 sleep 90
