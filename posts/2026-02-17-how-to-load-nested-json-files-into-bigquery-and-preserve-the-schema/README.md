@@ -294,7 +294,7 @@ SELECT * FROM `my_project.my_dataset.events_preview` LIMIT 5;
 
 ## Handling Deeply Nested JSON
 
-For JSON with many levels of nesting, you might need to decide which levels to preserve as STRUCT and which to store as JSON strings.
+For JSON with many levels of nesting, you might need to decide which levels to preserve as STRUCT and which to store as JSON columns.
 
 ```json
 {
@@ -328,7 +328,7 @@ CREATE TABLE `my_project.my_dataset.events_hybrid` (
     source STRING,
     -- Preserve one level of nesting
     context STRUCT<
-      -- Store deep nesting as JSON string
+      -- Store deep nesting as JSON
       page JSON,
       campaign JSON
     >
@@ -371,9 +371,9 @@ Combine nested JSON loading with partitioning for production use.
 # Load nested JSON into a partitioned table
 bq load \
   --source_format=NEWLINE_DELIMITED_JSON \
-  --time_partitioning_field=event_date \
+  --time_partitioning_field=timestamp \
   --time_partitioning_type=DAY \
-  --clustering_fields=user.id \
+  --clustering_fields=event_id \
   my_project:my_dataset.events \
   gs://my-bucket/data/events_20260217.jsonl \
   schema.json
