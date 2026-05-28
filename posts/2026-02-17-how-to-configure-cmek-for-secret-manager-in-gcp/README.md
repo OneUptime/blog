@@ -16,7 +16,7 @@ Customer-Managed Encryption Keys (CMEK) provide this control. When you configure
 
 When you create a secret with CMEK, each secret version's payload is encrypted using a data encryption key (DEK), and that DEK is itself encrypted (wrapped) using your Cloud KMS key. This is called envelope encryption.
 
-When someone accesses a secret version, Secret Manager calls Cloud KMS to unwrap the DEK, then uses the unwrapped DEK to decrypt the secret payload. If the KMS key is disabled or destroyed, the unwrap fails and the secret becomes inaccessible.
+When someone accesses a secret version, Secret Manager calls Cloud KMS to unwrap the DEK, then uses the unwrapped DEK to decrypt the secret payload. If the KMS key version used to encrypt that secret version is disabled or destroyed, the unwrap fails and the secret version becomes inaccessible.
 
 ```mermaid
 flowchart LR
@@ -63,7 +63,6 @@ gcloud kms keys create secret-encryption-key \
   --location=global \
   --purpose=encryption \
   --rotation-period=90d \
-  --next-rotation-time="$(date -u -v+90d +%Y-%m-%dT%H:%M:%SZ)" \
   --project=my-project-id
 ```
 
@@ -76,14 +75,12 @@ projects/my-project-id/locations/global/keyRings/secret-manager-keyring/cryptoKe
 
 Secret Manager uses a service agent to call Cloud KMS. You need to grant this agent the `cloudkms.cryptoKeyEncrypterDecrypter` role on your key.
 
-First, find the Secret Manager service agent:
+First, create or retrieve the Secret Manager service agent:
 
 ```bash
-# The service agent email follows this pattern:
-# service-PROJECT_NUMBER@gcp-sa-secretmanager.iam.gserviceaccount.com
-
-# Get your project number
-gcloud projects describe my-project-id --format="get(projectNumber)"
+gcloud beta services identity create \
+  --service="secretmanager.googleapis.com" \
+  --project=my-project-id
 ```
 
 Then grant the role:
@@ -262,10 +259,10 @@ gcloud kms keys versions create \
 
 ## Emergency Access Revocation
 
-One of the main advantages of CMEK is the ability to revoke access to all secret data by disabling the KMS key:
+One of the main advantages of CMEK is the ability to revoke access to secret data by disabling the KMS key version that encrypted it:
 
 ```bash
-# Disable the key - all secrets encrypted with it become inaccessible
+# Disable the key version - all secret versions encrypted with it become inaccessible
 gcloud kms keys versions disable KEY_VERSION \
   --key=secret-encryption-key \
   --keyring=secret-manager-keyring \
@@ -273,7 +270,7 @@ gcloud kms keys versions disable KEY_VERSION \
   --project=my-project-id
 ```
 
-This is a drastic action and should only be used in emergencies. Disabling the key means no application can read any secret encrypted with that key until the key is re-enabled.
+This is a drastic action and should only be used in emergencies. Disabling the key version means no application can read any secret version encrypted with that key version until it is re-enabled. To revoke access to every secret version protected by a key, disable every enabled key version that protected those secret versions.
 
 ## Cost Considerations
 
