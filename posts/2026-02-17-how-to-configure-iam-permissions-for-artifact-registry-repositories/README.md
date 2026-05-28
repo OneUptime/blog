@@ -68,12 +68,12 @@ gcloud artifacts repositories add-iam-policy-binding my-docker-repo \
 For CI/CD pipelines and service accounts that push images:
 
 ```bash
-# Grant write access to the Cloud Build service account
-PROJECT_NUMBER=$(gcloud projects describe my-project --format='value(projectNumber)')
+# Grant write access to the default Cloud Build service account
+BUILD_SERVICE_ACCOUNT=$(gcloud builds get-default-service-account --project=my-project)
 
 gcloud artifacts repositories add-iam-policy-binding my-docker-repo \
   --location=us-central1 \
-  --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+  --member="serviceAccount:${BUILD_SERVICE_ACCOUNT}" \
   --role="roles/artifactregistry.writer" \
   --project=my-project
 
@@ -171,13 +171,13 @@ gcloud artifacts repositories add-iam-policy-binding my-docker-repo \
   --project=my-project
 ```
 
-If you are using GKE Workload Identity, you need to grant access to the Kubernetes service account's mapped GCP service account:
+If you are using GKE Workload Identity, image pulls still use the node pool's IAM service account. Grant Artifact Registry access to the node service account, not the Kubernetes service account:
 
 ```bash
-# Grant access to the GCP service account that the K8s service account maps to
+# Grant access to the node service account used for image pulls
 gcloud artifacts repositories add-iam-policy-binding my-docker-repo \
   --location=us-central1 \
-  --member="serviceAccount:my-k8s-sa@my-project.iam.gserviceaccount.com" \
+  --member="serviceAccount:my-gke-nodes@my-project.iam.gserviceaccount.com" \
   --role="roles/artifactregistry.reader" \
   --project=my-project
 ```
