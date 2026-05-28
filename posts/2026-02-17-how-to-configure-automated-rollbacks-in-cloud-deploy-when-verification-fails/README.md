@@ -18,7 +18,7 @@ The automated rollback mechanism in Cloud Deploy is tied to the verification fea
 
 1. A release is deployed to a target (a rollout is created)
 2. After deployment succeeds, Cloud Deploy runs a verification job
-3. If verification fails, Cloud Deploy automatically initiates a rollback
+3. If verification fails, the rollout fails and the configured automation initiates a rollback
 4. The rollback creates a new rollout using the last successfully deployed release
 
 This process is fully automated once configured. No one needs to watch a dashboard and click a button.
@@ -76,7 +76,7 @@ verify:
     image: us-central1-docker.pkg.dev/my-project/my-repo/smoke-tests:latest
     command: ["sh"]
     args: ["-c", "/run-smoke-tests.sh"]
-  timeout: 300s
+  timeout: 300
 ```
 
 The verification container runs your test suite. If the container exits with a non-zero code, verification fails. If it exits with zero, verification passes.
@@ -87,11 +87,12 @@ Your verification container should run lightweight checks that validate the depl
 
 ```dockerfile
 # Dockerfile.verify - Smoke test container for deployment verification
-FROM curlimages/curl:latest
+FROM alpine:3.20
+
+RUN apk add --no-cache curl python3 bc
 
 COPY smoke-tests.sh /run-smoke-tests.sh
 
-USER root
 RUN chmod +x /run-smoke-tests.sh
 
 ENTRYPOINT ["/run-smoke-tests.sh"]
@@ -149,19 +150,21 @@ Automated rollbacks are enabled through automation rules on the delivery pipelin
 apiVersion: deploy.cloud.google.com/v1
 kind: Automation
 metadata:
-  name: rollback-on-failure
+  name: my-app-pipeline/rollback-on-failure
 description: Automatically roll back when verification fails
 selector:
-- targets:
+  targets:
   - id: prod
-deliveryPipeline: my-app-pipeline
 serviceAccount: deploy-automation-sa@my-project.iam.gserviceaccount.com
 suspended: false
 rules:
-- rollbackRule:
-    name: rollback-on-verify-fail
-    phases:
-    - VERIFY
+- repairRolloutRule:
+    id: rollback-on-verify-fail
+    jobs:
+    - verify
+    repairPhases:
+    - rollback:
+        destinationPhase: stable
 ```
 
 Register the automation.
@@ -175,7 +178,7 @@ When verification fails on the prod target, this automation kicks in and creates
 
 ## Setting Up the Automation Service Account
 
-The automation service account needs specific permissions to create rollouts and manage releases.
+The automation service account needs permissions for the automated rollback operation and permission to impersonate the execution service account.
 
 ```bash
 # Create the service account
@@ -190,6 +193,13 @@ gcloud projects add-iam-policy-binding my-project \
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:deploy-automation-sa@my-project.iam.gserviceaccount.com" \
   --role="roles/clouddeploy.releaser"
+
+# Allow the automation service account to impersonate the Cloud Deploy execution service account.
+# Replace EXECUTION_SERVICE_ACCOUNT with the service account configured for your target,
+# or PROJECT_NUMBER-compute@developer.gserviceaccount.com if you use the default.
+gcloud iam service-accounts add-iam-policy-binding EXECUTION_SERVICE_ACCOUNT \
+  --member="serviceAccount:deploy-automation-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
 ```
 
 ## Testing the Automated Rollback
@@ -242,8 +252,10 @@ With this setup, if the 10% canary fails verification, Cloud Deploy rolls back b
 You probably want to know when an automated rollback happens. Set up Pub/Sub notifications from Cloud Deploy to get alerted.
 
 ```bash
-# Cloud Deploy publishes events to the clouddeploy-operations topic
-# Create a subscription to receive rollback notifications
+# Cloud Deploy publishes operation events to the clouddeploy-operations topic.
+# Create the topic, then create a subscription to receive notifications.
+gcloud pubsub topics create clouddeploy-operations
+
 gcloud pubsub subscriptions create deploy-notifications \
   --topic=clouddeploy-operations
 ```
