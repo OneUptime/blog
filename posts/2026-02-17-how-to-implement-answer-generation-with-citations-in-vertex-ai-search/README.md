@@ -81,6 +81,9 @@ def search_with_answer_generation(
         page_size=10,
         content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
             summary_spec=summary_spec,
+            extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
+                max_extractive_answer_count=1,
+            ),
             snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
                 return_snippet=True,
             ),
@@ -139,7 +142,7 @@ def search_with_custom_model(
 
     # Specify the model for generation
     model_spec = discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec.ModelSpec(
-        version="gemini-1.5-flash-001/answer_gen/v1",  # Use a specific model version
+        version="gemini-2.5-flash/answer_gen/v1",  # Use a specific model version
     )
 
     summary_spec = discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
@@ -156,6 +159,9 @@ def search_with_custom_model(
         page_size=10,
         content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
             summary_spec=summary_spec,
+            extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
+                max_extractive_answer_count=1,
+            ),
         ),
     )
 
@@ -229,6 +235,7 @@ for c in parsed['citations']:
 Here is a pattern for rendering answers with clickable citations in a web application.
 
 ```python
+import html
 import re
 
 def format_answer_html(answer_text: str, citations: list) -> str:
@@ -239,24 +246,34 @@ def format_answer_html(answer_text: str, citations: list) -> str:
 
     # Replace [N] markers with clickable links
     def replace_citation(match):
-        index = int(match.group(1))
-        citation = citation_lookup.get(index)
-        if citation:
-            title = citation["title"]
-            uri = citation["uri"]
-            return f'<sup><a href="{uri}" title="{title}" class="citation">[{index}]</a></sup>'
+        indexes = [int(index.strip()) for index in match.group(1).split(",")]
+        links = []
+        for index in indexes:
+            citation = citation_lookup.get(index)
+            if citation:
+                title = html.escape(citation["title"], quote=True)
+                uri = html.escape(citation["uri"], quote=True)
+                links.append(
+                    f'<a href="{uri}" title="{title}" class="citation" rel="noopener noreferrer">[{index}]</a>'
+                )
+            else:
+                links.append(f"[{index}]")
+        if links:
+            return f'<sup>{", ".join(links)}</sup>'
         return match.group(0)
 
-    html = re.sub(r'\[(\d+)\]', replace_citation, answer_text)
+    html_output = re.sub(r'\[([\d,\s]+)\]', replace_citation, html.escape(answer_text))
 
     # Add the citation list at the bottom
     if citations:
-        html += '<div class="citation-list"><h4>Sources</h4><ol>'
+        html_output += '<div class="citation-list"><h4>Sources</h4><ol>'
         for c in citations:
-            html += f'<li><a href="{c["uri"]}">{c["title"]}</a></li>'
-        html += '</ol></div>'
+            title = html.escape(c["title"])
+            uri = html.escape(c["uri"], quote=True)
+            html_output += f'<li><a href="{uri}" rel="noopener noreferrer">{title}</a></li>'
+        html_output += '</ol></div>'
 
-    return html
+    return html_output
 ```
 
 ## Handling Edge Cases
@@ -266,7 +283,7 @@ def format_answer_html(answer_text: str, citations: list) -> str:
 Sometimes the model decides it cannot generate a good answer. Handle this gracefully.
 
 ```python
-def get_answer_or_fallback(response) -> str:
+def get_answer_or_fallback(response) -> dict:
     """Get the generated answer or fall back to extractive answers."""
     # Check for generated summary first
     if response.summary and response.summary.summary_text:
@@ -310,24 +327,25 @@ For multi-turn conversations, you can use the answer generation to power a chat-
 def conversational_search(
     project_id: str,
     location: str,
-    engine_id: str,
+    data_store_id: str,
     query: str,
     conversation_id: str = None,
 ):
     """Search with conversational context for follow-up questions."""
     client = discoveryengine.ConversationalSearchServiceClient()
 
-    serving_config = (
+    data_store = (
         f"projects/{project_id}/locations/{location}"
-        f"/collections/default_collection/engines/{engine_id}"
-        f"/servingConfigs/default_search"
+        f"/collections/default_collection/dataStores/{data_store_id}"
     )
+    serving_config = f"{data_store}/servingConfigs/default_search"
+    conversation_name = f"{data_store}/conversations/{conversation_id or '-'}"
 
     # Build the conversation request
     text_input = discoveryengine.TextInput(input=query)
 
     request = discoveryengine.ConverseConversationRequest(
-        name=f"{serving_config.replace('/servingConfigs/default_search', '')}/conversations/{conversation_id}" if conversation_id else "",
+        name=conversation_name,
         serving_config=serving_config,
         query=text_input,
         summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
