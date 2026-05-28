@@ -1,25 +1,25 @@
-# How to Migrate Workloads from GKE Standard to GKE Autopilot Without Downtime
+# How to Migrate Workloads from GKE Standard to GKE Autopilot with Minimal Downtime
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, GKE, Autopilot, Migration, Kubernetes, Cluster Management
 
-Description: A practical guide to migrating workloads from GKE Standard to GKE Autopilot with zero downtime using a blue-green cluster migration strategy.
+Description: A practical guide to migrating workloads from GKE Standard to GKE Autopilot with minimal downtime using a blue-green cluster migration strategy.
 
 ---
 
 Migrating from GKE Standard to GKE Autopilot is a move many teams are making. Autopilot removes the need to manage nodes, handles security hardening, and can reduce costs for many workload patterns. But you cannot convert an existing Standard cluster to Autopilot in place. You need to create a new Autopilot cluster and move your workloads over.
 
-The good news is that with the right approach, you can do this with zero downtime. The strategy is a blue-green cluster migration: stand up the new Autopilot cluster, deploy your workloads to it, shift traffic over, and then decommission the old cluster.
+The good news is that with the right approach, you can do this with no downtime for stateless workloads. Stateful workloads need separate data migration planning and might require downtime to avoid data loss. The strategy is a blue-green cluster migration: stand up the new Autopilot cluster, deploy your workloads to it, shift traffic over, and then decommission the old cluster.
 
 ## Planning the Migration
 
 Before touching any infrastructure, audit your existing workloads for Autopilot compatibility. Autopilot has restrictions that Standard does not:
 
-- DaemonSets are not allowed (Autopilot manages the nodes)
+- DaemonSets are supported, but node-level agents often need changes because Autopilot manages the nodes and enforces resource and security constraints
 - Privileged containers are restricted
 - Host network and host PID are not available
-- Resource requests are mandatory and have minimum values
+- Resource requests are strongly recommended; if you omit them, Autopilot applies defaults and enforces minimums, maximums, and CPU-to-memory ratios
 - Some node-level customizations are not possible
 
 Check your workloads for these issues:
@@ -30,10 +30,10 @@ Check your workloads for these issues:
 kubectl get pods --all-namespaces -o json | \
   python3 -c "import json,sys; pods=json.load(sys.stdin); [print(f\"{p['metadata']['namespace']}/{p['metadata']['name']}\") for p in pods['items'] if p['spec'].get('hostNetwork')]"
 
-# Find DaemonSets that need to be handled differently
+# Find DaemonSets that may need to be handled differently
 kubectl get daemonsets --all-namespaces
 
-# Find pods without resource requests
+# Find pods where Autopilot would apply default resource requests
 kubectl get pods --all-namespaces -o json | \
   python3 -c "
 import json,sys
@@ -67,10 +67,10 @@ Make sure the networking configuration matches your requirements - same VPC, app
 
 Update your Kubernetes manifests to be Autopilot-compatible. The main changes are:
 
-Add resource requests to every container:
+Add explicit resource requests to every container so Autopilot provisions the right compute resources:
 
 ```yaml
-# Before: no resource requests (works on Standard, fails on Autopilot)
+# Before: no resource requests (Autopilot applies defaults that may not fit your workload)
 containers:
   - name: my-app
     image: my-image:v1
@@ -88,7 +88,7 @@ containers:
         memory: 512Mi
 ```
 
-Replace DaemonSets with alternative approaches. For logging agents, use GKE's built-in Cloud Logging integration. For monitoring, use managed Prometheus. For other DaemonSets, consider sidecar containers or moving the functionality into your application.
+Review DaemonSets before migrating them. For logging agents, use GKE's built-in Cloud Logging integration when possible. For monitoring, use managed Prometheus. For other DaemonSets, verify that they do not depend on unsupported node privileges, host networking, or writable host paths; otherwise, consider sidecar containers or moving the functionality into your application.
 
 Remove any privileged security contexts:
 
@@ -97,11 +97,13 @@ Remove any privileged security contexts:
 securityContext:
   privileged: true
 
-# After: use specific capabilities instead
+# After: remove privileged mode and add only capabilities that Autopilot allows
 securityContext:
   capabilities:
-    add: ["NET_ADMIN"]
+    add: ["NET_BIND_SERVICE"]
 ```
+
+If a workload requires `NET_ADMIN`, enable the `allow-net-admin` workload policy on the cluster before adding that capability to the Pod security context.
 
 ## Step 3: Deploy to the Autopilot Cluster
 
@@ -177,7 +179,7 @@ gcloud dns record-sets create myapp.example.com \
   --type=A \
   --ttl=60 \
   --routing-policy-type=WRR \
-  --routing-policy-data="25=10.0.0.1;75=10.0.0.2"
+  --routing-policy-data=".1=203.0.113.10;.9=203.0.113.20"
 ```
 
 Start with 10% to the new cluster, monitor for errors, then gradually increase to 25%, 50%, 75%, and finally 100%.
@@ -238,10 +240,10 @@ Watch out for these issues during migration:
 
 Resource requests being too low: Autopilot can increase your requests to meet minimum ratios, which affects scheduling and cost. Test with representative workloads before migrating production.
 
-Persistent volume migration: If your workloads use Persistent Volumes, you need to migrate the data separately. Use a tool like Velero or GKE Backup to snapshot and restore PVs to the new cluster.
+Persistent volume migration: If your workloads use Persistent Volumes, you need to migrate the data separately. Use a tool like Velero or GKE Backup to snapshot and restore PVs to the new cluster, and plan downtime for stateful workloads to avoid data loss.
 
 Service account differences: Make sure Workload Identity bindings exist for the new cluster's service accounts.
 
 Network policies: Verify that your network policies work correctly on Autopilot, as some node-level networking features behave differently.
 
-The migration from Standard to Autopilot is not a flip-the-switch operation, but with careful planning and a blue-green approach, you can do it without any user-facing downtime. Take it step by step, validate at each stage, and keep the old cluster around until you are confident the new one is solid.
+The migration from Standard to Autopilot is not a flip-the-switch operation, but with careful planning and a blue-green approach, you can do it with no user-facing downtime for stateless workloads. Take it step by step, validate at each stage, and keep the old cluster around until you are confident the new one is solid.
