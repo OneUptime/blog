@@ -10,7 +10,7 @@ Description: Use Google Cloud Traffic Director to implement traffic splitting fo
 
 Canary deployments are one of the safest ways to roll out changes. Instead of updating all instances at once and hoping nothing breaks, you send a small percentage of traffic to the new version and monitor for problems. If something goes wrong, you roll back instantly. If everything looks good, you gradually increase the canary's traffic share.
 
-Google Cloud Traffic Director is a managed traffic control plane that configures Envoy proxies deployed alongside your services. It supports traffic splitting natively, making it an excellent foundation for canary deployments on GKE.
+Google Cloud Traffic Director is now part of Cloud Service Mesh. It is a managed traffic control plane that configures Envoy proxies deployed alongside your services. It supports traffic splitting natively, making it an excellent foundation for canary deployments on GKE.
 
 ## How Traffic Director Enables Canary Deployments
 
@@ -25,19 +25,20 @@ The advantage over Kubernetes-native canary approaches (like adjusting replica c
 ```bash
 # Enable Traffic Director and related APIs
 
-gcloud services enable trafficdirector.googleapis.com
-gcloud services enable compute.googleapis.com
-gcloud services enable container.googleapis.com
-gcloud services enable networksecurity.googleapis.com
---project=my-project
+gcloud services enable \
+  trafficdirector.googleapis.com \
+  networkservices.googleapis.com \
+  compute.googleapis.com \
+  container.googleapis.com \
+  --project=my-project
 ```
 
 ### Configure GKE with Traffic Director
 
-Deploy a GKE cluster with the Traffic Director integration enabled.
+Deploy a GKE cluster and then provision Cloud Service Mesh for the cluster.
 
 ```bash
-# Create a GKE cluster with Traffic Director support
+# Create a GKE cluster
 gcloud container clusters create canary-cluster \
   --zone=us-central1-a \
   --num-nodes=3 \
@@ -45,7 +46,7 @@ gcloud container clusters create canary-cluster \
   --enable-dataplane-v2 \
   --project=my-project
 
-# Install the Traffic Director CRDs if using the Gateway API approach
+# Install the Gateway API CRDs if using the Gateway API approach
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
 ```
 
@@ -127,12 +128,15 @@ kind: Service
 metadata:
   name: my-service-stable
   namespace: production
+  annotations:
+    cloud.google.com/neg: '{"exposed_ports":{"8080":{"name":"my-service-stable-neg"}}}'
 spec:
   selector:
     app: my-service
     version: stable
   ports:
-    - port: 8080
+    - name: http
+      port: 8080
       targetPort: 8080
 ---
 apiVersion: v1
@@ -140,12 +144,15 @@ kind: Service
 metadata:
   name: my-service-canary
   namespace: production
+  annotations:
+    cloud.google.com/neg: '{"exposed_ports":{"8080":{"name":"my-service-canary-neg"}}}'
 spec:
   selector:
     app: my-service
     version: canary
   ports:
-    - port: 8080
+    - name: http
+      port: 8080
       targetPort: 8080
 ```
 
@@ -166,6 +173,7 @@ gcloud compute health-checks create http my-service-hc \
 gcloud compute backend-services create my-service-stable-backend \
   --load-balancing-scheme=INTERNAL_SELF_MANAGED \
   --protocol=HTTP \
+  --port-name=http \
   --health-checks=my-service-hc \
   --project=my-project \
   --global
@@ -174,9 +182,23 @@ gcloud compute backend-services create my-service-stable-backend \
 gcloud compute backend-services create my-service-canary-backend \
   --load-balancing-scheme=INTERNAL_SELF_MANAGED \
   --protocol=HTTP \
+  --port-name=http \
   --health-checks=my-service-hc \
   --project=my-project \
   --global
+
+# Attach the GKE NEGs created from the Kubernetes Services
+gcloud compute backend-services add-backend my-service-stable-backend \
+  --global \
+  --network-endpoint-group=my-service-stable-neg \
+  --network-endpoint-group-zone=us-central1-a \
+  --project=my-project
+
+gcloud compute backend-services add-backend my-service-canary-backend \
+  --global \
+  --network-endpoint-group=my-service-canary-neg \
+  --network-endpoint-group-zone=us-central1-a \
+  --project=my-project
 ```
 
 Now create a URL map with weighted traffic splitting.
@@ -224,7 +246,7 @@ pathMatchers:
 
 ### Using Gateway API (Recommended for GKE)
 
-The Gateway API provides a Kubernetes-native way to configure Traffic Director traffic splitting.
+The Gateway API provides a Kubernetes-native way to configure Google Cloud traffic splitting on GKE. For Cloud Service Mesh service-to-service routing, use the Cloud Service Mesh Gateway API setup; for GKE load-balanced ingress, use a GKE GatewayClass that supports traffic splitting.
 
 ```yaml
 # httproute-canary.yaml
@@ -269,26 +291,17 @@ for weight in "${CANARY_STEPS[@]}"; do
     echo "Setting canary weight to ${weight}%, stable to ${stable_weight}%"
 
     # Update the HTTPRoute with new weights
-    kubectl patch httproute my-service-canary-route -n production --type=merge -p "
-    spec:
-      rules:
-        - backendRefs:
-            - name: my-service-stable
-              port: 8080
-              weight: ${stable_weight}
-            - name: my-service-canary
-              port: 8080
-              weight: ${weight}
-    "
+    kubectl patch httproute my-service-canary-route -n production --type=merge -p \
+      "{\"spec\":{\"rules\":[{\"backendRefs\":[{\"name\":\"my-service-stable\",\"port\":8080,\"weight\":${stable_weight}},{\"name\":\"my-service-canary\",\"port\":8080,\"weight\":${weight}}]}]}}"
 
     echo "Waiting ${WAIT_BETWEEN_STEPS} seconds before next step..."
     echo "Monitor: https://console.cloud.google.com/monitoring"
 
-    # Check error rate before proceeding
+    # Check request errors before proceeding
     sleep ${WAIT_BETWEEN_STEPS}
 
     # Optional: add automated rollback check here
-    # If error rate exceeds threshold, roll back to 0% canary
+    # If request errors exceed your threshold, roll back to 0% canary
 done
 
 echo "Canary promotion complete. All traffic now going to canary version."
@@ -300,23 +313,23 @@ Monitor both versions during the rollout to catch problems early.
 
 ```bash
 # Query Traffic Director metrics in Cloud Monitoring
-# Compare error rates between stable and canary backends
+# Compare request status for Traffic Director backend services
 gcloud monitoring time-series list \
   --project=my-project \
-  --filter='metric.type="trafficdirector.googleapis.com/request_count" AND resource.labels.backend_name="my-service-canary-backend"' \
-  --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+  --filter='metric.type="trafficdirector.googleapis.com/xds/server/request_count" AND metric.labels.status="ERROR"' \
+  --interval-start-time=$(date -u -d "1 hour ago" +%Y-%m-%dT%H:%M:%SZ) \
   --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 ```
 
-Set up a Cloud Monitoring alert that automatically detects elevated error rates on the canary.
+Set up a Cloud Monitoring alert that automatically detects request errors.
 
 ```bash
-# Alert if canary error rate exceeds 5%
+# Alert if Traffic Director reports backend request errors
 gcloud alpha monitoring policies create \
-  --display-name="Canary Error Rate Too High" \
-  --condition-display-name="Canary 5xx rate" \
-  --condition-filter='metric.type="trafficdirector.googleapis.com/request_count" AND resource.labels.backend_name="my-service-canary-backend" AND metric.labels.response_code_class="5xx"' \
-  --condition-threshold-value=0.05 \
+  --display-name="Traffic Director Backend Errors" \
+  --condition-display-name="Backend request errors" \
+  --condition-filter='metric.type="trafficdirector.googleapis.com/xds/server/request_count" AND metric.labels.status="ERROR"' \
+  --condition-threshold-value=0 \
   --condition-threshold-comparison=COMPARISON_GT \
   --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
   --documentation-content="Canary deployment showing elevated errors. Consider rolling back."
@@ -329,15 +342,7 @@ If the canary shows problems, roll back instantly by setting its weight to zero.
 ```bash
 # Emergency rollback - send all traffic to stable
 kubectl patch httproute my-service-canary-route -n production --type=merge -p '
-spec:
-  rules:
-    - backendRefs:
-        - name: my-service-stable
-          port: 8080
-          weight: 100
-        - name: my-service-canary
-          port: 8080
-          weight: 0
+{"spec":{"rules":[{"backendRefs":[{"name":"my-service-stable","port":8080,"weight":100},{"name":"my-service-canary","port":8080,"weight":0}]}]}}
 '
 ```
 
