@@ -14,9 +14,9 @@ This guide walks through setting up a hub-and-spoke topology using NCC, covering
 
 ## What Network Connectivity Center Does
 
-NCC operates as a hub that connects multiple spokes. A spoke can be a VPC network, an on-premises site connected via HA VPN or Interconnect, or a remote cloud connected via VPN. The hub handles route exchange between spokes, so traffic can flow between any two spokes through Google's backbone network.
+NCC operates as a hub that connects multiple spokes. A spoke can be a VPC network, an on-premises site connected via HA VPN or Interconnect, or a remote cloud connected via VPN. The hub handles route exchange between spokes, so traffic can flow between connected spokes over Google's network.
 
-The major advantage over traditional VPC peering is transitivity. With peering, if VPC-A peers with VPC-B and VPC-B peers with VPC-C, VPC-A cannot reach VPC-C. NCC solves this by routing all traffic through the hub.
+The major advantage over traditional VPC peering is transitivity. With peering, if VPC-A peers with VPC-B and VPC-B peers with VPC-C, VPC-A cannot reach VPC-C. NCC solves this by exchanging routes through a central hub.
 
 ## Creating the Hub
 
@@ -44,35 +44,35 @@ VPC spokes connect your Google Cloud VPC networks to the hub. This is useful whe
 
 ```bash
 # Create a VPC spoke for the shared services network
-gcloud network-connectivity spokes create shared-services-spoke \
-  --hub=my-network-hub \
-  --location=global \
-  --linked-vpc-network=projects/shared-services-project/global/networks/shared-vpc \
+gcloud network-connectivity spokes linked-vpc-network create shared-services-spoke \
+  --hub=projects/hub-project/locations/global/hubs/my-network-hub \
+  --global \
+  --vpc-network=projects/shared-services-project/global/networks/shared-vpc \
   --description="Shared services VPC spoke" \
-  --project=hub-project
+  --project=shared-services-project
 ```
 
 ### Connect Application VPCs
 
 ```bash
 # Connect the production application VPC
-gcloud network-connectivity spokes create prod-app-spoke \
-  --hub=my-network-hub \
-  --location=global \
-  --linked-vpc-network=projects/prod-project/global/networks/prod-vpc \
+gcloud network-connectivity spokes linked-vpc-network create prod-app-spoke \
+  --hub=projects/hub-project/locations/global/hubs/my-network-hub \
+  --global \
+  --vpc-network=projects/prod-project/global/networks/prod-vpc \
   --description="Production application VPC" \
-  --project=hub-project
+  --project=prod-project
 
 # Connect the development VPC
-gcloud network-connectivity spokes create dev-spoke \
-  --hub=my-network-hub \
-  --location=global \
-  --linked-vpc-network=projects/dev-project/global/networks/dev-vpc \
+gcloud network-connectivity spokes linked-vpc-network create dev-spoke \
+  --hub=projects/hub-project/locations/global/hubs/my-network-hub \
+  --global \
+  --vpc-network=projects/dev-project/global/networks/dev-vpc \
   --description="Development VPC" \
-  --project=hub-project
+  --project=dev-project
 ```
 
-With these three spokes connected, resources in any of the three VPCs can reach each other through the hub. Routes are exchanged automatically.
+With these three spokes connected and accepted by the hub administrator, resources in any of the three VPCs can reach each other through the hub. Routes are exchanged automatically.
 
 ## Adding VPN Spokes for On-Premises Connectivity
 
@@ -94,25 +94,32 @@ gcloud compute routers create hub-router \
   --asn=65001 \
   --project=hub-project
 
+# Define the on-premises VPN gateway
+gcloud compute external-vpn-gateways create onprem-external-gateway \
+  --interfaces=0=203.0.113.10,1=203.0.113.11 \
+  --project=hub-project
+
 # Create VPN tunnels (two for HA)
 gcloud compute vpn-tunnels create onprem-tunnel-0 \
   --vpn-gateway=onprem-vpn-gateway \
-  --peer-gcp-gateway=PEER_GATEWAY_OR_EXTERNAL_IP \
+  --interface=0 \
+  --peer-external-gateway=onprem-external-gateway \
+  --peer-external-gateway-interface=0 \
   --region=us-central1 \
   --ike-version=2 \
   --shared-secret=YOUR_SHARED_SECRET \
   --router=hub-router \
-  --vpn-gateway-interface=0 \
   --project=hub-project
 
 gcloud compute vpn-tunnels create onprem-tunnel-1 \
   --vpn-gateway=onprem-vpn-gateway \
-  --peer-gcp-gateway=PEER_GATEWAY_OR_EXTERNAL_IP \
+  --interface=1 \
+  --peer-external-gateway=onprem-external-gateway \
+  --peer-external-gateway-interface=1 \
   --region=us-central1 \
   --ike-version=2 \
   --shared-secret=YOUR_SHARED_SECRET \
   --router=hub-router \
-  --vpn-gateway-interface=1 \
   --project=hub-project
 ```
 
@@ -157,16 +164,17 @@ gcloud compute routers add-bgp-peer hub-router \
 
 ```bash
 # Create a VPN spoke connecting the on-premises network through the HA VPN
-gcloud network-connectivity spokes create onprem-dc1-spoke \
+gcloud network-connectivity spokes linked-vpn-tunnels create onprem-dc1-spoke \
   --hub=my-network-hub \
-  --location=us-central1 \
-  --linked-vpn-tunnels=onprem-tunnel-0,onprem-tunnel-1 \
+  --region=us-central1 \
+  --vpn-tunnels=onprem-tunnel-0,onprem-tunnel-1 \
   --site-to-site-data-transfer \
+  --include-import-ranges=ALL_IPV4_RANGES \
   --description="On-premises data center 1" \
   --project=hub-project
 ```
 
-The `--site-to-site-data-transfer` flag enables traffic between this spoke and other spokes to transit through the hub. Without it, the spoke can only communicate with the hub VPC itself.
+The `--site-to-site-data-transfer` flag enables traffic between this hybrid spoke and other hybrid spokes to transit through the hub. The `--include-import-ranges=ALL_IPV4_RANGES` flag lets the hybrid spoke import VPC spoke subnet ranges from the hub and advertise them to its BGP peers.
 
 ## Adding Interconnect Spokes
 
@@ -174,18 +182,19 @@ For high-bandwidth on-premises connections, use Dedicated or Partner Interconnec
 
 ```bash
 # Attach an existing Interconnect VLAN attachment as a spoke
-gcloud network-connectivity spokes create interconnect-dc1-spoke \
+gcloud network-connectivity spokes linked-interconnect-attachments create interconnect-dc1-spoke \
   --hub=my-network-hub \
-  --location=us-central1 \
-  --linked-interconnect-attachments=dc1-vlan-attachment-0,dc1-vlan-attachment-1 \
+  --region=us-central1 \
+  --interconnect-attachments=dc1-vlan-attachment-0,dc1-vlan-attachment-1 \
   --site-to-site-data-transfer \
+  --include-import-ranges=ALL_IPV4_RANGES \
   --description="Interconnect to DC1" \
   --project=hub-project
 ```
 
 ## Route Exchange and Filtering
 
-NCC automatically exchanges routes between spokes. All VPC subnets and on-premises routes learned via BGP are distributed to all other spokes. You can filter which routes are shared using export and import policies.
+NCC automatically exchanges eligible routes between spokes. VPC subnet routes and IPv4 dynamic routes learned via BGP can be exchanged with other spokes. You can filter which subnet ranges are exported from VPC spokes using include and exclude export ranges, and you can control which hub subnet ranges are imported by hybrid spokes using include import ranges.
 
 ```bash
 # View the effective routes for a specific spoke
@@ -194,8 +203,7 @@ gcloud network-connectivity hubs describe my-network-hub \
   --format="yaml(routingVpcs)"
 
 # Check spoke status and connectivity
-gcloud network-connectivity spokes list \
-  --hub=my-network-hub \
+gcloud network-connectivity hubs list-spokes my-network-hub \
   --project=hub-project
 ```
 
@@ -216,7 +224,7 @@ resource "google_network_connectivity_spoke" "shared_services" {
   name     = "shared-services-spoke"
   hub      = google_network_connectivity_hub.main.id
   location = "global"
-  project  = "hub-project"
+  project  = "shared-services-project"
 
   linked_vpc_network {
     uri = "projects/shared-services-project/global/networks/shared-vpc"
@@ -228,7 +236,7 @@ resource "google_network_connectivity_spoke" "production" {
   name     = "prod-spoke"
   hub      = google_network_connectivity_hub.main.id
   location = "global"
-  project  = "hub-project"
+  project  = "prod-project"
 
   linked_vpc_network {
     uri = "projects/prod-project/global/networks/prod-vpc"
@@ -248,6 +256,7 @@ resource "google_network_connectivity_spoke" "onprem" {
       google_compute_vpn_tunnel.tunnel_1.self_link,
     ]
     site_to_site_data_transfer = true
+    include_import_ranges      = ["ALL_IPV4_RANGES"]
   }
 }
 ```
@@ -258,8 +267,7 @@ Monitor the hub and spokes using Cloud Monitoring.
 
 ```bash
 # Check the status of all spokes
-gcloud network-connectivity spokes list \
-  --hub=my-network-hub \
+gcloud network-connectivity hubs list-spokes my-network-hub \
   --project=hub-project \
   --format="table(name, state, linkedVpcNetwork.uri, linkedVpnTunnels.uris)"
 ```
@@ -274,8 +282,8 @@ Missing routes usually mean a spoke is not in the ACTIVE state. Check the spoke 
 
 ## Cost Considerations
 
-NCC charges for data transfer between spokes. Intra-region traffic (spoke to spoke within the same region) is cheaper than inter-region traffic. Plan your spoke placement to minimize cross-region data transfer where possible.
+NCC charges for active spoke hours and for data processed through the hub. Data transfer and general networking charges vary by spoke type, source, and destination. Plan your spoke placement to minimize cross-region data transfer where possible.
 
-There is no charge for the hub resource itself or for the spoke configuration. You only pay for the data that actually transits between spokes.
+There is no charge for the hub resource itself, but active spokes can incur hourly charges. You also pay for the underlying resources, such as Cloud VPN tunnels or Interconnect VLAN attachments, and for applicable data transfer.
 
 Network Connectivity Center transforms complex multi-network architectures into a manageable hub-and-spoke topology. The automatic route exchange eliminates manual route management, and the centralized view makes it much easier to understand how traffic flows across your organization.
