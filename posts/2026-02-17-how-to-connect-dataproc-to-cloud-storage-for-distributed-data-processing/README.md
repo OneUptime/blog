@@ -61,7 +61,7 @@ gcloud dataproc clusters create my-cluster \
   --service-account=dataproc-sa@my-project.iam.gserviceaccount.com \
   --scopes=cloud-platform \
   --num-workers=3 \
-  --image-version=2.1-debian11
+  --image-version=2.2-debian12
 ```
 
 ## Step 3: Read Data from Cloud Storage in Spark
@@ -132,7 +132,7 @@ You can configure Dataproc to use GCS as the default filesystem instead of HDFS.
 # Create a cluster with GCS as the default filesystem
 gcloud dataproc clusters create gcs-default-cluster \
   --region=us-central1 \
-  --image-version=2.1-debian11 \
+  --image-version=2.2-debian12 \
   --properties="core:fs.defaultFS=gs://my-dataproc-data" \
   --num-workers=2
 ```
@@ -153,21 +153,18 @@ The GCS connector has several configuration properties that affect performance. 
 # Create a cluster with optimized GCS connector settings
 gcloud dataproc clusters create tuned-cluster \
   --region=us-central1 \
-  --image-version=2.1-debian11 \
+  --image-version=2.2-debian12 \
   --num-workers=4 \
   --properties="\
 core:fs.gs.block.size=134217728,\
-core:fs.gs.metadata.cache.enable=true,\
-core:fs.gs.metadata.cache.type=FILESYSTEM_BACKED,\
 core:fs.gs.performance.cache.enable=true,\
 core:fs.gs.status.parallel.enable=true"
 ```
 
 Key properties explained:
 
-- `fs.gs.block.size` - Block size for reads (default 64MB, increase for large files)
-- `fs.gs.metadata.cache.enable` - Cache file metadata to reduce API calls
-- `fs.gs.performance.cache.enable` - Enable read caching for hot data
+- `fs.gs.block.size` - Reported block size (default 64MB, affects how Hadoop splits large input files)
+- `fs.gs.performance.cache.enable` - Cache recently queried object metadata in memory
 - `fs.gs.status.parallel.enable` - Parallelize status checks for directory listings
 
 ## Step 7: Handle Partitioned Data Efficiently
@@ -216,7 +213,7 @@ Dataproc clusters still have HDFS available on local disks. Here is when each ma
 - Large datasets that benefit from Cloud Storage's durability and scalability
 
 **Use HDFS for:**
-- Temporary shuffle data during job execution (Dataproc handles this automatically)
+- Temporary cluster-local data that does not need to survive cluster deletion
 - Small lookup tables that benefit from data locality
 - Iterative algorithms where the same data is read many times within a single job
 
