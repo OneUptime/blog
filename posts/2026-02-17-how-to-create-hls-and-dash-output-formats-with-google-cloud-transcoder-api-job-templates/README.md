@@ -16,13 +16,14 @@ In this guide, I will create job templates that produce both HLS and DASH output
 
 **HLS** (HTTP Live Streaming) was created by Apple and is supported natively on iOS, macOS, and Safari. It uses `.m3u8` playlist files and `.ts` segments (or `.fmp4` with CMAF).
 
-**DASH** (Dynamic Adaptive Streaming over HTTP) is an international standard supported by Chrome, Firefox, Edge, and Android. It uses `.mpd` manifest files and `.m4s` segments.
+**DASH** (Dynamic Adaptive Streaming over HTTP) is an international standard supported in Chrome, Firefox, Edge, and Android through players that use Media Source Extensions or native platform playback. It uses `.mpd` manifest files and `.m4s` segments.
 
 For maximum compatibility, you should produce both formats. The good news is that with CMAF (Common Media Application Format), you can use the same video segments for both HLS and DASH, saving encoding time and storage.
 
 ## Prerequisites
 
 - GCP project with Transcoder API enabled
+- Application Default Credentials configured for the project
 - Python 3.8+ with the Transcoder API client library
 - Cloud Storage bucket for output
 
@@ -37,13 +38,12 @@ pip install google-cloud-video-transcoder
 
 from google.cloud.video import transcoder_v1
 from google.cloud.video.transcoder_v1 import types
-from google.protobuf import duration_pb2
 
 client = transcoder_v1.TranscoderServiceClient()
 
 def create_hls_template(project_id, location):
     """Creates a job template that produces HLS output with
-    three quality renditions. This template can be reused for
+    four quality renditions. This template can be reused for
     any video that needs HLS encoding."""
 
     parent = f"projects/{project_id}/locations/{location}"
@@ -180,16 +180,26 @@ def create_dash_template(project_id, location):
 
     config.elementary_streams = elementary_streams
 
-    # DASH uses fragmented MP4 instead of MPEG-TS
+    # DASH uses fragmented MP4 instead of MPEG-TS.
+    # Each fMP4 mux stream can contain only one elementary stream,
+    # so create separate video-only and audio-only mux streams.
     mux_streams = []
     for s in streams:
         mux = types.MuxStream()
         mux.key = f"dash-{s['key']}"
         mux.container = "fmp4"  # Fragmented MP4 for DASH
-        mux.elementary_streams = [s["key"], "audio-aac"]
+        mux.elementary_streams = [s["key"]]
         mux.segment_settings = types.SegmentSettings()
         mux.segment_settings.segment_duration = "4s"
         mux_streams.append(mux)
+
+    audio_mux = types.MuxStream()
+    audio_mux.key = "dash-audio"
+    audio_mux.container = "fmp4"
+    audio_mux.elementary_streams = ["audio-aac"]
+    audio_mux.segment_settings = types.SegmentSettings()
+    audio_mux.segment_settings.segment_duration = "4s"
+    mux_streams.append(audio_mux)
 
     config.mux_streams = mux_streams
 
@@ -197,7 +207,7 @@ def create_dash_template(project_id, location):
     manifest = types.Manifest()
     manifest.file_name = "manifest.mpd"
     manifest.type_ = types.Manifest.ManifestType.DASH
-    manifest.mux_streams = [f"dash-{s['key']}" for s in streams]
+    manifest.mux_streams = [f"dash-{s['key']}" for s in streams] + ["dash-audio"]
     config.manifests = [manifest]
 
     template = types.JobTemplate()
@@ -257,16 +267,26 @@ def create_dual_format_template(project_id, location):
 
     config.elementary_streams = elementary_streams
 
-    # Use fMP4 mux streams - compatible with both HLS and DASH
+    # Use fMP4 mux streams - compatible with both HLS and DASH.
+    # Each fMP4 mux stream can contain only one elementary stream,
+    # so create separate video-only and audio-only mux streams.
     mux_streams = []
     for r in renditions:
         mux = types.MuxStream()
         mux.key = f"mux-{r['key']}"
         mux.container = "fmp4"
-        mux.elementary_streams = [r["key"], "audio"]
+        mux.elementary_streams = [r["key"]]
         mux.segment_settings = types.SegmentSettings()
         mux.segment_settings.segment_duration = "4s"
         mux_streams.append(mux)
+
+    audio_mux = types.MuxStream()
+    audio_mux.key = "mux-audio"
+    audio_mux.container = "fmp4"
+    audio_mux.elementary_streams = ["audio"]
+    audio_mux.segment_settings = types.SegmentSettings()
+    audio_mux.segment_settings.segment_duration = "4s"
+    mux_streams.append(audio_mux)
 
     config.mux_streams = mux_streams
 
@@ -274,12 +294,12 @@ def create_dual_format_template(project_id, location):
     hls_manifest = types.Manifest()
     hls_manifest.file_name = "manifest.m3u8"
     hls_manifest.type_ = types.Manifest.ManifestType.HLS
-    hls_manifest.mux_streams = [f"mux-{r['key']}" for r in renditions]
+    hls_manifest.mux_streams = [f"mux-{r['key']}" for r in renditions] + ["mux-audio"]
 
     dash_manifest = types.Manifest()
     dash_manifest.file_name = "manifest.mpd"
     dash_manifest.type_ = types.Manifest.ManifestType.DASH
-    dash_manifest.mux_streams = [f"mux-{r['key']}" for r in renditions]
+    dash_manifest.mux_streams = [f"mux-{r['key']}" for r in renditions] + ["mux-audio"]
 
     config.manifests = [hls_manifest, dash_manifest]
 
