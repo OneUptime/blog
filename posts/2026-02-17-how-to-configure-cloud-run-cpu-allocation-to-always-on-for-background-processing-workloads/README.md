@@ -8,7 +8,7 @@ Description: Learn how to configure Cloud Run CPU allocation to always-on mode f
 
 ---
 
-By default, Cloud Run only allocates CPU to your container while it is actively handling a request. The moment the response is sent, CPU gets throttled. This works great for typical web services, but it is a real problem if you need to do work in the background - processing queues, running scheduled tasks, or maintaining WebSocket connections.
+By default, Cloud Run only allocates CPU to your container while it is actively handling a request. The moment the response is sent, CPU gets throttled. This works great for typical web services, but it is a real problem if you need to do work in the background - processing queues, running scheduled tasks, or maintaining long-lived background connections.
 
 The fix is switching your Cloud Run service to "always-on" CPU allocation. This guide covers when you need it, how to configure it, and what it means for your costs.
 
@@ -21,14 +21,14 @@ Cloud Run's default CPU allocation model is "CPU only during request processing.
 3. Your code processes the request and sends a response
 4. CPU gets throttled to nearly zero
 
-This means any background threads, async tasks, or timers essentially freeze between requests. If you have a goroutine processing items from a queue, it stops making progress whenever there are no active HTTP requests. If you are running a WebSocket server, the connection stays open but your code cannot actually do anything on it.
+This means any background threads, async tasks, or timers essentially freeze between requests. If you have a goroutine processing items from a queue, it stops making progress whenever there are no active HTTP requests. WebSocket streams are active HTTP requests while connected, but any separate background work for those connections can still be throttled when the instance is no longer handling requests.
 
 ## When You Need Always-On CPU
 
 Here are the most common scenarios where always-on CPU is necessary:
 
-- **Background queue processing**: Your service pulls messages from Pub/Sub or Cloud Tasks and processes them independently of incoming HTTP requests
-- **WebSocket servers**: You need to push data to connected clients at any time, not just when a new request comes in
+- **Background queue processing**: Your service pulls messages from Pub/Sub or another queue and processes them independently of incoming HTTP requests
+- **WebSocket-adjacent background work**: You need workers that continue running even when no WebSocket or HTTP request is active on an instance
 - **Scheduled in-process tasks**: Your application runs cron-like internal schedulers
 - **Connection pooling**: You maintain database or cache connections that need periodic keepalive pings
 - **Metrics collection**: Background threads that aggregate and ship metrics or traces
@@ -47,11 +47,11 @@ The simplest way is a single flag during deployment:
 gcloud run deploy my-service \
   --image=us-central1-docker.pkg.dev/MY_PROJECT/my-repo/my-image:latest \
   --region=us-central1 \
-  --cpu-always-allocated \
+  --no-cpu-throttling \
   --min-instances=1
 ```
 
-The `--cpu-always-allocated` flag is the key piece. Note that I also set `--min-instances=1` because if your service scales to zero, there is no instance to allocate CPU to.
+The `--no-cpu-throttling` flag is the key piece. Note that I also set `--min-instances=1` because if your service scales to zero, there is no instance to allocate CPU to.
 
 To update an existing service without redeploying:
 
@@ -59,7 +59,7 @@ To update an existing service without redeploying:
 # Update an existing service to use always-on CPU
 gcloud run services update my-service \
   --region=us-central1 \
-  --cpu-always-allocated
+  --no-cpu-throttling
 ```
 
 ### Using Service YAML
@@ -197,7 +197,7 @@ Without always-on CPU, the `process_messages` function would only make progress 
 
 Always-on CPU changes the pricing model. Instead of paying only for request processing time, you pay for the entire time your instance is running. Here is how it breaks down:
 
-- **Default (CPU during requests)**: You are billed per request-second of CPU time. Idle time is free.
+- **Default (CPU during requests)**: You are billed while the instance processes requests, starts up, and shuts down. Idle time is not billed the same way as instance-based billing.
 - **Always-on CPU**: You are billed for every second the instance is up, whether or not it is handling requests.
 
 The always-on pricing per vCPU-second is lower than the request-based pricing, but you are paying for more seconds. Whether it is cheaper depends on your traffic pattern:
@@ -206,7 +206,7 @@ The always-on pricing per vCPU-second is lower than the request-based pricing, b
 - Sporadic, bursty traffic: Request-based is usually cheaper because you do not pay for idle time
 - Background processing: Always-on is the only option that works correctly
 
-Combine always-on CPU with `min-instances` wisely. Every minimum instance costs money 24/7.
+Combine always-on CPU with `min-instances` wisely. Every minimum instance using instance-based billing costs money while it is kept running.
 
 ## Monitoring CPU Usage
 
@@ -228,7 +228,7 @@ Always-on CPU is most useful when paired with minimum instances. Without minimum
 # Set both always-on CPU and minimum instances
 gcloud run services update my-service \
   --region=us-central1 \
-  --cpu-always-allocated \
+  --no-cpu-throttling \
   --min-instances=1 \
   --max-instances=20
 ```
@@ -243,7 +243,7 @@ If you decide always-on CPU is not right for your workload, you can switch back:
 # Revert to default CPU allocation (only during requests)
 gcloud run services update my-service \
   --region=us-central1 \
-  --no-cpu-always-allocated
+  --cpu-throttling
 ```
 
 Or update the YAML annotation:
@@ -257,4 +257,4 @@ run.googleapis.com/cpu-throttling: "true"
 
 Always-on CPU allocation on Cloud Run is a straightforward configuration change that makes a big difference for background workloads. Set `cpu-throttling` to false, pair it with minimum instances, and your containers will have CPU available at all times. Just keep an eye on costs since you are paying for uptime rather than just request time.
 
-For most web APIs that only respond to HTTP requests, the default CPU allocation is fine and cheaper. But the moment you need background processing, WebSockets, or any work that happens outside the request lifecycle, always-on CPU is the way to go.
+For most web APIs that only respond to HTTP requests, the default CPU allocation is fine and cheaper. But the moment you need background processing or any work that happens outside the request lifecycle, always-on CPU is the way to go.
