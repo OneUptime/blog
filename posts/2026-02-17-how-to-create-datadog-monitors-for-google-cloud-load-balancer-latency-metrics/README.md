@@ -34,20 +34,31 @@ gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:datadog-integration@my-project.iam.gserviceaccount.com" \
   --role="roles/compute.viewer"
 
-# Create and download a key file
-gcloud iam service-accounts keys create datadog-key.json \
-  --iam-account=datadog-integration@my-project.iam.gserviceaccount.com
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:datadog-integration@my-project.iam.gserviceaccount.com" \
+  --role="roles/cloudasset.viewer"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:datadog-integration@my-project.iam.gserviceaccount.com" \
+  --role="roles/browser"
+
+# Grant the Datadog principal permission to impersonate the service account
+gcloud iam service-accounts add-iam-policy-binding \
+  datadog-integration@my-project.iam.gserviceaccount.com \
+  --member="<DATADOG_PRINCIPAL_FROM_DATADOG>" \
+  --role="roles/iam.serviceAccountTokenCreator" \
+  --project=my-project
 ```
 
-Upload the service account key in the Datadog GCP integration tile. Once connected, Datadog starts collecting GCP metrics with a delay of about 5-10 minutes.
+Enter the service account email in the Datadog GCP integration tile and copy the Datadog principal from that workflow before granting impersonation access. Once connected, Datadog starts collecting GCP metrics with a delay of about 5-10 minutes.
 
 ## Understanding Load Balancer Latency Metrics
 
 Google Cloud Load Balancer emits several latency-related metrics. The ones that matter most for monitoring are:
 
-- `gcp.loadbalancing.https.total_latencies` - The total time from when the load balancer receives the first byte of the request to when it sends the last byte of the response. This is the metric most closely tied to user experience.
-- `gcp.loadbalancing.https.backend_latencies` - The time the backend takes to process the request. The difference between total and backend latency tells you how much time the load balancer itself adds.
-- `gcp.loadbalancing.https.frontend_tcp_rtt` - The round-trip time between the client and the load balancer. Useful for understanding if latency is caused by network distance.
+- `gcp.loadbalancing.https.total_latencies.p95` - The total time from when the load balancer receives the first byte of the request to when the client acknowledges the last byte of the response. This is the metric most closely tied to user experience. Datadog also exposes `.avg` and `.p99` variants.
+- `gcp.loadbalancing.https.backend_latencies.p95` - The time the backend takes to process the request. Comparing backend latency with total latency helps separate backend processing from the rest of the request path, but it is not a precise measure of load balancer overhead. Datadog also exposes `.avg` and `.p99` variants.
+- `gcp.loadbalancing.https.frontend_tcp_rtt.p95` - The round-trip time between the client and the load balancer. Useful for understanding if latency is caused by network distance. Datadog also exposes `.avg` and `.p99` variants.
 
 Each of these metrics comes tagged with `url_map_name`, `backend_target_name`, `matched_url_path_rule`, and `response_code_class`, which lets you slice the data in useful ways.
 
@@ -67,14 +78,11 @@ resource "datadog_monitor" "lb_latency_p95" {
     P95 latency for the load balancer {{url_map_name.name}} has exceeded 500ms.
 
     Current value: {{value}}ms
-    Backend: {{backend_target_name.name}}
-    URL rule: {{matched_url_path_rule.name}}
-
     Check the backend service health and recent deployments.
     @slack-platform-alerts @pagerduty-oncall
   EOT
 
-  query = "percentile(last_5m):p95:gcp.loadbalancing.https.total_latencies{project_id:my-project} by {url_map_name} > 500"
+  query = "avg(last_5m):avg:gcp.loadbalancing.https.total_latencies.p95{project_id:my-project} by {url_map_name} > 500"
 
   monitor_thresholds {
     critical = 500
@@ -108,7 +116,7 @@ resource "datadog_monitor" "backend_api_latency" {
     @slack-api-team
   EOT
 
-  query = "percentile(last_5m):p95:gcp.loadbalancing.https.backend_latencies{project_id:my-project,backend_target_name:api-backend-service} > 200"
+  query = "avg(last_5m):avg:gcp.loadbalancing.https.backend_latencies.p95{project_id:my-project,backend_target_name:api-backend-service} > 200"
 
   monitor_thresholds {
     critical = 200
@@ -127,10 +135,14 @@ Fixed thresholds work for catching obvious problems, but they miss gradual degra
 # Datadog anomaly detection query for load balancer latency
 # Uses the agile algorithm with 2 standard deviations
 avg(last_4h):anomalies(
-  avg:gcp.loadbalancing.https.total_latencies{project_id:my-project} by {url_map_name},
+  avg:gcp.loadbalancing.https.total_latencies.p95{project_id:my-project} by {url_map_name},
   'agile',
   2,
-  direction='above'
+  direction='above',
+  alert_window='last_30m',
+  interval=60,
+  count_default_zero='false',
+  seasonality='weekly'
 ) >= 1
 ```
 
@@ -138,7 +150,7 @@ This monitor learns your typical latency pattern - including daily cycles and we
 
 ## Latency by Response Code
 
-Not all requests are equal. A 200 response that takes 500ms is concerning. A 304 response that takes 500ms might be expected for a large resource. And 5xx errors that are slow often indicate a different root cause than fast 5xx errors.
+Not all requests are equal. A 200 response that takes 500ms is concerning. A 304 response that takes 500ms might be expected for a cache validation path. And 5xx errors that are slow often indicate a different root cause than fast 5xx errors.
 
 ```hcl
 # Monitor for slow error responses specifically
@@ -155,7 +167,7 @@ resource "datadog_monitor" "slow_errors" {
     @slack-platform-alerts
   EOT
 
-  query = "percentile(last_5m):p95:gcp.loadbalancing.https.total_latencies{project_id:my-project,response_code_class:500} > 10000"
+  query = "avg(last_5m):avg:gcp.loadbalancing.https.total_latencies.p95{project_id:my-project,response_code_class:500} > 10000"
 
   monitor_thresholds {
     critical = 10000
@@ -181,21 +193,21 @@ resource "datadog_dashboard" "lb_latency" {
     timeseries_definition {
       title = "Total Latency Distribution"
       request {
-        q            = "p50:gcp.loadbalancing.https.total_latencies{project_id:my-project}"
+        q            = "avg:gcp.loadbalancing.https.total_latencies.avg{project_id:my-project}"
         display_type = "line"
         style {
           palette = "green"
         }
       }
       request {
-        q            = "p95:gcp.loadbalancing.https.total_latencies{project_id:my-project}"
+        q            = "avg:gcp.loadbalancing.https.total_latencies.p95{project_id:my-project}"
         display_type = "line"
         style {
           palette = "orange"
         }
       }
       request {
-        q            = "p99:gcp.loadbalancing.https.total_latencies{project_id:my-project}"
+        q            = "avg:gcp.loadbalancing.https.total_latencies.p99{project_id:my-project}"
         display_type = "line"
         style {
           palette = "red"
@@ -208,11 +220,11 @@ resource "datadog_dashboard" "lb_latency" {
     timeseries_definition {
       title = "Backend vs Total Latency"
       request {
-        q            = "avg:gcp.loadbalancing.https.total_latencies{project_id:my-project}"
+        q            = "avg:gcp.loadbalancing.https.total_latencies.avg{project_id:my-project}"
         display_type = "area"
       }
       request {
-        q            = "avg:gcp.loadbalancing.https.backend_latencies{project_id:my-project}"
+        q            = "avg:gcp.loadbalancing.https.backend_latencies.avg{project_id:my-project}"
         display_type = "area"
       }
     }
@@ -222,7 +234,7 @@ resource "datadog_dashboard" "lb_latency" {
     toplist_definition {
       title = "Slowest URL Paths"
       request {
-        q = "top(avg:gcp.loadbalancing.https.total_latencies{project_id:my-project} by {matched_url_path_rule}, 10, 'mean', 'desc')"
+        q = "top(avg:gcp.loadbalancing.https.total_latencies.p95{project_id:my-project} by {matched_url_path_rule}, 10, 'mean', 'desc')"
       }
     }
   }
@@ -233,16 +245,24 @@ resource "datadog_dashboard" "lb_latency" {
 
 Latency spikes often coincide with traffic surges. Create a composite monitor that considers both metrics.
 
-```text
+```hcl
 # Composite monitor: alert only when latency is high AND request volume is above normal
 # This reduces false positives during low-traffic periods
-avg(last_5m):avg:gcp.loadbalancing.https.total_latencies{project_id:my-project} > 300 &&
-avg(last_5m):sum:gcp.loadbalancing.https.request_count{project_id:my-project} > 1000
+# Assumes lb_latency_high and lb_request_volume_high are existing non-composite monitors
+resource "datadog_monitor" "lb_latency_and_traffic" {
+  name    = "GCP LB - High Latency With Elevated Traffic"
+  type    = "composite"
+  message = "Load balancer latency is high while request volume is elevated. @slack-platform-alerts"
+
+  query = "${datadog_monitor.lb_latency_high.id} && ${datadog_monitor.lb_request_volume_high.id}"
+
+  tags = ["service:load-balancer", "env:production"]
+}
 ```
 
 ## Practical Tips
 
-Set different thresholds for different times of day. What counts as high latency during peak hours might be normal during a batch processing window. Datadog's scheduling feature lets you mute or adjust monitors based on time.
+Set different thresholds for different times of day. What counts as high latency during peak hours might be normal during a batch processing window. Datadog downtimes and custom schedules let you control when monitors notify or evaluate; use separate monitors when you need different threshold values.
 
 Use the `matched_url_path_rule` tag to set different latency expectations for different endpoints. Your healthcheck endpoint should respond in under 10ms, while a report-generation endpoint might legitimately take several seconds.
 
