@@ -8,7 +8,7 @@ Description: Secure your Memorystore for Redis instances by enabling and configu
 
 ---
 
-By default, any client that can reach your Memorystore Redis instance on the network can execute any Redis command without authentication. If your VPC network is tightly controlled, that might be acceptable for development. But for production workloads, you should always enable AUTH. It adds a layer of defense that prevents unauthorized access even if your network controls have a gap.
+By default, any client that can reach your Memorystore Redis instance on the network can execute any Redis command without authentication. If your VPC network is tightly controlled, that might be acceptable for development. But for production workloads, you should usually enable AUTH. It adds a layer of defense by requiring clients to know the instance's AUTH string, but it does not replace strong VPC network controls.
 
 AUTH in Memorystore Redis works by requiring clients to present a password (called the AUTH string) before executing any commands. In this post, I will cover how to enable AUTH on new and existing instances, rotate auth strings safely, and update your applications to use the credential.
 
@@ -18,9 +18,9 @@ When AUTH is enabled on a Memorystore Redis instance, the server generates a ran
 
 A few important points:
 - Memorystore generates the AUTH string for you - you cannot set a custom password
-- The AUTH string is a high-entropy random string (typically 50+ characters)
+- The AUTH string is a randomly generated 36-character UUID
 - You can retrieve the AUTH string using the gcloud CLI or API
-- Rotating the auth string is supported and can be done without downtime
+- Changing the auth string is supported, but it is a disruptive operation
 
 ## Enabling AUTH on a New Instance
 
@@ -49,7 +49,7 @@ Store this string securely - you will need it in every client that connects to t
 
 ## Enabling AUTH on an Existing Instance
 
-You can enable AUTH on an already running instance. Existing connections will not be immediately dropped, but new connections will require authentication:
+You can enable AUTH on an already running instance. Incoming client connections must authenticate, and existing unauthenticated connections must authenticate before they can continue issuing commands:
 
 ```bash
 # Enable AUTH on an existing Memorystore Redis instance
@@ -70,13 +70,13 @@ Be aware that this is a disruptive change if your applications are not prepared 
 
 ## Migration Strategy for Existing Instances
 
-When enabling AUTH on a production instance, follow this sequence to avoid downtime:
+When enabling AUTH on a production instance, follow this sequence to keep the disruption controlled:
 
 ```mermaid
 graph TD
-    A[Step 1: Update all client applications<br>to support AUTH] --> B[Step 2: Deploy updated applications<br>with AUTH string configured]
-    B --> C[Step 3: Enable AUTH on the<br>Memorystore instance]
-    C --> D[Step 4: Verify all connections<br>are authenticated]
+    A[Step 1: Update all client applications<br>to support AUTH] --> B[Step 2: Deploy AUTH-capable code<br>without the AUTH string]
+    B --> C[Step 3: Enable AUTH and retrieve<br>the AUTH string]
+    C --> D[Step 4: Update secrets and restart<br>client applications]
     D --> E[Step 5: Monitor for connection errors]
 ```
 
@@ -120,11 +120,20 @@ def create_redis_client():
     return client
 ```
 
-### Step 2: Deploy with AUTH String
+### Step 2: Deploy AUTH-Capable Code
 
-Set the AUTH string as an environment variable or secret:
+Deploy the updated application code without setting `REDIS_AUTH` yet. This verifies that your clients still work before AUTH is enabled.
+
+### Step 3: Enable AUTH and Store the AUTH String
+
+Enable AUTH, then retrieve the generated AUTH string and store it as an environment variable or secret:
 
 ```bash
+# Enable AUTH on the Memorystore instance
+gcloud redis instances update my-existing-redis \
+  --region=us-central1 \
+  --enable-auth
+
 # Store the AUTH string in Secret Manager
 AUTH_STRING=$(gcloud redis instances get-auth-string my-existing-redis \
   --region=us-central1 \
@@ -143,51 +152,45 @@ gcloud run services update my-service \
   --set-secrets="REDIS_AUTH=redis-auth:latest"
 ```
 
-### Step 3: Enable AUTH
+### Step 4: Restart and Verify Clients
 
-With all clients updated and deployed:
+Restart or redeploy your clients so that they reconnect with the AUTH string:
 
 ```bash
-# Now it is safe to enable AUTH
-gcloud redis instances update my-existing-redis \
-  --region=us-central1 \
-  --enable-auth
+# For GKE:
+kubectl rollout restart deployment/my-app
+
+# For Cloud Run, the update command above creates a new revision
 ```
 
 ## Rotating the AUTH String
 
-Periodically rotating credentials is a security best practice. Memorystore supports a two-phase rotation that allows you to update clients before the old string stops working.
+Periodically rotating credentials is a security best practice. For Memorystore for Redis, changing the AUTH string is done by disabling AUTH and then enabling it again. This generates a new AUTH string and invalidates the previous one.
 
 ### Understanding Rotation Phases
 
-Memorystore maintains two auth strings during rotation:
-1. The current auth string (still works)
-2. The new auth string (also works)
-
-Both strings are valid during the transition period, giving you time to update all clients.
+Memorystore does not keep both the old and new AUTH strings valid during rotation. When you re-enable AUTH, authenticated client connections are disrupted because the new AUTH string invalidates the previous one. Plan the change for a maintenance window and make sure your clients reconnect with the new value.
 
 ### Performing a Rotation
 
 ```bash
-# Step 1: Initiate the rotation - this generates a new auth string
-# while keeping the old one valid
+# Step 1: Disable AUTH
 gcloud redis instances update secure-cache \
   --region=us-central1 \
-  --update-redis-config=AUTH=new
+  --no-enable-auth
 
-# Step 2: Get the new AUTH string
+# Step 2: Re-enable AUTH to generate a new auth string
+gcloud redis instances update secure-cache \
+  --region=us-central1 \
+  --enable-auth
+
+# Step 3: Get the new AUTH string
 NEW_AUTH=$(gcloud redis instances get-auth-string secure-cache \
   --region=us-central1 \
   --format="value(authString)")
 
-# Step 3: Update all client applications with the new string
+# Step 4: Update all client applications with the new string
 # (deploy updates to GKE, Cloud Run, etc.)
-
-# Step 4: After all clients are updated, complete the rotation
-# This invalidates the old auth string
-gcloud redis instances update secure-cache \
-  --region=us-central1 \
-  --update-redis-config=AUTH=complete
 ```
 
 ### Automated Rotation Script
@@ -203,6 +206,15 @@ REGION="us-central1"
 SECRET_NAME="redis-auth"
 
 echo "Starting AUTH rotation for ${INSTANCE}..."
+
+# Disable and re-enable AUTH to generate a new AUTH string
+gcloud redis instances update "${INSTANCE}" \
+  --region="${REGION}" \
+  --no-enable-auth
+
+gcloud redis instances update "${INSTANCE}" \
+  --region="${REGION}" \
+  --enable-auth
 
 # Get the new AUTH string
 NEW_AUTH=$(gcloud redis instances get-auth-string "${INSTANCE}" \
@@ -330,4 +342,4 @@ Set up an alert for repeated AUTH failures, as this could indicate a brute-force
 
 ## Wrapping Up
 
-Enabling AUTH on Memorystore Redis is a simple but important security measure. It protects against unauthorized access from within your VPC and adds defense in depth alongside network controls. The key to a smooth rollout is updating your client applications before enabling AUTH on the instance, and using the rotation feature to change credentials without downtime. Make AUTH part of your standard Memorystore deployment process and you will avoid a common security gap.
+Enabling AUTH on Memorystore Redis is a simple but important security measure. It requires clients inside your VPC to authenticate and adds defense in depth alongside network controls. The key to a smooth rollout is updating your client applications before enabling AUTH on the instance, and planning credential changes as disruptive maintenance. Make AUTH part of your standard Memorystore deployment process and you will avoid a common security gap.
