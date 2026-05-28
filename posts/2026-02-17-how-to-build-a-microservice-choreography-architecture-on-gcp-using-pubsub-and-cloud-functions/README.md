@@ -42,23 +42,8 @@ gcloud pubsub topics create account-provisioned
 gcloud pubsub topics create analytics-updated
 gcloud pubsub topics create crm-synced
 
-# Each consuming service gets its own subscription
-# This means each service processes events independently
-gcloud pubsub subscriptions create welcome-email-sub \
-  --topic=user-registered \
-  --ack-deadline=30
-
-gcloud pubsub subscriptions create account-provisioner-sub \
-  --topic=user-registered \
-  --ack-deadline=60
-
-gcloud pubsub subscriptions create analytics-sub \
-  --topic=user-registered \
-  --ack-deadline=30
-
-gcloud pubsub subscriptions create crm-sync-sub \
-  --topic=user-registered \
-  --ack-deadline=30
+# Each Cloud Function you deploy with --trigger-topic gets its own
+# underlying subscription, so each service processes events independently.
 ```
 
 ## Publishing the Initial Event
@@ -144,11 +129,10 @@ exports.sendWelcomeEmail = async (message) => {
     console.log(`Welcome email sent to ${email}`);
   } catch (error) {
     console.error(`Failed to send welcome email to ${email}:`, error.message);
-    // Throwing here will cause the message to be redelivered
+    // Throwing here will cause the message to be redelivered when
+    // the function is deployed with retries enabled.
     throw error;
   }
-
-  message.ack();
 };
 ```
 
@@ -198,19 +182,21 @@ exports.provisionAccount = async (message) => {
   });
 
   console.log(`Account provisioned for user ${userId} on ${plan} plan`);
-  message.ack();
 };
 ```
 
 ## Adding a New Service Without Touching Existing Code
 
-This is where choreography really shines. Let us say the marketing team wants to add a referral tracking service. You just create a new function that subscribes to the same topic. No existing service needs to change.
+This is where choreography really shines. Let us say the marketing team wants to add a referral tracking service. You just deploy a new function with a trigger on the same topic. No existing service needs to change.
 
 ```bash
-# Create a subscription for the new service
-gcloud pubsub subscriptions create referral-tracking-sub \
-  --topic=user-registered \
-  --ack-deadline=30
+# Deploy a new service with a trigger on the existing topic
+gcloud functions deploy trackReferral \
+  --no-gen2 \
+  --runtime=nodejs22 \
+  --trigger-topic=user-registered \
+  --source=./referral-tracker \
+  --retry
 ```
 
 ```javascript
@@ -225,8 +211,6 @@ exports.trackReferral = async (message) => {
     await creditReferrer(referralCode, userId);
     console.log(`Referral credited for user ${userId}`);
   }
-
-  message.ack();
 };
 ```
 
@@ -235,23 +219,30 @@ exports.trackReferral = async (message) => {
 ```bash
 # Deploy each function with its Pub/Sub trigger
 gcloud functions deploy sendWelcomeEmail \
-  --runtime=nodejs20 \
+  --no-gen2 \
+  --runtime=nodejs22 \
   --trigger-topic=user-registered \
   --source=./welcome-email \
-  --set-env-vars=SENDGRID_API_KEY=$SENDGRID_KEY
+  --set-env-vars=SENDGRID_API_KEY=$SENDGRID_KEY \
+  --retry
 
 gcloud functions deploy provisionAccount \
-  --runtime=nodejs20 \
+  --no-gen2 \
+  --runtime=nodejs22 \
   --trigger-topic=user-registered \
-  --source=./account-provisioner
+  --source=./account-provisioner \
+  --retry
 
 gcloud functions deploy trackReferral \
-  --runtime=nodejs20 \
+  --no-gen2 \
+  --runtime=nodejs22 \
   --trigger-topic=user-registered \
-  --source=./referral-tracker
+  --source=./referral-tracker \
+  --retry
 
 gcloud functions deploy registerUser \
-  --runtime=nodejs20 \
+  --no-gen2 \
+  --runtime=nodejs22 \
   --trigger-http \
   --source=./registration-api \
   --allow-unauthenticated
@@ -259,18 +250,18 @@ gcloud functions deploy registerUser \
 
 ## Handling Failures in a Choreography
 
-Without a central orchestrator, tracking failures requires a different approach. Dead letter topics and monitoring become essential.
+Without a central orchestrator, tracking failures requires a different approach. Retries, dead letter topics, and monitoring become essential. Dead letter policies are configured on Pub/Sub subscriptions, so use them for subscriptions you manage directly. Cloud Functions created with `--trigger-topic` manage the trigger subscription for you; for those functions, deploy with `--retry` and monitor failures in Cloud Logging and Error Reporting.
 
 ```bash
 # Set up dead letter topics for failed messages
 gcloud pubsub topics create dead-letter
 
-# Update subscriptions to use dead letter topics after 5 retries
-gcloud pubsub subscriptions update welcome-email-sub \
+# Update subscriptions you manage directly to use dead letter topics after 5 retries
+gcloud pubsub subscriptions update my-worker-sub \
   --dead-letter-topic=dead-letter \
   --max-delivery-attempts=5
 
-gcloud pubsub subscriptions update account-provisioner-sub \
+gcloud pubsub subscriptions update another-worker-sub \
   --dead-letter-topic=dead-letter \
   --max-delivery-attempts=5
 ```
