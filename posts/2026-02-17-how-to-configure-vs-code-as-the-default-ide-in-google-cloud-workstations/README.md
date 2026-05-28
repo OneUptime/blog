@@ -36,32 +36,35 @@ When a developer starts a workstation with this configuration and opens it in th
 
 ### Pre-Installing Extensions
 
-You can pre-install VS Code extensions in your custom container image so they are available immediately when a developer starts their workstation.
+You can install VS Code extensions from the Open VSX Registry with a startup script in your custom container image so they are available when a developer starts their workstation.
 
 ```dockerfile
-# Dockerfile for a workstation with pre-installed VS Code extensions
+# Dockerfile for a workstation with startup-installed VS Code extensions
 FROM us-central1-docker.pkg.dev/cloud-workstations-images/predefined/code-oss:latest
 
-USER root
+COPY install-code-oss-extensions.sh /etc/workstation-startup.d/120_install-code-oss-extensions.sh
+RUN chmod +x /etc/workstation-startup.d/120_install-code-oss-extensions.sh
+```
 
-# Install extensions using the Code OSS CLI
-# Each extension is identified by its marketplace ID
-RUN code-oss-cloud-workstations --install-extension ms-python.python \
-    && code-oss-cloud-workstations --install-extension golang.go \
-    && code-oss-cloud-workstations --install-extension dbaeumer.vscode-eslint \
-    && code-oss-cloud-workstations --install-extension esbenp.prettier-vscode \
-    && code-oss-cloud-workstations --install-extension eamodio.gitlens \
-    && code-oss-cloud-workstations --install-extension ms-azuretools.vscode-docker \
-    && code-oss-cloud-workstations --install-extension redhat.vscode-yaml \
-    && code-oss-cloud-workstations --install-extension ms-kubernetes-tools.vscode-kubernetes-tools \
-    && code-oss-cloud-workstations --install-extension github.copilot
+The startup script runs the Code OSS CLI as the workstation user:
 
-USER user
+```bash
+#!/bin/bash
+# install-code-oss-extensions.sh
+
+sudo -u user /opt/code-oss/bin/codeoss-cloudworkstations \
+    --install-extension ms-python.python \
+    --install-extension golang.go \
+    --install-extension dbaeumer.vscode-eslint \
+    --install-extension esbenp.prettier-vscode \
+    --install-extension eamodio.gitlens \
+    --install-extension redhat.vscode-yaml \
+    --install-extension ms-kubernetes-tools.vscode-kubernetes-tools
 ```
 
 ### Setting Default VS Code Settings
 
-You can also bake in default settings that apply to all workstations. These go into the machine-level settings file:
+You can also bake in default settings that apply to all workstations. These go into the machine settings file:
 
 ```dockerfile
 # Add to your Dockerfile after the extension installation
@@ -110,9 +113,6 @@ if [ ! -f "${SETTINGS_FILE}" ]; then
     "telemetry.telemetryLevel": "off",
     "python.defaultInterpreterPath": "/usr/bin/python3",
     "go.toolsManagement.autoUpdate": true,
-    "[python]": {
-        "editor.defaultFormatter": "ms-python.python"
-    },
     "[javascript]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode"
     },
@@ -124,7 +124,7 @@ if [ ! -f "${SETTINGS_FILE}" ]; then
     }
 }
 SETTINGS
-    chown user:user "${SETTINGS_FILE}"
+    chown -R user:user "${SETTINGS_DIR}"
 fi
 ```
 
@@ -132,13 +132,13 @@ fi
 
 Many developers prefer using their local VS Code installation because they already have it configured exactly how they want. Cloud Workstations supports this through SSH.
 
-### Step 1: Install the Cloud Workstations Extension
+### Step 1: Install Remote - SSH
 
-Install the "Google Cloud Code" extension in your local VS Code. This extension includes Cloud Workstations integration.
+Install VS Code's "Remote - SSH" extension locally. You can also install Cloud Code if you want Google Cloud development tools inside VS Code.
 
 ### Step 2: Configure SSH Access
 
-Set up the SSH configuration for your workstation:
+Set up the SSH tunnel for your workstation:
 
 ```bash
 # Start your workstation if it is not already running
@@ -148,31 +148,31 @@ gcloud workstations start my-workstation \
     --cluster=dev-cluster \
     --config=vscode-config
 
-# Generate the SSH config entry for the workstation
-gcloud workstations ssh my-workstation \
+# Open an SSH tunnel to the workstation
+gcloud workstations start-tcp-tunnel my-workstation 22 \
     --project=my-project \
     --region=us-central1 \
     --cluster=dev-cluster \
     --config=vscode-config \
-    --dry-run
+    --local-host-port=:1025
 ```
 
-The dry-run command outputs the SSH configuration you need. Add it to your `~/.ssh/config` file.
+Leave the tunnel command running. It prints a "Listening on port" message; use that local port when connecting from VS Code.
 
 ### Step 3: Connect from Local VS Code
 
-With the SSH config in place, use VS Code's Remote - SSH extension to connect:
+With the SSH tunnel running, use VS Code's Remote - SSH extension to connect:
 
 1. Open VS Code locally
 2. Press Ctrl+Shift+P (or Cmd+Shift+P on Mac) and type "Remote-SSH: Connect to Host"
-3. Select your workstation from the list
+3. Enter `user@localhost:1025`, replacing `1025` with the local port printed by the tunnel command
 4. VS Code opens a new window connected to the cloud workstation
 
-Your local VS Code extensions, themes, and keybindings are used, but all file operations and terminal commands run on the cloud workstation. This means you get your personalized editor experience with the compute power and network access of the cloud machine.
+Your local VS Code settings, themes, keybindings, and UI extensions are used, but workspace extensions normally run on the remote workstation and may need to be installed there. File operations and terminal commands run on the cloud workstation. This means you get your personalized editor experience with the compute power and network access of the cloud machine.
 
 ## Option 3: Using VS Code Tunnels
 
-Cloud Workstations also supports VS Code tunnels, which creates a direct connection between your local VS Code and the workstation without needing SSH:
+VS Code also supports tunnels, which can create a connection between your local VS Code and the workstation without using VS Code's Remote - SSH flow:
 
 ```bash
 #!/bin/bash
@@ -181,7 +181,7 @@ Cloud Workstations also supports VS Code tunnels, which creates a direct connect
 # It starts a VS Code tunnel that your local VS Code can connect to
 
 # Download and install the VS Code CLI
-curl -Lk 'https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64' \
+curl -L 'https://code.visualstudio.com/sha/download?build=stable&os=cli-linux-x64' \
     --output /tmp/vscode-cli.tar.gz
 tar -xf /tmp/vscode-cli.tar.gz -C /usr/local/bin
 
@@ -196,7 +196,7 @@ For the browser-based Code OSS, some keyboard shortcuts conflict with browser sh
 
 ```json
 // keybindings.json
-// Place this in /home/user/.codeoss-cloudworkstations/data/Machine/keybindings.json
+// Add this from Preferences: Open Keyboard Shortcuts (JSON)
 [
     {
         // Use Ctrl+Shift+` instead of Ctrl+` for terminal toggle
@@ -228,9 +228,9 @@ For teams that want to enforce workspace trust settings across all workstations:
 
 ## Syncing Settings Across Workstations
 
-If a developer has multiple workstations (say one for backend and one for frontend work), they can sync settings using VS Code's built-in Settings Sync with a GitHub or Microsoft account. This keeps their preferences consistent across all their environments.
+If a developer has multiple workstations (say one for backend and one for frontend work), they can sync settings using VS Code's built-in Settings Sync with a GitHub or Microsoft account. This keeps editor preferences consistent across their environments.
 
-To enable this, developers simply sign in through the Settings Sync option in the bottom-left corner of VS Code. Their settings, extensions, keybindings, and snippets will sync across all their workstations and even their local VS Code installation.
+To enable this, developers simply sign in through the Settings Sync option in the bottom-left corner of VS Code. Their settings, extensions, keybindings, and snippets can sync across VS Code installations, although VS Code does not sync extensions to or from a remote SSH window automatically.
 
 ## Performance Tips
 
