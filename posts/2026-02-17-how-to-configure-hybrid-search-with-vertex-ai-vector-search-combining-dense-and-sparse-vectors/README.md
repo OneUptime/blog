@@ -1,4 +1,4 @@
-# How to Configure Hybrid Search with Vertex AI Vector Search Combining Dense
+# How to Configure Hybrid Search with Vertex AI Vector Search Combining Dense and Sparse Vectors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,11 +10,11 @@ Description: Learn how to configure hybrid search on Vertex AI Vector Search by 
 
 Dense vector search is great at finding semantically similar content - a query about "automobile maintenance" will match documents about "car repair." But it can miss exact keyword matches that matter, like specific product codes, error messages, or technical terms. Sparse vectors, like those from BM25 or TF-IDF, excel at exact matching but miss semantic relationships.
 
-Hybrid search combines both approaches. You search with dense vectors for semantic understanding and sparse vectors for keyword precision, then merge the results. This gives you the best of both worlds and consistently outperforms either approach alone.
+Hybrid search combines both approaches. You search with dense vectors for semantic understanding and sparse vectors for keyword precision, then merge the results. This gives you the best of both worlds and often improves quality compared with using either approach alone.
 
 ## Understanding Dense vs Sparse Vectors
 
-Dense vectors are the fixed-size embeddings you get from models like sentence-transformers or Vertex AI's text embedding API. Every dimension has a non-zero value, and the vector captures the semantic meaning of the text. A 768-dimensional dense vector might represent "the quick brown fox."
+Dense vectors are the fixed-size embeddings you get from models like sentence-transformers or Vertex AI's text embedding API. Most dimensions can carry values, and the vector captures the semantic meaning of the text. A 768-dimensional dense vector might represent "the quick brown fox."
 
 Sparse vectors have the same dimensionality as your vocabulary (potentially millions of dimensions) but most values are zero. Only the dimensions corresponding to tokens present in the text have non-zero values. A sparse vector for "the quick brown fox" would have non-zero values at the indices for "the", "quick", "brown", and "fox."
 
@@ -43,19 +43,19 @@ This code generates dense embeddings using Vertex AI and sparse embeddings using
 ```python
 # embedding_generator.py - Generate both dense and sparse vectors
 
-import numpy as np
-from google.cloud import aiplatform
-from vertexai.language_models import TextEmbeddingModel
-from sklearn.feature_extraction.text import TfidfVectorizer
+import vertexai
+from vertexai.language_models import TextEmbeddingInput, TextEmbeddingModel
 from collections import Counter
 import math
+
+vertexai.init(project="your-project-id", location="us-central1")
 
 class HybridEmbedder:
     """Generates both dense and sparse embeddings for hybrid search."""
 
     def __init__(self, corpus=None):
         # Dense model - Vertex AI text embeddings
-        self.dense_model = TextEmbeddingModel.from_pretrained("text-embedding-004")
+        self.dense_model = TextEmbeddingModel.from_pretrained("text-embedding-005")
 
         # Sparse model - BM25-style scoring
         if corpus:
@@ -81,9 +81,10 @@ class HybridEmbedder:
         self.avg_doc_length /= self.doc_count
         self.vocab_size = len(self.vocab)
 
-    def encode_dense(self, texts):
+    def encode_dense(self, texts, task_type="RETRIEVAL_DOCUMENT"):
         """Generate dense embeddings using Vertex AI."""
-        embeddings = self.dense_model.get_embeddings(texts)
+        inputs = [TextEmbeddingInput(text, task_type) for text in texts]
+        embeddings = self.dense_model.get_embeddings(inputs)
         return [emb.values for emb in embeddings]
 
     def encode_sparse(self, text, k1=1.5, b=0.75):
@@ -174,7 +175,7 @@ def prepare_hybrid_vectors(embedder, documents, output_path):
             # Add metadata for filtering
             if "category" in doc:
                 record["restricts"] = [
-                    {"namespace": "category", "allow_list": [doc["category"]]}
+                    {"namespace": "category", "allow": [doc["category"]]}
                 ]
 
             f.write(json.dumps(record) + "\n")
@@ -188,7 +189,7 @@ documents = [
     # ... more documents
 ]
 
-prepare_hybrid_vectors(embedder, documents, "hybrid_vectors.jsonl")
+prepare_hybrid_vectors(embedder, documents, "hybrid_vectors.json")
 ```
 
 ## Creating a Hybrid Search Index
@@ -201,7 +202,7 @@ from google.cloud import aiplatform
 aiplatform.init(project="your-project-id", location="us-central1")
 
 # Upload hybrid vectors to GCS first
-# gsutil cp hybrid_vectors.jsonl gs://your-bucket/hybrid-data/
+# gsutil cp hybrid_vectors.json gs://your-bucket/hybrid-data/
 
 # Create the hybrid index
 index = aiplatform.MatchingEngineIndex.create_tree_ah_index(
@@ -225,7 +226,8 @@ When querying, provide both dense and sparse query vectors. Vertex AI combines t
 This code performs a hybrid search query:
 
 ```python
-from google.cloud import aiplatform_v1
+from google.cloud import aiplatform
+from google.cloud.aiplatform.matching_engine.matching_engine_index_endpoint import HybridQuery
 
 def hybrid_search(endpoint_name, deployed_index_id, query_text, embedder, num_neighbors=10, alpha=0.5):
     """Perform hybrid search combining dense and sparse vectors.
@@ -239,42 +241,34 @@ def hybrid_search(endpoint_name, deployed_index_id, query_text, embedder, num_ne
         alpha: Weight for dense vs sparse (0=all sparse, 1=all dense)
     """
     # Generate query embeddings
-    dense_embedding = embedder.encode_dense([query_text])[0]
+    dense_embedding = embedder.encode_dense([query_text], task_type="RETRIEVAL_QUERY")[0]
     sparse_indices, sparse_values = embedder.encode_sparse(query_text)
 
-    # Create the match client
-    client = aiplatform_v1.MatchServiceClient(
-        client_options={"api_endpoint": "us-central1-aiplatform.googleapis.com"}
+    # Create the index endpoint instance
+    index_endpoint = aiplatform.MatchingEngineIndexEndpoint(
+        index_endpoint_name=endpoint_name
     )
 
     # Build the hybrid query
-    query = aiplatform_v1.FindNeighborsRequest.Query(
-        datapoint=aiplatform_v1.IndexDatapoint(
-            feature_vector=dense_embedding,
-            sparse_embedding=aiplatform_v1.IndexDatapoint.SparseEmbedding(
-                values=sparse_values,
-                dimensions=sparse_indices
-            )
-        ),
-        neighbor_count=num_neighbors,
-        # RRF (Reciprocal Rank Fusion) parameter for combining results
+    query = HybridQuery(
+        dense_embedding=dense_embedding,
+        sparse_embedding_dimensions=sparse_indices,
+        sparse_embedding_values=sparse_values,
         rrf_ranking_alpha=alpha
     )
 
-    request = aiplatform_v1.FindNeighborsRequest(
-        index_endpoint=endpoint_name,
+    response = index_endpoint.find_neighbors(
         deployed_index_id=deployed_index_id,
-        queries=[query]
+        queries=[query],
+        num_neighbors=num_neighbors
     )
-
-    response = client.find_neighbors(request=request)
 
     # Process results
     results = []
-    for neighbor_list in response.nearest_neighbors:
-        for neighbor in neighbor_list.neighbors:
+    for neighbor_list in response:
+        for neighbor in neighbor_list:
             results.append({
-                "id": neighbor.datapoint.datapoint_id,
+                "id": neighbor.id,
                 "distance": neighbor.distance
             })
 
