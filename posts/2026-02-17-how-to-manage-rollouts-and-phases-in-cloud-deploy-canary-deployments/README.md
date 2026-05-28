@@ -22,6 +22,8 @@ When you set up a canary deployment with percentages like 10, 25, 50, and 75, Cl
 
 The rollout starts at the first phase and waits for you (or an automation rule) to advance it to the next phase.
 
+If this is the first deployment to a target and Cloud Deploy has no existing version to split traffic with, it can skip the canary phases and run the `stable` phase instead.
+
 ## Viewing Rollout Phases
 
 When a canary rollout is created, you can inspect its phases to understand the current state.
@@ -71,7 +73,7 @@ Each canary phase consists of jobs that Cloud Deploy executes:
 1. Deploy job - Scales the canary deployment to match the target percentage
 2. Verify job (if enabled) - Runs your verification container to validate the phase
 
-For service networking based canary deployments, the deploy job adjusts the ratio of canary pods to stable pods. For Gateway API based canaries, it updates the traffic split rules in the HTTPRoute.
+For service networking based canary deployments, the deploy job adjusts the ratio of canary pods to stable pods based on pod counts. For Gateway API based canaries, it updates the traffic split rules in the HTTPRoute.
 
 ```bash
 # List the job runs within a specific phase
@@ -117,18 +119,19 @@ Canceling removes the canary pods and restores the stable deployment to full cap
 
 ## Retrying Failed Phases
 
-If a phase fails due to a transient issue (maybe a verification timeout caused by a temporary network blip), you can retry the job.
+If a phase fails due to a transient issue (maybe a verification timeout caused by a temporary network blip), you can retry the failed job.
 
 ```bash
-# Retry a failed job run within a phase
-gcloud deploy job-runs retry JOB_RUN_ID \
+# Retry a failed job within a phase
+gcloud deploy rollouts retry-job rel-v2-to-prod-0001 \
   --delivery-pipeline=my-app-pipeline \
   --release=rel-v2 \
-  --rollout=rel-v2-to-prod-0001 \
+  --job-id=verify \
+  --phase-id=canary-25 \
   --region=us-central1
 ```
 
-This re-executes the failed job without resetting the entire rollout.
+This creates another job run for the failed job without resetting the entire rollout.
 
 ## Ignoring a Failed Job
 
@@ -136,11 +139,12 @@ In some cases, you might decide a job failure is not critical and want to procee
 
 ```bash
 # Ignore a failed job to unblock the rollout
-gcloud deploy rollouts advance rel-v2-to-prod-0001 \
+gcloud deploy rollouts ignore-job rel-v2-to-prod-0001 \
   --delivery-pipeline=my-app-pipeline \
   --release=rel-v2 \
-  --region=us-central1 \
-  --override
+  --job-id=verify \
+  --phase-id=canary-25 \
+  --region=us-central1
 ```
 
 Use this cautiously. Ignoring verification failures defeats the purpose of having verification in the first place.
@@ -163,15 +167,15 @@ serviceAccount: deploy-automation-sa@my-project.iam.gserviceaccount.com
 suspended: false
 rules:
 - advanceRolloutRule:
-    name: advance-canary-phases
+    id: advance-canary-phases
     sourcePhases:
     - "canary-10"
     - "canary-25"
     - "canary-50"
-    wait: 300s
+    wait: 5m
 ```
 
-This automation advances through each canary phase after a 5-minute observation window. The final stable phase is left out so it requires manual advance or a separate automation.
+This automation advances from each listed canary phase after a 5-minute observation window. The `canary-75` phase is left out so advancing from 75% to `stable` requires manual advance or a separate automation.
 
 ## The Stable Phase
 
