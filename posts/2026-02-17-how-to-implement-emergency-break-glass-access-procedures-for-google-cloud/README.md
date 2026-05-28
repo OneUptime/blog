@@ -137,11 +137,12 @@ Break-glass accounts need to be exempt from the security controls that might pre
 # Exempt break-glass accounts from IAM deny policies
 # In your deny policy JSON, add exception principals:
 # "exceptionPrincipals": [
-#     "principal://iam.googleapis.com/projects/break-glass-project/serviceAccounts/break-glass-admin@break-glass-project.iam.gserviceaccount.com",
+#     "principal://iam.googleapis.com/projects/-/serviceAccounts/break-glass-admin@break-glass-project.iam.gserviceaccount.com",
 #     "principal://goog/subject/break-glass-1@example.com"
 # ]
 
-# Exempt from organization policies that might block emergency actions
+# If the boolean org policy constraint blocks key creation for the break-glass project,
+# disable enforcement on that project so break-glass key rotation can still work
 gcloud resource-manager org-policies disable-enforce \
     iam.disableServiceAccountKeyCreation \
     --project=break-glass-project
@@ -170,8 +171,8 @@ gcloud monitoring policies create \
     --display-name="CRITICAL: Break-Glass Account Used" \
     --condition-display-name="Break-glass account activity detected" \
     --condition-filter='metric.type="logging.googleapis.com/user/break-glass-usage"' \
-    --condition-threshold-value=0 \
-    --condition-threshold-comparison=COMPARISON_GT \
+    --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_DELTA"}' \
+    --if='> 0' \
     --notification-channels=SECURITY_CHANNEL_ID,MANAGEMENT_CHANNEL_ID \
     --combiner=OR \
     --duration=0s
@@ -180,6 +181,10 @@ gcloud monitoring policies create \
 Also set up a Pub/Sub pipeline for real-time Slack/PagerDuty notifications:
 
 ```bash
+# Create the Pub/Sub topic that receives routed log entries
+gcloud pubsub topics create break-glass-alerts \
+    --project=break-glass-project
+
 # Route break-glass activity to a dedicated topic
 gcloud logging sinks create break-glass-alert-sink \
     "pubsub.googleapis.com/projects/break-glass-project/topics/break-glass-alerts" \
@@ -191,6 +196,16 @@ gcloud logging sinks create break-glass-alert-sink \
             OR "break-glass-2@example.com"
         )
     '
+
+# Grant the sink writer identity permission to publish to the Pub/Sub topic
+SINK_WRITER=$(gcloud logging sinks describe break-glass-alert-sink \
+    --project=break-glass-project \
+    --format="value(writerIdentity)")
+
+gcloud pubsub topics add-iam-policy-binding break-glass-alerts \
+    --project=break-glass-project \
+    --member="${SINK_WRITER}" \
+    --role="roles/pubsub.publisher"
 ```
 
 ## Step 6: Document the Break-Glass Procedure
