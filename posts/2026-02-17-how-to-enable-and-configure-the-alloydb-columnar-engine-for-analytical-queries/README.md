@@ -23,7 +23,7 @@ The columnar engine is not a cache - it is a materialized columnar representatio
 ## Prerequisites
 
 - An AlloyDB cluster with a primary instance running
-- At least 4 CPUs on the primary instance (the columnar engine needs RAM)
+- Enough instance memory for the column store allocation
 - Database flags permissions
 
 ## Step 1 - Enable the Columnar Engine
@@ -39,7 +39,9 @@ gcloud alloydb instances update my-primary \
   --database-flags=google_columnar_engine.enabled=on
 ```
 
-This change takes effect without restarting the instance. Verify it is enabled:
+When you use `--database-flags`, include any existing non-default flags you want to keep, because the command replaces the manually configured flag list.
+
+This change automatically restarts the instance. After the restart completes, verify it is enabled:
 
 ```bash
 # Connect to AlloyDB and check the columnar engine status
@@ -48,36 +50,37 @@ psql -h ALLOYDB_IP -U postgres -c "SHOW google_columnar_engine.enabled;"
 
 ## Step 2 - Configure Memory Allocation
 
-The columnar engine uses a portion of the instance's memory to store columnar data. By default, it gets a reasonable allocation, but you can tune it:
+The columnar engine uses a portion of the instance's memory to store columnar data. By default, AlloyDB allocates 30% of instance memory to the column store and adjusts that allocation when you resize the instance. You can also set a fixed size in MiB:
 
 ```bash
-# Allocate 30% of instance memory to the columnar engine
+# Allocate 8192 MiB of instance memory to the columnar engine
 gcloud alloydb instances update my-primary \
   --cluster=my-alloydb-cluster \
   --region=us-central1 \
-  --database-flags=google_columnar_engine.enabled=on,google_columnar_engine.memory_size_percentage=30
+  --database-flags=google_columnar_engine.enabled=on,google_columnar_engine.memory_size_in_mb=8192
 ```
 
-The percentage you choose depends on your workload mix:
+The size you choose depends on your workload mix:
 
-- **Mostly OLTP with occasional analytics** - 10-20% is enough
-- **Mixed OLTP and analytics** - 20-40% is a good range
-- **Heavy analytics** - 40-60% or higher
+- **Mostly OLTP with occasional analytics** - a smaller fixed allocation can be enough
+- **Mixed OLTP and analytics** - start with the default 30% allocation and measure
+- **Heavy analytics** - consider increasing the allocation, staying within AlloyDB's documented limits
 
-Keep in mind that memory given to the columnar engine is taken from the shared buffer pool. If you allocate too much to the columnar engine, your transactional queries might suffer from reduced buffer cache.
+AlloyDB allows the fixed allocation to range from 128 MiB up to 70% of instance memory, although Google recommends staying at or below 50% for most workloads. If you allocate too much memory to the columnar engine, other database work on the instance can suffer.
 
 ## Step 3 - Automatic Column Store Population
 
 By default, the columnar engine automatically identifies frequently scanned columns and populates the column store. This is called auto-columnarization. You do not need to do anything - AlloyDB monitors query patterns and adds columns that would benefit from columnar storage.
 
-You can check which columns are currently in the column store:
+You can check which columns auto-columnarization has recommended:
 
 ```sql
--- View the current contents of the columnar engine
-SELECT * FROM g_columnar_recommended_columns;
+-- View recommended columns from auto-columnarization
+SELECT database_name, schema_name, relation_name, column_name
+FROM g_columnar_recommended_columns;
 ```
 
-This view shows which tables and columns the engine has identified as candidates for columnar storage.
+This view shows which tables and columns the engine has identified as candidates for columnar storage. To see what is actually in the column store, query `g_columnar_columns` or `g_columnar_relations`.
 
 ## Step 4 - Manual Column Store Configuration
 
@@ -104,7 +107,7 @@ To remove a table from the columnar engine:
 
 ```sql
 -- Remove a table from the columnar engine
-SELECT google_columnar_engine_remove(relation => 'orders');
+SELECT google_columnar_engine_drop(relation => 'orders');
 ```
 
 ## Step 5 - Verify Columnar Engine Usage
@@ -125,7 +128,7 @@ GROUP BY month, status
 ORDER BY month;
 ```
 
-In the output, look for `Columnar Scan` nodes. If you see them, the columnar engine is being used. If you see regular `Seq Scan` instead, the data might not be in the column store yet, or the optimizer decided the row store was faster for that particular query.
+In the output, look for `Custom Scan (columnar scan)` nodes. If you see them, the columnar engine is being used. If you see regular `Seq Scan` instead, the data might not be in the column store yet, or the optimizer decided the row store was faster for that particular query.
 
 ## Step 6 - Monitor Columnar Engine Performance
 
@@ -133,15 +136,14 @@ AlloyDB provides system views to monitor the columnar engine:
 
 ```sql
 -- Check columnar engine memory usage
-SELECT * FROM g_columnar_memory_usage;
+SELECT google_columnar_engine_memory_available();
 
--- Check columnar engine hit rate
+-- Check columnar engine statistics for recent queries
 SELECT * FROM g_columnar_stat_statements
-ORDER BY columnar_unit_read DESC
-LIMIT 10;
+WHERE page_read > 0;
 ```
 
-The hit rate tells you what percentage of analytical queries are benefiting from the columnar engine. A low hit rate might mean you need more memory or need to manually configure the right columns.
+The statistics view shows columnar engine activity for recent queries, such as columnar units read and pages read. If your analytical queries are not showing columnar activity, you might need more memory or need to manually configure the right columns.
 
 ## Real-World Performance Example
 
@@ -190,7 +192,7 @@ Manual management is useful when you have a well-understood query workload and w
 
 1. **Start with auto-columnarization** - Let AlloyDB figure out which columns to store. Review the recommendations after a few days of typical workload.
 
-2. **Monitor memory pressure** - If the instance starts swapping or buffer cache hit rate drops, reduce the columnar engine memory percentage.
+2. **Monitor memory pressure** - If the instance starts swapping or buffer cache hit rate drops, reduce the columnar engine memory allocation.
 
 3. **Right-size the instance** - The columnar engine needs RAM. If you are on a 2-CPU instance with 16 GB RAM, there is not much room for both the buffer pool and the column store. Consider 8+ CPUs for mixed workloads.
 
