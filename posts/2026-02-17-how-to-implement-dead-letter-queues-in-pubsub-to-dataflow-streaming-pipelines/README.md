@@ -23,7 +23,7 @@ graph LR
     DF -->|Success| BQ[BigQuery]
 ```
 
-**Pub/Sub DLQ**: Catches messages that Pub/Sub cannot deliver to Dataflow (network issues, ack deadline exceeded, persistent nack).
+**Pub/Sub DLQ**: Catches messages that Pub/Sub cannot deliver and acknowledge through the subscription (ack deadline exceeded, repeated nack, or subscriber failures).
 
 **Application DLQ**: Catches messages that Dataflow receives but cannot process (bad schema, invalid data, failed enrichment).
 
@@ -50,19 +50,26 @@ gcloud pubsub topics add-iam-policy-binding pipeline-dead-letter \
 ### Configure the Main Subscription with Dead Letter Policy
 
 ```bash
-# Create or update the main subscription with dead letter handling
+# Create the main subscription with dead letter handling
 gcloud pubsub subscriptions create main-pipeline-sub \
   --topic=events-topic \
   --dead-letter-topic=projects/MY_PROJECT/topics/pipeline-dead-letter \
   --max-delivery-attempts=5 \
   --ack-deadline=120
+
+# Grant Pub/Sub permission to acknowledge forwarded messages
+gcloud pubsub subscriptions add-iam-policy-binding main-pipeline-sub \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+  --role="roles/pubsub.subscriber"
 ```
 
-After 5 failed delivery attempts, the message is automatically forwarded to the dead letter topic. The original message is preserved along with attributes that tell you why it failed:
+After approximately 5 failed delivery attempts, the message is forwarded to the dead letter topic on a best-effort basis. The original message is wrapped in a new Pub/Sub message along with attributes that identify where it came from:
 
 - `CloudPubSubDeadLetterSourceDeliveryCount`: Number of delivery attempts
-- `CloudPubSubDeadLetterSourceSubscription`: The subscription that rejected it
-- `CloudPubSubDeadLetterSourceTopic`: The original topic
+- `CloudPubSubDeadLetterSourceSubscription`: The subscription that could not acknowledge it
+- `CloudPubSubDeadLetterSourceSubscriptionProject`: The project that contains the source subscription
+- `CloudPubSubDeadLetterSourceTopicPublishTime`: The timestamp when the message was originally published
+- `CloudPubSubDeadLetterSourceDeliveryErrorMessage`: The delivery error reason for export subscriptions
 
 ## Part 2: Application-Level Dead Letter Queue in Dataflow
 
@@ -78,14 +85,16 @@ import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 import json
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ParseMessage(beam.DoFn):
     """Parse raw messages with error routing."""
 
     def process(self, element):
+        raw_message = element.decode('utf-8', errors='replace')
+
         try:
-            data = json.loads(element.decode('utf-8'))
+            data = json.loads(raw_message)
 
             # Validate required fields
             required_fields = ['event_id', 'event_type', 'timestamp']
@@ -93,11 +102,11 @@ class ParseMessage(beam.DoFn):
 
             if missing:
                 yield beam.pvalue.TaggedOutput('dead_letter', {
-                    'raw_message': element.decode('utf-8', errors='replace'),
+                    'raw_message': raw_message,
                     'error_type': 'VALIDATION_ERROR',
                     'error_detail': f"Missing fields: {missing}",
                     'stage': 'parse',
-                    'timestamp': datetime.utcnow().isoformat(),
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
                 })
                 return
 
@@ -105,11 +114,11 @@ class ParseMessage(beam.DoFn):
 
         except json.JSONDecodeError as e:
             yield beam.pvalue.TaggedOutput('dead_letter', {
-                'raw_message': element.decode('utf-8', errors='replace'),
+                'raw_message': raw_message,
                 'error_type': 'JSON_PARSE_ERROR',
                 'error_detail': str(e),
                 'stage': 'parse',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
             })
 
 class EnrichEvent(beam.DoFn):
@@ -124,7 +133,7 @@ class EnrichEvent(beam.DoFn):
 
             # Add enrichment data
             event['enriched'] = True
-            event['enriched_at'] = datetime.utcnow().isoformat()
+            event['enriched_at'] = datetime.now(timezone.utc).isoformat()
             yield event
 
         except Exception as e:
@@ -134,7 +143,7 @@ class EnrichEvent(beam.DoFn):
                 'error_detail': str(e),
                 'error_trace': traceback.format_exc(),
                 'stage': 'enrich',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
             })
 
 class TransformEvent(beam.DoFn):
@@ -147,7 +156,7 @@ class TransformEvent(beam.DoFn):
                 'event_type': event['event_type'],
                 'user_id': event.get('user_id', ''),
                 'event_timestamp': event['timestamp'],
-                'processed_at': datetime.utcnow().isoformat(),
+                'processed_at': datetime.now(timezone.utc).isoformat(),
                 'payload': json.dumps(event.get('data', {})),
             }
             yield row
@@ -158,7 +167,7 @@ class TransformEvent(beam.DoFn):
                 'error_type': 'TRANSFORM_ERROR',
                 'error_detail': str(e),
                 'stage': 'transform',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
             })
 ```
 
@@ -261,7 +270,7 @@ WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
 GROUP BY stage, error_type
 ORDER BY error_count DESC;
 
--- Dead letter rate as percentage of total events
+-- Dead letter count by hour
 SELECT
   TIMESTAMP_TRUNC(timestamp, HOUR) AS hour,
   COUNT(*) AS dead_letter_count,
@@ -279,9 +288,9 @@ gcloud monitoring policies create \
   --display-name="High Dead Letter Rate" \
   --condition-display-name="DLQ messages > 100/min" \
   --condition-filter='resource.type="pubsub_topic" AND metric.type="pubsub.googleapis.com/topic/send_message_operation_count" AND resource.label.topic_id="app-dead-letter"' \
-  --condition-threshold-value=100 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=60s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_SUM"}' \
+  --duration=60s \
+  --if="> 100" \
   --notification-channels=CHANNEL_ID
 ```
 
