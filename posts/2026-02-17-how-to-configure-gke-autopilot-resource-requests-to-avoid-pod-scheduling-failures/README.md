@@ -58,7 +58,7 @@ spec:
               memory: 512Mi
               ephemeral-storage: 100Mi
             limits:
-              # In Autopilot, limits default to match requests if not set
+              # Set limits equal to requests for Guaranteed QoS
               cpu: 250m
               memory: 512Mi
               ephemeral-storage: 100Mi
@@ -68,13 +68,13 @@ spec:
 
 Autopilot enforces minimum resource requests per pod. If your requests are below these minimums, Autopilot will automatically bump them up.
 
-The current minimums are:
+The current minimums for the default general-purpose compute class depend on whether your cluster supports bursting:
 
-- CPU: 250m per pod
-- Memory: 512Mi per pod
+- CPU: 50m per pod with bursting, or 250m per pod without bursting
+- Memory: 52Mi per pod with bursting, or 512Mi per pod without bursting
 - Ephemeral storage: 10Mi per container
 
-Note that these are per-pod minimums, not per-container. If your pod has two containers each requesting 100m CPU, the total is 200m, which is below the 250m minimum. Autopilot will increase one of the container requests to meet the minimum.
+Note that the CPU and memory minimums are per-pod minimums, not per-container. If your non-bursting pod has two containers each requesting 100m CPU, the total is 200m, which is below the 250m minimum. Autopilot will increase one of the container requests to meet the minimum.
 
 This matters because you are billed based on the actual resource requests, not what you specified. Check what Autopilot actually allocated:
 
@@ -85,11 +85,11 @@ kubectl get pod my-pod -o jsonpath='{.spec.containers[*].resources}' | python3 -
 
 Resource Request Ratios
 
-Autopilot requires specific ratios between CPU and memory. You cannot request 8 CPUs with 512Mi of memory because the ratio is too skewed. The allowed ratios are:
+Autopilot requires specific ratios between CPU and memory. You cannot request 8 CPUs with 512Mi of memory because the ratio is too skewed. For the default general-purpose compute class, the allowed ratios are:
 
 - For every 1 vCPU, you can request between 1Gi and 6.5Gi of memory
-- The minimum is 250m CPU with 512Mi memory
-- The maximum per pod is 28 vCPU with 80Gi memory (for regular compute class)
+- The minimum for the default general-purpose class is 50m CPU with 52Mi memory on clusters that support bursting, or 250m CPU with 512Mi memory on clusters that do not support bursting
+- The maximum per pod is 30 vCPU with 110Gi memory for the default general-purpose compute class
 
 If your requests do not fit within these ratios, Autopilot will adjust them. This adjustment always goes up, never down, so you end up paying for more than you requested.
 
@@ -120,9 +120,9 @@ resources:
 Autopilot offers different compute classes for different workload types:
 
 - **General-purpose** (default): Balanced CPU and memory, good for most workloads
-- **Balanced**: Optimized price-performance ratio
-- **Scale-Out**: Optimized for horizontally scaled workloads with lower per-pod resource needs
-- **Performance**: For compute-intensive workloads needing high CPU or GPUs
+- **Balanced**: Higher maximum CPU and memory capacity than the default platform
+- **Scale-Out**: Optimized for horizontal scaling with simultaneous multi-threading disabled
+- **Performance**: For workloads that need specific Compute Engine machine series
 
 Specify the compute class with a node selector:
 
@@ -143,7 +143,7 @@ spec:
         app: worker
     spec:
       nodeSelector:
-        # Use Scale-Out class for better pricing on small pods
+        # Use Scale-Out class for horizontally scaled pods
         cloud.google.com/compute-class: Scale-Out
       containers:
         - name: worker
@@ -151,10 +151,10 @@ spec:
           resources:
             requests:
               cpu: 250m
-              memory: 512Mi
+              memory: 1Gi
 ```
 
-The Scale-Out class has lower minimums and is cheaper for small pods.
+The Scale-Out class uses a 1:4 CPU-to-memory ratio and can be a good fit for horizontally scaled workloads.
 
 ## Debugging Scheduling Failures
 
@@ -165,7 +165,7 @@ When a pod fails to schedule on Autopilot, the events tell you why. Common error
 kubectl describe pod my-failing-pod
 ```
 
-**"Insufficient cpu" or "Insufficient memory"**: Your pod is requesting more resources than the maximum allowed. Check the compute class limits.
+**"Insufficient cpu" or "Insufficient memory"**: Your pod's requested resources cannot currently be satisfied. Check the compute class limits, requested zones, and resource availability.
 
 **"Does not have minimum availability"**: Autopilot could not provision nodes in the requested zone. Try adding topology spread constraints or using a regional cluster.
 
@@ -202,11 +202,11 @@ Use these recommendations to set your resource requests accurately.
 
 ## Cost Optimization Tips
 
-Since you pay per pod resource request on Autopilot, optimization matters. Here are practical strategies:
+Since you pay per pod resource request for general-purpose Autopilot workloads, optimization matters. Here are practical strategies:
 
 First, do not over-request. If your app uses 200m CPU, do not request 1 CPU "just in case." Use VPA recommendations to find the right values.
 
-Second, use the right compute class. Scale-Out is cheaper for small, stateless workloads. General-purpose is better for larger applications.
+Second, use the right compute class. Scale-Out is designed for horizontally scaled workloads. General-purpose is better when you do not need specialized CPU behavior or higher compute-class limits.
 
 Third, use Horizontal Pod Autoscaler to scale replicas based on load instead of over-provisioning individual pods:
 
