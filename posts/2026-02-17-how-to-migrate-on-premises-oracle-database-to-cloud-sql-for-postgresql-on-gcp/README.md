@@ -27,15 +27,18 @@ Key things to inventory:
 Google provides the Database Migration Assessment Tool to help with this:
 
 ```bash
-# Install the migration assessment tool
-
-gcloud components install database-migration
-
-# Run an assessment against your Oracle database
+# Create a conversion workspace for Oracle-to-PostgreSQL assessment
 gcloud database-migration conversion-workspaces create my-assessment \
   --region us-central1 \
-  --source-connection-profile oracle-source \
-  --destination-connection-profile cloudsql-dest
+  --source-database-engine ORACLE \
+  --source-database-version 19c \
+  --destination-database-engine POSTGRESQL \
+  --destination-database-version 15
+
+# Pull the source schema into the workspace after creating your source connection profile
+gcloud database-migration conversion-workspaces seed my-assessment \
+  --region us-central1 \
+  --source-connection-profile oracle-source
 ```
 
 ## Set Up Cloud SQL for PostgreSQL
@@ -50,7 +53,7 @@ gcloud sql instances create my-postgres-instance \
   --region us-central1 \
   --availability-type REGIONAL \
   --storage-type SSD \
-  --storage-size 500GB \
+  --storage-size 500 \
   --storage-auto-increase \
   --backup-start-time 02:00 \
   --enable-point-in-time-recovery \
@@ -105,9 +108,9 @@ CREATE TABLE orders (
     notes TEXT
 );
 
--- Oracle sequence and trigger for auto-increment
--- becomes a PostgreSQL IDENTITY column or SERIAL
-CREATE TABLE orders (
+-- If the Oracle table used a sequence and trigger for auto-increment,
+-- use a PostgreSQL IDENTITY column instead:
+CREATE TABLE orders_with_identity (
     order_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     customer_id BIGINT NOT NULL,
     order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -155,7 +158,8 @@ BEGIN
         RAISE EXCEPTION 'Order not found: %', p_order_id;
     END IF;
 
-    -- Note: PostgreSQL procedures support COMMIT since version 11
+    -- Note: transaction control is only allowed when CALL is executed
+    -- outside an explicit transaction block.
     COMMIT;
 END;
 $$;
@@ -176,9 +180,8 @@ Google's Database Migration Service (DMS) can handle the actual data transfer:
 
 ```bash
 # Create a source connection profile for Oracle
-gcloud database-migration connection-profiles create oracle-source \
+gcloud database-migration connection-profiles create oracle oracle-source \
   --region us-central1 \
-  --type ORACLE \
   --host 192.168.1.100 \
   --port 1521 \
   --username migration_user \
@@ -186,17 +189,24 @@ gcloud database-migration connection-profiles create oracle-source \
   --database-service ORCL
 
 # Create a destination connection profile for Cloud SQL
-gcloud database-migration connection-profiles create cloudsql-dest \
+gcloud database-migration connection-profiles create postgresql cloudsql-dest \
   --region us-central1 \
-  --type CLOUDSQL \
-  --cloudsql-instance my-postgres-instance
+  --role DESTINATION \
+  --cloudsql-instance my-postgres-instance \
+  --host <cloud-sql-ip> \
+  --port 5432 \
+  --database myapp \
+  --username app_user \
+  --password "secure-password-here" \
+  --static-ip-connectivity
 
 # Create and start the migration job
 gcloud database-migration migration-jobs create oracle-to-postgres \
   --region us-central1 \
   --source oracle-source \
   --destination cloudsql-dest \
-  --type CONTINUOUS
+  --type CONTINUOUS \
+  --conversion-workspace my-assessment
 ```
 
 ## Testing the Migration
