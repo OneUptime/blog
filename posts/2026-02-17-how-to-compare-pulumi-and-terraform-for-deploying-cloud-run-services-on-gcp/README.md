@@ -16,7 +16,7 @@ The question of which to use comes up constantly. Rather than making abstract ar
 
 Both tools will deploy the same infrastructure:
 
-- A Cloud Run service with custom domain
+- A Cloud Run service
 - A VPC connector for private networking
 - A Cloud SQL database connection
 - IAM configuration for public access
@@ -114,6 +114,11 @@ resource "google_cloud_run_v2_service" "app" {
           memory = "1Gi"
         }
       }
+
+      volume_mounts {
+        name       = "cloudsql"
+        mount_path = "/cloudsql"
+      }
     }
 
     volumes {
@@ -148,18 +153,25 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
 resource "google_monitoring_alert_policy" "error_rate" {
   project      = var.project_id
   display_name = "${var.environment} Cloud Run Error Rate"
+  combiner     = "OR"
 
   conditions {
     display_name = "Error rate above 5%"
 
     condition_threshold {
       filter = "resource.type = \"cloud_run_revision\" AND resource.labels.service_name = \"${google_cloud_run_v2_service.app.name}\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class = \"5xx\""
+      denominator_filter = "resource.type = \"cloud_run_revision\" AND resource.labels.service_name = \"${google_cloud_run_v2_service.app.name}\" AND metric.type = \"run.googleapis.com/request_count\""
 
       comparison      = "COMPARISON_GT"
-      threshold_value = 5
+      threshold_value = 0.05
       duration        = "300s"
 
       aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_RATE"
+      }
+
+      denominator_aggregations {
         alignment_period   = "60s"
         per_series_aligner = "ALIGN_RATE"
       }
@@ -200,6 +212,8 @@ function getScaling() {
   };
 }
 
+const scaling = getScaling();
+
 // VPC connector for Cloud Run to reach private resources
 const connector = new gcp.vpcaccess.Connector("connector", {
   project: projectId,
@@ -236,6 +250,11 @@ const app = new gcp.cloudrunv2.Service("app", {
           memory: "1Gi",
         },
       },
+
+      volumeMounts: [{
+        name: "cloudsql",
+        mountPath: "/cloudsql",
+      }],
     }],
 
     volumes: [{
@@ -245,7 +264,7 @@ const app = new gcp.cloudrunv2.Service("app", {
       },
     }],
 
-    scaling: getScaling(),
+    scaling: scaling,
   },
 
   traffics: [{
@@ -267,18 +286,25 @@ const publicAccess = new gcp.cloudrunv2.ServiceIamMember("public", {
 const errorAlert = new gcp.monitoring.AlertPolicy("errorRate", {
   project: projectId,
   displayName: `${environment} Cloud Run Error Rate`,
+  combiner: "OR",
 
   conditions: [{
     displayName: "Error rate above 5%",
 
     conditionThreshold: {
       filter: pulumi.interpolate`resource.type = "cloud_run_revision" AND resource.labels.service_name = "${app.name}" AND metric.type = "run.googleapis.com/request_count" AND metric.labels.response_code_class = "5xx"`,
+      denominatorFilter: pulumi.interpolate`resource.type = "cloud_run_revision" AND resource.labels.service_name = "${app.name}" AND metric.type = "run.googleapis.com/request_count"`,
 
       comparison: "COMPARISON_GT",
-      thresholdValue: 5,
+      thresholdValue: 0.05,
       duration: "300s",
 
       aggregations: [{
+        alignmentPeriod: "60s",
+        perSeriesAligner: "ALIGN_RATE",
+      }],
+
+      denominatorAggregations: [{
         alignmentPeriod: "60s",
         perSeriesAligner: "ALIGN_RATE",
       }],
@@ -290,6 +316,8 @@ const errorAlert = new gcp.monitoring.AlertPolicy("errorRate", {
 
 // Exports
 export const serviceUrl = app.uri;
+export const minInstanceCount = scaling.minInstanceCount;
+export const publicMember = publicAccess.member;
 ```
 
 ## Side-by-Side Comparison
@@ -315,15 +343,24 @@ export const serviceUrl = app.uri;
 ```typescript
 // app.test.ts - Unit test for the Cloud Run configuration
 import * as pulumi from "@pulumi/pulumi";
-import { describe, it, expect } from "vitest";
+import { beforeAll, describe, it, expect } from "vitest";
 
 // Mock Pulumi runtime
-pulumi.runtime.setMocks({
-  newResource: (args) => ({
-    id: `${args.name}-id`,
-    state: args.inputs,
-  }),
-  call: () => ({}),
+beforeAll(async () => {
+  await pulumi.runtime.setMocks({
+    newResource: (args) => ({
+      id: `${args.name}-id`,
+      state: args.inputs,
+    }),
+    call: () => ({}),
+  }, "project", "production");
+
+  pulumi.runtime.setAllConfig({
+    "project:projectId": "test-project",
+    "project:environment": "production",
+    "project:containerImage": "us-docker.pkg.dev/test-project/app/app:latest",
+    "project:dbConnectionName": "test-project:us-central1:test-db",
+  });
 });
 
 describe("Cloud Run Service", () => {
@@ -340,7 +377,12 @@ describe("Cloud Run Service", () => {
 
   it("should have public access IAM binding", async () => {
     const infra = await import("./index");
-    // Assert IAM member is "allUsers"
+
+    const member = await new Promise((resolve) =>
+      pulumi.all([infra.publicMember]).apply(([value]) => resolve(value))
+    );
+
+    expect(member).toBe("allUsers");
   });
 });
 ```
