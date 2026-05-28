@@ -8,7 +8,7 @@ Description: Learn how to export OpenTelemetry metrics to Google Cloud Monitorin
 
 ---
 
-Google Cloud Monitoring now supports receiving metrics via the OpenTelemetry Protocol (OTLP) directly, which means you do not need to use a Google-specific exporter anymore. You can use the standard OTLP exporter that ships with every OpenTelemetry SDK and point it at Google Cloud's OTLP endpoint. This simplifies your setup and keeps your code portable. In this post, I will walk through exactly how to configure this for different scenarios.
+Google Cloud Monitoring now supports receiving metrics via the OpenTelemetry Protocol (OTLP) through the Google Cloud Telemetry API, which means you do not need to use a Google-specific exporter anymore. You can use the standard OTLP/HTTP exporter that ships with every OpenTelemetry SDK and point it at Google Cloud's OTLP endpoint. This simplifies your setup and keeps your code portable. In this post, I will walk through exactly how to configure this for different scenarios.
 
 ## Why OTLP Instead of the Google Cloud Exporter?
 
@@ -16,7 +16,7 @@ The dedicated Google Cloud Monitoring exporter works fine, but the OTLP exporter
 
 ## How It Works
 
-Google Cloud Monitoring exposes an OTLP-compatible endpoint at `monitoring.googleapis.com`. Your application sends metrics using the standard OTLP protocol, and Google Cloud translates them into its native metric format. The translation handles metric types, labels, and resource attributes automatically.
+Google Cloud exposes an OTLP-compatible Telemetry API endpoint at `telemetry.googleapis.com`. Your application sends metrics using the standard OTLP protocol, and Google Cloud translates them into Cloud Monitoring metric structures. The translation handles metric types, labels, and resource attributes automatically.
 
 ```mermaid
 graph LR
@@ -33,46 +33,46 @@ Here is how to configure a Python application to export metrics directly to Goog
 ```bash
 # Install the required packages
 
-pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc google-auth
+pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-http google-auth
 ```
 
 ```python
 # metrics_setup.py - Configure OTLP metric export to Google Cloud Monitoring
 
 import google.auth
-import google.auth.transport.requests
+import os
+from google.auth.transport.requests import AuthorizedSession
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.resources import Resource
 
-def setup_metrics(service_name: str):
+def setup_metrics(service_name: str, location: str = "global"):
     # Get default credentials and project ID
-    credentials, project_id = google.auth.default()
-
-    # Refresh the credentials to get an access token
-    auth_request = google.auth.transport.requests.Request()
-    credentials.refresh(auth_request)
+    credentials, project_id = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"],
+    )
+    authed_session = AuthorizedSession(credentials)
 
     # Create resource with service identification
     resource = Resource.create({
         "service.name": service_name,
+        "service.instance.id": os.environ.get("HOSTNAME", service_name),
         "service.namespace": "production",
         "gcp.project_id": project_id,
+        "location": location,
     })
 
     # Configure the OTLP exporter pointing to Google Cloud
     exporter = OTLPMetricExporter(
-        # Google Cloud's OTLP endpoint for metrics
-        endpoint="monitoring.googleapis.com:443",
+        # Google Cloud's OTLP/HTTP endpoint for metrics
+        endpoint="https://telemetry.googleapis.com/v1/metrics",
         headers={
-            # Use the GCP access token for authentication
-            "Authorization": f"Bearer {credentials.token}",
             # Specify the target project
             "x-goog-user-project": project_id,
         },
-        insecure=False,
+        session=authed_session,
     )
 
     # Set up periodic metric export every 60 seconds
@@ -134,7 +134,7 @@ def handle_request(method, path, status_code, duration_ms):
 
 For production deployments, it is better to send metrics through a collector rather than directly from your application. This decouples your application from the backend configuration.
 
-Here is the collector configuration for OTLP export to Google Cloud.
+Here is the collector configuration for OTLP/HTTP export to Google Cloud.
 
 ```yaml
 # otel-collector-config.yaml
@@ -153,27 +153,26 @@ processors:
     send_batch_size: 200
     timeout: 10s
 
-  # Transform metric names to match GCP conventions if needed
-  transform:
-    metric_statements:
-      - context: metric
-        statements:
-          # Prefix custom metrics with workload.googleapis.com/
-          - set(name, Concat(["workload.googleapis.com/", name], ""))
-            where name != ""
+extensions:
+  # Use Application Default Credentials, Workload Identity, or the VM service account
+  # to authenticate requests to Google Cloud.
+  googleclientauth:
 
 exporters:
-  # Use the Google Managed Prometheus exporter
-  # This is the recommended way to send metrics to Cloud Monitoring
-  googlemanagedprometheus:
-    project: my-gcp-project
+  # Use the standard OTLP/HTTP exporter to send metrics to the Google Cloud
+  # Telemetry API. The exporter appends /v1/metrics when you use the root URL.
+  otlphttp:
+    endpoint: https://telemetry.googleapis.com
+    auth:
+      authenticator: googleclientauth
 
 service:
+  extensions: [googleclientauth]
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [batch, transform]
-      exporters: [googlemanagedprometheus]
+      processors: [batch]
+      exporters: [otlphttp]
 ```
 
 ## Step 3: Configure Your Application to Send to the Collector
@@ -198,14 +197,16 @@ Or set it via environment variables, which is cleaner for Kubernetes deployments
 export OTEL_METRICS_EXPORTER=otlp
 export OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://otel-collector:4317
 export OTEL_EXPORTER_OTLP_METRICS_PROTOCOL=grpc
+export OTEL_EXPORTER_OTLP_METRICS_INSECURE=true
 export OTEL_METRIC_EXPORT_INTERVAL=60000
+export OTEL_RESOURCE_ATTRIBUTES=service.name=my-service,service.instance.id=${HOSTNAME:-my-service},location=global
 ```
 
 ## Step 4: Verify Metrics in Cloud Monitoring
 
 After a minute or two, your metrics should appear in Cloud Monitoring. Navigate to the Metrics Explorer in the Google Cloud Console.
 
-Custom metrics sent via the OTLP path show up under the `workload.googleapis.com` prefix by default. So if your metric is called `http_requests_total`, look for `workload.googleapis.com/http_requests_total`.
+Custom metrics sent via the Telemetry API are converted into Prometheus-style Cloud Monitoring metrics under the `prometheus.googleapis.com` prefix by default. So if your counter is called `http_requests_total`, look for `prometheus.googleapis.com/http_requests_total/counter`.
 
 You can also verify with the gcloud CLI.
 
@@ -213,7 +214,7 @@ You can also verify with the gcloud CLI.
 # List custom metric descriptors to verify metrics are arriving
 gcloud monitoring metrics-descriptors list \
     --project=my-gcp-project \
-    --filter='metric.type=starts_with("workload.googleapis.com")'
+    --filter='metric.type=starts_with("prometheus.googleapis.com")'
 ```
 
 ## Metric Type Mapping
@@ -222,10 +223,10 @@ OpenTelemetry metric instruments map to Google Cloud Monitoring metric types as 
 
 ```mermaid
 graph TD
-    A[OTel Counter] -->|Maps to| B[CUMULATIVE / INT64 or DOUBLE]
-    C[OTel Histogram] -->|Maps to| D[CUMULATIVE / DISTRIBUTION]
-    E[OTel Gauge] -->|Maps to| F[GAUGE / INT64 or DOUBLE]
-    G[OTel UpDownCounter] -->|Maps to| H[GAUGE / INT64 or DOUBLE]
+    A[OTel Counter] -->|Maps to| B[CUMULATIVE / DOUBLE / counter suffix]
+    C[OTel Histogram] -->|Maps to| D[CUMULATIVE or DELTA / DISTRIBUTION / histogram suffix]
+    E[OTel Gauge] -->|Maps to| F[GAUGE / DOUBLE / gauge suffix]
+    G[OTel UpDownCounter] -->|Maps to| H[GAUGE / DOUBLE / gauge suffix]
 ```
 
 Understanding this mapping is important because Cloud Monitoring has specific alignment and aggregation rules for each metric kind. Cumulative metrics can be rate-aligned, while gauge metrics can be averaged, summed, or percentile-aligned.
@@ -235,14 +236,14 @@ Understanding this mapping is important because Cloud Monitoring has specific al
 Once metrics flow into Cloud Monitoring, you can create alert policies on them.
 
 ```bash
-# Create an alert when the error rate exceeds a threshold
+# Create an alert when the 5xx error rate exceeds a threshold
 gcloud monitoring policies create --policy-from-file=- <<'EOF'
 {
   "displayName": "High Error Rate - OTLP Metrics",
   "conditions": [{
-    "displayName": "Error rate above 5%",
+    "displayName": "5xx error rate above threshold",
     "conditionThreshold": {
-      "filter": "metric.type=\"workload.googleapis.com/http_requests_total\" AND metric.labels.http_status_code=monitoring.regex.full_match(\"5.*\")",
+      "filter": "metric.type=\"prometheus.googleapis.com/http_requests_total/counter\" AND metric.labels.http_status_code=monitoring.regex.full_match(\"5.*\")",
       "comparison": "COMPARISON_GT",
       "thresholdValue": 10,
       "duration": "300s",
@@ -269,7 +270,7 @@ On GKE with Workload Identity, credentials are automatic - no extra configuratio
 gcloud auth application-default login
 ```
 
-For the collector running on GKE, set up Workload Identity.
+For the collector running on GKE, set up Workload Identity and use the `googleclientauth` extension in the collector.
 
 ```bash
 # Grant the monitoring metric writer role to the collector's service account
@@ -280,7 +281,7 @@ gcloud projects add-iam-policy-binding my-gcp-project \
 
 ## Best Practices
 
-Keep your metric cardinality under control. Every unique combination of metric name and label values creates a time series. Google Cloud Monitoring charges based on the number of time series, so avoid using high-cardinality labels like user IDs or request IDs in metrics.
+Keep your metric cardinality under control. Every unique combination of metric name and label values creates a time series. OTLP metrics ingested through the Prometheus-style path are charged based on samples ingested, and high-cardinality labels can multiply the number of samples you send. Avoid using high-cardinality labels like user IDs or request IDs in metrics.
 
 Set the export interval to at least 60 seconds. Cloud Monitoring's minimum granularity for custom metrics is 10 seconds, but 60-second intervals reduce costs and are sufficient for most alerting scenarios.
 
@@ -288,4 +289,4 @@ Use meaningful metric names with clear units. Following the OpenTelemetry naming
 
 ## Wrapping Up
 
-Exporting OpenTelemetry metrics to Google Cloud Monitoring via OTLP is the cleanest path available. Whether you export directly from your application or route through a collector, the standard OTLP exporter handles the job without needing any Google-specific libraries in your application code. The collector approach adds flexibility for processing and routing, while direct export keeps things simple for smaller deployments. Either way, once the metrics land in Cloud Monitoring, you get the full power of dashboards, alerts, and MQL queries to work with them.
+Exporting OpenTelemetry metrics to Google Cloud Monitoring via OTLP is the cleanest path available. Whether you export directly from your application or route through a collector, the standard OTLP exporter handles the job without needing any Google-specific libraries in your application code. The collector approach adds flexibility for processing and routing, while direct export keeps things simple for smaller deployments. Either way, once the metrics land in Cloud Monitoring, you get the full power of dashboards, alerts, and PromQL queries to work with them.
