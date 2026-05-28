@@ -85,8 +85,8 @@ Here's the core translation function that handles both standard and premium tran
 
 ```python
 from google.cloud import translate_v3 as translate
-import vertexai
-from vertexai.generative_models import GenerativeModel
+from google import genai
+from google.genai.types import GenerateContentConfig, HttpOptions
 
 class TranslationPipeline:
     def __init__(self, project_id, location="us-central1"):
@@ -96,8 +96,13 @@ class TranslationPipeline:
 
         # Initialize clients
         self.translate_client = translate.TranslationServiceClient()
-        vertexai.init(project=project_id, location=location)
-        self.gemini_model = GenerativeModel("gemini-1.5-pro")
+        self.genai_client = genai.Client(
+            vertexai=True,
+            project=project_id,
+            location=location,
+            http_options=HttpOptions(api_version="v1"),
+        )
+        self.gemini_model = "gemini-2.5-pro"
 
         # Translation memory cache
         self.memory = {}
@@ -212,12 +217,13 @@ Review the machine translation and improve it. Fix any:
 
 Output only the improved translation, nothing else."""
 
-        response = self.gemini_model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": 0.2,
-                "max_output_tokens": 2000,
-            },
+        response = self.genai_client.models.generate_content(
+            model=self.gemini_model,
+            contents=prompt,
+            config=GenerateContentConfig(
+                temperature=0.2,
+                max_output_tokens=2000,
+            ),
         )
 
         return response.text.strip()
@@ -264,17 +270,16 @@ def batch_translate_with_gcs(project_id, source_uri, target_uri, target_langs):
     parent = f"projects/{project_id}/locations/us-central1"
 
     # Configure batch translation
-    input_config = translate.BatchDocumentInputConfig(
-        gcs_source=translate.GcsSource(input_uri=source_uri)
-    )
+    input_config = {
+        "gcs_source": {"input_uri": source_uri},
+        "mime_type": "text/plain",
+    }
 
-    output_config = translate.BatchDocumentOutputConfig(
-        gcs_destination=translate.GcsDestination(
-            output_uri_prefix=target_uri
-        )
-    )
+    output_config = {
+        "gcs_destination": {"output_uri_prefix": target_uri}
+    }
 
-    operation = client.batch_translate_document(
+    operation = client.batch_translate_text(
         request={
             "parent": parent,
             "source_language_code": "en",
@@ -295,9 +300,21 @@ def batch_translate_with_gcs(project_id, source_uri, target_uri, target_langs):
 Verify translation quality automatically:
 
 ```python
-def check_translation_quality(original, translation, source_lang, target_lang):
+def check_translation_quality(
+    project_id,
+    original,
+    translation,
+    source_lang,
+    target_lang,
+    location="us-central1",
+):
     """Use Gemini to evaluate translation quality"""
-    model = GenerativeModel("gemini-1.5-pro")
+    client = genai.Client(
+        vertexai=True,
+        project=project_id,
+        location=location,
+        http_options=HttpOptions(api_version="v1"),
+    )
 
     prompt = f"""Evaluate this translation on a scale of 1-10 for each criterion:
 
@@ -314,9 +331,14 @@ Output as JSON: {{accuracy, fluency, completeness, terminology, overall, issues}
 Where overall is the average and issues is an array of specific problems found.
 Only output JSON."""
 
-    response = model.generate_content(
-        prompt,
-        generation_config={"temperature": 0.1, "max_output_tokens": 500},
+    response = client.models.generate_content(
+        model="gemini-2.5-pro",
+        contents=prompt,
+        config=GenerateContentConfig(
+            temperature=0.1,
+            max_output_tokens=500,
+            response_mime_type="application/json",
+        ),
     )
 
     import json
@@ -342,7 +364,7 @@ gcloud scheduler jobs create http daily-translation \
     --schedule "0 3 * * *" \
     --uri "https://translation-pipeline-xxxxx.run.app/batch" \
     --http-method POST \
-    --body '{"source_lang":"en","target_langs":["es","fr","de","ja"]}'
+    --message-body '{"source_lang":"en","target_langs":["es","fr","de","ja"]}'
 ```
 
 ## Wrapping Up
