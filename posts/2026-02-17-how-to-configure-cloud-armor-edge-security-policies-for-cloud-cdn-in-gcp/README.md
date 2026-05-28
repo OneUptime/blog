@@ -59,7 +59,7 @@ The `--type=CLOUD_ARMOR_EDGE` flag is what distinguishes this from a regular bac
 
 ## Step 2: Add Rules to the Edge Policy
 
-Edge security policies support a subset of the features available in backend policies. You can use IP-based rules and geographic rules, but some advanced features like reCAPTCHA integration and rate limiting are not available at the edge.
+Edge security policies support a subset of the features available in backend policies. You can use IP-based rules, geographic rules, selected HTTP request attributes, and rate limiting, but some advanced features like reCAPTCHA integration and preconfigured WAF rules are not available at the edge.
 
 Here are some common rules to add:
 
@@ -121,11 +121,11 @@ Edge security policies have some limitations compared to backend policies. Here 
 | IP allowlist/denylist | Yes | Yes |
 | Geographic rules | Yes | Yes |
 | CEL expressions (basic) | Yes | Yes |
-| Rate limiting | Yes | No |
+| Rate limiting | Yes | Yes |
 | reCAPTCHA integration | Yes | No |
 | Preconfigured WAF rules | Yes | No |
 | Adaptive Protection | Yes | No |
-| Header-based rules | Yes | Limited |
+| Header-based rules | Yes | Limited to supported edge attributes |
 
 The key takeaway is that edge policies focus on network-level filtering. If you need application-layer inspection, you will still need a backend security policy as well.
 
@@ -178,9 +178,9 @@ You can set up a monitoring alert to catch spikes in blocked requests:
 gcloud alpha monitoring policies create \
   --display-name="CDN Edge Security Blocks Spike" \
   --condition-display-name="High rate of edge policy denials" \
-  --condition-filter='resource.type="https_lb_rule" AND metric.type="loadbalancing.googleapis.com/https/edge_security_policy/denied_request_count"' \
-  --condition-threshold-value=1000 \
-  --condition-threshold-duration=300s \
+  --condition-filter='resource.type="network_security_policy" AND metric.type="networksecurity.googleapis.com/https/request_count" AND metric.labels.blocked="true"' \
+  --if="> 1000" \
+  --duration=300s \
   --notification-channels=your-channel-id
 ```
 
