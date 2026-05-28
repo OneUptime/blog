@@ -68,7 +68,7 @@ default_args = {
 dag = DAG(
     'daily_data_pipeline',
     default_args=default_args,
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2026, 1, 1),
     catchup=False
 )
@@ -232,14 +232,20 @@ main:
         args:
           projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
           jobId: ${loadJob.jobReference.jobId}
+          location: ${loadJob.jobReference.location}
         result: jobStatus
 
     - checkLoadStatus:
         switch:
+          - condition: ${"errorResult" in jobStatus.status}
+            next: loadFailed
           - condition: ${jobStatus.status.state == "DONE"}
             next: runTransform
           - condition: ${jobStatus.status.state != "DONE"}
             next: waitDelay
+
+    - loadFailed:
+        raise: '${"BigQuery load job failed: " + jobStatus.status.errorResult.message}'
 
     - waitDelay:
         call: sys.sleep
@@ -263,7 +269,34 @@ main:
                 useLegacySql: false
         result: transformJob
 
-    # Step 4: Send notification
+    # Step 4: Wait for the transform job to complete
+    - waitForTransform:
+        call: googleapis.bigquery.v2.jobs.get
+        args:
+          projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          jobId: ${transformJob.jobReference.jobId}
+          location: ${transformJob.jobReference.location}
+        result: transformStatus
+
+    - checkTransformStatus:
+        switch:
+          - condition: ${"errorResult" in transformStatus.status}
+            next: transformFailed
+          - condition: ${transformStatus.status.state == "DONE"}
+            next: notify
+          - condition: ${transformStatus.status.state != "DONE"}
+            next: waitTransformDelay
+
+    - transformFailed:
+        raise: '${"BigQuery transform job failed: " + transformStatus.status.errorResult.message}'
+
+    - waitTransformDelay:
+        call: sys.sleep
+        args:
+          seconds: 30
+        next: waitForTransform
+
+    # Step 5: Send notification
     - notify:
         call: http.post
         args:
@@ -313,7 +346,7 @@ main:
           as: e
           steps:
             - handleOrderError:
-                raise: ${"Failed to get order: " + e.message}
+                raise: '${"Failed to get order: " + e.message}'
 
     - processPayment:
         call: http.post
@@ -354,7 +387,7 @@ The cost difference is dramatic:
 | 1000 workflow runs/day | Same (may need larger env) | ~$5/month |
 | 10 complex DAGs | ~$300-800/month | Depends on steps |
 
-Cloud Composer has a high base cost because it runs a GKE cluster, Cloud SQL instance, and other infrastructure continuously. Cloud Workflows charges per step execution (about $0.000025 per step for internal steps).
+Cloud Composer has a high base cost because it runs a GKE cluster, Cloud SQL instance, and other infrastructure continuously. Cloud Workflows charges per step execution (about $0.00001 per internal step and $0.000025 per external step after the free tier).
 
 ## Decision Summary
 
