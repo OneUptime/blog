@@ -42,7 +42,7 @@ sequenceDiagram
 Before starting:
 
 1. You need an Okta account with admin access
-2. Organization-level access to Google Cloud with `iam.workforcePoolAdmin` role
+2. Organization-level access to Google Cloud with the `roles/iam.workforcePoolAdmin` role
 3. The Workforce Identity Federation API must be enabled
 
 ```bash
@@ -98,8 +98,8 @@ gcloud iam workforce-pools providers create-oidc okta-oidc-provider \
   --client-id="YOUR_OKTA_CLIENT_ID" \
   --client-secret-value="YOUR_OKTA_CLIENT_SECRET" \
   --web-sso-response-type="code" \
-  --web-sso-assertion-claims-behavior="MERGE_USER_INFO_OVER_ID_TOKEN_CLAIMS" \
-  --web-sso-additional-scopes="email,profile,groups" \
+  --web-sso-assertion-claims-behavior="merge-user-info-over-id-token-claims" \
+  --web-sso-additional-scopes="groups" \
   --attribute-mapping="google.subject=assertion.sub,google.display_name=assertion.name,google.groups=assertion.groups" \
   --attribute-condition="assertion.email.endsWith('@yourcompany.com')"
 ```
@@ -114,6 +114,15 @@ Let me break down the important flags:
 ## Step 4: Grant IAM Permissions
 
 With the provider configured, grant IAM permissions to your workforce identities. You can grant permissions to specific users or to groups.
+
+If users will access the console (federated), grant the Browser role so they can browse projects in the console.
+
+```bash
+# Grant console browsing access to all identities in the workforce pool
+gcloud projects add-iam-policy-binding my-project \
+  --member="principalSet://iam.googleapis.com/locations/global/workforcePools/okta-workforce-pool/*" \
+  --role="roles/browser"
+```
 
 ### Grant Access to a Specific User
 
@@ -157,7 +166,7 @@ Generate the workforce provider console URL that your users will use to access G
 
 ```bash
 # Generate the console access URL
-echo "https://console.cloud.google/workforce?provider=locations/global/workforcePools/okta-workforce-pool/providers/okta-oidc-provider"
+echo "https://auth.cloud.google/signin/locations/global/workforcePools/okta-workforce-pool/providers/okta-oidc-provider?continueUrl=https://console.cloud.google/"
 ```
 
 Share this URL with your users or add it to your company's application portal. When users click it, they are redirected to Okta for authentication before accessing the console.
@@ -198,18 +207,26 @@ resource "google_iam_workforce_pool_provider" "okta_oidc" {
     client_id  = var.okta_client_id
 
     client_secret {
-      value = var.okta_client_secret
+      value {
+        plain_text = var.okta_client_secret
+      }
     }
 
     web_sso_config {
       response_type             = "CODE"
       assertion_claims_behavior = "MERGE_USER_INFO_OVER_ID_TOKEN_CLAIMS"
-      additional_scopes         = ["email", "profile", "groups"]
+      additional_scopes         = ["groups"]
     }
   }
 }
 
 # IAM bindings for Okta groups
+resource "google_project_iam_member" "console_browser" {
+  project = "my-project"
+  role    = "roles/browser"
+  member  = "principalSet://iam.googleapis.com/${google_iam_workforce_pool.okta.name}/*"
+}
+
 resource "google_project_iam_member" "gcp_admins" {
   project = "my-project"
   role    = "roles/editor"
