@@ -166,7 +166,7 @@ rules:
     port: 80
 ```
 
-Rules are evaluated in order. The first matching rule wins. Make sure your more specific rules come before catch-all rules.
+HTTPRoute matching uses Gateway API precedence rules across all applicable routes. Exact path matches win over prefix matches, longer prefixes win over shorter prefixes, and method, header, and query parameter matches add specificity. If matches are still tied within a single HTTPRoute, the first matching rule wins. Make sure your more specific rules do not accidentally tie with catch-all rules.
 
 ## Step 4 - Fix Traffic Splitting Issues
 
@@ -279,13 +279,14 @@ Check if ReferenceGrants exist:
 kubectl get referencegrant -n apps
 ```
 
-## Step 6 - Debug with Gateway Controller Logs
+## Step 6 - Debug with Resource Status and Events
 
-Check the GKE Gateway controller logs for configuration errors:
+The GKE Gateway controller is Google-hosted, so you typically debug configuration errors through Gateway API status conditions and Kubernetes events rather than controller Pod logs in your cluster:
 
 ```bash
-# Check Gateway controller logs
-kubectl logs -n kube-system -l app=gke-gateway-controller --tail=100
+# Check Gateway and route conditions
+kubectl describe gateway your-gateway -n your-namespace
+kubectl describe httproute your-route -n your-namespace
 ```
 
 Also check for events related to your resources:
@@ -316,7 +317,6 @@ spec:
       certificateRefs:
       - kind: Secret
         name: tls-cert
-        # Or use a Google-managed certificate
     allowedRoutes:
       namespaces:
         from: Same
@@ -339,6 +339,8 @@ kubectl get secret tls-cert -n your-namespace -o jsonpath='{.data}' | python3 -c
 ```
 
 The secret must have `tls.crt` and `tls.key` entries.
+
+If you use Google-managed certificates or Certificate Manager instead of a Kubernetes Secret, configure the GKE-specific TLS options or Certificate Manager annotation supported by your GatewayClass. Do not put a Google-managed certificate name in `certificateRefs`; that field is for Kubernetes Secret references.
 
 ## Step 8 - Verify End-to-End
 
