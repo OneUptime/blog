@@ -26,7 +26,7 @@ In this mode, Cloud CDN only caches responses that have valid caching headers fr
 
 ### FORCE_CACHE_ALL
 
-This mode caches all responses regardless of content type or origin headers. It is aggressive and should be used carefully, but it is useful for fully static sites or APIs where you know every response is cacheable.
+This mode caches all successful responses regardless of content type, overriding origin cache directives. It is aggressive and should be used carefully, but it is useful for fully static sites where you know every response is safe to cache.
 
 ## Setting the Cache Mode
 
@@ -66,13 +66,13 @@ gcloud compute backend-buckets update my-bucket-backend \
 
 Cloud CDN has three TTL settings that work together:
 
-- **Default TTL**: Applied when the origin does not send caching headers (only relevant for CACHE_ALL_STATIC and FORCE_CACHE_ALL modes)
-- **Max TTL**: The maximum TTL that Cloud CDN will use, even if the origin specifies a longer TTL
-- **Client TTL**: Controls the Cache-Control max-age sent to clients, separate from the CDN cache TTL
+- **Default TTL**: Applied when the origin does not send caching headers in CACHE_ALL_STATIC mode, and used as the cache TTL for FORCE_CACHE_ALL mode
+- **Max TTL**: The maximum TTL that Cloud CDN will use in CACHE_ALL_STATIC mode, even if the origin specifies a longer TTL
+- **Client TTL**: Controls the maximum Cache-Control max-age sent to clients, separate from the CDN cache TTL
 
 ### Setting Default TTL
 
-The default TTL is used when the origin response does not include Cache-Control or Expires headers.
+The default TTL is used when the origin response does not include Cache-Control or Expires headers in CACHE_ALL_STATIC mode. In FORCE_CACHE_ALL mode, Cloud CDN uses the default TTL instead of origin freshness headers.
 
 ```bash
 # Set the default TTL to 1 hour (3600 seconds)
@@ -84,7 +84,7 @@ gcloud compute backend-services update my-backend \
 
 ### Setting Max TTL
 
-The max TTL caps the caching duration. Even if your origin sends `Cache-Control: max-age=86400` (1 day), Cloud CDN will only cache for the max TTL duration.
+The max TTL caps the caching duration in CACHE_ALL_STATIC mode. Even if your origin sends `Cache-Control: max-age=86400` (1 day), Cloud CDN will only cache for the max TTL duration. In FORCE_CACHE_ALL mode, Cloud CDN uses the default TTL and you cannot set a max TTL.
 
 ```bash
 # Set the max TTL to 12 hours
@@ -193,7 +193,6 @@ Choosing the right cache mode depends on your application.
 
 ### Use FORCE_CACHE_ALL when:
 - You are serving a fully static site
-- Your origin does not send caching headers and you cannot change it
 - You want maximum cache hit ratios and all content is safe to cache
 - You are using Cloud CDN in front of a third-party origin you do not control
 
@@ -207,14 +206,15 @@ With **CACHE_ALL_STATIC**:
 - If origin sends no-store or private: do not cache
 
 With **USE_ORIGIN_HEADERS**:
-- If origin sends Cache-Control max-age: use it, capped by max TTL
+- If origin sends Cache-Control max-age: use it
 - If origin sends no caching headers: do not cache
 - If origin sends no-store or private: do not cache
 
 With **FORCE_CACHE_ALL**:
-- If origin sends Cache-Control max-age: use it, capped by max TTL
+- If origin sends Cache-Control max-age: ignore it and use default TTL
 - If origin sends no caching headers: use default TTL
 - If origin sends no-store or private: ignore and cache anyway using default TTL
+- If origin sends an unsupported Vary header: the response might still not be cached
 
 ## Testing Your Cache Configuration
 
@@ -225,18 +225,17 @@ After configuring cache settings, verify they are working.
 curl -I https://app.example.com/static/style.css
 
 # Look for these headers in the response:
-# X-Cache-Status: hit (or miss on first request)
 # Age: <seconds since cached>
 # Cache-Control: public, max-age=300 (client TTL)
 ```
 
-You can also check cache behavior through Cloud Logging.
+Cloud CDN does not add a cache status response header by default. You can check cache behavior through Cloud Logging, or configure a custom response header that uses the `cdn_cache_status` variable.
 
 ```bash
 # Query CDN logs for cache hit/miss information
 gcloud logging read \
     'resource.type="http_load_balancer" AND httpRequest.requestUrl:"style.css"' \
-    --format="json(jsonPayload.statusDetails,jsonPayload.cacheHit)" \
+    --format="json(jsonPayload.statusDetails,httpRequest.cacheHit)" \
     --limit=10 \
     --project=my-project
 ```
@@ -245,11 +244,11 @@ gcloud logging read \
 
 **Setting default TTL without changing cache mode**: Default TTL only applies to CACHE_ALL_STATIC and FORCE_CACHE_ALL modes. With USE_ORIGIN_HEADERS, default TTL is ignored.
 
-**Forgetting client TTL**: If you set a long CDN TTL but no client TTL, browsers might cache stale content. Always set client TTL to a reasonable value.
+**Forgetting client TTL**: Cloud CDN has a default client TTL, but if you set it too high, browsers might cache stale content longer than you want. Keep client TTL at a reasonable value.
 
-**Vary header issues**: If your origin sends a Vary header with values Cloud CDN does not support, the response will not be cached. Cloud CDN supports Vary: Accept, Accept-Encoding, and Origin.
+**Vary header issues**: If your origin sends a Vary header with values Cloud CDN does not support, the response will not be cached. Cloud CDN supports Vary values including `Accept`, `Accept-Encoding`, `Access-Control-Request-Headers`, `Access-Control-Request-Method`, `Origin`, `Sec-Fetch-Dest`, `Sec-Fetch-Mode`, `Sec-Fetch-Site`, `X-Goog-Allowed-Resources`, `X-Origin`, and headers configured as part of the cache key.
 
-**Set-Cookie in responses**: By default, responses with Set-Cookie headers are not cached. If you want to cache them, you need to use FORCE_CACHE_ALL mode.
+**Set-Cookie in responses**: Responses with Set-Cookie headers are not cached by default. Avoid sending Set-Cookie on static assets you expect Cloud CDN to cache.
 
 ## Wrapping Up
 
