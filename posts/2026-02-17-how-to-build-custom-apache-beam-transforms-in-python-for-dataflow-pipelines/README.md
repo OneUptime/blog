@@ -47,11 +47,12 @@ def parse_log_line(line):
 def enrich_with_date_parts(record):
     """Add date components for easier partitioning and filtering."""
     ts = datetime.fromisoformat(record["timestamp"])
-    record["year"] = ts.year
-    record["month"] = ts.month
-    record["day"] = ts.day
-    record["hour"] = ts.hour
-    return record
+    enriched = dict(record)
+    enriched["year"] = ts.year
+    enriched["month"] = ts.month
+    enriched["day"] = ts.day
+    enriched["hour"] = ts.hour
+    return enriched
 
 def filter_errors(record):
     """Return True only for error-level log records."""
@@ -78,6 +79,7 @@ When you need more control - setup/teardown, stateful processing, or multiple ou
 # DoFn with setup, teardown, and multiple outputs
 import apache_beam as beam
 from apache_beam import pvalue
+import json
 import logging
 import requests
 
@@ -99,7 +101,7 @@ class EnrichFromAPI(beam.DoFn):
         self.cache = {}
 
     def setup(self):
-        """Called once per worker when the DoFn is initialized.
+        """Called once per DoFn instance when it is initialized on a worker.
         Use this for expensive one-time setup like creating connections."""
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json"})
@@ -111,8 +113,9 @@ class EnrichFromAPI(beam.DoFn):
 
         # Check cache first to avoid redundant API calls
         if record_id in self.cache:
-            element["enrichment"] = self.cache[record_id]
-            yield pvalue.TaggedOutput(self.SUCCESS, element)
+            enriched = dict(element)
+            enriched["enrichment"] = self.cache[record_id]
+            yield pvalue.TaggedOutput(self.SUCCESS, enriched)
             return
 
         try:
@@ -125,12 +128,14 @@ class EnrichFromAPI(beam.DoFn):
 
             # Cache the result for reuse
             self.cache[record_id] = enrichment_data
-            element["enrichment"] = enrichment_data
-            yield pvalue.TaggedOutput(self.SUCCESS, element)
+            enriched = dict(element)
+            enriched["enrichment"] = enrichment_data
+            yield pvalue.TaggedOutput(self.SUCCESS, enriched)
 
         except Exception as e:
-            element["error"] = str(e)
-            yield pvalue.TaggedOutput(self.FAILURE, element)
+            failed = dict(element)
+            failed["error"] = str(e)
+            yield pvalue.TaggedOutput(self.FAILURE, failed)
 
     def teardown(self):
         """Called when the DoFn is being destroyed. Clean up resources."""
@@ -167,21 +172,23 @@ When processing streaming data, you sometimes need to maintain state across elem
 # stateful_dofn.py
 # Stateful DoFn that deduplicates events in a streaming pipeline
 import apache_beam as beam
-from apache_beam.transforms.userstate import BagStateSpec, TimerSpec, on_timer
-from apache_beam.coders import VarIntCoder, StrUtf8Coder
+from apache_beam.transforms.userstate import ReadModifyWriteStateSpec, TimerSpec, on_timer
+from apache_beam.coders import VarIntCoder
 from apache_beam.transforms.timeutil import TimeDomain
+from apache_beam.utils import timestamp
 
 class DeduplicateEvents(beam.DoFn):
     """
     Deduplicate events within a time window using stateful processing.
-    Keeps track of seen event IDs and clears them after a timeout.
+    Expects keyed input in the form (event_id, event) and clears state
+    after a timeout.
     """
 
-    # State spec to store seen event IDs
-    SEEN_IDS = BagStateSpec("seen_ids", StrUtf8Coder())
+    # State spec to store whether this event ID has already been seen
+    SEEN = ReadModifyWriteStateSpec("seen", VarIntCoder())
 
     # Timer to clear state periodically
-    CLEAR_TIMER = TimerSpec("clear_timer", TimeDomain.PROCESSING_TIME)
+    CLEAR_TIMER = TimerSpec("clear_timer", TimeDomain.REAL_TIME)
 
     def __init__(self, dedup_window_seconds=3600):
         self.dedup_window_seconds = dedup_window_seconds
@@ -189,28 +196,26 @@ class DeduplicateEvents(beam.DoFn):
     def process(
         self,
         element,
-        seen_ids=beam.DoFn.StateParam(SEEN_IDS),
+        seen=beam.DoFn.StateParam(SEEN),
         clear_timer=beam.DoFn.TimerParam(CLEAR_TIMER),
     ):
         """Process an element, emitting only if not seen before."""
-        event_id = element["event_id"]
+        event_id, event = element
 
-        # Check if we have already seen this event
-        existing_ids = set(seen_ids.read())
-
-        if event_id not in existing_ids:
-            # New event - emit it and record the ID
-            seen_ids.add(event_id)
+        # Check if we have already seen this event ID
+        if not seen.read():
+            # New event - emit it and record the ID's state
+            seen.write(1)
             clear_timer.set(
-                beam.utils.timestamp.Timestamp.now().micros // 1000000
-                + self.dedup_window_seconds
+                timestamp.Timestamp.now()
+                + timestamp.Duration(seconds=self.dedup_window_seconds)
             )
-            yield element
+            yield event
 
     @on_timer(CLEAR_TIMER)
-    def clear_state(self, seen_ids=beam.DoFn.StateParam(SEEN_IDS)):
-        """Clear the seen IDs state when the timer fires."""
-        seen_ids.clear()
+    def clear_state(self, seen=beam.DoFn.StateParam(SEEN)):
+        """Clear the seen state when the timer fires."""
+        seen.clear()
 ```
 
 ## Building Composite PTransforms
@@ -221,6 +226,7 @@ Composite transforms bundle multiple steps into a reusable unit. This is the bes
 # composite_transforms.py
 # Reusable composite transforms that encapsulate multi-step logic
 import apache_beam as beam
+from apache_beam import pvalue
 import json
 from datetime import datetime
 
@@ -245,19 +251,19 @@ class ParseAndValidateJSON(beam.PTransform):
 
         def validate_fields(record, required_fields):
             if record["status"] == "error":
-                yield beam.pvalue.TaggedOutput("invalid", record)
+                yield pvalue.TaggedOutput("invalid", record)
                 return
 
             data = record["data"]
             missing = [f for f in required_fields if f not in data]
 
             if missing:
-                yield beam.pvalue.TaggedOutput("invalid", {
+                yield pvalue.TaggedOutput("invalid", {
                     "raw": data,
                     "error": f"Missing fields: {missing}",
                 })
             else:
-                yield beam.pvalue.TaggedOutput("valid", data)
+                yield pvalue.TaggedOutput("valid", data)
 
         results = (
             pcoll
@@ -310,7 +316,7 @@ class AggregateByTimeWindow(beam.PTransform):
             )
             | "KeyByCategory" >> beam.Map(lambda x: (x.get("category", "unknown"), x))
             | "GroupByKey" >> beam.GroupByKey()
-            | "Aggregate" >> beam.ParDo(format_window_result)
+            | "Aggregate" >> beam.Map(format_window_result)
         )
 ```
 
