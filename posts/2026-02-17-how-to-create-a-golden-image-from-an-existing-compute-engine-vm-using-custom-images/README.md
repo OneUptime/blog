@@ -47,20 +47,22 @@ Inside the VM, install your software stack:
 ```bash
 # Update the system and install required packages
 sudo apt-get update && sudo apt-get upgrade -y
-sudo apt-get install -y nginx docker.io python3-pip htop
+sudo apt-get install -y nginx docker.io python3-pip python3-venv htop ufw
 
 # Configure services
 sudo systemctl enable nginx
 sudo systemctl enable docker
 
-# Install application dependencies
-pip3 install flask gunicorn
+# Install application dependencies in a virtual environment
+sudo python3 -m venv /opt/my-app-venv
+sudo /opt/my-app-venv/bin/pip install --upgrade pip
+sudo /opt/my-app-venv/bin/pip install flask gunicorn
 
 # Apply security hardening
-sudo ufw enable
 sudo ufw allow 22/tcp
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
+sudo ufw --force enable
 ```
 
 ## Step 2: Clean Up the VM Before Imaging
@@ -81,7 +83,7 @@ sudo rm -rf /var/tmp/*
 
 # Clear log files
 sudo truncate -s 0 /var/log/*.log
-sudo truncate -s 0 /var/log/**/*.log 2>/dev/null
+sudo find /var/log -type f -name "*.log" -exec truncate -s 0 {} \;
 
 # Remove bash history
 history -c
@@ -99,7 +101,7 @@ These cleanup steps ensure that each VM created from the image gets its own uniq
 
 ## Step 3: Stop the VM
 
-You need to stop the VM before creating an image from its disk. While GCP technically allows creating an image from a running instance, it is not recommended because the filesystem might be in an inconsistent state.
+You need to stop the VM before creating an image from its disk. While GCP allows creating an image from a running instance if you pass the `--force` flag, it is not recommended because the filesystem might be in an inconsistent state.
 
 ```bash
 # Stop the VM to ensure a clean disk state
