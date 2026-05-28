@@ -47,25 +47,20 @@ sequenceDiagram
 Create topics for state synchronization:
 
 ```bash
-# Topic for desired state changes (cloud to device)
-
-gcloud pubsub topics create device-desired-state
-
 # Topic for reported state updates (device to cloud)
 gcloud pubsub topics create device-reported-state
 
 # Topic for delta notifications (computed differences)
 gcloud pubsub topics create device-state-delta
 
-# Subscriptions for each direction
-gcloud pubsub subscriptions create device-desired-state-sub \
-  --topic=device-desired-state
-
 gcloud pubsub subscriptions create device-reported-state-sub \
   --topic=device-reported-state
 
-gcloud pubsub subscriptions create device-state-delta-sub \
-  --topic=device-state-delta
+# Create one filtered delta subscription per device, or route messages
+# through a backend service that maintains the device connections.
+gcloud pubsub subscriptions create device-state-delta-thermo-001-sub \
+  --topic=device-state-delta \
+  --message-filter='attributes.device_id = "thermo-001"'
 ```
 
 ## Step 2: Define the Shadow Document Structure
@@ -104,6 +99,7 @@ from google.cloud import pubsub_v1
 import json
 import time
 from copy import deepcopy
+from shadow_model import SHADOW_TEMPLATE
 
 db = firestore.Client()
 publisher = pubsub_v1.PublisherClient()
@@ -167,14 +163,25 @@ def update_desired_state(device_id, desired_updates):
         for key in desired_updates:
             metadata_desired[key] = now
 
-        # Write the updated shadow
-        transaction.update(doc_ref, {
+        updates = {
+            "device_id": device_id,
             "state.desired": current_desired,
             "state.delta": delta,
             "metadata.desired": metadata_desired,
             "version": firestore.Increment(1),
             "last_updated": firestore.SERVER_TIMESTAMP,
-        })
+        }
+
+        if doc.exists:
+            transaction.update(doc_ref, updates)
+        else:
+            shadow["device_id"] = device_id
+            shadow["state"]["desired"] = current_desired
+            shadow["state"]["delta"] = delta
+            shadow["metadata"]["desired"] = metadata_desired
+            shadow["version"] = 1
+            shadow["last_updated"] = firestore.SERVER_TIMESTAMP
+            transaction.set(doc_ref, shadow)
 
         return delta
 
@@ -226,13 +233,25 @@ def update_reported_state(device_id, reported_updates):
         for key in reported_updates:
             metadata_reported[key] = now
 
-        transaction.update(doc_ref, {
+        updates = {
+            "device_id": device_id,
             "state.reported": current_reported,
             "state.delta": delta,
             "metadata.reported": metadata_reported,
             "version": firestore.Increment(1),
             "last_updated": firestore.SERVER_TIMESTAMP,
-        })
+        }
+
+        if doc.exists:
+            transaction.update(doc_ref, updates)
+        else:
+            shadow["device_id"] = device_id
+            shadow["state"]["reported"] = current_reported
+            shadow["state"]["delta"] = delta
+            shadow["metadata"]["reported"] = metadata_reported
+            shadow["version"] = 1
+            shadow["last_updated"] = firestore.SERVER_TIMESTAMP
+            transaction.set(doc_ref, shadow)
 
         return delta
 
@@ -281,6 +300,7 @@ Here is the device-side code that syncs with its cloud shadow:
 
 import json
 import time
+from google.cloud import firestore
 from google.cloud import pubsub_v1
 
 class DeviceShadowClient:
@@ -289,6 +309,7 @@ class DeviceShadowClient:
     def __init__(self, project_id, device_id):
         self.project_id = project_id
         self.device_id = device_id
+        self.db = firestore.Client()
         self.publisher = pubsub_v1.PublisherClient()
         self.subscriber = pubsub_v1.SubscriberClient()
         self.local_state = {}
@@ -313,11 +334,6 @@ class DeviceShadowClient:
         """Handles incoming delta messages from the cloud.
         The device should apply these changes and report back."""
         data = json.loads(message.data.decode("utf-8"))
-
-        if data.get("device_id") != self.device_id:
-            message.nack()
-            return
-
         delta = data.get("delta", {})
         print(f"Received desired state changes: {delta}")
 
@@ -338,10 +354,23 @@ class DeviceShadowClient:
             applied[key] = value
         return applied
 
+    def sync_pending_delta(self):
+        """Fetches any pending delta that was stored while the device was offline."""
+        doc_ref = self.db.collection("device_shadows").document(self.device_id)
+        doc = doc_ref.get()
+        if not doc.exists:
+            return
+
+        delta = doc.to_dict().get("state", {}).get("delta", {})
+        if delta:
+            applied = self.apply_state_changes(delta)
+            self.report_state(applied)
+
     def start_listening(self):
         """Starts listening for delta messages from the cloud."""
+        self.sync_pending_delta()
         sub_path = self.subscriber.subscription_path(
-            self.project_id, "device-state-delta-sub"
+            self.project_id, f"device-state-delta-{self.device_id}-sub"
         )
         self.subscriber.subscribe(sub_path, callback=self.handle_delta)
         print(f"Device {self.device_id} listening for state changes")
@@ -362,4 +391,4 @@ If the device was offline during step 3, the delta persists in Firestore. When t
 
 ## Wrapping Up
 
-The device shadow pattern is essential for any production IoT system where devices go offline. Building it on Firestore and Pub/Sub gives you real-time synchronization with Firestore's snapshot listeners, durable state storage, and the scalability of Pub/Sub for message delivery. The Firestore transaction support ensures you never lose state updates even under concurrent modifications from multiple sources.
+The device shadow pattern is essential for any production IoT system where devices go offline. Building it on Firestore and Pub/Sub gives you durable state storage, optional real-time synchronization with Firestore's snapshot listeners, and the scalability of Pub/Sub for message delivery. The Firestore transaction support protects read-modify-write updates under concurrent modifications from multiple sources.
