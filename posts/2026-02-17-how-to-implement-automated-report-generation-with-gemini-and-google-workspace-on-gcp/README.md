@@ -31,18 +31,30 @@ You need a GCP project with a Google Workspace account. Enable the required APIs
 gcloud services enable \
     bigquery.googleapis.com \
     aiplatform.googleapis.com \
+    artifactregistry.googleapis.com \
+    cloudbuild.googleapis.com \
+    cloudfunctions.googleapis.com \
+    cloudscheduler.googleapis.com \
     docs.googleapis.com \
     drive.googleapis.com \
+    run.googleapis.com \
     sheets.googleapis.com \
     --project=your-project-id
 ```
 
-Install the Python packages:
+Add the Python packages to `requirements.txt` and install them locally if you want to test before deploying:
 
 ```bash
-# Install all required packages
-pip install google-cloud-aiplatform google-cloud-bigquery \
-    google-api-python-client google-auth-httplib2 google-auth-oauthlib
+cat > requirements.txt <<'EOF'
+google-genai
+google-cloud-bigquery
+functions-framework
+google-api-python-client
+google-auth-httplib2
+EOF
+
+# Install all required packages locally
+pip install -r requirements.txt
 ```
 
 ## Step 1: Pull Data from BigQuery
@@ -52,7 +64,7 @@ Start by creating a module that fetches the data your report needs. Here is an e
 ```python
 # data_fetcher.py - Pull report data from BigQuery
 from google.cloud import bigquery
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 client = bigquery.Client(project="your-project-id")
 
@@ -61,7 +73,7 @@ def fetch_weekly_metrics(end_date=None):
     Returns a dictionary with all the data sections needed for the report."""
 
     if end_date is None:
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=7)
 
     # Query for key performance indicators
@@ -104,8 +116,8 @@ def fetch_weekly_metrics(end_date=None):
 
     return {
         "period": f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}",
-        "kpis": dict(kpi_results[0]) if kpi_results else {},
-        "daily_breakdown": [dict(row) for row in daily_results],
+        "kpis": dict(kpi_results[0].items()) if kpi_results else {},
+        "daily_breakdown": [dict(row.items()) for row in daily_results],
     }
 ```
 
@@ -115,12 +127,11 @@ Feed the data to Gemini and ask it to produce a written analysis:
 
 ```python
 # report_generator.py - Use Gemini to generate report narrative
-import vertexai
-from vertexai.generative_models import GenerativeModel
+from google import genai
+from google.genai import types
 import json
 
-vertexai.init(project="your-project-id", location="us-central1")
-model = GenerativeModel("gemini-2.0-flash")
+client = genai.Client(vertexai=True, project="your-project-id", location="us-central1")
 
 def generate_report_narrative(metrics_data):
     """Use Gemini to analyze metrics and generate a written report section.
@@ -154,12 +165,13 @@ Guidelines:
 
 Return the report as plain text with section headers marked with ##."""
 
-    response = model.generate_content(
-        prompt,
-        generation_config={
-            "temperature": 0.3,  # Slightly creative but mostly factual
-            "max_output_tokens": 2048,
-        }
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.3,  # Slightly creative but mostly factual
+            max_output_tokens=2048,
+        ),
     )
 
     return response.text
@@ -174,11 +186,15 @@ Now take Gemini's output and format it as a proper Google Doc:
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
-# Use a service account for server-to-server authentication
+# Use a service account for server-to-server authentication. For Google Workspace
+# user files, either use domain-wide delegation with a Workspace user subject or
+# create the report in a shared drive where the service account has access.
 SCOPES = ['https://www.googleapis.com/auth/documents', 'https://www.googleapis.com/auth/drive']
 credentials = service_account.Credentials.from_service_account_file(
     'service-account-key.json', scopes=SCOPES
 )
+# If you use domain-wide delegation, uncomment this line and replace the email:
+# credentials = credentials.with_subject('reports-owner@example.com')
 
 docs_service = build('docs', 'v1', credentials=credentials)
 drive_service = build('drive', 'v3', credentials=credentials)
@@ -244,9 +260,12 @@ def create_report_doc(title, narrative, metrics_data):
     ).execute()
 
     # Move the document to the reports folder
+    file = drive_service.files().get(fileId=doc_id, fields="parents").execute()
+    previous_parents = ",".join(file.get("parents", []))
     drive_service.files().update(
         fileId=doc_id,
         addParents="your-reports-folder-id",
+        removeParents=previous_parents,
         fields="id, parents"
     ).execute()
 
@@ -263,7 +282,6 @@ import functions_framework
 from data_fetcher import fetch_weekly_metrics
 from report_generator import generate_report_narrative
 from docs_creator import create_report_doc
-from datetime import datetime
 
 @functions_framework.http
 def generate_weekly_report(request):
@@ -299,11 +317,20 @@ gcloud functions deploy generate-weekly-report \
     --timeout=300s \
     --memory=512MB
 
+# Allow the scheduler service account to invoke the private function
+gcloud functions add-iam-policy-binding generate-weekly-report \
+    --gen2 \
+    --region=us-central1 \
+    --member="serviceAccount:report-scheduler@your-project-id.iam.gserviceaccount.com" \
+    --role="roles/run.invoker"
+
 # Schedule it to run every Monday at 8 AM
 gcloud scheduler jobs create http weekly-report-job \
+    --location=us-central1 \
     --schedule="0 8 * * 1" \
-    --uri="https://REGION-PROJECT.cloudfunctions.net/generate-weekly-report" \
+    --uri="https://us-central1-your-project-id.cloudfunctions.net/generate-weekly-report" \
     --http-method=POST \
+    --oidc-service-account-email="report-scheduler@your-project-id.iam.gserviceaccount.com" \
     --time-zone="America/New_York"
 ```
 
