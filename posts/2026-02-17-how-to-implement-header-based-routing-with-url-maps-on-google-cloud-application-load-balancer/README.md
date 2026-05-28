@@ -74,14 +74,14 @@ The URL map route rules support several types of header matches:
 - **exactMatch**: Header value must match exactly
 - **prefixMatch**: Header value must start with the specified string
 - **suffixMatch**: Header value must end with the specified string
-- **regexMatch**: Header value must match a regular expression
+- **regexMatch**: Header value must match a regular expression (supported on regional external Application Load Balancers, internal Application Load Balancers, and Traffic Director)
 - **presentMatch**: Header just needs to be present (or absent)
 - **rangeMatch**: Header value must be a number within a range
 
 Here is a URL map with various header matching patterns:
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/default-backend
 hostRules:
@@ -121,7 +121,7 @@ EOF
 You can combine header conditions with URL path conditions for more precise routing.
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/default-backend
 hostRules:
@@ -158,7 +158,7 @@ Within a single `matchRules` entry, all conditions must be true (AND logic). Bet
 You can require multiple headers to all match:
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/default-backend
 hostRules:
@@ -193,19 +193,19 @@ The `invertMatch` field reverses the match logic. In the example above, requests
 
 ## Regex Header Matching
 
-For more flexible matching, use regex patterns:
+For regional external Application Load Balancers, internal Application Load Balancers, and Traffic Director, you can use regex patterns for more flexible matching. Regex route and header matches are not supported on global external Application Load Balancers, so use exact, prefix, suffix, presence, or range matching there.
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --region=us-central1 <<'EOF'
 name: app-url-map
-defaultService: projects/my-project/global/backendServices/default-backend
+defaultService: projects/my-project/regions/us-central1/backendServices/default-backend
 hostRules:
   - hosts:
       - "*"
     pathMatcher: regex-routes
 pathMatchers:
   - name: regex-routes
-    defaultService: projects/my-project/global/backendServices/default-backend
+    defaultService: projects/my-project/regions/us-central1/backendServices/default-backend
     routeRules:
       # Match User-Agent for specific bot patterns
       - priority: 1
@@ -213,14 +213,14 @@ pathMatchers:
           - headerMatches:
               - headerName: "user-agent"
                 regexMatch: ".*(Googlebot|Bingbot|Slurp).*"
-        service: projects/my-project/global/backendServices/bot-backend
+        service: projects/my-project/regions/us-central1/backendServices/bot-backend
       # Match API keys that start with a specific prefix
       - priority: 2
         matchRules:
           - headerMatches:
               - headerName: "x-api-key"
                 prefixMatch: "premium_"
-        service: projects/my-project/global/backendServices/premium-backend
+        service: projects/my-project/regions/us-central1/backendServices/premium-backend
 EOF
 ```
 
@@ -229,7 +229,7 @@ EOF
 Beyond just routing, you can modify headers as requests pass through the load balancer:
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/default-backend
 hostRules:
@@ -305,4 +305,4 @@ Here are some patterns I have seen work well in production:
 
 ## Wrapping Up
 
-Header-based routing on GCP's Application Load Balancer is configured entirely through URL map route rules. The matching options are flexible - exact, prefix, suffix, regex, presence, and range - and you can combine multiple header conditions with path conditions. This gives you fine-grained control over how traffic flows to your backends, without changing any application code. The route rules evaluate in priority order, so put your most specific rules at the lowest priority numbers, and always have a default route as a catch-all.
+Header-based routing on GCP's Application Load Balancer is configured entirely through URL map route rules. The matching options are flexible - exact, prefix, suffix, presence, range, and regex where supported - and you can combine multiple header conditions with path conditions. This gives you fine-grained control over how traffic flows to your backends, without changing any application code. The route rules evaluate in priority order, so put your most specific rules at the lowest priority numbers, and always have a default route as a catch-all.
