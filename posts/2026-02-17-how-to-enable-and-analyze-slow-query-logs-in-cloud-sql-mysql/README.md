@@ -25,6 +25,8 @@ gcloud sql instances patch my-mysql-instance \
   log_output=FILE
 ```
 
+If your instance already has database flags set, include them in the same command. `gcloud sql instances patch --database-flags` overwrites the full database flag list, and changing flags can restart the instance.
+
 The flags explained:
 
 - **slow_query_log**: Turns the logging on or off
@@ -89,7 +91,7 @@ A typical slow query log entry looks like this:
 # Time: 2025-06-15T10:23:45.123456Z
 # User@Host: appuser[appuser] @ [10.0.0.5]
 # Query_time: 3.456789  Lock_time: 0.000123  Rows_sent: 42  Rows_examined: 1500000
-SET timestamp=1718443425;
+SET timestamp=1749983025;
 SELECT o.order_id, c.name, o.total
 FROM orders o JOIN customers c ON o.customer_id = c.customer_id
 WHERE o.order_date BETWEEN '2025-01-01' AND '2025-06-30'
@@ -227,9 +229,10 @@ gcloud logging metrics create slow_query_count \
 gcloud monitoring policies create \
   --display-name="High Slow Query Rate" \
   --condition-display-name="Slow queries per minute" \
-  --condition-filter='metric.type="logging.googleapis.com/user/slow_query_count"' \
-  --condition-threshold-value=50 \
-  --condition-threshold-duration=300s \
+  --condition-filter='metric.type="logging.googleapis.com/user/slow_query_count" AND resource.type="cloudsql_database"' \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_DELTA"}' \
+  --if='> 50' \
+  --duration=300s \
   --notification-channels="projects/my-project/notificationChannels/123"
 ```
 
