@@ -37,6 +37,9 @@ SHOW max_replication_slots;
 
 -- Check max_wal_senders
 SHOW max_wal_senders;
+
+-- Check that pglogical is loaded
+SHOW shared_preload_libraries;
 ```
 
 If wal_level is not set to logical, update the RDS parameter group:
@@ -49,6 +52,12 @@ If wal_level is not set to logical, update the RDS parameter group:
 resource "aws_db_parameter_group" "migration_ready" {
   family = "postgres15"
   name   = "migration-ready-postgres15"
+
+  parameter {
+    name         = "shared_preload_libraries"
+    value        = "pglogical"
+    apply_method = "pending-reboot"
+  }
 
   parameter {
     name         = "rds.logical_replication"
@@ -77,6 +86,18 @@ resource "aws_db_parameter_group" "migration_ready" {
 ```
 
 After applying the parameter group, you need to reboot the RDS instance. Plan this during a maintenance window.
+
+You also need to install pglogical in each database that DMS will migrate and grant the migration user the required access:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pglogical;
+
+GRANT USAGE ON SCHEMA pglogical TO PUBLIC;
+GRANT SELECT ON ALL TABLES IN SCHEMA pglogical TO migration_user;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO migration_user;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO migration_user;
+GRANT rds_replication TO migration_user;
+```
 
 ## Setting Up Network Connectivity
 
@@ -151,7 +172,7 @@ resource "google_sql_database_instance" "destination" {
       # Use private IP for production
       ipv4_enabled    = false
       private_network = google_compute_network.vpc.id
-      require_ssl     = true
+      ssl_mode        = "ENCRYPTED_ONLY"
     }
 
     database_flags {
@@ -161,7 +182,7 @@ resource "google_sql_database_instance" "destination" {
 
     database_flags {
       name  = "shared_buffers"
-      value = "4096"  # In 8KB pages = 32GB
+      value = "524288"  # In 8KB pages = 4GB
     }
 
     maintenance_window {
@@ -181,11 +202,10 @@ Now create the DMS migration job using gcloud:
 
 ```bash
 # Create a connection profile for the RDS source
-gcloud database-migration connection-profiles create \
+gcloud database-migration connection-profiles create postgresql \
   rds-source-profile \
   --region=us-central1 \
   --display-name="RDS PostgreSQL Source" \
-  --provider=RDS \
   --host=mydb.cluster-abc123.us-east-1.rds.amazonaws.com \
   --port=5432 \
   --username=migration_user \
@@ -193,12 +213,11 @@ gcloud database-migration connection-profiles create \
   --database=mydb \
   --ssl-type=SERVER_ONLY
 
-# Create a connection profile for Cloud SQL destination
-gcloud database-migration connection-profiles create \
+# Create a connection profile for the existing Cloud SQL destination
+gcloud database-migration connection-profiles create postgresql \
   cloudsql-destination-profile \
   --region=us-central1 \
   --display-name="Cloud SQL PostgreSQL Destination" \
-  --provider=CLOUDSQL \
   --cloudsql-instance=production-postgres-migrated
 
 # Create the migration job
@@ -208,8 +227,21 @@ gcloud database-migration migration-jobs create \
   --display-name="Production PostgreSQL Migration" \
   --source=rds-source-profile \
   --destination=cloudsql-destination-profile \
-  --type=CONTINUOUS \
-  --dump-type=LOGICAL
+  --type=CONTINUOUS
+
+# Demote the destination so it can act as the migration replica
+gcloud database-migration migration-jobs demote-destination \
+  rds-to-cloudsql-migration \
+  --region=us-central1
+
+# Verify and start the migration job
+gcloud database-migration migration-jobs verify \
+  rds-to-cloudsql-migration \
+  --region=us-central1
+
+gcloud database-migration migration-jobs start \
+  rds-to-cloudsql-migration \
+  --region=us-central1
 ```
 
 ## Monitoring the Migration
@@ -274,16 +306,20 @@ Before cutting over, validate the data:
 ```sql
 -- Run on both RDS and Cloud SQL, compare results
 
--- Check row counts for all tables
-SELECT schemaname, relname, n_live_tup
+-- Generate exact row count statements for all user tables
+SELECT format(
+    'SELECT %L AS table_name, count(*) AS row_count FROM %I.%I;',
+    schemaname || '.' || relname,
+    schemaname,
+    relname
+)
 FROM pg_stat_user_tables
-ORDER BY n_live_tup DESC;
+ORDER BY schemaname, relname;
 
 -- Check sequence values
-SELECT sequence_name, last_value
-FROM information_schema.sequences s
-JOIN pg_sequences ps ON s.sequence_name = ps.sequencename
-ORDER BY sequence_name;
+SELECT schemaname, sequencename, last_value
+FROM pg_sequences
+ORDER BY schemaname, sequencename;
 
 -- Verify schema objects
 SELECT table_name, table_type
@@ -310,7 +346,7 @@ Run a Python script to automate the comparison:
 # validate_migration.py
 # Compares source and destination databases for consistency
 import psycopg2
-import json
+from psycopg2 import sql
 
 def compare_databases(source_config, dest_config):
     """Compare source RDS and destination Cloud SQL databases."""
@@ -320,15 +356,8 @@ def compare_databases(source_config, dest_config):
     results = {}
 
     # Compare table row counts
-    query = """
-        SELECT schemaname || '.' || relname AS table_name,
-               n_live_tup AS row_count
-        FROM pg_stat_user_tables
-        ORDER BY table_name
-    """
-
-    source_counts = execute_query(source_conn, query)
-    dest_counts = execute_query(dest_conn, query)
+    source_counts = get_exact_row_counts(source_conn)
+    dest_counts = get_exact_row_counts(dest_conn)
 
     mismatches = []
     for table, count in source_counts.items():
@@ -351,11 +380,28 @@ def compare_databases(source_config, dest_config):
     return results
 
 
-def execute_query(conn, query):
-    """Execute query and return dict of results."""
+def get_exact_row_counts(conn):
+    """Return exact row counts for every non-system table."""
     cursor = conn.cursor()
-    cursor.execute(query)
-    return {row[0]: row[1] for row in cursor.fetchall()}
+    cursor.execute("""
+        SELECT table_schema, table_name
+        FROM information_schema.tables
+        WHERE table_type = 'BASE TABLE'
+          AND table_schema NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY table_schema, table_name
+    """)
+
+    counts = {}
+    for schema, table in cursor.fetchall():
+        query = sql.SQL("SELECT count(*) FROM {}.{}").format(
+            sql.Identifier(schema),
+            sql.Identifier(table),
+        )
+        cursor.execute(query)
+        counts[f"{schema}.{table}"] = cursor.fetchone()[0]
+
+    cursor.close()
+    return counts
 ```
 
 ## Performing the Cutover
