@@ -14,7 +14,7 @@ I have been through this process multiple times, and the mapping is rarely one-t
 
 ## Compute Services
 
-The most obvious mapping is EC2 to Compute Engine. Both give you virtual machines, but there are differences in how you configure them. GCP uses custom machine types, which means you can pick exact CPU and memory combinations rather than being locked into predefined instance types.
+The most obvious mapping is EC2 to Compute Engine. Both give you virtual machines, but there are differences in how you configure them. GCP supports custom machine types, which means you can choose many CPU and memory combinations within documented limits rather than being locked only into predefined machine types.
 
 Here is a quick reference table for compute services:
 
@@ -22,9 +22,9 @@ Here is a quick reference table for compute services:
 |---|---|---|
 | EC2 | Compute Engine | Custom machine types available |
 | Lambda | Cloud Functions / Cloud Run | Cloud Run handles containers |
-| ECS/EKS | Google Kubernetes Engine (GKE) | GKE is more mature |
+| EKS / ECS | Google Kubernetes Engine (GKE) / Cloud Run | EKS maps to managed Kubernetes; ECS workloads may map to GKE or Cloud Run |
 | Elastic Beanstalk | App Engine | PaaS offering |
-| Fargate | Cloud Run | Serverless containers |
+| Fargate | Cloud Run / GKE Autopilot | Serverless containers or managed Kubernetes capacity |
 | Batch | Cloud Batch | Batch processing |
 
 One thing that catches people off guard is that GCP does not have a direct equivalent to EC2 Auto Scaling Groups as a standalone service. Instead, you use Managed Instance Groups (MIGs) in Compute Engine, which handle autoscaling, health checks, and rolling updates.
@@ -38,12 +38,12 @@ Storage mapping is relatively clean, but the pricing models differ significantly
 | S3 | Cloud Storage | Similar bucket-based storage |
 | EBS | Persistent Disks | Attached to VMs |
 | EFS | Filestore | Managed NFS |
-| Glacier | Cloud Storage Archive | Storage class, not separate service |
-| S3 Transfer Acceleration | Storage Transfer Service | Different approach |
+| S3 Glacier storage classes | Cloud Storage Archive | Archive storage class |
+| S3 Transfer Acceleration | No direct equivalent | Use Storage Transfer Service for S3-to-Cloud Storage migrations |
 
-A key difference: GCP Cloud Storage uses storage classes (Standard, Nearline, Coldline, Archive) within the same bucket, while AWS treats Glacier as a separate service. This makes lifecycle management simpler in GCP.
+A key difference: GCP Cloud Storage uses storage classes (Standard, Nearline, Coldline, Archive) within Cloud Storage buckets, while AWS offers S3 Glacier storage classes as part of S3 and also has the older separate Amazon S3 Glacier vault service. Lifecycle management is similar conceptually, but the service boundaries are different.
 
-The following gcloud command creates a bucket with a lifecycle rule that moves objects to Coldline after 30 days:
+The following commands create a bucket with a lifecycle rule that moves objects to Coldline after 30 days:
 
 ```bash
 # Create a Cloud Storage bucket with lifecycle management
@@ -81,9 +81,9 @@ This is where things get interesting. AWS has more database-specific services, w
 | ElastiCache | Memorystore | Redis and Memcached |
 | Redshift | BigQuery | Very different architecture |
 | Neptune | Not directly equivalent | Use JanusGraph on GKE |
-| DocumentDB | Firestore | Native document database |
+| DocumentDB | Firestore / MongoDB Atlas on Google Cloud | Firestore is a native document database, but it is not MongoDB-compatible |
 
-The biggest gotcha here is Redshift to BigQuery. They are both analytics databases, but BigQuery is serverless and uses a completely different pricing model based on bytes scanned. You will need to rethink your query patterns and potentially restructure your data.
+The biggest gotcha here is Redshift to BigQuery. They are both analytics databases, but BigQuery is serverless and its on-demand query pricing is based on bytes processed, with capacity-based pricing also available. You will need to rethink your query patterns and potentially restructure your data.
 
 ## Networking Services
 
@@ -94,12 +94,12 @@ Networking is where GCP and AWS differ the most architecturally. GCP uses a glob
 | VPC | VPC | GCP VPCs are global |
 | Route 53 | Cloud DNS | DNS management |
 | CloudFront | Cloud CDN | Content delivery |
-| ELB/ALB/NLB | Cloud Load Balancing | Global by default |
+| ELB/ALB/NLB | Cloud Load Balancing | Global and regional load balancers available |
 | Direct Connect | Cloud Interconnect | Dedicated connectivity |
 | VPN Gateway | Cloud VPN | Site-to-site VPN |
 | Transit Gateway | Network Connectivity Center | Hub-and-spoke networking |
 
-The global VPC in GCP is a significant architectural difference. In AWS, if you need resources in multiple regions to communicate, you set up VPC peering or Transit Gateway. In GCP, subnets within the same VPC can span regions automatically.
+The global VPC in GCP is a significant architectural difference. In AWS, if you need resources in multiple regions to communicate, you set up VPC peering or Transit Gateway. In GCP, the VPC network is global, and regional subnets in the same VPC can communicate without VPC peering.
 
 Here is how you would create a VPC with subnets in two regions:
 
@@ -171,15 +171,15 @@ Google provides several migration tools:
 - **Migrate to Virtual Machines** - for VM-based workloads from AWS EC2
 - **Migrate to Containers** - to containerize existing workloads during migration
 - **Storage Transfer Service** - for bulk data transfer from S3 to Cloud Storage
-- **Database Migration Service** - for migrating databases to Cloud SQL or AlloyDB
+- **Database Migration Service** - for migrating supported databases to Cloud SQL or AlloyDB
 
-The Database Migration Service supports continuous replication, which means you can keep your AWS database in sync with Cloud SQL during the migration window and cut over when ready.
+For supported migration paths, the Database Migration Service supports continuous replication, which means you can keep your AWS database in sync with Cloud SQL or AlloyDB during the migration window and cut over when ready.
 
 ## Common Pitfalls
 
 A few things that consistently trip teams up during AWS-to-GCP migrations:
 
-1. **IAM model differences** - GCP service accounts are per-project, not per-account. Plan your project structure carefully.
+1. **IAM model differences** - GCP service accounts are created in projects, though they can be granted access to resources in other projects. Plan your project structure carefully.
 2. **Networking architecture** - Do not try to replicate your AWS multi-VPC design in GCP. Take advantage of the global VPC model.
 3. **Pricing model changes** - GCP uses sustained use discounts automatically, but committed use discounts require upfront planning.
 4. **API differences** - If you are using AWS SDKs extensively, you will need to rewrite those integrations.
