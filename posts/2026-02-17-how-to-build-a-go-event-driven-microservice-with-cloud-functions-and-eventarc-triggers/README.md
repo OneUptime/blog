@@ -39,6 +39,8 @@ go mod init eventdriven-service
 # Install dependencies
 go get github.com/GoogleCloudPlatform/functions-framework-go/functions
 go get github.com/cloudevents/sdk-go/v2
+go get github.com/googleapis/google-cloudevents-go/cloud/firestoredata
+go get google.golang.org/protobuf/proto
 ```
 
 ## Understanding CloudEvents
@@ -50,13 +52,14 @@ package myfunction
 
 import (
     "context"
-    "encoding/json"
     "fmt"
     "log"
     "time"
 
     "github.com/GoogleCloudPlatform/functions-framework-go/functions"
     "github.com/cloudevents/sdk-go/v2/event"
+    "github.com/googleapis/google-cloudevents-go/cloud/firestoredata"
+    "google.golang.org/protobuf/proto"
 )
 
 // init registers all the event handler functions
@@ -142,64 +145,52 @@ func handleMetadataUpdated(ctx context.Context, data StorageEventData) error {
 Eventarc can trigger on Firestore document writes, creates, updates, and deletes.
 
 ```go
-// FirestoreEventData represents the data from a Firestore event
-type FirestoreEventData struct {
-    OldValue *FirestoreDocument `json:"oldValue,omitempty"`
-    Value    *FirestoreDocument `json:"value,omitempty"`
-    UpdateMask struct {
-        FieldPaths []string `json:"fieldPaths"`
-    } `json:"updateMask"`
-}
-
-// FirestoreDocument represents a Firestore document in the event payload
-type FirestoreDocument struct {
-    Name       string                 `json:"name"`
-    Fields     map[string]interface{} `json:"fields"`
-    CreateTime time.Time              `json:"createTime"`
-    UpdateTime time.Time              `json:"updateTime"`
-}
-
 // HandleFirestoreEvent processes Firestore document change events
 func HandleFirestoreEvent(ctx context.Context, e event.Event) error {
     log.Printf("Firestore event: Type=%s", e.Type())
 
-    var data FirestoreEventData
-    if err := e.DataAs(&data); err != nil {
+    var data firestoredata.DocumentEventData
+    options := proto.UnmarshalOptions{
+        DiscardUnknown: true,
+    }
+    if err := options.Unmarshal(e.Data(), &data); err != nil {
         return fmt.Errorf("failed to parse Firestore event: %w", err)
     }
 
     // Check what kind of change happened
+    oldValue := data.GetOldValue()
+    newValue := data.GetValue()
     switch {
-    case data.OldValue == nil && data.Value != nil:
-        log.Printf("Document created: %s", data.Value.Name)
-        return handleDocumentCreated(ctx, data.Value)
-    case data.OldValue != nil && data.Value != nil:
+    case oldValue == nil && newValue != nil:
+        log.Printf("Document created: %s", newValue.GetName())
+        return handleDocumentCreated(ctx, newValue)
+    case oldValue != nil && newValue != nil:
         log.Printf("Document updated: %s, changed fields: %v",
-            data.Value.Name, data.UpdateMask.FieldPaths)
-        return handleDocumentUpdated(ctx, data.OldValue, data.Value)
-    case data.OldValue != nil && data.Value == nil:
-        log.Printf("Document deleted: %s", data.OldValue.Name)
-        return handleDocumentDeleted(ctx, data.OldValue)
+            newValue.GetName(), data.GetUpdateMask().GetFieldPaths())
+        return handleDocumentUpdated(ctx, oldValue, newValue)
+    case oldValue != nil && newValue == nil:
+        log.Printf("Document deleted: %s", oldValue.GetName())
+        return handleDocumentDeleted(ctx, oldValue)
     }
 
     return nil
 }
 
-func handleDocumentCreated(ctx context.Context, doc *FirestoreDocument) error {
+func handleDocumentCreated(ctx context.Context, doc *firestoredata.Document) error {
     // Send welcome email, initialize user settings, etc.
-    log.Printf("Processing new document: %s", doc.Name)
+    log.Printf("Processing new document: %s", doc.GetName())
     return nil
 }
 
-func handleDocumentUpdated(ctx context.Context, old, new *FirestoreDocument) error {
+func handleDocumentUpdated(ctx context.Context, old, new *firestoredata.Document) error {
     // Check for specific field changes and react accordingly
-    log.Printf("Processing document update: %s", new.Name)
+    log.Printf("Processing document update: %s", new.GetName())
     return nil
 }
 
-func handleDocumentDeleted(ctx context.Context, doc *FirestoreDocument) error {
+func handleDocumentDeleted(ctx context.Context, doc *firestoredata.Document) error {
     // Clean up associated resources
-    log.Printf("Processing document deletion: %s", doc.Name)
+    log.Printf("Processing document deletion: %s", doc.GetName())
     return nil
 }
 ```
@@ -248,8 +239,8 @@ func HandleAuditLogEvent(ctx context.Context, e event.Event) error {
 func isSensitiveOperation(method string) bool {
     sensitiveOps := map[string]bool{
         "google.iam.admin.v1.CreateServiceAccountKey": true,
-        "google.iam.admin.v1.SetIamPolicy":            true,
-        "google.cloud.sql.v1.Users.Update":             true,
+        "google.iam.admin.v1.SetIAMPolicy":            true,
+        "cloudsql.users.update":                        true,
     }
     return sensitiveOps[method]
 }
@@ -269,7 +260,7 @@ Deploy the function and set up the Eventarc triggers.
 # Deploy the Cloud Storage event handler
 gcloud functions deploy handle-storage-event \
   --gen2 \
-  --runtime=go122 \
+  --runtime=go125 \
   --region=us-central1 \
   --entry-point=HandleStorageEvent \
   --trigger-event-filters="type=google.cloud.storage.object.v1.finalized" \
@@ -278,7 +269,7 @@ gcloud functions deploy handle-storage-event \
 # Deploy the Firestore event handler
 gcloud functions deploy handle-firestore-event \
   --gen2 \
-  --runtime=go122 \
+  --runtime=go125 \
   --region=us-central1 \
   --entry-point=HandleFirestoreEvent \
   --trigger-event-filters="type=google.cloud.firestore.document.v1.written" \
@@ -288,7 +279,7 @@ gcloud functions deploy handle-firestore-event \
 # Deploy the Audit Log event handler
 gcloud functions deploy handle-audit-log \
   --gen2 \
-  --runtime=go122 \
+  --runtime=go125 \
   --region=us-central1 \
   --entry-point=HandleAuditLogEvent \
   --trigger-event-filters="type=google.cloud.audit.log.v1.written" \
