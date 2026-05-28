@@ -8,15 +8,15 @@ Description: Use Cloud Armor named IP lists to dynamically allowlist IP ranges f
 
 ---
 
-Managing IP allowlists in Cloud Armor is straightforward when you have a handful of static IPs. But when you need to allow traffic from a third-party CDN provider with hundreds of IP ranges that change regularly, manual management becomes a nightmare. That is exactly what Cloud Armor named IP lists solve. They are pre-maintained lists of IP ranges from well-known providers that Google keeps up to date automatically.
+Managing IP allowlists in Cloud Armor is straightforward when you have a handful of static IPs. But when you need to allow traffic from a third-party CDN provider with hundreds of IP ranges that change regularly, manual management becomes a nightmare. That is exactly what Cloud Armor named IP lists solve. They are pre-maintained lists of IP ranges from supported providers that Google keeps up to date automatically.
 
-This guide covers how to use named IP lists in your Cloud Armor security policies and when they make sense.
+Cloud Armor named IP address lists are deprecated, and Google recommends using Google Threat Intelligence feeds instead for new configurations where they fit your use case. This guide covers how to use named IP lists in existing Cloud Armor Enterprise security policies and when they make sense.
 
 ## What Are Named IP Lists?
 
-Named IP lists are curated collections of IP address ranges maintained by Google. They represent the IP ranges of well-known third-party services. Instead of hardcoding IP ranges in your security rules and having to update them whenever the provider changes their ranges, you reference the named list, and Cloud Armor automatically stays current.
+Named IP lists are curated collections of IP address ranges maintained from third-party provider-published lists. They represent the IP ranges of supported CDN providers. Instead of hardcoding IP ranges in your security rules and having to update them whenever the provider changes their ranges, you reference the named list, and Cloud Armor automatically stays current.
 
-Currently available named IP lists include ranges from providers like Cloudflare, Fastly, Imperva, and other CDN and security providers. The full list of available named IP lists can be queried from the API.
+Currently available named IP lists include ranges from Cloudflare, Fastly, and Imperva. The full list of available named IP lists can be queried with the Google Cloud CLI.
 
 ## Viewing Available Named IP Lists
 
@@ -26,15 +26,22 @@ First, check what named IP lists are available:
 # List all available named IP lists
 
 gcloud compute security-policies list-preconfigured-expression-sets \
+  --filter="id:sourceiplist" \
   --project=your-project-id
 ```
 
-You can also view the specific IP ranges in a named list:
+You can also view the provider-published IP ranges that Cloud Armor uses for each supported list:
 
 ```bash
-# View details of a specific named IP list
-gcloud compute security-policies describe-named-ip-lists \
-  --project=your-project-id
+# Cloudflare IPv4 and IPv6 ranges
+curl https://www.cloudflare.com/ips-v4
+curl https://www.cloudflare.com/ips-v6
+
+# Fastly ranges
+curl https://api.fastly.com/public-ip-list
+
+# Imperva ranges
+curl -d "" https://my.imperva.com/api/integration/v1/ips
 ```
 
 ## Why Use Named IP Lists?
@@ -76,7 +83,7 @@ Add a rule that uses a named IP list to allow traffic from your CDN provider:
 
 ```bash
 # Allow traffic from a CDN provider using a named IP list
-gcloud compute security-policies rules create 1000 \
+gcloud beta compute security-policies rules create 1000 \
   --security-policy=cdn-origin-policy \
   --expression="evaluatePreconfiguredExpr('sourceiplist-cloudflare')" \
   --action=allow \
@@ -98,7 +105,7 @@ gcloud compute security-policies rules create 900 \
   --description="Allow traffic from office and monitoring IPs"
 
 # Allow traffic from Fastly CDN ranges
-gcloud compute security-policies rules create 1100 \
+gcloud beta compute security-policies rules create 1100 \
   --security-policy=cdn-origin-policy \
   --expression="evaluatePreconfiguredExpr('sourceiplist-fastly')" \
   --action=allow \
@@ -135,16 +142,16 @@ You can combine named IP list checks with other CEL expressions for more granula
 
 ```bash
 # Allow CDN traffic only if it also has the correct forwarding header
-gcloud compute security-policies rules create 1000 \
+gcloud beta compute security-policies rules create 1000 \
   --security-policy=cdn-origin-policy \
   --expression="evaluatePreconfiguredExpr('sourceiplist-cloudflare') && has(request.headers['x-cdn-secret']) && request.headers['x-cdn-secret'] == 'your-shared-secret'" \
   --action=allow \
   --description="Allow Cloudflare traffic with valid shared secret header"
 ```
 
-This adds a second layer of verification. Even if an attacker spoofs a Cloudflare IP (unlikely but possible in theory), they would also need to know the shared secret header.
+This adds a second layer of verification. Even if traffic comes from an allowed provider range, the request would also need to include the shared secret header.
 
-## Using Named IP Lists for Bot Detection
+## Using Threat Intelligence for Bot Detection
 
 Another use case is allowing known good bots while blocking everything else that claims to be a bot:
 
@@ -157,14 +164,14 @@ gcloud compute security-policies create bot-management-policy \
 # Allow verified search engine crawlers
 gcloud compute security-policies rules create 1000 \
   --security-policy=bot-management-policy \
-  --expression="evaluatePreconfiguredExpr('sourceiplist-google') && request.headers['user-agent'].matches('.*Googlebot.*')" \
+  --expression="evaluateThreatIntelligence('iplist-search-engines-crawlers') && has(request.headers['user-agent']) && request.headers['user-agent'].matches('.*Googlebot.*')" \
   --action=allow \
   --description="Allow verified Googlebot traffic"
 
 # Block unverified traffic claiming to be bots
 gcloud compute security-policies rules create 2000 \
   --security-policy=bot-management-policy \
-  --expression="request.headers['user-agent'].matches('.*(bot|crawler|spider).*') && !evaluatePreconfiguredExpr('sourceiplist-google')" \
+  --expression="has(request.headers['user-agent']) && request.headers['user-agent'].matches('.*(bot|crawler|spider).*') && !evaluateThreatIntelligence('iplist-search-engines-crawlers')" \
   --action=deny-403 \
   --description="Block fake bot traffic"
 ```
@@ -179,14 +186,14 @@ gcloud logging read \
   'resource.type="http_load_balancer" AND jsonPayload.enforcedSecurityPolicy.name="cdn-origin-policy"' \
   --project=your-project-id \
   --limit=30 \
-  --format="table(timestamp, jsonPayload.enforcedSecurityPolicy.configuredAction, jsonPayload.remoteIp)"
+  --format="table(timestamp, jsonPayload.enforcedSecurityPolicy.configuredAction, httpRequest.remoteIp)"
 ```
 
 Pay attention to denied requests. If you see legitimate traffic being blocked, check whether the source IP should be in your allow rules.
 
 ## How IP List Updates Work
 
-Google periodically syncs named IP lists with the provider's published IP ranges. When a provider adds or removes IP ranges, the named list in Cloud Armor is updated automatically. You do not need to take any action.
+Google syncs named IP lists with the provider's published IP ranges. When a provider adds or removes IP ranges in a valid format, the named list in Cloud Armor is updated automatically. You do not need to take any action.
 
 However, there can be a short delay between when a provider publishes new ranges and when they appear in the named IP list. If you notice traffic from a known CDN being blocked, check whether the provider recently added new IP ranges that have not yet propagated.
 
@@ -195,9 +202,10 @@ However, there can be a short delay between when a provider publishes new ranges
 A few limitations to keep in mind:
 
 - Named IP lists are only available for specific well-known providers. You cannot create your own named IP list
+- Cloud Armor named IP address lists are deprecated, and new use requires Cloud Armor Enterprise in enrolled projects unless your project falls under Google's documented existing-project exceptions
 - For custom IP lists that change frequently, you will need to use the Cloud Armor API to update rules programmatically
-- Named IP lists only support source IP matching. You cannot use them for destination IP checks
-- The available named IP lists may vary by region and Cloud Armor tier
+- Named IP lists match request source IPs through preconfigured expressions. You cannot use them for destination IP checks
+- The available named IP lists are limited to the supported provider lists
 
 ## Automating Custom IP List Updates
 
@@ -208,7 +216,7 @@ If you need dynamic IP lists for providers not covered by named lists, here is a
 # Run this on a schedule (e.g., Cloud Scheduler + Cloud Function)
 
 # Fetch the latest IP ranges from your provider
-IP_RANGES=$(curl -s https://provider.example.com/ip-ranges.json | jq -r '.prefixes[].ip_prefix' | tr '\n' ',')
+IP_RANGES=$(curl -s https://provider.example.com/ip-ranges.json | jq -r '.prefixes[].ip_prefix' | paste -sd, -)
 
 # Update the Cloud Armor rule with new IP ranges
 gcloud compute security-policies rules update 1000 \
@@ -220,4 +228,4 @@ gcloud compute security-policies rules update 1000 \
 
 ## Wrapping Up
 
-Named IP lists in Cloud Armor take the pain out of managing dynamic IP allowlists for well-known third-party providers. They are especially valuable for CDN origin protection, where you want to ensure only your CDN can reach your load balancer directly. By letting Google maintain the IP ranges, you avoid a common source of security gaps - stale allowlists that miss new provider IP ranges. If you are using a third-party CDN or security service in front of your GCP load balancer, named IP lists should be part of your Cloud Armor configuration.
+Named IP lists in Cloud Armor take the pain out of managing dynamic IP allowlists for supported third-party providers, although they are now deprecated in favor of Google Threat Intelligence feeds where those feeds fit your use case. They are especially valuable for existing CDN origin protection configurations, where you want to ensure only your CDN can reach your load balancer directly. By letting Google maintain the IP ranges, you avoid a common source of security gaps - stale allowlists that miss new provider IP ranges. If you are using a supported third-party CDN or security service in front of your GCP load balancer, named IP lists can still be part of your Cloud Armor Enterprise configuration.
