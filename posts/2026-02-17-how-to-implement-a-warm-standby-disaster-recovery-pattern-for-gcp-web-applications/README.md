@@ -30,7 +30,7 @@ graph TD
         F --> G[Cloud SQL Read Replica]
         F --> H[Memorystore Redis - minimal]
         C -->|Async Replication| G
-        E -->|Dual-region bucket| I[Cloud Storage]
+        E -->|Multi-region bucket| I[Cloud Storage]
     end
 
     style F fill:#ffeb3b
@@ -67,9 +67,9 @@ gcloud run deploy webapp \
   --memory=1Gi \
   --set-env-vars="DB_INSTANCE=my-project:us-central1:primary-db,REDIS_HOST=10.0.0.5,REGION=us-central1"
 
-# Use a dual-region or multi-region bucket for static assets
+# Use a multi-region bucket for static assets
 gcloud storage buckets create gs://my-project-assets \
-  --location=nam4 \
+  --location=US \
   --uniform-bucket-level-access
 ```
 
@@ -146,16 +146,14 @@ gcloud compute target-https-proxies create webapp-proxy \
   --ssl-certificates=webapp-cert --url-map=webapp-urlmap
 
 gcloud compute forwarding-rules create webapp-rule \
-  --global --target-https-proxy=webapp-proxy --ports=443
+  --load-balancing-scheme=EXTERNAL_MANAGED \
+  --network-tier=PREMIUM \
+  --global \
+  --target-https-proxy=webapp-proxy \
+  --ports=443
 
-# Configure health checks
-gcloud compute health-checks create http webapp-healthcheck \
-  --port=8080 --request-path=/health \
-  --check-interval=10s --timeout=5s \
-  --healthy-threshold=2 --unhealthy-threshold=3
-
-gcloud compute backend-services update webapp-backend \
-  --global --health-checks=webapp-healthcheck
+# Health checks are not supported for backend services with serverless NEG backends.
+# Use Cloud Run health endpoints, logs, metrics, and synthetic checks for monitoring.
 ```
 
 ## Application Standby Mode
@@ -166,7 +164,6 @@ The application in the standby region runs in a special mode that keeps it warm 
 # main.py - Application with standby mode support
 import os
 from flask import Flask, request, jsonify
-from google.cloud import firestore
 
 app = Flask(__name__)
 STANDBY_MODE = os.environ.get('STANDBY_MODE', 'false').lower() == 'true'
@@ -261,15 +258,8 @@ After the primary region recovers, failback to restore normal operations.
 set -e
 echo "Starting failback to us-central1..."
 
-# Step 1: Recreate the primary database and restore from backup
-echo "Restoring primary database..."
-gcloud sql instances create primary-db-new \
-  --database-version=POSTGRES_15 \
-  --tier=db-custom-4-16384 \
-  --region=us-central1 \
-  --availability-type=REGIONAL
-
-# Restore from the most recent backup or set up replication from the promoted standby
+# Step 1: Create a read replica from the promoted standby in the original region
+echo "Creating primary-region replica..."
 gcloud sql instances create primary-replica-temp \
   --master-instance-name=standby-db \
   --region=us-central1 \
@@ -327,7 +317,7 @@ Continuously verify that the standby is actually ready to take over.
 ```python
 # standby_monitor.py - Verify the warm standby is healthy
 import requests
-from google.cloud import sqladmin_v1beta4
+from googleapiclient.discovery import build
 
 def verify_standby_readiness(project_id):
     """Check all components of the warm standby are healthy."""
@@ -342,11 +332,17 @@ def verify_standby_readiness(project_id):
         checks['application_error'] = str(e)
 
     # Check the database replica is healthy and not too far behind
-    sql_client = sqladmin_v1beta4.SqlAdminServiceClient()
+    sql_client = build('sqladmin', 'v1')
     try:
-        instance = sql_client.get(project=project_id, instance='standby-db')
-        checks['database'] = instance.state == 'RUNNABLE'
-        checks['replication_active'] = instance.replica_configuration is not None
+        instance = sql_client.instances().get(
+            project=project_id,
+            instance='standby-db',
+        ).execute()
+        checks['database'] = instance.get('state') == 'RUNNABLE'
+        checks['replication_active'] = (
+            instance.get('databaseReplicationEnabled') is True
+            and instance.get('masterInstanceName') is not None
+        )
     except Exception as e:
         checks['database'] = False
         checks['database_error'] = str(e)
@@ -355,6 +351,7 @@ def verify_standby_readiness(project_id):
     checks['ready_for_failover'] = all([
         checks.get('application', False),
         checks.get('database', False),
+        checks.get('replication_active', False),
     ])
 
     return checks
