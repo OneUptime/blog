@@ -25,22 +25,23 @@ For most discussions, people still talk about "nodes," but processing units give
 
 Each node (1000 processing units) provides roughly:
 
-- **10,000 reads per second** (single-row point reads)
-- **2,000 writes per second** (single-row writes)
-- **10 GB of data storage** (recommended maximum for optimal performance)
-- **2 TB of data storage** (hard limit per node)
+- **22,500 reads per second** for regional SSD configurations (single-row 1 KB reads)
+- **15,000 reads per second** for dual-region and multi-region SSD configurations (single-row 1 KB reads)
+- **3,500 writes per second** for regional SSD configurations (single-row 1 KB writes)
+- **2,700 writes per second** for dual-region and multi-region SSD configurations (single-row 1 KB writes)
+- **10 TiB of data storage** per node (storage limit for instances of 1 node or larger)
 
-These are approximate guidelines, not hard limits. The actual capacity depends heavily on your specific access patterns, row sizes, and query complexity.
+The throughput figures are approximate guidelines, not hard limits. Actual throughput depends heavily on your specific access patterns, row sizes, and query complexity.
 
 ## Sizing Based on Data Volume
 
-The first constraint to check is data storage. While each node can technically hold up to 2 TB, performance degrades well before that. Google recommends keeping data per node under 10 GB for optimal performance.
+The first constraint to check is data storage. For instances of 1 node or larger, Spanner allots 10 TiB of data storage per node. For instances smaller than 1 node, Spanner allots 1024 GiB of data for every 100 processing units.
 
 Here is a simple calculation:
 
 ```text
-Total data size: 50 GB
-Recommended data per node: 10 GB
+Total data size: 50 TiB
+Storage limit per node: 10 TiB
 Minimum nodes for data: 50 / 10 = 5 nodes
 ```
 
@@ -51,10 +52,11 @@ To estimate your data size, consider:
 - Data growth projections for the next 6-12 months
 
 ```bash
-# Check the current data size of your database
+# Check recent table and index sizes in your database
 
-gcloud spanner databases describe my-database \
-    --instance=my-spanner-instance
+gcloud spanner databases execute-sql my-database \
+    --instance=my-spanner-instance \
+    --sql='SELECT table_name, used_bytes FROM spanner_sys.table_sizes_stats_1hour WHERE interval_end = (SELECT MAX(interval_end) FROM spanner_sys.table_sizes_stats_1hour) ORDER BY used_bytes DESC'
 ```
 
 ## Sizing Based on Read Throughput
@@ -63,8 +65,8 @@ If your application is read-heavy, calculate the nodes needed based on reads per
 
 ```text
 Peak reads per second: 35,000
-Reads per node: 10,000
-Minimum nodes for reads: 35,000 / 10,000 = 3.5 -> 4 nodes
+Regional SSD reads per node: 22,500
+Minimum nodes for reads: 35,000 / 22,500 = 1.56 -> 2 nodes
 ```
 
 Keep in mind that complex queries (joins, aggregations, range scans) consume more resources than simple point reads. A query that scans 1000 rows counts as more than a single read. Adjust your estimates based on query complexity.
@@ -75,8 +77,8 @@ Write-heavy workloads often hit their limit before read-heavy ones:
 
 ```text
 Peak writes per second: 8,000
-Writes per node: 2,000
-Minimum nodes for writes: 8,000 / 2,000 = 4 nodes
+Regional SSD writes per node: 3,500
+Minimum nodes for writes: 8,000 / 3,500 = 2.29 -> 3 nodes
 ```
 
 Writes are more expensive than reads because they need to be replicated across Spanner's underlying storage. Writes with secondary indexes are even more expensive because each write also updates the indexes.
@@ -87,8 +89,8 @@ Take the maximum of all three sizing dimensions:
 
 ```text
 Nodes for data volume:     5 nodes
-Nodes for read throughput: 4 nodes
-Nodes for write throughput: 4 nodes
+Nodes for read throughput: 2 nodes
+Nodes for write throughput: 3 nodes
 Recommended instance size: 5 nodes (5000 processing units)
 ```
 
@@ -155,6 +157,7 @@ One of Spanner's biggest advantages is that you can scale up and down without do
 # Start with a small instance for initial deployment
 gcloud spanner instances create my-instance \
     --config=regional-us-central1 \
+    --description="My Spanner instance" \
     --processing-units=300
 
 # Scale up as traffic grows
@@ -166,7 +169,7 @@ gcloud spanner instances update my-instance \
     --processing-units=5000
 ```
 
-Scaling takes effect within seconds to minutes, so you can respond to changing load in near-real-time. Some teams even automate scaling based on CPU utilization using Cloud Monitoring alerts and Cloud Functions.
+Scaling usually completes within a few minutes, although in rare cases a scale-up can take up to an hour. Some teams even automate scaling based on CPU utilization using Cloud Monitoring alerts and Cloud Run functions.
 
 ## Autoscaling with the Spanner Autoscaler
 
@@ -174,7 +177,7 @@ For workloads with variable traffic patterns, consider the open-source Spanner A
 
 ```bash
 # The Spanner Autoscaler watches CPU metrics and adjusts processing units
-# It runs as a Cloud Function triggered by Cloud Scheduler
+# It can run on Cloud Run functions with Cloud Scheduler and Pub/Sub
 # Configuration example:
 # - min_processing_units: 1000
 # - max_processing_units: 10000
@@ -187,15 +190,15 @@ This automatically adjusts your instance size based on actual demand, saving mon
 
 ## Cost Estimation
 
-Spanner pricing is per node-hour (or processing-unit-hour). Here is a rough monthly cost estimate for US regional instances:
+Spanner pricing is per node-hour (or processing-unit-hour), with rates depending on the region, edition, and commitment model. Here is a rough monthly cost estimate for a US regional Standard edition instance using on-demand pricing:
 
-- 100 processing units: roughly $65/month
-- 1000 processing units (1 node): roughly $650/month
-- 5000 processing units (5 nodes): roughly $3,250/month
+- 100 processing units: roughly $53/month
+- 1000 processing units (1 node): roughly $526/month
+- 5000 processing units (5 nodes): roughly $2,628/month
 
-Multi-region configurations multiply these costs by 3x to 9x depending on the configuration.
+Dual-region and multi-region configurations are priced differently and require Enterprise Plus edition, so the multiplier depends on the configuration and edition.
 
-Storage costs are additional, at roughly $0.30/GB/month. Backups are charged at a lower rate.
+Storage costs are additional. For example, US regional SSD storage is roughly $0.30/GiB/month. Backups are charged at a lower rate.
 
 ## Wrapping Up
 
