@@ -85,7 +85,7 @@ EOF
 gcloud access-context-manager levels create corp-trusted-admins \
   --policy=POLICY_ID \
   --title="Corporate Network Trusted Admins" \
-  --combine-function=AND \
+  --combine-function=and \
   --basic-level-spec=/dev/stdin << 'EOF'
 - ipSubnetworks:
     - 203.0.113.0/24
@@ -103,16 +103,17 @@ Always start in dry run mode. This logs what would be blocked without actually b
 # Create a service perimeter in dry run mode
 gcloud access-context-manager perimeters dry-run create sensitive-data-perimeter \
   --policy=POLICY_ID \
-  --title="Sensitive Data Perimeter" \
-  --resources="projects/PROJECT_NUMBER_1,projects/PROJECT_NUMBER_2" \
-  --restricted-services="\
+  --perimeter-title="Sensitive Data Perimeter" \
+  --perimeter-type=regular \
+  --perimeter-resources="projects/PROJECT_NUMBER_1,projects/PROJECT_NUMBER_2" \
+  --perimeter-restricted-services="\
 bigquery.googleapis.com,\
 storage.googleapis.com,\
 sqladmin.googleapis.com,\
 spanner.googleapis.com,\
 dataflow.googleapis.com,\
 pubsub.googleapis.com" \
-  --access-levels="accessPolicies/POLICY_ID/accessLevels/corp-network"
+  --perimeter-access-levels="accessPolicies/POLICY_ID/accessLevels/corp-network"
 ```
 
 The `--restricted-services` list specifies which GCP APIs are protected by the perimeter. Only add services that handle sensitive data.
@@ -157,7 +158,7 @@ For legitimate traffic that needs to cross the perimeter, configure ingress and 
           - method: google.storage.objects.get
       - serviceName: bigquery.googleapis.com
         methodSelectors:
-          - method: google.cloud.bigquery.v2.JobService.InsertJob
+          - permission: bigquery.jobs.create
     resources:
       - projects/PROJECT_NUMBER_1
 ```
@@ -173,7 +174,9 @@ For legitimate traffic that needs to cross the perimeter, configure ingress and 
     operations:
       - serviceName: bigquery.googleapis.com
         methodSelectors:
-          - method: google.cloud.bigquery.v2.TableDataService.Tabledata
+          - permission: bigquery.datasets.get
+          - permission: bigquery.tables.get
+          - permission: bigquery.tables.getData
     resources:
       - projects/SHARED_DATA_PROJECT_NUMBER
 ```
@@ -247,11 +250,11 @@ gcloud logging metrics create vpc-sc-violations \
 gcloud monitoring policies create \
   --display-name="VPC Service Controls Violations" \
   --condition-display-name="Perimeter violations detected" \
-  --condition-filter='metric.type="logging.googleapis.com/user/vpc-sc-violations"' \
-  --condition-threshold-value=0 \
-  --condition-comparison=COMPARISON_GT \
-  --aggregation-alignment-period=300s \
-  --aggregation-per-series-aligner=ALIGN_SUM \
+  --condition-filter='metric.type="logging.googleapis.com/user/vpc-sc-violations" AND resource.type="global"' \
+  --if="> 0" \
+  --duration=0s \
+  --aggregation='{"alignmentPeriod":"300s","perSeriesAligner":"ALIGN_SUM"}' \
+  --combiner=OR \
   --notification-channels=CHANNEL_ID \
   --project=my-project
 ```
