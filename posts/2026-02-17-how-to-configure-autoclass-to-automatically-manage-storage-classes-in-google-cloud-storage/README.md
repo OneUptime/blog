@@ -8,7 +8,7 @@ Description: Learn how to enable and configure Autoclass in Google Cloud Storage
 
 ---
 
-Choosing the right storage class for every object in a bucket is tedious work, and getting it wrong means either overpaying for storage or overpaying for retrieval. Autoclass removes this decision entirely by automatically moving objects between storage classes based on how often they are actually accessed. Frequently accessed objects stay in Standard, and untouched objects gradually move to Nearline, Coldline, and Archive.
+Choosing the right storage class for every object in a bucket is tedious work, and getting it wrong means either overpaying for storage or overpaying for retrieval. Autoclass removes this decision entirely by automatically moving objects between storage classes based on how often they are actually accessed. Frequently accessed objects stay in Standard, and untouched objects move to Nearline by default, or continue to Coldline and Archive when Archive is configured as the terminal storage class.
 
 This guide covers how Autoclass works, how to enable it, and when it makes sense for your workloads.
 
@@ -17,23 +17,25 @@ This guide covers how Autoclass works, how to enable it, and when it makes sense
 Autoclass monitors the access patterns of individual objects in a bucket. Based on this monitoring:
 
 - Objects that are accessed frequently are kept in or promoted to **Standard** storage
-- Objects that have not been accessed recently are transitioned to **Nearline** (after ~30 days of no access)
-- Further inactivity moves them to **Coldline** (after ~90 days)
-- Eventually, untouched objects end up in **Archive** (after ~365 days)
+- Objects that are at least 128 KiB and have not been accessed recently are transitioned to **Nearline** (after ~30 days of no access)
+- By default, objects remain in **Nearline** until they are accessed
+- If the terminal storage class is set to **Archive**, further inactivity moves them to **Coldline** (after ~90 days)
+- With **Archive** as the terminal storage class, untouched objects eventually end up in **Archive** (after ~365 days)
 
-When an object in a colder storage class is accessed, Autoclass automatically moves it back to Standard.
+When an object's data is accessed with a GET request, Autoclass automatically moves it back to Standard.
 
 ```mermaid
 graph TD
     A[Object Uploaded<br/>Standard] -->|No access for ~30 days| B[Nearline]
-    B -->|No access for ~90 days| C[Coldline]
+    B -->|Default terminal class| E[Remain in Nearline]
+    B -->|Archive terminal class<br/>No access for ~90 days| C[Coldline]
     C -->|No access for ~365 days| D[Archive]
     B -->|Object accessed| A
     C -->|Object accessed| A
     D -->|Object accessed| A
 ```
 
-The key advantage: you never pay for Standard storage on objects that are not being used, and you never pay excessive retrieval fees on objects you access frequently.
+The key advantage: you avoid paying for Standard storage on objects that are not being used, while frequently accessed objects are kept in Standard.
 
 ## Enabling Autoclass
 
@@ -52,10 +54,11 @@ gcloud storage buckets create gs://my-autoclass-bucket \
 ```bash
 # Enable Autoclass on an existing bucket
 gcloud storage buckets update gs://my-existing-bucket \
+  --default-storage-class=STANDARD \
   --enable-autoclass
 ```
 
-When enabling Autoclass on an existing bucket, all objects start being monitored immediately. Objects already in non-Standard classes will be transitioned based on their subsequent access patterns.
+When enabling Autoclass on an existing bucket, `--default-storage-class=STANDARD` is required if the bucket currently uses a different default storage class. All objects except soft-deleted objects transition to Standard storage, though the reported storage class might not update immediately. Objects then need another 30 days of no access before they are eligible to transition to Nearline.
 
 ### Verifying Autoclass Status
 
@@ -69,7 +72,7 @@ The output shows whether Autoclass is enabled and when the configuration was las
 
 ## Configuring the Terminal Storage Class
 
-By default, Autoclass transitions objects through Standard, Nearline, Coldline, and stops at Coldline. You can configure it to also include Archive as the terminal class:
+By default, Autoclass transitions objects from Standard to Nearline and keeps them in Nearline until they are accessed. You can configure it to also include Coldline and Archive by setting Archive as the terminal class:
 
 ```bash
 # Enable Autoclass with Archive as the terminal storage class
@@ -78,15 +81,15 @@ gcloud storage buckets update gs://my-autoclass-bucket \
   --autoclass-terminal-storage-class=ARCHIVE
 ```
 
-To keep Coldline as the terminal class (no transition to Archive):
+To use the default Nearline terminal class:
 
 ```bash
-# Set Coldline as the terminal storage class
+# Set Nearline as the terminal storage class
 gcloud storage buckets update gs://my-autoclass-bucket \
-  --autoclass-terminal-storage-class=COLDLINE
+  --autoclass-terminal-storage-class=NEARLINE
 ```
 
-Use Archive terminal class when you have data that might not be accessed for years. Use Coldline terminal class when you want a balance between cost savings and lower retrieval fees.
+Use Archive terminal class when you have data that might not be accessed for years. Use Nearline terminal class when you want a balance between cost savings and keeping objects out of the coldest classes.
 
 ## Disabling Autoclass
 
@@ -120,6 +123,8 @@ There are scenarios where manual lifecycle rules are better:
 
 **Cost sensitivity.** Autoclass has a small management fee. For very large buckets where you have solid access pattern data, hand-tuned lifecycle rules might save slightly more.
 
+**Regular automated reads.** If another Google Cloud service regularly reads objects in the bucket, those reads can keep moving objects back to Standard, which can reduce the value of Autoclass.
+
 **Data with known expiration.** If objects should be deleted after a specific period, lifecycle rules handle this directly. Autoclass only manages transitions, not deletions.
 
 ## Autoclass vs Lifecycle Rules
@@ -136,11 +141,13 @@ Here is a comparison to help you decide:
 | Per-object intelligence | Yes | No (applies uniformly) |
 | Predictable transitions | Depends on access | Fixed schedule |
 
-You can also combine them. Use Autoclass for storage class management and lifecycle rules for deletion:
+You can also combine them. Use Autoclass for storage class management and lifecycle rules for deletion, but do not use lifecycle rules with `SetStorageClass` actions or `matchesStorageClass` conditions on an Autoclass bucket:
 
 ```bash
 # Enable Autoclass for storage class transitions
-gcloud storage buckets update gs://my-bucket --enable-autoclass
+gcloud storage buckets update gs://my-bucket \
+  --default-storage-class=STANDARD \
+  --enable-autoclass
 
 # Add a lifecycle rule to delete objects after 2 years
 # (Autoclass does not handle deletion)
@@ -243,11 +250,12 @@ check_autoclass_status("my-data-bucket")
 
 ## Cost Considerations
 
-Autoclass charges a small management fee per object for the monitoring and transition management. This fee is typically much smaller than the savings from automatic transitions, but it is worth understanding:
+Autoclass charges a small management fee and a one-time enablement charge for the monitoring and transition management. These charges are typically much smaller than the savings from automatic transitions, but it is worth understanding:
 
-- There is no charge for objects in Standard storage class
-- A small per-object fee applies for monitoring objects in non-Standard classes
-- Retrieval fees still apply when objects are accessed in colder classes (before promotion)
+- Autoclass-enabled buckets use Autoclass-specific storage and operation SKUs
+- Retrieval fees and early deletion fees do not apply while objects are in an Autoclass-enabled bucket, except as part of the one-time enablement charge
+- All operations are charged at the Standard storage rate
+- Some transitions from Coldline or Archive back to Standard or Nearline incur Class A operation charges
 
 For most workloads, the net effect is significant cost savings. The management fee is a fraction of what you save by not storing cold data in Standard class.
 
