@@ -14,7 +14,7 @@ In this post, I will walk through a practical approach to mapping NIST 800-53 co
 
 ## Understanding NIST 800-53 Control Families
 
-NIST 800-53 organizes security controls into 20 families. Not all of them apply equally to cloud workloads, but here are the ones that matter most in GCP:
+NIST SP 800-53 Revision 5 organizes security controls into 20 families. Not all of them apply equally to cloud workloads, but here are the ones that matter most in GCP:
 
 - **AC (Access Control)** - Maps to IAM, Identity-Aware Proxy, VPC Service Controls
 - **AU (Audit and Accountability)** - Maps to Cloud Audit Logs, Cloud Logging
@@ -82,6 +82,7 @@ This Python script queries SCC findings and maps them back to NIST control famil
 # compliance_checker.py
 # Checks SCC findings and maps them to NIST 800-53 controls
 from google.cloud import securitycenter_v1
+from datetime import datetime, timezone
 import yaml
 import json
 
@@ -119,7 +120,7 @@ def map_findings_to_nist(findings, controls_mapping):
         "MFA_NOT_ENFORCED": ["IA-2", "IA-5"],
         "AUDIT_LOGGING_DISABLED": ["AU-2", "AU-3", "AU-12"],
         "OVER_PRIVILEGED_ACCOUNT": ["AC-6", "AC-2"],
-        "ENCRYPTION_NOT_ENABLED": ["SC-28", "SC-13"],
+        "KMS_KEY_NOT_ROTATED": ["IA-5", "SC-28"],
         "PUBLIC_IP_ADDRESS": ["SC-7", "AC-4"],
     }
 
@@ -144,7 +145,7 @@ def map_findings_to_nist(findings, controls_mapping):
 def generate_compliance_report(nist_violations, controls_mapping):
     """Generate a compliance report with remediation steps."""
     report = {
-        "timestamp": "2026-02-17T00:00:00Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "total_controls_assessed": len(controls_mapping.get("controls", {})),
         "controls_with_violations": len(nist_violations),
         "violations": nist_violations,
@@ -157,21 +158,21 @@ if __name__ == "__main__":
     findings = get_scc_findings(org_id)
     violations = map_findings_to_nist(findings, mapping)
     report = generate_compliance_report(violations, mapping)
-    print(json.dumps(report, indent=2))
+    print(json.dumps(report))
 ```
 
 ## Implementing Controls with Terraform
 
 For repeatable compliance, define your NIST controls as Terraform modules. This ensures every new project starts with the right baseline.
 
-This Terraform configuration implements the AC-2 and AU-2 control families:
+This Terraform configuration includes examples for AC-2, AU-2, AU-6, and SC-28:
 
 ```hcl
 # main.tf
 # NIST 800-53 baseline configuration for GCP projects
 
-# AC-2: Account Management - Enforce MFA and session controls
-resource "google_organization_policy" "require_mfa" {
+# AC-2: Account Management - Restrict IAM members to approved domains
+resource "google_organization_policy" "allowed_member_domains" {
   org_id     = var.org_id
   constraint = "iam.allowedPolicyMemberDomains"
 
@@ -202,14 +203,29 @@ resource "google_project_iam_audit_config" "all_services" {
   }
 }
 
+# Dataset for centralized audit log exports
+resource "google_bigquery_dataset" "audit_logs" {
+  dataset_id = "audit_logs"
+  project    = var.project_id
+  location   = var.region
+}
+
 # AU-6: Audit Review - Send logs to centralized SIEM
 resource "google_logging_organization_sink" "audit_sink" {
-  name             = "nist-audit-sink"
-  org_id           = var.org_id
-  destination      = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${google_bigquery_dataset.audit_logs.dataset_id}"
-  include_children = true
+  name                   = "nist-audit-sink"
+  org_id                 = var.org_id
+  destination            = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${google_bigquery_dataset.audit_logs.dataset_id}"
+  include_children       = true
+  unique_writer_identity = true
 
   filter = "logName:\"logs/cloudaudit.googleapis.com\""
+}
+
+resource "google_bigquery_dataset_iam_member" "audit_sink_writer" {
+  dataset_id = google_bigquery_dataset.audit_logs.dataset_id
+  project    = var.project_id
+  role       = "roles/bigquery.dataEditor"
+  member     = google_logging_organization_sink.audit_sink.writer_identity
 }
 
 # SC-28: Protection of Information at Rest
@@ -223,7 +239,7 @@ resource "google_kms_crypto_key" "encryption_key" {
   name     = "data-encryption-key"
   key_ring = google_kms_key_ring.nist_keyring.id
 
-  # Rotate keys every 90 days per NIST SC-12
+  # Example rotation policy for cryptographic key management
   rotation_period = "7776000s"
 
   lifecycle {
