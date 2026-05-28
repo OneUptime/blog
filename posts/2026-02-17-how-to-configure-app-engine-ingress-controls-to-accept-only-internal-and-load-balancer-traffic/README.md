@@ -20,7 +20,7 @@ App Engine provides three ingress configurations:
 - `internal-and-cloud-load-balancing` - Accept traffic from internal GCP sources and Google Cloud Load Balancers
 - `internal-only` - Accept traffic only from internal GCP sources
 
-Internal traffic means requests originating from within the same Google Cloud project or from a shared VPC network. This includes Cloud Tasks, Cloud Scheduler, Pub/Sub push subscriptions, and other App Engine services in the same project.
+Internal traffic means requests originating from resources attached to the project's VPC networks, Serverless VPC Access connectors, or a Shared VPC when the App Engine app is deployed in the Shared VPC host project. Other App Engine services, Cloud Run services, and Cloud Run functions in the same project are treated as internal only when they connect to a VPC network and route egress through the connector.
 
 ## Setting Ingress Controls
 
@@ -72,20 +72,21 @@ gcloud app services update worker \
 Understanding what qualifies as "internal" is critical:
 
 **Internal traffic (allowed with both internal settings):**
-- Cloud Tasks push to App Engine
-- Cloud Scheduler (App Engine target)
-- Pub/Sub push subscriptions
-- App Engine cron jobs
-- Requests from other App Engine services in the same project
-- Requests from Cloud Run in the same project
-- Requests from GCE/GKE instances in the same VPC
-- Requests via Serverless VPC Access connector
+- Requests from VMs and other resources in VPC networks in the same project
+- Requests from resources using Serverless VPC Access connectors
+- Requests from Shared VPC when the App Engine app is deployed in the Shared VPC host project
+- Requests from on-premises resources connected to the VPC network through Cloud VPN
+- Requests from other App Engine services in the same project, if they route egress through a VPC connector
+- Requests from Cloud Run or Cloud Run functions in the same project, if they route egress through a VPC connector
+- Cloud Scheduler jobs using App Engine targets and App Engine cron jobs
+- App Engine tasks in Cloud Tasks
 
 **External traffic (blocked by internal settings):**
 - Direct browser requests to your appspot.com URL
 - API calls from outside Google Cloud
 - Requests from other Google Cloud projects (unless using shared VPC)
 - Requests from Cloud Functions in a different project
+- Pub/Sub push subscriptions to HTTPS endpoints, which require a publicly accessible HTTPS endpoint
 
 **Load balancer traffic (allowed with internal-and-cloud-load-balancing):**
 - Requests routed through a Google Cloud HTTP(S) Load Balancer
@@ -130,6 +131,8 @@ gcloud compute target-https-proxies create appengine-https-proxy \
 # Create a forwarding rule (assigns an external IP)
 gcloud compute forwarding-rules create appengine-https-rule \
   --global \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
+  --network-tier=PREMIUM \
   --target-https-proxy=appengine-https-proxy \
   --ports=443 \
   --project=your-project-id
@@ -169,7 +172,7 @@ gcloud app services update worker \
   --ingress=internal-only
 ```
 
-The frontend service receives user requests through the load balancer. It calls the API service using internal App Engine URLs. The worker service receives tasks from Cloud Tasks. Neither the API nor worker services are accessible from the internet.
+The frontend service receives user requests through the load balancer. It calls the API service using App Engine URLs, with egress routed through a VPC connector so the request is classified as internal. The worker service receives App Engine tasks from Cloud Tasks. Neither the API nor worker services are accessible from the internet.
 
 ## Verifying Ingress Settings
 
@@ -179,7 +182,7 @@ Check the current ingress settings for your services:
 # Describe a service to see its ingress setting
 gcloud app services describe default --project=your-project-id
 
-# List all services with their settings
+# List service IDs, then describe each service to see its ingress setting
 gcloud app services list --project=your-project-id
 ```
 
@@ -197,7 +200,7 @@ curl -s -o /dev/null -w "%{http_code}" https://your-load-balancer-domain.com/
 
 ## Impact on Cloud Tasks and Cron
 
-When you set ingress to `internal-only` or `internal-and-cloud-load-balancing`, Cloud Tasks and App Engine cron jobs still work because they are considered internal traffic. This is by design - you should not need to open your service to the internet just to receive task deliveries.
+When you set ingress to `internal-only` or `internal-and-cloud-load-balancing`, Cloud Scheduler jobs using App Engine targets, App Engine cron jobs, and App Engine tasks in Cloud Tasks still work because they are treated as internal App Engine traffic. This is by design - you should not need to open your service to the internet just to receive task deliveries.
 
 However, be aware that Cloud Scheduler HTTP targets (not App Engine targets) might be affected. Make sure you are using the App Engine target type for Cloud Scheduler jobs:
 
@@ -216,12 +219,9 @@ gcloud scheduler jobs create http my-job \
 
 ## Combining with the App Engine Firewall
 
-Ingress controls and the App Engine firewall work together. Traffic must pass both checks:
+Ingress controls and the App Engine firewall work together. Traffic must be allowed by the applicable ingress setting and by your firewall rules. The firewall is checked for requests routed to your app, including requests that arrive from Cloud Load Balancing and internal sources such as Compute Engine VMs and Cloud Tasks.
 
-1. First, the ingress control checks the traffic source type
-2. Then, the firewall checks the source IP against your rules
-
-This means you can have ingress set to `internal-and-cloud-load-balancing` and also have firewall rules that restrict specific IP ranges. This layered approach gives you comprehensive access control.
+If your ingress controls are set to receive `internal-and-cloud-load-balancing` traffic, Google recommends leaving the default App Engine firewall rule as `allow` and using Google Cloud Armor WAF rules on the load balancer for client-facing filtering.
 
 ## Troubleshooting
 
@@ -236,10 +236,10 @@ If requests are unexpectedly blocked after changing ingress settings:
 
 3. For load balancer traffic, make sure the load balancer is properly configured with a Serverless NEG pointing to your App Engine service.
 
-4. Remember that changes to ingress settings take effect immediately. There is no propagation delay.
+4. After changing ingress settings, retest both the direct `appspot.com` URL and the load balancer URL.
 
 5. Check Cloud Logging for blocked requests - they show up with a 403 status.
 
 ## Summary
 
-App Engine ingress controls give you network-level control over which traffic sources can reach your application. Use `internal-and-cloud-load-balancing` when you want to serve users through a load balancer while blocking direct appspot.com access. Use `internal-only` for backend services that should only receive traffic from other GCP services like Cloud Tasks and internal service calls. Set ingress per service so your frontend can be user-accessible while backend services stay internal. Combined with the App Engine firewall, ingress controls provide a strong security posture with minimal configuration.
+App Engine ingress controls give you network-level control over which traffic sources can reach your application. Use `internal-and-cloud-load-balancing` when you want to serve users through a load balancer while blocking direct appspot.com access. Use `internal-only` for backend services that should only receive traffic from internal VPC-routed callers, App Engine tasks in Cloud Tasks, and App Engine cron or Cloud Scheduler App Engine targets. Set ingress per service so your frontend can be user-accessible while backend services stay internal. Combined with the App Engine firewall and Cloud Armor on the load balancer, ingress controls provide a strong security posture with minimal configuration.
