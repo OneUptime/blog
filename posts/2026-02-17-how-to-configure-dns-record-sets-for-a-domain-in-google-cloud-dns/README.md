@@ -114,7 +114,7 @@ gcloud dns record-sets create example.com. \
     --zone=my-zone \
     --type=MX \
     --ttl=3600 \
-    --rrdatas="1 aspmx.l.google.com.,5 alt1.aspmx.l.google.com.,5 alt2.aspmx.l.google.com.,10 alt3.aspmx.l.google.com.,10 alt4.aspmx.l.google.com."
+    --rrdatas="1 smtp.google.com."
 ```
 
 The number before each server is the priority (lower = higher priority). Mail servers try the lowest number first and fall back to higher numbers if the preferred server is unavailable.
