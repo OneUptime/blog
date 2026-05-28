@@ -8,9 +8,9 @@ Description: Connect your IoT devices to Google Cloud Pub/Sub using third-party 
 
 ---
 
-Since Google Cloud IoT Core was retired, connecting IoT devices to GCP requires a third-party MQTT broker sitting between your devices and Pub/Sub. This is actually a better setup in many ways - you get a full-featured MQTT broker with more protocol options and flexibility, while still using Pub/Sub as your cloud-side message bus.
+Since Google Cloud IoT Core was retired, connecting MQTT-based IoT devices to GCP often means running a third-party MQTT broker between your devices and Pub/Sub. This is actually a better setup in many ways - you get a full-featured MQTT broker with more protocol options and flexibility, while still using Pub/Sub as your cloud-side message bus.
 
-In this guide, I will show you how to set up EMQX (a popular open-source MQTT broker) on GCP and configure it to bridge device messages directly into Cloud Pub/Sub.
+In this guide, I will show you how to set up EMQX Enterprise (a popular MQTT broker) on GCP and configure it to bridge device messages directly into Cloud Pub/Sub.
 
 ## Architecture Overview
 
@@ -101,8 +101,8 @@ gcloud compute firewall-rules create allow-mqtt \
 SSH into the instance and install EMQX:
 
 ```bash
-# Install EMQX using the official package repository
-curl -s https://assets.emqx.com/scripts/install-emqx-deb.sh | sudo bash
+# Install EMQX Enterprise using the official package repository
+curl -s https://packagecloud.io/install/repositories/emqx/emqx-enterprise5/script.deb.sh | sudo bash
 sudo apt-get install -y emqx
 sudo systemctl start emqx
 sudo systemctl enable emqx
@@ -110,19 +110,19 @@ sudo systemctl enable emqx
 
 ## Step 4: Configure EMQX to Bridge to Pub/Sub
 
-EMQX supports data bridges through its rule engine. You need to configure a Google Pub/Sub bridge. Create the configuration file:
+EMQX supports Pub/Sub integrations through its rule engine. You need to configure a Google Pub/Sub Producer connector and sink. Create the configuration in the dashboard or in EMQX configuration:
 
 ```bash
-# Add the GCP Pub/Sub bridge configuration to EMQX
-# This goes in /etc/emqx/emqx.conf or can be configured via the dashboard
+# Add the GCP Pub/Sub connector and sink configuration to EMQX
+# This can be configured via the dashboard or EMQX HOCON configuration files
 ```
 
-Using the EMQX Dashboard (available at http://your-broker-ip:18083 with default credentials admin/public), navigate to Data Integration and create a new GCP Pub/Sub bridge:
+Using the EMQX Dashboard (available at http://your-broker-ip:18083 with default credentials admin/public on first login), navigate to Integration and create a new GCP Pub/Sub Producer connector:
 
-1. Go to Data Integration then Resources
-2. Create a new GCP Pub/Sub resource
-3. Upload your service account key JSON
-4. Set the GCP project ID
+1. Go to Integration then Connectors
+2. Create a new Google PubSub Producer connector
+3. Upload your service account key JSON or configure Workload Identity Federation
+4. Set the GCP project ID and test connectivity
 
 Then create a rule that routes MQTT messages to Pub/Sub:
 
@@ -139,10 +139,12 @@ FROM
   "devices/#"
 ```
 
-Map this rule to your Pub/Sub bridge, targeting the `device-telemetry` topic. You can use the `topic` field from the MQTT message to route to different Pub/Sub topics:
+Add a Google PubSub Producer action to this rule, targeting the `device-telemetry` topic. You can create additional rules and actions to route different MQTT topic filters to different Pub/Sub topics:
 
 - `devices/+/telemetry` goes to `device-telemetry`
 - `devices/+/state` goes to `device-state`
+
+For the reverse direction, such as messages from the `device-commands` Pub/Sub topic to MQTT command topics, create a Google PubSub Consumer source and add a Republish action that publishes the consumed message to a topic like `devices/${attributes.device_id}/commands`.
 
 ## Step 5: Configure Device Authentication
 
@@ -166,18 +168,18 @@ openssl x509 -req -in device-001.csr -CA ca.crt -CAkey ca.key \
 
 Configure EMQX to use TLS with client certificate verification by updating the listener configuration:
 
-```yaml
+```hocon
 # EMQX TLS listener configuration
-listeners:
-  ssl:
-    default:
-      bind: "0.0.0.0:8883"
-      ssl_options:
-        certfile: "/etc/emqx/certs/server.crt"
-        keyfile: "/etc/emqx/certs/server.key"
-        cacertfile: "/etc/emqx/certs/ca.crt"
-        verify: verify_peer
-        fail_if_no_peer_cert: true
+listeners.ssl.default {
+  bind = "0.0.0.0:8883"
+  ssl_options {
+    certfile = "/etc/emqx/certs/server.crt"
+    keyfile = "/etc/emqx/certs/server.key"
+    cacertfile = "/etc/emqx/certs/ca.crt"
+    verify = verify_peer
+    fail_if_no_peer_cert = true
+  }
+}
 ```
 
 ## Step 6: Connect a Device
@@ -195,21 +197,21 @@ DEVICE_ID = "device-001"
 BROKER_HOST = "your-broker-ip"
 BROKER_PORT = 8883
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, reason_code, properties):
     """Callback when the device connects to the MQTT broker."""
-    if rc == 0:
+    if reason_code == 0:
         print(f"Device {DEVICE_ID} connected successfully")
         # Subscribe to command topic for this device
         client.subscribe(f"devices/{DEVICE_ID}/commands")
     else:
-        print(f"Connection failed with code {rc}")
+        print(f"Connection failed with code {reason_code}")
 
 def on_message(client, userdata, msg):
     """Handle incoming commands from the cloud."""
     print(f"Received command: {msg.payload.decode()}")
 
 # Set up the MQTT client with TLS client certificates
-client = mqtt.Client(client_id=DEVICE_ID)
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=DEVICE_ID)
 client.tls_set(
     ca_certs="ca.crt",
     certfile="device-001.crt",
