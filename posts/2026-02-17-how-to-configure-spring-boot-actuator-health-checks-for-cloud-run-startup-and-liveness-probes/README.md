@@ -8,7 +8,7 @@ Description: Configure Spring Boot Actuator health checks to work with Cloud Run
 
 ---
 
-Cloud Run supports startup probes and liveness probes to manage container lifecycle. Startup probes tell Cloud Run when your container is ready to accept traffic. Liveness probes tell Cloud Run when your container has become unhealthy and needs to be restarted. Spring Boot Actuator provides health check endpoints that map perfectly to these probes, but the configuration needs some thought.
+Cloud Run supports startup probes, liveness probes, and readiness probes to manage container lifecycle. Startup probes tell Cloud Run when your container has started and is ready to accept traffic. Liveness probes tell Cloud Run when your container has become unhealthy and needs to be restarted. Readiness probes, currently in Preview, tell Cloud Run when a running instance should receive new traffic. Spring Boot Actuator provides health check endpoints that map well to these probes, but the configuration needs some thought.
 
 In this post, I will show you how to configure Spring Boot Actuator health endpoints for Cloud Run probes, including custom health indicators for your specific dependencies.
 
@@ -16,7 +16,7 @@ In this post, I will show you how to configure Spring Boot Actuator health endpo
 
 Without probes, Cloud Run assumes your container is healthy as soon as the process starts listening on the configured port. But your Spring Boot application might need several seconds to initialize the application context, connect to databases, and warm up caches. Without a startup probe, Cloud Run could send traffic to a container that is not ready.
 
-Liveness probes catch situations where the container is running but stuck - maybe a thread pool is exhausted, a database connection is dead, or memory is thrashing. Without a liveness probe, a zombie container keeps receiving traffic and failing.
+Liveness probes catch situations where the container is running but stuck - maybe a deadlock, exhausted worker pool, or unrecoverable application failure. Avoid making liveness depend on shared external systems such as databases or APIs, because restarting every instance usually does not fix an external outage.
 
 ## Adding Actuator
 
@@ -51,15 +51,14 @@ management.endpoint.health.show-details=always
 management.server.port=8081
 
 # Health endpoint group configuration
-management.endpoint.health.group.liveness.include=livenessState,diskSpace
-management.endpoint.health.group.readiness.include=readinessState,db,redis
-management.endpoint.health.group.startup.include=readinessState
+management.endpoint.health.group.liveness.include=livenessState
+management.endpoint.health.group.readiness.include=readinessState,db,redis,externalApi
 ```
 
 This configuration gives you three health endpoints:
 
 - `/actuator/health/liveness` - for liveness probes
-- `/actuator/health/readiness` - for readiness probes (used as startup probe on Cloud Run)
+- `/actuator/health/readiness` - for readiness probes
 - `/actuator/health` - the main health endpoint with all indicators
 
 ## Writing a Custom Health Indicator
@@ -157,6 +156,8 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: my-spring-app
+  annotations:
+    run.googleapis.com/launch-stage: BETA
 spec:
   template:
     metadata:
@@ -175,7 +176,7 @@ spec:
           # Startup probe - checks if the app has finished initializing
           startupProbe:
             httpGet:
-              path: /actuator/health/readiness
+              path: /actuator/health/liveness
               port: 8081
             # Wait up to 30 seconds for the app to start
             initialDelaySeconds: 5
@@ -192,6 +193,14 @@ spec:
             periodSeconds: 30
             failureThreshold: 3
             timeoutSeconds: 5
+          # Readiness probe - checks if this instance should receive traffic
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8081
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 3
 ```
 
 You can also configure probes using the gcloud CLI:
@@ -201,14 +210,24 @@ You can also configure probes using the gcloud CLI:
 gcloud run deploy my-spring-app \
     --image gcr.io/my-project/my-spring-app:latest \
     --port 8080 \
-    --startup-probe "httpGet.path=/actuator/health/readiness,httpGet.port=8081,initialDelaySeconds=5,periodSeconds=5,failureThreshold=6" \
+    --startup-probe "httpGet.path=/actuator/health/liveness,httpGet.port=8081,initialDelaySeconds=5,periodSeconds=5,failureThreshold=6" \
     --liveness-probe "httpGet.path=/actuator/health/liveness,httpGet.port=8081,periodSeconds=30,failureThreshold=3" \
+    --region us-central1
+```
+
+Cloud Run readiness probes are currently configured with the beta command:
+
+```bash
+gcloud beta run deploy my-spring-app \
+    --image gcr.io/my-project/my-spring-app:latest \
+    --port 8080 \
+    --readiness-probe "httpGet.path=/actuator/health/readiness,httpGet.port=8081,periodSeconds=10,failureThreshold=3,timeoutSeconds=3" \
     --region us-central1
 ```
 
 ## Separating Management and Application Ports
 
-Running the Actuator endpoints on a separate port is a good practice. It keeps health check traffic separate from application traffic and lets you restrict access to management endpoints.
+Running the Actuator endpoints on a separate port can be useful. It keeps health check traffic separate from application traffic and lets you restrict access to management endpoints. If you use a separate management port, remember that the management context does not exercise the same web infrastructure as the main application port.
 
 ```properties
 # Application runs on port 8080
@@ -267,12 +286,12 @@ Pair health checks with graceful shutdown so in-flight requests complete before 
 # Enable graceful shutdown
 server.shutdown=graceful
 
-# Wait up to 30 seconds for in-flight requests to complete
-spring.lifecycle.timeout-per-shutdown-phase=30s
+# Keep the shutdown phase within Cloud Run's SIGTERM grace period
+spring.lifecycle.timeout-per-shutdown-phase=10s
 ```
 
-When Cloud Run sends a SIGTERM signal, Spring Boot will stop accepting new requests, wait for in-flight requests to finish (up to 30 seconds), and then shut down.
+When Cloud Run sends a SIGTERM signal during instance shutdown, Spring Boot will stop accepting new requests, wait for in-flight requests to finish, and then shut down. Cloud Run sends SIGKILL after a 10 second grace period, so keep the Spring shutdown timeout within that window.
 
 ## Wrapping Up
 
-Spring Boot Actuator health endpoints map naturally to Cloud Run startup and liveness probes. Enable the Kubernetes probe endpoints, write custom health indicators for your specific dependencies, and configure the probes in your Cloud Run deployment. Keep health checks fast, use a separate management port, and enable graceful shutdown. This gives Cloud Run the signals it needs to route traffic only to healthy containers and restart containers that have become stuck.
+Spring Boot Actuator health endpoints map naturally to Cloud Run startup, liveness, and readiness probes. Enable the Kubernetes probe endpoints, write custom health indicators for your specific dependencies, and configure the probes in your Cloud Run deployment. Keep health checks fast, use a separate management port, and enable graceful shutdown. This gives Cloud Run the signals it needs to route traffic only to healthy containers and restart containers that have become stuck.
