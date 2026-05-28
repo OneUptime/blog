@@ -33,6 +33,7 @@ plugins {
 dependencies {
     // Micronaut Google Cloud Function support
     implementation("io.micronaut.gcp:micronaut-gcp-function-http")
+    developmentOnly("com.google.cloud.functions:functions-framework-api")
 
     // JSON serialization
     implementation("io.micronaut.serde:micronaut-serde-jackson")
@@ -43,6 +44,7 @@ dependencies {
     // Testing
     testImplementation("io.micronaut:micronaut-http-client")
     testImplementation("io.micronaut.test:micronaut-test-junit5")
+    testRuntimeOnly("io.micronaut:micronaut-http-server-netty")
 }
 
 application {
@@ -67,7 +69,7 @@ package com.example;
 
 import io.micronaut.gcp.function.http.HttpFunction;
 
-// This class is the entry point for the Cloud Function
+// This class can be used as a local application class
 // It extends HttpFunction which initializes the Micronaut application context
 // and routes incoming HTTP requests to your controllers
 public class Application extends HttpFunction {
@@ -75,7 +77,7 @@ public class Application extends HttpFunction {
 }
 ```
 
-That is it for the entry point. The `HttpFunction` class starts the Micronaut application context when the function cold starts and delegates HTTP requests to your controllers.
+That is it for the application class. When deploying the function, use `io.micronaut.gcp.function.http.HttpFunction` as the Cloud Functions entry point. The `HttpFunction` class starts the Micronaut application context when the function cold starts and delegates HTTP requests to your controllers.
 
 ## Building a Controller
 
@@ -84,9 +86,17 @@ Controllers in Micronaut for Cloud Functions work exactly like they do in a regu
 ```java
 package com.example.controllers;
 
-import io.micronaut.http.annotation.*;
+import com.example.models.Task;
+import com.example.models.TaskRequest;
+import com.example.services.TaskService;
 import io.micronaut.http.HttpResponse;
+import io.micronaut.http.annotation.Body;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Delete;
+import io.micronaut.http.annotation.Get;
+import io.micronaut.http.annotation.Post;
 import jakarta.inject.Inject;
+import java.util.List;
 
 // Standard Micronaut controller - routes map to Cloud Function HTTP triggers
 @Controller("/api")
@@ -134,6 +144,7 @@ Create a service with business logic. Micronaut's `@Singleton` annotation works 
 ```java
 package com.example.services;
 
+import com.example.models.Task;
 import jakarta.inject.Singleton;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -171,6 +182,7 @@ public class TaskService {
 Micronaut Serde handles serialization. Annotate your data classes:
 
 ```java
+// src/main/java/com/example/models/Task.java
 package com.example.models;
 
 import io.micronaut.serde.annotation.Serdeable;
@@ -197,6 +209,13 @@ public class Task {
     public boolean isCompleted() { return completed; }
     public void setCompleted(boolean completed) { this.completed = completed; }
 }
+```
+
+```java
+// src/main/java/com/example/models/TaskRequest.java
+package com.example.models;
+
+import io.micronaut.serde.annotation.Serdeable;
 
 @Serdeable
 public class TaskRequest {
@@ -215,6 +234,23 @@ public class TaskRequest {
 Micronaut has good testing support. You can test your function locally using the built-in HTTP client:
 
 ```java
+package com.example;
+
+import com.example.models.Task;
+import io.micronaut.core.type.Argument;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.HttpStatus;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import jakarta.inject.Inject;
+import org.junit.jupiter.api.Test;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+
 @MicronautTest
 public class TaskControllerTest {
 
@@ -247,11 +283,9 @@ public class TaskControllerTest {
 You can also run the function locally using the Functions Framework:
 
 ```bash
-# Build the shadow jar and run locally with the Functions Framework
+# Run locally with the Functions Framework
 
-./gradlew shadowJar
-
-java -jar build/libs/my-function-0.1-all.jar
+./gradlew runFunction
 ```
 
 ## Deploying to Cloud Functions
@@ -260,15 +294,19 @@ Build the deployment artifact and deploy:
 
 ```bash
 # Build the fat jar for deployment
-./gradlew shadowJar
+./gradlew clean shadowJar
+
+# Deploy from the directory that contains the all-dependencies jar.
+# Keep only the *-all.jar file in this directory before deploying.
+cd build/libs
 
 # Deploy to Cloud Functions Gen 2
 gcloud functions deploy my-micronaut-function \
     --gen2 \
     --runtime java17 \
     --trigger-http \
-    --entry-point com.example.Application \
-    --source build/libs \
+    --entry-point io.micronaut.gcp.function.http.HttpFunction \
+    --source . \
     --memory 512MB \
     --timeout 60s \
     --region us-central1 \
@@ -285,17 +323,17 @@ First, set the memory allocation to at least 512MB. More memory means more CPU, 
 
 Second, enable tiered compilation to speed up the JVM warmup:
 
-```yaml
-# Set JVM flags in the function configuration
+```bash
+# Add this flag to the deployment command
 # This tells the JVM to use the client compiler initially for faster startup
-JAVA_TOOL_OPTIONS: "-XX:+TieredCompilation -XX:TieredStopAtLevel=1"
+--set-env-vars JAVA_TOOL_OPTIONS="-XX:+TieredCompilation -XX:TieredStopAtLevel=1"
 ```
 
 Third, keep your dependency count low. Every jar that needs to be loaded adds to startup time. Micronaut's compile-time approach already helps here, but removing unused dependencies makes it even better.
 
 ## Adding GCP Service Integration
 
-Micronaut has modules for GCP services. For example, to add Firestore:
+Micronaut has modules for GCP services, and you can also use Google Cloud client libraries directly. For example, to add Firestore:
 
 ```groovy
 // Add Firestore support
@@ -304,13 +342,21 @@ implementation("com.google.cloud:google-cloud-firestore")
 ```
 
 ```java
+package com.example.services;
+
+import com.example.models.Task;
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.FirestoreOptions;
+import jakarta.inject.Singleton;
+import java.util.UUID;
+
 @Singleton
 public class FirestoreTaskService {
 
     private final Firestore firestore;
 
-    public FirestoreTaskService(Firestore firestore) {
-        this.firestore = firestore;
+    public FirestoreTaskService() {
+        this.firestore = FirestoreOptions.getDefaultInstance().getService();
     }
 
     // Save a task to Firestore
