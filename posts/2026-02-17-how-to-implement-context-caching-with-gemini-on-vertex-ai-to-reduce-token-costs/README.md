@@ -8,7 +8,7 @@ Description: Learn how to use context caching with Gemini on Vertex AI to dramat
 
 ---
 
-Every time you send a large document, codebase, or conversation history to Gemini, you pay for all those input tokens. If you are asking multiple questions about the same 100-page document, you are paying to send those 100 pages with every single request. Context caching fixes this by letting you store the context once and reference it in subsequent requests, paying only for the cached storage and your new query tokens.
+Every time you send a large document, codebase, or conversation history to Gemini, you pay for all those input tokens. If you are asking multiple questions about the same 100-page document, you are paying to send those 100 pages with every single request. Context caching fixes this by letting you store the context once and reference it in subsequent requests, paying a discounted cached-input rate, cached storage, and your new query tokens.
 
 For applications like document Q&A, code analysis, or customer support over long conversation histories, context caching can reduce costs by 50-90% depending on the ratio of context size to query size.
 
@@ -33,7 +33,7 @@ sequenceDiagram
     App->>Model: [Cache ref + Query 1] = 200 tokens
     App->>Model: [Cache ref + Query 2] = 200 tokens
     App->>Model: [Cache ref + Query 3] = 200 tokens
-    Note over App: Total: ~50K cached + 600 input tokens
+    Note over App: Total: cache creation + discounted cached tokens + 600 new input tokens
 ```
 
 ## Creating a Cached Context
@@ -43,27 +43,37 @@ Start by uploading your context to create a cache. The context can be text, code
 This code creates a cached context from a large document:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part
-from vertexai.preview import caching
+from google import genai
+from google.genai.types import Content, CreateCachedContentConfig, HttpOptions, Part
 
-# Initialize Vertex AI
-
-vertexai.init(project="your-project-id", location="us-central1")
+# Initialize the Google Gen AI SDK for Vertex AI
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+    http_options=HttpOptions(api_version="v1"),
+)
 
 # Create the cached content from a large document
 # The document is stored in GCS
-cached_content = caching.CachedContent.create(
-    model_name="gemini-1.5-pro-002",
-    system_instruction="You are a technical documentation expert. Answer questions based only on the provided documentation. If the answer is not in the documentation, say so.",
-    contents=[
-        Part.from_uri(
-            "gs://your-bucket/documents/product-documentation.pdf",
-            mime_type="application/pdf"
-        )
-    ],
-    ttl="3600s",  # Cache expires after 1 hour
-    display_name="product-docs-cache"
+cached_content = client.caches.create(
+    model="gemini-2.5-pro",
+    config=CreateCachedContentConfig(
+        system_instruction="You are a technical documentation expert. Answer questions based only on the provided documentation. If the answer is not in the documentation, say so.",
+        contents=[
+            Content(
+                role="user",
+                parts=[
+                    Part.from_uri(
+                        file_uri="gs://your-bucket/documents/product-documentation.pdf",
+                        mime_type="application/pdf"
+                    )
+                ],
+            )
+        ],
+        ttl="3600s",  # Cache expires after 1 hour
+        display_name="product-docs-cache",
+    )
 )
 
 print(f"Cache created: {cached_content.name}")
@@ -73,32 +83,42 @@ print(f"Token count: {cached_content.usage_metadata.total_token_count}")
 
 ## Querying Against the Cached Context
 
-Once the cache exists, create a model instance that references it and send queries without resending the full context.
+Once the cache exists, send queries that reference it without resending the full context.
 
 This code queries the cached context:
 
 ```python
-from vertexai.generative_models import GenerativeModel
-
-# Create a model instance that uses the cached context
-model = GenerativeModel.from_cached_content(cached_content=cached_content)
+from google.genai.types import GenerateContentConfig
 
 # Query 1 - only the query tokens are billed as new input
-response1 = model.generate_content("What are the system requirements for installation?")
+response1 = client.models.generate_content(
+    model="gemini-2.5-pro",
+    contents="What are the system requirements for installation?",
+    config=GenerateContentConfig(cached_content=cached_content.name),
+)
 print(f"Query 1: {response1.text}")
 
 # Query 2 - same cached context, different question
-response2 = model.generate_content("How do I configure SSL certificates?")
+response2 = client.models.generate_content(
+    model="gemini-2.5-pro",
+    contents="How do I configure SSL certificates?",
+    config=GenerateContentConfig(cached_content=cached_content.name),
+)
 print(f"Query 2: {response2.text}")
 
 # Query 3
-response3 = model.generate_content("What are the known limitations of the API?")
+response3 = client.models.generate_content(
+    model="gemini-2.5-pro",
+    contents="What are the known limitations of the API?",
+    config=GenerateContentConfig(cached_content=cached_content.name),
+)
 print(f"Query 3: {response3.text}")
 
 # Check usage - most tokens come from cache, not new input
 print(f"\nUsage for query 3:")
 print(f"  Cached tokens: {response3.usage_metadata.cached_content_token_count}")
 print(f"  Prompt tokens: {response3.usage_metadata.prompt_token_count}")
+print(f"  New prompt tokens: {response3.usage_metadata.prompt_token_count - response3.usage_metadata.cached_content_token_count}")
 print(f"  Response tokens: {response3.usage_metadata.candidates_token_count}")
 ```
 
@@ -109,44 +129,61 @@ You can cache multiple documents together, which is useful for analyzing a colle
 This code caches a set of source code files:
 
 ```python
-from vertexai.preview import caching
-from vertexai.generative_models import Part
+from google.genai.types import Content, CreateCachedContentConfig, GenerateContentConfig, Part
 
 # Cache an entire codebase for analysis
-cached_code = caching.CachedContent.create(
-    model_name="gemini-1.5-pro-002",
-    system_instruction=(
-        "You are a senior software engineer reviewing this codebase. "
-        "Answer questions about the code architecture, potential bugs, "
-        "and improvement opportunities."
-    ),
-    contents=[
-        Part.from_uri("gs://your-bucket/code/main.py", mime_type="text/x-python"),
-        Part.from_uri("gs://your-bucket/code/models.py", mime_type="text/x-python"),
-        Part.from_uri("gs://your-bucket/code/api.py", mime_type="text/x-python"),
-        Part.from_uri("gs://your-bucket/code/database.py", mime_type="text/x-python"),
-        Part.from_uri("gs://your-bucket/code/auth.py", mime_type="text/x-python"),
-        Part.from_uri("gs://your-bucket/code/utils.py", mime_type="text/x-python"),
-        Part.from_uri("gs://your-bucket/code/tests/test_api.py", mime_type="text/x-python"),
-        Part.from_uri("gs://your-bucket/code/tests/test_models.py", mime_type="text/x-python"),
-    ],
-    ttl="7200s",  # 2 hour TTL for a longer code review session
-    display_name="codebase-review-cache"
+cached_code = client.caches.create(
+    model="gemini-2.5-pro",
+    config=CreateCachedContentConfig(
+        system_instruction=(
+            "You are a senior software engineer reviewing this codebase. "
+            "Answer questions about the code architecture, potential bugs, "
+            "and improvement opportunities."
+        ),
+        contents=[
+            Content(
+                role="user",
+                parts=[
+                    Part.from_uri(file_uri="gs://your-bucket/code/main.py", mime_type="text/x-python"),
+                    Part.from_uri(file_uri="gs://your-bucket/code/models.py", mime_type="text/x-python"),
+                    Part.from_uri(file_uri="gs://your-bucket/code/api.py", mime_type="text/x-python"),
+                    Part.from_uri(file_uri="gs://your-bucket/code/database.py", mime_type="text/x-python"),
+                    Part.from_uri(file_uri="gs://your-bucket/code/auth.py", mime_type="text/x-python"),
+                    Part.from_uri(file_uri="gs://your-bucket/code/utils.py", mime_type="text/x-python"),
+                    Part.from_uri(file_uri="gs://your-bucket/code/tests/test_api.py", mime_type="text/x-python"),
+                    Part.from_uri(file_uri="gs://your-bucket/code/tests/test_models.py", mime_type="text/x-python"),
+                ],
+            )
+        ],
+        ttl="7200s",  # 2 hour TTL for a longer code review session
+        display_name="codebase-review-cache",
+    )
 )
 
 # Now ask multiple questions about the codebase cheaply
-model = GenerativeModel.from_cached_content(cached_content=cached_code)
 
 # Architecture overview
-response = model.generate_content("Describe the overall architecture of this application.")
+response = client.models.generate_content(
+    model="gemini-2.5-pro",
+    contents="Describe the overall architecture of this application.",
+    config=GenerateContentConfig(cached_content=cached_code.name),
+)
 print(response.text)
 
 # Security review
-response = model.generate_content("Are there any security vulnerabilities in the authentication code?")
+response = client.models.generate_content(
+    model="gemini-2.5-pro",
+    contents="Are there any security vulnerabilities in the authentication code?",
+    config=GenerateContentConfig(cached_content=cached_code.name),
+)
 print(response.text)
 
 # Performance review
-response = model.generate_content("What are the potential performance bottlenecks in the database layer?")
+response = client.models.generate_content(
+    model="gemini-2.5-pro",
+    contents="What are the potential performance bottlenecks in the database layer?",
+    config=GenerateContentConfig(cached_content=cached_code.name),
+)
 print(response.text)
 ```
 
@@ -157,10 +194,10 @@ Caches have a TTL (time to live) after which they are automatically deleted. You
 This code manages cache lifecycle:
 
 ```python
-from vertexai.preview import caching
+from google.genai.types import UpdateCachedContentConfig
 
 # List all active caches
-caches = caching.CachedContent.list()
+caches = client.caches.list()
 for cache in caches:
     print(f"Cache: {cache.display_name}")
     print(f"  Name: {cache.name}")
@@ -169,17 +206,23 @@ for cache in caches:
     print()
 
 # Update the TTL of an existing cache
-cached_content.update(ttl="7200s")  # Extend to 2 hours
+cached_content = client.caches.update(
+    name=cached_content.name,
+    config=UpdateCachedContentConfig(ttl="7200s"),
+)  # Extend to 2 hours
 print(f"Updated expiry: {cached_content.expire_time}")
 
 # Or set a specific expiration time
 from datetime import datetime, timedelta, timezone
 
 new_expire = datetime.now(timezone.utc) + timedelta(hours=4)
-cached_content.update(expire_time=new_expire)
+cached_content = client.caches.update(
+    name=cached_content.name,
+    config=UpdateCachedContentConfig(expire_time=new_expire),
+)
 
 # Delete a cache when you are done
-cached_content.delete()
+client.caches.delete(name=cached_content.name)
 print("Cache deleted")
 ```
 
@@ -192,69 +235,88 @@ This code implements a cached Q&A service:
 ```python
 # qa_service.py - Document Q&A with context caching
 
-import vertexai
-from vertexai.preview import caching
-from vertexai.generative_models import GenerativeModel, Part
+from google import genai
+from google.genai.types import (
+    Content,
+    CreateCachedContentConfig,
+    GenerateContentConfig,
+    HttpOptions,
+    Part,
+)
 from datetime import datetime, timezone
 
 class CachedQAService:
     """Q&A service that uses context caching for cost efficiency."""
 
     def __init__(self, project_id, location="us-central1"):
-        vertexai.init(project=project_id, location=location)
-        self._caches = {}  # document_id -> (cache, model, expire_time)
+        self.client = genai.Client(
+            vertexai=True,
+            project=project_id,
+            location=location,
+            http_options=HttpOptions(api_version="v1"),
+        )
+        self.model_name = "gemini-2.5-flash"  # Flash is cheaper for Q&A
+        self._caches = {}  # document_id -> (cache_name, expire_time)
 
     def _get_or_create_cache(self, document_id, document_uri, mime_type):
         """Get existing cache or create a new one for the document."""
         # Check if we have a valid cache
         if document_id in self._caches:
-            cache, model, expire_time = self._caches[document_id]
+            cache_name, expire_time = self._caches[document_id]
             if datetime.now(timezone.utc) < expire_time:
-                return model  # Cache is still valid
+                return cache_name  # Cache is still valid
 
             # Cache expired, clean up
             try:
-                cache.delete()
+                self.client.caches.delete(name=cache_name)
             except Exception:
                 pass
 
         # Create a new cache
-        cache = caching.CachedContent.create(
-            model_name="gemini-1.5-flash-002",  # Flash is cheaper for Q&A
-            system_instruction=(
-                "Answer questions based strictly on the provided document. "
-                "Be concise and cite relevant sections when possible. "
-                "If the information is not in the document, clearly state that."
-            ),
-            contents=[
-                Part.from_uri(document_uri, mime_type=mime_type)
-            ],
-            ttl="3600s",  # 1 hour
-            display_name=f"qa-cache-{document_id}"
+        cache = self.client.caches.create(
+            model=self.model_name,
+            config=CreateCachedContentConfig(
+                system_instruction=(
+                    "Answer questions based strictly on the provided document. "
+                    "Be concise and cite relevant sections when possible. "
+                    "If the information is not in the document, clearly state that."
+                ),
+                contents=[
+                    Content(
+                        role="user",
+                        parts=[Part.from_uri(file_uri=document_uri, mime_type=mime_type)],
+                    )
+                ],
+                ttl="3600s",  # 1 hour
+                display_name=f"qa-cache-{document_id}",
+            )
         )
 
-        model = GenerativeModel.from_cached_content(cached_content=cache)
-        self._caches[document_id] = (cache, model, cache.expire_time)
+        self._caches[document_id] = (cache.name, cache.expire_time)
 
-        return model
+        return cache.name
 
     def ask(self, document_id, document_uri, mime_type, question):
         """Ask a question about a document."""
-        model = self._get_or_create_cache(document_id, document_uri, mime_type)
-        response = model.generate_content(question)
+        cache_name = self._get_or_create_cache(document_id, document_uri, mime_type)
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=question,
+            config=GenerateContentConfig(cached_content=cache_name),
+        )
 
         return {
             "answer": response.text,
             "cached_tokens": response.usage_metadata.cached_content_token_count,
-            "new_input_tokens": response.usage_metadata.prompt_token_count,
+            "new_input_tokens": response.usage_metadata.prompt_token_count - response.usage_metadata.cached_content_token_count,
             "output_tokens": response.usage_metadata.candidates_token_count
         }
 
     def cleanup(self):
         """Delete all active caches."""
-        for document_id, (cache, _, _) in self._caches.items():
+        for document_id, (cache_name, _) in self._caches.items():
             try:
-                cache.delete()
+                self.client.caches.delete(name=cache_name)
                 print(f"Deleted cache for {document_id}")
             except Exception as e:
                 print(f"Error deleting cache for {document_id}: {e}")
@@ -291,19 +353,20 @@ Let us calculate the actual savings for a realistic scenario. Say you have a 200
 Without caching:
 ```text
 20 requests x 100,000 input tokens = 2,000,000 input tokens
-At $0.00125 per 1K tokens (Gemini 1.5 Pro) = $2.50
+At $1.25 per 1M tokens (Gemini 2.5 Pro, <=200K-token input) = $2.50
 ```
 
 With caching:
 ```text
-1 cache creation: 100,000 tokens stored
+Cache creation input: 100,000 tokens x $1.25/1M = $0.125
+20 requests x 100,000 cached input tokens x $0.13/1M = $0.26
 20 requests x ~200 query tokens = 4,000 new input tokens
-Cache storage: 100,000 tokens x 1 hour x $0.000315/1K/hr = $0.0315
-New input tokens: 4,000 x $0.00125/1K = $0.005
-Total: ~$0.04
+Cache storage: 100,000 tokens x 1 hour x $4.50/1M/hr = $0.45
+New input tokens: 4,000 x $1.25/1M = $0.005
+Total: ~$0.84
 ```
 
-That is a 98% cost reduction for 20 questions against the same document. The savings increase with more questions and larger documents.
+That is about a 66% cost reduction for 20 questions against the same document. The savings increase with more questions, longer sessions, and larger documents.
 
 ## When Context Caching Makes Sense
 
@@ -311,6 +374,6 @@ Context caching is most valuable when you have a large, static context that you 
 
 It is less useful for one-off queries against unique contexts, or when the context changes frequently. Creating and storing a cache has its own cost, so you need at least a few queries against the same context to break even.
 
-The minimum cache size is 32,768 tokens. If your context is smaller than that, the overhead of caching is not worth it - just send the full context with each request.
+The minimum cache size is 2,048 tokens. If your context is smaller than that, use regular prompting or rely on implicit caching instead.
 
 Context caching with Gemini on Vertex AI is one of the most impactful cost optimization techniques for LLM-powered applications. The implementation is straightforward, and the savings are dramatic for the right use cases.
