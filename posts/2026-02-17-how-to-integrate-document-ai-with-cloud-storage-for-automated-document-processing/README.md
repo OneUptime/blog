@@ -51,11 +51,13 @@ gsutil cp /dev/null gs://my-project-doc-input/receipts/
 If you do not have a processor yet, create one.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1
 
 def create_processor(project_id, location="us"):
     """Create a Document AI processor for the pipeline."""
-    client = documentai_v1.DocumentProcessorServiceClient()
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
     parent = f"projects/{project_id}/locations/{location}"
 
     processor = client.create_processor(
@@ -78,8 +80,10 @@ This is the core of the pipeline. The Cloud Function processes each uploaded doc
 ```python
 # main.py
 import json
+import logging
 import os
 from datetime import datetime
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1, storage, firestore
 
 # Configuration from environment variables
@@ -121,7 +125,8 @@ def process_document(cloud_event):
     print(f"Processing: gs://{bucket_name}/{file_name} ({mime_type})")
 
     # Initialize Document AI client
-    docai_client = documentai_v1.DocumentProcessorServiceClient()
+    opts = ClientOptions(api_endpoint=f"{LOCATION}-documentai.googleapis.com")
+    docai_client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
     processor_name = (
         f"projects/{PROJECT_ID}/locations/{LOCATION}"
         f"/processors/{PROCESSOR_ID}"
@@ -142,8 +147,8 @@ def process_document(cloud_event):
     try:
         result = docai_client.process_document(request=request)
         document = result.document
-    except Exception as e:
-        print(f"Error processing {file_name}: {e}")
+    except Exception:
+        logging.exception("Error processing %s", file_name)
         # Move the file to an error folder
         move_to_error_folder(bucket_name, file_name)
         return
@@ -277,7 +282,7 @@ Upload a test document and verify the pipeline works end to end.
 gsutil cp test_invoice.pdf gs://my-project-doc-input/invoices/
 
 # Check the Cloud Function logs
-gcloud functions logs read process-document --region us-central1 --limit 20
+gcloud functions logs read process-document --gen2 --region us-central1 --limit 20
 
 # Verify output was created
 gsutil ls gs://my-project-doc-output/invoices/
@@ -285,7 +290,7 @@ gsutil ls gs://my-project-doc-output/invoices/
 
 ## Adding Error Handling and Retries
 
-For production robustness, add retry logic and dead-letter handling.
+For production robustness, consider retry logic and dead-letter handling. For Document AI calls, you can add retry logic like this.
 
 ```python
 from google.api_core import retry
@@ -319,8 +324,8 @@ Set up monitoring to track document processing health.
 # Create a log-based metric for processing errors
 gcloud logging metrics create docai-processing-errors \
   --description="Document AI processing errors" \
-  --filter='resource.type="cloud_function"
-    resource.labels.function_name="process-document"
+  --log-filter='resource.type="cloud_run_revision"
+    resource.labels.service_name="process-document"
     severity>=ERROR'
 
 # Create an alert policy
@@ -328,8 +333,8 @@ gcloud alpha monitoring policies create \
   --display-name="Document Processing Errors" \
   --condition-display-name="Error rate too high" \
   --condition-filter='metric.type="logging.googleapis.com/user/docai-processing-errors"' \
-  --condition-threshold-value=5 \
-  --condition-threshold-duration=300s
+  --if="> 5" \
+  --duration=300s
 ```
 
 ## Wrapping Up
