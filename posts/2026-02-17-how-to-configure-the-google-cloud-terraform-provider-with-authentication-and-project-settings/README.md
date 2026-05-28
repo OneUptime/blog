@@ -16,10 +16,10 @@ This guide covers every aspect of provider configuration, from basic setup to ad
 
 First, make sure you have Terraform installed. The Google Cloud provider is downloaded automatically when you run `terraform init`, but you need to declare it in your configuration.
 
-Create a `versions.tf` file to pin the provider version:
+Create a `versions.tf` file to constrain the provider version:
 
 ```hcl
-# versions.tf - Pin the Terraform and provider versions for reproducibility
+# versions.tf - Constrain the Terraform and provider versions for reproducibility
 
 terraform {
   required_version = ">= 1.5.0"
@@ -38,7 +38,7 @@ terraform {
 }
 ```
 
-Pinning versions is not optional - it is essential. Without it, a provider update could break your infrastructure on the next `terraform init`.
+Version constraints are not optional in serious Terraform projects - they are essential. Commit the generated `.terraform.lock.hcl` file as well to pin the exact provider selections. Without constraints and a lock file, a provider update could break your infrastructure on a future `terraform init` or upgrade.
 
 ## Basic Provider Configuration
 
@@ -119,7 +119,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: 'projects/123456/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
           service_account: 'terraform@my-gcp-project.iam.gserviceaccount.com'
