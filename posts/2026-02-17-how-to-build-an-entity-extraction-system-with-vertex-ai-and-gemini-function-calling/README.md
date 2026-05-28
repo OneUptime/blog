@@ -8,7 +8,7 @@ Description: Build a structured entity extraction system using Vertex AI Gemini 
 
 ---
 
-Extracting structured entities from unstructured text is a foundational task in many applications - processing invoices, parsing support tickets, analyzing contracts, or cataloging product descriptions. Traditional NER (Named Entity Recognition) models require training data and handle a fixed set of entity types. Gemini's function calling capability offers a different approach: you define the entity schema you want, and the model extracts matching entities from any text without custom training.
+Extracting structured entities from unstructured text is a foundational task in many applications - processing invoices, parsing support tickets, analyzing contracts, or cataloging product descriptions. Traditional NER (Named Entity Recognition) systems often require task-specific training data or support a fixed set of entity types. Gemini's function calling capability offers a different approach: you define the entity schema you want, and the model extracts matching entities from any text without custom training.
 
 This guide covers building a production entity extraction system using Vertex AI and Gemini function calling.
 
@@ -30,7 +30,7 @@ graph LR
 - Python 3.9+
 
 ```bash
-pip install google-cloud-aiplatform vertexai
+pip install --upgrade google-genai
 ```
 
 ## Basic Entity Extraction
@@ -40,22 +40,21 @@ pip install google-cloud-aiplatform vertexai
 Start by defining what entities you want to extract. The schema uses the function calling format.
 
 ```python
-import vertexai
-from vertexai.generative_models import (
-    GenerativeModel,
-    FunctionDeclaration,
-    Tool,
+from google import genai
+from google.genai import types
+
+# Initialize the Google Gen AI SDK for Vertex AI
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
 )
 
-# Initialize Vertex AI
-
-vertexai.init(project="your-project-id", location="us-central1")
-
 # Define the entity extraction schema as a function declaration
-extract_invoice_entities = FunctionDeclaration(
+extract_invoice_entities = types.FunctionDeclaration(
     name="extract_invoice_data",
     description="Extract structured data from an invoice or receipt",
-    parameters={
+    parameters_json_schema={
         "type": "object",
         "properties": {
             "vendor_name": {
@@ -101,15 +100,12 @@ extract_invoice_entities = FunctionDeclaration(
 )
 
 # Create a tool from the function declaration
-extraction_tool = Tool(function_declarations=[extract_invoice_entities])
+extraction_tool = types.Tool(function_declarations=[extract_invoice_entities])
 ```
 
 ### Run Extraction
 
 ```python
-# Initialize the Gemini model
-model = GenerativeModel("gemini-1.5-pro")
-
 # Sample invoice text
 invoice_text = """
 INVOICE
@@ -133,20 +129,27 @@ Payment Terms: Net 30
 """
 
 # Extract entities using function calling
-response = model.generate_content(
-    f"Extract the structured data from this invoice:\n\n{invoice_text}",
-    tools=[extraction_tool],
+response = client.models.generate_content(
+    model="gemini-2.5-pro",
+    contents=f"Extract the structured data from this invoice:\n\n{invoice_text}",
+    config=types.GenerateContentConfig(
+        tools=[extraction_tool],
+        tool_config=types.ToolConfig(
+            function_calling_config=types.FunctionCallingConfig(
+                mode="ANY",
+                allowed_function_names=["extract_invoice_data"],
+            )
+        ),
+        temperature=0,
+    ),
 )
 
 # Parse the extracted entities from the function call response
-if response.candidates[0].content.parts:
-    for part in response.candidates[0].content.parts:
-        if hasattr(part, 'function_call') and part.function_call:
-            fc = part.function_call
-            print(f"Function: {fc.name}")
-            print(f"Extracted entities:")
-            for key, value in fc.args.items():
-                print(f"  {key}: {value}")
+for fc in response.function_calls or []:
+    print(f"Function: {fc.name}")
+    print("Extracted entities:")
+    for key, value in fc.args.items():
+        print(f"  {key}: {value}")
 ```
 
 ## Building a Reusable Extraction System
@@ -154,30 +157,34 @@ if response.candidates[0].content.parts:
 ### Entity Extractor Class
 
 ```python
-from vertexai.generative_models import GenerativeModel, FunctionDeclaration, Tool
+from google import genai
+from google.genai import types
 import json
 
 class EntityExtractor:
     """A reusable entity extraction system using Gemini function calling."""
 
     def __init__(self, project_id: str, location: str):
-        vertexai.init(project=project_id, location=location)
-        self.model = GenerativeModel("gemini-1.5-flash")  # Flash for speed on extraction tasks
+        self.client = genai.Client(vertexai=True, project=project_id, location=location)
+        self.model_id = "gemini-2.5-flash"  # Flash for speed on extraction tasks
         self.schemas = {}
+        self.function_names = {}
 
     def register_schema(self, name: str, description: str, properties: dict, required: list = None):
         """Register an entity extraction schema."""
-        func_declaration = FunctionDeclaration(
-            name=f"extract_{name}",
+        function_name = f"extract_{name}"
+        func_declaration = types.FunctionDeclaration(
+            name=function_name,
             description=description,
-            parameters={
+            parameters_json_schema={
                 "type": "object",
                 "properties": properties,
                 "required": required or [],
             },
         )
 
-        self.schemas[name] = Tool(function_declarations=[func_declaration])
+        self.schemas[name] = types.Tool(function_declarations=[func_declaration])
+        self.function_names[name] = function_name
         print(f"Registered extraction schema: {name}")
 
     def extract(self, text: str, schema_name: str) -> dict:
@@ -187,17 +194,26 @@ class EntityExtractor:
 
         tool = self.schemas[schema_name]
 
-        response = self.model.generate_content(
-            f"Extract the structured data from the following text. Be precise and only extract information that is explicitly stated.\n\nText:\n{text}",
-            tools=[tool],
+        response = self.client.models.generate_content(
+            model=self.model_id,
+            contents=f"Extract the structured data from the following text. Be precise and only extract information that is explicitly stated.\n\nText:\n{text}",
+            config=types.GenerateContentConfig(
+                tools=[tool],
+                tool_config=types.ToolConfig(
+                    function_calling_config=types.FunctionCallingConfig(
+                        mode="ANY",
+                        allowed_function_names=[self.function_names[schema_name]],
+                    )
+                ),
+                temperature=0,
+            ),
         )
 
         # Parse the function call response
         entities = {}
-        for part in response.candidates[0].content.parts:
-            if hasattr(part, 'function_call') and part.function_call:
-                for key, value in part.function_call.args.items():
-                    entities[key] = value
+        for fc in response.function_calls or []:
+            for key, value in fc.args.items():
+                entities[key] = value
 
         return entities
 
@@ -322,10 +338,9 @@ print(json.dumps(job_entities, indent=2))
 
 ## Batch Processing at Scale
 
-For processing large volumes of text, use Vertex AI batch prediction.
+For processing volumes of text in your application, wrap the extractor with batch handling and save the results.
 
 ```python
-from google.cloud import aiplatform
 import json
 
 def batch_extract(
@@ -397,7 +412,7 @@ else:
 
 When building an entity extraction system at scale, keep these points in mind.
 
-Use `gemini-1.5-flash` instead of `gemini-1.5-pro` for extraction tasks. Flash is significantly cheaper and faster, and extraction is a well-defined task where the extra reasoning capability of Pro is not needed.
+Use `gemini-2.5-flash` instead of `gemini-2.5-pro` for extraction tasks when latency and cost matter. Flash is cheaper and faster, and extraction is often a well-defined task where the extra reasoning capability of Pro is not needed.
 
 Batch your API calls and implement rate limiting to stay within quota. The Vertex AI API has per-minute request limits that you will hit quickly with batch processing.
 
@@ -407,4 +422,4 @@ Keep your schemas focused. A schema with 30 fields is harder for the model to fi
 
 ## Summary
 
-Gemini function calling provides a flexible, no-training-required approach to entity extraction. Define your entity schema once, and the model handles extraction from any text. The approach scales well from single documents to batch processing thousands of texts through Vertex AI. Start with a focused schema, validate the extraction quality against a set of test examples, and expand the schema as you confirm accuracy. For production systems, add validation, caching, and batch processing to handle volume efficiently.
+Gemini function calling provides a flexible, no-training-required approach to entity extraction. Define your entity schema once, and the model handles extraction from any text. The approach scales well from single documents to batch processing thousands of texts through Vertex AI API calls. Start with a focused schema, validate the extraction quality against a set of test examples, and expand the schema as you confirm accuracy. For production systems, add validation, caching, and batch processing to handle volume efficiently.
