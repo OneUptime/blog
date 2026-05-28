@@ -8,7 +8,7 @@ Description: A complete guide to migrating your Apache HBase workloads to Cloud 
 
 ---
 
-If you are running Apache HBase on-premises or on cloud VMs, you know the operational burden. Managing ZooKeeper, HDFS, RegionServers, compaction tuning, cluster upgrades - it all takes significant engineering effort. Cloud Bigtable offers the same wide-column data model and HBase-compatible API but as a fully managed service. You get automatic scaling, built-in replication, and zero operational overhead.
+If you are running Apache HBase on-premises or on cloud VMs, you know the operational burden. Managing ZooKeeper, HDFS, RegionServers, compaction tuning, cluster upgrades - it all takes significant engineering effort. Cloud Bigtable offers the same wide-column data model and HBase-compatible API but as a fully managed service. You get managed scaling options, built-in replication, and much lower operational overhead.
 
 The good news is that Bigtable was designed to be HBase-compatible. Google actually published the Bigtable paper before HBase existed, and HBase was modeled after it. The migration path is well-trodden, and most HBase applications work with Bigtable with minimal code changes. Let me walk through the entire process.
 
@@ -23,9 +23,9 @@ What works the same:
 - Batch operations
 
 What is different:
-- No HBase shell (use `cbt` instead)
-- No coprocessors (use Cloud Functions instead)
-- No namespace support (use separate instances)
+- For most Bigtable admin workflows, use `cbt` or `gcloud` instead of relying on the HBase shell
+- No coprocessors (use Change Streams, Dataflow, Cloud Functions, or application-side logic instead)
+- No namespace support (use row key prefixes, or separate instances when you need operational isolation)
 - Table creation and admin operations use a different API
 - Some advanced filters behave slightly differently
 
@@ -98,11 +98,10 @@ Create a Bigtable instance that matches your HBase cluster's capacity.
 gcloud bigtable instances create hbase-migration \
   --display-name="Migrated from HBase" \
   --cluster-config=id=primary-cluster,zone=us-central1-a,nodes=3 \
-  --instance-type=PRODUCTION \
   --project=your-project-id
 ```
 
-A rough sizing guide: each Bigtable node provides roughly the same throughput as one HBase RegionServer with a good configuration. Start with the same node count as your HBase RegionServers and adjust from there.
+A rough sizing guide: start from Bigtable's published per-node throughput estimates and benchmark your own workload. Bigtable performance scales with nodes, but it depends on storage type, schema design, row size, and access patterns, so do not assume a one-to-one mapping with HBase RegionServers.
 
 ## Step 3: Create Tables and Column Families
 
@@ -160,13 +159,13 @@ for table_name, families in schemas.items():
             ))
 
         if len(rules) > 1:
-            gc_rule = column_family.GCRuleUnion(rules)
+            gc_rule = column_family.GCRuleIntersection(rules)
         elif rules:
             gc_rule = rules[0]
         else:
             gc_rule = None
 
-        cf_defs[family_name] = column_family.ColumnFamily(family_name, table, gc_rule)
+        cf_defs[family_name] = gc_rule
 
     # Create the table with column families
     table.create(column_families=cf_defs)
@@ -179,23 +178,30 @@ There are several approaches to moving data from HBase to Bigtable.
 
 **Option A: HBase snapshots with Dataflow**
 
-This is the recommended approach for large datasets. Export HBase data as snapshots, then use Dataflow to read the snapshots and write to Bigtable.
+This is the recommended approach for large datasets. Take HBase snapshots, export the snapshot files to Cloud Storage, then use the Bigtable Beam import tool on Dataflow to write to Bigtable.
 
 ```bash
-# Export HBase table as a snapshot
-hbase snapshot export -snapshot user_events_snapshot -copy-to gs://your-bucket/hbase-snapshots/
+# Take a snapshot in HBase
+echo "snapshot 'user_events', 'user_events_snapshot'" | hbase shell -n
 
-# Use Dataflow to import into Bigtable
-# Google provides a pre-built template for this
-gcloud dataflow jobs run hbase-to-bigtable \
-  --gcs-location gs://dataflow-templates/latest/HBase_To_Bigtable \
-  --parameters \
-    hbaseRootDir=gs://your-bucket/hbase-snapshots,\
-    hbaseSnapshotName=user_events_snapshot,\
-    bigtableProjectId=your-project-id,\
-    bigtableInstanceId=hbase-migration,\
-    bigtableTableId=user_events \
-  --project=your-project-id
+# Export the snapshot files to Cloud Storage
+hbase org.apache.hadoop.hbase.snapshot.ExportSnapshot \
+  -snapshot user_events_snapshot \
+  -copy-from hdfs://hbase-namenode:8020/hbase \
+  -copy-to gs://your-bucket/hbase-migration/data
+
+# Import the snapshot into Bigtable with the Bigtable Beam import tool
+# Download the latest bigtable-beam-import shaded JAR from Maven Central first.
+java -jar bigtable-beam-import-VERSION-shaded.jar importsnapshot \
+  --runner=DataflowRunner \
+  --project=your-project-id \
+  --bigtableInstanceId=hbase-migration \
+  --bigtableTableId=user_events \
+  --hbaseSnapshotSourceDir=gs://your-bucket/hbase-migration/data \
+  --snapshotName=user_events_snapshot \
+  --stagingLocation=gs://your-bucket/hbase-migration/staging \
+  --tempLocation=gs://your-bucket/hbase-migration/temp \
+  --region=us-central1
 ```
 
 **Option B: Direct copy with a migration script**
@@ -207,7 +213,11 @@ For smaller datasets or when you need transformation during migration.
 // Uses the HBase API for both source and destination
 import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.*;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseConfiguration;
 import com.google.cloud.bigtable.hbase.BigtableConfiguration;
+import java.util.ArrayList;
+import java.util.List;
 
 public class HBaseToBigtable {
     public static void main(String[] args) throws Exception {
@@ -261,6 +271,8 @@ public class HBaseToBigtable {
         scanner.close();
         sourceTable.close();
         destTable.close();
+        hbaseConn.close();
+        bigtableConn.close();
     }
 }
 ```
@@ -273,8 +285,8 @@ The biggest change is swapping the HBase connection configuration to use the Big
 <!-- Add the Bigtable HBase client to your Maven pom.xml -->
 <dependency>
     <groupId>com.google.cloud.bigtable</groupId>
-    <artifactId>bigtable-hbase-2.x-hadoop</artifactId>
-    <version>2.14.1</version>
+    <artifactId>bigtable-hbase-2.x</artifactId>
+    <version>2.18.3</version>
 </dependency>
 ```
 
