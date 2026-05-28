@@ -8,18 +8,18 @@ Description: Diagnose and resolve Cloud NAT port exhaustion errors that cause dr
 
 ---
 
-Port exhaustion is the most common Cloud NAT issue in production environments. It happens when your VMs need more outbound connections than the available NAT ports can handle. The symptoms are frustrating - intermittent connection failures, dropped packets, timeouts to external services, and `OUT_OF_RESOURCES` errors in your NAT logs. The good news is that it is fixable once you understand how NAT port allocation works.
+Port exhaustion is the most common Cloud NAT issue in production environments. It happens when your VMs need more outbound connections than the available NAT ports can handle. The symptoms are frustrating - intermittent connection failures, dropped packets, timeouts to external services, `DROPPED` entries in your NAT logs, and `OUT_OF_RESOURCES` reasons in your Cloud NAT metrics. The good news is that it is fixable once you understand how NAT port allocation works.
 
 ## Understanding NAT Port Allocation
 
-Every outbound connection through Cloud NAT uses a unique source port. The combination of NAT IP address and source port identifies the connection. Here is the math:
+Every outbound connection through Cloud NAT uses a NAT source IP address and source port tuple. For a single destination IP, destination port, and protocol, each simultaneous connection needs a unique NAT source IP address and source port tuple. Here is the math:
 
 - Each NAT IP address provides ports 1024 through 65535 = 64,512 usable ports
-- By default, Cloud NAT allocates a minimum of 64 ports per VM
-- With static port allocation, each VM gets exactly the minimum allocation
+- By default, Public NAT with static port allocation uses a minimum of 64 ports per VM. Dynamic port allocation defaults to 32 minimum ports per VM if you do not set a value.
+- With static port allocation, each VM gets a fixed allocation based on the minimum ports per VM value
 - With dynamic port allocation, VMs can get more ports as needed up to a maximum
 
-Port exhaustion occurs when all allocated ports for a VM are in use and a new connection is needed.
+Port exhaustion occurs when all available NAT source IP address and source port tuples for a VM and destination are in use and a new connection is needed.
 
 ```mermaid
 flowchart TD
@@ -46,14 +46,19 @@ gcloud logging read \
   --format="table(timestamp, jsonPayload.connection.src_ip, jsonPayload.connection.dest_ip, jsonPayload.connection.dest_port)"
 ```
 
-If you see results, port exhaustion is confirmed. The `src_ip` field tells you which VM is exhausting its ports.
+If you see results, Cloud NAT dropped outbound packets because no NAT tuple was allocated. The `src_ip` field tells you which VM was sending the dropped traffic. To confirm the cause is port exhaustion, check the drop reason in Cloud Monitoring.
 
-Also check Cloud Monitoring for the `nat/port_usage` metric:
+Also check Cloud Monitoring for the `nat/port_usage` metric and the `nat/dropped_sent_packets_count` metric with the `OUT_OF_RESOURCES` reason. You can confirm the metric names are available with:
 
 ```bash
-# Get NAT port usage statistics
+# Confirm the NAT port usage metric descriptor
 gcloud monitoring metrics list \
   --filter='metric.type="router.googleapis.com/nat/port_usage"' \
+  --project=your-project-id
+
+# Confirm the dropped sent packets metric descriptor
+gcloud monitoring metrics list \
+  --filter='metric.type="router.googleapis.com/nat/dropped_sent_packets_count"' \
   --project=your-project-id
 ```
 
@@ -129,6 +134,8 @@ With this configuration:
 - Unused ports are returned to the pool for other VMs
 - This maximizes utilization of your NAT IP pool
 
+When you enable dynamic port allocation, make sure the minimum and maximum values are powers of 2, the minimum is at least 32, and the maximum is greater than the minimum.
+
 ## Step 5: Fix - Add More NAT IP Addresses
 
 If all your VMs genuinely need high port counts simultaneously, add more NAT IPs:
@@ -170,7 +177,7 @@ gcloud compute routers nats update your-nat-gateway \
   --project=your-project-id
 ```
 
-This is safe for most workloads but can cause issues with connections to the same destination in rare cases. Test before applying in production.
+This improves port reuse but can cause retransmitted packets from a previous closed connection to be delivered to an unrelated connection. If you use dynamic port allocation, keep this value at 15 seconds or more. Test before applying in production.
 
 ## Step 7: Fix - Application-Level Improvements
 
