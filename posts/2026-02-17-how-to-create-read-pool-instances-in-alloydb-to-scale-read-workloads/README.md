@@ -10,15 +10,15 @@ Description: Learn how to create and configure read pool instances in AlloyDB fo
 
 Most applications read far more than they write. Your API might serve 100 read requests for every write. Your reporting dashboard scans millions of rows but never modifies them. In these scenarios, the primary AlloyDB instance does double duty - handling writes and serving reads - which limits how much you can scale.
 
-Read pool instances solve this by creating dedicated compute nodes that serve read queries. They share the same storage layer as the primary, so there is no replication lag in the traditional sense. Reads hit a consistent view of the data. In this post, I will show you how to create read pool instances, route traffic to them, and size them for your workload.
+Read pool instances solve this by creating dedicated compute nodes that serve read queries. They use AlloyDB's distributed storage architecture and are designed for low-lag reads, so read freshness is typically much better than with traditional PostgreSQL replicas. In this post, I will show you how to create read pool instances, route traffic to them, and size them for your workload.
 
 ## How Read Pool Instances Work
 
-AlloyDB's architecture separates compute from storage. The primary instance and read pool instances all connect to the same distributed storage layer. When data is written through the primary, it is immediately visible to read pool instances because they are reading from the same storage.
+AlloyDB's architecture separates compute from storage. The primary instance and read pool instances all use the cluster's distributed storage layer, while read pool nodes apply changes from the primary. When data is written through the primary, it becomes visible to read pool instances after the relevant changes are available and replayed on the read nodes.
 
-This is different from traditional PostgreSQL replicas, which use streaming replication with some lag. AlloyDB read pool instances provide near-zero replication lag because they are not replicas in the traditional sense - they are additional compute nodes reading from shared storage.
+This is different from traditional PostgreSQL replicas, which duplicate data onto separate replica storage. AlloyDB read pool instances are optimized for low replication lag, but lag can still occur and should be monitored for latency-sensitive workloads.
 
-A read pool is a group of one or more read-only instances that share a single connection endpoint. AlloyDB automatically load-balances connections across the instances in the pool.
+A read pool instance contains one or more read-only nodes and exposes a single connection endpoint. AlloyDB automatically load-balances requests across the nodes in the pool.
 
 ## Prerequisites
 
@@ -65,7 +65,7 @@ gcloud alloydb instances describe my-read-pool \
   --format="value(ipAddress)"
 ```
 
-You connect to this IP for read-only queries. AlloyDB load-balances connections across all nodes in the pool.
+You connect to this IP for read-only queries. AlloyDB load-balances requests across all nodes in the pool.
 
 ## Step 3 - Configure Your Application for Read/Write Splitting
 
@@ -228,7 +228,7 @@ From Cloud Monitoring:
 ```bash
 # Check read pool CPU utilization
 gcloud monitoring time-series list \
-  --filter='resource.type="alloydb.googleapis.com/Instance" AND metric.type="alloydb.googleapis.com/database/cpu/utilization"' \
+  --filter='resource.type="alloydb.googleapis.com/Instance" AND metric.type="alloydb.googleapis.com/instance/cpu/average_utilization"' \
   --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
   --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 ```
@@ -268,4 +268,4 @@ Read pool instances are read-only. If your application accidentally sends a writ
 
 Read pool instances also cannot run DDL commands (CREATE TABLE, ALTER TABLE, etc.) or write to temporary tables. Any operation that modifies the database must go through the primary instance.
 
-AlloyDB read pool instances are one of the cleanest ways to scale read-heavy PostgreSQL workloads. The shared storage architecture means no replication lag, and the ability to create multiple pools with different configurations gives you fine-grained control over how different workloads are served. Start with a single read pool and add more as your traffic patterns become clear.
+AlloyDB read pool instances are one of the cleanest ways to scale read-heavy PostgreSQL workloads. The shared storage architecture helps keep replication lag low, and the ability to create multiple pools with different configurations gives you fine-grained control over how different workloads are served. Start with a single read pool and add more as your traffic patterns become clear.
