@@ -29,7 +29,6 @@ package main
 
 import (
     "context"
-    "encoding/json"
     "log"
     "net/http"
     "os"
@@ -99,6 +98,7 @@ package main
 
 import (
     "encoding/json"
+    "fmt"
     "net/http"
     "sync"
     "time"
@@ -236,12 +236,12 @@ This is where the image size optimization happens. A multi-stage build compiles 
 ```dockerfile
 # Stage 1: Build the Go binary
 
-FROM golang:1.22-alpine AS build
+FROM golang:1.26-alpine AS build
 
 WORKDIR /app
 
-# Copy go.mod and go.sum first for layer caching
-COPY go.mod go.sum ./
+# Copy go.mod first for layer caching
+COPY go.mod ./
 RUN go mod download
 
 # Copy source code
@@ -271,10 +271,10 @@ ENTRYPOINT ["/server"]
 
 The `scratch` image is literally empty - zero bytes. Your final image contains only your Go binary and the CA certificates. A typical Go service produces an image of 10-15MB.
 
-If you need a minimal image that is not completely empty (for debugging), use distroless:
+If you need a minimal image that is not completely empty, use distroless:
 
 ```dockerfile
-# Alternative: use distroless for a slightly larger but more debuggable image
+# Alternative: use a distroless base for a slightly larger image with a minimal Debian runtime
 FROM gcr.io/distroless/static-debian12
 COPY --from=build /server /server
 ENTRYPOINT ["/server"]
@@ -306,14 +306,14 @@ curl http://localhost:8080/api/items
 
 ```bash
 # Build and push using Cloud Build
-gcloud builds submit --tag gcr.io/my-project/go-service
+gcloud builds submit --tag us-central1-docker.pkg.dev/my-project/go-service/go-service
 
 # Deploy to Cloud Run
 gcloud run deploy go-service \
-    --image gcr.io/my-project/go-service:latest \
+    --image us-central1-docker.pkg.dev/my-project/go-service/go-service:latest \
     --platform managed \
     --region us-central1 \
-    --memory 128Mi \
+    --memory 512Mi \
     --cpu 1 \
     --min-instances 0 \
     --max-instances 100 \
@@ -322,7 +322,7 @@ gcloud run deploy go-service \
     --allow-unauthenticated
 ```
 
-Notice the `--memory 128Mi`. A Go service with an in-memory store runs comfortably in 128MB. With a database connection, 256MB is usually plenty.
+Notice the `--memory 512Mi`. A small Go service with an in-memory store usually runs comfortably in the Cloud Run default of 512Mi. With a database connection, measure your workload and raise the memory limit if needed.
 
 ## Optimizing for Cold Start
 
@@ -331,24 +331,24 @@ Go services already cold start fast, but you can squeeze out a bit more:
 ```bash
 # Deploy with startup CPU boost enabled
 gcloud run deploy go-service \
-    --image gcr.io/my-project/go-service:latest \
+    --image us-central1-docker.pkg.dev/my-project/go-service/go-service:latest \
     --cpu-boost \
     --region us-central1 \
-    --memory 128Mi
+    --memory 512Mi
 ```
 
-The `--cpu-boost` flag gives your container extra CPU during startup, which helps with the initial request processing.
+The `--cpu-boost` flag gives your container extra CPU during startup and for 10 seconds after startup, which can help with the initial request processing.
 
 ## Adding Health Check Probes
 
 ```bash
 # Deploy with startup and liveness probes
 gcloud run deploy go-service \
-    --image gcr.io/my-project/go-service:latest \
+    --image us-central1-docker.pkg.dev/my-project/go-service/go-service:latest \
     --startup-probe "httpGet.path=/health,httpGet.port=8080,initialDelaySeconds=0,periodSeconds=1,failureThreshold=3" \
     --liveness-probe "httpGet.path=/health,httpGet.port=8080,periodSeconds=30" \
     --region us-central1 \
-    --memory 128Mi
+    --memory 512Mi
 ```
 
 ## Concurrency Settings
@@ -358,12 +358,12 @@ Go handles concurrency natively with goroutines, so you can set the Cloud Run co
 ```bash
 # Go can handle many concurrent requests per instance
 gcloud run deploy go-service \
-    --image gcr.io/my-project/go-service:latest \
+    --image us-central1-docker.pkg.dev/my-project/go-service/go-service:latest \
     --concurrency 250 \
     --region us-central1
 ```
 
-Each incoming request runs in its own goroutine, and Go's scheduler efficiently multiplexes goroutines across OS threads. A single Cloud Run instance with 1 vCPU can handle hundreds of concurrent requests.
+Each incoming request runs in its own goroutine, and Go's scheduler efficiently multiplexes goroutines across OS threads. For lightweight I/O-bound endpoints, a single Cloud Run instance with 1 vCPU can often handle hundreds of concurrent requests, but benchmark your own workload before raising concurrency in production.
 
 ## Wrapping Up
 
