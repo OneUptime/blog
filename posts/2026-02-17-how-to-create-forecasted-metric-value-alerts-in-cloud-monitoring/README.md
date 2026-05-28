@@ -21,9 +21,9 @@ The key parameters are:
 - The metric to monitor
 - The threshold value
 - The forecast window (how far ahead to predict)
-- The minimum historical data needed for the forecast
+- The retest window and the historical data needed to train the forecast
 
-Cloud Monitoring uses linear regression on the recent data to make the prediction. This works well for metrics that trend steadily in one direction, like disk usage growing over time.
+Cloud Monitoring trains a forecasting algorithm for each monitored time series. The initial training time is twice the forecast window, and after training, the algorithm continues training on recent data that spans up to six times the forecast window. This works well for metrics that trend steadily in one direction, like disk usage growing over time.
 
 ## Creating a Disk Usage Forecast Alert
 
@@ -68,7 +68,7 @@ Apply the policy.
 ```bash
 # Create the forecasted alert policy
 
-gcloud alpha monitoring policies create --policy-from-file=forecast-alert.json
+gcloud monitoring policies create --policy-from-file=forecast-alert.json
 ```
 
 ## Memory Usage Forecast
@@ -109,7 +109,7 @@ Memory leaks cause gradual memory growth that is hard to catch with static thres
 
 ## Database Connection Pool Exhaustion
 
-If your connection pool usage is growing over time, a forecast alert warns you before connections run out.
+If your connection count is growing over time, a forecast alert warns you before connections run out.
 
 ```json
 {
@@ -117,7 +117,7 @@ If your connection pool usage is growing over time, a forecast alert warns you b
   "combiner": "OR",
   "conditions": [
     {
-      "displayName": "Connection pool predicted to reach 90% in 6h",
+      "displayName": "Connection count predicted to reach 90 in 6h",
       "conditionThreshold": {
         "filter": "resource.type = \"cloudsql_database\" AND metric.type = \"cloudsql.googleapis.com/database/network/connections\"",
         "comparison": "COMPARISON_GT",
@@ -143,12 +143,12 @@ If your connection pool usage is growing over time, a forecast alert warns you b
 
 The forecast horizon depends on how quickly you can respond to the issue:
 
-- Disk space: 24-72 hours. You usually need time to plan and execute a resize or cleanup.
+- Disk space: 24-60 hours. You usually need time to plan and execute a resize or cleanup.
 - Memory leaks: 6-12 hours. Restarting an application is quick, but you want lead time to investigate.
 - Connection pools: 4-6 hours. You might need to scale the database or investigate connection leaks.
 - Network bandwidth: 12-24 hours. Scaling network infrastructure takes planning.
 
-Shorter horizons give you more accurate predictions but less reaction time. Longer horizons give more lead time but may be less accurate because the prediction is extrapolated further.
+Cloud Monitoring supports forecast windows from 1 hour to 60 hours. Shorter horizons give you more accurate predictions but less reaction time. Longer horizons give more lead time but may be less accurate because the prediction is extrapolated further.
 
 ## Combining Forecast with Threshold Alerts
 
@@ -201,11 +201,11 @@ With `"combiner": "OR"`, you get alerted either way - if the forecast predicts a
 
 ## Limitations of Forecasted Alerts
 
-Forecasted alerts work best when the metric trend is relatively linear and consistent. They have some limitations to keep in mind:
+Forecasted alerts work best when the metric trend is consistent. They have some limitations to keep in mind:
 
 - Sudden spikes are not predicted. If disk usage jumps 30% in an hour due to a log explosion, the forecast based on the previous gradual trend would not have caught it.
-- Cyclical patterns can confuse the forecast. If memory usage follows a daily cycle (high during business hours, low at night), the forecast might misinterpret the upswing as a continuous trend.
-- New metrics without historical data cannot be forecasted. Cloud Monitoring needs enough data points to fit a trend line.
+- Very short or changing cyclical patterns can affect the forecast. Cloud Monitoring can incorporate regular periodic behavior into forecasts, but abrupt workload changes can still make predictions less useful.
+- New metrics without historical data cannot be forecasted immediately. Cloud Monitoring needs enough data to train the forecasting algorithm.
 
 For these reasons, always use forecasted alerts alongside threshold alerts, not as a replacement.
 
@@ -214,21 +214,21 @@ For these reasons, always use forecasted alerts alongside threshold alerts, not 
 After setting up a forecast alert, monitor how it behaves. Check if it fires too often (noisy) or misses real issues (not sensitive enough).
 
 ```bash
-# List alert incidents to see how often forecast alerts fire
-gcloud alpha monitoring policies list \
+# List forecast alert policies
+gcloud monitoring policies list \
   --filter="displayName:'Forecast'" \
   --format="table(displayName, enabled)"
 
-# Check the incident history
-gcloud alpha monitoring policies describe POLICY_ID \
+# Check the configured forecast options
+gcloud monitoring policies describe POLICY_ID \
   --format="yaml(conditions.conditionThreshold.forecastOptions)"
 ```
 
-If the alert is too noisy, try increasing the forecast horizon or adjusting the threshold value. If it is not catching real issues, decrease the forecast horizon or lower the threshold.
+If the alert is too noisy, try decreasing the forecast horizon or adjusting the threshold value. If it is not catching real issues, increase the forecast horizon or lower the threshold.
 
 ## Using Forecasts for Capacity Planning
 
-Beyond alerting, forecast data is valuable for capacity planning. By tracking disk growth trends over weeks, you can plan infrastructure purchases and scaling events proactively. Cloud Monitoring dashboards can display forecast lines alongside actual data, giving you a visual sense of where things are heading.
+Beyond alerting, metric trends are valuable for capacity planning. By tracking disk growth trends over weeks, you can plan infrastructure purchases and scaling events proactively. Cloud Monitoring dashboards can display the actual metric history, giving you a visual sense of how quickly usage is changing.
 
 ## Summary
 
