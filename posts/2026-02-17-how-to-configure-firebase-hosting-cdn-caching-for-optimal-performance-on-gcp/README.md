@@ -208,7 +208,7 @@ Use the browser DevTools Network tab to verify your caching is working. Look for
 - **200 (from disk cache)** in the size column means the browser used its local cache
 - **304 Not Modified** means the browser checked with the server and the content had not changed
 
-You can also check cache hit rates using Cloud Monitoring. Navigate to the Firebase Hosting metrics dashboard to see CDN cache hit ratios over time.
+You can also check CDN cache behavior in Firebase Hosting web request logs. Each request log includes a `cacheHit` field, and you can build log-based metrics in Cloud Monitoring if you want charts or alerting for cache hits and misses over time.
 
 ## A Complete firebase.json Example
 
@@ -266,6 +266,15 @@ Here is a comprehensive configuration that covers most scenarios:
         ]
       },
       {
+        "source": "/",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=300, s-maxage=600, stale-while-revalidate=86400"
+          }
+        ]
+      },
+      {
         "source": "/manifest.json",
         "headers": [
           {
@@ -288,6 +297,8 @@ Here is a comprehensive configuration that covers most scenarios:
   }
 }
 ```
+
+Custom headers match the original request URL before rewrite rules are applied, so routes like `/app/settings` need their own header rule, such as `/app/**`, if they are served by the `/index.html` fallback.
 
 Notice the service worker gets `no-cache` - this is important because browsers use the service worker to control caching for your entire app, and you always want the latest version.
 
