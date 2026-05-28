@@ -48,7 +48,7 @@ gcloud compute instance-templates create ml-training-template \
     --boot-disk-type=pd-ssd \
     --maintenance-policy=TERMINATE \
     --restart-on-failure \
-    --metadata=install-nvidia-driver=True \
+    --metadata-from-file=startup-script=install-nvidia-drivers.sh \
     --scopes=cloud-platform
 ```
 
@@ -57,7 +57,7 @@ Let me explain the GPU-specific settings:
 - **--accelerator=type=nvidia-tesla-t4,count=1**: Attaches one T4 GPU. You can attach up to 4 GPUs depending on the machine type.
 - **--maintenance-policy=TERMINATE**: This is required for GPU instances. VMs with GPUs cannot be live-migrated during host maintenance events, so they must be terminated and restarted.
 - **--restart-on-failure**: Automatically restarts the VM after it is terminated for maintenance.
-- **--metadata=install-nvidia-driver=True**: On supported images, this triggers automatic NVIDIA driver installation during first boot.
+- **--metadata-from-file=startup-script=install-nvidia-drivers.sh**: Runs a startup script during first boot to install the NVIDIA driver and CUDA toolkit on a standard OS image.
 
 ## Machine Type Requirements
 
@@ -72,10 +72,9 @@ Not every machine type supports GPUs. Here are the rules:
 GPU to vCPU requirements for N1:
 
 ```text
-1 GPU  -> minimum 1 vCPU,  maximum 12 vCPUs
-2 GPUs -> minimum 1 vCPU,  maximum 24 vCPUs
-4 GPUs -> minimum 1 vCPU,  maximum 48 vCPUs
-8 GPUs -> minimum 1 vCPU,  maximum 96 vCPUs
+1 T4 GPU  -> minimum 1 vCPU,  maximum 48 vCPUs
+2 T4 GPUs -> minimum 1 vCPU,  maximum 48 vCPUs
+4 T4 GPUs -> minimum 1 vCPU,  maximum 96 vCPUs
 ```
 
 ## Using Deep Learning VM Images
@@ -87,7 +86,7 @@ Instead of installing drivers manually, use Google's Deep Learning VM images. Th
 gcloud compute instance-templates create ml-pytorch-template \
     --machine-type=n1-standard-8 \
     --accelerator=type=nvidia-tesla-t4,count=1 \
-    --image-family=pytorch-latest-gpu-debian-11 \
+    --image-family=pytorch-2-9-cu129-ubuntu-2204-nvidia-580 \
     --image-project=deeplearning-platform-release \
     --boot-disk-size=200GB \
     --boot-disk-type=pd-ssd \
@@ -98,9 +97,9 @@ gcloud compute instance-templates create ml-pytorch-template \
 
 Available image families include:
 
-- `pytorch-latest-gpu-debian-11` - PyTorch with GPU support
-- `tf-latest-gpu-debian-11` - TensorFlow with GPU support
-- `common-gpu-debian-11` - Base image with CUDA and drivers only
+- `pytorch-2-9-cu129-ubuntu-2204-nvidia-580` - PyTorch with GPU support
+- `pytorch-2-9-cu129-ubuntu-2404-nvidia-580` - PyTorch with GPU support on Ubuntu 24.04
+- `common-cu129-ubuntu-2204-nvidia-580` - Base image with CUDA and drivers only
 
 ## Installing NVIDIA Drivers Manually
 
@@ -111,31 +110,15 @@ If you are using a standard OS image, you need to install the NVIDIA drivers you
 # install-nvidia-drivers.sh - Install NVIDIA drivers and CUDA toolkit
 set -e
 
-# Check if drivers are already installed
-if nvidia-smi &> /dev/null; then
-    echo "NVIDIA drivers already installed"
-    nvidia-smi
-    exit 0
+if test -f /opt/google/cuda-installer/cuda_installation; then
+  exit 0
 fi
 
-# Install kernel headers and build tools
-apt-get update
-apt-get install -y linux-headers-$(uname -r) build-essential
+mkdir -p /opt/google/cuda-installer
+cd /opt/google/cuda-installer/ || exit 1
 
-# Add NVIDIA package repository
-distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
-    gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-
-# Install the NVIDIA driver
-apt-get install -y nvidia-driver-535
-
-# Install CUDA toolkit
-wget https://developer.download.nvidia.com/compute/cuda/12.2.0/local_installers/cuda_12.2.0_535.54.03_linux.run
-sh cuda_12.2.0_535.54.03_linux.run --silent --toolkit
-
-# Verify the installation
-nvidia-smi
+curl -fSsL -O https://storage.googleapis.com/compute-gpu-installation-us/installer/latest/cuda_installer.pyz
+python3 cuda_installer.pyz install_cuda
 ```
 
 ## Terraform Configuration
@@ -147,7 +130,6 @@ Here is the complete Terraform setup for a GPU instance template.
 resource "google_compute_instance_template" "ml_training" {
   name_prefix  = "ml-training-"
   machine_type = "n1-standard-8"
-  region       = "us-central1"
 
   # GPU configuration
   guest_accelerator {
@@ -162,7 +144,7 @@ resource "google_compute_instance_template" "ml_training" {
   }
 
   disk {
-    source_image = "deeplearning-platform-release/pytorch-latest-gpu-debian-11"
+    source_image = "deeplearning-platform-release/pytorch-2-9-cu129-ubuntu-2204-nvidia-580"
     auto_delete  = true
     boot         = true
     disk_size_gb = 200
@@ -177,10 +159,6 @@ resource "google_compute_instance_template" "ml_training" {
   # Broad scopes for accessing GCS, BigQuery, etc.
   service_account {
     scopes = ["cloud-platform"]
-  }
-
-  metadata = {
-    install-nvidia-driver = "True"
   }
 
   lifecycle {
@@ -198,7 +176,7 @@ For larger training jobs, you might need multiple GPUs:
 gcloud compute instance-templates create multi-gpu-template \
     --machine-type=n1-standard-32 \
     --accelerator=type=nvidia-tesla-t4,count=4 \
-    --image-family=pytorch-latest-gpu-debian-11 \
+    --image-family=pytorch-2-9-cu129-ubuntu-2204-nvidia-580 \
     --image-project=deeplearning-platform-release \
     --boot-disk-size=500GB \
     --boot-disk-type=pd-ssd \
@@ -213,7 +191,7 @@ For A100 GPUs, use A2 machine types which come with GPUs pre-attached:
 # Template with A100 GPUs using A2 machine type
 gcloud compute instance-templates create a100-training-template \
     --machine-type=a2-highgpu-1g \
-    --image-family=pytorch-latest-gpu-debian-11 \
+    --image-family=pytorch-2-9-cu129-ubuntu-2204-nvidia-580 \
     --image-project=deeplearning-platform-release \
     --boot-disk-size=500GB \
     --boot-disk-type=pd-ssd \
