@@ -57,9 +57,9 @@ Roles are collections of permissions. There are three types:
 
 These are the original roles and they are very broad:
 
-- **Viewer**: Read-only access to all resources
-- **Editor**: Read-write access to all resources (but cannot manage IAM)
-- **Owner**: Full control including IAM management and billing
+- **Viewer**: Read-only access that does not affect state
+- **Editor**: Viewer permissions plus broad permissions to create, delete, and change resources for most services, but not every action for every service
+- **Owner**: Editor permissions plus permissions for actions like managing IAM on the project and setting up project billing
 
 The exam will test whether you know that basic roles are too permissive for production. They grant access to every service in the project. Use predefined or custom roles instead.
 
@@ -113,9 +113,9 @@ gcloud projects add-iam-policy-binding my-project \
   --role="roles/storage.objectViewer"
 ```
 
-**Default service accounts**: GCP creates these automatically when you enable certain APIs (like the Compute Engine default service account). These are often overprivileged - they typically have the Editor role by default.
+**Default service accounts**: GCP creates these automatically when you enable certain APIs (like the Compute Engine default service account). Depending on your organization policy configuration, these might be overprivileged because they might automatically get the Editor role. For organizations created after May 3, 2024, that automatic grant is disabled by default.
 
-**Google-managed service accounts**: Used by GCP services internally (like the Cloud Build service account). You generally do not manage these directly.
+**Google-managed service accounts**: Used by GCP services internally (like service agents for Cloud Build). You generally do not manage these directly.
 
 ### Service Account Keys
 
@@ -130,7 +130,7 @@ gcloud iam service-accounts keys create key.json \
 For the exam, know that:
 - Key files should be avoided when possible because they are hard to manage and rotate
 - On Compute Engine, use the VM's attached service account instead of key files
-- On GKE, use Workload Identity to link Kubernetes service accounts to GCP service accounts
+- On GKE, use Workload Identity Federation for GKE, either by granting IAM roles to Kubernetes service account principals directly or by linking Kubernetes service accounts to IAM service accounts when needed
 - Service account keys should be rotated regularly
 
 ### Service Account Impersonation
