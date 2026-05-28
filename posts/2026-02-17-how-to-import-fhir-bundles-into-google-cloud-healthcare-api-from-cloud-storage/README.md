@@ -14,11 +14,12 @@ This guide covers importing FHIR data in various formats, handling errors, and v
 
 ## Import Formats
 
-The Healthcare API accepts three formats for bulk import:
+The Healthcare API accepts several formats for bulk import:
 
-1. **FHIR Bundle JSON**: A standard FHIR Bundle resource containing multiple entries. Good for small to medium datasets.
+1. **FHIR Bundle JSON**: A standard FHIR Bundle resource containing multiple entries in a single JSON file. Use `BUNDLE_PRETTY` for this format.
 2. **NDJSON (Newline-Delimited JSON)**: One FHIR resource per line. More efficient for large datasets because it can be processed in parallel.
-3. **FHIR Bundle NDJSON**: Each line is a FHIR Bundle. Best for very large imports.
+3. **FHIR Bundle NDJSON**: Each line is a FHIR Bundle. Use `BUNDLE` for this format.
+4. **Single-resource JSON**: One FHIR resource in a JSON file. Use `RESOURCE_PRETTY` for this format.
 
 ## Prerequisites
 
@@ -27,19 +28,18 @@ The Healthcare API accepts three formats for bulk import:
 - Python 3.8+
 
 ```bash
-pip install google-cloud-healthcare google-api-python-client
+pip install google-api-python-client google-auth
 ```
 
 ## Step 1: Prepare FHIR Bundle Files
 
-Here is an example of a FHIR Bundle containing Patient and Observation resources:
+Here is an example of a FHIR Bundle containing Patient resources:
 
 ```python
 # prepare_bundle.py - Creates FHIR bundle files for import
 
-import json
-from datetime import datetime, timedelta
 import random
+import json
 
 def create_patient_bundle(num_patients=100):
     """Creates a FHIR Transaction Bundle with patient resources.
@@ -57,8 +57,10 @@ def create_patient_bundle(num_patients=100):
                   "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"]
 
     for i in range(num_patients):
+        patient_id = f"patient-{10000 + i}"
         patient = {
             "resourceType": "Patient",
+            "id": patient_id,
             "identifier": [
                 {
                     "system": "http://hospital.example.com/mrn",
@@ -76,13 +78,13 @@ def create_patient_bundle(num_patients=100):
             "birthDate": f"{random.randint(1940, 2005)}-{random.randint(1,12):02d}-{random.randint(1,28):02d}",
         }
 
-        # Use conditional create to avoid duplicates on re-import
+        # fhirStores.import uses the resource id and ignores Bundle.entry.request.
+        # The request block is used only when executing this as a transaction bundle.
         entry = {
             "resource": patient,
             "request": {
-                "method": "POST",
-                "url": "Patient",
-                "ifNoneExist": f"identifier=http://hospital.example.com/mrn|MRN-{10000 + i}",
+                "method": "PUT",
+                "url": f"Patient/{patient_id}",
             },
         }
         bundle["entry"].append(entry)
@@ -132,7 +134,7 @@ gcloud healthcare fhir-stores import gcs my-fhir-store \
   --dataset=my-health-dataset \
   --location=us-central1 \
   --gcs-uri=gs://your-healthcare-bucket/import/patients_bundle.json \
-  --content-structure=BUNDLE
+  --content-structure=BUNDLE_PRETTY
 
 # Import NDJSON files (one resource per line)
 gcloud healthcare fhir-stores import gcs my-fhir-store \
@@ -171,9 +173,10 @@ def import_fhir_resources(gcs_uri, content_structure="RESOURCE"):
 
     Args:
         gcs_uri: GCS path to the import file(s). Supports wildcards.
-        content_structure: One of RESOURCE, BUNDLE, or BUNDLE_PRETTY.
+        content_structure: One of RESOURCE, BUNDLE, BUNDLE_PRETTY, or RESOURCE_PRETTY.
             RESOURCE means each line is a single FHIR resource (NDJSON).
-            BUNDLE means the file is a FHIR Bundle.
+            BUNDLE means each line is a FHIR Bundle.
+            BUNDLE_PRETTY means the entire file is one FHIR Bundle.
     """
 
     client = get_healthcare_client()
@@ -243,12 +246,12 @@ result = wait_for_operation(operation)
 
 ## Step 4: Handle Import Errors
 
-Imports can partially succeed. Some resources might fail validation while others succeed. Check the error output:
+Imports can partially succeed. Some resources might fail validation while others succeed. Check the operation metadata and Cloud Logging for error details:
 
 ```python
 def import_with_error_handling(gcs_uri, content_structure="RESOURCE"):
-    """Imports FHIR resources with error output to a GCS bucket.
-    Failed resources are written to the error location for review."""
+    """Imports FHIR resources and prints operation counters.
+    Detailed import errors are available in Cloud Logging."""
 
     client = get_healthcare_client()
 
@@ -278,9 +281,12 @@ def import_with_error_handling(gcs_uri, content_structure="RESOURCE"):
     # Check the operation metadata for import counters
     if "metadata" in result:
         metadata = result["metadata"]
+        counter = metadata.get("counter", {})
         print(f"Import summary:")
-        print(f"  Success count: {metadata.get('successCount', 0)}")
-        print(f"  Failure count: {metadata.get('failureCount', 0)}")
+        print(f"  Success count: {counter.get('success', 0)}")
+        print(f"  Failure count: {counter.get('failure', 0)}")
+        if metadata.get("logsUrl"):
+            print(f"  Error logs: {metadata['logsUrl']}")
 
     return result
 
@@ -314,7 +320,8 @@ def validate_import(expected_count, resource_type="Patient"):
         .fhir()
         .search(
             parent=fhir_store_path,
-            body={"resourceType": resource_type},
+            resourceType=resource_type,
+            body={},
         )
         .execute()
     )
@@ -352,22 +359,29 @@ def execute_transaction_bundle(bundle):
     All resources in the bundle are created atomically.
     If any resource fails validation, the entire transaction is rolled back."""
 
-    client = get_healthcare_client()
+    import json
+    from google.auth.transport import requests
+    from google.oauth2 import service_account
+
+    credentials = service_account.Credentials.from_service_account_file(
+        "service-account-key.json",
+        scopes=["https://www.googleapis.com/auth/cloud-healthcare"],
+    )
+    session = requests.AuthorizedSession(credentials)
 
     fhir_store_path = (
         f"projects/{PROJECT_ID}/locations/{LOCATION}/"
         f"datasets/{DATASET_ID}/fhirStores/{FHIR_STORE_ID}"
     )
 
-    result = (
-        client.projects()
-        .locations()
-        .datasets()
-        .fhirStores()
-        .fhir()
-        .executeBundle(parent=fhir_store_path, body=bundle)
-        .execute()
+    url = f"https://healthcare.googleapis.com/v1/{fhir_store_path}/fhir"
+    response = session.post(
+        url,
+        headers={"Content-Type": "application/fhir+json;charset=utf-8"},
+        data=json.dumps(bundle),
     )
+    response.raise_for_status()
+    result = response.json()
 
     # Count successful entries
     entries = result.get("entry", [])
@@ -382,10 +396,10 @@ def execute_transaction_bundle(bundle):
 
 - **Use NDJSON format**: It processes faster than Bundle format because resources can be imported in parallel.
 - **Split large files**: Keep individual files under 1 GB. The import can handle wildcards to process multiple files.
-- **Disable referential integrity temporarily**: If your data has circular references, you might need to disable referential integrity during import and re-enable it after.
+- **Validate references after import**: The import process does not enforce referential integrity, so invalid references can be imported if the source data contains them.
 - **Use content-structure=RESOURCE**: For NDJSON files, this is the most efficient import mode.
-- **Import in order**: If resources reference each other, import dependent resources first (Patients before Observations).
+- **Use executeBundle when you need FHIR semantics**: `fhirStores.import` treats bundles as collections of resources and does not apply transaction or conditional-create semantics.
 
 ## Wrapping Up
 
-Bulk importing FHIR data is essential for migrations, data loads, and testing. The Healthcare API's GCS import capability handles the heavy lifting - you just need to get your data into the right format and upload it to Cloud Storage. For ongoing data integration, combine the bulk import with Pub/Sub notifications to trigger downstream processing when new data arrives. The key is getting the data format right (NDJSON for large datasets, Bundles for atomic transactions) and validating the import results before putting the data into production use.
+Bulk importing FHIR data is essential for migrations, data loads, and testing. The Healthcare API's GCS import capability handles the heavy lifting - you just need to get your data into the right format and upload it to Cloud Storage. For ongoing data integration, use Cloud Storage or pipeline notifications to trigger downstream processing when new files arrive; FHIR store Pub/Sub notifications are not sent for `fhirStores.import`. The key is getting the data format right (NDJSON for large datasets, transaction bundles through `executeBundle` when you need atomic writes) and validating the import results before putting the data into production use.
