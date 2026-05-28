@@ -40,24 +40,15 @@ sequenceDiagram
 
 ## Setting Up the Pub/Sub Topics
 
-First, create the topics and subscriptions that form the communication backbone of the saga.
+First, create the topics that form the communication backbone of the saga. Cloud Functions creates the trigger subscriptions when you deploy each function with `--trigger-topic`.
 
 ```bash
-# Create topics for each saga step and their compensations
+# Create topics for each saga step and compensation flow
 
 gcloud pubsub topics create order-created
 gcloud pubsub topics create payment-completed
-gcloud pubsub topics create payment-failed
 gcloud pubsub topics create inventory-reserved
-gcloud pubsub topics create inventory-failed
-gcloud pubsub topics create saga-completed
 gcloud pubsub topics create saga-compensation
-
-# Create subscriptions for Cloud Functions triggers
-gcloud pubsub subscriptions create payment-sub --topic=order-created
-gcloud pubsub subscriptions create inventory-sub --topic=payment-completed
-gcloud pubsub subscriptions create order-complete-sub --topic=inventory-reserved
-gcloud pubsub subscriptions create compensation-sub --topic=saga-compensation
 ```
 
 ## Implementing the Order Service
@@ -139,14 +130,12 @@ exports.processPayment = async (message) => {
   } catch (error) {
     console.error(`Payment failed for saga ${sagaId}:`, error.message);
 
-    // Payment failed - publish failure event to trigger compensation
-    await pubsub.topic('payment-failed').publishMessage({
-      json: { sagaId, reason: error.message },
+    // Payment failed - no previous step needs rollback, but the saga should be marked failed
+    await pubsub.topic('saga-compensation').publishMessage({
+      json: { sagaId, compensateSteps: [], reason: error.message },
       attributes: { sagaId, step: 'payment-failed' },
     });
   }
-
-  message.ack();
 };
 
 async function chargeCustomer(userId, amount) {
@@ -172,20 +161,30 @@ exports.reserveInventory = async (message) => {
   const { sagaId, items, transactionId } = data;
 
   try {
-    // Check and reserve inventory for each item in the order
-    for (const item of items) {
-      const inventoryRef = db.collection('inventory').doc(item.productId);
-      const doc = await inventoryRef.get();
+    // Check and reserve inventory atomically so concurrent orders cannot oversell stock
+    await db.runTransaction(async (transaction) => {
+      const reservations = [];
 
-      if (!doc.exists || doc.data().quantity < item.quantity) {
-        throw new Error(`Insufficient stock for product ${item.productId}`);
+      for (const item of items) {
+        const inventoryRef = db.collection('inventory').doc(item.productId);
+        const doc = await transaction.get(inventoryRef);
+
+        if (!doc.exists || doc.data().quantity < item.quantity) {
+          throw new Error(`Insufficient stock for product ${item.productId}`);
+        }
+
+        reservations.push({
+          ref: inventoryRef,
+          quantity: doc.data().quantity - item.quantity,
+        });
       }
 
-      // Decrement the available inventory
-      await inventoryRef.update({
-        quantity: doc.data().quantity - item.quantity,
-      });
-    }
+      for (const reservation of reservations) {
+        transaction.update(reservation.ref, {
+          quantity: reservation.quantity,
+        });
+      }
+    });
 
     // Inventory reserved successfully - publish completion event
     await pubsub.topic('inventory-reserved').publishMessage({
@@ -206,8 +205,6 @@ exports.reserveInventory = async (message) => {
       attributes: { sagaId, step: 'inventory-failed' },
     });
   }
-
-  message.ack();
 };
 ```
 
@@ -247,8 +244,6 @@ exports.handleCompensation = async (message) => {
     failureReason: reason,
     updatedAt: new Date().toISOString(),
   });
-
-  message.ack();
 };
 
 async function compensatePayment(sagaId) {
@@ -276,26 +271,26 @@ Deploy each function with the appropriate Pub/Sub trigger.
 ```bash
 # Deploy the order creation endpoint as an HTTP function
 gcloud functions deploy createOrder \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --trigger-http \
   --source=./order-service \
   --allow-unauthenticated
 
 # Deploy the payment processor triggered by order-created topic
 gcloud functions deploy processPayment \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --trigger-topic=order-created \
   --source=./payment-service
 
 # Deploy the inventory service triggered by payment-completed topic
 gcloud functions deploy reserveInventory \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --trigger-topic=payment-completed \
   --source=./inventory-service
 
 # Deploy the compensation handler
 gcloud functions deploy handleCompensation \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --trigger-topic=saga-compensation \
   --source=./compensation-handler
 ```
@@ -352,7 +347,7 @@ One thing that often gets overlooked is handling cases where a saga step never c
 # Create a scheduler job that runs every 5 minutes to check for stuck sagas
 gcloud scheduler jobs create http saga-timeout-checker \
   --schedule="*/5 * * * *" \
-  --uri="https://REGION-PROJECT.cloudfunctions.net/checkSagaTimeouts" \
+  --uri="https://REGION-PROJECT_ID.cloudfunctions.net/checkSagaTimeouts" \
   --http-method=POST
 ```
 
