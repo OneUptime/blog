@@ -66,6 +66,20 @@ gcloud kms keys create cloudsql-key \
   --location=us-central1 \
   --purpose=encryption \
   --project=my-org-kms-project
+
+# GKE node boot disk encryption key
+gcloud kms keys create gke-disk-key \
+  --keyring=production-keyring \
+  --location=us-central1 \
+  --purpose=encryption \
+  --project=my-org-kms-project
+
+# GKE application-layer secrets encryption key
+gcloud kms keys create gke-secrets-key \
+  --keyring=production-keyring \
+  --location=us-central1 \
+  --purpose=encryption \
+  --project=my-org-kms-project
 ```
 
 ## Granting Service Agent Access to Keys
@@ -98,6 +112,10 @@ gcloud kms keys add-iam-policy-binding storage-key \
   --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
 
 # Get the Cloud SQL service agent
+gcloud beta services identity create \
+  --service=sqladmin.googleapis.com \
+  --project=my-data-project
+
 SQL_SA="service-$(gcloud projects describe my-data-project --format='value(projectNumber)')@gcp-sa-cloud-sql.iam.gserviceaccount.com"
 
 # Grant Cloud SQL access to its CMEK key
@@ -107,11 +125,33 @@ gcloud kms keys add-iam-policy-binding cloudsql-key \
   --project=my-org-kms-project \
   --member="serviceAccount:${SQL_SA}" \
   --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+# Get the Compute Engine service agent for GKE node boot disks
+GKE_COMPUTE_SA="service-$(gcloud projects describe my-gke-project --format='value(projectNumber)')@compute-system.iam.gserviceaccount.com"
+
+# Grant GKE node boot disks access to the disk CMEK key
+gcloud kms keys add-iam-policy-binding gke-disk-key \
+  --keyring=production-keyring \
+  --location=us-central1 \
+  --project=my-org-kms-project \
+  --member="serviceAccount:${GKE_COMPUTE_SA}" \
+  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+# Get the GKE service agent for application-layer secrets encryption
+GKE_SA="service-$(gcloud projects describe my-gke-project --format='value(projectNumber)')@container-engine-robot.iam.gserviceaccount.com"
+
+# Grant GKE access to the secrets CMEK key
+gcloud kms keys add-iam-policy-binding gke-secrets-key \
+  --keyring=production-keyring \
+  --location=us-central1 \
+  --project=my-org-kms-project \
+  --member="serviceAccount:${GKE_SA}" \
+  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
 ```
 
 ## CMEK for Cloud Storage
 
-Cloud Storage supports CMEK at the bucket level. All objects written to the bucket will be encrypted with the specified key.
+Cloud Storage supports a default CMEK at the bucket level. Objects written to the bucket use the specified key by default unless you provide another supported encryption option for the object.
 
 ```bash
 # Create a bucket with CMEK encryption
@@ -174,6 +214,10 @@ gcloud container clusters create cmek-cluster \
 Here is a Terraform setup that creates KMS keys and applies CMEK across multiple services.
 
 ```hcl
+data "google_project" "main" {
+  project_id = "my-data-project"
+}
+
 # Cloud KMS key ring and keys for CMEK
 resource "google_kms_key_ring" "production" {
   name     = "production-keyring"
@@ -209,6 +253,13 @@ resource "google_kms_crypto_key_iam_member" "storage_sa" {
   member        = "serviceAccount:service-${data.google_project.main.number}@gs-project-accounts.iam.gserviceaccount.com"
 }
 
+# IAM binding for BigQuery encryption service account
+resource "google_kms_crypto_key_iam_member" "bigquery_sa" {
+  crypto_key_id = google_kms_crypto_key.bigquery.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:bq-${data.google_project.main.number}@bigquery-encryption.iam.gserviceaccount.com"
+}
+
 # Cloud Storage bucket with CMEK
 resource "google_storage_bucket" "encrypted" {
   name     = "my-cmek-encrypted-bucket"
@@ -231,6 +282,8 @@ resource "google_bigquery_dataset" "encrypted" {
   default_encryption_configuration {
     kms_key_name = google_kms_crypto_key.bigquery.id
   }
+
+  depends_on = [google_kms_crypto_key_iam_member.bigquery_sa]
 }
 ```
 
@@ -258,6 +311,8 @@ listPolicy:
     - sqladmin.googleapis.com
     - container.googleapis.com
 ```
+
+This policy applies to newly created resources. Existing non-CMEK resources must be reconfigured or recreated manually.
 
 ## Key Rotation Strategy
 
