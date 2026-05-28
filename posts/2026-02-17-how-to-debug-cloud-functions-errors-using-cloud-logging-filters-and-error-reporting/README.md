@@ -75,6 +75,7 @@ const functions = require('@google-cloud/functions-framework');
 const logger = require('./logger');
 
 functions.cloudEvent('processEvent', async (cloudEvent) => {
+  const startTime = Date.now();
   const eventId = cloudEvent.id;
   const data = JSON.parse(
     Buffer.from(cloudEvent.data.message.data, 'base64').toString()
@@ -112,9 +113,19 @@ The Cloud Logging query language is powerful but takes some getting used to. Her
 
 ### Find All Errors for a Specific Function
 
+For 1st gen Cloud Functions:
+
 ```text
 resource.type="cloud_function"
 resource.labels.function_name="my-function"
+severity>=ERROR
+```
+
+For Cloud Run functions:
+
+```text
+resource.type="cloud_run_revision"
+resource.labels.service_name="my-function"
 severity>=ERROR
 ```
 
@@ -185,7 +196,7 @@ gcloud logging read \
 gcloud logging read \
   'resource.type="cloud_function" AND resource.labels.function_name="my-function" AND severity>=ERROR' \
   --freshness=1d \
-  --format="value(timestamp)" | cut -d'T' -f1-2 | sort | uniq -c
+  --format="value(timestamp)" | cut -c1-13 | sort | uniq -c
 ```
 
 ## Error Reporting Integration
@@ -292,13 +303,13 @@ jsonPayload.traceId="abc-123-def-456"
 Set up alerts that fire when specific error patterns appear:
 
 ```bash
-# Create a log-based alert for payment failures
+# Create a log-based metric for payment failures
 gcloud logging metrics create payment-errors \
   --description="Count of payment processing errors" \
-  --filter='resource.type="cloud_function" AND resource.labels.function_name="process-payment" AND severity>=ERROR AND jsonPayload.errorType="PaymentError"'
+  --log-filter='resource.type="cloud_function" AND resource.labels.function_name="process-payment" AND severity>=ERROR AND jsonPayload.errorType="PaymentError"'
 
 # Create an alerting policy based on this metric
-gcloud monitoring policies create --from-file=payment-alert-policy.yaml
+gcloud monitoring policies create --policy-from-file=payment-alert-policy.yaml
 ```
 
 ## Log-Based Metrics
@@ -306,13 +317,22 @@ gcloud monitoring policies create --from-file=payment-alert-policy.yaml
 Turn log patterns into custom metrics for dashboards:
 
 ```bash
-# Create a metric for processing time
+# Create a distribution metric for processing time
+cat > processing-time-metric.yaml <<'EOF'
+description: Processing time distribution
+filter: resource.type="cloud_function" AND jsonPayload.processingTimeMs>0
+valueExtractor: EXTRACT(jsonPayload.processingTimeMs)
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: ms
+bucketOptions:
+  explicitBuckets:
+    bounds: [100, 500, 1000, 5000, 10000]
+EOF
+
 gcloud logging metrics create function-processing-time \
-  --description="Processing time distribution" \
-  --filter='resource.type="cloud_function" AND jsonPayload.processingTimeMs>0' \
-  --value-extractor="EXTRACT(jsonPayload.processingTimeMs)" \
-  --type=distribution \
-  --bucket-boundaries="100,500,1000,5000,10000"
+  --config-from-file=processing-time-metric.yaml
 ```
 
 ## Debugging Checklist
