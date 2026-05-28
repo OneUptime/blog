@@ -132,7 +132,7 @@ Once the linking is in place, navigating between the two services is straightfor
 
 In the Error Reporting console, click on an error group. On the error detail page, you will see a section labeled "Recent samples." Each sample shows a specific error event. Click the "View logs" link next to any sample, and it will take you directly to the corresponding log entry in Cloud Logging.
 
-Cloud Logging will open with a filter that shows the exact log entry, plus surrounding entries from the same request or time window. This is where the real debugging value lies - you can see what happened before and after the error.
+Cloud Logging will open with a filter that shows log entries that contribute to the same error group. This is where the real debugging value lies - you can then add a trace ID, request, or time-window filter to see what happened before and after the error.
 
 ## Building Correlated Log Views
 
@@ -154,7 +154,7 @@ def add_trace_context():
     if trace_header:
         # Parse the trace ID from the header format: TRACE_ID/SPAN_ID;o=OPTIONS
         trace_id = trace_header.split('/')[0]
-        flask.g.trace_id = f"projects/my-gcp-project/traces/{trace_id}"
+        flask.g.trace_id = trace_id
     else:
         flask.g.trace_id = None
 
@@ -181,10 +181,10 @@ You can also search for error entries directly in Cloud Logging using filters:
 
 ```bash
 # Find all error log entries that Error Reporting has captured
-gcloud logging read 'severity=ERROR AND protoPayload.serviceContext.service="my-api"' \
+gcloud logging read 'errorGroups.id:* AND jsonPayload.serviceContext.service="my-api"' \
   --project=my-gcp-project \
   --limit=50 \
-  --format='table(timestamp, protoPayload.status, protoPayload.line.logMessage)'
+  --format='table(timestamp, severity, errorGroups.id, jsonPayload.message)'
 ```
 
 For more advanced queries, use the Cloud Logging query language in the Console:
@@ -201,9 +201,9 @@ timestamp>="2026-02-17T00:00:00Z"
 You can create log-based metrics that count error occurrences and use them for dashboards and alerts. This complements Error Reporting by giving you aggregate views.
 
 ```bash
-# Create a log-based metric that counts errors by service
-gcloud logging metrics create error-count-by-service \
-  --description="Count of errors grouped by service" \
+# Create a log-based metric that counts errors with service context
+gcloud logging metrics create error-count-with-service-context \
+  --description="Count of errors that include service context" \
   --log-filter='severity=ERROR AND jsonPayload.serviceContext.service!=""' \
   --project=my-gcp-project
 ```
@@ -214,11 +214,11 @@ These metrics show up in Cloud Monitoring where you can build dashboards and set
 
 If Error Reporting is not picking up your errors from Cloud Logging, check these common issues:
 
-**Missing stack trace.** Error Reporting requires a stack trace to create an error group. If you are logging error messages without stack traces, they will appear in Cloud Logging but not in Error Reporting.
+**Missing stack trace or error-event format.** For plain log entries, Error Reporting needs a supported stack trace pattern. If you are logging messages without stack traces, format them as `ReportedErrorEvent` entries so Error Reporting can capture them.
 
-**Wrong severity level.** Only log entries with severity ERROR or higher are processed by Error Reporting. If you are logging errors at WARNING level, they will not show up.
+**Wrong severity level.** Use severity ERROR or higher for error logs. In App Engine standard, errors logged below ERROR are ignored by Error Reporting.
 
-**Missing service context.** Without the `serviceContext` field, Error Reporting cannot properly group errors by service and version. Always include it.
+**Missing service context.** Without the `serviceContext` field, Error Reporting cannot label errors consistently by service and version. Always include it.
 
 **Incorrect resource type.** The resource type in your log entry metadata must match your actual infrastructure. Using the wrong type can prevent Error Reporting from linking properly.
 
