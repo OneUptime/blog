@@ -41,10 +41,13 @@ graph TB
 Enable the required APIs and create the storage infrastructure:
 
 ```bash
-# Enable Video Intelligence and Vertex AI APIs
+# Enable the required APIs
 
 gcloud services enable videointelligence.googleapis.com
 gcloud services enable aiplatform.googleapis.com
+gcloud services enable cloudfunctions.googleapis.com
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable bigquery.googleapis.com
 
 # Create a GCS bucket for video uploads
 gsutil mb -l us-central1 gs://YOUR_PROJECT-video-uploads
@@ -61,6 +64,7 @@ bq mk --table video_analysis.results \
     objects:STRING,\
     text_content:STRING,\
     shot_count:INTEGER,\
+    transcript:STRING,\
     gemini_summary:STRING,\
     scene_descriptions:STRING,\
     key_moments:STRING
@@ -118,7 +122,7 @@ def analyze_with_video_intelligence(video_uri):
     print(f"Operation: {operation.operation.name}")
 
     # Wait for completion (for long videos, use async processing)
-    result = operation.result(timeout=600)
+    result = operation.result(timeout=520)
 
     return parse_vi_results(result)
 
@@ -158,6 +162,10 @@ def parse_vi_results(result):
 
     # Count shot changes
     shot_count = len(annotations.shot_annotations)
+    duration_seconds = (
+        annotations.segment.end_time_offset.seconds
+        + annotations.segment.end_time_offset.microseconds / 1e6
+    )
 
     # Extract speech transcription
     transcript = ""
@@ -170,6 +178,7 @@ def parse_vi_results(result):
         "objects": objects,
         "text_content": text_content,
         "shot_count": shot_count,
+        "duration": duration_seconds,
         "transcript": transcript.strip(),
     }
 ```
@@ -179,35 +188,39 @@ def parse_vi_results(result):
 Gemini can watch video and provide natural language understanding that goes beyond what structured detection offers:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part
+from google import genai
+from google.genai.types import GenerateContentConfig, HttpOptions, Part
 
 def analyze_with_gemini(video_uri):
     """Use Gemini to generate natural language analysis of the video"""
-    vertexai.init(project="your-project-id", location="us-central1")
-    model = GenerativeModel("gemini-1.5-pro")
+    client = genai.Client(
+        vertexai=True,
+        project="your-project-id",
+        location="us-central1",
+        http_options=HttpOptions(api_version="v1"),
+    )
+    model = "gemini-2.5-flash"
 
     # Reference the video from GCS
-    video_part = Part.from_uri(video_uri, mime_type="video/mp4")
+    video_part = Part.from_uri(file_uri=video_uri, mime_type="video/mp4")
 
     # Generate a comprehensive summary
-    summary_response = model.generate_content(
-        [
+    summary_response = client.models.generate_content(
+        model=model,
+        contents=[
             video_part,
             "Watch this video carefully and provide a detailed summary. "
             "Include the main topic, key visual elements, the setting, "
             "and any important actions or events that occur. "
             "Keep it concise but informative, around 200 words."
         ],
-        generation_config={
-            "temperature": 0.3,
-            "max_output_tokens": 500,
-        },
+        config=GenerateContentConfig(temperature=0.3, max_output_tokens=500),
     )
 
     # Generate scene-by-scene descriptions
-    scenes_response = model.generate_content(
-        [
+    scenes_response = client.models.generate_content(
+        model=model,
+        contents=[
             video_part,
             "Break this video down into its main scenes or segments. "
             "For each scene, provide: "
@@ -217,15 +230,13 @@ def analyze_with_gemini(video_uri):
             "Format as a JSON array with fields: "
             "start_time, end_time, description, elements."
         ],
-        generation_config={
-            "temperature": 0.2,
-            "max_output_tokens": 2000,
-        },
+        config=GenerateContentConfig(temperature=0.2, max_output_tokens=2000),
     )
 
     # Identify key moments that would make good highlights
-    moments_response = model.generate_content(
-        [
+    moments_response = client.models.generate_content(
+        model=model,
+        contents=[
             video_part,
             "Identify the 3-5 most important or interesting moments "
             "in this video. For each moment, provide: "
@@ -235,10 +246,7 @@ def analyze_with_gemini(video_uri):
             "Format as a JSON array with fields: "
             "timestamp, significance, title."
         ],
-        generation_config={
-            "temperature": 0.3,
-            "max_output_tokens": 1000,
-        },
+        config=GenerateContentConfig(temperature=0.3, max_output_tokens=1000),
     )
 
     return {
@@ -254,6 +262,7 @@ This Cloud Function ties everything together when a video is uploaded:
 
 ```python
 import json
+from concurrent.futures import ThreadPoolExecutor
 from google.cloud import bigquery
 from google.cloud import storage
 from datetime import datetime
@@ -278,8 +287,11 @@ def process_video(event, context):
 
     # Run both analyses in parallel for faster processing
     # (In production, use Cloud Tasks or Workflows for better reliability)
-    vi_results = analyze_with_video_intelligence(video_uri)
-    gemini_results = analyze_with_gemini(video_uri)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        vi_future = executor.submit(analyze_with_video_intelligence, video_uri)
+        gemini_future = executor.submit(analyze_with_gemini, video_uri)
+        vi_results = vi_future.result()
+        gemini_results = gemini_future.result()
 
     # Combine results and store in BigQuery
     combined_results = {
