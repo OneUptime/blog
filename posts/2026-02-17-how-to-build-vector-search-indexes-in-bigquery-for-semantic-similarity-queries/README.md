@@ -45,14 +45,14 @@ SELECT
   description,
   category,
   price,
-  ml_generate_embedding_result.predictions[0].embeddings.values AS embedding
+  ml_generate_embedding_result AS embedding
 FROM
   ML.GENERATE_EMBEDDING(
     MODEL `my_project.models.text_embedding`,
     (SELECT product_id, product_name, description, category, price,
             description AS content  -- Column to embed
      FROM `my_project.catalog.products`),
-    STRUCT(TRUE AS flatten_json_output)
+    STRUCT(TRUE AS flatten_json_output, 'RETRIEVAL_DOCUMENT' AS task_type)
   );
 ```
 
@@ -65,6 +65,7 @@ Without an index, vector search requires a brute-force comparison against every 
 -- This enables fast approximate nearest neighbor searches
 CREATE VECTOR INDEX my_product_index
 ON `my_project.catalog.products_with_embeddings`(embedding)
+STORING(category, price)
 OPTIONS (
   index_type = 'IVF',          -- Inverted file index type
   distance_type = 'COSINE',     -- Cosine similarity (common for text embeddings)
@@ -83,7 +84,7 @@ ON `my_project.catalog.products_with_embeddings`(embedding)
 OPTIONS (
   index_type = 'TREE_AH',
   distance_type = 'COSINE',
-  tree_ah_options = '{"leaf_node_embedding_count": 1000, "num_leaves": 100}'
+  tree_ah_options = '{"leaf_node_embedding_count": 1000, "normalization_type": "L2"}'
 );
 ```
 
@@ -108,11 +109,12 @@ FROM
     'embedding',  -- Column containing vectors
     -- Query: embed the search text
     (SELECT
-      ml_generate_embedding_result.predictions[0].embeddings.values AS embedding,
+      ml_generate_embedding_result AS embedding,
       content AS query_text
      FROM ML.GENERATE_EMBEDDING(
        MODEL `my_project.models.text_embedding`,
-       (SELECT 'lightweight trail running shoes' AS content)
+       (SELECT 'lightweight trail running shoes' AS content),
+       STRUCT(TRUE AS flatten_json_output, 'RETRIEVAL_QUERY' AS task_type)
      )),
     top_k => 10  -- Return top 10 results
   )
@@ -136,7 +138,7 @@ FROM
     TABLE `my_project.catalog.products_with_embeddings`,
     'embedding',
     -- Pass the pre-computed vector as a query
-    (SELECT [0.023, -0.045, 0.112, ...] AS embedding),  -- Your query vector
+    (SELECT @query_embedding AS embedding),  -- ARRAY<FLOAT64> parameter with the same dimensions
     top_k => 10
   )
 ORDER BY distance;
@@ -148,7 +150,7 @@ You often want to combine vector similarity with structured filters. For example
 
 ```sql
 -- Vector search with pre-filtering by category and price
--- The WHERE clause is applied before the vector search for efficiency
+-- Store or partition filtered columns in the index for efficient indexed pre-filtering
 SELECT
   base.product_id,
   base.product_name,
@@ -168,7 +170,7 @@ FROM
 ORDER BY distance;
 ```
 
-Pre-filtering reduces the number of vectors to search and can significantly improve performance.
+Pre-filtering can reduce the number of vectors to search and significantly improve performance. When an indexed search filters on columns that are not stored in the vector index, BigQuery can apply those filters after the vector search instead.
 
 ## Recommendation Systems
 
@@ -217,10 +219,11 @@ FROM
     TABLE `my_project.knowledge.article_chunks`,
     'embedding',
     (SELECT
-      ml_generate_embedding_result.predictions[0].embeddings.values AS embedding
+      ml_generate_embedding_result AS embedding
      FROM ML.GENERATE_EMBEDDING(
        MODEL `my_project.models.text_embedding`,
-       (SELECT 'How do I reset my password?' AS content)
+       (SELECT 'How do I reset my password?' AS content),
+       STRUCT(TRUE AS flatten_json_output, 'RETRIEVAL_QUERY' AS task_type)
      )),
     top_k => 5
   )
