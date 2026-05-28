@@ -8,7 +8,7 @@ Description: A detailed guide to forwarding Google Cloud logs to Datadog using a
 
 ---
 
-If your team uses Datadog for log analysis but runs infrastructure on Google Cloud, you need a reliable way to get your Cloud Logging data into Datadog. The recommended approach uses a Cloud Logging sink that exports to a Pub/Sub topic, with a push subscription that delivers logs to Datadog's intake API. This pipeline is reliable, scalable, and gives you fine-grained control over which logs get forwarded. Let me walk through the complete setup.
+If your team uses Datadog for log analysis but runs infrastructure on Google Cloud, you need a reliable way to get your Cloud Logging data into Datadog. One direct approach uses a Cloud Logging sink that exports to a Pub/Sub topic, with a push subscription that delivers logs to Datadog's intake API. Datadog now recommends the Dataflow-based pull subscription method for new deployments, but this Pub/Sub Push pipeline is still useful for legacy setups and gives you fine-grained control over which logs get forwarded. Let me walk through the complete setup.
 
 ## Architecture
 
@@ -55,7 +55,6 @@ gcloud pubsub subscriptions create datadog-log-subscription \
     --topic=datadog-log-forwarding \
     --push-endpoint="https://gcp-intake.logs.datadoghq.com/api/v2/logs?dd-api-key=YOUR_DD_API_KEY&dd-protocol=gcp" \
     --ack-deadline=60 \
-    --max-delivery-attempts=5 \
     --min-retry-delay=10s \
     --max-retry-delay=600s \
     --project=my-gcp-project
@@ -86,6 +85,20 @@ gcloud pubsub subscriptions create datadog-log-dead-letter-sub \
 gcloud pubsub subscriptions update datadog-log-subscription \
     --dead-letter-topic=projects/my-gcp-project/topics/datadog-log-dead-letter \
     --max-delivery-attempts=5 \
+    --project=my-gcp-project
+
+# Grant the Pub/Sub service agent permission to forward and acknowledge dead-lettered messages
+PROJECT_NUMBER=$(gcloud projects describe my-gcp-project --format="value(projectNumber)")
+PUBSUB_SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+
+gcloud pubsub topics add-iam-policy-binding datadog-log-dead-letter \
+    --member="serviceAccount:${PUBSUB_SERVICE_AGENT}" \
+    --role="roles/pubsub.publisher" \
+    --project=my-gcp-project
+
+gcloud pubsub subscriptions add-iam-policy-binding datadog-log-subscription \
+    --member="serviceAccount:${PUBSUB_SERVICE_AGENT}" \
+    --role="roles/pubsub.subscriber" \
     --project=my-gcp-project
 ```
 
@@ -169,6 +182,10 @@ This sink exports all logs except data access audit logs (which are very high vo
 For infrastructure-as-code management, here is the complete Terraform configuration.
 
 ```hcl
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
 # Pub/Sub topic for log forwarding
 resource "google_pubsub_topic" "datadog_logs" {
   name    = "datadog-log-forwarding"
@@ -207,6 +224,21 @@ resource "google_pubsub_subscription" "datadog_push" {
     minimum_backoff = "10s"
     maximum_backoff = "600s"
   }
+}
+
+# Allow Pub/Sub to publish and acknowledge dead-lettered messages
+resource "google_pubsub_topic_iam_member" "pubsub_service_agent_dlq_publisher" {
+  topic   = google_pubsub_topic.datadog_logs_dlq.id
+  role    = "roles/pubsub.publisher"
+  member  = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+  project = var.project_id
+}
+
+resource "google_pubsub_subscription_iam_member" "pubsub_service_agent_source_subscriber" {
+  subscription = google_pubsub_subscription.datadog_push.id
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+  project      = var.project_id
 }
 
 # Log sink for GKE logs
@@ -257,7 +289,7 @@ gcloud monitoring policies create --policy-from-file=- << 'EOF'
   "conditions": [{
     "displayName": "Messages in dead letter topic",
     "conditionThreshold": {
-      "filter": "metric.type=\"pubsub.googleapis.com/topic/send_message_operation_count\" AND resource.type=\"pubsub_topic\" AND resource.labels.topic_id=\"datadog-log-dead-letter\"",
+      "filter": "metric.type=\"pubsub.googleapis.com/subscription/dead_letter_message_count\" AND resource.type=\"pubsub_subscription\" AND resource.labels.subscription_id=\"datadog-log-subscription\"",
       "comparison": "COMPARISON_GT",
       "thresholdValue": 0,
       "duration": "300s",
@@ -319,14 +351,12 @@ Use narrow log filters on your sinks. Instead of exporting everything and filter
 
 Exclude health check logs and other repetitive low-value entries. These can account for a large portion of log volume without providing useful information.
 
-Consider using log-based exclusion filters in Cloud Logging itself to prevent noisy logs from being written in the first place.
+Consider using log-based exclusion filters on the default Cloud Logging sink to prevent noisy logs from being stored in the default log bucket.
 
 ```bash
-# Create a Cloud Logging exclusion filter for health check logs
-gcloud logging sinks create health-check-exclusion \
-    --log-filter='httpRequest.requestUrl=~"/health" OR httpRequest.requestUrl=~"/readyz" OR httpRequest.requestUrl=~"/livez"' \
-    --exclusion \
-    --description="Exclude health check logs from ingestion" \
+# Add a Cloud Logging exclusion filter for health check logs on the _Default sink
+gcloud logging sinks update _Default \
+    --add-exclusion=name=health-check-exclusion,description="Exclude health check logs from the default bucket",filter='httpRequest.requestUrl=~"/health" OR httpRequest.requestUrl=~"/readyz" OR httpRequest.requestUrl=~"/livez"' \
     --project=my-gcp-project
 ```
 
