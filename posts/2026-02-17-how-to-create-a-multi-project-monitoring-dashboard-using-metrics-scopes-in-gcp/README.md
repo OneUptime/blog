@@ -55,11 +55,12 @@ gcloud beta monitoring metrics-scopes create \
   --project=scoping-project-id
 ```
 
-To list which projects are currently in a metrics scope:
+To list which projects are currently in a metrics scope, describe the scope and look at the `monitoredProjects` field:
 
 ```bash
 # List all monitored projects in the current scope
-gcloud beta monitoring metrics-scopes list --project=scoping-project-id
+gcloud beta monitoring metrics-scopes describe \
+  locations/global/metricsScopes/scoping-project-id
 ```
 
 To remove a project from the metrics scope:
@@ -78,17 +79,19 @@ For automation, the REST API works well:
 ```bash
 # Add a monitored project via the Cloud Monitoring API
 curl -X POST \
-  "https://monitoring.googleapis.com/v1/locations/global/metricsScopes/SCOPING_PROJECT_NUMBER/projects" \
+  "https://monitoring.googleapis.com/v1/locations/global/metricsScopes/SCOPING_PROJECT_ID_OR_NUMBER/projects" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "locations/global/metricsScopes/SCOPING_PROJECT_NUMBER/projects/MONITORED_PROJECT_NUMBER"
+    "name": "locations/global/metricsScopes/SCOPING_PROJECT_ID_OR_NUMBER/projects/MONITORED_PROJECT_ID_OR_NUMBER"
   }'
 ```
 
 ## Building a Cross-Project Dashboard
 
-Once your metrics scope includes multiple projects, building a cross-project dashboard is straightforward. The key is using the `project_id` label to filter or group metrics by project.
+Once your metrics scope includes multiple projects, building a cross-project dashboard is straightforward. The key is using the `project_id` resource label to filter or group metrics by project.
+
+The following examples use MQL. As of July 22, 2025, Google Cloud no longer lets you create new MQL charts, dashboards, or alerting policies from the Cloud Console, although existing MQL assets continue to work and MQL can still be used through the Cloud Monitoring API.
 
 ### Example: CPU Utilization Across All Projects
 
@@ -98,7 +101,7 @@ This MQL query shows CPU utilization for Compute Engine instances across all mon
 # CPU utilization grouped by project
 fetch gce_instance
 | metric 'compute.googleapis.com/instance/cpu/utilization'
-| group_by [project_id, instance_id], [val: mean(value.utilization)]
+| group_by [project_id, instance_id], [val: mean(val())]
 | every 1m
 ```
 
@@ -110,7 +113,7 @@ You can create a dashboard that compares the same metric across projects. This i
 # Average CPU utilization per project for comparison
 fetch gce_instance
 | metric 'compute.googleapis.com/instance/cpu/utilization'
-| group_by [project_id], [val: mean(value.utilization)]
+| group_by [project_id], [val: mean(val())]
 | every 5m
 ```
 
@@ -122,7 +125,7 @@ If you run the same service across multiple projects, you might want the total r
 # Total HTTP request count summed across all projects
 fetch https_lb_rule
 | metric 'loadbalancing.googleapis.com/https/request_count'
-| group_by [], [val: sum(value.request_count)]
+| group_by [], [val: sum(val())]
 | every 1m
 ```
 
@@ -147,11 +150,11 @@ Here is a JSON dashboard definition that includes cross-project widgets:
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"compute.googleapis.com/instance/cpu/utilization\"",
+                    "filter": "metric.type=\"compute.googleapis.com/instance/cpu/utilization\" resource.type=\"gce_instance\"",
                     "aggregation": {
                       "alignmentPeriod": "300s",
                       "perSeriesAligner": "ALIGN_MEAN",
-                      "groupByFields": ["project"],
+                      "groupByFields": ["resource.label.project_id"],
                       "crossSeriesReducer": "REDUCE_MEAN"
                     }
                   }
@@ -173,11 +176,11 @@ Here is a JSON dashboard definition that includes cross-project widgets:
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"compute.googleapis.com/instance/network/sent_bytes_count\"",
+                    "filter": "metric.type=\"compute.googleapis.com/instance/network/sent_bytes_count\" resource.type=\"gce_instance\"",
                     "aggregation": {
                       "alignmentPeriod": "300s",
                       "perSeriesAligner": "ALIGN_RATE",
-                      "groupByFields": ["project"],
+                      "groupByFields": ["resource.label.project_id"],
                       "crossSeriesReducer": "REDUCE_SUM"
                     }
                   }
@@ -203,18 +206,22 @@ gcloud monitoring dashboards create \
 
 ## IAM Considerations
 
-For metrics scopes to work, the scoping project needs the right permissions on the monitored projects. Specifically:
+For metrics scopes to work, the principal configuring the scope needs the right permissions on the scoping project and the projects being added. Specifically:
 
-- The `roles/monitoring.viewer` role (or equivalent) must be granted on each monitored project
-- The service agent for Cloud Monitoring in the scoping project needs access to read metrics from monitored projects
+- To view the time-series data available through a metrics scope, grant `roles/monitoring.viewer` on the scoping project
+- To add or remove projects from a metrics scope, grant `roles/monitoring.admin` or `roles/monitoring.metricsScopesAdmin` on the scoping project and on each project being added or removed
 
-In most cases, if the projects are in the same organization, the permissions are handled automatically when you add a project to the metrics scope. If you are working across organizations, you will need to set up the IAM bindings manually:
+If you are working across organizations, make sure the administrator who configures the scope has the required role in both places:
 
 ```bash
-# Grant monitoring viewer role to the scoping project's service agent
+# Grant metrics-scope admin access on both projects to the administrator
+gcloud projects add-iam-policy-binding scoping-project-id \
+  --member="user:admin@example.com" \
+  --role="roles/monitoring.metricsScopesAdmin"
+
 gcloud projects add-iam-policy-binding monitored-project-id \
-  --member="serviceAccount:service-SCOPING_PROJECT_NUMBER@gcp-sa-monitoring-notification.iam.gserviceaccount.com" \
-  --role="roles/monitoring.viewer"
+  --member="user:admin@example.com" \
+  --role="roles/monitoring.metricsScopesAdmin"
 ```
 
 ## Architecture Patterns
@@ -241,7 +248,7 @@ This pattern works well for organizations that want centralized visibility witho
 
 Metrics scopes are powerful but they do have boundaries:
 
-- **Maximum monitored projects**: A single metrics scope can include up to 375 monitored projects. For larger organizations, you may need multiple scoping projects.
+- **Maximum monitored projects**: Cloud Monitoring officially supports up to 375 Google Cloud projects per metrics scope. You can add more, but Google only guarantees performant queries and charts up to that supported limit.
 - **No cross-organization by default**: Adding projects from different organizations requires manual IAM setup.
 - **Metric volume**: More monitored projects means more metrics data in your dashboards. Keep your queries focused to avoid slow-loading dashboards.
 - **Log data is not shared**: Metrics scopes only cover metrics. Log data stays in each project's Cloud Logging unless you set up aggregated sinks separately.
