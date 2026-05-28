@@ -18,7 +18,7 @@ For an SNS migration, you will primarily use Pub/Sub push subscriptions to repli
 |------------|-------------------|
 | Topic | Topic |
 | Subscription (HTTP/S) | Push subscription with HTTP endpoint |
-| Subscription (Lambda) | Push subscription to Cloud Function |
+| Subscription (Lambda) | Pub/Sub-triggered Cloud Function |
 | Subscription (SQS) | Pull subscription (or push to Cloud Run) |
 | Subscription (Email) | No direct equivalent - use SendGrid/Mailgun via Cloud Function |
 | Subscription (SMS) | No direct equivalent - use Twilio via Cloud Function |
@@ -43,10 +43,13 @@ aws sns list-subscriptions-by-topic \
   --query 'Subscriptions[*].{
     ARN:SubscriptionArn,
     Protocol:Protocol,
-    Endpoint:Endpoint,
-    Filter:FilterPolicy
+    Endpoint:Endpoint
   }' \
   --output table
+
+# Get subscription attributes (including filter policy and redrive policy)
+aws sns get-subscription-attributes \
+  --subscription-arn arn:aws:sns:us-east-1:123456:order-events:subscription-id
 
 # Get topic attributes (including delivery policy and encryption)
 aws sns get-topic-attributes \
@@ -70,16 +73,24 @@ gcloud pubsub schemas create order-event-schema \
 
 gcloud pubsub topics create order-events-validated \
   --schema=order-event-schema \
-  --message-encoding=JSON
+  --message-encoding=json
 ```
 
 ## Step 3: Create Push Subscriptions for HTTP Endpoints
 
-SNS HTTP/HTTPS subscriptions translate directly to Pub/Sub push subscriptions.
+SNS HTTP/HTTPS subscriptions map to Pub/Sub push subscriptions, but your endpoint must handle the Pub/Sub push request envelope.
 
 ```bash
 # SNS HTTP subscription equivalent
 # SNS endpoint: https://api.example.com/webhooks/order-events
+PROJECT_NUMBER=$(gcloud projects describe my-project --format='value(projectNumber)')
+PUBSUB_SERVICE_ACCOUNT="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+
+gcloud iam service-accounts add-iam-policy-binding \
+  pubsub-push@my-project.iam.gserviceaccount.com \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role="roles/iam.serviceAccountTokenCreator"
+
 gcloud pubsub subscriptions create order-events-webhook \
   --topic=order-events \
   --push-endpoint=https://api.example.com/webhooks/order-events \
@@ -89,13 +100,18 @@ gcloud pubsub subscriptions create order-events-webhook \
 # Set up dead letter topic for failed deliveries
 gcloud pubsub topics create order-events-dead-letter
 
-gcloud pubsub subscriptions create order-events-webhook \
-  --topic=order-events \
-  --push-endpoint=https://api.example.com/webhooks/order-events \
-  --ack-deadline=60 \
+# Grant the Pub/Sub service agent permissions required for dead lettering
+gcloud pubsub topics add-iam-policy-binding order-events-dead-letter \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role="roles/pubsub.publisher"
+
+gcloud pubsub subscriptions add-iam-policy-binding order-events-webhook \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role="roles/pubsub.subscriber"
+
+gcloud pubsub subscriptions update order-events-webhook \
   --dead-letter-topic=order-events-dead-letter \
-  --max-delivery-attempts=5 \
-  --push-auth-service-account=pubsub-push@my-project.iam.gserviceaccount.com
+  --max-delivery-attempts=5
 ```
 
 Note that Pub/Sub push subscriptions include an authorization header (OIDC token) that your endpoint should validate. Update your webhook handlers to verify the Pub/Sub push token.
@@ -199,6 +215,7 @@ When publishing messages, include attributes that the filters can match:
 
 ```python
 from google.cloud import pubsub_v1
+import json
 
 publisher = pubsub_v1.PublisherClient()
 topic_path = publisher.topic_path('my-project', 'order-events')
@@ -225,6 +242,7 @@ Convert your SNS publishing code to Pub/Sub.
 ```python
 # Old SNS publishing code
 import boto3
+import json
 
 sns = boto3.client('sns')
 
@@ -282,11 +300,16 @@ Monitor delivery success rates on both sides. Check that all subscribers receive
 
 ```bash
 # Check Pub/Sub subscription metrics
-gcloud monitoring metrics list \
-  --filter='metric.type="pubsub.googleapis.com/subscription/push_request_count"'
+ACCESS_TOKEN=$(gcloud auth print-access-token)
+
+curl -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  "https://monitoring.googleapis.com/v3/projects/my-project/metricDescriptors/pubsub.googleapis.com%2Fsubscription%2Fpush_request_count"
 
 # Check for undelivered messages
-gcloud pubsub subscriptions pull order-events-dead-letter --auto-ack --limit=10
+gcloud pubsub subscriptions create order-events-dead-letter-reader \
+  --topic=order-events-dead-letter
+
+gcloud pubsub subscriptions pull order-events-dead-letter-reader --auto-ack --limit=10
 ```
 
 ## Summary
