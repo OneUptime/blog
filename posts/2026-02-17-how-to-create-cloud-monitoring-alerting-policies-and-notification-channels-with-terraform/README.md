@@ -62,7 +62,7 @@ resource "google_monitoring_notification_channel" "pagerduty" {
   type         = "pagerduty"
   project      = var.project_id
 
-  labels = {
+  sensitive_labels {
     service_key = var.pagerduty_service_key
   }
 }
@@ -74,7 +74,7 @@ resource "google_monitoring_notification_channel" "webhook" {
   project      = var.project_id
 
   labels = {
-    url = "https://alerts.yourcompany.com/webhook"
+    url = "https://alerts.yourcompany.com/webhook?auth_token=${var.webhook_auth_token}"
   }
 }
 ```
@@ -248,9 +248,9 @@ resource "google_monitoring_alert_policy" "sql_connections" {
     display_name = "Connection count near limit"
 
     condition_threshold {
-      filter          = "resource.type = \"cloudsql_database\" AND metric.type = \"cloudsql.googleapis.com/database/network/connections\""
+      filter          = "resource.type = \"cloudsql_database\" AND metric.type = \"cloudsql.googleapis.com/database/postgresql/num_backends\""
       comparison      = "COMPARISON_GT"
-      threshold_value = 180  # Near the default PostgreSQL limit of 200
+      threshold_value = 180  # Adjust this for your instance's max_connections setting
       duration        = "120s"
 
       aggregations {
@@ -320,14 +320,24 @@ resource "google_monitoring_alert_policy" "cloudrun_errors" {
 
     condition_threshold {
       filter = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class = \"5xx\""
+      denominator_filter = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\""
 
       comparison      = "COMPARISON_GT"
-      threshold_value = 5
+      threshold_value = 0.05
       duration        = "120s"
 
       aggregations {
-        alignment_period   = "60s"
-        per_series_aligner = "ALIGN_RATE"
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.service_name"]
+      }
+
+      denominator_aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.service_name"]
       }
     }
   }
