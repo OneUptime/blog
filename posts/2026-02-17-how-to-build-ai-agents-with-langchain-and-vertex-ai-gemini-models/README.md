@@ -24,9 +24,9 @@ Before you start, make sure you have the following ready:
 Install the required packages with pip:
 
 ```bash
-# Install LangChain core, the Google Vertex AI integration, and tools
+# Install LangChain core, the Google Gemini integration, and tools
 
-pip install langchain langchain-google-vertexai langchain-core google-cloud-aiplatform
+pip install langchain langchain-google-genai langchain-core google-cloud-aiplatform requests langgraph
 ```
 
 ## Setting Up Authentication
@@ -34,34 +34,38 @@ pip install langchain langchain-google-vertexai langchain-core google-cloud-aipl
 The first thing to handle is authenticating with Google Cloud. LangChain's Vertex AI integration uses Application Default Credentials (ADC), so you need to make sure your environment is configured properly.
 
 ```bash
+# Set your project
+gcloud config set project YOUR_PROJECT_ID
+
 # Authenticate with your Google Cloud account
 gcloud auth application-default login
 
-# Set your project
-gcloud config set project YOUR_PROJECT_ID
+# Set the quota project used by client libraries
+gcloud auth application-default set-quota-project YOUR_PROJECT_ID
 ```
 
 If you are running inside a GCP environment like Cloud Run or GKE, authentication happens automatically via the attached service account.
 
 ## Initializing the Gemini Model
 
-LangChain provides a dedicated wrapper for Vertex AI Gemini models through the `langchain-google-vertexai` package. Here is how to set up the model.
+LangChain provides a dedicated wrapper for Gemini models through the `langchain-google-genai` package. For Vertex AI, configure the wrapper to use the Vertex AI backend. Here is how to set up the model.
 
 ```python
-from langchain_google_vertexai import ChatVertexAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Initialize the Gemini model via Vertex AI
-# You can choose gemini-1.5-pro or gemini-1.5-flash depending on your needs
-model = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+# You can choose gemini-2.5-pro or gemini-2.5-flash depending on your needs
+model = ChatGoogleGenerativeAI(
+    model="gemini-2.5-pro",
+    vertexai=True,
     project="your-gcp-project-id",
     location="us-central1",
     temperature=0.2,  # Lower temperature for more deterministic agent responses
-    max_output_tokens=2048,
+    max_tokens=2048,
 )
 ```
 
-The `ChatVertexAI` class handles all the Vertex AI API communication. You can swap between Gemini model variants without changing the rest of your agent code.
+The `ChatGoogleGenerativeAI` class handles the Gemini API communication and can use Vertex AI when `vertexai=True` is set. You can swap between Gemini model variants without changing the rest of your agent code.
 
 ## Defining Tools for the Agent
 
@@ -98,40 +102,25 @@ Each tool needs a clear docstring because the agent uses that description to dec
 
 ## Building the Agent
 
-Now let us wire everything together into a working agent. LangChain provides the `create_react_agent` function that builds a ReAct-style agent capable of reasoning and acting in a loop.
+Now let us wire everything together into a working agent. LangChain provides the `create_agent` function that builds an agent capable of using tools in a loop until it reaches a final answer.
 
 ```python
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
 
 # Define the system prompt that guides agent behavior
-prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are a helpful customer support agent. You have access to tools
-    for checking weather, searching documentation, and creating support tickets.
-    Always try to help the user by using the appropriate tools.
-    Think step by step before taking action."""),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad"),
-])
+system_prompt = """You are a helpful customer support agent. You have access to tools
+for checking weather, searching documentation, and creating support tickets.
+Always try to help the user by using the appropriate tools."""
 
 # Collect all tools into a list
 tools = [get_weather, search_documentation, create_support_ticket]
 
 # Create the agent with Gemini as the brain
-agent = create_react_agent(
-    llm=model,
+agent = create_agent(
+    model=model,
     tools=tools,
-    prompt=prompt,
-)
-
-# Wrap the agent in an executor that handles the reasoning loop
-agent_executor = AgentExecutor(
-    agent=agent,
-    tools=tools,
-    verbose=True,  # Set to True to see the agent's reasoning process
-    max_iterations=5,  # Prevent infinite loops
-    handle_parsing_errors=True,  # Gracefully handle malformed outputs
+    system_prompt=system_prompt,
+    debug=True,  # Set to True to see graph execution details while developing
 )
 ```
 
@@ -141,12 +130,19 @@ With the agent built, you can invoke it with a user query:
 
 ```python
 # Run the agent with a simple query
-result = agent_executor.invoke({
-    "input": "What is the weather in Tokyo and can you create a ticket about our monitoring dashboard being slow?",
-    "chat_history": [],
-})
+result = agent.invoke(
+    {
+        "messages": [
+            {
+                "role": "user",
+                "content": "What is the weather in Tokyo and can you create a ticket about our monitoring dashboard being slow?",
+            }
+        ]
+    },
+    config={"recursion_limit": 10},
+)
 
-print(result["output"])
+print(result["messages"][-1].content)
 ```
 
 The agent will reason about the input, decide to call `get_weather` for Tokyo, then call `create_support_ticket` for the dashboard issue, and combine the results into a coherent response.
@@ -156,32 +152,40 @@ The agent will reason about the input, decide to call `get_weather` for Tokyo, t
 For a multi-turn conversational experience, you will want to add memory so the agent remembers what was discussed previously.
 
 ```python
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.utils.uuid import uuid7
+from langgraph.checkpoint.memory import InMemorySaver
 
-# Maintain a conversation history list
-chat_history = []
+# Configure the agent with a checkpointer
+agent = create_agent(
+    model=model,
+    tools=tools,
+    system_prompt=system_prompt,
+    checkpointer=InMemorySaver(),
+)
+
+# Reuse the same thread ID for follow-up turns in one conversation
+config = {
+    "configurable": {"thread_id": str(uuid7())},
+    "recursion_limit": 10,
+}
 
 def chat_with_agent(user_input: str) -> str:
     """Send a message to the agent and maintain conversation history."""
-    result = agent_executor.invoke({
-        "input": user_input,
-        "chat_history": chat_history,
-    })
+    result = agent.invoke(
+        {"messages": [{"role": "user", "content": user_input}]},
+        config=config,
+    )
 
-    # Append the exchange to history
-    chat_history.append(HumanMessage(content=user_input))
-    chat_history.append(AIMessage(content=result["output"]))
-
-    return result["output"]
+    return result["messages"][-1].content
 
 # Multi-turn conversation example
 print(chat_with_agent("What is the weather in London?"))
 print(chat_with_agent("Create a ticket about that - our outdoor event might be affected."))
 ```
 
-## Structured Output from Agents
+## Structured Output from the Model
 
-Sometimes you need the agent to return structured data rather than free-form text. Gemini supports structured output through function calling.
+Sometimes you need the model to return structured data rather than free-form text. Gemini supports native structured output.
 
 ```python
 from pydantic import BaseModel, Field
@@ -194,35 +198,42 @@ class TaskPlan(BaseModel):
     estimated_time: str = Field(description="Estimated completion time")
 
 # Use the model's structured output capability
-structured_model = model.with_structured_output(TaskPlan)
+structured_model = model.with_structured_output(
+    schema=TaskPlan.model_json_schema(),
+    method="json_schema",
+)
 
 result = structured_model.invoke(
     "Create a plan for migrating our database from MySQL to Cloud SQL"
 )
 
-print(f"Summary: {result.summary}")
-for i, step in enumerate(result.steps, 1):
+print(f"Summary: {result['summary']}")
+for i, step in enumerate(result["steps"], 1):
     print(f"  Step {i}: {step}")
-print(f"Estimated time: {result.estimated_time}")
+print(f"Estimated time: {result['estimated_time']}")
 ```
 
 ## Error Handling and Production Tips
 
 When running agents in production, there are a few things you should account for.
 
-First, always set `max_iterations` on the `AgentExecutor` to prevent runaway loops. An agent that keeps calling tools without converging will burn through your API quota fast.
+First, set a reasonable `recursion_limit` when invoking the agent to prevent runaway loops. An agent that keeps calling tools without converging will burn through your API quota fast.
 
 Second, implement proper error handling around tool execution. If a tool fails, the agent should be able to recover gracefully rather than crashing.
 
 ```python
-# Wrap the executor call with error handling
-try:
-    result = agent_executor.invoke({"input": user_query, "chat_history": []})
-    return result["output"]
-except Exception as e:
-    # Log the error and return a fallback response
-    print(f"Agent error: {e}")
-    return "I encountered an issue processing your request. Please try again."
+def handle_user_query(user_query: str) -> str:
+    """Wrap the agent call with error handling."""
+    try:
+        result = agent.invoke(
+            {"messages": [{"role": "user", "content": user_query}]},
+            config={"recursion_limit": 10},
+        )
+        return result["messages"][-1].content
+    except Exception as e:
+        # Log the error and return a fallback response
+        print(f"Agent error: {e}")
+        return "I encountered an issue processing your request. Please try again."
 ```
 
 Third, use Vertex AI's built-in monitoring to track model usage, latency, and costs. You can view these metrics directly in the Google Cloud Console under the Vertex AI section.
