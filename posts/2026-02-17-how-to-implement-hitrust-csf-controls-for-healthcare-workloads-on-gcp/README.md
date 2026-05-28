@@ -67,20 +67,22 @@ healthcare.fhirResources.create,\
 healthcare.fhirResources.update,\
 healthcare.fhirResources.get
 
-# Assign roles to groups with conditions
-gcloud projects add-iam-policy-binding healthcare-project \
+# Assign roles directly on the FHIR store
+gcloud healthcare fhir-stores add-iam-policy-binding patient-records \
+    --project=healthcare-project \
+    --dataset=healthcare-dataset \
+    --location=us-central1 \
     --role=projects/healthcare-project/roles/clinicalDataViewer \
-    --member="group:clinical-staff@hospital.org" \
-    --condition='expression=resource.type == "healthcare.googleapis.com/FhirStore",title=FHIR stores only'
+    --member="group:clinical-staff@hospital.org"
 ```
 
 ### Enforcing MFA and Session Controls
 
 ```bash
-# Set organization policy to require 2SV (two-step verification)
+# Require 2SV (two-step verification) for healthcare users in
+# Google Workspace or Cloud Identity Admin Console:
+# Security > Authentication > 2-step verification
 # This satisfies HITRUST 01.q multi-factor authentication requirement
-gcloud identity groups update clinical-staff@hospital.org \
-    --group-email=clinical-staff@hospital.org
 
 # Configure session length for healthcare users
 # HITRUST 01.t requires automatic session termination
@@ -88,12 +90,12 @@ gcloud identity groups update clinical-staff@hospital.org \
 # Security > Google Cloud session control > Set to 4 hours
 ```
 
-## Domain 05: Physical and Environmental Security
+## Domain 08: Physical and Environmental Security
 
 While Google handles physical data center security (their responsibility under shared responsibility), you need to document the controls and configure data residency:
 
 ```bash
-# Restrict resources to US locations (HITRUST 05.i)
+# Restrict resources to US locations
 gcloud resource-manager org-policies set-policy - \
     --folder=HEALTHCARE_FOLDER_ID <<'EOF'
 constraint: constraints/gcp.resourceLocations
@@ -172,7 +174,7 @@ gcloud kms keys create phi-encryption-key \
 # Enforce TLS for all Cloud SQL connections (HITRUST 09.y)
 gcloud sql instances patch healthcare-db \
     --project=healthcare-project \
-    --require-ssl
+    --ssl-mode=ENCRYPTED_ONLY
 
 # Create encrypted storage for PHI (HITRUST 09.x)
 gcloud storage buckets create gs://phi-data-bucket \
@@ -193,8 +195,6 @@ Implement DLP scanning for PHI:
 
 import functions_framework
 from google.cloud import dlp_v2
-from google.cloud import storage
-import json
 
 dlp_client = dlp_v2.DlpServiceClient()
 PROJECT_ID = "healthcare-project"
@@ -208,30 +208,28 @@ def scan_uploaded_file(cloud_event):
     file_name = data["name"]
 
     # Configure DLP inspection for healthcare-specific info types
-    inspect_config = dlp_v2.InspectConfig(
-        info_types=[
+    inspect_config = {
+        "info_types": [
             # PHI-related info types
-            dlp_v2.InfoType(name="PERSON_NAME"),
-            dlp_v2.InfoType(name="DATE_OF_BIRTH"),
-            dlp_v2.InfoType(name="PHONE_NUMBER"),
-            dlp_v2.InfoType(name="EMAIL_ADDRESS"),
-            dlp_v2.InfoType(name="US_SOCIAL_SECURITY_NUMBER"),
-            dlp_v2.InfoType(name="MEDICAL_RECORD_NUMBER"),
-            dlp_v2.InfoType(name="US_DEA_NUMBER"),
-            dlp_v2.InfoType(name="US_HEALTHCARE_NPI"),
+            {"name": "PERSON_NAME"},
+            {"name": "DATE_OF_BIRTH"},
+            {"name": "PHONE_NUMBER"},
+            {"name": "EMAIL_ADDRESS"},
+            {"name": "US_SOCIAL_SECURITY_NUMBER"},
+            {"name": "MEDICAL_RECORD_NUMBER"},
+            {"name": "US_DEA_NUMBER"},
+            {"name": "US_HEALTHCARE_NPI"},
         ],
-        min_likelihood=dlp_v2.Likelihood.LIKELY,
-        include_quote=False,  # Do not include PHI in the finding
-    )
+        "min_likelihood": dlp_v2.Likelihood.LIKELY,
+        "include_quote": False,  # Do not include PHI in the finding
+    }
 
     # Configure the storage item to inspect
-    storage_config = dlp_v2.StorageConfig(
-        cloud_storage_options=dlp_v2.CloudStorageOptions(
-            file_set=dlp_v2.CloudStorageOptions.FileSet(
-                url=f"gs://{bucket_name}/{file_name}"
-            )
-        )
-    )
+    storage_config = {
+        "cloud_storage_options": {
+            "file_set": {"url": f"gs://{bucket_name}/{file_name}"}
+        }
+    }
 
     # Create and run the inspection job
     job = dlp_client.create_dlp_job(
@@ -264,7 +262,7 @@ gcloud healthcare datasets create healthcare-dataset \
     --location=us-central1 \
     --project=healthcare-project
 
-# Create a FHIR store with audit logging
+# Create a FHIR store
 gcloud healthcare fhir-stores create patient-records \
     --dataset=healthcare-dataset \
     --location=us-central1 \
@@ -272,20 +270,20 @@ gcloud healthcare fhir-stores create patient-records \
     --enable-update-create \
     --project=healthcare-project
 
-# Enable FHIR store audit logging
-gcloud healthcare fhir-stores update patient-records \
-    --dataset=healthcare-dataset \
-    --location=us-central1 \
-    --project=healthcare-project
+# FHIR store operations are covered by Cloud Audit Logs configured later.
 ```
 
 ## Domain 11: Incident Management
 
 ```bash
 # Enable Security Command Center for threat detection (HITRUST 11.a)
-gcloud scc settings update \
-    --organization=123456789 \
-    --enable-modules=SECURITY_HEALTH_ANALYTICS,EVENT_THREAT_DETECTION
+gcloud scc manage services update security-health-analytics \
+    --organization=organizations/123456789 \
+    --enablement-state=ENABLED
+
+gcloud scc manage services update event-threat-detection \
+    --organization=organizations/123456789 \
+    --enablement-state=ENABLED
 
 # Create notification for security findings
 gcloud scc notifications create hitrust-alerts \
