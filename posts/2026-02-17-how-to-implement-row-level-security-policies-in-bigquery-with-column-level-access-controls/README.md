@@ -99,7 +99,7 @@ When a user queries the table, BigQuery checks all policies on that table:
 
 - If the user matches one or more policies, they see the union of rows matching all applicable policies
 - If the user matches no policies, they see zero rows
-- The table owner always has full access regardless of policies
+- Users and groups that need unfiltered access must be included in a policy with `FILTER USING (TRUE)`
 
 This means a user who belongs to both `us-east-team` and `eu-team` would see rows from both regions.
 
@@ -115,7 +115,8 @@ Column-level security uses policy tags from Data Catalog. You create a taxonomy 
 gcloud data-catalog taxonomies create \
   --location=us \
   --display-name="Data Sensitivity" \
-  --description="Classification levels for column access control"
+  --description="Classification levels for column access control" \
+  --activated-policy-types=FINE_GRAINED_ACCESS_CONTROL
 ```
 
 Note the taxonomy ID from the output, then create policy tags within it.
@@ -151,43 +152,61 @@ gcloud data-catalog taxonomies policy-tags create \
 
 ### Apply Policy Tags to Columns
 
-```sql
--- Update the table schema to apply policy tags to sensitive columns
-ALTER TABLE `analytics.sales`
-ALTER COLUMN customer_email
-SET OPTIONS (
-  policy_tags = 'projects/MY_PROJECT/locations/us/taxonomies/TAXONOMY_ID/policyTags/INTERNAL_TAG_ID'
-);
+```json
+[
+  {"name": "sale_id", "type": "STRING"},
+  {"name": "customer_id", "type": "STRING"},
+  {
+    "name": "customer_name",
+    "type": "STRING",
+    "policyTags": {
+      "names": ["projects/MY_PROJECT/locations/us/taxonomies/TAXONOMY_ID/policyTags/INTERNAL_TAG_ID"]
+    }
+  },
+  {
+    "name": "customer_email",
+    "type": "STRING",
+    "policyTags": {
+      "names": ["projects/MY_PROJECT/locations/us/taxonomies/TAXONOMY_ID/policyTags/INTERNAL_TAG_ID"]
+    }
+  },
+  {"name": "region", "type": "STRING"},
+  {"name": "country", "type": "STRING"},
+  {"name": "amount", "type": "FLOAT"},
+  {"name": "sale_date", "type": "DATE"},
+  {"name": "product", "type": "STRING"},
+  {"name": "payment_method", "type": "STRING"},
+  {
+    "name": "card_last_four",
+    "type": "STRING",
+    "policyTags": {
+      "names": ["projects/MY_PROJECT/locations/us/taxonomies/TAXONOMY_ID/policyTags/CONFIDENTIAL_TAG_ID"]
+    }
+  }
+]
+```
 
-ALTER TABLE `analytics.sales`
-ALTER COLUMN card_last_four
-SET OPTIONS (
-  policy_tags = 'projects/MY_PROJECT/locations/us/taxonomies/TAXONOMY_ID/policyTags/CONFIDENTIAL_TAG_ID'
-);
+Save the schema as `sales_schema.json`, then update the table schema.
 
-ALTER TABLE `analytics.sales`
-ALTER COLUMN customer_name
-SET OPTIONS (
-  policy_tags = 'projects/MY_PROJECT/locations/us/taxonomies/TAXONOMY_ID/policyTags/INTERNAL_TAG_ID'
-);
+```bash
+bq update MY_PROJECT:analytics.sales sales_schema.json
 ```
 
 ### Grant Column-Level Access
 
 ```bash
+INTERNAL_TAG="projects/MY_PROJECT/locations/us/taxonomies/TAXONOMY_ID/policyTags/INTERNAL_TAG_ID"
+CONFIDENTIAL_TAG="projects/MY_PROJECT/locations/us/taxonomies/TAXONOMY_ID/policyTags/CONFIDENTIAL_TAG_ID"
+
 # Grant the support team access to internal-level columns
 gcloud data-catalog taxonomies policy-tags add-iam-policy-binding \
-  INTERNAL_TAG_ID \
-  --taxonomy=TAXONOMY_ID \
-  --location=us \
+  "$INTERNAL_TAG" \
   --member="group:support-team@example.com" \
   --role="roles/datacatalog.categoryFineGrainedReader"
 
 # Grant the finance team access to confidential columns
 gcloud data-catalog taxonomies policy-tags add-iam-policy-binding \
-  CONFIDENTIAL_TAG_ID \
-  --taxonomy=TAXONOMY_ID \
-  --location=us \
+  "$CONFIDENTIAL_TAG" \
   --member="group:finance-team@example.com" \
   --role="roles/datacatalog.categoryFineGrainedReader"
 ```
@@ -202,16 +221,16 @@ The real power comes from combining both levels. Consider a support agent in the
 - Column-level policy: They can see `customer_name` and `customer_email` but not `card_last_four`
 
 ```sql
--- What the support agent sees when querying
--- They submitted: SELECT * FROM analytics.sales
--- What they effectively get:
+-- What the support agent should query:
 SELECT
   sale_id, customer_id, customer_name, customer_email,
   region, country, amount, sale_date, product, payment_method
-  -- card_last_four is hidden
 FROM `analytics.sales`
-WHERE region = 'US-EAST'  -- row filter applied automatically
 ```
+
+The row filter is applied automatically, so the support agent only receives `US-EAST` rows even though the query does not include a `WHERE` clause.
+
+If the support agent runs `SELECT *` and the table includes `card_last_four`, BigQuery returns an access denied error for that protected column. Column-level security blocks unauthorized column access; it does not silently remove protected columns from the result.
 
 ## Managing Policies at Scale
 
@@ -262,7 +281,7 @@ Always verify that your policies work as expected.
 
 ```sql
 -- Test what a specific user sees (requires admin access)
--- Use the BigQuery Data Policy Troubleshooter in the console
+-- Use IAM Troubleshooter in the console for policy tag permissions
 
 -- Or verify by running queries as a test user
 -- Method 1: Use service account impersonation
@@ -281,11 +300,11 @@ GROUP BY table_name;
 
 Row-level security does add overhead, but BigQuery optimizes it well:
 
-- RLS filters are pushed down to the storage layer, so only matching rows are read
-- If the RLS filter aligns with partitioning or clustering, the performance impact is minimal
-- Column-level security has no performance impact - it is a pure access control check
+- RLS filters act like an additional access predicate on the query result
+- RLS filters do not participate in query pruning on partitioned and clustered tables
+- Column-level security blocks unauthorized column reads without requiring separate table copies
 
-The main performance tip is to make sure your RLS filter column is a clustering column on the table. This way, BigQuery can skip blocks that do not match the filter.
+The main performance tip is to keep normal query predicates on partitioned or clustered columns when those predicates are part of the user's query. Do not rely on the row access policy filter itself to provide partition or clustering pruning.
 
 ## Wrapping Up
 
