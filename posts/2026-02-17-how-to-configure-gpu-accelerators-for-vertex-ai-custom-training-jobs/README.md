@@ -44,8 +44,8 @@ job = aiplatform.CustomTrainingJob(
     display_name='single-gpu-training',
     script_path='trainer/task.py',
     # Use the TensorFlow GPU container
-    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-14.py310:latest',
-    model_serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-14:latest',
+    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-16.py310:latest',
+    model_serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-15:latest',
 )
 
 # Run with a T4 GPU attached
@@ -78,8 +78,8 @@ aiplatform.init(
 job = aiplatform.CustomTrainingJob(
     display_name='multi-gpu-training',
     script_path='trainer/task.py',
-    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-14.py310:latest',
-    model_serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-14:latest',
+    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-16.py310:latest',
+    model_serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-15:latest',
 )
 
 # Attach 4 V100 GPUs
@@ -99,8 +99,10 @@ When using multiple GPUs, your training script needs to use a distributed traini
 # trainer/task.py
 # Training script with multi-GPU support using MirroredStrategy
 
-import tensorflow as tf
 import argparse
+import os
+
+import tensorflow as tf
 
 def main():
     parser = argparse.ArgumentParser()
@@ -158,11 +160,28 @@ if __name__ == '__main__':
 If you prefer the command line, here is how to configure GPUs with gcloud:
 
 ```bash
-# Submit a training job with 2 T4 GPUs using gcloud
+cat > config.yaml <<'EOF'
+workerPoolSpecs:
+  machineSpec:
+    machineType: n1-standard-8
+    acceleratorType: NVIDIA_TESLA_T4
+    acceleratorCount: 2
+  replicaCount: 1
+  pythonPackageSpec:
+    executorImageUri: us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-16.py310:latest
+    packageUris:
+    - gs://your-staging-bucket/trainer-0.1.tar.gz
+    pythonModule: trainer.task
+    args:
+    - --epochs
+    - "50"
+EOF
+
+# Submit the training job with 2 T4 GPUs using gcloud
 gcloud ai custom-jobs create \
   --region=us-central1 \
   --display-name=gpu-training-job \
-  --worker-pool-spec=machine-type=n1-standard-8,accelerator-type=NVIDIA_TESLA_T4,accelerator-count=2,replica-count=1,container-image-uri=us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-14.py310:latest,local-package-path=./trainer,python-module=task
+  --config=config.yaml
 ```
 
 ## A100 GPUs for Large Model Training
@@ -184,8 +203,8 @@ aiplatform.init(
 job = aiplatform.CustomTrainingJob(
     display_name='large-model-training',
     script_path='trainer/task.py',
-    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-14.py310:latest',
-    model_serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-14:latest',
+    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-16.py310:latest',
+    model_serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-15:latest',
 )
 
 # Use A100 GPUs with a compatible machine type
@@ -209,8 +228,9 @@ Not every machine type works with every GPU. Here is a quick reference:
 | T4 | n1-standard, n1-highmem, n1-highcpu | 4 |
 | V100 | n1-standard, n1-highmem, n1-highcpu | 8 |
 | P100 | n1-standard, n1-highmem, n1-highcpu | 4 |
-| A100 40GB | a2-highgpu | 16 |
+| A100 40GB | a2-highgpu, a2-megagpu-16g | 8 on a2-highgpu, 16 on a2-megagpu-16g |
 | A100 80GB | a2-ultragpu | 8 |
+| L4 | g2-standard | 8 |
 
 Always check that your chosen machine type and GPU combination is valid. Mismatched configurations will cause the job to fail immediately.
 
@@ -219,8 +239,8 @@ Always check that your chosen machine type and GPU combination is valid. Mismatc
 Not all GPU types are available in every GCP region. T4 GPUs are the most widely available, while A100 GPUs are limited to specific regions. Check availability before submitting your job:
 
 ```bash
-# List available accelerator types in a specific region
-gcloud compute accelerator-types list --filter="zone:us-central1"
+# List available accelerator types in zones for a specific region
+gcloud compute accelerator-types list --filter="zone:( us-central1-a us-central1-b us-central1-c us-central1-f )"
 ```
 
 Common regions with good GPU availability include us-central1, us-east1, europe-west4, and asia-east1.
@@ -249,15 +269,15 @@ If your GPU utilization is consistently low (below 50%), you might be bottleneck
 
 GPUs are expensive, so here are some tips to reduce costs:
 
-Use preemptible VMs when possible. They cost 60-91% less but can be terminated at any time. For training jobs with checkpointing, this is usually fine:
+Use Spot VMs when possible. They offer significant discounts but can be terminated at any time. For training jobs with checkpointing, this is usually fine:
 
 ```python
-# Use preemptible VMs to reduce costs
-from google.cloud.aiplatform_v1.types import custom_job as custom_job_v1
+# Use Spot VMs to reduce costs
+from google.cloud import aiplatform
 
-# In the worker pool spec, set scheduling to use spot/preemptible VMs
+# In the worker pool spec, set scheduling to use Spot VMs
 job = aiplatform.CustomJob(
-    display_name='preemptible-gpu-training',
+    display_name='spot-gpu-training',
     worker_pool_specs=[{
         'machine_spec': {
             'machine_type': 'n1-standard-8',
@@ -265,11 +285,17 @@ job = aiplatform.CustomJob(
             'accelerator_count': 1,
         },
         'replica_count': 1,
-        'container_spec': {
-            'image_uri': 'us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-14.py310:latest',
+        'python_package_spec': {
+            'executor_image_uri': 'us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-16.py310:latest',
+            'package_uris': ['gs://your-staging-bucket/trainer-0.1.tar.gz'],
+            'python_module': 'trainer.task',
             'args': ['--epochs', '50'],
         },
     }],
+)
+
+job.run(
+    scheduling_strategy=aiplatform.compat.types.custom_job.Scheduling.Strategy.SPOT
 )
 ```
 
