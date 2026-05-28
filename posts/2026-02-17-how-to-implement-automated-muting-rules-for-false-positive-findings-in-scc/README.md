@@ -14,12 +14,12 @@ This guide covers how to build effective muting rules, manage them at scale, and
 
 ## How Muting Works in SCC
 
-Muting in SCC does not delete findings or stop detection. Muted findings still exist in the system and can be queried. What changes is their visibility - muted findings are filtered out of default views and dashboards. This is an important distinction because you can always unmute findings if your assessment changes.
+Muting in SCC does not delete findings or stop detection. Muted findings still exist in the system and can be queried. What changes is their visibility - muted findings are filtered out of the default findings view in the Google Cloud console. This is an important distinction because you can always view or unmute findings if your assessment changes.
 
-There are two types of muting:
+There are two types of mute rules:
 
-- **Static muting** - you manually mute individual findings
-- **Dynamic muting rules** - you define filter criteria and SCC automatically mutes any finding (current or future) that matches
+- **Static mute rules** - you define filter criteria and SCC mutes future matching findings indefinitely
+- **Dynamic mute rules** - you define filter criteria and SCC automatically mutes any finding (current or future) that matches, either temporarily with an expiration time or indefinitely
 
 Dynamic muting rules are what you want for handling recurring false positives at scale.
 
@@ -127,20 +127,20 @@ graph TD
     E --> F{Still Valid?}
     F -- Yes --> G[Extend Rule]
     F -- No --> H[Delete Rule]
-    H --> I[Unmuted Findings Become Visible]
+    H --> I[Findings Become Visible if No Other Mute Applies]
     G --> E
 ```
 
 ## Auditing Muted Findings
 
-You should periodically check what is being muted to make sure rules are not hiding real issues. This script lists all muted findings and groups them by muting rule.
+You should periodically check what is being muted to make sure rules are not hiding real issues. This command lists currently muted findings and shows any dynamic mute rule records attached to each finding.
 
 ```bash
 # List all currently muted findings to audit muting coverage
 gcloud scc findings list 123456789 \
   --source=- \
   --filter='mute="MUTED"' \
-  --format="table(resourceName, category, severity, muteInfo.staticMute.applyTime)" \
+  --format="table(finding.resourceName, finding.category, finding.severity, finding.muteInfo.dynamicMuteRecords[].muteConfig, finding.muteInfo.staticMute.applyTime)" \
   --limit=50
 ```
 
@@ -167,12 +167,15 @@ def audit_muting_rules(org_id):
         print(f"  Filter: {config.filter}")
         print(f"  Created: {config.create_time}")
 
-        # Count findings matching this rule's filter
+        # Count findings currently matched by this dynamic mute rule
         finding_count = 0
         findings = client.list_findings(
             request={
                 "parent": f"{parent}/sources/-",
-                "filter": f'mute="MUTED" AND ({config.filter})'
+                "filter": (
+                    'mute="MUTED" AND '
+                    f'contains(muteInfo.dynamicMuteRecords, muteConfig="{config.name}")'
+                )
             }
         )
         for _ in findings:
@@ -238,7 +241,7 @@ There are several ways muting rules can go wrong:
 
 ## Unmuting Findings
 
-When a muting rule is no longer valid, delete it. Previously muted findings will automatically return to their unmuted state.
+When a dynamic muting rule is no longer valid, delete it. Security Command Center removes the rule from matching findings. If no other mute rule applies, the findings return to the `UNDEFINED` mute state and become visible in the default findings view again.
 
 ```bash
 # Delete a muting rule - findings will become visible again
