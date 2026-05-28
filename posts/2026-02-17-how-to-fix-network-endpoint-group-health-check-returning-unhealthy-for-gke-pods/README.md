@@ -38,12 +38,13 @@ gcloud compute firewall-rules create allow-neg-health-check \
     --network=your-vpc \
     --action=allow \
     --direction=ingress \
+    --target-tags=your-gke-node-network-tags \
     --source-ranges=35.191.0.0/16,130.211.0.0/22 \
     --rules=tcp:your-app-port \
     --priority=1000
 ```
 
-Do not use target tags here if your pods use alias IP ranges on the nodes - the health check traffic arrives at the node and is routed to the pod, so the firewall rule needs to apply to the nodes.
+If you use target tags, make sure they are the network tags on the GKE node VMs. Pods don't have Compute Engine target tags, and the firewall rule must apply to the nodes that host the Pod alias IP ranges.
 
 ## Step 2: Check Kubernetes Network Policies
 
@@ -84,7 +85,7 @@ spec:
 
 ## Step 3: Verify Pod Readiness Probe Configuration
 
-The health check configuration on the Google Cloud side is derived from your pod's readiness probe by default. If your readiness probe is misconfigured or too aggressive, the NEG health check inherits those problems.
+For GKE Ingress, the Google Cloud health check is created from a BackendConfig, inferred from the serving pod's readiness probe when possible, or created from default values. If there is no BackendConfig and your readiness probe is misconfigured, the NEG health check can inherit those problems.
 
 Check your pod's readiness probe:
 
@@ -122,11 +123,13 @@ kubectl get pods -n your-namespace -l app=your-app \
     -o jsonpath='{range .items[*]}{.status.podIP}{"\t"}{.metadata.name}{"\n"}{end}'
 ```
 
-If pods are missing from the NEG, there might be an issue with the NEG controller. Check the NEG controller logs:
+If pods are missing from the NEG, there might be an issue with NEG synchronization. Check the ServiceNetworkEndpointGroup resource and Service events:
 
 ```bash
-# Check NEG controller logs in the kube-system namespace
-kubectl logs -n kube-system -l k8s-app=glbc --tail=100
+# Check Service NEG status and events
+kubectl get svcneg -n your-namespace
+kubectl get svcneg your-svcneg -n your-namespace -o yaml
+kubectl describe service your-service -n your-namespace
 ```
 
 ## Step 5: Verify the BackendConfig Health Check Override
@@ -215,9 +218,9 @@ Consider upgrading to a recent stable version if you are behind.
 A few things that regularly trip people up:
 
 1. The NEG annotation must be on the Service, not the Deployment
-2. If using Ingress, the Service must be of type ClusterIP (not NodePort) for NEG
+2. If using Ingress, ClusterIP is recommended for NEG-backed Services unless you explicitly need NodePort
 3. Pod readiness gates - GKE uses readiness gates with NEGs, so pods might show as not ready until the load balancer confirms health
-4. Changing the health check path requires redeploying the Service, not just the pods
+4. Changing a pod readiness probe after Ingress creation does not update the existing load balancer health check; use BackendConfig for explicit control, or redeploy the pods and Ingress so GKE recreates the health check
 
 ## Monitoring NEG Health
 
