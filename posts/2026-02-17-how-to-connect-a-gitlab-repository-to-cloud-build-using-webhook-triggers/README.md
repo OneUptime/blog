@@ -8,7 +8,7 @@ Description: Learn how to connect your GitLab repository to Google Cloud Build u
 
 ---
 
-While Cloud Build has native integration with GitHub and Cloud Source Repositories, connecting a GitLab repository requires a different approach. Webhook triggers let you bridge the gap - GitLab sends a webhook to Cloud Build whenever code changes happen, and Cloud Build kicks off a build in response. In this post, I will walk through how to set up this connection step by step.
+While Cloud Build supports connected GitLab repositories, webhook triggers are still useful when you want a lightweight HTTP-based integration or need to handle a GitLab event yourself. GitLab sends a webhook to Cloud Build whenever code changes happen, and Cloud Build kicks off a build in response. In this post, I will walk through how to set up this connection step by step.
 
 ## How Webhook Triggers Work
 
@@ -40,6 +40,7 @@ Before starting, make sure you have:
 - A GCP project with Cloud Build API enabled
 - The `gcloud` CLI installed and authenticated
 - A Personal Access Token or Deploy Token from GitLab with read access to the repository
+- The `PROJECT_ID` environment variable set to your Google Cloud project ID
 
 ## Step 1: Create a Secret for the Webhook Authentication
 
@@ -57,7 +58,7 @@ gcloud secrets create gitlab-webhook-secret \
 echo -n "$SECRET" | gcloud secrets versions add gitlab-webhook-secret --data-file=-
 ```
 
-Save this secret value - you will need it when configuring the webhook in GitLab.
+Save this secret value - Cloud Build includes it in the generated webhook URL.
 
 ## Step 2: Store GitLab Credentials in Secret Manager
 
@@ -83,9 +84,8 @@ echo -n "your-gitlab-access-token" | gcloud secrets versions add gitlab-access-t
 The Cloud Build service account needs permission to read these secrets:
 
 ```bash
-# Get the Cloud Build service account email
-PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+# Get the default Cloud Build service account email
+CB_SA=$(gcloud builds get-default-service-account --format='value(serviceAccountEmail)' | sed 's|.*/serviceAccounts/||')
 
 # Grant access to the webhook secret
 gcloud secrets add-iam-policy-binding gitlab-webhook-secret \
@@ -100,7 +100,7 @@ gcloud secrets add-iam-policy-binding gitlab-access-token \
 
 ## Step 4: Create the Webhook Trigger
 
-Now create the Cloud Build webhook trigger using gcloud:
+Now create the Cloud Build webhook trigger using gcloud. Because this setup clones the GitLab source manually in the build, use `--inline-config` so Cloud Build stores the local build config with the trigger instead of trying to read `cloudbuild.yaml` from a connected repository:
 
 ```bash
 # Create a webhook trigger for the GitLab repository
@@ -108,8 +108,7 @@ gcloud builds triggers create webhook \
   --name="gitlab-push-trigger" \
   --secret="projects/${PROJECT_ID}/secrets/gitlab-webhook-secret/versions/latest" \
   --substitutions="_BRANCH_NAME=\$(body.ref),_REPO_URL=\$(body.repository.git_http_url),_COMMIT_SHA=\$(body.after)" \
-  --build-config="cloudbuild.yaml" \
-  --repo-type="GITLAB" \
+  --inline-config="cloudbuild.yaml" \
   --description="Triggers build on GitLab push events"
 ```
 
@@ -118,7 +117,7 @@ The `--substitutions` flag maps values from the GitLab webhook payload to Cloud 
 After creating the trigger, gcloud will output a webhook URL that looks like:
 
 ```text
-https://cloudbuild.googleapis.com/v1/projects/PROJECT_ID/triggers/TRIGGER_NAME:webhook?key=API_KEY&secret=SECRET_VALUE
+https://cloudbuild.googleapis.com/v1/projects/PROJECT_ID/triggers/TRIGGER_ID:webhook?key=API_KEY&secret=SECRET_VALUE
 ```
 
 Copy this URL - you will configure it in GitLab next.
@@ -128,7 +127,7 @@ Copy this URL - you will configure it in GitLab next.
 Go to your GitLab project, then navigate to Settings > Webhooks. Click "Add new webhook" and configure:
 
 - **URL** - Paste the webhook URL from the previous step
-- **Secret token** - Enter the same secret value you stored in Secret Manager
+- **Secret token** - Leave this blank for this setup. Cloud Build validates the `secret` query parameter in the webhook URL; GitLab's Secret token field sends an `X-Gitlab-Token` header, which Cloud Build webhook triggers do not use.
 - **Trigger events** - Select "Push events" (and optionally "Merge request events" if you want PR builds)
 - **SSL verification** - Keep enabled
 
@@ -149,7 +148,9 @@ steps:
       - '-c'
       - |
         # Clone the GitLab repository using the access token
-        git clone https://oauth2:$$GITLAB_TOKEN@gitlab.com/my-group/my-project.git /workspace/source
+        REPO_URL='$_REPO_URL'
+        AUTH_REPO_URL="${REPO_URL/https:\/\//https:\/\/oauth2:$$GITLAB_TOKEN@}"
+        git clone "$AUTH_REPO_URL" /workspace/source
         cd /workspace/source
         git checkout $_COMMIT_SHA
 
@@ -220,13 +221,13 @@ gcloud builds triggers create webhook \
   --name="gitlab-mr-trigger" \
   --secret="projects/${PROJECT_ID}/secrets/gitlab-webhook-secret/versions/latest" \
   --substitutions="_SOURCE_BRANCH=\$(body.object_attributes.source_branch),_TARGET_BRANCH=\$(body.object_attributes.target_branch),_MR_ID=\$(body.object_attributes.iid)" \
-  --build-config="cloudbuild-mr.yaml" \
+  --inline-config="cloudbuild-mr.yaml" \
   --description="Runs tests on GitLab merge requests"
 ```
 
 ## Posting Build Status Back to GitLab
 
-One limitation of webhook triggers is that Cloud Build does not automatically post build status back to GitLab (unlike GitHub integrations). You can work around this by adding a final step that uses the GitLab API:
+One limitation of webhook triggers is that Cloud Build does not automatically post build status back to GitLab (unlike GitHub integrations). You can work around this by adding a final step that uses the GitLab API. Use a token with API access for this step:
 
 ```yaml
 # Post build status back to GitLab
@@ -239,7 +240,7 @@ One limitation of webhook triggers is that Cloud Build does not automatically po
         # Report the build status to GitLab's commit status API
         curl --request POST \
           --header "PRIVATE-TOKEN: $$GITLAB_TOKEN" \
-          "https://gitlab.com/api/v4/projects/PROJECT_ID/statuses/$_COMMIT_SHA?state=success&name=cloud-build&target_url=https://console.cloud.google.com/cloud-build/builds/$BUILD_ID"
+          "https://gitlab.com/api/v4/projects/GITLAB_PROJECT_ID_OR_URL_ENCODED_PATH/statuses/$_COMMIT_SHA?state=success&name=cloud-build&target_url=https://console.cloud.google.com/cloud-build/builds/$BUILD_ID"
 ```
 
 This posts a commit status to GitLab, which shows up as a green check or red X on the commit and merge request pages.
