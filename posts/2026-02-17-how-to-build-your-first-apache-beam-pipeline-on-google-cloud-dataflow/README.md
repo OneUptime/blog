@@ -173,6 +173,7 @@ options = PipelineOptions([
     '--project=my-project',
     '--region=us-central1',
     '--temp_location=gs://my-bucket/temp/',
+    '--staging_location=gs://my-bucket/staging/',
 ])
 
 # Define the output BigQuery schema
@@ -192,7 +193,7 @@ with beam.Pipeline(options=options) as pipeline:
         # Read from BigQuery using a SQL query
         | 'ReadFromBQ' >> beam.io.ReadFromBigQuery(
             query='SELECT user_id, event_type, session_duration_seconds, timestamp '
-                  'FROM `my_project.analytics.events` '
+                  'FROM `my-project.analytics.events` '
                   'WHERE DATE(timestamp) = "2026-02-16"',
             use_standard_sql=True
         )
@@ -200,7 +201,7 @@ with beam.Pipeline(options=options) as pipeline:
         | 'EnrichEvents' >> beam.Map(enrich_event)
         # Write to a BigQuery destination table
         | 'WriteToBQ' >> beam.io.WriteToBigQuery(
-            table='my_project:analytics.enriched_events',
+            table='my-project:analytics.enriched_events',
             schema=output_schema,
             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
             create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
@@ -269,8 +270,8 @@ gcloud dataflow jobs list --region=us-central1 --status=active
 # Get details about a specific job
 gcloud dataflow jobs describe JOB_ID --region=us-central1
 
-# View job logs
-gcloud dataflow jobs show JOB_ID --region=us-central1
+# View job logs in Cloud Logging
+gcloud logging read 'resource.type="dataflow_step" AND resource.labels.job_id="JOB_ID"' --limit=50
 ```
 
 The Dataflow monitoring UI in the Cloud Console provides a visual representation of your pipeline graph, showing throughput and latency at each step.
