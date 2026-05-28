@@ -8,37 +8,44 @@ Description: Learn how to use Gemini with URL context on Vertex AI to analyze we
 
 ---
 
-Gemini's URL context feature lets you point the model at a web page and have it analyze the content directly. Instead of scraping a page, extracting text, and then sending that text to the model, you just provide the URL. The model fetches and processes the page content, including text, images, and layout structure.
+Gemini's URL context feature lets you point the model at a web page and have it analyze the content directly. Instead of scraping a page, extracting text, and then sending that text to the model, you provide the URL in your prompt and enable the URL context tool. The model retrieves content from the URL and uses it as additional context for the response.
 
 This is incredibly useful for real-time content monitoring, competitive analysis, and automated web data extraction. I have been using it to build monitoring tools that check web pages for changes and extract structured data from websites. Let me show you how to set it up.
 
 ## How URL Context Works
 
-When you provide a URL to Gemini, the model fetches the web page content at inference time. This means you always get analysis of the current version of the page, not a cached or stale copy. The model can understand the page structure, read text content, analyze images on the page, and interpret the overall layout.
+When you provide a URL to Gemini with the URL context tool enabled, the model retrieves content from the URL and uses that content to inform its response. Vertex AI first tries indexed content for speed and falls back to live fetch when the URL is not available in the index, so very new pages can be retrieved directly but indexed results may be stale. The tool supports common web text formats, images, and PDFs, but it does not support paywalled content, Google Workspace files, or video and audio files.
 
 ## Basic URL Analysis
 
 Here is the simplest way to analyze a web page with Gemini:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part
+from google import genai
+from google.genai.types import GenerateContentConfig, HttpOptions
 
 # Initialize Vertex AI
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="global",
+    http_options=HttpOptions(api_version="v1"),
+)
 
-vertexai.init(project="your-project-id", location="us-central1")
+model_id = "gemini-2.5-flash"
+url_context_tool = {"url_context": {}}
 
-model = GenerativeModel("gemini-2.0-flash")
+url = "https://cloud.google.com/vertex-ai/generative-ai/docs/url-context"
 
 # Analyze a web page by providing its URL
-response = model.generate_content([
-    Part.from_uri(
-        uri="https://cloud.google.com/vertex-ai/docs/generative-ai/learn/overview",
-        mime_type="text/html"
+response = client.models.generate_content(
+    model=model_id,
+    contents=(
+        f"Summarize the main topics covered on this documentation page: {url}. "
+        "List the key sections and what each one explains."
     ),
-    "Summarize the main topics covered on this documentation page. "
-    "List the key sections and what each one explains."
-])
+    config=GenerateContentConfig(tools=[url_context_tool]),
+)
 
 print(response.text)
 ```
@@ -50,22 +57,19 @@ One of the most practical uses is pulling structured data out of web pages autom
 This code extracts product information from a web page:
 
 ```python
-from vertexai.generative_models import GenerationConfig
-
 def extract_page_data(url, schema):
     """Extract structured data from a web page."""
-    config = GenerationConfig(
+    config = GenerateContentConfig(
+        tools=[url_context_tool],
         response_mime_type="application/json",
         response_schema=schema,
-        temperature=0.1
+        temperature=0.1,
     )
 
-    response = model.generate_content(
-        [
-            Part.from_uri(uri=url, mime_type="text/html"),
-            "Extract the requested information from this web page."
-        ],
-        generation_config=config
+    response = client.models.generate_content(
+        model=model_id,
+        contents=f"Extract the requested information from this web page: {url}",
+        config=config,
     )
 
     import json
@@ -73,17 +77,17 @@ def extract_page_data(url, schema):
 
 # Define what data to extract
 product_schema = {
-    "type": "object",
+    "type": "OBJECT",
     "properties": {
-        "page_title": {"type": "string"},
-        "main_heading": {"type": "string"},
+        "page_title": {"type": "STRING"},
+        "main_heading": {"type": "STRING"},
         "key_features": {
-            "type": "array",
-            "items": {"type": "string"}
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
         },
-        "pricing_mentioned": {"type": "boolean"},
-        "call_to_action": {"type": "string"},
-        "last_updated": {"type": "string"}
+        "pricing_mentioned": {"type": "BOOLEAN"},
+        "call_to_action": {"type": "STRING"},
+        "last_updated": {"type": "STRING"}
     }
 }
 
@@ -108,7 +112,9 @@ class WebContentMonitor:
     """Monitor web pages for content changes using Gemini."""
 
     def __init__(self):
-        self.model = GenerativeModel("gemini-2.0-flash")
+        self.client = client
+        self.model_id = model_id
+        self.url_context_tool = url_context_tool
         self.baselines = {}
 
     def capture_baseline(self, url, label=None):
@@ -156,24 +162,30 @@ class WebContentMonitor:
 
     def _analyze_page(self, url):
         """Analyze a web page and return a text summary."""
-        response = self.model.generate_content([
-            Part.from_uri(uri=url, mime_type="text/html"),
-            "Provide a detailed analysis of this page including: "
-            "main content, navigation structure, key messages, "
-            "pricing information if any, and notable features or changes."
-        ])
+        response = self.client.models.generate_content(
+            model=self.model_id,
+            contents=(
+                f"Provide a detailed analysis of this page: {url}\n\n"
+                "Include main content, navigation structure, key messages, "
+                "pricing information if any, and notable features or changes."
+            ),
+            config=GenerateContentConfig(tools=[self.url_context_tool]),
+        )
         return response.text
 
     def _compare_analyses(self, baseline, current, url):
         """Compare two analyses to identify changes."""
-        response = self.model.generate_content(
-            f"Compare these two analyses of the same web page ({url}).\n\n"
-            f"BASELINE:\n{baseline}\n\n"
-            f"CURRENT:\n{current}\n\n"
-            "What has changed? Categorize changes as: "
-            "major (pricing, features, structure), "
-            "minor (text updates, styling), "
-            "or cosmetic (typos, small wording changes)."
+        response = self.client.models.generate_content(
+            model=self.model_id,
+            contents=(
+                f"Compare these two analyses of the same web page ({url}).\n\n"
+                f"BASELINE:\n{baseline}\n\n"
+                f"CURRENT:\n{current}\n\n"
+                "What has changed? Categorize changes as: "
+                "major (pricing, features, structure), "
+                "minor (text updates, styling), "
+                "or cosmetic (typos, small wording changes)."
+            ),
         )
         return response.text
 
@@ -206,16 +218,13 @@ Build a tool that compares your web presence against competitors.
 def competitive_analysis(your_url, competitor_urls):
     """Compare your web page against competitors."""
     # Analyze all pages
-    parts = []
+    prompt_parts = []
 
-    parts.append(f"YOUR PAGE:")
-    parts.append(Part.from_uri(uri=your_url, mime_type="text/html"))
-
+    prompt_parts.append(f"YOUR PAGE: {your_url}")
     for i, comp_url in enumerate(competitor_urls, 1):
-        parts.append(f"\nCOMPETITOR {i}:")
-        parts.append(Part.from_uri(uri=comp_url, mime_type="text/html"))
+        prompt_parts.append(f"COMPETITOR {i}: {comp_url}")
 
-    parts.append(
+    prompt_parts.append(
         "\nCompare these web pages and provide a competitive analysis:\n"
         "1. Feature comparison - what does each page offer?\n"
         "2. Messaging comparison - how does each position their product?\n"
@@ -225,7 +234,11 @@ def competitive_analysis(your_url, competitor_urls):
         "6. Recommendations for improving the first page"
     )
 
-    response = model.generate_content(parts)
+    response = client.models.generate_content(
+        model=model_id,
+        contents="\n".join(prompt_parts),
+        config=GenerateContentConfig(tools=[url_context_tool]),
+    )
     return response.text
 
 # Compare your product page against competitors
@@ -248,12 +261,15 @@ class DocumentationTracker:
     """Track external documentation for changes that affect your integrations."""
 
     def __init__(self):
-        self.model = GenerativeModel(
-            "gemini-2.0-flash",
+        self.client = client
+        self.model_id = model_id
+        self.url_context_tool = url_context_tool
+        self.config = GenerateContentConfig(
+            tools=[self.url_context_tool],
             system_instruction=(
                 "You are a technical documentation analyst. Focus on "
                 "API changes, deprecations, new features, and breaking changes."
-            )
+            ),
         )
         self.tracked_pages = {}
 
@@ -272,17 +288,21 @@ class DocumentationTracker:
         for url, config in self.tracked_pages.items():
             focus = ", ".join(config["focus_areas"])
 
-            response = self.model.generate_content([
-                Part.from_uri(uri=url, mime_type="text/html"),
-                f"Analyze this documentation page focusing on: {focus}\n\n"
-                "Report any:\n"
-                "- API changes or new endpoints\n"
-                "- Deprecated features or methods\n"
-                "- Breaking changes\n"
-                "- New features or capabilities\n"
-                "- Updated code examples\n\n"
-                "If nothing noteworthy, just say 'No significant changes.'"
-            ])
+            response = self.client.models.generate_content(
+                model=self.model_id,
+                contents=(
+                    f"Analyze this documentation page: {url}\n\n"
+                    f"Focus on: {focus}\n\n"
+                    "Report any:\n"
+                    "- API changes or new endpoints\n"
+                    "- Deprecated features or methods\n"
+                    "- Breaking changes\n"
+                    "- New features or capabilities\n"
+                    "- Updated code examples\n\n"
+                    "If nothing noteworthy, just say 'No significant changes.'"
+                ),
+                config=self.config,
+            )
 
             results.append({
                 "url": url,
@@ -302,7 +322,7 @@ tracker.track(
     focus_areas=["API changes", "new endpoints", "deprecations"]
 )
 tracker.track(
-    "https://cloud.google.com/vertex-ai/docs/generative-ai/model-reference/gemini",
+    "https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference",
     focus_areas=["model versions", "parameter changes", "new features"]
 )
 
@@ -317,17 +337,18 @@ for update in updates:
 Process multiple URLs in sequence for large-scale web analysis.
 
 ```python
-def bulk_analyze_urls(urls, analysis_prompt, max_concurrent=5):
+def bulk_analyze_urls(urls, analysis_prompt, batch_size=5):
     """Analyze multiple URLs with rate limiting."""
     import time
 
     results = []
     for i, url in enumerate(urls):
         try:
-            response = model.generate_content([
-                Part.from_uri(uri=url, mime_type="text/html"),
-                analysis_prompt
-            ])
+            response = client.models.generate_content(
+                model=model_id,
+                contents=f"{analysis_prompt}\n\nURL: {url}",
+                config=GenerateContentConfig(tools=[url_context_tool]),
+            )
 
             results.append({
                 "url": url,
@@ -343,7 +364,7 @@ def bulk_analyze_urls(urls, analysis_prompt, max_concurrent=5):
             })
 
         # Rate limiting
-        if (i + 1) % max_concurrent == 0:
+        if (i + 1) % batch_size == 0:
             time.sleep(2)
 
         print(f"Processed {i+1}/{len(urls)}: {url[:60]}...")
@@ -352,8 +373,8 @@ def bulk_analyze_urls(urls, analysis_prompt, max_concurrent=5):
 
 # Analyze a list of documentation pages
 urls = [
-    "https://cloud.google.com/vertex-ai/docs/generative-ai/learn/overview",
-    "https://cloud.google.com/vertex-ai/docs/generative-ai/model-reference/gemini",
+    "https://cloud.google.com/vertex-ai/generative-ai/docs/url-context",
+    "https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference",
 ]
 
 results = bulk_analyze_urls(
@@ -367,13 +388,14 @@ results = bulk_analyze_urls(
 Not all URLs will be accessible. Handle timeouts, blocked requests, and invalid pages.
 
 ```python
-def safe_url_analysis(url, prompt, timeout_seconds=30):
+def safe_url_analysis(url, prompt):
     """Analyze a URL with comprehensive error handling."""
     try:
-        response = model.generate_content([
-            Part.from_uri(uri=url, mime_type="text/html"),
-            prompt
-        ])
+        response = client.models.generate_content(
+            model=model_id,
+            contents=f"{prompt}\n\nURL: {url}",
+            config=GenerateContentConfig(tools=[url_context_tool]),
+        )
 
         if not response.candidates:
             return {"status": "blocked", "message": "Content was blocked by safety filters"}
@@ -394,4 +416,4 @@ def safe_url_analysis(url, prompt, timeout_seconds=30):
 
 ## Wrapping Up
 
-Gemini's URL context capability simplifies real-time web content analysis. You can monitor pages for changes, extract structured data, run competitive analysis, and track documentation updates - all without building custom scrapers. The model handles page rendering and content extraction, so you focus on what to analyze rather than how to get the data. Monitor your web analysis pipelines with tools like OneUptime to track success rates and catch when monitored pages become unavailable.
+Gemini's URL context capability simplifies web content analysis. You can monitor pages for changes, extract structured data, run competitive analysis, and track documentation updates - all without building custom scrapers. The URL context tool handles content retrieval, so you focus on what to analyze rather than how to get the data. Monitor your web analysis pipelines with tools like OneUptime to track success rates and catch when monitored pages become unavailable.
