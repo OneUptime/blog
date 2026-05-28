@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, New Relic, Telemetry, Cloud Monitoring, Observability, Google Cloud
 
-Description: Configure the New Relic Google Cloud integration to ingest metrics, logs, and traces from your GCP environment for unified observability.
+Description: Configure the New Relic Google Cloud integration to ingest metrics and forward logs from your GCP environment for unified observability.
 
 ---
 
-If your team uses New Relic for application performance monitoring and you run infrastructure on Google Cloud, connecting the two gives you a single place to correlate application behavior with infrastructure health. The New Relic GCP integration pulls metrics from Cloud Monitoring, and with some additional configuration, you can also send logs and traces.
+If your team uses New Relic for application performance monitoring and you run infrastructure on Google Cloud, connecting the two gives you a single place to correlate application behavior with infrastructure health. The New Relic GCP integration pulls metrics from Cloud Monitoring, and with some additional configuration, you can also send logs.
 
 This guide walks through setting up the integration, configuring what gets ingested, and making the data useful in New Relic.
 
@@ -20,29 +20,21 @@ The data appears in New Relic as infrastructure metrics, which you can query wit
 
 ## Setting Up Authentication
 
-New Relic needs a service account in your GCP project with permission to read metrics.
+New Relic uses a New Relic-managed service account to read metrics from your GCP project. In the New Relic onboarding wizard or NerdGraph provider query, get the New Relic service account ID, then grant it access in your project.
 
 ```bash
-# Create a service account for New Relic
-
-gcloud iam service-accounts create newrelic-integration \
-  --display-name="New Relic GCP Integration" \
+# Enable the Cloud Monitoring API if it is not already enabled
+gcloud services enable monitoring.googleapis.com \
   --project=my-project
 
-# Grant the minimum required roles
-# Monitoring viewer for reading metrics
+# Grant the standard roles required by New Relic's service account authorization
 gcloud projects add-iam-policy-binding my-project \
-  --member="serviceAccount:newrelic-integration@my-project.iam.gserviceaccount.com" \
-  --role="roles/monitoring.viewer"
+  --member="serviceAccount:NEW_RELIC_SERVICE_ACCOUNT_ID" \
+  --role="roles/viewer"
 
-# Service usage consumer for listing available services
 gcloud projects add-iam-policy-binding my-project \
-  --member="serviceAccount:newrelic-integration@my-project.iam.gserviceaccount.com" \
+  --member="serviceAccount:NEW_RELIC_SERVICE_ACCOUNT_ID" \
   --role="roles/serviceusage.serviceUsageConsumer"
-
-# Generate a JSON key file
-gcloud iam service-accounts keys create newrelic-sa-key.json \
-  --iam-account=newrelic-integration@my-project.iam.gserviceaccount.com
 ```
 
 ## Configuring the Integration in New Relic
@@ -51,7 +43,7 @@ You can set up the integration through the New Relic UI or through their API.
 
 ### Through the UI
 
-Navigate to Infrastructure > GCP in the New Relic UI. Click "Add a GCP account" and upload the service account key file. Select the GCP services you want to monitor.
+Navigate to Infrastructure > GCP in the New Relic UI. Click "Add a GCP account", choose service account authorization, grant the displayed New Relic service account the required roles in GCP, and select the GCP services you want to monitor.
 
 ### Through the NerdGraph API
 
@@ -63,25 +55,25 @@ curl -X POST 'https://api.newrelic.com/graphql' \
   -H 'Content-Type: application/json' \
   -H 'API-Key: YOUR_NEWRELIC_USER_API_KEY' \
   -d '{
-    "query": "mutation { cloudLinkAccount(accountId: YOUR_NR_ACCOUNT_ID, accounts: { gcp: [{ name: \"My GCP Project\", projectId: \"my-project\", serviceAccountKey: \"BASE64_ENCODED_KEY\" }] }) { linkedAccounts { id name } errors { message } } }"
+    "query": "mutation { cloudLinkAccount(accountId: YOUR_NR_ACCOUNT_ID, accounts: { gcp: [{ name: \"My GCP Project\", projectId: \"my-project\" }] }) { linkedAccounts { id name } errors { message } } }"
   }'
 ```
 
-After linking the account, enable the specific integrations you want.
+After linking the account, enable the specific integrations you want. The input field names are the provider and integration slugs from NerdGraph.
 
 ```bash
-# Enable specific GCP service integrations
+# Enable the GCP Compute Engine integration
 curl -X POST 'https://api.newrelic.com/graphql' \
   -H 'Content-Type: application/json' \
   -H 'API-Key: YOUR_NEWRELIC_USER_API_KEY' \
   -d '{
-    "query": "mutation { cloudConfigureIntegration(accountId: YOUR_NR_ACCOUNT_ID, integrations: { gcp: { computeEngine: [{ linkedAccountId: LINKED_ACCOUNT_ID }], cloudSQL: [{ linkedAccountId: LINKED_ACCOUNT_ID }], kubernetes: [{ linkedAccountId: LINKED_ACCOUNT_ID }], cloudRun: [{ linkedAccountId: LINKED_ACCOUNT_ID }], pubSub: [{ linkedAccountId: LINKED_ACCOUNT_ID }] } }) { integrations { id name } errors { message } } }"
+    "query": "mutation { cloudConfigureIntegration(accountId: YOUR_NR_ACCOUNT_ID, integrations: { gcp: { computeEngine: [{ linkedAccountId: LINKED_ACCOUNT_ID }] } }) { integrations { id name } errors { message } } }"
   }'
 ```
 
 ## Polling Interval Configuration
 
-By default, New Relic polls GCP metrics every 5 minutes. For critical services, you can reduce this to 1 minute, though this increases API calls and may affect your Cloud Monitoring quota.
+New Relic polls most GCP integrations every 5 minutes, with a 1-minute metric resolution. You can change the polling interval for supported integrations, for example to poll less often and reduce API usage.
 
 ```bash
 # Update polling interval for a specific integration
@@ -89,20 +81,20 @@ curl -X POST 'https://api.newrelic.com/graphql' \
   -H 'Content-Type: application/json' \
   -H 'API-Key: YOUR_NEWRELIC_USER_API_KEY' \
   -d '{
-    "query": "mutation { cloudConfigureIntegration(accountId: YOUR_NR_ACCOUNT_ID, integrations: { gcp: { computeEngine: [{ linkedAccountId: LINKED_ACCOUNT_ID, metricsPollingInterval: 60 }] } }) { integrations { id } } }"
+    "query": "mutation { cloudConfigureIntegration(accountId: YOUR_NR_ACCOUNT_ID, integrations: { gcp: { computeEngine: [{ linkedAccountId: LINKED_ACCOUNT_ID, metricsPollingInterval: 600 }] } }) { integrations { id } errors { message } } }"
   }'
 ```
 
 ## Sending GCP Logs to New Relic
 
-For log ingestion, route logs from Cloud Logging to New Relic using a Pub/Sub-based pipeline.
+For log ingestion, route logs from Cloud Logging to New Relic using a Pub/Sub-based pipeline. Generate a GCP Pub/Sub ingest URL in the New Relic Google Cloud Platform logging setup, then use that generated URL as the push endpoint.
 
 ```bash
 # Create a Pub/Sub topic and subscription for New Relic log forwarding
 gcloud pubsub topics create newrelic-logs --project=my-project
 gcloud pubsub subscriptions create newrelic-logs-sub \
   --topic=newrelic-logs \
-  --push-endpoint="https://newrelic.com/api/logs/pubsub?Api-Key=YOUR_NR_LICENSE_KEY" \
+  --push-endpoint="YOUR_NEW_RELIC_GENERATED_PUBSUB_INGEST_URL" \
   --project=my-project
 
 # Create a log sink that routes application logs to the topic
@@ -119,7 +111,7 @@ gcloud pubsub topics add-iam-policy-binding newrelic-logs \
   --project=my-project
 ```
 
-Alternatively, deploy New Relic's log forwarder as a Cloud Function.
+Alternatively, deploy a small Cloud Function to read from Pub/Sub and forward logs to the New Relic Log API.
 
 ```python
 # main.py
@@ -189,24 +181,23 @@ Once data flows in, you can query it using NRQL.
 
 ```sql
 -- Query Compute Engine CPU utilization across all instances
-SELECT average(cpuUtilization)
-FROM GcpVirtualMachineSample
-WHERE provider = 'GcpVirtualMachine'
-FACET entityName
+SELECT average(`gcp.compute.instance.cpu.utilization`)
+FROM Metric
+FACET entity.name
 SINCE 1 hour ago
 TIMESERIES
 
 -- Query Cloud SQL connections and disk usage
-SELECT average(databaseDiskUtilization), average(databaseNetworkConnections)
-FROM GcpCloudSqlSample
-FACET entityName
+SELECT average(`gcp.cloudsql.database.disk.utilization`), average(`gcp.cloudsql.database.network.connections`)
+FROM Metric
+FACET entity.name
 SINCE 6 hours ago
 TIMESERIES
 
 -- Query Cloud Run request latency
-SELECT percentile(requestLatencies, 50, 95, 99)
-FROM GcpCloudRunRevisionSample
-FACET serviceName
+SELECT percentile(`gcp.run.request_latencies`, 50, 95, 99)
+FROM Metric
+FACET entity.name
 SINCE 1 hour ago
 TIMESERIES
 ```
@@ -217,26 +208,11 @@ Set up New Relic alerts based on GCP metrics.
 
 ```bash
 # Create a NRQL alert condition for high Cloud SQL CPU
-curl -X POST "https://api.newrelic.com/v2/alerts_nrql_conditions/policies/POLICY_ID.json" \
-  -H "Api-Key: YOUR_NR_API_KEY" \
+curl -X POST "https://api.newrelic.com/graphql" \
+  -H "Api-Key: YOUR_NEWRELIC_USER_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "nrql_condition": {
-      "name": "High Cloud SQL CPU",
-      "type": "static",
-      "enabled": true,
-      "terms": [{
-        "threshold": 80,
-        "operator": "above",
-        "duration": 5,
-        "time_function": "all",
-        "priority": "critical"
-      }],
-      "nrql": {
-        "query": "SELECT average(databaseCpuUtilization) FROM GcpCloudSqlSample WHERE provider = '\''GcpCloudSql'\'' FACET entityName"
-      },
-      "value_function": "single_value"
-    }
+    "query": "mutation { alertsNrqlConditionStaticCreate(accountId: YOUR_NR_ACCOUNT_ID, policyId: YOUR_POLICY_ID, condition: { name: \"High Cloud SQL CPU\", enabled: true, nrql: { query: \"SELECT average(`gcp.cloudsql.database.cpu.utilization`) FROM Metric FACET entity.name\" }, signal: { aggregationWindow: 60, aggregationMethod: EVENT_FLOW, aggregationDelay: 120 }, terms: { threshold: 0.8, operator: ABOVE, thresholdDuration: 300, thresholdOccurrences: ALL, priority: CRITICAL }, valueFunction: SINGLE_VALUE, violationTimeLimitSeconds: 86400 }) { id name } }"
   }'
 ```
 
@@ -244,7 +220,7 @@ curl -X POST "https://api.newrelic.com/v2/alerts_nrql_conditions/policies/POLICY
 
 New Relic charges based on data ingested. Be selective about what you send.
 
-Use tag-based filtering when configuring the integration to exclude development or staging projects. For logs, use specific log filters in your sink rather than sending everything.
+Use the available data collection and filtering settings when configuring the integration to limit what is collected. For logs, use specific log filters in your sink rather than sending everything.
 
 ```bash
 # Only send production logs, not debug or info level
