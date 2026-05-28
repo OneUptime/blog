@@ -16,7 +16,7 @@ This is the recommended approach for migrating Azure VMs to GCE, especially when
 
 The service works by:
 
-1. Connecting to your Azure environment through a source connector
+1. Connecting to your Azure environment through an Azure source configured with an app registration and service principal permissions
 2. Creating a replication stream that continuously copies VM disk data to GCP
 3. Running test clones to validate the migration before cutover
 4. Performing the final cutover with a brief downtime window
@@ -24,7 +24,7 @@ The service works by:
 ```mermaid
 graph LR
     A[Azure VM] -->|Continuous Replication| B[Migrate to VMs Service]
-    B -->|Writes| C[GCE Disk Snapshots]
+    B -->|Stores replicated data| C[Google Cloud Migration Storage]
     C -->|Cutover| D[GCE VM Instance]
     B -->|Test Clone| E[Test GCE VM]
 ```
@@ -39,6 +39,9 @@ Before starting, make sure you have the required access and your environment is 
 gcloud services enable vmmigration.googleapis.com
 gcloud services enable compute.googleapis.com
 gcloud services enable servicemanagement.googleapis.com
+gcloud services enable servicecontrol.googleapis.com
+gcloud services enable iam.googleapis.com
+gcloud services enable cloudresourcemanager.googleapis.com
 
 # Create a VPC network for migrated VMs (if you do not already have one)
 gcloud compute networks create migration-vpc \
@@ -51,20 +54,48 @@ gcloud compute networks subnets create migration-subnet \
 ```
 
 On the Azure side, you need:
-- An Azure service principal with read access to the VMs you are migrating
+- An Azure app registration with a client secret
+- A custom Azure role with the permissions required by Migrate to Virtual Machines
 - Network connectivity between Azure and GCP (or public internet access for the replication stream)
 
 ```bash
 # Create an Azure service principal for the migration
 az ad sp create-for-rbac \
-  --name "gcp-migrate-sp" \
-  --role "Reader" \
-  --scopes /subscriptions/YOUR_SUBSCRIPTION_ID
+  --name "gcp-migrate-sp"
 
-# Also grant Disk Snapshot Contributor for disk access
+# Create the custom role definition that Migrate to Virtual Machines requires
+cat > m2vm-role.json <<'EOF'
+{
+  "Name": "Minimum M2VM permissions role",
+  "IsCustom": true,
+  "Description": "Minimum Azure IAM permissions for Migrate to Virtual Machines",
+  "Actions": [
+    "Microsoft.Resources/subscriptions/resourceGroups/write",
+    "Microsoft.Resources/subscriptions/resourceGroups/read",
+    "Microsoft.Resources/subscriptions/resourceGroups/delete",
+    "Microsoft.Compute/virtualMachines/read",
+    "Microsoft.Compute/virtualMachines/write",
+    "Microsoft.Compute/virtualMachines/deallocate/action",
+    "Microsoft.Compute/disks/read",
+    "Microsoft.Compute/snapshots/delete",
+    "Microsoft.Compute/snapshots/write",
+    "Microsoft.Compute/snapshots/beginGetAccess/action",
+    "Microsoft.Compute/snapshots/read",
+    "Microsoft.Compute/snapshots/endGetAccess/action"
+  ],
+  "NotActions": [],
+  "AssignableScopes": [
+    "/subscriptions/YOUR_SUBSCRIPTION_ID"
+  ]
+}
+EOF
+
+az role definition create --role-definition m2vm-role.json
+
+# Assign the custom role to the service principal
 az role assignment create \
   --assignee APP_ID \
-  --role "Disk Snapshot Contributor" \
+  --role "Minimum M2VM permissions role" \
   --scope /subscriptions/YOUR_SUBSCRIPTION_ID
 ```
 
@@ -72,38 +103,17 @@ az role assignment create \
 
 Set up the connection between Migrate to Virtual Machines and your Azure environment.
 
-```bash
-# Create a source (Azure) in the Migrate to VMs service
-gcloud migration vms sources create azure-source \
-  --location=us-central1 \
-  --azure \
-  --azure-tenant-id=YOUR_TENANT_ID \
-  --azure-subscription-id=YOUR_SUBSCRIPTION_ID \
-  --azure-client-id=YOUR_CLIENT_ID \
-  --azure-client-secret=YOUR_CLIENT_SECRET \
-  --azure-resource-group=my-azure-rg
-```
+In the Google Cloud console, open Migrate to Virtual Machines, select Sources, and choose Add Azure source. Enter the source name, Google Cloud region, Azure location, subscription ID, tenant ID, client ID, and client secret from the Azure app registration.
 
 Verify the source connection:
 
-```bash
-# List configured sources
-gcloud migration vms sources list --location=us-central1
-
-# Get source details
-gcloud migration vms sources describe azure-source --location=us-central1
-```
+Wait until the source status is Active. The inventory for that source shows Azure VMs from the Azure location you selected.
 
 ## Step 3: Inventory Azure VMs
 
 List the VMs available for migration through the source connection.
 
 ```bash
-# List Azure VMs available for migration
-gcloud migration vms sources migrating-vms list \
-  --source=azure-source \
-  --location=us-central1
-
 # On the Azure side, document your VMs
 az vm list \
   --resource-group my-azure-rg \
@@ -130,25 +140,9 @@ Map Azure VM sizes to GCE machine types:
 
 ## Step 4: Start Replication
 
-Create migrating VMs to begin continuous replication.
+Create a migration and begin continuous replication. In the Migrate to Virtual Machines console, select the Azure source, select the VM, and choose Add Migrations > VM Migration. After the VM appears on the Migrations tab with a Ready status, choose Migration > Start Replication.
 
-```bash
-# Start replication for a specific VM
-gcloud migration vms migrating-vms create my-web-server \
-  --source=azure-source \
-  --location=us-central1 \
-  --azure-source-vm-id=/subscriptions/SUB_ID/resourceGroups/my-rg/providers/Microsoft.Compute/virtualMachines/my-web-server \
-  --target-project=my-gcp-project \
-  --target-zone=us-central1-a \
-  --target-machine-type=e2-standard-4 \
-  --target-network=migration-vpc \
-  --target-subnet=migration-subnet
-
-# Monitor replication progress
-gcloud migration vms migrating-vms describe my-web-server \
-  --source=azure-source \
-  --location=us-central1
-```
+Configure the target details for the migrated VM, including the target project, zone, machine type, VPC network, and subnet. Migrate to Virtual Machines uses those target details when it creates test-clone and cut-over instances.
 
 The initial replication takes time depending on disk size and network bandwidth. Subsequent replication cycles only transfer changed blocks.
 
@@ -156,19 +150,7 @@ The initial replication takes time depending on disk size and network bandwidth.
 
 Before the actual cutover, create a test clone to validate the VM works correctly on GCE.
 
-```bash
-# Create a test clone of the migrating VM
-gcloud migration vms migrating-vms clone-jobs create \
-  --migrating-vm=my-web-server \
-  --source=azure-source \
-  --location=us-central1
-
-# List clone jobs
-gcloud migration vms migrating-vms clone-jobs list \
-  --migrating-vm=my-web-server \
-  --source=azure-source \
-  --location=us-central1
-```
+In the Migrate to Virtual Machines console, select the migration after the first replication cycle completes, then choose Cut-Over and Test-Clone > Test-Clone. Wait until the Test-Clone/Cut-Over status shows that the test clone succeeded.
 
 Once the test clone is created, verify it:
 
@@ -233,19 +215,7 @@ gcloud dns record-sets update my-server.example.com \
 
 When you are ready for the final migration:
 
-```bash
-# Perform the cutover (this stops the Azure VM and does a final sync)
-gcloud migration vms migrating-vms cutover-jobs create \
-  --migrating-vm=my-web-server \
-  --source=azure-source \
-  --location=us-central1
-
-# Monitor cutover progress
-gcloud migration vms migrating-vms cutover-jobs list \
-  --migrating-vm=my-web-server \
-  --source=azure-source \
-  --location=us-central1
-```
+In the Migrate to Virtual Machines console, select the VM and choose Cut-Over and Test-Clone > Cut-Over. Cutover shuts down the Azure VM, performs a final data replication, creates the Compute Engine instance from the final replicated data, and stops replication. Wait until the Test-Clone/Cut-Over status shows that the cutover completed.
 
 After the cutover completes:
 
@@ -277,10 +247,8 @@ gcloud compute instances add-access-config my-web-server \
 After the cutover, finalize the migration.
 
 ```bash
-# Install the Google Cloud guest agent (if not already installed)
-gcloud compute instances add-metadata my-web-server \
-  --zone=us-central1-a \
-  --metadata=enable-guest-attributes=TRUE
+# Enable Cloud Logging and Cloud Monitoring APIs before installing the Ops Agent
+gcloud services enable logging.googleapis.com monitoring.googleapis.com
 
 # Set up OS Login for SSH access
 gcloud compute instances add-metadata my-web-server \
@@ -297,12 +265,9 @@ gcloud compute resource-policies create snapshot-schedule daily-backup \
 gcloud compute disks add-resource-policies my-web-server \
   --zone=us-central1-a \
   --resource-policies=daily-backup
-
-# Set up monitoring
-gcloud compute instances add-metadata my-web-server \
-  --zone=us-central1-a \
-  --metadata=google-monitoring-enable=1
 ```
+
+Finalize the migration in the Migrate to Virtual Machines console after you no longer need the retained replication data. Finalizing deletes the replication data and other storage resources associated with the migration.
 
 Remove Azure-specific agents and install GCP equivalents:
 
@@ -315,32 +280,20 @@ sudo apt-get remove walinuxagent  # Ubuntu/Debian
 # or
 sudo yum remove WALinuxAgent  # RHEL/CentOS
 
-# The Google guest agent should be installed automatically
-# Verify it is running
+# Verify that the Google guest agent is running
 sudo systemctl status google-guest-agent
+
+# Install the Ops Agent for Cloud Monitoring and Cloud Logging
+curl -sSO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
+sudo bash add-google-cloud-ops-agent-repo.sh --also-install
+
+# Verify that the Ops Agent is running
+sudo systemctl status google-cloud-ops-agent
 ```
 
 ## Batch Migration
 
-For migrating multiple VMs, script the process:
-
-```bash
-# Batch start replication for multiple VMs
-VMS=("web-server-1" "web-server-2" "api-server-1" "db-server-1")
-
-for vm in "${VMS[@]}"; do
-  echo "Starting replication for $vm..."
-  gcloud migration vms migrating-vms create "$vm" \
-    --source=azure-source \
-    --location=us-central1 \
-    --azure-source-vm-id="/subscriptions/SUB_ID/resourceGroups/my-rg/providers/Microsoft.Compute/virtualMachines/$vm" \
-    --target-project=my-gcp-project \
-    --target-zone=us-central1-a \
-    --target-machine-type=e2-standard-4 \
-    --target-network=migration-vpc \
-    --target-subnet=migration-subnet
-done
-```
+For migrating multiple VMs, select multiple source VMs in the Migrate to Virtual Machines console and add them as migrations. You can also organize related VMs into migration groups, configure their target details, start replication, create test clones, and cut over the group during the same maintenance window.
 
 ## Summary
 
