@@ -8,29 +8,29 @@ Description: Learn how to compare Cloud Profiler flame graphs across different t
 
 ---
 
-Deploying a new version of your service and hoping it did not get slower is not a strategy. Cloud Profiler's comparison feature lets you put two profiles side by side and see exactly which functions got slower, faster, or stayed the same. This turns performance regression detection from guesswork into a data-driven process.
+Deploying a new version of your service and hoping it did not get slower is not a strategy. Cloud Profiler's comparison feature lets you compare two profiles in a diff flame graph and see exactly which functions got slower, faster, or stayed the same. This turns performance regression detection from guesswork into a data-driven process.
 
 I use profile comparisons after every significant deployment. It takes about 2 minutes and has caught regressions that would have otherwise gone unnoticed for weeks.
 
 ## How Profile Comparison Works
 
-Cloud Profiler aggregates many short profiles (collected continuously) into a single flame graph for a given time period. When you compare two time periods, it calculates the difference in CPU time (or wall time, or heap usage) for every function and highlights the changes.
+Cloud Profiler selects matching profiles for the configured service, version, zone, metric, and time range and builds a flame graph from those profiles. When you compare two profiles, it shows the difference in CPU time, wall time, heap usage, or another selected profile metric for every function and highlights the changes.
 
-Functions that consume more resources in the second period show up in a warm color (red/orange). Functions that consume fewer resources show up in a cool color (blue/green). Functions that stayed roughly the same appear neutral.
+Functions that consume more resources in the original profile than in the compared profile show up in red. Functions that consume fewer resources in the original profile than in the compared profile show up in blue. Functions with little or no difference appear gray.
 
 ## Step 1: Compare Before and After a Deployment
 
 Open **Profiler** in the Cloud Console and select your service. Then:
 
 1. Set the time range to cover the period after your deployment
-2. Click the **Compare to** dropdown
-3. Select a time range covering the period before your deployment
+2. Click the **Compare to** dropdown and select **End date/time**
+3. Select a compared end time so the same-length time range covers the period before your deployment
 
 Cloud Profiler will render a diff flame graph showing what changed.
 
 ### What to Look For
 
-- **New red/orange bars**: Functions that got slower. These are potential regressions.
+- **New red bars**: Functions that got slower. These are potential regressions.
 - **New bars that did not exist before**: New code paths introduced by the deployment.
 - **Functions that disappeared**: Code paths that were removed or no longer triggered.
 - **Shifted proportions**: A function that was 5% of CPU before but is now 15%.
@@ -60,10 +60,11 @@ googlecloudprofiler.start(
 For Java applications:
 
 ```dockerfile
-# Pass the version as an environment variable to the profiler agent
-ENTRYPOINT ["java", \
-  "-agentpath:/opt/cprof/profiler_java_agent=-cprof_service=my-service,-cprof_service_version=${APP_VERSION}", \
-  "-jar", "/app/app.jar"]
+# Pass the version as an environment variable to the profiler agent.
+# The shell form expands APP_VERSION before starting Java.
+ENTRYPOINT exec java \
+  "-agentpath:/opt/cprof/profiler_java_agent.so=-cprof_service=my-service,-cprof_service_version=${APP_VERSION}" \
+  -jar /app/app.jar
 ```
 
 In your CI/CD pipeline, set the version based on your deployment identifier.
@@ -104,30 +105,61 @@ A completely new hot function that did not exist before. This is often a new fea
 
 ## Automating Regression Detection
 
-You can automate profile comparison using the Cloud Profiler API. Here is a script that fetches profiles for two time periods and compares them.
+You can automate part of the workflow using the Cloud Profiler API. The API lets you export raw profiles with `ListProfiles`; it does not provide the same server-side diff flame graph that the console renders. Here is a script that fetches profiles and does a quick sanity check on profile counts for two versions.
 
 ```python
-# compare_profiles.py - Automated profile comparison
-from google.cloud import profiler_v2
-from datetime import datetime, timedelta
+# compare_profiles.py - Automated profile export sanity check
+from datetime import datetime, timedelta, timezone
+
+import google.auth
+from google.auth.transport.requests import AuthorizedSession
 
 
 def get_profile_data(project_id, service, version, hours_back):
-    """Fetch aggregated profile data for a service version."""
-    client = profiler_v2.ProfilerServiceClient()
-
-    end_time = datetime.utcnow()
-    start_time = end_time - timedelta(hours=hours_back)
-
-    # List profiles for the given service and version
-    profiles = client.list_profiles(
-        request={
-            "parent": f"projects/{project_id}",
-            "filter": f'service="{service}" AND version="{version}"',
-        }
+    """Fetch raw profile metadata for a service version."""
+    credentials, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
     )
+    session = AuthorizedSession(credentials)
 
-    return list(profiles)
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(hours=hours_back)
+    url = f"https://cloudprofiler.googleapis.com/v2/projects/{project_id}/profiles"
+
+    profiles = []
+    page_token = None
+
+    while True:
+        params = {"pageSize": 1000}
+        if page_token:
+            params["pageToken"] = page_token
+
+        response = session.get(url, params=params, timeout=60)
+        response.raise_for_status()
+        payload = response.json()
+
+        for profile in payload.get("profiles", []):
+            deployment = profile.get("deployment", {})
+            labels = {
+                **deployment.get("labels", {}),
+                **profile.get("labels", {}),
+            }
+            start = datetime.fromisoformat(
+                profile["startTime"].replace("Z", "+00:00")
+            )
+
+            if (
+                deployment.get("target") == service
+                and labels.get("version") == version
+                and start >= start_time
+            ):
+                profiles.append(profile)
+
+        page_token = payload.get("nextPageToken")
+        if not page_token:
+            break
+
+    return profiles
 
 
 def compare_versions(project_id, service, old_version, new_version):
@@ -140,8 +172,8 @@ def compare_versions(project_id, service, old_version, new_version):
     print(f"Old version profiles: {len(old_profiles)}")
     print(f"New version profiles: {len(new_profiles)}")
 
-    # Note: Detailed profile analysis requires parsing the profile proto
-    # For a quick check, compare the number and types of profiles collected
+    # Note: Detailed analysis requires parsing the profileBytes pprof proto.
+    # For a quick check, compare the number of profiles collected.
     if len(new_profiles) < len(old_profiles) * 0.5:
         print("WARNING: Significantly fewer profiles in new version")
         print("This might indicate startup issues or crashes")
@@ -165,10 +197,9 @@ gcloud monitoring policies create \
   --display-name="CPU Regression After Deploy" \
   --condition-display-name="CPU utilization spike" \
   --condition-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/container/cpu/utilizations"' \
-  --condition-threshold-value=0.8 \
-  --condition-threshold-duration=600s \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-aggregation='{"alignmentPeriod":"300s","perSeriesAligner":"ALIGN_PERCENTILE_95"}'
+  --if='> 0.8' \
+  --duration=600s \
+  --aggregation='{"alignmentPeriod":"300s","perSeriesAligner":"ALIGN_PERCENTILE_95"}'
 ```
 
 ## Comparison Workflow for Deployments
