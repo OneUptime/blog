@@ -25,7 +25,7 @@ Idle instances are the buffer between fast responses and waiting for cold starts
 
 ## Understanding min_idle_instances
 
-The `min_idle_instances` setting tells App Engine the minimum number of instances to keep warm at all times, even when there is zero traffic:
+The `min_idle_instances` setting tells App Engine how many additional instances to keep warm and ready to serve traffic. This is in addition to the number of instances App Engine calculates are needed for current traffic:
 
 ```yaml
 # app.yaml - Keep at least 2 instances warm at all times
@@ -34,9 +34,9 @@ automatic_scaling:
   min_idle_instances: 2
 ```
 
-When you set `min_idle_instances: 2`, App Engine guarantees that at least two instances are always running and ready to handle requests. Even at 3 AM when nobody is using your application, those two instances stay warm.
+When you set `min_idle_instances: 2`, App Engine keeps two extra instances running and ready to handle requests for a version that is receiving traffic. Even at 3 AM when nobody is using your application, those two instances stay warm. For this setting to work properly, enable and handle warmup requests.
 
-Setting this to 0 allows App Engine to scale all the way down to zero instances during idle periods:
+Setting this to 0 means App Engine does not keep extra idle instances beyond the instances it calculates are needed for current traffic. With the default minimum instance count, this allows App Engine to scale all the way down to zero instances during idle periods:
 
 ```yaml
 # app.yaml - Allow scaling to zero (saves money, adds cold start latency)
@@ -66,7 +66,7 @@ automatic_scaling:
   max_idle_instances: 1
 ```
 
-Setting `max_idle_instances: 1` means App Engine will aggressively shut down idle instances, keeping at most one. This saves money but means the next traffic spike will trigger more cold starts.
+Setting `max_idle_instances: 1` means App Engine will aggressively shut down idle instances, usually keeping at most one once it settles after a spike. The number of idle instances can temporarily exceed your maximum while load returns to normal, but App Engine does not charge for idle instances beyond the configured maximum. This saves money but means the next traffic spike will trigger more cold starts.
 
 ## Configuration Scenarios
 
@@ -77,14 +77,14 @@ For a production API where latency matters and you have steady traffic:
 ```yaml
 # High-availability API configuration
 automatic_scaling:
-  min_idle_instances: 3      # Always have 3 instances ready
+  min_idle_instances: 3      # Always have 3 extra instances ready
   max_idle_instances: 5      # Keep up to 5 after spikes
   min_pending_latency: 30ms  # React quickly to load increases
   max_pending_latency: automatic
   target_cpu_utilization: 0.6
 ```
 
-This costs more but ensures that the first few concurrent requests always hit warm instances. The latency is predictable and consistent.
+This costs more but helps ensure that the first few concurrent requests hit warm instances. The latency is more predictable and consistent.
 
 For an internal tool used during business hours:
 
@@ -115,7 +115,7 @@ For a high-traffic consumer application:
 ```yaml
 # Consumer app - fast responses are critical
 automatic_scaling:
-  min_idle_instances: 5      # Large buffer for instant responses
+  min_idle_instances: 5      # Large extra buffer for instant responses
   max_idle_instances: 10     # Generous buffer after spikes
   min_pending_latency: automatic
   max_pending_latency: 30ms  # Start new instances quickly
@@ -123,11 +123,11 @@ automatic_scaling:
   max_concurrent_requests: 30
 ```
 
-Here you are trading money for speed. Five minimum idle instances means the first five concurrent requests never see a cold start.
+Here you are trading money for speed. Five minimum idle instances means the first five concurrent requests can usually be served by warm instances instead of waiting for a cold start.
 
 ## Calculating Costs
 
-Idle instances cost the same as active instances - you pay for the instance hours whether the instance is processing requests or sitting idle. Here is a rough calculation:
+Idle instances cost the same as active instances within your configured limits after the free tier - you pay for the instance hours whether the instance is processing requests or sitting idle. Here is a rough calculation using Iowa (`us-central1`) pricing after the free tier:
 
 ```text
 F1 instance: ~$0.05 per hour
@@ -143,7 +143,7 @@ Compare to min_idle_instances: 0
   Trade-off: cold starts on first requests
 ```
 
-For context, two F1 idle instances running 24/7 cost about $73 per month. That is the price of eliminating cold starts. Whether that is worth it depends on your application and users.
+For context, two F1 idle instances running 24/7 cost about $73 per month before accounting for the daily free tier. That is the price of reducing cold starts. Whether that is worth it depends on your application and users.
 
 ## Using max_instances as a Safety Net
 
@@ -159,7 +159,7 @@ automatic_scaling:
   max_concurrent_requests: 50
 ```
 
-The `max_instances` setting prevents runaway scaling. If you get hit with a DDoS attack or a traffic spike larger than expected, App Engine will not scale beyond 15 instances. Requests beyond that capacity will queue or receive 503 errors, but your bill stays predictable.
+The `max_instances` setting prevents runaway scaling. If you get hit with a DDoS attack or a traffic spike larger than expected, App Engine will not scale beyond 15 instances. For new App Engine standard projects created after March 2025, the default maximum is 20 instances unless you override it. Requests beyond your configured capacity can queue until pending request limits are reached or fail, but your bill stays predictable.
 
 ## Monitoring and Tuning
 
@@ -194,7 +194,7 @@ automatic_scaling:
 
 `min_pending_latency` prevents App Engine from being too aggressive about spinning up instances. If a request can be served by an existing instance that finishes its current request within 30ms, there is no need to start a new one.
 
-`max_pending_latency` is the upper bound. If a request has been waiting in the queue for 100ms and no instance is available, App Engine will definitely start a new one.
+`max_pending_latency` is the upper bound. If a request has been waiting in the queue for 100ms and no instance is available, App Engine will try to start a new one.
 
 ## Summary
 
