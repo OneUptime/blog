@@ -10,7 +10,9 @@ Description: A practical guide to setting up feature monitoring and anomaly dete
 
 Features that looked perfect during training can degrade silently in production. A column that was always populated starts returning nulls. A numerical feature that ranged between 0 and 100 suddenly spikes to 10,000. If you are not monitoring your features, these problems go undetected until your model's predictions start failing.
 
-Vertex AI Feature Store includes monitoring capabilities that let you define expected distributions, set anomaly thresholds, and receive alerts when something goes wrong. This guide covers how to set that up from scratch.
+Vertex AI Feature Store (Legacy) includes monitoring capabilities that let you define monitoring intervals, set anomaly thresholds, and write anomaly logs when something goes wrong. This guide covers how to set that up from scratch.
+
+Note: this guide uses Vertex AI Feature Store (Legacy), which Google has deprecated. For new projects, use Vertex AI Feature Store with feature groups and feature monitors.
 
 ## The Problem with Unmonitored Features
 
@@ -20,83 +22,91 @@ Feature monitoring catches these kinds of issues by comparing current feature di
 
 ## Setting Up a Feature Store with Monitoring
 
-Start by creating a feature store and defining your features with monitoring enabled.
+Start by creating a feature store and defining your entity type with monitoring enabled.
 
-This code sets up a feature store with a feature group that has monitoring configured:
+This code sets up a feature store with an entity type that has monitoring configured:
 
 ```python
 from google.cloud import aiplatform
-from google.cloud.aiplatform_v1 import FeaturestoreServiceClient
-from google.cloud.aiplatform_v1.types import featurestore as featurestore_pb2
+from google.api_core.client_options import ClientOptions
+from google.cloud import aiplatform_v1
 
 # Initialize the client
-
 aiplatform.init(project="your-project-id", location="us-central1")
 
 # Create a Feature Store
 feature_store = aiplatform.Featurestore.create(
     featurestore_id="user_features_store",
-    online_serving_config=aiplatform.Featurestore.OnlineServingConfig(
-        fixed_node_count=1
-    )
+    online_store_fixed_node_count=1
 )
 
-# Create an entity type for users
-user_entity = feature_store.create_entity_type(
+featurestore_service_client = aiplatform_v1.FeaturestoreServiceClient(
+    client_options=ClientOptions(api_endpoint="us-central1-aiplatform.googleapis.com")
+)
+
+featurestore_name = feature_store.resource_name
+
+# Create an entity type for users and enable daily snapshot monitoring
+monitoring_config = aiplatform_v1.FeaturestoreMonitoringConfig(
+    snapshot_analysis=aiplatform_v1.FeaturestoreMonitoringConfig.SnapshotAnalysis(
+        monitoring_interval_days=1,
+        staleness_days=21,
+    ),
+    numerical_threshold_config=aiplatform_v1.FeaturestoreMonitoringConfig.ThresholdConfig(
+        value=0.3
+    ),
+    categorical_threshold_config=aiplatform_v1.FeaturestoreMonitoringConfig.ThresholdConfig(
+        value=0.2
+    ),
+)
+
+operation = featurestore_service_client.create_entity_type(
+    parent=featurestore_name,
     entity_type_id="users",
-    description="User behavioral features"
+    entity_type=aiplatform_v1.EntityType(
+        description="User behavioral features",
+        monitoring_config=monitoring_config,
+    ),
 )
+user_entity = operation.result()
 
-# Create features with monitoring thresholds
-user_entity.batch_create_features(
-    feature_configs={
-        "avg_session_duration": {
-            "value_type": "DOUBLE",
-            "description": "Average session duration in minutes",
-            "monitoring_config": {
-                "snapshot_analysis": {
-                    "monitoring_interval_days": 1  # Check daily
-                },
-                "numerical_threshold_config": {
-                    "value": 0.3  # Alert if distribution shift > 0.3
-                }
-            }
-        },
-        "purchase_count_30d": {
-            "value_type": "INT64",
-            "description": "Number of purchases in last 30 days",
-            "monitoring_config": {
-                "snapshot_analysis": {
-                    "monitoring_interval_days": 1
-                },
-                "numerical_threshold_config": {
-                    "value": 0.25
-                }
-            }
-        },
-        "preferred_category": {
-            "value_type": "STRING",
-            "description": "Most frequently browsed product category",
-            "monitoring_config": {
-                "snapshot_analysis": {
-                    "monitoring_interval_days": 1
-                },
-                "categorical_threshold_config": {
-                    "value": 0.2  # Alert if category distribution shifts > 0.2
-                }
-            }
-        }
-    }
+# Create features. They inherit monitoring from the entity type.
+operation = featurestore_service_client.batch_create_features(
+    parent=user_entity.name,
+    requests=[
+        aiplatform_v1.CreateFeatureRequest(
+            feature_id="avg_session_duration",
+            feature=aiplatform_v1.Feature(
+                value_type=aiplatform_v1.Feature.ValueType.DOUBLE,
+                description="Average session duration in minutes",
+            ),
+        ),
+        aiplatform_v1.CreateFeatureRequest(
+            feature_id="purchase_count_30d",
+            feature=aiplatform_v1.Feature(
+                value_type=aiplatform_v1.Feature.ValueType.INT64,
+                description="Number of purchases in last 30 days",
+            ),
+        ),
+        aiplatform_v1.CreateFeatureRequest(
+            feature_id="preferred_category",
+            feature=aiplatform_v1.Feature(
+                value_type=aiplatform_v1.Feature.ValueType.STRING,
+                description="Most frequently browsed product category",
+            ),
+        ),
+    ],
 )
+operation.result()
 ```
 
-The monitoring configuration specifies how often to check (snapshot interval) and how much drift is acceptable before raising an alert. The threshold values are based on statistical distance measures - for numerical features, it uses Jensen-Shannon divergence, and for categorical features, it uses L-infinity distance.
+The monitoring configuration specifies how often to check (snapshot interval), how far back each snapshot should look, and how much drift is acceptable before an anomaly is logged. The threshold values are based on statistical distance measures - for numerical features, it uses Jensen-Shannon divergence, and for categorical features, it uses L-infinity distance.
 
 ## Configuring Monitoring Alerts
 
-Feature monitoring is only useful if someone gets notified when anomalies are detected. You can set up Cloud Monitoring alerts that trigger when drift exceeds your thresholds.
+Feature monitoring is only useful if someone gets notified when anomalies are detected. Vertex AI Feature Store (Legacy) writes feature anomaly entries to Cloud Logging, so you can set up a log-based Cloud Monitoring alert.
 
-This code creates a monitoring alert policy for feature drift:
+This code creates a monitoring alert policy for feature anomaly logs:
 
 ```python
 from google.cloud import monitoring_v3
@@ -105,30 +115,28 @@ from google.cloud import monitoring_v3
 client = monitoring_v3.AlertPolicyServiceClient()
 project_name = f"projects/your-project-id"
 
-# Define the alert policy for feature drift
+# Define the alert policy for Feature Store anomaly logs
 alert_policy = monitoring_v3.AlertPolicy(
     display_name="Vertex AI Feature Drift Alert",
+    combiner=monitoring_v3.AlertPolicy.ConditionCombinerType.OR,
     conditions=[
         monitoring_v3.AlertPolicy.Condition(
             display_name="Feature distribution anomaly detected",
-            condition_threshold=monitoring_v3.AlertPolicy.Condition.MetricThreshold(
-                filter='resource.type="aiplatform.googleapis.com/Featurestore" '
-                       'AND metric.type="aiplatform.googleapis.com/featurestore/'
-                       'feature_value_distribution_distance"',
-                comparison=monitoring_v3.ComparisonType.COMPARISON_GT,
-                threshold_value=0.3,
-                duration={"seconds": 0},
-                aggregations=[
-                    monitoring_v3.Aggregation(
-                        alignment_period={"seconds": 3600},
-                        per_series_aligner=monitoring_v3.Aggregation.Aligner.ALIGN_MAX
-                    )
-                ]
+            condition_matched_log=monitoring_v3.AlertPolicy.Condition.LogMatch(
+                filter=(
+                    'resource.type="aiplatform.googleapis.com/Featurestore"\n'
+                    'logName="projects/your-project-id/logs/'
+                    'aiplatform.googleapis.com%2Ffeaturestore_log"\n'
+                    'jsonPayload.objective=~"Featurestore Monitoring.*Anomaly"'
+                )
             )
         )
     ],
     notification_channels=["projects/your-project-id/notificationChannels/YOUR_CHANNEL_ID"],
     alert_strategy=monitoring_v3.AlertPolicy.AlertStrategy(
+        notification_rate_limit=monitoring_v3.AlertPolicy.AlertStrategy.NotificationRateLimit(
+            period={"seconds": 300}  # Notify at most once every 5 minutes
+        ),
         auto_close={"seconds": 86400}  # Auto-close after 24 hours
     )
 )
@@ -141,11 +149,11 @@ created_policy = client.create_alert_policy(
 print(f"Alert policy created: {created_policy.name}")
 ```
 
-## Ingesting Features with Baseline Distribution
+## Ingesting Features for Monitoring
 
-For monitoring to work effectively, you need to establish a baseline distribution. This is typically the distribution of your features at the time your model was trained.
+For monitoring to work effectively, you need feature values in the store before monitoring runs. Snapshot drift detection compares current statistics with statistics from a previous monitoring run, while training-serving skew detection compares production values with a training-data baseline.
 
-This code ingests feature values and snapshots the baseline:
+This code ingests feature values that the monitoring job can use when it creates its first statistics:
 
 ```python
 import pandas as pd
@@ -153,8 +161,8 @@ from google.cloud import aiplatform
 
 aiplatform.init(project="your-project-id", location="us-central1")
 
-# Load your training data as the baseline
-baseline_df = pd.DataFrame({
+# Load feature values
+features_df = pd.DataFrame({
     "entity_id": ["user_001", "user_002", "user_003", "user_004", "user_005"],
     "avg_session_duration": [15.2, 42.7, 8.1, 67.3, 23.9],
     "purchase_count_30d": [3, 12, 0, 8, 5],
@@ -168,15 +176,15 @@ baseline_df = pd.DataFrame({
 feature_store = aiplatform.Featurestore("user_features_store")
 user_entity = feature_store.get_entity_type("users")
 
-# Ingest baseline features from a DataFrame
+# Ingest feature values from a DataFrame
 user_entity.ingest_from_df(
     feature_ids=["avg_session_duration", "purchase_count_30d", "preferred_category"],
     feature_time="feature_timestamp",
-    df_source=baseline_df,
+    df_source=features_df,
     entity_id_field="entity_id"
 )
 
-print("Baseline features ingested successfully")
+print("Feature values ingested successfully")
 ```
 
 ## Building a Custom Anomaly Detection Pipeline
@@ -186,15 +194,14 @@ While the built-in monitoring handles distribution drift, you might want more so
 This code implements a custom anomaly detection job using statistical methods:
 
 ```python
-import numpy as np
-from google.cloud import aiplatform, bigquery
+from google.cloud import bigquery
 
 def detect_feature_anomalies(project_id, feature_store_id, entity_type_id):
     """
     Detect anomalies in feature values using IQR method.
     Returns a list of anomalous entities and features.
     """
-    # Query recent feature values from BigQuery offline store
+    # Query recent feature values from a BigQuery export or source table
     bq_client = bigquery.Client(project=project_id)
 
     query = f"""
@@ -203,7 +210,7 @@ def detect_feature_anomalies(project_id, feature_store_id, entity_type_id):
         avg_session_duration,
         purchase_count_30d,
         feature_timestamp
-    FROM `{project_id}.{feature_store_id}.{entity_type_id}`
+    FROM `{project_id}.feature_monitoring_exports.{feature_store_id}_{entity_type_id}_recent`
     WHERE feature_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
     """
 
@@ -223,7 +230,9 @@ def detect_feature_anomalies(project_id, feature_store_id, entity_type_id):
         upper_bound = q3 + 3 * iqr
 
         # Find outliers
-        outlier_mask = (values < lower_bound) | (values > upper_bound)
+        outlier_mask = df[feature].notna() & (
+            (df[feature] < lower_bound) | (df[feature] > upper_bound)
+        )
         outlier_entities = df.loc[outlier_mask, "entity_id"].tolist()
 
         if outlier_entities:
@@ -327,6 +336,6 @@ Choosing the right threshold values takes experimentation. Start with conservati
 
 Monitor the monitoring itself. If your scheduled anomaly detection jobs stop running, you will not get alerts. Set up a separate heartbeat check that verifies your monitoring pipeline is operational.
 
-Keep your baseline distributions up to date. When you retrain your model on new data, update the baseline to reflect the new training distribution. Stale baselines lead to alert fatigue as the natural data distribution evolves.
+Keep your training-serving skew baselines up to date. When you retrain your model on new data, update the baseline to reflect the new training distribution. Stale baselines lead to alert fatigue as the natural data distribution evolves.
 
 Feature monitoring is not a substitute for model monitoring, but it complements it well. A feature anomaly can explain why model performance degraded, and catching it at the feature level gives you more time to react before end users notice the impact.
