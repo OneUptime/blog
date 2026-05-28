@@ -27,8 +27,8 @@ Without folders, you end up granting permissions on a per-project basis, which d
 
 Before designing your hierarchy, know the constraints:
 
-- Maximum folder depth: 10 levels (Organization counts as level 0)
-- Maximum folders per parent: No hard limit, but keep it manageable
+- Maximum folder depth: You can nest folders up to 10 levels deep
+- Maximum folders per parent: 300 direct child folders
 - A project can only belong to one parent (folder or organization)
 - Folders can be nested within folders or directly under the organization
 
@@ -160,7 +160,7 @@ gcloud resource-manager folders create \
 PROD_FOLDER=$(gcloud resource-manager folders list \
   --organization=ORGANIZATION_ID \
   --filter="displayName:Production" \
-  --format="value(name)" | head -1)
+  --format="value(name)" | sed 's|^folders/||' | head -1)
 
 # Create team folders under Production
 for TEAM in backend frontend data platform; do
@@ -173,7 +173,7 @@ done
 NON_PROD_FOLDER=$(gcloud resource-manager folders list \
   --organization=ORGANIZATION_ID \
   --filter="displayName:Non-Production" \
-  --format="value(name)" | head -1)
+  --format="value(name)" | sed 's|^folders/||' | head -1)
 
 # Create team folders under Non-Production
 for TEAM in backend frontend data platform; do
@@ -189,7 +189,7 @@ done
 SHARED_FOLDER=$(gcloud resource-manager folders list \
   --organization=ORGANIZATION_ID \
   --filter="displayName:Shared Services" \
-  --format="value(name)" | head -1)
+  --format="value(name)" | sed 's|^folders/||' | head -1)
 
 for SERVICE in networking security monitoring logging; do
   gcloud resource-manager folders create \
@@ -237,7 +237,7 @@ gcloud resource-manager folders add-iam-policy-binding $NON_PROD_FOLDER \
 BACKEND_PROD_FOLDER=$(gcloud resource-manager folders list \
   --folder=$PROD_FOLDER \
   --filter="displayName:backend" \
-  --format="value(name)" | head -1)
+  --format="value(name)" | sed 's|^folders/||' | head -1)
 
 gcloud resource-manager folders add-iam-policy-binding $BACKEND_PROD_FOLDER \
   --member="group:backend-team@example.com" \
@@ -280,10 +280,18 @@ listPolicy:
 
 ### Disable External IPs in Production
 
+```yaml
+# production-external-ip-policy.yaml
+# Prevent all Compute Engine VMs from using external IPs in production
+constraint: constraints/compute.vmExternalIpAccess
+listPolicy:
+  allValues: DENY
+```
+
 ```bash
 # Prevent VMs with external IPs in production
-gcloud resource-manager org-policies enable-enforce \
-  compute.vmExternalIpAccess \
+gcloud resource-manager org-policies set-policy \
+  production-external-ip-policy.yaml \
   --folder=$PROD_FOLDER
 ```
 
