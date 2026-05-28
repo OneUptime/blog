@@ -27,7 +27,7 @@ gcloud sql instances patch my-instance \
 ```
 
 The configuration options:
-- `query-string-length`: How much of the query text to capture (up to 4500)
+- `query-string-length`: How much of the query text to capture, in bytes (up to 4500 for Enterprise edition, with higher limits available on Enterprise Plus)
 - `record-application-tags`: Track which part of your application is generating queries
 - `record-client-address`: Track which clients are sending queries
 - `query-plans-per-minute`: How many query execution plans to capture per minute
@@ -46,13 +46,15 @@ The most important view is "Database load over time", which shows your total que
 
 ## Identifying the Worst Offenders
 
-You can also query the insights data programmatically:
+You can also query related database statistics programmatically:
 
 ### For PostgreSQL
 
 ```sql
--- Enable pg_stat_statements if not already enabled (requires restart)
--- This is typically enabled by default on Cloud SQL
+-- Enable pg_stat_statements in the current database if it is not already installed.
+-- If pg_stat_statements is not loaded by the instance, enabling it requires
+-- a shared_preload_libraries change and an instance restart.
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
 -- Find the top 20 slowest queries by total execution time
 SELECT
@@ -236,10 +238,11 @@ For PostgreSQL with SQLAlchemy:
 ```python
 from sqlalchemy import event
 
-@event.listens_for(engine, "before_cursor_execute")
+@event.listens_for(engine, "before_cursor_execute", retval=True)
 def add_application_tag(conn, cursor, statement, parameters, context, executemany):
-    # Add a SQL comment that Query Insights will capture as an application tag
-    cursor.execute(f"/* application=order_service,action=get_orders */ {statement}", parameters)
+    # Add a sqlcommenter tag that Query Insights can capture.
+    statement = f"{statement} /*application='order_service',action='get_orders'*/"
+    return statement, parameters
 ```
 
 ## Continuous Monitoring
