@@ -14,7 +14,7 @@ When an alert fires at 2 AM, the last thing you want is to bounce between three 
 
 Here is what a typical incident investigation looks like without correlation: you get an alert about high error rates, switch to the logs console, search for errors, find a stack trace, wonder which request triggered it, switch to traces, search by time range, find a slow trace, wonder if it is related to the error, switch back to metrics to see if the pattern matches. It takes forever and you are never sure you are looking at the right data.
 
-With proper correlation, the workflow becomes: alert fires, click through to the relevant traces from the metric chart, click through to the logs from the trace. Three clicks and you have the full picture.
+With proper correlation, the workflow becomes: alert fires, use the metric chart to identify the time window, jump to the relevant traces, then click through to the logs from the trace. A few clicks and you have the full picture.
 
 ## The Correlation Model
 
@@ -93,21 +93,18 @@ def setup_logging(project_id):
     root_logger.setLevel(logging.INFO)
 ```
 
-## Step 2: Enable Metric Exemplars
+## Step 2: Record Histogram Metrics with Exemplars
 
-Exemplars are the bridge from metrics to traces. When you record a metric data point, you can attach the trace ID of the request that generated it. This lets you click from a metric chart directly to a specific trace.
+Exemplars are the bridge from metrics to traces. In Cloud Monitoring, exemplars can be attached to distribution-valued metrics, such as histograms. When OpenTelemetry records a histogram measurement in the context of a sampled span and exports it to Google Cloud, the exemplar can include a link back to the trace.
 
 ```python
 # metrics_with_exemplars.py - Record metrics with trace exemplars
 
-from opentelemetry import metrics, trace
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry import metrics
 
 meter = metrics.get_meter("my-service")
 
 # Create a histogram for request duration
-
 request_duration = meter.create_histogram(
     name="http.server.request.duration",
     description="HTTP request duration",
@@ -115,8 +112,9 @@ request_duration = meter.create_histogram(
 )
 
 def record_request_metrics(method, path, status_code, duration_ms):
-    """Record request metrics. The current span context is automatically
-    attached as an exemplar by the OpenTelemetry SDK."""
+    """Record request metrics inside the current request span.
+    Configure your MeterProvider/exporter separately so metrics are sent
+    to Cloud Monitoring."""
     request_duration.record(
         duration_ms,
         attributes={
@@ -143,11 +141,29 @@ cat > investigation-dashboard.json << 'EOF'
         "width": 6,
         "height": 4,
         "widget": {
-          "title": "Error Rate (click for exemplar traces)",
+          "title": "5xx Error Ratio",
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
-                "timeSeriesQueryLanguage": "{ fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count | filter metric.response_code_class = 500 | group_by [], sum(val()) | every 1m ; fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count | group_by [], sum(val()) | every 1m } | ratio | mul(100)"
+                "timeSeriesFilterRatio": {
+                  "numerator": {
+                    "filter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" resource.type=\"https_lb_rule\" metric.labels.\"response_code_class\"=\"500\"",
+                    "aggregation": {
+                      "alignmentPeriod": "60s",
+                      "perSeriesAligner": "ALIGN_RATE",
+                      "crossSeriesReducer": "REDUCE_SUM"
+                    }
+                  },
+                  "denominator": {
+                    "filter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" resource.type=\"https_lb_rule\"",
+                    "aggregation": {
+                      "alignmentPeriod": "60s",
+                      "perSeriesAligner": "ALIGN_RATE",
+                      "crossSeriesReducer": "REDUCE_SUM"
+                    }
+                  }
+                },
+                "unitOverride": "1"
               },
               "plotType": "LINE"
             }]
@@ -159,11 +175,19 @@ cat > investigation-dashboard.json << 'EOF'
         "width": 6,
         "height": 4,
         "widget": {
-          "title": "P95 Latency (click for slow traces)",
+          "title": "P95 Latency",
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
-                "timeSeriesQueryLanguage": "fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies | group_by [resource.url_map_name], percentile(val(), 95) | every 1m"
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"loadbalancing.googleapis.com/https/total_latencies\" resource.type=\"https_lb_rule\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_PERCENTILE_95",
+                    "crossSeriesReducer": "REDUCE_MEAN",
+                    "groupByFields": ["resource.label.\"url_map_name\""]
+                  }
+                }
               },
               "plotType": "LINE"
             }]
@@ -187,11 +211,19 @@ cat > investigation-dashboard.json << 'EOF'
         "width": 12,
         "height": 4,
         "widget": {
-          "title": "Recent Traces (sorted by latency)",
+          "title": "P99 Backend Latency by Backend",
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
-                "timeSeriesQueryLanguage": "fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies | group_by [resource.backend_target_name], percentile(val(), 99) | every 1m"
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"loadbalancing.googleapis.com/https/backend_latencies\" resource.type=\"https_lb_rule\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_PERCENTILE_99",
+                    "crossSeriesReducer": "REDUCE_MEAN",
+                    "groupByFields": ["resource.label.\"backend_target_name\""]
+                  }
+                }
               },
               "plotType": "LINE"
             }]
@@ -214,8 +246,8 @@ Here is the step-by-step workflow to follow when an incident occurs.
 flowchart TD
     A[Alert: Error Rate Spike] --> B[Open Investigation Dashboard]
     B --> C[Identify the time range of the spike]
-    C --> D[Click on error rate metric at spike time]
-    D --> E[View exemplar traces from that time period]
+    C --> D[Use the spike time as the trace search window]
+    D --> E[Open matching traces from that time period]
     E --> F[Select a representative error trace]
     F --> G[Examine trace waterfall - find the failing span]
     G --> H[Click 'View Logs' on the trace]
@@ -259,18 +291,16 @@ trace="projects/my-gcp-project/traces/abc123def456789"
 severity>=ERROR
 timestamp>="2026-02-17T10:00:00Z"
 timestamp<="2026-02-17T10:30:00Z"
-labels."logging.googleapis.com/trace"!=""
+trace:*
 ```
 
-Use MQL to query metrics that correlate with specific time periods identified in traces.
+Use a Cloud Monitoring filter to query metrics that correlate with specific time periods identified in traces. MQL still works through the Cloud Monitoring API, but Google no longer recommends it for new charts and dashboards.
 
 ```text
-# Find the error rate during the time window of a specific trace
-fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count
-| filter metric.response_code_class = 500
-| group_by [resource.backend_target_name], rate(val())
-| every 1m
-| within 30m, d'2026/02/17 10:00'
+# Numerator for a 5xx error ratio during the selected time window
+metric.type="loadbalancing.googleapis.com/https/request_count"
+resource.type="https_lb_rule"
+metric.labels."response_code_class"="500"
 ```
 
 ## Practical Tips
