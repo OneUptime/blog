@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Run, Cloud SQL, Serverless, Database Connectivity
 
-Description: Learn how to securely connect a Cloud Run service to a Cloud SQL instance using the built-in Cloud SQL connector and the Cloud SQL Auth Proxy.
+Description: Learn how to securely connect a Cloud Run service to a Cloud SQL instance using the built-in Cloud SQL integration and Cloud SQL language connectors.
 
 ---
 
@@ -25,7 +25,7 @@ This approach:
 
 - Handles authentication automatically using the service's IAM identity
 - Encrypts the connection without you managing SSL certificates
-- Works with both public and private IP instances
+- Works with public IP instances; private IP instances require Direct VPC egress or a Serverless VPC Access connector
 
 ## Step 1: Set Up IAM Permissions
 
@@ -93,6 +93,7 @@ Your application connects via the Unix socket. Here are examples for common lang
 import os
 from flask import Flask
 from sqlalchemy import create_engine
+from sqlalchemy import text
 
 app = Flask(__name__)
 
@@ -120,7 +121,7 @@ engine = get_db_connection()
 @app.route("/")
 def index():
     with engine.connect() as conn:
-        result = conn.execute("SELECT 1")
+        result = conn.execute(text("SELECT 1"))
         return "Database connected!"
 ```
 
@@ -241,7 +242,7 @@ engine = sqlalchemy.create_engine(
 ### Java Cloud SQL Connector
 
 ```java
-// build.gradle: implementation 'com.google.cloud.sql:postgres-socket-factory:1.14.0'
+// build.gradle: implementation 'com.google.cloud.sql:postgres-socket-factory:1.27.0'
 
 // Application properties for Spring Boot
 // spring.datasource.url=jdbc:postgresql:///mydb?cloudSqlInstance=my-project:us-central1:my-instance&socketFactory=com.google.cloud.sql.postgres.SocketFactory
@@ -266,7 +267,7 @@ Manage this by:
 ```bash
 # Check max connections for your instance tier
 gcloud sql instances describe my-instance \
-    --format="json(settings.tier)"
+    --format="json(settings.tier,settings.databaseFlags)"
 ```
 
 You can also set the `max_connections` flag:
@@ -277,26 +278,20 @@ gcloud sql instances patch my-instance \
     --database-flags=max_connections=500
 ```
 
-## Using Private IP (VPC Connector)
+## Using Private IP (VPC Egress)
 
-For Cloud Run to connect to a Cloud SQL instance with private IP, you need a VPC connector:
+For Cloud Run to connect to a Cloud SQL instance with private IP, use Direct VPC egress or a Serverless VPC Access connector, then connect to the instance's private IP address on port `5432`:
 
 ```bash
-# Create a Serverless VPC Access connector
-gcloud compute networks vpc-access connectors create my-connector \
-    --region=us-central1 \
-    --subnet=my-subnet \
-    --min-instances=2 \
-    --max-instances=10
-
-# Deploy Cloud Run service with VPC connector
+# Deploy Cloud Run service with Direct VPC egress
 gcloud run deploy my-service \
     --image=gcr.io/my-project/my-app:latest \
     --region=us-central1 \
-    --add-cloudsql-instances=my-project:us-central1:my-instance \
-    --vpc-connector=my-connector \
+    --network=default \
+    --subnet=my-subnet \
+    --vpc-egress=private-ranges-only \
     --service-account=my-cloudrun-sa@my-project.iam.gserviceaccount.com \
-    --set-env-vars="DB_HOST=/cloudsql/my-project:us-central1:my-instance,DB_USER=myapp,DB_PASS=password,DB_NAME=mydb"
+    --set-env-vars="DB_HOST=10.10.0.3,DB_USER=myapp,DB_PASS=password,DB_NAME=mydb"
 ```
 
 ## Storing Credentials Securely
@@ -348,4 +343,4 @@ If you hit the Cloud SQL connection limit:
 
 ## Summary
 
-Connecting Cloud Run to Cloud SQL is well-supported through the built-in Unix socket integration. Use the `--add-cloudsql-instances` flag when deploying, configure your application to connect via the socket path, keep connection pool sizes small, and store credentials in Secret Manager. For private IP instances, add a VPC connector. The language-specific Cloud SQL connectors are worth using for their built-in authentication and encryption handling.
+Connecting Cloud Run to Cloud SQL is well-supported through the built-in Unix socket integration. Use the `--add-cloudsql-instances` flag when deploying, configure your application to connect via the socket path, keep connection pool sizes small, and store credentials in Secret Manager. For private IP instances, use Direct VPC egress or a VPC connector. The language-specific Cloud SQL connectors are worth using for their built-in authentication and encryption handling.
