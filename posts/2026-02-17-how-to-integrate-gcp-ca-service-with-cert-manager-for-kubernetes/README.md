@@ -42,14 +42,11 @@ If you do not have cert-manager installed yet:
 ```bash
 # Install cert-manager using Helm
 
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
-helm install cert-manager jetstack/cert-manager \
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.20.2 \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true \
-  --version v1.14.0
+  --set crds.enabled=true
 ```
 
 Verify it is running:
@@ -65,18 +62,18 @@ The google-cas-issuer is an external issuer for cert-manager that integrates wit
 
 ```bash
 # Install google-cas-issuer using Helm
-helm repo add jetstack https://charts.jetstack.io
-
-helm install google-cas-issuer jetstack/google-cas-issuer \
+helm install cert-manager-google-cas-issuer \
+  oci://quay.io/jetstack/charts/cert-manager-google-cas-issuer \
   --namespace cert-manager \
-  --version v0.8.0
+  --version v0.11.0 \
+  --wait
 ```
 
-Or install from the release manifests:
+Or install from the release manifests for a release that publishes static manifests:
 
 ```bash
 # Install google-cas-issuer from GitHub releases
-kubectl apply -f https://github.com/jetstack/google-cas-issuer/releases/download/v0.8.0/google-cas-issuer-v0.8.0.yaml
+kubectl apply -f https://github.com/cert-manager/google-cas-issuer/releases/download/v0.8.0/google-cas-issuer-v0.8.0.yaml
 ```
 
 ## Step 3: Configure GCP Authentication
@@ -100,13 +97,14 @@ gcloud privateca pools add-iam-policy-binding subordinate-ca-pool \
 gcloud iam service-accounts add-iam-policy-binding \
   cert-manager-cas@PROJECT_ID.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
-  --member="serviceAccount:PROJECT_ID.svc.id.goog[cert-manager/ksa-google-cas-issuer]" \
+  --member="serviceAccount:PROJECT_ID.svc.id.goog[cert-manager/cert-manager-google-cas-issuer]" \
   --project=PROJECT_ID
 
 # Annotate the Kubernetes service account
-kubectl annotate serviceaccount ksa-google-cas-issuer \
+kubectl annotate serviceaccount cert-manager-google-cas-issuer \
   --namespace=cert-manager \
-  iam.gke.io/gcp-service-account=cert-manager-cas@PROJECT_ID.iam.gserviceaccount.com
+  iam.gke.io/gcp-service-account=cert-manager-cas@PROJECT_ID.iam.gserviceaccount.com \
+  --overwrite
 ```
 
 If you are not using Workload Identity, you can use a service account key:
@@ -278,7 +276,9 @@ metadata:
   name: api-ingress
   namespace: my-app
   annotations:
-    cert-manager.io/cluster-issuer: cas-cluster-issuer
+    cert-manager.io/issuer: cas-cluster-issuer
+    cert-manager.io/issuer-kind: GoogleCASClusterIssuer
+    cert-manager.io/issuer-group: cas-issuer.jetstack.io
 spec:
   tls:
     - hosts:
@@ -297,7 +297,7 @@ spec:
                   number: 8443
 ```
 
-With the annotation `cert-manager.io/cluster-issuer`, cert-manager automatically creates a Certificate resource and provisions the TLS secret.
+With these annotations, cert-manager automatically creates a Certificate resource and provisions the TLS secret with the external GoogleCASClusterIssuer.
 
 ## Step 7: Issue mTLS Client Certificates
 
@@ -376,7 +376,7 @@ kubectl describe certificaterequest -n my-app
 
 ```bash
 # Check issuer pod logs
-kubectl logs -n cert-manager -l app=google-cas-issuer
+kubectl logs -n cert-manager -l app.kubernetes.io/name=cert-manager-google-cas-issuer
 ```
 
 **Workload Identity not working**: Make sure the annotation on the Kubernetes service account is correct and the GCP IAM binding is in place.
