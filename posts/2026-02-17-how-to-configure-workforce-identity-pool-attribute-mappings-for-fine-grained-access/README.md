@@ -8,7 +8,7 @@ Description: A detailed guide to configuring workforce identity pool attribute m
 
 ---
 
-Workforce Identity Federation lets your organization's employees access Google Cloud resources using their existing corporate identity provider (IdP) - like Okta, Azure AD, or Ping Identity - without creating Google accounts. The key to making this work well is attribute mappings: the rules that translate claims from your IdP's tokens into Google Cloud attributes that IAM policies can reference.
+Workforce Identity Federation lets your organization's employees access Google Cloud resources using their existing corporate identity provider (IdP) - like Okta, Azure AD, or Ping Identity - without creating Google accounts. The key to making this work well is attribute mappings: the rules that translate claims from your IdP's tokens into Google Cloud attributes, some of which IAM policies can reference.
 
 Getting attribute mappings right means the difference between broad, overly permissive access and tight, role-specific permissions. This guide walks through configuring these mappings for real-world access control scenarios.
 
@@ -50,6 +50,8 @@ gcloud iam workforce-pools providers create-oidc my-okta-provider \
     --location=global \
     --issuer-uri="https://mycompany.okta.com" \
     --client-id="0oa1234567890abcdef" \
+    --web-sso-response-type="id-token" \
+    --web-sso-assertion-claims-behavior="only-id-token-claims" \
     --attribute-mapping="google.subject=assertion.sub,google.groups=assertion.groups,google.display_name=assertion.name" \
     --attribute-condition="assertion.email_verified == true"
 ```
@@ -61,14 +63,14 @@ The `--attribute-mapping` flag is where the magic happens. Let me break it down.
 Attribute mappings use Common Expression Language (CEL) to transform IdP token claims into Google Cloud attributes. The format is:
 
 ```text
-google.attribute=CEL_expression_on_assertion
+target_attribute=CEL_expression_on_assertion
 ```
 
-The `assertion` object represents the incoming token from your IdP. The `google` object represents the target Google Cloud attributes.
+The `assertion` object represents the incoming token from your IdP. Mapping keys that start with `google.` represent predefined Google Cloud attributes.
 
 ### Required Mapping: google.subject
 
-Every workforce identity pool must map `google.subject`. This is the unique identifier for the user:
+Every workforce identity pool provider must map `google.subject`. This is the unique identifier for the user:
 
 ```bash
 # Map the IdP's subject claim to Google's subject
@@ -78,11 +80,11 @@ google.subject=assertion.sub
 
 ### Custom Attribute Mappings
 
-You can map up to 50 custom attributes. These attributes can then be used in IAM conditions:
+You can map up to 50 custom attributes. These attributes can then be used in IAM allow policies through `principalSet` member identifiers:
 
 ```bash
 # Map department, team, and role from IdP claims
-# These custom attributes can be referenced in IAM policies
+# These custom attributes can be referenced in IAM allow policies
 --attribute-mapping="\
 google.subject=assertion.sub,\
 google.groups=assertion.groups,\
@@ -102,7 +104,7 @@ CEL expressions let you transform and combine claims. Here are practical example
 ```bash
 # Extract the email domain to use as an attribute
 # Useful for multi-tenant setups
-attribute.email_domain=assertion.email.extract('{domain_part}@{email_domain}')
+attribute.email_domain=assertion.email.split('@')[1]
 ```
 
 ### Conditional Mapping
@@ -139,7 +141,7 @@ gcloud iam workforce-pools providers create-oidc corporate-okta \
     --client-id="0oa1234567890abcdef" \
     --client-secret-value="client-secret-here" \
     --web-sso-response-type=code \
-    --web-sso-assertion-claims-behavior=ONLY_ID_TOKEN_CLAIMS \
+    --web-sso-assertion-claims-behavior=only-id-token-claims \
     --attribute-mapping="\
 google.subject=assertion.sub,\
 google.groups=assertion.groups,\
@@ -158,7 +160,7 @@ The `--attribute-condition` acts as a gate. Only tokens that satisfy this condit
 
 ## Using Mapped Attributes in IAM Policies
 
-Once attributes are mapped, use them in IAM bindings with conditions:
+Once attributes are mapped, use them in IAM bindings and optional IAM Conditions:
 
 ```bash
 # Grant viewer access to all workforce users in the engineering department
@@ -223,6 +225,11 @@ resource "google_iam_workforce_pool_provider" "okta" {
   oidc {
     issuer_uri = "https://mycompany.okta.com"
     client_id  = "0oa1234567890abcdef"
+    client_secret {
+      value {
+        plain_text = "client-secret-here"
+      }
+    }
     web_sso_config {
       response_type                 = "CODE"
       assertion_claims_behavior     = "ONLY_ID_TOKEN_CLAIMS"
@@ -247,34 +254,25 @@ resource "google_project_iam_member" "admin_access" {
 
 ## Testing Attribute Mappings
 
-Before rolling out to your entire organization, test the mappings:
+Before rolling out to your entire organization, inspect the saved mappings and test a real sign-in with a pilot user:
 
 ```bash
-# Test the attribute mapping with a sample token
-# This shows how the IdP token would be mapped without actually granting access
+# Verify the provider's configured attribute mapping and condition
 gcloud iam workforce-pools providers describe corporate-okta \
     --workforce-pool=my-corp-pool \
     --location=global \
     --format=yaml
 ```
 
-You can also use the IAM troubleshooter to debug access issues:
-
-```bash
-# Troubleshoot why a specific workforce user cannot access a resource
-gcloud policy-intelligence troubleshoot-policy iam \
-    --principal-email="user@mycompany.com" \
-    --resource-name="//cloudresourcemanager.googleapis.com/projects/my-project" \
-    --permission="compute.instances.list"
-```
+To see how a token is mapped without granting broad access, use the **Debug IdP token** action on the provider details page in the Google Cloud console. For workforce identities, Policy Troubleshooter does not support checking the federated principal directly; inspect the IdP response and Workforce Identity Federation detailed audit logs instead.
 
 ## Common Pitfalls
 
-**Missing claims in tokens.** If your IdP does not include a claim that your mapping references, the mapping fails silently and the attribute is empty. Verify that your IdP is configured to send all the claims you need.
+**Missing claims in tokens.** If your IdP does not include a claim that your mapping references, sign-in can fail, a custom attribute can be unavailable, or an attribute condition can evaluate to false. Verify that your IdP is configured to send all the claims you need.
 
 **Group name mismatches.** IdP group names are case-sensitive in CEL expressions. If Okta sends "GCP-Admins" but your IAM binding references "gcp-admins", it will not match.
 
-**Overly broad attribute conditions.** An attribute condition that is too permissive lets unintended users through. Always include `assertion.email_verified == true` at minimum.
+**Overly broad attribute conditions.** An attribute condition that is too permissive lets unintended users through. Include tenant, issuer, group, or email verification checks that match the claims your IdP actually sends.
 
 **Token size limits.** If your IdP includes too many groups in the token, it might exceed size limits. Configure your IdP to only include relevant GCP groups in the token.
 
