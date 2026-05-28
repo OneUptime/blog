@@ -8,9 +8,9 @@ Description: Learn how to set up the Filestore CSI driver on GKE to create ReadW
 
 ---
 
-Most storage on Kubernetes is ReadWriteOnce - a single pod can mount the volume at a time. That works fine for databases and single-instance applications, but what about workloads where multiple pods need to read and write to the same files? Content management systems, shared configuration, media processing pipelines - these all need ReadWriteMany (RWX) volumes.
+Most storage on Kubernetes is ReadWriteOnce - the volume can be mounted as read-write by a single node. That works fine for databases and single-instance applications, but what about workloads where multiple pods on different nodes need to read and write to the same files? Content management systems, shared configuration, media processing pipelines - these all need ReadWriteMany (RWX) volumes.
 
-Google Cloud Filestore provides NFS-based file storage that integrates with GKE through the Filestore CSI driver. It gives you ReadWriteMany volumes that any number of pods across any number of nodes can mount simultaneously.
+Google Cloud Filestore provides NFS-based file storage that integrates with GKE through the Filestore CSI driver. It gives you ReadWriteMany volumes that multiple pods across multiple nodes can mount simultaneously.
 
 ## Enabling the Filestore CSI Driver
 
@@ -103,7 +103,7 @@ spec:
   storageClassName: filestore-standard
   resources:
     requests:
-      # Minimum size for BASIC_HDD is 1Ti, for BASIC_SSD is 2.5Ti
+      # Minimum size for BASIC_HDD is 100Gi on supported GKE versions; BASIC_SSD is 2.5Ti
       storage: 1Ti
 ```
 
@@ -281,13 +281,13 @@ Filestore performance depends on the tier and capacity:
 - ENTERPRISE: Regional availability, snapshots, higher performance
 - ZONAL: High performance for demanding workloads
 
-The minimum size for BASIC_HDD is 1 TiB, and for BASIC_SSD it is 2.5 TiB. These minimums mean Filestore is not economical for small volumes - it is designed for workloads that genuinely need shared storage at scale.
+The minimum size for BASIC_HDD is 100 GiB on supported GKE versions, though instances below 1 TiB still consume 1 TiB of quota. For BASIC_SSD, the minimum size is 2.5 TiB. These minimums mean Filestore is not economical for very small volumes - it is designed for workloads that genuinely need shared storage at scale.
 
-Performance scales with capacity. A 1 TiB BASIC_HDD instance gives you around 100 MiB/s throughput, while a 10 TiB instance gives you roughly 1,200 MiB/s. Choose your capacity based on both storage needs and performance requirements.
+BASIC_HDD performance is fixed at about 100 MiB/s throughput from 1 TiB up to 10 TiB, then increases to about 180 MiB/s read and 120 MiB/s write throughput above 10 TiB. BASIC_SSD performance is fixed at about 1,200 MiB/s read and 350 MiB/s write throughput. Choose your tier and capacity based on both storage needs and performance requirements.
 
 ## Cost Optimization
 
-Since the minimum size is 1 TiB, you want to make good use of that space. Consider sharing a single Filestore instance across multiple workloads using subdirectories:
+Since Filestore has large minimum sizes and quota requirements compared with typical disk volumes, you want to make good use of that space. Consider sharing a single Filestore instance across multiple workloads using subdirectories:
 
 ```yaml
 # deployment-a.yaml - First workload using a subdirectory
@@ -321,6 +321,6 @@ Common issues include the Filestore API not being enabled, insufficient quota, o
 gcloud services enable file.googleapis.com
 ```
 
-Also check that the GKE node service account has the `roles/file.editor` role.
+Also check that the identity used by the CSI driver has permissions to create and manage Filestore instances, such as the permissions included in `roles/file.editor`.
 
 Filestore CSI on GKE gives you a straightforward path to ReadWriteMany volumes. The setup is simple, the integration is native, and once it is running, your pods can share files as easily as if they were on the same machine.
