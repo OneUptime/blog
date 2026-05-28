@@ -220,7 +220,7 @@ paths:
 
 ## Accessing JWT Claims in Your Backend
 
-When ESPv2 validates a JWT, it passes the decoded claims to your backend in the `X-Endpoint-API-UserInfo` header (base64-encoded).
+When ESPv2 validates a JWT, it passes the decoded claims to your backend in the `X-Endpoint-API-UserInfo` header (base64url-encoded).
 
 ```python
 # Python Flask example: reading JWT claims from the ESPv2 header
@@ -236,8 +236,9 @@ def protected():
     user_info_header = request.headers.get("X-Endpoint-API-UserInfo", "")
 
     if user_info_header:
-        # Decode the base64-encoded claims
-        claims = json.loads(base64.b64decode(user_info_header))
+        # Decode the base64url-encoded claims
+        padded_header = user_info_header + "=" * (-len(user_info_header) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(padded_header))
         user_email = claims.get("email", "unknown")
         user_id = claims.get("sub", "unknown")
         return f"Hello {user_email} (ID: {user_id})"
