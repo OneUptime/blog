@@ -8,9 +8,9 @@ Description: Learn how to build a progressive delivery pipeline for GKE using Go
 
 ---
 
-Pushing a new version straight to 100% of your production traffic is like jumping off a cliff and hoping the parachute works. Progressive delivery takes a safer approach - you roll out changes incrementally, monitor key metrics at each stage, and automatically roll back if something looks wrong.
+Pushing a new version straight to 100% of your production traffic is like jumping off a cliff and hoping the parachute works. Progressive delivery takes a safer approach - you roll out changes incrementally, monitor key metrics at each stage, and halt the rollout if something looks wrong.
 
-Cloud Deploy is Google's managed continuous delivery service for GKE. Combined with canary deployments, it gives you a pipeline where new versions are gradually promoted through environments, with automated analysis at each step. In this post, I will show you how to build this pipeline from scratch.
+Cloud Deploy is Google's managed continuous delivery service for GKE. Combined with canary deployments, it gives you a pipeline where new versions are gradually promoted through environments, with automated verification at each step. In this post, I will show you how to build this pipeline from scratch.
 
 ## What Is Progressive Delivery?
 
@@ -21,7 +21,7 @@ Progressive delivery extends continuous delivery by adding controlled rollout st
 3. Analyze again for 10 minutes
 4. If still healthy, roll out to 100%
 
-If metrics degrade at any step, the pipeline automatically rolls back.
+If metrics degrade at any step, the pipeline fails the rollout so you can fix forward or roll back to the previous release.
 
 ```mermaid
 graph LR
@@ -112,6 +112,18 @@ manifests:
     - k8s/*.yaml
 deploy:
   kubectl: {}
+verify:
+  - name: canary-metrics
+    container:
+      name: canary-verifier
+      image: gcr.io/my-project/canary-verifier:latest
+      env:
+        - name: SERVICE_NAME
+          value: "my-app-service"
+        - name: CONTAINER_NAME
+          value: "my-app"
+        - name: VERIFY_DURATION
+          value: "600"
 profiles:
   - name: dev
     manifests:
@@ -206,33 +218,22 @@ spec:
 
 ## Step 4: Configure Canary Verification
 
-Cloud Deploy supports a verify phase that runs after each canary step. Create a verification job that checks metrics:
+Cloud Deploy supports a verify phase that runs after each canary step. Because `verify: true` is enabled in the production canary strategy, the `verify` stanza in `skaffold.yaml` tells Cloud Deploy to run this verification container after each canary deploy phase.
 
 ```yaml
-# k8s/verify/verify-job.yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: canary-verify
-  labels:
-    app.kubernetes.io/managed-by: cloud-deploy
-spec:
-  backoffLimit: 0
-  template:
-    spec:
-      containers:
-        - name: verify
-          image: gcr.io/my-project/canary-verifier:latest
-          env:
-            - name: SERVICE_NAME
-              value: "my-app-service"
-            - name: CANARY_PERCENTAGE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.annotations['deploy.cloud.google.com/canary-percentage']
-            - name: VERIFY_DURATION
-              value: "600"
-      restartPolicy: Never
+# skaffold.yaml - verification section
+verify:
+  - name: canary-metrics
+    container:
+      name: canary-verifier
+      image: gcr.io/my-project/canary-verifier:latest
+      env:
+        - name: SERVICE_NAME
+          value: "my-app-service"
+        - name: CONTAINER_NAME
+          value: "my-app"
+        - name: VERIFY_DURATION
+          value: "600"
 ```
 
 Build a verification container that checks metrics from Cloud Monitoring:
@@ -246,8 +247,9 @@ import sys
 import time
 from google.cloud import monitoring_v3
 
-PROJECT_ID = os.environ.get('PROJECT_ID', 'my-project')
+PROJECT_ID = os.environ.get('PROJECT_ID') or os.environ.get('CLOUD_DEPLOY_PROJECT_ID', 'my-project')
 SERVICE_NAME = os.environ.get('SERVICE_NAME', 'my-app-service')
+CONTAINER_NAME = os.environ.get('CONTAINER_NAME', 'my-app')
 VERIFY_DURATION = int(os.environ.get('VERIFY_DURATION', '600'))
 
 # Thresholds for canary verification
@@ -266,7 +268,7 @@ def get_error_rate(client, project_name, duration_minutes=10):
     results = client.list_time_series(
         request={
             'name': project_name,
-            'filter': f'resource.type="k8s_container" AND metric.type="custom.googleapis.com/http/error_rate" AND resource.labels.container_name="{SERVICE_NAME}"',
+            'filter': f'resource.type="k8s_container" AND metric.type="custom.googleapis.com/http/error_rate" AND resource.labels.container_name="{CONTAINER_NAME}"',
             'interval': interval,
             'aggregation': {
                 'alignment_period': {'seconds': 60},
@@ -293,7 +295,7 @@ def get_p99_latency(client, project_name, duration_minutes=10):
     results = client.list_time_series(
         request={
             'name': project_name,
-            'filter': f'resource.type="k8s_container" AND metric.type="custom.googleapis.com/http/latency" AND resource.labels.container_name="{SERVICE_NAME}"',
+            'filter': f'resource.type="k8s_container" AND metric.type="custom.googleapis.com/http/latency" AND resource.labels.container_name="{CONTAINER_NAME}"',
             'interval': interval,
             'aggregation': {
                 'alignment_period': {'seconds': 60},
@@ -358,7 +360,7 @@ With everything configured, create a release and let it flow through the pipelin
 gcloud deploy releases create release-v1-3-0 \
   --delivery-pipeline=my-app-pipeline \
   --region=us-central1 \
-  --images=my-app=gcr.io/my-project/my-app:v1.3.0
+  --images=gcr.io/my-project/my-app=gcr.io/my-project/my-app:v1.3.0
 
 # The release automatically deploys to the first target (dev)
 # Check the status
@@ -416,4 +418,4 @@ gcloud deploy targets rollback production \
 
 Progressive delivery with Cloud Deploy and canary analysis gives you confidence that production deployments will not break things. By rolling out incrementally and verifying metrics at each stage, you catch problems when they only affect 10% of traffic rather than 100%.
 
-The setup takes some effort - defining the pipeline, creating verification jobs, setting up metric collection - but once it is in place, every deployment gets the same rigorous treatment automatically. Your developers push code, and the pipeline handles the rest.
+The setup takes some effort - defining the pipeline, creating verification containers, setting up metric collection - but once it is in place, every deployment gets the same rigorous treatment automatically. Your developers push code, and the pipeline handles the rest.
