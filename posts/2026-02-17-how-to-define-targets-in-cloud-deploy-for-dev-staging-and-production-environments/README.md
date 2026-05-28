@@ -8,7 +8,7 @@ Description: Learn how to define and configure targets in Google Cloud Deploy fo
 
 ---
 
-Google Cloud Deploy is a managed continuous delivery service that handles the progression of your applications through multiple environments. One of the foundational concepts in Cloud Deploy is the "target" - a representation of a deployment destination like a GKE cluster, Cloud Run service, or Anthos cluster. Getting your targets right is critical because they define where your code actually lands.
+Google Cloud Deploy is a managed continuous delivery service that handles the progression of your applications through multiple environments. One of the foundational concepts in Cloud Deploy is the "target" - a representation of a deployment destination like a GKE cluster, Cloud Run region, or GKE attached cluster. Getting your targets right is critical because they define where your code actually lands.
 
 In this guide, I will walk you through defining targets for a typical three-environment setup: dev, staging, and production.
 
@@ -153,7 +153,7 @@ In your `skaffold.yaml`, define profiles that match.
 
 ```yaml
 # skaffold.yaml - Skaffold configuration with environment-specific profiles
-apiVersion: skaffold/v4beta7
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: my-app
@@ -176,7 +176,7 @@ deploy:
 
 ## Multi-Project Target Configuration
 
-In many organizations, dev, staging, and production live in separate GCP projects for isolation. Cloud Deploy supports cross-project targets. You just need to specify the full resource path for the cluster and ensure the service account has permissions in the target project.
+In many organizations, dev, staging, and production live in separate GCP projects for isolation. Cloud Deploy supports cross-project targets. You need to specify the full resource path for the cluster and ensure the execution service account has permissions to deploy to the target project. If the execution service account is also in a different project from your Cloud Deploy resources, you need to enable the cross-project service account organization policy and grant the required `iam.serviceAccounts.actAs` and service account token creation permissions to the Cloud Deploy and Cloud Build service agents.
 
 ```yaml
 # cross-project-prod-target.yaml - Target in a different GCP project
@@ -231,7 +231,7 @@ You can also view the pipeline visualization in the Cloud Deploy section of the 
 
 One mistake I see often is forgetting to set `requireApproval: true` on the production target. Without it, releases can be promoted to production automatically if you have automation rules set up.
 
-Another common issue is service account permissions. The execution service account needs both Cloud Deploy permissions and access to the target cluster. Make sure the service account has the `roles/clouddeploy.jobRunner` role and the `roles/container.developer` role on the target cluster.
+Another common issue is service account permissions. The execution service account needs both Cloud Deploy permissions and access to the target cluster. Make sure the service account has the `roles/clouddeploy.jobRunner` role in the Cloud Deploy project and runtime-specific permissions such as `roles/container.developer` and `roles/iam.serviceAccountUser` for GKE deployments. If you configure a custom artifact storage bucket, the service account also needs permission to access that bucket.
 
 Finally, keep your target names consistent and simple. Names like `dev`, `staging`, and `prod` work well. Avoid putting region or project names in the target name since the target definition already contains that information.
 
