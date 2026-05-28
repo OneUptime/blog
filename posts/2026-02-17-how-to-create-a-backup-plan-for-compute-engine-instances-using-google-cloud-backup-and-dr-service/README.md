@@ -16,10 +16,11 @@ The key concept is the backup plan - a policy that defines what gets backed up, 
 
 Before creating backup plans, make sure you have:
 
-- Google Cloud Backup and DR Service deployed (management console and at least one backup appliance)
+- Backup and DR Service API enabled in the project where the Compute Engine instances are located
 - A backup vault created for storing backup data
 - Compute Engine instances you want to protect
-- The `roles/backupdr.admin` IAM role
+- The required Backup and DR IAM roles, such as `roles/backupdr.backupUser` and `roles/viewer` for configuring scheduled backups
+- Backup vault access granted to the workload project
 
 ## Understanding Backup Plan Components
 
@@ -30,7 +31,7 @@ graph LR
     A[Backup Plan] --> B[Schedule Rules]
     A --> C[Retention Policy]
     A --> D[Backup Vault]
-    A --> E[Resource Selector]
+    A --> E[Backup Plan Associations]
     B --> F[Daily at 2 AM]
     B --> G[Weekly on Sunday]
     C --> H[Keep dailies for 30 days]
@@ -43,7 +44,7 @@ graph LR
 
 **Backup vault** is where the backup data is stored.
 
-**Resource selector** defines which VMs are covered by the plan.
+**Backup plan associations** define which VMs are covered by the plan.
 
 ## Step 1: Create a Backup Plan
 
@@ -58,6 +59,7 @@ gcloud backup-dr backup-plans create production-vm-daily \
     --location=us-central1 \
     --backup-vault=vault-central \
     --resource-type=compute.googleapis.com/Instance \
+    --backup-rule=rule-id=daily-backup,retention-days=30,recurrence=DAILY,time-zone=UTC,backup-window-start=2,backup-window-end=8 \
     --description="Daily backups for production VMs"
 ```
 
@@ -66,50 +68,26 @@ gcloud backup-dr backup-plans create production-vm-daily \
 Add backup rules to the plan that define schedules and retention. You can have multiple rules for different backup frequencies.
 
 ```bash
-# Add a daily backup rule - runs every day at 2 AM UTC
-# Retains backups for 30 days
-gcloud backup-dr backup-plan-associations create daily-rule \
+# Add a weekly backup rule - runs every Sunday at midnight UTC
+# Retains backups for 90 days
+gcloud backup-dr backup-plans update production-vm-daily \
     --project=my-project \
     --location=us-central1 \
-    --backup-plan=production-vm-daily \
-    --resource="projects/my-project/zones/us-central1-a/instances/web-server-1" \
-    --resource-type=compute.googleapis.com/Instance
+    --add-backup-rule=rule-id=weekly-backup,retention-days=90,recurrence=WEEKLY,days-of-week=SUNDAY,time-zone=UTC,backup-window-start=0,backup-window-end=6
 ```
 
-For more complex scheduling needs, you can define the plan through a YAML file:
+For more complex scheduling needs, you can define the plan with multiple backup rules:
 
-```yaml
-# backup-plan-config.yaml
+```bash
 # Comprehensive backup plan with multiple schedules
-backupRules:
-  - ruleId: "daily-backup"
-    backupRetentionDays: 30
-    standardSchedule:
-      recurrenceType: DAILY
-      timeZone: "America/New_York"
-      backupWindow:
-        startHourOfDay: 2   # Start at 2 AM
-        endHourOfDay: 6     # Must complete by 6 AM
-  - ruleId: "weekly-backup"
-    backupRetentionDays: 90
-    standardSchedule:
-      recurrenceType: WEEKLY
-      daysOfWeek:
-        - SUNDAY
-      timeZone: "America/New_York"
-      backupWindow:
-        startHourOfDay: 0   # Start at midnight
-        endHourOfDay: 6
-  - ruleId: "monthly-backup"
-    backupRetentionDays: 365
-    standardSchedule:
-      recurrenceType: MONTHLY
-      daysOfMonth:
-        - 1
-      timeZone: "America/New_York"
-      backupWindow:
-        startHourOfDay: 0
-        endHourOfDay: 8
+gcloud backup-dr backup-plans create production-vm-tiered \
+    --project=my-project \
+    --location=us-central1 \
+    --backup-vault=vault-central \
+    --resource-type=compute.googleapis.com/Instance \
+    --backup-rule=rule-id=daily-backup,retention-days=30,recurrence=DAILY,time-zone=America/New_York,backup-window-start=2,backup-window-end=8 \
+    --backup-rule=rule-id=weekly-backup,retention-days=90,recurrence=WEEKLY,days-of-week=SUNDAY,time-zone=America/New_York,backup-window-start=0,backup-window-end=6 \
+    --backup-rule=rule-id=monthly-backup,retention-days=365,recurrence=MONTHLY,week-day-of-month=FIRST-SUNDAY,time-zone=America/New_York,backup-window-start=0,backup-window-end=6
 ```
 
 ## Step 3: Associate VMs with the Backup Plan
@@ -118,19 +96,29 @@ Now attach your Compute Engine instances to the backup plan. You can do this ind
 
 ```bash
 # Associate a specific VM with the backup plan
+VM_ID=$(gcloud compute instances describe web-server-1 \
+    --project=my-project \
+    --zone=us-central1-a \
+    --format="value(id)")
+
 gcloud backup-dr backup-plan-associations create web-server-1-backup \
     --project=my-project \
-    --location=us-central1-a \
+    --location=us-central1 \
     --backup-plan=projects/my-project/locations/us-central1/backupPlans/production-vm-daily \
-    --resource="projects/my-project/zones/us-central1-a/instances/web-server-1" \
+    --resource="projects/my-project/zones/us-central1-a/instances/${VM_ID}" \
     --resource-type=compute.googleapis.com/Instance
 
 # Associate another VM
+API_VM_ID=$(gcloud compute instances describe api-server-1 \
+    --project=my-project \
+    --zone=us-central1-a \
+    --format="value(id)")
+
 gcloud backup-dr backup-plan-associations create api-server-1-backup \
     --project=my-project \
-    --location=us-central1-a \
+    --location=us-central1 \
     --backup-plan=projects/my-project/locations/us-central1/backupPlans/production-vm-daily \
-    --resource="projects/my-project/zones/us-central1-a/instances/api-server-1" \
+    --resource="projects/my-project/zones/us-central1-a/instances/${API_VM_ID}" \
     --resource-type=compute.googleapis.com/Instance
 ```
 
@@ -154,13 +142,18 @@ INSTANCES=$(gcloud compute instances list \
 # Associate each VM with the backup plan
 while IFS=',' read -r NAME ZONE; do
     ZONE_SHORT=$(basename ${ZONE})
+    VM_ID=$(gcloud compute instances describe "${NAME}" \
+        --project=${PROJECT} \
+        --zone=${ZONE_SHORT} \
+        --format="value(id)")
+
     echo "Associating ${NAME} in ${ZONE_SHORT}..."
 
     gcloud backup-dr backup-plan-associations create "${NAME}-backup" \
         --project=${PROJECT} \
-        --location=${ZONE_SHORT} \
+        --location=${LOCATION} \
         --backup-plan="projects/${PROJECT}/locations/${LOCATION}/backupPlans/${BACKUP_PLAN}" \
-        --resource="projects/${PROJECT}/zones/${ZONE_SHORT}/instances/${NAME}" \
+        --resource="projects/${PROJECT}/zones/${ZONE_SHORT}/instances/${VM_ID}" \
         --resource-type=compute.googleapis.com/Instance
 
 done <<< "${INSTANCES}"
@@ -170,28 +163,22 @@ done <<< "${INSTANCES}"
 
 For VMs running databases or other stateful applications, crash-consistent backups might not be enough. Application-consistent backups ensure the application flushes its buffers and reaches a consistent state before the snapshot is taken.
 
-For Linux VMs, install the backup agent:
+For Linux VMs, enable guest flush on the backup plan:
 
 ```bash
-# SSH into the VM and install the Backup and DR agent
-# This enables application-consistent backups
-gcloud compute ssh web-server-1 --zone=us-central1-a --command="
-    # Download and install the agent
-    curl -sSO https://storage.googleapis.com/backupdr-agent/latest/backupdr-agent-installer.sh
-    sudo bash backupdr-agent-installer.sh --install
-
-    # Verify the agent is running
-    sudo systemctl status backupdr-agent
-"
+# Enable guest flush for Compute Engine backups created by this plan
+gcloud backup-dr backup-plans update production-vm-daily \
+    --project=my-project \
+    --location=us-central1 \
+    --compute-instance-properties=guest-flush=true
 ```
 
-For VMs running specific databases, configure pre and post scripts:
+For VMs running specific databases, configure pre and post snapshot scripts in `/etc/google/snapshots/pre.sh` and `/etc/google/snapshots/post.sh`:
 
 ```bash
 #!/bin/bash
-# pre-backup.sh
+# /etc/google/snapshots/pre.sh
 # Runs before the backup snapshot to ensure database consistency
-# Place this script at /opt/backupdr/scripts/pre-backup.sh on the VM
 
 # For MySQL - flush tables and lock
 mysql -u backup_user -p'password' -e "FLUSH TABLES WITH READ LOCK;"
@@ -204,9 +191,8 @@ echo "Pre-backup script completed successfully"
 
 ```bash
 #!/bin/bash
-# post-backup.sh
+# /etc/google/snapshots/post.sh
 # Runs after the snapshot is taken to release locks
-# Place this script at /opt/backupdr/scripts/post-backup.sh on the VM
 
 # For MySQL - unlock tables
 mysql -u backup_user -p'password' -e "UNLOCK TABLES;"
@@ -219,31 +205,30 @@ echo "Post-backup script completed successfully"
 Keep an eye on your backup jobs to make sure everything is running smoothly:
 
 ```bash
-# List recent backup jobs and their status
-gcloud backup-dr backup-jobs list \
+# List recent backups for a data source
+gcloud backup-dr backups list \
     --project=my-project \
     --location=us-central1 \
-    --filter="state=FAILED" \
+    --backup-vault=vault-central \
+    --data-source=DATA_SOURCE \
     --limit=20
 
-# Get details on a specific backup job
-gcloud backup-dr backup-jobs describe JOB_ID \
+# Get details on a specific backup
+gcloud backup-dr backups describe BACKUP_ID \
     --project=my-project \
-    --location=us-central1
+    --location=us-central1 \
+    --backup-vault=vault-central \
+    --data-source=DATA_SOURCE
 ```
 
-Set up alerting for backup failures:
+Set up alerting for backup failures by using this filter in a Logs Explorer log-based alert. You can test the filter from the CLI first:
 
 ```bash
-# Create an alert policy for failed backup jobs
-gcloud monitoring policies create \
+# Test the Cloud Logging query for failed scheduled backups
+gcloud logging read \
+    'logName:"bdr_backup_restore_jobs" jsonPayload.jobCategory="SCHEDULED_BACKUP" jsonPayload.jobStatus="FAILED"' \
     --project=my-project \
-    --display-name="Backup Job Failure Alert" \
-    --condition-display-name="Backup job failed" \
-    --condition-filter='resource.type="backupdr.googleapis.com/BackupJob" AND metric.type="backupdr.googleapis.com/backup_job/completion_status" AND metric.labels.status="FAILED"' \
-    --notification-channels=CHANNEL_ID \
-    --combiner=OR \
-    --duration=0s
+    --limit=20
 ```
 
 ## Step 6: Test Backup Restores
@@ -253,13 +238,15 @@ A backup is only as good as your ability to restore from it. Test restores regul
 ```bash
 # Restore a VM from a backup to verify data integrity
 # This creates a new VM from the backup, not replacing the original
-gcloud backup-dr backups restore BACKUP_ID \
+gcloud backup-dr backups restore compute BACKUP_ID \
     --project=my-project \
     --location=us-central1 \
-    --target-instance-name=web-server-1-restore-test \
+    --backup-vault=vault-central \
+    --data-source=DATA_SOURCE \
+    --name=web-server-1-restore-test \
+    --target-project=my-project \
     --target-zone=us-central1-b \
-    --target-network=projects/my-project/global/networks/default \
-    --target-subnetwork=projects/my-project/regions/us-central1/subnetworks/default
+    --network-interface=network=projects/my-project/global/networks/default,subnet=projects/my-project/regions/us-central1/subnetworks/default
 ```
 
 After the restore completes, verify the data on the restored VM and then delete it to avoid ongoing costs:
