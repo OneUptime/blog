@@ -22,13 +22,13 @@ Before migrating, understand what is changing:
 | Traffic management | Basic path/host routing | Advanced routing, traffic splitting, header matching |
 | Cloud Armor | Supported | Supported with more features |
 | Cloud CDN | Supported | Supported |
-| Envoy-based | No (GFE-based) | Yes |
+| Envoy-based | No (GFE-based) | Yes (GFE plus Envoy) |
 | URL rewrites | Limited | Full support |
 | Custom headers | Response only | Request and response |
 | Traffic splitting | Not supported | Supported |
 | Fault injection | Not supported | Supported |
 
-The key difference under the hood is that the global external application load balancer uses Envoy as its data plane, which enables all the advanced traffic management features.
+The key difference under the hood is that the global external application load balancer uses Google Front Ends (GFEs) with Envoy-based capabilities, which enables the advanced traffic management features.
 
 ## Migration Strategy Options
 
@@ -141,7 +141,8 @@ You can reuse your existing SSL certificates:
 # Create a new target HTTPS proxy with the new URL map
 gcloud compute target-https-proxies create my-https-proxy-v2 \
     --url-map=my-url-map-v2 \
-    --ssl-certificates=my-ssl-cert
+    --ssl-certificates=my-ssl-cert \
+    --global
 ```
 
 ### Step 5: Reserve a New IP and Create Forwarding Rule
@@ -159,6 +160,7 @@ gcloud compute addresses describe lb-ip-v2 \
 gcloud compute forwarding-rules create my-https-rule-v2 \
     --address=lb-ip-v2 \
     --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
     --target-https-proxy=my-https-proxy-v2 \
     --ports=443
 ```
@@ -169,7 +171,7 @@ Test the new load balancer using the new IP address directly:
 
 ```bash
 # Test using the new IP address (bypass DNS)
-curl -H "Host: app.example.com" https://NEW_IP_ADDRESS/ --resolve app.example.com:443:NEW_IP_ADDRESS
+curl --resolve app.example.com:443:NEW_IP_ADDRESS https://app.example.com/
 
 # Verify health of backends
 gcloud compute backend-services get-health my-backend-v2 --global
@@ -215,45 +217,43 @@ gcloud compute addresses delete lb-ip --global
 
 ## Approach 2: In-Place Update Using Same IP
 
-If you need to keep the same IP address and cannot do a DNS switch, you can do an in-place migration. This requires a brief period where the load balancer is reconfigured:
+If you need to keep the same IP address and cannot do a DNS switch, use Google's in-place migration flow. This changes the load balancing scheme on the existing backend services and forwarding rule after testing traffic through the global external application load balancer infrastructure:
 
 ```bash
-# Step 1: Create new backend services (EXTERNAL_MANAGED)
-gcloud compute backend-services create my-backend-new \
-    --protocol=HTTP \
-    --health-checks=my-health-check \
+# Step 1: Prepare the existing backend service for migration
+gcloud compute backend-services update my-backend \
+    --external-managed-migration-state=PREPARE \
+    --global
+
+# Wait at least six minutes before sending test traffic.
+
+# Step 2: Send a small percentage of traffic through the new infrastructure
+gcloud compute backend-services update my-backend \
+    --external-managed-migration-state=TEST_BY_PERCENTAGE \
+    --external-managed-migration-testing-percentage=10 \
+    --global
+
+# Increase the percentage gradually after testing.
+
+# Step 3: Send all traffic through the new infrastructure
+gcloud compute backend-services update my-backend \
+    --external-managed-migration-state=TEST_ALL_TRAFFIC \
+    --global
+
+# Wait at least six minutes and verify the service.
+
+# Step 4: Change the backend service scheme to EXTERNAL_MANAGED
+gcloud compute backend-services update my-backend \
     --load-balancing-scheme=EXTERNAL_MANAGED \
     --global
 
-gcloud compute backend-services add-backend my-backend-new \
-    --instance-group=my-instance-group \
-    --instance-group-zone=us-central1-a \
-    --global
-
-# Step 2: Create new URL map
-gcloud compute url-maps create my-url-map-new \
-    --default-service=my-backend-new --global
-
-# Step 3: Delete old forwarding rule (brief downtime starts)
-gcloud compute forwarding-rules delete my-https-rule --global
-
-# Step 4: Delete old proxy
-gcloud compute target-https-proxies delete my-https-proxy --global
-
-# Step 5: Create new proxy
-gcloud compute target-https-proxies create my-https-proxy \
-    --url-map=my-url-map-new \
-    --ssl-certificates=my-ssl-cert
-
-# Step 6: Create new forwarding rule with same IP (downtime ends)
-gcloud compute forwarding-rules create my-https-rule \
-    --address=lb-ip \
+# Step 5: Change the forwarding rule scheme to EXTERNAL_MANAGED
+gcloud compute forwarding-rules update my-https-rule \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
     --global \
-    --target-https-proxy=my-https-proxy \
-    --ports=443
 ```
 
-The downtime window is typically just a few seconds between deleting the old forwarding rule and creating the new one.
+Repeat the backend service steps for every backend service attached to the forwarding rule before migrating the forwarding rule. If your URL map uses backend buckets, migrate those through the forwarding rule migration state before changing the forwarding rule scheme.
 
 ## Migration Flow
 
@@ -280,7 +280,7 @@ graph TD
 
 **Logging format**: The log format for EXTERNAL_MANAGED load balancers is slightly different. Update any log-based alerting or dashboards.
 
-**Backend service settings**: Some settings like connection draining timeout, session affinity, and circuit breakers may behave differently. Test thoroughly.
+**Backend service settings**: Some settings like connection draining timeout and session affinity may behave differently. Test thoroughly.
 
 **Timeout defaults**: The default backend timeout may differ. Explicitly set it to match your current configuration.
 
@@ -293,4 +293,4 @@ gcloud compute backend-services update my-backend-v2 \
 
 ## Wrapping Up
 
-Migrating from the classic to the global external application load balancer is mostly a matter of creating parallel resources with the `EXTERNAL_MANAGED` scheme and switching traffic over. The side-by-side approach gives you a safe testing window, while the in-place approach is faster but involves a brief interruption. Either way, plan the migration during a maintenance window, have your rollback plan ready, and monitor closely for the first 24 hours after the switch.
+Migrating from the classic to the global external application load balancer is mostly a matter of creating parallel resources with the `EXTERNAL_MANAGED` scheme and switching traffic over, or updating existing resources through the documented migration states. The side-by-side approach gives you a safe testing window, while the in-place approach lets you keep the same IP address. Either way, plan the migration during a maintenance window, have your rollback plan ready, and monitor closely for the first 24 hours after the switch.
