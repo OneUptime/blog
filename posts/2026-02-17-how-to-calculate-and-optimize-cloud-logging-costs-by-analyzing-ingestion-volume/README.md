@@ -16,11 +16,11 @@ The good news is that Cloud Logging gives you the tools to understand exactly wh
 
 Cloud Logging pricing has three main components:
 
-1. **Ingestion**: You get 50 GiB free per project per month. Beyond that, you pay per GiB ingested. This is usually the biggest cost driver.
-2. **Storage**: Logs stored beyond the default retention period of each bucket incur storage charges per GiB per month.
-3. **Log Analytics queries**: If you have linked buckets to BigQuery, you pay for query processing.
+1. **Logging storage**: You get 50 GiB free per project per month for non-vended logs streamed into the `_Default` bucket and user-defined buckets. Beyond that, you pay per GiB stored. This one-time charge includes up to 30 days of storage and is usually the biggest cost driver.
+2. **Retention**: Logs stored beyond the default retention period of each bucket incur retention charges per GiB per month.
+3. **Log Analytics queries**: There is no additional Cloud Logging charge to query Log Analytics buckets. If you query linked datasets from BigQuery, BigQuery charges can apply.
 
-The `_Required` bucket (Admin Activity audit logs, System Events, Access Transparency logs) does not count toward the free tier and is not charged for ingestion. Everything else goes through the `_Default` sink and counts toward your ingestion volume.
+The `_Required` bucket (Admin Activity audit logs, System Event audit logs, Access Transparency logs, and a few other required audit logs) does not count toward the free tier and is not charged for storage or retention. Most other logs go through the `_Default` sink unless you change your routing, and logs stored in `_Default` or user-defined buckets count toward billable volume. Vended network logs such as VPC Flow Logs use separate pricing and do not receive the 50 GiB free allotment.
 
 ## Step 1: Find Your Current Ingestion Volume
 
@@ -33,36 +33,50 @@ For a programmatic approach, you can query the ingestion metrics directly.
 ```bash
 # Get log ingestion volume by resource type for the last 7 days
 
-gcloud monitoring time-series list \
-  --filter='metric.type = "logging.googleapis.com/billing/bytes_ingested"' \
-  --interval-start-time=$(date -u -v-7d +%Y-%m-%dT%H:%M:%SZ) \
-  --format=json | \
-  jq -r '.[] | "\(.resource.labels.resource_container) - \(.metric.labels.log) - \(.points[0].value.int64Value) bytes"' | \
-  sort -t'-' -k3 -rn | head -20
+PROJECT_ID=$(gcloud config get-value project)
+START=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --get "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/timeSeries" \
+  --data-urlencode 'filter=metric.type="logging.googleapis.com/billing/bytes_ingested"' \
+  --data-urlencode "interval.startTime=${START}" \
+  --data-urlencode "interval.endTime=${END}" \
+  --data-urlencode 'view=FULL' | \
+  jq -r '
+    [.timeSeries[] |
+      {
+        resource_type: .metric.labels.resource_type,
+        bytes: ([.points[].value.int64Value | tonumber] | add)
+      }
+    ] |
+    group_by(.resource_type)[] |
+    "\(.[0].resource_type) - \([.[].bytes] | add) bytes"
+  ' | sort -t'-' -k2 -rn | head -20
 ```
 
 ## Step 2: Identify the Top Log Sources
 
 Most of the time, 80% of your log volume comes from a handful of sources. Common culprits include:
 
-- **Load balancer request logs**: Every single HTTP request generates a log entry. High-traffic services can produce enormous volumes.
+- **Load balancer request logs**: When logging is enabled, every sampled HTTP request generates a log entry. High-traffic services can produce enormous volumes.
 - **GKE container stdout/stderr**: Applications that log every request or debug information to stdout.
-- **VPC flow logs**: Network flow records for every connection in your VPC.
+- **VPC flow logs**: Sampled network flow records for connections in your VPC.
 - **Data access audit logs**: Every API read call generates an audit log if enabled.
 - **Cloud SQL query logs**: Every database query logged at the general log level.
 
-Here is how to get a breakdown of ingestion by log name using the Logs Explorer.
+Here is how to get a rough entry-count breakdown by log name using the Google Cloud CLI.
 
 ```bash
 # Count log entries by logName in the last 24 hours
 gcloud logging read \
-  'timestamp >= "2026-02-16T00:00:00Z"' \
+  "timestamp >= \"$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)\"" \
   --limit=10000 \
   --format='value(logName)' | \
   sort | uniq -c | sort -rn | head -20
 ```
 
-For a more accurate picture, use the Metrics Explorer in Cloud Monitoring. Search for the metric `logging.googleapis.com/billing/bytes_ingested` and group by `log` or `resource_type`.
+For a more accurate picture, use the Metrics Explorer in Cloud Monitoring. Search for the metric `logging.googleapis.com/billing/bytes_ingested` and group by `resource_type`.
 
 ## Step 3: Estimate Your Monthly Cost
 
@@ -81,8 +95,8 @@ Here is a quick script to estimate costs based on current ingestion rates.
 # Run this with your actual daily ingestion numbers
 
 daily_ingestion_gib = 150  # Replace with your actual daily ingestion
-free_tier_gib = 50  # Monthly free tier
-price_per_gib = 0.50  # Current price, check for updates
+free_tier_gib = 50  # Monthly free tier for non-vended logs
+price_per_gib = 0.50  # Non-vended log storage price, check for updates
 
 monthly_ingestion = daily_ingestion_gib * 30
 billable_gib = max(0, monthly_ingestion - free_tier_gib)
@@ -95,14 +109,14 @@ print(f"Estimated monthly cost: ${monthly_cost:.2f}")
 
 ## Step 4: Reduce Ingestion with Exclusion Filters
 
-The most effective way to cut costs is to exclude logs you do not need. Exclusion filters drop matching log entries before they are ingested, so you never pay for them.
+The most effective way to cut costs is to exclude logs you do not need. Exclusion filters stop matching log entries from being routed to the sink destination, so you do not pay to store them in that bucket.
 
 These commands add exclusion filters to the default sink for common high-volume, low-value logs.
 
 ```bash
 # Exclude load balancer health check logs (often the biggest volume)
 gcloud logging sinks update _Default \
-  --add-exclusion=name=exclude-health-checks,filter='resource.type="http_load_balancer" AND httpRequest.requestUrl="/health" OR httpRequest.requestUrl="/healthz" OR httpRequest.requestUrl="/readiness"'
+  --add-exclusion=name=exclude-health-checks,filter='resource.type="http_load_balancer" AND httpRequest.requestUrl=~"/(health|healthz|readiness)(\\?|$)"'
 
 # Exclude debug-level logs from all services
 gcloud logging sinks update _Default \
@@ -169,10 +183,9 @@ gcloud monitoring policies create \
   --display-name="Log Ingestion Budget Alert" \
   --condition-display-name="Daily ingestion exceeds 200 GiB" \
   --condition-filter='metric.type="logging.googleapis.com/billing/bytes_ingested"' \
-  --condition-threshold-value=214748364800 \
-  --condition-threshold-duration=0s \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-aggregation='{"alignmentPeriod":"86400s","perSeriesAligner":"ALIGN_SUM","crossSeriesReducer":"REDUCE_SUM"}'
+  --if='> 214748364800' \
+  --duration=0s \
+  --aggregation='{"alignmentPeriod":"86400s","perSeriesAligner":"ALIGN_SUM","crossSeriesReducer":"REDUCE_SUM"}'
 ```
 
 ## Cost Optimization Checklist
