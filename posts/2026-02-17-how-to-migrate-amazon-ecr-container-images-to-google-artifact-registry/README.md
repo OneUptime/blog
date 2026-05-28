@@ -70,6 +70,7 @@ go install github.com/google/go-containerregistry/cmd/crane@latest
 
 # Or download the binary directly
 curl -sL "https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz" | tar xz crane
+sudo install crane /usr/local/bin/crane
 
 # Verify installation
 crane version
@@ -82,7 +83,7 @@ Set up authentication for ECR and Artifact Registry:
 ```bash
 # Authenticate to ECR
 aws ecr get-login-password --region us-east-1 | \
-  crane auth login 123456789.dkr.ecr.us-east-1.amazonaws.com \
+  crane auth login 123456789012.dkr.ecr.us-east-1.amazonaws.com \
     --username AWS --password-stdin
 
 # Authenticate to Artifact Registry
@@ -356,6 +357,23 @@ def verify_all(inventory_file='ecr_inventory.json'):
                 mismatched += 1
                 logger.error(f"Mismatch: {ar_ref} - {error}")
 
+        if not image['tags']:
+            ecr_ref = f"{ecr_uri}@{image['digest']}"
+            ar_ref = (
+                f"{GCP_REGION}/{GCP_PROJECT}/{GCP_REPO}"
+                f"/{repo_name}@{image['digest']}"
+            )
+
+            match, error = verify_image(ecr_ref, ar_ref)
+            if match:
+                verified += 1
+            elif "lookup failed" in str(error):
+                missing += 1
+                logger.warning(f"Missing: {ar_ref}")
+            else:
+                mismatched += 1
+                logger.error(f"Mismatch: {ar_ref} - {error}")
+
     logger.info(f"Verification results:")
     logger.info(f"  Verified: {verified}")
     logger.info(f"  Missing: {missing}")
@@ -372,9 +390,9 @@ After migration, update your Kubernetes manifests to reference Artifact Registry
 
 ```bash
 # Find and replace ECR references in all YAML files
-# This uses a simple sed command for the common case
-find k8s/ -name "*.yaml" -exec sed -i '' \
-  's|123456789.dkr.ecr.us-east-1.amazonaws.com/|us-docker.pkg.dev/my-gcp-project/app-images/|g' \
+# This uses a simple perl command for the common case
+find k8s/ -name "*.yaml" -exec perl -pi -e \
+  's|123456789012\.dkr\.ecr\.us-east-1\.amazonaws\.com/|us-docker.pkg.dev/my-gcp-project/app-images/|g' \
   {} +
 ```
 
@@ -433,7 +451,7 @@ if __name__ == '__main__':
 
 ## Setting Up Ongoing Image Sync
 
-During the transition period, you might need to sync new images from ECR to Artifact Registry. Set up a Cloud Build trigger:
+During the transition period, you might need to sync new images from ECR to Artifact Registry. Set up a Cloud Build job:
 
 ```yaml
 # cloudbuild-sync.yaml
@@ -447,16 +465,24 @@ steps:
         # Install crane
         curl -sL "https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz" | tar xz
 
+        # Install AWS CLI
+        apt-get update && apt-get install -y unzip
+        mkdir -p /workspace/bin
+        curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
+        unzip -q awscliv2.zip
+        ./aws/install --bin-dir /workspace/bin --install-dir /workspace/aws-cli
+        export PATH="/workspace/bin:${PATH}"
+
         # Authenticate to ECR
         aws ecr get-login-password --region us-east-1 | \
-          ./crane auth login 123456789.dkr.ecr.us-east-1.amazonaws.com \
+          ./crane auth login 123456789012.dkr.ecr.us-east-1.amazonaws.com \
             --username AWS --password-stdin
 
         # Sync specific repositories
         for REPO in api-server web-frontend worker; do
           echo "Syncing $REPO..."
           ./crane copy \
-            123456789.dkr.ecr.us-east-1.amazonaws.com/$REPO:latest \
+            123456789012.dkr.ecr.us-east-1.amazonaws.com/$REPO:latest \
             us-docker.pkg.dev/${PROJECT_ID}/app-images/$REPO:latest
         done
 ```
