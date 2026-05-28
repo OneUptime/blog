@@ -18,9 +18,12 @@ Google Cloud currently offers these certifications:
 
 **Foundational**:
 - Cloud Digital Leader (non-technical, business-focused)
+- Generative AI Leader
 
 **Associate**:
 - Associate Cloud Engineer (ACE)
+- Associate Data Practitioner
+- Associate Google Workspace Administrator
 
 **Professional**:
 - Professional Cloud Architect (PCA)
@@ -31,9 +34,9 @@ Google Cloud currently offers these certifications:
 - Professional Cloud Developer
 - Professional Machine Learning Engineer
 - Professional Cloud Database Engineer
-- Professional Workspace Administrator
+- Professional Security Operations Engineer
 
-Each certification is valid for two years.
+Validity periods vary by certification. Professional certifications are valid for two years, while Cloud Digital Leader, Generative AI Leader, and Associate Cloud Engineer are valid for three years.
 
 ## The Optimal Sequence
 
@@ -65,11 +68,11 @@ Start here even if your goal is a professional certification. The ACE covers the
 - Week 1-2: Compute and storage services. Practice creating resources with gcloud.
 - Week 3-4: Networking and IAM. Build a VPC from scratch, configure firewall rules.
 - Week 5: Monitoring, logging, and operations. Set up dashboards and alerts.
-- Week 6: Review and practice exam. Take the official practice exam to identify weak areas.
+- Week 6: Review and sample questions. Use the official sample questions to identify weak areas.
 
 **Resources**:
-- Google Cloud Skills Boost courses for ACE
-- Official practice exam (free)
+- Google Skills learning path for ACE
+- Official sample questions (free)
 - A GCP free tier project for hands-on practice
 
 ### Phase 2: Professional Cloud Architect (Weeks 7-14)
@@ -84,7 +87,7 @@ The PCA builds directly on the ACE. About 60% of the PCA knowledge base overlaps
 - Cost optimization
 
 **Study approach**:
-- Week 7-8: Architecture design patterns. Study the official case studies (MountKirk Games, Dress4Win, TerramEarth).
+- Week 7-8: Architecture design patterns. Study the official case studies (EHR Healthcare, Helicopter Racing League, Mountkirk Games, TerramEarth).
 - Week 9-10: Advanced security and compliance. VPC Service Controls, CMEK, organization policies.
 - Week 11-12: Migration planning and hybrid connectivity. Cloud VPN, Interconnect, Anthos.
 - Week 13: Database and compute selection for different scenarios.
@@ -219,9 +222,9 @@ gcloud billing budgets create \
   --billing-account=BILLING_ACCOUNT_ID \
   --display-name="Study Budget" \
   --budget-amount=50 \
-  --threshold-rule=percent=50 \
-  --threshold-rule=percent=90 \
-  --threshold-rule=percent=100
+  --threshold-rule=percent=0.50 \
+  --threshold-rule=percent=0.90 \
+  --threshold-rule=percent=1.00
 ```
 
 ## Timeline Summary
@@ -239,7 +242,7 @@ Add 2-4 weeks if you are starting with limited cloud experience. Reduce by 2-3 w
 
 ## Maintaining Certifications
 
-Each certification is valid for two years. Plan recertification before expiry:
+Check the validity period for each certification and plan recertification before expiry:
 
 - Set a calendar reminder 3 months before each expiration
 - Google sometimes offers renewal exams that are shorter and cheaper
