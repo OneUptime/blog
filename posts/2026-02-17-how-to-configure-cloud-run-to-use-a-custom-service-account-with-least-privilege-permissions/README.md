@@ -8,20 +8,20 @@ Description: Learn how to create and configure a custom service account for Clou
 
 ---
 
-Every Cloud Run service runs as a service account. By default, it uses the Compute Engine default service account, which has the Editor role on your entire project. That means your Cloud Run container can read every secret, delete any database, modify any resource, and access every API in the project.
+Every Cloud Run service runs as a service account. By default, it uses the Compute Engine default service account. Depending on your organization policy configuration, that default account might have the Editor role on your entire project. That means your Cloud Run container can create, modify, and delete a broad range of resources across the project.
 
 This is a security problem. If your container gets compromised - through a dependency vulnerability, a code bug, or a supply chain attack - the attacker inherits all those permissions. The fix is straightforward: create a dedicated service account with only the permissions your service actually needs.
 
 ## Why the Default Service Account Is Dangerous
 
-The Compute Engine default service account (`PROJECT_NUMBER-compute@developer.gserviceaccount.com`) gets the Editor role by default. Here is what that means in practice:
+The Compute Engine default service account (`PROJECT_NUMBER-compute@developer.gserviceaccount.com`) might be granted the Editor role automatically, especially in older projects or organizations where automatic IAM grants for default service accounts are still enabled. Here is what that means in practice:
 
 - Can read and write to every Cloud Storage bucket in the project
-- Can access every secret in Secret Manager
 - Can read and write to every database
 - Can create and delete Compute Engine instances
-- Can modify IAM policies
-- Can access every other service in the project
+- Can call many Google Cloud APIs with broad project-level permissions
+
+The Editor role does not include every sensitive permission. For example, it does not include access to Secret Manager secret payloads or permission to manage IAM allow policies. But it is still far broader than most Cloud Run services need.
 
 If your Cloud Run service only needs to read from one Cloud Storage bucket and write to one Pub/Sub topic, giving it the Editor role is wildly excessive.
 
