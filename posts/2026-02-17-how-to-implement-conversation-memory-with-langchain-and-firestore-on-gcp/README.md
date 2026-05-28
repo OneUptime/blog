@@ -19,7 +19,7 @@ Firestore offers several properties that make it well-suited for storing chat hi
 - **Low latency reads and writes** - Conversations need snappy responses
 - **Serverless and auto-scaling** - No capacity planning needed
 - **Real-time listeners** - Useful if you want to stream updates to a UI
-- **Structured document model** - Chat histories map naturally to documents and subcollections
+- **Structured document model** - Chat histories map naturally to documents and fields
 - **Strong consistency** - No stale reads when loading conversation history
 
 ## Prerequisites
@@ -31,7 +31,7 @@ Firestore offers several properties that make it well-suited for storing chat hi
 ```bash
 # Install required packages
 
-pip install langchain langchain-google-firestore langchain-google-vertexai google-cloud-firestore
+pip install langchain langchain-google-firestore langchain-google-genai google-cloud-firestore
 ```
 
 ## Basic Setup
@@ -71,9 +71,10 @@ The data structure in Firestore looks like this:
 ```text
 chat_sessions/
   user-123-session-001/
-    messages/
-      0: {type: "human", content: "What is Cloud Run?", timestamp: ...}
-      1: {type: "ai", content: "Cloud Run is a managed...", timestamp: ...}
+    messages: [
+      {type: "human", content: "What is Cloud Run?", ...},
+      {type: "ai", content: "Cloud Run is a managed...", ...}
+    ]
 ```
 
 ## Integrating with a Chat Model
@@ -81,15 +82,15 @@ chat_sessions/
 Now let us wire the Firestore-backed history into an actual chat application using Gemini.
 
 ```python
-from langchain_google_vertexai import ChatVertexAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_google_firestore import FirestoreChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from google.cloud import firestore
 
 # Initialize the Gemini model
-llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
     project="your-project-id",
     location="us-central1",
     temperature=0.7,
@@ -152,12 +153,13 @@ print(f"Assistant: {response2.content}")
 
 ```python
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 def list_active_sessions(user_id: str, client: firestore.Client) -> list:
     """List all chat sessions for a given user."""
     # Query sessions that belong to this user
-    sessions = client.collection("chat_sessions").where(
-        "user_id", "==", user_id
+    sessions = client.collection("chat_session_metadata").where(
+        filter=FieldFilter("user_id", "==", user_id)
     ).order_by("last_updated", direction=firestore.Query.DESCENDING).stream()
 
     return [
@@ -185,7 +187,10 @@ def clear_session(session_id: str, client: firestore.Client):
 Long conversations eat tokens and increase costs. Implement a sliding window to keep only the most recent messages.
 
 ```python
+from operator import itemgetter
+
 from langchain_core.messages import trim_messages
+from langchain_core.runnables import RunnablePassthrough
 
 def get_trimmed_session_history(session_id: str):
     """Get session history with a maximum message window."""
@@ -212,7 +217,18 @@ trimmed_prompt = ChatPromptTemplate.from_messages([
     ("human", "{input}"),
 ])
 
-trimmed_chain = trimmed_prompt | llm
+trimmed_chain = (
+    RunnablePassthrough.assign(history=itemgetter("history") | trimmer)
+    | trimmed_prompt
+    | llm
+)
+
+chain_with_trimmed_history = RunnableWithMessageHistory(
+    trimmed_chain,
+    get_trimmed_session_history,
+    input_messages_key="input",
+    history_messages_key="history",
+)
 ```
 
 ## Adding Metadata to Sessions
@@ -220,7 +236,7 @@ trimmed_chain = trimmed_prompt | llm
 Store additional context alongside the conversation for better session management.
 
 ```python
-from datetime import datetime
+from datetime import datetime, timezone
 
 def create_session_with_metadata(
     user_id: str,
@@ -229,12 +245,13 @@ def create_session_with_metadata(
     topic: str = None,
 ):
     """Create a new chat session with metadata."""
-    # Store session metadata in the parent document
-    session_ref = client.collection("chat_sessions").document(session_id)
+    # Store metadata separately because FirestoreChatMessageHistory writes
+    # the chat_sessions/{session_id} document with its messages field.
+    session_ref = client.collection("chat_session_metadata").document(session_id)
     session_ref.set({
         "user_id": user_id,
-        "created_at": datetime.utcnow(),
-        "last_updated": datetime.utcnow(),
+        "created_at": datetime.now(timezone.utc),
+        "last_updated": datetime.now(timezone.utc),
         "topic": topic or "General",
         "message_count": 0,
     })
@@ -268,14 +285,19 @@ graph TD
 Make sure your Firestore security rules prevent users from accessing each others conversations. If you are using Firestore in a backend service, the service account needs the `roles/datastore.user` role. For client-side access, set up proper security rules.
 
 ```javascript
-// Firestore security rules for chat sessions
+// Firestore security rules for chat session metadata
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /chat_sessions/{sessionId} {
-      // Only allow access if the user_id matches the authenticated user
-      allow read, write: if request.auth != null
+    match /chat_session_metadata/{sessionId} {
+      // Only allow access if the user_id field matches the authenticated user
+      allow create: if request.auth != null
+        && request.resource.data.user_id == request.auth.uid;
+      allow read, delete: if request.auth != null
         && resource.data.user_id == request.auth.uid;
+      allow update: if request.auth != null
+        && resource.data.user_id == request.auth.uid
+        && request.resource.data.user_id == resource.data.user_id;
     }
   }
 }
