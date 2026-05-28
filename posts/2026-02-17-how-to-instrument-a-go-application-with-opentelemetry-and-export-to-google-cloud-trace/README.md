@@ -39,7 +39,6 @@ You will need several OpenTelemetry packages plus the Google Cloud exporter.
 # Install the OpenTelemetry SDK, API, and Google Cloud Trace exporter
 go get go.opentelemetry.io/otel
 go get go.opentelemetry.io/otel/sdk/trace
-go get go.opentelemetry.io/otel/exporters/otlp/otlptrace
 go get github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace
 go get go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
 ```
@@ -177,7 +176,7 @@ curl http://localhost:8080/health
 
 ## Step 6: View Traces in Cloud Console
 
-Head to the Google Cloud Console, navigate to Trace, and you should see your traces appearing within a minute or two. Each trace will show the HTTP handler span as the parent with the `fetchData` span nested underneath it.
+Head to the Google Cloud Console, navigate to Trace, and you should see your traces appearing within a minute or two. Each trace will show the HTTP handler span as the parent, the `processRequest` span nested underneath it, and the `fetchData` span nested under `processRequest`.
 
 ## Adding HTTP Client Instrumentation
 
