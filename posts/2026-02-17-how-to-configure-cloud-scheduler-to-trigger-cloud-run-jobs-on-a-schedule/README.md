@@ -26,9 +26,9 @@ When you trigger a Cloud Run job, it creates an execution. Each execution runs o
 Enable the required APIs.
 
 ```bash
-# Enable Cloud Run and Cloud Scheduler APIs
+# Enable Cloud Run, Cloud Scheduler, and Cloud Build APIs
 
-gcloud services enable run.googleapis.com cloudscheduler.googleapis.com
+gcloud services enable run.googleapis.com cloudscheduler.googleapis.com cloudbuild.googleapis.com
 ```
 
 ## Step 1: Create a Cloud Run Job
@@ -141,7 +141,7 @@ Cloud Scheduler triggers Cloud Run jobs through the Cloud Run REST API. Here is 
 gcloud scheduler jobs create http daily-report-schedule \
   --location=us-central1 \
   --schedule="0 6 * * *" \
-  --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/YOUR_PROJECT_ID/jobs/daily-report-job:run" \
+  --uri="https://run.googleapis.com/v2/projects/YOUR_PROJECT_ID/locations/us-central1/jobs/daily-report-job:run" \
   --http-method=POST \
   --oauth-service-account-email=scheduler-job-runner@YOUR_PROJECT_ID.iam.gserviceaccount.com \
   --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
@@ -151,7 +151,7 @@ gcloud scheduler jobs create http daily-report-schedule \
 ```
 
 The key elements here:
-- The URI follows the pattern: `https://REGION-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/PROJECT_ID/jobs/JOB_NAME:run`
+- The URI follows the pattern: `https://run.googleapis.com/v2/projects/PROJECT_ID/locations/REGION/jobs/JOB_NAME:run`
 - Use OAuth authentication (not OIDC) because you are calling a Google API
 - The `--attempt-deadline` is for the scheduler's HTTP request, not the job's execution time
 
@@ -176,11 +176,17 @@ gcloud run jobs executions list --job=daily-report-job \
 You can override environment variables for specific executions by including them in the scheduler's request body.
 
 ```bash
+# Grant the scheduler service account permission to use execution overrides
+gcloud run jobs add-iam-policy-binding daily-report-job \
+  --region=us-central1 \
+  --member="serviceAccount:scheduler-job-runner@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/run.jobsExecutorWithOverrides"
+
 # Create a scheduler with override configuration
 gcloud scheduler jobs create http weekly-full-report \
   --location=us-central1 \
   --schedule="0 8 * * 1" \
-  --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/YOUR_PROJECT_ID/jobs/daily-report-job:run" \
+  --uri="https://run.googleapis.com/v2/projects/YOUR_PROJECT_ID/locations/us-central1/jobs/daily-report-job:run" \
   --http-method=POST \
   --message-body='{
     "overrides": {
@@ -219,7 +225,7 @@ Here are some common patterns for scheduling Cloud Run jobs.
 gcloud scheduler jobs create http sync-every-6h \
   --location=us-central1 \
   --schedule="0 */6 * * *" \
-  --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/PROJECT/jobs/data-sync-job:run" \
+  --uri="https://run.googleapis.com/v2/projects/PROJECT/locations/us-central1/jobs/data-sync-job:run" \
   --http-method=POST \
   --oauth-service-account-email=scheduler-sa@PROJECT.iam.gserviceaccount.com \
   --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform"
@@ -228,7 +234,7 @@ gcloud scheduler jobs create http sync-every-6h \
 gcloud scheduler jobs create http eod-processing \
   --location=us-central1 \
   --schedule="0 17 * * 1-5" \
-  --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/PROJECT/jobs/eod-job:run" \
+  --uri="https://run.googleapis.com/v2/projects/PROJECT/locations/us-central1/jobs/eod-job:run" \
   --http-method=POST \
   --oauth-service-account-email=scheduler-sa@PROJECT.iam.gserviceaccount.com \
   --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
@@ -238,7 +244,7 @@ gcloud scheduler jobs create http eod-processing \
 gcloud scheduler jobs create http monthly-billing \
   --location=us-central1 \
   --schedule="0 3 1 * *" \
-  --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/PROJECT/jobs/billing-reconcile:run" \
+  --uri="https://run.googleapis.com/v2/projects/PROJECT/locations/us-central1/jobs/billing-reconcile:run" \
   --http-method=POST \
   --oauth-service-account-email=scheduler-sa@PROJECT.iam.gserviceaccount.com \
   --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform"
@@ -258,8 +264,8 @@ gcloud run jobs executions list --job=daily-report-job \
   --region=us-central1 \
   --limit=10
 
-# View logs from the most recent execution
-gcloud run jobs executions logs daily-report-job \
+# View recent logs for the job
+gcloud run jobs logs read daily-report-job \
   --region=us-central1 \
   --limit=50
 ```
