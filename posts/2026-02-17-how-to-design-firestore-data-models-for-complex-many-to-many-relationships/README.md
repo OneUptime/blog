@@ -126,10 +126,10 @@ async function removeUserFromGroup(userId, groupId) {
 }
 ```
 
-Querying becomes a single read:
+Reading the relationship IDs becomes a single document read, although fetching the related document details still requires additional reads:
 
 ```javascript
-// Get all groups a user belongs to - single document read
+// Get all groups a user belongs to
 async function getUserGroups(userId) {
   const userDoc = await db.collection('users').doc(userId).get();
   const groupIds = userDoc.data().groupIds || [];
@@ -156,7 +156,7 @@ async function getGroupMembers(groupId) {
 
 **When to use this:** Works great when the number of relationships per entity is small (under a few hundred), when you do not need metadata on the relationship itself, and when you want fast single-document reads.
 
-**Downsides:** Firestore documents have a 1 MB size limit. If a group can have thousands of members, the `memberIds` array will eventually hit that limit. Also, `array-contains` queries can only filter on one array field per query.
+**Downsides:** Firestore documents have a 1 MB size limit. If a group can have thousands of members, the `memberIds` array will eventually hit that limit. Also, Firestore allows at most one `array-contains` clause per disjunction, and you cannot combine `array-contains` with `array-contains-any` in the same disjunction.
 
 ## Pattern 3: Subcollection Approach
 
@@ -241,17 +241,11 @@ exports.onUserUpdate = functions.firestore
     // Only propagate if the display name changed
     if (before.displayName === after.displayName) return;
 
-    // Find all groups this user belongs to
-    const groupMemberships = await db
-      .collectionGroup('members')
-      .where('__name__', '>=', `groups/`)
-      .get();
-
     // Update the denormalized name in each group's member subcollection
-    const batch = db.batch();
+    let batch = db.batch();
     let count = 0;
 
-    // Query the user's groups subcollection instead
+    // Query the user's groups subcollection
     const userGroups = await db.collection('users').doc(userId)
       .collection('groups').get();
 
@@ -266,8 +260,9 @@ exports.onUserUpdate = functions.firestore
       count++;
 
       // Firestore batches support up to 500 operations
-      if (count >= 499) {
+      if (count === 500) {
         await batch.commit();
+        batch = db.batch();
         count = 0;
       }
     }
