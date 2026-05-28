@@ -83,7 +83,7 @@ If you find an operation that has been running for hours, it might be stuck. Com
 - Export operations on huge tables
 - Storage resize operations
 
-For stuck operations, you may need to contact Google Cloud support to cancel them. There is no gcloud command to cancel a stuck Cloud SQL operation.
+For stuck operations, you can try to cancel the operation with `gcloud sql operations cancel OPERATION_NAME`. If the operation cannot be canceled or remains stuck, contact Google Cloud support.
 
 ## Step 3: Adjust the Backup Window
 
@@ -150,7 +150,7 @@ gcloud sql instances patch my-instance \
     --project=my-project
 ```
 
-With PITR enabled, you can recover to any point in time, not just the last successful backup. This gives you protection even when automated backups miss their window.
+With PITR enabled, you can recover to a point in time within your transaction log retention period, not just the last successful backup. This gives you protection even when automated backups miss their window.
 
 ## Step 6: Run a Manual Backup After Fixing the Issue
 
@@ -183,7 +183,7 @@ You want to know immediately when a backup fails, not discover it days later whe
 # Create a log-based metric for backup failures
 gcloud logging metrics create cloudsql-backup-failures \
     --description="Cloud SQL automated backup failures" \
-    --log-filter='resource.type="cloudsql_database" AND protoPayload.methodName="cloudsql.instances.automatedBackup" AND severity>=ERROR' \
+    --log-filter='logName="projects/my-project/logs/cloudaudit.googleapis.com%2Fsystem_event" AND resource.type="cloudsql_database" AND protoPayload.methodName="cloudsql.instances.automatedBackup" AND (protoPayload.metadata.windowStatus="STATUS_FAILED" OR protoPayload.metadata.windowStatus="STATUS_ATTEMPT_FAILED")' \
     --project=my-project
 ```
 
