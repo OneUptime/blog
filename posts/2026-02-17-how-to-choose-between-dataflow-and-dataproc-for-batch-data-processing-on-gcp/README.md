@@ -22,13 +22,13 @@ This is the central trade-off: Dataflow gives you less control but zero infrastr
 
 | Feature | Dataflow | Dataproc |
 |---------|----------|----------|
-| Programming model | Apache Beam (Python, Java, Go) | Apache Spark, Hadoop, Hive, Pig, Presto |
+| Programming model | Apache Beam (Python, Java, Go) | Apache Spark, Hadoop, Hive, Pig, Trino |
 | Infrastructure | Fully serverless | Managed clusters |
 | Cluster management | None | You manage clusters |
 | Autoscaling | Automatic | Configurable autoscaling |
 | Streaming support | Native (Beam streaming) | Spark Structured Streaming |
-| Exactly-once processing | Yes (built into Beam) | Depends on implementation |
-| Interactive analysis | No | Yes (Jupyter, Spark Shell, Presto) |
+| Exactly-once processing | Yes (with the Dataflow runner) | Depends on implementation |
+| Interactive analysis | No | Yes (Jupyter, Spark Shell, Trino) |
 | Machine learning | Limited (Beam ML) | Full MLlib, TensorFlow on Spark |
 | Cost model | Per vCPU-hour + per GB-hour (auto) | Per VM instance-hour |
 | Startup time | ~2-5 minutes | ~1-3 minutes |
@@ -44,6 +44,7 @@ If you do not want to think about clusters, scaling, or shutdown:
 # A Dataflow batch pipeline - no cluster management needed
 
 import apache_beam as beam
+import json
 from apache_beam.options.pipeline_options import PipelineOptions
 
 options = PipelineOptions([
@@ -90,6 +91,9 @@ Beam's programming model works for both batch and streaming. The same logic can 
 ```python
 # This pipeline works for both batch and streaming
 # Just change the source and windowing
+import apache_beam as beam
+import json
+
 def build_pipeline(p, is_streaming=False):
     if is_streaming:
         # Streaming source
@@ -110,16 +114,23 @@ def build_pipeline(p, is_streaming=False):
     (
         windowed
         | 'Parse' >> beam.Map(json.loads)
+        | 'ExtractType' >> beam.Map(lambda event: (event.get('type', 'unknown'), 1))
         | 'CountByType' >> beam.combiners.Count.PerKey()
+        | 'FormatRows' >> beam.Map(lambda kv: {
+            'event_type': kv[0],
+            'event_count': kv[1]
+        })
         | 'Write' >> beam.io.WriteToBigQuery(
-            'my-project:dataset.event_counts'
+            'my-project:dataset.event_counts',
+            schema='event_type:STRING,event_count:INTEGER',
+            write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND
         )
     )
 ```
 
 ### You Need Exactly-Once Processing
 
-Dataflow guarantees exactly-once processing for streaming pipelines. If you are processing financial transactions or other data where duplicates are not acceptable, this matters.
+Dataflow supports exactly-once processing for streaming pipelines by default, and batch pipelines always use exactly-once processing. If your pipeline calls external services from custom transforms, make those side effects idempotent because user code can be retried even when Dataflow commits pipeline results exactly once.
 
 ## When to Choose Dataproc
 
@@ -130,7 +141,8 @@ If your team has invested in Spark pipelines, Dataproc runs them with minimal ch
 ```python
 # Existing PySpark job - runs on Dataproc with minimal modifications
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, sum as spark_sum, count, avg
+from pyspark.sql import Window
+from pyspark.sql.functions import col, sum as spark_sum, count, avg, rank
 
 # SparkSession is automatically configured on Dataproc
 spark = SparkSession.builder.appName("SalesAnalysis").getOrCreate()
@@ -159,7 +171,7 @@ result = (
     # Add derived columns
     .withColumn(
         "sales_rank",
-        spark_sum("total_sales").over(
+        rank().over(
             Window.partitionBy("region").orderBy(col("total_sales").desc())
         )
     )
@@ -185,7 +197,7 @@ gcloud dataproc jobs submit pyspark \
 
 ### You Need Interactive Analysis
 
-Dataproc supports Jupyter notebooks, Spark shell, and Presto for interactive data exploration:
+Dataproc supports Jupyter notebooks, Spark shell, and Trino for interactive data exploration:
 
 ```bash
 # Create a Dataproc cluster with Jupyter and component gateway
@@ -196,7 +208,7 @@ gcloud dataproc clusters create analysis-cluster \
     --num-workers=4 \
     --optional-components=JUPYTER \
     --enable-component-gateway \
-    --max-idle=30m
+    --delete-max-idle=30m
 
 # Access Jupyter through the component gateway URL
 # No SSH tunneling needed
@@ -281,7 +293,7 @@ gcloud dataproc batches submit pyspark \
     --region=us-central1 \
     --subnet=default \
     --properties=spark.executor.instances=10 \
-    --version=2.1
+    --version=2.2
 ```
 
 Dataproc Serverless handles cluster provisioning and teardown automatically. It is a good option if you want the Spark ecosystem without cluster management.
