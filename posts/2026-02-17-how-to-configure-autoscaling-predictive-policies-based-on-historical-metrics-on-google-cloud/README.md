@@ -14,13 +14,13 @@ Google Cloud's managed instance group (MIG) autoscaler supports predictive scali
 
 ## How Predictive Autoscaling Works
 
-The predictive autoscaler looks at your historical CPU utilization or other metrics over the past 14 days. It fits a model to your usage patterns and generates a forecast of what your resource needs will be in the near future. It then combines this forecast with the reactive autoscaler's current reading to determine the target number of instances.
+The predictive autoscaler looks at your historical CPU utilization. It fits a model to your usage patterns and generates a forecast of what your resource needs will be in the near future. It then combines this forecast with the reactive autoscaler's current reading to determine the target number of instances.
 
 The key insight is that the autoscaler takes the maximum of the reactive signal and the predictive signal. This means predictive scaling only adds capacity - it never reduces instances below what the reactive policy would set. You get the benefit of early scaling without the risk of under-provisioning.
 
 ## Prerequisites
 
-Before configuring predictive autoscaling, you need a managed instance group that has been running for at least 14 days with standard autoscaling enabled. The predictive model needs this historical data to make useful forecasts.
+Before configuring predictive autoscaling, you need a managed instance group with CPU-based autoscaling enabled. Compute Engine needs at least 3 days of CPU autoscaling history before predictions can affect the autoscaler, and the forecasts improve as more history is collected.
 
 ```bash
 # Check your existing managed instance group configuration
@@ -60,18 +60,18 @@ gcloud compute instance-groups managed set-autoscaling my-instance-group \
 
 ## Enabling Predictive Autoscaling
 
-Once your MIG has at least 14 days of history, you can enable predictive autoscaling. There are two modes available.
+Once your MIG has CPU-based autoscaling configured, you can enable predictive autoscaling. There are two modes available.
 
-The first mode is `OPTIMIZE_AVAILABILITY`, which is the one you probably want. In this mode, the autoscaler uses the predicted demand to scale up early, but the reactive policy still governs scale-down. This gives you proactive scaling without overspending during low-traffic periods.
+The first mode is `optimize-availability`, which is the one you probably want. In this mode, the autoscaler uses the predicted demand to scale up early, but the reactive policy still governs scale-down. This gives you proactive scaling without overspending during low-traffic periods.
 
-The second mode is `NONE`, which disables predictive autoscaling and returns to purely reactive behavior.
+The second mode is `none`, which disables predictive autoscaling and returns to purely reactive behavior.
 
 ```bash
 # Enable predictive autoscaling in optimize availability mode
 # This tells the autoscaler to use historical data for proactive scale-up
 gcloud compute instance-groups managed update-autoscaling my-instance-group \
   --zone=us-central1-a \
-  --cpu-utilization-predictive-method=OPTIMIZE_AVAILABILITY
+  --cpu-utilization-predictive-method=optimize-availability
 ```
 
 That single flag is all it takes. The autoscaler will now start generating forecasts and using them to make scaling decisions.
@@ -87,38 +87,32 @@ gcloud compute instance-groups managed describe my-instance-group \
   --format="yaml(autoscaler.statusDetails)"
 ```
 
-You can also view the predicted and actual instance counts in Cloud Monitoring. The following MQL query shows both values over time.
+You can also view the predicted and actual instance counts in Cloud Monitoring. The following PromQL queries show both values over time.
 
-```text
-# MQL query for Cloud Monitoring - shows predicted vs actual instance count
-fetch gce_instance_group_manager
-| metric 'compute.googleapis.com/instance_group/predicted_size'
-| align mean_aligner()
-| every 5m
+```promql
+# Predicted instance count
+{"compute.googleapis.com/instance_group/predicted_size", monitored_resource="instance_group"}
 
-fetch gce_instance_group_manager
-| metric 'compute.googleapis.com/instance_group/size'
-| align mean_aligner()
-| every 5m
+# Actual instance count
+{"compute.googleapis.com/instance_group/size", monitored_resource="instance_group"}
 ```
 
-## Using Custom Metrics for Prediction
+## Using Custom Metrics Without Prediction
 
-CPU utilization is the default, but sometimes your scaling bottleneck is something else - request queue depth, active connections, or a custom application metric. You can use custom metrics from Cloud Monitoring as the basis for both reactive and predictive autoscaling.
+CPU utilization is the only metric supported by predictive autoscaling. If your scaling bottleneck is something else - request queue depth, active connections, or a custom application metric - you can use custom metrics from Cloud Monitoring as the basis for reactive autoscaling, but predictive autoscaling will not apply to that signal.
 
 ```bash
-# Set autoscaling based on a custom metric with predictive mode enabled
+# Set autoscaling based on a custom metric
 gcloud compute instance-groups managed set-autoscaling my-instance-group \
   --zone=us-central1-a \
   --min-num-replicas=2 \
   --max-num-replicas=20 \
   --update-stackdriver-metric=custom.googleapis.com/my_app/request_queue_depth \
   --stackdriver-metric-utilization-target=100 \
-  --stackdriver-metric-utilization-target-type=GAUGE \
-  --cpu-utilization-predictive-method=OPTIMIZE_AVAILABILITY
+  --stackdriver-metric-utilization-target-type=gauge
 ```
 
-The custom metric needs to follow the same requirements: at least 14 days of historical data, and the metric should exhibit some predictable pattern for the forecasting model to learn.
+The custom metric must be a valid Cloud Monitoring metric for autoscaling and use a target value that represents the work each instance should handle.
 
 ## Terraform Configuration
 
@@ -158,7 +152,7 @@ resource "google_compute_instance_group_manager" "my_mig" {
 
 ## Understanding the Prediction Window
 
-The predictive autoscaler forecasts demand roughly 30 to 60 minutes into the future. This means it can start scaling up well before a daily traffic peak. However, it is not designed for completely unpredictable spikes like a sudden viral event. For those scenarios, you still rely on the reactive autoscaler.
+The predictive autoscaler uses the initialization period to decide how far in advance to start new instances. This means it can start scaling up before a daily traffic peak so that instances are ready when the load arrives. However, it is not designed for completely unpredictable spikes like a sudden viral event. For those scenarios, you still rely on the reactive autoscaler.
 
 The prediction works best when your traffic has consistent, repeating patterns. Classic examples include business applications that peak during work hours, e-commerce sites with lunchtime traffic, and batch processing systems with nightly peaks.
 
@@ -171,8 +165,7 @@ One concern with any autoscaling setup is flapping - rapid scale-up and scale-do
 # This ensures at most 10% of instances are removed per 10-minute window
 gcloud compute instance-groups managed update-autoscaling my-instance-group \
   --zone=us-central1-a \
-  --scale-in-control-max-scaled-in-replicas=10% \
-  --scale-in-control-time-window=600
+  --scale-in-control max-scaled-in-replicas=10%,time-window=600
 ```
 
 This pairs nicely with predictive scaling. The prediction handles the scale-up side, and scale-in controls smooth out the scale-down side.
@@ -185,4 +178,4 @@ The autoscaler adapts its model continuously as new data comes in, so give it a 
 
 Also monitor your cold-start times. Predictive scaling helps most when instance startup is slow. If your instances boot and pass health checks in under 30 seconds, reactive scaling might already be fast enough and the added complexity of predictive scaling may not be worth it.
 
-Predictive autoscaling on Google Cloud is a practical tool for workloads with regular traffic patterns. It requires minimal configuration, works with both standard and custom metrics, and gives you a meaningful head start on scaling decisions. The 14-day learning period is the main hurdle - after that, it runs itself.
+Predictive autoscaling on Google Cloud is a practical tool for workloads with regular traffic patterns. It requires minimal configuration, works with CPU-based autoscaling, and gives you a meaningful head start on scaling decisions. The initial 3-day learning period is the main hurdle - after that, it runs itself.
