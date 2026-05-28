@@ -55,12 +55,12 @@ LEFT JOIN msdb.dbo.sysschedules s ON js.schedule_id = s.schedule_id;
 
 Know these before you start:
 
-- SQL Server versions supported: 2017 and 2019 (Standard and Enterprise editions)
+- SQL Server versions supported: 2017, 2019, 2022, and 2025, depending on edition
 - Maximum storage: 64 TB
-- No SQL Server Agent (use Cloud Scheduler or Cloud Functions instead)
-- No SSIS, SSRS, or SSAS
-- No cross-database queries (each database is independent)
-- No linked servers
+- SQL Server Agent is available, but review job permissions and any OS-level dependencies before migrating
+- SSIS and SSRS can run on a separate host and connect to Cloud SQL, but you cannot host or execute SSIS packages or SSRS from the Cloud SQL instance; SSAS is not supported
+- Review cross-database queries and test them during migration
+- Linked servers are supported only for SQL Server data sources and require the Cloud SQL linked servers flag
 - No CLR assemblies
 - Limited access to system databases
 
@@ -79,7 +79,7 @@ gcloud sql instances create my-sqlserver \
   --region us-central1 \
   --availability-type REGIONAL \
   --storage-type SSD \
-  --storage-size 200GB \
+  --storage-size 200 \
   --storage-auto-increase \
   --backup-start-time 02:00 \
   --root-password "YourStrongPassword123!"
@@ -148,64 +148,70 @@ WITH NORECOVERY, COMPRESSION;
 ```
 
 ```bash
-# Import the transaction log backups in order
+# Import the full backup with NORECOVERY, then import transaction log backups in order
+gcloud sql import bak my-sqlserver \
+  gs://my-migration-bucket/MyDatabase_Full.bak \
+  --database MyDatabase \
+  --bak-type FULL \
+  --no-recovery
+
 gcloud sql import bak my-sqlserver \
   gs://my-migration-bucket/MyDatabase_Log1.trn \
   --database MyDatabase \
-  --bak-type TLOG
+  --bak-type TLOG \
+  --no-recovery
 
 gcloud sql import bak my-sqlserver \
   gs://my-migration-bucket/MyDatabase_LogFinal.trn \
   --database MyDatabase \
-  --bak-type TLOG \
-  --no-recovery false
+  --bak-type TLOG
+
+# Bring the database online after the last log is restored
+gcloud sql import bak my-sqlserver \
+  --database MyDatabase \
+  --recovery-only
 ```
 
 ## Migration Strategy 2 - Database Migration Service (Minimal Downtime)
 
-For near-zero downtime, use Google's Database Migration Service (DMS). DMS uses SQL Server's Change Data Capture (CDC) to continuously replicate changes from the source to Cloud SQL.
+For near-zero downtime, use Google's Database Migration Service (DMS). For homogeneous SQL Server migrations to Cloud SQL for SQL Server, DMS uses full, optional differential, and transaction log backup files uploaded to Cloud Storage. It does not require you to enable SQL Server CDC tables with `sp_cdc_enable_db`.
 
 ```bash
-# Step 1: Enable CDC on the source database
+# Step 1: Upload the full backup to the Cloud Storage bucket
+# DMS expects database folders with full, diff, and log subfolders.
+gcloud storage cp "C:\Backups\MyDatabase_Full.bak" \
+  gs://my-migration-bucket/MyDatabase/full/MyDatabase.1771286400.bak
 ```
 
 ```sql
--- Enable CDC on the source SQL Server database
-USE MyDatabase;
-EXEC sys.sp_cdc_enable_db;
+-- Before taking the full backup, use the full or bulk-logged recovery model
+-- so transaction log backups are available
+ALTER DATABASE [MyDatabase] SET RECOVERY FULL;
 
--- Enable CDC on each table you want to replicate
-EXEC sys.sp_cdc_enable_table
-    @source_schema = N'dbo',
-    @source_name = N'Orders',
-    @role_name = NULL;
-
-EXEC sys.sp_cdc_enable_table
-    @source_schema = N'dbo',
-    @source_name = N'Customers',
-    @role_name = NULL;
-
--- Verify CDC is enabled
-SELECT name, is_cdc_enabled
-FROM sys.databases
-WHERE name = 'MyDatabase';
+-- Take transaction log backups while the migration job is running
+BACKUP LOG [MyDatabase]
+TO DISK = 'C:\Backups\MyDatabase.1771287300.trn'
+WITH COMPRESSION;
 ```
 
 ```bash
-# Step 2: Create a DMS connection profile for the source
-gcloud database-migration connection-profiles create sqlserver-source \
+# Upload transaction log backups to the log folder as they are created
+gcloud storage cp "C:\Backups\MyDatabase.1771287300.trn" \
+  gs://my-migration-bucket/MyDatabase/log/MyDatabase.1771287300.trn
+
+# Step 2: Create a DMS connection profile for the source backup bucket
+gcloud database-migration connection-profiles create sqlserver sqlserver-source \
   --region us-central1 \
-  --type SQLSERVER \
-  --host 203.0.113.50 \
-  --port 1433 \
-  --username migration_user \
-  --password "source-password"
+  --display-name "SQL Server backup bucket" \
+  --gcs-bucket my-migration-bucket
 
 # Step 3: Create a connection profile for the destination
-gcloud database-migration connection-profiles create cloudsql-dest \
+gcloud database-migration connection-profiles create sqlserver cloudsql-dest \
   --region us-central1 \
-  --type CLOUDSQL \
-  --cloudsql-instance my-sqlserver
+  --display-name "Cloud SQL destination" \
+  --cloudsql-instance my-sqlserver \
+  --username migration_user \
+  --password "destination-password"
 
 # Step 4: Create the migration job with continuous replication
 gcloud database-migration migration-jobs create sqlserver-migration \
@@ -213,7 +219,7 @@ gcloud database-migration migration-jobs create sqlserver-migration \
   --source sqlserver-source \
   --destination cloudsql-dest \
   --type CONTINUOUS \
-  --databases MyDatabase
+  --sqlserver-databases MyDatabase
 
 # Step 5: Start the migration
 gcloud database-migration migration-jobs start sqlserver-migration \
@@ -228,9 +234,10 @@ gcloud database-migration migration-jobs describe sqlserver-migration \
   --region us-central1
 
 # The job goes through these phases:
-# 1. FULL_DUMP - initial data transfer
-# 2. CDC - continuous replication of changes
-# 3. PROMOTE_IN_PROGRESS - when you trigger the cutover
+# 1. Initial load from the full backup
+# 2. Optional load from differential backups
+# 3. Incremental load from transaction log backups
+# 4. Ready to promote after the final transaction log backup is processed
 ```
 
 ## Cutover Process
@@ -240,21 +247,24 @@ When the continuous replication is caught up and you are ready to switch:
 ```bash
 # Step 1: Stop application writes to the source database
 
-# Step 2: Wait for DMS to process the final CDC changes
-# Monitor the replication lag
+# Step 2: Take and upload the final transaction log backup.
+# Name the file with a .trn.final suffix so DMS knows to stop incremental load.
+
+# Step 3: Wait for DMS to process the final transaction log backup
+# Monitor the migration job status
 gcloud database-migration migration-jobs describe sqlserver-migration \
   --region us-central1 \
   --format "value(state)"
 
-# Step 3: Promote the Cloud SQL instance
+# Step 4: Promote the Cloud SQL instance
 gcloud database-migration migration-jobs promote sqlserver-migration \
   --region us-central1
 
-# Step 4: Update your application connection strings to point to Cloud SQL
+# Step 5: Update your application connection strings to point to Cloud SQL
 # Old: Server=on-prem-sql.internal;Database=MyDatabase;
 # New: Server=<cloud-sql-ip>;Database=MyDatabase;
 
-# Step 5: Restart applications with the new connection string
+# Step 6: Restart applications with the new connection string
 ```
 
 ## Post-Migration Tasks
@@ -287,9 +297,9 @@ WHERE type IN ('P', 'FN', 'IF', 'TF')
 ORDER BY name;
 ```
 
-## Replacing SQL Server Agent Jobs
+## Replacing or Updating SQL Server Agent Jobs
 
-Since Cloud SQL does not include SQL Server Agent, migrate scheduled jobs to GCP alternatives:
+Cloud SQL for SQL Server includes SQL Server Agent, but jobs with file-system, OS-level, SSIS, SSRS, or external network dependencies may need to be changed or moved to GCP alternatives:
 
 ```bash
 # Use Cloud Scheduler to trigger Cloud Functions that execute SQL
@@ -302,8 +312,8 @@ gcloud scheduler jobs create http daily-data-cleanup \
 
 ## Common Issues
 
-- **Collation mismatches.** Verify that the Cloud SQL instance uses the same collation as your source database. The default collation for Cloud SQL SQL Server is SQL_Latin1_General_CP1_CI_AS.
-- **Login migration.** Database logins (SQL Server authentication) need to be recreated on Cloud SQL. Windows authentication logins need a different approach since Cloud SQL does not support Active Directory.
+- **Collation mismatches.** Verify that the Cloud SQL instance uses the same collation as your source database. You can set a default collation, such as `SQL_Latin1_General_CP1_CI_AS`, when creating the instance.
+- **Login migration.** Database logins need to be recreated on Cloud SQL. Cloud SQL supports Windows Authentication through supported directory integrations, but you need to configure it explicitly.
 - **Large databases.** Backup/restore for databases over 1 TB can take many hours. Use DMS for large databases to minimize cutover time.
 - **Application connection strings.** Update all connection strings, including those in configuration files, environment variables, and connection pooling configurations.
 
