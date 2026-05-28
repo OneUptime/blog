@@ -43,11 +43,13 @@ gcloud dns record-sets create app.example.com. \
     --type=A \
     --ttl=300 \
     --routing-policy-type=GEO \
-    --routing-policy-data="us-central1=34.120.0.1;europe-west1=35.190.0.1;asia-east1=34.80.0.1" \
+    --routing-policy-item="location=us-central1,rrdatas=34.120.0.1" \
+    --routing-policy-item="location=europe-west1,rrdatas=35.190.0.1" \
+    --routing-policy-item="location=asia-east1,rrdatas=34.80.0.1" \
     --project=my-project
 ```
 
-The `--routing-policy-data` parameter maps GCP regions to IP addresses. Cloud DNS maps the query source location to the nearest GCP region and returns the corresponding IP.
+The `--routing-policy-item` parameters map GCP regions to IP addresses. Cloud DNS maps the query source location to the nearest GCP region and returns the corresponding IP.
 
 ### Using Terraform
 
@@ -78,7 +80,7 @@ resource "google_dns_record_set" "app_geo" {
 
 ### Geolocation Fencing
 
-By default, if a user's location does not match any defined region, Cloud DNS returns the geographically closest result. You can enable geofencing to restrict this behavior so that users only get routed to their explicitly matching region.
+By default, if a user's location does not match any defined region, Cloud DNS returns the geographically closest result. When you use health checks, you can enable geofencing to keep traffic in the matching geolocation instead of failing over to the next closest healthy geolocation.
 
 ```bash
 # Create a geolocation policy with fencing enabled
@@ -88,11 +90,12 @@ gcloud dns record-sets create app.example.com. \
     --ttl=300 \
     --routing-policy-type=GEO \
     --enable-geo-fencing \
-    --routing-policy-data="us-central1=34.120.0.1;europe-west1=35.190.0.1" \
+    --routing-policy-item="location=us-central1,rrdatas=34.120.0.1" \
+    --routing-policy-item="location=europe-west1,rrdatas=35.190.0.1" \
     --project=my-project
 ```
 
-With fencing, users in regions not covered by the policy receive no answer instead of being routed to the nearest region.
+With fencing and health checks, Cloud DNS keeps traffic in the matching geolocation instead of failing over to the next closest healthy geolocation when the local endpoint is unhealthy.
 
 ## Option 2: Weighted Routing
 
@@ -105,11 +108,12 @@ gcloud dns record-sets create app.example.com. \
     --type=A \
     --ttl=300 \
     --routing-policy-type=WRR \
-    --routing-policy-data="0.6=34.120.0.1;0.4=35.190.0.1" \
+    --routing-policy-item="weight=0.6,rrdatas=34.120.0.1" \
+    --routing-policy-item="weight=0.4,rrdatas=35.190.0.1" \
     --project=my-project
 ```
 
-The weights do not need to add up to 1.0 - Cloud DNS normalizes them automatically. So `60=34.120.0.1;40=35.190.0.1` works the same way.
+The weights do not need to add up to 1.0 - Cloud DNS normalizes them automatically. So weights of `60` and `40` work the same way as `0.6` and `0.4`.
 
 ```hcl
 # Weighted routing policy in Terraform
@@ -134,28 +138,20 @@ resource "google_dns_record_set" "app_wrr" {
 
 ## Option 3: Geolocation with Health Checks (Failover)
 
-The real power comes when you combine geolocation routing with health checks. If a regional endpoint goes down, Cloud DNS automatically stops routing traffic to it and sends users to the next closest healthy region.
+The real power comes when you combine geolocation routing with health checks. If a regional external endpoint goes down and geofencing is disabled, Cloud DNS automatically stops routing traffic to it and sends users to the next closest healthy region.
 
 ### Create Health Checks
 
-First, set up health checks for each regional endpoint.
+First, set up a global health check for the external endpoints. Cloud DNS external endpoint health checks require three source regions and a check interval between 30 and 300 seconds.
 
 ```bash
-# Create a health check for the US endpoint
-gcloud compute health-checks create http us-health-check \
+# Create a health check for the regional external endpoints
+gcloud beta compute health-checks create http app-health-check \
+    --global \
+    --source-regions=us-central1,europe-west1,asia-east1 \
     --port=80 \
     --request-path=/health \
-    --check-interval=10 \
-    --timeout=5 \
-    --healthy-threshold=2 \
-    --unhealthy-threshold=3 \
-    --project=my-project
-
-# Create a health check for the EU endpoint
-gcloud compute health-checks create http eu-health-check \
-    --port=80 \
-    --request-path=/health \
-    --check-interval=10 \
+    --check-interval=30 \
     --timeout=5 \
     --healthy-threshold=2 \
     --unhealthy-threshold=3 \
@@ -164,9 +160,24 @@ gcloud compute health-checks create http eu-health-check \
 
 ### Create the Routing Policy with Health Checks
 
-Cloud DNS health-checked routing uses a different approach. You need to create the record set referencing the health check resources.
+Cloud DNS health-checked routing uses a different approach for external endpoints. You need to create the record set with a health check and mark each regional address as a health-checked target.
 
 ```hcl
+# Health check for Cloud DNS external endpoint routing
+resource "google_compute_health_check" "app" {
+  name                = "app-health-check"
+  check_interval_sec  = 30
+  timeout_sec         = 5
+  healthy_threshold   = 2
+  unhealthy_threshold = 3
+  source_regions      = ["us-central1", "europe-west1", "asia-east1"]
+
+  http_health_check {
+    port         = 80
+    request_path = "/health"
+  }
+}
+
 # Health-checked geolocation routing in Terraform
 resource "google_dns_record_set" "app_geo_health" {
   name         = "app.example.com."
@@ -175,35 +186,20 @@ resource "google_dns_record_set" "app_geo_health" {
   ttl          = 300
 
   routing_policy {
+    health_check       = google_compute_health_check.app.id
     enable_geo_fencing = false
 
     geo {
       location = "us-central1"
       health_checked_targets {
-        internal_load_balancers {
-          load_balancer_type = "regionalL4ilb"
-          ip_address         = "34.120.0.1"
-          port               = "80"
-          ip_protocol        = "tcp"
-          network_url        = google_compute_network.my_vpc.id
-          project            = "my-project"
-          region             = "us-central1"
-        }
+        external_endpoints = ["34.120.0.1"]
       }
     }
 
     geo {
       location = "europe-west1"
       health_checked_targets {
-        internal_load_balancers {
-          load_balancer_type = "regionalL4ilb"
-          ip_address         = "35.190.0.1"
-          port               = "80"
-          ip_protocol        = "tcp"
-          network_url        = google_compute_network.my_vpc.id
-          project            = "my-project"
-          region             = "europe-west1"
-        }
+        external_endpoints = ["35.190.0.1"]
       }
     }
   }
@@ -230,7 +226,7 @@ resource "google_dns_record_set" "app_failover" {
       primary {
         internal_load_balancers {
           load_balancer_type = "regionalL4ilb"
-          ip_address         = "34.120.0.1"
+          ip_address         = "10.128.0.10"
           port               = "80"
           ip_protocol        = "tcp"
           network_url        = google_compute_network.my_vpc.id
@@ -242,7 +238,7 @@ resource "google_dns_record_set" "app_failover" {
       # Backup receives traffic when primary is unhealthy
       backup_geo {
         location = "europe-west1"
-        rrdatas  = ["35.190.0.1"]
+        rrdatas  = ["10.130.0.10"]
       }
 
       # Trickle ratio sends a small percentage to backup even when primary is healthy
@@ -271,19 +267,15 @@ Set up monitoring to track which regions are receiving traffic and catch routing
 gcloud dns policies create dns-monitoring \
     --networks=my-vpc \
     --enable-logging \
+    --description="Enable DNS query logging for monitoring" \
     --project=my-project
 ```
 
-Create a Cloud Monitoring dashboard that tracks DNS query volume per region. You can also set up alerts for health check failures.
+Create a Cloud Monitoring dashboard that tracks DNS query volume and Cloud DNS health-check fields. You can also set up log-based alerts for health check failures using the health check log.
 
-```bash
-# Create an alert for health check failures
-gcloud monitoring policies create \
-    --display-name="Regional Health Check Failure" \
-    --condition-display-name="Health check failed" \
-    --condition-filter='resource.type="gce_instance" AND metric.type="compute.googleapis.com/instance/uptime_total"' \
-    --notification-channels=projects/my-project/notificationChannels/12345 \
-    --project=my-project
+```text
+logName="projects/my-project/logs/compute.googleapis.com%2Fhealthchecks"
+jsonPayload.healthCheckProbeResult.healthState="UNHEALTHY"
 ```
 
 ## Wrapping Up
