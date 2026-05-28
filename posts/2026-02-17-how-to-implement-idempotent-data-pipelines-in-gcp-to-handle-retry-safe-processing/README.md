@@ -28,8 +28,8 @@ The opposite of idempotent is a pipeline that appends rows on every run. Run it 
 The simplest idempotency pattern is to replace the output completely on every run. If your pipeline writes to a BigQuery table, use CREATE OR REPLACE TABLE instead of INSERT:
 
 ```sql
--- Idempotent: replaces the entire table on every run
--- Running this 10 times produces the same result as running it once
+-- Idempotent: replaces the entire table for a fixed run date
+-- Running this 10 times with the same @run_date produces the same result as running it once
 CREATE OR REPLACE TABLE `my-project.analytics.daily_summary` AS
 SELECT
     order_date,
@@ -37,7 +37,7 @@ SELECT
     SUM(total_amount) AS revenue,
     COUNT(DISTINCT customer_id) AS unique_customers
 FROM `my-project.raw_data.orders`
-WHERE order_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+WHERE order_date BETWEEN DATE_SUB(@run_date, INTERVAL 29 DAY) AND @run_date
 GROUP BY order_date
 ```
 
@@ -49,11 +49,11 @@ For partitioned tables, replace only the partitions that contain new data. This 
 
 ```sql
 -- Idempotent: replace specific date partitions rather than the whole table
--- If today's run is retried, it replaces today's partition with the same data
+-- If a run is retried, it replaces the same target partition with the same data
 
 -- Step 1: Delete the target partition
 DELETE FROM `my-project.analytics.events_processed`
-WHERE event_date = CURRENT_DATE();
+WHERE event_date = @target_date;
 
 -- Step 2: Insert the fresh data for that partition
 INSERT INTO `my-project.analytics.events_processed`
@@ -64,7 +64,7 @@ SELECT
     event_timestamp,
     event_date
 FROM `my-project.raw_data.events`
-WHERE event_date = CURRENT_DATE();
+WHERE event_date = @target_date;
 ```
 
 Wrapping the delete and insert in a transaction makes this atomic:
@@ -97,7 +97,19 @@ When you need to insert new rows and update existing ones, MERGE provides idempo
 -- Idempotent: MERGE inserts new rows and updates existing ones
 -- Running twice with the same source data produces the same target state
 MERGE `my-project.analytics.customers` AS target
-USING `my-project.raw_data.customers_latest` AS source
+USING (
+    SELECT * EXCEPT(row_num)
+    FROM (
+        SELECT
+            *,
+            ROW_NUMBER() OVER (
+                PARTITION BY customer_id
+                ORDER BY updated_at DESC
+            ) AS row_num
+        FROM `my-project.raw_data.customers_latest`
+    )
+    WHERE row_num = 1
+) AS source
 ON target.customer_id = source.customer_id
 WHEN MATCHED THEN
     UPDATE SET
@@ -111,7 +123,7 @@ WHEN NOT MATCHED THEN
             source.created_at, source.updated_at);
 ```
 
-MERGE is inherently idempotent: running it with the same source data twice results in the same target state. The second run's MATCHED clause updates rows to the same values, and the NOT MATCHED clause does not insert anything (because the rows already exist).
+MERGE is idempotent when the source has one row per target key: running it with the same source data twice results in the same target state. The second run's MATCHED clause updates rows to the same values, and the NOT MATCHED clause does not insert anything (because the rows already exist).
 
 ## Pattern 4: Idempotent Cloud Functions
 
@@ -148,7 +160,8 @@ def process_event(cloud_event):
     # Write to BigQuery
     errors = bq_client.insert_rows_json(
         'my-project.analytics.events',
-        rows_to_insert
+        rows_to_insert,
+        row_ids=[f"{message_id}-{index}" for index, _ in enumerate(rows_to_insert)]
     )
 
     if errors:
@@ -166,7 +179,7 @@ def process_event(cloud_event):
 Dataflow pipelines need idempotent sinks. The BigQuery write transform supports different write dispositions:
 
 ```python
-# Dataflow pipeline with idempotent BigQuery writes
+# Batch Dataflow pipeline with idempotent BigQuery writes
 import apache_beam as beam
 from apache_beam.io.gcp.bigquery import WriteToBigQuery
 
@@ -174,22 +187,21 @@ def run_pipeline():
     with beam.Pipeline() as pipeline:
         events = (
             pipeline
-            | 'ReadFromPubSub' >> beam.io.ReadFromPubSub(
-                subscription='projects/my-project/subscriptions/events-sub'
+            | 'ReadFromText' >> beam.io.ReadFromText(
+                'gs://my-bucket/events/date=2026-02-17/*.json'
             )
             | 'ParseJSON' >> beam.Map(parse_event)
             | 'AddEventDate' >> beam.Map(add_date_partition)
         )
 
-        # Idempotent write: WRITE_TRUNCATE replaces the partition
-        # If the pipeline restarts and reprocesses the same window,
-        # the partition is overwritten with the same data
+        # Idempotent write for a bounded batch: WRITE_TRUNCATE replaces the table
+        # If the batch pipeline restarts and reprocesses the same input,
+        # the table is overwritten with the same data
         events | 'WriteToBigQuery' >> WriteToBigQuery(
             table='my-project:analytics.events',
             schema=EVENT_SCHEMA,
             write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
             create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
-            # Use the event date as the partition for targeted replacement
             additional_bq_parameters={
                 'timePartitioning': {'type': 'DAY', 'field': 'event_date'}
             }
@@ -201,7 +213,8 @@ For streaming pipelines where WRITE_TRUNCATE is not practical, use deduplication
 ```python
 # Deduplicate within the Dataflow pipeline before writing
 import apache_beam as beam
-from apache_beam.transforms.deduplicate import Deduplicate
+from apache_beam.transforms.deduplicate import DeduplicatePerKey
+from apache_beam.utils.timestamp import Duration
 
 with beam.Pipeline() as pipeline:
     events = (
@@ -212,10 +225,11 @@ with beam.Pipeline() as pipeline:
         )
         | 'ParseJSON' >> beam.Map(parse_event)
         # Deduplicate based on event_id within a 10-minute window
-        | 'Deduplicate' >> Deduplicate(
-            key=lambda event: event['event_id'],
-            duration=beam.utils.timestamp.Duration(seconds=600)
+        | 'KeyByEventId' >> beam.Map(lambda event: (event['event_id'], event))
+        | 'Deduplicate' >> DeduplicatePerKey(
+            processing_time_duration=Duration(seconds=600)
         )
+        | 'DropDedupKey' >> beam.Values()
         | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
             table='my-project:analytics.events',
             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND
@@ -242,35 +256,78 @@ def process_new_files(bucket_name, prefix):
         file_path = f"gs://{bucket_name}/{blob.name}"
 
         # Check if this file has already been processed
-        query = f"""
+        query = """
             SELECT 1 FROM `my-project.metadata.processed_files`
-            WHERE file_path = '{file_path}'
+            WHERE file_path = @file_path
         """
-        results = list(bq_client.query(query).result())
+        results = list(bq_client.query(
+            query,
+            job_config=bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter("file_path", "STRING", file_path)
+                ]
+            )
+        ).result())
 
         if results:
             print(f"Skipping already processed file: {file_path}")
             continue
 
-        # Load the file into BigQuery
+        # Load the file into a staging table that can be safely replaced on retry
+        staging_table = f"my-project.staging.events_{blob.generation}"
         job_config = bigquery.LoadJobConfig(
             source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
             autodetect=True,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
         )
 
         load_job = bq_client.load_table_from_uri(
             file_path,
-            'my-project.raw_data.events',
+            staging_table,
             job_config=job_config
         )
         load_job.result()  # Wait for completion
 
-        # Record the file as processed
-        bq_client.query(f"""
-            INSERT INTO `my-project.metadata.processed_files`
-            (file_path, processed_at, row_count)
-            VALUES ('{file_path}', CURRENT_TIMESTAMP(), {load_job.output_rows})
-        """).result()
+        # Merge the staged data and metadata atomically
+        merge_query = f"""
+            BEGIN TRANSACTION;
+
+            MERGE `my-project.raw_data.events` AS target
+            USING `{staging_table}` AS source
+            ON target.event_id = source.event_id
+            WHEN MATCHED THEN
+                UPDATE SET
+                    target.user_id = source.user_id,
+                    target.event_type = source.event_type,
+                    target.event_timestamp = source.event_timestamp,
+                    target.event_date = source.event_date
+            WHEN NOT MATCHED THEN
+                INSERT (event_id, user_id, event_type, event_timestamp, event_date)
+                VALUES (source.event_id, source.user_id, source.event_type,
+                        source.event_timestamp, source.event_date);
+
+            MERGE `my-project.metadata.processed_files` AS target
+            USING (
+                SELECT
+                    @file_path AS file_path,
+                    CURRENT_TIMESTAMP() AS processed_at,
+                    @row_count AS row_count
+            ) AS source
+            ON target.file_path = source.file_path
+            WHEN NOT MATCHED THEN
+                INSERT (file_path, processed_at, row_count)
+                VALUES (source.file_path, source.processed_at, source.row_count);
+
+            COMMIT TRANSACTION;
+        """
+        bq_client.query(merge_query, job_config=bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("file_path", "STRING", file_path),
+                bigquery.ScalarQueryParameter("row_count", "INT64", load_job.output_rows),
+            ]
+        )).result()
+
+        bq_client.delete_table(staging_table, not_found_ok=True)
 
         print(f"Processed: {file_path} ({load_job.output_rows} rows)")
 ```
@@ -285,7 +342,12 @@ from airflow import DAG
 from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
 from datetime import datetime
 
-dag = DAG('idempotent_pipeline', schedule_interval='@daily')
+dag = DAG(
+    'idempotent_pipeline',
+    schedule='@daily',
+    start_date=datetime(2026, 1, 1),
+    catchup=False,
+)
 
 # Each task is idempotent: uses partition replacement
 # The logical_date (execution_date) makes the query deterministic
