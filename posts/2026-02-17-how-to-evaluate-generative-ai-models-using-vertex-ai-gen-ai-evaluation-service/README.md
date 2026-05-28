@@ -14,7 +14,7 @@ Shipping a generative AI feature without proper evaluation is like deploying cod
 
 Every team I have worked with that skips formal evaluation ends up regretting it. You fine-tune a prompt, it seems better on three examples, you ship it, and then users start complaining about edge cases you never tested. Systematic evaluation catches these issues by running your model against a curated dataset and scoring the outputs on multiple dimensions.
 
-The Vertex AI Evaluation Service provides both automatic metrics (computed by an LLM judge) and pointwise/pairwise evaluation modes. You can measure things like coherence, fluency, groundedness, safety, and custom criteria specific to your use case.
+The Vertex AI Evaluation Service provides model-based metrics (computed by an LLM judge), computation-based metrics, and pointwise/pairwise evaluation modes. You can measure things like coherence, fluency, groundedness, safety, and custom criteria specific to your use case.
 
 ## Setting Up the Evaluation Environment
 
@@ -71,7 +71,7 @@ This code runs a pointwise evaluation with standard metrics:
 
 ```python
 # Define the model to evaluate
-model = GenerativeModel("gemini-2.0-flash")
+model = GenerativeModel("gemini-2.5-flash")
 
 # Create an evaluation task with built-in metrics
 eval_task = EvalTask(
@@ -80,7 +80,7 @@ eval_task = EvalTask(
         "coherence",       # How logically consistent is the response
         "fluency",         # How natural and readable is the response
         "groundedness",    # How well grounded in factual information
-        "fulfillment",     # How well the response fulfills the prompt
+        "instruction_following",  # How well the response follows instructions
     ],
     experiment="networking-explainer-eval-v1"
 )
@@ -106,7 +106,7 @@ graph TD
     B --> B1[Coherence]
     B --> B2[Fluency]
     B --> B3[Groundedness]
-    B --> B4[Fulfillment]
+    B --> B4[Instruction Following]
     B --> B5[Safety]
     C --> C1[Pairwise Quality]
     C --> C2[Pairwise Safety]
@@ -130,7 +130,7 @@ eval_task_with_refs = EvalTask(
     metrics=[
         "rouge_l_sum",    # Longest common subsequence overlap with reference
         "bleu",           # N-gram precision compared to reference
-        "fulfillment",    # LLM-judged fulfillment of the prompt
+        "instruction_following",  # LLM-judged instruction following
     ],
     experiment="networking-explainer-rouge-eval"
 )
@@ -139,7 +139,12 @@ result = eval_task_with_refs.evaluate(model=model)
 
 # Examine per-example results
 metrics_table = result.metrics_table
-print(metrics_table[["prompt", "rouge_l_sum", "bleu", "fulfillment"]].to_string())
+print(metrics_table[[
+    "prompt",
+    "rouge_l_sum/score",
+    "bleu/score",
+    "instruction_following/score",
+]].to_string())
 ```
 
 ## Creating Custom Evaluation Criteria
@@ -204,8 +209,8 @@ pairwise_quality = PairwiseMetric(
 )
 
 # Prepare dataset with responses from both models
-baseline_model = GenerativeModel("gemini-1.5-flash")
-candidate_model = GenerativeModel("gemini-2.0-flash")
+baseline_model = GenerativeModel("gemini-2.5-flash-lite")
+candidate_model = GenerativeModel("gemini-2.5-flash")
 
 # Generate responses from both models
 responses_baseline = []
@@ -218,12 +223,13 @@ for _, row in eval_dataset.iterrows():
         candidate_model.generate_content(row["prompt"]).text
     )
 
-eval_dataset["baseline_model_response"] = responses_baseline
-eval_dataset["response"] = responses_candidate
+pairwise_dataset = eval_dataset.copy()
+pairwise_dataset["baseline_model_response"] = responses_baseline
+pairwise_dataset["response"] = responses_candidate
 
 # Run pairwise evaluation
 pairwise_task = EvalTask(
-    dataset=eval_dataset,
+    dataset=pairwise_dataset,
     metrics=[pairwise_quality],
     experiment="model-comparison-v1"
 )
@@ -256,7 +262,7 @@ dataset_v2["prompt"] = dataset_v2["prompt"].apply(
 for version, dataset in [("v1", dataset_v1), ("v2", dataset_v2)]:
     task = EvalTask(
         dataset=dataset,
-        metrics=["coherence", "fulfillment", technical_accuracy],
+        metrics=["coherence", "instruction_following", technical_accuracy],
         experiment=f"prompt-{version}-eval"
     )
     result = task.evaluate(model=model)
@@ -273,7 +279,7 @@ Evaluation should not be a one-time thing. Set up automated evaluation runs when
 # Define minimum acceptable thresholds
 THRESHOLDS = {
     "coherence/mean": 4.0,
-    "fulfillment/mean": 3.5,
+    "instruction_following/mean": 3.5,
     "fluency/mean": 4.0,
 }
 
