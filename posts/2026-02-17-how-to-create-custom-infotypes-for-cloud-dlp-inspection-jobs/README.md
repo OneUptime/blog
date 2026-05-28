@@ -10,11 +10,11 @@ Description: Learn how to create custom InfoTypes in Cloud DLP to detect organiz
 
 Cloud DLP ships with over 150 built-in InfoTypes that cover common patterns like email addresses, credit card numbers, and social security numbers. But every organization has its own sensitive data patterns. Maybe you have internal employee IDs with a specific format, customer account numbers that follow a naming convention, or medical record identifiers unique to your systems.
 
-Custom InfoTypes let you teach Cloud DLP to recognize these patterns. In this post, I will cover the three types of custom InfoTypes and show you how to use each one.
+Custom InfoTypes let you teach Cloud DLP to recognize these patterns. In this post, I will cover three common custom InfoType options for content inspection and show you how to use each one.
 
 ## Three Types of Custom InfoTypes
 
-Cloud DLP supports three ways to define custom InfoTypes:
+Cloud DLP supports several ways to define custom InfoTypes. For most content inspection jobs, you will use one of these three:
 
 1. **Regular expression InfoTypes** - Match data based on a regex pattern
 2. **Dictionary InfoTypes** - Match against a list of specific words or phrases
@@ -63,9 +63,11 @@ def inspect_with_custom_regex(project_id, content):
     # Run the inspection
     parent = f"projects/{project_id}/locations/global"
     response = dlp_client.inspect_content(
-        parent=parent,
-        inspect_config=inspect_config,
-        item=item,
+        request={
+            "parent": parent,
+            "inspect_config": inspect_config,
+            "item": item,
+        }
     )
 
     # Print findings
@@ -143,9 +145,11 @@ def inspect_with_custom_dictionary(project_id, content):
     parent = f"projects/{project_id}/locations/global"
 
     response = dlp_client.inspect_content(
-        parent=parent,
-        inspect_config=inspect_config,
-        item=item,
+        request={
+            "parent": parent,
+            "inspect_config": inspect_config,
+            "item": item,
+        }
     )
 
     for finding in response.result.findings:
@@ -192,9 +196,11 @@ def create_stored_infotype(project_id, stored_infotype_id, gcs_path):
     parent = f"projects/{project_id}/locations/global"
 
     response = dlp_client.create_stored_info_type(
-        parent=parent,
-        config=config,
-        stored_info_type_id=stored_infotype_id,
+        request={
+            "parent": parent,
+            "config": config,
+            "stored_info_type_id": stored_infotype_id,
+        }
     )
 
     print(f"Created stored InfoType: {response.name}")
@@ -237,9 +243,11 @@ def inspect_with_stored_infotype(project_id, content, stored_infotype_name):
     parent = f"projects/{project_id}/locations/global"
 
     response = dlp_client.inspect_content(
-        parent=parent,
-        inspect_config=inspect_config,
-        item=item,
+        request={
+            "parent": parent,
+            "inspect_config": inspect_config,
+            "item": item,
+        }
     )
 
     return response
@@ -338,7 +346,7 @@ This tells DLP to initially flag `[A-Z]{3}-\d{6}` patterns as `POSSIBLE`, but bo
 
 **Combine built-in and custom InfoTypes.** Use built-in InfoTypes for standard data (emails, SSNs) and custom InfoTypes for organization-specific patterns. They work together seamlessly.
 
-**Use stored InfoTypes for large dictionaries.** If your word list has more than a few hundred entries, a stored InfoType backed by a Cloud Storage file is more practical than an inline word list.
+**Use stored InfoTypes for large dictionaries.** If your word list is very large, changes frequently, or needs to be reused across jobs, a stored InfoType backed by a Cloud Storage file is more practical than an inline word list.
 
 **Version control your definitions.** Store your custom InfoType JSON configurations in version control alongside your inspection job configs. This gives you an audit trail of what you are scanning for.
 
