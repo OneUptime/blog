@@ -49,13 +49,18 @@ For straightforward data movement, you have several options. Here is a Dataflow 
 
 # This replaces an ADF Copy Data activity from Cloud Storage to BigQuery
 gcloud dataflow jobs run copy-csv-to-bq \
-    --gcs-location=gs://dataflow-templates/latest/GCS_Text_to_BigQuery \
+    --gcs-location=gs://dataflow-templates-us-central1/latest/GCS_CSV_to_BigQuery \
     --region=us-central1 \
     --parameters \
-inputFilePattern=gs://my-data-bucket/input/*.csv,\
-JSONPath=gs://my-data-bucket/schemas/schema.json,\
-outputTable=my-project:my_dataset.my_table,\
-bigQueryLoadingTemporaryDirectory=gs://my-data-bucket/temp/
+^~^inputFilePattern=gs://my-data-bucket/input/*.csv~\
+schemaJSONPath=gs://my-data-bucket/schemas/schema.json~\
+outputTable=my-project:my_dataset.my_table~\
+badRecordsOutputTable=my-project:my_dataset.my_bad_records~\
+csvFormat=Default~\
+delimiter=,~\
+bigQueryLoadingTemporaryDirectory=gs://my-data-bucket/temp/~\
+containsHeaders=true~\
+csvFileEncoding=UTF-8
 ```
 
 Google provides many pre-built Dataflow templates for common patterns like JDBC to BigQuery, Pub/Sub to BigQuery, and Cloud Storage file conversions.
@@ -64,7 +69,7 @@ Google provides many pre-built Dataflow templates for common patterns like JDBC 
 
 ADF Mapping Data Flows get translated into Apache Beam pipelines. Here is an example migration.
 
-Suppose your ADF Data Flow reads sales data from CSV, filters out records with zero amounts, aggregates by region, and writes to a database. Here is how that looks as an Apache Beam pipeline:
+Suppose your ADF Data Flow reads sales data from CSV, filters out records with zero amounts, aggregates by region, and writes to BigQuery. Here is how that looks as an Apache Beam pipeline:
 
 ```python
 # Apache Beam pipeline replacing an ADF Mapping Data Flow
@@ -153,20 +158,21 @@ def get_last_watermark():
 def update_watermark(element):
     """Update the watermark after processing."""
     client = bigquery.Client()
-    client.query(f"""
+    client.query("""
         MERGE my_dataset.pipeline_metadata t
         USING (SELECT 'sales_pipeline' as pipeline_name,
                CURRENT_TIMESTAMP() as last_processed) s
         ON t.pipeline_name = s.pipeline_name
         WHEN MATCHED THEN UPDATE SET last_processed = s.last_processed
-        WHEN NOT MATCHED THEN INSERT VALUES (s.pipeline_name, s.last_processed)
+        WHEN NOT MATCHED THEN INSERT (pipeline_name, last_processed)
+        VALUES (s.pipeline_name, s.last_processed)
     """).result()
     return element
 
 watermark = get_last_watermark()
 
 with beam.Pipeline(options=options) as pipeline:
-    (
+    write_result = (
         pipeline
         # Read only new records since last watermark
         | 'ReadNew' >> beam.io.ReadFromBigQuery(
@@ -181,6 +187,11 @@ with beam.Pipeline(options=options) as pipeline:
             'my-project:target_dataset.sales',
             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND
         )
+    )
+
+    _ = (
+        write_result.destination_load_jobid_pairs
+        | 'UpdateWatermark' >> beam.Map(update_watermark)
     )
 ```
 
@@ -203,7 +214,7 @@ from datetime import datetime
 dag = DAG(
     'sales_etl_pipeline',
     description='Migrated from ADF - daily sales processing',
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2026, 1, 1),
     catchup=False
 )
@@ -251,7 +262,7 @@ run_dataflow >> run_aggregation
 ADF Linked Services define connections to data sources. In Beam, you use IO connectors. Here are common mappings:
 
 - **Azure SQL Database** - Use `beam.io.ReadFromJdbc` with the SQL Server JDBC driver, or migrate the database to Cloud SQL and use the PostgreSQL connector
-- **Azure Blob Storage** - Use `beam.io.ReadFromText` or `beam.io.ReadFromAvro` with `gs://` paths
+- **Azure Blob Storage** - Move the files to Cloud Storage first, then use `beam.io.ReadFromText` or `beam.io.ReadFromAvro` with `gs://` paths
 - **Azure Cosmos DB** - Use HTTP-based Beam IO or migrate to Firestore
 - **REST APIs** - Use custom `beam.DoFn` with the `requests` library
 
