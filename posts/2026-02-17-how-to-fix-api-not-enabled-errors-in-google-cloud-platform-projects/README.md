@@ -141,7 +141,8 @@ Your organization might restrict which APIs can be enabled:
 # Check if there is a service restriction org policy
 gcloud resource-manager org-policies describe \
     serviceuser.services \
-    --project=my-project
+    --project=my-project \
+    --effective
 ```
 
 If an org policy is blocking you, you will need to work with your organization admin.
@@ -186,7 +187,7 @@ resource "google_project_service" "run" {
   disable_on_destroy = false
 }
 
-# You can also use a loop for multiple APIs
+# You can also use a loop for multiple APIs instead of separate resources
 variable "apis" {
   default = [
     "compute.googleapis.com",
