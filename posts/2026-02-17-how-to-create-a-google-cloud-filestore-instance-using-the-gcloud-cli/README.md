@@ -12,7 +12,7 @@ Google Cloud Filestore provides managed NFS (Network File System) storage that y
 
 ## What Filestore Gives You
 
-Filestore is a fully managed NFS file server. You create an instance, specify a capacity, and get an NFS endpoint that you can mount on any client in the same VPC. It handles the underlying storage infrastructure, including replication, snapshots, and performance tuning.
+Filestore is a fully managed NFS file server. You create an instance, specify a capacity, and get an NFS endpoint that you can mount on clients in the same project and VPC. It handles the underlying storage infrastructure, with backups available across tiers and snapshots or replication available on supported tiers.
 
 Common use cases include shared storage for web application content, media processing pipelines, machine learning training data, CI/CD build artifacts, and any workload where multiple VMs or pods need concurrent access to the same files.
 
@@ -73,11 +73,11 @@ Filestore offers several tiers, each with different performance characteristics 
 
 **BASIC_SSD** - Higher performance with SSD-backed storage. Provides up to 1.2 GB/s read throughput. Minimum capacity is 2.5 TB. Good for latency-sensitive workloads.
 
-**ZONAL** - High performance with SSD storage and zonal redundancy. Starts at 1 TB minimum. Provides up to 4.8 GB/s read throughput at higher capacities. Good for production workloads that need consistent performance.
+**ZONAL** - High performance with SSD storage in a single zone. Starts at 1 TB minimum. Provides configurable performance that scales with capacity. Good for high-performance workloads that can tolerate zonal availability.
 
-**REGIONAL** - Same performance as Zonal but with cross-zone replication for high availability. Data is replicated across two zones in the region. Minimum capacity is 1 TB.
+**REGIONAL** - Regional availability and resilience against zone outages, with configurable performance. Minimum capacity is generally 1 TB, although small regional instances are available in limited regions with access to the small capacity instances feature.
 
-**ENTERPRISE** - The highest tier with regional availability, snapshots, and the broadest range of capacity options. Minimum capacity is 1 TB. Designed for business-critical workloads.
+**ENTERPRISE** - A regional tier used primarily for Filestore multishares for GKE and some enterprise workloads. Minimum capacity is 1 TB, and Google recommends using REGIONAL instead whenever possible.
 
 Here is how to create instances at different tiers:
 
@@ -108,35 +108,28 @@ Note that Enterprise tier uses `--location` (a region) instead of `--zone`.
 
 ## Configuring the Network
 
-The network configuration determines which VMs and services can access the Filestore instance. By default, any client in the specified VPC network can mount the share.
+The network configuration determines which VPC network the Filestore instance attaches to. By default, clients in the same Google Cloud project and VPC network can mount the share.
 
-You can restrict access to a specific subnet:
+You can choose the IP address range that Filestore uses for the instance:
 
 ```bash
-# Create an instance accessible only from a specific subnet
+# Create an instance with a specific reserved IP range
 gcloud filestore instances create my-filestore \
   --zone=us-central1-a \
   --tier=BASIC_HDD \
   --file-share=name=vol1,capacity=1TB \
-  --network=name=default,reserved-ip-range=filestore-range
+  --network=name=default,reserved-ip-range=10.0.7.0/29
 ```
 
-If you want to use a specific IP address range for the Filestore instance, create a reserved range first:
+For Basic tier instances, the direct reserved range must be a non-overlapping `/29` CIDR block. Zonal, regional, and enterprise instances require a larger block when you specify a direct CIDR range.
 
 ```bash
-# Reserve an IP range for Filestore
-gcloud compute addresses create filestore-range \
-  --global \
-  --purpose=VPC_PEERING \
-  --prefix-length=29 \
-  --network=default
-
-# Create the instance with the reserved range
+# Create a Zonal instance with a specific reserved IP range
 gcloud filestore instances create my-filestore \
   --zone=us-central1-a \
-  --tier=BASIC_HDD \
+  --tier=ZONAL \
   --file-share=name=vol1,capacity=1TB \
-  --network=name=default,reserved-ip-range=filestore-range
+  --network=name=default,reserved-ip-range=10.0.8.0/24
 ```
 
 ## Getting the Mount Information
@@ -201,7 +194,7 @@ gcloud filestore instances delete my-filestore --zone=us-central1-a
 
 ## Common Mistakes to Avoid
 
-1. **Choosing the wrong zone** - Put the Filestore instance in the same zone as your primary compute resources. Cross-zone NFS traffic adds latency and costs.
+1. **Choosing the wrong location** - Put zonal Filestore instances in the same zone as your primary compute resources when possible. Cross-zone NFS traffic can add latency and costs.
 
 2. **Under-provisioning capacity** - Filestore performance scales with capacity for some tiers. A larger instance may give you better throughput even if you do not need the space.
 
