@@ -8,7 +8,7 @@ Description: A practical guide to diagnosing and fixing DNS resolution failures 
 
 ---
 
-DNS issues in Kubernetes are sneaky. Everything looks fine until a pod cannot resolve a service name, an external domain, or both. The symptoms vary - timeouts, connection refused, NXDOMAIN responses - but the root cause usually lives in the cluster DNS system. In GKE, that means kube-dns (the default) or CoreDNS if you have migrated.
+DNS issues in Kubernetes are sneaky. Everything looks fine until a pod cannot resolve a service name, an external domain, or both. The symptoms vary - timeouts, connection refused, NXDOMAIN responses - but the root cause usually lives in the cluster DNS system. In GKE Standard clusters, that usually means kube-dns, including GKE's CoreDNS-based kube-dns in newer versions, or Cloud DNS if you have changed the cluster DNS provider.
 
 Let's walk through the most common DNS failures and how to fix each one.
 
@@ -23,19 +23,19 @@ sequenceDiagram
     participant kube-dns/CoreDNS
     participant Upstream DNS
 
-    Pod->>kubelet: DNS query for "my-service"
-    kubelet->>kube-dns/CoreDNS: Forward to cluster DNS (10.x.x.10:53)
+    kubelet->>Pod: Writes /etc/resolv.conf
+    Pod->>kube-dns/CoreDNS: DNS query to cluster DNS (10.x.x.10:53)
     kube-dns/CoreDNS->>kube-dns/CoreDNS: Check cluster domain (cluster.local)
     alt Cluster service
         kube-dns/CoreDNS-->>Pod: Return ClusterIP
     else External domain
-        kube-dns/CoreDNS->>Upstream DNS: Forward to metadata server (169.254.169.254)
+        kube-dns/CoreDNS->>Upstream DNS: Forward to configured upstream resolver
         Upstream DNS-->>kube-dns/CoreDNS: Return external IP
         kube-dns/CoreDNS-->>Pod: Return external IP
     end
 ```
 
-The kubelet configures each pod's `/etc/resolv.conf` to point at the cluster DNS service IP (usually 10.x.0.10). All DNS queries go through that service.
+The kubelet configures each pod's `/etc/resolv.conf` to point at the cluster DNS service IP (usually 10.x.0.10) when the cluster uses kube-dns without NodeLocal DNSCache or Cloud DNS. With NodeLocal DNSCache or Cloud DNS for GKE, the nameserver IP can be different.
 
 ## Step 1 - Test DNS from Inside a Pod
 
@@ -85,7 +85,7 @@ Check the logs for errors:
 
 ```bash
 # View kube-dns logs for errors
-kubectl logs -n kube-system -l k8s-app=kube-dns --tail=50
+kubectl logs -n kube-system -l k8s-app=kube-dns --all-containers=true --tail=50
 ```
 
 Common log errors include:
@@ -111,38 +111,29 @@ If the DNS pods are consistently at their CPU limit, increase the resources:
 kubectl edit deployment kube-dns -n kube-system
 ```
 
-Or use kubectl patch:
+Or use `kubectl set resources`:
 
 ```bash
 # Increase CPU and memory limits for kube-dns
-kubectl patch deployment kube-dns -n kube-system --type='json' -p='[
-  {
-    "op": "replace",
-    "path": "/spec/template/spec/containers/0/resources/limits/cpu",
-    "value": "200m"
-  },
-  {
-    "op": "replace",
-    "path": "/spec/template/spec/containers/0/resources/limits/memory",
-    "value": "300Mi"
-  }
-]'
+kubectl set resources deployment/kube-dns -n kube-system \
+  --containers='*' \
+  --limits=cpu=200m,memory=300Mi
 ```
 
 ## Step 4 - Scale DNS Pods
 
-In larger clusters, two DNS pods might not be enough. You can scale kube-dns manually or enable DNS autoscaling:
+In larger clusters, two DNS pods might not be enough. You can scale kube-dns manually for a quick test, but the GKE DNS autoscaler can adjust the replica count again:
 
 ```bash
 # Scale kube-dns to more replicas
 kubectl scale deployment kube-dns -n kube-system --replicas=4
 ```
 
-For automatic scaling, check if the dns-autoscaler ConfigMap exists:
+For sustained scaling, check the kube-dns autoscaler ConfigMap:
 
 ```bash
 # Check DNS autoscaler configuration
-kubectl get configmap dns-autoscaler -n kube-system -o yaml
+kubectl get configmap kube-dns-autoscaler -n kube-system -o yaml
 ```
 
 If it exists, you can adjust the scaling parameters:
@@ -152,7 +143,7 @@ If it exists, you can adjust the scaling parameters:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: dns-autoscaler
+  name: kube-dns-autoscaler
   namespace: kube-system
 data:
   linear: |-
@@ -165,7 +156,7 @@ data:
     }
 ```
 
-This configuration creates one DNS replica per 4 nodes, with a minimum of 2.
+This configuration creates at least one DNS replica per 4 nodes, subject to the `coresPerReplica`, `min`, and `max` settings.
 
 ## Step 5 - Fix ndots Issues
 
@@ -182,7 +173,13 @@ kind: Deployment
 metadata:
   name: external-api-caller
 spec:
+  selector:
+    matchLabels:
+      app: external-api-caller
   template:
+    metadata:
+      labels:
+        app: external-api-caller
     spec:
       dnsConfig:
         options:
@@ -195,19 +192,21 @@ spec:
         image: your-app:latest
 ```
 
-The `single-request-reopen` option also helps avoid a race condition where A and AAAA queries sent on the same socket interfere with each other.
+For glibc-based images, the `single-request-reopen` option also helps avoid a race condition where A and AAAA queries sent on the same socket interfere with each other.
 
 ## Step 6 - Fix External DNS Resolution Failures
 
 If cluster DNS works (services resolve) but external domains do not, the issue is usually with the upstream DNS path.
 
-In GKE, kube-dns forwards external queries to the GCE metadata server at 169.254.169.254. If the metadata server is unreachable, external resolution fails.
+In GKE, kube-dns resolves external names recursively by forwarding to its configured upstream resolvers. If you use Cloud DNS for GKE, the metadata server at 169.254.169.254 is part of the DNS data path. If you use NodeLocal DNSCache, the node-local cache handles the first hop and forwards misses based on the cluster DNS configuration.
 
-Test from the DNS pod directly:
+Test the DNS service directly from a debug pod:
 
 ```bash
-# Check if the metadata server is reachable from the DNS pod
-kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=kube-dns -o jsonpath='{.items[0].metadata.name}') -c kubedns -- nslookup google.com 169.254.169.254
+# Check whether the kube-dns Service can resolve external names
+KUBE_DNS_IP=$(kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIP}')
+kubectl run dns-debug --image=busybox:1.36 --rm -it --restart=Never -- \
+  nslookup google.com "$KUBE_DNS_IP"
 ```
 
 If that fails, check network policies. A common mistake is deploying a NetworkPolicy that blocks egress from kube-system:
@@ -226,10 +225,10 @@ spec:
   - Egress
 ```
 
-If you need network policies in kube-system, make sure DNS pods can reach the metadata server:
+If you need network policies in kube-system, make sure DNS pods can reach their configured upstream resolvers. This example allows all egress from the DNS pods:
 
 ```yaml
-# Allow kube-dns to reach the metadata server and receive queries
+# Allow kube-dns to reach upstream resolvers
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -242,7 +241,7 @@ spec:
   policyTypes:
   - Egress
   egress:
-  - to: []  # allow all egress for DNS pods
+  - {}  # allow all egress for DNS pods
 ```
 
 ## Step 7 - Debug Intermittent DNS Failures
@@ -283,7 +282,7 @@ kubectl run dns-test --image=busybox:1.36 --rm -it --restart=Never -- sh -c '
   nslookup kubernetes.default.svc.cluster.local
   echo "=== External DNS ==="
   nslookup google.com
-  echo "=== Headless service ==="
+  echo "=== DNS service ==="
   nslookup kube-dns.kube-system.svc.cluster.local
   echo "=== Response time ==="
   time nslookup google.com
