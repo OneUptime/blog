@@ -16,7 +16,7 @@ This is different from building a custom classifier. You do not need to provide 
 
 The API classifies text against Google's content taxonomy, which is a hierarchical set of categories. For example:
 
-- /Technology/Computer Electronics
+- /Computers & Electronics/Computer Hardware/Laptops & Notebooks
 - /Finance/Banking
 - /Health/Medical Facilities & Services
 - /Sports/Team Sports/Soccer
@@ -24,7 +24,7 @@ The API classifies text against Google's content taxonomy, which is a hierarchic
 
 Each classification comes with a confidence score between 0 and 1. The API can assign multiple categories to a single piece of text if the content spans multiple topics.
 
-The text needs to be at least 20 words for classification to work effectively. Longer texts generally produce more accurate results.
+When you use the legacy V1 model, the text needs to be at least 20 tokens for classification to work. Longer texts generally produce more accurate results.
 
 ## Basic Text Classification
 
@@ -41,8 +41,18 @@ def classify_text(text):
         content=text,
         type_=language_v1.Document.Type.PLAIN_TEXT,
     )
+    classification_model_options = {
+        "v2_model": {
+            "content_categories_version": language_v1.ClassificationModelOptions.V2Model.ContentCategoriesVersion.V2
+        }
+    }
 
-    response = client.classify_text(request={"document": document})
+    response = client.classify_text(
+        request={
+            "document": document,
+            "classification_model_options": classification_model_options,
+        }
+    )
 
     print(f"Text: {text[:80]}...\n")
     print("Categories:")
@@ -86,6 +96,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 def classify_batch(texts, max_workers=10):
     """Classify multiple texts in parallel."""
     client = language_v1.LanguageServiceClient()
+    classification_model_options = {
+        "v2_model": {
+            "content_categories_version": language_v1.ClassificationModelOptions.V2Model.ContentCategoriesVersion.V2
+        }
+    }
 
     def classify_single(text_item):
         """Classify a single text item."""
@@ -95,7 +110,12 @@ def classify_batch(texts, max_workers=10):
         )
 
         try:
-            response = client.classify_text(request={"document": document})
+            response = client.classify_text(
+                request={
+                    "document": document,
+                    "classification_model_options": classification_model_options,
+                }
+            )
 
             categories = [
                 {"name": cat.name, "confidence": round(cat.confidence, 3)}
@@ -143,6 +163,11 @@ class ContentOrganizer:
 
     def __init__(self, min_confidence=0.5):
         self.client = language_v1.LanguageServiceClient()
+        self.classification_model_options = {
+            "v2_model": {
+                "content_categories_version": language_v1.ClassificationModelOptions.V2Model.ContentCategoriesVersion.V2
+            }
+        }
         self.min_confidence = min_confidence
         self.categorized_content = defaultdict(list)
 
@@ -154,7 +179,12 @@ class ContentOrganizer:
         )
 
         try:
-            response = self.client.classify_text(request={"document": document})
+            response = self.client.classify_text(
+                request={
+                    "document": document,
+                    "classification_model_options": self.classification_model_options,
+                }
+            )
 
             # Get categories above confidence threshold
             categories = [
@@ -211,7 +241,12 @@ class ContentOrganizer:
             type_=language_v1.Document.Type.PLAIN_TEXT,
         )
 
-        response = self.client.classify_text(request={"document": document})
+        response = self.client.classify_text(
+            request={
+                "document": document,
+                "classification_model_options": self.classification_model_options,
+            }
+        )
 
         if not response.categories:
             return []
@@ -264,6 +299,11 @@ class TicketRouter:
 
     def __init__(self):
         self.client = language_v1.LanguageServiceClient()
+        self.classification_model_options = {
+            "v2_model": {
+                "content_categories_version": language_v1.ClassificationModelOptions.V2Model.ContentCategoriesVersion.V2
+            }
+        }
 
         # Map categories to support teams
         self.routing_rules = {
@@ -284,7 +324,12 @@ class TicketRouter:
         )
 
         try:
-            response = self.client.classify_text(request={"document": document})
+            response = self.client.classify_text(
+                request={
+                    "document": document,
+                    "classification_model_options": self.classification_model_options,
+                }
+            )
 
             if not response.categories:
                 return {
@@ -357,14 +402,24 @@ def full_content_analysis(text):
         content=text,
         type_=language_v1.Document.Type.PLAIN_TEXT,
     )
+    classification_model_options = {
+        "v2_model": {
+            "content_categories_version": language_v1.ClassificationModelOptions.V2Model.ContentCategoriesVersion.V2
+        }
+    }
 
     # Run all three analyses
-    # Note: classify_text requires at least 20 words
+    # Note: classify_text requires at least 20 tokens when using the V1 model
     results = {}
 
     # Classification
     try:
-        class_response = client.classify_text(request={"document": document})
+        class_response = client.classify_text(
+            request={
+                "document": document,
+                "classification_model_options": classification_model_options,
+            }
+        )
         results["categories"] = [
             {"name": cat.name, "confidence": round(cat.confidence, 3)}
             for cat in class_response.categories
@@ -412,9 +467,9 @@ print("Top entities:", [(e["name"], e["type"]) for e in analysis["entities"][:5]
 
 A few things to keep in mind when using content classification:
 
-- The text must be at least 20 words. Shorter texts will return an error.
-- The taxonomy is fixed - you cannot add custom categories. For custom classification, you would need AutoML Natural Language or Vertex AI.
-- The categories are English-centric in naming, but the API works with text in many languages.
+- The text must be at least 20 tokens when you use the legacy V1 model. Shorter texts will return an error with that model.
+- The taxonomy is fixed - you cannot add custom categories. For custom classification, use Vertex AI Gemini prompts and tuning.
+- The categories are returned as exact strings in English. The V2 classification model supports several languages, while the V1 model supports English.
 - Very specialized or niche content may not match any category well.
 - The confidence threshold matters. Experiment to find the right cutoff for your use case.
 
