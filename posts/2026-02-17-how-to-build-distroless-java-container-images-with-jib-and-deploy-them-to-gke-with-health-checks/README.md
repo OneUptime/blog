@@ -22,15 +22,15 @@ Here is a Spring Boot project with Jib configured to use a distroless base.
 // build.gradle - Jib with distroless Java base
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.2.0'
-    id 'io.spring.dependency-management' version '1.1.4'
-    id 'com.google.cloud.tools.jib' version '3.4.0'
+    id 'org.springframework.boot' version '3.5.14'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'com.google.cloud.tools.jib' version '3.5.3'
 }
 
 jib {
     from {
         // Use the distroless Java 17 base image from Google
-        image = 'gcr.io/distroless/java17-debian12'
+        image = 'gcr.io/distroless/java17-debian13'
     }
     to {
         image = 'us-central1-docker.pkg.dev/my-project/my-repo/my-java-service'
@@ -188,7 +188,7 @@ spec:
           # Java apps can take 10-30 seconds to fully start
           startupProbe:
             httpGet:
-              path: /actuator/health/readiness
+              path: /actuator/health/liveness
               port: http
             # Check every 5 seconds, up to 60 times (5 minutes max)
             periodSeconds: 5
@@ -293,7 +293,7 @@ The biggest challenge with distroless containers is debugging. There is no shell
 jib {
     from {
         // Debug variant includes a busybox shell
-        image = 'gcr.io/distroless/java17-debian12:debug'
+        image = 'gcr.io/distroless/java17-debian13:debug'
     }
 }
 ```
