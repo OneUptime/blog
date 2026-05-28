@@ -63,7 +63,7 @@ The alternative is to build your own ML platform on GKE. This usually means comb
 A typical Kubeflow deployment on GKE might start like this:
 
 ```bash
-# Create a GKE cluster with GPU node pool for ML workloads
+# Create a GKE cluster for ML workloads
 gcloud container clusters create ml-cluster \
   --zone us-central1-a \
   --num-nodes 3 \
@@ -74,13 +74,13 @@ gcloud container node-pools create gpu-pool \
   --cluster ml-cluster \
   --zone us-central1-a \
   --machine-type n1-standard-8 \
-  --accelerator type=nvidia-tesla-t4,count=1 \
+  --accelerator type=nvidia-tesla-t4,count=1,gpu-driver-version=default \
   --num-nodes 0 \
   --enable-autoscaling \
   --min-nodes 0 \
   --max-nodes 10
 
-# Install NVIDIA GPU drivers
+# On older GKE versions, you might need to install NVIDIA GPU drivers manually
 kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded.yaml
 ```
 
@@ -102,7 +102,7 @@ Vertex AI gives you less control in exchange for less work. You can use custom c
 
 Vertex AI charges for training compute, prediction endpoints, and various platform features on top of the base compute costs. The management overhead is priced in. For small to medium workloads, this is often reasonable because you are saving on engineering time.
 
-Self-managed GKE infrastructure can be cheaper on a pure compute basis, especially at scale. You can use preemptible or spot VMs for training, share GPU nodes across teams, and avoid platform fees. However, you are paying with engineering hours instead. A Kubernetes cluster that runs ML workloads does not manage itself.
+Self-managed GKE infrastructure can be cheaper on a pure compute basis, especially at scale. You can use preemptible or spot VMs for training, share GPU nodes across teams, and avoid many managed ML platform fees, though GKE still has cluster management charges. However, you are paying with engineering hours instead. A Kubernetes cluster that runs ML workloads does not manage itself.
 
 ### Scale and Throughput
 
@@ -124,7 +124,7 @@ On GKE, you would wire up MLflow or a similar tool for experiment tracking. It i
 | Operational overhead | Low | Medium to high |
 | Customization | Moderate | Full |
 | Cost at small scale | Moderate | Higher (engineering time) |
-| Cost at large scale | Higher (platform fees) | Lower (compute only) |
+| Cost at large scale | Higher (platform fees) | Lower (mostly infrastructure) |
 | GPU flexibility | Good (standard types) | Full (any available GPU) |
 | Multi-framework support | Good | Unlimited |
 | Team size needed | 1-3 ML engineers | 3+ ML engineers + platform team |
