@@ -40,7 +40,7 @@ aiplatform.init(project="my-project", location="us-central1")
 # Get or create the endpoint
 endpoint = aiplatform.Endpoint("ENDPOINT_ID")
 
-# Deploy Model A (the current production model) with 70% traffic
+# Deploy Model A (the current production model) with 100% traffic first
 model_a = aiplatform.Model("projects/my-project/locations/us-central1/models/MODEL_A_ID")
 
 endpoint.deploy(
@@ -49,10 +49,11 @@ endpoint.deploy(
     machine_type="n1-standard-4",
     min_replica_count=2,
     max_replica_count=10,
-    traffic_percentage=70,
+    traffic_percentage=100,
 )
 
-# Deploy Model B (the challenger) with 30% traffic
+# Deploy Model B (the challenger) with 30% traffic.
+# Vertex AI scales the existing deployed model traffic down to 70%.
 model_b = aiplatform.Model("projects/my-project/locations/us-central1/models/MODEL_B_ID")
 
 endpoint.deploy(
@@ -71,21 +72,32 @@ print("Model B (challenger): 30% traffic")
 
 ## Step 2: Enable Prediction Logging
 
-To analyze the A/B test results, you need to log which model served each prediction and what the outcome was. Enable request-response logging on the endpoint.
+To analyze the A/B test results, you need to log which model served each prediction. Enable request-response logging on the endpoint, then use the custom wrapper in the next step to connect predictions to business outcomes.
 
 ```python
 # enable_logging.py
 from google.cloud import aiplatform
+from google.cloud import aiplatform_v1
+from google.protobuf import field_mask_pb2
 
+aiplatform.init(project="my-project", location="us-central1")
 endpoint = aiplatform.Endpoint("ENDPOINT_ID")
 
-# Enable prediction request-response logging to BigQuery
-endpoint.update(
+# Get the deployed model IDs. Traffic split keys must be deployed model IDs,
+# not display names.
+deployed_models = {dm.display_name: dm.id for dm in endpoint.list_models()}
+
+endpoint_service = aiplatform_v1.EndpointServiceClient(
+    client_options={"api_endpoint": "us-central1-aiplatform.googleapis.com"}
+)
+
+# Enable prediction request-response logging to BigQuery.
+updated_endpoint = aiplatform_v1.Endpoint(
+    name=endpoint.resource_name,
     traffic_split={
-        "model-a-control": 70,
-        "model-b-challenger": 30,
+        deployed_models["model-a-control"]: 70,
+        deployed_models["model-b-challenger"]: 30,
     },
-    # Enable logging of prediction requests and responses
     predict_request_response_logging_config={
         "enabled": True,
         "sampling_rate": 1.0,  # Log all requests during the test
@@ -93,6 +105,13 @@ endpoint.update(
             "output_uri": "bq://my-project.ml_experiments.prediction_logs"
         }
     }
+)
+
+endpoint_service.update_endpoint(
+    endpoint=updated_endpoint,
+    update_mask=field_mask_pb2.FieldMask(
+        paths=["traffic_split", "predict_request_response_logging_config"]
+    ),
 )
 
 print("Prediction logging enabled")
@@ -205,11 +224,11 @@ SELECT
     model_group,
     COUNT(*) AS total_predictions,
     -- Calculate accuracy for classification models
-    COUNTIF(JSON_EXTRACT_SCALAR(prediction, '$.class') =
-            JSON_EXTRACT_SCALAR(actual_outcome, '$.class')) AS correct_predictions,
+    COUNTIF(JSON_VALUE(prediction, '$.class') =
+            JSON_VALUE(actual_outcome, '$.class')) AS correct_predictions,
     ROUND(
-        COUNTIF(JSON_EXTRACT_SCALAR(prediction, '$.class') =
-                JSON_EXTRACT_SCALAR(actual_outcome, '$.class'))
+        COUNTIF(JSON_VALUE(prediction, '$.class') =
+                JSON_VALUE(actual_outcome, '$.class'))
         / COUNT(*) * 100, 2
     ) AS accuracy_pct,
     -- Calculate average latency
@@ -232,8 +251,7 @@ Do not just look at the raw numbers - make sure the difference is statistically 
 ```python
 # analyze_ab_test.py
 from google.cloud import bigquery
-from scipy import stats
-import numpy as np
+from statsmodels.stats.proportion import proportions_ztest
 
 def analyze_ab_test(log_table, metric="accuracy"):
     """Perform statistical analysis of A/B test results."""
@@ -244,8 +262,8 @@ def analyze_ab_test(log_table, metric="accuracy"):
     SELECT
         model_group,
         CASE
-            WHEN JSON_EXTRACT_SCALAR(prediction, '$.class') =
-                 JSON_EXTRACT_SCALAR(actual_outcome, '$.class')
+            WHEN JSON_VALUE(prediction, '$.class') =
+                 JSON_VALUE(actual_outcome, '$.class')
             THEN 1 ELSE 0
         END AS correct
     FROM `{log_table}`
@@ -272,7 +290,7 @@ def analyze_ab_test(log_table, metric="accuracy"):
     count_b = challenger.sum()
     nobs_b = len(challenger)
 
-    z_stat, p_value = stats.proportions_ztest(
+    z_stat, p_value = proportions_ztest(
         [count_a, count_b],
         [nobs_a, nobs_b],
         alternative="two-sided"
@@ -307,6 +325,7 @@ Once you have a statistically significant winner, update the traffic split to gi
 ```python
 # promote_winner.py
 from google.cloud import aiplatform
+from analyze_ab_test import analyze_ab_test
 
 def promote_model(endpoint_id, winner_model_name, loser_model_name):
     """Shift all traffic to the winning model and undeploy the loser."""
