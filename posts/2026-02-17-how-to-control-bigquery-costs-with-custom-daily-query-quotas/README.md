@@ -14,7 +14,7 @@ This post covers how to set up these quotas, when to use them, and how to combin
 
 ## Understanding BigQuery Pricing
 
-Before diving into quotas, let us understand what drives BigQuery costs. On-demand pricing charges $6.25 per TB of data scanned (as of early 2026). The first 1 TB per month is free, but that goes fast in any real analytics environment.
+Before diving into quotas, let us understand what drives BigQuery costs. On-demand pricing charges $6.25 per TiB of data scanned (as of early 2026). The first 1 TiB per month is free, but that goes fast in any real analytics environment.
 
 The problem is that BigQuery is so fast that people tend to run queries without thinking about cost. A data analyst exploring a dataset might run dozens of queries in an afternoon, each scanning hundreds of gigabytes.
 
@@ -25,7 +25,7 @@ BigQuery lets you set custom quotas that limit the amount of data scanned per da
 - **Project-level**: Limits total data scanned across all users in the project
 - **User-level**: Limits data scanned per individual user
 
-When a user or project hits their quota, subsequent queries are rejected until the next day (quotas reset at midnight Pacific Time).
+When a user or project hits their quota, subsequent queries are rejected until the next day (quotas reset at midnight Pacific Time). Custom quotas are approximate safeguards, so they are not designed to be a strict byte-by-byte billing cap.
 
 ## Setting Up Project-Level Quotas
 
@@ -35,68 +35,57 @@ When a user or project hits their quota, subsequent queries are rejected until t
 2. Navigate to IAM & Admin then Quotas
 3. Filter for "BigQuery API" and look for "Query usage per day"
 4. Click on the quota and then click "Edit Quotas"
-5. Enter your desired limit in bytes
+5. Enter your desired limit in TiB
 
 ### Using the gcloud CLI
 
-Unfortunately, BigQuery quotas need to be managed through the Cloud Console or the Service Usage API. Here is how to do it with the API:
+Unfortunately, BigQuery custom query quotas are usually changed through the Cloud Console or the Service Usage API. You can check current quota settings with the gcloud CLI:
 
 ```bash
 # Check current BigQuery quotas for your project
 
-gcloud services quotas list \
+gcloud alpha services quota list \
   --service=bigquery.googleapis.com \
   --consumer=projects/my-project \
   --format="table(metric, unit, values)"
 ```
 
-To request a quota change programmatically, you can use the serviceusage API:
+To automate quota changes, use the Service Usage API or the alpha quota commands to create or update consumer quota overrides. Use the `list` output to copy the exact metric and unit for `QueryUsagePerDay` or `QueryUsagePerUserPerDay`:
 
-```python
-# Script to set BigQuery daily query quota using the API
-from google.cloud import service_usage_v1
-
-def set_bigquery_quota(project_id, quota_value_tb):
-    """Set the daily BigQuery query quota in TB."""
-    client = service_usage_v1.ServiceUsageClient()
-
-    # Convert TB to bytes for the quota value
-    quota_bytes = int(quota_value_tb * 1024 * 1024 * 1024 * 1024)
-
-    print(f"Setting BigQuery daily quota to {quota_value_tb} TB")
-    print(f"({quota_bytes} bytes) for project {project_id}")
-
-    # Note: Quota changes are typically done through the Console
-    # or by submitting a quota change request
-    # This is shown for illustration of the concept
-
-set_bigquery_quota("my-project", 5)  # 5 TB per day
+```bash
+gcloud alpha services quota update \
+  --service=bigquery.googleapis.com \
+  --consumer=projects/my-project \
+  --metric=METRIC_FROM_LIST_OUTPUT \
+  --unit=UNIT_FROM_LIST_OUTPUT \
+  --value=NEW_LIMIT_IN_THAT_UNIT \
+  --force
 ```
 
 ## Setting Up User-Level Quotas
 
-User-level quotas are more granular and prevent any single user from consuming the entire project quota. You can set these through BigQuery's own settings.
+User-level quotas are more granular and prevent any single user or service account from consuming the entire project quota. You set these from the same Quotas & System Limits page by editing "Query usage per day per user." The value applies separately to every user and service account in the project; you cannot assign a different custom query quota to one specific user.
 
-In your BigQuery project settings, you can configure:
+To decide what value to use, you can inspect recent usage:
 
 ```sql
 -- Check current user-level usage (run in BigQuery)
--- This query shows how much each user has scanned today
+-- This query shows how much each user has been billed for today
 SELECT
   user_email,
-  SUM(total_bytes_processed) AS bytes_scanned_today,
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4), 2) AS tb_scanned_today,
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4) * 6.25, 2) AS estimated_cost_today
+  SUM(total_bytes_billed) AS bytes_billed_today,
+  ROUND(SUM(total_bytes_billed) / POW(1024, 4), 2) AS tib_billed_today,
+  ROUND(SUM(total_bytes_billed) / POW(1024, 4) * 6.25, 2) AS estimated_cost_today
 FROM
   `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE
-  creation_time >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), DAY)
+  creation_time >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), DAY, "America/Los_Angeles")
   AND job_type = 'QUERY'
   AND state = 'DONE'
 GROUP BY
   user_email
 ORDER BY
-  bytes_scanned_today DESC
+  bytes_billed_today DESC
 ```
 
 ## Choosing the Right Quota Values
@@ -110,10 +99,10 @@ Query your INFORMATION_SCHEMA to understand your current usage patterns:
 ```sql
 -- Analyze daily query volume over the past 30 days
 SELECT
-  DATE(creation_time) AS query_date,
+  DATE(creation_time, "America/Los_Angeles") AS query_date,
   COUNT(*) AS query_count,
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4), 2) AS tb_scanned,
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4) * 6.25, 2) AS estimated_cost
+  ROUND(SUM(total_bytes_billed) / POW(1024, 4), 2) AS tib_billed,
+  ROUND(SUM(total_bytes_billed) / POW(1024, 4) * 6.25, 2) AS estimated_cost
 FROM
   `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE
@@ -134,8 +123,8 @@ Look at your p90 daily usage and add a 20-30% buffer. This catches outlier days 
 
 Production analytics projects might need higher quotas than development or sandbox projects. Consider creating separate projects with different quota levels:
 
-- **Production analytics**: 10 TB/day project quota, 2 TB/day per user
-- **Development/sandbox**: 1 TB/day project quota, 500 GB/day per user
+- **Production analytics**: 10 TiB/day project quota, 2 TiB/day per user
+- **Development/sandbox**: 1 TiB/day project quota, 500 GiB/day per user
 - **Automated pipelines**: Separate project with appropriate quotas for ETL jobs
 
 ## Alternative Cost Controls
@@ -149,14 +138,21 @@ You can set a maximum bytes limit on individual queries. If a query would scan m
 ```sql
 -- This query will fail if it would scan more than 1 GB
 -- Set in query settings or via the API
-#standardSQL
--- @maximum_bytes_billed: 1073741824
 SELECT *
 FROM `my-project.my_dataset.large_table`
 WHERE date_column = '2026-01-15'
 ```
 
-In the gcloud CLI or client libraries:
+In the bq CLI or client libraries:
+
+```bash
+bq query \
+  --use_legacy_sql=false \
+  --maximum_bytes_billed=1073741824 \
+  'SELECT *
+   FROM `my-project.my_dataset.large_table`
+   WHERE date_column = "2026-01-15"'
+```
 
 ```python
 # Set maximum bytes billed per query in Python
@@ -212,9 +208,9 @@ SELECT * FROM `my-project.my_dataset.events`;
 
 Partitioning ensures queries that filter on the partition column only scan relevant partitions. Clustering sorts data within partitions so that filters on clustered columns skip irrelevant blocks.
 
-### Flat-Rate Pricing
+### BigQuery Editions Pricing
 
-If your usage is consistently high, consider switching to flat-rate (now called BigQuery Editions) pricing. Instead of paying per TB scanned, you pay for a fixed amount of compute capacity (slots). This makes costs predictable regardless of query volume.
+If your usage is consistently high, consider switching to BigQuery Editions pricing. Instead of paying per TiB scanned, you pay for compute capacity (slots). This makes costs predictable regardless of query volume.
 
 ```bash
 # Purchase BigQuery Editions capacity commitment
@@ -222,7 +218,8 @@ bq mk --capacity_commitment \
   --project_id=my-project \
   --location=us \
   --plan=ANNUAL \
-  --edition=STANDARD \
+  --renewal_plan=ANNUAL \
+  --edition=ENTERPRISE \
   --slots=500
 ```
 
@@ -232,14 +229,13 @@ Combine quotas with monitoring alerts to get early warnings:
 
 ```bash
 # Create an alert policy for BigQuery query costs
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="BigQuery Daily Spending Alert" \
   --condition-display-name="BQ query bytes exceed threshold" \
   --condition-filter='resource.type="bigquery_project" AND metric.type="bigquery.googleapis.com/query/scanned_bytes"' \
-  --condition-threshold-value=5497558138880 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-aggregations-alignment-period=86400s \
-  --condition-aggregations-per-series-aligner=ALIGN_SUM
+  --if="> 5497558138880" \
+  --duration=0s \
+  --aggregation='{"alignmentPeriod":"86400s","perSeriesAligner":"ALIGN_SUM"}'
 ```
 
 ## Best Practices
