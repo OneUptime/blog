@@ -20,7 +20,8 @@ CREATE TABLE Users (
     UserId STRING(36) NOT NULL,
     Email STRING(256) NOT NULL,
     DisplayName STRING(128),
-    CreatedAt TIMESTAMP NOT NULL
+    CreatedAt TIMESTAMP NOT NULL,
+    LastLoginAt TIMESTAMP
 ) PRIMARY KEY (UserId);
 ```
 
@@ -63,7 +64,7 @@ You can avoid the back-join by storing additional columns directly in the index:
 
 ```sql
 -- Store DisplayName in the index to avoid back-joins
-CREATE INDEX UsersByEmail ON Users(Email) STORING (DisplayName);
+CREATE INDEX UsersByEmailCovering ON Users(Email) STORING (DisplayName);
 ```
 
 Now a query that selects Email and DisplayName can be served entirely from the index:
@@ -142,13 +143,19 @@ DROP INDEX UsersByEmail;
 
 ## Index Creation is Online
 
-One of Spanner's strengths is that index creation does not block reads or writes. When you create an index on a table that already has data, Spanner backfills the index in the background. However, the CREATE INDEX statement will not return until the backfill is complete.
+One of Spanner's strengths is that index creation does not block reads or writes. When you create an index on a table that already has data, Spanner backfills the index in the background. The schema update operation is not complete until the backfill is complete, although APIs and tools can expose it as a long-running operation while it runs.
 
-For large tables, this can take a while. You can check the progress of long-running schema operations:
+For large tables, this can take a while. You can find the long-running schema operation and then check its progress:
 
 ```bash
-# List ongoing database operations including index creation progress
+# List database DDL operations to find the operation ID
 gcloud spanner operations list \
+    --instance=my-spanner-instance \
+    --database=my-database \
+    --type=DATABASE_UPDATE_DDL
+
+# Describe the operation to see the progress section
+gcloud spanner operations describe OPERATION_ID \
     --instance=my-spanner-instance \
     --database=my-database
 ```
@@ -168,7 +175,7 @@ Use this sparingly. The optimizer generally makes good choices, and forcing an i
 
 ## How Many Indexes is Too Many?
 
-Every index adds overhead to write operations because Spanner has to update the index whenever the indexed columns change. There is no hard limit, but here are some guidelines:
+Every index adds overhead to write operations because Spanner has to update the index whenever indexed data changes. Spanner also has documented schema limits for indexes, but the practical limit for an application depends on workload. Here are some guidelines:
 
 - Index columns that are frequently used in WHERE clauses
 - Avoid indexing columns that change very frequently
