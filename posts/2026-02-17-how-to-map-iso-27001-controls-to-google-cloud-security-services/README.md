@@ -18,7 +18,7 @@ The 2022 revision reorganizes controls into four themes:
 
 1. **Organizational controls** (37 controls) - policies, roles, threat intelligence
 2. **People controls** (8 controls) - screening, training, remote work
-3. **Physical controls** (14 controls) - mostly Google's responsibility
+3. **Physical controls** (14 controls) - often shared with Google depending on the service model
 4. **Technological controls** (34 controls) - access, encryption, logging, development
 
 For cloud infrastructure, organizational and technological controls are where most of your Google Cloud configuration happens.
@@ -47,18 +47,19 @@ gcloud storage buckets update gs://company-security-policies \
 Use Security Command Center to consume and act on threat intelligence.
 
 ```bash
-# Enable Security Command Center Premium for threat intelligence
-gcloud scc settings services enable \
+# Enable Security Command Center detection services after activating the
+# appropriate Security Command Center tier
+gcloud alpha scc settings services enable \
   --organization=123456789 \
-  --service=SECURITY_HEALTH_ANALYTICS
+  --service=security-health-analytics
 
-gcloud scc settings services enable \
+gcloud alpha scc settings services enable \
   --organization=123456789 \
-  --service=EVENT_THREAT_DETECTION
+  --service=event-threat-detection
 
-gcloud scc settings services enable \
+gcloud alpha scc settings services enable \
   --organization=123456789 \
-  --service=CONTAINER_THREAT_DETECTION
+  --service=container-threat-detection
 ```
 
 ### A.5.23 - Information Security for Cloud Services
@@ -67,9 +68,9 @@ This control specifically addresses cloud service security. Configure organizati
 
 ```bash
 # Enforce organization-wide security policies
-# Restrict public access to resources
+# Enforce public access prevention for Cloud Storage
 gcloud resource-manager org-policies enable-enforce \
-  compute.restrictPublicIp \
+  storage.publicAccessPrevention \
   --organization=123456789
 
 # Require OS Login for SSH access
@@ -129,8 +130,8 @@ gcloud iam roles create minimalDeveloper \
 # Implement just-in-time access using IAM Conditions
 gcloud projects add-iam-policy-binding my-project \
   --member="user:admin@company.com" \
-  --role="roles/owner" \
-  --condition="expression=request.time < timestamp('2026-02-18T00:00:00Z'),title=temporary-admin,description=Temporary admin access for maintenance"
+  --role="roles/compute.admin" \
+  --condition="expression=request.time < timestamp('2026-02-18T00:00:00Z'),title=temporary-compute-admin,description=Temporary Compute admin access for maintenance"
 ```
 
 ### A.8.3 - Information Access Restriction
@@ -183,14 +184,14 @@ kind: ComputeFirewall
 metadata:
   name: deny-all-ingress
   namespace: config-control
+  annotations:
+    cnrm.cloud.google.com/project-id: my-project
 spec:
-  projectRef:
-    external: my-project
-  network:
+  networkRef:
     name: default
   priority: 65534
   direction: INGRESS
-  denied:
+  deny:
     - protocol: all
   sourceRanges:
     - "0.0.0.0/0"
@@ -201,11 +202,26 @@ spec:
 Use Cloud DLP and VPC Service Controls to prevent data leakage.
 
 ```bash
-# Create a DLP inspection template for sensitive data
-gcloud dlp inspect-templates create \
-  --project=my-project \
-  --display-name="Sensitive Data Scanner" \
-  --inspect-config='{"infoTypes":[{"name":"CREDIT_CARD_NUMBER"},{"name":"US_SOCIAL_SECURITY_NUMBER"},{"name":"EMAIL_ADDRESS"},{"name":"PHONE_NUMBER"}],"minLikelihood":"LIKELY"}'
+# Create a Sensitive Data Protection inspection template for sensitive data
+curl -X POST \
+  "https://dlp.googleapis.com/v2/projects/my-project/locations/global/inspectTemplates" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "templateId": "sensitive-data-scanner",
+    "inspectTemplate": {
+      "displayName": "Sensitive Data Scanner",
+      "inspectConfig": {
+        "infoTypes": [
+          {"name": "CREDIT_CARD_NUMBER"},
+          {"name": "US_SOCIAL_SECURITY_NUMBER"},
+          {"name": "EMAIL_ADDRESS"},
+          {"name": "PHONE_NUMBER"}
+        ],
+        "minLikelihood": "LIKELY"
+      }
+    }
+  }'
 ```
 
 ### A.8.15 - Logging
@@ -234,14 +250,21 @@ Set up comprehensive monitoring using Cloud Monitoring and SCC.
 # Create monitoring dashboard for security metrics
 gcloud monitoring dashboards create --config-from-file=security-dashboard.json
 
-# Set up alerting for security-relevant events
+# Set up alerting for security-relevant events using an alert policy file
 gcloud monitoring policies create \
-  --display-name="Unauthorized API Calls" \
-  --condition-display-name="Permission denied events" \
-  --condition-filter='metric.type="logging.googleapis.com/user/permission-denied-count"' \
-  --condition-threshold-value=10 \
-  --condition-threshold-duration=300s \
-  --notification-channels=projects/my-project/notificationChannels/CHANNEL_ID
+  --policy-from-file=permission-denied-alert-policy.yaml
+```
+
+```yaml
+# permission-denied-alert-policy.yaml
+displayName: Unauthorized API Calls
+combiner: OR
+conditions:
+  - displayName: Permission denied events
+    conditionMatchedLog:
+      filter: 'protoPayload.status.code=7'
+notificationChannels:
+  - projects/my-project/notificationChannels/CHANNEL_ID
 ```
 
 ### A.8.24 - Use of Cryptography
