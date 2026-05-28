@@ -33,9 +33,9 @@ Create the requirements file:
 ```text
 # requirements.txt - Production dependencies
 
-Flask==3.1.0
-gunicorn==22.0.0
-google-cloud-firestore==2.19.0
+Flask==3.1.3
+gunicorn==26.0.0
+google-cloud-firestore==2.27.0
 ```
 
 ## Building the Flask API
@@ -51,13 +51,13 @@ def create_app():
     app = Flask(__name__)
 
     # Load configuration
-    app.config['JSON_SORT_KEYS'] = False
+    app.json.sort_keys = False
 
     # Register routes
     from app.routes import api_bp
     app.register_blueprint(api_bp, url_prefix='/api/v1')
 
-    # Health check endpoint for Cloud Run
+    # Health check endpoint for manual checks or configured probes
     @app.route('/health')
     def health():
         return {'status': 'healthy'}, 200
@@ -265,7 +265,7 @@ worker_class = 'gthread'
 threads = int(os.environ.get('GUNICORN_THREADS', 4))
 
 # Timeouts
-timeout = 120  # Match Cloud Run's default request timeout
+timeout = 120  # Match the Cloud Run request timeout configured below
 graceful_timeout = 30
 keepalive = 2
 
@@ -274,8 +274,8 @@ accesslog = '-'  # Log to stdout for Cloud Logging
 errorlog = '-'   # Log to stderr for Cloud Logging
 loglevel = os.environ.get('LOG_LEVEL', 'info')
 
-# Preload the app for faster worker startup
-preload_app = True
+# Do not preload when creating gRPC-backed clients such as Firestore before worker fork
+preload_app = False
 
 # Restart workers after this many requests to prevent memory leaks
 max_requests = 1000
@@ -285,7 +285,7 @@ max_requests_jitter = 50
 ## Containerizing with Docker
 
 ```dockerfile
-# Dockerfile - Multi-stage build for production Flask/Gunicorn app
+# Dockerfile - Production Flask/Gunicorn app
 FROM python:3.12-slim AS base
 
 # Set environment variables
@@ -426,4 +426,4 @@ steps:
 
 ## Summary
 
-Building a REST API with Flask and deploying it to Cloud Run with Gunicorn gives you a production-ready setup with minimal overhead. Flask handles routing and request processing, Gunicorn manages worker processes and concurrency, Docker provides a consistent deployment artifact, and Cloud Run handles scaling and infrastructure. The key configuration points are Gunicorn's worker and thread settings (match them to your Cloud Run CPU allocation), the health check endpoint (Cloud Run uses it for readiness checks), and the PORT environment variable (Cloud Run sets it dynamically).
+Building a REST API with Flask and deploying it to Cloud Run with Gunicorn gives you a production-ready setup with minimal overhead. Flask handles routing and request processing, Gunicorn manages worker processes and concurrency, Docker provides a consistent deployment artifact, and Cloud Run handles scaling and infrastructure. The key configuration points are Gunicorn's worker and thread settings (match them to your Cloud Run CPU allocation), the health check endpoint (useful for manual checks or configured probes), and the PORT environment variable (Cloud Run sets it dynamically).
