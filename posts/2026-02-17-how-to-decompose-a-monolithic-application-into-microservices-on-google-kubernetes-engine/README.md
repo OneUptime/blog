@@ -130,7 +130,7 @@ spec:
     spec:
       containers:
         - name: product-service
-          image: gcr.io/my-project/product-service:v1
+          image: us-central1-docker.pkg.dev/my-project/app-images/product-service:v1
           ports:
             - containerPort: 8080
           env:
@@ -161,6 +161,8 @@ kind: Service
 metadata:
   name: product-service
 spec:
+  # GKE Ingress requires NodePort unless you use container-native load balancing with NEGs.
+  type: NodePort
   selector:
     app: product-service
   ports:
@@ -247,7 +249,7 @@ Microservices need to communicate. You have two main options on GKE:
 
 ```python
 # Service-to-service HTTP call within GKE
-# Kubernetes DNS resolves service names automatically
+# Kubernetes DNS resolves service names in the same namespace automatically
 
 import requests
 
@@ -311,27 +313,15 @@ sequenceDiagram
 
 With microservices, debugging gets harder because a single request flows through multiple services. Set up distributed tracing and centralized logging:
 
-```yaml
-# Deploy OpenTelemetry Collector on GKE for distributed tracing
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: otel-collector
-spec:
-  selector:
-    matchLabels:
-      app: otel-collector
-  template:
-    metadata:
-      labels:
-        app: otel-collector
-    spec:
-      containers:
-        - name: collector
-          image: otel/opentelemetry-collector-contrib:latest
-          env:
-            - name: GOOGLE_CLOUD_PROJECT
-              value: "my-project"
+```bash
+# Deploy the Google-built OpenTelemetry Collector on GKE for distributed tracing.
+# Replace PROJECT_ID and PROJECT_NUMBER before running.
+export GOOGLE_CLOUD_PROJECT=PROJECT_ID
+export PROJECT_NUMBER=PROJECT_NUMBER
+
+kubectl kustomize https://github.com/GoogleCloudPlatform/otlp-k8s-ingest.git/k8s/base \
+  | envsubst \
+  | kubectl apply -f -
 ```
 
 Add tracing to each service:
