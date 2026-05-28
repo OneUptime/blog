@@ -30,33 +30,12 @@ Google Workspace and Cloud Identity admins can set the maximum session length fo
 
 To set this:
 1. Go to the Google Admin Console (admin.google.com)
-2. Navigate to Security > Google Cloud session control
-3. Set the session duration (options range from 1 hour to never expire)
-4. Choose whether to apply to all organizational units or specific ones
+2. Navigate to Security > Access and data control > Google Cloud session control
+3. Under Reauthentication policy, select Require reauthentication and set the reauthentication frequency (options range from 1 hour to 24 hours)
+4. Choose the reauthentication method, such as Password or Security key
+5. Choose whether to apply to all organizational units or specific ones
 
-For organizations that need this configured programmatically, use the Admin SDK.
-
-```python
-# Configure Google Cloud session length using Admin SDK
-
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-
-# Service account with Admin SDK delegated authority
-credentials = service_account.Credentials.from_service_account_file(
-    'admin-sa-key.json',
-    scopes=['https://www.googleapis.com/auth/admin.directory.userschema'],
-    subject='admin@yourcompany.com'
-)
-
-# This is typically done through the Admin Console UI
-# The Admin SDK provides read access to session settings
-admin_service = build('admin', 'directory_v1', credentials=credentials)
-
-# Verify current session settings
-result = admin_service.customers().get(customerKey='my_customer').execute()
-print(f"Customer: {result.get('customerDomain')}")
-```
+This setting is managed in the Admin Console. The Admin SDK Directory API can help automate user and organizational unit management, but it does not provide a supported API for configuring Google Cloud session control directly.
 
 ## Workforce Identity Session Duration
 
@@ -87,61 +66,81 @@ gcloud iam workforce-pools update standard-workforce-pool \
 
 ## Access Context Manager Session Controls
 
-Access Context Manager lets you define access levels that include session requirements. You can require re-authentication for access to sensitive resources.
+Access Context Manager lets you define access levels that include request context such as user, group, network, and device requirements. For re-authentication session controls, create a Google Cloud user access binding with session settings.
 
 ```bash
-# Create an access level that requires recent authentication
-gcloud access-context-manager levels create recent-auth-required \
-  --policy=POLICY_ID \
-  --title="Recent Authentication Required" \
-  --basic-level-spec=recent-auth-level.yaml
+# Create an access binding that requires re-authentication every 2 hours
+gcloud access-context-manager cloud-bindings create \
+  --organization=ORG_ID \
+  --group-key=admins@yourcompany.com \
+  --level=accessPolicies/POLICY_ID/accessLevels/ACCESS_LEVEL_NAME \
+  --session-length=2h \
+  --session-reauth-method=LOGIN
 ```
 
-The level spec defines the session requirements.
+For application-specific session controls, define scoped access settings in a binding file.
 
 ```yaml
-# recent-auth-level.yaml
-# Requires re-authentication within the last 2 hours
-conditions:
-  - devicePolicy:
-      requireScreenlock: true
-    requiredAccessLevels: []
-    members:
-      - "user:*@yourcompany.com"
+# binding-file.yaml
+# Requires a security key every 2 hours for the sensitive application
+scopedAccessSettings:
+  - scope:
+      clientScope:
+        restrictedClientApplication:
+          clientId: SENSITIVE_APP_ID
+    activeSettings:
+      sessionSettings:
+        sessionLength: 7200s
+        sessionReauthMethod: SECURITY_KEY
+        sessionLengthEnabled: true
 ```
 
 ## Configuring OAuth Token Lifetimes
 
-For applications using OAuth tokens, you can configure shorter token lifetimes at the organization level.
+For service account impersonation, you can request shorter-lived access tokens when generating the token. The default maximum lifetime is 1 hour. Extending the maximum beyond 1 hour, up to 12 hours, requires an organization policy exception for the service account.
 
 ```bash
-# Set a custom OAuth token lifetime constraint
-gcloud resource-manager org-policies set-policy \
-  --organization=123456789 \
-  oauth-lifetime-policy.yaml
+# Generate a 30-minute service account access token
+gcloud auth print-access-token \
+  --impersonate-service-account=app-sa@my-project.iam.gserviceaccount.com \
+  --lifetime=1800s
+
+# Allow a specific service account to request tokens longer than 1 hour
+gcloud resource-manager org-policies allow \
+  constraints/iam.allowServiceAccountCredentialLifetimeExtension \
+  app-sa@my-project.iam.gserviceaccount.com \
+  --organization=123456789
 ```
 
 ```yaml
 # oauth-lifetime-policy.yaml
-# Restrict service account access token lifetime
-constraint: constraints/iam.serviceAccountAccessTokenLifetime
-listPolicy:
-  allowedValues:
-    - "3600s"
-    - "7200s"
-    - "14400s"
+# Allow this service account to request service account access tokens longer than 1 hour
+name: organizations/123456789/policies/iam.allowServiceAccountCredentialLifetimeExtension
+spec:
+  rules:
+    - values:
+        allowedValues:
+          - app-sa@my-project.iam.gserviceaccount.com
 ```
 
 ## Implementing Re-Authentication for Sensitive Operations
 
-Some operations should require re-authentication regardless of session age. Google Cloud supports this through IAM Conditions and Access Context Manager.
+Some sensitive Google Cloud Console operations, including billing assignment changes and IAM allow policy changes at the organization, folder, or project level, can require users to reauthenticate if they have not done so recently. For applications protected by Identity-Aware Proxy, configure IAP reauthentication settings.
 
 ```bash
-# Create an IAM binding that requires re-authentication for admin actions
-gcloud projects add-iam-policy-binding my-sensitive-project \
-  --member="group:admins@yourcompany.com" \
-  --role="roles/owner" \
-  --condition="expression=request.auth.claims.auth_time > (timestamp.now() - duration('1h')),title=recent-auth,description=Requires authentication within the last hour"
+# Configure IAP re-authentication for protected applications
+gcloud iap settings set iap-reauth-settings.yaml \
+  --project=my-sensitive-project \
+  --resource-type=iap_web
+```
+
+```yaml
+# iap-reauth-settings.yaml
+accessSettings:
+  reauthSettings:
+    method: LOGIN
+    maxAge: 3600s
+    policyType: MINIMUM
 ```
 
 ## Terraform Configuration
@@ -161,11 +160,28 @@ resource "google_iam_workforce_pool" "strict_session" {
   session_duration = "14400s"
 }
 
-# Access Context Manager policy with session requirements
-resource "google_access_context_manager_access_level" "recent_auth" {
+# Access Context Manager user access binding with session requirements
+resource "google_access_context_manager_gcp_user_access_binding" "recent_auth" {
+  organization_id = "123456789"
+  group_key       = "admins@yourcompany.com"
+
+  access_levels = [
+    "accessPolicies/${var.access_policy_id}/accessLevels/AdminAccess"
+  ]
+
+  session_settings {
+    session_length         = "7200s"
+    session_length_enabled = true
+    session_reauth_method  = "LOGIN"
+    use_oidc_max_age       = false
+  }
+}
+
+# Access Context Manager policy with device requirements
+resource "google_access_context_manager_access_level" "device_trust" {
   parent = "accessPolicies/${var.access_policy_id}"
-  name   = "accessPolicies/${var.access_policy_id}/accessLevels/recentAuth"
-  title  = "Recent Authentication"
+  name   = "accessPolicies/${var.access_policy_id}/accessLevels/DeviceTrust"
+  title  = "Device Trust"
 
   basic {
     conditions {
@@ -179,7 +195,7 @@ resource "google_access_context_manager_access_level" "recent_auth" {
   }
 }
 
-# VPC Service Controls perimeter that requires recent authentication
+# VPC Service Controls perimeter that requires the device trust access level
 resource "google_access_context_manager_service_perimeter" "sensitive" {
   parent = "accessPolicies/${var.access_policy_id}"
   name   = "accessPolicies/${var.access_policy_id}/servicePerimeters/sensitiveData"
@@ -192,7 +208,7 @@ resource "google_access_context_manager_service_perimeter" "sensitive" {
     ]
 
     access_levels = [
-      google_access_context_manager_access_level.recent_auth.name
+      google_access_context_manager_access_level.device_trust.name
     ]
   }
 }
@@ -200,16 +216,17 @@ resource "google_access_context_manager_service_perimeter" "sensitive" {
 
 ## Session Controls for gcloud CLI
 
-The gcloud CLI stores credentials that persist until explicitly revoked. For environments requiring tighter controls, configure credential lifetime limits.
+The gcloud CLI stores credentials that persist until explicitly revoked or until a configured Google Cloud session control requires reauthentication. For environments requiring tighter controls, configure Cloud session length in the Admin Console or use Access Context Manager user access binding session settings.
 
 ```bash
-# Set the access token lifetime for gcloud CLI sessions
-gcloud config set auth/token_host https://oauth2.googleapis.com
-gcloud config set auth/access_token_lifetime 3600
-
-# Force re-authentication in gcloud
-gcloud auth revoke
+# Renew an expired Cloud SDK session
 gcloud auth login
+
+# Refresh Application Default Credentials after the configured session expires
+gcloud auth application-default login
+
+# Revoke credentials to force re-authentication
+gcloud auth revoke
 ```
 
 For shared machines or jump hosts, configure automatic credential cleanup.
