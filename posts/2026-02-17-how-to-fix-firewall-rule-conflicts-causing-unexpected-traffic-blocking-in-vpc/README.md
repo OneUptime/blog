@@ -15,7 +15,7 @@ You added a firewall rule to allow traffic, but it is still being blocked. Or wo
 Understanding the evaluation order is critical:
 
 1. Rules are evaluated from lowest priority number (highest priority) to highest priority number (lowest priority)
-2. The first matching rule wins - no further rules are evaluated
+2. The highest-priority matching rule applies; if matching allow and deny rules have the same priority, the deny rule wins
 3. If no rule matches, the implied deny-all ingress and allow-all egress rules apply
 4. Both allow and deny rules can exist at any priority level
 5. Rules are stateful - if traffic is allowed in one direction, the return traffic is automatically allowed
@@ -189,10 +189,10 @@ gcloud compute firewall-rules list \
 
 ### Pattern 5: Implied Deny Is Not Visible
 
-Remember that GCP has an implied deny-all ingress rule at the lowest priority. If none of your explicit rules match the traffic, it gets denied by this invisible rule.
+Remember that GCP has an implied deny-all ingress action at the lowest precedence. If none of your explicit rules match the traffic, it gets denied by this invisible action.
 
 ```bash
-# There is no way to see the implied rules - they just exist
+# There is no way to see the implied action as a firewall rule - it just exists
 # Make sure you have an explicit allow rule for the traffic you want
 
 # Create an allow rule for the traffic that is being denied
