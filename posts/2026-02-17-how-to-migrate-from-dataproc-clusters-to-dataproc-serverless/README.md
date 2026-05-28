@@ -17,8 +17,8 @@ I have migrated several production Spark pipelines from traditional Dataproc clu
 The main benefits of moving to Dataproc Serverless are:
 
 - **No cluster management** - You do not provision, configure, or manage clusters. Google handles infrastructure.
-- **Faster job startup** - Serverless jobs start in seconds instead of the minutes it takes to spin up a cluster.
-- **Pay-per-use billing** - You pay for compute time consumed, not for idle cluster nodes.
+- **Faster job startup** - Serverless jobs often start faster because you do not wait for a cluster to be provisioned.
+- **Pay-per-use billing** - You pay for workload resource usage, not for idle cluster nodes.
 - **Automatic scaling** - Serverless workloads scale up and down based on demand without you configuring autoscaling.
 
 The trade-off is that you lose some low-level control over the cluster environment. If your workloads rely on custom OS packages, specific Hadoop ecosystem components, or persistent HDFS storage, you will need to adjust your approach.
@@ -31,9 +31,9 @@ Here is a quick overview of the differences:
 |---|---|---|
 | Infrastructure | You manage | Google manages |
 | Job types | Spark, Hadoop, Hive, Pig, Presto | Spark (PySpark, SparkR, Spark SQL) |
-| Storage | HDFS, GCS | GCS only |
+| Storage | HDFS, GCS, and external data sources | Cloud Storage and external data sources; no persistent HDFS |
 | Custom packages | Init actions, custom images | Custom containers, PySpark packages |
-| Startup time | 2-5 minutes | 10-30 seconds |
+| Startup time | Cluster provisioning plus job startup | Batch startup without provisioning a persistent cluster |
 | Billing model | Per-node per-hour | Per DCU per-second |
 
 ## Step 1: Audit Your Existing Workloads
@@ -50,7 +50,7 @@ Workloads that are pure Spark (PySpark, Spark SQL, SparkR) reading from and writ
 
 ## Step 2: Move HDFS Storage to Cloud Storage
 
-Dataproc Serverless does not have HDFS. All data needs to live in Google Cloud Storage. If your jobs read from or write to `hdfs://` paths, you need to change those to `gs://` paths.
+Dataproc Serverless does not have persistent HDFS. File data that used to live in HDFS should move to Google Cloud Storage or another supported external data source. If your jobs read from or write to `hdfs://` paths, you usually need to change those to `gs://` paths.
 
 Here is a common pattern change in your Spark code:
 
@@ -72,17 +72,44 @@ On traditional Dataproc clusters, you might use initialization actions to instal
 Here is a Dockerfile for a custom Dataproc Serverless runtime:
 
 ```dockerfile
-# Start from the official Dataproc Serverless base image
-FROM gcr.io/dataproc-serverless/spark-runtime:2.1-debian11
+# Start from a supported Debian base image
+FROM debian:12-slim
 
-# Install additional Python packages
-RUN pip install pandas==2.0.3 scikit-learn==1.3.0 pyarrow==12.0.1
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Install any system-level dependencies
-RUN apt-get update && apt-get install -y libgomp1
+# Install utilities required by Spark scripts and common native dependencies
+RUN apt-get update && apt-get install -y \
+    procps \
+    tini \
+    libjemalloc2 \
+    libgomp1 \
+    bzip2 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+
+# Install and use a custom Python environment
+ENV CONDA_HOME=/opt/miniforge3
+ENV PYSPARK_PYTHON=${CONDA_HOME}/bin/python
+ENV PATH=${CONDA_HOME}/bin:${PATH}
+
+ADD https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh .
+RUN bash Miniforge3-Linux-x86_64.sh -b -p ${CONDA_HOME} \
+    && conda config --system --set always_yes True \
+    && conda config --system --set channel_priority strict \
+    && mamba install -n base pandas=2.0.3 scikit-learn=1.3.0 pyarrow=12.0.1 \
+    && rm Miniforge3-Linux-x86_64.sh
 
 # Copy custom JARs if needed
 COPY my-custom-connector.jar /opt/spark/jars/
+ENV SPARK_EXTRA_CLASSPATH=/opt/spark/jars/*
+
+# Create the spark user expected by Dataproc Serverless
+RUN groupadd -g 1099 spark \
+    && useradd -u 1099 -g 1099 -d /home/spark -m spark \
+    && chown -R spark:spark /opt/spark /opt/miniforge3
+USER spark
 ```
 
 Build and push the image to Artifact Registry:
@@ -115,12 +142,12 @@ Submitting the same job as a Dataproc Serverless batch:
 # New approach: submit as a serverless batch
 gcloud dataproc batches submit pyspark gs://my-bucket/jobs/etl_job.py \
   --region=us-central1 \
-  --subnet=default \
+  --subnet=projects/my-project/regions/us-central1/subnetworks/default \
   --properties=spark.executor.memory=4g,spark.executor.instances=10 \
-  --version=2.1
+  --version=2.2
 ```
 
-The key differences: you replace `jobs submit` with `batches submit`, drop the `--cluster` flag, and add `--subnet` for networking.
+The key differences: you replace `jobs submit` with `batches submit`, drop the `--cluster` flag, and optionally add `--subnet` when you need to control networking.
 
 ## Step 5: Update Spark Properties
 
@@ -148,7 +175,7 @@ Using inline package specification:
 # Submit with Python packages specified inline
 gcloud dataproc batches submit pyspark gs://my-bucket/jobs/ml_job.py \
   --region=us-central1 \
-  --subnet=default \
+  --subnet=projects/my-project/regions/us-central1/subnetworks/default \
   --py-files=gs://my-bucket/libs/helpers.zip \
   --jars=gs://my-bucket/jars/bigquery-connector.jar \
   --deps-bucket=gs://my-staging-bucket
@@ -160,7 +187,7 @@ Or reference your custom container:
 # Submit using a custom container image
 gcloud dataproc batches submit pyspark gs://my-bucket/jobs/ml_job.py \
   --region=us-central1 \
-  --subnet=default \
+  --subnet=projects/my-project/regions/us-central1/subnetworks/default \
   --container-image=us-central1-docker.pkg.dev/my-project/dataproc/custom-spark:v1
 ```
 
@@ -190,11 +217,11 @@ batch_config = {
         "main_python_file_uri": "gs://my-bucket/jobs/etl_job.py",
     },
     "runtime_config": {
-        "version": "2.1",
+        "version": "2.2",
     },
     "environment_config": {
         "execution_config": {
-            "subnetwork_uri": "default",
+            "subnetwork_uri": "projects/my-project/regions/us-central1/subnetworks/default",
         }
     },
 }
@@ -212,7 +239,7 @@ submit_job = DataprocCreateBatchOperator(
 
 A few things to watch out for during migration:
 
-- **Network configuration**: Serverless requires Private Google Access on the subnet. This catches people who have custom VPCs.
+- **Network configuration**: Serverless workloads run on internal IP addresses, and Dataproc automatically enables Private Google Access on the selected subnet. Custom VPCs still need routes and firewall rules that allow the workload to reach required services and allow internal subnet communication.
 - **Persistent clusters for Hive Metastore**: If your jobs rely on a Hive Metastore on the cluster, you need to set up a Dataproc Metastore service separately.
 - **Job logs location**: Serverless batch logs go to Cloud Logging by default rather than the cluster's local log directory.
 
