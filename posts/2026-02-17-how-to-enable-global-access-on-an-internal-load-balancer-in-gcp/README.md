@@ -105,7 +105,7 @@ Existing connections from remote regions will not be immediately dropped, but ne
 
 ## Global Access with Internal HTTP(S) Load Balancer
 
-For the Envoy-based internal HTTP(S) load balancer (INTERNAL_MANAGED scheme), global access works the same way:
+For the Envoy-based regional internal HTTP(S) load balancer (INTERNAL_MANAGED scheme), you can enable global access when you create the forwarding rule:
 
 ```bash
 # Create an internal HTTP(S) forwarding rule with global access
@@ -120,12 +120,18 @@ gcloud compute forwarding-rules create my-internal-http-rule \
     --allow-global-access
 ```
 
-Or update an existing one:
+For regional internal HTTP(S) load balancers, you cannot update an existing forwarding rule to enable or disable global access. To change the setting later, create a replacement forwarding rule with the desired global access setting and delete the old forwarding rule.
 
 ```bash
-# Enable global access on existing internal HTTP(S) LB
-gcloud compute forwarding-rules update my-internal-http-rule \
+# Create a replacement internal HTTP(S) forwarding rule with global access
+gcloud compute forwarding-rules create my-internal-http-rule-global \
+    --load-balancing-scheme=INTERNAL_MANAGED \
+    --network=my-vpc \
+    --subnet=my-subnet \
     --region=us-central1 \
+    --ports=80 \
+    --target-http-proxy=my-internal-proxy \
+    --target-http-proxy-region=us-central1 \
     --allow-global-access
 ```
 
@@ -234,7 +240,7 @@ resource "google_compute_forwarding_rule" "internal" {
 
 ## Cost Implications
 
-Cross-region traffic through an internal load balancer with global access incurs inter-region data transfer charges. Within the same region, internal traffic is free. Check the GCP pricing page for current inter-region rates, which vary based on the source and destination regions.
+Cross-region traffic through an internal load balancer with global access incurs cross-region data transfer charges when traffic is sent to or from a client in a different region than the load balancer. Same-region traffic can still be subject to the normal internal load balancer and VPC data transfer pricing, depending on the load balancer type and whether traffic crosses zones. Check the GCP pricing page for current rates, which vary based on the source and destination regions.
 
 For high-volume cross-region traffic, the cost can add up. Factor this into your architecture decisions.
 
