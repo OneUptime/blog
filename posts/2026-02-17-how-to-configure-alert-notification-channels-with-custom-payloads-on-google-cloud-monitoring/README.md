@@ -1,16 +1,16 @@
-# How to Configure Alert Notification Channels with Custom Payloads
+# How to Configure Alert Notification Channels with Custom Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Monitoring, Alerting, Webhook, Notification Channels
 
-Description: Learn how to configure custom notification channels and webhook payloads in Google Cloud Monitoring to route alerts to Slack, PagerDuty, and custom systems with rich context.
+Description: Learn how to configure notification channels and webhook receivers in Google Cloud Monitoring to route alerts to Slack, PagerDuty, and custom systems with rich context.
 
 ---
 
-The default notification payloads from Google Cloud Monitoring are functional but generic. When an alert fires, you want your team to immediately understand what is happening without clicking through three links. Custom notification channels and webhook payloads let you control exactly what information gets sent and how it is formatted, whether you are sending to Slack, PagerDuty, a custom API, or all three at once.
+The default notification payloads from Google Cloud Monitoring are functional but generic. When an alert fires, you want your team to immediately understand what is happening without clicking through three links. Custom notification channels and webhook receivers let you transform and route the information that gets sent, whether you are sending to Slack, PagerDuty, a custom API, or all three at once.
 
-In this post, I will walk through setting up different notification channels, customizing webhook payloads, and building notification routing logic that matches how your team actually works.
+In this post, I will walk through setting up different notification channels, transforming webhook payloads, and building notification routing logic that matches how your team actually works.
 
 ## Notification Channel Types
 
@@ -63,13 +63,13 @@ resource "google_monitoring_notification_channel" "pagerduty" {
   display_name = "PagerDuty - Production"
   type         = "pagerduty"
 
-  labels = {
+  sensitive_labels {
     service_key = var.pagerduty_service_key
   }
 }
 ```
 
-## Setting Up Webhook Channels with Custom Payloads
+## Setting Up Webhook Channels for Custom Routing
 
 Webhooks are the most flexible option. They let you send alert data to any HTTP endpoint:
 
@@ -80,11 +80,7 @@ resource "google_monitoring_notification_channel" "custom_webhook" {
   type         = "webhook_tokenauth"
 
   labels = {
-    url = "https://my-alert-router.run.app/alerts"
-  }
-
-  sensitive_labels {
-    auth_token = var.webhook_auth_token
+    url = "https://my-alert-router.run.app/alerts?auth_token=${var.webhook_auth_token}"
   }
 }
 ```
@@ -98,7 +94,7 @@ The real power comes from building a custom webhook receiver that reformats and 
 from flask import Flask, request, jsonify
 import requests
 import json
-from datetime import datetime
+import os
 
 app = Flask(__name__)
 
@@ -204,9 +200,8 @@ def format_slack_message(alert_data):
 def receive_alert():
     """Receive and route Cloud Monitoring alerts."""
     # Verify the auth token
-    auth_header = request.headers.get('Authorization', '')
-    expected_token = f'Bearer {app.config.get("AUTH_TOKEN", "")}'
-    if auth_header != expected_token:
+    expected_token = os.environ.get('AUTH_TOKEN', '')
+    if not expected_token or request.args.get('auth_token') != expected_token:
         return jsonify({'error': 'unauthorized'}), 401
 
     alert_data = request.get_json()
@@ -251,6 +246,8 @@ resource "google_pubsub_topic" "alerts" {
   name = "monitoring-alerts"
 }
 
+data "google_project" "current" {}
+
 resource "google_monitoring_notification_channel" "pubsub" {
   display_name = "Alert Processing Pipeline"
   type         = "pubsub"
@@ -259,6 +256,14 @@ resource "google_monitoring_notification_channel" "pubsub" {
     topic = google_pubsub_topic.alerts.id
   }
 }
+
+resource "google_pubsub_topic_iam_member" "monitoring_publisher" {
+  topic  = google_pubsub_topic.alerts.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-monitoring-notification.iam.gserviceaccount.com"
+
+  depends_on = [google_monitoring_notification_channel.pubsub]
+}
 ```
 
 Then process alerts with a Cloud Function:
@@ -266,6 +271,7 @@ Then process alerts with a Cloud Function:
 ```python
 # Cloud Function to process alerts from Pub/Sub
 import functions_framework
+import base64
 import json
 import requests
 from google.cloud import firestore
@@ -277,7 +283,7 @@ def process_alert(cloud_event):
     """Process Cloud Monitoring alerts from Pub/Sub."""
     # Decode the alert payload
     alert_data = json.loads(
-        cloud_event.data['message']['data']
+        base64.b64decode(cloud_event.data['message']['data']).decode('utf-8')
     )
 
     incident = alert_data.get('incident', {})
@@ -354,11 +360,11 @@ Add runbook links and response instructions directly in the alert policy:
 
 ```hcl
 resource "google_monitoring_alert_policy" "api_errors" {
-  display_name = "Production API Error Rate"
+  display_name = "Production API 5xx Request Rate"
   combiner     = "OR"
 
   conditions {
-    display_name = "Error Rate > 5%"
+    display_name = "5xx Request Rate > 5/sec"
     condition_threshold {
       filter          = "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class = \"5xx\""
       comparison      = "COMPARISON_GT"
@@ -375,7 +381,7 @@ resource "google_monitoring_alert_policy" "api_errors" {
     content = <<-EOT
 ## API Error Rate Alert
 
-**What:** The API error rate has exceeded 5% for more than 5 minutes.
+**What:** The API 5xx request rate has exceeded 5 requests per second for more than 5 minutes.
 
 **Impact:** Users are experiencing failed requests.
 
@@ -406,10 +412,9 @@ After creating notification channels, verify they work:
 ```bash
 # List all notification channels
 gcloud beta monitoring channels list --project=my-project
-
-# Send a test notification to verify the channel works
-gcloud beta monitoring channels verify CHANNEL_ID --project=my-project
 ```
+
+For webhook channels, use **Test Connection** in the Google Cloud console. For Pub/Sub channels, use **Send test notification** in the console after granting the Monitoring notification service account permission to publish to the topic.
 
 ## Best Practices
 
