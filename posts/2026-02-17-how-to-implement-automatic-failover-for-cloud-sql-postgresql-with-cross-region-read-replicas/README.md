@@ -1,16 +1,16 @@
-# Use Automatic Failover for Cloud SQL PostgreSQL with Cross-Region Read Replicas
+# Use Controlled Failover for Cloud SQL PostgreSQL with Cross-Region Read Replicas
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud SQL, PostgreSQL, Failover, High Availability, Cross-Region Replication
 
-Description: Set up automatic failover for Cloud SQL PostgreSQL using cross-region read replicas to ensure database availability during regional outages with minimal data loss.
+Description: Set up controlled failover for Cloud SQL PostgreSQL using cross-region read replicas to ensure database availability during regional outages with minimal data loss.
 
 ---
 
 Your database is the most critical piece of your infrastructure. When it goes down, everything goes down. Cloud SQL provides high availability within a single region using synchronous replication to a standby instance. But what happens when the entire region has an outage? That is where cross-region read replicas come in. By maintaining a replica in a different region, you have a warm standby that can be promoted to a primary if disaster strikes.
 
-In this guide, I will show you how to set up cross-region read replicas for Cloud SQL PostgreSQL, configure automatic failover, and handle the application-level routing changes needed to make failover seamless.
+In this guide, I will show you how to set up cross-region read replicas for Cloud SQL PostgreSQL, designate a disaster recovery replica when you are using Cloud SQL Enterprise Plus, and handle the application-level routing changes needed to make failover as smooth as possible.
 
 ## Setting Up the Primary Instance
 
@@ -24,6 +24,7 @@ gcloud sql instances create primary-db \
   --tier=db-custom-4-16384 \
   --region=us-central1 \
   --availability-type=REGIONAL \
+  --edition=ENTERPRISE_PLUS \
   --storage-type=SSD \
   --storage-size=100GB \
   --storage-auto-increase \
@@ -50,35 +51,41 @@ Create read replicas in different regions for disaster recovery and read scaling
 gcloud sql instances create replica-europe \
   --master-instance-name=primary-db \
   --region=europe-west1 \
+  --database-version=POSTGRES_15 \
   --tier=db-custom-4-16384 \
-  --availability-type=ZONAL \
+  --availability-type=REGIONAL \
+  --edition=ENTERPRISE_PLUS \
   --storage-type=SSD
 
 # Create a read replica in Asia
 gcloud sql instances create replica-asia \
   --master-instance-name=primary-db \
   --region=asia-east1 \
+  --database-version=POSTGRES_15 \
   --tier=db-custom-4-16384 \
   --availability-type=ZONAL \
+  --edition=ENTERPRISE_PLUS \
   --storage-type=SSD
 
 # Verify replica status
-gcloud sql instances describe replica-europe --format='value(replicaConfiguration.failoverTarget)'
-gcloud sql instances describe replica-asia --format='value(replicaConfiguration.failoverTarget)'
+gcloud sql instances describe replica-europe --format='value(masterInstanceName,databaseReplicationEnabled)'
+gcloud sql instances describe replica-asia --format='value(masterInstanceName,databaseReplicationEnabled)'
 ```
 
 ## Designating a Failover Replica
 
-Mark one of the replicas as the failover target. This is the replica that will be promoted if the primary fails.
+With Cloud SQL Enterprise Plus, mark one cross-region read replica as the disaster recovery (DR) replica. Standard read replicas are promoted manually and intentionally; they are not automatic HA failover targets.
 
 ```bash
-# Set the European replica as the designated failover target
-gcloud sql instances patch replica-europe \
-  --failover-target
+# Set the European replica as the designated DR replica for the primary
+gcloud sql instances patch primary-db \
+  --failover-dr-replica-name=replica-europe
 
-# Verify the failover target is set
+# Verify the DR replica is set
+gcloud sql instances describe primary-db \
+  --format='value(settings.replicationCluster.failoverDrReplicaName)'
 gcloud sql instances describe replica-europe \
-  --format='table(name,region,replicaConfiguration.failoverTarget)'
+  --format='table(name,region,drReplica)'
 ```
 
 ## Application Connection Architecture
@@ -88,12 +95,9 @@ Your application needs to handle connecting to the right instance. Use a connect
 ```python
 # db_connection.py - Connection manager with failover support
 import os
-import time
 import logging
 from contextlib import contextmanager
-import sqlalchemy
-from sqlalchemy import create_engine, text
-from sqlalchemy.pool import QueuePool
+from sqlalchemy import create_engine, engine, text
 
 logger = logging.getLogger(__name__)
 
@@ -126,8 +130,13 @@ class DatabaseManager:
     def _create_engine(self, host, database, user, password):
         """Create a SQLAlchemy engine with connection pooling."""
         return create_engine(
-            f'postgresql+pg8000://{user}:{password}@/{database}',
-            connect_args={'unix_sock': f'/cloudsql/{host}/.s.PGSQL.5432'},
+            engine.URL.create(
+                drivername='postgresql+pg8000',
+                username=user,
+                password=password,
+                database=database,
+                query={'unix_sock': f'/cloudsql/{host}/.s.PGSQL.5432'},
+            ),
             pool_size=10,
             max_overflow=5,
             pool_timeout=30,
@@ -163,12 +172,16 @@ class DatabaseManager:
 
         try:
             conn = engine.connect()
-            yield conn
-            conn.close()
         except Exception as e:
             logger.warning(f'Replica connection failed, falling back to primary: {e}')
             with self.write_connection() as conn:
                 yield conn
+            return
+
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def health_check(self):
         """Check connectivity to primary and all replicas."""
@@ -194,7 +207,7 @@ class DatabaseManager:
 
 ## Monitoring Replication Lag
 
-Replication lag tells you how far behind the replica is from the primary. During normal operation, this should be under a second.
+Replication lag tells you how far behind the replica is from the primary. During normal operation, keep it as low as possible and set thresholds based on your workload and recovery point objective.
 
 ```python
 # monitor_replication.py - Track replication lag
@@ -215,7 +228,7 @@ def check_replication_lag(project_id, instance_name):
     results = client.list_time_series(
         request={
             'name': project_name,
-            'filter': f'metric.type="cloudsql.googleapis.com/database/postgresql/replication/replica_byte_lag" AND resource.labels.database_id="{project_id}:{instance_name}"',
+            'filter': f'metric.type="cloudsql.googleapis.com/database/postgres/replication/replica_byte_lag" AND resource.labels.database_id="{project_id}:{instance_name}"',
             'interval': interval,
         }
     )
@@ -233,15 +246,15 @@ def check_replication_lag(project_id, instance_name):
 
 ## Performing Manual Failover
 
-If the primary region goes down, promote the failover replica to become the new primary.
+If the primary region goes down, promote the replica to become the new primary. For a designated Enterprise Plus DR replica, use replica failover; otherwise, use regular replica promotion.
 
 ```bash
-# Promote the replica to a standalone primary
-gcloud sql instances promote-replica replica-europe
+# Fail over to the designated DR replica
+gcloud sql instances promote-replica replica-europe --failover
 
-# The replica is now an independent primary instance
+# The DR replica is now the primary instance
 # Update your application configuration to point to the new primary
-# The old primary's connection string no longer works
+# If you are not using a Cloud SQL DNS write endpoint, update connection strings
 
 # After failover, you may want to create a new replica in another region
 gcloud sql instances create new-replica-us \
@@ -250,18 +263,19 @@ gcloud sql instances create new-replica-us \
   --tier=db-custom-4-16384
 ```
 
-## Automating Failover with Cloud Functions
+## Automating Failover Invocation with Cloud Functions
 
-Set up automated failover detection and promotion using Cloud Monitoring alerts and Cloud Functions.
+Set up guarded failover invocation using Cloud Monitoring alerts and Cloud Functions. Keep human approval or strong safeguards in the workflow so a transient alert does not promote a replica unnecessarily.
 
 ```python
-# failover_function.py - Automatic failover triggered by monitoring alert
+# failover_function.py - Replica failover triggered by a verified monitoring alert
+import base64
 import os
-from google.cloud import sqladmin_v1beta4
-from google.cloud import pubsub_v1
 import json
+from google.cloud import pubsub_v1
+from googleapiclient import discovery
 
-sql_client = sqladmin_v1beta4.SqlAdminServiceClient()
+sql_service = discovery.build('sqladmin', 'v1beta4')
 publisher = pubsub_v1.PublisherClient()
 
 PROJECT = os.environ['PROJECT_ID']
@@ -270,7 +284,8 @@ NOTIFICATION_TOPIC = os.environ['NOTIFICATION_TOPIC']
 
 def handle_failover_alert(event, context):
     """Triggered by a Cloud Monitoring alert when the primary is down."""
-    alert_data = json.loads(event['data'].decode('utf-8'))
+    alert_data = json.loads(base64.b64decode(event['data']).decode('utf-8'))
+    topic_path = publisher.topic_path(PROJECT, NOTIFICATION_TOPIC)
 
     # Verify this is a genuine outage, not a transient blip
     if alert_data.get('incident', {}).get('state') != 'open':
@@ -280,14 +295,14 @@ def handle_failover_alert(event, context):
     print(f'Primary database outage detected. Initiating failover to {FAILOVER_REPLICA}')
 
     try:
-        # Promote the failover replica
-        operation = sql_client.promote_replica(
+        # Promote the designated DR replica with replica failover
+        operation = sql_service.instances().promoteReplica(
             project=PROJECT,
             instance=FAILOVER_REPLICA,
-        )
+            failover=True,
+        ).execute()
 
         # Notify the team
-        topic_path = publisher.topic_path(PROJECT, NOTIFICATION_TOPIC)
         publisher.publish(
             topic_path,
             data=json.dumps({
@@ -318,7 +333,7 @@ After a failover, there are several things you need to handle.
 
 ```bash
 # 1. Update DNS or connection strings to point to the new primary
-# If using Cloud SQL Proxy, update the instance connection name
+# If you are not using a Cloud SQL DNS write endpoint, update the instance connection name
 
 # 2. Create a new read replica in a different region
 gcloud sql instances create new-replica-us \
@@ -337,6 +352,6 @@ EOF
 
 ## Wrapping Up
 
-Cross-region read replicas provide a safety net for regional outages. The key points to remember: always monitor replication lag so you know your data loss exposure, test your failover process regularly so you are confident it works, and have a documented runbook for post-failover steps. Automated failover reduces recovery time but needs careful safeguards to avoid false-positive triggers.
+Cross-region read replicas provide a safety net for regional outages. The key points to remember: always monitor replication lag so you know your data loss exposure, test your failover process regularly so you are confident it works, and have a documented runbook for post-failover steps. Automated failover invocation can reduce recovery time, but it needs careful safeguards to avoid false-positive triggers.
 
 OneUptime can monitor your database primary and replicas across regions, tracking replication lag, connection counts, and query performance. When combined with uptime monitoring of your application endpoints, it gives you a complete picture of your database high availability setup and helps you catch issues before they require failover.
