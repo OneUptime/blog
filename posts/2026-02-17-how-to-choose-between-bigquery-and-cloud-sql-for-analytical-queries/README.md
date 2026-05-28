@@ -167,9 +167,9 @@ Cloud SQL (db-custom-4-16384):
   Total: ~$200/month
 
 BigQuery:
-  Storage: 10 GB x $0.02 = $0.20/month
-  Query: 100 queries x 1 GB x $5/TB x 30 days = $15/month
-  Total: ~$15.20/month
+  Storage: 10 GiB x $0.023 = $0.23/month
+  Query: 100 queries x 1 GiB x $6.25/TiB x 30 days = ~$18.31/month
+  Total: ~$18.54/month
 ```
 
 ```text
@@ -179,9 +179,9 @@ Cloud SQL (db-custom-16-65536):
   Instance cost: ~$800/month (if it can even handle the workload)
 
 BigQuery:
-  Storage: 1 TB x $0.02 = $20/month
-  Query: 1000 queries x 100 GB x $5/TB x 30 days = $15,000/month
-  Total: ~$15,020/month (but consider partitioning to reduce scan)
+  Storage: 1 TiB x $23.55 = $23.55/month
+  Query: 1000 queries x 100 GiB x $6.25/TiB x 30 days = ~$18,311/month
+  Total: ~$18,335/month (but consider partitioning to reduce scan)
 ```
 
 For BigQuery, partitioning and clustering dramatically reduce costs:
@@ -206,15 +206,19 @@ GROUP BY product_category;
 Many teams use both. Cloud SQL handles the transactional workload, and BigQuery handles analytics. You sync data from Cloud SQL to BigQuery on a schedule.
 
 ```bash
-# Export Cloud SQL data to BigQuery using a Dataflow template
-gcloud dataflow jobs run cloud-sql-to-bq \
-    --gcs-location=gs://dataflow-templates/latest/Cloud_SQL_to_BigQuery \
+# Export Cloud SQL for PostgreSQL data to BigQuery using a Dataflow template
+gcloud dataflow flex-template run cloud-sql-to-bq \
     --region=us-central1 \
+    --template-file-gcs-location=gs://dataflow-templates-us-central1/latest/flex/PostgreSQL_to_BigQuery \
     --parameters \
-connectionURL=jdbc:postgresql://google/mydb?cloudSqlInstance=project:region:instance,\
+driverJars=gs://my-bucket/jdbc/postgresql.jar,\
+driverClassName=org.postgresql.Driver,\
+connectionURL=jdbc:postgresql://10.0.0.3:5432/mydb,\
 query="SELECT * FROM orders WHERE updated_at > TIMESTAMP '2026-02-16'",\
 outputTable=my-project:analytics.orders,\
-bigQueryLoadingTemporaryDirectory=gs://my-temp/bq-staging/
+bigQueryLoadingTemporaryDirectory=gs://my-temp/bq-staging/,\
+username=my-user,\
+password=my-password
 ```
 
 Or use Federated Queries to query Cloud SQL directly from BigQuery:
