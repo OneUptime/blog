@@ -14,11 +14,11 @@ GCP's domain-restricted sharing constraint solves this by enforcing a policy at 
 
 ## What Is Domain-Restricted Sharing
 
-Domain-restricted sharing is an organization policy constraint identified as `constraints/iam.allowedPolicyMemberDomains`. When enabled, it restricts which domains can appear in IAM policy bindings across all projects under the organization or folder where the policy is applied.
+Domain-restricted sharing can be implemented with the legacy organization policy constraint identified as `constraints/iam.allowedPolicyMemberDomains`. When enabled, it restricts which domains can appear in IAM policy bindings across all projects under the organization or folder where the policy is applied.
 
 For example, if your company's Google Workspace domain is `example.com`, you can set the constraint so that only identities from `example.com` can be granted IAM roles. Any attempt to add `someone@gmail.com` or `partner@otherdomain.com` to an IAM binding will be blocked.
 
-This works for all identity types, including user accounts, groups, and service accounts from external projects.
+This works for principals in IAM allow policies, including user accounts, groups, service accounts, and workload identity pools. When you allow a Google Workspace Customer ID, Google Cloud also allows service accounts and workload identity pools in projects in that organization.
 
 ## Prerequisites
 
@@ -28,7 +28,7 @@ You need the following before you can set this up:
 - The `roles/orgpolicy.policyAdmin` role on the organization or folder
 - Your GCP Customer ID (found in the Google Workspace or Cloud Identity admin console)
 
-To find your Customer ID, go to the Google Admin console at `admin.google.com`, navigate to **Account > Account settings**, and copy the Customer ID. It looks something like `C01234abc`.
+To find your Customer ID, go to the Google Admin console at `admin.google.com`, navigate to **Account > Account settings**, and copy the Customer ID. It looks something like `C01234abc`. You can also run `gcloud organizations list`; the Customer ID is shown in the `DIRECTORY_CUSTOMER_ID` column.
 
 ## Setting Up the Constraint via Console
 
@@ -36,9 +36,9 @@ Navigate to **IAM & Admin > Organization Policies** in the Google Cloud Console.
 
 Search for `Domain restricted sharing` or scroll to find `iam.allowedPolicyMemberDomains`. Click on the constraint and then click **Edit**.
 
-Set the policy to **Customize** and add an **Allow** rule. In the allowed values, enter your Customer ID (the `C01234abc` format, not the domain name). You can add multiple Customer IDs if your organization has multiple Workspace or Cloud Identity tenants.
+Set the policy to **Customize** and add an **Allow** rule. In the custom values, enter your Customer ID (not the domain name). For policy files and Terraform, use the `is:C01234abc` format. You can add multiple Customer IDs if your organization has multiple Workspace or Cloud Identity tenants.
 
-Save the policy and it will take effect within a few minutes.
+Save the policy and it should take effect within 15 minutes.
 
 ## Setting Up the Constraint via gcloud
 
@@ -48,30 +48,30 @@ The gcloud approach gives you more control and is easier to script. First, creat
 # domain-restricted-sharing-policy.yaml
 
 # This restricts IAM bindings to identities from specified domains only
-constraint: constraints/iam.allowedPolicyMemberDomains
-listPolicy:
-  allowedValues:
-    - C01234abc
-    - C56789def
+name: organizations/ORG_ID/policies/iam.allowedPolicyMemberDomains
+spec:
+  rules:
+    - values:
+        allowedValues:
+          - is:C01234abc
+          - is:C56789def
 ```
 
 Then apply it at the organization level:
 
 ```bash
 # Apply the domain restriction policy to the entire organization
-gcloud resource-manager org-policies set-policy \
-  domain-restricted-sharing-policy.yaml \
-  --organization=ORG_ID
+gcloud org-policies set-policy domain-restricted-sharing-policy.yaml
 ```
 
 You can also apply it at the folder level if you want to restrict only certain parts of your hierarchy:
 
 ```bash
 # Apply to a specific folder instead of the whole org
-gcloud resource-manager org-policies set-policy \
-  domain-restricted-sharing-policy.yaml \
-  --folder=FOLDER_ID
+gcloud org-policies set-policy folder-domain-restricted-sharing-policy.yaml
 ```
+
+The folder policy file uses the same structure, but the `name` starts with `folders/FOLDER_ID/policies/iam.allowedPolicyMemberDomains`.
 
 ## Setting Up Using Terraform
 
@@ -88,8 +88,8 @@ resource "google_org_policy_policy" "domain_restricted_sharing" {
     rules {
       values {
         allowed_values = [
-          "C01234abc",  # Primary Workspace domain
-          "C56789def",  # Secondary Cloud Identity domain
+          "is:C01234abc",  # Primary Workspace domain
+          "is:C56789def",  # Secondary Cloud Identity domain
         ]
       }
     }
@@ -101,16 +101,14 @@ resource "google_org_policy_policy" "domain_restricted_sharing" {
 
 There are legitimate cases where you need to grant access to external identities. For example, you might have a shared project with a partner, or you might need Google support to access your resources during an incident.
 
-You can create exceptions by applying a less restrictive policy at a lower level of the hierarchy. Organization policies in GCP follow an inheritance model where child nodes can override parent policies if the parent allows it.
+You can create exceptions by applying a less restrictive policy at a lower level of the hierarchy. Organization policies in GCP follow an inheritance model where child nodes can override parent policies.
 
 To allow exceptions for a specific project, apply a policy at the project level that includes additional Customer IDs:
 
 ```bash
 # Create an exception policy for a specific project
 # that allows an additional external domain
-gcloud resource-manager org-policies set-policy \
-  exception-policy.yaml \
-  --project=shared-partner-project
+gcloud org-policies set-policy exception-policy.yaml
 ```
 
 The exception YAML would include the additional allowed Customer ID:
@@ -118,14 +116,16 @@ The exception YAML would include the additional allowed Customer ID:
 ```yaml
 # exception-policy.yaml
 # Allows the partner's domain in addition to our own
-constraint: constraints/iam.allowedPolicyMemberDomains
-listPolicy:
-  allowedValues:
-    - C01234abc
-    - PARTNER_CUSTOMER_ID
+name: projects/PROJECT_ID/policies/iam.allowedPolicyMemberDomains
+spec:
+  rules:
+    - values:
+        allowedValues:
+          - is:C01234abc
+          - is:PARTNER_CUSTOMER_ID
 ```
 
-Alternatively, you can use tags to create conditional exceptions, which gives you finer control without having to manage policies at the individual project level.
+Alternatively, you can use tags to create conditional policies, which gives you finer control without having to manage policies at the individual project level.
 
 ## What Gets Blocked
 
@@ -136,13 +136,13 @@ When domain-restricted sharing is active, the following actions are blocked:
 - Creating IAM bindings through the console, gcloud, API, or Terraform
 - Adding external groups to IAM policies
 
-The constraint also blocks service accounts from external projects unless those projects belong to an allowed domain.
+The constraint also blocks service accounts from external projects unless they are covered by an allowed organization principal set or Google Workspace Customer ID.
 
 ## What Is Not Blocked
 
 There are some things the constraint does not cover:
 
-- **allUsers and allAuthenticatedUsers** - These special members are controlled by a separate constraint called `constraints/iam.allowedPublicMemberTypes`. You should set that one too.
+- **allUsers and allAuthenticatedUsers** - With the legacy `iam.allowedPolicyMemberDomains` constraint, exceptions for these special principals are not added directly to the allowed values list. If you need public sharing, use a custom organization policy or a supported service-specific control such as Cloud Storage Public Access Prevention.
 - **Existing bindings** - The constraint only applies to new bindings. If an external identity already has access, the policy will not retroactively remove it.
 - **VPC Service Controls** - Domain-restricted sharing is about IAM bindings. For network-level controls, you need VPC Service Controls.
 
