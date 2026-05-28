@@ -92,33 +92,36 @@ If you have many keys and long allowed lateness with small windows, the state ca
 
 Even with generous allowed lateness, some data might arrive extremely late. Data that arrives after the allowed lateness period is permanently dropped. If you cannot afford to lose any data, you need a strategy for these stragglers.
 
-One approach is to use a side output to capture dropped elements.
+You cannot capture these elements with a side output after the windowing step, because Beam drops them before downstream transforms see them. Instead, write a copy of the raw events to durable storage before assigning event-time timestamps and windowing, then use that archive for backfills or reconciliation.
 
 ```java
-// Capture elements that would be dropped due to extreme lateness
-final TupleTag<KV<String, Long>> mainOutput = new TupleTag<KV<String, Long>>() {};
-final TupleTag<KV<String, Long>> lateOutput = new TupleTag<KV<String, Long>>() {};
+// Keep a raw copy before event-time windowing so extremely late data
+// can be reconciled even if the windowed aggregation drops it.
+events
+    .apply("ArchiveWindows", Window.<KV<String, Long>>into(
+        FixedWindows.of(Duration.standardMinutes(5))))
+    .apply("FormatRawEvents", MapElements
+        .into(TypeDescriptors.strings())
+        .via(event -> event.getKey() + "," + event.getValue()))
+    .apply("ArchiveRawEvents", TextIO.write()
+        .to("gs://my-bucket/raw-events")
+        .withWindowedWrites()
+        .withNumShards(10));
 
-PCollectionTuple results = events
-    .apply("AssignTimestamps", WithTimestamps.of(event -> extractTimestamp(event)))
+PCollection<KV<String, Long>> timestampedEvents = events
+    .apply("AssignTimestamps", WithTimestamps.of(event -> extractTimestamp(event)));
+
+PCollection<KV<String, Long>> counts = timestampedEvents
     .apply("Window", Window.<KV<String, Long>>into(
         FixedWindows.of(Duration.standardMinutes(5)))
         .withAllowedLateness(Duration.standardHours(2))
         .triggering(AfterWatermark.pastEndOfWindow()
             .withLateFirings(AfterPane.elementCountAtLeast(1)))
         .accumulatingFiredPanes())
-    .apply("ProcessWithLateSideOutput", ParDo.of(
-        new DoFn<KV<String, Long>, KV<String, Long>>() {
-            @ProcessElement
-            public void processElement(ProcessContext c, BoundedWindow window) {
-                // All elements get processed here, including late ones
-                // within allowed lateness
-                c.output(c.element());
-            }
-        }).withOutputTags(mainOutput, TupleTagList.of(lateOutput)));
+    .apply("Count", Count.perKey());
 ```
 
-Another approach is to write extremely late data to a dead letter queue or a separate storage location for manual reconciliation.
+Another approach is to route records that are already known to be too old at ingestion time to a dead letter queue or a separate storage location for manual reconciliation.
 
 ## Watermark Behavior with Multiple Sources
 
@@ -143,14 +146,15 @@ If source2 stops publishing, its watermark stalls. This stalls the combined wate
 
 ## Monitoring Watermark Progress
 
-Dataflow exposes watermark metrics that you should monitor in production. The system lag metric shows the difference between the current watermark and wall clock time. A growing lag means your pipeline is falling behind.
+Dataflow exposes watermark and lag metrics that you should monitor in production. The data watermark age metric shows how old the event time is up to which data has been processed, and system lag shows the maximum time an item has been processing or waiting to be processed. Growing lag means your pipeline is falling behind.
 
 ```bash
-# Check watermark lag using gcloud
+# Check watermark and lag metrics using gcloud
 
-gcloud dataflow metrics list JOB_ID \
+gcloud beta dataflow metrics list JOB_ID \
   --region=us-central1 \
-  --filter="name.name=system_lag"
+  --source=service \
+  --format="table(name.name, scalar)" | grep -Ei 'watermark|lag'
 ```
 
 You can also set up Cloud Monitoring alerts on the `dataflow.googleapis.com/job/system_lag` metric to get notified when the watermark falls too far behind.
@@ -165,6 +169,6 @@ For financial or compliance data where accuracy matters, I set allowed lateness 
 
 For IoT data from devices with intermittent connectivity, allowed lateness might need to be days or even weeks. In these cases, consider a hybrid approach: use a streaming pipeline with moderate lateness for real-time results, and a periodic batch pipeline to reconcile with the full historical data.
 
-Always pair allowed lateness with late firing triggers. Without a late firing trigger, late data updates the window state but never emits an updated result.
+If you replace Beam's default trigger, pair allowed lateness with late firing triggers. The default trigger emits again when late data arrives within the allowed lateness period, but a custom trigger such as `AfterWatermark.pastEndOfWindow()` without late firings can prevent late updates from being emitted.
 
 Watermarks and allowed lateness are fundamental to getting correct results from streaming pipelines. They give you explicit control over the tradeoff between timeliness and completeness, which is at the heart of every streaming system design decision.
