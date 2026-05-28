@@ -8,13 +8,13 @@ Description: Learn how to build tokenization pipelines using Cloud DLP to protec
 
 ---
 
-Tokenization replaces sensitive data with non-sensitive tokens that maintain the same format and referential integrity. A credit card number becomes a random-looking string of the same length. A Social Security number becomes a different nine-digit number that maps back to the original only if you have the right key. The original data stays protected while downstream systems can still process the tokenized version.
+Tokenization replaces sensitive data with non-sensitive tokens that can maintain the same format and referential integrity when you use format-preserving encryption. A credit card number becomes a random-looking string of the same length. A numeric identifier can become a different same-length number that maps back to the original only if you have the right key. Other transformations, like deterministic encryption or cryptographic hashing, do not preserve the original format in the same way. The original data stays protected while downstream systems can still process the tokenized version.
 
-Cloud DLP makes this straightforward to implement at scale. This guide walks through building a complete tokenization pipeline that protects PII across BigQuery, Cloud Storage, and streaming data.
+Cloud DLP makes this straightforward to implement at scale. This guide walks through building a complete tokenization pipeline that protects PII across BigQuery and streaming data.
 
 ## Tokenization vs. Encryption vs. Hashing
 
-Before diving into implementation, it helps to understand when tokenization is the right choice. Encryption scrambles data into an unreadable format that changes the data length and format. Hashing produces a fixed-length output and is one-way - you cannot recover the original. Tokenization preserves the format and length while being reversible with the right key.
+Before diving into implementation, it helps to understand when tokenization is the right choice. Encryption scrambles data into an unreadable format that often changes the data length and format. Hashing produces a fixed-length output and is one-way - you cannot recover the original. Format-preserving tokenization preserves the format and length while being reversible with the right key.
 
 Tokenization is ideal when downstream systems expect data in a specific format, when you need to preserve referential integrity across tables, or when you need to be able to re-identify records for legitimate purposes.
 
@@ -33,8 +33,7 @@ gcloud kms keys create pii-token-key \
   --keyring=dlp-tokenization \
   --location=global \
   --purpose=encryption \
-  --rotation-period=90d \
-  --next-rotation-time="2026-05-01T00:00:00Z"
+  --rotation-period=90d
 
 # Grant the DLP service account access to the key
 DLP_SA="service-PROJECT_NUMBER@dlp-api.iam.gserviceaccount.com"
@@ -87,6 +86,7 @@ wrapped_key = create_wrapped_key(
 The deidentification template defines how each type of PII gets tokenized. Different fields can use different tokenization methods.
 
 ```python
+import base64
 from google.cloud import dlp_v2
 
 def create_deidentify_template(project_id, wrapped_key, kms_key_name):
@@ -96,7 +96,7 @@ def create_deidentify_template(project_id, wrapped_key, kms_key_name):
     # Crypto key configuration pointing to our wrapped key
     crypto_key = {
         "kms_wrapped": {
-            "wrapped_key": wrapped_key,
+            "wrapped_key": base64.b64decode(wrapped_key),
             "crypto_key_name": kms_key_name,
         }
     }
@@ -113,7 +113,7 @@ def create_deidentify_template(project_id, wrapped_key, kms_key_name):
                             "crypto_key": crypto_key,
                             "common_alphabet": "NUMERIC",
                             # Surrogates allow re-identification later
-                            "surrogateInfoType": {
+                            "surrogate_info_type": {
                                 "name": "CREDIT_CARD_TOKEN"
                             },
                         }
@@ -126,7 +126,7 @@ def create_deidentify_template(project_id, wrapped_key, kms_key_name):
                     "primitive_transformation": {
                         "crypto_deterministic_config": {
                             "crypto_key": crypto_key,
-                            "surrogateInfoType": {
+                            "surrogate_info_type": {
                                 "name": "EMAIL_TOKEN"
                             },
                         }
@@ -172,53 +172,54 @@ def create_deidentify_template(project_id, wrapped_key, kms_key_name):
 
 ## Step 4: Build the BigQuery Tokenization Pipeline
 
-For data already in BigQuery, create a pipeline that reads from the source table, tokenizes PII columns, and writes to a destination table.
+For data already in BigQuery, create a pipeline that reads from the source table, tokenizes PII columns with the DLP content API, and writes to a destination table. The destination table should already exist with compatible string columns for the transformed values.
 
 ```python
+from google.cloud import bigquery
 from google.cloud import dlp_v2
 
 def tokenize_bigquery_table(
     project_id, source_dataset, source_table,
     dest_dataset, dest_table
 ):
-    """Tokenize PII in a BigQuery table using a DLP job."""
-    client = dlp_v2.DlpServiceClient()
+    """Tokenize PII in a BigQuery table using the DLP content API."""
+    bq_client = bigquery.Client(project=project_id)
+    dlp_client = dlp_v2.DlpServiceClient()
 
-    # Configure the DLP job
-    job_config = {
-        "deidentify_template_name": f"projects/{project_id}/locations/global/deidentifyTemplates/pii-tokenization",
-        "inspect_template_name": f"projects/{project_id}/locations/global/inspectTemplates/pii-detection",
-        "storage_config": {
-            "big_query_options": {
-                "table_reference": {
-                    "project_id": project_id,
-                    "dataset_id": source_dataset,
-                    "table_id": source_table,
-                },
-            }
-        },
-        "actions": [
-            {
-                "deidentify": {
-                    "transformation_details_storage_config": {
-                        "table": {
-                            "project_id": project_id,
-                            "dataset_id": "dlp_audit",
-                            "table_id": "tokenization_log",
-                        }
-                    },
-                    "cloud_storage_output": f"gs://{project_id}-dlp-output/",
-                }
-            }
-        ],
-    }
+    source = f"`{project_id}.{source_dataset}.{source_table}`"
+    row_iter = bq_client.query(f"SELECT * FROM {source}").result()
+    headers = [{"name": field.name} for field in row_iter.schema]
+    destination = f"{project_id}.{dest_dataset}.{dest_table}"
 
-    response = client.create_dlp_job(
-        parent=f"projects/{project_id}/locations/us-central1",
-        inspect_job=job_config,
-    )
-    print(f"Tokenization job started: {response.name}")
-    return response.name
+    tokenized_rows = []
+    for row in row_iter:
+        values = [
+            {"string_value": "" if row[field.name] is None else str(row[field.name])}
+            for field in row_iter.schema
+        ]
+        table = {"headers": headers, "rows": [{"values": values}]}
+
+        response = dlp_client.deidentify_content(
+            request={
+                "parent": f"projects/{project_id}/locations/global",
+                "deidentify_template_name": f"projects/{project_id}/locations/global/deidentifyTemplates/pii-tokenization",
+                "item": {"table": table},
+            }
+        )
+
+        result_row = response.item.table.rows[0]
+        tokenized_rows.append({
+            header.name: result_row.values[i].string_value
+            for i, header in enumerate(response.item.table.headers)
+        })
+
+    if tokenized_rows:
+        errors = bq_client.insert_rows_json(destination, tokenized_rows)
+        if errors:
+            raise RuntimeError(f"BigQuery insert failed: {errors}")
+
+    print(f"Tokenized {len(tokenized_rows)} rows into {destination}")
+    return len(tokenized_rows)
 ```
 
 ## Step 5: Stream Tokenization with Dataflow
@@ -256,7 +257,7 @@ class TokenizePII(beam.DoFn):
         # Call DLP to deidentify the record
         response = self.client.deidentify_content(
             request={
-                "parent": f"projects/{self.project_id}/locations/us-central1",
+                "parent": f"projects/{self.project_id}/locations/global",
                 "deidentify_template_name": self.template_name,
                 "item": {"table": table},
             }
@@ -286,9 +287,6 @@ def run_streaming_tokenization():
                 topic='projects/my-project/topics/raw-events'
             )
             | 'ParseJSON' >> beam.Map(json.loads)
-            | 'BatchElements' >> beam.BatchElements(
-                min_batch_size=10, max_batch_size=100
-            )
             | 'TokenizePII' >> beam.ParDo(TokenizePII(
                 project_id='my-project',
                 template_name='projects/my-project/locations/global/deidentifyTemplates/pii-tokenization'
@@ -302,9 +300,11 @@ def run_streaming_tokenization():
 
 ## Step 6: Re-identification When Needed
 
-When authorized users need to see the original data, use the re-identification API with the same template and key.
+When authorized users need to see the original data, use the re-identification API with the same template and key for reversible transformations. Hashed and redacted fields cannot be restored.
 
 ```python
+from google.cloud import dlp_v2
+
 def reidentify_record(project_id, tokenized_record, template_name):
     """Re-identify a previously tokenized record."""
     client = dlp_v2.DlpServiceClient()
@@ -320,7 +320,7 @@ def reidentify_record(project_id, tokenized_record, template_name):
     # Re-identify using the same template
     response = client.reidentify_content(
         request={
-            "parent": f"projects/{project_id}/locations/us-central1",
+            "parent": f"projects/{project_id}/locations/global",
             "reidentify_template_name": template_name,
             "item": {"table": table},
         }
