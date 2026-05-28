@@ -8,13 +8,13 @@ Description: Troubleshoot and fix Google Cloud Build triggers that are not firin
 
 ---
 
-You set up a Cloud Build trigger connected to your GitHub repository. You push code, open a pull request, and nothing happens. No build starts. The trigger exists, the repository is connected, but the events are being ignored. This is a common issue with several possible causes, from webhook configuration problems to branch filter mismatches. Let us walk through the debugging process systematically.
+You set up a Cloud Build trigger connected to your GitHub repository. You push code, open a pull request, and nothing happens. No build starts. The trigger exists, the repository is connected, but the events are being ignored. This is a common issue with several possible causes, from GitHub App authorization problems to branch filter mismatches. Let us walk through the debugging process systematically.
 
 ## How Cloud Build GitHub Triggers Work
 
-Cloud Build connects to GitHub through the Cloud Build GitHub App. When you connect a repository, the GitHub App is installed on your repo (or organization) and creates a webhook. When GitHub events occur (push, pull request), the webhook sends a notification to Cloud Build, which evaluates it against your trigger configuration. If it matches, a build starts.
+Cloud Build connects to GitHub through the Cloud Build GitHub App. When you connect a repository, the GitHub App is installed on your repo (or organization) and receives GitHub event notifications. When GitHub events occur (push, pull request), Cloud Build evaluates them against your trigger configuration. If an event matches, a build starts.
 
-The chain is: GitHub Event -> Webhook -> Cloud Build GitHub App -> Trigger Evaluation -> Build Execution.
+The chain is: GitHub Event -> Cloud Build GitHub App -> Trigger Evaluation -> Build Execution.
 
 A failure at any point in this chain means no build.
 
@@ -66,7 +66,8 @@ Update the trigger if the pattern is wrong:
 
 ```bash
 # Update the trigger's branch pattern
-gcloud builds triggers update TRIGGER_NAME \
+gcloud builds triggers update github TRIGGER_NAME \
+    --region=us-central1 \
     --branch-pattern="^main$"
 ```
 
@@ -85,10 +86,16 @@ For example, if `includedFiles` is set to `["src/**"]` and you only modified a f
 Remove the filter or adjust it:
 
 ```bash
-# Remove file filters
-gcloud builds triggers update TRIGGER_NAME \
-    --clear-included-files \
-    --clear-ignored-files
+# Export the trigger, remove includedFiles and ignoredFiles, then import it
+gcloud beta builds triggers export TRIGGER_NAME \
+    --destination=trigger.yaml \
+    --region=us-central1
+
+# Edit trigger.yaml and remove the includedFiles and ignoredFiles fields
+
+gcloud builds triggers import \
+    --source=trigger.yaml \
+    --region=us-central1
 ```
 
 ## Step 4: Check the GitHub App Connection
@@ -116,18 +123,18 @@ If the installation state is not `COMPLETE`, the connection needs to be re-autho
 
 For the older (1st gen) connection, go to the GitHub App settings in your GitHub organization settings to verify the Cloud Build app is installed and has access to the repository.
 
-## Step 5: Check GitHub Webhooks
+## Step 5: Check GitHub App Events
 
-Go to your GitHub repository settings -> Webhooks and look for the Cloud Build webhook. It should point to something like `https://cloudbuild.googleapis.com/...`.
+For Cloud Build GitHub App triggers, you normally verify the GitHub App installation rather than looking for a repository-level webhook. Go to your GitHub organization or account settings -> Installed GitHub Apps and open Google Cloud Build.
 
-Check the webhook's "Recent Deliveries" tab. Each delivery shows:
-- The event type (push, pull_request)
-- The HTTP response code
-- The response body
+Check that:
+- The app is installed
+- The repository is included in the app's repository access
+- The app has not been suspended or removed
 
-If deliveries show 403 or 401 errors, the webhook authentication is broken. If deliveries show 200 but builds still do not start, the trigger configuration is the issue.
+If you are using a custom webhook trigger instead of the Cloud Build GitHub App integration, then check your repository or organization webhook's "Recent Deliveries" tab. Each delivery shows the event type, HTTP response code, and response body.
 
-If there are no recent deliveries for your push event, the webhook is not receiving events. This usually means the GitHub App does not have access to the repository.
+If the GitHub App is installed and has repository access but builds still do not start, the next likely causes are trigger filters, pull request comment control, or Cloud Build-side authorization.
 
 ## Step 6: Check for Organization-Level Restrictions
 
@@ -181,21 +188,21 @@ gcloud builds triggers run TRIGGER_NAME \
     --branch=main
 ```
 
-If the manual run succeeds, the trigger configuration is correct and the issue is with the webhook delivery from GitHub.
+If the manual run succeeds, the build configuration, service account, and source access are working. It does not prove that every event filter matches, because a manual run bypasses the original GitHub event that would have selected the trigger.
 
 ## Step 10: Check Audit Logs
 
-Cloud Build logs trigger evaluations. Check the audit logs to see if the trigger was evaluated and why it decided not to fire:
+Cloud Audit Logs can show build creation attempts, but they do not provide a complete "why this trigger was skipped" explanation for every non-matching GitHub event:
 
 ```bash
-# Check Cloud Build audit logs for trigger activity
-gcloud logging read 'resource.type="build_trigger" AND protoPayload.serviceName="cloudbuild.googleapis.com"' \
+# Check Cloud Build audit logs for build creation attempts
+gcloud logging read 'protoPayload.serviceName="cloudbuild.googleapis.com" AND protoPayload.methodName="google.devtools.cloudbuild.v1.CloudBuild.CreateBuild"' \
     --project=your-project \
     --limit=20 \
     --format="table(timestamp, protoPayload.methodName, protoPayload.status)"
 ```
 
-Look for `CreateBuild` method calls. If they show up with an error status, the trigger fired but the build creation failed.
+If `CreateBuild` calls show up with an error status, the trigger fired but the build creation failed. If no `CreateBuild` call appears for the event, continue checking the GitHub App installation, event type, branch pattern, pull request comment control, and file filters.
 
 ## Debugging Summary
 
@@ -207,10 +214,10 @@ flowchart TD
     D -->|No| E[Fix branch pattern regex]
     D -->|Yes| F{File filters match changed files?}
     F -->|No| G[Adjust or remove file filters]
-    F -->|Yes| H{GitHub webhook delivering?}
+    F -->|Yes| H{GitHub App has repo access?}
     H -->|No| I[Check GitHub App access]
-    H -->|Yes, with errors| J[Re-authorize Cloud Build app]
-    H -->|Yes, 200 OK| K[Check audit logs for trigger evaluation]
+    H -->|Yes, but connection incomplete| J[Re-authorize Cloud Build app]
+    H -->|Yes| K[Check audit logs for build creation attempts]
 ```
 
 ## Monitoring CI/CD Health
