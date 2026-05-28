@@ -19,10 +19,10 @@ Before migrating, understand what changes:
 | Message grouping | Topics with partitions | Topics with subscriptions |
 | Ordering | Per-partition ordering | Per-ordering-key ordering |
 | Consumer groups | Consumer groups | Subscriptions |
-| Offset management | Consumer-managed offsets | Automatic ack/nack |
-| Message retention | Configurable (time or size) | 7 days default (up to 31 days) |
-| Replay | Seek to offset | Seek to timestamp |
-| Exactly-once | Transactional producers | At-least-once (dedup in subscriber) |
+| Offset management | Consumer-managed offsets | Service-tracked ack/nack |
+| Message retention | Configurable (time or size) | 7 days default for unacknowledged messages (up to 31 days) |
+| Replay | Seek to offset | Seek to timestamp or snapshot |
+| Exactly-once | Transactional producers | Exactly-once delivery can be enabled for pull subscriptions; otherwise at-least-once |
 | Throughput | Scales with partitions | Automatically scales |
 
 The biggest conceptual shift is from partitions to subscriptions. In Kafka, consumers in a consumer group share partitions. In Pub/Sub, each subscription independently tracks message delivery to its subscribers.
@@ -42,12 +42,9 @@ gcloud pubsub topics create user-activity
 gcloud pubsub topics create payment-notifications
 gcloud pubsub topics create inventory-updates
 
-# For topics that need ordering, enable message ordering
-gcloud pubsub topics create orders-events \
-  --message-ordering
-
 # Create subscriptions (equivalent to consumer groups)
 # Each consumer group becomes a subscription
+# For streams that need ordering, enable message ordering on the subscription
 gcloud pubsub subscriptions create orders-processor \
   --topic orders-events \
   --ack-deadline 60 \
@@ -92,7 +89,12 @@ Pub/Sub publisher (after):
 from google.cloud import pubsub_v1
 import json
 
-publisher = pubsub_v1.PublisherClient()
+publisher_options = pubsub_v1.types.PublisherOptions(
+    enable_message_ordering=True
+)
+publisher = pubsub_v1.PublisherClient(
+    publisher_options=publisher_options
+)
 topic_path = publisher.topic_path('my-project', 'orders-events')
 
 def publish_order_event(order):
@@ -231,7 +233,7 @@ def publish_order_event(order):
     data = json.dumps(order).encode('utf-8')
 
     # Write to Kafka (existing system)
-    kafka_producer.send('orders-events', key=str(order['customer_id']).encode(), value=data)
+    kafka_producer.send('orders-events', key=str(order['customer_id']), value=order)
 
     # Also write to Pub/Sub (new system)
     publisher.publish(
@@ -275,8 +277,8 @@ Set up monitoring to compare throughput and latency between the two systems:
 gcloud monitoring dashboards create --config-from-file pubsub-dashboard.json
 
 # Key metrics to watch:
-# - pubsub.googleapis.com/topic/send_message_operation_count
-# - pubsub.googleapis.com/subscription/pull_message_operation_count
+# - pubsub.googleapis.com/topic/send_request_count
+# - pubsub.googleapis.com/subscription/sent_message_count
 # - pubsub.googleapis.com/subscription/oldest_unacked_message_age
 # - pubsub.googleapis.com/subscription/num_undelivered_messages
 ```
@@ -286,6 +288,6 @@ gcloud monitoring dashboards create --config-from-file pubsub-dashboard.json
 - **Message size limits.** Pub/Sub messages are limited to 10 MB. Kafka default is 1 MB but can be configured higher. If your Kafka messages exceed 10 MB, you need to restructure them or store large payloads in Cloud Storage with a reference in the message.
 - **Consumer group rebalancing.** Kafka's consumer group rebalancing has no equivalent in Pub/Sub. Pub/Sub handles message distribution to subscribers automatically.
 - **Compacted topics.** Kafka log compaction keeps the latest value per key. Pub/Sub does not support compaction. Use Firestore, Bigtable, or Memorystore if you need a latest-value store.
-- **Exactly-once semantics.** Kafka supports exactly-once with transactional producers. Pub/Sub provides at-least-once delivery. Your consumers need to be idempotent or implement deduplication.
+- **Exactly-once semantics.** Kafka supports exactly-once processing with transactions for Kafka-to-Kafka workflows. Pub/Sub can provide exactly-once delivery on pull subscriptions when enabled, but it does not make your application side effects exactly-once. Your consumers still need to be idempotent or implement deduplication.
 
-The migration from Kafka to Pub/Sub trades operational complexity for managed simplicity. You lose some Kafka-specific features like compacted topics and exactly-once guarantees, but you gain automatic scaling, zero maintenance, and deep GCP integration. For most event streaming workloads, that is a trade worth making.
+The migration from Kafka to Pub/Sub trades operational complexity for managed simplicity. You lose some Kafka-specific features like compacted topics and Kafka transaction semantics, but you gain automatic scaling, zero maintenance, and deep GCP integration. For most event streaming workloads, that is a trade worth making.
