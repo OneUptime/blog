@@ -72,11 +72,13 @@ gcloud compute instances create firewall-vm \
   --image-project=debian-cloud
 ```
 
-If the VM already exists, you need to stop it, enable IP forwarding, and start it again. This flag cannot be changed on a running instance.
+If the VM already exists, update the instance's `canIpForward` property.
+
+You also need to enable forwarding inside the guest OS. On Linux, set `net.ipv4.ip_forward=1` for IPv4 forwarding or `net.ipv6.conf.all.forwarding=1` for IPv6 forwarding.
 
 ## Creating a Route to an On-Premises Network
 
-When you have a Cloud VPN tunnel to your data center, create routes for your on-premises CIDR blocks:
+When you have a Classic VPN tunnel that uses static routing to your data center, create routes for your on-premises CIDR blocks:
 
 ```bash
 # Route traffic to on-premises network through VPN tunnel
@@ -102,7 +104,7 @@ gcloud compute routes create route-to-onprem-172 \
 
 ## Creating a Route Using Next Hop IP
 
-Instead of specifying a next hop instance by name, you can use an IP address. This is useful when the next hop might be a load balancer or a floating IP:
+Instead of specifying a next hop instance by name, you can use an IP address. This is useful when the next hop is a VM with a reserved internal IP address:
 
 ```bash
 # Route traffic to a specific range via a next-hop IP address
@@ -111,10 +113,10 @@ gcloud compute routes create route-to-shared-services \
   --destination-range=10.50.0.0/16 \
   --next-hop-address=10.10.0.100 \
   --priority=800 \
-  --description="Route to shared services via internal LB"
+  --description="Route to shared services via router VM"
 ```
 
-The next-hop IP must be an address within one of the VPC's subnets. The instance at that IP must have IP forwarding enabled.
+The next-hop IP must be a valid VM-assigned IP address within one of the VPC's subnets. The instance at that IP must have IP forwarding enabled. If you want to use an internal passthrough Network Load Balancer as a next hop, use `--next-hop-ilb` instead.
 
 ## Route Priority and Specificity
 
@@ -165,27 +167,32 @@ gcloud compute instances add-tags app-server-1 \
   --tags=needs-secure-db-route
 ```
 
-VMs without the tag use the default route to reach 10.50.0.0/24, while tagged VMs route through the secure proxy.
+VMs without the tag use the next best applicable route to reach 10.50.0.0/24, or drop the traffic if no applicable route exists. Tagged VMs route through the secure proxy.
 
 ## Deleting the Default Internet Route
 
 For fully private VPCs where no VM should reach the internet directly, delete the default route:
 
 ```bash
-# Delete the default internet gateway route
-# Warning: VMs will lose internet access unless routed through NAT or VPN
-gcloud compute routes delete default-internet-gateway \
+# Find the IPv4 default route for the VPC
+gcloud compute routes list \
+  --filter="network=production-vpc AND destRange=0.0.0.0/0 AND nextHopGateway:default-internet-gateway" \
+  --format="value(name)"
+
+# Delete the default route by route name
+# Warning: VMs will lose direct internet access unless another private path is available
+gcloud compute routes delete DEFAULT_ROUTE_NAME \
   --quiet
 ```
 
-After deleting this, configure Cloud NAT or a proxy for any outbound internet access your VMs need.
+After deleting this, configure a proxy, VPN, or another private path for any outbound access your VMs need. If you use public Cloud NAT for internet egress, keep or recreate an IPv4 default route whose next hop is the default internet gateway because Cloud NAT depends on that route.
 
 ## Troubleshooting Routes
 
 When traffic is not flowing as expected, use these tools:
 
 ```bash
-# List all effective routes for a specific VM
+# List routes in the VPC network, then compare tags and priorities for the VM
 gcloud compute routes list \
   --filter="network=production-vpc" \
   --format="table(name, destRange, nextHopGateway, nextHopInstance, nextHopIp, priority)"
