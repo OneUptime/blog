@@ -10,7 +10,7 @@ Description: A practical guide to configuring the OAuth consent screen and selec
 
 Every application that accesses Google APIs on behalf of users needs an OAuth consent screen. It is the dialog that asks users to grant your application specific permissions. Getting this configuration right is not just about compliance - it directly affects user trust, security posture, and whether Google approves your app for production use.
 
-The principle of least privilege applies heavily here: request only the scopes your application actually needs. Requesting broad scopes like `https://www.googleapis.com/auth/cloud-platform` when you only need to read from a specific Cloud Storage bucket is a security risk and will likely get your app flagged during Google's verification review.
+The principle of least privilege applies heavily here: request only the scopes your application actually needs. Requesting broad scopes like `https://www.googleapis.com/auth/cloud-platform` when you only need read-only Cloud Storage access is a security risk and can make Google's verification review harder to justify. Use IAM permissions to limit access to a specific bucket or object.
 
 ## Understanding OAuth Scopes on GCP
 
@@ -21,7 +21,7 @@ graph TD
     A[Broad Scope] --> B["cloud-platform<br/>Full access to all GCP APIs"]
     A --> C["cloud-platform.read-only<br/>Read access to all GCP APIs"]
 
-    D[Narrow Scopes] --> E["storage.objects.get<br/>Read Cloud Storage objects"]
+    D[Narrow Scopes] --> E["devstorage.read_only<br/>Read Cloud Storage data"]
     D --> F["bigquery.readonly<br/>Read BigQuery data"]
     D --> G["compute.readonly<br/>Read Compute Engine resources"]
 
@@ -33,31 +33,18 @@ Always prefer narrow scopes. They limit the blast radius if your application or 
 
 ## Configuring the OAuth Consent Screen
 
-### Using the gcloud CLI
+### Using the Google Cloud Console
 
-```bash
-# Configure the OAuth consent screen brand
+For general Google API OAuth apps, configure the consent screen in the Google Auth Platform section of the Google Cloud Console:
 
-# This sets up the application name, support email, and developer contact
-gcloud alpha iap oauth-brands create \
-    --application_title="My Internal App" \
-    --support_email="support@mycompany.com"
+```text
+Google Cloud Console > Google Auth Platform > Branding
+Google Cloud Console > Google Auth Platform > Audience
+Google Cloud Console > Google Auth Platform > Data Access
+Google Cloud Console > Google Auth Platform > Clients
 ```
 
-For more detailed configuration, use the Google Cloud Console or the API directly:
-
-```bash
-# Create an OAuth client ID for a web application
-gcloud auth application-default set-quota-project my-project
-
-# Create OAuth credentials
-gcloud services enable iap.googleapis.com
-
-# Create an OAuth client
-gcloud alpha iap oauth-clients create \
-    projects/my-project/brands/BRAND_ID \
-    --display_name="My Web App"
-```
+The old `gcloud alpha iap oauth-brands` and `gcloud alpha iap oauth-clients` commands were for Identity-Aware Proxy OAuth brands and clients, not general OAuth consent screen configuration. They are deprecated because the IAP OAuth Admin APIs were shut down in March 2026.
 
 ### Consent Screen Configuration Options
 
@@ -86,8 +73,8 @@ SCOPES_BAD = ['https://www.googleapis.com/auth/cloud-platform']
 # Read-only access to Cloud Storage objects
 SCOPES_GOOD = ['https://www.googleapis.com/auth/devstorage.read_only']
 
-# Even better: Use the most restrictive scope possible
-# Read access to Cloud Storage metadata only (no object data)
+# Even better: combine the narrowest OAuth scope with IAM
+# bucket/object permissions for the resources the user should read
 SCOPES_BEST = ['https://www.googleapis.com/auth/devstorage.read_only']
 ```
 
@@ -249,20 +236,7 @@ def request_bigquery_access():
 
 ## Terraform Configuration for OAuth Clients
 
-```hcl
-# Configure the OAuth brand (consent screen)
-resource "google_iap_brand" "default" {
-  support_email     = "support@mycompany.com"
-  application_title = "My Application"
-  project           = "my-project"
-}
-
-# Create an OAuth client
-resource "google_iap_client" "default" {
-  display_name = "My Web Application"
-  brand        = google_iap_brand.default.name
-}
-```
+The historical Terraform resources `google_iap_brand` and `google_iap_client` managed IAP OAuth brands and clients only. They were deprecated with the IAP OAuth Admin APIs and no longer work after the March 2026 shutdown. Configure general Google API OAuth app branding, audience, data access, and OAuth clients in the Google Auth Platform console.
 
 ## Scope Reference for Common GCP Services
 
@@ -273,17 +247,14 @@ Here is a quick reference for choosing the right scope:
 | Cloud Storage | `devstorage.read_only` | `devstorage.full_control` |
 | BigQuery | `bigquery.readonly` | `bigquery` |
 | Compute Engine | `compute.readonly` | `compute` |
-| Cloud Logging | `logging.read` | `logging.write` |
+| Cloud Logging | `logging.read` | `logging.admin` |
 | Pub/Sub | `pubsub` (no read-only) | `pubsub` |
 
 ## Verification and Publishing
 
-For external apps requesting sensitive scopes, Google requires a verification review:
+For external apps requesting sensitive or restricted scopes, Google may require a verification review:
 
 ```bash
-# Check current consent screen configuration
-gcloud alpha iap oauth-brands list --format=yaml
-
 # Prepare for verification by ensuring:
 # 1. You have a privacy policy URL
 # 2. You have a terms of service URL
@@ -291,16 +262,16 @@ gcloud alpha iap oauth-brands list --format=yaml
 # 4. Your authorized domains are verified
 ```
 
-**Sensitive scopes** (like Gmail read access) require a security assessment by a third party. **Restricted scopes** (like full Drive access) require an even more rigorous review. The fewer sensitive scopes you request, the faster and easier the verification process.
+**Sensitive scopes** (like `gmail.send`) require Google's sensitive scope verification unless an exception applies, but they don't require a third-party security assessment. **Restricted scopes** (like `gmail.metadata`, `gmail.modify`, or full Drive access) require restricted scope verification and can require a security assessment if your app stores or transmits restricted-scope data on servers. The fewer sensitive and restricted scopes you request, the faster and easier the verification process.
 
 ## Best Practices
 
-**Audit scope usage regularly.** Use Cloud Monitoring to check which scopes are actually being used by tokens, and remove any that are not needed.
+**Audit scope usage regularly.** Review the scopes configured in Google Auth Platform, the scopes requested in your code, and your stored tokens, then remove any that are not needed.
 
 **Use service accounts for server-to-server communication.** OAuth user consent is for end-user-facing applications. Backend services should use service account impersonation or Workload Identity.
 
 **Store tokens securely.** Use Google Cloud Secret Manager for refresh tokens, not environment variables or config files.
 
-**Implement token revocation.** Give users the ability to revoke your application's access. This builds trust and is required for verified apps.
+**Implement token revocation.** Give users the ability to disconnect your application and delete stored refresh tokens. This builds trust and helps you respond cleanly when a user withdraws access.
 
 Configuring OAuth with least privilege is not just a best practice - it is a fundamental security control that limits what can go wrong when tokens are compromised. Start narrow, use incremental authorization for additional features, and regularly audit what your application actually needs.
