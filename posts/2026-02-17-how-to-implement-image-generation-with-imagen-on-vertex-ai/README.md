@@ -19,7 +19,7 @@ The model supports several capabilities:
 - Text-to-image generation
 - Image editing and inpainting
 - Image upscaling
-- Style transfer and variations
+- Product recontextualization and customization
 
 ## Prerequisites
 
@@ -43,8 +43,8 @@ gcloud services enable aiplatform.googleapis.com --project=your-project-id
 Start by installing the required Python packages:
 
 ```bash
-# Install the Vertex AI SDK and image processing libraries
-pip install google-cloud-aiplatform Pillow
+# Install the Google Gen AI SDK and production helper libraries
+pip install google-genai Pillow google-cloud-storage functions-framework
 ```
 
 Now set up authentication. The simplest approach during development is application default credentials:
@@ -59,27 +59,27 @@ gcloud auth application-default login
 Here is a straightforward example that generates an image from a text prompt:
 
 ```python
-import vertexai
-from vertexai.preview.vision_models import ImageGenerationModel
+from google import genai
+from google.genai import types
 
-# Initialize Vertex AI with your project and region
-vertexai.init(project="your-project-id", location="us-central1")
-
-# Load the Imagen model
-model = ImageGenerationModel.from_pretrained("imagen-3.0-generate-001")
+# Initialize the Gen AI SDK for Vertex AI with your project and region
+client = genai.Client(vertexai=True, project="your-project-id", location="us-central1")
 
 # Generate images from a text prompt
 # number_of_images controls how many variations you get back
-response = model.generate_images(
+response = client.models.generate_images(
+    model="imagen-3.0-generate-001",
     prompt="A modern office building at sunset, photorealistic, warm lighting",
-    number_of_images=4,
-    aspect_ratio="16:9",
-    safety_filter_level="block_few",
+    config=types.GenerateImagesConfig(
+        number_of_images=4,
+        aspect_ratio="16:9",
+        safety_filter_level=types.SafetyFilterLevel.BLOCK_ONLY_HIGH,
+    ),
 )
 
 # Save each generated image to disk
-for idx, image in enumerate(response.images):
-    image.save(f"generated_image_{idx}.png")
+for idx, generated_image in enumerate(response.generated_images):
+    generated_image.image.save(f"generated_image_{idx}.png")
     print(f"Saved generated_image_{idx}.png")
 ```
 
@@ -97,11 +97,14 @@ The quality of your output depends heavily on the prompt. Here are patterns that
 
 ```python
 # Use negative_prompt to steer the model away from unwanted elements
-response = model.generate_images(
+response = client.models.generate_images(
+    model="imagen-3.0-generate-001",
     prompt="A clean minimalist workspace with a laptop, natural lighting, professional photography",
-    negative_prompt="clutter, mess, dark, blurry, low quality",
-    number_of_images=2,
-    aspect_ratio="16:9",
+    config=types.GenerateImagesConfig(
+        negative_prompt="clutter, mess, dark, blurry, low quality",
+        number_of_images=2,
+        aspect_ratio="16:9",
+    ),
 )
 ```
 
@@ -110,25 +113,35 @@ response = model.generate_images(
 Imagen also supports editing existing images. You can provide a base image and a mask to tell the model which region to modify:
 
 ```python
-from vertexai.preview.vision_models import Image
+from google.genai.types import RawReferenceImage, MaskReferenceImage
 
 # Load the source image and the mask that defines the edit region
-base_image = Image.load_from_file("source_photo.png")
-mask_image = Image.load_from_file("mask.png")
+base_image = types.Image.from_file(location="source_photo.png")
+mask_image = types.Image.from_file(location="mask.png")
 
-# Edit the masked region based on the text prompt
-response = model.edit_image(
-    base_image=base_image,
-    mask=mask_image,
-    prompt="Replace the background with a tropical beach scene",
-    number_of_images=2,
+raw_ref = RawReferenceImage(reference_image=base_image, reference_id=1)
+mask_ref = MaskReferenceImage(
+    reference_image=mask_image,
+    reference_id=2,
+    config=types.MaskReferenceConfig(mask_mode="MASK_MODE_USER_PROVIDED"),
 )
 
-for idx, image in enumerate(response.images):
-    image.save(f"edited_{idx}.png")
+# Edit the masked region based on the text prompt
+response = client.models.edit_image(
+    model="imagen-3.0-capability-001",
+    prompt="Replace the background with a tropical beach scene",
+    reference_images=[raw_ref, mask_ref],
+    config=types.EditImageConfig(
+        edit_mode="EDIT_MODE_BGSWAP",
+        number_of_images=2,
+    ),
+)
+
+for idx, generated_image in enumerate(response.generated_images):
+    generated_image.image.save(f"edited_{idx}.png")
 ```
 
-The mask should be a black-and-white image where white pixels indicate the areas you want to edit. Everything in black stays unchanged.
+The mask should be a black-and-white image where non-zero pixels indicate the areas you want to edit. Everything in black stays unchanged.
 
 ## Building a Production Pipeline
 
@@ -137,14 +150,13 @@ For production use, you will want to wrap this in a proper service with error ha
 ```python
 import functions_framework
 from google.cloud import storage
-from vertexai.preview.vision_models import ImageGenerationModel
-import vertexai
+from google import genai
+from google.genai import types
 import uuid
 import json
 
-# Initialize Vertex AI once at module level to reuse across invocations
-vertexai.init(project="your-project-id", location="us-central1")
-model = ImageGenerationModel.from_pretrained("imagen-3.0-generate-001")
+# Initialize clients once at module level to reuse across invocations
+client = genai.Client(vertexai=True, project="your-project-id", location="us-central1")
 storage_client = storage.Client()
 
 @functions_framework.http
@@ -161,24 +173,27 @@ def generate_image(request):
 
     try:
         # Generate the images using Imagen
-        response = model.generate_images(
+        response = client.models.generate_images(
+            model="imagen-3.0-generate-001",
             prompt=prompt,
-            number_of_images=num_images,
-            aspect_ratio=aspect_ratio,
-            safety_filter_level="block_some",
+            config=types.GenerateImagesConfig(
+                number_of_images=num_images,
+                aspect_ratio=aspect_ratio,
+                safety_filter_level=types.SafetyFilterLevel.BLOCK_MEDIUM_AND_ABOVE,
+            ),
         )
 
         # Upload each generated image to Cloud Storage
         bucket = storage_client.bucket("your-image-bucket")
         urls = []
 
-        for image in response.images:
+        for generated_image in response.generated_images:
             blob_name = f"generated/{uuid.uuid4()}.png"
             blob = bucket.blob(blob_name)
 
             # Save image to a temp file, then upload
             temp_path = f"/tmp/{uuid.uuid4()}.png"
-            image.save(temp_path)
+            generated_image.image.save(temp_path)
             blob.upload_from_filename(temp_path)
 
             # Make the blob publicly readable if needed
@@ -196,24 +211,30 @@ Vertex AI has quotas on Imagen API calls. In production, you need to handle rate
 
 ```python
 import time
-from google.api_core import retry
-from google.api_core.exceptions import ResourceExhausted
+from google.genai import errors
 
 # Custom retry predicate that retries on rate limit errors
 def is_rate_limit_error(exception):
-    return isinstance(exception, ResourceExhausted)
+    return isinstance(exception, errors.APIError) and exception.code == 429
 
-# Retry decorator with exponential backoff for rate-limited requests
-@retry.Retry(
-    predicate=is_rate_limit_error,
-    initial=1.0,
-    maximum=60.0,
-    multiplier=2.0,
-    deadline=300.0,
-)
-def generate_with_retry(model, prompt, **kwargs):
+def generate_with_retry(client, prompt, **kwargs):
     """Generate images with automatic retry on rate limit errors."""
-    return model.generate_images(prompt=prompt, **kwargs)
+    delay = 1.0
+    deadline = time.monotonic() + 300.0
+
+    while True:
+        try:
+            return client.models.generate_images(
+                model="imagen-3.0-generate-001",
+                prompt=prompt,
+                **kwargs,
+            )
+        except errors.APIError as exc:
+            if not is_rate_limit_error(exc) or time.monotonic() + delay > deadline:
+                raise
+
+            time.sleep(delay)
+            delay = min(delay * 2.0, 60.0)
 ```
 
 ## Cost Considerations
@@ -244,9 +265,9 @@ graph LR
 
 Imagen includes built-in safety filters. You can control the filter strictness using the `safety_filter_level` parameter:
 
-- `block_few` - Only blocks the most harmful content
-- `block_some` - Balanced filtering (recommended for most use cases)
-- `block_most` - Aggressive filtering
+- `BLOCK_ONLY_HIGH` - Only blocks the most harmful content
+- `BLOCK_MEDIUM_AND_ABOVE` - Balanced filtering (recommended for most use cases)
+- `BLOCK_LOW_AND_ABOVE` - Aggressive filtering
 
 For enterprise applications, you should also implement your own content review layer on top of the built-in filters, especially if user-submitted prompts are involved.
 
