@@ -134,16 +134,27 @@ WHERE tenant_id = 'tenant_b';
 The critical step is authorizing these views to access the base dataset:
 
 ```bash
-# Authorize Tenant A's views to access the base dataset
+# Export the base dataset metadata, including access controls
+bq show --format=prettyjson my-project:base_data > base_data.json
 
-bq update --dataset \
-  --authorized_view='{"projectId":"my-project","datasetId":"tenant_a","tableId":"orders"}' \
-  my-project:base_data
+# Add authorized view entries to the "access" array in base_data.json:
+# {
+#   "view": {
+#     "projectId": "my-project",
+#     "datasetId": "tenant_a",
+#     "tableId": "orders"
+#   }
+# },
+# {
+#   "view": {
+#     "projectId": "my-project",
+#     "datasetId": "tenant_b",
+#     "tableId": "orders"
+#   }
+# }
 
-# Authorize Tenant B's views
-bq update --dataset \
-  --authorized_view='{"projectId":"my-project","datasetId":"tenant_b","tableId":"orders"}' \
-  my-project:base_data
+# Update the base dataset access controls from the edited JSON file
+bq update --source=base_data.json my-project:base_data
 ```
 
 Or using Python for programmatic management:
@@ -198,66 +209,57 @@ Now grant each tenant's users access only to their authorized view dataset:
 
 ```bash
 # Grant Tenant A users read access to their dataset
-bq add-iam-policy-binding \
-  --member="group:tenant-a-users@company.com" \
-  --role="roles/bigquery.dataViewer" \
-  my-project:tenant_a
+bq query --use_legacy_sql=false \
+  'GRANT `roles/bigquery.dataViewer`
+   ON SCHEMA `my-project`.tenant_a
+   TO "group:tenant-a-users@company.com"'
 
 # Grant Tenant B users read access to their dataset
-bq add-iam-policy-binding \
-  --member="group:tenant-b-users@company.com" \
-  --role="roles/bigquery.dataViewer" \
-  my-project:tenant_b
+bq query --use_legacy_sql=false \
+  'GRANT `roles/bigquery.dataViewer`
+   ON SCHEMA `my-project`.tenant_b
+   TO "group:tenant-b-users@company.com"'
 
 # Make sure neither group has access to base_data
 # (they should not be listed in base_data's IAM policy)
 ```
+
+Users also need `roles/bigquery.jobUser` or another role with `bigquery.jobs.create` on the project where their query jobs run.
 
 ## Step 5: Add Column-Level Security
 
 For sensitive columns like PII, use BigQuery column-level security through policy tags:
 
 ```bash
-# Create a taxonomy for data classification
-gcloud data-catalog taxonomies create \
-  --location=us-central1 \
-  --display-name="Data Sensitivity" \
-  --description="Classification for column-level security"
-
-# Create policy tags within the taxonomy
-gcloud data-catalog taxonomies policy-tags create \
-  --taxonomy="projects/my-project/locations/us-central1/taxonomies/TAXONOMY_ID" \
-  --display-name="PII" \
-  --description="Personally identifiable information"
-
-gcloud data-catalog taxonomies policy-tags create \
-  --taxonomy="projects/my-project/locations/us-central1/taxonomies/TAXONOMY_ID" \
-  --display-name="Confidential" \
-  --description="Business confidential data"
+# Create the taxonomy and policy tags in the Google Cloud console:
+# 1. Open Policy tag taxonomies.
+# 2. Click Create taxonomy.
+# 3. Set the taxonomy name to "Data Sensitivity".
+# 4. Add policy tags named "PII" and "Confidential".
+# 5. Copy each policy tag resource name for the table schema update below.
 ```
 
 Apply policy tags to sensitive columns:
 
-```sql
--- Apply PII policy tag to customer_email and customer_phone columns
-ALTER TABLE `my-project.base_data.orders`
-ALTER COLUMN customer_email
-SET OPTIONS (
-  policy_tags = ['projects/my-project/locations/us-central1/taxonomies/TAXONOMY_ID/policyTags/PII_TAG_ID']
-);
+```bash
+# Export the existing schema
+bq show --schema --format=prettyjson \
+  my-project:base_data.orders > orders_schema.json
 
-ALTER TABLE `my-project.base_data.orders`
-ALTER COLUMN customer_phone
-SET OPTIONS (
-  policy_tags = ['projects/my-project/locations/us-central1/taxonomies/TAXONOMY_ID/policyTags/PII_TAG_ID']
-);
+# Edit orders_schema.json and add policyTags to the sensitive fields:
+# {
+#   "name": "customer_email",
+#   "type": "STRING",
+#   "mode": "NULLABLE",
+#   "policyTags": {
+#     "names": ["projects/my-project/locations/us-central1/taxonomies/TAXONOMY_ID/policyTags/PII_TAG_ID"]
+#   }
+# }
+#
+# Repeat for customer_phone and internal_margin with the right policy tag.
 
--- Apply confidential tag to internal_margin
-ALTER TABLE `my-project.base_data.orders`
-ALTER COLUMN internal_margin
-SET OPTIONS (
-  policy_tags = ['projects/my-project/locations/us-central1/taxonomies/TAXONOMY_ID/policyTags/CONFIDENTIAL_TAG_ID']
-);
+# Update the table schema with the tagged schema file
+bq update my-project:base_data.orders orders_schema.json
 ```
 
 Grant specific roles access to read tagged columns:
@@ -265,20 +267,28 @@ Grant specific roles access to read tagged columns:
 ```bash
 # Allow Tenant A admins to see PII columns
 gcloud data-catalog taxonomies policy-tags add-iam-policy-binding \
-  "projects/my-project/locations/us-central1/taxonomies/TAXONOMY_ID/policyTags/PII_TAG_ID" \
+  PII_TAG_ID \
+  --location=us-central1 \
+  --taxonomy=TAXONOMY_ID \
   --member="group:tenant-a-admins@company.com" \
   --role="roles/datacatalog.categoryFineGrainedReader"
 
 # Allow finance team to see confidential margin data
 gcloud data-catalog taxonomies policy-tags add-iam-policy-binding \
-  "projects/my-project/locations/us-central1/taxonomies/TAXONOMY_ID/policyTags/CONFIDENTIAL_TAG_ID" \
+  CONFIDENTIAL_TAG_ID \
+  --location=us-central1 \
+  --taxonomy=TAXONOMY_ID \
   --member="group:finance-team@company.com" \
   --role="roles/datacatalog.categoryFineGrainedReader"
 ```
 
+Make sure column-level access control is enforced for the taxonomy; the console can create the required column-level data policies when you enable enforcement.
+
 ## Step 6: Dynamic Row-Level Security
 
 For a more scalable approach to row filtering, use BigQuery's row access policies instead of separate views per tenant:
+
+When you use row access policies, tenant users still need read access to the protected table or dataset; the row access policies determine which rows they can see.
 
 ```sql
 -- Create a row access policy that filters based on the user's group membership
@@ -364,12 +374,17 @@ def onboard_tenant(tenant_id, user_group, tables, include_confidential=False):
     print("Updated base dataset access")
 
     # Step 4: Grant the tenant's user group access
-    policy = client.get_iam_policy(dataset)
-    policy.bindings.append({
-        "role": "roles/bigquery.dataViewer",
-        "members": [f"group:{user_group}"]
-    })
-    client.set_iam_policy(dataset, policy)
+    tenant_dataset = client.get_dataset(dataset_id)
+    tenant_access_entries = list(tenant_dataset.access_entries)
+    tenant_access_entries.append(
+        bigquery.AccessEntry(
+            role='READER',
+            entity_type='groupByEmail',
+            entity_id=user_group,
+        )
+    )
+    tenant_dataset.access_entries = tenant_access_entries
+    client.update_dataset(tenant_dataset, ['access_entries'])
     print(f"Granted access to {user_group}")
 
     print(f"\nTenant {tenant_id} onboarded successfully!")
@@ -403,7 +418,7 @@ onboard_tenant(
 
 ## Performance Considerations
 
-1. Cluster base tables by `tenant_id`. This ensures that authorized views only scan the relevant data partitions for each tenant, keeping costs proportional to each tenant's data volume.
+1. Cluster base tables by `tenant_id`. This helps BigQuery prune clustered storage blocks for tenant-filtered queries, reducing the amount of data scanned when the tenant filter is selective.
 
 2. Use partition pruning. If your views include date filters, BigQuery will only scan the necessary partitions.
 
