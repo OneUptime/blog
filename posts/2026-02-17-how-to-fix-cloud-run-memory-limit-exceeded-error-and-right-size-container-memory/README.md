@@ -8,19 +8,19 @@ Description: A practical guide to diagnosing Cloud Run memory limit exceeded err
 
 ---
 
-Cloud Run makes it easy to deploy containers without thinking about infrastructure, but one thing you absolutely have to think about is memory. When your container exceeds its allocated memory, Cloud Run kills it immediately with no warning. You will see a "memory limit exceeded" error in your logs, your users will see a 500 error, and you will be scrambling to figure out what happened.
+Cloud Run makes it easy to deploy containers without thinking about infrastructure, but one thing you absolutely have to think about is memory. When your container exceeds its allocated memory, Cloud Run terminates the instance immediately. You will see a memory limit error in your logs, your users can see a 500 or 503 error, and you will be scrambling to figure out what happened.
 
 I have dealt with this error across dozens of services, and the fix is rarely just "throw more memory at it." Let me walk you through how to actually diagnose the problem and right-size your memory allocation.
 
 ## Understanding the Error
 
-When you see "Container exceeded memory limit" in Cloud Logging, it means your container attempted to use more memory than the configured limit. Cloud Run enforces hard memory limits - there is no swap, no grace period, no gradual degradation. Your container gets a SIGKILL, and the request fails.
+When you see a memory limit error in Cloud Logging, it means your container attempted to use more memory than the configured limit. Cloud Run enforces hard memory limits - there is no graceful drain, no warning window, no gradual degradation. The instance is terminated, and the request fails.
 
 Here is what the error typically looks like in Cloud Logging.
 
 ```text
-Container memory limit reached. Consider increasing the memory limit.
-The container was terminated because it exceeded its memory limit.
+While handling this request, the container instance was found to be using too much memory and was terminated.
+Consider creating a new revision with more memory.
 ```
 
 The default memory limit in Cloud Run is 512 MiB. Many developers deploy their first service, everything works in testing where traffic is light, and then it blows up in production when concurrent requests stack up.
@@ -29,7 +29,7 @@ The default memory limit in Cloud Run is 512 MiB. Many developers deploy their f
 
 ### Concurrent Request Handling
 
-This is the number one gotcha. Unlike Cloud Functions (which handles one request per instance by default), Cloud Run can send multiple concurrent requests to a single container instance. The default concurrency is 80. Each request uses its own memory for processing, and they all share the same container memory.
+This is the number one gotcha. Unlike Cloud Run functions (which handles one request per instance by default), Cloud Run services can send multiple concurrent requests to a single container instance. The default concurrency is 80 when you deploy through the Google Cloud console, and 80 times the number of vCPUs when you create a new service with the Google Cloud CLI or Terraform. Each request uses its own memory for processing, and they all share the same container memory.
 
 If your request handler allocates 10 MB of memory per request, and you have 80 concurrent requests, that is 800 MB just for request handling - not counting your application framework, loaded libraries, and runtime overhead.
 
@@ -170,9 +170,9 @@ def process_large_dataset(file_path):
     gc.collect()
 ```
 
-### Option 4 - Use a Multi-Stage Build to Reduce Image Size
+### Option 4 - Use a Multi-Stage Build to Reduce Runtime Dependencies
 
-Smaller images mean less memory used at startup for loading dependencies.
+The size of the deployed container image does not reduce the memory available to the Cloud Run instance, but trimming unnecessary runtime dependencies can reduce the amount of code and native libraries your process loads into memory.
 
 ```dockerfile
 # Multi-stage build to minimize the final image
@@ -198,7 +198,7 @@ Here is a practical approach to finding the right memory setting.
 
 ```mermaid
 flowchart TD
-    A[Deploy with 512Mi and max concurrency] --> B[Run load test at expected traffic]
+    A[Deploy with 512Mi and the default concurrency] --> B[Run load test at expected traffic]
     B --> C[Monitor peak memory usage]
     C --> D{Peak > 80% of limit?}
     D -->|Yes| E[Increase memory or reduce concurrency]
@@ -217,12 +217,12 @@ Set up an alert so you know when memory usage is creeping up before it causes cr
 
 ```bash
 # Create a monitoring alert for high memory utilization
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
     --display-name="Cloud Run High Memory" \
     --condition-display-name="Memory over 80%" \
     --condition-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/container/memory/utilizations"' \
-    --condition-threshold-value=0.8 \
-    --condition-threshold-comparison=COMPARISON_GT \
+    --if='> 0.8' \
+    --duration=300s \
     --notification-channels=<channel-id>
 ```
 
