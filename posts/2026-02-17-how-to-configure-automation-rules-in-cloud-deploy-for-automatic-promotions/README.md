@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Deploy, Automation, CI/CD, DevOps
 
-Description: Set up automation rules in Google Cloud Deploy to automatically promote releases through pipeline stages, approve rollouts, and advance canary phases.
+Description: Set up automation rules in Google Cloud Deploy to automatically promote releases through pipeline stages, repair failed rollouts, and advance canary phases.
 
 ---
 
-Manually promoting releases through every stage of your delivery pipeline gets old fast. If you have a three-stage pipeline and you are deploying multiple times a day, that is a lot of clicking or CLI commands. Google Cloud Deploy automation rules solve this by automatically triggering actions like promotions, approvals, and canary advances based on configurable conditions.
+Manually promoting releases through every stage of your delivery pipeline gets old fast. If you have a three-stage pipeline and you are deploying multiple times a day, that is a lot of clicking or CLI commands. Google Cloud Deploy automation rules solve this by automatically triggering actions like promotions, rollout repairs, and canary advances based on configurable conditions.
 
 Let me show you how to set up automation rules to make your pipeline work for you.
 
@@ -19,7 +19,7 @@ Automation rules are resources you attach to a delivery pipeline. They watch for
 Cloud Deploy supports several types of automation rules:
 
 - Promote releases automatically after a successful rollout
-- Approve pending rollouts automatically
+- Promote releases automatically on a schedule
 - Advance canary deployment phases
 - Roll back on verification failure
 
@@ -33,22 +33,21 @@ The most common automation is automatic promotion. After a release deploys succe
 apiVersion: deploy.cloud.google.com/v1
 kind: Automation
 metadata:
-  name: auto-promote-dev-to-staging
+  name: my-app-pipeline/auto-promote-dev-to-staging
 description: Automatically promote successful dev deployments to staging
 selector:
-- targets:
+  targets:
   - id: dev
-deliveryPipeline: my-app-pipeline
 serviceAccount: deploy-automation-sa@my-project.iam.gserviceaccount.com
 suspended: false
 rules:
 - promoteReleaseRule:
-    name: promote-after-dev
-    wait: 60s
-    toTargetId: staging
+    id: promote-after-dev
+    wait: 1m
+    destinationTargetId: staging
 ```
 
-The `wait` field adds a delay before the promotion triggers. This gives you a window to catch issues manually before the automation kicks in. Setting it to 60 seconds means you have a minute after the dev deployment succeeds to intervene if needed.
+The `wait` field adds a delay before the promotion triggers. This gives you a window to catch issues manually before the automation kicks in. Setting it to 1 minute means you have a minute after the dev deployment succeeds to intervene if needed.
 
 Register the automation.
 
@@ -66,7 +65,7 @@ The automation service account needs permissions to perform the actions. For pro
 gcloud iam service-accounts create deploy-automation-sa \
   --display-name="Cloud Deploy Automation"
 
-# Grant Cloud Deploy operator role for creating rollouts
+# Grant Cloud Deploy operator role for managing deployment resources
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:deploy-automation-sa@my-project.iam.gserviceaccount.com" \
   --role="roles/clouddeploy.operator"
@@ -83,28 +82,25 @@ gcloud iam service-accounts add-iam-policy-binding \
   --role="roles/iam.serviceAccountUser"
 ```
 
-## Automatic Approval for Non-Production Targets
+## Automatic Advancement for Non-Production Canary Targets
 
-If your staging target has `requireApproval: true` for governance reasons but you want automated testing to proceed without manual approval, you can set up an auto-approve rule.
+If your staging target uses a canary deployment strategy and you want automated testing to proceed through phases without manual advancement, you can set up an advance rollout rule.
 
 ```yaml
-# auto-approve-staging.yaml - Auto-approve rollouts to staging
+# auto-advance-staging.yaml - Auto-advance canary rollouts in staging
 apiVersion: deploy.cloud.google.com/v1
 kind: Automation
 metadata:
-  name: auto-approve-staging
-description: Automatically approve staging rollouts
+  name: my-app-pipeline/auto-advance-staging
+description: Automatically advance staging canary rollouts
 selector:
-- targets:
+  targets:
   - id: staging
-deliveryPipeline: my-app-pipeline
 serviceAccount: deploy-automation-sa@my-project.iam.gserviceaccount.com
 suspended: false
 rules:
 - advanceRolloutRule:
-    name: auto-approve
-    sourcePhases:
-    - "stable"
+    id: auto-advance
     wait: 0s
 ```
 
@@ -117,29 +113,28 @@ You can chain multiple automations to create a fully automated pipeline from dev
 apiVersion: deploy.cloud.google.com/v1
 kind: Automation
 metadata:
-  name: full-pipeline-automation
+  name: my-app-pipeline/full-pipeline-automation
 description: Automatic promotion from dev through staging
 selector:
-- targets:
+  targets:
   - id: dev
   - id: staging
-deliveryPipeline: my-app-pipeline
 serviceAccount: deploy-automation-sa@my-project.iam.gserviceaccount.com
 suspended: false
 rules:
 # Auto-promote from dev after 60 seconds
 - promoteReleaseRule:
-    name: promote-dev
-    wait: 60s
-    toTargetId: "@next"
+    id: promote-dev
+    wait: 1m
+    destinationTargetId: "@next"
 # Auto-promote from staging after verification passes
 - promoteReleaseRule:
-    name: promote-staging
-    wait: 300s
-    toTargetId: "@next"
+    id: promote-staging
+    wait: 5m
+    destinationTargetId: "@next"
 ```
 
-The `@next` keyword tells Cloud Deploy to promote to whatever the next target is in the pipeline sequence. This makes the automation portable - you do not need to update it if you rename targets.
+The `@next` keyword tells Cloud Deploy to promote to whatever the next target is in the pipeline sequence. This keeps the destination portable, so you do not need to hard-code the next target's ID.
 
 ## Automating Canary Phase Advances
 
@@ -150,21 +145,20 @@ For canary deployments, you can automatically advance through phases after each 
 apiVersion: deploy.cloud.google.com/v1
 kind: Automation
 metadata:
-  name: auto-advance-canary
+  name: my-app-pipeline/auto-advance-canary
 description: Automatically advance canary phases after verification
 selector:
-- targets:
+  targets:
   - id: prod
-deliveryPipeline: my-app-pipeline
 serviceAccount: deploy-automation-sa@my-project.iam.gserviceaccount.com
 suspended: false
 rules:
 - advanceRolloutRule:
-    name: advance-canary
+    id: advance-canary
     sourcePhases:
     - "canary-10"
     - "canary-50"
-    wait: 120s
+    wait: 2m
 ```
 
 This advances the canary from 10% to 50% to stable, waiting 2 minutes between each advance. Combined with verification at each phase, this gives you a fully automated canary that self-validates and progresses.
@@ -174,17 +168,11 @@ This advances the canary from 10% to 50% to stable, waiting 2 minutes between ea
 Sometimes you need to pause automations temporarily - maybe during a freeze period or an incident. You can suspend an automation without deleting it.
 
 ```bash
-# Suspend an automation
-gcloud deploy automations update auto-promote-dev-to-staging \
-  --delivery-pipeline=my-app-pipeline \
-  --region=us-central1 \
-  --suspended=true
+# Suspend an automation by setting suspended: true in the YAML
+gcloud deploy apply --file=auto-promote.yaml --region=us-central1
 
-# Resume it later
-gcloud deploy automations update auto-promote-dev-to-staging \
-  --delivery-pipeline=my-app-pipeline \
-  --region=us-central1 \
-  --suspended=false
+# Resume it later by setting suspended: false in the YAML
+gcloud deploy apply --file=auto-promote.yaml --region=us-central1
 ```
 
 This is useful for code freeze periods where you want to keep deploying to dev but stop automatic promotions to staging or production.
@@ -217,7 +205,7 @@ You can scope automations to specific targets using selectors. The selector supp
 ```yaml
 # Automation that applies only to targets with specific labels
 selector:
-- targets:
+  targets:
   - id: "*"
     labels:
       env: non-production
@@ -233,8 +221,8 @@ Here are patterns that work well in practice:
 - Use the `wait` parameter wisely. Even a 60-second wait gives you a chance to catch obvious failures.
 - Set up notifications for automation runs. You want to know when automatic promotions happen.
 - Start with promotions disabled (`suspended: true`) and enable them after you are confident the pipeline works correctly.
-- Use the `@next` keyword instead of hard-coding target names to keep automations maintainable.
+- Use the `@next` keyword instead of hard-coding destination target names to keep automations maintainable.
 
 ## Summary
 
-Automation rules in Cloud Deploy turn your delivery pipeline from a manual process into an automated one. By combining promote rules, approve rules, and canary advance rules, you can create a pipeline that moves releases from development to staging automatically while keeping production under manual control. The suspend/resume capability gives you a kill switch when you need to slow things down.
+Automation rules in Cloud Deploy turn your delivery pipeline from a manual process into an automated one. By combining promote rules, repair rules, and canary advance rules, you can create a pipeline that moves releases from development to staging automatically while keeping production under manual control. The suspend/resume capability gives you a kill switch when you need to slow things down.
