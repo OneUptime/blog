@@ -34,7 +34,7 @@ gcloud scheduler jobs create http daily-report \
   --time-zone "America/Los_Angeles" \
   --attempt-deadline 600s \
   --max-retry-attempts 3 \
-  --min-backoff-duration 30s
+  --min-backoff 30s
 
 # Create a job that publishes to Pub/Sub
 gcloud scheduler jobs create pubsub hourly-cleanup \
@@ -103,8 +103,9 @@ main:
   steps:
     - initialize:
         assign:
-          - today: ${time.format(sys.now(), "yyyy-MM-dd")}
+          - today: ${text.substring(time.format(sys.now()), 0, 10)}
           - project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - dataflow_location: "us-central1"
 
     - export_database:
         try:
@@ -135,9 +136,11 @@ main:
     - transform_data:
         call: http.post
         args:
-          url: ${"https://dataflow.googleapis.com/v1b3/projects/" + project_id + "/locations/us-central1/templates:launch"}
+          url: ${"https://dataflow.googleapis.com/v1b3/projects/" + project_id + "/locations/" + dataflow_location + "/templates:launch"}
           auth:
             type: OAuth2
+          query:
+            gcsPath: ${"gs://" + project_id + "-dataflow-templates/etl-transform"}
           body:
             jobName: ${"etl-transform-" + today}
             parameters:
@@ -148,6 +151,8 @@ main:
     - wait_for_transform:
         call: poll_dataflow_job
         args:
+          project_id: ${project_id}
+          location: ${dataflow_location}
           job_id: ${transform_result.body.job.id}
         result: job_status
 
@@ -155,7 +160,7 @@ main:
         switch:
           - condition: ${job_status == "JOB_STATE_DONE"}
             next: notify_success
-          - condition: ${job_status == "JOB_STATE_FAILED"}
+          - condition: ${job_status != "JOB_STATE_DONE"}
             next: notify_failure
 
     - notify_success:
@@ -185,6 +190,29 @@ notify_slack:
           url: ${sys.get_env("SLACK_WEBHOOK_URL")}
           body:
             text: ${message}
+
+poll_dataflow_job:
+  params: [project_id, location, job_id]
+  steps:
+    - get_job:
+        call: googleapis.dataflow.v1b3.projects.locations.jobs.get
+        args:
+          projectId: ${project_id}
+          location: ${location}
+          jobId: ${job_id}
+          view: JOB_VIEW_SUMMARY
+        result: job
+    - check_state:
+        switch:
+          - condition: ${job.currentState == "JOB_STATE_DONE"}
+            return: ${job.currentState}
+          - condition: ${job.currentState in ["JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_DRAINED", "JOB_STATE_UPDATED"]}
+            return: ${job.currentState}
+    - wait:
+        call: sys.sleep
+        args:
+          seconds: 60
+        next: get_job
 ```
 
 Deploy and schedule the workflow:
@@ -194,7 +222,8 @@ Deploy and schedule the workflow:
 gcloud workflows deploy nightly-etl \
   --source nightly-etl.yaml \
   --location us-central1 \
-  --service-account workflow-sa@my-project.iam.gserviceaccount.com
+  --service-account workflow-sa@my-project.iam.gserviceaccount.com \
+  --set-env-vars SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
 
 # Schedule with Cloud Scheduler
 gcloud scheduler jobs create http nightly-etl-trigger \
@@ -332,8 +361,7 @@ gcloud scheduler jobs create http weekly-db-maintenance \
 # Cloud Storage triggers a Cloud Function when a file is uploaded
 gcloud functions deploy process-upload \
   --runtime python312 \
-  --trigger-resource my-upload-bucket \
-  --trigger-event google.storage.object.finalize \
+  --trigger-bucket my-upload-bucket \
   --entry-point process_file
 ```
 
@@ -412,6 +440,11 @@ gcloud workflows executions describe <execution-id> \
 gcloud monitoring policies create \
   --display-name "Workflow Failure Alert" \
   --condition-display-name "Workflow execution failed" \
+  --condition-filter 'resource.type="workflows.googleapis.com/Workflow" AND metric.type="workflows.googleapis.com/finished_execution_count" AND metric.labels.status="FAILED"' \
+  --aggregation '{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_SUM"}' \
+  --duration 60s \
+  --if "> 0" \
+  --trigger-count 1 \
   --notification-channels $CHANNEL_ID
 ```
 
