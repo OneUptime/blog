@@ -16,7 +16,7 @@ Let me walk you through the full workflow of creating a release and pushing it t
 
 A release is a versioned snapshot of your application configuration. It packages your Skaffold configuration and Kubernetes manifests (or Cloud Run service definitions) into an immutable artifact. Once created, a release does not change - you promote the same release across all your pipeline stages.
 
-This immutability is one of the key advantages. The exact same artifacts that were tested in staging are what get deployed to production. No surprises.
+This immutability is one of the key advantages. The exact same release that was tested in staging is what gets promoted to production, with any target-specific manifests rendered from that release. No surprises.
 
 ## Prerequisites
 
@@ -65,7 +65,7 @@ spec:
     spec:
       containers:
       - name: my-web-app
-        image: us-central1-docker.pkg.dev/my-project/my-repo/my-web-app
+        image: my-web-app
 ```
 
 ## Creating a Release
@@ -107,7 +107,7 @@ gcloud deploy rollouts list \
   --region=us-central1
 ```
 
-The rollout will go through several phases: rendering your manifests, deploying to the target, and then marking the rollout as succeeded or failed.
+Release creation renders your manifests, and the rollout deploys them to the target before marking the rollout as succeeded or failed.
 
 ## Promoting a Release to the Next Stage
 
@@ -214,17 +214,16 @@ gcloud deploy releases list \
 
 The Google Cloud Console provides an excellent visual representation of your pipeline, showing which release is currently deployed to each target and the history of rollouts.
 
-## Rolling Back with a New Release
+## Rolling Back to an Earlier Release
 
-Cloud Deploy does not have a traditional "rollback" button. Instead, the recommended approach is to create a new release pointing to the previous known-good image and promote it through the pipeline. This maintains the audit trail and immutability principles.
+Cloud Deploy supports rolling back a target by creating a new rollout based on an earlier release. By default, it uses the last release with a successful rollout to that target, or you can specify a release explicitly.
 
 ```bash
-# Roll back by creating a new release with the previous good image
-gcloud deploy releases create rel-rollback-001 \
+# Roll back prod to a specific earlier release
+gcloud deploy targets rollback prod \
   --delivery-pipeline=my-app-pipeline \
   --region=us-central1 \
-  --source=. \
-  --images=my-web-app=us-central1-docker.pkg.dev/my-project/my-repo/my-web-app:v0.9.0
+  --release=rel-previous-good
 ```
 
 ## Key Takeaways
