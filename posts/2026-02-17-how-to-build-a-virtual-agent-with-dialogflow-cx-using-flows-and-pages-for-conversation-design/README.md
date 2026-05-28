@@ -48,11 +48,16 @@ Start by creating a Dialogflow CX agent. You can do this through the console or 
 This Python script creates the agent programmatically:
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import dialogflowcx_v3
 
 def create_agent(project_id, location, display_name, time_zone, language):
     """Creates a Dialogflow CX agent."""
-    client = dialogflowcx_v3.AgentsClient()
+    client = dialogflowcx_v3.AgentsClient(
+        client_options=ClientOptions(
+            api_endpoint=f"{location}-dialogflow.googleapis.com"
+        )
+    )
 
     agent = dialogflowcx_v3.Agent(
         display_name=display_name,
@@ -89,11 +94,18 @@ Define the intents that your agent needs to detect. Each intent represents somet
 This script creates the core intents for order management:
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import dialogflowcx_v3
+
+def client_options_for_resource(resource_name):
+    location = resource_name.split("/locations/")[1].split("/")[0]
+    return ClientOptions(api_endpoint=f"{location}-dialogflow.googleapis.com")
 
 def create_intent(agent_name, display_name, training_phrases):
     """Creates an intent with training phrases."""
-    client = dialogflowcx_v3.IntentsClient()
+    client = dialogflowcx_v3.IntentsClient(
+        client_options=client_options_for_resource(agent_name)
+    )
 
     # Build training phrase objects from the provided strings
     phrases = []
@@ -115,9 +127,10 @@ def create_intent(agent_name, display_name, training_phrases):
 
 # Create intents for order management
 
-agent_name = "projects/my-project/locations/us-central1/agents/AGENT_ID"
+agent_name = agent.name
+agent_start_flow_name = agent.start_flow
 
-create_intent(agent_name, "check.order.status", [
+check_order_status_intent = create_intent(agent_name, "check.order.status", [
     "Where is my order?",
     "Check order status",
     "I want to track my package",
@@ -128,7 +141,7 @@ create_intent(agent_name, "check.order.status", [
     "Track my delivery",
 ])
 
-create_intent(agent_name, "return.item", [
+return_item_intent = create_intent(agent_name, "return.item", [
     "I want to return an item",
     "How do I return something?",
     "Return my order",
@@ -138,14 +151,14 @@ create_intent(agent_name, "return.item", [
     "I want my money back",
 ])
 
-create_intent(agent_name, "provide.order.id", [
+provide_order_id_intent = create_intent(agent_name, "provide.order.id", [
     "My order number is 12345",
     "Order 67890",
     "It's ORD-12345",
     "The order ID is 54321",
 ])
 
-create_intent(agent_name, "confirm.yes", [
+confirm_yes_intent = create_intent(agent_name, "confirm.yes", [
     "Yes",
     "Yeah",
     "Sure",
@@ -155,7 +168,7 @@ create_intent(agent_name, "confirm.yes", [
     "Yes please",
 ])
 
-create_intent(agent_name, "confirm.no", [
+confirm_no_intent = create_intent(agent_name, "confirm.no", [
     "No",
     "Nope",
     "That's not right",
@@ -170,16 +183,22 @@ create_intent(agent_name, "confirm.no", [
 Define entity types for parameters like order IDs that the agent needs to extract from user input.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import dialogflowcx_v3
+
+def client_options_for_resource(resource_name):
+    location = resource_name.split("/locations/")[1].split("/")[0]
+    return ClientOptions(api_endpoint=f"{location}-dialogflow.googleapis.com")
 
 def create_entity_type(agent_name, display_name, kind, entities=None):
     """Creates an entity type for parameter extraction."""
-    client = dialogflowcx_v3.EntityTypesClient()
+    client = dialogflowcx_v3.EntityTypesClient(
+        client_options=client_options_for_resource(agent_name)
+    )
 
     entity_type = dialogflowcx_v3.EntityType(
         display_name=display_name,
         kind=kind,
-        auto_expansion_mode=dialogflowcx_v3.EntityType.AutoExpansionMode.AUTO_EXPANSION_MODE_DEFAULT,
     )
 
     if entities:
@@ -198,11 +217,20 @@ def create_entity_type(agent_name, display_name, kind, entities=None):
     print(f"Entity type created: {response.display_name}")
     return response
 
-# Create an entity type for order IDs (using regexp for pattern matching)
-create_entity_type(
+order_id_entity_type = create_entity_type(
     agent_name,
     "order_id",
     dialogflowcx_v3.EntityType.Kind.KIND_REGEXP,
+    entities=[
+        {
+            "value": r"ORD-\d{5}",
+            "synonyms": [],
+        },
+        {
+            "value": r"\d{5}",
+            "synonyms": [],
+        },
+    ],
 )
 ```
 
@@ -211,11 +239,18 @@ create_entity_type(
 Now create the conversation flows. Each flow handles a specific topic.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import dialogflowcx_v3
+
+def client_options_for_resource(resource_name):
+    location = resource_name.split("/locations/")[1].split("/")[0]
+    return ClientOptions(api_endpoint=f"{location}-dialogflow.googleapis.com")
 
 def create_flow(agent_name, display_name, description):
     """Creates a conversation flow."""
-    client = dialogflowcx_v3.FlowsClient()
+    client = dialogflowcx_v3.FlowsClient(
+        client_options=client_options_for_resource(agent_name)
+    )
 
     flow = dialogflowcx_v3.Flow(
         display_name=display_name,
@@ -249,11 +284,18 @@ returns_flow = create_flow(
 Pages are the states within each flow. Each page can have entry fulfillment (what the bot says when entering the page), parameters to collect, and transition routes.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import dialogflowcx_v3
+
+def client_options_for_resource(resource_name):
+    location = resource_name.split("/locations/")[1].split("/")[0]
+    return ClientOptions(api_endpoint=f"{location}-dialogflow.googleapis.com")
 
 def create_page(flow_name, display_name, entry_message, form_parameters=None):
     """Creates a page within a flow."""
-    client = dialogflowcx_v3.PagesClient()
+    client = dialogflowcx_v3.PagesClient(
+        client_options=client_options_for_resource(flow_name)
+    )
 
     # Build the entry fulfillment message
     entry_fulfillment = dialogflowcx_v3.Fulfillment(
@@ -309,7 +351,7 @@ collect_order_page = create_page(
     "I'd be happy to help you check your order status.",
     form_parameters=[{
         "name": "order_id",
-        "entity_type": "projects/my-project/locations/us-central1/agents/AGENT_ID/entityTypes/ENTITY_ID",
+        "entity_type": order_id_entity_type.name,
         "required": True,
         "prompt": "Could you please provide your order number?"
     }]
@@ -333,11 +375,18 @@ display_status_page = create_page(
 Transition routes connect pages together based on intents or conditions.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import dialogflowcx_v3
+
+def client_options_for_resource(resource_name):
+    location = resource_name.split("/locations/")[1].split("/")[0]
+    return ClientOptions(api_endpoint=f"{location}-dialogflow.googleapis.com")
 
 def add_transition_route(page_name, intent=None, condition=None, target_page=None, target_flow=None):
     """Adds a transition route to a page."""
-    client = dialogflowcx_v3.PagesClient()
+    client = dialogflowcx_v3.PagesClient(
+        client_options=client_options_for_resource(page_name)
+    )
 
     # Get the current page configuration
     page = client.get_page(name=page_name)
@@ -363,10 +412,43 @@ def add_transition_route(page_name, intent=None, condition=None, target_page=Non
     )
     print(f"Transition route added to {page.display_name}")
 
+def add_flow_transition_route(flow_name, intent, target_flow):
+    """Adds an intent route to a flow."""
+    client = dialogflowcx_v3.FlowsClient(
+        client_options=client_options_for_resource(flow_name)
+    )
+
+    flow = client.get_flow(name=flow_name)
+    flow.transition_routes.append(
+        dialogflowcx_v3.TransitionRoute(
+            intent=intent,
+            target_flow=target_flow,
+        )
+    )
+
+    client.update_flow(
+        flow=flow,
+        update_mask={"paths": ["transition_routes"]},
+    )
+    print(f"Transition route added to {flow.display_name}")
+
+# Route top-level intents from the default start flow into topic flows
+add_flow_transition_route(
+    agent_start_flow_name,
+    intent=check_order_status_intent.name,
+    target_flow=order_flow.name,
+)
+
+add_flow_transition_route(
+    agent_start_flow_name,
+    intent=return_item_intent.name,
+    target_flow=returns_flow.name,
+)
+
 # After collecting order ID, transition to lookup page when form is complete
 add_transition_route(
     collect_order_page.name,
-    condition="$page.params.status = 'FINAL'",
+    condition='$page.params.status = "FINAL"',
     target_page=lookup_page.name,
 )
 ```
@@ -376,10 +458,10 @@ add_transition_route(
 Use the Dialogflow CX test console to walk through conversation scenarios:
 
 1. User says "Where is my order?" - triggers the `check.order.status` intent
-2. Agent transitions to Order Status flow, Collect Order ID page
+2. Agent transitions to the Order Status flow; from that flow's start page, route the conversation to the Collect Order ID page
 3. Agent asks "Could you please provide your order number?"
 4. User says "ORD-12345" - fills the `order_id` parameter
-5. Agent transitions to Lookup Order page, calls webhook for order data
+5. Agent transitions to Lookup Order page, where you can call a webhook for order data
 6. Agent transitions to Display Status page with order information
 
 ## Summary
