@@ -23,10 +23,10 @@ Before diving into the technical steps, let's establish how Azure Monitor concep
 | Log alert (Log Analytics) | Log-based metric + alerting policy |
 | Activity log alert | Audit log + alerting policy |
 | Smart detection | Anomaly detection (limited) |
-| Alert severity (0-4) | No severity levels (custom labels) |
-| Dynamic thresholds | No direct equivalent (MQL forecasting) |
+| Alert severity (0-4) | Severity enum plus custom labels |
+| Dynamic thresholds | No direct equivalent (forecasting options for some metric policies) |
 
-One notable difference: Azure Monitor has built-in dynamic thresholds that use machine learning to detect anomalies. Google Cloud Monitoring does not have a direct equivalent, though you can use Monitoring Query Language (MQL) with forecasting functions for similar effect.
+One notable difference: Azure Monitor has built-in dynamic thresholds that use machine learning to detect anomalies. Google Cloud Monitoring does not have a direct equivalent, though forecast options on metric threshold policies can cover some similar capacity-planning cases.
 
 ## Step 1: Inventory Your Azure Alerts
 
@@ -62,32 +62,31 @@ Notification channels in Google Cloud Monitoring replace Azure Action Groups. Cr
 
 ```bash
 # Create an email notification channel
-gcloud monitoring channels create \
+gcloud beta monitoring channels create \
     --display-name="Ops Team Email" \
     --type=email \
     --channel-labels=email_address=ops-team@example.com
 
 # Create a Slack notification channel
-gcloud monitoring channels create \
+gcloud beta monitoring channels create \
     --display-name="Alerts Slack Channel" \
     --type=slack \
-    --channel-labels=channel_name="#alerts" \
-    --channel-labels=auth_token="xoxb-your-slack-token"
+    --channel-labels=channel_name="#alerts",auth_token="xoxb-your-slack-token"
 
 # Create a PagerDuty notification channel
-gcloud monitoring channels create \
+gcloud beta monitoring channels create \
     --display-name="PagerDuty Ops" \
     --type=pagerduty \
     --channel-labels=service_key="your-pagerduty-integration-key"
 
 # Create a webhook notification channel
-gcloud monitoring channels create \
+gcloud beta monitoring channels create \
     --display-name="Custom Webhook" \
     --type=webhook_tokenauth \
     --channel-labels=url="https://hooks.example.com/alerts"
 
 # List all notification channels to get their IDs
-gcloud monitoring channels list --format="table(name, displayName, type)"
+gcloud beta monitoring channels list --format="table(name, displayName, type)"
 ```
 
 ## Step 3: Migrate Metric Alerts
@@ -121,12 +120,11 @@ gcloud monitoring policies create \
     --display-name="High CPU Usage" \
     --condition-display-name="CPU above 80% for 5 minutes" \
     --condition-filter='resource.type="gce_instance" AND metric.type="compute.googleapis.com/instance/cpu/utilization"' \
-    --condition-threshold-value=0.8 \
-    --condition-threshold-comparison=COMPARISON_GT \
-    --condition-threshold-duration=300s \
-    --condition-threshold-aggregation='{"alignmentPeriod": "60s", "perSeriesAligner": "ALIGN_MEAN"}' \
+    --if='> 0.8' \
+    --duration=300s \
+    --aggregation='{"alignmentPeriod": "60s", "perSeriesAligner": "ALIGN_MEAN"}' \
     --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
-    --documentation-content="CPU utilization exceeded 80% threshold. Check for runaway processes or consider scaling."
+    --documentation="CPU utilization exceeded 80% threshold. Check for runaway processes or consider scaling."
 ```
 
 ### Memory Usage Alert
@@ -139,10 +137,9 @@ gcloud monitoring policies create \
     --display-name="High Memory Usage" \
     --condition-display-name="Memory above 90% for 5 minutes" \
     --condition-filter='resource.type="gce_instance" AND metric.type="agent.googleapis.com/memory/percent_used" AND metric.labels.state="used"' \
-    --condition-threshold-value=90 \
-    --condition-threshold-comparison=COMPARISON_GT \
-    --condition-threshold-duration=300s \
-    --condition-threshold-aggregation='{"alignmentPeriod": "60s", "perSeriesAligner": "ALIGN_MEAN"}' \
+    --if='> 90' \
+    --duration=300s \
+    --aggregation='{"alignmentPeriod": "60s", "perSeriesAligner": "ALIGN_MEAN"}' \
     --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID"
 ```
 
@@ -154,9 +151,8 @@ gcloud monitoring policies create \
     --display-name="Low Disk Space" \
     --condition-display-name="Disk usage above 85%" \
     --condition-filter='resource.type="gce_instance" AND metric.type="agent.googleapis.com/disk/percent_used" AND metric.labels.state="used"' \
-    --condition-threshold-value=85 \
-    --condition-threshold-comparison=COMPARISON_GT \
-    --condition-threshold-duration=300s \
+    --if='> 85' \
+    --duration=300s \
     --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID"
 ```
 
@@ -180,10 +176,9 @@ gcloud monitoring policies create \
     --display-name="High Error Rate" \
     --condition-display-name="More than 10 errors in 5 minutes" \
     --condition-filter='resource.type="gce_instance" AND metric.type="logging.googleapis.com/user/error-count"' \
-    --condition-threshold-value=10 \
-    --condition-threshold-comparison=COMPARISON_GT \
-    --condition-threshold-duration=300s \
-    --condition-threshold-aggregation='{"alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_SUM"}' \
+    --if='> 10' \
+    --duration=300s \
+    --aggregation='{"alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_SUM"}' \
     --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID"
 ```
 
@@ -209,6 +204,7 @@ curl -X POST \
                 }
             }
         }],
+        "combiner": "OR",
         "alertStrategy": {
             "notificationRateLimit": {
                 "period": "300s"
@@ -233,42 +229,41 @@ Azure Application Insights availability tests map to Google Cloud Monitoring upt
 # Create an HTTPS uptime check
 # Replaces Azure Application Insights URL ping test
 gcloud monitoring uptime create my-api-check \
-    --display-name="API Health Check" \
     --resource-type=uptime-url \
-    --monitored-resource-labels=host=api.example.com \
-    --protocol=HTTPS \
+    --resource-labels=host=api.example.com,project_id=my-project \
+    --protocol=https \
     --path="/health" \
-    --check-every=60s \
-    --timeout=10s \
-    --regions=USA,EUROPE,ASIA_PACIFIC
+    --period=1 \
+    --timeout=10 \
+    --regions=usa-iowa,europe,asia-pacific
 
 # Create an alerting policy for the uptime check
 gcloud monitoring policies create \
     --display-name="API Down Alert" \
     --condition-display-name="API health check failing" \
     --condition-filter='resource.type="uptime_url" AND metric.type="monitoring.googleapis.com/uptime_check/check_passed"' \
-    --condition-threshold-value=1 \
-    --condition-threshold-comparison=COMPARISON_LT \
-    --condition-threshold-duration=300s \
+    --if='< 1' \
+    --duration=300s \
+    --aggregation='{"alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_FRACTION_TRUE"}' \
     --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID"
 ```
 
 ## Step 6: Handling Alert Severity
 
-Azure Monitor has built-in severity levels (0-Critical through 4-Verbose). Cloud Monitoring does not have native severity, but you can use labels and documentation to organize alerts:
+Azure Monitor has built-in severity levels (0-Critical through 4-Verbose). Cloud Monitoring supports a severity field, but it uses named values rather than Azure's numeric scale. You can combine severity with labels and documentation to organize alerts:
 
 ```bash
-# Use user labels to categorize alert severity
+# Use severity and user labels to categorize alerts
 gcloud monitoring policies create \
     --display-name="[P1] Database Connection Failures" \
+    --policy='{"severity":"CRITICAL"}' \
     --user-labels="severity=critical,team=database" \
     --condition-display-name="Connection failures above threshold" \
     --condition-filter='metric.type="custom.googleapis.com/database/connection_errors"' \
-    --condition-threshold-value=5 \
-    --condition-threshold-comparison=COMPARISON_GT \
-    --condition-threshold-duration=60s \
+    --if='> 5' \
+    --duration=60s \
     --notification-channels="projects/my-project/notificationChannels/PAGERDUTY_CHANNEL_ID" \
-    --documentation-content="**Priority: P1 - Critical**\n\nDatabase connection failures detected. Immediate action required."
+    --documentation="**Priority: P1 - Critical**\n\nDatabase connection failures detected. Immediate action required."
 ```
 
 ## Automation with Terraform
