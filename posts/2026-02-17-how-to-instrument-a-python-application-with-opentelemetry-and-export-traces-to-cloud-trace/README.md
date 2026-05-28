@@ -31,6 +31,7 @@ pip install opentelemetry-instrumentation-flask \
 ```
 
 For FastAPI, use `opentelemetry-instrumentation-fastapi` instead of the Flask package.
+If you use `httpx` for outbound HTTP calls, also install `opentelemetry-instrumentation-httpx`.
 
 ## Step 2: Configure the Tracer Provider
 
@@ -107,6 +108,11 @@ RequestsInstrumentor().instrument()
 tracer = trace.get_tracer(__name__)
 
 
+def fetch_orders_from_db(page):
+    """Replace this with your real database query."""
+    return [{"id": 1, "page": page, "status": "pending"}]
+
+
 @app.route("/api/users/<user_id>")
 def get_user(user_id):
     """Fetch user data - automatically traced by Flask instrumentation."""
@@ -160,7 +166,7 @@ provider = configure_tracing(service_name="fastapi-api")
 
 from fastapi import FastAPI, HTTPException
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.requests import RequestsInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry import trace
 import httpx
 
@@ -168,7 +174,7 @@ app = FastAPI()
 
 # Auto-instrument FastAPI
 FastAPIInstrumentor.instrument_app(app)
-RequestsInstrumentor().instrument()
+HTTPXClientInstrumentor().instrument()
 
 tracer = trace.get_tracer(__name__)
 
@@ -199,6 +205,7 @@ Auto-instrumentation handles HTTP boundaries, but you should add custom spans fo
 ```python
 # services/payment.py - Payment processing with detailed tracing
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("payment-service")
 
@@ -217,7 +224,7 @@ def process_payment(order_id, amount, currency):
             is_valid = validate_payment_details(order_id, amount)
             validate_span.set_attribute("validation.passed", is_valid)
             if not is_valid:
-                span.set_status(trace.StatusCode.ERROR, "Payment validation failed")
+                span.set_status(Status(StatusCode.ERROR, "Payment validation failed"))
                 raise ValueError("Invalid payment details")
 
         # Step 2: Charge the payment provider
@@ -228,7 +235,7 @@ def process_payment(order_id, amount, currency):
                 charge_span.set_attribute("charge.id", result["charge_id"])
             except Exception as e:
                 charge_span.record_exception(e)
-                charge_span.set_status(trace.StatusCode.ERROR, str(e))
+                charge_span.set_status(Status(StatusCode.ERROR, str(e)))
                 raise
 
         # Step 3: Update the order status
@@ -272,7 +279,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Cloud Run sets PORT automatically
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "app:app"]
+CMD exec gunicorn --bind "0.0.0.0:${PORT:-8080}" --workers 2 app:app
 ```
 
 Deploy with the right permissions.
