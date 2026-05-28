@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS `my-project.raw_vault.hub_customer` (
   -- When this record was first loaded
   load_date TIMESTAMP NOT NULL,
   -- Which source system provided this record
-  record_source STRING NOT NULL,
+  record_source STRING NOT NULL
 )
 PARTITION BY DATE(load_date)
 CLUSTER BY customer_hk;
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS `my-project.raw_vault.hub_product` (
   product_hk BYTES NOT NULL,
   product_bk STRING NOT NULL,
   load_date TIMESTAMP NOT NULL,
-  record_source STRING NOT NULL,
+  record_source STRING NOT NULL
 )
 PARTITION BY DATE(load_date)
 CLUSTER BY product_hk;
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS `my-project.raw_vault.hub_order` (
   order_hk BYTES NOT NULL,
   order_bk STRING NOT NULL,
   load_date TIMESTAMP NOT NULL,
-  record_source STRING NOT NULL,
+  record_source STRING NOT NULL
 )
 PARTITION BY DATE(load_date)
 CLUSTER BY order_hk;
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS `my-project.raw_vault.link_customer_order` (
   customer_hk BYTES NOT NULL,
   order_hk BYTES NOT NULL,
   load_date TIMESTAMP NOT NULL,
-  record_source STRING NOT NULL,
+  record_source STRING NOT NULL
 )
 PARTITION BY DATE(load_date)
 CLUSTER BY customer_order_hk;
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS `my-project.raw_vault.link_order_product` (
   order_hk BYTES NOT NULL,
   product_hk BYTES NOT NULL,
   load_date TIMESTAMP NOT NULL,
-  record_source STRING NOT NULL,
+  record_source STRING NOT NULL
 )
 PARTITION BY DATE(load_date)
 CLUSTER BY order_product_hk;
@@ -154,7 +154,7 @@ CREATE TABLE IF NOT EXISTS `my-project.raw_vault.sat_customer_crm` (
   country STRING,
   -- Metadata
   load_date TIMESTAMP NOT NULL,
-  record_source STRING NOT NULL,
+  record_source STRING NOT NULL
 )
 PARTITION BY DATE(load_date)
 CLUSTER BY customer_hk;
@@ -169,7 +169,7 @@ CREATE TABLE IF NOT EXISTS `my-project.raw_vault.sat_customer_web` (
   preferences JSON,
   account_status STRING,
   load_date TIMESTAMP NOT NULL,
-  record_source STRING NOT NULL,
+  record_source STRING NOT NULL
 )
 PARTITION BY DATE(load_date)
 CLUSTER BY customer_hk;
@@ -196,15 +196,15 @@ FROM (
   SELECT
     MD5(CAST(customer_id AS STRING)) AS customer_hk,
     -- Hash of all descriptive columns for change detection
-    MD5(CONCAT(
-      COALESCE(first_name, ''),
-      COALESCE(last_name, ''),
-      COALESCE(email, ''),
-      COALESCE(phone, ''),
-      COALESCE(address, ''),
-      COALESCE(city, ''),
-      COALESCE(country, '')
-    )) AS hashdiff,
+    MD5(TO_JSON_STRING(STRUCT(
+      first_name,
+      last_name,
+      email,
+      phone,
+      address,
+      city,
+      country
+    ))) AS hashdiff,
     first_name, last_name, email, phone, address, city, country,
     CURRENT_TIMESTAMP() AS load_date,
     'crm_system' AS record_source
@@ -267,7 +267,7 @@ from airflow import DAG
 from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
 from datetime import datetime
 
-with DAG('data_vault_daily_load', schedule_interval='@daily',
+with DAG('data_vault_daily_load', schedule='@daily',
          start_date=datetime(2026, 1, 1), catchup=False) as dag:
 
     # Load hubs first - they have no dependencies on each other
