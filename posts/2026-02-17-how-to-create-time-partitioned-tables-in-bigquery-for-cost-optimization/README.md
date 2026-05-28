@@ -8,13 +8,13 @@ Description: A practical guide to creating and using time-partitioned tables in 
 
 ---
 
-BigQuery charges by the amount of data your queries scan. A query against a 10 TB table that only needs yesterday's data still scans the entire 10 TB unless the table is partitioned. Time partitioning changes this by splitting your table into date-based segments. When your query includes a partition filter, BigQuery only scans the relevant partitions, dramatically reducing both cost and query time.
+With BigQuery on-demand pricing, BigQuery charges by the amount of data your queries scan. A query against a 10 TB table that only needs yesterday's data can still scan the entire table unless the table is partitioned. Time partitioning changes this by splitting your table into date-based segments. When your query includes a partition filter, BigQuery only scans the relevant partitions, dramatically reducing both cost and query time.
 
 I have seen teams cut their BigQuery bills by 80% or more just by switching to partitioned tables and adding partition filters to their queries. It is one of the highest-impact optimizations you can make.
 
 ## How Partitioning Works
 
-A partitioned table looks like a single table from the outside, but internally BigQuery stores data in separate partitions based on a date or timestamp column.
+A partitioned table looks like a single table from the outside, but internally BigQuery stores data in separate partitions based on a DATE, TIMESTAMP, or DATETIME column.
 
 ```mermaid
 graph TD
@@ -33,7 +33,7 @@ Instead of scanning 10 TB, the query scans only the 180 GB partition for Februar
 
 ## Creating a Table Partitioned by a Column
 
-The most common approach is partitioning by a DATE or TIMESTAMP column in your data.
+The most common approach is partitioning by a DATE, TIMESTAMP, or DATETIME column in your data.
 
 ```sql
 -- Create a table partitioned by the order_date column
@@ -190,7 +190,6 @@ SELECT * FROM `my-project-id.sales.orders_old`;
 Then swap the tables:
 
 ```sql
--- Drop the old table and rename the new one
 -- First, verify the new table has the correct data
 SELECT COUNT(*) AS old_count FROM `my-project-id.sales.orders_old`;
 SELECT COUNT(*) AS new_count FROM `my-project-id.sales.orders_partitioned`;
@@ -198,15 +197,8 @@ SELECT COUNT(*) AS new_count FROM `my-project-id.sales.orders_partitioned`;
 -- If counts match, proceed
 DROP TABLE `my-project-id.sales.orders_old`;
 
--- Note: BigQuery does not have RENAME TABLE. You would need to
--- copy the partitioned table to the original name
-CREATE TABLE `my-project-id.sales.orders`
-PARTITION BY order_date
-CLUSTER BY customer_id
-AS
-SELECT * FROM `my-project-id.sales.orders_partitioned`;
-
-DROP TABLE `my-project-id.sales.orders_partitioned`;
+ALTER TABLE `my-project-id.sales.orders_partitioned`
+RENAME TO orders;
 ```
 
 ## Writing Efficient Queries
@@ -286,9 +278,10 @@ resource "google_bigquery_table" "orders" {
     field = "order_date"
     # Auto-delete partitions after 365 days
     expiration_ms = 31536000000
-    # Require partition filter in queries
-    require_partition_filter = true
   }
+
+  # Require partition filter in queries
+  require_partition_filter = true
 
   clustering = ["customer_id", "product_category"]
 
@@ -311,9 +304,9 @@ Here is a real-world cost comparison for a 5 TB table queried 50 times per day w
 
 | Table Type | Data Scanned per Query | Daily Cost (50 queries) | Monthly Cost |
 |-----------|----------------------|------------------------|-------------|
-| Non-partitioned | 5 TB | $1,250 | $37,500 |
-| Daily partitioned | ~165 GB (one day) | $41 | $1,237 |
-| Daily partitioned + clustered | ~30 GB (filtered) | $7.50 | $225 |
+| Non-partitioned | 5 TB | $1,562.50 | $46,875 |
+| Daily partitioned | ~165 GB (one day) | $51.56 | $1,546.88 |
+| Daily partitioned + clustered | ~30 GB (filtered) | $9.38 | $281.25 |
 
 That is a 99.4% cost reduction from the non-partitioned baseline. Even the partitioned-only approach saves 96.7%.
 
