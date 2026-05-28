@@ -20,9 +20,9 @@ Here are the key differences:
 |---------|-------------------|---------------------|
 | Secret size limit | 64 KB | 64 KB |
 | Versioning | Staging labels (AWSCURRENT, AWSPREVIOUS) | Numeric versions (1, 2, 3...) plus aliases |
-| Rotation | Built-in Lambda-based rotation | Custom rotation via Cloud Functions |
+| Rotation | Built-in Lambda-based rotation | Rotation schedules with Pub/Sub notifications and custom handlers |
 | Pricing | Per secret per month + per API call | Per secret version per month + per API call |
-| Encryption | AWS KMS | Cloud KMS |
+| Encryption | AWS KMS | Google-managed encryption by default, with optional Cloud KMS CMEK |
 | Replication | Multi-region | Automatic or user-managed replication |
 
 ## Step 1: Inventory Your Secrets
@@ -68,14 +68,15 @@ aws secretsmanager get-secret-value \
   --output text | base64 --decode > cert.pem
 ```
 
-For bulk export, use a script that writes to a temporary encrypted file:
+For bulk export, use a script that writes to a temporary JSON file:
 
 ```python
 import boto3
+import base64
 import json
 
-# Export all secrets to a local encrypted JSON file
-# WARNING: Handle this file with extreme care and delete after migration
+# Export all secrets to a local JSON file
+# WARNING: Encrypt this file, handle it with extreme care, and delete after migration
 client = boto3.client('secretsmanager')
 
 secrets = {}
@@ -87,8 +88,16 @@ for page in paginator.paginate():
         try:
             # Retrieve the current secret value
             value = client.get_secret_value(SecretId=name)
+            if 'SecretString' in value:
+                secret_value = value['SecretString']
+                value_type = 'string'
+            else:
+                secret_value = base64.b64encode(value['SecretBinary']).decode('utf-8')
+                value_type = 'binary_base64'
+
             secrets[name] = {
-                'value': value.get('SecretString', ''),
+                'value': secret_value,
+                'type': value_type,
                 'description': secret.get('Description', ''),
                 'tags': secret.get('Tags', [])
             }
@@ -117,7 +126,7 @@ echo -n "my-super-secret-password" | \
   --replication-policy=automatic \
   --labels=migrated-from=aws,environment=production
 
-# Create a secret with a description
+# Create a secret without an initial version
 gcloud secrets create my-api-key \
   --replication-policy=automatic \
   --labels=migrated-from=aws
@@ -154,7 +163,10 @@ for page in paginator.paginate():
         try:
             # Get the value from AWS
             aws_value = aws_client.get_secret_value(SecretId=aws_name)
-            secret_data = aws_value.get('SecretString', '').encode('utf-8')
+            if 'SecretString' in aws_value:
+                secret_data = aws_value['SecretString'].encode('utf-8')
+            else:
+                secret_data = aws_value['SecretBinary']
 
             # Create the secret in GCP
             gcp_client.create_secret(
@@ -249,16 +261,14 @@ gcloud projects add-iam-policy-binding my-project \
 
 ## Step 6: Handle Secret Rotation
 
-If you have automatic rotation configured in AWS (Lambda-based), set up equivalent rotation in GCP using Cloud Functions and Cloud Scheduler.
+If you have automatic rotation configured in AWS (Lambda-based), set up equivalent rotation in GCP using Secret Manager rotation schedules, Pub/Sub notifications, and a handler such as Cloud Functions or Cloud Run.
 
 ```bash
-# Create a Cloud Scheduler job to trigger rotation every 30 days
-gcloud scheduler jobs create http rotate-db-password \
-  --schedule="0 0 1 * *" \
-  --uri="https://us-central1-my-project.cloudfunctions.net/rotate-secret" \
-  --http-method=POST \
-  --body='{"secret_name": "my-database-password"}' \
-  --oidc-service-account-email=rotation-sa@my-project.iam.gserviceaccount.com
+# Configure a rotation notification every 30 days
+gcloud secrets update my-database-password \
+  --next-rotation-time="2030-03-01T00:00:00Z" \
+  --rotation-period="2592000s" \
+  --add-topics="projects/my-project/topics/secret-rotation"
 ```
 
 ## Step 7: Validate and Clean Up
