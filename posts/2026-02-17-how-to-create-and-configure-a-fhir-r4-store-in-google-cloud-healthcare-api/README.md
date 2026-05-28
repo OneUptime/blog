@@ -8,7 +8,7 @@ Description: Create and configure a FHIR R4 store in Google Cloud Healthcare API
 
 ---
 
-FHIR (Fast Healthcare Interoperability Resources) is the modern standard for exchanging healthcare data electronically. If you are building a health-tech application, a patient portal, or any system that handles clinical data, you need a FHIR-compliant data store. Google Cloud Healthcare API provides a fully managed FHIR server that supports FHIR R4 (the current standard version), handles data validation, supports SMART on FHIR authentication, and scales automatically.
+FHIR (Fast Healthcare Interoperability Resources) is the modern standard for exchanging healthcare data electronically. If you are building a health-tech application, a patient portal, or any system that handles clinical data, you need a FHIR-compliant data store. Google Cloud Healthcare API provides a fully managed FHIR server that supports FHIR R4 (a widely adopted stable version), handles data validation, supports SMART on FHIR access patterns, and scales automatically.
 
 In this guide, I will walk through creating a FHIR R4 store, configuring it for production use, and performing basic CRUD operations on FHIR resources.
 
@@ -16,7 +16,7 @@ In this guide, I will walk through creating a FHIR R4 store, configuring it for 
 
 The Healthcare API is not just a database - it is a complete FHIR server that:
 
-- Validates resources against FHIR R4 profiles
+- Validates resources against FHIR R4 rules and configured profiles
 - Supports FHIR search parameters out of the box
 - Handles references between resources
 - Provides audit logging for HIPAA compliance
@@ -27,16 +27,15 @@ The Healthcare API is not just a database - it is a complete FHIR server that:
 
 - GCP project with the Healthcare API enabled
 - Appropriate IAM permissions (Healthcare FHIR Store Admin)
-- Python 3.8+ with the Healthcare API client library
+- Python 3.8+ with the Google API Python client library
 
 ```bash
 # Enable the Healthcare API
 
 gcloud services enable healthcare.googleapis.com
 
-# Install the client library
-pip install google-cloud-healthcare
-pip install google-api-python-client
+# Install the client libraries
+pip install google-api-python-client google-auth requests
 ```
 
 ## Step 1: Create a Dataset and FHIR Store
@@ -53,8 +52,7 @@ gcloud healthcare fhir-stores create my-fhir-store \
   --dataset=my-health-dataset \
   --location=us-central1 \
   --version=R4 \
-  --enable-update-create \
-  --disable-referential-integrity=false
+  --enable-update-create
 ```
 
 For more configuration options, use the Python client:
@@ -62,7 +60,7 @@ For more configuration options, use the Python client:
 ```python
 # create_fhir_store.py - Creates and configures a FHIR R4 store
 
-from google.cloud import healthcare_v1
+from googleapiclient import discovery
 
 def create_fhir_store(project_id, location, dataset_id, fhir_store_id):
     """Creates a FHIR R4 store with production-ready configuration.
@@ -74,42 +72,41 @@ def create_fhir_store(project_id, location, dataset_id, fhir_store_id):
         fhir_store_id: Unique ID for the FHIR store
     """
 
-    client = healthcare_v1.FhirStoreServiceClient()
+    client = discovery.build("healthcare", "v1")
     parent = f"projects/{project_id}/locations/{location}/datasets/{dataset_id}"
 
-    fhir_store = healthcare_v1.FhirStore()
+    fhir_store = {
+        # Set the FHIR version to R4
+        "version": "R4",
+        # Enable update-as-create (allows PUT to create resources if they do not exist)
+        "enableUpdateCreate": True,
+        # Disable referential integrity if you need to import data
+        # that has references to resources not yet created
+        # Enable it for production to enforce data consistency
+        "disableReferentialIntegrity": False,
+        # Disable resource versioning if you do not need version history
+        "disableResourceVersioning": False,
+        # Configure Pub/Sub notifications for data changes
+        "notificationConfigs": [
+            {
+                "pubsubTopic": f"projects/{project_id}/topics/fhir-notifications",
+                "sendFullResource": False,  # Send only resource ID, not full content
+            }
+        ],
+        # Set default search parameters handling
+        "defaultSearchHandlingStrict": True,
+    }
 
-    # Set the FHIR version to R4
-    fhir_store.version = healthcare_v1.FhirStore.Version.R4
-
-    # Enable update-as-create (allows PUT to create resources if they do not exist)
-    fhir_store.enable_update_create = True
-
-    # Disable referential integrity if you need to import data
-    # that has references to resources not yet created
-    # Enable it for production to enforce data consistency
-    fhir_store.disable_referential_integrity = False
-
-    # Disable resource versioning if you do not need version history
-    fhir_store.disable_resource_versioning = False
-
-    # Configure Pub/Sub notifications for data changes
-    notification = healthcare_v1.FhirNotificationConfig()
-    notification.pubsub_topic = f"projects/{project_id}/topics/fhir-notifications"
-    notification.send_full_resource = False  # Send only resource ID, not full content
-    fhir_store.notification_configs = [notification]
-
-    # Set default search parameters handling
-    fhir_store.default_search_handling_strict = True
-
-    request = healthcare_v1.CreateFhirStoreRequest(
-        parent=parent,
-        fhir_store=fhir_store,
-        fhir_store_id=fhir_store_id,
+    request = (
+        client.projects()
+        .locations()
+        .datasets()
+        .fhirStores()
+        .create(parent=parent, body=fhir_store, fhirStoreId=fhir_store_id)
     )
 
-    result = client.create_fhir_store(request=request)
-    print(f"FHIR store created: {result.name}")
+    result = request.execute()
+    print(f"FHIR store created: {result['name']}")
     return result
 
 # Create the FHIR store
@@ -148,7 +145,7 @@ Now you can create, read, update, and delete FHIR resources. Here is how to work
 ```python
 # fhir_operations.py - CRUD operations on FHIR resources
 
-import json
+from google.auth.transport.requests import AuthorizedSession
 from googleapiclient import discovery
 from google.oauth2 import service_account
 
@@ -161,6 +158,14 @@ def get_fhir_client():
     )
     return discovery.build("healthcare", "v1", credentials=credentials)
 
+def get_authorized_session():
+    """Creates an authenticated HTTP session for FHIR search requests."""
+    credentials = service_account.Credentials.from_service_account_file(
+        "service-account-key.json",
+        scopes=["https://www.googleapis.com/auth/cloud-healthcare"],
+    )
+    return AuthorizedSession(credentials)
+
 PROJECT_ID = "your-project"
 LOCATION = "us-central1"
 DATASET_ID = "my-health-dataset"
@@ -170,6 +175,7 @@ FHIR_BASE = (
     f"projects/{PROJECT_ID}/locations/{LOCATION}/"
     f"datasets/{DATASET_ID}/fhirStores/{FHIR_STORE_ID}"
 )
+FHIR_ENDPOINT = f"https://healthcare.googleapis.com/v1/{FHIR_BASE}/fhir"
 
 def create_patient():
     """Creates a Patient resource in the FHIR store.
@@ -217,15 +223,16 @@ def create_patient():
         ],
     }
 
-    result = (
+    request = (
         client.projects()
         .locations()
         .datasets()
         .fhirStores()
         .fhir()
         .create(parent=FHIR_BASE, type="Patient", body=patient)
-        .execute()
     )
+    request.headers["content-type"] = "application/fhir+json;charset=utf-8"
+    result = request.execute()
 
     print(f"Patient created: {result['id']}")
     return result
@@ -272,15 +279,16 @@ def create_observation(patient_id):
         },
     }
 
-    result = (
+    request = (
         client.projects()
         .locations()
         .datasets()
         .fhirStores()
         .fhir()
         .create(parent=FHIR_BASE, type="Observation", body=observation)
-        .execute()
     )
+    request.headers["content-type"] = "application/fhir+json;charset=utf-8"
+    result = request.execute()
 
     print(f"Observation created: {result['id']}")
     return result
@@ -294,26 +302,18 @@ The FHIR search API supports a rich query syntax:
 def search_patients(family_name=None, given_name=None):
     """Searches for patients by name using FHIR search parameters."""
 
-    client = get_fhir_client()
+    session = get_authorized_session()
 
     # Build search parameters
-    params = []
+    params = {}
     if family_name:
-        params.append(f"family={family_name}")
+        params["family"] = family_name
     if given_name:
-        params.append(f"given={given_name}")
+        params["given"] = given_name
 
-    search_string = "&".join(params) if params else ""
-
-    result = (
-        client.projects()
-        .locations()
-        .datasets()
-        .fhirStores()
-        .fhir()
-        .search(parent=FHIR_BASE, body={"resourceType": "Patient"})
-        .execute()
-    )
+    response = session.get(f"{FHIR_ENDPOINT}/Patient", params=params)
+    response.raise_for_status()
+    result = response.json()
 
     bundle = result
     entries = bundle.get("entry", [])
@@ -331,19 +331,15 @@ def search_observations_for_patient(patient_id, code=None):
     """Searches for observations linked to a specific patient.
     Optionally filter by LOINC code."""
 
-    client = get_fhir_client()
+    session = get_authorized_session()
 
-    search_params = {"resourceType": "Observation"}
+    search_params = {"subject": f"Patient/{patient_id}"}
+    if code:
+        search_params["code"] = f"http://loinc.org|{code}"
 
-    result = (
-        client.projects()
-        .locations()
-        .datasets()
-        .fhirStores()
-        .fhir()
-        .search(parent=FHIR_BASE, body=search_params)
-        .execute()
-    )
+    response = session.get(f"{FHIR_ENDPOINT}/Observation", params=search_params)
+    response.raise_for_status()
+    result = response.json()
 
     entries = result.get("entry", [])
     print(f"Found {len(entries)} observations for patient {patient_id}")
