@@ -8,7 +8,7 @@ Description: A practical guide to deploying Confidential VMs on Google Cloud to 
 
 ---
 
-Data encryption has three states: at rest, in transit, and in use. Google Cloud handles the first two by default - data is encrypted on disk and encrypted as it moves between services. But what about data while it is being processed in memory? That is where Confidential Computing comes in. Confidential VMs encrypt data in memory using hardware-based features built into AMD SEV (Secure Encrypted Virtualization) processors, ensuring that even the hypervisor cannot read your workload's memory.
+Data encryption has three states: at rest, in transit, and in use. Google Cloud handles the first two by default - data is encrypted on disk and encrypted as it moves between services. But what about data while it is being processed in memory? That is where Confidential Computing comes in. Confidential VMs encrypt data in memory using hardware-based features such as AMD SEV (Secure Encrypted Virtualization), AMD SEV-SNP, and Intel TDX, ensuring that even the hypervisor cannot read your workload's memory.
 
 This guide covers what Confidential VMs are, when to use them, and how to deploy and manage them in production.
 
@@ -31,7 +31,7 @@ Think of it as adding a hardware-enforced encryption layer around your VM's memo
 
 ## Creating a Confidential VM
 
-Creating a Confidential VM is straightforward - it is a configuration option when launching an instance. The key requirement is using a machine type from the N2D or C2D family (which use AMD EPYC processors with SEV support).
+Creating a Confidential VM is straightforward - it is a configuration option when launching an instance. The key requirement is using a machine type, CPU platform, zone, and operating system image that support the Confidential Computing technology you choose. For AMD SEV, this includes supported N2D, C2D, C3D, and C4D machine types.
 
 This command creates a Confidential VM with AMD SEV encryption.
 
@@ -41,9 +41,10 @@ This command creates a Confidential VM with AMD SEV encryption.
 gcloud compute instances create confidential-workload \
   --zone=us-central1-a \
   --machine-type=n2d-standard-4 \
-  --confidential-compute \
+  --min-cpu-platform="AMD Milan" \
+  --confidential-compute-type=SEV \
   --maintenance-policy=TERMINATE \
-  --image-family=ubuntu-2204-lts \
+  --image-family=ubuntu-2404-lts-amd64 \
   --image-project=ubuntu-os-cloud \
   --boot-disk-size=100GB \
   --boot-disk-type=pd-ssd \
@@ -51,9 +52,10 @@ gcloud compute instances create confidential-workload \
 ```
 
 A few things to note about this command:
-- The `--confidential-compute` flag enables memory encryption
-- The `--maintenance-policy=TERMINATE` is required because Confidential VMs cannot be live migrated
-- N2D machine types use AMD EPYC processors that support SEV
+- The `--confidential-compute-type=SEV` flag enables AMD SEV memory encryption
+- The `--min-cpu-platform="AMD Milan"` flag selects a supported CPU platform for this N2D example
+- The `--maintenance-policy=TERMINATE` setting is required for Confidential VM configurations that do not support live migration
+- N2D machine types on AMD Milan processors support SEV
 
 ## Verifying Confidential Computing is Active
 
@@ -63,14 +65,14 @@ After creating the instance, verify that memory encryption is actually running. 
 # SSH into the VM and verify SEV is active
 gcloud compute ssh confidential-workload --zone=us-central1-a
 
-# Check for AMD SEV messages in kernel log
-dmesg | grep -i sev
+# Check for memory encryption messages in the kernel log
+sudo dmesg | grep -i "Encryption Features active"
 
 # Expected output should include something like:
-# AMD Memory Encryption Features active: SEV
+# Memory Encryption Features active: SEV
 ```
 
-You can also verify from outside the VM using the instance metadata.
+You can also verify from outside the VM using the instance description.
 
 ```bash
 # Check instance configuration for confidential computing
@@ -88,15 +90,17 @@ For production deployments, Terraform is the preferred approach.
 resource "google_compute_instance" "confidential" {
   name         = "confidential-workload"
   machine_type = "n2d-standard-8"
+  min_cpu_platform = "AMD Milan"
   zone         = "us-central1-a"
   project      = "my-secure-project"
 
   # Enable confidential computing (AMD SEV)
   confidential_instance_config {
     enable_confidential_compute = true
+    confidential_instance_type  = "SEV"
   }
 
-  # Required: terminate on maintenance since live migration is not supported
+  # Use TERMINATE for Confidential VM configurations that don't support live migration
   scheduling {
     on_host_maintenance = "TERMINATE"
     automatic_restart   = true
@@ -191,9 +195,10 @@ For workloads that need auto-scaling, create an instance template with Confident
 # Create an instance template for Confidential VM auto-scaling
 gcloud compute instance-templates create confidential-template \
   --machine-type=n2d-standard-4 \
-  --confidential-compute \
+  --min-cpu-platform="AMD Milan" \
+  --confidential-compute-type=SEV \
   --maintenance-policy=TERMINATE \
-  --image-family=ubuntu-2204-lts \
+  --image-family=ubuntu-2404-lts-amd64 \
   --image-project=ubuntu-os-cloud \
   --boot-disk-size=100GB \
   --boot-disk-type=pd-ssd \
@@ -220,10 +225,9 @@ Monitor the health and integrity of your Confidential VMs using Cloud Monitoring
 gcloud monitoring policies create \
   --display-name="Confidential VM Integrity Alert" \
   --condition-display-name="VM integrity validation failed" \
-  --condition-filter='resource.type="gce_instance" AND metric.type="compute.googleapis.com/instance/integrity/late_boot_validation_status" AND metric.labels.status="FAILED"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=0s \
+  --condition-filter='resource.type="gce_instance" AND metric.type="compute.googleapis.com/instance/integrity/late_boot_validation_status" AND metric.labels.status="failed"' \
+  --if="> 0" \
+  --duration=0s \
   --notification-channels=projects/my-secure-project/notificationChannels/CHANNEL_ID
 ```
 
@@ -255,18 +259,9 @@ To require Confidential Computing for all VMs in specific projects or folders, u
 
 ```bash
 # Require Confidential Computing for all VMs in a folder
-gcloud resource-manager org-policies set-policy \
-  --folder=FOLDER_ID \
-  confidential-policy.yaml
-```
-
-```yaml
-# confidential-policy.yaml
-# Restrict VM creation to only Confidential VMs
-constraint: constraints/compute.restrictNonConfidentialComputing
-listPolicy:
-  deniedValues:
-    - compute.googleapis.com/Instance
+gcloud resource-manager org-policies deny \
+  constraints/compute.restrictNonConfidentialComputing compute.googleapis.com \
+  --folder=FOLDER_ID
 ```
 
 This policy prevents the creation of non-Confidential VMs in the specified scope, ensuring all compute workloads meet the Confidential Computing requirement.
