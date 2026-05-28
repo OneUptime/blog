@@ -73,10 +73,10 @@ For a single project, a single prefix works fine. But most organizations run mul
 
 ```text
 gs://my-terraform-state-bucket/
-  network/terraform.tfstate
-  compute/terraform.tfstate
-  database/terraform.tfstate
-  iam/terraform.tfstate
+  network/default.tfstate
+  compute/default.tfstate
+  database/default.tfstate
+  iam/default.tfstate
 ```
 
 Configure each Terraform root module with a different prefix:
@@ -252,11 +252,11 @@ If your state file gets corrupted, GCS versioning saves the day:
 
 ```bash
 # List previous versions of the state file
-gsutil ls -la gs://my-terraform-state-bucket/terraform/state/default.tfstate
+gsutil ls -la gs://my-terraform-state-bucket/production/network/default.tfstate
 
 # Copy a previous version to restore it
-gsutil cp gs://my-terraform-state-bucket/terraform/state/default.tfstate#1234567890 \
-  gs://my-terraform-state-bucket/terraform/state/default.tfstate
+gsutil cp gs://my-terraform-state-bucket/production/network/default.tfstate#1234567890 \
+  gs://my-terraform-state-bucket/production/network/default.tfstate
 ```
 
 ### State Lock Stuck
