@@ -23,7 +23,7 @@ gcloud services enable monitoring.googleapis.com --project=my-project
 
 # Set up notification channels first - you need these for alerts
 # Create an email notification channel
-gcloud monitoring channels create \
+gcloud beta monitoring channels create \
   --type=email \
   --display-name="On-Call Email" \
   --channel-labels=email_address=oncall@company.com \
@@ -41,26 +41,27 @@ Uptime checks are the most fundamental monitoring. They verify that your service
 
 ```bash
 # Create an uptime check for your main web application
-gcloud monitoring uptime create my-webapp-check \
-  --display-name="Web Application Health" \
+gcloud monitoring uptime create "Web Application Health" \
   --resource-type=uptime-url \
-  --hostname=api.myapp.com \
+  --resource-labels=host=api.myapp.com,project_id=my-project \
   --path=/healthz \
   --port=443 \
   --protocol=https \
-  --period=60 \
+  --period=1 \
   --timeout=10 \
-  --content-match-content="ok" \
+  --matcher-content="ok" \
   --project=my-project
 ```
 
 You can also create uptime checks using JSON configuration for more control:
 
 ```bash
-# Create a more detailed uptime check using JSON config
-gcloud monitoring uptime create \
-  --config-from-file=/dev/stdin \
-  --project=my-project << 'EOF'
+# Create a more detailed uptime check using the Cloud Monitoring API
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  https://monitoring.googleapis.com/v3/projects/my-project/uptimeCheckConfigs \
+  -d @- << 'EOF'
 {
   "displayName": "API Health Check",
   "monitoredResource": {
@@ -95,15 +96,18 @@ EOF
 
 ```bash
 # Create an alert policy that fires when the uptime check fails
+CHECK_ID=$(gcloud monitoring uptime list-configs \
+  --filter='displayName="Web Application Health"' \
+  --format='value(name)' \
+  --project=my-project | sed 's|.*/||')
+
 gcloud monitoring policies create \
   --display-name="Web Application Down" \
   --condition-display-name="Uptime check failing" \
-  --condition-filter='metric.type="monitoring.googleapis.com/uptime_check/check_passed" AND resource.type="uptime_url" AND metric.labels.check_id="my-webapp-check"' \
-  --condition-threshold-value=1 \
-  --condition-comparison=COMPARISON_LT \
-  --condition-duration=300s \
-  --aggregation-alignment-period=300s \
-  --aggregation-per-series-aligner=ALIGN_FRACTION_TRUE \
+  --condition-filter="metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND metric.labels.check_id=\"${CHECK_ID}\"" \
+  --if='< 1' \
+  --duration=300s \
+  --aggregation='{"alignmentPeriod":"300s","perSeriesAligner":"ALIGN_FRACTION_TRUE"}' \
   --notification-channels=CHANNEL_ID \
   --project=my-project
 ```
@@ -147,7 +151,7 @@ gcloud monitoring dashboards create --config-from-file=/dev/stdin << 'DASHBOARD'
           "dataSets": [{
             "timeSeriesQuery": {
               "timeSeriesFilter": {
-                "filter": "metric.type=\"agent.googleapis.com/memory/percent_used\" resource.type=\"gce_instance\"",
+                "filter": "metric.type=\"agent.googleapis.com/memory/percent_used\" resource.type=\"gce_instance\" metric.labels.state=\"used\"",
                 "aggregation": {
                   "alignmentPeriod": "60s",
                   "perSeriesAligner": "ALIGN_MEAN"
@@ -161,35 +165,67 @@ gcloud monitoring dashboards create --config-from-file=/dev/stdin << 'DASHBOARD'
       {
         "title": "Disk I/O - Read/Write",
         "xyChart": {
-          "dataSets": [{
-            "timeSeriesQuery": {
-              "timeSeriesFilter": {
-                "filter": "metric.type=\"compute.googleapis.com/instance/disk/read_bytes_count\" resource.type=\"gce_instance\"",
-                "aggregation": {
-                  "alignmentPeriod": "60s",
-                  "perSeriesAligner": "ALIGN_RATE"
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"compute.googleapis.com/instance/disk/read_bytes_count\" resource.type=\"gce_instance\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
                 }
-              }
+              },
+              "plotType": "LINE",
+              "legendTemplate": "read"
             },
-            "plotType": "LINE"
-          }]
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"compute.googleapis.com/instance/disk/write_bytes_count\" resource.type=\"gce_instance\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              },
+              "plotType": "LINE",
+              "legendTemplate": "write"
+            }
+          ]
         }
       },
       {
         "title": "Network Traffic",
         "xyChart": {
-          "dataSets": [{
-            "timeSeriesQuery": {
-              "timeSeriesFilter": {
-                "filter": "metric.type=\"compute.googleapis.com/instance/network/received_bytes_count\" resource.type=\"gce_instance\"",
-                "aggregation": {
-                  "alignmentPeriod": "60s",
-                  "perSeriesAligner": "ALIGN_RATE"
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"compute.googleapis.com/instance/network/received_bytes_count\" resource.type=\"gce_instance\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
                 }
-              }
+              },
+              "plotType": "LINE",
+              "legendTemplate": "received"
             },
-            "plotType": "LINE"
-          }]
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"compute.googleapis.com/instance/network/sent_bytes_count\" resource.type=\"gce_instance\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              },
+              "plotType": "LINE",
+              "legendTemplate": "sent"
+            }
+          ]
         }
       }
     ]
@@ -200,7 +236,7 @@ DASHBOARD
 
 ### Application Dashboard
 
-For Cloud Run or GKE applications:
+For Cloud Run applications:
 
 ```bash
 # Create an application performance dashboard
@@ -325,11 +361,9 @@ gcloud monitoring policies create \
   --display-name="High CPU Utilization" \
   --condition-display-name="CPU > 85% for 5 minutes" \
   --condition-filter='metric.type="compute.googleapis.com/instance/cpu/utilization" resource.type="gce_instance"' \
-  --condition-threshold-value=0.85 \
-  --condition-comparison=COMPARISON_GT \
-  --condition-duration=300s \
-  --aggregation-alignment-period=60s \
-  --aggregation-per-series-aligner=ALIGN_MEAN \
+  --if='> 0.85' \
+  --duration=300s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_MEAN"}' \
   --notification-channels=CHANNEL_ID \
   --project=my-project
 
@@ -337,10 +371,10 @@ gcloud monitoring policies create \
 gcloud monitoring policies create \
   --display-name="Disk Usage High" \
   --condition-display-name="Disk usage > 80%" \
-  --condition-filter='metric.type="agent.googleapis.com/disk/percent_used" resource.type="gce_instance"' \
-  --condition-threshold-value=80 \
-  --condition-comparison=COMPARISON_GT \
-  --condition-duration=300s \
+  --condition-filter='metric.type="agent.googleapis.com/disk/percent_used" resource.type="gce_instance" metric.labels.state="used"' \
+  --if='> 80' \
+  --duration=300s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_MEAN"}' \
   --notification-channels=CHANNEL_ID \
   --project=my-project
 ```
@@ -350,27 +384,51 @@ gcloud monitoring policies create \
 ```bash
 # Alert on high error rate for Cloud Run
 gcloud monitoring policies create \
-  --display-name="Cloud Run High Error Rate" \
-  --condition-display-name="5xx error rate > 5%" \
-  --condition-filter='metric.type="run.googleapis.com/request_count" resource.type="cloud_run_revision" metric.labels.response_code_class="5xx"' \
-  --condition-threshold-value=0.05 \
-  --condition-comparison=COMPARISON_GT \
-  --condition-duration=300s \
-  --aggregation-alignment-period=300s \
-  --aggregation-per-series-aligner=ALIGN_RATE \
-  --notification-channels=CHANNEL_ID \
-  --project=my-project
+  --policy-from-file=/dev/stdin \
+  --project=my-project << 'POLICY'
+{
+  "displayName": "Cloud Run High Error Rate",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "5xx error rate > 5%",
+      "conditionThreshold": {
+        "filter": "metric.type=\"run.googleapis.com/request_count\" resource.type=\"cloud_run_revision\" metric.labels.response_code_class=\"5xx\"",
+        "denominatorFilter": "metric.type=\"run.googleapis.com/request_count\" resource.type=\"cloud_run_revision\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": ["resource.label.service_name"]
+          }
+        ],
+        "denominatorAggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": ["resource.label.service_name"]
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0.05,
+        "duration": "300s"
+      }
+    }
+  ],
+  "notificationChannels": ["projects/my-project/notificationChannels/CHANNEL_ID"]
+}
+POLICY
 
 # Alert on high latency
 gcloud monitoring policies create \
   --display-name="Cloud Run High Latency" \
   --condition-display-name="p99 latency > 2 seconds" \
   --condition-filter='metric.type="run.googleapis.com/request_latencies" resource.type="cloud_run_revision"' \
-  --condition-threshold-value=2000 \
-  --condition-comparison=COMPARISON_GT \
-  --condition-duration=300s \
-  --aggregation-alignment-period=60s \
-  --aggregation-per-series-aligner=ALIGN_PERCENTILE_99 \
+  --if='> 2000' \
+  --duration=300s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_PERCENTILE_99"}' \
   --notification-channels=CHANNEL_ID \
   --project=my-project
 ```
@@ -398,6 +456,7 @@ def record_order_processed(order_value, processing_time_ms):
     series = monitoring_v3.TimeSeries()
     series.metric.type = "custom.googleapis.com/orders/processed_count"
     series.resource.type = "global"
+    series.resource.labels["project_id"] = "my-project"
     point = monitoring_v3.Point({
         "interval": interval,
         "value": {"int64_value": 1},
@@ -409,6 +468,7 @@ def record_order_processed(order_value, processing_time_ms):
     series2 = monitoring_v3.TimeSeries()
     series2.metric.type = "custom.googleapis.com/orders/processing_time"
     series2.resource.type = "global"
+    series2.resource.labels["project_id"] = "my-project"
     point2 = monitoring_v3.Point({
         "interval": interval,
         "value": {"double_value": processing_time_ms},
