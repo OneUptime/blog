@@ -43,6 +43,7 @@ Start by building the Cloud Run services that handle specific types of security 
 
 import json
 import os
+import re
 from flask import Flask, request
 from google.cloud import compute_v1
 from google.cloud import logging as cloud_logging
@@ -80,8 +81,11 @@ def handle_event():
 
     # Extract the firewall rule details
     resource_name = audit_log.get("resourceName", "")
-    project_id = resource_name.split("/")[1]
-    firewall_name = resource_name.split("/")[-1]
+    match = re.search(r"projects/([^/]+)/global/firewalls/([^/]+)", resource_name)
+    if not match:
+        return "Could not determine firewall rule", 200
+
+    project_id, firewall_name = match.groups()
 
     # Check if the rule violates security policy
     fw_client = compute_v1.FirewallsClient()
@@ -96,7 +100,7 @@ def handle_event():
     if violations:
         # Disable the firewall rule
         firewall.disabled = True
-        operation = fw_client.patch(
+        fw_client.patch(
             project=project_id,
             firewall=firewall_name,
             firewall_resource=firewall,
@@ -172,6 +176,7 @@ if __name__ == "__main__":
 # storage_remediation/main.py
 import json
 import os
+import re
 from flask import Flask, request
 from google.cloud import storage
 
@@ -184,8 +189,8 @@ def handle_event():
     audit_log = envelope.get("protoPayload", {})
     method = audit_log.get("methodName", "")
 
-    # Process bucket IAM and ACL changes
-    if "setIamPolicy" not in method and "BucketAccessControls" not in method:
+    # Process bucket IAM policy changes
+    if method not in ("storage.buckets.setIamPolicy", "storage.buckets.setIamPermissions"):
         return "Ignored", 200
 
     resource_name = audit_log.get("resourceName", "")
@@ -198,7 +203,7 @@ def handle_event():
     bucket = client.bucket(bucket_name)
 
     # Check for public access
-    policy = bucket.get_iam_policy()
+    policy = bucket.get_iam_policy(requested_policy_version=3)
     public_bindings = find_public_bindings(policy)
 
     if public_bindings:
@@ -243,6 +248,16 @@ def remove_public_access(bucket, policy, public_bindings):
 
     policy.bindings = new_bindings
     bucket.set_iam_policy(policy)
+
+def extract_bucket_name(resource_name):
+    """Extract the bucket name from an audit log resource name."""
+    match = re.search(r"buckets/([^/]+)", resource_name)
+    return match.group(1) if match else None
+
+def notify_security_team(message):
+    """Send notification to security team."""
+    # Implement your notification mechanism here
+    print(f"SECURITY ALERT: {message}")
 ```
 
 ## Step 2: Deploy the Cloud Run Services
@@ -272,19 +287,58 @@ gcloud run deploy storage-remediation \
 Create Eventarc triggers that route the right audit log events to the right remediation service.
 
 ```bash
-# Grant Eventarc permissions
+# Grant the trigger identity permission to receive events and invoke Cloud Run
 gcloud projects add-iam-policy-binding PROJECT_ID \
   --member="serviceAccount:security-remediation@PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/eventarc.eventReceiver"
 
+gcloud projects add-iam-policy-binding PROJECT_ID \
+  --member="serviceAccount:security-remediation@PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+
+# Grant the runtime identity permission to perform the remediations
+gcloud projects add-iam-policy-binding PROJECT_ID \
+  --member="serviceAccount:security-remediation@PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/compute.securityAdmin"
+
+gcloud projects add-iam-policy-binding PROJECT_ID \
+  --member="serviceAccount:security-remediation@PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/storage.admin"
+
+gcloud projects add-iam-policy-binding PROJECT_ID \
+  --member="serviceAccount:security-remediation@PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/logging.logWriter"
+
+gcloud projects add-iam-policy-binding PROJECT_ID \
+  --member="serviceAccount:security-remediation@PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/datastore.user"
+
 # Trigger for firewall changes
-gcloud eventarc triggers create firewall-change-trigger \
+gcloud eventarc triggers create firewall-insert-trigger \
   --location=us-central1 \
   --destination-run-service=firewall-remediation \
   --destination-run-region=us-central1 \
   --event-filters="type=google.cloud.audit.log.v1.written" \
   --event-filters="serviceName=compute.googleapis.com" \
   --event-filters="methodName=v1.compute.firewalls.insert" \
+  --service-account=security-remediation@PROJECT_ID.iam.gserviceaccount.com
+
+gcloud eventarc triggers create firewall-update-trigger \
+  --location=us-central1 \
+  --destination-run-service=firewall-remediation \
+  --destination-run-region=us-central1 \
+  --event-filters="type=google.cloud.audit.log.v1.written" \
+  --event-filters="serviceName=compute.googleapis.com" \
+  --event-filters="methodName=v1.compute.firewalls.update" \
+  --service-account=security-remediation@PROJECT_ID.iam.gserviceaccount.com
+
+gcloud eventarc triggers create firewall-patch-trigger \
+  --location=us-central1 \
+  --destination-run-service=firewall-remediation \
+  --destination-run-region=us-central1 \
+  --event-filters="type=google.cloud.audit.log.v1.written" \
+  --event-filters="serviceName=compute.googleapis.com" \
+  --event-filters="methodName=v1.compute.firewalls.patch" \
   --service-account=security-remediation@PROJECT_ID.iam.gserviceaccount.com
 
 # Trigger for storage IAM changes
@@ -294,7 +348,7 @@ gcloud eventarc triggers create storage-iam-trigger \
   --destination-run-region=us-central1 \
   --event-filters="type=google.cloud.audit.log.v1.written" \
   --event-filters="serviceName=storage.googleapis.com" \
-  --event-filters="methodName=storage.setIamPermissions" \
+  --event-filters="methodName=storage.buckets.setIamPolicy" \
   --service-account=security-remediation@PROJECT_ID.iam.gserviceaccount.com
 ```
 
@@ -303,6 +357,7 @@ gcloud eventarc triggers create storage-iam-trigger \
 Self-healing systems need safety controls to prevent remediation loops and unintended side effects.
 
 ```python
+from datetime import datetime, timezone
 from google.cloud import firestore
 
 # Use Firestore to track remediation actions and prevent loops
@@ -316,14 +371,14 @@ def should_remediate(resource_id, cooldown_seconds=300):
     if doc.exists:
         last_action = doc.to_dict().get("last_remediation")
         if last_action:
-            elapsed = (datetime.utcnow() - last_action).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - last_action).total_seconds()
             if elapsed < cooldown_seconds:
                 # Skip remediation - we just fixed this
                 return False
 
     # Record this remediation
     doc_ref.set({
-        "last_remediation": datetime.utcnow(),
+        "last_remediation": datetime.now(timezone.utc),
         "count": firestore.Increment(1),
     }, merge=True)
 
