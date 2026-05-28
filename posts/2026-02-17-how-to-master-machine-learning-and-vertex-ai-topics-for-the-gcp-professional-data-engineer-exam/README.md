@@ -88,30 +88,28 @@ Vertex AI is the unified ML platform on GCP. For the exam, understand the key co
 ### Datasets and Data Labeling
 
 Before training, you need labeled data. Vertex AI provides:
-- **Managed datasets**: Store and version your training data
-- **Data Labeling Service**: Human labeling workforce for images, text, and video
+- **Managed datasets**: Associate prepared data in Cloud Storage or BigQuery; Vertex AI snapshots the data when training begins
+- **Console labeling and partner labeling solutions**: The Vertex AI Data Labeling Service was shut down in 2024
 
 ### AutoML
 
 AutoML trains models without code. Support for:
 - **Image classification and object detection**
-- **Text classification, extraction, and sentiment**
 - **Tabular regression and classification**
-- **Video classification and tracking**
+- **Text and video tasks**: AutoML Text and AutoML Video have been shut down; use Gemini prompts and tuning for new text and video customization
 
-```bash
-# Create a tabular dataset in Vertex AI
+```python
+# Create a tabular dataset in Vertex AI from BigQuery
+from google.cloud import aiplatform
 
-gcloud ai datasets create \
-  --region=us-central1 \
-  --display-name=customer-churn \
-  --metadata-schema-uri=gs://google-cloud-aiplatform/schema/dataset/metadata/tabular_1.0.0.yaml
+aiplatform.init(project='my-project', location='us-central1')
 
-# Import data from BigQuery
-gcloud ai datasets import customer-churn \
-  --region=us-central1 \
-  --import-schema-uri=gs://google-cloud-aiplatform/schema/dataset/ioformat/tabular_io_format_1.0.0.yaml \
-  --source=bq://my-project.my_dataset.training_data
+dataset = aiplatform.TabularDataset.create(
+    display_name='customer-churn',
+    bq_source='bq://my-project.my_dataset.training_data',
+)
+
+dataset.wait()
 ```
 
 ### Custom Training
@@ -128,13 +126,14 @@ from sklearn.metrics import accuracy_score
 from google.cloud import storage, bigquery
 import joblib
 import os
+import tempfile
 
 def train_model(args):
     """Train a custom model and save to GCS."""
 
     # Load data from BigQuery
     client = bigquery.Client()
-    query = f"SELECT * FROM {args.training_data}"
+    query = f"SELECT * FROM `{args.training_data}`"
     df = client.query(query).to_dataframe()
 
     # Split features and labels
@@ -158,8 +157,22 @@ def train_model(args):
     print(f'Accuracy: {accuracy}')
 
     # Save the model to the output directory
-    model_path = os.path.join(args.model_dir, 'model.joblib')
-    joblib.dump(model, model_path)
+    if not args.model_dir:
+        raise ValueError('Set --model-dir to a local path or gs:// path.')
+
+    if args.model_dir.startswith('gs://'):
+        bucket_name, prefix = args.model_dir[5:].split('/', 1)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            local_path = os.path.join(tmpdir, 'model.joblib')
+            joblib.dump(model, local_path)
+
+            bucket = storage.Client().bucket(bucket_name)
+            blob = bucket.blob(os.path.join(prefix, 'model.joblib'))
+            blob.upload_from_filename(local_path)
+    else:
+        os.makedirs(args.model_dir, exist_ok=True)
+        model_path = os.path.join(args.model_dir, 'model.joblib')
+        joblib.dump(model, model_path)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -180,7 +193,7 @@ gcloud ai custom-jobs create \
   --region=us-central1 \
   --display-name=churn-model-training \
   --worker-pool-spec=machine-type=n1-standard-4,replica-count=1,container-image-uri=us-docker.pkg.dev/my-project/ml/training:latest \
-  --args="--training-data=my-project.my_dataset.training_data,--n-estimators=200,--learning-rate=0.05"
+  --args="--training-data=my-project.my_dataset.training_data,--model-dir=gs://my-bucket/models/churn-model/,--n-estimators=200,--learning-rate=0.05"
 ```
 
 ### Model Deployment and Prediction
@@ -192,7 +205,7 @@ After training, deploy the model for online or batch predictions:
 gcloud ai models upload \
   --region=us-central1 \
   --display-name=churn-model-v1 \
-  --container-image-uri=us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-0:latest \
+  --container-image-uri=us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-5:latest \
   --artifact-uri=gs://my-bucket/models/churn-model/
 
 # Create an endpoint
@@ -219,8 +232,10 @@ Vertex AI Feature Store is a centralized repository for ML features. For the exa
 - **Feature reuse**: Teams can share features across models
 - **Point-in-time lookups**: Avoid data leakage during training by getting features as they were at a specific time
 
+Vertex AI Feature Store (Legacy) used featurestores, entity types, and features. It is deprecated and scheduled for shutdown on February 17, 2027, but you might still see the legacy hierarchy in older materials:
+
 ```bash
-# Create a feature store
+# Create a legacy feature store
 gcloud ai featurestores create my-feature-store \
   --region=us-central1 \
   --online-serving-config=fixed-node-count=1
@@ -245,7 +260,7 @@ The exam tests MLOps concepts - automating the ML lifecycle:
 
 ```python
 # vertex_pipeline.py - Example Vertex AI Pipeline using Kubeflow SDK
-from kfp.v2 import dsl, compiler
+from kfp import dsl, compiler
 from google_cloud_pipeline_components.v1.dataset import TabularDatasetCreateOp
 from google_cloud_pipeline_components.v1.automl.training_job import AutoMLTabularTrainingJobRunOp
 
@@ -305,17 +320,17 @@ Answer: Vertex AI Pipelines with automated training, evaluation, and conditional
 
 "The team is seeing different predictions in production than in testing because features are computed differently."
 
-Answer: Vertex AI Feature Store. Centralize feature computation so the same features are used for both training and serving.
+Answer: Vertex AI Feature Store, or Vertex AI Feature Store (Legacy) for older deployments. Centralize feature computation so the same features are used for both training and serving.
 
 ## Key Points for the Exam
 
 1. BigQuery ML is for analysts who want ML without leaving SQL.
 2. AutoML is for teams without deep ML expertise who need custom models.
 3. Custom training on Vertex AI is for ML engineers who need full control.
-4. Feature Store solves the training-serving skew problem.
+4. Feature Store helps solve the training-serving skew problem.
 5. Vertex AI Pipelines automate the ML lifecycle (MLOps).
 6. Know the difference between online prediction (low latency, one at a time) and batch prediction (high throughput, many at once).
-7. Model monitoring detects data drift and concept drift in production.
+7. Model monitoring detects feature skew and drift in production.
 
 ## Wrapping Up
 
