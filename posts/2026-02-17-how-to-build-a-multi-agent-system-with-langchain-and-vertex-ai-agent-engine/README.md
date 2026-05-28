@@ -19,13 +19,13 @@ Consider a customer support scenario. You need one agent that understands billin
 ## Prerequisites
 
 - Google Cloud project with Vertex AI API enabled
-- Python 3.9+
+- Python 3.10+
 - LangChain and Vertex AI packages installed
 
 ```bash
 # Install required packages
 
-pip install langchain langchain-google-vertexai langchain-core google-cloud-aiplatform
+pip install langchain langchain-google-vertexai langchain-core "google-cloud-aiplatform[agent_engines,langchain]>=1.112.0"
 ```
 
 ## Designing the Agent Architecture
@@ -57,12 +57,15 @@ This agent specializes in finding information. It has access to search and retri
 ```python
 from langchain_google_vertexai import ChatVertexAI
 from langchain_core.tools import tool
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
+
+def final_text(result: dict) -> str:
+    """Return the final assistant message from a LangChain agent result."""
+    return result["messages"][-1].content
 
 # Initialize the Gemini model for the research agent
 research_llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+    model_name="gemini-3.5-flash",
     project="your-project-id",
     location="us-central1",
     temperature=0.1,  # Low temperature for factual retrieval
@@ -81,25 +84,12 @@ def lookup_documentation(doc_id: str) -> str:
 
 research_tools = [search_knowledge_base, lookup_documentation]
 
-research_prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are a research specialist. Your job is to find accurate information
+research_agent = create_agent(
+    model=research_llm,
+    tools=research_tools,
+    system_prompt="""You are a research specialist. Your job is to find accurate information
     from the knowledge base. Always cite your sources and provide detailed answers.
-    If you cannot find the information, say so clearly."""),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad"),
-])
-
-research_agent = create_react_agent(
-    llm=research_llm,
-    tools=research_tools,
-    prompt=research_prompt,
-)
-
-research_executor = AgentExecutor(
-    agent=research_agent,
-    tools=research_tools,
-    verbose=True,
-    max_iterations=3,
+    If you cannot find the information, say so clearly.""",
 )
 ```
 
@@ -110,7 +100,7 @@ This agent handles operations that change state - creating tickets, updating rec
 ```python
 # Initialize a separate model instance for the action agent
 action_llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+    model_name="gemini-3.5-flash",
     project="your-project-id",
     location="us-central1",
     temperature=0.0,  # Zero temperature for deterministic actions
@@ -133,25 +123,12 @@ def update_account(account_id: str, field: str, value: str) -> str:
 
 action_tools = [create_ticket, send_notification, update_account]
 
-action_prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are an action specialist. You execute operations like creating tickets,
+action_agent = create_agent(
+    model=action_llm,
+    tools=action_tools,
+    system_prompt="""You are an action specialist. You execute operations like creating tickets,
     sending notifications, and updating records. Always confirm what action you are about
-    to take before executing it. Report the result of each action clearly."""),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad"),
-])
-
-action_agent = create_react_agent(
-    llm=action_llm,
-    tools=action_tools,
-    prompt=action_prompt,
-)
-
-action_executor = AgentExecutor(
-    agent=action_agent,
-    tools=action_tools,
-    verbose=True,
-    max_iterations=3,
+    to take before executing it. Report the result of each action clearly.""",
 )
 ```
 
@@ -165,18 +142,18 @@ The router agent is the coordinator. It receives user input, determines which sp
 def delegate_to_research(query: str) -> str:
     """Delegate a question to the research agent when the user needs information,
     answers to questions, or documentation lookup."""
-    result = research_executor.invoke({"input": query})
-    return result["output"]
+    result = research_agent.invoke({"messages": [{"role": "user", "content": query}]})
+    return final_text(result)
 
 @tool
 def delegate_to_actions(instruction: str) -> str:
     """Delegate to the action agent when something needs to be done - creating tickets,
     sending notifications, or updating records."""
-    result = action_executor.invoke({"input": instruction})
-    return result["output"]
+    result = action_agent.invoke({"messages": [{"role": "user", "content": instruction}]})
+    return final_text(result)
 
 router_llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+    model_name="gemini-3.5-flash",
     project="your-project-id",
     location="us-central1",
     temperature=0.1,
@@ -184,30 +161,15 @@ router_llm = ChatVertexAI(
 
 router_tools = [delegate_to_research, delegate_to_actions]
 
-router_prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are a routing agent that coordinates between specialist agents.
+router_agent = create_agent(
+    model=router_llm,
+    tools=router_tools,
+    system_prompt="""You are a routing agent that coordinates between specialist agents.
     Analyze the user's request and delegate to the appropriate specialist:
     - Use delegate_to_research for questions, information lookup, or documentation needs
     - Use delegate_to_actions for creating tickets, sending notifications, or making changes
     You can call multiple specialists if the request requires both research and action.
-    Combine the results into a clear, helpful response."""),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad"),
-])
-
-router_agent = create_react_agent(
-    llm=router_llm,
-    tools=router_tools,
-    prompt=router_prompt,
-)
-
-router_executor = AgentExecutor(
-    agent=router_agent,
-    tools=router_tools,
-    verbose=True,
-    max_iterations=5,  # Higher limit since it coordinates multiple agents
-    handle_parsing_errors=True,
+    Combine the results into a clear, helpful response.""",
 )
 ```
 
@@ -215,12 +177,14 @@ router_executor = AgentExecutor(
 
 ```python
 # Test with a query that requires both research and action
-result = router_executor.invoke({
-    "input": "I need to understand our refund policy and then create a support ticket for a customer requesting a refund on order #12345",
-    "chat_history": [],
+result = router_agent.invoke({
+    "messages": [{
+        "role": "user",
+        "content": "I need to understand our refund policy and then create a support ticket for a customer requesting a refund on order #12345",
+    }],
 })
 
-print(result["output"])
+print(final_text(result))
 ```
 
 The router will first delegate the policy question to the research agent, then pass the ticket creation to the action agent, and combine both results.
@@ -230,25 +194,33 @@ The router will first delegate the policy question to the research agent, then p
 Vertex AI Agent Engine lets you deploy and manage agents as scalable services. Here is how to register and deploy your multi-agent system.
 
 ```python
-from google.cloud import aiplatform
+import vertexai
 
-# Initialize the AI Platform SDK
-aiplatform.init(project="your-project-id", location="us-central1")
+# Initialize the Vertex AI SDK
+client = vertexai.Client(project="your-project-id", location="us-central1")
 
 # Package your agent for deployment
 # The Agent Engine expects a specific interface
 class MultiAgentApp:
-    def __init__(self):
-        # Initialize all agents during startup
-        self.router = router_executor
+    def set_up(self):
+        # Initialize runtime objects during startup
+        self.router = router_agent
 
     def query(self, user_input: str, session_id: str = None) -> dict:
         """Handle incoming queries through the router agent."""
-        result = self.router.invoke({
-            "input": user_input,
-            "chat_history": [],
-        })
-        return {"response": result["output"]}
+        result = self.router.invoke({"messages": [{"role": "user", "content": user_input}]})
+        return {"response": final_text(result)}
+
+remote_agent = client.agent_engines.create(
+    agent=MultiAgentApp(),
+    config={
+        "requirements": [
+            "google-cloud-aiplatform[agent_engines,langchain]>=1.112.0",
+            "langchain",
+            "langchain-google-vertexai",
+        ],
+    },
+)
 ```
 
 ## Error Handling Between Agents
@@ -260,8 +232,8 @@ When agents delegate to each other, failures can cascade. Implement proper error
 def delegate_to_research_safe(query: str) -> str:
     """Delegate to research agent with error handling."""
     try:
-        result = research_executor.invoke({"input": query})
-        return result["output"]
+        result = research_agent.invoke({"messages": [{"role": "user", "content": query}]})
+        return final_text(result)
     except Exception as e:
         # Return a graceful fallback instead of crashing the whole system
         return f"Research agent encountered an issue: {str(e)}. Unable to retrieve information at this time."
@@ -284,8 +256,8 @@ class AgentTracingHandler(BaseCallbackHandler):
         print(f"[TRACE] Tool output: {output[:200]}...")
 
 # Attach the handler when running the router
-result = router_executor.invoke(
-    {"input": "Check the status of my account"},
+result = router_agent.invoke(
+    {"messages": [{"role": "user", "content": "Check the status of my account"}]},
     config={"callbacks": [AgentTracingHandler()]},
 )
 ```
