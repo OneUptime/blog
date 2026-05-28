@@ -33,16 +33,16 @@ You need a GKE cluster with the right features enabled. Here is how to create on
 gcloud container clusters create multi-tenant-cluster \
   --region us-central1 \
   --num-nodes 3 \
-  --enable-network-policy \
   --enable-ip-alias \
   --workload-pool=PROJECT_ID.svc.id.goog \
   --enable-shielded-nodes \
   --enable-dataplane-v2 \
+  --enable-managed-prometheus \
   --logging=SYSTEM,WORKLOAD \
-  --monitoring=SYSTEM,WORKLOAD
+  --monitoring=SYSTEM
 ```
 
-The key flags here are `--enable-network-policy` (or `--enable-dataplane-v2` which includes it) for network isolation and `--workload-pool` for Workload Identity, which lets you assign GCP service accounts to Kubernetes service accounts per namespace.
+The key flags here are `--enable-dataplane-v2`, which includes Kubernetes Network Policy enforcement, `--workload-pool` for Workload Identity Federation for GKE, which lets you assign IAM service accounts to Kubernetes service accounts per namespace, and `--enable-managed-prometheus` for managed Prometheus collection.
 
 ## Step 1: Create Tenant Namespaces
 
@@ -59,6 +59,9 @@ metadata:
     tenant-id: "acme-corp"
     environment: "production"
     managed-by: "tenant-controller"
+    pod-security.kubernetes.io/enforce: "baseline"
+    pod-security.kubernetes.io/audit: "restricted"
+    pod-security.kubernetes.io/warn: "restricted"
   annotations:
     tenant-name: "Acme Corporation"
     tenant-tier: "enterprise"
@@ -198,16 +201,21 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-## Step 5: Configure Workload Identity Per Tenant
+## Step 5: Configure Workload Identity Federation Per Tenant
 
-Each tenant namespace should have its own GCP service account with only the permissions that tenant needs. Workload Identity makes this clean.
+Each tenant namespace should have its own IAM service account with only the permissions that tenant needs. Workload Identity Federation for GKE makes this clean.
 
 ```bash
-# Create a GCP service account for the tenant
+# Create an IAM service account for the tenant
 gcloud iam service-accounts create tenant-acme-corp \
   --display-name="Acme Corp Tenant SA"
 
-# Grant the Kubernetes service account permission to impersonate the GCP SA
+# Grant the IAM service account only the Google Cloud roles it needs
+gcloud projects add-iam-policy-binding PROJECT_ID \
+  --member "serviceAccount:tenant-acme-corp@PROJECT_ID.iam.gserviceaccount.com" \
+  --role "ROLE_NAME"
+
+# Grant the Kubernetes service account permission to impersonate the IAM service account
 gcloud iam service-accounts add-iam-policy-binding \
   tenant-acme-corp@PROJECT_ID.iam.gserviceaccount.com \
   --role roles/iam.workloadIdentityUser \
@@ -217,14 +225,14 @@ gcloud iam service-accounts add-iam-policy-binding \
 Then annotate the Kubernetes service account.
 
 ```yaml
-# service-account.yaml - Link Kubernetes SA to GCP SA
+# service-account.yaml - Link Kubernetes SA to IAM service account
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: default
   namespace: tenant-acme-corp
   annotations:
-    # This annotation tells GKE which GCP SA to use
+    # This annotation tells GKE which IAM service account to use
     iam.gke.io/gcp-service-account: tenant-acme-corp@PROJECT_ID.iam.gserviceaccount.com
 ```
 
@@ -288,41 +296,40 @@ def create_tenant_namespace(tenant_id, tenant_name, tier):
 
 ## Step 7: Set Up Per-Tenant Monitoring
 
-Use GKE metrics with namespace labels to build tenant-specific dashboards. You can filter Cloud Monitoring metrics by the `namespace` label.
+Use GKE metrics with namespace labels to build tenant-specific dashboards. You can filter Cloud Monitoring GKE system metrics by the `namespace_name` resource label, while Prometheus metrics commonly use the `namespace` label. If you collect kube-state-metrics with Prometheus, you can alert on tenant resource quota consumption.
 
 ```yaml
 # prometheus-rules.yaml - Alerting rules per tenant
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
+apiVersion: monitoring.googleapis.com/v1
+kind: ClusterRules
 metadata:
   name: tenant-alerts
-  namespace: monitoring
 spec:
   groups:
     - name: tenant-resource-usage
       rules:
-        - alert: TenantHighCPUUsage
+        - alert: TenantHighCPUQuotaUsage
           expr: |
-            sum(rate(container_cpu_usage_seconds_total{namespace=~"tenant-.*"}[5m])) by (namespace)
-            / on(namespace) group_left()
+            kube_resourcequota{resource="requests.cpu", type="used", namespace=~"tenant-.*"}
+            / on(namespace)
             kube_resourcequota{resource="requests.cpu", type="hard", namespace=~"tenant-.*"}
             > 0.8
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Tenant {{ $labels.namespace }} is using over 80% of CPU quota"
+            summary: "Tenant {{ $labels.namespace }} is using over 80% of CPU request quota"
 ```
 
 ## Security Considerations
 
 A few things to keep in mind:
 
-- Always enable Pod Security Standards at the namespace level to prevent privilege escalation
+- Always enforce Pod Security Standards with namespace labels to prevent privilege escalation
 - Consider using GKE Sandbox (gVisor) for untrusted tenant workloads
 - Rotate secrets and credentials per tenant independently
 - Audit network policy effectiveness regularly using tools like netpol-viewer
 
 ## Wrapping Up
 
-The namespace-per-tenant pattern on GKE is a proven approach for SaaS multi-tenancy. It balances isolation with operational efficiency. The critical ingredients are network policies for traffic isolation, resource quotas for fair resource sharing, RBAC for access control, and Workload Identity for GCP service isolation. Automate everything through a tenant controller, and you will have a scalable foundation for your SaaS platform.
+The namespace-per-tenant pattern on GKE is a proven approach for SaaS multi-tenancy. It balances isolation with operational efficiency. The critical ingredients are network policies for traffic isolation, resource quotas for fair resource sharing, RBAC for access control, and Workload Identity Federation for GKE to isolate Google Cloud service access. Automate everything through a tenant controller, and you will have a scalable foundation for your SaaS platform.
