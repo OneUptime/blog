@@ -65,15 +65,23 @@ def extract_orders(request):
         headers={'Authorization': f'Bearer {get_api_key()}'}
     )
     response.raise_for_status()
+    orders = response.json()
 
-    # Write the raw JSON response to Cloud Storage
-    blob = bucket.blob(f'orders/{today}/orders.json')
+    # Write newline-delimited JSON so BigQuery can load it directly
+    if isinstance(orders, list):
+        ndjson = '\n'.join(json.dumps(order) for order in orders)
+        order_count = len(orders)
+    else:
+        ndjson = json.dumps(orders)
+        order_count = 1
+
+    blob = bucket.blob(f'orders/{today}/orders.ndjson')
     blob.upload_from_string(
-        json.dumps(response.json()),
-        content_type='application/json'
+        ndjson,
+        content_type='application/x-ndjson'
     )
 
-    return f'Extracted {len(response.json())} orders for {today}', 200
+    return f'Extracted {order_count} orders for {today}', 200
 
 
 def get_api_key():
@@ -85,7 +93,7 @@ def get_api_key():
     return response.payload.data.decode("UTF-8")
 ```
 
-For database sources, use a scheduled export:
+For a MySQL Cloud SQL source, use a scheduled export:
 
 ```bash
 # Export from Cloud SQL to Cloud Storage
@@ -104,21 +112,21 @@ Load the extracted data into BigQuery's raw layer with minimal transformation:
 bq load \
   --source_format=NEWLINE_DELIMITED_JSON \
   --autodetect \
+  --time_partitioning_type=DAY \
   --replace \
   my-project:raw.orders \
-  gs://my-project-raw-data/orders/$(date +%Y-%m-%d)/orders.json
+  gs://my-project-raw-data/orders/$(date +%Y-%m-%d)/orders.ndjson
 
 # Load CSV data
 bq load \
   --source_format=CSV \
-  --skip_leading_rows=1 \
-  --autodetect \
   --replace \
   my-project:raw.customers \
-  gs://my-project-raw-data/customers/$(date +%Y-%m-%d)/customers.csv
+  gs://my-project-raw-data/customers/$(date +%Y-%m-%d)/customers.csv \
+  id:STRING,email:STRING,name:STRING,created_at:STRING,updated_at:STRING
 ```
 
-For a more automated approach, use BigQuery Data Transfer Service:
+For a more automated approach, use BigQuery Data Transfer Service. Create the destination table with its schema first, and make it ingestion-time partitioned if you use `_PARTITIONTIME` for dbt freshness checks, because recurring Cloud Storage transfers for CSV and JSON do not create the table for you:
 
 ```bash
 # Set up a scheduled transfer from Cloud Storage to BigQuery
@@ -127,13 +135,14 @@ bq mk --transfer_config \
   --display_name="Daily Orders Load" \
   --target_dataset=raw \
   --params='{
-    "data_path_template": "gs://my-project-raw-data/orders/*/orders.json",
+    "data_path_template": "gs://my-project-raw-data/orders/*/orders.ndjson",
     "destination_table_name_template": "orders",
     "file_format": "JSON",
     "write_disposition": "APPEND"
-  }' \
-  --schedule="every 24 hours"
+  }'
 ```
+
+The `bq` command creates the Cloud Storage transfer with the default schedule of every 24 hours. Use the Google Cloud console or the BigQuery Data Transfer Service API if you need a different schedule.
 
 ## Step 3: Set Up dbt for BigQuery
 
@@ -146,6 +155,19 @@ pip install dbt-bigquery
 # Initialize a new dbt project
 dbt init my_analytics
 cd my_analytics
+```
+
+If you use the `dbt_utils.accepted_range` test later in this guide, add the package and install dependencies:
+
+```yaml
+# packages.yml
+packages:
+  - package: dbt-labs/dbt_utils
+    version: ">=1.0.0"
+```
+
+```bash
+dbt deps
 ```
 
 Configure the BigQuery connection in your dbt profile:
@@ -376,17 +398,18 @@ models:
     columns:
       - name: order_id
         description: "Unique order identifier"
-        tests:
+        data_tests:
           - unique
           - not_null
       - name: customer_id
-        tests:
+        data_tests:
           - not_null
       - name: total_amount
-        tests:
+        data_tests:
           - not_null
           - dbt_utils.accepted_range:
-              min_value: 0
+              arguments:
+                min_value: 0
 ```
 
 ## Step 7: Run and Schedule dbt
@@ -410,9 +433,12 @@ Schedule dbt runs with Cloud Composer or Cloud Scheduler:
 ```bash
 # Use Cloud Scheduler to trigger dbt runs via Cloud Build
 gcloud scheduler jobs create http dbt-daily-run \
+  --location=us-central1 \
   --schedule="0 6 * * *" \
-  --uri="https://cloudbuild.googleapis.com/v1/projects/my-project/triggers/dbt-run:run" \
+  --uri="https://cloudbuild.googleapis.com/v1/projects/my-project/locations/us-central1/triggers/dbt-run:run" \
   --http-method=POST \
+  --headers="Content-Type=application/json" \
+  --message-body='{"projectId":"my-project","triggerId":"dbt-run","source":{"branchName":"main"}}' \
   --oauth-service-account-email=scheduler-sa@my-project.iam.gserviceaccount.com
 ```
 
