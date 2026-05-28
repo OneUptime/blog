@@ -35,10 +35,10 @@ curl -X POST "https://api.pagerduty.com/services" \
   -H "Content-Type: application/json" \
   -d '{
     "service": {
+      "type": "service",
       "name": "GCP Infrastructure",
       "description": "Compute, networking, and storage alerts",
-      "escalation_policy": {"id": "POLICY_ID", "type": "escalation_policy_reference"},
-      "alert_creation": "create_alerts_and_incidents"
+      "escalation_policy": {"id": "POLICY_ID", "type": "escalation_policy_reference"}
     }
   }'
 ```
@@ -49,7 +49,7 @@ Create a notification channel in Cloud Monitoring that sends to PagerDuty.
 
 ```bash
 # Create a PagerDuty notification channel in Cloud Monitoring
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --type=pagerduty \
   --display-name="PagerDuty - GCP Infrastructure" \
   --channel-labels=service_key=YOUR_PAGERDUTY_INTEGRATION_KEY
@@ -59,15 +59,14 @@ Now create alerting policies that use this channel.
 
 ```bash
 # Example: Alert policy for high CPU on Compute Engine instances
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="High CPU - Compute Engine" \
   --condition-display-name="CPU above 90%" \
   --condition-filter='resource.type="gce_instance" AND metric.type="compute.googleapis.com/instance/cpu/utilization"' \
-  --condition-threshold-value=0.9 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --if="> 0.9" \
+  --duration=300s \
   --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
-  --documentation-content="High CPU detected on GCE instance. Check for runaway processes or scaling needs."
+  --documentation="High CPU detected on GCE instance. Check for runaway processes or scaling needs."
 ```
 
 ## Configuring Event Orchestration Rules
@@ -89,7 +88,7 @@ The global router looks at every incoming event and decides which service should
             "label": "Route GKE alerts to Kubernetes team",
             "conditions": [
               {
-                "expression": "event.custom_details.resource_type matches 'k8s_*' or event.custom_details.resource_type matches 'gke_*'"
+                "expression": "event.custom_details.resource_type matches regex '^k8s_.*'"
               }
             ],
             "actions": {
@@ -100,7 +99,7 @@ The global router looks at every incoming event and decides which service should
             "label": "Route Cloud SQL alerts to database team",
             "conditions": [
               {
-                "expression": "event.custom_details.resource_type matches 'cloudsql_*'"
+                "expression": "event.custom_details.resource_type matches regex '^cloudsql_.*'"
               }
             ],
             "actions": {
@@ -111,7 +110,7 @@ The global router looks at every incoming event and decides which service should
             "label": "Route networking alerts to platform team",
             "conditions": [
               {
-                "expression": "event.custom_details.resource_type matches 'https_lb_rule' or event.custom_details.metric_type matches 'loadbalancing*'"
+                "expression": "event.custom_details.resource_type matches 'https_lb_rule' or event.custom_details.metric_type matches regex '^loadbalancing\\.googleapis\\.com/.*'"
               }
             ],
             "actions": {
@@ -132,7 +131,7 @@ The global router looks at every incoming event and decides which service should
 
 ### Service-Level Rules for Deduplication
 
-Within each service, set up rules to deduplicate related alerts. When a GKE node goes down, you do not want separate alerts for each pod that was running on it.
+Within each service, set up rules to assign a stable deduplication key to related alerts. When a GKE node goes down, you do not want separate alerts for each pod that was running on it.
 
 ```json
 {
@@ -145,24 +144,37 @@ Within each service, set up rules to deduplicate related alerts. When a GKE node
             "label": "Deduplicate GKE node alerts",
             "conditions": [
               {
-                "expression": "event.custom_details.resource_type == 'gke_cluster' and event.summary matches part 'node'"
+                "expression": "event.custom_details.resource_type matches 'k8s_node' and event.summary matches part 'node'"
               }
             ],
             "actions": {
-              "alert_grouping": {
-                "type": "content_based",
-                "configuration": {
-                  "fields": ["event.custom_details.cluster_name"]
+              "variables": [
+                {
+                  "name": "cluster_name",
+                  "path": "event.custom_details.resource_labels.cluster_name",
+                  "value": "(.*)",
+                  "type": "regex"
                 },
-                "time_window": 600
-              }
+                {
+                  "name": "node_name",
+                  "path": "event.custom_details.resource_labels.node_name",
+                  "value": "(.*)",
+                  "type": "regex"
+                }
+              ],
+              "extractions": [
+                {
+                  "target": "dedup_key",
+                  "template": "gke-node-{{variables.cluster_name}}-{{variables.node_name}}"
+                }
+              ]
             }
           },
           {
             "label": "Suppress transient CPU spikes during deployments",
             "conditions": [
               {
-                "expression": "event.custom_details.metric_type matches '*cpu*' and event.custom_details.policy_name matches '*deployment*'"
+                "expression": "event.custom_details.metric_type matches part 'cpu' and event.custom_details.policy_name matches part 'deployment'"
               }
             ],
             "actions": {
@@ -173,15 +185,13 @@ Within each service, set up rules to deduplicate related alerts. When a GKE node
             "label": "Escalate critical database alerts immediately",
             "conditions": [
               {
-                "expression": "event.custom_details.resource_type matches 'cloudsql*' and event.severity == 'critical'"
+                "expression": "event.custom_details.resource_type matches regex '^cloudsql_.*' and event.severity matches 'critical'"
               }
             ],
             "actions": {
               "severity": "critical",
-              "priority": "P1",
-              "annotate": {
-                "notes": "Critical database alert - check Cloud SQL instance health immediately"
-              }
+              "priority": "PRIORITY_ID_P1",
+              "annotate": "Critical database alert - check Cloud SQL instance health immediately"
             }
           }
         ]
@@ -200,7 +210,7 @@ Suppress low-priority alerts during maintenance windows or outside business hour
   "label": "Suppress info-level alerts during nightly maintenance",
   "conditions": [
     {
-      "expression": "event.severity == 'info' and now matches 'Mon-Fri 02:00:00-04:00:00 America/Los_Angeles'"
+      "expression": "event.severity matches 'info' and now in Mon,Tue,Wed,Thu,Fri 02:00:00 to 04:00:00 America/Los_Angeles"
     }
   ],
   "actions": {
@@ -218,13 +228,11 @@ Raw GCP alerts often lack the context an on-call engineer needs. Use Event Orche
   "label": "Enrich Cloud SQL alerts with runbook and context",
   "conditions": [
     {
-      "expression": "event.custom_details.resource_type matches 'cloudsql*'"
+      "expression": "event.custom_details.resource_type matches regex '^cloudsql_.*'"
     }
   ],
   "actions": {
-    "annotate": {
-      "notes": "Runbook: https://wiki.internal/runbooks/cloudsql\nDashboard: https://console.cloud.google.com/sql/instances?project=my-project"
-    },
+    "annotate": "Runbook: https://wiki.internal/runbooks/cloudsql\nDashboard: https://console.cloud.google.com/sql/instances?project=my-project",
     "variables": [
       {
         "name": "instance_name",
@@ -233,8 +241,12 @@ Raw GCP alerts often lack the context an on-call engineer needs. Use Event Orche
         "value": ".*:(.*)"
       }
     ],
-    "event_action": "trigger",
-    "severity": "{{#if (event.custom_details.metric_value > 90)}}critical{{else}}warning{{/if}}"
+    "extractions": [
+      {
+        "target": "event.custom_details.instance_name",
+        "template": "{{variables.instance_name}}"
+      }
+    ]
   }
 }
 ```
@@ -274,6 +286,6 @@ Verify the event lands in the correct PagerDuty service with the expected severi
 
 After running Event Orchestration for a few weeks, measure the improvement. Track the number of incidents per on-call shift before and after. Look at the percentage of alerts that get suppressed or deduplicated. Monitor your mean time to acknowledge and resolve.
 
-In practice, teams that implement intelligent event orchestration typically see a 40-60% reduction in alert noise. That translates directly to happier on-call engineers and faster response times for real incidents.
+In practice, teams that implement intelligent event orchestration can reduce alert noise significantly. That translates directly to happier on-call engineers and faster response times for real incidents.
 
 Event Orchestration turns your chaotic stream of GCP alerts into a structured incident management pipeline. The investment in setting up rules pays off quickly, especially as your GCP environment grows and alert volume increases.
