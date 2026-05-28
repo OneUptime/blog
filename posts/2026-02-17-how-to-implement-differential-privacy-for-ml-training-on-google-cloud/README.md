@@ -30,8 +30,9 @@ graph LR
 
 ```bash
 # Install TensorFlow Privacy - Google's DP training library
+# Use Python 3.9-3.11; TensorFlow Privacy 0.9.0 does not publish wheels for Python 3.12+.
 
-pip install tensorflow-privacy tensorflow google-cloud-aiplatform
+pip install "tensorflow-privacy==0.9.0" "tensorflow==2.15.*" google-cloud-aiplatform
 
 # Enable Vertex AI for running training jobs
 gcloud services enable aiplatform.googleapis.com --project=your-project-id
@@ -51,10 +52,30 @@ Here is a complete example training a classification model with differential pri
 
 ```python
 # dp_training.py - Train a model with differential privacy using TF Privacy
+import math
+import os
+
+import dp_accounting
 import tensorflow as tf
-from tensorflow_privacy.privacy.optimizers.dp_optimizers_keras import DPKerasSGDOptimizer
-from tensorflow_privacy.privacy.analysis.compute_dp_sgd_privacy_lib import compute_dp_sgd_privacy
+from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasSGDOptimizer
 import numpy as np
+
+def compute_epsilon(n, batch_size, noise_multiplier, epochs, delta):
+    """Compute epsilon for DP-SGD using the RDP accountant."""
+    sampling_probability = batch_size / n
+    steps = math.ceil(epochs * n / batch_size)
+    orders = [1 + x / 10.0 for x in range(1, 100)] + list(range(11, 256))
+
+    accountant = dp_accounting.rdp.RdpAccountant(orders)
+    event = dp_accounting.SelfComposedDpEvent(
+        dp_accounting.PoissonSampledDpEvent(
+            sampling_probability,
+            dp_accounting.GaussianDpEvent(noise_multiplier),
+        ),
+        steps,
+    )
+    accountant.compose(event)
+    return accountant.get_epsilon_and_optimal_order(delta)
 
 def build_model(input_shape, num_classes):
     """Build a simple neural network for classification.
@@ -81,7 +102,7 @@ def train_with_dp(X_train, y_train, X_test, y_test, dp_config):
     optimizer = DPKerasSGDOptimizer(
         l2_norm_clip=dp_config["l2_norm_clip"],       # Max gradient norm per example
         noise_multiplier=dp_config["noise_multiplier"],  # Noise scale
-        num_microbatches=dp_config["batch_size"],      # Process each example separately
+        num_microbatches=None,                         # Process each example separately
         learning_rate=dp_config["learning_rate"],
     )
 
@@ -104,7 +125,7 @@ def train_with_dp(X_train, y_train, X_test, y_test, dp_config):
     )
 
     # Compute the actual privacy guarantee achieved
-    epsilon = compute_dp_sgd_privacy(
+    epsilon, optimal_order = compute_epsilon(
         n=num_train,
         batch_size=dp_config["batch_size"],
         noise_multiplier=dp_config["noise_multiplier"],
@@ -112,8 +133,11 @@ def train_with_dp(X_train, y_train, X_test, y_test, dp_config):
         delta=dp_config["delta"],
     )
 
-    print(f"\nPrivacy guarantee: epsilon = {epsilon[0]:.2f} at delta = {dp_config['delta']}")
-    return model, history, epsilon
+    if os.environ.get("AIP_MODEL_DIR"):
+        model.save(os.environ["AIP_MODEL_DIR"])
+
+    print(f"\nPrivacy guarantee: epsilon = {epsilon:.2f} at delta = {dp_config['delta']}")
+    return model, history, (epsilon, optimal_order)
 
 # Configuration for DP training
 dp_config = {
@@ -135,7 +159,7 @@ The relationship between privacy (epsilon) and accuracy is a tradeoff. Here is h
 
 ```python
 # privacy_tuning.py - Find the optimal privacy-utility tradeoff
-from tensorflow_privacy.privacy.analysis.compute_dp_sgd_privacy_lib import compute_dp_sgd_privacy
+from dp_training import compute_epsilon
 
 def privacy_utility_sweep(n_train, batch_size, epochs, delta):
     """Sweep noise multiplier values to show the privacy-utility tradeoff.
@@ -148,7 +172,7 @@ def privacy_utility_sweep(n_train, batch_size, epochs, delta):
     noise_values = [0.5, 0.7, 1.0, 1.1, 1.3, 1.5, 2.0, 3.0, 5.0]
 
     for noise_mult in noise_values:
-        epsilon = compute_dp_sgd_privacy(
+        epsilon, _ = compute_epsilon(
             n=n_train,
             batch_size=batch_size,
             noise_multiplier=noise_mult,
@@ -157,16 +181,16 @@ def privacy_utility_sweep(n_train, batch_size, epochs, delta):
         )
 
         # Categorize the privacy level
-        if epsilon[0] < 1:
+        if epsilon < 1:
             level = "Strong"
-        elif epsilon[0] < 5:
+        elif epsilon < 5:
             level = "Moderate"
-        elif epsilon[0] < 10:
+        elif epsilon < 10:
             level = "Weak"
         else:
             level = "Very Weak"
 
-        print(f"{noise_mult:>18.1f} {epsilon[0]:>10.2f} {level:>20}")
+        print(f"{noise_mult:>18.1f} {epsilon:>10.2f} {level:>20}")
 
 # Example sweep for a 100K sample dataset
 privacy_utility_sweep(
@@ -181,15 +205,15 @@ Typical output:
 ```text
     Noise Multiplier    Epsilon        Privacy Level
 --------------------------------------------------
-               0.5      45.21            Very Weak
-               0.7      15.82                 Weak
-               1.0       7.42                 Weak
-               1.1       5.89             Moderate
-               1.3       4.12             Moderate
-               1.5       3.01             Moderate
-               2.0       1.82             Moderate
-               3.0       0.97               Strong
-               5.0       0.42               Strong
+               0.5      13.46            Very Weak
+               0.7       4.01             Moderate
+               1.0       1.61             Moderate
+               1.1       1.35             Moderate
+               1.3       1.03             Moderate
+               1.5       0.84               Strong
+               2.0       0.58               Strong
+               3.0       0.36               Strong
+               5.0       0.20               Strong
 ```
 
 ## Step 3: Run DP Training on Vertex AI
@@ -248,11 +272,13 @@ After training, verify the epsilon guarantee is within your requirements:
 
 ```python
 # validate_privacy.py - Verify the privacy guarantee meets requirements
+from dp_training import compute_epsilon
+
 def validate_privacy_guarantee(training_params, max_epsilon):
     """Check that the achieved privacy guarantee meets the required threshold.
     This should be run as a gate before model deployment."""
 
-    epsilon, optimal_order = compute_dp_sgd_privacy(
+    epsilon, optimal_order = compute_epsilon(
         n=training_params["n_train"],
         batch_size=training_params["batch_size"],
         noise_multiplier=training_params["noise_multiplier"],
