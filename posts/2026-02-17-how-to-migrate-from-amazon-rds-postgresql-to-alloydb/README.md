@@ -25,7 +25,7 @@ The key requirement is network connectivity between AWS (where RDS lives) and GC
 
 ## Prerequisites
 
-- An RDS PostgreSQL instance running version 10 or later
+- An RDS PostgreSQL instance running a DMS-supported version, such as 10.5 or later
 - A GCP project with AlloyDB and DMS APIs enabled
 - Network connectivity between AWS VPC and GCP VPC (VPN or interconnect)
 - The source RDS instance must have logical replication enabled
@@ -42,10 +42,12 @@ aws rds create-db-parameter-group \
   --db-parameter-group-family postgres15 \
   --description "Enable logical replication for DMS migration"
 
-# Set the rds.logical_replication parameter
+# Set the rds.logical_replication parameter and preload pglogical
 aws rds modify-db-parameter-group \
   --db-parameter-group-name logical-replication \
-  --parameters "ParameterName=rds.logical_replication,ParameterValue=1,ApplyMethod=pending-reboot"
+  --parameters \
+    "ParameterName=rds.logical_replication,ParameterValue=1,ApplyMethod=pending-reboot" \
+    "ParameterName=shared_preload_libraries,ParameterValue=pglogical,ApplyMethod=pending-reboot"
 
 # Apply the parameter group to your RDS instance
 aws rds modify-db-instance \
@@ -63,6 +65,16 @@ After the reboot, verify logical replication is active:
 # Connect to RDS and check wal_level
 psql -h my-rds-instance.xxx.us-east-1.rds.amazonaws.com -U postgres -c "SHOW wal_level;"
 # Should return 'logical'
+
+# Check that pglogical was preloaded
+psql -h my-rds-instance.xxx.us-east-1.rds.amazonaws.com -U postgres -c "SHOW shared_preload_libraries;"
+```
+
+DMS also requires the `pglogical` extension in each migrated database and replication privileges for the user in the connection profile:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pglogical;
+GRANT rds_replication TO postgres;
 ```
 
 ## Step 2 - Set Up Network Connectivity
@@ -125,10 +137,9 @@ Create a connection profile for the RDS source:
 
 ```bash
 # Create source connection profile for RDS PostgreSQL
-gcloud database-migration connection-profiles create rds-source \
+gcloud database-migration connection-profiles create postgresql rds-source \
   --region=us-central1 \
   --display-name="Amazon RDS PostgreSQL" \
-  --provider=POSTGRESQL \
   --host=RDS_PRIVATE_IP \
   --port=5432 \
   --username=postgres \
@@ -139,10 +150,9 @@ Create a connection profile for the AlloyDB destination:
 
 ```bash
 # Create destination connection profile for AlloyDB
-gcloud database-migration connection-profiles create alloydb-dest \
+gcloud database-migration connection-profiles create postgresql alloydb-dest \
   --region=us-central1 \
   --display-name="AlloyDB Destination" \
-  --provider=ALLOYDB \
   --alloydb-cluster=migration-target
 ```
 
@@ -159,9 +169,13 @@ gcloud database-migration migration-jobs create rds-to-alloydb \
   --peer-vpc=default
 ```
 
-Start the migration:
+Demote the destination so DMS can use it as a replication target, then start the migration:
 
 ```bash
+# Demote the AlloyDB destination for replication
+gcloud database-migration migration-jobs demote-destination rds-to-alloydb \
+  --region=us-central1
+
 # Start the migration job
 gcloud database-migration migration-jobs start rds-to-alloydb \
   --region=us-central1
@@ -204,7 +218,7 @@ When replication is caught up and you are ready to switch:
 
 1. Put your application in maintenance mode (stop writes to RDS)
 2. Wait for the replication lag to drop to zero
-3. Promote the AlloyDB instance
+3. Promote the migration job, which detaches AlloyDB from the source and promotes it to a primary instance
 
 ```bash
 # Promote AlloyDB as the primary database
