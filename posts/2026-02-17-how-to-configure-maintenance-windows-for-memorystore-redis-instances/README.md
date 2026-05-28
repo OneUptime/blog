@@ -8,7 +8,7 @@ Description: Configure maintenance windows for your Memorystore Redis instances 
 
 ---
 
-Google periodically needs to perform maintenance on Memorystore Redis instances - patching the underlying operating system, updating Redis versions, replacing hardware, and applying security fixes. By default, these maintenance events can happen at any time, which means they might hit during your peak traffic hours. Configuring a maintenance window gives you control over when these updates occur.
+Google periodically needs to perform maintenance on Memorystore Redis instances - patching the underlying operating system, applying Redis patch and minor version updates, replacing hardware, and applying security fixes. By default, these maintenance events can happen at any time, which means they might hit during your peak traffic hours. Configuring a maintenance window gives you control over when these updates occur.
 
 I configure maintenance windows on every production Redis instance I manage. It takes two minutes and prevents the awkward situation where Redis gets patched during your busiest hour. In this post, I will show you how to set up maintenance windows, understand what happens during maintenance, and plan around it.
 
@@ -16,7 +16,7 @@ I configure maintenance windows on every production Redis instance I manage. It 
 
 During a maintenance event, Memorystore applies updates to your Redis instance. The impact depends on your tier:
 
-**Basic Tier:** The instance goes offline briefly while the update is applied. Expect a few minutes of downtime. All connections are dropped and data in memory may be lost.
+**Basic Tier:** The instance goes offline briefly while the update is applied. Expect about 5 minutes of downtime. All connections are dropped, and because Basic Tier is an ephemeral standalone cache, plan for cold restarts and full cache flushes.
 
 **Standard Tier:** Memorystore uses the replication mechanism to minimize downtime. The replica is updated first, then a failover switches traffic to the updated replica, and then the old primary is updated. Impact is similar to a failover - typically under 30 seconds of connection interruption.
 
@@ -82,7 +82,7 @@ Pick your maintenance window based on your traffic patterns. Here is how I appro
 # Query Cloud Monitoring for your Redis operations by hour of day
 # Look for the period with the lowest ops/sec
 gcloud monitoring time-series list \
-  --filter='resource.type="redis_instance" AND metric.type="redis.googleapis.com/stats/calls"' \
+  --filter='resource.type="redis_instance" AND metric.type="redis.googleapis.com/commands/calls"' \
   --interval-end-time=2026-02-17T00:00:00Z \
   --interval-start-time=2026-02-10T00:00:00Z
 ```
@@ -108,12 +108,12 @@ Check your instance's current maintenance settings:
 # View the current maintenance window configuration
 gcloud redis instances describe my-redis \
   --region=us-central1 \
-  --format="table(name,maintenancePolicy.weeklyMaintenanceWindow[].day,maintenancePolicy.weeklyMaintenanceWindow[].startTime.hours)"
+  --format="table(name,maintenancePolicy.maintenanceWindow[].day,maintenancePolicy.maintenanceWindow[].hour)"
 ```
 
 ## Checking Upcoming Maintenance
 
-Google notifies you of upcoming maintenance events. Check for scheduled maintenance:
+If you opt in to maintenance notifications and have a maintenance window set, Google notifies you of upcoming maintenance events. Check for scheduled maintenance:
 
 ```bash
 # List upcoming maintenance events for all Redis instances
@@ -122,7 +122,7 @@ gcloud redis instances list \
   --format="table(name,maintenanceSchedule.startTime,maintenanceSchedule.endTime)"
 ```
 
-You can also check in the Cloud Console under Memorystore > Redis > instance details > Maintenance tab.
+You can also check in the Cloud Console under Memorystore > Redis > instance details > Maintenance section.
 
 ## Preparing for Maintenance
 
@@ -137,6 +137,8 @@ Make sure your application code handles Redis disconnections:
 import redis
 import time
 import logging
+from redis.backoff import ExponentialBackoff
+from redis.retry import Retry
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("redis-client")
@@ -162,8 +164,8 @@ class MaintenanceReadyRedisClient:
             socket_connect_timeout=5,
             # Enable TCP keepalive to detect dead connections
             socket_keepalive=True,
-            # Automatically retry on timeout
-            retry_on_timeout=True,
+            # Automatically retry transient connection and timeout errors
+            retry=Retry(ExponentialBackoff(), 3),
             # Check connection health periodically
             health_check_interval=15
         )
@@ -223,7 +225,7 @@ Before a scheduled maintenance window:
 1. **Verify your application has retry logic** - Redis connections will drop during maintenance
 2. **Check your monitoring alerts are active** - You want to know if something goes wrong
 3. **Review recent changes** - Avoid deploying application changes during the maintenance window
-4. **Warm up the cache after maintenance** - For Basic Tier, data is lost. Consider pre-warming critical cache entries
+4. **Warm up the cache after maintenance** - For Basic Tier, plan for cold restarts and full cache flushes. Consider pre-warming critical cache entries
 
 ### Post-Maintenance Validation
 
@@ -253,7 +255,7 @@ If you want to remove the maintenance window configuration (allowing maintenance
 # Remove the maintenance window - maintenance can happen at any time
 gcloud redis instances update my-redis \
   --region=us-central1 \
-  --clear-maintenance-policy
+  --maintenance-window-any
 ```
 
 I do not recommend this for production instances. It is better to have a window configured even if the timing is not perfect.
