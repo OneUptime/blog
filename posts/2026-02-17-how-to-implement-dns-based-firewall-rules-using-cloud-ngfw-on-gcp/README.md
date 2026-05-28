@@ -26,12 +26,11 @@ Before we start, make sure you have the following in place:
 
 ## Step 1: Enable the Required APIs
 
-First, enable the Cloud NGFW Enterprise API if you have not already done so.
+First, enable the Compute Engine API if you have not already done so.
 
 ```bash
-# Enable the Network Security API and Compute Engine API
+# Enable the Compute Engine API
 
-gcloud services enable networksecurity.googleapis.com
 gcloud services enable compute.googleapis.com
 ```
 
@@ -72,7 +71,7 @@ gcloud compute network-firewall-policies rules create 1000 \
     --global-firewall-policy \
     --direction=EGRESS \
     --action=allow \
-    --dest-fqdns="api.github.com,storage.googleapis.com,registry.npmjs.org" \
+    --dest-fqdns="api.github.com,github.com,registry.npmjs.org" \
     --layer4-configs=tcp:443 \
     --description="Allow HTTPS to approved external services"
 ```
@@ -100,6 +99,7 @@ gcloud compute network-firewall-policies rules create 3000 \
     --global-firewall-policy \
     --direction=EGRESS \
     --action=deny \
+    --dest-ip-ranges=0.0.0.0/0 \
     --layer4-configs=all \
     --description="Default deny for all other outbound traffic"
 ```
@@ -117,9 +117,9 @@ gcloud compute network-firewall-policies rules list \
 
 ## How DNS Resolution Works in Cloud NGFW
 
-Understanding how the DNS resolution works under the hood is important. When you specify FQDNs in your firewall rules, Cloud NGFW does not just do a one-time DNS lookup. It continuously resolves the domain names and updates the associated IP addresses. This means that if a service like `api.github.com` changes its IP addresses, your firewall rules automatically adapt.
+Understanding how the DNS resolution works under the hood is important. When you specify FQDNs in your firewall rules, Cloud NGFW does not just do a one-time DNS lookup. It periodically resolves the domain names and updates the associated IP addresses. This means that if a service like `api.github.com` changes its IP addresses, your firewall rules automatically adapt.
 
-The resolution happens at the Google Cloud infrastructure level, so it does not depend on any DNS settings within your VMs. This is a key difference from approaches where you might try to resolve domains in a script and feed IP addresses into standard firewall rules.
+The resolution follows the Cloud DNS VPC name resolution order for the VPC network that contains the firewall rule targets, so it can use public DNS zones, VPC network-scoped private zones, Cloud DNS response policies, and Compute Engine internal DNS names. This is a key difference from approaches where you might try to resolve domains in a script and feed IP addresses into standard firewall rules.
 
 ## Architecture Overview
 
@@ -128,7 +128,7 @@ Here is how the components fit together.
 ```mermaid
 graph TD
     A[VM Instance] -->|Outbound Request| B[Cloud NGFW]
-    B -->|DNS Resolution| C[Google DNS Infrastructure]
+    B -->|DNS Resolution| C[Cloud DNS VPC Resolution Order]
     C -->|Resolved IPs| B
     B -->|Match Against FQDN Rules| D{Rule Match?}
     D -->|Allow| E[External Service]
@@ -171,7 +171,7 @@ resource "google_compute_network_firewall_policy_rule" "allow_approved" {
     # Specify the destination FQDNs for domain-based filtering
     dest_fqdns = [
       "api.github.com",
-      "storage.googleapis.com",
+      "github.com",
       "registry.npmjs.org"
     ]
 
@@ -192,6 +192,8 @@ resource "google_compute_network_firewall_policy_rule" "default_deny" {
   project         = var.project_id
 
   match {
+    dest_ip_ranges = ["0.0.0.0/0"]
+
     layer4_configs {
       ip_protocol = "all"
     }
@@ -203,11 +205,11 @@ resource "google_compute_network_firewall_policy_rule" "default_deny" {
 
 There are a few things to watch out for when using DNS-based firewall rules.
 
-**Wildcard domains are supported but limited.** You can use patterns like `*.googleapis.com`, but the wildcard only matches one level of subdomain. So `*.googleapis.com` matches `storage.googleapis.com` but not `api.v1.googleapis.com`.
+**Wildcard domains are not supported.** FQDN objects must be fully qualified domain names with at least two labels, such as `api.github.com` or `registry.npmjs.org`, and Cloud NGFW rejects wildcard values like `*.example.com`.
 
 **Rule priority matters.** Lower numbers mean higher priority. Make sure your allow rules have lower priority numbers than your deny rules.
 
-**DNS caching.** The FQDN resolution has its own TTL-based caching. If a domain's IP changes very frequently (more than once every few minutes), there might be brief windows where the old IP is still in the ruleset.
+**DNS caching.** FQDN objects are mapped to IP addresses and programmed into firewall rules. Avoid using FQDN objects with DNS `A` records that have a TTL of less than 90 seconds, because very short TTLs can make the programmed IP set lag behind DNS changes.
 
 **Logging.** Enable firewall rule logging to troubleshoot issues. Without it, you will be guessing why traffic is being dropped.
 
