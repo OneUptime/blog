@@ -22,7 +22,7 @@ First, make sure flow logs are enabled on the subnets you want to analyze.
 gcloud compute networks subnets update production-subnet \
   --region=us-central1 \
   --enable-flow-logs \
-  --logging-aggregation-interval=INTERVAL_10_MIN \
+  --logging-aggregation-interval=interval-10-min \
   --logging-flow-sampling=0.5 \
   --logging-metadata=include-all \
   --project=my-project
@@ -39,7 +39,7 @@ For long-term analysis, a sampling rate of 0.5 (50%) gives you enough data for s
 # Use the same region as your VPC for lower export latency
 bq mk \
   --dataset \
-  --location=US \
+  --location=us-central1 \
   --default_table_expiration=0 \
   --description="VPC Flow Logs for network analysis" \
   my-project:vpc_flow_logs
@@ -90,14 +90,14 @@ bq ls my-project:vpc_flow_logs
 # Count recent records
 bq query --use_legacy_sql=false '
   SELECT COUNT(*) as record_count
-  FROM `my-project.vpc_flow_logs.compute_googleapis_com_vpc_flows_*`
-  WHERE _TABLE_SUFFIX >= FORMAT_DATE("%Y%m%d", DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+  FROM `my-project.vpc_flow_logs.compute_googleapis_com_vpc_flows`
+  WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
 '
 ```
 
 ## Optimizing the Table Structure
 
-The raw export creates tables with nested JSON fields. For frequently used queries, create a materialized view or scheduled query that flattens the data.
+The raw export creates tables with nested JSON fields. For frequently used queries, create a view or scheduled query that flattens the data.
 
 ```sql
 -- Create a flattened view for easier querying
@@ -124,7 +124,7 @@ SELECT
   jsonPayload.dest_location.country AS dest_country,
   resource.labels.subnetwork_name AS subnet
 FROM
-  `my-project.vpc_flow_logs.compute_googleapis_com_vpc_flows_*`
+  `my-project.vpc_flow_logs.compute_googleapis_com_vpc_flows`
 ```
 
 ## Practical Analysis Queries
@@ -200,10 +200,8 @@ FROM
   `my-project.vpc_flow_logs.flows_flat`
 WHERE
   timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-  AND dest_vm IS NULL  -- No destination VM means external traffic
-  AND NOT STARTS_WITH(dest_ip, '10.')
-  AND NOT STARTS_WITH(dest_ip, '172.16.')
-  AND NOT STARTS_WITH(dest_ip, '192.168.')
+  AND dest_vm IS NULL  -- No destination VM metadata is present for most external destinations
+  AND NOT REGEXP_CONTAINS(dest_ip, r'^(10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)')
 GROUP BY
   src_vm, src_ip, dest_ip, dest_port, dest_country
 ORDER BY
@@ -278,9 +276,10 @@ bq query --schedule="every 24 hours" \
       COUNT(DISTINCT jsonPayload.connection.src_ip) AS unique_sources,
       COUNT(DISTINCT jsonPayload.connection.dest_ip) AS unique_destinations
     FROM
-      `my-project.vpc_flow_logs.compute_googleapis_com_vpc_flows_*`
+      `my-project.vpc_flow_logs.compute_googleapis_com_vpc_flows`
     WHERE
-      _TABLE_SUFFIX = FORMAT_DATE("%Y%m%d", DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+      timestamp >= TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+      AND timestamp < TIMESTAMP(CURRENT_DATE())
   '
 ```
 
@@ -288,7 +287,7 @@ bq query --schedule="every 24 hours" \
 
 BigQuery storage costs are relatively low, but query costs can add up if you scan large amounts of data. Use these strategies to keep costs down.
 
-Always filter by partition date. Without a date filter, BigQuery scans all partitions. Use clustered tables if you frequently filter by specific columns like src_ip or dest_ip. Set table expiration policies for data you do not need forever. Use materialized views for frequently run queries.
+Always filter by timestamp. Without a timestamp filter, BigQuery scans all partitions. Use clustered tables if you frequently filter by specific columns like src_ip or dest_ip. Set table expiration policies for data you do not need forever. Use materialized views for frequently run queries.
 
 ```bash
 # Set default table expiration to 90 days for cost control
