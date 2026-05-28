@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud DNS, Route 53, Migration, Networking
 
-Description: Migrate your Amazon Route 53 DNS zones to Google Cloud DNS with zero-downtime strategies including record export, zone transfer, and gradual cutover.
+Description: Migrate your Amazon Route 53 DNS zones to Google Cloud DNS with zero-downtime strategies including record export, validation, and gradual cutover.
 
 ---
 
@@ -63,6 +63,18 @@ def export_hosted_zone(zone_id, output_file):
             if 'Region' in record_set:
                 record['latency_region'] = record_set['Region']
 
+            if 'GeoLocation' in record_set:
+                record['geolocation'] = record_set['GeoLocation']
+
+            if 'MultiValueAnswer' in record_set:
+                record['multivalue_answer'] = record_set['MultiValueAnswer']
+
+            if 'HealthCheckId' in record_set:
+                record['health_check_id'] = record_set['HealthCheckId']
+
+            if 'CidrRoutingConfig' in record_set:
+                record['cidr_routing_config'] = record_set['CidrRoutingConfig']
+
             records.append(record)
 
     with open(output_file, 'w') as f:
@@ -78,17 +90,18 @@ def export_all_zones(output_dir='route53_export'):
     os.makedirs(output_dir, exist_ok=True)
 
     client = boto3.client('route53')
-    zones = client.list_hosted_zones()
+    paginator = client.get_paginator('list_hosted_zones')
 
-    for zone in zones['HostedZones']:
-        zone_id = zone['Id'].split('/')[-1]
-        zone_name = zone['Name'].rstrip('.')
+    for page in paginator.paginate():
+        for zone in page['HostedZones']:
+            zone_id = zone['Id'].split('/')[-1]
+            zone_name = zone['Name'].rstrip('.')
 
-        print(f"Exporting zone: {zone_name} ({zone_id})")
-        export_hosted_zone(
-            zone_id,
-            f"{output_dir}/{zone_name}.json"
-        )
+            print(f"Exporting zone: {zone_name} ({zone_id})")
+            export_hosted_zone(
+                zone_id,
+                f"{output_dir}/{zone_name}.json"
+            )
 
 
 if __name__ == '__main__':
@@ -109,7 +122,7 @@ resource "google_dns_managed_zone" "primary" {
   description = "Primary DNS zone migrated from Route 53"
   project     = var.project_id
 
-  # Enable DNSSEC if you had it on Route 53
+  # Enable DNSSEC if you had it on Route 53 and you are not using Cloud DNS ALIAS records
   dnssec_config {
     state = "on"
   }
@@ -164,7 +177,23 @@ def convert_records(route53_file, zone_name, output_file):
             skipped.append(f"{record['name']} ({record_type})")
             continue
 
-        # Handle alias records - convert to CNAME or A record
+        # Route 53 routing policies need manual mapping to Cloud DNS routing policies.
+        routing_policy_fields = (
+            'weight',
+            'failover',
+            'latency_region',
+            'geolocation',
+            'multivalue_answer',
+            'cidr_routing_config',
+            'health_check_id',
+        )
+        if any(field in record for field in routing_policy_fields):
+            skipped.append(
+                f"{record['name']} ({record_type}) - routing policy requires manual migration"
+            )
+            continue
+
+        # Handle alias records - Cloud DNS has ALIAS only for public zone apex A/AAAA responses
         if 'alias' in record:
             result = convert_alias_record(record, zone_name, i)
             if result:
@@ -211,43 +240,58 @@ resource "google_dns_record_set" "{safe_name}" {{
 
 
 def convert_alias_record(record, zone_name, index):
-    """Convert a Route 53 alias to a Cloud DNS CNAME or A record."""
-    alias_target = record['alias']['dns_name']
+    """Convert a Route 53 alias where there is a safe Cloud DNS equivalent."""
+    alias_target = record['alias']['dns_name'].rstrip('.') + '.'
     name = record['name']
     record_type = record['type']
+    ttl = record.get('ttl', 300)
 
     safe_name = sanitize_name(name, record_type, index)
 
-    if record_type == 'A':
-        # A record alias - convert to CNAME if not zone apex
-        if name == f"{zone_name}.":
-            # Zone apex cannot be CNAME
-            # Need to resolve the alias target to IP addresses
-            return None
-
+    if name == f"{zone_name}." and record_type in ('A', 'AAAA'):
+        # Cloud DNS ALIAS works only in public zones, only at the zone apex,
+        # and is not compatible with DNSSEC.
         return f'''
 resource "google_dns_record_set" "{safe_name}" {{
   name         = "{name}"
-  type         = "CNAME"
-  ttl          = 300
+  type         = "ALIAS"
+  ttl          = {ttl}
   managed_zone = google_dns_managed_zone.primary.name
   project      = var.project_id
 
   rrdatas = ["{alias_target}"]
 }}
 '''
-    else:
+
+    if record_type in ('A', 'AAAA'):
+        # Non-apex A/AAAA aliases can often become CNAMEs, but verify that
+        # no other records exist at the same name.
         return f'''
 resource "google_dns_record_set" "{safe_name}" {{
   name         = "{name}"
   type         = "CNAME"
-  ttl          = 300
+  ttl          = {ttl}
   managed_zone = google_dns_managed_zone.primary.name
   project      = var.project_id
 
   rrdatas = ["{alias_target}"]
 }}
 '''
+
+    if record_type == 'CNAME':
+        return f'''
+resource "google_dns_record_set" "{safe_name}" {{
+  name         = "{name}"
+  type         = "CNAME"
+  ttl          = {ttl}
+  managed_zone = google_dns_managed_zone.primary.name
+  project      = var.project_id
+
+  rrdatas = ["{alias_target}"]
+}}
+'''
+
+    return None
 
 
 def format_rrdatas(record_type, values):
@@ -292,6 +336,7 @@ def lower_ttls(zone_id, target_ttl=60):
 
     paginator = client.get_paginator('list_resource_record_sets')
     changes = []
+    max_previous_ttl = target_ttl
 
     for page in paginator.paginate(HostedZoneId=zone_id):
         for record_set in page['ResourceRecordSets']:
@@ -305,6 +350,7 @@ def lower_ttls(zone_id, target_ttl=60):
 
             current_ttl = record_set.get('TTL', 300)
             if current_ttl > target_ttl:
+                max_previous_ttl = max(max_previous_ttl, current_ttl)
                 changes.append({
                     'Action': 'UPSERT',
                     'ResourceRecordSet': {
@@ -327,7 +373,7 @@ def lower_ttls(zone_id, target_ttl=60):
         print(f"Updated {len(batch)} records")
 
     print(f"Lowered TTLs for {len(changes)} records to {target_ttl}s")
-    print(f"Wait at least {target_ttl * 2}s before switching nameservers")
+    print(f"Wait at least {max_previous_ttl}s before switching nameservers")
 
 
 if __name__ == '__main__':
@@ -361,6 +407,7 @@ Write an automated comparison script:
 # validate_dns.py
 # Compares DNS records between Route 53 and Cloud DNS
 import dns.resolver
+import ipaddress
 import json
 
 def compare_zones(domain, route53_ns, clouddns_ns, records_file):
@@ -374,8 +421,8 @@ def compare_zones(domain, route53_ns, clouddns_ns, records_file):
         name = record['name'].rstrip('.')
         rtype = record['type']
 
-        # Skip NS and SOA
-        if rtype in ('NS', 'SOA'):
+        # Skip records Cloud DNS manages automatically or records that need manual checks.
+        if rtype in ('NS', 'SOA') or 'alias' in record:
             continue
 
         # Query Route 53
@@ -407,13 +454,23 @@ def compare_zones(domain, route53_ns, clouddns_ns, records_file):
 def query_dns(name, rtype, nameserver):
     """Query a specific nameserver for a DNS record."""
     resolver = dns.resolver.Resolver()
-    resolver.nameservers = [nameserver]
+    resolver.nameservers = [nameserver_address(nameserver)]
 
     try:
         answers = resolver.resolve(name, rtype)
         return [str(rdata) for rdata in answers]
     except Exception:
         return []
+
+
+def nameserver_address(nameserver):
+    """Return an IP address for a nameserver name or address."""
+    candidate = nameserver.rstrip('.')
+    try:
+        ipaddress.ip_address(candidate)
+        return candidate
+    except ValueError:
+        return str(dns.resolver.resolve(candidate, 'A')[0])
 ```
 
 ## Step 6: Switch Nameservers
@@ -452,4 +509,4 @@ done
 
 ## Wrapping Up
 
-DNS migration is one of those tasks where preparation makes all the difference. Export everything, recreate it in Cloud DNS, validate thoroughly, lower your TTLs, and only then switch nameservers. The most common mistakes are forgetting to convert Route 53 alias records (which do not exist in Cloud DNS), not lowering TTLs before cutover, and not testing with the actual Cloud DNS nameservers before making the switch. Take your time with this one - rushing a DNS migration is how you get a multi-hour outage.
+DNS migration is one of those tasks where preparation makes all the difference. Export everything, recreate it in Cloud DNS, validate thoroughly, lower your TTLs, and only then switch nameservers. The most common mistakes are forgetting to convert Route 53 alias records to the appropriate Cloud DNS record type, not lowering TTLs before cutover, and not testing with the actual Cloud DNS nameservers before making the switch. Take your time with this one - rushing a DNS migration is how you get a multi-hour outage.
