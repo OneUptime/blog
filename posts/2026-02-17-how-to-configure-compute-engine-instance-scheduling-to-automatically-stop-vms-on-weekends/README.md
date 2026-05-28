@@ -138,11 +138,12 @@ def manage_instances(request):
         zone_name = zone.name
 
         # List instances with the matching label
-        instance_list = instances_client.list(
+        request = compute_v1.ListInstancesRequest(
             project=project,
             zone=zone_name,
-            filter_=f'labels.{label_key}={label_value}'
+            filter=f'labels.{label_key}={label_value}'
         )
+        instance_list = instances_client.list(request=request)
 
         for instance in instance_list:
             try:
@@ -191,6 +192,20 @@ gcloud functions deploy manage-instances \
   --trigger-http \
   --no-allow-unauthenticated \
   --service-account=scheduler-sa@my-project.iam.gserviceaccount.com
+```
+
+Grant the service account permission to start and stop Compute Engine instances, and to invoke the authenticated function:
+
+```bash
+# Allow the function runtime to list, start, and stop VM instances
+gcloud projects add-iam-policy-binding my-project \
+  --member=serviceAccount:scheduler-sa@my-project.iam.gserviceaccount.com \
+  --role=roles/compute.instanceAdmin.v1
+
+# Allow Cloud Scheduler to invoke the private 2nd gen function
+gcloud functions add-invoker-policy-binding manage-instances \
+  --region=us-central1 \
+  --member=serviceAccount:scheduler-sa@my-project.iam.gserviceaccount.com
 ```
 
 ### Set Up Cloud Scheduler Jobs
