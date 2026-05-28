@@ -10,7 +10,7 @@ Description: A practical guide to creating key rings and symmetric encryption ke
 
 Cloud KMS is Google Cloud's managed key management service. It lets you create, manage, and use cryptographic keys without running your own hardware security modules. Whether you need to encrypt application data, protect secrets at rest, or sign digital artifacts, Cloud KMS provides the key infrastructure.
 
-The fundamental building blocks are key rings and crypto keys. A key ring is a logical grouping that lives in a specific location. A crypto key lives inside a key ring and holds the actual key material. Understanding this hierarchy is important because key rings cannot be deleted once created, and the location you choose determines where cryptographic operations happen.
+The fundamental building blocks are key rings and crypto keys. A key ring is a logical grouping that lives in a specific location. A crypto key lives inside a key ring and contains key versions that hold the actual key material. Understanding this hierarchy is important because key rings cannot be deleted once created, and the location you choose determines where cryptographic operations happen.
 
 ## The Key Hierarchy
 
@@ -99,12 +99,11 @@ gcloud kms keys create app-data-key \
   --keyring=my-app-keyring \
   --location=us-central1 \
   --purpose=encryption \
-  --rotation-period=7776000s \
-  --next-rotation-time="2026-05-17T00:00:00Z" \
+  --rotation-period=90d \
   --project=my-project-id
 ```
 
-The rotation period is in seconds. 7776000 seconds is 90 days. Google recommends rotating keys at least every 365 days.
+The rotation period is a duration such as `7776000s` or `90d`. Google recommends rotating symmetric encryption keys automatically on a regular schedule; 90 days is a common example.
 
 ### With a Specific Algorithm
 
@@ -267,7 +266,7 @@ Group related keys in the same key ring. For example, all keys for the payments 
 Cloud KMS has several irreversible operations that catch people off guard:
 
 - **Key rings cannot be deleted.** Once created, they exist forever in your project. Use meaningful names.
-- **Key versions can be destroyed, but not undeleted.** There is a 24-hour scheduled destruction period during which you can cancel, but after that the key material is gone.
+- **Key versions can be destroyed, but not undeleted.** By default, key versions spend 30 days in the scheduled for destruction state before the key material is destroyed. You can configure this duration when creating a key, with 24 hours as the minimum for most keys.
 - **Key locations cannot be changed.** If you create a key ring in us-central1, it stays in us-central1.
 - **Key purpose cannot be changed.** An encryption key cannot be converted to a signing key.
 
