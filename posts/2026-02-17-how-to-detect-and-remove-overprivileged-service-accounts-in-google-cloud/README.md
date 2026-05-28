@@ -24,18 +24,16 @@ gcloud iam service-accounts list \
     --format="table(email,displayName,disabled)"
 ```
 
-For organization-wide visibility, iterate across all projects:
+For visibility across all active projects that your account can access, iterate across the project list:
 
 ```bash
 #!/bin/bash
 # inventory-service-accounts.sh
-# Lists all service accounts across all projects in the organization
-
-ORG_ID="123456789"
+# Lists all service accounts across all accessible active projects
 
 # Get all active projects
 PROJECTS=$(gcloud projects list \
-    --filter="parent.id=${ORG_ID} AND lifecycleState=ACTIVE" \
+    --filter="lifecycleState=ACTIVE" \
     --format="value(projectId)")
 
 echo "Project,ServiceAccount,DisplayName,Disabled"
@@ -73,7 +71,6 @@ For a more comprehensive analysis across the organization:
 # detect_overprivileged_sa.py
 # Detects service accounts with overly broad roles
 
-from google.cloud import resourcemanager_v3
 from google.cloud import asset_v1
 import json
 
@@ -100,7 +97,7 @@ def find_overprivileged_service_accounts(org_id):
 
     request = asset_v1.SearchAllIamPoliciesRequest(
         scope=f"organizations/{org_id}",
-        query="memberTypes:serviceAccount",
+        query="memberTypes=serviceAccount",
         page_size=500
     )
 
@@ -167,7 +164,7 @@ For a deeper analysis, use the Policy Analyzer:
 gcloud policy-intelligence query-activity \
     --project=my-project \
     --activity-type=serviceAccountLastAuthentication \
-    --service-account-email=my-app-sa@my-project.iam.gserviceaccount.com
+    --query-filter='activities.full_resource_name="//iam.googleapis.com/projects/my-project/serviceAccounts/my-app-sa@my-project.iam.gserviceaccount.com"'
 ```
 
 ## Step 4: Check for Service Account Key Usage
@@ -191,6 +188,12 @@ for SA in $(gcloud iam service-accounts list --project=my-project --format="valu
         echo "${SA}: ${KEYS} user-managed keys"
     fi
 done
+
+# Check recent usage for a specific key
+gcloud policy-intelligence query-activity \
+    --project=my-project \
+    --activity-type=serviceAccountKeyLastAuthentication \
+    --query-filter='activities.full_resource_name="//iam.googleapis.com/projects/my-project/serviceAccounts/my-app-sa@my-project.iam.gserviceaccount.com/keys/KEY_ID"'
 ```
 
 ## Step 5: Safely Remove Overprivileged Roles
@@ -227,7 +230,7 @@ Some service accounts are not used at all. Disable them before deleting to ensur
 gcloud policy-intelligence query-activity \
     --project=my-project \
     --activity-type=serviceAccountLastAuthentication \
-    --service-account-email=old-app-sa@my-project.iam.gserviceaccount.com
+    --query-filter='activities.full_resource_name="//iam.googleapis.com/projects/my-project/serviceAccounts/old-app-sa@my-project.iam.gserviceaccount.com"'
 
 # If not used in 90+ days, disable it first
 gcloud iam service-accounts disable \
