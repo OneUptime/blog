@@ -314,7 +314,7 @@ resource "google_pubsub_subscription" "heavy_processor" {
 
   retry_policy {
     minimum_backoff = "60s"    # No point retrying immediately
-    maximum_backoff = "3600s"  # Wait up to 1 hour between retries
+    maximum_backoff = "600s"   # Pub/Sub caps retry backoff at 10 minutes
   }
 
   dead_letter_policy {
@@ -328,16 +328,22 @@ resource "google_pubsub_subscription" "heavy_processor" {
 
 Track these metrics to understand how retries are affecting your system:
 
-- `pubsub.googleapis.com/subscription/num_undelivered_messages` - Growing backlog suggests processing cannot keep up
-- `pubsub.googleapis.com/subscription/oldest_unacked_message_age` - High age means messages are stuck in retry loops
+- `pubsub.googleapis.com/subscription/num_unacked_messages_by_region` - Growing backlog suggests processing cannot keep up
+- `pubsub.googleapis.com/subscription/oldest_unacked_message_age_by_region` - High age means messages are stuck in retry loops
 - `pubsub.googleapis.com/subscription/dead_letter_message_count` - Messages exhausting their retry budget
 
 ```bash
 # Check the oldest unacknowledged message age
-gcloud monitoring read \
-  "pubsub.googleapis.com/subscription/oldest_unacked_message_age" \
-  --filter="resource.labels.subscription_id=event-processor-sub" \
-  --interval-start-time="$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)"
+PROJECT_ID="$(gcloud config get-value project)"
+START_TIME="$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)"
+END_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+curl -s --get \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --data-urlencode 'filter=metric.type="pubsub.googleapis.com/subscription/oldest_unacked_message_age_by_region" AND resource.labels.subscription_id="event-processor-sub"' \
+  --data-urlencode "interval.startTime=${START_TIME}" \
+  --data-urlencode "interval.endTime=${END_TIME}" \
+  "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/timeSeries"
 ```
 
 ## Wrapping Up
