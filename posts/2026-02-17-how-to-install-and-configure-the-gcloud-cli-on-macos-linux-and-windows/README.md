@@ -37,15 +37,14 @@ If you prefer managing packages through Homebrew:
 
 ```bash
 # Install Google Cloud SDK via Homebrew cask
-brew install --cask google-cloud-sdk
+brew update && brew install --cask gcloud-cli
 ```
 
-Homebrew installs the SDK and manages updates for you. After installation, add the SDK components to your PATH by adding these lines to your shell profile:
+Homebrew installs the SDK for you. If you install additional binary components with `gcloud components install`, add the SDK component directory to your PATH:
 
 ```bash
 # Add to ~/.zshrc or ~/.bashrc
-source "$(brew --prefix)/share/google-cloud-sdk/path.zsh.inc"
-source "$(brew --prefix)/share/google-cloud-sdk/completion.zsh.inc"
+export PATH="$(brew --prefix)/share/google-cloud-sdk/bin:$PATH"
 ```
 
 ### Method 3: Manual Download
@@ -68,13 +67,13 @@ tar -xf google-cloud-cli-darwin-arm.tar.gz
 ### Debian/Ubuntu
 
 ```bash
-# Add the Cloud SDK distribution URI as a package source
-echo "deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt cloud-sdk main" | \
-  sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-
 # Import the Google Cloud public key
 curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
-  sudo tee /usr/share/keyrings/cloud.google.asc
+  sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+
+# Add the Cloud SDK distribution URI as a package source
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | \
+  sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
 
 # Update and install the SDK
 sudo apt-get update && sudo apt-get install google-cloud-cli
@@ -93,6 +92,9 @@ gpgcheck=1
 repo_gpgcheck=0
 gpgkey=https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
 EOM
+
+# Install the compatibility library required by the package
+sudo dnf install libxcrypt-compat.x86_64
 
 # Install the SDK
 sudo dnf install google-cloud-cli
@@ -152,7 +154,7 @@ gcloud init
 The init command will:
 1. Open a browser window for authentication
 2. Ask you to select a default project
-3. Ask you to set a default compute region and zone
+3. Ask you to set a default Compute Engine zone if the Compute Engine API is enabled
 
 ### Authenticate Your Account
 
@@ -181,7 +183,7 @@ For applications and client libraries that need to authenticate:
 gcloud auth application-default login
 ```
 
-This creates credentials at `~/.config/gcloud/application_default_credentials.json` that client libraries automatically use.
+On Linux and macOS, this creates credentials at `~/.config/gcloud/application_default_credentials.json` that client libraries automatically use. On Windows, the credentials are stored under `%APPDATA%\gcloud\application_default_credentials.json`.
 
 ## Setting Default Configuration
 
@@ -214,7 +216,7 @@ project = my-project
 
 ## Installing Additional Components
 
-The gcloud CLI has additional components you might need:
+The gcloud CLI has additional components you might need. If you installed with the interactive installer, an archive, Homebrew, or the Windows installer, use the component manager:
 
 ```bash
 # List available components
@@ -229,6 +231,8 @@ gcloud components install gsutil           # Cloud Storage CLI (usually bundled)
 gcloud components install bq               # BigQuery CLI (usually bundled)
 ```
 
+If you installed with APT or DNF/Yum, the component manager is disabled. Install additional components with the same package manager instead, such as `sudo apt-get install google-cloud-cli-gke-gcloud-auth-plugin` or `sudo dnf install google-cloud-cli-gke-gcloud-auth-plugin`.
+
 ## Updating the CLI
 
 Keep your CLI up to date:
@@ -238,14 +242,14 @@ Keep your CLI up to date:
 gcloud components update
 ```
 
-If you installed via a package manager, use that instead:
+If you installed via APT or DNF/Yum, use that instead:
 
 ```bash
 # Debian/Ubuntu
 sudo apt-get update && sudo apt-get upgrade google-cloud-cli
 
-# Homebrew
-brew upgrade --cask google-cloud-sdk
+# DNF/Yum
+sudo dnf upgrade google-cloud-cli
 ```
 
 ## Shell Completion
@@ -269,7 +273,7 @@ source /path/to/google-cloud-sdk/completion.zsh.inc
 ### Fish
 
 ```bash
-# Add to ~/.config/fish/config.fish
+# Add to ~/.config/fish/config.fish to add gcloud to PATH
 source /path/to/google-cloud-sdk/path.fish.inc
 ```
 
