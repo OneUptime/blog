@@ -93,7 +93,7 @@ gcloud compute instances create my-secure-vm \
   --project=my-project-id
 ```
 
-Note: VMs without external IPs need Cloud NAT or Private Google Access to reach the internet for package updates and other outbound traffic.
+Note: VMs without external IPs need Cloud NAT for general outbound internet access, such as package updates from public repositories. Use Private Google Access when the VM only needs private access to Google APIs and services.
 
 ## Step 3: Grant IAP Access Permissions
 
@@ -206,29 +206,25 @@ gcloud compute config-ssh \
   --project=my-project-id
 ```
 
-This creates entries in your SSH config for each VM, and if you add `--tunnel-through-iap`, it will configure IAP tunneling.
+This creates entries in your SSH config for each VM. To force IAP tunneling in SSH config, use a `ProxyCommand` like the example above or generate the exact SSH command with `gcloud compute ssh my-vm --zone=us-central1-a --tunnel-through-iap --dry-run`.
 
 ## Step 7: Add BeyondCorp Access Levels
 
 For additional security, combine IAP tunnel access with BeyondCorp access levels.
 
 ```bash
-# Require a secure device for SSH access
-gcloud iap tcp add-iam-policy-binding \
-  --resource-type=compute \
-  --service=my-vm \
-  --zone=us-central1-a \
+# Require a secure device for SSH access at the project level
+gcloud projects add-iam-policy-binding my-project-id \
   --member="group:sre-team@example.com" \
   --role="roles/iap.tunnelResourceAccessor" \
-  --condition="expression=\"accessPolicies/POLICY_ID/accessLevels/secure-device\" in request.auth.access_levels,title=Require Secure Device" \
-  --project=my-project-id
+  --condition='expression=destination.port == 22 && "accessPolicies/POLICY_ID/accessLevels/secure-device" in request.auth.access_levels,title=Require Secure Device'
 ```
 
 This ensures that even if a user has the right identity, they can only SSH if their device meets the security requirements defined in the access level.
 
 ## Step 8: Audit SSH Access
 
-All IAP tunnel connections are logged in Cloud Audit Logs.
+IAP tunnel access is logged in Cloud Audit Logs when the relevant Data Access logs are enabled.
 
 ```bash
 # View recent IAP tunnel access logs
