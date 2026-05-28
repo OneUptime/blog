@@ -83,6 +83,7 @@ Here is the Python script that reads text from BigQuery, sends it to the Natural
 from google.cloud import language_v1
 from google.cloud import bigquery
 from google.cloud.language_v1 import types
+from datetime import datetime, timezone
 import time
 
 # Initialize clients for both services
@@ -154,7 +155,7 @@ def process_reviews_batch(batch_size=100):
                 "sentiment_score": analysis["sentiment_score"],
                 "sentiment_magnitude": analysis["sentiment_magnitude"],
                 "entities": analysis["entities"],
-                "analyzed_at": "AUTO"
+                "analyzed_at": datetime.now(timezone.utc).isoformat()
             })
 
             # Respect API rate limits
@@ -183,10 +184,11 @@ process_reviews_batch(batch_size=500)
 For production use, you do not want to run this from your laptop. Wrap the processing logic in a Cloud Function that triggers on a schedule.
 
 ```python
+from datetime import datetime, timezone
 import functions_framework
 from google.cloud import language_v1, bigquery
 
-# This function runs on a Cloud Scheduler trigger
+# This function runs when Cloud Scheduler publishes to the function's Pub/Sub trigger
 @functions_framework.cloud_event
 def process_reviews(cloud_event):
     """Cloud Function to process reviews on a schedule."""
@@ -217,13 +219,21 @@ def process_reviews(cloud_event):
         ).document_sentiment
 
         # Insert result directly
-        insert_query = f"""
+        insert_query = """
             INSERT INTO text_analysis.review_analysis
             (review_id, review_text, sentiment_score, sentiment_magnitude, analyzed_at)
-            VALUES ('{row.review_id}', '{row.review_text}',
-                    {sentiment.score}, {sentiment.magnitude}, CURRENT_TIMESTAMP())
+            VALUES (@review_id, @review_text, @sentiment_score, @sentiment_magnitude, @analyzed_at)
         """
-        bq_client.query(insert_query).result()
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("review_id", "STRING", row.review_id),
+                bigquery.ScalarQueryParameter("review_text", "STRING", row.review_text),
+                bigquery.ScalarQueryParameter("sentiment_score", "FLOAT64", sentiment.score),
+                bigquery.ScalarQueryParameter("sentiment_magnitude", "FLOAT64", sentiment.magnitude),
+                bigquery.ScalarQueryParameter("analyzed_at", "TIMESTAMP", datetime.now(timezone.utc)),
+            ]
+        )
+        bq_client.query(insert_query, job_config=job_config).result()
         processed += 1
 
     print(f"Processed {processed} reviews")
