@@ -10,7 +10,7 @@ Description: Learn how to configure GKE maintenance windows and exclusions to co
 
 Google Kubernetes Engine handles a lot of the operational burden of running Kubernetes clusters, including automatic upgrades to keep your nodes and control plane up to date. But if you have ever been surprised by an upgrade happening during peak traffic hours, you know that "automatic" does not always mean "convenient." That is where maintenance windows come in.
 
-Maintenance windows let you tell GKE when it is acceptable to perform automatic maintenance operations - things like node upgrades, control plane upgrades, and security patches. Outside of those windows, GKE will hold off on making changes to your cluster. This gives you the control you need without giving up the convenience of managed upgrades.
+Maintenance windows let you tell GKE when it is acceptable to perform applicable automatic maintenance operations - things like node upgrades, control plane upgrades, and security patches. Outside of those windows, GKE will hold off on those changes to your cluster, although emergency upgrades and some underlying Google Cloud maintenance can still happen outside the window. This gives you the control you need without giving up the convenience of managed upgrades.
 
 ## Why Maintenance Windows Matter
 
@@ -64,7 +64,7 @@ gcloud container clusters update my-cluster \
 
 ## Maintenance Exclusions
 
-Sometimes you need to block maintenance entirely during specific periods - think Black Friday, end-of-quarter processing, or a product launch. Maintenance exclusions let you do exactly that.
+Sometimes you need to block applicable automatic maintenance during specific periods - think Black Friday, end-of-quarter processing, or a product launch. Maintenance exclusions let you do exactly that.
 
 This adds a maintenance exclusion for a one-week period:
 
@@ -73,16 +73,18 @@ This adds a maintenance exclusion for a one-week period:
 gcloud container clusters update my-cluster \
   --zone us-central1-a \
   --add-maintenance-exclusion-name "product-launch" \
-  --add-maintenance-exclusion-start 2026-03-01T00:00:00Z \
-  --add-maintenance-exclusion-end 2026-03-08T00:00:00Z \
+  --add-maintenance-exclusion-start 2026-07-01T00:00:00Z \
+  --add-maintenance-exclusion-end 2026-07-08T00:00:00Z \
   --add-maintenance-exclusion-scope no_upgrades
 ```
 
 The `--add-maintenance-exclusion-scope` flag accepts three values:
 
-- `no_upgrades` - blocks all upgrades (node and control plane)
-- `no_minor_upgrades` - blocks minor version upgrades but allows patch updates
-- `no_minor_or_node_upgrades` - blocks minor upgrades and node upgrades but allows control plane patches
+- `no_upgrades` - blocks all automatic upgrades (node and control plane)
+- `no_minor_upgrades` - blocks automatic minor version upgrades but allows patch updates
+- `no_minor_or_node_upgrades` - blocks automatic minor upgrades and node upgrades but allows control plane patches
+
+For clusters that are not enrolled in a release channel, only the default `no_upgrades` scope is allowed.
 
 ## Configuring with Terraform
 
@@ -106,8 +108,8 @@ resource "google_container_cluster" "primary" {
     # Block maintenance during the end of quarter
     maintenance_exclusion {
       exclusion_name = "end-of-quarter"
-      start_time     = "2026-03-28T00:00:00Z"
-      end_time       = "2026-04-01T00:00:00Z"
+      start_time     = "2026-06-28T00:00:00Z"
+      end_time       = "2026-07-01T00:00:00Z"
       exclusion_options {
         scope = "NO_UPGRADES"
       }
@@ -120,7 +122,7 @@ resource "google_container_cluster" "primary" {
 
 If your cluster is enrolled in a release channel (Rapid, Regular, or Stable), maintenance windows work alongside the channel's upgrade cadence. GKE will still follow the release channel schedule, but it will only apply upgrades during your defined maintenance windows.
 
-One thing to keep in mind: if your maintenance windows are too narrow, upgrades might get delayed significantly. GKE requires a minimum window of at least 48 hours in a 32-day rolling period. If you do not meet this requirement, GKE may override your window for critical security patches.
+One thing to keep in mind: if your maintenance windows are too narrow, upgrades might get delayed significantly. GKE requires at least 48 hours of maintenance availability in a 32-day rolling period, and only contiguous windows of at least four hours count toward that total. GKE may also override your window for critical security patches.
 
 ## Checking Your Current Configuration
 
