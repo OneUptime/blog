@@ -8,11 +8,11 @@ Description: A comprehensive guide to diagnosing and fixing 502 Bad Gateway erro
 
 ---
 
-A 502 Bad Gateway from your Google Cloud Load Balancer means the load balancer received an invalid response from the backend, or could not connect to the backend at all. This is one of the most common load balancer errors, and it can have a dozen different causes. Let me walk through the systematic approach to finding and fixing the problem.
+A 502 Bad Gateway from your Google Cloud Application Load Balancer means the load balancer received an invalid response from the backend, or could not connect to the backend at all. For newer global and regional external Application Load Balancers, some load balancer-generated failures might appear as other 5XX codes such as 503 or 504, while classic Application Load Balancers often report these failures as 502. Let me walk through the systematic approach to finding and fixing the problem.
 
 ## Understanding 502 Errors in GCP
 
-Google Cloud Load Balancers generate 502 errors in these situations:
+Google Cloud Application Load Balancers can generate 502 or related 5XX errors in these situations:
 
 - The backend closed the connection before sending a response
 - The backend sent a malformed HTTP response
@@ -33,7 +33,7 @@ gcloud compute backend-services get-health my-backend-service \
     --project=my-project
 ```
 
-If all backends show `UNHEALTHY`, the load balancer has nowhere to send traffic and will return 502.
+If all backends show `UNHEALTHY`, the load balancer has nowhere to send traffic and can return a load balancer-generated 5XX error.
 
 ```bash
 # Check the health check configuration
@@ -82,7 +82,7 @@ gcloud logging read \
     --format="json(httpRequest, jsonPayload.statusDetails, jsonPayload.backendTargetProjectNumber)"
 ```
 
-The `statusDetails` field is key - it tells you exactly why the 502 happened:
+The `statusDetails` field is key - it tells you why the load balancer generated the 5XX response:
 
 - `backend_connection_closed_before_data_sent_to_client` - backend closed the connection
 - `backend_timeout` - backend did not respond within the timeout
@@ -155,7 +155,7 @@ Also check if the backend is overloaded:
 # Check backend CPU and request counts
 gcloud monitoring time-series list \
     --filter='resource.type="gce_instance" AND metric.type="compute.googleapis.com/instance/cpu/utilization"' \
-    --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+    --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
     --project=my-project
 ```
 
@@ -262,11 +262,12 @@ flowchart TD
 ## Monitoring
 
 ```bash
-# Create an alert for 502 error rate
+# Create an alert for 502 responses
 gcloud alpha monitoring policies create \
-    --display-name="LB 502 Error Rate" \
-    --condition-display-name="502 rate > 1%" \
-    --condition-filter='resource.type="http_load_balancer" AND metric.type="loadbalancing.googleapis.com/https/request_count" AND metric.labels.response_code="502"' \
+    --display-name="LB 502 Responses" \
+    --condition-display-name="502 responses > 10" \
+    --condition-filter='resource.type="https_lb_rule" AND metric.type="loadbalancing.googleapis.com/https/request_count" AND metric.labels.response_code=502' \
+    --if='> 10' \
     --duration="300s" \
     --project=my-project
 ```
