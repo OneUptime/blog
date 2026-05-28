@@ -126,7 +126,7 @@ BEGIN
     IF assertion_status = 'fail' AND p_severity = 'error' THEN
         RAISE USING MESSAGE = CONCAT(
             'Data quality assertion failed: ', p_assertion_name,
-            ' (', fail_count, ' failing rows)'
+            ' (', CAST(fail_count AS STRING), ' failing rows)'
         );
     END IF;
 END;
@@ -204,7 +204,7 @@ WHERE customer_id IS NULL
 Check that data is not stale:
 
 ```sql
--- Freshness: the most recent order should be within the last 24 hours
+-- Freshness: the most recent order should not be older than yesterday
 SELECT
     MAX(order_date) AS latest_order_date,
     DATE_DIFF(CURRENT_DATE(), MAX(order_date), DAY) AS days_stale
@@ -278,12 +278,13 @@ WHERE pct_of_total > 5.0
 Set up a BigQuery scheduled query to run your assertions after your data pipeline completes:
 
 ```bash
-# Schedule the quality check suite to run daily at 7 AM UTC
+# Schedule the quality check suite to run daily just after 7 AM UTC
 
 # This should run after your data pipeline finishes
 bq query \
   --use_legacy_sql=false \
-  --schedule='every day 07:00' \
+  --target_dataset=data_quality \
+  --schedule='every day 07:03' \
   --display_name='Daily Data Quality Checks' \
   < quality_checks.sql
 ```
@@ -324,12 +325,19 @@ ORDER BY check_date
 Use Cloud Monitoring to alert when assertions fail. Create a log-based metric that fires when the quality check procedure raises an error:
 
 ```bash
-# Create a notification channel (e.g., email or Slack)
-# Then create an alert policy based on BigQuery job failures
+# Create a log-based metric for BigQuery assertion failures
+gcloud logging metrics create data_quality_assertion_failures \
+  --description="Count of failed BigQuery data quality assertions" \
+  --log-filter='resource.type="bigquery_project" AND severity>=ERROR AND protoPayload.status.message:"Data quality assertion failed"'
+
+# Create a notification channel (e.g., email or Slack), then create
+# an alert policy based on the log-based metric
 gcloud monitoring policies create \
   --display-name="Data Quality Alert" \
   --condition-display-name="Quality assertion failed" \
-  --condition-filter='resource.type="bigquery_project" AND severity="ERROR" AND textPayload:"Data quality assertion failed"' \
+  --condition-filter='metric.type="logging.googleapis.com/user/data_quality_assertion_failures" AND resource.type="bigquery_project"' \
+  --if='> 0' \
+  --duration='60s' \
   --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
