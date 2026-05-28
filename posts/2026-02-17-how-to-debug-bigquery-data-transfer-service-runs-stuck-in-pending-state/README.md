@@ -55,7 +55,6 @@ The transfer log messages often contain the actual reason the run cannot start.
 ```bash
 # Fetch transfer run log messages
 bq ls --transfer_log \
-    --message_type=messageTypes:ERROR,WARNING \
     projects/my-project/locations/us/transferConfigs/abc123def456/runs/6789xyz
 ```
 
@@ -67,7 +66,7 @@ gcloud logging read \
     'resource.type="bigquery_dts_config" AND severity>=WARNING' \
     --project=my-project \
     --limit=25 \
-    --format="table(timestamp, severity, textPayload)"
+    --format="table(timestamp, severity, jsonPayload.message)"
 ```
 
 ## Step 3: Verify Service Account Permissions
@@ -81,9 +80,9 @@ bq show --format=prettyjson \
     grep -E "serviceAccount|email"
 ```
 
-Make sure the service account has these roles at minimum:
+Make sure the service account has the required BigQuery permissions on the destination dataset and access to the source:
 
-- `roles/bigquery.admin` on the destination project
+- `bigquery.datasets.get` and `bigquery.datasets.update` on the destination dataset
 - Source-specific permissions (varies by data source)
 
 ```bash
@@ -106,24 +105,24 @@ bq ls --transfer_run \
     projects/my-project/locations/us/transferConfigs/abc123def456 | grep RUNNING
 ```
 
-If you find a stuck RUNNING transfer, you can cancel it:
+If you find a stuck RUNNING transfer, you can delete that run:
 
 ```bash
-# Cancel a stuck run using the REST API through gcloud
-curl -X POST \
+# Delete a stuck run using the REST API through gcloud
+curl -X DELETE \
     -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-    "https://bigquerydatatransfer.googleapis.com/v1/projects/my-project/locations/us/transferConfigs/abc123def456/runs/stuck-run-id:cancel"
+    "https://bigquerydatatransfer.googleapis.com/v1/projects/my-project/locations/us/transferConfigs/abc123def456/runs/stuck-run-id"
 ```
 
 ## Step 5: Check Quota and Concurrent Transfer Limits
 
-BigQuery DTS has limits on concurrent transfers. If you have too many running at once, new ones will queue.
+BigQuery DTS runs create underlying BigQuery jobs, and those jobs count against BigQuery quotas such as load job and copy job limits. If you have too many transfer-generated jobs at once, new work can queue or fail with quota errors.
 
 ```bash
-# Check your current DTS quota usage
+# Check that the BigQuery Data Transfer API is enabled
 gcloud services list --enabled --filter="bigquerydatatransfer" --project=my-project
 
-# View quota metrics in Cloud Monitoring
+# List DTS metric descriptors in Cloud Monitoring
 gcloud monitoring metrics list --filter="metric.type=bigquerydatatransfer.googleapis.com"
 ```
 
@@ -131,12 +130,12 @@ You can also check this in the Google Cloud Console under IAM and Admin, then Qu
 
 ## Step 6: Verify Slot Availability
 
-Some transfer types, especially cross-region copies, require BigQuery slots to execute. If all your slots are consumed by queries, transfers will wait.
+Some transfer types create query or load jobs that can use reservation slots if your project, folder, or organization is assigned to a `QUERY` or `PIPELINE` reservation. Dataset copy jobs do not use reservation slots.
 
 ```bash
 # Check your reservation and slot usage
-bq ls --reservation --location=us --project=my-project
-bq ls --reservation_assignment --location=us --project=my-project
+bq --location=us --project_id=my-project ls --reservation
+bq --location=us --project_id=my-project ls --reservation_assignment
 
 # Check current slot utilization from INFORMATION_SCHEMA
 bq query --use_legacy_sql=false '
@@ -171,10 +170,12 @@ If the manual run starts and completes, the issue is likely with the scheduler, 
 If nothing else works, the transfer configuration itself might be in a bad state. Create a new one and disable the old one.
 
 ```bash
-# Disable the problematic transfer config
-bq update --transfer_config \
-    --disabled=true \
-    projects/my-project/locations/us/transferConfigs/abc123def456
+# Disable the problematic transfer config using the REST API
+curl -X PATCH \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    -H "Content-Type: application/json" \
+    "https://bigquerydatatransfer.googleapis.com/v1/projects/my-project/locations/us/transferConfigs/abc123def456?updateMask=disabled" \
+    -d '{"disabled": true}'
 
 # Create a new transfer config with the same parameters
 bq mk --transfer_config \
@@ -204,7 +205,7 @@ flowchart TD
     F -->|No| G[Grant missing permissions]
     F -->|Yes| H[Check for stuck RUNNING runs]
     H --> I{Found stuck run?}
-    I -->|Yes| J[Cancel stuck run]
+    I -->|Yes| J[Delete stuck run]
     I -->|No| K[Check quota and slot limits]
     K --> L{Quota exceeded?}
     L -->|Yes| M[Wait or increase quota]
@@ -223,8 +224,9 @@ To catch these issues early, set up an alert for when transfers stay in PENDING 
 gcloud alpha monitoring policies create \
     --display-name="DTS Run Stuck in Pending" \
     --condition-display-name="Transfer pending > 30 min" \
-    --condition-filter='resource.type="bigquery_dts_config" AND metric.type="bigquerydatatransfer.googleapis.com/transfer_run_count" AND metric.labels.state="PENDING"' \
+    --condition-filter='resource.type="bigquery_dts_config" AND metric.type="bigquerydatatransfer.googleapis.com/transfer_config/active_runs" AND metric.labels.state="PENDING"' \
     --duration="1800s" \
+    --if="> 0" \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
