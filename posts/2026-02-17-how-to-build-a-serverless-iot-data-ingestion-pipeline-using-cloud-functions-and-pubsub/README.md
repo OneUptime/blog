@@ -8,9 +8,9 @@ Description: Build a fully serverless IoT data ingestion pipeline using Cloud Fu
 
 ---
 
-Not every IoT project needs Dataflow. If your device fleet is moderate in size (thousands rather than millions of devices) and your processing logic is straightforward, Cloud Functions triggered by Pub/Sub gives you a serverless pipeline that requires zero infrastructure management. It scales automatically, costs nothing when idle, and you only write the processing logic.
+Not every IoT project needs Dataflow. If your device fleet is moderate in size (thousands rather than millions of devices) and your processing logic is straightforward, Cloud Functions triggered by Pub/Sub gives you a serverless pipeline that requires zero infrastructure management. The function pipeline scales automatically, has no idle compute cost, and you only write the processing logic.
 
-In this guide, I will build a complete serverless ingestion pipeline that validates, transforms, enriches, and stores IoT data using nothing but Pub/Sub and Cloud Functions.
+In this guide, I will build a complete serverless ingestion pipeline that validates, transforms, enriches, and stores IoT data using Pub/Sub and Cloud Functions for orchestration.
 
 ## Architecture
 
@@ -33,7 +33,9 @@ Each function does one thing and passes the result to the next stage via Pub/Sub
 
 ## Prerequisites
 
-- GCP project with Cloud Functions, Pub/Sub, BigQuery, and Cloud Storage APIs enabled
+- GCP project with Cloud Functions, Pub/Sub, Firestore, BigQuery, and Cloud Storage APIs enabled
+- Firestore database created for device metadata enrichment
+- BigQuery dataset/table and Cloud Storage bucket created for the storage function
 - Python 3.11
 - `gcloud` CLI configured
 
@@ -88,6 +90,9 @@ def validate_message(data):
 
     # Validate timestamp is reasonable (not in the future, not too old)
     ts = data["timestamp"]
+    if not isinstance(ts, (int, float)):
+        return False, f"Timestamp must be numeric milliseconds since epoch: {ts}"
+
     now = time.time() * 1000
     if ts > now + 60000:  # Allow 1 minute clock skew
         return False, f"Timestamp is in the future: {ts}"
@@ -126,7 +131,7 @@ def validate(cloud_event):
             data=raw_data,
             error=f"JSON parse error: {str(e)}",
             stage="validation",
-        )
+        ).result()
         return
 
     is_valid, error = validate_message(data)
@@ -134,12 +139,12 @@ def validate(cloud_event):
     if is_valid:
         # Forward to the validated data topic
         validated_topic = publisher.topic_path(PROJECT_ID, "iot-validated-data")
+        outgoing_attributes = {**attributes, "device_id": data["device_id"]}
         publisher.publish(
             validated_topic,
             data=json.dumps(data).encode("utf-8"),
-            device_id=data["device_id"],
-            **attributes,
-        )
+            **outgoing_attributes,
+        ).result()
     else:
         # Send to dead letter with the error reason
         dead_letter_topic = publisher.topic_path(PROJECT_ID, "iot-dead-letter")
@@ -148,8 +153,8 @@ def validate(cloud_event):
             data=json.dumps(data).encode("utf-8"),
             error=error,
             stage="validation",
-            device_id=data.get("device_id", "unknown"),
-        )
+            device_id=str(data.get("device_id", "unknown")),
+        ).result()
         print(f"Rejected message from {data.get('device_id', 'unknown')}: {error}")
 ```
 
@@ -245,13 +250,16 @@ def enrich(cloud_event):
 
     # Forward to the enriched data topic
     enriched_topic = publisher.topic_path(PROJECT_ID, "iot-enriched-data")
+    outgoing_attributes = {
+        **attributes,
+        "device_id": device_id,
+        "location": str(metadata.get("location", "unknown")),
+    }
     publisher.publish(
         enriched_topic,
         data=json.dumps(data).encode("utf-8"),
-        device_id=device_id,
-        location=metadata.get("location", "unknown"),
-        **attributes,
-    )
+        **outgoing_attributes,
+    ).result()
 ```
 
 ## Step 4: Build the Storage Function
@@ -264,7 +272,7 @@ The final function writes enriched data to BigQuery and optionally to Cloud Stor
 import json
 import base64
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from google.cloud import bigquery, storage
 import functions_framework
 
@@ -280,7 +288,7 @@ def flatten_for_bigquery(data):
 
     rows = []
     device_id = data["device_id"]
-    timestamp = datetime.utcfromtimestamp(data["timestamp"] / 1000).isoformat()
+    timestamp = datetime.fromtimestamp(data["timestamp"] / 1000, timezone.utc).isoformat()
     metadata = data.get("device_metadata", {})
     derived = data.get("derived", {})
 
@@ -294,7 +302,7 @@ def flatten_for_bigquery(data):
             "location": metadata.get("location", "unknown"),
             "zone": metadata.get("zone", "unknown"),
             "device_type": metadata.get("device_type", "unknown"),
-            "ingested_at": datetime.utcnow().isoformat(),
+            "ingested_at": datetime.now(timezone.utc).isoformat(),
         }
 
         # Add relevant derived fields
@@ -309,7 +317,7 @@ def archive_to_gcs(data):
     """Archives the raw enriched message to Cloud Storage.
     Uses a date-partitioned path for easy lifecycle management."""
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     path = f"raw/{now.year}/{now.month:02d}/{now.day:02d}/{data['device_id']}_{int(time.time() * 1000)}.json"
 
     bucket = gcs_client.bucket(ARCHIVE_BUCKET)
@@ -337,6 +345,28 @@ def store(cloud_event):
 ```
 
 ## Step 5: Deploy All Functions
+
+Each function source directory also needs a `requirements.txt` file next to `main.py`. For example:
+
+```text
+# validate/requirements.txt
+functions-framework
+google-cloud-pubsub
+```
+
+```text
+# enrich/requirements.txt
+functions-framework
+google-cloud-pubsub
+google-cloud-firestore
+```
+
+```text
+# store/requirements.txt
+functions-framework
+google-cloud-bigquery
+google-cloud-storage
+```
 
 ```bash
 # Deploy the validation function
@@ -377,8 +407,14 @@ gcloud functions deploy iot-store \
 
 ```bash
 # Publish a test message to the raw data topic
+NOW_MS=$(python3 - <<'PY'
+import time
+print(int(time.time() * 1000))
+PY
+)
+
 gcloud pubsub topics publish iot-raw-data \
-  --message='{"device_id":"sensor-001","timestamp":1708200000000,"readings":{"temperature":23.5,"humidity":55.2,"pressure":1013.25}}'
+  --message="{\"device_id\":\"sensor-001\",\"timestamp\":${NOW_MS},\"readings\":{\"temperature\":23.5,\"humidity\":55.2,\"pressure\":1013.25}}"
 
 # Wait a few seconds for processing, then check BigQuery
 bq query --use_legacy_sql=false \
