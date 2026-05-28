@@ -33,7 +33,7 @@ graph TD
 - Python 3.9+
 
 ```bash
-pip install google-cloud-aiplatform google-cloud-discoveryengine
+pip install google-genai google-cloud-discoveryengine langchain langchain-google-genai
 ```
 
 ## Step 1: Prepare Your Enterprise Data
@@ -125,34 +125,50 @@ import_grounding_documents(
 ### Using Vertex AI Generative AI with Grounding
 
 ```python
-from google.cloud import aiplatform
-from vertexai.generative_models import GenerativeModel, Tool
-from vertexai.preview.generative_models import grounding
+from google import genai
+from google.genai.types import (
+    GenerateContentConfig,
+    HttpOptions,
+    Retrieval,
+    Tool,
+    VertexAISearch,
+)
 
-# Initialize Vertex AI
-aiplatform.init(project="your-project-id", location="us-central1")
+# Initialize the Google Gen AI SDK for Vertex AI
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="global",
+    http_options=HttpOptions(api_version="v1"),
+)
 
-def create_grounded_model():
-    """Create a generative model with enterprise data grounding."""
-    model = GenerativeModel("gemini-1.5-pro")
+DATASTORE_PATH = (
+    "projects/your-project-id/locations/global"
+    "/collections/default_collection/dataStores/grounding-knowledge-base"
+)
 
+def create_grounding_tool():
+    """Create a grounding tool that retrieves from enterprise data."""
     # Configure grounding with your data store
-    grounding_tool = Tool.from_retrieval(
-        grounding.Retrieval(
-            grounding.VertexAISearch(
-                datastore=f"projects/your-project-id/locations/global/collections/default_collection/dataStores/grounding-knowledge-base"
+    grounding_tool = Tool(
+        retrieval=Retrieval(
+            vertex_ai_search=VertexAISearch(
+                datastore=DATASTORE_PATH
             )
         )
     )
 
-    return model, grounding_tool
+    return grounding_tool
 
-model, grounding_tool = create_grounded_model()
+grounding_tool = create_grounding_tool()
 
 # Generate a grounded response
-response = model.generate_content(
-    "What is our company's data retention policy?",
-    tools=[grounding_tool],
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="What is our company's data retention policy?",
+    config=GenerateContentConfig(
+        tools=[grounding_tool],
+    ),
 )
 
 print(response.text)
@@ -172,24 +188,23 @@ if response.candidates[0].grounding_metadata:
 You can also ground responses using Google Search for real-time public information.
 
 ```python
-from vertexai.preview.generative_models import grounding
+from google.genai.types import GenerateContentConfig, GoogleSearch, Tool
 
-def create_web_grounded_model():
-    """Create a model grounded with Google Search for public information."""
-    model = GenerativeModel("gemini-1.5-pro")
+def create_web_grounding_tool():
+    """Create a Google Search grounding tool for public information."""
+    web_grounding_tool = Tool(google_search=GoogleSearch())
 
-    web_grounding_tool = Tool.from_google_search_retrieval(
-        grounding.GoogleSearchRetrieval()
-    )
+    return web_grounding_tool
 
-    return model, web_grounding_tool
-
-web_model, web_tool = create_web_grounded_model()
+web_tool = create_web_grounding_tool()
 
 # Get a response grounded in current web data
-response = web_model.generate_content(
-    "What are the latest features announced for Google Cloud Run?",
-    tools=[web_tool],
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="What are the latest features announced for Google Cloud Run?",
+    config=GenerateContentConfig(
+        tools=[web_tool],
+    ),
 )
 
 print(response.text)
@@ -200,27 +215,31 @@ print(response.text)
 Combine grounding with agent capabilities for a conversational experience.
 
 ```python
-from langchain_google_vertexai import ChatVertexAI
+from google.api_core.client_options import ClientOptions
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.tools import tool
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
 from google.cloud import discoveryengine_v1 as discoveryengine
 
 PROJECT_ID = "your-project-id"
 LOCATION = "global"
 DATA_STORE_ID = "grounding-knowledge-base"
-ENGINE_ID = "grounding-search-engine"
 
 @tool
 def search_enterprise_knowledge(query: str) -> str:
     """Search the enterprise knowledge base for accurate information about company
     policies, products, procedures, and technical documentation. Always use this
     tool to verify facts before answering questions."""
-    client = discoveryengine.SearchServiceClient()
+    client_options = (
+        ClientOptions(api_endpoint=f"{LOCATION}-discoveryengine.googleapis.com")
+        if LOCATION != "global"
+        else None
+    )
+    client = discoveryengine.SearchServiceClient(client_options=client_options)
 
     serving_config = (
         f"projects/{PROJECT_ID}/locations/{LOCATION}"
-        f"/collections/default_collection/engines/{ENGINE_ID}"
+        f"/collections/default_collection/dataStores/{DATA_STORE_ID}"
         f"/servingConfigs/default_search"
     )
 
@@ -265,17 +284,17 @@ def search_enterprise_knowledge(query: str) -> str:
     return "\n\n".join(results) if results else "No relevant information found in the knowledge base."
 
 # Build the grounded agent
-llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
     project="your-project-id",
-    location="us-central1",
+    location="global",
+    vertexai=True,
     temperature=0.1,
 )
 
 tools = [search_enterprise_knowledge]
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are an enterprise assistant that provides accurate, grounded answers.
+system_prompt = """You are an enterprise assistant that provides accurate, grounded answers.
 
 CRITICAL RULES:
 1. ALWAYS search the enterprise knowledge base before answering factual questions
@@ -283,38 +302,37 @@ CRITICAL RULES:
 3. If the knowledge base does not contain the answer, clearly state that
 4. Always cite which document your answer comes from
 5. If you are uncertain about any detail, search again with different terms
-6. For opinions or general advice, you can respond directly, but flag that it is not from official documentation"""),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad"),
-])
+6. For opinions or general advice, you can respond directly, but flag that it is not from official documentation"""
 
-agent = create_react_agent(llm=llm, tools=tools, prompt=prompt)
-grounded_agent = AgentExecutor(
-    agent=agent,
+grounded_agent = create_agent(
+    model=llm,
     tools=tools,
-    verbose=True,
-    max_iterations=4,
-    handle_parsing_errors=True,
+    system_prompt=system_prompt,
 )
 ```
 
 ## Testing Grounding Quality
 
 ```python
+def format_agent_output(result: dict) -> str:
+    """Extract the final assistant message from a LangChain agent result."""
+    return result["messages"][-1].content
+
 # Test with a factual question
 result = grounded_agent.invoke({
-    "input": "What is our SLA guarantee for enterprise customers?",
-    "chat_history": [],
+    "messages": [
+        {"role": "user", "content": "What is our SLA guarantee for enterprise customers?"}
+    ],
 })
-print(f"Grounded answer: {result['output']}")
+print(f"Grounded answer: {format_agent_output(result)}")
 
 # Test with a question that should not be in the knowledge base
 result = grounded_agent.invoke({
-    "input": "What is the weather like in Tokyo today?",
-    "chat_history": [],
+    "messages": [
+        {"role": "user", "content": "What is the weather like in Tokyo today?"}
+    ],
 })
-print(f"Response: {result['output']}")
+print(f"Response: {format_agent_output(result)}")
 # The agent should indicate this is not in the enterprise knowledge base
 ```
 
@@ -336,8 +354,12 @@ def evaluate_grounding(agent, test_cases: list) -> dict:
         query = case["query"]
         expected_source = case.get("expected_source")
 
-        response = agent.invoke({"input": query, "chat_history": []})
-        output = response["output"]
+        response = agent.invoke({
+            "messages": [
+                {"role": "user", "content": query}
+            ],
+        })
+        output = format_agent_output(response)
 
         # Check if the response references a source
         if "[Source:" in output or "according to" in output.lower():
