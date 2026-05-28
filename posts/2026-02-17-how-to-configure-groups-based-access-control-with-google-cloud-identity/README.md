@@ -35,7 +35,7 @@ gcloud identity groups create gcp-project-admins@yourcompany.com \
   --organization=yourcompany.com \
   --display-name="GCP Project Admins" \
   --description="Members have admin access to production GCP projects" \
-  --with-initial-owner=WITH_INITIAL_OWNER
+  --with-initial-owner=with-initial-owner
 
 # Create a group for developers with read/write access
 gcloud identity groups create gcp-developers@yourcompany.com \
@@ -248,7 +248,7 @@ Regular audits ensure groups have the right members and the right permissions.
 ```bash
 # List all groups in the organization
 gcloud identity groups search \
-  --organization=yourcompany.com \
+  --organization=123456789 \
   --labels="cloudidentity.googleapis.com/groups.discussion_forum" \
   --format="table(groupKey.id, displayName, description)"
 
@@ -262,8 +262,7 @@ gcloud projects get-iam-policy my-project \
 For automated auditing, use a script that cross-references group membership with IAM bindings.
 
 ```python
-# Audit script: list effective permissions per user via group membership
-from google.cloud import identity_v1
+# Audit script: list direct project IAM roles granted to a group
 from google.cloud import resourcemanager_v3
 
 def audit_group_access(group_email, project_id):
@@ -305,15 +304,15 @@ audit_group_access("gcp-developers@yourcompany.com", "my-app-project")
 
 5. **Separate duty groups** - do not put billing access and security access in the same group. Separation of duties matters.
 
-6. **Use group expiration** - for temporary access, set membership expiration so access is automatically revoked.
+6. **Use group expiration** - for temporary access, set membership expiration so access is automatically revoked. Membership expiration is available for supported Google Workspace and Cloud Identity Premium editions.
 
 ```bash
-# Add a member with an expiration date
+# Add a member with an expiration duration
 gcloud identity groups memberships add \
   --group-email=gcp-prod-admins@yourcompany.com \
   --member-email=contractor@yourcompany.com \
   --roles=MEMBER \
-  --expiry="2026-03-31T00:00:00Z"
+  --expiration="30d"
 ```
 
 Groups-based access control is the foundation of scalable IAM management in Google Cloud. Invest the time to design your group structure properly, enforce the discipline of using groups instead of individual bindings, and review membership regularly. Your future self will thank you when onboarding, offboarding, and auditing take minutes instead of hours.
