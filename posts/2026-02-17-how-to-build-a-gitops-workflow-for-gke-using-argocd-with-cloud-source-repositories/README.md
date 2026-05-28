@@ -8,7 +8,7 @@ Description: A hands-on guide to building a GitOps workflow for Google Kubernete
 
 ---
 
-ArgoCD is one of the most popular GitOps tools in the Kubernetes ecosystem. While GCP offers Config Sync as its native GitOps solution, many teams prefer ArgoCD for its rich UI, multi-cluster support, and extensive ecosystem of plugins. If you are running GKE and want to use ArgoCD with Cloud Source Repositories, this post covers everything you need to get it working.
+ArgoCD is one of the most popular GitOps tools in the Kubernetes ecosystem. While GCP offers Config Sync as its native GitOps solution, many teams prefer ArgoCD for its rich UI, multi-cluster support, and extensive ecosystem of plugins. If you are running GKE and already have access to Cloud Source Repositories, this post covers everything you need to get it working. Cloud Source Repositories is not available to new customers as of June 17, 2024, so new Google Cloud organizations should use another Git provider or Google Cloud Secure Source Manager instead.
 
 ## Why ArgoCD on GKE?
 
@@ -25,7 +25,8 @@ ArgoCD brings a few things to the table that teams appreciate:
 ```mermaid
 graph TB
     DEV[Developer] -->|git push| CSR[Cloud Source Repositories]
-    CSR -->|webhook| ARGO[ArgoCD on GKE]
+    CSR -->|Pub/Sub notification| CF[Cloud Function]
+    CF -->|refresh| ARGO[ArgoCD on GKE]
     ARGO -->|sync| GKE1[GKE Cluster - Production]
     ARGO -->|sync| GKE2[GKE Cluster - Staging]
     ARGO -->|monitor| GKE1
@@ -73,7 +74,7 @@ kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}
 
 ## Step 2: Configure Authentication with Cloud Source Repositories
 
-ArgoCD needs to authenticate with Cloud Source Repositories. The best approach on GKE is using Workload Identity:
+ArgoCD needs Git credentials to authenticate with Cloud Source Repositories. On GKE, use Workload Identity Federation to let any token-refreshing helper or sidecar call Google APIs without storing a service account key:
 
 ```bash
 # Create a GCP service account for ArgoCD
@@ -94,9 +95,12 @@ gcloud iam service-accounts add-iam-policy-binding \
 # Annotate the ArgoCD repo-server service account
 kubectl annotate serviceaccount argocd-repo-server -n argocd \
   iam.gke.io/gcp-service-account=argocd-repo-access@my-project.iam.gserviceaccount.com
+
+# Restart the repo-server so it uses the updated service account annotation
+kubectl rollout restart deployment argocd-repo-server -n argocd
 ```
 
-Alternatively, use a credential helper with a GCP token:
+Then add repository credentials to ArgoCD. For a quick test, use a short-lived Google OAuth access token:
 
 ```bash
 # Create an access token and add the repository
@@ -108,7 +112,7 @@ argocd repo add https://source.developers.google.com/p/my-project/r/my-config-re
   --password=$(gcloud auth print-access-token)
 ```
 
-For a more permanent solution, use a Kubernetes secret:
+For declarative setup, use an ArgoCD repository credentials secret and manage the actual credential with your secret manager or rotation process:
 
 ```yaml
 # argocd-repo-secret.yaml
@@ -122,9 +126,8 @@ metadata:
 stringData:
   type: git
   url: https://source.developers.google.com/p/my-project
-  # Use a long-lived credential or token refresh mechanism
-  username: _json_key_base64
-  password: <base64-encoded-service-account-key>
+  username: oauth2accesstoken
+  password: <short-lived-access-token-or-rotated-credential>
 ```
 
 ## Step 3: Set Up the Config Repository Structure
@@ -182,9 +185,11 @@ resources:
   - service.yaml
   - hpa.yaml
 
-commonLabels:
-  app: api-server
-  managed-by: argocd
+labels:
+  - pairs:
+      app: api-server
+      managed-by: argocd
+    includeSelectors: true
 ```
 
 ```yaml
@@ -227,9 +232,10 @@ kind: Kustomization
 resources:
   - ../../../base/api-server
 
-patchesStrategicMerge:
-  - replicas-patch.yaml
+patches:
+  - path: replicas-patch.yaml
 
+---
 # overlays/production/api-server/replicas-patch.yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -311,10 +317,22 @@ Now ArgoCD will automatically discover and sync all applications defined in the 
 
 ## Step 6: Set Up Webhooks for Faster Sync
 
-By default, ArgoCD polls the repository every 3 minutes. Set up a webhook for instant sync on push:
+By default, ArgoCD polls the repository every 3 minutes. Cloud Source Repositories publishes repository events to Pub/Sub, so connect that topic to a Cloud Function that refreshes ArgoCD:
 
 ```bash
-# Create a Cloud Function that triggers ArgoCD sync on repository push
+# Create a Pub/Sub topic and associate it with the repository
+gcloud pubsub topics create projects/my-project/topics/source-repo-push
+
+gcloud pubsub topics add-iam-policy-binding source-repo-push \
+  --member="serviceAccount:argocd-repo-access@my-project.iam.gserviceaccount.com" \
+  --role="roles/pubsub.publisher"
+
+gcloud source repos update config-repo \
+  --add-topic=projects/my-project/topics/source-repo-push \
+  --message-format=json \
+  --service-account=argocd-repo-access@my-project.iam.gserviceaccount.com
+
+# Create a Cloud Function that refreshes ArgoCD on repository push
 gcloud functions deploy argocd-webhook \
   --runtime=nodejs20 \
   --trigger-topic=source-repo-push \
@@ -388,7 +406,7 @@ data:
       Status: {{.app.status.sync.status}}
       Health: {{.app.status.health.status}}
   trigger.on-sync-failed: |
-    - when: app.status.sync.status == 'OutOfSync' && app.status.health.status == 'Degraded'
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [app-sync-failed]
 ```
 
