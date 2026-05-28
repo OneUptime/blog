@@ -78,6 +78,7 @@ project = os.environ['PROJECT_ID']
 location = os.environ.get('LOCATION', 'us-central1')
 queue = 'report-generation'
 worker_url = os.environ['WORKER_URL']
+task_invoker_service_account = os.environ['TASK_INVOKER_SERVICE_ACCOUNT']
 
 @app.route('/reports', methods=['POST'])
 def create_report():
@@ -104,6 +105,10 @@ def create_report():
             'http_method': tasks_v2.HttpMethod.POST,
             'url': f'{worker_url}/process',
             'headers': {'Content-Type': 'application/json'},
+            'oidc_token': {
+                'service_account_email': task_invoker_service_account,
+                'audience': worker_url,
+            },
             'body': json.dumps({
                 'task_id': task_id,
                 'report_type': data.get('report_type', 'summary'),
@@ -113,13 +118,13 @@ def create_report():
         'name': f'{parent}/tasks/{task_id}',
     }
 
-    # Set a deadline if the task should not run after a certain time
-    if data.get('deadline_seconds'):
-        deadline = timestamp_pb2.Timestamp()
-        deadline.FromSeconds(
-            int(datetime.utcnow().timestamp()) + data['deadline_seconds']
+    # Schedule the task for a future time if requested
+    if data.get('schedule_delay_seconds'):
+        schedule_time = timestamp_pb2.Timestamp()
+        schedule_time.FromSeconds(
+            int(datetime.utcnow().timestamp()) + data['schedule_delay_seconds']
         )
-        task['schedule_time'] = deadline
+        task['schedule_time'] = schedule_time
 
     tasks_client.create_task(request={'parent': parent, 'task': task})
 
@@ -171,6 +176,8 @@ import io
 import json
 from datetime import datetime
 from flask import Flask, request, jsonify
+import google.auth
+from google.auth.transport.requests import Request
 from google.cloud import firestore
 from google.cloud import storage
 import pandas as pd
@@ -179,6 +186,10 @@ app = Flask(__name__)
 db = firestore.Client()
 storage_client = storage.Client()
 bucket_name = os.environ.get('RESULTS_BUCKET', 'my-project-report-results')
+signing_service_account = os.environ['SIGNING_SERVICE_ACCOUNT_EMAIL']
+credentials, _ = google.auth.default(
+    scopes=['https://www.googleapis.com/auth/cloud-platform']
+)
 
 @app.route('/process', methods=['POST'])
 def process_task():
@@ -211,10 +222,13 @@ def process_task():
         blob.upload_from_string(result, content_type='text/csv')
 
         # Generate a signed URL valid for 24 hours
+        credentials.refresh(Request())
         signed_url = blob.generate_signed_url(
             version='v4',
             expiration=86400,  # 24 hours
             method='GET',
+            service_account_email=signing_service_account,
+            access_token=credentials.token,
         )
 
         # Update task status to completed
@@ -313,26 +327,44 @@ def create_report_with_callback():
 ## Deploying the Services
 
 ```bash
+# Create a service account that Cloud Tasks will use to call the private worker
+gcloud iam service-accounts create cloud-tasks-invoker \
+  --display-name="Cloud Tasks Invoker"
+
+# Allow the Cloud Tasks service agent to mint OIDC tokens for that service account
+gcloud iam service-accounts add-iam-policy-binding \
+  cloud-tasks-invoker@my-project.iam.gserviceaccount.com \
+  --member="serviceAccount:service-PROJECT_NUMBER@gcp-sa-cloudtasks.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+
+# Enable IAM Credentials so the worker can sign Cloud Storage URLs
+gcloud services enable iamcredentials.googleapis.com
+
+# Let the worker service account sign URLs with its own identity
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountTokenCreator"
+
 # Deploy the API service
 gcloud run deploy report-api \
   --source=./api-service \
   --region=us-central1 \
   --allow-unauthenticated \
-  --set-env-vars="PROJECT_ID=my-project,WORKER_URL=https://report-worker-xxxx.run.app"
+  --set-env-vars="PROJECT_ID=my-project,LOCATION=us-central1,WORKER_URL=https://report-worker-xxxx.run.app,TASK_INVOKER_SERVICE_ACCOUNT=cloud-tasks-invoker@my-project.iam.gserviceaccount.com"
 
 # Deploy the worker service (not publicly accessible)
 gcloud run deploy report-worker \
   --source=./worker-service \
   --region=us-central1 \
   --no-allow-unauthenticated \
-  --set-env-vars="RESULTS_BUCKET=my-project-report-results" \
+  --set-env-vars="RESULTS_BUCKET=my-project-report-results,SIGNING_SERVICE_ACCOUNT_EMAIL=PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
   --memory=1Gi \
   --timeout=300
 
 # Grant Cloud Tasks permission to invoke the worker
 gcloud run services add-iam-policy-binding report-worker \
   --region=us-central1 \
-  --member="serviceAccount:my-project@appspot.gserviceaccount.com" \
+  --member="serviceAccount:cloud-tasks-invoker@my-project.iam.gserviceaccount.com" \
   --role="roles/run.invoker"
 ```
 
