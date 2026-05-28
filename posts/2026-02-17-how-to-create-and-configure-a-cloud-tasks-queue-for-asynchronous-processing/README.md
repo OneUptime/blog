@@ -19,7 +19,7 @@ flowchart LR
     A[Your Application] -->|Create Task| Q[Cloud Tasks Queue]
     Q -->|Dispatch at controlled rate| H[HTTP Handler]
     H -->|Success 2xx| Q
-    H -->|Failure 4xx/5xx| R[Retry Logic]
+    H -->|Non-2xx or no response| R[Retry Logic]
     R -->|Retry| Q
 ```
 
@@ -54,15 +54,14 @@ Rate limiting controls how fast tasks are dispatched from the queue. This is cru
 gcloud tasks queues create email-queue \
   --location=us-central1 \
   --max-dispatches-per-second=10 \
-  --max-concurrent-dispatches=5 \
-  --max-burst-size=20
+  --max-concurrent-dispatches=5
 ```
 
 Here is what each parameter means:
 
 - `max-dispatches-per-second`: The maximum rate at which tasks are dispatched. Set to 10, the queue will send at most 10 tasks per second.
 - `max-concurrent-dispatches`: The maximum number of tasks that can be running simultaneously. If set to 5, no more than 5 tasks will be in-flight at once.
-- `max-burst-size`: Allows short bursts above the dispatch rate. The queue can temporarily dispatch faster to catch up after idle periods.
+- `maxBurstSize`: Allows short bursts above the dispatch rate. For queues managed with the Cloud Tasks API or gcloud CLI, Cloud Tasks calculates this value from `max-dispatches-per-second`; you can view it with `gcloud tasks queues describe`.
 
 For a practical example, if your email provider allows 100 emails per minute (roughly 1.6 per second), configure like this:
 
@@ -91,11 +90,11 @@ gcloud tasks queues create resilient-queue \
 
 The retry parameters:
 
-- `max-attempts`: Maximum number of attempts including the initial attempt. Set to -1 for unlimited retries.
+- `max-attempts`: Maximum number of attempts including the initial attempt. Set to -1 for unlimited attempts, but `max-retry-duration` still applies unless you set it to `0s`.
 - `min-backoff`: The minimum time to wait before retrying a failed task.
 - `max-backoff`: The maximum time to wait between retries.
 - `max-doublings`: How many times the backoff interval doubles before increasing linearly.
-- `max-retry-duration`: The total time window within which retries can occur. After this duration, the task is considered permanently failed.
+- `max-retry-duration`: The total time window within which retries can occur, measured from the first attempt. Cloud Tasks stops retrying only when both `max-attempts` and `max-retry-duration` are satisfied; set it to `0s` for an unlimited retry duration.
 
 Here is how the retry intervals work with `min-backoff=1s`, `max-doublings=4`, `max-backoff=300s`:
 
@@ -119,8 +118,7 @@ You can set a default routing target for all tasks in a queue. This is useful wh
 # Update queue with default routing to a Cloud Run service
 gcloud tasks queues update my-processing-queue \
   --location=us-central1 \
-  --routing-override-uri-path-override="/process" \
-  --routing-override-host-override="my-service-abc123-uc.a.run.app"
+  --http-uri-override=host:my-service-abc123-uc.a.run.app,path:/process
 ```
 
 ## Creating Tasks with the gcloud CLI
