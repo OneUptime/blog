@@ -92,7 +92,7 @@ Sometimes the response varies based on a request header. The most common example
 ```bash
 # Include specific HTTP headers in the cache key
 gcloud compute backend-services update my-backend \
-    --cache-key-include-http-headers="X-Custom-Region,X-AB-Test-Group" \
+    --cache-key-include-http-header="X-Custom-Region,X-AB-Test-Group" \
     --global \
     --project=my-project
 ```
@@ -106,7 +106,7 @@ For personalized content that varies by cookie value, you can include specific c
 ```bash
 # Include specific cookies in the cache key
 gcloud compute backend-services update my-backend \
-    --cache-key-include-named-cookies="locale,currency,ab-test-variant" \
+    --cache-key-include-named-cookie="locale,currency,ab-test-variant" \
     --global \
     --project=my-project
 ```
@@ -129,7 +129,7 @@ With this setting, `image.jpg?v=1` and `image.jpg?v=2` and `image.jpg` all map t
 
 ## Terraform Configuration
 
-Here is a complete Terraform setup with cache key policies.
+Here is an example Terraform backend service with cache key policies.
 
 ```hcl
 # Backend service with optimized cache key policy
@@ -212,8 +212,8 @@ For a site that serves different content based on language:
 ```bash
 # Multi-language - include Accept-Language header and locale cookie
 gcloud compute backend-services update web-backend \
-    --cache-key-include-http-headers="Accept-Language" \
-    --cache-key-include-named-cookies="locale" \
+    --cache-key-include-http-header="Accept-Language" \
+    --cache-key-include-named-cookie="locale" \
     --global \
     --project=my-project
 ```
@@ -236,7 +236,7 @@ gcloud compute backend-services update api-backend \
 After changing cache key policies, monitor your cache hit ratio to see the improvement.
 
 ```bash
-# Query cache hit/miss metrics from Cloud Logging
+# Query recent cache hits from Cloud Logging
 gcloud logging read \
     'resource.type="http_load_balancer" AND jsonPayload.statusDetails="response_from_cache"' \
     --format="json(timestamp,httpRequest.requestUrl)" \
