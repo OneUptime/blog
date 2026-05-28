@@ -12,7 +12,7 @@ Building a chatbot that actually remembers what you said three messages ago is h
 
 ## How Multi-Turn Conversations Work in Gemini
 
-Gemini handles multi-turn conversations through a chat session abstraction. Each message you send includes the full conversation history, and the model uses that context to generate relevant responses. The Vertex AI SDK manages the history for you when you use the chat interface, but understanding what happens under the hood helps when you need to customize behavior.
+Gemini handles multi-turn conversations through a chat session abstraction. Each message you send includes the full conversation history, and the model uses that context to generate relevant responses. The Google Gen AI SDK manages the history for you when you use the chat interface, but understanding what happens under the hood helps when you need to customize behavior.
 
 Every turn in the conversation has a role - either "user" or "model". The SDK accumulates these turns and sends them with each new request. This means the context window fills up over time, and you need to manage that.
 
@@ -21,18 +21,17 @@ Every turn in the conversation has a role - either "user" or "model". The SDK ac
 The simplest way to start a multi-turn conversation is through the chat API. Here is a basic setup:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel
+from google import genai
 
-# Initialize the Vertex AI environment
-
-vertexai.init(project="your-project-id", location="us-central1")
-
-# Create a model instance
-model = GenerativeModel("gemini-2.0-flash")
+# Create a client for the Gemini API on Vertex AI
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+)
 
 # Start a chat session - this tracks conversation history automatically
-chat = model.start_chat()
+chat = client.chats.create(model="gemini-2.0-flash")
 
 # First turn
 response = chat.send_message("I am planning a trip to Japan in April.")
@@ -52,36 +51,48 @@ Sometimes you need to restore a previous conversation, maybe the user closed the
 This code shows how to bootstrap a chat with prior context:
 
 ```python
-from vertexai.generative_models import Content, Part
+from google.genai import types
 
 # Define previous conversation history
 history = [
-    Content(
+    types.Content(
         role="user",
-        parts=[Part.from_text("I need help setting up a Kubernetes cluster on GKE.")]
+        parts=[
+            types.Part.from_text(
+                text="I need help setting up a Kubernetes cluster on GKE."
+            )
+        ]
     ),
-    Content(
+    types.Content(
         role="model",
-        parts=[Part.from_text(
-            "I can help with that. Are you looking to set up a standard "
-            "or autopilot cluster? And what region do you prefer?"
-        )]
+        parts=[
+            types.Part.from_text(
+                text=(
+                    "I can help with that. Are you looking to set up a standard "
+                    "or autopilot cluster? And what region do you prefer?"
+                )
+            )
+        ]
     ),
-    Content(
+    types.Content(
         role="user",
-        parts=[Part.from_text("Autopilot in us-central1.")]
+        parts=[types.Part.from_text(text="Autopilot in us-central1.")]
     ),
-    Content(
+    types.Content(
         role="model",
-        parts=[Part.from_text(
-            "Great choice. Autopilot handles node management for you. "
-            "Let me walk you through the setup steps."
-        )]
+        parts=[
+            types.Part.from_text(
+                text=(
+                    "Great choice. Autopilot handles node management for you. "
+                    "Let me walk you through the setup steps."
+                )
+            )
+        ]
     ),
 ]
 
 # Resume the conversation from where it left off
-chat = model.start_chat(history=history)
+chat = client.chats.create(model="gemini-2.0-flash", history=history)
 
 # The model has full context of the previous conversation
 response = chat.send_message("What about networking configuration?")
@@ -96,10 +107,11 @@ Here is a sliding window approach that keeps the most recent turns:
 
 ```python
 class ConversationManager:
-    def __init__(self, model_name="gemini-2.0-flash", max_turns=50):
+    def __init__(self, client, model_name="gemini-2.0-flash", max_turns=50):
         # Keep only the last N turns to stay within context limits
+        self.client = client
         self.max_turns = max_turns
-        self.model = GenerativeModel(model_name)
+        self.model_name = model_name
         self.history = []
         self.chat = None
 
@@ -109,9 +121,11 @@ class ConversationManager:
             self.history = history
         # Trim if history exceeds our limit
         if len(self.history) > self.max_turns * 2:
-            # Keep a system summary of trimmed context
             self.history = self.history[-(self.max_turns * 2):]
-        self.chat = self.model.start_chat(history=self.history)
+        self.chat = self.client.chats.create(
+            model=self.model_name,
+            history=self.history,
+        )
 
     def send_message(self, message):
         """Send a message and manage the conversation history."""
@@ -119,7 +133,7 @@ class ConversationManager:
             self.start_or_resume()
         response = self.chat.send_message(message)
         # Update our tracked history
-        self.history = self.chat.history
+        self.history = self.chat.get_history(curated=True)
         return response.text
 
     def get_history(self):
@@ -127,7 +141,11 @@ class ConversationManager:
         return [
             {
                 "role": content.role,
-                "text": content.parts[0].text
+                "parts": [
+                    {"text": part.text}
+                    for part in content.parts
+                    if part.text is not None
+                ],
             }
             for content in self.history
         ]
@@ -135,11 +153,13 @@ class ConversationManager:
 
 ## Adding System Instructions
 
-System instructions shape how the model behaves throughout the entire conversation. They are set once when you create the model and apply to every turn.
+System instructions shape how the model behaves throughout the entire conversation. They are set in the chat configuration and apply to every turn in that chat.
 
 This example creates a customer support bot with specific personality and constraints:
 
 ```python
+from google.genai import types
+
 # Define system instructions that persist across all turns
 system_instruction = """You are a technical support agent for a cloud hosting company.
 
@@ -152,13 +172,13 @@ Rules:
 - Use code examples when explaining technical concepts
 """
 
-# Create model with system instructions
-model = GenerativeModel(
-    "gemini-2.0-flash",
-    system_instruction=system_instruction
+# Create chat with system instructions
+chat = client.chats.create(
+    model="gemini-2.0-flash",
+    config=types.GenerateContentConfig(
+        system_instruction=system_instruction,
+    ),
 )
-
-chat = model.start_chat()
 
 # The model now follows these instructions in every response
 response = chat.send_message("My website is down and I need help urgently!")
@@ -176,14 +196,15 @@ from typing import Dict
 class ChatSessionStore:
     """Manages multiple concurrent chat sessions."""
 
-    def __init__(self, model_name="gemini-2.0-flash"):
+    def __init__(self, client, model_name="gemini-2.0-flash"):
+        self.client = client
         self.model_name = model_name
         self.sessions: Dict[str, ConversationManager] = {}
 
     def create_session(self) -> str:
         """Create a new chat session and return its ID."""
         session_id = str(uuid.uuid4())
-        manager = ConversationManager(self.model_name)
+        manager = ConversationManager(self.client, self.model_name)
         manager.start_or_resume()
         self.sessions[session_id] = manager
         return session_id
@@ -200,7 +221,7 @@ class ChatSessionStore:
             del self.sessions[session_id]
 
 # Usage
-store = ChatSessionStore()
+store = ChatSessionStore(client)
 session_id = store.create_session()
 reply = store.send_message(session_id, "Hello, I need help with my database.")
 print(reply)
@@ -208,18 +229,17 @@ print(reply)
 
 ## Streaming Responses for Better UX
 
-Nobody likes staring at a blank screen while the model generates a long response. Streaming shows tokens as they arrive, which makes the application feel much more responsive.
+Nobody likes staring at a blank screen while the model generates a long response. Streaming shows response chunks as they arrive, which makes the application feel much more responsive.
 
 This code enables streaming in a multi-turn chat:
 
 ```python
 # Send a message with streaming enabled
-responses = chat.send_message(
-    "Explain the differences between Cloud SQL and Cloud Spanner in detail.",
-    stream=True
+responses = chat.send_message_stream(
+    "Explain the differences between Cloud SQL and Cloud Spanner in detail."
 )
 
-# Process tokens as they arrive
+# Process chunks as they arrive
 full_response = ""
 for chunk in responses:
     if chunk.text:
@@ -283,22 +303,20 @@ Network errors, timeouts, and rate limits happen. Your application should handle
 
 ```python
 import time
-from google.api_core import exceptions
+from google.genai import errors
 
 def send_with_retry(chat, message, max_retries=3):
     """Send a message with retry logic for transient failures."""
     for attempt in range(max_retries):
         try:
             return chat.send_message(message)
-        except exceptions.ResourceExhausted:
+        except errors.APIError as exc:
+            if exc.code not in (429, 500, 502, 503, 504):
+                raise
             # Rate limited - wait and retry
             wait_time = 2 ** attempt
-            print(f"Rate limited. Waiting {wait_time}s before retry...")
+            print(f"Transient API error. Waiting {wait_time}s before retry...")
             time.sleep(wait_time)
-        except exceptions.DeadlineExceeded:
-            # Timeout - retry with same message
-            print(f"Request timed out. Retry {attempt + 1}/{max_retries}")
-            time.sleep(1)
     raise Exception("Failed after maximum retries")
 ```
 
