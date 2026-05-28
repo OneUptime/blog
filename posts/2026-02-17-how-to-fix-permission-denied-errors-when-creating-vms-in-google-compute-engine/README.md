@@ -106,15 +106,16 @@ This one catches a lot of people by surprise. Even if you have all the right IAM
 Check what org policies apply to your project:
 
 ```bash
-# List all organization policy constraints on the project
+# List organization policies set on the project
 gcloud resource-manager org-policies list \
     --project=my-project \
     --format="table(constraint,listPolicy,booleanPolicy)"
 
-# Check a specific constraint
+# Check the effective policy for a specific constraint, including inherited policies
 gcloud resource-manager org-policies describe \
     compute.vmExternalIpAccess \
-    --project=my-project
+    --project=my-project \
+    --effective
 ```
 
 If the `compute.vmExternalIpAccess` constraint is blocking you, you have two options:
@@ -149,10 +150,11 @@ The fix requires a host project admin to grant you permissions:
 ```bash
 # Grant permission to use a specific subnet in the host project
 # This must be run by a host project admin
-gcloud projects add-iam-binding host-project \
+gcloud compute networks subnets add-iam-policy-binding shared-subnet \
+    --project=host-project \
+    --region=us-central1 \
     --member="user:you@example.com" \
-    --role="roles/compute.networkUser" \
-    --condition="expression=resource.name == 'projects/host-project/regions/us-central1/subnetworks/shared-subnet',title=subnet-access"
+    --role="roles/compute.networkUser"
 ```
 
 ## Cause 5: Missing APIs
@@ -215,14 +217,14 @@ gcloud resource-manager org-policies list \
 
 echo ""
 echo "Testing compute.instances.create permission..."
-gcloud asset check-iam-policy \
-    --project=$PROJECT \
-    --identity=$USER \
+gcloud policy-intelligence troubleshoot-policy iam \
+    //cloudresourcemanager.googleapis.com/projects/$PROJECT \
+    --principal-email=$USER \
     --permission=compute.instances.create 2>/dev/null || echo "Use Policy Troubleshooter in Console"
 ```
 
 ## The Policy Troubleshooter
 
-If you are still stuck, GCP has a built-in Policy Troubleshooter that can tell you exactly why a permission is being denied. You can find it in the Console under IAM and Admin, or use the API directly. It checks IAM policies, organization policies, and VPC Service Controls all at once, and gives you a clear answer about what is blocking the request.
+If you are still stuck, GCP has a built-in Policy Troubleshooter that can tell you why an IAM permission is being denied. You can find it in the Console under IAM and Admin, or use the API directly. It checks IAM allow policies, deny policies, and principal access boundary policies, and gives you a clear answer about what is blocking the request. For organization policy constraints and VPC Service Controls denials, use the dedicated organization policy pages or the VPC Service Controls violation analyzer.
 
 The bottom line: permission denied errors when creating VMs in GCP usually come down to one of five things - missing IAM roles, service account issues, org policy constraints, Shared VPC permissions, or disabled APIs. Work through them systematically and you will find the culprit.
