@@ -17,13 +17,8 @@ This guide covers designing the data model, building the Looker views, and creat
 Supply Chain Twin stores its data in BigQuery. Before building dashboards, ensure your tables are structured for efficient querying.
 
 ```sql
--- Create a materialized view for current inventory status
--- This pre-aggregates inventory data for fast dashboard queries
-CREATE MATERIALIZED VIEW `project.supply_chain.mv_current_inventory`
-OPTIONS (
-  enable_refresh = true,
-  refresh_interval_minutes = 15
-)
+-- Create a view for current inventory status
+CREATE OR REPLACE VIEW `project.supply_chain.v_current_inventory`
 AS
 SELECT
   w.warehouse_id,
@@ -83,7 +78,7 @@ LookML is Looker's modeling language. It defines how BigQuery tables map to dime
 
 # Defines the inventory data model for Looker
 view: inventory {
-  sql_table_name: `project.supply_chain.mv_current_inventory` ;;
+  sql_table_name: `project.supply_chain.v_current_inventory` ;;
 
   dimension: warehouse_id {
     type: string
@@ -139,6 +134,12 @@ view: inventory {
       {% else %}
         <span style="color: green;">{{ value }}</span>
       {% endif %} ;;
+  }
+
+  dimension_group: last_updated {
+    type: time
+    timeframes: [date, week, month, quarter, year]
+    sql: ${TABLE}.last_updated ;;
   }
 
   # Measures for aggregation
@@ -224,15 +225,15 @@ view: shipment_performance {
   }
 
   measure: avg_transit_hours {
-    type: average
-    sql: ${TABLE}.avg_transit_hours ;;
+    type: number
+    sql: SAFE_DIVIDE(SUM(${TABLE}.avg_transit_hours * ${TABLE}.total_shipments), SUM(${TABLE}.total_shipments)) ;;
     value_format: "0.0"
     label: "Avg Transit Time (hours)"
   }
 
   measure: avg_delay_hours {
-    type: average
-    sql: ${TABLE}.avg_delay_hours ;;
+    type: number
+    sql: SAFE_DIVIDE(SUM(${TABLE}.avg_delay_hours * ${TABLE}.total_shipments), SUM(${TABLE}.total_shipments)) ;;
     value_format: "0.0"
     label: "Avg Delay (hours)"
   }
@@ -248,6 +249,10 @@ Connect the views together in a LookML model.
 connection: "bigquery_production"
 
 include: "/views/*.view.lkml"
+
+datagroup: daily_refresh {
+  interval_trigger: "24 hours"
+}
 
 explore: inventory {
   label: "Inventory Analysis"
@@ -280,12 +285,16 @@ Create the main dashboard that supply chain leaders check daily.
       title: "Region"
       type: field_filter
       default_value: ""
+      model: supply_chain
       explore: inventory
       field: inventory.region
     - name: Date Range
       title: "Date Range"
       type: date_filter
       default_value: "30 days"
+      model: supply_chain
+      explore: inventory
+      field: inventory.last_updated_date
 
   elements:
     # KPI tiles across the top
@@ -294,6 +303,9 @@ Create the main dashboard that supply chain leaders check daily.
       model: supply_chain
       explore: inventory
       measures: [inventory.product_count]
+      listen:
+        Region: inventory.region
+        Date Range: inventory.last_updated_date
       row: 0
       col: 0
       width: 4
@@ -304,6 +316,9 @@ Create the main dashboard that supply chain leaders check daily.
       model: supply_chain
       explore: inventory
       measures: [inventory.out_of_stock_products]
+      listen:
+        Region: inventory.region
+        Date Range: inventory.last_updated_date
       row: 0
       col: 4
       width: 4
@@ -314,6 +329,9 @@ Create the main dashboard that supply chain leaders check daily.
       model: supply_chain
       explore: shipment_performance
       measures: [shipment_performance.on_time_rate]
+      listen:
+        Region: shipment_performance.destination_region
+        Date Range: shipment_performance.ship_date
       row: 0
       col: 8
       width: 4
@@ -327,6 +345,9 @@ Create the main dashboard that supply chain leaders check daily.
       dimensions: [inventory.region, inventory.stock_status]
       measures: [inventory.product_count]
       pivots: [inventory.stock_status]
+      listen:
+        Region: inventory.region
+        Date Range: inventory.last_updated_date
       row: 3
       col: 0
       width: 12
@@ -339,6 +360,9 @@ Create the main dashboard that supply chain leaders check daily.
       explore: shipment_performance
       dimensions: [shipment_performance.ship_week]
       measures: [shipment_performance.on_time_rate]
+      listen:
+        Region: shipment_performance.destination_region
+        Date Range: shipment_performance.ship_date
       row: 9
       col: 0
       width: 12
@@ -421,7 +445,7 @@ sdk = looker_sdk.init40()
 schedule = sdk.create_scheduled_plan(
     body=looker_sdk.models40.WriteScheduledPlan(
         name="Daily Supply Chain Overview",
-        dashboard_id=123,  # Your dashboard ID
+        dashboard_id="123",  # Your dashboard ID
         crontab="0 7 * * 1-5",  # Weekdays at 7 AM
         scheduled_plan_destination=[
             looker_sdk.models40.ScheduledPlanDestination(
@@ -439,4 +463,4 @@ print(f"Scheduled report created: {schedule.id}")
 
 ## Wrapping Up
 
-A supply chain analytics dashboard built on Supply Chain Twin and Looker gives your team real-time visibility into the metrics that matter - inventory health, delivery performance, and demand accuracy. The materialized views in BigQuery keep query performance fast, LookML provides a maintainable semantic layer, and Looker handles the visualization and distribution. The key to a useful dashboard is focusing on the metrics that drive decisions rather than trying to show everything at once. Start with the executive overview, then build deeper drill-down views as your team identifies what they need.
+A supply chain analytics dashboard built on Supply Chain Twin and Looker gives your team real-time visibility into the metrics that matter - inventory health, delivery performance, and demand accuracy. The views and materialized views in BigQuery keep query performance fast, LookML provides a maintainable semantic layer, and Looker handles the visualization and distribution. The key to a useful dashboard is focusing on the metrics that drive decisions rather than trying to show everything at once. Start with the executive overview, then build deeper drill-down views as your team identifies what they need.
