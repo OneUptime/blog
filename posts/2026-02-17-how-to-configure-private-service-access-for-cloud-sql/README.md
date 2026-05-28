@@ -8,7 +8,7 @@ Description: A complete guide to configuring Private Service Access for Cloud SQ
 
 ---
 
-Private Service Access (PSA) is the networking foundation that enables Cloud SQL to have a private IP address on your VPC. Without it, Cloud SQL can only be accessed via public IP or the Auth Proxy over public endpoints. With PSA configured, your database gets an IP address on your network, and all traffic stays internal. This guide covers the setup in detail.
+Private Service Access (PSA) is the networking foundation that enables Cloud SQL to have a private IP address on your VPC. Without it, Cloud SQL cannot use PSA-based private IP connectivity and must use another connectivity option, such as public IP. With PSA configured, your database gets an IP address on your network, and all traffic stays internal. This guide covers the setup in detail.
 
 ## What Private Service Access Does
 
@@ -34,7 +34,7 @@ Key characteristics:
 
 - Traffic between your VPC and Cloud SQL never leaves Google's network
 - Cloud SQL gets an IP from the range you allocate
-- The peering is managed by Google - you cannot modify it directly
+- The peering is managed through Service Networking commands; do not delete the VPC peering directly
 - Multiple Google services (Cloud SQL, Memorystore, etc.) can share the same PSA configuration
 
 ## Prerequisites
@@ -58,7 +58,7 @@ This is the most important step. The IP range you allocate:
 - Must not overlap with any existing subnets in your VPC
 - Must not overlap with any VPC peering ranges
 - Should be large enough for current and future needs
-- Cannot be changed after Cloud SQL instances are created in it
+- The allocated range name assigned to a Cloud SQL instance cannot be changed after the instance is created
 
 ### Sizing Guidelines
 
@@ -142,7 +142,7 @@ The state should be `ACTIVE`.
 
 ## Using Multiple IP Ranges
 
-For larger deployments or when you need to separate IP ranges by service or region:
+For larger deployments or when you need to direct new Cloud SQL instances to a specific allocated range:
 
 ```bash
 # Allocate a second IP range
@@ -164,7 +164,7 @@ When creating a Cloud SQL instance, you can specify which range to use:
 
 ```bash
 # Create an instance using a specific allocated range
-gcloud sql instances create my-instance \
+gcloud beta sql instances create my-instance \
     --database-version=POSTGRES_15 \
     --tier=db-custom-4-16384 \
     --region=europe-west1 \
@@ -235,7 +235,7 @@ The `depends_on` is crucial - without it, Terraform might try to create the Clou
 
 ## Route Export for On-Premises Connectivity
 
-If you have Cloud VPN or Interconnect connecting on-premises to your VPC, you need to export the PSA routes so on-premises can reach Cloud SQL:
+If you have Cloud VPN or Interconnect connecting on-premises to your VPC, you need to export custom routes to the service producer network so Cloud SQL can send return traffic to on-premises:
 
 ```bash
 # Enable route export for the peering
@@ -245,7 +245,7 @@ gcloud compute networks peerings update servicenetworking-googleapis-com \
     --import-custom-routes
 ```
 
-Without this, on-premises machines cannot reach Cloud SQL private IPs even if they have VPN connectivity to the VPC.
+You also need to advertise the allocated PSA ranges to your on-premises network. Without both pieces, on-premises machines cannot reliably reach Cloud SQL private IPs even if they have VPN connectivity to the VPC.
 
 ## Shared VPC Configuration
 
@@ -370,4 +370,4 @@ gcloud compute ssh my-vm --command="nc -zv 10.100.0.5 5432"
 
 ## Summary
 
-Private Service Access is the plumbing that enables private IP for Cloud SQL. The setup involves three steps: allocate an IP range, create the private connection, and then create Cloud SQL instances with `--no-assign-ip`. Plan your IP ranges carefully since they cannot be changed after instances are created. For Shared VPC environments, PSA is configured on the host project. Enable route export if you need on-premises connectivity to Cloud SQL via VPN or Interconnect.
+Private Service Access is the plumbing that enables private IP for Cloud SQL. The setup involves three steps: allocate an IP range, create the private connection, and then create Cloud SQL instances with `--no-assign-ip`. Plan your IP ranges carefully since the allocated range name assigned to an instance cannot be changed after the instance is created. For Shared VPC environments, PSA is configured on the host project. Enable route export and advertise the allocated PSA range if you need on-premises connectivity to Cloud SQL via VPN or Interconnect.
