@@ -21,7 +21,7 @@ This is one of the most frustrating errors in GCP because it does not happen whe
 
 ## Why This Error Occurs
 
-When you deploy a Cloud Function, the function runs as a service account. By default, it uses the App Engine default service account (`PROJECT_ID@appspot.gserviceaccount.com`). The `actAs` permission is GCP's way of saying "this user is allowed to deploy code that will run as this service account."
+When you deploy a Cloud Function, the function runs as a service account. For Cloud Functions 1st gen, the default runtime service account is the App Engine default service account (`PROJECT_ID@appspot.gserviceaccount.com`). For Cloud Run functions, the default runtime service account is the Compute Engine default service account (`PROJECT_NUMBER-compute@developer.gserviceaccount.com`). The `actAs` permission is GCP's way of saying "this user is allowed to deploy code that will run as this service account."
 
 Think of it as a safety mechanism. Without this check, any project member could deploy a function that runs with elevated privileges by specifying a highly-privileged service account. The `actAs` permission ensures you are explicitly authorized to deploy code under a given identity.
 
@@ -110,7 +110,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 # Deploy the function with the custom service account
 gcloud functions deploy my-function \
-    --runtime=nodejs20 \
+    --runtime=nodejs22 \
     --trigger-http \
     --service-account=cloud-fn-sa@my-project.iam.gserviceaccount.com \
     --source=. \
@@ -119,22 +119,23 @@ gcloud functions deploy my-function \
 
 ## Cloud Functions v2 (Cloud Run-based) Considerations
 
-If you are using Cloud Functions 2nd gen (which runs on Cloud Run under the hood), you need similar permissions but the deployment flow is slightly different:
+If you are using Cloud Functions 2nd gen (now Cloud Run functions), you need similar permissions but the deployment flow is slightly different. For functions managed through the Cloud Functions API, the deployer needs Cloud Functions permissions plus `actAs` on both the runtime service account and the Cloud Build service account. For functions deployed directly as Cloud Run functions from source, Google Cloud documents Cloud Run Source Developer, Service Usage Consumer, and Service Account User on the Cloud Run service identity:
 
 ```bash
-# For Cloud Functions 2nd gen, you also need Cloud Run permissions
-# The deployer needs these roles:
+# For functions managed through the Cloud Functions API
 gcloud projects add-iam-binding my-project \
     --member="user:developer@example.com" \
     --role="roles/cloudfunctions.developer"
 
-gcloud projects add-iam-binding my-project \
-    --member="user:developer@example.com" \
-    --role="roles/run.admin"
-
-# And actAs permission on the function's service account
+# And actAs permission on the function's runtime service account
 gcloud iam service-accounts add-iam-policy-binding \
     cloud-fn-sa@my-project.iam.gserviceaccount.com \
+    --member="user:developer@example.com" \
+    --role="roles/iam.serviceAccountUser"
+
+# Also grant actAs on the Cloud Build service account used by your project
+gcloud iam service-accounts add-iam-policy-binding \
+    CLOUD_BUILD_SERVICE_ACCOUNT_EMAIL \
     --member="user:developer@example.com" \
     --role="roles/iam.serviceAccountUser"
 ```
@@ -158,6 +159,24 @@ gcloud projects add-iam-binding my-project \
 gcloud projects add-iam-binding my-project \
     --member="serviceAccount:cicd-deployer@my-project.iam.gserviceaccount.com" \
     --role="roles/cloudbuild.builds.editor"
+
+# If this CI/CD account deploys Cloud Run functions from Cloud Build,
+# also grant the supporting deploy-time roles documented for Cloud Build
+gcloud projects add-iam-binding my-project \
+    --member="serviceAccount:cicd-deployer@my-project.iam.gserviceaccount.com" \
+    --role="roles/run.admin"
+
+gcloud projects add-iam-binding my-project \
+    --member="serviceAccount:cicd-deployer@my-project.iam.gserviceaccount.com" \
+    --role="roles/storage.admin"
+
+gcloud projects add-iam-binding my-project \
+    --member="serviceAccount:cicd-deployer@my-project.iam.gserviceaccount.com" \
+    --role="roles/artifactregistry.writer"
+
+gcloud projects add-iam-binding my-project \
+    --member="serviceAccount:cicd-deployer@my-project.iam.gserviceaccount.com" \
+    --role="roles/logging.logWriter"
 
 # Grant actAs permission for the function's runtime service account
 gcloud iam service-accounts add-iam-policy-binding \
@@ -204,13 +223,10 @@ If someone deleted the App Engine default service account, you can undelete it w
 ```bash
 # Undelete the App Engine default service account
 # This only works within 30 days of deletion
-gcloud iam service-accounts undelete \
-    --project=my-project \
-    $(gcloud iam service-accounts list \
-        --project=my-project \
-        --filter="email:my-project@appspot.gserviceaccount.com" \
-        --format="value(uniqueId)" \
-        --include-deleted)
+# First find the deleted service account's 21-digit numeric ID from
+# IAM policy bindings or the DeleteServiceAccount audit log entry.
+gcloud iam service-accounts undelete ACCOUNT_ID \
+    --project=my-project
 ```
 
 If it has been more than 30 days, you will need to use a custom service account for your Cloud Functions.
