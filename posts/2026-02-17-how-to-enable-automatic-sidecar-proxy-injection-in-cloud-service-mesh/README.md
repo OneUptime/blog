@@ -56,14 +56,24 @@ kubectl get mutatingwebhookconfiguration -l app=sidecar-injector
 
 ## Step 2: Label Namespaces for Injection
 
-Label each namespace where you want automatic sidecar injection.
+Label each namespace where you want automatic sidecar injection. For current managed Cloud Service Mesh, Google recommends using the default injection label.
 
 ```bash
 # Enable injection for the default namespace
-kubectl label namespace default istio.io/rev=asm-managed --overwrite
+kubectl label namespace default istio.io/rev- istio-injection=enabled --overwrite
 
 # Enable injection for a custom namespace
-kubectl label namespace my-app istio.io/rev=asm-managed --overwrite
+kubectl label namespace my-app istio.io/rev- istio-injection=enabled --overwrite
+```
+
+If you are an existing Managed Istiod user and choose revision-based injection, apply the revision label and remove any default injection label so the namespace has only one injection mode configured.
+
+```bash
+# Enable revision-based injection for the default namespace
+kubectl label namespace default istio-injection- istio.io/rev=asm-managed --overwrite
+
+# Enable revision-based injection for a custom namespace
+kubectl label namespace my-app istio-injection- istio.io/rev=asm-managed --overwrite
 ```
 
 Verify the label was applied.
@@ -73,7 +83,7 @@ Verify the label was applied.
 kubectl get namespace default --show-labels
 ```
 
-If you are using an older version of Cloud Service Mesh or in-cluster Istio, you might use the `istio-injection=enabled` label instead. But for the managed control plane, always use the revision-based label `istio.io/rev`.
+For current managed Cloud Service Mesh, use the default injection label unless you specifically need revision-based injection for an existing Managed Istiod setup.
 
 ## Step 3: Restart Existing Pods
 
@@ -108,11 +118,11 @@ kubectl get pod my-app-5d4f7b8c9-abc12 -n default -o jsonpath='{.spec.containers
 
 ## Step 4: Configure Injection at the Pod Level
 
-Sometimes you need finer-grained control than namespace-level injection. You can use pod annotations to override the namespace setting.
+Sometimes you need finer-grained control than namespace-level injection. You can use pod labels to override the namespace setting.
 
 ### Disable Injection for Specific Pods
 
-If you have a pod in an injection-enabled namespace that should not get a sidecar (like a database or a batch job), annotate it.
+If you have a pod in an injection-enabled namespace that should not get a sidecar (like a database or a batch job), label it.
 
 ```yaml
 # deployment-no-sidecar.yaml
@@ -131,7 +141,6 @@ spec:
     metadata:
       labels:
         app: batch-processor
-      annotations:
         sidecar.istio.io/inject: "false"
     spec:
       containers:
@@ -161,8 +170,6 @@ spec:
       labels:
         app: special-service
         istio.io/rev: asm-managed
-      annotations:
-        sidecar.istio.io/inject: "true"
     spec:
       containers:
       - name: special-service
@@ -206,7 +213,7 @@ spec:
             memory: 512Mi
 ```
 
-For high-traffic services, increase the proxy CPU limit. For services with many concurrent connections, increase the memory limit. A good rule of thumb is to allocate roughly 0.5 vCPU and 128MB of memory per 1000 requests per second.
+For high-traffic services, increase the proxy CPU limit. For services with many concurrent connections, increase the memory limit. The right values depend on protocol mix, connection counts, telemetry configuration, and request size, so benchmark your workload and watch proxy CPU throttling and memory usage.
 
 ## Step 6: Configure Traffic Interception
 
@@ -241,7 +248,7 @@ metadata:
 
 ## Step 7: Handle Init Container Dependencies
 
-The sidecar uses an init container (`istio-init`) to set up iptables rules for traffic interception. This init container runs before your application starts. If your application also has init containers, ordering can matter.
+In non-CNI Istio installations, the sidecar uses an init container (`istio-init`) to set up iptables rules for traffic interception. With the Istio CNI node agent, traffic redirection is configured by CNI instead, and injected pods may use an `istio-validation` init container to verify redirection. If your application also has init containers, ordering can matter.
 
 ```yaml
 # Ensure proper init container ordering
@@ -263,8 +270,11 @@ kubectl get mutatingwebhookconfiguration -l app=sidecar-injector -o yaml | grep 
 
 # Check injection status across all namespaces
 for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
+    default=$(kubectl get namespace $ns -o jsonpath='{.metadata.labels.istio-injection}' 2>/dev/null)
     rev=$(kubectl get namespace $ns -o jsonpath='{.metadata.labels.istio\.io/rev}' 2>/dev/null)
-    if [ -n "$rev" ]; then
+    if [ "$default" = "enabled" ]; then
+        echo "$ns: injection enabled (default injection)"
+    elif [ -n "$rev" ]; then
         echo "$ns: injection enabled (revision: $rev)"
     fi
 done
@@ -275,9 +285,9 @@ kubectl describe pod my-app-pod -n default | grep -A2 "istio-proxy"
 
 ## Troubleshooting Injection Issues
 
-**Pods not getting sidecars**: Check the namespace label matches the active revision. Verify the mutating webhook configuration exists. Check that the pod does not have `sidecar.istio.io/inject: "false"` annotation.
+**Pods not getting sidecars**: Check that the namespace has the expected injection label or, for revision-based injection, that the label matches the active revision. Verify the mutating webhook configuration exists. Check that the pod does not have the `sidecar.istio.io/inject: "false"` label.
 
-**Pods stuck in Init state**: The istio-init container might be failing. Check init container logs with `kubectl logs pod-name -c istio-init`. This often happens when the pod does not have the right permissions for iptables modification.
+**Pods stuck in Init state**: The `istio-init` or `istio-validation` container might be failing. Check init container logs with `kubectl logs pod-name -c istio-init` or `kubectl logs pod-name -c istio-validation`. In non-CNI installs, `istio-init` failures often happen when the pod does not have the right permissions for iptables modification.
 
 **CrashLoopBackOff after injection**: The sidecar might be failing to connect to the control plane. Check sidecar logs with `kubectl logs pod-name -c istio-proxy`. Common causes include misconfigured mesh settings or network policies blocking control plane communication.
 
