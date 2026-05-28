@@ -8,7 +8,7 @@ Description: Learn how to evaluate and measure ML model fairness using Vertex AI
 
 ---
 
-Building an ML model that performs well on aggregate metrics is not enough. A loan approval model with 95% accuracy might still systematically deny qualified applicants from certain demographic groups. A hiring model might score candidates differently based on gender-correlated features. Vertex AI provides tools to detect and measure these biases at both the data level and the model prediction level. This guide walks through how to use them.
+Building an ML model that performs well on aggregate metrics is not enough. A loan approval model with 95% accuracy might still systematically deny qualified applicants from certain demographic groups. A hiring model might score candidates differently based on gender-correlated features. Vertex AI provides model evaluation pipeline components to detect and measure these biases at both the data level and the model prediction level. This guide walks through how to compute the same kinds of metrics from BigQuery data and Vertex AI batch prediction output.
 
 ## Understanding Two Types of Bias
 
@@ -76,39 +76,33 @@ race_rates = analyze_representation(df, "race_ethnicity", "approved")
 
 ## Step 2: Compute Fairness Metrics on Data
 
-Calculate standard fairness metrics before training:
+Calculate Vertex AI data bias metrics before training:
 
 ```python
 # fairness_metrics.py - Compute pre-training fairness metrics
-import numpy as np
 
 def compute_data_fairness_metrics(df, sensitive_col, target_col, privileged_value):
-    """Compute standard data bias metrics comparing privileged vs. unprivileged groups.
+    """Compute data bias metrics comparing privileged vs. unprivileged groups.
     Returns metrics that quantify how different groups are treated in the data."""
 
     privileged = df[df[sensitive_col] == privileged_value]
     unprivileged = df[df[sensitive_col] != privileged_value]
 
-    # Disparate Impact: ratio of positive outcome rates
-    # A value of 1.0 means perfect parity; below 0.8 is often considered problematic
+    # Difference in Population Size: normalized group-size difference
+    # 0 means equal representation between the two compared slices
+    population_size_difference = (len(privileged) - len(unprivileged)) / len(df)
+
+    # Difference in Positive Proportions in True Labels (DPPTL):
+    # positive ground-truth label rate for slice 1 minus slice 2
     priv_rate = privileged[target_col].mean()
     unpriv_rate = unprivileged[target_col].mean()
-    disparate_impact = unpriv_rate / priv_rate if priv_rate > 0 else 0
-
-    # Statistical Parity Difference: difference in positive outcome rates
-    # 0 means perfect parity; negative means unprivileged group is disadvantaged
-    stat_parity_diff = unpriv_rate - priv_rate
-
-    # Class Imbalance: difference in group sizes
-    priv_fraction = len(privileged) / len(df)
-    class_imbalance = priv_fraction - 0.5  # 0 means equal representation
+    diff_positive_proportions_true_labels = priv_rate - unpriv_rate
 
     metrics = {
         "privileged_positive_rate": round(priv_rate, 4),
         "unprivileged_positive_rate": round(unpriv_rate, 4),
-        "disparate_impact": round(disparate_impact, 4),
-        "statistical_parity_difference": round(stat_parity_diff, 4),
-        "class_imbalance": round(class_imbalance, 4),
+        "difference_in_population_size": round(population_size_difference, 4),
+        "difference_positive_proportions_true_labels": round(diff_positive_proportions_true_labels, 4),
     }
 
     return metrics
@@ -122,14 +116,14 @@ print("\nData Fairness Metrics (Gender):")
 for name, value in metrics.items():
     print(f"  {name}: {value}")
 
-# Flag concerning values
-if metrics["disparate_impact"] < 0.8:
-    print("\n  WARNING: Disparate impact below 0.8 threshold - significant bias detected")
+# Flag concerning values using your own policy threshold
+if abs(metrics["difference_positive_proportions_true_labels"]) > 0.1:
+    print("\n  REVIEW: Difference in positive label proportions exceeds review threshold")
 ```
 
 ## Step 3: Use Vertex AI Model Evaluation for Bias
 
-After training your model, use Vertex AI's built-in evaluation to measure prediction bias across slices:
+After training your model, use Vertex AI batch prediction output, or Vertex AI's model evaluation pipeline components, to measure prediction bias across slices:
 
 ```python
 from google.cloud import aiplatform
@@ -161,31 +155,33 @@ def evaluate_model_fairness(predictions_df, sensitive_col, true_label_col, pred_
     privileged = predictions_df[predictions_df[sensitive_col] == privileged_value]
     unprivileged = predictions_df[predictions_df[sensitive_col] != privileged_value]
 
-    # Equal Opportunity: true positive rate should be equal across groups
-    priv_tpr = privileged[privileged[true_label_col] == 1][pred_col].mean()
-    unpriv_tpr = unprivileged[unprivileged[true_label_col] == 1][pred_col].mean()
-    equal_opportunity_diff = unpriv_tpr - priv_tpr
+    priv_pred_positive = privileged[pred_col] >= 0.5
+    unpriv_pred_positive = unprivileged[pred_col] >= 0.5
+    priv_actual_positive = privileged[true_label_col] == 1
+    unpriv_actual_positive = unprivileged[true_label_col] == 1
+    priv_actual_negative = privileged[true_label_col] == 0
+    unpriv_actual_negative = unprivileged[true_label_col] == 0
 
-    # Predictive Parity: precision should be equal across groups
-    priv_precision = (
-        privileged[(privileged[pred_col] >= 0.5) & (privileged[true_label_col] == 1)].shape[0]
-        / max(privileged[privileged[pred_col] >= 0.5].shape[0], 1)
-    )
-    unpriv_precision = (
-        unprivileged[(unprivileged[pred_col] >= 0.5) & (unprivileged[true_label_col] == 1)].shape[0]
-        / max(unprivileged[unprivileged[pred_col] >= 0.5].shape[0], 1)
-    )
-    predictive_parity_diff = unpriv_precision - priv_precision
+    # Recall Difference, also known as Equal Opportunity:
+    # true positive rate for slice 1 minus slice 2
+    priv_recall = (priv_pred_positive & priv_actual_positive).sum() / max(priv_actual_positive.sum(), 1)
+    unpriv_recall = (unpriv_pred_positive & unpriv_actual_positive).sum() / max(unpriv_actual_positive.sum(), 1)
+    recall_difference = priv_recall - unpriv_recall
 
-    # Demographic Parity: prediction positive rate across groups
+    # Specificity Difference: true negative rate for slice 1 minus slice 2
+    priv_specificity = ((~priv_pred_positive) & priv_actual_negative).sum() / max(priv_actual_negative.sum(), 1)
+    unpriv_specificity = ((~unpriv_pred_positive) & unpriv_actual_negative).sum() / max(unpriv_actual_negative.sum(), 1)
+    specificity_difference = priv_specificity - unpriv_specificity
+
+    # Difference in Positive Proportions in Predicted Labels (DPPPL)
     priv_positive_rate = (privileged[pred_col] >= 0.5).mean()
     unpriv_positive_rate = (unprivileged[pred_col] >= 0.5).mean()
-    demographic_parity_diff = unpriv_positive_rate - priv_positive_rate
+    diff_positive_proportions_predicted_labels = priv_positive_rate - unpriv_positive_rate
 
     return {
-        "equal_opportunity_difference": round(equal_opportunity_diff, 4),
-        "predictive_parity_difference": round(predictive_parity_diff, 4),
-        "demographic_parity_difference": round(demographic_parity_diff, 4),
+        "recall_difference": round(recall_difference, 4),
+        "specificity_difference": round(specificity_difference, 4),
+        "difference_positive_proportions_predicted_labels": round(diff_positive_proportions_predicted_labels, 4),
         "privileged_positive_prediction_rate": round(priv_positive_rate, 4),
         "unprivileged_positive_prediction_rate": round(unpriv_positive_rate, 4),
     }
