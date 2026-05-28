@@ -8,7 +8,7 @@ Description: Learn how to set up Private Service Access for AlloyDB clusters so 
 
 ---
 
-AlloyDB clusters do not get public IP addresses. Every AlloyDB instance communicates over private IP within your VPC network. This is great for security, but it means you need to configure Private Service Access (PSA) before you can create your first AlloyDB cluster. If you skip this step, cluster creation will fail with a networking error that can be confusing if you have not set up PSA before.
+AlloyDB clusters use a private IP interface when you create them. In this guide, that private interface is Private Service Access (PSA), which lets AlloyDB communicate over private IP within your VPC network. This is great for security, but it means you need to configure PSA before you can create an AlloyDB cluster that uses PSA. If you skip this step, cluster creation will fail with a networking error that can be confusing if you have not set up PSA before.
 
 In this guide, I will walk through what Private Service Access is, how to configure it for AlloyDB, and how to troubleshoot common issues.
 
@@ -48,7 +48,7 @@ gcloud services enable servicenetworking.googleapis.com
 
 ## Step 1: Allocate an IP Address Range
 
-You need to reserve a block of IP addresses that Google will use for AlloyDB and other managed services. The minimum recommended size is /20 (4,096 addresses), but /16 gives you plenty of room to grow.
+You need to reserve a block of IP addresses that Google will use for AlloyDB and other managed services. AlloyDB uses a /24 subnet in each region where you deploy a cluster, and Google recommends a /16 range so you have room to grow.
 
 ```bash
 # Allocate a /20 IP range for Google managed services
@@ -135,7 +135,7 @@ gcloud alloydb instances describe my-primary \
 
 ## Connecting from Your Application
 
-Since AlloyDB only exposes private IPs, your application must run within the same VPC (or a peered VPC) to connect. Here are common connectivity patterns.
+For direct private IP connectivity, your application must run within the VPC configured for AlloyDB. Applications outside that VPC need additional connectivity, such as Shared VPC, Private Service Connect, a proxy or bastion VM, Cloud VPN, or Cloud Interconnect. Here are common connectivity patterns.
 
 ### From a GCE VM in the Same VPC
 
@@ -157,7 +157,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
       - name: app
@@ -176,14 +182,13 @@ spec:
 
 ### From On-Premises via Cloud VPN or Interconnect
 
-If you need to connect from on-premises, you need a Cloud VPN tunnel or Cloud Interconnect, plus a route that reaches the PSA range:
+If you need to connect from on-premises, you need a Cloud VPN tunnel or Cloud Interconnect, Cloud Router advertisements for the AlloyDB private IP ranges, and custom route export on the private services access peering so the service producer network can route responses back to on-premises:
 
 ```bash
 # Export custom routes to the peered network so on-prem traffic can reach AlloyDB
 gcloud compute networks peerings update servicenetworking-googleapis-com \
   --network=my-vpc \
-  --export-custom-routes \
-  --import-custom-routes
+  --export-custom-routes
 ```
 
 ## Adding More IP Ranges
