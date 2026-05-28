@@ -10,7 +10,7 @@ Description: Build a Go application that streams large BigQuery result sets usin
 
 The standard BigQuery query API works well for moderate result sets, but when you need to read millions of rows, it starts to show its limits. You get paginated JSON responses, which means high serialization overhead and multiple round trips.
 
-The BigQuery Storage Read API takes a different approach. It streams data directly from BigQuery's storage layer in a columnar format (Apache Arrow or Avro), which is dramatically faster for large datasets. In my experience, it can be 10x faster for tables with millions of rows.
+The BigQuery Storage Read API takes a different approach. It streams data directly from BigQuery's storage layer in a binary format (Apache Arrow or Avro), which is dramatically faster for large datasets. In my experience, it can be 10x faster for tables with millions of rows.
 
 Let me show you how to use it in Go.
 
@@ -34,8 +34,11 @@ Install the required dependencies.
 ```bash
 go get cloud.google.com/go/bigquery/storage/apiv1
 go get cloud.google.com/go/bigquery/storage/apiv1/storagepb
-go get github.com/apache/arrow/go/v15/arrow
-go get github.com/apache/arrow/go/v15/arrow/ipc
+go get github.com/apache/arrow-go/v18/arrow
+go get github.com/apache/arrow-go/v18/arrow/ipc
+go get github.com/apache/arrow-go/v18/arrow/memory
+go get github.com/googleapis/gax-go/v2
+go get google.golang.org/grpc
 ```
 
 ## Creating a Read Session
@@ -54,6 +57,13 @@ import (
 
     bqstorage "cloud.google.com/go/bigquery/storage/apiv1"
     storagepb "cloud.google.com/go/bigquery/storage/apiv1/storagepb"
+    gax "github.com/googleapis/gax-go/v2"
+    "google.golang.org/grpc"
+)
+
+// The Storage API may return large row blocks.
+var rpcOpts = gax.WithGRPCOptions(
+    grpc.MaxCallRecvMsgSize(1024 * 1024 * 129),
 )
 
 // BigQueryReader wraps the Storage Read API client
@@ -137,7 +147,7 @@ func (r *BigQueryReader) ReadStream(
     }
 
     // Start reading from the stream
-    stream, err := r.client.ReadRows(ctx, req)
+    stream, err := r.client.ReadRows(ctx, req, rpcOpts)
     if err != nil {
         return 0, fmt.Errorf("failed to read rows: %w", err)
     }
@@ -244,21 +254,32 @@ The Storage Read API returns data as Arrow record batches. Here is how to decode
 import (
     "bytes"
 
-    "github.com/apache/arrow/go/v15/arrow"
-    "github.com/apache/arrow/go/v15/arrow/ipc"
-    "github.com/apache/arrow/go/v15/arrow/memory"
+    "github.com/apache/arrow-go/v18/arrow/ipc"
+    "github.com/apache/arrow-go/v18/arrow/memory"
 )
 
 // decodeArrowBatch decodes an Arrow serialized record batch using the session schema
 func decodeArrowBatch(schema []byte, batch []byte) ([]map[string]interface{}, error) {
-    // Combine the schema and batch data for the IPC reader
     alloc := memory.NewGoAllocator()
 
-    // Create a reader from the serialized schema
-    buf := bytes.NewBuffer(schema)
-    reader, err := ipc.NewReader(buf, ipc.WithAllocator(alloc))
+    // First read the schema that BigQuery returns with the session.
+    schemaReader, err := ipc.NewReader(bytes.NewReader(schema), ipc.WithAllocator(alloc))
     if err != nil {
-        return nil, fmt.Errorf("failed to create arrow reader: %w", err)
+        return nil, fmt.Errorf("failed to read arrow schema: %w", err)
+    }
+    defer schemaReader.Release()
+
+    arrowSchema := schemaReader.Schema()
+
+    // BigQuery returns each row block as an IPC-serialized Arrow RecordBatch.
+    // Prefix the batch with the session schema so the stream reader can decode it.
+    buf := bytes.NewBuffer(make([]byte, 0, len(schema)+len(batch)))
+    buf.Write(schema)
+    buf.Write(batch)
+
+    reader, err := ipc.NewReader(buf, ipc.WithAllocator(alloc), ipc.WithSchema(arrowSchema))
+    if err != nil {
+        return nil, fmt.Errorf("failed to create arrow batch reader: %w", err)
     }
     defer reader.Release()
 
@@ -281,6 +302,10 @@ func decodeArrowBatch(schema []byte, batch []byte) ([]map[string]interface{}, er
             }
             rows = append(rows, row)
         }
+    }
+
+    if err := reader.Err(); err != nil {
+        return nil, fmt.Errorf("failed to read arrow batch: %w", err)
     }
 
     return rows, nil
@@ -306,9 +331,9 @@ func main() {
         ctx,
         "my_dataset",
         "events",
-        []string{"event_id", "event_type", "timestamp", "user_id"}, // Only these columns
-        "timestamp > '2026-01-01'",                                   // Row filter
-        4,                                                             // 4 parallel streams
+        []string{"event_id", "event_type", "timestamp", "user_id"},  // Only these columns
+        "timestamp > TIMESTAMP '2026-01-01 00:00:00 UTC'",             // Row filter
+        4,                                                              // 4 parallel streams
     )
     if err != nil {
         log.Fatalf("Failed to create session: %v", err)
@@ -317,12 +342,23 @@ func main() {
     // Read all streams in parallel
     var mu sync.Mutex
     var allRows int64
+    schema := session.GetArrowSchema().GetSerializedSchema()
 
     totalRows, err := reader.ReadAllStreamsParallel(ctx, session, func(data []byte) error {
         // Process each Arrow record batch
+        rows, err := decodeArrowBatch(schema, data)
+        if err != nil {
+            return err
+        }
+
         mu.Lock()
-        allRows += int64(len(data))
+        allRows += int64(len(rows))
         mu.Unlock()
+
+        for _, row := range rows {
+            log.Printf("%v", row)
+        }
+
         return nil
     })
 
@@ -330,7 +366,8 @@ func main() {
         log.Fatalf("Read failed: %v", err)
     }
 
-    log.Printf("Read %d total rows across %d streams", totalRows, len(session.Streams))
+    log.Printf("Decoded %d rows; Storage API reported %d rows across %d streams",
+        allRows, totalRows, len(session.Streams))
 }
 ```
 
@@ -359,7 +396,7 @@ flowchart TD
 
 3. **Tune stream count** - More streams means more parallelism, but there is overhead per stream. Start with 4-8 streams and adjust based on your workload.
 
-4. **Use Arrow format** - Arrow is faster than Avro for most Go applications because it uses a zero-copy memory layout.
+4. **Use Arrow format** - Arrow is a good fit when your application can process columnar batches directly. If you need row-oriented maps, benchmark Arrow against Avro for your workload.
 
 5. **Process batches, not rows** - Work with entire Arrow record batches when possible rather than deserializing every row individually.
 
