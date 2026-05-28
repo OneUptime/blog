@@ -36,6 +36,7 @@ graph TD
 ## Prerequisites
 
 - A Vertex AI Search engine with indexed content
+- Enterprise edition features enabled for unstructured apps, or advanced website indexing enabled for website apps that use extractive answers
 - Python 3.9+
 - The Discovery Engine API enabled
 
@@ -69,7 +70,6 @@ def search_with_extractive_answers(
     # Configure extractive content specification
     extractive_spec = discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
         max_extractive_answer_count=max_answers,  # Number of answers per document
-        return_extractive_segment_score=True,      # Include confidence scores
     )
 
     request = discoveryengine.SearchRequest(
@@ -222,7 +222,6 @@ def search_with_both(
             # Also include snippets for the result list
             snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
                 return_snippet=True,
-                max_snippet_count=2,
             ),
         ),
     )
@@ -299,7 +298,7 @@ def format_search_results_for_ui(response) -> list:
         for snippet in doc_data.get("snippets", []):
             formatted["snippets"].append({
                 "text": snippet.get("snippet", ""),
-                "html": snippet.get("snippet_with_html_tag", ""),
+                "status": snippet.get("snippet_status", ""),
             })
 
         formatted_results.append(formatted)
@@ -315,9 +314,9 @@ The quality of extractive answers depends heavily on your document content. Here
 
 **Question-answer patterns** - Documents that follow a FAQ or Q&A format are ideal for extractive answers because the answer boundaries are clear.
 
-**Increase segment count for complex topics** - For technical documentation where context is important, request more segments (3-5) and enable previous/next segments for surrounding context.
+**Increase segment count for complex topics** - For technical documentation where context is important, request more segments (3-5) and enable previous/next segments for surrounding context. Vertex AI Search supports up to 10 extractive segments per result, and up to 3 previous and 3 next adjacent segments.
 
-**Use relevance scores for filtering** - Filter out low-scoring segments to avoid showing irrelevant content. A score threshold of 0.5 is a reasonable starting point.
+**Use relevance scores for filtering** - Filter out low-scoring segments to avoid showing irrelevant content. Scores range from -1.0 to 1.0, and a score threshold of 0.5 is a reasonable starting point. Segment scores are available only for new or allowlisted data stores.
 
 ```python
 # Filter results by relevance score
