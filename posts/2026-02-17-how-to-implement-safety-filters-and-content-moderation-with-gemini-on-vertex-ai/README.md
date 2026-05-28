@@ -12,28 +12,33 @@ When you deploy a generative AI application to real users, safety is not optiona
 
 ## How Gemini Safety Filters Work
 
-Gemini evaluates both inputs and outputs against several safety categories. When content is flagged, the response includes safety ratings that tell you why. The categories cover harassment, hate speech, sexually explicit content, and dangerous content.
+Gemini can reject unsafe prompts through non-configurable filters, and configurable content filters can block unsafe model responses. When a response is flagged, the candidate includes safety ratings that tell you why. The configurable categories cover harassment, hate speech, sexually explicit content, and dangerous content.
 
-Each rating has a probability level: NEGLIGIBLE, LOW, MEDIUM, or HIGH. You can set thresholds to control how aggressive the filtering is. By default, Gemini blocks content rated MEDIUM or HIGH in any category.
+Each rating can include a probability level and severity level: NEGLIGIBLE, LOW, MEDIUM, or HIGH. You can set thresholds to control how aggressive the filtering is. Defaults vary by model, and Gemini 2.5 Flash and later default to `OFF`, so set thresholds explicitly when your application depends on safety blocking or safety metadata.
 
 ## Configuring Safety Settings
 
-You configure safety settings through the SafetySetting class. Each setting specifies a category and the threshold at which content should be blocked.
+You configure safety settings through the Google Gen AI SDK's `SafetySetting` class. Each setting specifies a category and the threshold at which content should be blocked.
 
 This code configures custom safety thresholds:
 
 ```python
-import vertexai
-from vertexai.generative_models import (
-    GenerativeModel,
+from google import genai
+from google.genai.types import (
+    GenerateContentConfig,
     HarmCategory,
     HarmBlockThreshold,
+    HttpOptions,
     SafetySetting,
 )
 
-# Initialize Vertex AI
-
-vertexai.init(project="your-project-id", location="us-central1")
+# Initialize the Gemini API in Vertex AI
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+    http_options=HttpOptions(api_version="v1"),
+)
 
 # Define safety settings - customize per category
 safety_settings = [
@@ -55,22 +60,25 @@ safety_settings = [
     ),
 ]
 
-# Create model with custom safety settings
-model = GenerativeModel(
-    "gemini-2.0-flash",
+# Create a generation config with custom safety settings
+generation_config = GenerateContentConfig(
     safety_settings=safety_settings,
 )
 ```
 
 ## Understanding Safety Ratings in Responses
 
-Every response from Gemini includes safety ratings, even when content is not blocked. Inspecting these ratings helps you understand how the model assesses different inputs.
+When safety metadata is enabled, Gemini responses include safety ratings, even when content is not blocked. Inspecting these ratings helps you understand how the model assesses different outputs.
 
 Here is how to read safety ratings:
 
 ```python
 # Generate content and inspect safety ratings
-response = model.generate_content("Explain network security best practices.")
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="Explain network security best practices.",
+    config=generation_config,
+)
 
 # Print the response text
 print("Response:", response.text)
@@ -89,10 +97,19 @@ for rating in response.candidates[0].safety_ratings:
 When content is blocked by safety filters, the response will not contain text. Your application needs to handle this gracefully.
 
 ```python
-def safe_generate(model, prompt):
+def enum_name(value):
+    """Return a readable name for SDK enum values and strings."""
+    return getattr(value, "name", str(value))
+
+
+def safe_generate(client, prompt):
     """Generate content with safety blocking handled."""
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=generation_config,
+        )
 
         # Check if the response was blocked
         if not response.candidates:
@@ -106,15 +123,15 @@ def safe_generate(model, prompt):
         candidate = response.candidates[0]
 
         # Check finish reason
-        if candidate.finish_reason and candidate.finish_reason.name == "SAFETY":
+        if candidate.finish_reason and enum_name(candidate.finish_reason) == "SAFETY":
             return {
                 "text": None,
                 "blocked": True,
                 "reason": "Response blocked due to safety filters",
                 "safety_ratings": [
                     {
-                        "category": r.category.name,
-                        "probability": r.probability.name,
+                        "category": enum_name(r.category),
+                        "probability": enum_name(r.probability),
                         "blocked": r.blocked
                     }
                     for r in candidate.safety_ratings
@@ -122,12 +139,12 @@ def safe_generate(model, prompt):
             }
 
         return {
-            "text": candidate.text,
+            "text": response.text,
             "blocked": False,
             "safety_ratings": [
                 {
-                    "category": r.category.name,
-                    "probability": r.probability.name,
+                    "category": enum_name(r.category),
+                    "probability": enum_name(r.probability),
                     "blocked": r.blocked
                 }
                 for r in candidate.safety_ratings
@@ -142,7 +159,7 @@ def safe_generate(model, prompt):
         }
 
 # Use the safe generation function
-result = safe_generate(model, "Tell me about cybersecurity threats.")
+result = safe_generate(client, "Tell me about cybersecurity threats.")
 if result["blocked"]:
     print(f"Content blocked: {result['reason']}")
 else:
@@ -220,7 +237,7 @@ input_filter = InputFilter()
 user_input = "How do I set up a firewall on GCP?"
 check = input_filter.check(user_input)
 if check["allowed"]:
-    result = safe_generate(model, user_input)
+    result = safe_generate(client, user_input)
 else:
     print(f"Input blocked: {check['reason']}")
 ```
@@ -233,10 +250,8 @@ Even with safety settings, the model's output might contain content that does no
 class OutputFilter:
     """Post-filter model outputs for additional safety checks."""
 
-    def __init__(self, model):
-        self.model = model
-        # Use a separate model call for moderation
-        self.moderator = GenerativeModel("gemini-2.0-flash")
+    def __init__(self, client):
+        self.client = client
 
     def moderate(self, original_prompt, model_response):
         """Check if the model response is appropriate."""
@@ -257,20 +272,20 @@ Check for:
 Respond with JSON:
 {{"safe": true/false, "issues": ["list of issues found"], "severity": "none/low/medium/high"}}"""
 
-        from vertexai.generative_models import GenerationConfig
-        response = self.moderator.generate_content(
-            moderation_prompt,
-            generation_config=GenerationConfig(
+        response = self.client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=moderation_prompt,
+            config=GenerateContentConfig(
                 response_mime_type="application/json"
-            )
+            ),
         )
 
         import json
         return json.loads(response.text)
 
 # Usage
-output_filter = OutputFilter(model)
-result = safe_generate(model, "What medications should I take for headaches?")
+output_filter = OutputFilter(client)
+result = safe_generate(client, "What medications should I take for headaches?")
 
 if not result["blocked"]:
     moderation = output_filter.moderate(
@@ -382,9 +397,9 @@ SAFETY_PROFILES = {
 }
 
 def create_model_with_profile(profile_name):
-    """Create a Gemini model with a predefined safety profile."""
+    """Create a Gemini generation config with a predefined safety profile."""
     settings = SAFETY_PROFILES.get(profile_name, SAFETY_PROFILES["moderate"])
-    return GenerativeModel("gemini-2.0-flash", safety_settings=settings)
+    return GenerateContentConfig(safety_settings=settings)
 ```
 
 ## Wrapping Up
