@@ -8,9 +8,9 @@ Description: A practical guide to configuring Pod Disruption Budgets in GKE to e
 
 ---
 
-Kubernetes does not guarantee that your pods will not be terminated. Node upgrades, cluster autoscaler scale-downs, spot node preemptions, and manual maintenance all involve draining nodes and evicting pods. Without protection, all replicas of a service could be evicted simultaneously, causing an outage.
+Kubernetes does not guarantee that your pods will not be terminated. Node upgrades, cluster autoscaler scale-downs, Spot/preemptible VM reclamation, and manual maintenance can all terminate pods. Without protection for eviction-based maintenance, multiple replicas of a service could be evicted simultaneously, causing an outage.
 
-Pod Disruption Budgets (PDBs) are Kubernetes' answer to this. A PDB tells the system "you must keep at least N pods running at all times" or "you can disrupt at most N pods at a time." The eviction system respects these budgets, ensuring your application maintains availability through any voluntary disruption.
+Pod Disruption Budgets (PDBs) are Kubernetes' answer to eviction-based voluntary disruptions. A PDB tells the system "you must keep at least N pods running at all times" or "you can disrupt at most N pods at a time." The eviction system respects these budgets, helping your application maintain availability through voluntary disruptions that use the Kubernetes Eviction API.
 
 I consider PDBs a requirement for any production deployment on GKE. Let me show you how to configure them properly.
 
@@ -20,7 +20,6 @@ PDBs protect against voluntary disruptions - operations that can be delayed or t
 
 - Node pool upgrades
 - Cluster autoscaler removing underutilized nodes
-- Spot/preemptible node reclamation
 - Manual `kubectl drain` operations
 - VPA evicting pods to apply new resource requests
 
@@ -28,6 +27,7 @@ PDBs do NOT protect against involuntary disruptions:
 
 - Node hardware failures
 - Kernel crashes
+- Spot/preemptible VM reclamation
 - Pod crashes due to bugs
 
 ```mermaid
@@ -35,14 +35,14 @@ graph TB
     subgraph "Voluntary Disruptions (PDB protects)"
         A[Node Upgrades]
         B[Autoscaler Scale-Down]
-        C[Spot VM Preemption]
-        D[Manual Drain]
-        E[VPA Updates]
+        C[Manual Drain]
+        D[VPA Updates]
     end
     subgraph "Involuntary Disruptions (PDB cannot help)"
         F[Hardware Failure]
         G[Kernel Panic]
         H[Application Crash]
+        I[Spot VM Reclamation]
     end
 ```
 
@@ -130,7 +130,7 @@ For databases, `maxUnavailable: 1` is almost always the right choice. You want e
 
 ## How PDBs Interact with GKE Node Upgrades
 
-When GKE upgrades node pools, it cordons and drains nodes one at a time (by default). The drain process evicts pods, and PDBs control how fast that happens.
+When GKE upgrades node pools, it cordons and drains nodes in a rolling window. By default, Standard node pools use surge upgrades with `maxSurge=1` and `maxUnavailable=0`. The drain process evicts pods, and PDBs control how fast that happens, although GKE only respects PDBs and pod termination grace periods for a limited time during node upgrades.
 
 Here is the timeline:
 
@@ -138,7 +138,7 @@ Here is the timeline:
 sequenceDiagram
     participant GKE as GKE Upgrade Controller
     participant Node as Node 1
-    participant PDB as PDB Controller
+    participant PDB as Eviction API/PDB
     participant Pods as Application Pods
 
     GKE->>Node: Cordon (prevent new pods)
@@ -157,7 +157,7 @@ sequenceDiagram
 
 ## Configuring GKE Surge Upgrades with PDBs
 
-GKE surge upgrades create extra nodes before draining old ones, which works perfectly with PDBs.
+GKE surge upgrades create extra nodes before draining old ones, which pairs well with PDBs.
 
 ```bash
 # Configure surge upgrades on a node pool
@@ -168,7 +168,7 @@ gcloud container node-pools update default-pool \
   --max-unavailable-upgrade 0
 ```
 
-With `--max-unavailable-upgrade 0`, GKE always creates new nodes before draining old ones. Combined with your PDB, this ensures zero-downtime upgrades.
+With `--max-unavailable-upgrade 0`, GKE creates new nodes before draining old ones when surge nodes can be provisioned. Combined with your PDB and enough cluster capacity, this helps minimize downtime during upgrades. GKE can still forcefully evict remaining pods if a node drain cannot complete within the upgrade timeout.
 
 ## Real-World PDB Configuration
 
@@ -271,7 +271,7 @@ kubectl get pdb --all-namespaces
 
 # The output shows:
 # NAME               MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS   AGE
-# order-service-pdb  N/A             1                 3                     5d
+# order-service-pdb  N/A             1                 1                     5d
 
 # "ALLOWED DISRUPTIONS" shows how many pods can currently be evicted
 # If this is 0, no voluntary disruptions can happen
@@ -300,4 +300,4 @@ spec:
 
 ## Wrapping Up
 
-Pod Disruption Budgets are one of those Kubernetes features that you do not appreciate until something goes wrong. A node upgrade without PDBs might evict all your replicas simultaneously, causing a brief outage. With PDBs, the same upgrade happens gracefully, one pod at a time, with replacement pods becoming ready before the next eviction happens. Create a PDB for every production deployment, set `maxUnavailable: 1` as a sensible default, and combine it with topology spread constraints and surge upgrades for truly zero-downtime operations on GKE.
+Pod Disruption Budgets are one of those Kubernetes features that you do not appreciate until something goes wrong. A node upgrade without PDBs might evict multiple replicas simultaneously, causing a brief outage. With PDBs, the same upgrade can happen gracefully, one pod at a time, with replacement pods becoming ready before the next eviction happens. Create a PDB for every production deployment, set `maxUnavailable: 1` as a sensible default, and combine it with topology spread constraints and surge upgrades to reduce disruption during GKE operations.
