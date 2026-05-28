@@ -36,7 +36,7 @@ graph LR
 
 - Google Cloud project with Vertex AI Search API enabled
 - A publicly accessible website to index
-- Verified site ownership (recommended for advanced features)
+- Verified site ownership (required for advanced website indexing and manual recrawls)
 
 ```bash
 # Enable the Discovery Engine API
@@ -70,6 +70,7 @@ def create_website_data_store(
         parent=parent,
         data_store=data_store,
         data_store_id=data_store_id,
+        create_advanced_site_search=True,
     )
 
     result = operation.result(timeout=300)
@@ -85,7 +86,7 @@ create_website_data_store(
 
 ## Step 2: Configure Site URLs
 
-Tell the crawler which parts of your website to index.
+Tell the crawler which parts of your website to index. When you configure target sites with the Python client, provide URI patterns without the `http://` or `https://` protocol.
 
 ```python
 def add_site_urls(
@@ -109,6 +110,7 @@ def add_site_urls(
         target_site = discoveryengine.TargetSite(
             provided_uri_pattern=url,
             type_=discoveryengine.TargetSite.Type.INCLUDE,
+            exact_match=False,
         )
         target_sites.append(target_site)
 
@@ -127,9 +129,9 @@ add_site_urls(
     location="global",
     data_store_id="website-search",
     urls=[
-        "https://docs.yoursite.com/*",     # Documentation pages
-        "https://blog.yoursite.com/*",      # Blog posts
-        "https://yoursite.com/products/*",  # Product pages
+        "docs.yoursite.com/*",     # Documentation pages
+        "blog.yoursite.com/*",      # Blog posts
+        "yoursite.com/products/*",  # Product pages
     ],
 )
 ```
@@ -158,6 +160,7 @@ def exclude_urls(
         target_site = discoveryengine.TargetSite(
             provided_uri_pattern=pattern,
             type_=discoveryengine.TargetSite.Type.EXCLUDE,
+            exact_match=False,
         )
         operation = client.create_target_site(
             parent=parent,
@@ -172,9 +175,9 @@ exclude_urls(
     location="global",
     data_store_id="website-search",
     exclude_patterns=[
-        "https://yoursite.com/admin/*",
-        "https://yoursite.com/login",
-        "https://yoursite.com/internal/*",
+        "yoursite.com/admin/*",
+        "yoursite.com/login",
+        "yoursite.com/internal/*",
     ],
 )
 ```
@@ -248,17 +251,31 @@ def search_with_boost(
         condition_boost_specs=[
             # Boost documentation pages higher in results
             discoveryengine.SearchRequest.BoostSpec.ConditionBoostSpec(
-                condition='link: ANY("docs.yoursite.com")',
+                condition='siteSearch:"https://docs.yoursite.com/*"',
                 boost=0.5,  # Positive value boosts, negative buries
             ),
             # Boost recently updated pages
             discoveryengine.SearchRequest.BoostSpec.ConditionBoostSpec(
-                condition='update_time > "2025-01-01T00:00:00Z"',
-                boost=0.3,
+                condition="true",
+                boost_control_spec=discoveryengine.SearchRequest.BoostSpec.ConditionBoostSpec.BoostControlSpec(
+                    field_name="dateModified",
+                    attribute_type=discoveryengine.SearchRequest.BoostSpec.ConditionBoostSpec.BoostControlSpec.AttributeType.FRESHNESS,
+                    interpolation_type=discoveryengine.SearchRequest.BoostSpec.ConditionBoostSpec.BoostControlSpec.InterpolationType.LINEAR,
+                    control_points=[
+                        discoveryengine.SearchRequest.BoostSpec.ConditionBoostSpec.BoostControlSpec.ControlPoint(
+                            attribute_value="7D",
+                            boost_amount=0.3,
+                        ),
+                        discoveryengine.SearchRequest.BoostSpec.ConditionBoostSpec.BoostControlSpec.ControlPoint(
+                            attribute_value="30D",
+                            boost_amount=0.1,
+                        ),
+                    ],
+                ),
             ),
             # Demote archived content
             discoveryengine.SearchRequest.BoostSpec.ConditionBoostSpec(
-                condition='link: ANY("yoursite.com/archive")',
+                condition='siteSearch:"https://yoursite.com/archive/*"',
                 boost=-0.5,
             ),
         ],
@@ -338,13 +355,13 @@ search_with_filter(
     location="global",
     engine_id="website-search-engine",
     query="API authentication",
-    filter_expression='link: ANY("docs.yoursite.com")',
+    filter_expression='siteSearch:"https://docs.yoursite.com/*"',
 )
 ```
 
 ## Step 5: Trigger Recrawling
 
-When you update your website, trigger a recrawl to keep the index fresh.
+When you update your website, trigger a recrawl to keep the index fresh. Manual recrawls require advanced website indexing, and the `uris` values must be literal page URLs, not wildcard patterns.
 
 ```python
 def recrawl_site(
@@ -362,10 +379,12 @@ def recrawl_site(
         f"/siteSearchEngine"
     )
 
-    operation = client.recrawl_uris(
+    request = discoveryengine.RecrawlUrisRequest(
         site_search_engine=site_search_engine,
         uris=uris,
     )
+
+    operation = client.recrawl_uris(request=request)
 
     print(f"Recrawl initiated for {len(uris)} URIs")
     return operation
