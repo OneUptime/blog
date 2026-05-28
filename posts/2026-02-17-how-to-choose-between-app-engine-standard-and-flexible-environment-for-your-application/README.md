@@ -16,13 +16,13 @@ Let me break down the differences so you can make an informed choice.
 
 App Engine Standard runs your application in a sandboxed environment with fast scaling and a generous free tier. App Engine Flexible runs your application in Docker containers on Compute Engine VMs, giving you more control and supporting any runtime.
 
-If you are building a web application in Python, Java, Go, PHP, Node.js, or Ruby and want fast scaling with minimal cost, start with Standard. If you need custom runtimes, native dependencies, or long-running background processes, go with Flexible.
+If you are building a web application in Python, Java, Go, PHP, Node.js, or Ruby and want fast scaling with minimal cost, start with Standard. If you need custom runtimes, custom OS packages, or long-running background processes, go with Flexible.
 
 ## Scaling Behavior
 
 This is where the two environments differ the most.
 
-**Standard** scales to zero. When nobody is using your application, Google spins down all instances and you pay nothing. When traffic arrives, new instances spin up in milliseconds (for most runtimes). This makes it ideal for applications with variable or unpredictable traffic.
+**Standard** scales to zero. When nobody is using your application, Google spins down all instances and you pay nothing. When traffic arrives, new instances spin up quickly, though the first request to a new instance can still see loading latency. This makes it ideal for applications with variable or unpredictable traffic.
 
 **Flexible** never scales to zero. You always have at least one instance running, even with zero traffic. Instances take minutes to start (because they are full VMs). But once running, Flexible provides more consistent performance with no cold starts.
 
@@ -30,7 +30,7 @@ This is where the two environments differ the most.
 graph TB
     subgraph "Standard Environment"
         S1[Zero instances at idle]
-        S2[Millisecond startup]
+        S2[Fast startup]
         S3[Scale to thousands instantly]
         S1 --> S2 --> S3
     end
@@ -46,18 +46,18 @@ graph TB
 
 **Standard** supports specific runtime versions:
 
-- Python 3.7-3.12
-- Java 8, 11, 17, 21
-- Go 1.12-1.22
-- Node.js 12-20
-- PHP 7.4-8.3
-- Ruby 2.7-3.2
+- Python 3.10-3.14
+- Java 17, 21, 25
+- Go 1.22-1.25
+- Node.js 22-24
+- PHP 8.2-8.4
+- Ruby 3.3-3.4
 
 You must use one of these runtimes. Custom Docker images are not supported in Standard.
 
 **Flexible** supports:
 
-- All the Standard runtimes, plus
+- The same language families as Standard, plus
 - Any language via custom Docker images
 - .NET, Rust, Elixir, or anything else that runs in a container
 
@@ -91,12 +91,12 @@ For a high-traffic application handling millions of requests:
 
 **Standard** offers predefined instance classes:
 
-- F1 (default): 128MB memory, 600MHz CPU
-- F2: 256MB memory, 1.2GHz CPU
-- F4: 512MB memory, 2.4GHz CPU
-- F4_1G: 1024MB memory, 2.4GHz CPU
+- F1 (default): 384MB memory, 600MHz CPU
+- F2: 768MB memory, 1.2GHz CPU
+- F4: 1536MB memory, 2.4GHz CPU
+- F4_1G: 3072MB memory, 2.4GHz CPU
 
-These are lightweight but limited. If your application needs more than 1GB of memory, Standard is not going to work.
+These are lightweight but limited. If your application needs more than 3GB of memory, Standard is not going to work.
 
 **Flexible** lets you configure the VM resources:
 
@@ -118,7 +118,7 @@ automatic_scaling:
     target_utilization: 0.65
 ```
 
-You can go up to 96 vCPUs and several hundred GB of memory with Flexible.
+You can configure Flexible with up to 80 vCPUs and memory in proportion to the CPU allocation.
 
 ## Networking
 
@@ -134,27 +134,28 @@ env: flex
 network:
   name: my-vpc
   subnetwork_name: my-subnet
-  instance_ip_mode: INTERNAL  # No public IP
+  instance_ip_mode: internal  # No public IP
 ```
 
 ## Background Processing
 
 **Standard** has strict request deadlines:
 
-- HTTP requests must complete within 60 seconds (10 minutes for task queue requests)
-- Background threads are terminated when the request completes
+- Automatic scaling requests must complete within 10 minutes
+- Basic and manual scaling requests can run for up to 24 hours
+- Java background threads are not allowed with automatic scaling
 
 **Flexible** allows:
 
 - Request timeouts up to 60 minutes
-- Long-running background processes
+- Processes running inside your container, though asynchronous work after an HTTP response is still better handled with Cloud Tasks
 - WebSocket connections
 
-If you need to process video, run ML inference, or handle any request that takes more than 60 seconds, Flexible is the better choice.
+If you need to process video, run ML inference, or handle long-lived requests on a custom runtime, Flexible is the better choice.
 
 ## Local Development
 
-**Standard** works with the local development server that simulates the App Engine environment:
+**Standard** can use the local development server for supported Go, Java, PHP, and Python runtimes that include legacy bundled services:
 
 ```bash
 # Run Standard environment locally
@@ -184,10 +185,10 @@ But the deployment experience differs. Standard deployments typically take 30-60
 
 Choose Standard when:
 
-- Your application uses a supported runtime without native dependencies
+- Your application uses a supported runtime without custom OS packages or a custom runtime
 - You want to scale to zero and pay nothing during idle periods
 - Your traffic is spiky and you need fast scaling
-- Request processing completes within 60 seconds
+- Request processing fits within the deadline for your Standard scaling type
 - You want the lowest possible cost for small to medium applications
 - Cold starts are acceptable (or you use min_instances to avoid them)
 
@@ -196,9 +197,9 @@ Choose Standard when:
 Choose Flexible when:
 
 - You need a custom runtime or language not supported by Standard
-- Your application requires native libraries or system packages
-- Request processing takes more than 60 seconds
-- You need more than 1GB of memory per instance
+- Your application requires custom OS packages or binaries unavailable in Standard
+- Request processing takes longer than Standard automatic scaling allows
+- You need more than 3GB of memory per instance
 - You need WebSocket support
 - Your application needs to run in a specific VPC
 - You need SSH access to the underlying instances for debugging
