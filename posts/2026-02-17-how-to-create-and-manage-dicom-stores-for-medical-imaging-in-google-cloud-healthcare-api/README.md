@@ -49,7 +49,7 @@ gcloud pubsub topics create dicom-notifications
 gcloud healthcare dicom-stores create radiology-images \
   --dataset=imaging-data \
   --location=us-central1 \
-  --notification-config=pubsubTopic=projects/your-project/topics/dicom-notifications
+  --pubsub-topic=projects/your-project/topics/dicom-notifications
 ```
 
 For more configuration options:
@@ -121,6 +121,10 @@ import requests
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 
+PROJECT_ID = "your-project"
+LOCATION = "us-central1"
+DATASET_ID = "imaging-data"
+
 DICOM_STORE_PATH = (
     f"projects/{PROJECT_ID}/locations/{LOCATION}/"
     f"datasets/{DATASET_ID}/dicomStores/radiology-images"
@@ -150,7 +154,8 @@ def upload_dicom_file(dicom_file_path):
     with open(dicom_file_path, "rb") as f:
         dicom_data = f.read()
 
-    # STOW-RS requires multipart/related content type
+    # Healthcare API accepts a single DICOM instance with application/dicom.
+    # Use multipart/related when uploading multiple instances in one request.
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/dicom",
@@ -284,7 +289,7 @@ def retrieve_study(study_uid):
 
     headers = {
         "Authorization": f"Bearer {token}",
-        "Accept": "multipart/related; type=application/dicom",
+        "Accept": "multipart/related; type=application/dicom; transfer-syntax=*",
     }
 
     response = requests.get(url, headers=headers)
@@ -394,18 +399,22 @@ Query the exported metadata:
 -- Find studies by modality and count instances per study
 SELECT
   StudyInstanceUID,
-  PatientName,
-  Modality,
+  CONCAT(
+    COALESCE(PatientName.Alphabetic.FamilyName, ""),
+    IF(PatientName.Alphabetic.GivenName IS NULL, "", CONCAT(", ", PatientName.Alphabetic.GivenName))
+  ) AS patient_name,
+  ARRAY_TO_STRING(ModalitiesInStudy, ", ") AS modalities,
   StudyDate,
   COUNT(*) as instance_count,
   SUM(CAST(Rows AS INT64) * CAST(Columns AS INT64)) as total_pixels
 FROM
-  `your-project.imaging_analytics.dicom_metadata`
+  `your-project.imaging_analytics.dicom_metadata`,
+  UNNEST(ModalitiesInStudy) AS modality
 WHERE
-  Modality = 'CT'
-  AND StudyDate >= '20260101'
+  modality = 'CT'
+  AND StudyDate >= DATE '2026-01-01'
 GROUP BY
-  StudyInstanceUID, PatientName, Modality, StudyDate
+  StudyInstanceUID, patient_name, modalities, StudyDate
 ORDER BY
   instance_count DESC
 LIMIT 20
@@ -421,11 +430,11 @@ Medical imaging data is large:
 
 For cost optimization:
 
-- Use lifecycle policies on the underlying storage to move old studies to cheaper storage classes
+- Use DICOM storage classes to move old studies to cheaper storage classes
 - De-identify and delete source data after processing when possible
 - Use QIDO-RS queries to retrieve only the metadata you need before downloading full studies
 - Consider using the rendered endpoint for thumbnails instead of downloading full DICOM files
 
 ## Wrapping Up
 
-The Healthcare API DICOM store gives you a standards-compliant PACS in the cloud. It speaks DICOMweb natively, so any DICOM-compatible viewer or application can connect to it directly. The built-in de-identification is particularly valuable for research workflows where you need to share imaging data without exposing patient information. Combined with BigQuery for metadata analytics and Pub/Sub for event-driven processing, you have a complete medical imaging platform that scales from a small clinic to a multi-hospital health system.
+The Healthcare API DICOM store gives you a standards-compliant PACS-like service in the cloud. It speaks DICOMweb natively, so DICOMweb-compatible viewers and applications can connect to it directly. The built-in de-identification is particularly valuable for research workflows where you need to share imaging data without exposing patient information. Combined with BigQuery for metadata analytics and Pub/Sub for event-driven processing, you have a complete medical imaging platform that scales from a small clinic to a multi-hospital health system.
