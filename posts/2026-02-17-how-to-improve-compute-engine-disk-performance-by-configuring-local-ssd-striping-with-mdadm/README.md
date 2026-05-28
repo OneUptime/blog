@@ -14,7 +14,7 @@ Compute Engine persistent disks are reliable and convenient, but when your workl
 
 A single local SSD on Compute Engine provides about 170,000 read IOPS and 90,000 write IOPS. Impressive on its own, but many workloads need more. By attaching multiple local SSDs and striping them in RAID 0, you combine the IOPS and throughput of all the disks. Four local SSDs in RAID 0 can deliver around 680,000 read IOPS.
 
-The trade-off is durability. Local SSDs are ephemeral - data is lost when the VM stops, is preempted, or experiences a host event. RAID 0 does not add any redundancy. This setup is ideal for scratch space, temporary processing, caches, and databases that replicate data elsewhere.
+The trade-off is durability. Local SSDs are ephemeral - data is lost when the VM is stopped without preserving Local SSD data, is preempted, or cannot recover from a host error. RAID 0 does not add any redundancy. This setup is ideal for scratch space, temporary processing, caches, and databases that replicate data elsewhere.
 
 ## Creating a VM with Multiple Local SSDs
 
@@ -26,7 +26,7 @@ Start by creating a Compute Engine instance with multiple local SSDs attached:
 # Each local SSD is 375GB, giving us 1.5TB total
 gcloud compute instances create high-perf-vm \
   --zone us-central1-a \
-  --machine-type n2-standard-8 \
+  --machine-type n2-standard-24 \
   --local-ssd interface=NVME \
   --local-ssd interface=NVME \
   --local-ssd interface=NVME \
@@ -46,24 +46,24 @@ SSH into the instance and identify the NVMe devices:
 # SSH into the instance
 gcloud compute ssh high-perf-vm --zone us-central1-a
 
-# List all NVMe devices - local SSDs show up as nvme0n* devices
-lsblk | grep nvme
+# List Local SSD devices by their stable Google-provided names
+find /dev/disk/by-id/ -name 'google-local-nvme-ssd-*'
 ```
 
 You should see output like:
 
 ```text
-nvme0n1    259:0    0  375G  0 disk
-nvme0n2    259:1    0  375G  0 disk
-nvme0n3    259:2    0  375G  0 disk
-nvme0n4    259:3    0  375G  0 disk
+/dev/disk/by-id/google-local-nvme-ssd-0
+/dev/disk/by-id/google-local-nvme-ssd-1
+/dev/disk/by-id/google-local-nvme-ssd-2
+/dev/disk/by-id/google-local-nvme-ssd-3
 ```
 
 Verify these are the local SSDs (not the boot disk):
 
 ```bash
-# Confirm the device details - look for "Google EphemeralDisk" model
-sudo nvme list
+# Confirm the device mappings for the Google Local SSD symlinks
+ls -l /dev/disk/by-id/google-local-nvme-ssd-*
 ```
 
 ## Installing mdadm and Creating the RAID 0 Array
@@ -82,7 +82,10 @@ sudo mdadm --create /dev/md0 \
   --level=0 \
   --raid-devices=4 \
   --chunk=256 \
-  /dev/nvme0n1 /dev/nvme0n2 /dev/nvme0n3 /dev/nvme0n4
+  /dev/disk/by-id/google-local-nvme-ssd-0 \
+  /dev/disk/by-id/google-local-nvme-ssd-1 \
+  /dev/disk/by-id/google-local-nvme-ssd-2 \
+  /dev/disk/by-id/google-local-nvme-ssd-3
 ```
 
 Confirm the array was created successfully:
@@ -133,7 +136,7 @@ sudo apt-get install -y fio
 # This test uses 4KB blocks with 64 parallel I/O operations
 sudo fio --name=randread --ioengine=libaio --iodepth=64 \
   --rw=randread --bs=4k --direct=1 --size=4G \
-  --numjobs=4 --runtime=30 --group_reporting \
+  --numjobs=4 --runtime=30 --time_based --group_reporting \
   --directory=/mnt/disks/ssd-array
 ```
 
@@ -144,7 +147,7 @@ You should see IOPS numbers in the hundreds of thousands for random reads. Run a
 # This test uses 1MB blocks for maximum throughput
 sudo fio --name=seqwrite --ioengine=libaio --iodepth=32 \
   --rw=write --bs=1m --direct=1 --size=4G \
-  --numjobs=4 --runtime=30 --group_reporting \
+  --numjobs=4 --runtime=30 --time_based --group_reporting \
   --directory=/mnt/disks/ssd-array
 ```
 
@@ -175,12 +178,14 @@ Depending on your workload, you can tune additional parameters:
 # This helps with sequential scans
 sudo blockdev --setra 4096 /dev/md0
 
-# Check the current I/O scheduler - noop or none is best for SSDs
-cat /sys/block/nvme0n1/queue/scheduler
+# Check the current I/O scheduler for a Local SSD
+dev=$(basename "$(readlink -f /dev/disk/by-id/google-local-nvme-ssd-0)")
+cat /sys/block/$dev/queue/scheduler
 
-# Set the scheduler to none (noop) for all SSDs
-for disk in nvme0n1 nvme0n2 nvme0n3 nvme0n4; do
-  echo none | sudo tee /sys/block/$disk/queue/scheduler
+# Set the scheduler to none for the Local SSDs
+for disk in /dev/disk/by-id/google-local-nvme-ssd-*; do
+  dev=$(basename "$(readlink -f "$disk")")
+  echo none | sudo tee /sys/block/$dev/queue/scheduler
 done
 ```
 
