@@ -8,19 +8,19 @@ Description: Set up Cloud NAT with static IP addresses so you can provide fixed 
 
 ---
 
-Many third-party APIs and SaaS providers require you to provide a list of IP addresses that will be calling their services. They add those IPs to an allowlist, and requests from any other IP get rejected. If your GCP workloads use Cloud NAT with auto-allocated IPs, you have a problem - those IPs can change at any time, breaking your API integrations. The solution is to configure Cloud NAT with static IP addresses that you control and that will not change.
+Many third-party APIs and SaaS providers require you to provide a list of IP addresses that will be calling their services. They add those IPs to an allowlist, and requests from any other IP get rejected. If your GCP workloads use Cloud NAT with auto-allocated IPs, you have a problem - Cloud NAT can add IPs that you cannot predict ahead of time, and some configuration changes can replace the automatically allocated addresses. The solution is to configure Cloud NAT with static IP addresses that you control and that will not change.
 
 This guide covers the full setup, from reserving static IPs to configuring Cloud NAT and handling scale considerations.
 
 ## The Problem with Auto-Allocated NAT IPs
 
-When you create a Cloud NAT gateway with `--auto-allocate-nat-external-ips`, GCP assigns external IP addresses from its pool. These IPs can change when:
+When you create a Cloud NAT gateway with `--auto-allocate-nat-external-ips`, GCP assigns external IP addresses from its pool. These IPs can be added, removed, or replaced when:
 
-- GCP needs to rebalance IP allocation
-- You update the NAT configuration
-- The NAT gateway scales up and adds new IPs
+- The NAT gateway needs more IP addresses for the number of VMs and reserved ports
+- The NAT gateway no longer needs an IP address and no VMs are using ports on it
+- You change the NAT gateway's network tier
 
-For most use cases this is fine. But when a third-party requires IP allowlisting, changing IPs means downtime and manual coordination with the provider to update their allowlist.
+For most use cases this is fine. But when a third-party requires IP allowlisting, unpredictable NAT IPs mean downtime and manual coordination with the provider to update their allowlist.
 
 ## Step 1: Reserve Static External IP Addresses
 
@@ -106,12 +106,12 @@ The returned IP should be one of your static NAT IPs.
 
 ## Calculating How Many Static IPs You Need
 
-Each static IP provides 64,512 ports for NAT (ports 1024-65535). Each outbound connection uses one port. The number of IPs you need depends on your concurrent outbound connection count.
+Each static IP provides 64,512 ports for Public NAT (ports 1024-65535). Cloud NAT reserves source IP address and port tuples per VM, and the reserved ports limit how many simultaneous connections a VM can make to each unique destination IP, destination port, and protocol tuple. The number of IPs you need depends on the number of VMs using the gateway and the minimum ports per VM that you configure.
 
 Here is the math:
 
 ```text
-Required IPs = ceil(Max concurrent connections / 64512)
+Required IPs = ceil((VMs using NAT * Minimum ports per VM) / 64512)
 ```
 
 For most workloads, 2-4 static IPs are sufficient. But if you have hundreds of VMs all making many outbound connections, you might need more.
@@ -214,7 +214,7 @@ gcloud compute routers nats update static-nat-gateway \
 
 Key metrics to track in Cloud Monitoring:
 
-- **Port utilization per IP** - if any single IP is near capacity, add more
+- **Allocated ports per NAT IP** - if any single IP is near capacity, add more
 - **Dropped connections** - indicates port exhaustion
 - **Active connections per VM** - identifies which VMs consume the most ports
 
