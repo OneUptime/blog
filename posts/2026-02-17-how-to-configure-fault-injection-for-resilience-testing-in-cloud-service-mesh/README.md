@@ -10,7 +10,7 @@ Description: Learn how to use Istio fault injection in Cloud Service Mesh to tes
 
 Your microservices will eventually face failures in production - slow dependencies, network errors, service outages. The question is whether your application handles these failures gracefully or cascades into a full-blown outage. Fault injection lets you test this before production does it for you. Cloud Service Mesh (built on Istio) can inject faults at the proxy layer, meaning you simulate failures without changing any application code.
 
-This guide covers how to configure fault injection for delays, HTTP errors, and connection failures, and how to build a structured resilience testing program.
+This guide covers how to configure fault injection for delays and HTTP errors, and how to build a structured resilience testing program.
 
 ## How Fault Injection Works in Istio
 
@@ -42,7 +42,7 @@ This VirtualService adds a 5-second delay to 10% of requests to the payment serv
 # delay-injection.yaml
 
 # Injects a 5-second delay into 10% of requests to the payment service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-fault
@@ -78,7 +78,7 @@ A common test is to inject a delay longer than your configured timeout. This ver
 ```yaml
 # timeout-test.yaml
 # Injects a delay longer than the expected timeout
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: inventory-service-timeout-test
@@ -95,10 +95,9 @@ spec:
     route:
     - destination:
         host: inventory-service
-    timeout: 10s
 ```
 
-If your calling service has a 10-second timeout configured, all requests should fail after 10 seconds rather than waiting 30 seconds. If they wait the full 30 seconds, your timeout configuration is not working correctly.
+If your calling service has a 10-second timeout configured in application code or in an upstream route, all requests should fail after 10 seconds rather than waiting 30 seconds. If they wait the full 30 seconds, your timeout configuration is not working correctly. Do not put the timeout policy on the same VirtualService rule as the fault injection rule; Istio does not support combining fault injection with retry or timeout policies on the same VirtualService.
 
 ## Injecting HTTP Errors
 
@@ -109,7 +108,7 @@ Abort injection returns an HTTP error code without the request ever reaching the
 ```yaml
 # error-injection.yaml
 # Returns HTTP 500 for 20% of requests to the recommendation service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: recommendation-service-fault
@@ -139,7 +138,7 @@ This tests how your application handles error responses from dependencies. Thing
 ```yaml
 # unavailable-injection.yaml
 # Simulates the auth service being completely down
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: auth-service-fault
@@ -167,7 +166,7 @@ In production, failures rarely come in isolation. A degraded service might be bo
 ```yaml
 # combined-faults.yaml
 # Simulates a degraded service with both delays and errors
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: search-service-degraded
@@ -190,7 +189,7 @@ spec:
         host: search-service
 ```
 
-This injects a 3-second delay in 50% of requests and returns a 500 error in 10% of requests. The remaining 40% of requests are processed normally. This closely mimics what a struggling service looks like in production.
+This injects a 3-second delay in 50% of requests and returns a 500 error in 10% of requests. Delay and abort faults are evaluated independently, so some requests may be delayed and then aborted. Requests that are not selected for either fault are processed normally. This closely mimics what a struggling service looks like in production.
 
 ## Targeted Fault Injection
 
@@ -201,7 +200,7 @@ Instead of injecting faults for all traffic, target specific requests using matc
 ```yaml
 # targeted-fault.yaml
 # Only inject faults for requests with a test header
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-targeted
@@ -236,7 +235,7 @@ This is safe to deploy in production because only requests with the `x-test-faul
 ```yaml
 # path-specific-fault.yaml
 # Inject faults only for checkout-related requests
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service-checkout-fault
