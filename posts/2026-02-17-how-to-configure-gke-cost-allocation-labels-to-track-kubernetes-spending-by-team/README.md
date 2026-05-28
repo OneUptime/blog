@@ -8,7 +8,7 @@ Description: Learn how to use GKE cost allocation labels to break down Kubernete
 
 ---
 
-When multiple teams share a GKE cluster, figuring out who is spending what becomes a real challenge. The cluster shows up as a single line item on your GCP bill, but the engineering manager wants to know how much each team is costing. Finance wants chargeback reports. And without proper cost attribution, nobody has the information they need to make informed decisions about resource usage.
+When multiple teams share a GKE cluster, figuring out who is spending what becomes a real challenge. The cluster costs show up in Cloud Billing without the workload metadata you need for team-level reporting, but the engineering manager wants to know how much each team is costing. Finance wants chargeback reports. And without proper cost attribution, nobody has the information they need to make informed decisions about resource usage.
 
 GKE cost allocation solves this by breaking down cluster costs to the namespace and label level. Once enabled, it feeds data into Cloud Billing reports, giving you per-team and per-application cost visibility without any third-party tools.
 
@@ -36,23 +36,23 @@ gcloud container clusters create my-cluster \
   --num-nodes=3
 ```
 
-It takes about 24-48 hours for cost data to start appearing in your billing reports after enabling this feature.
+It can take up to three days for cost data to start appearing in your billing reports after enabling this feature.
 
 ## How GKE Cost Allocation Works
 
-Once enabled, GKE tracks resource consumption at the pod level and allocates cluster costs proportionally. Here is what gets tracked:
+Once enabled, GKE allocates supported cluster costs using workload metadata from pods. Here is what gets tracked:
 
-- CPU requests and usage per pod
-- Memory requests and usage per pod
-- Persistent volume usage
-- Network egress (at the pod level)
+- CPU requests per pod
+- Memory requests per pod
+- GPU and Cloud TPU costs for supported SKUs
+- Persistent Disk costs for supported dynamically provisioned volumes
 
 The costs are split into two categories:
 
 1. Resource costs that can be attributed to specific workloads (based on requests)
 2. Unallocated costs for resources that no pod has claimed
 
-This gives you a clear picture of both what teams are requesting and what they are actually using.
+This gives you a clear picture of what teams are requesting and what cluster costs remain unallocated.
 
 ## Setting Up Labels for Cost Tracking
 
@@ -108,7 +108,7 @@ spec:
 
 ## Configuring GCP Billing Labels
 
-To see GKE cost allocation data in Cloud Billing, you need to enable the GKE cost allocation export to BigQuery. First, make sure billing export is set up:
+To query GKE cost allocation data in BigQuery, you need to enable the Cloud Billing detailed usage cost export. First, make sure billing export is set up:
 
 ```bash
 # Enable billing export to BigQuery (if not already enabled)
@@ -117,25 +117,25 @@ To see GKE cost allocation data in Cloud Billing, you need to enable the GKE cos
 bq mk --dataset my-project:billing_export
 ```
 
-Then in the Cloud Console, go to Billing > Billing export and enable detailed usage cost export to your BigQuery dataset.
+Then in the Cloud Console, go to Billing > Billing export and enable detailed usage cost export to your BigQuery dataset. GKE cost allocation data is not available in the standard usage cost export.
 
 ## Querying Cost Data in BigQuery
 
-Once the data is flowing (after 24-48 hours), you can query it in BigQuery. Here is a query that breaks down GKE costs by namespace:
+Once the data is flowing, you can query it in BigQuery. Here is a query that breaks down GKE costs by namespace:
 
 ```sql
 -- Query GKE costs grouped by namespace for the last 30 days
 SELECT
   labels.value AS namespace,
-  SUM(cost) AS total_cost,
-  SUM(usage.amount) AS total_usage
+  SUM(cost) AS total_cost
 FROM
-  `my-project.billing_export.gcloud_billing_export_v1_XXXXXX`
+  `my-project.billing_export.gcp_billing_export_resource_v1_XXXXXX`
 LEFT JOIN
   UNNEST(labels) AS labels
+  ON labels.key = 'k8s-namespace'
 WHERE
   service.description = 'Kubernetes Engine'
-  AND labels.key = 'k8s-namespace'
+  AND labels.value IS NOT NULL
   AND usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY
   namespace
@@ -150,17 +150,16 @@ And here is a query that breaks down costs by team label:
 SELECT
   labels.value AS team,
   SUM(cost) AS total_cost,
-  SUM(credits.amount) AS total_credits,
-  SUM(cost) + SUM(credits.amount) AS net_cost
+  SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS total_credits,
+  SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS net_cost
 FROM
-  `my-project.billing_export.gcloud_billing_export_v1_XXXXXX`
+  `my-project.billing_export.gcp_billing_export_resource_v1_XXXXXX`
 LEFT JOIN
   UNNEST(labels) AS labels
-LEFT JOIN
-  UNNEST(credits) AS credits
+  ON labels.key = 'k8s-label/team'
 WHERE
   service.description = 'Kubernetes Engine'
-  AND labels.key = 'k8s-label/team'
+  AND labels.value IS NOT NULL
   AND usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY
   team
@@ -189,13 +188,12 @@ graph LR
 
 ## Setting Resource Requests Correctly
 
-Cost allocation is based on resource requests, not actual usage. If a team requests 4 CPUs but only uses 1, they still get charged for 4. This is by design because those resources are reserved and unavailable to other workloads.
+Cost allocation is based on resource requests, not actual usage. If a team requests 4 CPUs but only uses 1, the cost allocation still follows the 4 CPU request. This is by design because Kubernetes uses requests for scheduling and capacity planning.
 
-This creates an incentive for teams to right-size their resource requests. You can help by providing recommendations:
+This creates an incentive for teams to right-size their resource requests. You can start by comparing current usage with configured requests:
 
 ```bash
-# Get resource recommendation for pods in a namespace
-# This shows the difference between requests and actual usage
+# Show current CPU and memory usage for pods in a namespace
 kubectl top pods -n team-alpha --sort-by=cpu
 ```
 
@@ -222,7 +220,7 @@ spec:
 Not all cluster costs can be attributed to a specific team. System components like kube-dns, the metrics server, and monitoring agents run in kube-system and benefit everyone. There are a few approaches to handle these:
 
 - Split shared costs evenly across all teams
-- Allocate shared costs proportionally based on each team's resource usage
+- Allocate shared costs proportionally based on each team's allocated costs or requested resources
 - Absorb shared costs into a platform team's budget
 
 The approach you choose depends on your organization's culture and what feels fair to the teams involved.
