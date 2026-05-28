@@ -26,26 +26,26 @@ In practice, this means:
 
 ## Step 1: Remove Default Overprivileged Access
 
-New GCP projects come with some default access that you should clean up:
+New GCP projects can come with some default access that you should clean up, depending on your organization policy configuration:
 
 ```bash
 # Check the current IAM policy
 
 gcloud projects get-iam-policy my-project --format=yaml
 
-# Remove the default Compute Engine service account's Editor role
+# Remove the default Compute Engine service account's Editor role if it was granted
 # This is often overprivileged
 gcloud projects remove-iam-policy-binding my-project \
   --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
   --role="roles/editor"
 
-# Remove the default App Engine service account's Editor role
+# Remove the default App Engine service account's Editor role if it was granted
 gcloud projects remove-iam-policy-binding my-project \
   --member="serviceAccount:my-project@appspot.gserviceaccount.com" \
   --role="roles/editor"
 ```
 
-The default Compute Engine service account gets the Editor role automatically. This means any VM that uses it (which is the default) has read-write access to almost every service in the project. Fix this by either creating dedicated service accounts or by removing the Editor role and granting specific roles.
+The default Compute Engine service account might get the Editor role automatically unless automatic grants are disabled by organization policy. This means any VM that uses it (which is the default) has read-write access to almost every service in the project. Fix this by either creating dedicated service accounts or by removing the Editor role and granting specific roles.
 
 ## Step 2: Map Roles to Job Functions
 
@@ -59,7 +59,7 @@ Developer:
   - View monitoring dashboards (roles/monitoring.viewer)
 
 SRE/Platform Engineer:
-  - Manage Compute Engine instances (roles/compute.instanceAdmin)
+  - Manage Compute Engine instances (roles/compute.instanceAdmin.v1)
   - Manage GKE clusters (roles/container.admin)
   - Configure monitoring and alerting (roles/monitoring.editor)
   - Manage Cloud SQL (roles/cloudsql.admin)
@@ -197,7 +197,7 @@ gcloud projects add-iam-policy-binding my-project \
 # Grant temporary access that expires
 gcloud projects add-iam-policy-binding my-project \
   --member="user:contractor@external.com" \
-  --role="roles/viewer" \
+  --role="roles/browser" \
   --condition='expression=request.time < timestamp("2026-04-01T00:00:00Z"),title=Temporary access until April 2026'
 ```
 
@@ -276,7 +276,7 @@ gcloud projects get-iam-policy my-project --format=json > current-policy.json
 
 ## Common Mistakes to Avoid
 
-**Granting Owner to developers**: Owner includes IAM management and billing permissions. Almost no developer needs this. Use Editor (or better, specific predefined roles) instead.
+**Granting Owner to developers**: Owner includes IAM management and billing permissions. Almost no developer needs this. Use specific predefined roles instead.
 
 **Using allUsers or allAuthenticatedUsers**: These grant access to the entire internet or every Google account. Only use them for intentionally public resources like a public website bucket.
 
