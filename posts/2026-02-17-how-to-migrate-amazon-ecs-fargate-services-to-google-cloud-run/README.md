@@ -129,7 +129,9 @@ ECS task definition (JSON):
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/my-web-app"
+          "awslogs-group": "/ecs/my-web-app",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
         }
       }
     }
@@ -206,7 +208,7 @@ gcloud run services replace service.yaml --region=us-central1
 
 ## Step 5: Configure Networking
 
-ECS Fargate services sit in a VPC with security groups. Cloud Run services are publicly accessible by default but can be connected to a VPC for private access.
+ECS Fargate services sit in a VPC with security groups. Cloud Run services get an HTTPS endpoint by default, but invocation is controlled by IAM and ingress settings. You can also connect services to a VPC for access to private resources.
 
 ```bash
 # Connect Cloud Run to a VPC for accessing private resources
@@ -240,12 +242,12 @@ ECS Fargate services typically sit behind an ALB. Cloud Run provides a built-in 
 
 ```bash
 # Map a custom domain to Cloud Run
-gcloud run domain-mappings create \
+gcloud beta run domain-mappings create \
   --service=my-web-app \
   --domain=app.example.com \
   --region=us-central1
 
-# Or use a Global HTTPS Load Balancer with a serverless NEG
+# Or start configuring a Global HTTPS Load Balancer with a serverless NEG
 gcloud compute network-endpoint-groups create my-web-app-neg \
   --region=us-central1 \
   --network-endpoint-type=serverless \
@@ -298,13 +300,13 @@ gcloud logging read "resource.type=cloud_run_revision AND resource.labels.servic
   --limit=50 \
   --format='table(timestamp, textPayload)'
 
-# Set up an alert for high error rates
+# Set up an alert for high 5xx response counts
 gcloud monitoring policies create \
-  --display-name="Cloud Run Error Rate" \
-  --condition-display-name="High 5xx rate" \
+  --display-name="Cloud Run 5xx Responses" \
+  --condition-display-name="High 5xx responses" \
   --condition-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="5xx"' \
-  --condition-threshold-value=10 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --duration=60s \
+  --if='> 10'
 ```
 
 ## Things Cloud Run Handles Differently
