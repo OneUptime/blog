@@ -168,14 +168,31 @@ gcloud builds submit ./worker \
 Move database passwords and other secrets to Secret Manager:
 
 ```bash
+PROJECT_ID=$(gcloud config get-value project)
+PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format="value(projectNumber)")
+CLOUD_RUN_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
 # Store the database connection string as a secret
-echo -n "postgresql://app_user:app-user-password@/myapp?host=/cloudsql/PROJECT_ID:us-central1:myapp-db" | \
-  gcloud secrets create db-url --data-file=-
+echo -n "postgresql://app_user:app-user-password@/myapp?host=/cloudsql/${PROJECT_ID}:us-central1:myapp-db" | \
+  gcloud secrets create db-url --replication-policy=automatic --data-file=-
 
 # Store the Redis URL
 REDIS_HOST=$(gcloud redis instances describe myapp-redis --region=us-central1 --format="get(host)")
 echo -n "redis://${REDIS_HOST}:6379" | \
-  gcloud secrets create redis-url --data-file=-
+  gcloud secrets create redis-url --replication-policy=automatic --data-file=-
+
+# Allow Cloud Run's default service account to read the secrets and connect to Cloud SQL
+gcloud secrets add-iam-policy-binding db-url \
+  --member="serviceAccount:${CLOUD_RUN_SA}" \
+  --role="roles/secretmanager.secretAccessor"
+
+gcloud secrets add-iam-policy-binding redis-url \
+  --member="serviceAccount:${CLOUD_RUN_SA}" \
+  --role="roles/secretmanager.secretAccessor"
+
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:${CLOUD_RUN_SA}" \
+  --role="roles/cloudsql.client"
 ```
 
 ## Step 4: Set Up VPC Networking
@@ -210,7 +227,7 @@ gcloud run deploy api \
   --allow-unauthenticated
 ```
 
-The `--add-cloudsql-instances` flag sets up the Cloud SQL Auth Proxy sidecar, which handles authentication and encryption to Cloud SQL automatically.
+The `--add-cloudsql-instances` flag configures Cloud Run to connect through the Cloud SQL Auth Proxy, which handles authentication and encryption to Cloud SQL automatically.
 
 ## Step 6: Deploy the Web Frontend
 
@@ -251,12 +268,12 @@ gcloud run deploy worker \
   --vpc-egress=private-ranges-only \
   --cpu=1 \
   --memory=512Mi \
-  --cpu-always-allocated \
+  --no-cpu-throttling \
   --min-instances=1 \
   --no-allow-unauthenticated
 ```
 
-The `--cpu-always-allocated` flag keeps CPU active between requests so the worker can process queue items continuously.
+The `--no-cpu-throttling` flag uses instance-based billing, which keeps CPU active between requests so the worker can process queue items continuously.
 
 ## Step 8: Update Application Code
 
@@ -319,14 +336,31 @@ def call_api(endpoint, data):
 In Docker Compose, the web/API services communicate with the worker through Redis queues. On Cloud Run, you can continue using Redis for queuing or switch to Pub/Sub for better reliability:
 
 ```bash
+PROJECT_ID=$(gcloud config get-value project)
+PROJECT_NUMBER=$(gcloud projects describe ${PROJECT_ID} --format="value(projectNumber)")
+WORKER_URL=$(gcloud run services describe worker --region=us-central1 --format="get(status.url)")
+
 # Create a Pub/Sub topic for tasks
 gcloud pubsub topics create tasks
+
+# Create a service account that Pub/Sub uses to invoke the worker
+gcloud iam service-accounts create pubsub-invoker \
+  --display-name="Pub/Sub Cloud Run Invoker"
+
+gcloud run services add-iam-policy-binding worker \
+  --region=us-central1 \
+  --member="serviceAccount:pubsub-invoker@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountTokenCreator"
 
 # Create a push subscription that targets the worker
 gcloud pubsub subscriptions create tasks-sub \
   --topic=tasks \
-  --push-endpoint="https://worker-xxxxx-uc.a.run.app/process" \
-  --push-auth-service-account=pubsub-invoker@$(gcloud config get-value project).iam.gserviceaccount.com \
+  --push-endpoint="${WORKER_URL}/process" \
+  --push-auth-service-account=pubsub-invoker@${PROJECT_ID}.iam.gserviceaccount.com \
   --ack-deadline=120
 ```
 
