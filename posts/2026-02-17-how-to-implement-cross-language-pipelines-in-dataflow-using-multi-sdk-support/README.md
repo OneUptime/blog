@@ -31,19 +31,15 @@ graph LR
 
 ## Prerequisites
 
-You need both the Python and Java SDKs available, plus the expansion service JAR:
+You need the Beam Python SDK and a Java runtime available. For built-in cross-language I/O, Beam can download the matching expansion service JAR automatically, or you can provide one explicitly:
 
 ```bash
 # Install the Apache Beam Python SDK with GCP extras
 
 pip install apache-beam[gcp]
 
-# Download the expansion service JAR (match versions with your Python SDK)
-# The expansion service is included in the Beam Java SDK
+# Optional: download the expansion service JAR (match versions with your Python SDK)
 wget https://repo1.maven.org/maven2/org/apache/beam/beam-sdks-java-io-expansion-service/2.52.0/beam-sdks-java-io-expansion-service-2.52.0.jar
-
-# Or use the Beam-provided expansion service for specific I/O connectors
-pip install apache-beam[gcp,dataframe]
 ```
 
 ## Using Java I/O Connectors from Python
@@ -54,8 +50,14 @@ The most common use case is accessing Java I/O connectors from Python. Here is h
 # kafka_cross_language.py
 # Read from Kafka using the Java connector in a Python pipeline
 import apache_beam as beam
+import json
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.io.kafka import ReadFromKafka, WriteToKafka
+from apache_beam.transforms.external import JavaJarExpansionService
+
+kafka_expansion_service = JavaJarExpansionService(
+    "beam-sdks-java-io-expansion-service-2.52.0.jar"
+)
 
 options = PipelineOptions(
     runner="DataflowRunner",
@@ -63,8 +65,6 @@ options = PipelineOptions(
     region="us-central1",
     temp_location="gs://my-bucket/temp",
     streaming=True,
-    # The expansion service JAR for Kafka I/O
-    expansion_service_jar="beam-sdks-java-io-expansion-service-2.52.0.jar",
 )
 
 with beam.Pipeline(options=options) as pipeline:
@@ -82,6 +82,7 @@ with beam.Pipeline(options=options) as pipeline:
             # Specify how to deserialize the key and value
             key_deserializer="org.apache.kafka.common.serialization.StringDeserializer",
             value_deserializer="org.apache.kafka.common.serialization.StringDeserializer",
+            expansion_service=kafka_expansion_service,
         )
     )
 
@@ -104,6 +105,7 @@ with beam.Pipeline(options=options) as pipeline:
             topic="processed-events",
             key_serializer="org.apache.kafka.common.serialization.StringSerializer",
             value_serializer="org.apache.kafka.common.serialization.StringSerializer",
+            expansion_service=kafka_expansion_service,
         )
     )
 ```
@@ -116,12 +118,14 @@ You can also call custom Java transforms from Python:
 # custom_java_transform.py
 # Call a custom Java transform from a Python pipeline
 import apache_beam as beam
-from apache_beam.transforms.external import JavaExternalTransform
+from apache_beam.transforms.external import ExternalTransform
+from apache_beam.transforms.external import ImplicitSchemaPayloadBuilder
 
 # Define the Java transform URN and parameters
 # The URN identifies the transform in the expansion service
-java_transform = JavaExternalTransform(
+java_transform = ExternalTransform(
     "beam:transform:org.example:my_custom_transform:v1",
+    ImplicitSchemaPayloadBuilder({}),
     expansion_service="localhost:8097",
 )
 
@@ -144,12 +148,10 @@ For custom Java transforms, you need to run the expansion service:
 
 ```bash
 # Start the expansion service on port 8097
-java -jar beam-sdks-java-io-expansion-service-2.52.0.jar \
-  --port=8097 \
-  --javaClassLookupAllowedNamespaces='*'
+java -jar my-custom-expansion-service.jar 8097
 ```
 
-For built-in Beam I/O connectors, the expansion service starts automatically when you specify the JAR path in your pipeline options.
+For built-in Beam I/O connectors, the expansion service starts automatically when you use the default service or pass a `JavaJarExpansionService` to the transform's `expansion_service` parameter.
 
 ## Using Schema-Aware Cross-Language Transforms
 
@@ -159,8 +161,9 @@ For complex data types, use Beam schemas to ensure type safety across languages:
 # schema_cross_language.py
 # Use Beam schemas for type-safe cross-language transforms
 import apache_beam as beam
-from apache_beam.typehints.schemas import MillisInstant
+import json
 import typing
+from apache_beam.transforms.external import SchemaAwareExternalTransform
 
 # Define a schema using a named tuple
 # Beam translates this to a schema that Java can understand
@@ -189,8 +192,8 @@ with beam.Pipeline(options=options) as pipeline:
     # that expect the same schema structure
     processed = (
         events
-        | "JavaEnrichment" >> JavaExternalTransform(
-            "beam:transform:org.example:enrich_user:v1",
+        | "JavaEnrichment" >> SchemaAwareExternalTransform(
+            "beam:schematransform:org.example:enrich_user:v1",
             expansion_service="localhost:8097",
         )
     )
@@ -204,6 +207,8 @@ You can use Beam SQL (which runs on the Java SDK) from Python:
 # sql_cross_language.py
 # Use Beam SQL from a Python pipeline
 import apache_beam as beam
+import json
+import typing
 from apache_beam.transforms.sql import SqlTransform
 
 # Define the schema
@@ -245,7 +250,13 @@ with beam.Pipeline(options=options) as pipeline:
 
     (
         aggregated
-        | "FormatResults" >> beam.Map(lambda row: json.dumps(row._asdict()))
+        | "FormatResults" >> beam.Map(lambda row: json.dumps({
+            "category": row.category,
+            "total_quantity": row.total_quantity,
+            "total_revenue": row.total_revenue,
+            "avg_price": row.avg_price,
+            "sale_count": row.sale_count,
+        }))
         | "WriteResults" >> beam.io.WriteToText("gs://my-bucket/aggregated/")
     )
 ```
@@ -299,12 +310,11 @@ python my_pipeline.py \
   --temp_location=gs://my-bucket/temp \
   --staging_location=gs://my-bucket/staging \
   --streaming \
-  --expansion_service_jar=beam-sdks-java-io-expansion-service-2.52.0.jar \
   --experiments=use_runner_v2
 
-# The use_runner_v2 experiment is required for cross-language support
+# Runner v2 is required for multi-language pipelines on Dataflow.
 ```
 
 ## Summary
 
-Cross-language pipelines in Dataflow let you combine the best of both worlds - Python's ease of use for data processing logic and Java's rich ecosystem of I/O connectors and transforms. The key components are the expansion service that translates between languages and Beam schemas that ensure type safety at the boundaries. Start with the built-in cross-language I/O connectors like Kafka and SQL, and move to custom Java transforms as needed. Enable debug logging at language boundaries during development, and always use the Runner v2 experiment when deploying to Dataflow. The setup has some initial complexity, but once working, it feels natural to mix Python and Java transforms in the same pipeline.
+Cross-language pipelines in Dataflow let you combine the best of both worlds - Python's ease of use for data processing logic and Java's rich ecosystem of I/O connectors and transforms. The key components are the expansion service that translates between languages and Beam schemas that ensure type safety at the boundaries. Start with the built-in cross-language I/O connectors like Kafka and SQL, and move to custom Java transforms as needed. Enable debug logging at language boundaries during development, and make sure your Dataflow jobs use Runner v2. The setup has some initial complexity, but once working, it feels natural to mix Python and Java transforms in the same pipeline.
