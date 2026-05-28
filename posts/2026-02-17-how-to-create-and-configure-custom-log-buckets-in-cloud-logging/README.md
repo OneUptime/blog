@@ -143,17 +143,17 @@ gcloud logging buckets create encrypted-logs \
   --project=my-project
 ```
 
-Before this works, you need to grant the Cloud Logging service account access to the KMS key:
+Before this works, you need to grant the Cloud Logging KMS service account access to the KMS key:
 
 ```bash
-# Get the logging service account
+# Get the Cloud Logging KMS service account from the kmsServiceAccountId field
 gcloud logging settings describe --project=my-project
 
 # Grant the service account Encrypter/Decrypter role on the KMS key
 gcloud kms keys add-iam-policy-binding my-key \
   --location=us-central1 \
   --keyring=my-keyring \
-  --member="serviceAccount:service-PROJECT_NUMBER@gcp-sa-logging.iam.gserviceaccount.com" \
+  --member="serviceAccount:KMS_SERVICE_ACCOUNT_FROM_kmsServiceAccountId" \
   --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
 ```
 
@@ -292,7 +292,7 @@ gcloud logging buckets describe application-logs \
   --project=my-project
 ```
 
-Delete a custom bucket (the bucket must be empty):
+Delete a custom bucket (the bucket must be unlocked; locked buckets can be deleted only after all log entries have fulfilled the bucket retention period):
 
 ```bash
 # Delete a custom log bucket
