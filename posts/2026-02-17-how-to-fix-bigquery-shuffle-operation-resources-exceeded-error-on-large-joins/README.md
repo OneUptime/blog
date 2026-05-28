@@ -8,13 +8,13 @@ Description: Fix BigQuery shuffle operation resources exceeded errors on large j
 
 ---
 
-You are running a BigQuery query that joins two large tables, and it fails with "Resources exceeded during query execution: The query could not be executed in the allotted memory" or "Shuffle operation resources exceeded." This error occurs when the shuffle phase - where BigQuery redistributes data across processing slots for a join or aggregation - requires more memory than a single slot can handle.
+You are running a BigQuery query that joins two large tables, and it fails with "Resources exceeded during query execution: The query could not be executed in the allotted memory" or "Shuffle operation resources exceeded." This error occurs when the shuffle phase - where BigQuery redistributes data across processing slots for a join or aggregation - cannot access enough memory and disk resources, or when one partition becomes too large for a slot to process efficiently.
 
 This is not just a matter of throwing more resources at the problem. You need to restructure your query to reduce the amount of data being shuffled. Here is how.
 
 ## What Is a Shuffle in BigQuery?
 
-When BigQuery performs a join, it needs to make sure that matching rows end up on the same processing slot. To do this, it redistributes (shuffles) data based on the join key. If you are joining two tables each with a billion rows on a `user_id` column, BigQuery sends all rows with the same `user_id` to the same slot.
+When BigQuery performs a hash join, it needs to make sure that matching rows end up on the same processing slot. To do this, it redistributes (shuffles) data based on the join key. If you are joining two tables each with a billion rows on a `user_id` column, BigQuery sends rows with the same hashed `user_id` partition to the same slot.
 
 The problem arises when:
 1. The total amount of data being shuffled is massive
@@ -97,7 +97,7 @@ WHERE a.category_id IS NOT NULL
 
 UNION ALL
 
--- Step 2: Handle the skewed keys with a broadcast join hint
+-- Step 2: Handle the skewed keys separately
 SELECT a.*, b.category_name
 FROM `my_dataset.products` a
 JOIN `my_dataset.categories` b ON a.category_id = b.category_id
@@ -167,7 +167,7 @@ Each step independently fits within resource limits, and BigQuery can optimize e
 
 ## Fix 5 - Use Partitioned and Clustered Tables
 
-If your tables are partitioned and clustered on the join key, BigQuery can skip irrelevant data during the shuffle.
+If your tables are partitioned on columns you filter by and clustered on common join or filter keys, BigQuery can scan less data and keep related rows closer together, which can reduce shuffle pressure.
 
 ```sql
 -- Create a table clustered by the join key
@@ -217,19 +217,19 @@ SELECT
 FROM `my_dataset.orders`;
 ```
 
-Window functions process data in a streaming fashion within each partition, avoiding the massive shuffle of a self-join.
+Window functions process each ordered partition without duplicating the table and generating many join candidates, avoiding the massive shuffle of a self-join.
 
 ## Fix 7 - Consider Using BigQuery BI Engine
 
-For frequently-run analytical queries on smaller datasets (up to a few hundred GB), BI Engine keeps data in memory and avoids the shuffle altogether.
+For frequently-run analytical queries on smaller datasets, BI Engine caches frequently used data in memory and uses a vectorized execution engine to accelerate supported `SELECT` queries.
 
 ```bash
-# Create a BI Engine reservation
+# Create or update a BI Engine reservation
 
-bq mk --bi_reservation \
-    --project_id=my-project \
+bq --project_id=my-project update \
+    --bi_reservation_size=10 \
     --location=US \
-    --reservation_size=10G
+    --reservation
 ```
 
 ## Diagnosing Shuffle Issues in the Execution Plan
@@ -241,18 +241,18 @@ When you look at the execution plan for a failed query, pay attention to these i
 SELECT
   j.job_id,
   stage.name as stage_name,
-  stage.shuffleOutputBytes,
-  stage.shuffleOutputBytesSpilled,
-  stage.slotMs,
-  stage.recordsRead,
-  stage.recordsWritten
+  stage.shuffle_output_bytes,
+  stage.shuffle_output_bytes_spilled,
+  stage.slot_ms,
+  stage.records_read,
+  stage.records_written
 FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT j,
 UNNEST(j.job_stages) as stage
 WHERE j.job_id = 'your-job-id'
-ORDER BY stage.shuffleOutputBytes DESC;
+ORDER BY stage.shuffle_output_bytes DESC;
 ```
 
-High `shuffleOutputBytesSpilled` indicates that shuffle data exceeded memory and spilled to disk, which is a major performance bottleneck and a precursor to resource exceeded errors.
+High `shuffle_output_bytes_spilled` indicates that shuffle data spilled to disk, which is a major performance bottleneck and a precursor to resource exceeded errors.
 
 ## Summary
 
