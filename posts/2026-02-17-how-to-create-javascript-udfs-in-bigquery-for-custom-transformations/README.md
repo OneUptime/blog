@@ -38,7 +38,7 @@ FROM `my_project.my_dataset.users`
 LIMIT 10;
 ```
 
-The `r"""..."""` syntax is a raw string literal that avoids escaping issues. Always use this for JavaScript UDFs.
+The `r"""..."""` syntax is a raw string literal that avoids escaping issues in multi-line JavaScript UDFs.
 
 ## JavaScript UDF with Complex Return Types
 
@@ -117,9 +117,9 @@ If you only need a UDF for a single query session, create it as a temporary func
 ```sql
 -- Temporary UDF available only in this query session
 CREATE TEMP FUNCTION calculate_score(
-  views INT64,
-  clicks INT64,
-  conversions INT64
+  views FLOAT64,
+  clicks FLOAT64,
+  conversions FLOAT64
 )
 RETURNS FLOAT64
 LANGUAGE js
@@ -213,7 +213,7 @@ Upload your library to Cloud Storage first.
 ```bash
 # Upload the JavaScript library to Cloud Storage
 
-gsutil cp md5.js gs://my-bucket/js-libs/md5.js
+gcloud storage cp md5.js gs://my-bucket/js-libs/md5.js
 ```
 
 ## Performance Considerations
