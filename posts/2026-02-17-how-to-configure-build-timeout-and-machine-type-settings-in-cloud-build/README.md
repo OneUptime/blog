@@ -16,8 +16,8 @@ Let me show you how to configure both of these settings and when it makes sense 
 
 Out of the box, Cloud Build gives you:
 
-- **Timeout**: 10 minutes (600 seconds) per build
-- **Machine type**: e2-medium equivalent (1 vCPU, 4 GB RAM)
+- **Timeout**: 60 minutes (3600 seconds) per build
+- **Machine type**: e2-standard-2 equivalent (2 vCPUs, 8 GB RAM)
 
 For a simple "build a small Docker image and push it" workflow, these defaults are fine. But real-world builds are rarely that simple.
 
@@ -92,7 +92,8 @@ Cloud Build offers several machine type options. Here is what is available:
 
 | Machine Type | vCPUs | Memory | Best For |
 |---|---|---|---|
-| E2_MEDIUM | 1 | 4 GB | Small builds, simple Docker images |
+| Default standard VM | 2 | 8 GB | Default build pool, general-purpose builds |
+| E2_MEDIUM | 1 | 4 GB | Small builds where you want to request a smaller machine explicitly |
 | E2_HIGHCPU_8 | 8 | 8 GB | Medium builds, parallel compilation |
 | E2_HIGHCPU_32 | 32 | 32 GB | Large builds, heavy compilation |
 | N1_HIGHCPU_8 | 8 | 7.2 GB | Legacy, use E2 instead |
@@ -136,7 +137,7 @@ options:
   # Store logs in Cloud Logging
   logging: CLOUD_LOGGING_ONLY
   # Use a specific disk size for large builds (in GB)
-  diskSizeGb: 200
+  diskSizeGb: '200'
 
 # Give the build 45 minutes total
 timeout: 2700s
@@ -180,37 +181,38 @@ While we are at it, disk size is another setting worth knowing about. The defaul
 # cloudbuild.yaml - Increase disk size for large builds
 options:
   machineType: 'E2_HIGHCPU_8'
-  diskSizeGb: 500  # 500 GB disk
+  diskSizeGb: '500'  # 500 GB disk
 ```
 
-The maximum disk size is 2000 GB (2 TB). You are charged for the disk space, so do not go overboard.
+The maximum disk size is 4000 GB (4 TB). The first 100 GB is free, and you are charged for extra SSD storage, so do not go overboard.
 
 ## Cost Considerations
 
 Bigger machines cost more. Here is the rough pricing breakdown:
 
-- **E2_MEDIUM**: Included in the free tier (120 build-minutes per day)
-- **E2_HIGHCPU_8**: About 8x the cost of the default
-- **E2_HIGHCPU_32**: About 32x the cost of the default
+- **Default standard VM**: Included in the promotional free tier (2,500 build-minutes per month, subject to change)
+- **E2_MEDIUM**: Lower per-minute price than the default standard VM, but not part of the quick-start free tier
+- **E2_HIGHCPU_8**: More expensive per minute than the default, but can be cheaper overall if it cuts build time enough
+- **E2_HIGHCPU_32**: Significantly more expensive per minute than the default, so use it for CPU-heavy builds that benefit from the extra parallelism
 
 The math is not always straightforward though. If a build takes 30 minutes on the default machine but only 5 minutes on an 8-vCPU machine, the larger machine actually costs less overall. I have seen this happen plenty of times with compilation-heavy builds.
 
 ## Using Build Triggers with Custom Settings
 
-When you set up build triggers, you can override machine type and timeout per trigger:
+When you set up build triggers, the trigger can point at a specific build config file. Put the machine type and timeout in that build config, then use different config files for different triggers if you need different settings:
 
 ```bash
-# Create a trigger with a custom machine type and timeout
+# Create a trigger that uses a production build config
 gcloud builds triggers create github \
   --repo-name="my-app" \
   --repo-owner="my-org" \
   --branch-pattern="^main$" \
-  --build-config="cloudbuild.yaml" \
+  --build-config="cloudbuild.prod.yaml" \
   --substitutions="_DEPLOY_ENV=production" \
   --description="Production build with large machine"
 ```
 
-The settings in the trigger configuration take precedence over the cloudbuild.yaml defaults. This lets you use different machine types for different branches - a smaller machine for feature branches and a larger one for production builds.
+The settings in the build config used by the trigger apply to builds run by that trigger. This lets you use different machine types for different branches - a smaller machine for feature branches and a larger one for production builds.
 
 ## Practical Tips
 
