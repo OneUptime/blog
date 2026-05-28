@@ -8,7 +8,7 @@ Description: Create and configure a Memorystore for Memcached instance on Google
 
 ---
 
-While Redis gets most of the attention in the caching world, Memcached still has a strong place in production architectures. It is simpler, uses less memory per key, and distributes data across multiple nodes natively. If your use case is straightforward key-value caching without the need for data structures, persistence, or pub/sub, Memcached might be the better fit.
+While Redis gets most of the attention in the caching world, Memcached still has a strong place in production architectures. It is simpler, uses less memory per key, and can distribute data across multiple nodes through client-side hashing. If your use case is straightforward key-value caching without the need for data structures, persistence, or pub/sub, Memcached might be the better fit.
 
 Google Cloud's Memorystore for Memcached gives you a fully managed Memcached deployment. You specify how many nodes you want and how much memory each node gets, and Google handles the rest. In this post, I will walk through creating a Memcached instance, configuring it properly, and connecting your applications.
 
@@ -27,8 +27,8 @@ Before creating a Memcached instance, make sure it is the right tool:
 - You need data structures (lists, sets, sorted sets, hashes)
 - You need persistence or replication
 - You need pub/sub messaging
-- You need atomic operations and transactions
-- You need TTL management per key
+- You need richer atomic operations and transactions
+- You need advanced expiration commands and key introspection
 
 ## Prerequisites
 
@@ -37,7 +37,7 @@ Enable the Memorystore Memcached API:
 ```bash
 # Enable the Memorystore for Memcached API
 
-gcloud services enable memcache.googleapis.com
+gcloud services enable memcache.googleapis.com servicenetworking.googleapis.com
 ```
 
 You also need a VPC network with private services access configured:
@@ -67,8 +67,8 @@ gcloud memcache instances create my-memcached \
   --region=us-central1 \
   --node-count=3 \
   --node-cpu=1 \
-  --node-memory=1gb \
-  --memcached-version=MEMCACHE_1_6_15
+  --node-memory=1GB \
+  --memcached-version=1.6.15
 ```
 
 This creates a 3-node Memcached cluster where each node has 1 vCPU and 1 GB of memory, giving you 3 GB of total cache capacity.
@@ -76,9 +76,9 @@ This creates a 3-node Memcached cluster where each node has 1 vCPU and 1 GB of m
 ### Understanding the Parameters
 
 - `--node-count` - Number of Memcached nodes (1 to 20). More nodes mean more total capacity and better distribution.
-- `--node-cpu` - vCPUs per node (1 to 32). More CPUs handle more concurrent connections.
+- `--node-cpu` - vCPUs per node (1, or an even number from 2 to 32). More CPUs handle more concurrent connections.
 - `--node-memory` - Memory per node in MB or GB (1 GB to 256 GB per node). This is the cache storage.
-- `--memcached-version` - The Memcached version to run.
+- `--memcached-version` - The Memcached version to run, such as `1.6.15`.
 
 ### Production Configuration
 
@@ -90,8 +90,8 @@ gcloud memcache instances create production-cache \
   --region=us-central1 \
   --node-count=5 \
   --node-cpu=2 \
-  --node-memory=4gb \
-  --memcached-version=MEMCACHE_1_6_15 \
+  --node-memory=4GB \
+  --memcached-version=1.6.15 \
   --display-name="Production Memcached" \
   --labels=env=production,team=backend \
   --authorized-network=projects/my-project/global/networks/default
@@ -109,13 +109,13 @@ gcloud memcache instances create custom-cache \
   --region=us-central1 \
   --node-count=3 \
   --node-cpu=1 \
-  --node-memory=2gb \
+  --node-memory=2GB \
   --parameters=max-item-size=5242880,listen-backlog=2048
 ```
 
 Common parameters:
 
-- `max-item-size` - Maximum size of a single item in bytes (default 1 MB, max 5 MB)
+- `max-item-size` - Maximum size of a single item in bytes (default 1 MiB, max 128 MiB, and must be divisible by 512 KiB)
 - `listen-backlog` - TCP connection backlog size
 - `max-reqs-per-event` - Maximum number of requests per event
 - `idle-timeout` - Close idle connections after this many seconds
@@ -153,7 +153,7 @@ gcloud memcache instances describe my-memcached \
 
 ### Auto-Discovery
 
-Memorystore Memcached supports auto-discovery, which means your client can automatically find all nodes. This is the recommended approach because it handles node additions and removals.
+Memorystore Memcached supports auto-discovery, which means a compatible client can automatically find all nodes. This is the recommended approach because it handles node additions and removals, but your client library must support the discovery endpoint or you must add discovery logic yourself. The Python and Node.js examples below use a manually supplied node list.
 
 ### Python with pymemcache
 
@@ -262,7 +262,7 @@ gcloud memcache instances update my-memcached \
   --node-count=2
 ```
 
-When you add nodes, your client's consistent hashing will redistribute some keys to the new nodes. This causes temporary cache misses for the redistributed keys, which is expected.
+When you add nodes, clients using the updated node list and consistent hashing will route some keys to the new nodes. Memorystore does not rebalance existing cached data for you, so this causes temporary cache misses for those keys, which is expected.
 
 When you remove nodes, all data on the removed nodes is lost. Plan for a temporary increase in cache misses.
 
