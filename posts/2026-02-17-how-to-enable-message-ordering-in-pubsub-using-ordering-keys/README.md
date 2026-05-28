@@ -10,11 +10,11 @@ Description: Learn how to use ordering keys in Google Cloud Pub/Sub to guarantee
 
 Pub/Sub does not guarantee message ordering by default. If you publish messages A, B, and C to a topic, a subscriber might receive them as B, A, C or any other permutation. For many use cases, this is fine. But for others - like processing a sequence of state changes for a single entity - order matters. You cannot process a "shipped" event before the "created" event for the same order.
 
-Ordering keys in Pub/Sub let you enforce delivery order for messages that share the same key. Messages with the same ordering key are delivered in the order they were published. Messages with different ordering keys have no ordering guarantee relative to each other. Think of it like having separate ordered lanes on a highway.
+Ordering keys in Pub/Sub let you enforce delivery order for messages that share the same key. Messages with the same ordering key are delivered in the order they were published, as long as they are published to Pub/Sub in the same region. Messages with different ordering keys have no ordering guarantee relative to each other. Think of it like having separate ordered lanes on a highway.
 
 ## How Ordering Keys Work
 
-When you publish a message with an ordering key, Pub/Sub ensures that all messages with that key are delivered to the subscriber in publish order. The ordering guarantee is per-key, not global.
+When you publish a message with an ordering key, Pub/Sub ensures that all messages with that key are delivered to the subscriber in publish order for publishes in the same region. The ordering guarantee is per-key, not global.
 
 For example, if you publish these messages:
 
@@ -33,7 +33,7 @@ Ordering requires configuration on both the subscription and the publisher side.
 
 ### Step 1: Enable Ordering on the Subscription
 
-Create or update a subscription with message ordering enabled:
+Create a subscription with message ordering enabled:
 
 ```bash
 # Create a new subscription with ordering enabled
@@ -98,7 +98,8 @@ for event in events:
     print(f"Published {event['status']} with ID: {message_id}")
 ```
 
-Notice that we call `future.result()` after each publish. This ensures each message is confirmed before publishing the next one. Without this, messages could arrive at the Pub/Sub servers out of order, defeating the purpose.
+Notice that we call `future.result()` after each publish. This ensures each message is confirmed before publishing the next one.
+This also keeps failure handling simple: if a publish fails, you know which message failed before sending later messages for the same key.
 
 ## Choosing Good Ordering Keys
 
@@ -106,7 +107,7 @@ The choice of ordering key is critical. Here are some guidelines:
 
 **Use entity IDs as ordering keys.** If you are processing events for users, use the user_id. For orders, use the order_id. This guarantees that all events for a single entity arrive in order.
 
-**Avoid using a single key for everything.** If all messages share the same ordering key, you effectively serialize all message delivery. This kills throughput because Pub/Sub can only deliver one message at a time for a given key.
+**Avoid using a single key for everything.** If all messages share the same ordering key, you effectively serialize processing for that key. This hurts throughput because ordered delivery for a hot key is limited by how quickly your subscriber callback can process messages, and publish throughput for a single ordering key is limited to 1 MBps.
 
 **Keep cardinality high.** The more distinct ordering keys you have, the more parallelism Pub/Sub can achieve. Thousands or millions of distinct keys is ideal.
 
@@ -151,7 +152,7 @@ def publish_with_retry(data, ordering_key, max_retries=3):
                 ordering_key=ordering_key,
             )
             return future.result()
-        except GoogleAPICallError as e:
+        except (GoogleAPICallError, RuntimeError) as e:
             print(f"Publish failed (attempt {attempt + 1}): {e}")
             # Resume publishing for this ordering key
             publisher.resume_publish(topic_path, ordering_key)
@@ -170,7 +171,7 @@ The `resume_publish` call is essential. After a failure, the publisher client bl
 
 ## Subscriber Considerations
 
-On the subscriber side, ordered messages for the same key are delivered one at a time. The next message in the sequence is not delivered until the current one is acknowledged. This means:
+On the subscriber side, ordered messages for the same key are processed in order. With the Python client library's StreamingPull callback, the callback for a given ordering key runs to completion before the callback for the next message with that key. This means:
 
 1. **Acknowledge quickly.** If your processing takes a long time, extend the acknowledgement deadline or the ordering key will be blocked.
 
