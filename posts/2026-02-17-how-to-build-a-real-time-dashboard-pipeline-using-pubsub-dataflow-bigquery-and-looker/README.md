@@ -33,14 +33,16 @@ Create the Pub/Sub infrastructure for receiving events:
 gcloud pubsub topics create dashboard-events \
   --message-retention-duration=24h
 
+# Create a dead letter topic for failed messages
+gcloud pubsub topics create dashboard-events-dlq
+
 # Create subscriptions
 gcloud pubsub subscriptions create dashboard-events-dataflow \
   --topic=dashboard-events \
   --ack-deadline=120 \
-  --expiration-period=never
-
-# Create a dead letter topic for failed messages
-gcloud pubsub topics create dashboard-events-dlq
+  --expiration-period=never \
+  --dead-letter-topic=dashboard-events-dlq \
+  --max-delivery-attempts=5
 ```
 
 Define the event schema that your applications will publish:
@@ -49,11 +51,14 @@ Define the event schema that your applications will publish:
 # event_publisher.py - Publish dashboard events from your application
 from google.cloud import pubsub_v1
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 publisher = pubsub_v1.PublisherClient()
 topic_path = publisher.topic_path('my-project', 'dashboard-events')
+
+def utc_now():
+    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 def publish_page_view(user_id, page, device, country):
     """Publish a page view event."""
@@ -61,7 +66,7 @@ def publish_page_view(user_id, page, device, country):
         'event_id': str(uuid.uuid4()),
         'event_type': 'page_view',
         'user_id': user_id,
-        'timestamp': datetime.utcnow().isoformat() + 'Z',
+        'timestamp': utc_now(),
         'properties': {
             'page': page,
             'device': device,
@@ -79,7 +84,7 @@ def publish_transaction(user_id, amount, currency, product_id):
         'event_id': str(uuid.uuid4()),
         'event_type': 'transaction',
         'user_id': user_id,
-        'timestamp': datetime.utcnow().isoformat() + 'Z',
+        'timestamp': utc_now(),
         'properties': {
             'amount': amount,
             'currency': currency,
@@ -163,7 +168,10 @@ from apache_beam.transforms.trigger import (
 )
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
+
+def utc_now():
+    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 class ParseEventFn(beam.DoFn):
     """Parse raw JSON events into structured dictionaries."""
@@ -184,7 +192,7 @@ class ParseEventFn(beam.DoFn):
                 'amount': data.get('properties', {}).get('amount'),
                 'currency': data.get('properties', {}).get('currency'),
                 'product_id': data.get('properties', {}).get('product_id'),
-                'processing_time': datetime.utcnow().isoformat(),
+                'processing_time': utc_now(),
             }
             yield parsed
 
@@ -418,12 +426,13 @@ sdk = looker_sdk.init40()
 dashboard = sdk.create_dashboard(
     body=looker_sdk.models40.WriteDashboard(
         title="Real-Time Operations Dashboard",
+        space_id="1",
         description="Live metrics from the streaming pipeline",
     )
 )
 
 # Add a tile for events per minute
-sdk.create_dashboard_element(
+dashboard_element = sdk.create_dashboard_element(
     body=looker_sdk.models40.WriteDashboardElement(
         dashboard_id=dashboard.id,
         title="Events Per Minute",
@@ -462,7 +471,6 @@ SELECT
   SUM(unique_users) AS users,
   SUM(total_revenue) AS revenue
 FROM `my-project.realtime.metrics_per_minute`
-WHERE window_start >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
 GROUP BY 1, 2;
 ```
 
@@ -470,16 +478,19 @@ Enable BI Engine for sub-second query response times:
 
 ```bash
 # Create a BI Engine reservation for the real-time dataset
-bq mk --bi_reservation \
-  --project_id=my-project \
+bq --project_id=my-project update \
+  --reservation \
   --location=us-central1 \
-  --reservation_size=1G
+  --bi_reservation_size=1
 
 # Add the realtime dataset to BI Engine
-bq update --bi_reservation \
-  --project_id=my-project \
-  --location=us-central1 \
-  --preferred_table="my-project.realtime.live_summary"
+bq query --use_legacy_sql=false \
+  'ALTER BI_CAPACITY `my-project.region-us-central1.default`
+   SET OPTIONS (
+     size_gb = 1,
+     preferred_tables = [`my-project.realtime.live_summary`,
+                         `my-project.realtime.metrics_per_minute`]
+   );'
 ```
 
 ## Step 7: Set Up Auto-Refresh and Alerts
@@ -505,7 +516,8 @@ Set up Looker alerts for anomaly detection:
 # Create an alert for unusual traffic drops
 alert = sdk.create_alert(
     body=looker_sdk.models40.WriteAlert(
-        comparison_type="less_than",
+        dashboard_element_id=dashboard_element.id,
+        comparison_type="LESS_THAN",
         threshold=100,  # Alert if events drop below 100 per minute
         field=looker_sdk.models40.AlertField(
             title="Events Per Minute",
@@ -513,11 +525,11 @@ alert = sdk.create_alert(
         ),
         destinations=[
             looker_sdk.models40.AlertDestination(
-                destination_type="email",
+                destination_type="EMAIL",
                 email_address="oncall@company.com"
             )
         ],
-        cron="*/5 * * * *",  # Check every 5 minutes
+        cron="*/20 * * * *",  # Check every 20 minutes
     )
 )
 ```
