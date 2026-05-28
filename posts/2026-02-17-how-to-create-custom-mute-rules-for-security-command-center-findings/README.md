@@ -16,12 +16,12 @@ In this post, I will show you how to create custom mute rules, manage them effec
 
 A mute rule is a filter that automatically sets the `mute` state of matching findings to `MUTED`. Muted findings are hidden from the default view in the Console but are still recorded and available if you need them. You can unmute findings at any time.
 
-There are two types of muting:
+There are two common ways to mute findings:
 
-1. **Static mute**: You manually mute specific individual findings
-2. **Dynamic mute rules**: You create filter-based rules that automatically mute any matching finding, including future ones
+1. **Manual mute overrides**: You manually mute specific individual findings
+2. **Mute rules**: You create filter-based rules that automatically mute matching findings
 
-Dynamic mute rules are what we will focus on because they handle the ongoing noise problem.
+Security Command Center supports static and dynamic mute rules. Dynamic mute rules are what we will focus on because they can apply to existing and future matching findings and can be removed when the rule is updated, deleted, or no longer matches.
 
 ## Viewing Current Findings
 
@@ -42,7 +42,7 @@ gcloud scc findings list YOUR_ORG_ID \
 
 # Count findings by severity
 gcloud scc findings list YOUR_ORG_ID \
-  --filter='state="ACTIVE" AND mute="UNMUTED" AND finding.severity="CRITICAL"' \
+  --filter='state="ACTIVE" AND mute="UNMUTED" AND severity="CRITICAL"' \
   --format="value(finding.category)" | wc -l
 ```
 
@@ -54,7 +54,8 @@ The basic syntax for creating a mute rule.
 # Create a mute rule that mutes findings for a specific resource
 gcloud scc muteconfigs create dev-cluster-firewall \
   --organization=YOUR_ORG_ID \
-  --filter='finding.category="OPEN_FIREWALL" AND resource.projectDisplayName="dev-sandbox"' \
+  --type=dynamic \
+  --filter='category="OPEN_FIREWALL" AND resource.projectDisplayName="dev-sandbox"' \
   --description="Mute open firewall findings in dev sandbox - accepted risk per SEC-2024-123"
 ```
 
@@ -68,6 +69,7 @@ Development and test environments often have relaxed security configurations by 
 # Mute all findings from development projects
 gcloud scc muteconfigs create dev-environment \
   --organization=YOUR_ORG_ID \
+  --type=dynamic \
   --filter='resource.projectDisplayName="dev-sandbox" OR resource.projectDisplayName="test-environment" OR resource.projectDisplayName="staging-env"' \
   --description="Mute findings from non-production environments"
 ```
@@ -78,6 +80,7 @@ If your projects follow a naming convention, use partial matching.
 # Mute findings from any project with "dev" or "test" in the name
 gcloud scc muteconfigs create non-prod-projects \
   --organization=YOUR_ORG_ID \
+  --type=dynamic \
   --filter='resource.projectDisplayName:"dev-" OR resource.projectDisplayName:"test-" OR resource.projectDisplayName:"sandbox-"' \
   --description="Mute findings from non-production projects matching naming convention"
 ```
@@ -90,13 +93,15 @@ Some finding categories may not be relevant to your organization.
 # Mute DNS logging findings if you use a third-party DNS solution
 gcloud scc muteconfigs create dns-logging-accepted \
   --organization=YOUR_ORG_ID \
-  --filter='finding.category="DNS_LOGGING_DISABLED"' \
+  --type=dynamic \
+  --filter='category="DNS_LOGGING_DISABLED"' \
   --description="DNS logging handled by external provider - not applicable"
 
 # Mute findings about default service accounts in specific projects
 gcloud scc muteconfigs create default-sa-accepted \
   --organization=YOUR_ORG_ID \
-  --filter='finding.category="DEFAULT_SERVICE_ACCOUNT_USED" AND resource.projectDisplayName="legacy-app"' \
+  --type=dynamic \
+  --filter='category="DEFAULT_SERVICE_ACCOUNT_USED" AND resource.projectDisplayName="legacy-app"' \
   --description="Legacy app uses default SA - migration planned for Q3"
 ```
 
@@ -108,7 +113,8 @@ If certain resource types are known to generate noise.
 # Mute findings for GKE system namespaces
 gcloud scc muteconfigs create gke-system-namespaces \
   --organization=YOUR_ORG_ID \
-  --filter='finding.category="CONTAINER_THREAT" AND resource.displayName:"kube-system"' \
+  --type=dynamic \
+  --filter='category="CONTAINER_THREAT" AND resource.name:"kube-system"' \
   --description="Mute expected container findings in kube-system namespace"
 ```
 
@@ -120,7 +126,8 @@ Maybe low-severity findings for certain categories are just noise.
 # Mute low severity findings for overly sensitive detectors
 gcloud scc muteconfigs create low-severity-noise \
   --organization=YOUR_ORG_ID \
-  --filter='finding.severity="LOW" AND (finding.category="LEGACY_AUTHORIZATION_ENABLED" OR finding.category="CLUSTER_LOGGING_DISABLED")' \
+  --type=dynamic \
+  --filter='severity="LOW" AND (category="LEGACY_AUTHORIZATION_ENABLED" OR category="CLUSTER_LOGGING_DISABLED")' \
   --description="Mute low-severity findings for known informational detectors"
 ```
 
@@ -132,13 +139,15 @@ When you have a specific resource with an accepted risk.
 # Mute findings for a specific public bucket (e.g., a public website bucket)
 gcloud scc muteconfigs create public-website-bucket \
   --organization=YOUR_ORG_ID \
-  --filter='finding.category="PUBLIC_BUCKET_ACL" AND resource.name:"my-public-website-bucket"' \
+  --type=dynamic \
+  --filter='category="PUBLIC_BUCKET_ACL" AND resource.name:"my-public-website-bucket"' \
   --description="Public bucket for static website hosting - intentionally public"
 
 # Mute findings for a specific Cloud SQL instance with public IP
 gcloud scc muteconfigs create legacy-sql-public-ip \
   --organization=YOUR_ORG_ID \
-  --filter='finding.category="SQL_PUBLIC_IP" AND resource.name:"legacy-database-instance"' \
+  --type=dynamic \
+  --filter='category="SQL_PUBLIC_IP" AND resource.name:"legacy-database-instance"' \
   --description="Legacy SQL instance requires public IP for partner integrations - tracked in JIRA-456"
 ```
 
@@ -157,7 +166,7 @@ gcloud scc muteconfigs list \
 
 ```bash
 # Get details of a mute rule
-gcloud scc muteconfigs describe dev-environment \
+gcloud scc muteconfigs get dev-environment \
   --organization=YOUR_ORG_ID
 ```
 
@@ -174,26 +183,28 @@ gcloud scc muteconfigs update dev-environment \
 ### Deleting a Mute Rule
 
 ```bash
-# Delete a mute rule (previously muted findings remain muted)
+# Delete a mute rule
 gcloud scc muteconfigs delete dns-logging-accepted \
   --organization=YOUR_ORG_ID
 ```
 
-Note that deleting a mute rule does not automatically unmute previously muted findings. You need to unmute those separately.
+Note that deleting a dynamic mute rule removes that rule from matching findings. Static mute rules and manual mute overrides can leave findings muted until you reset or unmute them separately.
 
 ## Statically Muting Individual Findings
 
 For one-off findings that do not fit a rule pattern.
 
 ```bash
-# Mute a specific finding by its name
-gcloud scc findings set-mute FINDING_NAME \
+# Mute a specific finding by its ID
+gcloud scc findings set-mute FINDING_ID \
   --organization=YOUR_ORG_ID \
+  --source=SOURCE_ID \
   --mute=MUTED
 
 # Unmute a specific finding
-gcloud scc findings set-mute FINDING_NAME \
+gcloud scc findings set-mute FINDING_ID \
   --organization=YOUR_ORG_ID \
+  --source=SOURCE_ID \
   --mute=UNMUTED
 ```
 
@@ -207,22 +218,14 @@ For handling large numbers of findings programmatically.
 # Mutes all active findings matching a filter
 
 ORG_ID="YOUR_ORG_ID"
-FILTER='finding.category="OPEN_SSH_PORT" AND resource.projectDisplayName="dev-sandbox"'
+FILTER='category="OPEN_SSH_PORT" AND resource.projectDisplayName="dev-sandbox"'
 
-# List matching findings
-FINDINGS=$(gcloud scc findings list "$ORG_ID" \
+gcloud scc findings bulk-mute \
+  --organization="$ORG_ID" \
   --filter="$FILTER AND state=\"ACTIVE\" AND mute=\"UNMUTED\"" \
-  --format="value(finding.name)")
+  --mute-state=MUTED
 
-# Mute each finding
-for FINDING in $FINDINGS; do
-  echo "Muting: $FINDING"
-  gcloud scc findings set-mute "$FINDING" \
-    --organization="$ORG_ID" \
-    --mute=MUTED
-done
-
-echo "Done. Muted $(echo "$FINDINGS" | wc -l) findings."
+echo "Bulk mute request submitted."
 ```
 
 ## Using the API for Advanced Mute Rules
@@ -241,11 +244,12 @@ parent = f"organizations/{org_id}"
 
 mute_config = securitycenter_v1.MuteConfig(
     filter=(
-        'finding.category="OPEN_FIREWALL" AND '
+        'category="OPEN_FIREWALL" AND '
         'resource.projectDisplayName="dev-sandbox" AND '
-        'finding.severity="MEDIUM"'
+        'severity="MEDIUM"'
     ),
     description="Mute medium-severity firewall findings in dev sandbox",
+    type_=securitycenter_v1.MuteConfig.MuteConfigType.DYNAMIC,
 )
 
 response = client.create_mute_config(
