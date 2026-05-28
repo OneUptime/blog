@@ -14,7 +14,7 @@ This guide covers how Cloud EKM works, how to set it up with supported external 
 
 ## How Cloud EKM Works
 
-Cloud EKM creates a bridge between Cloud KMS and your external key management system. When a Google Cloud service needs to encrypt or decrypt data, Cloud KMS sends the request to your external key manager over a secure connection. The actual cryptographic operations happen outside of Google Cloud.
+Cloud EKM creates a bridge between Cloud KMS and your external key management system. When a Google Cloud service needs to encrypt or decrypt data, Cloud KMS sends the request to your external key manager over a secure connection. The external key material stays outside Google Cloud, and for symmetric keys Cloud KMS also uses internal key material as an additional layer.
 
 The architecture looks like this:
 
@@ -22,7 +22,7 @@ The architecture looks like this:
 graph LR
     A[Google Cloud Service] --> B[Cloud KMS]
     B --> C[Cloud EKM]
-    C --> D[VPC Network]
+    C --> D[Internet or VPC Network]
     D --> E[External Key Manager / HSM]
     style E fill:#4dabf7,color:#fff
     style B fill:#69db7c,color:#000
@@ -39,11 +39,9 @@ VPC-based EKM is the recommended approach for production workloads because it of
 
 Cloud EKM works with several third-party key management systems:
 
-- Thales CipherTrust Manager
 - Fortanix Data Security Manager
 - Futurex KMES
-- Atos Trustway
-- Securosys Primus
+- Thales CipherTrust Manager
 
 Each provider implements the Cloud EKM API endpoints that Cloud KMS uses to perform key operations. You need to set up the external key manager and configure it to accept requests from Google Cloud before configuring the Cloud EKM side.
 
@@ -51,7 +49,7 @@ Each provider implements the Cloud EKM API endpoints that Cloud KMS uses to perf
 
 VPC-based EKM provides a private connection between Cloud KMS and your external key manager. Here is how to set it up.
 
-### Step 1: Create a VPC Service Connection
+### Step 1: Prepare VPC Connectivity
 
 First, set up the networking components that allow Cloud EKM to reach your external key manager.
 
@@ -69,30 +67,26 @@ gcloud compute networks subnets create ekm-subnet \
   --range=10.0.1.0/24 \
   --project=my-kms-project
 
-# Set up Cloud VPN or Interconnect to reach your on-premises HSM
-# This example uses a VPN tunnel
-gcloud compute vpn-tunnels create ekm-vpn-tunnel \
-  --region=us-central1 \
-  --peer-address=203.0.113.1 \
-  --shared-secret=YOUR_SHARED_SECRET \
-  --ike-version=2 \
-  --target-vpn-gateway=ekm-gateway \
+# Set up Cloud VPN or Cloud Interconnect separately so this VPC can reach
+# your on-premises HSM or external key manager.
+
+# Ensure the Cloud EKM service agent exists and can use Service Directory
+gcloud beta services identity create \
+  --service=cloudkms.googleapis.com \
   --project=my-kms-project
+
+PROJECT_NUMBER="$(gcloud projects describe my-kms-project --format='value(projectNumber)')"
+
+gcloud projects add-iam-policy-binding my-kms-project \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-ekms.iam.gserviceaccount.com" \
+  --role=roles/servicedirectory.viewer
+
+gcloud projects add-iam-policy-binding my-kms-project \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-ekms.iam.gserviceaccount.com" \
+  --role=roles/servicedirectory.pscAuthorizedService
 ```
 
-### Step 2: Create an EKM Connection
-
-The EKM connection defines how Cloud KMS reaches your external key manager.
-
-```bash
-# Create an EKM connection for VPC-based access
-gcloud kms ekm-connections create my-ekm-connection \
-  --location=us-central1 \
-  --project=my-kms-project \
-  --service-resolvers="hostname=ekm.mycompany.internal,server-certificates=@server-cert.pem,service-directory-service=projects/my-kms-project/locations/us-central1/namespaces/ekm-namespace/services/ekm-service,endpoint-filter=ip_address=10.0.1.50"
-```
-
-### Step 3: Register Your External Key Manager in Service Directory
+### Step 2: Register Your External Key Manager in Service Directory
 
 Cloud EKM uses Service Directory to resolve the address of your external key manager.
 
@@ -115,7 +109,23 @@ gcloud service-directory endpoints create ekm-endpoint \
   --location=us-central1 \
   --address=10.0.1.50 \
   --port=443 \
+  --network=projects/${PROJECT_NUMBER}/locations/global/networks/ekm-network \
   --project=my-kms-project
+```
+
+### Step 3: Create an EKM Connection
+
+The EKM connection defines how Cloud KMS reaches your external key manager.
+
+```bash
+# Create an EKM connection for VPC-based access
+gcloud beta kms ekm-connections create my-ekm-connection \
+  --location=us-central1 \
+  --project=my-kms-project \
+  --service-directory-service=projects/my-kms-project/locations/us-central1/namespaces/ekm-namespace/services/ekm-service \
+  --hostname=ekm.mycompany.internal \
+  --server-certificates-files=server-cert.der \
+  --key-management-mode=manual
 ```
 
 ## Creating an External Key
@@ -133,22 +143,25 @@ gcloud kms keys create external-data-key \
   --keyring=external-keyring \
   --location=us-central1 \
   --purpose=encryption \
+  --default-algorithm=external-symmetric-encryption \
   --protection-level=external-vpc \
+  --crypto-key-backend=projects/my-kms-project/locations/us-central1/ekmConnections/my-ekm-connection \
   --skip-initial-version-creation \
   --project=my-kms-project
 
-# Create a key version that references the external key URI
+# Create a key version that references the external key path
 gcloud kms keys versions create \
   --key=external-data-key \
   --keyring=external-keyring \
   --location=us-central1 \
-  --external-key-uri="vpc://my-ekm-connection?path=/v1/keys/my-hsm-key-id" \
+  --ekm-connection-key-path="v1/keys/my-hsm-key-id" \
+  --primary \
   --project=my-kms-project
 ```
 
 ## Using External Keys with Google Cloud Services
 
-External keys work with the same Google Cloud services that support CMEK. The service does not know or care whether the key is internal or external - it just uses the Cloud KMS key reference.
+External keys work with Google Cloud services that support CMEK with Cloud EKM. The service uses the Cloud KMS key reference, but not every CMEK-capable service supports external keys.
 
 This example creates a Cloud Storage bucket encrypted with an external key.
 
@@ -175,6 +188,10 @@ Here is a complete Terraform configuration for setting up Cloud EKM with VPC con
 
 ```hcl
 # Service Directory entries for EKM endpoint resolution
+data "google_project" "kms" {
+  project_id = "my-kms-project"
+}
+
 resource "google_service_directory_namespace" "ekm" {
   provider     = google-beta
   namespace_id = "ekm-namespace"
@@ -194,13 +211,15 @@ resource "google_service_directory_endpoint" "ekm" {
   service     = google_service_directory_service.ekm.id
   address     = "10.0.1.50"
   port        = 443
+  network     = "projects/${data.google_project.kms.number}/locations/global/networks/ekm-network"
 }
 
 # EKM connection configuration
 resource "google_kms_ekm_connection" "main" {
-  name     = "my-ekm-connection"
-  location = "us-central1"
-  project  = "my-kms-project"
+  name                = "my-ekm-connection"
+  location            = "us-central1"
+  project             = "my-kms-project"
+  key_management_mode = "MANUAL"
 
   service_resolvers {
     hostname                      = "ekm.mycompany.internal"
@@ -219,9 +238,10 @@ resource "google_kms_key_ring" "external" {
 }
 
 resource "google_kms_crypto_key" "external" {
-  name     = "external-data-key"
-  key_ring = google_kms_key_ring.external.id
-  purpose  = "ENCRYPT_DECRYPT"
+  name               = "external-data-key"
+  key_ring           = google_kms_key_ring.external.id
+  purpose            = "ENCRYPT_DECRYPT"
+  crypto_key_backend = google_kms_ekm_connection.main.id
 
   version_template {
     protection_level = "EXTERNAL_VPC"
@@ -229,6 +249,14 @@ resource "google_kms_crypto_key" "external" {
   }
 
   skip_initial_version_creation = true
+}
+
+resource "google_kms_crypto_key_version" "external" {
+  crypto_key = google_kms_crypto_key.external.id
+
+  external_protection_level_options {
+    ekm_connection_key_path = "v1/keys/my-hsm-key-id"
+  }
 }
 ```
 
@@ -248,12 +276,17 @@ Plan for this by:
 ```bash
 # Create an alert for EKM operation failures
 gcloud monitoring policies create \
+  --notification-channels=projects/my-kms-project/notificationChannels/CHANNEL_ID \
+  --aggregation='{"alignmentPeriod": "60s", "perSeriesAligner": "ALIGN_RATE"}' \
   --display-name="EKM Operation Failures" \
   --condition-display-name="High EKM error rate" \
-  --condition-filter='resource.type="cloudkms.googleapis.com/CryptoKeyVersion" AND metric.type="cloudkms.googleapis.com/ekm/operation_count" AND metric.labels.status!="OK"' \
-  --condition-threshold-value=5 \
-  --condition-threshold-duration=300s \
-  --notification-channels=projects/my-kms-project/notificationChannels/CHANNEL_ID
+  --condition-filter='resource.type="cloudkms.googleapis.com/Project"
+                      metric.type="cloudkms.googleapis.com/ekm/external/request_count"
+                      metric.labels.status!="OK"' \
+  --duration=300s \
+  --if="> 5" \
+  --trigger-count=1 \
+  --combiner=AND
 ```
 
 ## Performance Considerations
