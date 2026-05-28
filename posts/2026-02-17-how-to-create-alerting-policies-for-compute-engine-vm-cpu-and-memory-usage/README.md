@@ -128,7 +128,7 @@ Create the policy:
 
 ```bash
 # Create the CPU alert policy from the JSON file
-gcloud alpha monitoring policies create --policy-from-file=vm-cpu-alert.json
+gcloud monitoring policies create --policy-from-file=vm-cpu-alert.json
 ```
 
 ### Method 3: Terraform
@@ -206,7 +206,7 @@ Memory alerts use the Ops Agent metric, so the metric path is different from CPU
 }
 ```
 
-Note the `metric.labels.state=\"used\"` filter. The memory metric has multiple states (used, buffered, cached, free). You want to alert on the "used" state specifically.
+Note the `metric.labels.state=\"used\"` filter. The memory metric has multiple states (used, buffered, cached, free, slab). You want to alert on the "used" state specifically.
 
 ### Terraform for Memory Alerts
 
@@ -251,11 +251,11 @@ You can scope alerts to specific VMs using resource labels:
 }
 ```
 
-Or use metadata labels if you tag your VMs:
+Or use the VM name metric label:
 
 ```json
 {
-  "filter": "resource.type=\"gce_instance\" AND metric.type=\"compute.googleapis.com/instance/cpu/utilization\" AND metadata.system_labels.name=starts_with(\"api-server\")"
+  "filter": "resource.type=\"gce_instance\" AND metric.type=\"compute.googleapis.com/instance/cpu/utilization\" AND metric.labels.instance_name=starts_with(\"api-server\")"
 }
 ```
 
@@ -266,7 +266,7 @@ Sometimes you want an alert that only fires when multiple conditions are true si
 ```json
 {
   "displayName": "VM Under Resource Pressure",
-  "combiner": "AND",
+  "combiner": "AND_WITH_MATCHING_RESOURCE",
   "conditions": [
     {
       "displayName": "CPU above 80%",
@@ -302,7 +302,7 @@ Sometimes you want an alert that only fires when multiple conditions are true si
 }
 ```
 
-Notice the `combiner` is set to `AND` instead of `OR`. This means both conditions must be true for the alert to fire.
+Notice the `combiner` is set to `AND_WITH_MATCHING_RESOURCE` instead of `OR`. This means both conditions must be true on the same VM for the alert to fire.
 
 ## Choosing the Right Thresholds
 
