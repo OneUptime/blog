@@ -58,18 +58,17 @@ When creating a VM, specify the alias IP range it should use:
 
 ```bash
 # Create a VM with an alias IP range from the secondary range
-# The /28 gives this VM 16 alias IPs for containers
+# The /28 gives this VM 16 addresses for the container network
 gcloud compute instances create container-host-1 \
   --zone=us-central1-a \
   --machine-type=e2-standard-4 \
-  --subnet=container-subnet \
   --network-interface=subnet=container-subnet,aliases=container-ips:10.10.16.0/28 \
   --image-family=cos-113-lts \
   --image-project=cos-cloud \
   --can-ip-forward
 ```
 
-This assigns the range 10.10.16.0/28 (16 addresses) to the VM. You can use addresses 10.10.16.1 through 10.10.16.14 for containers (10.10.16.0 is the network address and 10.10.16.15 is broadcast).
+This assigns the range 10.10.16.0/28 (16 addresses) to the VM. If you use it as a Docker subnet, you can use addresses 10.10.16.1 through 10.10.16.14 for the bridge gateway and containers (10.10.16.0 is the network address and 10.10.16.15 is broadcast).
 
 For multiple VMs, assign different slices of the secondary range:
 
@@ -78,7 +77,6 @@ For multiple VMs, assign different slices of the secondary range:
 gcloud compute instances create container-host-2 \
   --zone=us-central1-a \
   --machine-type=e2-standard-4 \
-  --subnet=container-subnet \
   --network-interface=subnet=container-subnet,aliases=container-ips:10.10.16.16/28 \
   --image-family=cos-113-lts \
   --image-project=cos-cloud \
@@ -109,20 +107,20 @@ gcloud compute instances network-interfaces update container-host-1 \
 
 Once the VM has alias IPs, configure Docker to assign them to containers. The approach depends on your container runtime.
 
-### Using Docker with macvlan
+### Using Docker with a Routable Bridge Network
 
-macvlan lets containers get IPs directly from the host's network:
+Create a Docker bridge network from the VM's alias range and disable Docker's outbound masquerading so packets keep the container's alias IP as the source address:
 
 ```bash
 # SSH into the container host
 gcloud compute ssh container-host-1 --zone=us-central1-a
 
-# Create a macvlan network in Docker using the alias IP range
-docker network create -d macvlan \
-  --subnet=10.10.16.0/20 \
+# Create a bridge network in Docker using this VM's alias IP range
+docker network create -d bridge \
+  --subnet=10.10.16.0/28 \
   --ip-range=10.10.16.0/28 \
-  --gateway=10.10.0.1 \
-  -o parent=eth0 \
+  --gateway=10.10.16.1 \
+  -o com.docker.network.bridge.enable_ip_masquerade=false \
   container-net
 ```
 
@@ -195,32 +193,42 @@ gcloud compute firewall-rules create allow-http-to-containers \
 
 ## Setting Up Internal Load Balancing
 
-You can point an internal load balancer directly at container alias IPs:
+To point an internal Application Load Balancer backend service directly at container alias IPs, use a zonal network endpoint group (NEG) with `GCE_VM_IP_PORT` endpoints:
 
 ```bash
 # Create a health check for the containers
 gcloud compute health-checks create http container-health \
+  --region=us-central1 \
   --port=80 \
   --request-path=/health
 
-# Create an instance group for the container hosts
-gcloud compute instance-groups unmanaged create container-group \
-  --zone=us-central1-a
-
-gcloud compute instance-groups unmanaged add-instances container-group \
+# Create a zonal NEG for the container endpoints
+gcloud compute network-endpoint-groups create container-neg \
   --zone=us-central1-a \
-  --instances=container-host-1,container-host-2
+  --network=production-vpc \
+  --subnet=container-subnet \
+  --network-endpoint-type=GCE_VM_IP_PORT \
+  --default-port=80
+
+gcloud compute network-endpoint-groups update container-neg \
+  --zone=us-central1-a \
+  --add-endpoint=instance=container-host-1,ip=10.10.16.2,port=80 \
+  --add-endpoint=instance=container-host-1,ip=10.10.16.3,port=80
 
 # Create a backend service
 gcloud compute backend-services create container-backend \
-  --load-balancing-scheme=INTERNAL \
-  --protocol=TCP \
+  --load-balancing-scheme=INTERNAL_MANAGED \
+  --protocol=HTTP \
   --region=us-central1 \
-  --health-checks=container-health
+  --network=production-vpc \
+  --health-checks=container-health \
+  --health-checks-region=us-central1
 
 gcloud compute backend-services add-backend container-backend \
-  --instance-group=container-group \
-  --instance-group-zone=us-central1-a \
+  --network-endpoint-group=container-neg \
+  --network-endpoint-group-zone=us-central1-a \
+  --balancing-mode=RATE \
+  --max-rate-per-endpoint=100 \
   --region=us-central1
 ```
 
