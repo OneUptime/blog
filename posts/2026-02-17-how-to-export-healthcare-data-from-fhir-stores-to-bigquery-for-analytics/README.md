@@ -140,7 +140,7 @@ The `schemaType` option determines how FHIR resources map to BigQuery columns:
 - **ANALYTICS** - original analytics schema, flattens resources into columns
 - **ANALYTICS_V2** - improved schema with better handling of nested structures, repeated fields, and extensions. This is the recommended option.
 
-The `recursiveStructureDepth` controls how deeply nested structures are expanded. A value of 3 means structures nested more than 3 levels deep will be stored as JSON strings rather than individual columns.
+The `recursiveStructureDepth` controls how deeply recursive structures are expanded. A value of 3 means recursive structures deeper than 3 levels will not be expanded into additional columns.
 
 ## Step 4: Explore the Exported Tables
 
@@ -151,7 +151,14 @@ This query lists all the tables that were created:
 ```sql
 -- List all tables created by the FHIR export
 SELECT table_name, row_count, size_bytes
-FROM `MY_PROJECT.fhir_analytics.INFORMATION_SCHEMA.TABLES`
+FROM (
+  SELECT
+    table_name,
+    total_rows AS row_count,
+    total_logical_bytes AS size_bytes
+  FROM `MY_PROJECT`.`region-us-central1`.INFORMATION_SCHEMA.TABLE_STORAGE
+  WHERE table_schema = 'fhir_analytics'
+)
 ORDER BY row_count DESC;
 ```
 
@@ -216,7 +223,7 @@ This Cloud Function handles incremental exports based on the last export timesta
 ```python
 from google.cloud import healthcare_v1
 import functions_framework
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 @functions_framework.http
 def incremental_export(request):
@@ -240,7 +247,7 @@ def incremental_export(request):
             # WRITE_APPEND adds to existing tables
             write_disposition=healthcare_v1.BigQueryDestination.WriteDisposition.WRITE_APPEND,
         ),
-        _since=datetime.utcnow() - timedelta(hours=24),
+        since=(datetime.now(timezone.utc) - timedelta(hours=24)).isoformat(timespec="seconds"),
     )
 
     operation = client.export_resources(request=request)
