@@ -8,7 +8,7 @@ Description: Learn how to systematically compare Gemini model variants using Ver
 
 ---
 
-Choosing the right Gemini model variant for your application is not straightforward. Should you use Flash or Pro? Gemini 2.0 or 3.0? Each variant has different strengths in quality, speed, and cost. The only reliable way to decide is to evaluate them systematically against your specific workload. Vertex AI's evaluation tools make this possible without guesswork.
+Choosing the right Gemini model variant for your application is not straightforward. Should you use Flash or Pro? Gemini 2.5 or Gemini 3? Each variant has different strengths in quality, speed, and cost. The only reliable way to decide is to evaluate them systematically against your specific workload. Vertex AI's evaluation tools make this possible without guesswork.
 
 In this post, I will show you how to run side-by-side evaluations of different Gemini models and interpret the results to make an informed choice.
 
@@ -18,10 +18,10 @@ The Gemini family includes several model variants, each with different trade-off
 
 ```mermaid
 graph TD
-    A[Gemini Models] --> B[Gemini 2.0 Flash]
-    A --> C[Gemini 2.0 Pro]
-    A --> D[Gemini 3.0 Flash]
-    A --> E[Gemini 3.0 Pro]
+    A[Gemini Models] --> B[Gemini 2.5 Flash]
+    A --> C[Gemini 2.5 Pro]
+    A --> D[Gemini 3 Flash Preview]
+    A --> E[Gemini 3 Pro Preview]
     B --> B1["Fast, cost-effective<br/>Good for most tasks"]
     C --> C1["Higher quality<br/>Complex reasoning"]
     D --> D1["Latest fast model<br/>Thinking capability"]
@@ -39,19 +39,19 @@ This code sets up the comparison infrastructure:
 ```python
 import vertexai
 from vertexai.generative_models import GenerativeModel
-from vertexai.evaluation import EvalTask
+from vertexai.evaluation import EvalTask, MetricPromptTemplateExamples, PointwiseMetric
 import pandas as pd
 import time
 
 # Initialize Vertex AI
 
-vertexai.init(project="your-project-id", location="us-central1")
+vertexai.init(project="your-project-id", location="global")
 
 # Define the models to compare
 MODEL_VARIANTS = {
-    "gemini-2.0-flash": GenerativeModel("gemini-2.0-flash"),
-    "gemini-2.0-pro": GenerativeModel("gemini-2.0-pro"),
-    "gemini-3.0-flash": GenerativeModel("gemini-3.0-flash"),
+    "gemini-2.5-flash": GenerativeModel("gemini-2.5-flash"),
+    "gemini-2.5-pro": GenerativeModel("gemini-2.5-pro"),
+    "gemini-3-flash-preview": GenerativeModel("gemini-3-flash-preview"),
 }
 
 # Create an evaluation dataset representative of your workload
@@ -107,13 +107,31 @@ def evaluate_model(model_name, model, dataset, experiment_name):
     eval_data["response"] = responses
 
     # Run evaluation with multiple metrics
+    coherence_metric = PointwiseMetric(
+        metric="coherence",
+        metric_prompt_template=MetricPromptTemplateExamples.get_prompt_template(
+            "coherence"
+        ),
+    )
+    fluency_metric = PointwiseMetric(
+        metric="fluency",
+        metric_prompt_template=MetricPromptTemplateExamples.get_prompt_template(
+            "fluency"
+        ),
+    )
+    instruction_following_metric = PointwiseMetric(
+        metric="instruction_following",
+        metric_prompt_template=MetricPromptTemplateExamples.get_prompt_template(
+            "instruction_following"
+        ),
+    )
+
     eval_task = EvalTask(
         dataset=eval_data,
         metrics=[
-            "coherence",
-            "fluency",
-            "groundedness",
-            "fulfillment",
+            coherence_metric,
+            fluency_metric,
+            instruction_following_metric,
             "rouge_l_sum",
         ],
         experiment=experiment_name
@@ -131,12 +149,14 @@ def evaluate_model(model_name, model, dataset, experiment_name):
 
 # Evaluate all models
 all_results = {}
+all_result_details = {}
 for model_name, model in MODEL_VARIANTS.items():
     summary, details = evaluate_model(
         model_name, model, eval_dataset,
         f"comparison-{model_name.replace('.', '-')}"
     )
     all_results[model_name] = summary
+    all_result_details[model_name] = (summary, details)
 ```
 
 ## Comparing Results
@@ -209,8 +229,7 @@ def pairwise_compare(model_a_name, model_b_name, dataset):
         metric="pairwise_quality",
         metric_prompt_template=MetricPromptTemplateExamples.get_prompt_template(
             "pairwise_question_answering_quality"
-        ),
-        baseline_model_response_column="baseline_model_response"
+        )
     )
 
     # Run the evaluation
@@ -229,10 +248,10 @@ def pairwise_compare(model_a_name, model_b_name, dataset):
 
     table = result.metrics_table
     for _, row in table.iterrows():
-        score = row.get("pairwise_quality", 0)
-        if score > 0:
+        choice = row.get("pairwise_quality/pairwise_choice", row.get("pairwise_choice", ""))
+        if choice in ("B", "CANDIDATE"):
             wins_b += 1
-        elif score < 0:
+        elif choice in ("A", "BASELINE"):
             wins_a += 1
         else:
             ties += 1
@@ -245,7 +264,7 @@ def pairwise_compare(model_a_name, model_b_name, dataset):
     return {"model_a_wins": wins_a, "model_b_wins": wins_b, "ties": ties}
 
 # Compare Flash vs Pro
-pairwise_compare("gemini-2.0-flash", "gemini-2.0-pro", eval_dataset)
+pairwise_compare("gemini-2.5-flash", "gemini-2.5-pro", eval_dataset)
 ```
 
 ## Cost-Quality Trade-Off Analysis
@@ -255,9 +274,9 @@ Model selection is not just about quality - cost matters too. Calculate the cost
 ```python
 # Approximate pricing per million tokens (check current pricing)
 PRICING = {
-    "gemini-2.0-flash": {"input": 0.075, "output": 0.30},
-    "gemini-2.0-pro": {"input": 1.25, "output": 5.00},
-    "gemini-3.0-flash": {"input": 0.10, "output": 0.40},
+    "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
+    "gemini-2.5-pro": {"input": 1.25, "output": 10.00},
+    "gemini-3-flash-preview": {"input": 0.50, "output": 3.00},
 }
 
 def cost_quality_analysis(results, pricing):
@@ -273,7 +292,7 @@ def cost_quality_analysis(results, pricing):
             (200 * price["output"] / 1_000_000)
         ) * 1000
 
-        quality = metrics.get("coherence/mean", 0) + metrics.get("fulfillment/mean", 0)
+        quality = metrics.get("coherence/mean", 0) + metrics.get("instruction_following/mean", 0)
         quality_per_dollar = quality / max(cost_per_1k, 0.001)
 
         print(f"\n{model_name}:")
@@ -306,8 +325,10 @@ def evaluate_by_task(results_details, categories):
         for model_name, (summary, details) in results_details.items():
             # Filter to relevant rows
             category_rows = details.iloc[indices]
-            avg_quality = category_rows["fulfillment"].mean()
-            print(f"  {model_name}: {avg_quality:.3f} avg fulfillment")
+            avg_quality = category_rows["instruction_following"].mean()
+            print(f"  {model_name}: {avg_quality:.3f} avg instruction following")
+
+evaluate_by_task(all_result_details, TASK_CATEGORIES)
 ```
 
 ## Making the Final Decision
@@ -328,7 +349,7 @@ def recommend_model(results, weights=None):
     for model_name, metrics in results.items():
         quality_score = (
             metrics.get("coherence/mean", 0) +
-            metrics.get("fulfillment/mean", 0)
+            metrics.get("instruction_following/mean", 0)
         ) / 2
 
         # Normalize latency (lower is better)
