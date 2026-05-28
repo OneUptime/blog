@@ -252,10 +252,12 @@ class ShadowSubscriber:
             [log_entry]
         )
 
-        message.ack()
-
         if errors:
             print(f"Logging error: {errors}")
+            message.nack()
+            return
+
+        message.ack()
 ```
 
 ## Step 4: Analyze Shadow Test Results
@@ -290,15 +292,15 @@ WHERE
 -- Detailed disagreement analysis
 -- When the models disagree, which one is right more often?
 SELECT
-    JSON_EXTRACT_SCALAR(prod_prediction, '$[0].class') AS prod_class,
-    JSON_EXTRACT_SCALAR(shadow_prediction, '$[0].class') AS shadow_class,
+    JSON_VALUE(prod_prediction, '$[0].class') AS prod_class,
+    JSON_VALUE(shadow_prediction, '$[0].class') AS shadow_class,
     COUNT(*) AS disagreement_count,
     -- If ground truth is available, check who is right
     COUNTIF(
-        JSON_EXTRACT_SCALAR(prod_prediction, '$[0].class') = g.actual_label
+        JSON_VALUE(prod_prediction, '$[0].class') = g.actual_label
     ) AS prod_correct,
     COUNTIF(
-        JSON_EXTRACT_SCALAR(shadow_prediction, '$[0].class') = g.actual_label
+        JSON_VALUE(shadow_prediction, '$[0].class') = g.actual_label
     ) AS shadow_correct,
 FROM
     ml_monitoring.shadow_comparison_logs s
@@ -321,6 +323,7 @@ Create a scheduled evaluation job that generates a summary report.
 ```python
 # shadow/evaluate_shadow.py
 from google.cloud import bigquery
+import json
 
 def evaluate_shadow_model(min_sample_size=10000):
     """Generate a comprehensive evaluation of the shadow model."""
@@ -344,11 +347,11 @@ def evaluate_shadow_model(min_sample_size=10000):
     WITH comparisons AS (
         SELECT
             CASE
-                WHEN JSON_EXTRACT_SCALAR(s.prod_prediction, '$[0].class') = g.actual_label
+                WHEN JSON_VALUE(s.prod_prediction, '$[0].class') = g.actual_label
                 THEN 1 ELSE 0
             END AS prod_correct,
             CASE
-                WHEN JSON_EXTRACT_SCALAR(s.shadow_prediction, '$[0].class') = g.actual_label
+                WHEN JSON_VALUE(s.shadow_prediction, '$[0].class') = g.actual_label
                 THEN 1 ELSE 0
             END AS shadow_correct,
         FROM ml_monitoring.shadow_comparison_logs s
