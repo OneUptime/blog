@@ -136,17 +136,17 @@ def stream_transcribe(language_code="en-US"):
     with MicrophoneStream() as stream:
         audio_generator = stream.generator()
 
-        # Create the stream of requests
-        requests = (
-            speech.StreamingRecognizeRequest(audio_content=content)
-            for content in audio_generator
-        )
+        # Create the stream of requests. The first request must contain the
+        # streaming configuration, and later requests contain only audio.
+        def request_generator():
+            yield speech.StreamingRecognizeRequest(
+                streaming_config=streaming_config,
+            )
+            for content in audio_generator:
+                yield speech.StreamingRecognizeRequest(audio_content=content)
 
         # Start the streaming recognition
-        responses = client.streaming_recognize(
-            config=streaming_config,
-            requests=requests,
-        )
+        responses = client.streaming_recognize(requests=request_generator())
 
         # Process the responses
         for response in responses:
@@ -237,15 +237,14 @@ class ContinuousStreamTranscriber:
         with MicrophoneStream() as stream:
             audio_generator = stream.generator()
 
-            requests = (
-                speech.StreamingRecognizeRequest(audio_content=chunk)
-                for chunk in audio_generator
-            )
+            def request_generator():
+                yield speech.StreamingRecognizeRequest(
+                    streaming_config=streaming_config,
+                )
+                for chunk in audio_generator:
+                    yield speech.StreamingRecognizeRequest(audio_content=chunk)
 
-            responses = self.client.streaming_recognize(
-                config=streaming_config,
-                requests=requests,
-            )
+            responses = self.client.streaming_recognize(requests=request_generator())
 
             for response in responses:
                 if not response.results:
@@ -279,6 +278,8 @@ results = transcriber.transcribe_continuous(duration_minutes=30)
 You can configure the API to handle pauses and silence better with voice activity detection settings:
 
 ```python
+from google.protobuf import duration_pb2
+
 def get_streaming_config_with_vad(language_code="en-US"):
     """Create config with voice activity detection settings."""
     config = speech.RecognitionConfig(
@@ -293,8 +294,10 @@ def get_streaming_config_with_vad(language_code="en-US"):
     streaming_config = speech.StreamingRecognitionConfig(
         config=config,
         interim_results=True,
-        # Stop listening after this much silence at the end of audio
-        single_utterance=False,  # Set True for single-command recognition
+        enable_voice_activity_events=True,
+        voice_activity_timeout=speech.StreamingRecognitionConfig.VoiceActivityTimeout(
+            speech_end_timeout=duration_pb2.Duration(seconds=3),
+        ),
     )
 
     return streaming_config
@@ -326,6 +329,10 @@ def stream_from_file(audio_path, language_code="en-US"):
 
     def audio_file_generator():
         """Read audio file in chunks to simulate streaming."""
+        yield speech.StreamingRecognizeRequest(
+            streaming_config=streaming_config,
+        )
+
         with open(audio_path, "rb") as audio_file:
             while True:
                 # Read 3200 bytes at a time (100ms of 16kHz 16-bit mono audio)
@@ -338,10 +345,7 @@ def stream_from_file(audio_path, language_code="en-US"):
                 # Sleep to simulate real-time audio
                 time.sleep(0.1)
 
-    responses = client.streaming_recognize(
-        config=streaming_config,
-        requests=audio_file_generator(),
-    )
+    responses = client.streaming_recognize(requests=audio_file_generator())
 
     for response in responses:
         for result in response.results:
