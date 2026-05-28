@@ -23,8 +23,8 @@ crane is a fast, efficient tool for working with container registries. It copies
 
 go install github.com/google/go-containerregistry/cmd/crane@latest
 
-# Or download a pre-built binary (Linux)
-curl -sL "https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz" | tar xz crane
+# Or download the latest pre-built binary (Linux)
+curl -sL "https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz" | tar xz crane
 sudo mv crane /usr/local/bin/
 
 # Or on macOS with Homebrew
@@ -57,6 +57,7 @@ This copies the image directly between the registries without downloading it loc
 ```bash
 # Copy an image with all its tags
 crane copy \
+  --all-tags \
   us-central1-docker.pkg.dev/project-dev/dev-repo/my-app \
   us-central1-docker.pkg.dev/project-prod/prod-repo/my-app
 ```
@@ -116,6 +117,7 @@ go install github.com/google/go-containerregistry/cmd/gcrane@latest
 
 # Copy an entire repository (all images and tags)
 gcrane copy \
+  --recursive \
   us-central1-docker.pkg.dev/project-dev/dev-repo \
   us-central1-docker.pkg.dev/project-prod/prod-repo
 ```
@@ -136,8 +138,9 @@ steps:
       - '-c'
       - |
         # Download and install crane
-        curl -sL "https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz" | tar xz crane
+        curl -sL "https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz" | tar xz crane
         chmod +x crane
+        gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
         # Copy the image from dev to prod
         ./crane copy \
@@ -201,6 +204,8 @@ If Cloud Build in project-dev needs to push to project-prod:
 ```bash
 # Get the Cloud Build service account from the source project
 PROJECT_DEV_NUMBER=$(gcloud projects describe project-dev --format='value(projectNumber)')
+# If your build uses the Compute Engine default service account, use:
+# CLOUD_BUILD_SA="${PROJECT_DEV_NUMBER}-compute@developer.gserviceaccount.com"
 CLOUD_BUILD_SA="${PROJECT_DEV_NUMBER}@cloudbuild.gserviceaccount.com"
 
 # Grant it write access to the production repository
@@ -241,7 +246,8 @@ steps:
       - |
         # Install crane
         apt-get update && apt-get install -y curl
-        curl -sL "https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz" | tar xz crane
+        curl -sL "https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz" | tar xz crane
+        gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
         # Copy the image
         ./crane copy \
