@@ -37,7 +37,7 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 -- The connection string points to the other database
 SELECT *
 FROM dblink(
-    'host=localhost dbname=other_database user=postgres password=YOUR_PASSWORD',
+    'host=CLOUD_SQL_INSTANCE_IP dbname=other_database user=postgres password=YOUR_PASSWORD',
     'SELECT id, name, email FROM users WHERE active = true'
 ) AS remote_users(
     id INTEGER,
@@ -58,7 +58,7 @@ SELECT
     u.email AS customer_email
 FROM orders o
 JOIN dblink(
-    'host=localhost dbname=customers_db user=postgres password=YOUR_PASSWORD',
+    'host=CLOUD_SQL_INSTANCE_IP dbname=customers_db user=postgres password=YOUR_PASSWORD',
     'SELECT id, name, email FROM users'
 ) AS u(id INTEGER, name TEXT, email TEXT)
 ON o.customer_id = u.id
@@ -72,7 +72,7 @@ For repeated queries, use a persistent named connection instead of reconnecting 
 ```sql
 -- Open a named connection (stays open for the session)
 SELECT dblink_connect('customers_conn',
-    'host=localhost dbname=customers_db user=postgres password=YOUR_PASSWORD'
+    'host=CLOUD_SQL_INSTANCE_IP dbname=customers_db user=postgres password=YOUR_PASSWORD'
 );
 
 -- Use the named connection for queries
@@ -102,11 +102,11 @@ postgres_fdw is the more robust approach. It creates permanent mappings between 
 CREATE EXTENSION IF NOT EXISTS postgres_fdw;
 
 -- Create a foreign server pointing to the other database
--- For same-instance cross-database access, use localhost
+-- For same-instance cross-database access on Cloud SQL, use the instance IP
 CREATE SERVER customers_server
 FOREIGN DATA WRAPPER postgres_fdw
 OPTIONS (
-    host 'localhost',
+    host 'CLOUD_SQL_INSTANCE_IP',
     dbname 'customers_db',
     port '5432'
 );
@@ -219,8 +219,9 @@ SELECT
 FROM remote_users
 WHERE active = true;
 
--- Create an index on the materialized view for fast lookups
-CREATE INDEX idx_cached_customers_id ON cached_customers(id);
+-- Create a unique index on the materialized view for fast lookups
+-- REFRESH MATERIALIZED VIEW CONCURRENTLY requires at least one unique index
+CREATE UNIQUE INDEX idx_cached_customers_id ON cached_customers(id);
 
 -- Use the cached data for joins (much faster)
 SELECT
@@ -238,7 +239,8 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY cached_customers;
 ### Automate Cache Refresh with pg_cron
 
 ```sql
--- Enable pg_cron extension (supported on Cloud SQL)
+-- First set the cloudsql.enable_pg_cron database flag to on for the instance
+-- Then enable the pg_cron extension (supported on Cloud SQL)
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
 -- Refresh the materialized view every hour
@@ -259,21 +261,24 @@ Sometimes the cleanest approach is to handle cross-database queries in your appl
 ```python
 import asyncpg
 import asyncio
+import datetime
 
 async def cross_database_query():
     """Query multiple databases and join results in Python."""
-    # Connect to both databases concurrently
-    orders_conn = await asyncpg.connect(
-        host='CLOUD_SQL_IP',
-        database='orders_db',
-        user='postgres',
-        password='PASSWORD',
-    )
-    customers_conn = await asyncpg.connect(
-        host='CLOUD_SQL_IP',
-        database='customers_db',
-        user='postgres',
-        password='PASSWORD',
+    # Connect to both databases
+    orders_conn, customers_conn = await asyncio.gather(
+        asyncpg.connect(
+            host='CLOUD_SQL_IP',
+            database='orders_db',
+            user='postgres',
+            password='PASSWORD',
+        ),
+        asyncpg.connect(
+            host='CLOUD_SQL_IP',
+            database='customers_db',
+            user='postgres',
+            password='PASSWORD',
+        ),
     )
 
     # Run both queries concurrently
