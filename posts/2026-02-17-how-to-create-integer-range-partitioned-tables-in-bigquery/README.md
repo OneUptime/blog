@@ -14,7 +14,7 @@ I have been working with BigQuery for a few years now, and integer-range partiti
 
 ## What Is Integer-Range Partitioning?
 
-BigQuery supports three types of partitioning: time-based (ingestion time or a TIMESTAMP/DATE column), and integer-range. Integer-range partitioning lets you split a table into segments based on the values in an INTEGER column. You define a start value, an end value, and an interval, and BigQuery creates partitions accordingly.
+BigQuery supports three types of partitioning: ingestion-time, time-unit column partitioning using a DATE, TIMESTAMP, or DATETIME column, and integer-range. Integer-range partitioning lets you split a table into segments based on the values in an INTEGER column. You define a start value, an end value, and an interval, and BigQuery creates partitions accordingly.
 
 For example, if you have a `customer_id` column ranging from 0 to 10,000,000 and you set an interval of 100,000, BigQuery creates 100 partitions. When you query with a WHERE clause filtering on `customer_id`, BigQuery only scans the relevant partitions instead of the entire table.
 
@@ -66,7 +66,7 @@ SELECT
 FROM `my_project.my_dataset.sales_raw`;
 ```
 
-**Pick an interval that creates a reasonable number of partitions**: BigQuery supports up to 4,000 partitions per table. If your range is 0 to 1,000,000, an interval of 250 gives you 4,000 partitions - right at the limit. An interval of 1,000 gives you 1,000 partitions, which is more manageable.
+**Pick an interval that creates a reasonable number of partitions**: BigQuery supports up to 10,000 partitions per table, and range-partitioned tables can have up to 10,000 possible ranges. If your range is 0 to 1,000,000, an interval of 100 gives you 10,000 partitions - right at the limit. An interval of 1,000 gives you 1,000 partitions, which is more manageable. Keep in mind that a single query or load job can modify up to 4,000 partitions.
 
 **Match your query patterns**: If your queries typically filter on ranges of about 500 IDs, make your interval around 500 so each query hits roughly one partition.
 
@@ -158,7 +158,7 @@ This helps you identify skewed partitions - if one partition has 10x the rows of
 
 Here are some things I have run into that are worth knowing:
 
-1. **Forgetting the NOT NULL constraint**: The partition column should be NOT NULL. If it is nullable, null values go into a special `__NULL__` partition, which might not be what you want.
+1. **Forgetting about null values**: The partition column can be nullable, but null values go into a special `__NULL__` partition, which might not be what you want. If you do not expect nulls, make the partition column `NOT NULL`.
 
 2. **Too many partitions**: Each partition adds overhead. If you create 4,000 tiny partitions, the metadata management can slow things down. Find a balance.
 
