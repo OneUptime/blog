@@ -10,13 +10,13 @@ Description: Step-by-step guide to configuring Google Cloud Assured Workloads fo
 
 If your organization handles EU citizen data, you know the compliance requirements are not optional. GDPR demands that personal data stays protected, and increasingly, European regulators expect data to physically reside within the EU with controls over who can access it. Google Cloud Assured Workloads provides a managed way to meet these requirements without building everything from scratch.
 
-Assured Workloads creates a controlled environment within GCP that enforces data residency, restricts personnel access by geography, and provides encryption with EU-based key management. This guide walks through setting it up.
+Assured Workloads creates a controlled environment within GCP that enforces data residency for supported services, restricts personnel access by geography, and supports EU-based key management. This guide walks through setting it up.
 
 ## What Assured Workloads Actually Provides
 
-When you create an Assured Workloads environment with the EU Regions and Support compliance regime, Google guarantees several things. First, all data at rest stays in EU regions. Second, only EU-based Google support personnel can access your data. Third, Access Transparency logs show you every time Google personnel access your environment. Fourth, organization policies are automatically applied to prevent data from leaving the EU.
+When you create an Assured Workloads environment with the EU Data Boundary and Support compliance regime, Google applies several controls. First, data location policies restrict supported resources to EU locations. Second, support cases are routed to EU personnel located in the EU. Third, Access Transparency logs show you when Google personnel access your environment. Fourth, organization policies are automatically applied to help prevent supported resources from being created outside the EU.
 
-This is a step beyond just creating resources in EU regions. Without Assured Workloads, a Google support engineer in the US could theoretically access your EU data during a support case. With Assured Workloads, that access is technically blocked.
+This is a step beyond just creating resources in EU regions. Without Assured Workloads, a Google support engineer outside the EU could theoretically access your EU data during a support case. With Assured Workloads, Google personnel access is restricted according to the selected control package.
 
 ## Prerequisites
 
@@ -46,11 +46,11 @@ gcloud assured workloads create \
   --organization=ORG_ID \
   --location=europe-west1 \
   --display-name="EU Sovereign Environment" \
-  --compliance-regime=EU_REGIONS_AND_SUPPORT \
-  --billing-account=BILLING_ACCOUNT_ID \
-  --next-rotation-time="2026-05-17T00:00:00Z" \
+  --compliance-regime=eu-regions-and-support \
+  --billing-account=billingAccounts/BILLING_ACCOUNT_ID \
+  --next-rotation-time="2026-08-26T00:00:00Z" \
   --rotation-period="7776000s" \
-  --partner=LOCAL_CONTROLS_BY_S3NS
+  --resource-settings=encryption-keys-project-id=eu-keys-project-001,keyring-id=eu-workload-keyring
 ```
 
 You can also create it programmatically:
@@ -69,11 +69,19 @@ def create_eu_workload(org_id, billing_account):
     )
     workload.billing_account = f"billingAccounts/{billing_account}"
 
-    # Configure the KMS settings
-    workload.kms_settings = assuredworkloads_v1.Workload.KMSSettings(
-        next_rotation_time={"seconds": 1747440000},  # 90 days from now
-        rotation_period={"seconds": 7776000},  # 90 days
-    )
+    resource_type = assuredworkloads_v1.Workload.ResourceInfo.ResourceType
+    workload.resource_settings = [
+        assuredworkloads_v1.Workload.ResourceSettings(
+            resource_id="eu-keys-project-001",
+            resource_type=resource_type.ENCRYPTION_KEYS_PROJECT,
+            display_name="EU Keys Project",
+        ),
+        assuredworkloads_v1.Workload.ResourceSettings(
+            resource_id="eu-workload-keyring",
+            resource_type=resource_type.KEYRING,
+            display_name="EU Workload Keyring",
+        ),
+    ]
 
     # Create the workload
     operation = client.create_workload(
@@ -90,9 +98,9 @@ def create_eu_workload(org_id, billing_account):
 
 ## Step 2: Understand What Gets Auto-Configured
 
-When the Assured Workloads environment is created, several things happen automatically. A new folder is created in your organization hierarchy. Organization policies are applied to that folder, including resource location restrictions to EU regions, restrictions on sharing data outside the organization, and enforcement of CMEK for supported services.
+When the Assured Workloads environment is created, several things happen automatically. A new folder is created in your organization hierarchy. Organization policies are applied to that folder, including resource location restrictions to EU regions and restrictions on supported services and API endpoints.
 
-A Cloud KMS key ring is created in an EU region, and a project for managing encryption keys is provisioned.
+When you provide key resource settings or KMS settings during workload creation, a Cloud KMS key ring is created in an EU region, and a project for managing encryption keys is provisioned.
 
 ```bash
 # List the resources created by Assured Workloads
@@ -130,7 +138,7 @@ gcloud services enable \
 
 ## Step 4: Configure Customer-Managed Encryption Keys
 
-Assured Workloads creates a key project and key ring for you. Use these keys to encrypt your resources.
+Assured Workloads can create a key project and key ring for you when you configure key resources during workload creation. Use keys in that key ring to encrypt your resources.
 
 ```bash
 # List the keys in the Assured Workloads key ring
@@ -145,15 +153,37 @@ gcloud kms keys create bigquery-key \
   --location=europe-west1 \
   --project=WORKLOAD_KEY_PROJECT \
   --purpose=encryption \
-  --rotation-period=90d
+  --rotation-period=90d \
+  --next-rotation-time="2026-08-26T00:00:00Z"
 
 # Create a BigQuery dataset encrypted with the workload key
+bq show --project_id=eu-data-project-001 --encryption_service_account
+
+gcloud kms keys add-iam-policy-binding bigquery-key \
+  --keyring=WORKLOAD_KEYRING \
+  --location=europe-west1 \
+  --project=WORKLOAD_KEY_PROJECT \
+  --member="serviceAccount:bq-PROJECT_NUMBER@bigquery-encryption.iam.gserviceaccount.com" \
+  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
 bq mk --dataset \
-  --location=EU \
+  --location=europe-west1 \
   --default_kms_key="projects/WORKLOAD_KEY_PROJECT/locations/europe-west1/keyRings/WORKLOAD_KEYRING/cryptoKeys/bigquery-key" \
   eu-data-project-001:customer_data
 
 # Create an encrypted Cloud Storage bucket
+gcloud kms keys create storage-key \
+  --keyring=WORKLOAD_KEYRING \
+  --location=europe-west1 \
+  --project=WORKLOAD_KEY_PROJECT \
+  --purpose=encryption \
+  --rotation-period=90d \
+  --next-rotation-time="2026-08-26T00:00:00Z"
+
+gcloud storage service-agent \
+  --project=eu-data-project-001 \
+  --authorize-cmek="projects/WORKLOAD_KEY_PROJECT/locations/europe-west1/keyRings/WORKLOAD_KEYRING/cryptoKeys/storage-key"
+
 gcloud storage buckets create gs://eu-sovereign-data \
   --project=eu-data-project-001 \
   --location=europe-west1 \
@@ -189,12 +219,12 @@ Access Transparency logs give you visibility into when Google personnel access y
 # Access Transparency is automatically enabled for Assured Workloads
 # Query the logs to see access events
 gcloud logging read '
-  logName:"accessTransparency"
+  logName="projects/eu-data-project-001/logs/cloudaudit.googleapis.com%2Faccess_transparency"
   AND resource.type="project"
 ' --project=eu-data-project-001 --limit=50 --format=json
 ```
 
-Build a monitoring dashboard for these events:
+Build a log-based alert for these events:
 
 ```python
 from google.cloud import monitoring_v3
@@ -209,7 +239,10 @@ def create_access_transparency_alert(project_id):
         monitoring_v3.AlertPolicy.Condition(
             display_name="Access Transparency Event Detected",
             condition_matched_log=monitoring_v3.AlertPolicy.Condition.LogMatch(
-                filter='logName:"accessTransparency"',
+                filter=(
+                    "logName="
+                    f'"projects/{project_id}/logs/cloudaudit.googleapis.com%2Faccess_transparency"'
+                ),
             ),
         )
     ]
