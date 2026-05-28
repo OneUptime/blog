@@ -69,7 +69,7 @@ def build_facet_specs():
         retail_v2.SearchRequest.FacetSpec(
             facet_key=retail_v2.SearchRequest.FacetSpec.FacetKey(
                 key="sizes",
-                order_by="value",  # Sort sizes numerically
+                # Omit order_by to use the Retail API's natural ordering for text values.
             ),
             limit=30,
         )
@@ -107,7 +107,7 @@ def build_facet_specs():
     facet_specs.append(
         retail_v2.SearchRequest.FacetSpec(
             facet_key=retail_v2.SearchRequest.FacetSpec.FacetKey(
-                key="attributes.rating",
+                key="rating",
                 intervals=[
                     retail_v2.Interval(minimum=4, maximum=5),
                     retail_v2.Interval(minimum=3, maximum=4),
@@ -130,11 +130,23 @@ This function handles the full browse page request including facets and active f
 ```python
 from google.cloud import retail_v2
 
-def browse_category(project_id, category, active_filters=None, page_size=24, page_token=None):
+def escape_filter_value(value):
+    """Escapes a string literal for the Retail API filter syntax."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+def browse_category(
+    project_id,
+    category,
+    visitor_id,
+    active_filters=None,
+    page_size=24,
+    page_token=None,
+):
     """Fetches products for a category browse page with facets.
 
     Args:
         category: Category path like "Shoes > Running Shoes > Men's"
+        visitor_id: Stable visitor identifier, usually from a first-party cookie.
         active_filters: Dict of active filter selections, e.g.
             {"brands": ["Nike", "Adidas"], "colorFamilies": ["Red"]}
     """
@@ -146,7 +158,7 @@ def browse_category(project_id, category, active_filters=None, page_size=24, pag
     )
 
     # Build filter string from active filter selections
-    filter_parts = [f'categories: ANY("{category}")']
+    filter_parts = []
 
     if active_filters:
         for key, values in active_filters.items():
@@ -154,11 +166,11 @@ def browse_category(project_id, category, active_filters=None, page_size=24, pag
                 # Price filters use numeric range syntax
                 for price_range in values:
                     filter_parts.append(
-                        f'price: IN({price_range["min"]}e+0, {price_range["max"]}e+0)'
+                        f'price: IN({price_range["min"]}.0i, {price_range["max"]}.0e)'
                     )
             else:
                 # Text attribute filters
-                quoted_values = ", ".join(f'"{v}"' for v in values)
+                quoted_values = ", ".join(f'"{escape_filter_value(v)}"' for v in values)
                 filter_parts.append(f'{key}: ANY({quoted_values})')
 
     filter_string = " AND ".join(filter_parts)
@@ -166,12 +178,13 @@ def browse_category(project_id, category, active_filters=None, page_size=24, pag
     # Build the search request with facets
     request = retail_v2.SearchRequest(
         placement=placement,
-        query="*",  # Wildcard query for browse pages
+        visitor_id=visitor_id,
+        query="",  # Empty query for category browse pages
+        page_categories=[category],
         filter=filter_string,
         page_size=page_size,
         page_token=page_token or "",
         facet_specs=build_facet_specs(),
-        order_by="relevance desc",
     )
 
     response = client.search(request=request)
@@ -225,6 +238,7 @@ def browse_category(project_id, category, active_filters=None, page_size=24, pag
 results = browse_category(
     "my-project",
     "Shoes > Running Shoes > Men's",
+    visitor_id="visitor-123",
     active_filters={"brands": ["Nike"]},
     page_size=24
 )
@@ -313,26 +327,34 @@ function renderFacets(facets, activeFilters) {
 
     facet.values.forEach(item => {
       const li = document.createElement('li');
-      const isActive = (activeFilters[key] || []).includes(item.value || `${item.min}-${item.max}`);
+      const label = document.createElement('label');
+      const input = document.createElement('input');
+      input.type = 'checkbox';
 
       if (item.value) {
         // Text value facet
-        li.innerHTML = `
-          <label class="${isActive ? 'active' : ''}">
-            <input type="checkbox" ${isActive ? 'checked' : ''}
-              onchange="toggleFilter('${key}', '${item.value}')" />
-            ${item.value} <span class="count">(${item.count})</span>
-          </label>`;
+        const isActive = (activeFilters[key] || []).includes(item.value);
+        label.className = isActive ? 'active' : '';
+        input.checked = isActive;
+        input.addEventListener('change', () => toggleFilter(key, item.value));
+        label.append(input, ` ${item.value} `);
       } else {
         // Price range facet
         const rangeLabel = `$${item.min} - $${item.max}`;
-        li.innerHTML = `
-          <label class="${isActive ? 'active' : ''}">
-            <input type="checkbox" ${isActive ? 'checked' : ''}
-              onchange="togglePriceFilter(${item.min}, ${item.max})" />
-            ${rangeLabel} <span class="count">(${item.count})</span>
-          </label>`;
+        const isActive = (activeFilters.price || []).some(
+          range => range.min === item.min && range.max === item.max
+        );
+        label.className = isActive ? 'active' : '';
+        input.checked = isActive;
+        input.addEventListener('change', () => togglePriceFilter(item.min, item.max));
+        label.append(input, ` ${rangeLabel} `);
       }
+
+      const count = document.createElement('span');
+      count.className = 'count';
+      count.textContent = `(${item.count})`;
+      label.appendChild(count);
+      li.appendChild(label);
       list.appendChild(li);
     });
 
@@ -349,7 +371,7 @@ function formatFacetLabel(key) {
     'sizes': 'Size',
     'price': 'Price Range',
     'attributes.material': 'Material',
-    'attributes.rating': 'Rating',
+    'rating': 'Rating',
   };
   return labels[key] || key.replace('attributes.', '').replace(/_/g, ' ');
 }
@@ -364,6 +386,22 @@ function toggleFilter(facetKey, value) {
     filters[facetKey].splice(index, 1);
   } else {
     filters[facetKey].push(value);
+  }
+
+  updateURLParams(filters);
+  fetchBrowseResults(filters);
+}
+
+// Toggle a price range and re-fetch results
+function togglePriceFilter(min, max) {
+  const filters = getCurrentFilters();
+  if (!filters.price) filters.price = [];
+
+  const index = filters.price.findIndex(range => range.min === min && range.max === max);
+  if (index > -1) {
+    filters.price.splice(index, 1);
+  } else {
+    filters.price.push({ min, max });
   }
 
   updateURLParams(filters);
