@@ -16,22 +16,21 @@ This guide walks through building a complete text summarization pipeline from sc
 
 ```mermaid
 graph LR
-    A[Document Source - GCS/BigQuery] --> B[Load Documents]
+    A[Document Source - GCS] --> B[Load Documents]
     B --> C[Preprocess & Chunk]
     C --> D[Summarize with Gemini]
-    D --> E[Post-process]
-    E --> F[Store Results - BigQuery/GCS]
-    F --> G[Send Notification]
+    D --> E[Store Results - BigQuery]
 ```
 
 ## Prerequisites
 
-- Google Cloud project with Vertex AI Pipelines API enabled
+- Google Cloud project with the Vertex AI API enabled
 - Python 3.9+
-- Documents to summarize in GCS or BigQuery
+- Documents to summarize in GCS
+- BigQuery dataset and table for storing summaries
 
 ```bash
-pip install google-cloud-aiplatform kfp
+pip install google-cloud-aiplatform kfp google-genai
 ```
 
 ## Step 1: Define Pipeline Components
@@ -42,7 +41,7 @@ Vertex AI Pipelines uses KFP (Kubeflow Pipelines) components. Each step in the p
 
 ```python
 from kfp import dsl
-from kfp.dsl import Output, Dataset, Artifact
+from kfp.dsl import Output, Dataset
 
 @dsl.component(
     base_image="python:3.11",
@@ -103,7 +102,6 @@ def preprocess_documents(
         content = doc["content"]
 
         # Clean the text
-        content = re.sub(r'\s+', ' ', content).strip()  # Normalize whitespace
         content = re.sub(r'<[^>]+>', '', content)  # Remove HTML tags
 
         # Skip very short documents
@@ -117,6 +115,10 @@ def preprocess_documents(
             current_chunk = ""
 
             for para in paragraphs:
+                para = re.sub(r'\s+', ' ', para).strip()  # Normalize whitespace
+                if not para:
+                    continue
+
                 if len(current_chunk) + len(para) < max_chunk_size:
                     current_chunk += para + "\n\n"
                 else:
@@ -138,7 +140,7 @@ def preprocess_documents(
             processed.append({
                 "id": doc["id"],
                 "parent_id": doc["id"],
-                "content": content,
+                "content": re.sub(r'\s+', ' ', content).strip(),
             })
 
     with open(processed_docs.path, "w") as f:
@@ -152,7 +154,7 @@ def preprocess_documents(
 ```python
 @dsl.component(
     base_image="python:3.11",
-    packages_to_install=["google-cloud-aiplatform", "vertexai"],
+    packages_to_install=["google-genai"],
 )
 def summarize_documents(
     processed_docs: dsl.Input[Dataset],
@@ -164,12 +166,17 @@ def summarize_documents(
     """Summarize each document chunk using Gemini."""
     import json
     import time
-    import vertexai
-    from vertexai.generative_models import GenerativeModel
+    from google import genai
+    from google.genai.types import HttpOptions
 
-    # Initialize Vertex AI
-    vertexai.init(project=project_id, location=location)
-    model = GenerativeModel("gemini-1.5-flash")
+    # Initialize the Google Gen AI SDK for Vertex AI
+    client = genai.Client(
+        vertexai=True,
+        project=project_id,
+        location=location,
+        http_options=HttpOptions(api_version="v1"),
+    )
+    model_id = "gemini-2.5-flash"
 
     with open(processed_docs.path, "r") as f:
         docs = json.load(f)
@@ -190,7 +197,10 @@ def summarize_documents(
             full_prompt = f"{prompt_template}\n\nText:\n{doc['content']}"
 
             # Call Gemini for summarization
-            response = model.generate_content(full_prompt)
+            response = client.models.generate_content(
+                model=model_id,
+                contents=full_prompt,
+            )
             summary = response.text
 
             results.append({
@@ -357,12 +367,12 @@ job = aiplatform.PipelineJob(
 
 # Run the pipeline
 job.submit()
-print(f"Pipeline submitted. View at: {job._dashboard_uri()}")
+print(f"Pipeline submitted: {job.resource_name}")
 ```
 
 ## Scheduling the Pipeline
 
-For recurring summarization, schedule the pipeline with Cloud Scheduler.
+For recurring summarization, schedule the pipeline with Vertex AI pipeline schedules.
 
 ```python
 # Create a scheduled pipeline run
@@ -405,4 +415,4 @@ def check_pipeline_status(project_id: str, location: str, job_name: str):
 
 ## Summary
 
-Vertex AI Pipelines combined with Gemini gives you a scalable, maintainable approach to batch text summarization. Each pipeline component is independently testable, the orchestration handles retries and failures, and scheduling automates recurring runs. Start with the basic pipeline shown here, add error handling and monitoring as you validate the approach, then extend with additional post-processing steps as your needs grow. The pipeline pattern ensures your summarization workflow is reproducible, auditable, and can handle document collections of any size.
+Vertex AI Pipelines combined with Gemini gives you a scalable, maintainable approach to batch text summarization. Each pipeline component is independently testable, the orchestration can be configured to handle retries and failures, and scheduling automates recurring runs. Start with the basic pipeline shown here, add error handling and monitoring as you validate the approach, then extend with additional post-processing steps as your needs grow. The pipeline pattern ensures your summarization workflow is reproducible, auditable, and can scale with large document collections.
