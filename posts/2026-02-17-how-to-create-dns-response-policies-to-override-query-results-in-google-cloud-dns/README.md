@@ -8,7 +8,7 @@ Description: Learn how to create and configure DNS response policies in Google C
 
 ---
 
-DNS response policies in Google Cloud DNS give you fine-grained control over how DNS queries are resolved within your VPC networks. Instead of relying solely on standard zone records, response policies let you intercept queries and return custom answers - or block them entirely. This is incredibly useful for scenarios like redirecting internal traffic, blocking known malicious domains, or implementing split-horizon DNS.
+DNS response policies in Google Cloud DNS give you fine-grained control over how DNS queries are resolved within your VPC networks. Instead of relying solely on standard zone records, response policies let you intercept queries and return custom answers - or send unwanted names to a sinkhole address. This is incredibly useful for scenarios like redirecting internal traffic, sinkholing known malicious domains, or implementing split-horizon DNS.
 
 In this guide, I will walk you through creating DNS response policies, adding rules, and attaching them to your VPC networks.
 
@@ -19,10 +19,10 @@ A DNS response policy is a collection of rules that Cloud DNS evaluates before i
 Think of it as a filter layer that sits in front of your regular DNS resolution pipeline. Each rule can do one of the following:
 
 - Return a specific set of records (local data)
-- Block the query and return NXDOMAIN
+- Return sinkhole records for names you want to block
 - Pass through to normal resolution (bypass the policy for that name)
 
-Response policies are evaluated in priority order and only apply to VPC networks they are attached to.
+Response policies use longest-suffix matching for rules and only apply to VPC networks they are attached to.
 
 ## Prerequisites
 
@@ -71,11 +71,11 @@ This is the most common use case. You want queries for a specific domain to retu
 gcloud dns response-policies rules create override-example \
     --response-policy=my-response-policy \
     --dns-name=example.com. \
-    --local-data-rrsets="example.com.,A,300,10.0.1.50" \
+    --local-data=name=example.com.,type=A,ttl=300,rrdatas=10.0.1.50 \
     --project=my-project
 ```
 
-The format for `--local-data-rrsets` is `name,type,ttl,rdata`. Note the trailing dot on the DNS name - that is required for fully qualified domain names.
+The format for `--local-data` is `name=NAME,type=TYPE,ttl=TTL,rrdatas=RDATA`. Note the trailing dot on the DNS name - that is required for fully qualified domain names.
 
 You can also override with multiple record types. Here is an example that sets both A and AAAA records.
 
@@ -84,24 +84,25 @@ You can also override with multiple record types. Here is an example that sets b
 gcloud dns response-policies rules create override-multi \
     --response-policy=my-response-policy \
     --dns-name=api.internal.example.com. \
-    --local-data-rrsets="api.internal.example.com.,A,300,10.0.2.10;api.internal.example.com.,AAAA,300,fd00::1" \
+    --local-data=name=api.internal.example.com.,type=A,ttl=300,rrdatas=10.0.2.10 \
+    --local-data=name=api.internal.example.com.,type=AAAA,ttl=300,rrdatas=fd00::1 \
     --project=my-project
 ```
 
-### Block a Domain Entirely
+### Sinkhole a Domain
 
-If you want to block resolution for a domain - for example, a known malicious domain or an unwanted SaaS service - you can create a rule that returns NXDOMAIN.
+If you want to block access to a domain - for example, a known malicious domain or an unwanted SaaS service - you can create a rule that returns a sinkhole address such as `0.0.0.0`.
 
 ```bash
-# Block all queries to a malicious domain
-gcloud dns response-policies rules create block-malware \
+# Sinkhole queries to a malicious domain
+gcloud dns response-policies rules create sinkhole-malware \
     --response-policy=my-response-policy \
     --dns-name=malware-site.example.com. \
-    --behavior=behaviorUnspecified \
+    --local-data=name=malware-site.example.com.,type=A,ttl=300,rrdatas=0.0.0.0 \
     --project=my-project
 ```
 
-When a VM in the attached network queries for `malware-site.example.com`, Cloud DNS will return an NXDOMAIN response.
+When a VM in the attached network queries for `malware-site.example.com`, Cloud DNS will return the sinkhole address.
 
 ### Bypass the Policy for Specific Names
 
@@ -123,7 +124,7 @@ You can list all rules in a response policy to make sure everything looks correc
 ```bash
 # List all rules in the response policy
 gcloud dns response-policies rules list \
-    --response-policy=my-response-policy \
+    my-response-policy \
     --project=my-project
 ```
 
@@ -145,7 +146,7 @@ Response policies support wildcard rules using the `*.` prefix. This is handy wh
 gcloud dns response-policies rules create wildcard-internal \
     --response-policy=my-response-policy \
     --dns-name="*.internal.corp.com." \
-    --local-data-rrsets="*.internal.corp.com.,A,300,10.0.5.1" \
+    --local-data=name="*.internal.corp.com.",type=A,ttl=300,rrdatas=10.0.5.1 \
     --project=my-project
 ```
 
@@ -182,13 +183,20 @@ resource "google_dns_response_policy_rule" "override_example" {
   }
 }
 
-# Add a rule to block a domain
-resource "google_dns_response_policy_rule" "block_malware" {
+# Add a rule to sinkhole a domain
+resource "google_dns_response_policy_rule" "sinkhole_malware" {
   response_policy = google_dns_response_policy.custom_policy.response_policy_name
-  rule_name       = "block-malware"
+  rule_name       = "sinkhole-malware"
   dns_name        = "malware-site.example.com."
 
-  behavior = "behaviorUnspecified"
+  local_data {
+    local_datas {
+      name    = "malware-site.example.com."
+      type    = "A"
+      ttl     = 300
+      rrdatas = ["0.0.0.0"]
+    }
+  }
 }
 ```
 
@@ -196,7 +204,7 @@ resource "google_dns_response_policy_rule" "block_malware" {
 
 **Split-horizon DNS**: Override public domain names so that internal VMs resolve to private IPs instead of public ones. This keeps traffic on your VPC network and avoids egress charges.
 
-**Security blocking**: Block domains associated with malware, phishing, or data exfiltration. This acts as a lightweight DNS firewall without needing additional appliances.
+**Security blocking**: Sinkhole domains associated with malware, phishing, or data exfiltration. This acts as a lightweight DNS control without needing additional appliances.
 
 **Development and testing**: Override third-party API endpoints to point to mock servers during development. This avoids modifying `/etc/hosts` on every VM.
 
@@ -208,8 +216,8 @@ If your response policy rules are not working as expected, check the following:
 
 1. Make sure the VM is in a VPC network that is attached to the response policy
 2. Verify that the DNS name in the rule has a trailing dot
-3. Check that there is no conflicting private zone that takes precedence
-4. Ensure the response policy is not disabled
+3. Check whether a more specific bypass rule is allowing normal resolution
+4. Remember that local data in a matching response policy rule takes precedence over private zones
 5. Use Cloud Logging to inspect DNS queries - enable DNS logging on the VPC network first
 
 ```bash
@@ -222,12 +230,17 @@ gcloud dns policies create dns-logging-policy \
 
 ## Cleanup
 
-If you need to remove the response policy, delete all rules first, then delete the policy.
+If you need to remove the response policy, delete all rules first, detach the policy from its networks, then delete the policy.
 
 ```bash
 # Delete a specific rule
 gcloud dns response-policies rules delete override-example \
     --response-policy=my-response-policy \
+    --project=my-project
+
+# Detach the response policy from all networks
+gcloud dns response-policies update my-response-policy \
+    --networks="" \
     --project=my-project
 
 # Delete the response policy itself
@@ -237,4 +250,4 @@ gcloud dns response-policies delete my-response-policy \
 
 ## Wrapping Up
 
-DNS response policies are one of those features that you might not reach for every day, but when you need them, they save you a ton of effort. Whether you are blocking malicious domains, setting up split-horizon DNS, or rerouting traffic during a migration, response policies give you a clean, centralized way to override DNS behavior at the network level. Combined with VPC network scoping, you get precise control over which environments see the overrides and which ones do not.
+DNS response policies are one of those features that you might not reach for every day, but when you need them, they save you a ton of effort. Whether you are sinkholing malicious domains, setting up split-horizon DNS, or rerouting traffic during a migration, response policies give you a clean, centralized way to override DNS behavior at the network level. Combined with VPC network scoping, you get precise control over which environments see the overrides and which ones do not.
