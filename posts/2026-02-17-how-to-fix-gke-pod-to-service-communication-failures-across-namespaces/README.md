@@ -65,17 +65,17 @@ If `api-service.backend.svc.cluster.local` resolves but `api-service` does not, 
 
 ## Step 2 - Verify the Service Exists and Has Endpoints
 
-Check that the target service exists in the right namespace and has healthy endpoints:
+Check that the target service exists in the right namespace and has healthy EndpointSlices:
 
 ```bash
 # Verify the service exists in the target namespace
 kubectl get svc api-service -n backend
 
-# Check if the service has endpoints (pods backing it)
-kubectl get endpoints api-service -n backend
+# Check if the service has EndpointSlices (pods backing it)
+kubectl get endpointslice -n backend -l kubernetes.io/service-name=api-service
 ```
 
-If the endpoints list is empty, the service selector does not match any running pods. Compare the selector with pod labels:
+If the EndpointSlice list is empty, the service selector does not match any running pods. Compare the selector with pod labels:
 
 ```bash
 # Check the service selector
@@ -176,6 +176,8 @@ spec:
     ports:
     - protocol: UDP
       port: 53
+    - protocol: TCP
+      port: 53
 ```
 
 ## Step 5 - Fix Service Port Configuration
@@ -246,7 +248,7 @@ If one namespace has sidecar injection and the other does not, traffic between t
 
 ```yaml
 # Allow plaintext traffic from non-mesh namespaces
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: allow-plaintext
@@ -272,14 +274,14 @@ spec:
   externalName: api-service.backend.svc.cluster.local
 ```
 
-Now pods in the `frontend` namespace can call `api-service` without specifying the full namespace path. The DNS resolution will redirect to the actual service in the `backend` namespace.
+Now pods in the `frontend` namespace can call `api-service` without specifying the full namespace path. The DNS resolution returns a CNAME for the actual service in the `backend` namespace, not a proxied connection. For HTTP or TLS clients, make sure the backend accepts the hostname the client sends.
 
 ## Diagnostic Checklist
 
 When cross-namespace service communication fails:
 
 1. Use the fully-qualified service name: `service.namespace.svc.cluster.local`
-2. Verify the service exists in the target namespace with endpoints
+2. Verify the service exists in the target namespace with EndpointSlices
 3. Test DNS resolution from a debug pod
 4. Test TCP connectivity directly
 5. Check network policies in both source and target namespaces
