@@ -10,7 +10,7 @@ Description: Learn how to use the sidecar pattern in Google Kubernetes Engine to
 
 Every microservice needs logging, metrics collection, TLS termination, and authentication. But baking these concerns into each service creates a maintenance nightmare. You end up duplicating code across services written in different languages, and updating a shared library means redeploying every service. The sidecar pattern solves this by running a companion container alongside your application container in the same pod. The sidecar handles the cross-cutting concerns while your application focuses on business logic.
 
-In this post, I will show you how to implement sidecars in GKE for several common use cases: structured logging, outbound proxy, and authentication.
+In this post, I will show you how to implement sidecars in GKE for several common use cases: structured logging, metrics collection, and authentication.
 
 ## How the Sidecar Pattern Works in Kubernetes
 
@@ -137,14 +137,13 @@ spec:
 
 ## Sidecar for Authentication
 
-Another powerful use case is offloading authentication to a sidecar. The sidecar intercepts incoming requests, validates JWT tokens, and only forwards authenticated requests to the main application.
+Another powerful use case is offloading authentication to a sidecar. The sidecar receives incoming requests, validates Google-issued OAuth2 ID tokens, and only forwards authenticated requests to the main application.
 
 ```python
 # auth-sidecar/main.py
 import os
 from flask import Flask, request, Response
 import requests
-import jwt
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 
@@ -157,7 +156,7 @@ ALLOWED_AUDIENCES = os.environ.get('ALLOWED_AUDIENCES', '').split(',')
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 def proxy(path):
-    """Validate auth token and proxy the request to the main app."""
+    """Validate a Google ID token and proxy the request to the main app."""
     auth_header = request.headers.get('Authorization', '')
 
     if not auth_header.startswith('Bearer '):
@@ -252,7 +251,7 @@ spec:
 
 ## Sidecar for Metrics Collection
 
-A metrics sidecar can scrape application metrics and export them to Cloud Monitoring without requiring the application to know anything about the monitoring system.
+A metrics sidecar can scrape an application's Prometheus metrics endpoint and export those metrics to Cloud Monitoring without requiring the application to know anything about the monitoring system.
 
 ```yaml
 # deployment-with-metrics-sidecar.yaml
@@ -314,6 +313,13 @@ data:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: payment-service
+              scrape_interval: 15s
+              static_configs:
+                - targets: ['localhost:8080']
     processors:
       batch:
         timeout: 10s
@@ -327,17 +333,17 @@ data:
           processors: [batch]
           exporters: [googlecloud]
         metrics:
-          receivers: [otlp]
+          receivers: [prometheus]
           processors: [batch]
           exporters: [googlecloud]
 ```
 
 ## GKE Native Sidecar Containers
 
-Starting with GKE 1.28+, Kubernetes supports native sidecar containers through init containers with the `restartPolicy: Always` field. These start before the main container and keep running alongside it, with proper lifecycle management.
+Starting with GKE clusters whose nodes run Kubernetes 1.29 or later, Kubernetes supports native sidecar containers through init containers with the `restartPolicy: Always` field. These start before the main container and keep running alongside it, with proper lifecycle management.
 
 ```yaml
-# Using native sidecar containers (GKE 1.28+)
+# Using native sidecar containers (GKE nodes running Kubernetes 1.29+)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -348,6 +354,9 @@ spec:
     matchLabels:
       app: web-service
   template:
+    metadata:
+      labels:
+        app: web-service
     spec:
       initContainers:
         # Native sidecar - starts first and runs for the pod lifetime
