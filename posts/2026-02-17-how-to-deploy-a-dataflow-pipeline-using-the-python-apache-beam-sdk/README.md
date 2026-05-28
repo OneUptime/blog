@@ -27,7 +27,7 @@ python -m venv venv
 source venv/bin/activate
 
 # Install Apache Beam with GCP extras
-pip install 'apache-beam[gcp]==2.53.0'
+pip install 'apache-beam[gcp]==2.73.0'
 
 # Create the project structure
 mkdir -p src tests
@@ -38,9 +38,10 @@ touch setup.py requirements.txt
 Your requirements.txt should pin specific versions for reproducibility.
 
 ```text
-apache-beam[gcp]==2.53.0
-google-cloud-bigquery==3.14.0
-google-cloud-storage==2.14.0
+apache-beam[gcp]==2.73.0
+google-cloud-bigquery==3.41.0
+google-cloud-storage==2.19.0
+pytest==8.4.2
 ```
 
 ## Writing the Pipeline
@@ -96,8 +97,8 @@ class EnrichRecord(beam.DoFn):
                 element['amount_category'] = 'large'
 
             # Add processing timestamp
-            from datetime import datetime
-            element['processed_at'] = datetime.utcnow().isoformat()
+            from datetime import datetime, timezone
+            element['processed_at'] = datetime.now(timezone.utc).isoformat()
 
             yield element
         except (ValueError, TypeError) as e:
@@ -121,7 +122,7 @@ The main pipeline module wires everything together.
 ```python
 # src/pipeline.py
 import apache_beam as beam
-from apache_beam.options.pipeline_options import PipelineOptions, SetupOptions
+from apache_beam.options.pipeline_options import PipelineOptions
 from src.transforms import ParseCSVLine, EnrichRecord, FilterValid
 import argparse
 import logging
@@ -155,8 +156,6 @@ def run(argv=None):
 
     # Configure pipeline options
     pipeline_options = PipelineOptions(pipeline_args)
-    # Tell Dataflow to install our custom package on workers
-    pipeline_options.view_as(SetupOptions).save_main_session = True
 
     # CSV header - in production, you might read this from the first line
     csv_header = ['user_id', 'event_type', 'amount', 'timestamp']
@@ -257,7 +256,7 @@ setuptools.setup(
     version='1.0.0',
     packages=setuptools.find_packages(),
     install_requires=[
-        'apache-beam[gcp]==2.53.0',
+        'apache-beam[gcp]==2.73.0',
     ],
 )
 ```
@@ -291,8 +290,14 @@ After submission, monitor the job through the CLI.
 # Check job status
 gcloud dataflow jobs list --region=us-central1 --filter="name=csv-to-bq-20260217"
 
-# Stream job logs
+# Show job details
 gcloud dataflow jobs show JOB_ID --region=us-central1
+
+# Read recent Dataflow logs from Cloud Logging
+gcloud logging read \
+  'resource.type="dataflow_step" AND resource.labels.job_id="JOB_ID"' \
+  --limit=50 \
+  --format=json
 
 # Cancel a running job
 gcloud dataflow jobs cancel JOB_ID --region=us-central1
@@ -309,10 +314,13 @@ class ProcessWithDeadLetter(beam.DoFn):
 
     OUTPUT_DEAD_LETTER = 'dead_letter'
 
+    def __init__(self, transform_function):
+        self.transform_function = transform_function
+
     def process(self, element):
         try:
             # Attempt normal processing
-            result = transform_function(element)
+            result = self.transform_function(element)
             yield result
         except Exception as e:
             # Send failed records to dead letter output
