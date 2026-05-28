@@ -35,13 +35,18 @@ First, deploy the OpenTelemetry Collector on your GKE cluster. Here is a Kuberne
 ```yaml
 # otel-collector-deployment.yaml
 
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: otel-collector
   namespace: observability
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: otel-collector
@@ -120,7 +125,7 @@ data:
         num_traces: 100000
         # Expected number of new traces per second (for memory allocation)
         expected_new_traces_per_sec: 1000
-        # Sampling policies - evaluated in order
+        # Sampling policies used to make the final decision
         policies:
           # Policy 1: Always keep error traces
           - name: errors-always
@@ -169,10 +174,6 @@ data:
     exporters:
       googlecloud:
         project: my-project
-        trace:
-          # Use batch writing for efficiency
-          batch:
-            max_batch_items: 100
 
     service:
       pipelines:
@@ -212,7 +213,7 @@ This keeps traces that exceed a duration threshold:
     threshold_ms: 5000
 ```
 
-Latency is measured as the duration of the root span. Adjust the threshold based on your SLAs.
+Latency is measured from the earliest span start time to the latest span end time in the trace. Adjust the threshold based on your SLAs.
 
 ### String Attribute Policy
 
@@ -229,11 +230,11 @@ This matches traces based on span attributes:
 
 ### Composite Policy
 
-For more complex rules, use a composite policy that combines multiple conditions:
+For rate allocation across multiple sampling rules, use a composite policy:
 
 ```yaml
-# Composite policy: keep traces from the API gateway that are also slow
-- name: slow-api-requests
+# Composite policy: allocate sampling capacity across slow traces and API gateway traces
+- name: prioritized-api-sampling
   type: composite
   composite:
     max_total_spans_per_second: 500
@@ -313,29 +314,38 @@ print(f"Estimated memory: {result['estimated_memory_mb']} MB")
 
 ## Handling Multi-Collector Deployments
 
-If you run multiple collector replicas, all spans from the same trace must go to the same collector instance. Use a load balancer with trace-ID-based routing, or use the `groupbytrace` processor before tail sampling:
+If you run multiple collector replicas with tail sampling, all spans from the same trace must go to the same collector instance. A normal Kubernetes Service can spread spans from one trace across replicas, which makes sampling decisions incomplete. Use a two-tier architecture: agent or edge collectors forward traces through the `load_balancing` exporter with trace-ID routing, and the backend collectors run `tail_sampling`.
 
 ```yaml
-processors:
-  # Group spans by trace ID before sampling
-  groupbytrace:
-    wait_duration: 10s
-    num_traces: 50000
-    num_workers: 4
+exporters:
+  load_balancing:
+    routing_key: traceID
+    protocol:
+      otlp:
+        tls:
+          insecure: true
+    resolver:
+      dns:
+        hostname: otel-collector-headless.observability.svc.cluster.local
+        port: "4317"
+        interval: 5s
 
-  tail_sampling:
-    decision_wait: 30s
-    # ... policies ...
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+  batch:
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, groupbytrace, tail_sampling, batch]
-      exporters: [googlecloud]
+      processors: [memory_limiter, batch]
+      exporters: [load_balancing]
 ```
 
-Alternatively, use a two-tier architecture: a lightweight collector per service (for batching and forwarding) and a centralized collector for tail sampling.
+The backend collectors receive the trace-ID-routed traffic and use the `memory_limiter`, `tail_sampling`, and `batch` processors before exporting to Cloud Trace.
 
 ## Monitoring the Collector
 
@@ -346,23 +356,28 @@ The collector exposes metrics about its internal state. Monitor these to ensure 
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Key metrics to watch:
-- `otelcol_processor_tail_sampling_count_traces_sampled` - How many traces are kept
-- `otelcol_processor_tail_sampling_count_traces_dropped` - How many are dropped
+- `otelcol_processor_tail_sampling_count_traces_sampled` - Per-policy sampled, not sampled, and dropped decisions
+- `otelcol_processor_tail_sampling_global_count_traces_sampled` - Global count of sampled, not sampled, and dropped decisions
 - `otelcol_processor_tail_sampling_sampling_trace_dropped_too_early` - Traces dropped before the decision wait (possible configuration issue)
-- `otelcol_processor_tail_sampling_global_count_traces_sampled` - Global counters
+- `otelcol_processor_tail_sampling_sampling_traces_on_memory` - Current traces held in memory
 
-Set up monitoring in OneUptime to alert on unusual changes in these metrics. If the dropped-too-early count spikes, your `decision_wait` is too short, and you are losing incomplete traces before making a proper decision.
+Set up monitoring in OneUptime to alert on unusual changes in these metrics. If the dropped-too-early count spikes, the collector is holding more traces in memory than `num_traces` allows. Increase `num_traces`, reduce trace volume, or shorten `decision_wait` so traces leave memory sooner.
 
 ## Practical Tips
 
 1. **Start with a generous decision_wait.** 30 seconds covers most synchronous request chains. Increase it if your traces involve async processing.
 
-2. **Set the probabilistic fallback last.** Policies are evaluated in order, and a trace only needs to match one policy. Put your targeted policies first and the catch-all probabilistic sampler last.
+2. **Use the probabilistic policy as a fallback.** A trace is sampled if any policy returns a sample decision, so targeted policies still keep errors, slow traces, and critical services while the probabilistic policy gives baseline coverage for the rest.
 
 3. **Monitor memory usage closely.** Tail sampling can cause memory spikes during traffic bursts. The `memory_limiter` processor is your safety net.
 
