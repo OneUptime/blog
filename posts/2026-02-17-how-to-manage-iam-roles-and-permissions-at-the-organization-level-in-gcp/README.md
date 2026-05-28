@@ -270,8 +270,7 @@ Export IAM policies to BigQuery for analysis:
 gcloud asset export \
   --organization=ORGANIZATION_ID \
   --content-type=iam-policy \
-  --output-bigquery-dataset=projects/my-project/datasets/asset_inventory \
-  --output-bigquery-table=iam_policies
+  --bigquery-table=projects/my-project/datasets/asset_inventory/tables/iam_policies
 ```
 
 Then query for overly permissive bindings:
@@ -288,7 +287,10 @@ FROM
   UNNEST(binding.members) AS member
 WHERE
   binding.role IN ('roles/editor', 'roles/owner')
-  AND name LIKE 'organizations/%' OR name LIKE 'folders/%'
+  AND asset_type IN (
+    'cloudresourcemanager.googleapis.com/Organization',
+    'cloudresourcemanager.googleapis.com/Folder'
+  )
 ORDER BY
   binding.role, resource
 ```
