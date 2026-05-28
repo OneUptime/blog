@@ -14,21 +14,21 @@ Google Cloud makes it possible to correlate these two data sources through trace
 
 ## How Correlation Works
 
-Cloud Logging and Cloud Trace connect through two fields:
+Cloud Logging and Cloud Trace connect through these fields:
 
-1. **trace**: A field on every log entry that contains the trace ID in the format `projects/PROJECT_ID/traces/TRACE_ID`
+1. **trace**: A field on every log entry that contains the trace ID. For correlated log grouping, use the resource-name format `projects/PROJECT_ID/traces/TRACE_ID`.
 2. **spanId**: An optional field that links the log entry to a specific span within the trace
 
 When both fields are present, Cloud Console creates clickable links between the Logs Explorer and the Trace Explorer. You can jump from a log entry directly to the trace waterfall, or from a trace span to all associated log entries.
 
 ## Automatic Correlation on GCP Services
 
-Some GCP services set the trace context automatically:
+Some GCP services and logging libraries can set trace context automatically:
 
-- **Cloud Run**: Automatically propagates the `X-Cloud-Trace-Context` header and sets the trace field on logs written to stdout/stderr.
-- **App Engine**: Same automatic propagation and log correlation.
+- **Cloud Run**: Request traces are available through request headers. Container logs written to stdout/stderr are not automatically correlated unless you use a Cloud Logging client library or include the trace field in structured JSON logs.
+- **App Engine**: Request logs are emitted automatically, and app logs can be correlated by using the Cloud Logging client library or by writing the request trace field in structured logs.
 - **Cloud Functions**: Trace context is available through the request headers.
-- **GKE with Cloud Logging agent**: The agent can be configured to extract trace context.
+- **GKE with Cloud Logging agent**: The agent collects stdout/stderr logs and preserves structured JSON fields such as trace metadata when you include them.
 
 For Cloud Run, if you write structured logs to stdout as JSON, include the trace and spanId fields and the correlation just works.
 
@@ -123,19 +123,17 @@ Now configure your application to use these.
 ```python
 # app.py - Application setup with correlated logging
 import logging
+import os
 from logging_config import TraceContextFilter, StructuredLogHandler
 
 # Configure the root logger
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Add the trace context filter
-project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", "my-project")
-logger.addFilter(TraceContextFilter(project_id))
-
 # Add the structured log handler
+project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", "my-project")
 handler = StructuredLogHandler()
-logger.addHandler(handler)
+handler.addFilter(TraceContextFilter(project_id))
 
 # Remove the default handler to avoid duplicate logs
 logger.handlers = [handler]
@@ -255,19 +253,19 @@ Once correlation is set up, you can navigate between traces and logs in the Clou
 3. Click it to open the full trace waterfall in Cloud Trace
 
 **Using Logs Explorer with trace grouping:**
-You can also group log entries by trace in the Logs Explorer. Toggle "Correlated by trace" in the summary fields, and log entries from the same trace will be grouped together.
+You can also group log entries by trace in the Logs Explorer. Use **Correlate by** and select the parent log, or use the trace icon on a log entry to show all logs for the same trace.
 
 ## Troubleshooting Correlation Issues
 
 If the links are not showing up, check these common issues:
 
-1. **Wrong trace format**: The trace field must be `projects/PROJECT_ID/traces/TRACE_ID`. Missing the project prefix is a common mistake.
+1. **Wrong trace format**: For correlated log grouping, the trace field should be `projects/PROJECT_ID/traces/TRACE_ID`. Missing the project prefix is a common mistake when writing structured logs for grouping.
 
 2. **Hex formatting**: Trace IDs must be 32-character lowercase hex strings. Span IDs must be 16-character lowercase hex strings.
 
 3. **Missing project ID**: When running locally or in environments where `GOOGLE_CLOUD_PROJECT` is not set, the trace field will have an empty project.
 
-4. **Log timing**: Log entries and spans must overlap in time. If your log timestamp is outside the span's time range, the correlation will not work.
+4. **Log timing**: Trace-side log views are filtered by the trace, span, and time range. If a log timestamp is outside the expected trace or parent-log range, it might not appear where you expect it.
 
 You can verify the trace field is present by checking a log entry in the Logs Explorer and expanding the JSON to look for the `trace` field.
 
