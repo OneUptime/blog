@@ -8,7 +8,7 @@ Description: Learn how to configure ingress rules for VPC Service Controls perim
 
 ---
 
-VPC Service Controls perimeters block all API access from outside the boundary by default. That is the whole point - keeping data safe inside the perimeter. But in practice, you need controlled exceptions. CI/CD pipelines need to deploy to projects inside the perimeter. Partner services need to read specific data. Monitoring tools need to access metrics.
+VPC Service Controls perimeters block access from outside the boundary to protected resources for restricted services by default. That is the whole point - keeping data safe inside the perimeter. But in practice, you need controlled exceptions. CI/CD pipelines need to deploy to projects inside the perimeter. Partner services need to read specific data. Monitoring tools need to access metrics.
 
 Ingress rules are how you poke precise holes in the perimeter for these legitimate use cases. Unlike access levels (which grant broad access based on IP or device), ingress rules let you specify exactly which identity can access which service using which method.
 
@@ -109,7 +109,7 @@ gcloud access-context-manager perimeters update my-perimeter \
 
 ## Step 3: Create an Ingress Rule for Partner Data Access
 
-Allow a partner to query specific BigQuery datasets.
+Allow a partner to query BigQuery resources in a protected project. Use IAM permissions to limit which datasets the partner can read.
 
 ```yaml
 # partner-ingress.yaml - Allow partner to read from BigQuery
@@ -122,9 +122,9 @@ Allow a partner to query specific BigQuery datasets.
     operations:
       - serviceName: bigquery.googleapis.com
         methodSelectors:
-          - method: google.cloud.bigquery.v2.JobService.InsertJob
-          - method: google.cloud.bigquery.v2.JobService.GetQueryResults
-          - method: google.cloud.bigquery.v2.TableService.GetTable
+          - method: JobService.InsertJob
+          - method: JobService.GetQueryResults
+          - method: TableService.GetTable
     resources:
       - projects/DATA_PROJECT_NUMBER
 ```
@@ -184,7 +184,7 @@ You can have multiple ingress rules in a single file.
           - method: "*"
       - serviceName: logging.googleapis.com
         methodSelectors:
-          - method: google.logging.v2.LoggingServiceV2.ListLogEntries
+          - method: LoggingServiceV2.ListLogEntries
     resources:
       - projects/PROD_PROJECT_NUMBER
 
@@ -225,7 +225,7 @@ Then check the audit logs for dry-run violations to verify the rules work as exp
 ```bash
 # Check for dry-run violations
 gcloud logging read \
-  'protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.dryRun=true AND protoPayload.metadata.violationReason="RESOURCES_NOT_IN_SAME_SERVICE_PERIMETER"' \
+  'protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.dryRun=true AND protoPayload.metadata.violationReason="RESOURCE_NOT_IN_SAME_SERVICE_PERIMETER"' \
   --limit=20 \
   --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.methodName)" \
   --project=my-project-id
@@ -255,10 +255,10 @@ Here are useful method selectors for common services:
 - `google.storage.buckets.get` - Get bucket metadata
 
 **BigQuery:**
-- `google.cloud.bigquery.v2.JobService.InsertJob` - Run queries
-- `google.cloud.bigquery.v2.JobService.GetQueryResults` - Get query results
-- `google.cloud.bigquery.v2.TableService.GetTable` - Get table metadata
-- `google.cloud.bigquery.v2.DatasetService.GetDataset` - Get dataset metadata
+- `JobService.InsertJob` - Run queries
+- `JobService.GetQueryResults` - Get query results
+- `TableService.GetTable` - Get table metadata
+- `DatasetService.GetDataset` - Get dataset metadata
 
 **GKE:**
 - Use `"*"` for the method selector since GKE operations involve many different methods
@@ -275,7 +275,7 @@ If an ingress rule is not working:
 ```bash
 # Look for VPC SC violations from a specific identity
 gcloud logging read \
-  'protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.authenticationInfo.principalEmail="cicd@build-project.iam.gserviceaccount.com"' \
+  'protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.authenticationInfo.principalEmail="cicd@build-project.iam.gserviceaccount.com"' \
   --limit=10 \
   --format=json \
   --project=my-project-id
