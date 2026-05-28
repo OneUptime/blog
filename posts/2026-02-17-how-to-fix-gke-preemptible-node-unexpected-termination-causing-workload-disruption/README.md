@@ -8,7 +8,7 @@ Description: Learn how to handle GKE preemptible and spot node terminations grac
 
 ---
 
-Preemptible (and Spot) VMs in GKE are great for reducing costs - up to 60-91% cheaper than regular instances. But they come with a catch: Google can terminate them at any time with only 30 seconds of notice. When that happens, all pods on the node are killed, and if your workloads are not prepared for sudden termination, you get service outages.
+Preemptible (and Spot) VMs in GKE are great for reducing costs - up to 60-91% cheaper than regular instances. But they come with a catch: Google can terminate them at any time, and the shutdown notice is best effort and short. When that happens, all pods on the node are terminated, and if your workloads are not prepared for sudden termination, you get service outages.
 
 Let's set up your GKE workloads to handle preemptible node terminations without disruption.
 
@@ -23,19 +23,19 @@ sequenceDiagram
     participant kubelet
     participant Pod
 
-    GCP->>Node: ACPI shutdown signal (30s warning)
+    GCP->>Node: ACPI shutdown signal
     Node->>kubelet: Node entering shutdown
     kubelet->>Pod: SIGTERM sent to containers
     Note over Pod: Graceful shutdown period begins
     Pod->>Pod: Cleanup, drain connections, save state
-    Note over kubelet,Pod: After terminationGracePeriodSeconds
+    Note over kubelet,Pod: After the available graceful shutdown window
     kubelet->>Pod: SIGKILL if still running
     GCP->>Node: VM terminated
     Note over GCP: Cluster autoscaler detects missing node
     GCP->>GCP: New node provisioned (if autoscaling)
 ```
 
-The 30-second warning is not guaranteed to reach your pods in full. Between the kubelet draining and SIGTERM propagation, your containers might only get 15-20 seconds of actual graceful shutdown time.
+The 30-second shutdown window is not guaranteed to reach your pods in full. On GKE preemptible nodes, non-system Pods get a best-effort maximum of 15 seconds before GKE reserves the remaining time for system Pods. Spot VMs use the same 15-second default for regular Pods, although newer Standard clusters can optionally extend the node graceful termination period.
 
 ## Step 1 - Handle SIGTERM in Your Application
 
@@ -61,11 +61,11 @@ process.on('SIGTERM', () => {
     process.exit(0);
   });
 
-  // Force exit after 25 seconds if connections are not drained
+  // Force exit after 10 seconds if connections are not drained
   setTimeout(() => {
     console.log('Forceful shutdown after timeout');
     process.exit(1);
-  }, 25000);
+  }, 10000);
 });
 ```
 
@@ -89,7 +89,7 @@ func main() {
     <-quit
 
     log.Println("Shutting down gracefully...")
-    ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
 
     if err := srv.Shutdown(ctx); err != nil {
@@ -111,9 +111,15 @@ kind: Deployment
 metadata:
   name: your-app
 spec:
+  selector:
+    matchLabels:
+      app: your-app
   template:
+    metadata:
+      labels:
+        app: your-app
     spec:
-      terminationGracePeriodSeconds: 25  # must be less than 30s preemption window
+      terminationGracePeriodSeconds: 15  # preemptible nodes cap non-system Pods at 15s
       containers:
       - name: app
         image: your-app:latest
@@ -124,7 +130,7 @@ spec:
               command: ["/bin/sh", "-c", "sleep 5"]
 ```
 
-The `preStop` hook runs before SIGTERM is sent. The 5-second sleep gives the load balancer and service mesh time to remove the pod from its endpoint list, preventing traffic from being routed to a pod that is shutting down.
+The `preStop` hook runs before SIGTERM is sent, but it counts against the Pod's termination grace period. The 5-second sleep gives the load balancer and service mesh time to remove the pod from its endpoint list, preventing traffic from being routed to a pod that is shutting down.
 
 ## Step 3 - Set Up Pod Disruption Budgets
 
@@ -158,7 +164,13 @@ metadata:
   name: your-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: your-app
   template:
+    metadata:
+      labels:
+        app: your-app
     spec:
       topologySpreadConstraints:
       - maxSkew: 1
@@ -244,6 +256,8 @@ spec:
         - matchExpressions:
           - key: cloud.google.com/gke-preemptible
             operator: DoesNotExist
+          - key: cloud.google.com/gke-spot
+            operator: DoesNotExist
 ```
 
 ## Step 6 - Use Spot VMs Instead of Preemptible
@@ -263,15 +277,15 @@ gcloud container node-pools create spot-pool \
   --zone us-central1-a
 ```
 
-Spot VMs have the same termination behavior as preemptible VMs, so all the same resilience patterns apply.
+Spot VMs have similar termination behavior to preemptible VMs, so all the same resilience patterns apply. By default, regular Pods still get 15 seconds to shut down, but supported Standard clusters can optionally extend Spot VM graceful termination up to 120 seconds.
 
 ## Step 7 - Monitor Preemption Events
 
 Set up monitoring to track preemption frequency and impact:
 
 ```bash
-# Check for node preemption events in the cluster
-kubectl get events --all-namespaces --field-selector reason=Preempted
+# Check for pods that failed during node shutdown
+kubectl get pods --all-namespaces --field-selector=status.phase=Failed
 ```
 
 You can also monitor using Cloud Logging:
@@ -286,11 +300,17 @@ gcloud logging read 'resource.type="gce_instance" AND protoPayload.methodName="c
 Set up an alert so you know when preemptions spike:
 
 ```bash
-# Create a notification for high preemption rates
+# Create a log-based metric and alert for preemption events
+gcloud logging metrics create preempted_instances \
+  --description="Count of Compute Engine preemption events" \
+  --log-filter='resource.type="gce_instance" AND protoPayload.methodName="compute.instances.preempted"'
+
 gcloud alpha monitoring policies create \
   --display-name="High Preemption Rate" \
   --condition-display-name="Many nodes preempted" \
-  --condition-filter='metric.type="compute.googleapis.com/instance/uptime" AND resource.type="gce_instance"' \
+  --condition-filter='metric.type="logging.googleapis.com/user/preempted_instances" AND resource.type="gce_instance"' \
+  --duration=300s \
+  --if="> 5" \
   --notification-channels="CHANNEL_ID"
 ```
 
@@ -305,10 +325,17 @@ kind: StatefulSet
 metadata:
   name: database
 spec:
+  serviceName: database
   replicas: 3
+  selector:
+    matchLabels:
+      app: database
   template:
+    metadata:
+      labels:
+        app: database
     spec:
-      terminationGracePeriodSeconds: 25
+      terminationGracePeriodSeconds: 15
       containers:
       - name: db
         image: postgres:15
@@ -320,7 +347,7 @@ spec:
       name: data
     spec:
       accessModes: ["ReadWriteOnce"]
-      storageClassName: standard-rw
+      storageClassName: standard-rwo
       resources:
         requests:
           storage: 50Gi
@@ -333,7 +360,7 @@ The PVC survives the node termination, and when the pod is rescheduled, it reatt
 Preemptible nodes will terminate - that is guaranteed. The question is whether your workloads handle it gracefully. The key practices are:
 
 1. Handle SIGTERM in your application code
-2. Keep terminationGracePeriodSeconds under 30 seconds
+2. Keep terminationGracePeriodSeconds within the graceful shutdown window
 3. Run multiple replicas spread across nodes and zones
 4. Mix preemptible and regular nodes for critical services
 5. Use PDBs for voluntary disruption protection
