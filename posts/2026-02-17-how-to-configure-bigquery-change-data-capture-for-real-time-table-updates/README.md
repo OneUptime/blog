@@ -42,34 +42,58 @@ The NOT ENFORCED keyword is required because BigQuery does not enforce primary k
 
 The BigQuery Storage Write API supports a CDC mode where each row includes a change type indicator. The change types are UPSERT (insert or update) and DELETE.
 
-Here is how to set up a CDC stream using the Python client.
+Here is how to append CDC rows to the default stream using the Node.js client. BigQuery CDC ingestion requires the default stream and protobuf-formatted rows; committed, buffered, and pending write streams are not supported for CDC.
 
-```python
-from google.cloud import bigquery_storage_v1
-from google.cloud.bigquery_storage_v1 import types
-from google.protobuf import descriptor_pb2
-import json
+```javascript
+const {adapt, managedwriter} = require('@google-cloud/bigquery-storage');
+const {WriterClient, JSONWriter} = managedwriter;
 
-# Initialize the write client
+async function appendCdcRow() {
+  const projectId = 'my-project';
+  const datasetId = 'production';
+  const tableId = 'customers';
+  const destinationTable = `projects/${projectId}/datasets/${datasetId}/tables/${tableId}`;
 
-write_client = bigquery_storage_v1.BigQueryWriteClient()
+  const writeClient = new WriterClient({projectId});
+  const writeStream = await writeClient.getWriteStream({
+    streamId: `${destinationTable}/streams/_default`,
+    view: 'FULL',
+  });
 
-# Define the target table
-table_path = "projects/my-project/datasets/production/tables/customers"
+  const protoDescriptor = adapt.convertStorageSchemaToProto2Descriptor(
+    writeStream.tableSchema,
+    'root',
+    adapt.withChangeType(),
+    adapt.withChangeSequenceNumber(),
+  );
 
-# Create a write stream in committed mode for CDC
-write_stream = types.WriteStream(type_=types.WriteStream.Type.COMMITTED)
-parent = write_client.table_path("my-project", "production", "customers")
+  const connection = await writeClient.createStreamConnection({
+    streamId: managedwriter.DefaultStream,
+    destinationTable,
+  });
 
-stream = write_client.create_write_stream(
-    parent=parent,
-    write_stream=write_stream
-)
+  const jsonWriter = new JSONWriter({
+    streamId: connection.getStreamId(),
+    connection,
+    protoDescriptor,
+  });
 
-print(f"Created write stream: {stream.name}")
+  await jsonWriter.appendRows([
+    {
+      customer_id: '123',
+      name: 'Ada Lovelace',
+      email: 'ada@example.com',
+      subscription_tier: 'pro',
+      _CHANGE_TYPE: 'UPSERT',
+      _CHANGE_SEQUENCE_NUMBER: '18F2EBB6480',
+    },
+  ]);
+}
+
+appendCdcRow().catch(console.error);
 ```
 
-For a more practical implementation, here is how you would process CDC events from a source like Debezium or Datastream.
+For a custom implementation that does not use BigQuery native CDC ingestion, here is how you might process CDC events from a source like Debezium or another change feed.
 
 ```python
 from google.cloud import bigquery
@@ -134,6 +158,7 @@ gcloud datastream connection-profiles create source-mysql \
   --mysql-port=3306 \
   --mysql-username=datastream_user \
   --mysql-password=MYSQL_PASSWORD \
+  --private-connection=PRIVATE_CONNECTION \
   --display-name="Source MySQL Database"
 
 # Create a connection profile for BigQuery destination
@@ -146,37 +171,47 @@ gcloud datastream connection-profiles create dest-bigquery \
 Then create a stream that replicates changes from MySQL to BigQuery.
 
 ```bash
+cat > mysql-source-config.json <<'EOF'
+{
+  "includeObjects": {
+    "mysqlDatabases": [{
+      "database": "production",
+      "mysqlTables": [{
+        "table": "customers"
+      }, {
+        "table": "orders"
+      }]
+    }]
+  }
+}
+EOF
+
+cat > bigquery-destination-config.json <<'EOF'
+{
+  "dataFreshness": "300s",
+  "singleTargetDataset": {
+    "datasetId": "my-project:production_replica"
+  },
+  "merge": {}
+}
+EOF
+
 # Create a Datastream stream for CDC replication
 gcloud datastream streams create mysql-to-bq-cdc \
   --location=us-central1 \
   --source=source-mysql \
-  --mysql-source-config='{
-    "include_objects": {
-      "mysql_databases": [{
-        "database": "production",
-        "mysql_tables": [{
-          "table": "customers"
-        }, {
-          "table": "orders"
-        }]
-      }]
-    }
-  }' \
+  --mysql-source-config=mysql-source-config.json \
   --destination=dest-bigquery \
-  --bigquery-destination-config='{
-    "data_freshness": "300s",
-    "single_target_dataset": {
-      "dataset_id": "projects/my-project/datasets/production_replica"
-    }
-  }' \
+  --bigquery-destination-config=bigquery-destination-config.json \
+  --backfill-all \
   --display-name="MySQL to BigQuery CDC"
 ```
 
-The `data_freshness` parameter controls how quickly changes are applied to BigQuery. Setting it to 300 seconds (5 minutes) means changes will be visible in BigQuery within about 5 minutes of occurring in the source database.
+The `dataFreshness` parameter sets the maximum data staleness limit for the BigQuery destination. Setting it to 300 seconds (5 minutes) means BigQuery should not return data older than that limit, although the setting does not control how often BigQuery merge jobs run.
 
 ## MERGE-Based CDC Pattern
 
-For sources that do not support streaming CDC, you can use a MERGE statement to apply batched changes. This is the classic CDC pattern in BigQuery.
+For sources that do not support streaming CDC, you can use a MERGE statement to apply batched changes. This is the classic CDC pattern in BigQuery, and it should be used on tables that are not actively receiving native CDC ingestion because CDC-enabled tables do not support mutating DML such as MERGE, UPDATE, or DELETE.
 
 ```sql
 -- Apply a batch of changes using MERGE
@@ -221,7 +256,10 @@ THEN
     email = source.email,
     subscription_tier = source.subscription_tier,
     last_updated = source.last_updated
-WHEN MATCHED AND source.change_type = 'DELETE' THEN
+WHEN MATCHED
+  AND source.change_type = 'DELETE'
+  AND source.last_updated > target.last_updated
+THEN
   DELETE
 WHEN NOT MATCHED AND source.change_type = 'UPSERT' THEN
   INSERT (customer_id, name, email, subscription_tier, last_updated)
