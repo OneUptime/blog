@@ -270,7 +270,6 @@ swagger: "2.0"
 info:
   title: My API
   version: 1.0.0
-host: my-api-gateway-hash.apigateway.my-project.cloud.goog
 schemes:
   - https
 securityDefinitions:
@@ -288,6 +287,8 @@ paths:
         - firebase: []
       x-google-backend:
         address: https://auth-backend-xxxx.run.app
+        disable_auth: true
+        path_translation: APPEND_PATH_TO_ADDRESS
       responses:
         200:
           description: Success
@@ -295,6 +296,8 @@ paths:
     get:
       x-google-backend:
         address: https://auth-backend-xxxx.run.app
+        disable_auth: true
+        path_translation: APPEND_PATH_TO_ADDRESS
       responses:
         200:
           description: Success
@@ -410,14 +413,15 @@ if __name__ == '__main__':
 
 ```javascript
 // Simple rate limiting middleware
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each user to 100 requests per window
-  keyGenerator: (req) => req.user?.uid || req.ip,
+  limit: 100, // limit each user to 100 requests per window
+  keyGenerator: (req) => req.user?.uid || ipKeyGenerator(req.ip),
 });
 
+// Register this before your API routes
 app.use('/api/', apiLimiter);
 ```
 
