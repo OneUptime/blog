@@ -226,6 +226,7 @@ def sync_external_data(request):
 ```bash
 # Deploy the cleanup function
 gcloud functions deploy cleanup-expired-sessions \
+  --no-gen2 \
   --runtime=python311 \
   --trigger-http \
   --no-allow-unauthenticated \
@@ -238,6 +239,7 @@ gcloud functions deploy cleanup-expired-sessions \
 
 # Deploy the report generation function
 gcloud functions deploy generate-daily-report \
+  --no-gen2 \
   --runtime=python311 \
   --trigger-http \
   --no-allow-unauthenticated \
@@ -250,6 +252,7 @@ gcloud functions deploy generate-daily-report \
 
 # Deploy the data sync function
 gcloud functions deploy sync-external-data \
+  --no-gen2 \
   --runtime=python311 \
   --trigger-http \
   --no-allow-unauthenticated \
@@ -261,7 +264,7 @@ gcloud functions deploy sync-external-data \
   --project=my-project
 ```
 
-Note the `--no-allow-unauthenticated` flag. This ensures only Cloud Scheduler (with the right service account) can invoke these functions.
+Note the `--no-gen2` flag. These examples use 1st gen Cloud Functions, where `roles/cloudfunctions.invoker` is the invoker role. Note the `--no-allow-unauthenticated` flag. This ensures only Cloud Scheduler (with the right service account) can invoke these functions.
 
 ## Step 3: Create a Service Account for Cloud Scheduler
 
@@ -358,14 +361,19 @@ gcloud scheduler jobs list \
 Set up monitoring and alerting for your scheduled jobs:
 
 ```bash
-# Create an alert for failed scheduler jobs
-gcloud alpha monitoring policies create \
+# Create a log-based metric for failed scheduler jobs
+gcloud logging metrics create scheduler_job_failures \
+  --description="Cloud Scheduler job failures" \
+  --log-filter='resource.type="cloud_scheduler_job" AND severity>=ERROR' \
+  --project=my-project
+
+# Create an alert for the failure metric
+gcloud monitoring policies create \
   --display-name="Scheduled Job Failed" \
   --condition-display-name="Cloud Scheduler job execution failed" \
-  --condition-filter='resource.type="cloud_scheduler_job" AND metric.type="cloudscheduler.googleapis.com/job/attempt_count" AND metric.labels.status!="SUCCESS"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=0s \
+  --condition-filter='metric.type="logging.googleapis.com/user/scheduler_job_failures"' \
+  --if="> 0" \
+  --duration=0s \
   --notification-channels=projects/my-project/notificationChannels/12345 \
   --project=my-project
 ```
@@ -391,6 +399,7 @@ gcloud scheduler jobs create http parameterized-cleanup \
 **Chaining jobs:** If job B should only run after job A completes, have job A publish a Pub/Sub message that triggers job B:
 
 ```python
+import json
 from google.cloud import pubsub_v1
 
 def job_a(request):
