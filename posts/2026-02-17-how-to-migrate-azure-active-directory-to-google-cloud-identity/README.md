@@ -75,9 +75,9 @@ az ad user list --output json > azure-ad-users.json
 # Export groups
 az ad group list \
   --query '[*].{
-    Name:displayName,
-    Description:description,
-    ID:id
+    displayName:displayName,
+    description:description,
+    id:id
   }' \
   --output json > azure-ad-groups.json
 
@@ -92,18 +92,20 @@ done > azure-ad-memberships.txt
 
 ## Step 3: Provision Users in Cloud Identity
 
-Use the Google Admin SDK or Google Cloud Directory Sync (GCDS) to create users.
+Use Microsoft Entra provisioning, the Google Admin SDK, or Google Cloud Directory Sync (GCDS) to create users.
 
-### Option A: Using GCDS for Automated Sync
+### Option A: Using Automated Provisioning
 
-GCDS can sync users from Azure AD (via LDAP) or from a CSV export.
+For Microsoft Entra ID, use the Google Cloud / Google Workspace enterprise application provisioning integration. It provisions users and groups from Microsoft Entra ID to Google using SCIM. If your source of authority is still Microsoft Active Directory or another LDAP server, GCDS can sync users and groups from that LDAP directory to Google.
 
 ```bash
-# Download GCDS from Google
-# Configure it to sync from your Azure AD export
+# Microsoft Entra ID source:
+# Configure the Google Cloud / Google Workspace enterprise application
+# and enable automatic provisioning in the Microsoft Entra admin center.
 
-# GCDS configuration steps:
-# 1. Set up LDAP connection to Azure AD (or use CSV import)
+# Active Directory or LDAP source:
+# Download GCDS from Google and configure it to sync from LDAP.
+# 1. Set up the LDAP connection to Active Directory or your LDAP server
 # 2. Map user attributes
 # 3. Configure group sync
 # 4. Run a simulated sync first
@@ -118,7 +120,8 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 import json
 
-# Authenticate with a service account that has admin privileges
+# Authenticate with a service account that has domain-wide delegation
+# and impersonates a Google Workspace or Cloud Identity admin.
 creds = service_account.Credentials.from_service_account_file(
     'admin-sa.json',
     scopes=['https://www.googleapis.com/auth/admin.directory.user',
@@ -133,12 +136,13 @@ with open('azure-ad-users.json', 'r') as f:
     azure_users = json.load(f)
 
 for user in azure_users:
-    if not user.get('mail'):
+    google_email = user.get('mail') or user.get('userPrincipalName')
+    if not google_email:
         continue
 
     # Create user in Cloud Identity
     user_body = {
-        'primaryEmail': user['mail'],
+        'primaryEmail': google_email,
         'name': {
             'givenName': user.get('givenName', ''),
             'familyName': user.get('surname', '')
@@ -154,9 +158,9 @@ for user in azure_users:
 
     try:
         result = service.users().insert(body=user_body).execute()
-        print(f"Created user: {user['mail']}")
+        print(f"Created user: {google_email}")
     except Exception as e:
-        print(f"Failed to create {user['mail']}: {e}")
+        print(f"Failed to create {google_email}: {e}")
 ```
 
 ## Step 4: Migrate Groups
@@ -165,11 +169,14 @@ Create Google Groups that match your Azure AD groups.
 
 ```python
 # Create groups and add members
+import re
+
 with open('azure-ad-groups.json', 'r') as f:
     azure_groups = json.load(f)
 
 for group in azure_groups:
-    group_email = group['displayName'].lower().replace(' ', '-') + '@example.com'
+    local_part = re.sub(r'[^a-z0-9-]+', '-', group['displayName'].lower()).strip('-')
+    group_email = local_part + '@example.com'
 
     # Create the group
     group_body = {
@@ -204,35 +211,31 @@ During the migration, federate Azure AD with Google Cloud so users can log in wi
 
 Configure SAML SSO in the Google Admin Console:
 
-1. In Azure AD, register Google Cloud as an enterprise application
+1. In Azure AD, add Google Cloud / Google Workspace as an enterprise application or create a custom SAML enterprise application
 2. Configure SAML SSO settings
 
 ```bash
-# Azure AD side: Register Google as a SAML application
-# SSO URL: https://accounts.google.com/o/saml2/acs
+# Azure AD side: configure the enterprise application's SAML settings.
+# Use the SP details shown in the Google Admin Console SAML SSO profile.
+# For the legacy SSO profile, the common values are:
 # Entity ID: google.com/a/example.com
-# Reply URL: https://accounts.google.com/o/saml2/acs
-
-az ad app create \
-  --display-name "Google Cloud SAML SSO" \
-  --identifier-uris "google.com/a/example.com" \
-  --reply-urls "https://accounts.google.com/o/saml2/acs"
+# Reply URL / ACS URL: https://accounts.google.com/a/example.com/acs
 ```
 
 On the Google Admin Console side:
 1. Go to Security > Authentication > SSO with third-party IdP
-2. Enable SSO
+2. Add a SAML profile, or configure the legacy SSO profile if you still use it
 3. Upload the Azure AD IdP metadata or configure manually
 4. Set the sign-in page URL to your Azure AD login URL
 5. Upload the Azure AD signing certificate
 
 ## Step 6: Migrate Conditional Access to Context-Aware Access
 
-Azure AD Conditional Access policies map to Google's Context-Aware Access.
+Many Azure AD Conditional Access concepts map to Google's Context-Aware Access, but review each policy because the services do not have identical condition and enforcement models.
 
 ```bash
 # Create an access level based on device and location
-gcloud access-context-manager levels create corporate-network \
+gcloud access-context-manager levels create corporate_network \
   --title="Corporate Network" \
   --basic-level-spec=level-spec.yaml \
   --policy=POLICY_ID
@@ -242,19 +245,18 @@ Level spec example:
 
 ```yaml
 # Access level definition - equivalent to Azure AD Conditional Access
-conditions:
-  - ipSubnetworks:
-      - "203.0.113.0/24"  # Corporate network CIDR
-      - "198.51.100.0/24"  # VPN range
-  - devicePolicy:
-      requireScreenlock: true
-      osConstraints:
-        - osType: DESKTOP_CHROME_OS
-          minimumVersion: "100.0"
-        - osType: DESKTOP_WINDOWS
-          minimumVersion: "10.0"
-        - osType: DESKTOP_MAC
-          minimumVersion: "12.0"
+- ipSubnetworks:
+    - "203.0.113.0/24"  # Corporate network CIDR
+    - "198.51.100.0/24"  # VPN range
+  devicePolicy:
+    requireScreenlock: true
+    osConstraints:
+      - osType: DESKTOP_CHROME_OS
+        minimumVersion: "100.0"
+      - osType: DESKTOP_WINDOWS
+        minimumVersion: "10.0"
+      - osType: DESKTOP_MAC
+        minimumVersion: "12.0"
 ```
 
 ```bash
@@ -263,7 +265,7 @@ gcloud access-context-manager perimeters create my-perimeter \
   --title="Production Access" \
   --resources="projects/12345" \
   --restricted-services="storage.googleapis.com,bigquery.googleapis.com" \
-  --access-levels="accessPolicies/POLICY_ID/accessLevels/corporate-network" \
+  --access-levels="accessPolicies/POLICY_ID/accessLevels/corporate_network" \
   --policy=POLICY_ID
 ```
 
@@ -272,12 +274,8 @@ gcloud access-context-manager perimeters create my-perimeter \
 Set up Google 2-Step Verification (equivalent to Azure MFA).
 
 ```bash
-# Using the Admin SDK to enforce 2-step verification
-# This is typically configured in the Google Admin Console under:
+# 2-Step Verification enforcement is typically configured in the Google Admin Console under:
 # Security > Authentication > 2-Step Verification
-
-# To enforce via API:
-# Set the organization policy to require 2-step verification
 ```
 
 In the Admin Console:
