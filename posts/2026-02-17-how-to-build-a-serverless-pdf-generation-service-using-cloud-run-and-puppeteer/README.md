@@ -40,6 +40,7 @@ app.use(express.json({ limit: '5mb' }));
 
 const storage = new Storage();
 const BUCKET_NAME = process.env.PDF_BUCKET || 'my-project-pdfs';
+const TEMPLATE_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 // Keep a browser instance alive for reuse across requests
 let browser;
@@ -47,7 +48,7 @@ let browser;
 async function getBrowser() {
   if (!browser || !browser.isConnected()) {
     browser = await puppeteer.launch({
-      headless: 'new',
+      headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -78,8 +79,13 @@ Handlebars.registerHelper('date', (value) => {
 
 app.post('/generate', async (req, res) => {
   const { template, data, options = {} } = req.body;
+  let page;
 
   try {
+    if (typeof template !== 'string' || !TEMPLATE_NAME_PATTERN.test(template)) {
+      return res.status(400).json({ error: 'Invalid template name' });
+    }
+
     // Load and compile the template
     const templatePath = path.join(__dirname, 'templates', `${template}.hbs`);
     if (!fs.existsSync(templatePath)) {
@@ -92,9 +98,9 @@ app.post('/generate', async (req, res) => {
 
     // Generate the PDF using Puppeteer
     const browserInstance = await getBrowser();
-    const page = await browserInstance.newPage();
+    page = await browserInstance.newPage();
 
-    // Set the HTML content with a base URL for relative asset paths
+    // Set the HTML content and wait for network requests such as external fonts
     await page.setContent(html, {
       waitUntil: 'networkidle0',
       timeout: 30000,
@@ -118,8 +124,6 @@ app.post('/generate', async (req, res) => {
         </div>
       `,
     });
-
-    await page.close();
 
     // Upload to Cloud Storage if a filename was specified
     if (options.saveTo) {
@@ -158,6 +162,10 @@ app.post('/generate', async (req, res) => {
   } catch (error) {
     console.error('PDF generation failed:', error);
     res.status(500).json({ error: error.message });
+  } finally {
+    if (page && !page.isClosed()) {
+      await page.close();
+    }
   }
 });
 
@@ -350,14 +358,12 @@ WORKDIR /app
 # Switch to root to install dependencies, then back to pptruser
 USER root
 COPY package*.json ./
-RUN npm ci --production
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+RUN npm ci --omit=dev
 
 COPY . .
 RUN chown -R pptruser:pptruser /app
 USER pptruser
-
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
 EXPOSE 8080
 CMD ["node", "server.js"]
@@ -388,6 +394,7 @@ Note the low concurrency setting. Puppeteer is memory-intensive, so each instanc
 ```bash
 # Generate an invoice PDF
 curl -X POST https://pdf-service-xxxx.run.app/generate \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
   -H "Content-Type: application/json" \
   -d '{
     "template": "invoice",
@@ -407,7 +414,7 @@ curl -X POST https://pdf-service-xxxx.run.app/generate \
 
 ## Batch PDF Generation
 
-For generating many PDFs at once (like monthly invoices), combine with Cloud Tasks to process them reliably.
+For generating many PDFs at once (like monthly invoices), combine with Cloud Tasks to process them reliably. Because the Cloud Run service requires authentication, use a service account with the Cloud Run Invoker role when enqueuing tasks.
 
 ```python
 # batch_generate.py - Enqueue PDF generation tasks
@@ -416,6 +423,8 @@ import json
 
 tasks_client = tasks_v2.CloudTasksClient()
 queue_path = tasks_client.queue_path('my-project', 'us-central1', 'pdf-generation')
+service_account_email = 'cloud-tasks-invoker@my-project.iam.gserviceaccount.com'
+service_url = 'https://pdf-service-xxxx.run.app/generate'
 
 def enqueue_batch(invoices):
     """Enqueue multiple PDF generation tasks."""
@@ -423,8 +432,12 @@ def enqueue_batch(invoices):
         task = {
             'http_request': {
                 'http_method': tasks_v2.HttpMethod.POST,
-                'url': 'https://pdf-service-xxxx.run.app/generate',
+                'url': service_url,
                 'headers': {'Content-Type': 'application/json'},
+                'oidc_token': {
+                    'service_account_email': service_account_email,
+                    'audience': 'https://pdf-service-xxxx.run.app',
+                },
                 'body': json.dumps({
                     'template': 'invoice',
                     'data': invoice,
