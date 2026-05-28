@@ -59,10 +59,23 @@ Labels let you break down a metric by different dimensions. For example, countin
 
 ```bash
 # Create a counter metric with labels for per-service breakdown
+cat > service-error-count.yaml <<'EOF'
+name: service-error-count
+description: Error count by service name
+filter: severity>=ERROR AND resource.type="cloud_run_revision"
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  labels:
+    - key: service_name
+      valueType: STRING
+      description: Name of the Cloud Run service
+labelExtractors:
+  service_name: EXTRACT(resource.labels.service_name)
+EOF
+
 gcloud logging metrics create service-error-count \
-  --description="Error count by service name" \
-  --log-filter='severity>=ERROR AND resource.type="cloud_run_revision"' \
-  --label-extractors='service_name=EXTRACT(resource.labels.service_name)'
+  --config-from-file=service-error-count.yaml
 ```
 
 Now you can group this metric by `service_name` in your dashboards and alerts.
@@ -77,24 +90,48 @@ If your application logs response times, you can turn them into a distribution m
 
 ```bash
 # Create a distribution metric for response times from JSON logs
+cat > api-response-time.yaml <<'EOF'
+name: api-response-time
+description: Distribution of API response times from application logs
+filter: resource.type="cloud_run_revision" AND jsonPayload.type="api_request" AND jsonPayload.response_time_ms>0
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: ms
+valueExtractor: EXTRACT(jsonPayload.response_time_ms)
+bucketOptions:
+  explicitBuckets:
+    bounds: [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
+EOF
+
 gcloud logging metrics create api-response-time \
-  --description="Distribution of API response times from application logs" \
-  --log-filter='jsonPayload.type="api_request" AND jsonPayload.response_time_ms>0' \
-  --value-extractor='EXTRACT(jsonPayload.response_time_ms)' \
-  --bucket-options='explicit-buckets=boundaries:10,25,50,100,250,500,1000,2500,5000,10000'
+  --config-from-file=api-response-time.yaml
 ```
 
-The `--bucket-options` defines the histogram buckets. Requests faster than 10ms go in the first bucket, 10-25ms in the second, and so on.
+The `bucketOptions` configuration defines the histogram buckets. Requests faster than 10ms go in the first bucket, 10-25ms in the second, and so on.
 
 ### Tracking Request Payload Sizes
 
 ```bash
 # Distribution metric for HTTP request payload sizes
+cat > request-payload-size.yaml <<'EOF'
+name: request-payload-size
+description: Distribution of HTTP request body sizes
+filter: resource.type="cloud_run_revision" AND httpRequest.requestSize>0
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: By
+valueExtractor: EXTRACT(httpRequest.requestSize)
+bucketOptions:
+  exponentialBuckets:
+    numFiniteBuckets: 20
+    growthFactor: 2
+    scale: 100
+EOF
+
 gcloud logging metrics create request-payload-size \
-  --description="Distribution of HTTP request body sizes" \
-  --log-filter='httpRequest.requestSize>0' \
-  --value-extractor='EXTRACT(httpRequest.requestSize)' \
-  --bucket-options='exponential-buckets=num-finite-buckets:20,growth-factor:2,scale:100'
+  --config-from-file=request-payload-size.yaml
 ```
 
 Exponential buckets work well for values that span several orders of magnitude.
@@ -113,11 +150,11 @@ For a more visual approach:
 
 ## Using Log-Based Metrics in Dashboards
 
-Once created, log-based metrics appear in Cloud Monitoring like any other metric. You can add them to dashboards:
+Once created, log-based metrics appear in Cloud Monitoring like any other metric. MQL is no longer recommended for new dashboards in the Google Cloud console, but existing MQL queries and queries created through the API continue to work:
 
 ```text
 # Query a user-defined log-based metric in MQL
-fetch global
+fetch cloud_run_revision
 | metric 'logging.googleapis.com/user/application-error-count'
 | group_by [], [val: sum(value.application_error_count)]
 | every 5m
@@ -127,7 +164,7 @@ For distribution metrics, you can query specific percentiles:
 
 ```text
 # P95 of the response time distribution metric
-fetch global
+fetch cloud_run_revision
 | metric 'logging.googleapis.com/user/api-response-time'
 | group_by [], [val: percentile(value.api_response_time, 95)]
 | every 5m
@@ -152,7 +189,7 @@ Log-based metrics integrate with Cloud Monitoring alerting. Here is an alerting 
         "aggregations": [
           {
             "alignmentPeriod": "60s",
-            "perSeriesAligner": "ALIGN_RATE"
+            "perSeriesAligner": "ALIGN_DELTA"
           }
         ]
       }
@@ -206,7 +243,7 @@ resource "google_logging_metric" "error_count" {
 resource "google_logging_metric" "response_time" {
   name        = "api-response-time"
   description = "Distribution of API response times"
-  filter      = "jsonPayload.type=\"api_request\""
+  filter      = "resource.type=\"cloud_run_revision\" AND jsonPayload.type=\"api_request\" AND jsonPayload.response_time_ms>0"
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -248,7 +285,7 @@ resource "google_monitoring_alert_policy" "error_rate" {
 
       aggregations {
         alignment_period   = "60s"
-        per_series_aligner = "ALIGN_RATE"
+        per_series_aligner = "ALIGN_DELTA"
       }
     }
   }
