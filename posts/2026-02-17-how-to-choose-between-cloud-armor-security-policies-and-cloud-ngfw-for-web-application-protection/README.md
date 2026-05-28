@@ -12,7 +12,7 @@ Google Cloud offers two distinct security products that can protect your web app
 
 ## Cloud Armor Security Policies
 
-Cloud Armor attaches to Google's Global External HTTP(S) Load Balancer. It inspects incoming HTTP/HTTPS requests at Google's edge network before they reach your backend services. Security policies define rules that allow, deny, rate-limit, or redirect traffic based on various attributes.
+Cloud Armor attaches to supported Google Cloud load balancers, including external Application Load Balancers. It inspects incoming HTTP/HTTPS requests at Google's edge network before they reach your backend services. Security policies define rules that allow, deny, rate-limit, or redirect traffic based on various attributes.
 
 ```bash
 # Create a Cloud Armor security policy
@@ -23,17 +23,17 @@ gcloud compute security-policies create web-app-policy \
 # Block common web attacks using pre-configured WAF rules
 gcloud compute security-policies rules create 1000 \
   --security-policy web-app-policy \
-  --expression "evaluatePreconfiguredExpr('sqli-v33-stable')" \
+  --expression "evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 2})" \
   --action deny-403
 
 gcloud compute security-policies rules create 1001 \
   --security-policy web-app-policy \
-  --expression "evaluatePreconfiguredExpr('xss-v33-stable')" \
+  --expression "evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 2})" \
   --action deny-403
 
 gcloud compute security-policies rules create 1002 \
   --security-policy web-app-policy \
-  --expression "evaluatePreconfiguredExpr('rce-v33-stable')" \
+  --expression "evaluatePreconfiguredWaf('rce-v33-stable', {'sensitivity': 2})" \
   --action deny-403
 
 # Add rate limiting to prevent abuse
@@ -45,7 +45,7 @@ gcloud compute security-policies rules create 900 \
   --rate-limit-threshold-interval-sec 60 \
   --conform-action allow \
   --exceed-action deny-429 \
-  --enforce-on-key IP
+  --enforce-on-key ip
 
 # Apply the policy to your backend service
 gcloud compute backend-services update my-web-backend \
@@ -73,7 +73,7 @@ gcloud compute backend-services update my-web-backend \
 
 Cloud NGFW operates within your VPC at the network layer. It provides stateful inspection, intrusion prevention, and threat detection for traffic flowing between VMs, between subnets, and between your VPC and the internet. It goes beyond basic VPC firewall rules by understanding application protocols and detecting malicious patterns in network traffic.
 
-Cloud NGFW comes in tiers:
+Cloud NGFW features are billed in tiers:
 
 - **Cloud NGFW Essentials** - basic L3/L4 firewall with firewall policies
 - **Cloud NGFW Standard** - adds FQDN-based rules and geo-based filtering
@@ -94,12 +94,12 @@ gcloud compute network-firewall-policies rules create 100 \
   --layer4-configs tcp:443 \
   --global-firewall-policy
 
-# Create a rule to block traffic from specific threat categories (Enterprise)
+# Create a rule to block traffic from specific threat categories (Standard tier)
 gcloud compute network-firewall-policies rules create 200 \
   --firewall-policy my-ngfw-policy \
   --direction INGRESS \
   --action deny \
-  --src-threat-intelligences iplist-known-malicious-ips \
+  --src-threat-intelligence iplist-known-malicious-ips \
   --layer4-configs tcp:0-65535 \
   --global-firewall-policy
 
@@ -114,21 +114,22 @@ For Enterprise tier with IPS enabled:
 
 ```bash
 # Create a security profile for intrusion prevention
-gcloud network-security security-profiles create my-ips-profile \
-  --type THREAT_PREVENTION \
+gcloud network-security security-profiles threat-prevention create my-ips-profile \
+  --organization ORGANIZATION_ID \
   --location global
 
 # Create a security profile group
 gcloud network-security security-profile-groups create my-security-group \
-  --threat-prevention-profile my-ips-profile \
-  --location global
+  --organization ORGANIZATION_ID \
+  --location global \
+  --threat-prevention-profile organizations/ORGANIZATION_ID/locations/global/securityProfiles/my-ips-profile
 
 # Create a firewall rule that uses the security profile for IPS
 gcloud compute network-firewall-policies rules create 300 \
   --firewall-policy my-ngfw-policy \
   --direction INGRESS \
   --action apply_security_profile_group \
-  --security-profile-group my-security-group \
+  --security-profile-group organizations/ORGANIZATION_ID/locations/global/securityProfileGroups/my-security-group \
   --layer4-configs tcp:80,tcp:443 \
   --global-firewall-policy
 ```
@@ -203,7 +204,7 @@ This defense-in-depth approach means that even if an attacker bypasses one layer
 
 ## Cost Considerations
 
-Cloud Armor Standard tier is included with the load balancer. Cloud Armor Managed Protection Plus costs $3,000/month. Cloud NGFW pricing depends on the tier - Essentials is free (basic firewall rules), Standard adds per-rule costs, and Enterprise (with IPS) charges based on traffic volume inspected.
+Cloud Armor Standard uses pay-as-you-go pricing for requests, policies, and rules. Cloud Armor Enterprise has Paygo and Annual pricing models. Cloud NGFW pricing depends on the features used: Essentials features are offered at no cost, Standard charges for traffic evaluated by rules that use Standard features, and Enterprise charges for firewall endpoints and traffic inspected by Enterprise features such as IPS.
 
 For most web applications, starting with Cloud Armor for edge protection and Cloud NGFW Essentials for internal segmentation covers the fundamentals without significant cost.
 
