@@ -17,7 +17,7 @@ This guide walks through setting up Cloud Build triggers with Terraform for a co
 Before starting, make sure you have:
 
 - Cloud Build API enabled
-- A source repository connected to Cloud Build (GitHub, Cloud Source Repositories, or Bitbucket)
+- A source repository connected to Cloud Build (GitHub, Bitbucket, or Cloud Source Repositories for existing CSR customers)
 - A service account for Terraform with appropriate permissions
 - A GCS bucket for Terraform state
 
@@ -54,8 +54,10 @@ locals {
     "roles/storage.admin",
     "roles/run.admin",
     "roles/logging.admin",
+    "roles/logging.logWriter",
     "roles/monitoring.admin",
     "roles/secretmanager.admin",
+    "roles/cloudbuild.builds.builder",
   ]
 }
 
@@ -74,11 +76,11 @@ resource "google_storage_bucket_iam_member" "terraform_state_access" {
   member = "serviceAccount:${google_service_account.terraform_builder.email}"
 }
 
-# Allow Cloud Build to use this service account
-resource "google_service_account_iam_member" "cloudbuild_sa_user" {
-  service_account_id = google_service_account.terraform_builder.name
-  role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:${var.project_number}@cloudbuild.gserviceaccount.com"
+# Allow trigger invocations to run builds with this service account
+resource "google_project_iam_member" "terraform_builder_act_as" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountUser"
+  member  = "serviceAccount:${google_service_account.terraform_builder.email}"
 }
 ```
 
@@ -161,7 +163,7 @@ resource "google_cloudbuild_trigger" "terraform_plan" {
 
     pull_request {
       branch          = "^main$"
-      comment_control = "COMMENTS_ENABLED"
+      comment_control = "COMMENTS_DISABLED"
     }
   }
 
@@ -367,11 +369,11 @@ Set up Pub/Sub notifications for build results:
 ```hcl
 # notifications.tf - Pub/Sub topic for build notifications
 resource "google_pubsub_topic" "build_notifications" {
-  name    = "cloud-build-notifications"
+  name    = "cloud-builds"
   project = var.project_id
 }
 
-# Cloud Build automatically publishes to this topic
+# Cloud Build publishes to this default topic when it exists
 # You can subscribe to it with Cloud Functions, email, or Slack integrations
 ```
 
@@ -381,11 +383,6 @@ resource "google_pubsub_topic" "build_notifications" {
 # variables.tf
 variable "project_id" {
   description = "GCP project ID"
-  type        = string
-}
-
-variable "project_number" {
-  description = "GCP project number"
   type        = string
 }
 
