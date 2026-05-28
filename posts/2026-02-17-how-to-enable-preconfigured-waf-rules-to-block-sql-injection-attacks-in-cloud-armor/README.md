@@ -25,12 +25,12 @@ For SQL injection, the rules look for patterns like:
 
 ## Available SQL Injection Rule Sets
 
-Cloud Armor provides several sensitivity levels for SQL injection detection:
+Cloud Armor provides stable and canary SQL injection rule sets, and each rule set can be configured with a sensitivity level:
 
 | Expression | Sensitivity | False Positive Risk |
 |-----------|------------|-------------------|
-| `sqli-v33-stable` | Stable, lower sensitivity | Lower |
-| `sqli-v33-canary` | Canary, includes newer rules | Higher |
+| `sqli-v33-stable` | Stable CRS 3.3 rule set | Depends on configured sensitivity |
+| `sqli-v33-canary` | Canary CRS 3.3 rule set | Depends on configured sensitivity |
 | Sensitivity level 1 | Most confident detections only | Lowest |
 | Sensitivity level 2 | More patterns detected | Low |
 | Sensitivity level 3 | Broad detection | Medium |
@@ -56,7 +56,7 @@ Start with preview mode to see what the rules would block without actually block
 # Enable SQL injection detection at sensitivity level 1 in preview mode
 gcloud compute security-policies rules create 1000 \
     --security-policy=waf-policy \
-    --expression="evaluatePreconfiguredExpr('sqli-v33-stable', ['owasp-crs-v030301-id942251-sqli','owasp-crs-v030301-id942420-sqli','owasp-crs-v030301-id942431-sqli','owasp-crs-v030301-id942460-sqli','owasp-crs-v030301-id942421-sqli','owasp-crs-v030301-id942432-sqli'])" \
+    --expression="evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})" \
     --action=deny-403 \
     --description="Block SQL injection - sensitivity level 1" \
     --preview \
@@ -69,7 +69,7 @@ A simpler approach is to enable the entire rule set.
 # Enable all SQL injection rules in preview mode
 gcloud compute security-policies rules create 1000 \
     --security-policy=waf-policy \
-    --expression="evaluatePreconfiguredExpr('sqli-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('sqli-v33-stable')" \
     --action=deny-403 \
     --description="Block SQL injection attacks - all rules" \
     --preview \
@@ -110,14 +110,14 @@ After monitoring in preview mode, you will likely find some false positives. You
 # Enable SQL injection rules but exclude specific rule IDs that cause false positives
 gcloud compute security-policies rules update 1000 \
     --security-policy=waf-policy \
-    --expression="evaluatePreconfiguredExpr('sqli-v33-stable', ['owasp-crs-v030301-id942432-sqli','owasp-crs-v030301-id942421-sqli'])" \
+    --expression="evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 4, 'opt_out_rule_ids': ['owasp-crs-v030301-id942432-sqli','owasp-crs-v030301-id942421-sqli']})" \
     --action=deny-403 \
     --description="Block SQLi - tuned to exclude false positives" \
     --preview \
     --project=my-project
 ```
 
-The excluded rule IDs in the second parameter are rules that will be skipped. This lets you keep most protections active while suppressing the ones that cause problems with your specific application.
+The rule IDs in `opt_out_rule_ids` are rules that will be skipped. This lets you keep most protections active while suppressing the ones that cause problems with your specific application.
 
 ### Common False Positive Scenarios
 
@@ -157,7 +157,7 @@ SQL injection is just one attack vector. Cloud Armor has preconfigured rules for
 # Block cross-site scripting (XSS) attacks
 gcloud compute security-policies rules create 2000 \
     --security-policy=waf-policy \
-    --expression="evaluatePreconfiguredExpr('xss-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('xss-v33-stable')" \
     --action=deny-403 \
     --description="Block XSS attacks" \
     --project=my-project
@@ -165,7 +165,7 @@ gcloud compute security-policies rules create 2000 \
 # Block local file inclusion (LFI) attacks
 gcloud compute security-policies rules create 3000 \
     --security-policy=waf-policy \
-    --expression="evaluatePreconfiguredExpr('lfi-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('lfi-v33-stable')" \
     --action=deny-403 \
     --description="Block LFI attacks" \
     --project=my-project
@@ -173,7 +173,7 @@ gcloud compute security-policies rules create 3000 \
 # Block remote file inclusion (RFI) attacks
 gcloud compute security-policies rules create 4000 \
     --security-policy=waf-policy \
-    --expression="evaluatePreconfiguredExpr('rfi-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('rfi-v33-stable')" \
     --action=deny-403 \
     --description="Block RFI attacks" \
     --project=my-project
@@ -181,7 +181,7 @@ gcloud compute security-policies rules create 4000 \
 # Block remote code execution (RCE) attacks
 gcloud compute security-policies rules create 5000 \
     --security-policy=waf-policy \
-    --expression="evaluatePreconfiguredExpr('rce-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('rce-v33-stable')" \
     --action=deny-403 \
     --description="Block RCE attacks" \
     --project=my-project
@@ -189,7 +189,7 @@ gcloud compute security-policies rules create 5000 \
 # Block protocol attacks
 gcloud compute security-policies rules create 6000 \
     --security-policy=waf-policy \
-    --expression="evaluatePreconfiguredExpr('protocolattack-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('protocolattack-v33-stable')" \
     --action=deny-403 \
     --description="Block protocol attacks" \
     --project=my-project
@@ -223,7 +223,7 @@ resource "google_compute_security_policy" "waf" {
     description = "Block SQL injection attacks"
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('sqli-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('sqli-v33-stable')"
       }
     }
   }
@@ -235,7 +235,7 @@ resource "google_compute_security_policy" "waf" {
     description = "Block XSS attacks"
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('xss-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('xss-v33-stable')"
       }
     }
   }
@@ -247,7 +247,7 @@ resource "google_compute_security_policy" "waf" {
     description = "Block LFI attacks"
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('lfi-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('lfi-v33-stable')"
       }
     }
   }
@@ -259,7 +259,7 @@ resource "google_compute_security_policy" "waf" {
     description = "Block RCE attacks"
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('rce-v33-stable')"
+        expression = "evaluatePreconfiguredWaf('rce-v33-stable')"
       }
     }
   }
