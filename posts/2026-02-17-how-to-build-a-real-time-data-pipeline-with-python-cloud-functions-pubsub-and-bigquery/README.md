@@ -37,12 +37,17 @@ gcloud pubsub topics create raw-events
 gcloud pubsub topics create raw-events-dlq
 
 # Create a BigQuery dataset
-bq mk --dataset --location=US my_project:analytics
+bq mk --dataset --location=US my-gcp-project:analytics
 
 # Create the destination table with a schema
 bq mk --table \
-    my_project:analytics.events \
+    my-gcp-project:analytics.events \
     event_id:STRING,event_type:STRING,user_id:STRING,timestamp:TIMESTAMP,properties:JSON,processed_at:TIMESTAMP
+
+# Create the error log table
+bq mk --table \
+    my-gcp-project:analytics.pipeline_errors \
+    raw_data:STRING,error_time:TIMESTAMP,message_id:STRING,attributes:JSON
 ```
 
 ## The Event Producer
@@ -112,6 +117,7 @@ import functions_framework
 import base64
 import json
 import logging
+import os
 from google.cloud import bigquery
 from datetime import datetime, timezone
 
@@ -124,7 +130,7 @@ bq_client = bigquery.Client()
 # Configuration
 DATASET = "analytics"
 TABLE = "events"
-PROJECT = "my-gcp-project"
+PROJECT = os.environ.get("GCP_PROJECT", "my-gcp-project")
 TABLE_ID = f"{PROJECT}.{DATASET}.{TABLE}"
 
 @functions_framework.cloud_event
@@ -203,61 +209,51 @@ def insert_into_bigquery(event):
 
     if errors:
         logger.error(f"BigQuery insert errors: {errors}")
-        # Raise to trigger a Pub/Sub retry
+        # Raise to trigger a retry when the function is deployed with --retry
         raise RuntimeError(f"Failed to insert event: {errors}")
 ```
 
 ## Batch Insert for Higher Throughput
 
-For high-volume pipelines, batch events together before inserting. This is more efficient than individual inserts.
+For high-volume pipelines, insert multiple events in one BigQuery request when a single invocation already has a batch of events. Do not rely on a global in-memory buffer in Cloud Functions; instances can be stopped at any time, and buffered messages can be lost after the triggering Pub/Sub message is acknowledged.
 
 ```python
-# batch_processor.py - Batch processing version
+# batch_processor.py - Batch insert helper
 import functions_framework
 import base64
 import json
 import logging
 from google.cloud import bigquery
-from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 bq_client = bigquery.Client()
-TABLE_ID = "my-project.analytics.events"
-
-# Buffer for batch inserts
-event_buffer = []
-BATCH_SIZE = 50
+TABLE_ID = "my-gcp-project.analytics.events"
 
 @functions_framework.cloud_event
 def process_event_batched(cloud_event):
-    """Buffer events and insert in batches for better throughput."""
+    """Process a Pub/Sub message that contains a JSON array of events."""
     message_data = base64.b64decode(cloud_event.data["message"]["data"])
-    event = json.loads(message_data)
+    events = json.loads(message_data)
 
-    transformed = transform_event(event)
-    event_buffer.append(transformed)
+    if not isinstance(events, list):
+        events = [events]
 
-    # Flush when buffer reaches batch size
-    if len(event_buffer) >= BATCH_SIZE:
-        flush_buffer()
+    transformed = [transform_event(event) for event in events]
+    insert_batch_into_bigquery(transformed)
 
-def flush_buffer():
-    """Insert all buffered events into BigQuery."""
-    global event_buffer
-    if not event_buffer:
+def insert_batch_into_bigquery(events):
+    """Insert multiple events into BigQuery in one request."""
+    if not events:
         return
 
-    batch = event_buffer.copy()
-    event_buffer = []
-
-    row_ids = [e["event_id"] for e in batch]
-    errors = bq_client.insert_rows_json(TABLE_ID, batch, row_ids=row_ids)
+    row_ids = [event["event_id"] for event in events]
+    errors = bq_client.insert_rows_json(TABLE_ID, events, row_ids=row_ids)
 
     if errors:
         logger.error(f"Batch insert errors ({len(errors)} failed): {errors}")
         raise RuntimeError(f"Failed to insert batch: {len(errors)} errors")
 
-    logger.info(f"Inserted batch of {len(batch)} events")
+    logger.info(f"Inserted batch of {len(events)} events")
 ```
 
 ## Deploying the Pipeline
@@ -277,12 +273,41 @@ gcloud functions deploy process-events \
     --timeout=60s \
     --max-instances=20 \
     --min-instances=1 \
+    --retry \
     --set-env-vars="GCP_PROJECT=my-gcp-project"
 ```
 
 ## Error Handling with Dead Letter Queue
 
-Set up a dead letter queue to capture events that fail repeatedly.
+Set up a dead letter queue to capture events that fail repeatedly. Pub/Sub dead-letter topics are configured on the subscription, so after deploying the function, update the Eventarc-created Pub/Sub subscription and grant Pub/Sub permission to publish to the dead-letter topic.
+
+```bash
+PROJECT_ID="my-gcp-project"
+REGION="us-central1"
+DLQ_TOPIC="raw-events-dlq"
+
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+PUBSUB_SERVICE_ACCOUNT="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+
+gcloud pubsub topics add-iam-policy-binding "$DLQ_TOPIC" \
+    --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+    --role="roles/pubsub.publisher"
+
+gcloud eventarc triggers list --location="$REGION"
+EVENTARC_TRIGGER="TRIGGER_NAME_FROM_LIST"
+
+SUBSCRIPTION_ID=$(gcloud eventarc triggers describe "$EVENTARC_TRIGGER" \
+    --location="$REGION" \
+    --format="value(transport.pubsub.subscription)")
+
+gcloud pubsub subscriptions add-iam-policy-binding "$SUBSCRIPTION_ID" \
+    --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+    --role="roles/pubsub.subscriber"
+
+gcloud pubsub subscriptions update "$SUBSCRIPTION_ID" \
+    --dead-letter-topic="$DLQ_TOPIC" \
+    --max-delivery-attempts=5
+```
 
 ```python
 # error_handler.py - Process events from the dead letter queue
@@ -314,7 +339,7 @@ def handle_dead_letter(cloud_event):
     }
 
     errors = bq_client.insert_rows_json(
-        "my-project.analytics.pipeline_errors",
+        "my-gcp-project.analytics.pipeline_errors",
         [error_record],
     )
 
@@ -338,7 +363,7 @@ query = """
         COUNT(*) as event_count,
         COUNT(DISTINCT user_id) as unique_users,
         AVG(TIMESTAMP_DIFF(processed_at, timestamp, MILLISECOND)) as avg_latency_ms
-    FROM `my-project.analytics.events`
+    FROM `my-gcp-project.analytics.events`
     WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
     GROUP BY event_type
     ORDER BY event_count DESC
