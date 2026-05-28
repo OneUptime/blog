@@ -10,11 +10,11 @@ Description: Learn how to use GCP Database Migration Service to migrate PostgreS
 
 AlloyDB is Google's PostgreSQL-compatible database that promises significantly better performance than standard PostgreSQL for transactional and analytical workloads. If you are running PostgreSQL on-premises, on another cloud, or even on Cloud SQL and want to move to AlloyDB, Database Migration Service (DMS) handles the migration with continuous replication.
 
-The migration uses PostgreSQL's native logical replication, streaming changes from your source database to AlloyDB until you are ready to cut over. In this post, I will cover the full migration process from a standard PostgreSQL instance to AlloyDB.
+The migration uses PostgreSQL logical replication through `pglogical`, streaming changes from your source database to AlloyDB until you are ready to cut over. In this post, I will cover the full migration process from a standard PostgreSQL instance to AlloyDB.
 
 ## How It Works
 
-DMS sets up logical replication between your source PostgreSQL and the target AlloyDB instance:
+DMS sets up `pglogical`-based logical replication between your source PostgreSQL and the target AlloyDB instance:
 
 ```mermaid
 flowchart LR
@@ -37,8 +37,9 @@ The phases are:
 
 ## Prerequisites
 
-- Source PostgreSQL 10, 11, 12, 13, 14, or 15
+- A supported source PostgreSQL version. DMS supports self-managed PostgreSQL 9.4 through 17, Amazon RDS PostgreSQL 9.6.10+ through 17, Amazon Aurora PostgreSQL 10.11+ through 17, and Cloud SQL for PostgreSQL 9.6 through 17.
 - Logical replication enabled on the source (`wal_level = logical`)
+- The `pglogical` package installed and loaded on the source
 - A replication user with appropriate privileges
 - Network connectivity between source and GCP
 - DMS and AlloyDB APIs enabled
@@ -57,8 +58,14 @@ gcloud services enable \
 Configure PostgreSQL for logical replication. Update `postgresql.conf`:
 
 ```ini
+# Required by Database Migration Service for PostgreSQL to AlloyDB
+shared_preload_libraries = 'pglogical'
+
 # Enable logical replication
 wal_level = logical
+
+# Disable timeouts for inactive replication connections
+wal_sender_timeout = 0
 
 # Allow enough replication slots (at least 1 per migration)
 max_replication_slots = 10
@@ -66,9 +73,8 @@ max_replication_slots = 10
 # Allow enough WAL senders
 max_wal_senders = 10
 
-# Keep WAL segments long enough for replication
-wal_keep_size = 1024  # PostgreSQL 13+
-# For older versions: wal_keep_segments = 64
+# Allow enough worker processes for pglogical
+max_worker_processes = 10
 ```
 
 Restart PostgreSQL after configuration changes.
@@ -79,14 +85,21 @@ Create a replication user and grant necessary permissions:
 -- Create a dedicated replication user
 CREATE USER dms_user WITH REPLICATION LOGIN PASSWORD 'strong_password';
 
+-- Install pglogical in every database that will be migrated
+CREATE EXTENSION IF NOT EXISTS pglogical;
+-- PostgreSQL 9.4 sources also require:
+-- CREATE EXTENSION IF NOT EXISTS pglogical_origin;
+
 -- Grant connect on the database
 GRANT CONNECT ON DATABASE mydb TO dms_user;
 
 -- Grant usage on schemas
 GRANT USAGE ON SCHEMA public TO dms_user;
+GRANT USAGE ON SCHEMA pglogical TO PUBLIC;
 
 -- Grant select on all tables (needed for initial snapshot)
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO dms_user;
+GRANT SELECT ON ALL TABLES IN SCHEMA pglogical TO dms_user;
 
 -- Grant select on sequences
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO dms_user;
@@ -94,16 +107,16 @@ GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO dms_user;
 -- For future tables
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO dms_user;
 
--- If using pglogical extension (alternative to native logical replication)
--- CREATE EXTENSION pglogical;
+-- For Amazon RDS sources, grant the rds_replication role instead of using ALTER USER WITH REPLICATION:
+-- GRANT rds_replication TO dms_user;
 ```
 
-Update `pg_hba.conf` to allow connections from GCP:
+Update `pg_hba.conf` to allow connections from the DMS connectivity source addresses:
 
 ```text
 # Allow DMS to connect for replication
-host    replication    dms_user    0.0.0.0/0    md5
-host    mydb           dms_user    0.0.0.0/0    md5
+host    replication    dms_user    DMS_OUTGOING_CIDR    md5
+host    mydb           dms_user    DMS_OUTGOING_CIDR    md5
 ```
 
 ## Step 2: Create the AlloyDB Cluster and Instance
@@ -144,15 +157,14 @@ Create connection profiles for both source and destination:
 
 ```bash
 # Source connection profile
-gcloud database-migration connection-profiles create pg-source \
+gcloud database-migration connection-profiles create postgresql pg-source \
   --region=us-central1 \
   --display-name="Source PostgreSQL" \
-  --provider=POSTGRESQL \
-  --postgresql-host=203.0.113.50 \
-  --postgresql-port=5432 \
-  --postgresql-username=dms_user \
-  --postgresql-password=strong_password \
-  --postgresql-database=mydb \
+  --host=203.0.113.50 \
+  --port=5432 \
+  --username=dms_user \
+  --password=strong_password \
+  --database=mydb \
   --project=PROJECT_ID
 ```
 
@@ -160,15 +172,14 @@ For an AWS RDS PostgreSQL source:
 
 ```bash
 # AWS RDS PostgreSQL source
-gcloud database-migration connection-profiles create rds-pg-source \
+gcloud database-migration connection-profiles create postgresql rds-pg-source \
   --region=us-central1 \
   --display-name="AWS RDS PostgreSQL Source" \
-  --provider=POSTGRESQL \
-  --postgresql-host=mydb.cluster-abc.us-east-1.rds.amazonaws.com \
-  --postgresql-port=5432 \
-  --postgresql-username=dms_user \
-  --postgresql-password=strong_password \
-  --postgresql-database=mydb \
+  --host=mydb.cluster-abc.us-east-1.rds.amazonaws.com \
+  --port=5432 \
+  --username=dms_user \
+  --password=strong_password \
+  --database=mydb \
   --project=PROJECT_ID
 ```
 
@@ -176,11 +187,10 @@ Create the destination connection profile for AlloyDB:
 
 ```bash
 # AlloyDB destination connection profile
-gcloud database-migration connection-profiles create alloydb-dest \
+gcloud database-migration connection-profiles create postgresql alloydb-dest \
   --region=us-central1 \
   --display-name="AlloyDB Destination" \
-  --provider=ALLOYDB \
-  --alloydb-cluster=migration-cluster \
+  --alloydb-cluster=projects/PROJECT_ID/locations/us-central1/clusters/migration-cluster \
   --project=PROJECT_ID
 ```
 
@@ -194,14 +204,20 @@ gcloud database-migration migration-jobs create pg-to-alloydb \
   --type=CONTINUOUS \
   --source=pg-source \
   --destination=alloydb-dest \
+  --databases-filter=mydb \
   --project=PROJECT_ID
 ```
 
-Verify and start:
+Verify the job, demote the existing AlloyDB destination so DMS can use it as a read replica during migration, and start:
 
 ```bash
 # Verify the migration configuration
 gcloud database-migration migration-jobs verify pg-to-alloydb \
+  --region=us-central1 \
+  --project=PROJECT_ID
+
+# Demote the destination before starting a migration to an existing AlloyDB cluster
+gcloud database-migration migration-jobs demote-destination pg-to-alloydb \
   --region=us-central1 \
   --project=PROJECT_ID
 
@@ -233,10 +249,10 @@ watch -n 30 "gcloud database-migration migration-jobs describe pg-to-alloydb \
   --project=PROJECT_ID"
 ```
 
-Monitor the replication lag to know when you are close to being able to cut over:
+Check the migration state and any errors:
 
 ```bash
-# Check detailed migration status including lag
+# Check detailed migration status
 gcloud database-migration migration-jobs describe pg-to-alloydb \
   --region=us-central1 \
   --format="yaml(state, phase, duration, error)" \
@@ -289,8 +305,8 @@ SELECT indexname, tablename FROM pg_indexes
 WHERE schemaname = 'public' ORDER BY tablename;
 
 -- Verify sequences
-SELECT sequence_name, last_value FROM information_schema.sequences
-WHERE sequence_schema = 'public';
+SELECT schemaname, sequencename, last_value FROM pg_sequences
+WHERE schemaname = 'public';
 ```
 
 ## Step 7: Perform the Cutover
@@ -319,13 +335,14 @@ AlloyDB has features that standard PostgreSQL does not. After migration, take ad
 
 ```sql
 -- AlloyDB columnar engine - accelerate analytical queries
--- Enable for specific tables
-ALTER TABLE large_analytics_table SET (
-  google_columnar_engine.enabled = true
+-- Add a table's columns to the column store after enabling the
+-- google_columnar_engine.enabled database flag on the AlloyDB instance.
+SELECT google_columnar_engine_add(
+  relation => 'large_analytics_table'
 );
 
 -- Check columnar engine status
-SELECT * FROM google_columnar_engine.managed_tables;
+SELECT * FROM g_columnar_relations;
 ```
 
 Other post-migration tasks:
@@ -343,8 +360,9 @@ gcloud alloydb instances create read-replica-1 \
 # Configure automated backups
 gcloud alloydb clusters update migration-cluster \
   --region=us-central1 \
-  --automated-backup-enabled \
+  --automated-backup-days-of-week=MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY,SATURDAY,SUNDAY \
   --automated-backup-start-times=02:00 \
+  --automated-backup-window=1h \
   --automated-backup-retention-count=7 \
   --project=PROJECT_ID
 ```
