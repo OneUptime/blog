@@ -14,7 +14,7 @@ In this guide, I will show you how to set up async document processing, handle t
 
 ## Why Async Processing?
 
-Single-image Vision API calls are synchronous - you send an image, wait a few seconds, and get the result. That works fine for one-off images, but PDFs can have hundreds of pages. Processing them synchronously would mean extremely long request times and potential timeouts.
+Single-image Vision API calls are synchronous - you send an image, wait a few seconds, and get the result. That works fine for one-off images, but PDFs can have hundreds of pages. Synchronous file annotation is intended for small batches, so large PDFs and TIFFs need the async API.
 
 The async batch annotation API works differently. You submit the document, the API processes it in the background, and writes the results to Cloud Storage as JSON files. Your code can then read those results when they are ready. This handles documents up to 2000 pages.
 
@@ -26,6 +26,9 @@ You need a Cloud Storage bucket to store both your input documents and the API o
 # Enable the Vision API
 
 gcloud services enable vision.googleapis.com
+
+# Set up Application Default Credentials for the Python client
+gcloud auth application-default login
 
 # Create buckets for input and output
 gsutil mb -l us-central1 gs://your-documents-bucket
@@ -98,8 +101,9 @@ extract_text_from_pdf(
 The API writes results as JSON files to your output bucket. Here is how to read them:
 
 ```python
-from google.cloud import storage, vision
 import json
+import re
+from google.cloud import storage
 
 def read_ocr_output(bucket_name, prefix):
     """Read OCR output JSON files from Cloud Storage."""
@@ -110,8 +114,12 @@ def read_ocr_output(bucket_name, prefix):
     blobs = list(bucket.list_blobs(prefix=prefix))
     blobs = [b for b in blobs if b.name.endswith(".json")]
 
-    # Sort by name to maintain page order
-    blobs.sort(key=lambda b: b.name)
+    # Sort by the first page number in names such as output-1-to-5.json
+    def output_start_page(blob):
+        match = re.search(r"output-(\d+)-to-\d+\.json$", blob.name)
+        return int(match.group(1)) if match else float("inf")
+
+    blobs.sort(key=output_start_page)
 
     all_text = []
 
@@ -229,7 +237,7 @@ def batch_process_documents(documents):
             )
         )
 
-    # Submit all documents at once (max 5 per batch call)
+    # Submit the documents in one call, keeping the request within Vision API limits
     operation = client.async_batch_annotate_files(requests=requests)
 
     print(f"Submitted {len(requests)} documents for processing...")
