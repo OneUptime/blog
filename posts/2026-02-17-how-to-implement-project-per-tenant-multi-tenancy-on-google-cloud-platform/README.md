@@ -8,7 +8,7 @@ Description: A practical guide to implementing the project-per-tenant multi-tena
 
 ---
 
-When building a SaaS application on Google Cloud Platform, one of the biggest architectural decisions you will make is how to isolate tenants from each other. The project-per-tenant model is the strongest isolation pattern available on GCP. Each tenant gets their own Google Cloud project, which means separate IAM boundaries, separate billing, and separate resource quotas.
+When building a SaaS application on Google Cloud Platform, one of the biggest architectural decisions you will make is how to isolate tenants from each other. The project-per-tenant model is the strongest isolation pattern available on GCP. Each tenant gets their own Google Cloud project, which means separate IAM boundaries, separate cost attribution in billing reports, and separate resource quotas.
 
 This approach works well for enterprise SaaS products where tenants demand strict data isolation, have compliance requirements, or are willing to pay a premium for dedicated infrastructure. Let me walk through how to actually implement this.
 
@@ -17,7 +17,7 @@ This approach works well for enterprise SaaS products where tenants demand stric
 Before diving into the implementation, let me explain why you would choose this pattern over alternatives. GCP projects are natural isolation boundaries. When each tenant has their own project:
 
 - IAM policies are completely separate, reducing the risk of cross-tenant access
-- Billing is naturally separated per tenant
+- Billing reports can be naturally separated per tenant project
 - Quotas and limits apply per project, so one noisy tenant cannot exhaust resources for others
 - Audit logs are isolated, simplifying compliance
 - You can apply different organization policies per tenant if needed
@@ -57,6 +57,11 @@ The core of this pattern is a Terraform module that creates everything a tenant 
 variable "tenant_id" {
   description = "Unique identifier for the tenant"
   type        = string
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{0,16}[a-z0-9]$", var.tenant_id)) && !can(regex("(google|ssl|null|undefined)", var.tenant_id))
+    error_message = "tenant_id must be 2-18 characters, start with a lowercase letter, contain only lowercase letters, numbers, and hyphens, and avoid restricted project ID strings."
+  }
 }
 
 variable "tenant_name" {
@@ -79,6 +84,43 @@ variable "region" {
   type        = string
   default     = "us-central1"
 }
+
+variable "tenant_cidr_block" {
+  description = "CIDR block for the tenant VPC subnet"
+  type        = string
+}
+
+variable "control_plane_vpc_id" {
+  description = "Self link or ID of the control plane VPC network"
+  type        = string
+}
+
+variable "tenant_status" {
+  description = "Lifecycle status for the tenant"
+  type        = string
+  default     = "active"
+}
+
+variable "archive_project_id" {
+  description = "Project that owns the long-term archive bucket"
+  type        = string
+}
+
+variable "archive_bucket_name" {
+  description = "Long-term archive bucket name"
+  type        = string
+}
+
+variable "tenant_project_ids" {
+  description = "Tenant project IDs to add to the central metrics scope"
+  type        = list(string)
+  default     = []
+}
+
+variable "monitoring_project_id" {
+  description = "Project ID of the central monitoring project"
+  type        = string
+}
 ```
 
 ```hcl
@@ -92,7 +134,7 @@ resource "google_project" "tenant" {
 
   labels = {
     tenant_id   = var.tenant_id
-    tenant_name = lower(replace(var.tenant_name, " ", "-"))
+    tenant_name = substr(replace(lower(var.tenant_name), "/[^a-z0-9_-]/", "-"), 0, 63)
     managed_by  = "terraform"
   }
 }
@@ -110,10 +152,29 @@ resource "google_project_service" "apis" {
     "secretmanager.googleapis.com",
     "monitoring.googleapis.com",
     "logging.googleapis.com",
+    "servicenetworking.googleapis.com",
   ])
 
   project = google_project.tenant.project_id
   service = each.value
+}
+
+# Reserve an IP range and create Private Services Access for Cloud SQL private IP.
+resource "google_compute_global_address" "private_services_range" {
+  name          = "tenant-${var.tenant_id}-private-services"
+  project       = google_project.tenant.project_id
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.tenant_vpc.id
+}
+
+resource "google_service_networking_connection" "private_vpc_connection" {
+  network                 = google_compute_network.tenant_vpc.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_services_range.name]
+
+  depends_on = [google_project_service.apis]
 }
 
 # Create a Cloud SQL instance for the tenant
@@ -133,11 +194,11 @@ resource "google_sql_database_instance" "tenant_db" {
 
     ip_configuration {
       ipv4_enabled    = false
-      private_network = var.vpc_network_id
+      private_network = google_compute_network.tenant_vpc.id
     }
   }
 
-  depends_on = [google_project_service.apis]
+  depends_on = [google_service_networking_connection.private_vpc_connection]
 }
 
 # Create a Cloud Storage bucket for tenant data
@@ -171,13 +232,13 @@ You do not want to manually run Terraform every time a new customer signs up. In
 # tenant_onboarding.py - Cloud Function triggered by new tenant signup
 import json
 import os
+import base64
 from google.cloud import pubsub_v1
-from google.cloud import secretmanager
 
 def onboard_tenant(event, context):
     """Triggered by a Pub/Sub message when a new tenant signs up."""
     # Decode the incoming message
-    tenant_data = json.loads(event["data"].decode("utf-8"))
+    tenant_data = json.loads(base64.b64decode(event["data"]).decode("utf-8"))
     tenant_id = tenant_data["tenant_id"]
     tenant_name = tenant_data["tenant_name"]
     tier = tenant_data.get("tier", "standard")
@@ -254,7 +315,7 @@ resource "google_storage_transfer_job" "tenant_archive" {
   transfer_spec {
     gcs_data_source {
       bucket_name = google_storage_bucket.tenant_data.name
-      path        = "/"
+      path        = ""
     }
     gcs_data_sink {
       bucket_name = var.archive_bucket_name
@@ -280,7 +341,7 @@ You need visibility into all tenant projects from a central location. Set up a m
 # Create a monitoring scope that includes all tenant projects
 resource "google_monitoring_monitored_project" "tenant" {
   for_each      = toset(var.tenant_project_ids)
-  metrics_scope = "projects/${var.monitoring_project_id}"
+  metrics_scope = "locations/global/metricsScopes/${var.monitoring_project_id}"
   name          = each.value
 }
 ```
