@@ -8,7 +8,7 @@ Description: Learn how to deploy a serverless web application on GCP using Cloud
 
 ---
 
-Building a web application on GCP used to mean provisioning VMs, setting up load balancers, configuring autoscaling groups, and managing SSL certificates. With Cloud Run, Firebase Hosting, and Cloud CDN, you can deploy a production-ready web application without managing any servers. Your backend runs on Cloud Run, your static frontend is served through Firebase Hosting, and Cloud CDN caches everything at the edge for fast global delivery.
+Building a web application on GCP used to mean provisioning VMs, setting up load balancers, configuring autoscaling groups, and managing SSL certificates. With Cloud Run and Firebase Hosting, you can deploy a production-ready web application without managing any servers. Your backend runs on Cloud Run, your static frontend is served through Firebase Hosting's global CDN, and you can add Cloud CDN explicitly when you front Cloud Run with an external Application Load Balancer.
 
 This post walks through the complete setup, from deploying your backend API to connecting the frontend and configuring CDN caching.
 
@@ -16,14 +16,15 @@ This post walks through the complete setup, from deploying your backend API to c
 
 ```mermaid
 graph LR
-    A[Users] --> B[Cloud CDN]
-    B --> C[Firebase Hosting]
-    C --> D[Static Assets - HTML/CSS/JS]
-    C --> E[Cloud Run - API Backend]
-    E --> F[Cloud SQL / Firestore]
+    A[Users] --> B[Firebase Hosting global CDN]
+    B --> C[Static Assets - HTML/CSS/JS]
+    B --> D[Cloud Run - API Backend]
+    A --> E[Optional external Application Load Balancer + Cloud CDN]
+    E --> D
+    D --> F[Cloud SQL / Firestore]
 ```
 
-Firebase Hosting serves your static frontend assets (HTML, CSS, JavaScript) and proxies API requests to your Cloud Run backend. Cloud CDN sits in front of everything, caching static assets at edge locations worldwide. This means your users get fast page loads regardless of their location, and your backend only handles actual API requests.
+Firebase Hosting serves your static frontend assets (HTML, CSS, JavaScript) from Google's global CDN and proxies API requests to your Cloud Run backend. If you need Cloud CDN controls for the Cloud Run backend itself, you can put an external Application Load Balancer with a serverless NEG in front of the service and enable Cloud CDN on that backend service. This means your users get fast page loads regardless of their location, and your backend only handles actual API requests.
 
 ## Step 1: Build and Deploy the Backend on Cloud Run
 
@@ -266,7 +267,7 @@ firebase deploy --only hosting
 
 ## Step 5: Configure Cloud CDN
 
-Firebase Hosting uses Cloud CDN by default for static assets. But if you want more control over CDN behavior, or if you are using a custom domain with a load balancer, set up Cloud CDN explicitly:
+Firebase Hosting already serves static assets from a global CDN. But if you want Cloud CDN controls for Cloud Run responses, or if you are using a custom domain with an external Application Load Balancer, set up Cloud CDN explicitly:
 
 ```bash
 # Create a serverless NEG for Cloud Run
@@ -279,7 +280,7 @@ gcloud compute network-endpoint-groups create web-api-neg \
 # Create a backend service with CDN enabled
 gcloud compute backend-services create web-api-backend \
   --global \
-  --load-balancing-scheme=EXTERNAL \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
   --project=my-project
 
 gcloud compute backend-services add-backend web-api-backend \
@@ -294,6 +295,28 @@ gcloud compute backend-services update web-api-backend \
   --enable-cdn \
   --cache-mode=USE_ORIGIN_HEADERS \
   --project=my-project
+
+# Create the load balancer frontend
+gcloud compute url-maps create web-api-url-map \
+  --default-service=web-api-backend \
+  --project=my-project
+
+gcloud compute target-http-proxies create web-api-http-proxy \
+  --url-map=web-api-url-map \
+  --project=my-project
+
+gcloud compute addresses create web-api-ip \
+  --global \
+  --project=my-project
+
+gcloud compute forwarding-rules create web-api-http-rule \
+  --global \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
+  --network-tier=PREMIUM \
+  --address=web-api-ip \
+  --target-http-proxy=web-api-http-proxy \
+  --ports=80 \
+  --project=my-project
 ```
 
 The `USE_ORIGIN_HEADERS` cache mode means Cloud CDN respects the Cache-Control headers set by your Cloud Run service. This gives you fine-grained control over what gets cached and for how long.
@@ -303,8 +326,7 @@ The `USE_ORIGIN_HEADERS` cache mode means Cloud CDN respects the Cache-Control h
 Connect a custom domain to Firebase Hosting:
 
 ```bash
-# Add a custom domain
-firebase hosting:channel:deploy production
+# List Hosting sites if you need to confirm your site ID
 firebase hosting:sites:list
 ```
 
@@ -316,13 +338,12 @@ Set up monitoring for the full stack:
 
 ```bash
 # Create an uptime check for the frontend
-gcloud monitoring uptime create \
-  --display-name="Web App Frontend" \
-  --monitored-resource-type="uptime-url" \
-  --hostname="my-project.web.app" \
+gcloud monitoring uptime create "Web App Frontend" \
+  --resource-type=uptime-url \
+  --resource-labels=host=my-project.web.app,project_id=my-project \
   --path="/" \
   --port=443 \
-  --protocol=HTTPS \
+  --protocol=https \
   --project=my-project
 
 # Monitor Cloud Run backend metrics via the console
@@ -334,4 +355,4 @@ gcloud run services describe web-api \
 
 ## Summary
 
-The combination of Cloud Run, Firebase Hosting, and Cloud CDN gives you a serverless web application architecture that scales automatically, serves content fast globally, and costs nothing when idle. Firebase Hosting handles static assets and proxies API requests to Cloud Run. Cloud CDN caches responses at the edge. You get SSL, custom domains, and automatic scaling without managing a single server. Deploy your frontend to Firebase, your backend to Cloud Run, and let the platform handle the rest.
+The combination of Cloud Run, Firebase Hosting, and optional Cloud CDN gives you a serverless web application architecture that scales automatically, serves content fast globally, and costs nothing when idle. Firebase Hosting handles static assets and proxies API requests to Cloud Run. Cloud CDN can cache Cloud Run responses at the edge when you put the service behind an external Application Load Balancer. You get SSL, custom domains, and automatic scaling without managing a single server. Deploy your frontend to Firebase, your backend to Cloud Run, and let the platform handle the rest.
