@@ -8,7 +8,7 @@ Description: Learn how to build scalable real-time leaderboards in Firestore usi
 
 ---
 
-Building a leaderboard sounds simple until you actually try to do it at scale. A naive approach - read a player's score, update it, re-rank everyone - falls apart fast when thousands of players are updating their scores simultaneously. Firestore's document-level write throughput limit of about 1 write per second per document means a single "global scores" document is out of the question. You need a smarter architecture.
+Building a leaderboard sounds simple until you actually try to do it at scale. A naive approach - read a player's score, update it, re-rank everyone - falls apart fast when thousands of players are updating their scores simultaneously. Firestore cannot update a single document at an unlimited rate, and the exact maximum update rate depends on your workload, so a single "global scores" document is out of the question. You need a smarter architecture.
 
 This post walks through building a real-time leaderboard in Firestore that can handle high concurrency, provides instant ranking, and updates in real-time for connected clients.
 
@@ -87,6 +87,8 @@ If you have a global metric that many players update simultaneously (like a team
 
 ```javascript
 // Create a distributed counter with N shards
+const { collection, doc, getDocs, increment, updateDoc, writeBatch } = require('firebase/firestore');
+
 const NUM_SHARDS = 10;
 
 async function initializeDistributedCounter(counterId) {
@@ -102,7 +104,7 @@ async function initializeDistributedCounter(counterId) {
 }
 
 // Increment the distributed counter by picking a random shard
-// This spreads writes across shards, allowing N concurrent writes/sec
+// This spreads writes across shards, increasing write throughput roughly linearly
 async function incrementDistributedCounter(counterId, amount) {
   // Pick a random shard to distribute the write load
   const shardId = String(Math.floor(Math.random() * NUM_SHARDS));
@@ -128,7 +130,7 @@ async function getDistributedCounterTotal(counterId) {
 }
 ```
 
-With 10 shards, this counter supports roughly 10 concurrent writes per second instead of 1.
+With 10 shards, this counter can handle roughly 10x as many writes as a traditional single-document counter.
 
 ## Querying the Leaderboard
 
@@ -219,7 +221,7 @@ Getting a player's absolute rank (like "you are ranked 4,523 out of 100,000") is
 
 ```javascript
 // Find a player's rank by counting how many players have a higher score
-const { collection, query, where, getCountFromServer } = require('firebase/firestore');
+const { collection, doc, getCountFromServer, getDoc, query, where } = require('firebase/firestore');
 
 async function getPlayerRank(playerId) {
   // First, get the player's current score
@@ -253,41 +255,54 @@ For leaderboards with millions of players, you can maintain rank buckets that gi
 ```javascript
 // Periodically update rank buckets using a Cloud Function
 // This runs on a schedule (e.g., every 5 minutes) to keep rankings fresh
-const functions = require('firebase-functions');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
+admin.initializeApp();
 
-exports.updateRankBuckets = functions.pubsub
-  .schedule('every 5 minutes')
-  .onRun(async () => {
-    const db = admin.firestore();
+exports.updateRankBuckets = onSchedule('every 5 minutes', async (event) => {
+  const db = admin.firestore();
 
-    // Define score thresholds for rank tiers
-    const tiers = [
-      { name: 'top-10', minRank: 1, maxRank: 10 },
-      { name: 'top-100', minRank: 11, maxRank: 100 },
-      { name: 'top-1000', minRank: 101, maxRank: 1000 },
-      { name: 'top-10000', minRank: 1001, maxRank: 10000 },
-    ];
+  // Define score thresholds for rank tiers
+  const tiers = [
+    { name: 'top-10', minRank: 1, maxRank: 10 },
+    { name: 'top-100', minRank: 11, maxRank: 100 },
+    { name: 'top-1000', minRank: 101, maxRank: 1000 },
+    { name: 'top-10000', minRank: 1001, maxRank: 10000 },
+  ];
 
-    // Get the score at each rank boundary
-    for (const tier of tiers) {
-      const snapshot = await db.collection('players')
-        .orderBy('score', 'desc')
-        .offset(tier.maxRank - 1)
-        .limit(1)
-        .get();
+  let lastDoc = null;
+  let playersSeen = 0;
 
-      if (!snapshot.empty) {
-        const boundaryScore = snapshot.docs[0].data().score;
+  // Get the score at each rank boundary using cursors instead of offsets
+  for (const tier of tiers) {
+    const playersToRead = tier.maxRank - playersSeen;
+    let playersQuery = db.collection('players')
+      .orderBy('score', 'desc')
+      .limit(playersToRead);
 
-        // Store the boundary score for this tier
-        await db.collection('leaderboard_tiers').doc(tier.name).set({
-          minScore: boundaryScore,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-      }
+    if (lastDoc) {
+      playersQuery = playersQuery.startAfter(lastDoc);
     }
-  });
+
+    const snapshot = await playersQuery.get();
+    if (snapshot.empty) {
+      break;
+    }
+
+    playersSeen += snapshot.size;
+    lastDoc = snapshot.docs[snapshot.docs.length - 1];
+
+    if (playersSeen >= tier.maxRank) {
+      const boundaryScore = lastDoc.data().score;
+
+      // Store the boundary score for this tier
+      await db.collection('leaderboard_tiers').doc(tier.name).set({
+        minScore: boundaryScore,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    }
+  }
+});
 ```
 
 ## Paginated Leaderboard
@@ -348,25 +363,47 @@ if (result.hasMore) {
 
 You want players to be able to update their own scores (within bounds) but not tamper with other players' scores:
 
-```javascript
+```firestore
 // Firestore security rules for the leaderboard
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /players/{playerId} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == playerId;
+      }
+
+      function validCreate() {
+        return request.resource.data.keys().hasOnly([
+            'displayName', 'score', 'gamesPlayed', 'lastActive', 'rankBucket'
+          ])
+          && request.resource.data.displayName is string
+          && request.resource.data.score == 0
+          && request.resource.data.gamesPlayed == 0
+          && request.resource.data.lastActive == request.time
+          && request.resource.data.rankBucket == 'unranked';
+      }
+
+      function validScoreUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['score', 'gamesPlayed', 'lastActive'])
+          && request.resource.data.score is int
+          && request.resource.data.gamesPlayed is int
+          && request.resource.data.score >= resource.data.score
+          && request.resource.data.score <= resource.data.score + 1000
+          && request.resource.data.gamesPlayed == resource.data.gamesPlayed + 1
+          && request.resource.data.lastActive == request.time;
+      }
+
       // Anyone can read the leaderboard
       allow read: if true;
 
       // Players can only update their own document
       // and only the allowed fields
-      allow update: if request.auth != null
-        && request.auth.uid == playerId
-        && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['score', 'gamesPlayed', 'lastActive']);
+      allow update: if isOwner() && validScoreUpdate();
 
       // Only authenticated users can create their own player doc
-      allow create: if request.auth != null
-        && request.auth.uid == playerId;
+      allow create: if isOwner() && validCreate();
     }
   }
 }
