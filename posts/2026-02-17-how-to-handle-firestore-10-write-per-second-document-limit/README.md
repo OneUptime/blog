@@ -1,4 +1,4 @@
-# How to Handle Firestore 10-Write-Per-Second Document Limit
+# How to Handle Firestore Single-Document Write Limits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,18 +8,18 @@ Description: Practical strategies for working around Firestore's per-document wr
 
 ---
 
-Firestore is built for scale, but it has a fundamental constraint that catches developers off guard: a single document can only sustain about one write per second on average. Push beyond that, and you will start seeing contention errors, increased latency, and failed writes. Google's documentation mentions a soft limit of 1 write per second per document, though short bursts can go higher.
+Firestore is built for scale, but it has a fundamental constraint that catches developers off guard: a single document cannot be updated at an unlimited rate. Push a hot document hard enough, and you will start seeing contention errors, increased latency, and failed writes. Google's documentation says the exact maximum update rate depends on the workload, including the write rate, contention among requests, and affected indexes.
 
-This limit exists because Firestore distributes data across nodes using document paths, and a single document lives on a single node. If every write hits the same node, that node becomes a bottleneck. Let me show you how to design around this constraint.
+This limit exists because a write to a document must update the document and its index entries atomically, then synchronously commit across a quorum of replicas. If every write targets the same document, that document becomes a contention point. Let me show you how to design around this constraint.
 
 ## Understanding the Limit
 
-The limit applies per document, not per collection. You can write to 10,000 different documents in a collection simultaneously with no problem. The issue is when many writes target the same document - a counter, a shared config, a leaderboard entry.
+The limit applies per document, not per collection. You can write to many different documents in a collection concurrently, as long as your data model avoids other hotspots such as sequentially indexed fields. The issue is when many writes target the same document - a counter, a shared config, a leaderboard entry.
 
 ```mermaid
 graph TD
     subgraph "Problem: Single Document Bottleneck"
-        A[Client 1] -->|Write| D[Document X<br/>1 write/sec limit]
+        A[Client 1] -->|Write| D[Document X<br/>hot document]
         B[Client 2] -->|Write| D
         C[Client 3] -->|Write| D
         E[Client N] -->|Write| D
@@ -39,10 +39,10 @@ The most common pattern for high-write counters. Instead of one document with a 
 
 ```javascript
 // Distributed counter: spread writes across N shard documents
-// Each shard handles 1 write/sec, so N shards handle N writes/sec
+// More shards allow a higher aggregate write rate
 import { doc, updateDoc, increment, collection, getDocs } from 'firebase/firestore';
 
-const NUM_SHARDS = 50;  // Supports ~50 writes/sec
+const NUM_SHARDS = 50;
 
 async function incrementPageViews(pageId) {
   // Pick a random shard to distribute the write load
@@ -75,6 +75,8 @@ Instead of writing to Firestore on every event, batch events on the client and w
 ```javascript
 // Batch events client-side and write them in bulk
 // Instead of 100 individual writes, send 1 write with 100 events
+import { collection, doc, setDoc } from 'firebase/firestore';
+
 class EventBatcher {
   constructor(db, collectionPath, flushInterval = 5000) {
     this.db = db;
@@ -175,7 +177,7 @@ For simple counters, `FieldValue.increment()` is better than a read-then-write a
 
 ```javascript
 // FieldValue.increment is atomic and handles contention better than transactions
-// It still has the 1 write/sec limit, but it is more resilient to burst traffic
+// It still targets the same document, but it is more resilient to burst traffic
 import { doc, updateDoc, increment } from 'firebase/firestore';
 
 // Simple increment without reading first
@@ -242,7 +244,7 @@ For extremely high write rates, put a Pub/Sub topic in front of Firestore. Your 
 
 ```javascript
 // Publisher: send events to Pub/Sub instead of directly to Firestore
-// Pub/Sub can handle millions of messages per second
+// Pub/Sub can handle very high throughput, subject to project and regional quotas
 const { PubSub } = require('@google-cloud/pubsub');
 const pubsub = new PubSub();
 
@@ -252,14 +254,15 @@ async function publishEvent(event) {
   await topic.publishMessage({ data });
 }
 
-// Subscriber Cloud Function: write to Firestore at a controlled rate
-exports.processAnalyticsEvent = functions.pubsub
+// Subscriber Cloud Function: write to Firestore with a maximum instance cap
+exports.processAnalyticsEvent = functions
+  .runWith({ maxInstances: 10 })
+  .pubsub
   .topic('analytics-events')
   .onPublish(async (message) => {
     const event = JSON.parse(Buffer.from(message.data, 'base64').toString());
 
-    // Write to Firestore - Cloud Functions has built-in rate limiting
-    // through concurrency settings
+    // Write to Firestore; tune maxInstances and your data model to control load
     await db.collection('analytics').add({
       ...event,
       processedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -291,7 +294,7 @@ Keep an eye on your write patterns using Cloud Monitoring.
 
 # Look at the Key Visualizer in the Firebase Console
 # Or query Cloud Monitoring for write rate metrics
-gcloud monitoring metrics list --filter="metric.type=firestore.googleapis.com/document/write_count"
+gcloud monitoring metrics list --filter='metric.type = starts_with("firestore.googleapis.com/document/write")'
 ```
 
 The Firestore Usage tab in the Firebase Console also shows you read/write/delete counts over time, which helps you spot documents that are getting hammered.
