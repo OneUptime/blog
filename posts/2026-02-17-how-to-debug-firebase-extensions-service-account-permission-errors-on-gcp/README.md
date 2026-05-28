@@ -12,15 +12,21 @@ Firebase Extensions are supposed to make life easier. Install one, configure a f
 
 ## Understanding How Extensions Use Service Accounts
 
-Before diving into fixes, it helps to understand the underlying mechanics. Every Firebase Extension runs as a Cloud Function, and every Cloud Function runs under a service account. When you install an extension, Firebase creates (or uses) a service account and assigns it the IAM roles the extension needs.
+Before diving into fixes, it helps to understand the underlying mechanics. A Firebase Extension's application logic runs as Cloud Functions, and those functions run under a service account. When you install an extension, Firebase creates a service account for that extension instance and assigns it the IAM roles the extension needs.
 
-The default service account for Cloud Functions is typically:
+The default service account for Cloud Functions depends on the function generation:
+
+```text
+PROJECT_NUMBER-compute@developer.gserviceaccount.com
+```
+
+for 2nd gen functions, and:
 
 ```text
 PROJECT_ID@appspot.gserviceaccount.com
 ```
 
-Some extensions create their own dedicated service account with a naming pattern like:
+for 1st gen functions. Firebase Extensions create their own dedicated service account for each installed instance, with a naming pattern like:
 
 ```text
 ext-EXTENSION_INSTANCE_ID@PROJECT_ID.iam.gserviceaccount.com
@@ -43,10 +49,9 @@ The service account does not have permission to create resources.
 
 The installation process itself requires elevated permissions. The account running the install (usually your user account or a CI/CD service account) needs the following roles:
 
-- Firebase Extensions Admin
-- Cloud Functions Developer
-- Service Account User
-- IAM Service Account Admin (if the extension creates its own SA)
+- Owner
+- Editor
+- Firebase Admin
 
 ### Error: Runtime Permission Denied
 
@@ -103,7 +108,7 @@ This command shows all IAM bindings for your project, filtered to the extension'
 gcloud projects get-iam-policy YOUR_PROJECT_ID \
   --flatten="bindings[].members" \
   --format="table(bindings.role)" \
-  --filter="bindings.members:ext-YOUR_EXTENSION@YOUR_PROJECT.iam.gserviceaccount.com"
+  --filter="bindings.members:serviceAccount:ext-YOUR_EXTENSION@YOUR_PROJECT.iam.gserviceaccount.com"
 ```
 
 ## Step 3 - Compare Against Required Roles
@@ -113,17 +118,19 @@ Each extension declares the roles it needs in its `extension.yaml` file. You can
 For example, the Firestore BigQuery Export extension needs:
 
 - `roles/bigquery.dataEditor` - to write to BigQuery
-- `roles/datastore.user` - to read from Firestore
+- `roles/bigquery.user` - to create and manage BigQuery views
+- `roles/datastore.user` - to access Firestore
 
 The Resize Images extension typically needs:
 
 - `roles/storage.admin` - to read and write to Cloud Storage
+- `roles/aiplatform.user` - to use Gemini models if AI content filtering is enabled
 
-Compare the required roles against what the service account actually has from the previous step. Any missing roles are your culprit.
+Compare the required roles against what the service account actually has from the previous step. Any missing declared roles are your culprit.
 
 ## Step 4 - Grant Missing Permissions
 
-Once you identify the gap, grant the missing roles.
+Once you identify the gap, restore the missing roles declared by the extension. Firebase assigns these roles at installation, so avoid adding unrelated roles that the extension does not declare unless the extension's documentation explicitly tells you to.
 
 This command adds a specific IAM role to the extension's service account:
 
@@ -181,15 +188,19 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 Sometimes the error messages from the Firebase CLI are not specific enough. The actual Cloud Functions logs give you more detail.
 
-This command tails the logs for your extension's Cloud Function:
+This command reads recent logs for one of your extension's Cloud Functions. Functions created by extensions use the `ext-EXTENSION_INSTANCE_ID-FUNCTION_NAME` naming pattern:
 
 ```bash
-# View logs for the extension's functions
+# View logs for an extension function
 gcloud functions logs read \
-  --filter="labels.firebase-extensions-instance=YOUR_EXTENSION_INSTANCE" \
+  ext-YOUR_EXTENSION_INSTANCE-FUNCTION_NAME \
+  --region YOUR_REGION \
+  --gen2 \
   --limit=50 \
   --project YOUR_PROJECT_ID
 ```
+
+For 1st gen extension functions, omit `--gen2`.
 
 You can also view these in the GCP Console under Cloud Functions, then select the function and check its Logs tab.
 
@@ -198,8 +209,9 @@ You can also view these in the GCP Console under Cloud Functions, then select th
 In enterprise GCP environments, organization policies can block certain operations regardless of IAM roles. Common constraints that affect extensions include:
 
 - `constraints/iam.disableServiceAccountCreation` - blocks creating new SAs
-- `constraints/cloudfunctions.allowedIngressSettings` - restricts function ingress
-- `constraints/compute.trustedImageProjects` - can affect function deployment
+- `constraints/cloudfunctions.allowedIngressSettings` - restricts ingress for 1st gen functions
+- `constraints/run.allowedIngress` - restricts ingress for 2nd gen functions
+- `constraints/gcp.resourceLocations` - restricts where supported resources can be created
 
 Check if any org policies are in play:
 
@@ -222,7 +234,7 @@ firebase ext:uninstall YOUR_EXTENSION_INSTANCE --project YOUR_PROJECT_ID
 firebase ext:install PUBLISHER/EXTENSION_NAME --project YOUR_PROJECT_ID
 ```
 
-Be aware that uninstalling does not delete data created by the extension (like BigQuery datasets or Firestore collections), but it does remove the Cloud Functions and potentially the service account.
+Be aware that uninstalling does not delete data created by the extension (like BigQuery datasets or Firestore collections), but it does remove the Cloud Functions and the service account created for that extension instance.
 
 ## Prevention Tips
 
