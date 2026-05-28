@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud DLP, Data Classification, Data Security, Sensitive Data
 
-Description: Build automated data classification pipelines using Google Cloud DLP to scan, classify, and tag sensitive data across BigQuery, Cloud Storage, and Datastore.
+Description: Build automated data classification pipelines using Google Cloud DLP to scan, classify, and tag sensitive data across BigQuery and Cloud Storage.
 
 ---
 
@@ -20,12 +20,10 @@ graph TB
     B --> C[Cloud DLP API]
     C --> D[Scan BigQuery Tables]
     C --> E[Scan GCS Buckets]
-    C --> F[Scan Datastore Kinds]
     D --> G[DLP Job Results]
     E --> G
-    F --> G
     G --> H[Cloud Function: Processor]
-    H --> I[Data Catalog Tags]
+    H --> I[Resource Labels]
     H --> J[BigQuery Findings]
     H --> K[Pub/Sub Alerts]
     K --> L[Slack / Email / PagerDuty]
@@ -100,7 +98,7 @@ def orchestrate_scan(event, context):
         info_types=get_all_infotypes(),
         # Set minimum likelihood to reduce false positives
         min_likelihood=dlp.Likelihood.LIKELY,
-        # Include up to 100 findings per info type
+        # Cap returned findings to keep job output manageable
         limits=dlp.InspectConfig.FindingLimits(
             max_findings_per_item=100,
             max_findings_per_request=1000,
@@ -116,7 +114,7 @@ def orchestrate_scan(event, context):
     scan_gcs_buckets(dlp_client, parent, project_id, inspect_config)
 
 def scan_bigquery_datasets(dlp_client, parent, project_id, inspect_config):
-    """Create DLP jobs for each BigQuery dataset"""
+    """Create DLP jobs for each BigQuery table"""
     bq_client = bigquery.Client(project=project_id)
 
     for dataset in bq_client.list_datasets():
@@ -126,51 +124,57 @@ def scan_bigquery_datasets(dlp_client, parent, project_id, inspect_config):
         if dataset_id.startswith("staging_") or dataset_id == "dlp_results":
             continue
 
-        # Configure the BigQuery scanning job
-        storage_config = dlp.StorageConfig(
-            big_query_options=dlp.BigQueryOptions(
-                table_reference=dlp.BigQueryTable(
-                    project_id=project_id,
-                    dataset_id=dataset_id,
-                ),
-                # Sample a percentage of rows for large tables
-                rows_limit_percent=10,
-                sample_method=dlp.BigQueryOptions.SampleMethod.RANDOM_START,
-            ),
-        )
+        for table_item in bq_client.list_tables(dataset.reference):
+            table = bq_client.get_table(table_item.reference)
+            if table.table_type != "TABLE":
+                continue
 
-        # Set up actions to perform when findings are detected
-        actions = [
-            dlp.Action(
-                pub_sub=dlp.Action.PublishToPubSub(
-                    topic=f"projects/{project_id}/topics/dlp-findings"
-                )
-            ),
-            dlp.Action(
-                save_findings=dlp.Action.SaveFindings(
-                    output_config=dlp.OutputStorageConfig(
-                        table=dlp.BigQueryTable(
-                            project_id=project_id,
-                            dataset_id="dlp_results",
-                            table_id="findings",
+            # Configure the BigQuery scanning job
+            storage_config = dlp.StorageConfig(
+                big_query_options=dlp.BigQueryOptions(
+                    table_reference=dlp.BigQueryTable(
+                        project_id=project_id,
+                        dataset_id=dataset_id,
+                        table_id=table.table_id,
+                    ),
+                    # Sample a percentage of rows for large tables
+                    rows_limit_percent=10,
+                    sample_method=dlp.BigQueryOptions.SampleMethod.RANDOM_START,
+                ),
+            )
+
+            # Set up actions to perform when findings are detected
+            actions = [
+                dlp.Action(
+                    pub_sub=dlp.Action.PublishToPubSub(
+                        topic=f"projects/{project_id}/topics/dlp-findings"
+                    )
+                ),
+                dlp.Action(
+                    save_findings=dlp.Action.SaveFindings(
+                        output_config=dlp.OutputStorageConfig(
+                            table=dlp.BigQueryTable(
+                                project_id=project_id,
+                                dataset_id="dlp_results",
+                                table_id="findings",
+                            )
                         )
                     )
-                )
-            ),
-        ]
-
-        # Create the DLP inspection job
-        job = dlp_client.create_dlp_job(
-            request={
-                "parent": parent,
-                "inspect_job": dlp.InspectJobConfig(
-                    inspect_config=inspect_config,
-                    storage_config=storage_config,
-                    actions=actions,
                 ),
-            }
-        )
-        print(f"Started DLP job for {dataset_id}: {job.name}")
+            ]
+
+            # Create the DLP inspection job
+            job = dlp_client.create_dlp_job(
+                request={
+                    "parent": parent,
+                    "inspect_job": dlp.InspectJobConfig(
+                        inspect_config=inspect_config,
+                        storage_config=storage_config,
+                        actions=actions,
+                    ),
+                }
+            )
+            print(f"Started DLP job for {dataset_id}.{table.table_id}: {job.name}")
 ```
 
 ## Scanning Cloud Storage Buckets
@@ -178,6 +182,8 @@ def scan_bigquery_datasets(dlp_client, parent, project_id, inspect_config):
 For GCS, you can target specific buckets or scan everything:
 
 ```python
+from datetime import datetime, timedelta, timezone
+
 def scan_gcs_buckets(dlp_client, parent, project_id, inspect_config):
     """Create DLP scan jobs for Cloud Storage buckets"""
     storage_client = storage.Client(project=project_id)
@@ -199,8 +205,6 @@ def scan_gcs_buckets(dlp_client, parent, project_id, inspect_config):
                 # Only scan text-based files
                 file_types=[
                     dlp.FileType.TEXT_FILE,
-                    dlp.FileType.CSV,
-                    dlp.FileType.JSON,
                     dlp.FileType.PDF,
                 ],
                 # Limit bytes scanned per file to control costs
@@ -216,6 +220,17 @@ def scan_gcs_buckets(dlp_client, parent, project_id, inspect_config):
                     topic=f"projects/{project_id}/topics/dlp-findings"
                 )
             ),
+            dlp.Action(
+                save_findings=dlp.Action.SaveFindings(
+                    output_config=dlp.OutputStorageConfig(
+                        table=dlp.BigQueryTable(
+                            project_id=project_id,
+                            dataset_id="dlp_results",
+                            table_id="findings",
+                        )
+                    )
+                )
+            ),
         ]
 
         job = dlp_client.create_dlp_job(
@@ -229,64 +244,103 @@ def scan_gcs_buckets(dlp_client, parent, project_id, inspect_config):
             }
         )
         print(f"Started DLP job for bucket {bucket.name}: {job.name}")
+
+def _recently_scanned(last_scan, days):
+    """Check if a YYYY-MM-DD label value is within the rescan window"""
+    if not last_scan:
+        return False
+    scan_date = datetime.strptime(last_scan, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - scan_date < timedelta(days=days)
 ```
 
 ## Processing Scan Results
 
-When a DLP job completes, it publishes results to Pub/Sub. The processor function handles classification tagging and alerting:
+When a DLP job completes, the Pub/Sub action publishes the completed DLP job name. The processor function fetches the job summary, applies classification labels, and handles alerting:
 
 ```python
 import base64
 import json
-from google.cloud import datacatalog_v1
+from datetime import datetime, timedelta, timezone
+from google.cloud import bigquery
+from google.cloud import dlp_v2 as dlp
+from google.cloud import storage
 from dlp_config import get_severity
+
+PROJECT_ID = "your-project-id"
 
 def process_dlp_findings(event, context):
     """Process completed DLP job findings"""
     message = base64.b64decode(event["data"]).decode("utf-8")
     finding_data = json.loads(message)
+    job_name = finding_data["DlpJobName"]
 
-    # Extract findings details
-    findings = finding_data.get("finding", {})
-    infotype = findings.get("infoType", {}).get("name", "unknown")
-    location = findings.get("location", {})
-    resource_name = findings.get("resourceName", "")
+    dlp_client = dlp.DlpServiceClient()
+    job = dlp_client.get_dlp_job(request={"name": job_name})
+    resource_name = get_job_resource_name(job)
 
-    severity = get_severity(infotype)
+    detected = []
+    for stat in job.inspect_details.result.info_type_stats:
+        infotype = stat.info_type.name
+        detected.append((infotype, stat.count, get_severity(infotype)))
 
-    # Tag the resource in Data Catalog
-    tag_resource_in_catalog(resource_name, infotype, severity)
+    if not detected:
+        return
+
+    highest_severity = max(
+        (severity for _, _, severity in detected),
+        key=lambda severity: {"unknown": 0, "medium": 1, "high": 2, "critical": 3}[severity],
+    )
+    infotypes = sorted({infotype for infotype, _, _ in detected})
+
+    # Tag the resource with labels
+    label_classification(resource_name, highest_severity, infotypes)
 
     # Alert on critical and high severity findings
-    if severity in ("critical", "high"):
-        send_finding_alert(resource_name, infotype, severity, location)
+    if highest_severity in ("critical", "high"):
+        send_finding_alert(resource_name, detected)
 
-def tag_resource_in_catalog(resource_name, infotype, severity):
-    """Add classification tags to the resource in Data Catalog"""
-    client = datacatalog_v1.DataCatalogClient()
+def get_job_resource_name(job):
+    """Return a label-friendly source identifier from the DLP job config"""
+    storage_config = job.inspect_details.requested_options.job_config.storage_config
+    table_ref = storage_config.big_query_options.table_reference
+    if table_ref.project_id:
+        return (
+            f"bigquery://projects/{table_ref.project_id}/datasets/"
+            f"{table_ref.dataset_id}/tables/{table_ref.table_id}"
+        )
+    return storage_config.cloud_storage_options.file_set.url
 
-    # Look up the Data Catalog entry for this resource
-    entry = client.lookup_entry(
-        request={"linked_resource": resource_name}
-    )
+def label_classification(resource_name, severity, infotypes):
+    """Apply classification labels to the scanned BigQuery table or bucket"""
+    labels = {
+        "dlp_scanned": "true",
+        "dlp_sensitivity": severity,
+        "dlp_last_scan": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "dlp_infotypes": "-".join(infotypes[:3]).lower().replace("_", "-")[:63],
+    }
 
-    # Create or update the classification tag
-    tag = datacatalog_v1.Tag()
-    tag.template = (
-        "projects/your-project/locations/us/tagTemplates/data_classification"
-    )
-    tag.fields["sensitivity_level"] = datacatalog_v1.TagField(
-        string_value=severity
-    )
-    tag.fields["detected_infotypes"] = datacatalog_v1.TagField(
-        string_value=infotype
-    )
-    tag.fields["last_scanned"] = datacatalog_v1.TagField(
-        string_value=datetime.utcnow().isoformat()
-    )
+    if resource_name.startswith("bigquery://"):
+        parts = resource_name.removeprefix("bigquery://projects/").split("/")
+        project_id, dataset_id, table_id = parts[0], parts[2], parts[4]
+        client = bigquery.Client(project=project_id)
+        table = client.get_table(f"{project_id}.{dataset_id}.{table_id}")
+        table.labels = {**(table.labels or {}), **labels}
+        client.update_table(table, ["labels"])
+        return
 
-    # Create the tag on the entry
-    client.create_tag(parent=entry.name, tag=tag)
+    if resource_name.startswith("gs://"):
+        bucket_name = resource_name.removeprefix("gs://").split("/", 1)[0]
+        bucket = storage.Client(project=PROJECT_ID).bucket(bucket_name)
+        bucket.reload()
+        bucket.labels = {**(bucket.labels or {}), **labels}
+        bucket.patch()
+
+def send_finding_alert(resource_name, detected):
+    """Send an alert to your preferred channel"""
+    summary = ", ".join(
+        f"{infotype}={count}" for infotype, count, _ in detected
+    )
+    print(f"Sensitive data found in {resource_name}: {summary}")
 ```
 
 ## Setting Up the Schedule
@@ -296,6 +350,7 @@ Deploy everything and configure the scanning schedule:
 ```bash
 # Create the Pub/Sub topic for DLP findings
 gcloud pubsub topics create dlp-findings
+gcloud pubsub topics create dlp-scan-trigger
 
 # Create the BigQuery dataset for storing results
 bq mk --dataset dlp_results
@@ -303,6 +358,7 @@ bq mk --dataset dlp_results
 # Deploy the orchestrator function
 gcloud functions deploy dlp-orchestrator \
     --runtime python311 \
+    --entry-point orchestrate_scan \
     --trigger-topic dlp-scan-trigger \
     --timeout 540 \
     --memory 1GB
@@ -310,6 +366,7 @@ gcloud functions deploy dlp-orchestrator \
 # Deploy the findings processor
 gcloud functions deploy dlp-processor \
     --runtime python311 \
+    --entry-point process_dlp_findings \
     --trigger-topic dlp-findings \
     --timeout 120
 
@@ -331,7 +388,7 @@ SELECT
     COUNT(*) AS finding_count,
     COUNT(DISTINCT resource_name) AS affected_resources
 FROM `your-project.dlp_results.findings`
-WHERE timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+WHERE TIMESTAMP_SECONDS(create_time.seconds) > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY infotype
 ORDER BY finding_count DESC
 
@@ -339,7 +396,7 @@ ORDER BY finding_count DESC
 SELECT
     resource_name,
     ARRAY_AGG(DISTINCT info_type.name) AS detected_types,
-    MAX(likelihood) AS max_likelihood
+    COUNT(*) AS finding_count
 FROM `your-project.dlp_results.findings`
 WHERE info_type.name IN ('CREDIT_CARD_NUMBER', 'US_SOCIAL_SECURITY_NUMBER')
 GROUP BY resource_name
