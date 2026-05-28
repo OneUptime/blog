@@ -62,7 +62,7 @@ gcloud pubsub subscriptions update order-processor-sub \
   --message-retention-duration=3d
 ```
 
-The subscription's message retention duration cannot exceed the topic's retention duration. If the topic retains messages for 7 days, your subscription can retain acknowledged messages for up to 7 days.
+The subscription's message retention duration is configured independently from the topic's retention duration. If topic retention is configured, unacknowledged messages are retained until they exceed the longer of the topic and subscription retention windows. Subscription retention can be configured for up to 31 days.
 
 In Terraform:
 
@@ -105,6 +105,7 @@ Your subscriber code needs to handle receiving messages it may have already proc
 ```python
 # Idempotent message processor that safely handles replayed messages
 from google.cloud import pubsub_v1, bigquery
+from datetime import datetime, timezone
 import json
 
 subscriber = pubsub_v1.SubscriberClient()
@@ -135,7 +136,7 @@ def process_message(message):
     # Record that we processed it
     bq_client.insert_rows_json(
         'analytics.processed_events',
-        [{'message_id': message_id, 'processed_at': 'AUTO'}]
+        [{'message_id': message_id, 'processed_at': datetime.now(timezone.utc).isoformat()}]
     )
     message.ack()
 ```
@@ -154,18 +155,9 @@ gcloud pubsub subscriptions seek order-processor-sub \
   --snapshot=pre-deploy-snapshot
 ```
 
-Snapshots have a maximum lifetime equal to the subscription's message retention duration (or 7 days if retention of acknowledged messages is not enabled).
+Snapshots have a maximum lifetime of 7 days. The exact lifetime is 7 days minus the age of the oldest unacknowledged message in the source subscription, and Pub/Sub refuses to create a snapshot that would expire in less than 1 hour.
 
-In Terraform:
-
-```hcl
-# Create a snapshot resource (useful for automated rollback points)
-resource "google_pubsub_snapshot" "pre_migration" {
-  name         = "pre-migration-snapshot"
-  subscription = google_pubsub_subscription.order_processor.name
-  topic        = google_pubsub_topic.order_events.id
-}
-```
+The Google Terraform provider does not currently expose a Pub/Sub snapshot resource, so create operational rollback snapshots with the `gcloud pubsub snapshots create` command or the Pub/Sub API.
 
 ## Building a Replay Workflow
 
@@ -203,10 +195,16 @@ For teams that need to replay frequently, automate the process:
 
 SUBSCRIPTION=$1
 REPLAY_FROM=$2
+PROJECT_ID=${PROJECT_ID:-$(gcloud config get-value project)}
 
 if [ -z "$SUBSCRIPTION" ] || [ -z "$REPLAY_FROM" ]; then
   echo "Usage: ./replay.sh <subscription-name> <timestamp>"
   echo "Example: ./replay.sh order-processor-sub 2026-02-15T10:00:00Z"
+  exit 1
+fi
+
+if ! command -v jq >/dev/null; then
+  echo "jq is required to parse the Cloud Monitoring API response."
   exit 1
 fi
 
@@ -223,10 +221,16 @@ echo "Replay initiated. Monitoring backlog..."
 
 # Poll until backlog is cleared
 while true; do
-  BACKLOG=$(gcloud monitoring read \
-    "pubsub.googleapis.com/subscription/num_undelivered_messages" \
-    --filter="resource.labels.subscription_id=$SUBSCRIPTION" \
-    --format="value(points.value.int64Value)" 2>/dev/null | head -1)
+  END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  START_TIME=$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
+  BACKLOG=$(curl -s -G \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    --data-urlencode "filter=metric.type=\"pubsub.googleapis.com/subscription/num_undelivered_messages\" AND resource.type=\"pubsub_subscription\" AND resource.labels.subscription_id=\"$SUBSCRIPTION\"" \
+    --data-urlencode "interval.startTime=$START_TIME" \
+    --data-urlencode "interval.endTime=$END_TIME" \
+    --data-urlencode "view=FULL" \
+    "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/timeSeries" | \
+    jq -r '.timeSeries[0].points[0].value.int64Value // empty')
 
   echo "Current backlog: ${BACKLOG:-unknown} messages"
 
