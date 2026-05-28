@@ -16,11 +16,11 @@ I migrated a production pipeline handling about 50 million events per day, and t
 
 The legacy streaming API has served well, but it has fundamental limitations.
 
-**Cost**: Legacy streaming charges $0.010 per 200 MB of data inserted. The Storage Write API's default stream is free - you only pay for storage. For high-volume pipelines, this is a massive saving.
+**Cost**: Legacy streaming charges $0.010 per 200 MiB of data inserted. The Storage Write API is priced lower at $0.025 per GiB, with the first 2 TiB per month free. For high-volume pipelines, this is a massive saving.
 
-**Throughput**: Legacy streaming tops out around 100,000 rows per second per table. The Storage Write API can handle over 1 million rows per second with multiple streams.
+**Throughput**: Legacy streaming is limited by project-level streaming insert throughput quotas. The Storage Write API has higher throughput quotas, supports long-lived gRPC connections, and can scale with multiple streams or default-stream connections.
 
-**Delivery guarantees**: Legacy streaming provides at-least-once delivery, meaning duplicates are possible. The Storage Write API's committed mode provides exactly-once delivery.
+**Delivery guarantees**: Legacy streaming provides best-effort deduplication with `insertId`, but duplicates are still possible. The Storage Write API's default stream is at-least-once, while application-created committed streams can provide exactly-once delivery when you manage stream offsets.
 
 **Error handling**: Legacy streaming returns per-row errors in the response. The Storage Write API uses gRPC streams with better flow control and error propagation.
 
@@ -61,7 +61,7 @@ client = BigQueryWriteClient()
 table_path = f"projects/my_project/datasets/my_dataset/tables/events"
 
 # Use the default stream for the simplest migration
-stream_name = f"{table_path}/streams/_default"
+stream_name = f"{table_path}/_default"
 
 # Rows are serialized as protocol buffers (handled by the writer)
 ```
@@ -82,13 +82,24 @@ Start by creating a writer class that wraps the Storage Write API.
 ```python
 # storage_writer.py - Wrapper for the Storage Write API
 from google.cloud import bigquery_storage_v1
-from google.cloud import bigquery
 from google.api_core import exceptions
-import json
+from google.cloud.bigquery_storage_v1 import types
+from google.cloud.bigquery_storage_v1 import writer
+from google.protobuf import descriptor_pb2
 import logging
 import time
 
+import event_pb2  # Generated from a proto that matches the BigQuery table schema.
+
 logger = logging.getLogger(__name__)
+
+def build_event(row):
+    """Convert one dict into the generated proto message for the events table."""
+    event = event_pb2.Event()
+    event.event_id = row["event_id"]
+    event.user_id = row["user_id"]
+    event.event_type = row["event_type"]
+    return event
 
 class BigQueryStorageWriter:
     """Wrapper around the Storage Write API for easy migration."""
@@ -99,10 +110,27 @@ class BigQueryStorageWriter:
         self.table = table
         self.write_client = bigquery_storage_v1.BigQueryWriteClient()
         self.table_path = self.write_client.table_path(project, dataset, table)
-        self.stream_name = f"{self.table_path}/streams/_default"
-        self._batch = []
+        self.stream_name = f"{self.table_path}/_default"
         self._batch_size = 500  # Rows per append request
+        self._append_stream = self._create_append_stream()
         logger.info(f"Initialized writer for {self.table_path}")
+
+    def _create_append_stream(self):
+        """Create a reusable AppendRowsStream for the default stream."""
+        proto_descriptor = descriptor_pb2.DescriptorProto()
+        event_pb2.Event.DESCRIPTOR.CopyToProto(proto_descriptor)
+
+        proto_schema = types.ProtoSchema()
+        proto_schema.proto_descriptor = proto_descriptor
+
+        proto_data = types.AppendRowsRequest.ProtoData()
+        proto_data.writer_schema = proto_schema
+
+        request_template = types.AppendRowsRequest()
+        request_template.write_stream = self.stream_name
+        request_template.proto_rows = proto_data
+
+        return writer.AppendRowsStream(self.write_client, request_template)
 
     def insert_rows(self, rows):
         """
@@ -130,11 +158,20 @@ class BigQueryStorageWriter:
         """Append a batch of rows with retry logic."""
         for attempt in range(retry_count):
             try:
-                # Serialize and send the batch
-                serialized = [json.dumps(row).encode("utf-8") for row in batch]
+                proto_rows = types.ProtoRows()
+                for row in batch:
+                    proto_rows.serialized_rows.append(build_event(row).SerializeToString())
+
+                proto_data = types.AppendRowsRequest.ProtoData()
+                proto_data.rows = proto_rows
+
+                request = types.AppendRowsRequest()
+                request.proto_rows = proto_data
+
                 logger.debug(f"Appending {len(batch)} rows (attempt {attempt + 1})")
-                # In production, use the actual append method
-                return
+                response_future = self._append_stream.send(request)
+                response_future.result()
+                return []
             except exceptions.ResourceExhausted:
                 # Back off on resource exhaustion
                 wait_time = (2 ** attempt) + 1
@@ -286,24 +323,25 @@ def perform_cutover(dual_writer):
 
 **Schema differences**: The Storage Write API requires a protocol buffer schema that matches your BigQuery table. If your legacy code relies on schema auto-detection for new fields, you need to handle schema updates explicitly.
 
-**Timestamp formatting**: Legacy streaming accepts timestamps in various formats. The Storage Write API is stricter - use ISO 8601 format or epoch microseconds.
+**Timestamp formatting**: Legacy streaming accepts timestamps in several string formats. The Storage Write API is stricter - for protocol buffer writes, BigQuery `TIMESTAMP` columns are commonly represented as `int64` epoch microseconds or `google.protobuf.Timestamp`.
 
 ```python
 # Normalize timestamps before sending to the Storage Write API
-from datetime import datetime
+from datetime import datetime, timezone
 
-def normalize_timestamp(ts):
-    """Convert various timestamp formats to ISO 8601."""
+def normalize_timestamp_micros(ts):
+    """Convert various timestamp formats to epoch microseconds."""
     if isinstance(ts, datetime):
-        return ts.isoformat() + "Z"
+        dt = ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp() * 1_000_000)
     if isinstance(ts, (int, float)):
         # Assume epoch seconds
-        return datetime.utcfromtimestamp(ts).isoformat() + "Z"
+        return int(ts * 1_000_000)
     if isinstance(ts, str):
         # Try to parse and re-format
         try:
             dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-            return dt.isoformat() + "Z"
+            return int(dt.timestamp() * 1_000_000)
         except ValueError:
             return ts
     return None
@@ -313,14 +351,16 @@ def normalize_timestamp(ts):
 
 ```python
 # Map legacy error handling to Storage Write API errors
+import grpc
+
 def handle_storage_api_error(error):
     """Convert Storage Write API errors to a format compatible with legacy error handling."""
     if hasattr(error, 'code'):
-        if error.code() == 'ALREADY_EXISTS':
+        if error.code() == grpc.StatusCode.ALREADY_EXISTS:
             return {'type': 'duplicate', 'message': str(error)}
-        elif error.code() == 'INVALID_ARGUMENT':
+        elif error.code() == grpc.StatusCode.INVALID_ARGUMENT:
             return {'type': 'validation', 'message': str(error)}
-        elif error.code() == 'RESOURCE_EXHAUSTED':
+        elif error.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
             return {'type': 'rate_limit', 'message': str(error)}
     return {'type': 'unknown', 'message': str(error)}
 ```
@@ -330,33 +370,36 @@ def handle_storage_api_error(error):
 Track key metrics during and after migration.
 
 ```sql
--- Monitor streaming buffer size during migration
--- A growing buffer may indicate the Storage Write API is not keeping up
+-- Monitor Storage Write API ingestion during migration
 SELECT
-  table_name,
-  ROUND(streaming_buffer.estimated_bytes / POW(1024, 2), 2) AS buffer_mb,
-  streaming_buffer.estimated_rows AS buffer_rows,
-  streaming_buffer.oldest_entry_time AS oldest_entry
-FROM `my_project.my_dataset.__TABLES__`
-WHERE table_id = 'events';
+  start_timestamp,
+  stream_type,
+  error_code,
+  SUM(total_requests) AS requests,
+  SUM(total_rows) AS rows,
+  ROUND(SUM(total_input_bytes) / POW(1024, 2), 2) AS input_mb
+FROM `region-us`.INFORMATION_SCHEMA.WRITE_API_TIMELINE
+WHERE table_id = 'events'
+  AND start_timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
+GROUP BY start_timestamp, stream_type, error_code
+ORDER BY start_timestamp DESC;
 ```
 
 ## Cost Comparison
 
-After migration, compare your BigQuery costs.
+After migration, compare your BigQuery costs. Use your Cloud Billing export for the actual billed charges, and use ingestion metrics to sanity-check the volume you expect to see on the bill.
 
 ```sql
--- Check streaming costs before and after migration
--- Look at bytes written via streaming in the last 30 days
+-- Estimate Storage Write API bytes written in the last 30 days
 SELECT
-  DATE(creation_time) AS job_date,
-  SUM(total_bytes_processed) AS bytes_processed,
-  COUNT(*) AS job_count
-FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
-WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-  AND job_type = 'LOAD'
-GROUP BY job_date
-ORDER BY job_date DESC;
+  DATE(start_timestamp) AS ingestion_date,
+  ROUND(SUM(total_input_bytes) / POW(1024, 3), 2) AS input_gib,
+  SUM(total_rows) AS rows_written
+FROM `region-us`.INFORMATION_SCHEMA.WRITE_API_TIMELINE
+WHERE start_timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+  AND table_id = 'events'
+GROUP BY ingestion_date
+ORDER BY ingestion_date DESC;
 ```
 
 ## Wrapping Up
