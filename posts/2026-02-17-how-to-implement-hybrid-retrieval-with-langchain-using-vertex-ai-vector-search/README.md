@@ -35,20 +35,20 @@ graph TD
 ## Prerequisites
 
 - Google Cloud project with Vertex AI API enabled
-- A Vertex AI Vector Search index (or we will create one)
-- Python 3.9+
+- A Vertex AI Vector Search index if you use the production setup
+- Python 3.10+
 
 ```bash
 # Install required packages
 
-pip install langchain langchain-google-vertexai langchain-community google-cloud-aiplatform rank_bm25
+pip install langchain langchain-classic langchain-google-vertexai langchain-community langchain-text-splitters google-cloud-aiplatform rank_bm25 faiss-cpu
 ```
 
 ## Setting Up the Semantic Retriever
 
-### Creating a Vertex AI Vector Search Index
+### Initializing Vertex AI Embeddings
 
-First, let us set up the vector search component using Vertex AI Matching Engine (Vector Search).
+First, let us set up the embedding model for the vector search component.
 
 ```python
 from google.cloud import aiplatform
@@ -59,7 +59,7 @@ aiplatform.init(project="your-project-id", location="us-central1")
 
 # Set up the embedding model
 embeddings = VertexAIEmbeddings(
-    model_name="text-embedding-004",
+    model_name="text-embedding-005",
     project="your-project-id",
 )
 ```
@@ -68,7 +68,7 @@ embeddings = VertexAIEmbeddings(
 
 ```python
 from langchain_core.documents import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Sample documents - in production, these come from your data source
 raw_documents = [
@@ -142,7 +142,7 @@ keyword_retriever = BM25Retriever.from_documents(
 LangChain provides `EnsembleRetriever` that merges results from multiple retrievers using Reciprocal Rank Fusion.
 
 ```python
-from langchain.retrievers import EnsembleRetriever
+from langchain_classic.retrievers import EnsembleRetriever
 
 # Combine semantic and keyword retrievers
 # The weights control how much each retriever contributes to the final ranking
@@ -204,7 +204,7 @@ from langchain_core.output_parsers import StrOutputParser
 
 # Initialize the language model
 llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+    model_name="gemini-2.5-pro",
     project="your-project-id",
     location="us-central1",
     temperature=0.2,
