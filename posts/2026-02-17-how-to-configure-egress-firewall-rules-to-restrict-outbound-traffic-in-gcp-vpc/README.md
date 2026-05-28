@@ -8,13 +8,13 @@ Description: Learn how to configure egress firewall rules in GCP VPC to restrict
 
 ---
 
-Most teams focus on ingress firewall rules - controlling what traffic can come in. But egress rules are equally important. Without egress restrictions, a compromised VM can freely communicate with any IP address on the internet, exfiltrate data, download malicious payloads, or participate in a botnet. GCP allows all egress traffic by default, and changing that default is one of the most impactful security hardening steps you can take.
+Most teams focus on ingress firewall rules - controlling what traffic can come in. But egress rules are equally important. Without egress restrictions, a compromised VM can freely communicate with allowed routed destinations, including the internet when it has an external IP address or uses Cloud NAT, exfiltrate data, download malicious payloads, or participate in a botnet. GCP allows all egress traffic by default, and changing that default is one of the most impactful security hardening steps you can take.
 
 In this post, I will show you how to implement egress firewall rules that restrict outbound traffic to only approved destinations.
 
 ## The Default Egress Behavior
 
-Every GCP VPC has an implied egress allow rule with the lowest possible priority (65535). This rule allows all outbound traffic to any destination. You cannot see it in the firewall rules list, but it is there:
+Every GCP VPC has an implied egress allow rule with the lowest possible priority (65535). This rule allows outbound traffic to any IPv4 destination, except for traffic blocked by Google Cloud. You cannot see it in the firewall rules list, but it is there:
 
 ```bash
 # List all egress rules - you won't see the implied allow-all rule
@@ -43,11 +43,11 @@ gcloud compute firewall-rules create deny-all-egress \
   --description="Default deny all outbound traffic"
 ```
 
-Now nothing can leave the VPC. You need to add back the traffic you actually want to allow.
+Now IPv4 egress to non-metadata destinations is denied. You need to add back the traffic you actually want to allow. If your VPC uses IPv6, create a separate deny rule for `::/0` because firewall rules cannot mix IPv4 and IPv6 ranges.
 
 ## Allowing Essential Google Services
 
-VMs need to reach Google APIs for many basic functions - logging, monitoring, metadata server access, and package updates:
+VMs often need to reach Google APIs for many basic functions - logging, monitoring, and image pulls. If you use the restricted VIP, make sure your DNS is configured so Google API hostnames resolve to `restricted.googleapis.com`:
 
 ```bash
 # Allow egress to Google APIs (restricted VIP range)
@@ -62,28 +62,18 @@ gcloud compute firewall-rules create allow-egress-google-apis \
 ```
 
 ```bash
-# Allow egress to Google's health check ranges (needed for load balancers)
-gcloud compute firewall-rules create allow-egress-health-checks \
+# Allow ingress from Google's health check ranges (needed for load balancers)
+gcloud compute firewall-rules create allow-ingress-health-checks \
   --network=production-vpc \
-  --direction=EGRESS \
+  --direction=INGRESS \
   --action=ALLOW \
   --rules=tcp \
-  --destination-ranges=35.191.0.0/16,130.211.0.0/22 \
+  --source-ranges=35.191.0.0/16,130.211.0.0/22 \
   --priority=1000 \
-  --description="Allow egress to Google health check probes"
+  --description="Allow ingress from Google health check probes"
 ```
 
-```bash
-# Allow egress to the metadata server (essential for VM operation)
-gcloud compute firewall-rules create allow-egress-metadata \
-  --network=production-vpc \
-  --direction=EGRESS \
-  --action=ALLOW \
-  --rules=all \
-  --destination-ranges=169.254.169.254/32 \
-  --priority=1000 \
-  --description="Allow access to metadata server"
-```
+You do not need to create an egress allow rule for the metadata server. Google Cloud always allows VM communication with the metadata server at `169.254.169.254`, regardless of VPC firewall rules.
 
 ## Allowing Internal VPC Traffic
 
@@ -174,18 +164,18 @@ gcloud logging read '
 
 ## Handling DNS Resolution
 
-If you block all egress, VMs cannot resolve DNS unless you explicitly allow it. DNS typically goes to Google's internal resolver (169.254.169.254), which is already covered by the metadata rule. But if your VMs use external DNS servers, add a rule for them:
+If you block all egress, DNS to external resolvers will fail unless you explicitly allow it. DNS to Google's internal resolver at `169.254.169.254` is handled by the metadata server and is always allowed. But if your VMs use external DNS servers, add a rule for them:
 
 ```bash
-# Allow DNS queries to Cloud DNS
+# Allow DNS queries to external DNS resolvers
 gcloud compute firewall-rules create allow-egress-dns \
   --network=production-vpc \
   --direction=EGRESS \
   --action=ALLOW \
   --rules=tcp:53,udp:53 \
-  --destination-ranges=169.254.169.254/32 \
+  --destination-ranges=8.8.8.8/32,8.8.4.4/32 \
   --priority=1000 \
-  --description="Allow DNS resolution"
+  --description="Allow DNS resolution to external resolvers"
 ```
 
 ## Egress Rules for GKE Clusters
@@ -198,7 +188,7 @@ gcloud compute firewall-rules create allow-egress-gke-control-plane \
   --network=production-vpc \
   --direction=EGRESS \
   --action=ALLOW \
-  --rules=tcp:443,tcp:10250 \
+  --rules=tcp:443 \
   --destination-ranges=172.16.0.0/28 \
   --target-tags=gke-my-cluster-nodes \
   --priority=1000 \
@@ -236,20 +226,10 @@ gcloud compute firewall-rules create allow-egress-google \
   --network=production-vpc --direction=EGRESS --action=ALLOW \
   --rules=tcp:443 --destination-ranges=199.36.153.4/30 --priority=1000
 
-# 4. Allow metadata server
-gcloud compute firewall-rules create allow-egress-metadata \
-  --network=production-vpc --direction=EGRESS --action=ALLOW \
-  --rules=all --destination-ranges=169.254.169.254/32 --priority=1000
-
-# 5. Allow DNS
+# 4. Allow external DNS resolvers if your VMs use them
 gcloud compute firewall-rules create allow-egress-dns \
   --network=production-vpc --direction=EGRESS --action=ALLOW \
-  --rules=udp:53,tcp:53 --destination-ranges=169.254.169.254/32 --priority=1000
-
-# 6. Allow NTP for time synchronization
-gcloud compute firewall-rules create allow-egress-ntp \
-  --network=production-vpc --direction=EGRESS --action=ALLOW \
-  --rules=udp:123 --destination-ranges=169.254.169.254/32 --priority=1000
+  --rules=udp:53,tcp:53 --destination-ranges=8.8.8.8/32,8.8.4.4/32 --priority=1000
 ```
 
 ## Testing Your Egress Rules
