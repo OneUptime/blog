@@ -32,6 +32,9 @@ Workload Identity is the recommended way to authenticate GKE workloads with Goog
 Create a Google Cloud service account:
 
 ```bash
+# Enable the Cloud SQL Admin API
+gcloud services enable sqladmin.googleapis.com
+
 # Create a service account for the application
 
 gcloud iam service-accounts create my-app-sa \
@@ -72,6 +75,8 @@ gcloud sql instances describe my-instance \
 ## Step 3: Create the Kubernetes Deployment
 
 Here is a complete deployment manifest with the Auth Proxy sidecar:
+
+Because this example uses `--private-ip`, the GKE cluster must be VPC-native and have network access to the same VPC network as the Cloud SQL instance.
 
 ```yaml
 # deployment.yaml - Application with Cloud SQL Auth Proxy sidecar
@@ -124,7 +129,7 @@ spec:
 
         # Cloud SQL Auth Proxy sidecar
         - name: cloud-sql-proxy
-          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0
           args:
             # Use private IP for the connection
             - "--private-ip"
@@ -132,7 +137,10 @@ spec:
             - "--structured-logs"
             # Health check endpoint
             - "--health-check"
+            - "--http-address=0.0.0.0"
             - "--http-port=9090"
+            # Listen on the PostgreSQL port
+            - "--port=5432"
             # Instance connection name
             - "my-project:us-central1:my-instance"
           ports:
@@ -221,12 +229,12 @@ kubectl logs -l app=my-app -c cloud-sql-proxy
 
 One common issue is that the Auth Proxy container keeps running after the main application exits, which can cause job pods to hang. There are a few solutions.
 
-### Using Kubernetes Native Sidecar (1.28+)
+### Using Kubernetes Native Sidecar (1.29+, or 1.28 with the Feature Gate)
 
-Kubernetes 1.28 introduced native sidecar support:
+Kubernetes 1.28 introduced native sidecar support behind a feature gate. The feature is enabled by default in Kubernetes 1.29 and later:
 
 ```yaml
-# Using Kubernetes native sidecar containers (GKE 1.28+)
+# Using Kubernetes native sidecar containers (GKE 1.29+, or 1.28 with the feature gate)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -238,13 +246,15 @@ spec:
       initContainers:
         # Native sidecar - restartPolicy: Always makes it a true sidecar
         - name: cloud-sql-proxy
-          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0
           restartPolicy: Always  # This is what makes it a native sidecar
           args:
             - "--private-ip"
             - "--structured-logs"
             - "--health-check"
+            - "--http-address=0.0.0.0"
             - "--http-port=9090"
+            - "--port=5432"
             - "my-project:us-central1:my-instance"
           resources:
             requests:
@@ -266,7 +276,7 @@ For older Kubernetes versions, use the proxy's quit endpoint:
   args:
     - "--private-ip"
     - "--quitquitquit"
-    - "--http-port=9090"
+    - "--admin-port=9090"
     - "my-project:us-central1:my-instance"
 ```
 
@@ -294,17 +304,16 @@ If your application connects to multiple Cloud SQL instances:
 ```yaml
 # Auth Proxy sidecar connecting to multiple instances
 - name: cloud-sql-proxy
-  image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+  image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0
   args:
     - "--private-ip"
     - "--structured-logs"
     - "--health-check"
+    - "--http-address=0.0.0.0"
     - "--http-port=9090"
     # Each instance gets its own port
-    - "--port=5432"
-    - "my-project:us-central1:postgres-instance"
-    - "--port=3306"
-    - "my-project:us-central1:mysql-instance"
+    - "my-project:us-central1:postgres-instance?port=5432"
+    - "my-project:us-central1:mysql-instance?port=3306"
   ports:
     - containerPort: 5432
       name: postgres
@@ -338,6 +347,14 @@ spec:
   policyTypes:
     - Egress
   egress:
+    # Allow Cloud SQL Admin API calls. For tighter rules, use a CNI that
+    # supports FQDN policies and allow sqladmin.googleapis.com on TCP 443.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 443
+          protocol: TCP
     # Allow connections to Cloud SQL private IP range
     - to:
         - ipBlock:
@@ -368,6 +385,15 @@ metadata:
     prometheus.io/path: "/metrics"
 ```
 
+Enable the proxy's Prometheus endpoint in the sidecar arguments:
+
+```yaml
+args:
+  - "--prometheus"
+  - "--http-address=0.0.0.0"
+  - "--http-port=9090"
+```
+
 Key metrics to watch:
 
 - Connection count per instance
@@ -376,4 +402,4 @@ Key metrics to watch:
 
 ## Summary
 
-The Cloud SQL Auth Proxy sidecar is the standard way to connect GKE pods to Cloud SQL. Use Workload Identity for authentication, set up health checks for proper pod lifecycle management, and keep the proxy resource allocation reasonable. For Kubernetes 1.28+, native sidecar containers solve the lifecycle issue. The setup involves a few moving pieces - service accounts, Workload Identity binding, and the deployment manifest - but once it is in place, it provides secure, reliable database connectivity without managing certificates or network allowlists.
+The Cloud SQL Auth Proxy sidecar is the standard way to connect GKE pods to Cloud SQL. Use Workload Identity for authentication, set up health checks for proper pod lifecycle management, and keep the proxy resource allocation reasonable. For Kubernetes 1.29+, native sidecar containers solve the lifecycle issue. The setup involves a few moving pieces - service accounts, Workload Identity binding, and the deployment manifest - but once it is in place, it provides secure, reliable database connectivity without managing certificates or network allowlists.
