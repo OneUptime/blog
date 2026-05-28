@@ -65,7 +65,7 @@ gcloud functions deploy process-data \
   --memory=512Mi
 ```
 
-Cloud Build reads `requirements.txt` and runs `pip install` during the build step.
+The Cloud Run functions build process reads `requirements.txt` and runs `pip install` during the build step.
 
 ## Pinning Versions Properly
 
@@ -116,31 +116,24 @@ gcloud artifacts repositories create python-packages \
   --description="Private Python packages"
 ```
 
-Configure your function to install from Artifact Registry using a `pip.conf` file:
-
-```ini
-# pip.conf - placed in the function source directory
-[global]
-extra-index-url = https://us-central1-python.pkg.dev/my-project/python-packages/simple/
-```
-
-And reference your private package in requirements.txt:
+Configure your function to install from Artifact Registry by adding the repository URL to `requirements.txt`:
 
 ```text
 # requirements.txt
+--extra-index-url https://us-central1-python.pkg.dev/my-project/python-packages/simple/
 functions-framework==3.4.0
 my-internal-library==1.2.3
 google-cloud-storage==2.14.0
 ```
 
-The Cloud Build service account needs the `artifactregistry.reader` role:
+The Cloud Run functions build process automatically generates Artifact Registry credentials for the build service account. If you need strict control over whether packages come from PyPI or Artifact Registry, use an Artifact Registry virtual repository instead of searching multiple indexes directly. If the repository is in another project, or if you use a custom build service account, grant that build service account the `artifactregistry.reader` role:
 
 ```bash
-# Grant the Cloud Build service account access to Artifact Registry
-PROJECT_NUMBER=$(gcloud projects describe my-project --format="value(projectNumber)")
+# Grant the build service account access to Artifact Registry
+BUILD_SERVICE_ACCOUNT=$(gcloud builds get-default-service-account)
 gcloud artifacts repositories add-iam-policy-binding python-packages \
   --location=us-central1 \
-  --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+  --member="serviceAccount:${BUILD_SERVICE_ACCOUNT}" \
   --role="roles/artifactregistry.reader"
 ```
 
@@ -149,7 +142,7 @@ gcloud artifacts repositories add-iam-policy-binding python-packages \
 For private PyPI servers that require authentication, use build-time environment variables:
 
 ```bash
-# Deploy with the private index URL as a build-time secret
+# Deploy with the private index URL as a build-time environment variable
 gcloud functions deploy my-function \
   --gen2 \
   --runtime=python312 \
@@ -182,14 +175,14 @@ gcloud functions deploy my-function \
   --source=. \
   --entry-point=handler \
   --trigger-http \
-  --set-build-env-vars="PIP_EXTRA_INDEX_URL=https://x-access-token:ghp_YOUR_TOKEN@github.com"
+  --set-build-env-vars="GITHUB_TOKEN=ghp_YOUR_TOKEN"
 ```
 
-Or use a requirements.txt with the token embedded (only in CI/CD, not committed to source control):
+Then reference the token from `requirements.txt` using pip's environment variable expansion:
 
 ```text
-# Generated requirements.txt (do not commit this with the token!)
-git+https://x-access-token:ghp_TOKEN@github.com/myorg/mypackage.git@v1.2.3#egg=mypackage
+# requirements.txt
+mypackage @ git+https://x-access-token:${GITHUB_TOKEN}@github.com/myorg/mypackage.git@v1.2.3
 ```
 
 ## Including Local Packages
@@ -228,9 +221,9 @@ def handler(request):
 
 ## Handling Native Extensions
 
-Some Python packages (like numpy, pandas, pillow, cryptography) have native C/C++ extensions that need to be compiled during installation. Cloud Functions handles this automatically for most popular packages because Cloud Build uses a Linux environment with common build tools.
+Some Python packages (like numpy, pandas, pillow, cryptography) have native C/C++ extensions. Cloud Functions handles this automatically for most popular packages because pip can install pre-built Linux wheels for the supported Python runtime.
 
-However, if your package needs system-level libraries that are not in the default build image, you can use a custom build step or vendor the compiled packages.
+However, if your package must be compiled from source and needs system-level libraries that are not in the default build image, vendor the compiled packages or deploy the code as a Cloud Run service with a custom container image.
 
 ### Vendoring Pre-compiled Packages
 
@@ -256,7 +249,7 @@ import my_problematic_package
 
 ## Using a Dockerfile for Full Control (Gen 2)
 
-For maximum control over dependencies, deploy your Gen 2 function using a custom Docker image:
+For maximum control over dependencies, package the same Functions Framework handler in a custom Docker image and deploy it to Cloud Run:
 
 ```dockerfile
 # Dockerfile - Custom Python Cloud Function image
@@ -281,24 +274,21 @@ COPY . .
 
 # Set the Functions Framework as the entry point
 ENV FUNCTION_TARGET=handler
-CMD ["functions-framework", "--target=handler", "--port=8080"]
+CMD exec functions-framework --target=handler --port=${PORT:-8080}
 ```
 
-Deploy using the Docker image:
+Build and deploy using the Docker image:
 
 ```bash
 # Build and push the image
-gcloud builds submit --tag gcr.io/my-project/my-function:latest .
+gcloud builds submit \
+  --tag us-central1-docker.pkg.dev/my-project/my-repo/my-function:latest .
 
 # Deploy using the custom image
-gcloud functions deploy my-function \
-  --gen2 \
-  --runtime=python312 \
+gcloud run deploy my-function \
+  --image=us-central1-docker.pkg.dev/my-project/my-repo/my-function:latest \
   --region=us-central1 \
-  --source=. \
-  --entry-point=handler \
-  --trigger-http \
-  --docker-registry=artifact-registry
+  --allow-unauthenticated
 ```
 
 ## Reducing Dependency Size
