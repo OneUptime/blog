@@ -53,7 +53,7 @@ Here are the questions I ask when choosing:
 
 1. Do most queries include a date range? If yes, partition by date.
 2. Is there a natural integer range that splits the data evenly? If yes, consider integer-range partitioning.
-3. How much data arrives per partition? Aim for at least 1 GB per partition. Too many tiny partitions create overhead without meaningful benefit.
+3. How much data arrives per partition? For partitioned tables that are also clustered, aim for an average partition size of at least 10 GB. Too many tiny partitions create metadata overhead without meaningful benefit.
 
 ```sql
 -- Check data distribution across potential partition values
@@ -70,7 +70,7 @@ ORDER BY event_date;
 
 ## Choosing Clustering Columns
 
-After partitioning, look at your query workload and identify the columns that appear in WHERE clauses, JOIN conditions, and GROUP BY statements most often.
+After partitioning, look at your query workload and identify the columns that appear in WHERE clauses and GROUP BY statements most often.
 
 ```sql
 -- Analyze your query patterns from INFORMATION_SCHEMA
@@ -180,24 +180,24 @@ In my experience, the combination typically reduces bytes scanned by 90-99% for 
 
 ## Cost Savings Calculation
 
-BigQuery on-demand pricing charges $5 per TB scanned (as of early 2026). Let us do some rough math.
+BigQuery on-demand pricing charges $6.25 per TiB scanned after the first 1 TiB per month free tier (as of May 2026). Let us do some rough math before applying the free tier.
 
 Without optimization:
-- 1 TB table, 100 queries per day = 100 TB scanned = $500/day
+- 1 TiB table, 100 queries per day = 100 TiB scanned = $625/day
 
 With partitioning only (30 daily partitions, query filters on one day):
-- 1/30 of 1 TB per query = ~33 GB * 100 queries = 3.3 TB = $16.50/day
+- 1/30 of 1 TiB per query = ~34 GiB * 100 queries = 3.3 TiB = about $20.63/day
 
 With partitioning and clustering (further 90% reduction):
-- ~3.3 GB per query * 100 queries = 330 GB = $1.65/day
+- ~3.4 GiB per query * 100 queries = 340 GiB = about $2.06/day
 
-That is a drop from $500/day to $1.65/day. Over a month, you save roughly $15,000.
+That is a drop from $625/day to about $2/day. Over a month, you save roughly $18,700 before applying the free tier.
 
 ## Things to Watch Out For
 
-**Partition granularity matters**: If you partition by day and your table gets 10 MB per day, each partition is tiny. BigQuery handles tiny partitions fine, but you are not getting meaningful partition pruning. Consider partitioning by month instead.
+**Partition granularity matters**: If you partition by day and your table gets 10 MB per day, each partition is tiny. BigQuery can query small partitions, but many small partitions increase metadata overhead. Consider partitioning by month instead.
 
-**Clustering order is permanent**: You cannot change the clustering column order without recreating the table. Plan your column order based on your most important queries.
+**Clustering order needs planning**: You can change a table's clustering specification, but existing rows are not reorganized under the new clustering unless you rewrite or update them. Plan your column order based on your most important queries.
 
 **Streaming data affects clustering**: When you stream data in, it lands in an unclustered buffer first. BigQuery re-clusters it in the background, but there is a delay. For real-time queries on freshly streamed data, clustering benefits are reduced.
 
