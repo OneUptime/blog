@@ -92,12 +92,11 @@ The `--password` flag sets the password for the default `postgres` user. Use a s
 For production, you might want to enable automated backups at cluster creation:
 
 ```bash
-# Create a cluster with automated daily backups enabled
+# Create a cluster with automated backups enabled
 gcloud alloydb clusters create my-alloydb-cluster \
   --region=us-central1 \
   --network=default \
   --password=YOUR_STRONG_PASSWORD \
-  --automated-backup-enabled \
   --automated-backup-days-of-week=MONDAY,WEDNESDAY,FRIDAY \
   --automated-backup-start-times=02:00 \
   --automated-backup-retention-count=7
@@ -172,11 +171,11 @@ sudo apt-get update && sudo apt-get install -y postgresql-client
 psql -h ALLOYDB_IP -U postgres -d postgres
 ```
 
-You can also use the AlloyDB Auth Proxy for secure connections from local development machines or other environments:
+You can also use the AlloyDB Auth Proxy for authorized, encrypted connections. For a Private Services Access cluster, run it on a host that can reach the instance network, such as a VM in the VPC, and make sure the IAM principal has the Cloud AlloyDB Client and Service Usage Consumer roles:
 
 ```bash
 # Download the AlloyDB Auth Proxy
-wget https://storage.googleapis.com/alloydb-auth-proxy/v1/alloydb-auth-proxy.linux.amd64 -O alloydb-auth-proxy
+wget https://storage.googleapis.com/alloydb-auth-proxy/v1.15.0/alloydb-auth-proxy.linux.amd64 -O alloydb-auth-proxy
 chmod +x alloydb-auth-proxy
 
 # Start the proxy (it creates a local socket)
@@ -216,15 +215,16 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO appu
 
 ## Configuring High Availability
 
-AlloyDB clusters automatically replicate data across zones within the region. The primary instance can fail over to another zone if the current zone becomes unavailable. This is built into the storage layer and does not require manual configuration.
+By default, AlloyDB primary instances are highly available, with active and standby nodes in different zones. The primary instance can fail over to the standby node if the active node becomes unavailable.
 
-However, for even faster failover, you can check that the cluster has redundancy enabled:
+You can verify that the primary instance is using regional availability:
 
 ```bash
-# Verify cluster HA configuration
-gcloud alloydb clusters describe my-alloydb-cluster \
+# Verify primary instance HA configuration
+gcloud alloydb instances describe my-primary \
+  --cluster=my-alloydb-cluster \
   --region=us-central1 \
-  --format="yaml(continuousBackupConfig,automatedBackupPolicy)"
+  --format="yaml(availabilityType)"
 ```
 
 ## Connecting from Applications
