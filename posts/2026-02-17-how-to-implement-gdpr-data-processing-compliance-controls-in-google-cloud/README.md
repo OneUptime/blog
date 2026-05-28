@@ -53,7 +53,7 @@ gcloud sql instances create eu-database \
   --region=europe-west1 \
   --no-assign-ip \
   --network=projects/gdpr-data-project/global/networks/eu-vpc \
-  --require-ssl \
+  --ssl-mode=ENCRYPTED_ONLY \
   --project=gdpr-data-project
 ```
 
@@ -83,18 +83,59 @@ Before you can protect personal data, you need to know where it is. Cloud DLP sc
 
 ```bash
 # Create a DLP inspection job to find personal data in Cloud Storage
-gcloud dlp jobs create \
-  --project=gdpr-data-project \
-  --display-name="GDPR Personal Data Scan" \
-  --inspect-config='{"infoTypes":[{"name":"PERSON_NAME"},{"name":"EMAIL_ADDRESS"},{"name":"PHONE_NUMBER"},{"name":"DATE_OF_BIRTH"},{"name":"STREET_ADDRESS"},{"name":"IP_ADDRESS"},{"name":"CREDIT_CARD_NUMBER"}],"minLikelihood":"LIKELY","includeQuote":false}' \
-  --storage-config='{"cloudStorageOptions":{"fileSet":{"url":"gs://eu-personal-data/*"}}}'
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://dlp.googleapis.com/v2/projects/gdpr-data-project/locations/europe-west1/dlpJobs" \
+  -d '{
+    "inspectJob": {
+      "storageConfig": {
+        "cloudStorageOptions": {
+          "fileSet": {
+            "url": "gs://eu-personal-data/*"
+          }
+        }
+      },
+      "inspectConfig": {
+        "infoTypes": [
+          {"name": "PERSON_NAME"},
+          {"name": "EMAIL_ADDRESS"},
+          {"name": "PHONE_NUMBER"},
+          {"name": "DATE_OF_BIRTH"},
+          {"name": "STREET_ADDRESS"},
+          {"name": "IP_ADDRESS"},
+          {"name": "CREDIT_CARD_NUMBER"}
+        ],
+        "minLikelihood": "LIKELY",
+        "includeQuote": false
+      }
+    }
+  }'
 
 # Create a DLP inspection template for reusable scanning
-gcloud dlp inspect-templates create \
-  --project=gdpr-data-project \
-  --display-name="GDPR PII Scanner" \
-  --description="Detects personal data types relevant to GDPR" \
-  --inspect-config='{"infoTypes":[{"name":"PERSON_NAME"},{"name":"EMAIL_ADDRESS"},{"name":"PHONE_NUMBER"},{"name":"DATE_OF_BIRTH"},{"name":"STREET_ADDRESS"},{"name":"IP_ADDRESS"},{"name":"IBAN_CODE"},{"name":"VAT_NUMBER"}],"minLikelihood":"LIKELY"}'
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://dlp.googleapis.com/v2/projects/gdpr-data-project/locations/europe-west1/inspectTemplates" \
+  -d '{
+    "inspectTemplate": {
+      "displayName": "GDPR PII Scanner",
+      "description": "Detects personal data types relevant to GDPR",
+      "inspectConfig": {
+        "infoTypes": [
+          {"name": "PERSON_NAME"},
+          {"name": "EMAIL_ADDRESS"},
+          {"name": "PHONE_NUMBER"},
+          {"name": "DATE_OF_BIRTH"},
+          {"name": "STREET_ADDRESS"},
+          {"name": "IP_ADDRESS"},
+          {"name": "IBAN_CODE"},
+          {"name": "VAT_NUMBER"}
+        ],
+        "minLikelihood": "LIKELY"
+      }
+    }
+  }'
 ```
 
 ## Implementing Data Subject Rights
@@ -159,6 +200,9 @@ Delete personal data when requested. For large-scale data, consider crypto-shred
 
 ```python
 # Delete personal data for a specific user
+from datetime import datetime, timezone
+from google.cloud import bigquery
+
 def delete_user_data(user_id):
     """Delete all personal data for a user (GDPR Article 17)."""
     bq_client = bigquery.Client(project='gdpr-data-project')
@@ -186,7 +230,7 @@ def delete_user_data(user_id):
     audit_entry = {
         "user_id": user_id,
         "action": "DATA_ERASURE",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "tables_affected": len(deletion_queries),
     }
 
@@ -260,7 +304,6 @@ bq update --time_partitioning_expiration=63072000 \
 # Create a scheduled query for data cleanup
 bq query --use_legacy_sql=false \
   --schedule="every day 03:00" \
-  --display_name="GDPR retention cleanup" \
   'DELETE FROM `gdpr-data-project.personal_data.user_activity`
    WHERE event_date < DATE_SUB(CURRENT_DATE(), INTERVAL 730 DAY)'
 ```
@@ -271,17 +314,17 @@ GDPR requires breach notification within 72 hours. Use SCC and Cloud Monitoring 
 
 ```bash
 # Enable Event Threat Detection for breach indicators
-gcloud scc settings services enable \
+gcloud scc manage services update event-threat-detection \
   --project=gdpr-data-project \
-  --service=EVENT_THREAT_DETECTION
+  --enablement-state=ENABLED
 
 # Create high-priority alert for data access anomalies
 gcloud monitoring policies create \
   --display-name="GDPR Breach Alert - Unusual Data Access" \
   --condition-display-name="Abnormal data access volume" \
-  --condition-filter='resource.type="bigquery_dataset" AND metric.type="bigquery.googleapis.com/query/scanned_bytes"' \
-  --condition-threshold-value=10737418240 \
-  --condition-threshold-duration=3600s \
+  --condition-filter='resource.type="bigquery_project" AND metric.type="bigquery.googleapis.com/query/scanned_bytes"' \
+  --if='> 10737418240' \
+  --duration=3600s \
   --notification-channels=projects/gdpr-data-project/notificationChannels/SECURITY_CHANNEL
 
 # Create notification for SCC findings indicating potential breach
@@ -306,7 +349,7 @@ gcloud projects get-iam-policy gdpr-data-project \
   --format=json > dpia-access-controls.json
 
 # Export data flow information
-gcloud logging read 'resource.type="bigquery_dataset" AND protoPayload.methodName="jobservice.insert"' \
+gcloud logging read 'resource.type="bigquery_project" AND protoPayload.methodName="google.cloud.bigquery.v2.JobService.InsertJob"' \
   --project=gdpr-data-project \
   --freshness=30d \
   --format=json > dpia-data-flows.json
