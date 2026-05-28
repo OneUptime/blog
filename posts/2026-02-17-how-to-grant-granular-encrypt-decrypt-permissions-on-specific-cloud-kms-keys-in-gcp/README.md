@@ -14,7 +14,7 @@ In this post, I will cover the different KMS IAM roles, how to apply them at eac
 
 ## Understanding the Cloud KMS Resource Hierarchy
 
-Cloud KMS resources are organized in a hierarchy. IAM policies can be applied at each level, and permissions inherit downward.
+Cloud KMS resources are organized in a hierarchy. IAM policies can be applied at the project, key ring, and crypto key levels, and permissions inherit downward.
 
 ```mermaid
 graph TD
@@ -28,7 +28,7 @@ graph TD
     style D fill:#ea4335,color:#fff
 ```
 
-A policy set on a key ring applies to all keys in that ring. A policy on a specific crypto key applies only to that key and its versions. For the tightest control, set policies at the crypto key level.
+A policy set on a key ring applies to all keys in that ring. A policy on a specific crypto key applies only to that key and its versions. Cloud KMS does not let you manage IAM on individual key versions. For the tightest control, set policies at the crypto key level.
 
 ## Cloud KMS IAM Roles
 
@@ -39,7 +39,7 @@ Here are the key roles relevant to encryption operations:
 | `roles/cloudkms.cryptoKeyEncrypter` | Encrypt only | Services that write encrypted data |
 | `roles/cloudkms.cryptoKeyDecrypter` | Decrypt only | Services that read encrypted data |
 | `roles/cloudkms.cryptoKeyEncrypterDecrypter` | Encrypt and decrypt | Services that both read and write |
-| `roles/cloudkms.admin` | Full management | Key administrators |
+| `roles/cloudkms.admin` | Key and policy management, not direct encrypt/decrypt | Key administrators |
 | `roles/cloudkms.viewer` | Read metadata | Auditors and monitoring |
 
 The separation between encrypt and decrypt is the crucial part. A service that only writes data should never need to decrypt it.
@@ -205,13 +205,13 @@ gcloud kms keys remove-iam-policy-binding user-data-key \
 
 **Separate keys per data classification**: PII data should use a different key than general application data. This allows you to apply stricter access controls on PII keys.
 
-**Admin separation**: The person who manages keys (creates, rotates, sets policies) should not be the same person who uses them for encryption. Grant `cloudkms.admin` to your platform team and `cryptoKeyEncrypterDecrypter` to application service accounts.
+**Admin separation**: The person who manages keys (creates, rotates, sets policies) should not be the same person who uses them for encryption. Grant `roles/cloudkms.admin` to your platform team and `roles/cloudkms.cryptoKeyEncrypterDecrypter` to application service accounts.
 
-**Deny policies**: Use Organization Policy constraints and IAM deny policies to prevent overly broad access. For example, deny `cloudkms.cryptoKeyDecrypter` at the project level for specific principals, then grant it on specific keys.
+**Deny policies**: Use IAM deny policies as guardrails for sensitive permissions. For example, deny `cloudkms.googleapis.com/cryptoKeyVersions.useToDecrypt` at the project level for principals that should never decrypt data. Remember that deny policies override allow policies, so a later key-level grant will not bypass the deny rule.
 
 ## Auditing Key Usage
 
-Monitor who is using your keys with Cloud Audit Logs.
+Monitor who is using your keys with Cloud Audit Logs. Decrypt events are Data Access audit logs, so make sure Data Access logs are enabled for Cloud KMS.
 
 ```bash
 # Check who has been using a specific key for decrypt operations
