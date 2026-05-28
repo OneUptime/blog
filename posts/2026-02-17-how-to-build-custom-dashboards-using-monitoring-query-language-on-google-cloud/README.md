@@ -8,11 +8,11 @@ Description: Learn how to build custom dashboards in Google Cloud Monitoring usi
 
 ---
 
-The visual dashboard builder in Google Cloud Monitoring works fine for simple charts, but the moment you need to do math between metrics, filter on complex conditions, or create custom aggregations, you hit its limits. That is where Monitoring Query Language (MQL) comes in. MQL gives you a text-based query language for Cloud Monitoring that can express things the GUI simply cannot. In this post, I will show you how to build production dashboards using MQL queries.
+The visual dashboard builder in Google Cloud Monitoring works fine for simple charts, but the moment you need to do math between metrics, filter on complex conditions, or create custom aggregations, you hit its limits. That is where Monitoring Query Language (MQL) comes in. MQL gives you a text-based query language for Cloud Monitoring that can express things the GUI simply cannot. MQL is no longer Google's recommended query language for new Cloud Monitoring work, and new MQL dashboards can no longer be created in the Google Cloud console, but existing MQL assets continue to work and you can still create MQL dashboards by using the Cloud Monitoring API. In this post, I will show you how to build dashboards using MQL queries.
 
 ## What is MQL?
 
-MQL is a text-based query language specific to Google Cloud Monitoring. Think of it like SQL for your metrics. You can fetch time series, filter them, align them in time, aggregate across dimensions, join different metrics, and apply math operations. It is significantly more powerful than the filter-based query builder in the Cloud Console.
+MQL is a text-based query language specific to Google Cloud Monitoring. Think of it like SQL for your metrics. You can fetch time series, filter them, align them in time, aggregate across dimensions, join different metrics, and apply math operations. It is significantly more expressive than the filter-based query builder in the Cloud Console, although Google now recommends PromQL for new query-language workflows.
 
 ## Getting Started with MQL Syntax
 
@@ -35,7 +35,7 @@ Let us start with a practical example. Here is a dashboard that shows CPU utiliz
 # Average CPU utilization per zone, aligned to 5-minute intervals
 
 fetch gce_instance::compute.googleapis.com/instance/cpu/utilization
-| group_by [resource.zone], mean(val())
+| group_by [zone], mean(val())
 | every 5m
 ```
 
@@ -45,7 +45,7 @@ To add a threshold line at 80% for visual reference, you can use the `union` ope
 # CPU utilization with an 80% threshold line
 {
   fetch gce_instance::compute.googleapis.com/instance/cpu/utilization
-  | group_by [resource.zone], mean(val())
+  | group_by [zone], mean(val())
   | every 5m
   ;
   fetch gce_instance::compute.googleapis.com/instance/cpu/utilization
@@ -63,7 +63,7 @@ For services that expose HTTP metrics, here is how to build a dashboard panel sh
 ```text
 # Total request rate per service
 fetch gae_app::appengine.googleapis.com/http/server/response_count
-| group_by [resource.module_id], rate(val())
+| group_by [module_id], rate(val())
 | every 1m
 ```
 
@@ -74,13 +74,13 @@ For error rate as a percentage.
 {
   # Fetch error responses (5xx status codes)
   fetch gae_app::appengine.googleapis.com/http/server/response_count
-  | filter metric.response_code >= 500
-  | group_by [resource.module_id], sum(val())
+  | filter response_code >= 500
+  | group_by [module_id], sum(val())
   | every 1m
   ;
   # Fetch total responses
   fetch gae_app::appengine.googleapis.com/http/server/response_count
-  | group_by [resource.module_id], sum(val())
+  | group_by [module_id], sum(val())
   | every 1m
 }
 | ratio
@@ -107,7 +107,7 @@ cat > dashboard.json << 'DASHBOARD'
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
-                "timeSeriesQueryLanguage": "fetch gce_instance::compute.googleapis.com/instance/cpu/utilization | group_by [resource.zone], mean(val()) | every 5m"
+                "timeSeriesQueryLanguage": "fetch gce_instance::compute.googleapis.com/instance/cpu/utilization | group_by [zone], mean(val()) | every 5m"
               },
               "plotType": "LINE"
             }],
@@ -124,7 +124,7 @@ cat > dashboard.json << 'DASHBOARD'
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
-                "timeSeriesQueryLanguage": "fetch gce_instance::agent.googleapis.com/memory/percent_used | filter state = 'used' | group_by [resource.instance_id], mean(val()) | every 5m"
+                "timeSeriesQueryLanguage": "fetch gce_instance::agent.googleapis.com/memory/percent_used | filter state = 'used' | group_by [instance_id], mean(val()) | every 5m"
               },
               "plotType": "LINE"
             }],
@@ -141,7 +141,7 @@ cat > dashboard.json << 'DASHBOARD'
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
-                "timeSeriesQueryLanguage": "{ fetch gae_app::appengine.googleapis.com/http/server/response_count | filter metric.response_code >= 500 | group_by [resource.module_id], sum(val()) | every 1m ; fetch gae_app::appengine.googleapis.com/http/server/response_count | group_by [resource.module_id], sum(val()) | every 1m } | ratio | mul(100)"
+                "timeSeriesQueryLanguage": "{ fetch gae_app::appengine.googleapis.com/http/server/response_count | filter response_code >= 500 | group_by [module_id], sum(val()) | every 1m ; fetch gae_app::appengine.googleapis.com/http/server/response_count | group_by [module_id], sum(val()) | every 1m } | ratio | mul(100)"
               },
               "plotType": "LINE"
             }],
@@ -184,7 +184,7 @@ Here are some MQL patterns I use regularly.
 ```text
 # 95th percentile response latency per service
 fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
-| group_by [resource.url_map_name],
+| group_by [url_map_name],
     percentile(val(), 95)
 | every 5m
 ```
@@ -201,9 +201,9 @@ fetch gce_instance::compute.googleapis.com/instance/cpu/utilization
 **Conditional alerting thresholds.**
 
 ```text
-# Disk usage above 90% with minimum disk size filter
+# Disk writes above 1 GB per 5-minute alignment period
 fetch gce_instance::compute.googleapis.com/instance/disk/write_bytes_count
-| group_by [resource.instance_id, metric.device_name], sum(val())
+| group_by [instance_id, device_name], sum(val())
 | every 5m
 | condition val() > 1000000000
 ```
@@ -258,7 +258,7 @@ resource "google_monitoring_dashboard" "service_health" {
                 timeSeriesQuery = {
                   timeSeriesQueryLanguage = <<-MQL
                     fetch gae_app::appengine.googleapis.com/http/server/response_count
-                    | group_by [resource.module_id], rate(val())
+                    | group_by [module_id], rate(val())
                     | every 1m
                   MQL
                 }
@@ -278,7 +278,7 @@ resource "google_monitoring_dashboard" "service_health" {
                 timeSeriesQuery = {
                   timeSeriesQueryLanguage = <<-MQL
                     fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
-                    | group_by [resource.url_map_name], percentile(val(), 95)
+                    | group_by [url_map_name], percentile(val(), 95)
                     | every 5m
                   MQL
                 }
