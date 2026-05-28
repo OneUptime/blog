@@ -43,7 +43,7 @@ Not all GCP features work with both tiers. Here is what you need to know:
 | Regional external Application Load Balancer | Yes | Yes |
 | Network Load Balancer | Yes | Yes |
 | Cloud CDN | Yes | No |
-| Cloud Armor | Yes (Global LB) | Limited |
+| Cloud Armor | Yes | Yes (regional policies) |
 | Anycast IP | Yes | No |
 | Multi-region backends on one LB | Yes | No |
 | SSL certificates (managed) | Yes | Yes |
@@ -56,17 +56,19 @@ Premium Tier costs more for egress traffic, but the pricing structure differs by
 
 ```text
 Premium Tier:
-  0-1 TB/month:    $0.12/GB
-  1-10 TB/month:   $0.11/GB
-  10+ TB/month:    $0.08/GB
+  0-1 GiB/month:       Free
+  1-1,024 GiB/month:   $0.12/GiB
+  1,024-10,240 GiB:    $0.11/GiB
+  10,240+ GiB:         $0.08/GiB
 
 Standard Tier:
-  0-1 TB/month:    $0.085/GB
-  1-10 TB/month:   $0.065/GB
-  10+ TB/month:    $0.045/GB
+  0-200 GiB/month:       Free
+  200-10,240 GiB/month:  $0.085/GiB
+  10,240-153,600 GiB:    $0.065/GiB
+  153,600+ GiB:          $0.045/GiB
 ```
 
-For a workload doing 5 TB of egress per month in North America, the difference is roughly $225/month. Whether that savings is worth the performance tradeoff depends entirely on your use case.
+For a workload doing 5 TiB of egress per month in North America, the difference is roughly $155/month. Whether that savings is worth the performance tradeoff depends entirely on your use case.
 
 ## Configuring Premium Tier (Default)
 
@@ -128,16 +130,25 @@ The load balancer type changes depending on the tier.
 For Premium Tier with global load balancing:
 
 ```bash
+# Reserve a global Premium Tier IP for the global load balancer
+gcloud compute addresses create my-global-premium-ip \
+    --global \
+    --ip-version=IPV4 \
+    --network-tier=PREMIUM
+
 # Global backend service (Premium Tier)
 gcloud compute backend-services create my-global-backend \
     --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
     --protocol=HTTP \
     --health-checks=my-health-check
 
 # Global forwarding rule with anycast IP
 gcloud compute forwarding-rules create my-global-rule \
     --global \
-    --address=my-premium-ip \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
+    --network-tier=PREMIUM \
+    --address=my-global-premium-ip \
     --target-https-proxy=my-https-proxy \
     --ports=443
 ```
@@ -148,14 +159,19 @@ For Standard Tier with regional load balancing:
 # Regional backend service (Standard Tier)
 gcloud compute backend-services create my-regional-backend \
     --region=us-central1 \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
     --protocol=HTTP \
-    --health-checks=my-health-check
+    --health-checks=my-health-check \
+    --health-checks-region=us-central1
 
 # Regional forwarding rule with Standard Tier IP
 gcloud compute forwarding-rules create my-regional-rule \
     --region=us-central1 \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
+    --network=default \
     --address=my-standard-ip \
     --target-http-proxy=my-regional-proxy \
+    --target-http-proxy-region=us-central1 \
     --ports=80 \
     --network-tier=STANDARD
 ```
@@ -167,7 +183,7 @@ Premium Tier makes sense when:
 - **Low latency is critical**: User-facing applications where every millisecond matters. Premium Tier typically delivers 20-50% lower latency for geographically distributed users.
 - **Global presence**: Applications serving users worldwide that benefit from global load balancing and anycast.
 - **Reliability requirements**: The private backbone has fewer points of failure than the public internet. You get more consistent latency and fewer packet drops.
-- **You need Cloud CDN or Cloud Armor**: These features require a global load balancer, which only works with Premium Tier.
+- **You need Cloud CDN or global Cloud Armor policies**: Cloud CDN is always Premium Tier, and global Cloud Armor protection uses a global external load balancer, which only works with Premium Tier.
 
 ## When to Use Standard Tier
 
