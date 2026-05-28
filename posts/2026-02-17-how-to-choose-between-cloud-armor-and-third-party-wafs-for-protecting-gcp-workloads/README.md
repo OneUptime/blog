@@ -20,7 +20,7 @@ Key capabilities:
 - Custom rules using a flexible expression language
 - Rate limiting and bot management
 - Adaptive Protection using ML to detect and mitigate Layer 7 DDoS attacks
-- Named IP address lists (e.g., block traffic from specific geographies)
+- Named IP address lists for common third-party provider IP ranges
 - Integration with Cloud CDN and GKE Ingress
 
 Here is how you set up a basic Cloud Armor security policy:
@@ -34,14 +34,14 @@ gcloud compute security-policies create my-waf-policy \
 # Add a rule to block SQL injection attacks using pre-configured WAF rules
 gcloud compute security-policies rules create 1000 \
   --security-policy my-waf-policy \
-  --expression "evaluatePreconfiguredExpr('sqli-v33-stable')" \
+  --expression "evaluatePreconfiguredWaf('sqli-v33-stable')" \
   --action deny-403 \
   --description "Block SQL injection"
 
 # Add a rule to block cross-site scripting
 gcloud compute security-policies rules create 1001 \
   --security-policy my-waf-policy \
-  --expression "evaluatePreconfiguredExpr('xss-v33-stable')" \
+  --expression "evaluatePreconfiguredWaf('xss-v33-stable')" \
   --action deny-403 \
   --description "Block XSS attacks"
 
@@ -127,7 +127,7 @@ This layered approach is more complex to manage but gives you defense in depth. 
 
 ## Cost Considerations
 
-Cloud Armor Standard tier is free for basic features. Cloud Armor Managed Protection Plus, which includes Adaptive Protection and DDoS response support, costs $3,000 per month. Third-party WAFs vary widely - Cloudflare's Pro plan starts at $20/month for basic WAF, while enterprise WAF solutions from Imperva or Akamai can cost thousands per month.
+Cloud Armor Standard has no subscription fee, but charges for requests, security policies, and rules. Cloud Armor Enterprise, which includes full Adaptive Protection alerts and DDoS response support, is available as pay-as-you-go or as an annual subscription; the annual subscription is priced at about $3,000 per month. Third-party WAFs vary widely - Cloudflare's Pro plan starts at $20/month for basic WAF, while enterprise WAF solutions from Imperva or Akamai can cost thousands per month.
 
 At moderate scale, Cloud Armor is typically cheaper. At large scale with complex requirements, the total cost depends more on what features you actually need than on the base pricing.
 
