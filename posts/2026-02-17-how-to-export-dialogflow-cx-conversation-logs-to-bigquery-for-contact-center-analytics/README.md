@@ -16,165 +16,133 @@ In this post, I will cover setting up the conversation log export, structuring t
 
 Dialogflow CX conversation logs contain rich data about every interaction:
 
-- Session ID and timestamps
-- User inputs (text and audio transcripts)
-- Detected intents and confidence scores
+- Conversation name, turn position, and timestamps
+- Detect intent requests and responses
+- User inputs, including text, transcripts, events, and DTMF
+- Matched intents and confidence scores
 - Matched pages and flows
 - Agent responses
-- Webhook calls and responses
-- Parameter values
-- Session duration and turn count
+- Webhook call statuses and payloads
+- Parameter values and derived conversation data
 
 ## Prerequisites
 
 - A Dialogflow CX agent handling conversations
 - BigQuery API enabled
-- Cloud Logging API enabled
-- Appropriate IAM permissions for log routing
+- Dialogflow API enabled
+- Appropriate IAM permissions to update the agent and create BigQuery datasets and tables
 
 ## Step 1: Enable Conversation Logging
 
-First, make sure conversation logging is enabled on your Dialogflow CX agent. By default, interaction logging may be disabled for privacy.
+First, make sure conversation history is enabled on your Dialogflow CX agent. BigQuery export depends on conversation history, which relies on interaction logging.
 
 ```python
-from google.cloud import dialogflowcx_v3
+from google.cloud import dialogflowcx_v3beta1
+from google.protobuf import field_mask_pb2
 
-def enable_conversation_logging(agent_name):
-    """Enables conversation logging on a Dialogflow CX agent."""
-    client = dialogflowcx_v3.AgentsClient()
+def enable_conversation_logging(agent_name, bigquery_table):
+    """Enables conversation history and BigQuery export on a Dialogflow CX agent."""
+    client = dialogflowcx_v3beta1.AgentsClient()
 
     agent = client.get_agent(name=agent_name)
 
-    # Enable interaction logging
-    agent.enable_stackdriver_logging = True
-    agent.enable_spell_correction = True
+    agent.advanced_settings.logging_settings.enable_stackdriver_logging = True
+    agent.advanced_settings.logging_settings.enable_interaction_logging = True
+    agent.bigquery_export_settings.enabled = True
+    agent.bigquery_export_settings.bigquery_table = bigquery_table
 
     client.update_agent(
         agent=agent,
-        update_mask={"paths": [
-            "enable_stackdriver_logging",
-        ]},
+        update_mask=field_mask_pb2.FieldMask(paths=[
+            "advanced_settings.logging_settings",
+            "bigquery_export_settings",
+        ]),
     )
-    print("Conversation logging enabled")
+    print("Conversation history export enabled")
 
 enable_conversation_logging(
-    "projects/my-project/locations/us-central1/agents/AGENT_ID"
+    "projects/my-project/locations/us-central1/agents/AGENT_ID",
+    "projects/my-project/datasets/dialogflow_analytics/tables/dialogflow_bigquery_export_data",
 )
 ```
 
-## Step 2: Create a Log Sink to BigQuery
+## Step 2: Create the BigQuery Export Table
 
-Cloud Logging receives the conversation logs. You need a log sink to route them to BigQuery for analysis.
+Dialogflow CX writes conversation history directly to a BigQuery table when BigQuery export is enabled.
 
-This sets up the log sink with a filter for Dialogflow CX interactions:
+This creates the dataset and the export table with the schema Dialogflow CX expects:
 
 ```bash
 # Create a BigQuery dataset for conversation logs
-
 bq mk --dataset \
   --location=us-central1 \
   --description="Dialogflow CX conversation logs" \
   MY_PROJECT:dialogflow_analytics
 
-# Create a log sink that routes Dialogflow CX logs to BigQuery
-gcloud logging sinks create dialogflow-to-bigquery \
-  bigquery.googleapis.com/projects/MY_PROJECT/datasets/dialogflow_analytics \
-  --log-filter='resource.type="global" AND logName:"dialogflow"' \
-  --use-partitioned-tables \
-  --description="Routes Dialogflow CX conversation logs to BigQuery"
+# Create the Dialogflow CX conversation history export table
+bq mk --table MY_PROJECT:dialogflow_analytics.dialogflow_bigquery_export_data \
+  project_id:STRING,\
+  agent_id:STRING,\
+  conversation_name:STRING,\
+  turn_position:INTEGER,\
+  request_time:TIMESTAMP,\
+  language_code:STRING,\
+  request:JSON,\
+  response:JSON,\
+  partial_responses:JSON,\
+  derived_data:JSON,\
+  conversation_signals:JSON,\
+  bot_answer_feedback:JSON
 ```
 
-After creating the sink, you need to grant the sink's service account write access to BigQuery:
+If your Dialogflow agent and BigQuery table are in different projects, grant the Dialogflow service agent BigQuery Data Editor access to the destination dataset:
 
 ```bash
-# Get the sink's writer identity
-SINK_SA=$(gcloud logging sinks describe dialogflow-to-bigquery --format='value(writerIdentity)')
+# Replace DIALOGFLOW_PROJECT_NUMBER with the project number that owns the agent
+DIALOGFLOW_SA="service-DIALOGFLOW_PROJECT_NUMBER@gcp-sa-dialogflow.iam.gserviceaccount.com"
 
-# Grant BigQuery Data Editor role to the sink service account
+# Grant BigQuery Data Editor role to the Dialogflow service agent
 gcloud projects add-iam-policy-binding MY_PROJECT \
-  --member="$SINK_SA" \
+  --member="serviceAccount:$DIALOGFLOW_SA" \
   --role="roles/bigquery.dataEditor"
 ```
 
-## Step 3: Set Up Structured Export with Cloud Functions
+## Step 3: Set Up Structured Export with BigQuery
 
-For more structured data, use a Cloud Function that processes Dialogflow CX interaction data and writes it to BigQuery in a clean schema.
+For more structured data, use a BigQuery query that processes Dialogflow CX conversation history and writes it to a clean schema.
 
-This Cloud Function processes conversation data into a structured format:
+This query processes conversation data into a structured format:
 
-```python
-import functions_framework
-from google.cloud import bigquery
-import json
-from datetime import datetime
-
-# Initialize BigQuery client
-bq_client = bigquery.Client()
-TABLE_ID = "MY_PROJECT.dialogflow_analytics.conversations"
-
-@functions_framework.cloud_event
-def process_conversation_log(cloud_event):
-    """Processes Dialogflow CX conversation logs and writes to BigQuery."""
-    # Parse the Pub/Sub message containing the log entry
-    data = json.loads(cloud_event.data["message"]["data"])
-
-    # Extract conversation details from the log entry
-    session_id = data.get("sessionInfo", {}).get("session", "").split("/")[-1]
-    query_input = data.get("queryInput", {})
-    query_result = data.get("queryResult", {})
-
-    # Build the structured row
-    row = {
-        "session_id": session_id,
-        "timestamp": datetime.utcnow().isoformat(),
-        "user_input": extract_user_input(query_input),
-        "detected_intent": query_result.get("intent", {}).get("displayName", ""),
-        "intent_confidence": query_result.get("intentDetectionConfidence", 0),
-        "matched_page": query_result.get("currentPage", {}).get("displayName", ""),
-        "matched_flow": query_result.get("currentFlow", {}).get("displayName", ""),
-        "agent_response": extract_agent_response(query_result),
-        "parameters": json.dumps(query_result.get("parameters", {})),
-        "webhook_called": bool(query_result.get("webhookPayloads")),
-        "webhook_status": extract_webhook_status(query_result),
-        "sentiment_score": query_result.get("sentimentAnalysisResult", {}).get("score", 0),
-        "sentiment_magnitude": query_result.get("sentimentAnalysisResult", {}).get("magnitude", 0),
-    }
-
-    # Insert into BigQuery
-    errors = bq_client.insert_rows_json(TABLE_ID, [row])
-    if errors:
-        print(f"BigQuery insert errors: {errors}")
-    else:
-        print(f"Logged conversation turn for session {session_id}")
-
-
-def extract_user_input(query_input):
-    """Extracts user input text from the query input."""
-    if "text" in query_input:
-        return query_input["text"].get("text", "")
-    elif "intent" in query_input:
-        return f"[Intent: {query_input['intent'].get('intent', '')}]"
-    elif "dtmf" in query_input:
-        return f"[DTMF: {query_input['dtmf'].get('digits', '')}]"
-    return ""
-
-
-def extract_agent_response(query_result):
-    """Extracts the agent's text response from query result."""
-    messages = query_result.get("responseMessages", [])
-    texts = []
-    for msg in messages:
-        if "text" in msg:
-            texts.extend(msg["text"].get("text", []))
-    return " ".join(texts)
-
-
-def extract_webhook_status(query_result):
-    """Extracts webhook call status."""
-    statuses = query_result.get("webhookStatuses", [])
-    if statuses:
-        return statuses[0].get("code", "unknown")
-    return "none"
+```sql
+CREATE OR REPLACE TABLE `MY_PROJECT.dialogflow_analytics.conversations` AS
+SELECT
+  REGEXP_EXTRACT(conversation_name, r'/sessions/([^/]+)$') as session_id,
+  request_time as timestamp,
+  COALESCE(
+    JSON_VALUE(response, '$.queryResult.text'),
+    JSON_VALUE(response, '$.queryResult.transcript'),
+    CONCAT('[Intent: ', JSON_VALUE(response, '$.queryResult.triggerIntent'), ']'),
+    CONCAT('[Event: ', JSON_VALUE(response, '$.queryResult.triggerEvent'), ']'),
+    CONCAT('[DTMF: ', JSON_VALUE(response, '$.queryResult.dtmf.digits'), ']')
+  ) as user_input,
+  JSON_VALUE(response, '$.queryResult.match.intent.displayName') as detected_intent,
+  SAFE_CAST(JSON_VALUE(response, '$.queryResult.match.confidence') AS FLOAT64) as intent_confidence,
+  JSON_VALUE(response, '$.queryResult.currentPage.displayName') as matched_page,
+  JSON_VALUE(response, '$.queryResult.currentFlow.displayName') as matched_flow,
+  (
+    SELECT STRING_AGG(JSON_VALUE(text_value, '$'), ' ')
+    FROM UNNEST(IFNULL(JSON_QUERY_ARRAY(response, '$.queryResult.responseMessages'), ARRAY<JSON>[])) as message,
+    UNNEST(IFNULL(JSON_QUERY_ARRAY(message, '$.text.text'), ARRAY<JSON>[])) as text_value
+  ) as agent_response,
+  TO_JSON_STRING(JSON_QUERY(response, '$.queryResult.parameters')) as parameters,
+  IFNULL(ARRAY_LENGTH(JSON_QUERY_ARRAY(response, '$.queryResult.webhookPayloads')), 0) > 0 as webhook_called,
+  COALESCE(
+    JSON_VALUE(IFNULL(JSON_QUERY_ARRAY(response, '$.queryResult.webhookStatuses'), ARRAY<JSON>[])[SAFE_OFFSET(0)], '$.code'),
+    'none'
+  ) as webhook_status,
+  SAFE_CAST(JSON_VALUE(response, '$.queryResult.sentimentAnalysisResult.score') AS FLOAT64) as sentiment_score,
+  SAFE_CAST(JSON_VALUE(response, '$.queryResult.sentimentAnalysisResult.magnitude') AS FLOAT64) as sentiment_magnitude
+FROM `MY_PROJECT.dialogflow_analytics.dialogflow_bigquery_export_data`;
 ```
 
 Create the BigQuery table with the matching schema:
@@ -231,7 +199,7 @@ SELECT
 
   -- Resolution indicators
   LOGICAL_OR(detected_intent LIKE '%transfer%' OR detected_intent LIKE '%agent%') as transferred_to_agent,
-  LOGICAL_OR(detected_intent LIKE '%resolved%' OR detected_intent LIKE '%thank%') as likely_resolved,
+  LOGICAL_OR(detected_intent LIKE '%resolved%' OR detected_intent LIKE '%thank%') as likely_resolved
 
 FROM `MY_PROJECT.dialogflow_analytics.conversations`
 WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
@@ -320,16 +288,16 @@ LIMIT 20;
 
 ## Step 6: Create a Monitoring Dashboard
 
-Set up a Cloud Monitoring dashboard that tracks key metrics in real time:
+Set up a Cloud Monitoring alerting policy that tracks a custom metric. The metric must be written separately from your analytics job or application code before the alert can evaluate it:
 
 ```bash
 # Create alert for high agent transfer rate
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="High Agent Transfer Rate" \
   --condition-display-name="Transfer rate above 40%" \
   --condition-filter='metric.type="custom.googleapis.com/dialogflow/transfer_rate"' \
-  --condition-threshold-value=0.4 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --if='> 0.4' \
+  --duration=300s \
   --notification-channels=CHANNEL_ID \
   --combiner=OR
 ```
