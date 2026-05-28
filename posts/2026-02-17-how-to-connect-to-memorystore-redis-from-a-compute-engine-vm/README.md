@@ -14,11 +14,11 @@ That said, I have seen people struggle with this setup because of networking req
 
 ## Network Requirements
 
-Before anything else, understand the networking model. Memorystore Redis instances are only accessible from resources within the same VPC network (or a peered network). They do not have public IP addresses. This means:
+Before anything else, understand the networking model. Memorystore Redis instances are only accessible from resources within the same authorized VPC network and region. They do not have public IP addresses. This means:
 
-- Your VM must be in the same VPC network as the Redis instance
-- Or your VM's network must be peered with the Redis instance's network
-- Firewall rules must allow traffic on the Redis port (default 6379)
+- Your VM must be in the same authorized VPC network as the Redis instance
+- Your VM should be in the same region as the Redis instance
+- Egress firewall rules must not block traffic to the Redis IP and port (default 6379)
 
 Here is the architecture:
 
@@ -302,15 +302,17 @@ telnet 10.0.0.3 6379
 If connections time out rather than being refused:
 
 ```bash
-# Check if there is a firewall rule blocking Redis port
-gcloud compute firewall-rules list --filter="network=default"
+# Check if there is an egress firewall rule blocking the Redis IP or port
+gcloud compute firewall-rules list \
+  --filter="network=default AND direction=EGRESS"
 
-# Create a firewall rule to allow Redis traffic if needed
-gcloud compute firewall-rules create allow-redis \
+# If your network uses restricted egress, allow traffic to the Redis IP
+gcloud compute firewall-rules create allow-egress-redis \
   --network=default \
+  --direction=EGRESS \
   --allow=tcp:6379 \
-  --source-ranges=10.0.0.0/8 \
-  --description="Allow Redis traffic from internal IPs"
+  --destination-ranges=10.0.0.3/32 \
+  --description="Allow egress to Memorystore Redis"
 ```
 
 ### AUTH Required Error
@@ -328,9 +330,9 @@ Then pass the AUTH string when connecting.
 
 **Use connection pooling.** Creating a new connection for every Redis operation adds significant latency. All the code examples above use connection pools.
 
-**Deploy VMs in the same region as Redis.** Cross-region connections add network latency that defeats the purpose of an in-memory cache.
+**Deploy VMs in the same region as Redis.** Memorystore connectivity from Compute Engine expects the VM to use the same authorized VPC network and region as the Redis instance.
 
-**Keep your VM and Redis in the same zone when possible.** Same-zone latency is typically under 0.5ms, while cross-zone can be 1-2ms.
+**Keep latency-sensitive clients close to Redis when possible.** If you choose a specific Redis zone, placing latency-sensitive VM clients in that zone can reduce network hops, but you should measure latency for your workload.
 
 **Monitor connection count.** Memorystore has a maximum connection limit based on instance size. Track active connections to avoid hitting it.
 
@@ -341,4 +343,4 @@ redis-cli -h 10.0.0.3 INFO clients
 
 ## Wrapping Up
 
-Connecting a Compute Engine VM to Memorystore Redis boils down to getting the networking right. Both resources need to be on the same VPC, firewall rules need to allow traffic on port 6379, and your application should use connection pooling for production workloads. Once the network path is established, Redis commands from your VM execute in sub-millisecond times, giving you the caching performance you need.
+Connecting a Compute Engine VM to Memorystore Redis boils down to getting the networking right. Both resources need to be on the same authorized VPC network and region, egress firewall rules must not block traffic on port 6379, and your application should use connection pooling for production workloads. Once the network path is established, Redis commands from your VM execute with low latency, giving you the caching performance you need.
