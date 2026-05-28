@@ -89,12 +89,19 @@ You can also log time series metrics that show how values change over training s
 
 ## Logging Time Series Metrics
 
-For metrics that change over time, use the time series logging API. This is what feeds the TensorBoard visualizations.
+For metrics that change over time, use the time series logging API. Time series metrics require a backing Vertex AI TensorBoard instance, and they are stored there for visualization.
 
 Here is how to log time series data during training:
 
 ```python
 from google.cloud import aiplatform
+
+aiplatform.init(
+    project="your-project-id",
+    location="us-central1",
+    experiment="fraud-detection-v2",
+    experiment_tensorboard="projects/your-project-id/locations/us-central1/tensorboards/your-tensorboard-id"
+)
 
 aiplatform.start_run("run-lr-0005-scheduler")
 
@@ -205,8 +212,12 @@ model_artifact = aiplatform.Artifact.create(
     uri="gs://your-bucket/models/fraud-detector-best/"
 )
 
-# Associate the artifact with the current run
-aiplatform.log(model_artifact)
+# Associate the artifact with a training execution in the current run
+with aiplatform.start_execution(
+    schema_title="system.ContainerExecution",
+    display_name="train-best-config"
+) as execution:
+    execution.assign_output_artifacts([model_artifact])
 
 aiplatform.end_run()
 ```
@@ -240,7 +251,8 @@ job = aiplatform.CustomJob(
 # Run the job within an experiment context
 job.run(
     experiment="fraud-detection-v2",
-    experiment_run="training-job-run-001"
+    experiment_run="training-job-run-001",
+    service_account="vertex-training@your-project-id.iam.gserviceaccount.com"
 )
 ```
 
@@ -254,7 +266,7 @@ Second, log everything you think you might need later. Storage is cheap, but re-
 
 Third, use consistent parameter names across runs. If one run logs "lr" and another logs "learning_rate", your comparison DataFrames will have separate columns and the comparison becomes harder.
 
-Fourth, tag your runs with metadata that helps future filtering. Add tags like "baseline", "production-candidate", or "ablation-study" so you can quickly find the runs you care about.
+Fourth, log run metadata that helps future filtering. Add a consistent parameter like "run_type" with values such as "baseline", "production-candidate", or "ablation-study" so you can quickly find the runs you care about.
 
 Finally, clean up TensorBoard instances you no longer need. Each managed TensorBoard instance incurs costs, so delete old ones after you have extracted the insights you need.
 
