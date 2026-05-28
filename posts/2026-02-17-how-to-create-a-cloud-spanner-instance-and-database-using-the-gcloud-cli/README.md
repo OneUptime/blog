@@ -62,17 +62,17 @@ nam6                     United States (NAM6)
 nam-eur-asia1            North America, Europe, Asia
 ```
 
-For most development and single-region workloads, a regional configuration is the right choice. Multi-region configurations are for when you need higher availability guarantees and can tolerate the additional cost and slightly higher write latency.
+For most development and single-region workloads, a regional configuration is the right choice. Multi-region configurations are for when you need higher availability guarantees, have an Enterprise Plus instance, and can tolerate the additional cost and slightly higher write latency.
 
 ## Creating a Cloud Spanner Instance
 
-Now let's create the instance. The key parameters are the instance ID, the display name, the configuration, and the number of processing units or nodes.
+Now let's create the instance. The key parameters are the instance ID, the description that is used as the display name, the configuration, and the number of processing units or nodes.
 
 ```bash
 # Create a regional Spanner instance with 100 processing units
 gcloud spanner instances create my-spanner-instance \
     --config=regional-us-central1 \
-    --display-name="My Spanner Instance" \
+    --description="My Spanner Instance" \
     --processing-units=100
 ```
 
@@ -81,7 +81,7 @@ A few things to note about processing units:
 - The minimum is 100 processing units (equivalent to 0.1 nodes)
 - 1 node equals 1000 processing units
 - You can scale in increments of 100 up to 1000, and in increments of 1000 after that
-- Each 1000 processing units provides roughly 10,000 reads per second or 2,000 writes per second
+- In a regional configuration, each 1000 processing units provides roughly 22,500 reads per second or 3,500 writes per second for SSD storage, depending on workload and schema design
 
 For a production workload, you might want to start with at least 1000 processing units (1 node). For development and testing, 100 processing units keeps costs low while still giving you a real Spanner instance to work with.
 
@@ -118,7 +118,7 @@ gcloud spanner databases create my-database \
     ) PRIMARY KEY (UserId)'
 ```
 
-If you need to pass multiple DDL statements, you can separate them with semicolons or use the `--ddl` flag multiple times:
+If you need to pass multiple DDL statements, separate them with semicolons in the `--ddl` value or use a `--ddl-file`:
 
 ```bash
 # Create a database with multiple tables
@@ -128,8 +128,8 @@ gcloud spanner databases create my-database \
         UserId STRING(36) NOT NULL,
         Email STRING(256) NOT NULL,
         CreatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true)
-    ) PRIMARY KEY (UserId)' \
-    --ddl='CREATE TABLE Orders (
+    ) PRIMARY KEY (UserId);
+    CREATE TABLE Orders (
         OrderId STRING(36) NOT NULL,
         UserId STRING(36) NOT NULL,
         Amount FLOAT64 NOT NULL,
