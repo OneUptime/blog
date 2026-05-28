@@ -43,7 +43,7 @@ print(f"Version ID: {model_v1.version_id}")
 
 # Upload a new version of the same model
 model_v2 = aiplatform.Model.upload(
-    display_name="churn-prediction-model",  # Same display name creates a new version
+    display_name="churn-prediction-model",
     parent_model=model_v1.resource_name,  # Reference the parent model
     artifact_uri="gs://my-bucket/models/churn-v2/",
     serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-2:latest",
@@ -88,7 +88,8 @@ def list_model_versions(model_display_name):
     print()
 
     # List all versions
-    versions = model.list_versions()
+    model_registry = aiplatform.models.ModelRegistry(model=model.resource_name)
+    versions = model_registry.list_versions()
 
     for version in versions:
         print(f"Version ID: {version.version_id}")
@@ -117,7 +118,7 @@ def get_production_version(model_display_name):
 
     # Get the version with the stable alias
     try:
-        stable_version = model.get_model_version("stable")
+        stable_version = aiplatform.Model(model.resource_name, version="stable")
         return stable_version
     except Exception:
         print("No version with 'stable' alias found")
@@ -156,19 +157,23 @@ class SafeModelDeployer:
         # Record the current deployment for rollback
         current_models = endpoint.list_models()
         rollback_info = {
-            dm.display_name: {
-                "id": dm.id,
-                "model": dm.model,
-            }
-            for dm in current_models
+            "traffic_split": dict(endpoint.traffic_split or {}),
+            "models": {
+                dm.display_name: {
+                    "id": dm.id,
+                    "model": dm.model,
+                }
+                for dm in current_models
+            },
         }
 
         print(f"Current deployment: {rollback_info}")
 
         # Deploy the new model with canary traffic
+        canary_name = f"canary-{new_model.version_id}"
         new_model.deploy(
             endpoint=endpoint,
-            deployed_model_display_name=f"canary-{new_model.version_id}",
+            deployed_model_display_name=canary_name,
             machine_type="n1-standard-4",
             min_replica_count=1,
             max_replica_count=5,
@@ -182,17 +187,24 @@ class SafeModelDeployer:
         time.sleep(canary_duration_minutes * 60)
 
         # Check if the canary is healthy
-        if self._check_canary_health(endpoint_id, new_model.version_id):
+        deployed_models = endpoint.list_models()
+        canary_id = next(
+            (dm.id for dm in deployed_models if dm.display_name == canary_name),
+            None,
+        )
+        if not canary_id:
+            raise RuntimeError("Canary deployment was not found on the endpoint")
+
+        if self._check_canary_health(endpoint_id, canary_id):
             print("Canary is healthy. Promoting to full traffic.")
             self._promote_canary(endpoint, new_model)
         else:
             print("Canary shows problems. Rolling back.")
             self._rollback(endpoint, rollback_info)
 
-    def _check_canary_health(self, endpoint_id, model_version):
+    def _check_canary_health(self, endpoint_id, deployed_model_id):
         """Check if the canary deployment is performing well."""
         from google.cloud import monitoring_v3
-        from google.protobuf import timestamp_pb2
 
         client = monitoring_v3.MetricServiceClient()
         project_name = f"projects/{self.project_id}"
@@ -209,7 +221,8 @@ class SafeModelDeployer:
             request={
                 "name": project_name,
                 "filter": f'metric.type="aiplatform.googleapis.com/prediction/online/error_count" '
-                          f'AND resource.labels.endpoint_id="{endpoint_id}"',
+                          f'AND resource.labels.endpoint_id="{endpoint_id}" '
+                          f'AND metric.labels.deployed_model_id="{deployed_model_id}"',
                 "interval": interval,
                 "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
             }
@@ -258,24 +271,14 @@ class SafeModelDeployer:
     def _rollback(self, endpoint, rollback_info):
         """Roll back to the previous deployment."""
         deployed_models = endpoint.list_models()
+        previous_split = rollback_info["traffic_split"]
 
         # Find and remove the canary
         for dm in deployed_models:
             if "canary" in dm.display_name:
                 # Route all traffic away from canary
-                other_models = {
-                    d.id: 0 for d in deployed_models if d.id != dm.id
-                }
-                if other_models:
-                    # Distribute traffic equally among remaining models
-                    per_model = 100 // len(other_models)
-                    other_models = {k: per_model for k in other_models}
-                    # Give any remainder to the first model
-                    first_key = list(other_models.keys())[0]
-                    other_models[first_key] += 100 - sum(other_models.values())
-                    other_models[dm.id] = 0
-
-                    endpoint.update(traffic_split=other_models)
+                if previous_split:
+                    endpoint.update(traffic_split=previous_split)
 
                 # Undeploy the canary
                 time.sleep(60)
@@ -291,15 +294,27 @@ Use version aliases to track the lifecycle stage of each model version.
 ```python
 # versioning/alias_management.py
 from google.cloud import aiplatform
+from google.cloud import aiplatform_v1
 
 def manage_version_aliases(model_display_name):
     """Manage version aliases to track model lifecycle."""
-    aiplatform.init(project="my-project", location="us-central1")
+    project = "my-project"
+    location = "us-central1"
+    aiplatform.init(project=project, location=location)
 
     models = aiplatform.Model.list(
         filter=f'display_name="{model_display_name}"'
     )
     model = models[0]
+    client = aiplatform_v1.ModelServiceClient(
+        client_options={"api_endpoint": f"{location}-aiplatform.googleapis.com"}
+    )
+
+    def merge_aliases(version_id, aliases):
+        client.merge_version_aliases(
+            name=f"{model.resource_name}@{version_id}",
+            version_aliases=aliases,
+        )
 
     # Alias strategy:
     # "stable" - the currently deployed production version
@@ -310,46 +325,30 @@ def manage_version_aliases(model_display_name):
     # When promoting a new version:
     def promote_version(new_version_id):
         # Move "stable" alias to "previous"
-        current_stable = model.get_model_version("stable")
+        current_stable = aiplatform.Model(model.resource_name, version="stable")
         if current_stable:
             # Remove "stable" alias from current version
-            model.remove_version_aliases(
-                target_aliases=["stable"],
-                version=current_stable.version_id,
-            )
             # Add "previous" alias
-            model.add_version_aliases(
-                target_aliases=["previous"],
-                version=current_stable.version_id,
-            )
+            merge_aliases(current_stable.version_id, ["-stable", "previous"])
 
         # Set "stable" alias on new version
-        model.add_version_aliases(
-            target_aliases=["stable"],
-            version=new_version_id,
-        )
         # Remove "candidate" alias
-        model.remove_version_aliases(
-            target_aliases=["candidate"],
-            version=new_version_id,
-        )
+        merge_aliases(new_version_id, ["stable", "-candidate"])
 
         print(f"Version {new_version_id} promoted to stable")
         print(f"Previous stable: {current_stable.version_id}")
 
     # When rolling back:
     def rollback_to_previous():
-        previous = model.get_model_version("previous")
-        current = model.get_model_version("stable")
+        previous = aiplatform.Model(model.resource_name, version="previous")
+        current = aiplatform.Model(model.resource_name, version="stable")
 
         if not previous:
             raise ValueError("No previous version available for rollback")
 
         # Swap aliases
-        model.remove_version_aliases(["stable"], version=current.version_id)
-        model.remove_version_aliases(["previous"], version=previous.version_id)
-        model.add_version_aliases(["stable"], version=previous.version_id)
-        model.add_version_aliases(["rolled-back"], version=current.version_id)
+        merge_aliases(current.version_id, ["-stable", "rolled-back"])
+        merge_aliases(previous.version_id, ["stable", "-previous"])
 
         print(f"Rolled back to version {previous.version_id}")
         print(f"Version {current.version_id} marked as rolled-back")
@@ -365,16 +364,16 @@ Set up automated monitoring that triggers a rollback when model performance drop
 # versioning/auto_rollback.py
 from google.cloud import aiplatform
 from google.cloud import monitoring_v3
+from versioning.alias_management import manage_version_aliases
 import time
 
 def monitor_and_auto_rollback(
     endpoint_id,
     model_display_name,
     error_rate_threshold=0.05,
-    latency_threshold_ms=500,
     check_interval_seconds=300,
 ):
-    """Monitor model performance and auto-rollback on degradation."""
+    """Monitor model error rate and auto-rollback on degradation."""
     aiplatform.init(project="my-project", location="us-central1")
 
     monitoring_client = monitoring_v3.MetricServiceClient()
@@ -428,9 +427,11 @@ def monitor_and_auto_rollback(
             print(f"Error rate: {error_rate:.4f} (threshold: {error_rate_threshold})")
 
             if error_rate > error_rate_threshold:
-                print("ERROR RATE EXCEEDED - Triggering rollback!")
+                print("ERROR RATE EXCEEDED - Triggering alias rollback!")
                 _, rollback = manage_version_aliases(model_display_name)
                 rollback()
+                # Pair this with your endpoint deployment rollback workflow
+                # if the deployed model was not addressed by alias.
                 break
 
         time.sleep(check_interval_seconds)
