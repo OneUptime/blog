@@ -34,8 +34,13 @@ Enable the required APIs and set up the storage buckets.
 
 gcloud services enable transcoder.googleapis.com
 gcloud services enable cloudfunctions.googleapis.com
+gcloud services enable run.googleapis.com
+gcloud services enable eventarc.googleapis.com
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable artifactregistry.googleapis.com
 gcloud services enable pubsub.googleapis.com
 gcloud services enable storage.googleapis.com
+gcloud services enable firestore.googleapis.com
 
 # Create input and output buckets
 gsutil mb -l us-central1 gs://YOUR_PROJECT-video-input
@@ -51,9 +56,23 @@ Set up the service account permissions.
 # Grant the Transcoder service account access to your buckets
 PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT --format="value(projectNumber)")
 SA="service-${PROJECT_NUMBER}@gcp-sa-transcoder.iam.gserviceaccount.com"
+FUNCTION_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
 gsutil iam ch serviceAccount:${SA}:objectViewer gs://YOUR_PROJECT-video-input
 gsutil iam ch serviceAccount:${SA}:objectCreator gs://YOUR_PROJECT-video-output
+gcloud pubsub topics add-iam-policy-binding transcoding-notifications \
+  --member=serviceAccount:${SA} \
+  --role=roles/pubsub.publisher
+
+# Grant the Cloud Functions runtime service account permission to create and read jobs
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+  --member=serviceAccount:${FUNCTION_SA} \
+  --role=roles/transcoder.admin
+
+# Grant the completion handler permission to write video metadata to Firestore
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+  --member=serviceAccount:${FUNCTION_SA} \
+  --role=roles/datastore.user
 ```
 
 ## Cloud Function: Trigger Transcoding
@@ -222,10 +241,12 @@ import base64
 import json
 import logging
 from google.cloud import firestore
+from google.cloud.video.transcoder_v1.services.transcoder_service import TranscoderServiceClient
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 db = firestore.Client()
+transcoder_client = TranscoderServiceClient()
 
 
 @functions_framework.cloud_event
@@ -241,21 +262,22 @@ def handle_transcoding_complete(cloud_event):
     logger.info(f"Job {job_name} completed with state: {state}")
 
     if state == "SUCCEEDED":
-        handle_success(notification)
+        job = transcoder_client.get_job(name=job_name)
+        handle_success(job)
     elif state == "FAILED":
-        handle_failure(notification)
+        job = transcoder_client.get_job(name=job_name)
+        handle_failure(job, notification)
 
 
-def handle_success(notification):
+def handle_success(job):
     """Update the database with transcoded video URLs."""
-    job = notification["job"]
-    input_uri = job.get("inputUri", "")
+    input_uri = job.input_uri
 
     # Extract the video name from the input URI
     video_name = input_uri.split("/")[-1].rsplit(".", 1)[0]
 
     # Build the output URLs from the job config
-    output_uri = job.get("config", {}).get("output", {}).get("uri", "")
+    output_uri = job.config.output.uri
 
     video_doc = {
         "name": video_name,
@@ -274,12 +296,12 @@ def handle_success(notification):
     logger.info(f"Video {video_name} is ready with all resolutions")
 
 
-def handle_failure(notification):
+def handle_failure(job, notification):
     """Log the failure and update status."""
-    job = notification["job"]
-    input_uri = job.get("inputUri", "")
+    job_result = notification["job"]
+    input_uri = job.input_uri
     video_name = input_uri.split("/")[-1].rsplit(".", 1)[0]
-    error = job.get("error", {})
+    error = job_result.get("error", {})
 
     db.collection("videos").document(video_name).set({
         "status": "failed",
@@ -345,7 +367,7 @@ gcloud transcoder jobs list \
   --limit=10
 ```
 
-You should also set up alerts for function errors and unusually long transcoding times. The Transcoder API sends progress updates through Pub/Sub, so you can build a progress tracking UI if needed.
+You should also set up alerts for function errors and unusually long transcoding times. The Transcoder API sends Pub/Sub notifications when a job succeeds or fails, so use job status checks if you need progress tracking before completion.
 
 ## Wrapping Up
 
