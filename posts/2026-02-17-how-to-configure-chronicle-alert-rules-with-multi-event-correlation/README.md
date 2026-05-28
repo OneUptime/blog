@@ -154,13 +154,13 @@ rule privilege_escalation_then_data_access {
 
 ## Rule 4: Account Takeover Chain
 
-This rule detects a complete account takeover sequence: password reset, followed by login from a new device, followed by MFA change.
+This rule detects a complete account takeover sequence: password reset, followed by a successful login, followed by MFA change.
 
 ```text
 rule account_takeover_chain {
     meta:
         author = "security-team"
-        description = "Detects password reset then login from new location then MFA change"
+        description = "Detects password reset then successful login then MFA change"
         severity = "CRITICAL"
         mitre_attack_tactic = "Persistence"
 
@@ -169,7 +169,7 @@ rule account_takeover_chain {
         $reset.metadata.event_type = "USER_CHANGE_PASSWORD"
         $reset.target.user.email_addresses = $victim
 
-        // Step 2: Login from a different IP than usual
+        // Step 2: Successful login
         $login.metadata.event_type = "USER_LOGIN"
         $login.security_result.action = "ALLOW"
         $login.principal.user.email_addresses = $victim
