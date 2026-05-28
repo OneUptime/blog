@@ -41,26 +41,26 @@ sequenceDiagram
 
 ## Setting Up the Basics
 
-Start by defining your tools and creating the model.
+Start by defining your tools and creating the client configuration.
 
 ```python
-import vertexai
-from vertexai.generative_models import (
-    GenerativeModel,
-    FunctionDeclaration,
-    Part,
-    Tool,
+from google import genai
+from google.genai import types
+
+# Create a Gemini client that uses the Vertex AI backend
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
 )
 
-# Initialize Vertex AI
-
-vertexai.init(project="your-project-id", location="us-central1")
+MODEL_NAME = "gemini-2.5-flash"
 
 # Define tools that the model can call
-get_stock_price = FunctionDeclaration(
+get_stock_price = types.FunctionDeclaration(
     name="get_stock_price",
     description="Get the current stock price for a ticker symbol.",
-    parameters={
+    parameters_json_schema={
         "type": "object",
         "properties": {
             "ticker": {
@@ -72,10 +72,10 @@ get_stock_price = FunctionDeclaration(
     }
 )
 
-get_company_info = FunctionDeclaration(
+get_company_info = types.FunctionDeclaration(
     name="get_company_info",
     description="Get basic company information like sector, market cap, and CEO.",
-    parameters={
+    parameters_json_schema={
         "type": "object",
         "properties": {
             "company_name": {
@@ -88,13 +88,12 @@ get_company_info = FunctionDeclaration(
 )
 
 # Bundle tools together
-finance_tools = Tool(
+finance_tools = types.Tool(
     function_declarations=[get_stock_price, get_company_info]
 )
 
-# Create the model with tools
-model = GenerativeModel(
-    "gemini-2.0-flash",
+# Create a generation config with tools
+generation_config = types.GenerateContentConfig(
     tools=[finance_tools],
     system_instruction=(
         "You are a financial analysis assistant. Use the available tools "
@@ -146,61 +145,79 @@ def execute_tool(function_name, args):
 The core of a streaming function call application is the response handler. It needs to process text chunks, detect function calls, execute them, and continue the stream.
 
 ```python
-def process_streaming_response(chat, user_message):
+def process_streaming_response(client, user_message):
     """Process a streaming response that may include function calls."""
+    user_content = types.Content(
+        role="user",
+        parts=[types.Part.from_text(text=user_message)],
+    )
+    history = [user_content]
+
     # Send message with streaming
-    responses = chat.send_message(user_message, stream=True)
+    responses = client.models.generate_content_stream(
+        model=MODEL_NAME,
+        contents=history,
+        config=generation_config,
+    )
 
     collected_text = ""
     function_calls = []
+    model_parts = []
 
     for chunk in responses:
-        for part in chunk.candidates[0].content.parts:
-            # Handle text parts - stream them to the user
-            if part.text:
-                print(part.text, end="", flush=True)
-                collected_text += part.text
+        if chunk.candidates and chunk.candidates[0].content:
+            model_parts.extend(chunk.candidates[0].content.parts or [])
 
-            # Handle function call parts
-            elif part.function_call:
-                fc = part.function_call
-                function_calls.append({
-                    "name": fc.name,
-                    "args": dict(fc.args)
-                })
-                print(f"\n[Calling {fc.name}...]", flush=True)
+        # Handle text chunks - stream them to the user
+        if chunk.text:
+            print(chunk.text, end="", flush=True)
+            collected_text += chunk.text
+
+        # Handle function call parts
+        for fc in chunk.function_calls or []:
+            function_calls.append({
+                "name": fc.name,
+                "args": dict(fc.args or {})
+            })
+            print(f"\n[Calling {fc.name}...]", flush=True)
 
     print()  # Newline after streaming
 
     # If there were function calls, execute them and continue
     if function_calls:
+        history.append(types.Content(role="model", parts=model_parts))
+
         function_responses = []
         for fc in function_calls:
             result = execute_tool(fc["name"], fc["args"])
             function_responses.append(
-                Part.from_function_response(
+                types.Part.from_function_response(
                     name=fc["name"],
                     response={"result": result}
                 )
             )
 
+        history.append(types.Content(role="tool", parts=function_responses))
+
         # Send function results back and stream the continuation
-        continuation = chat.send_message(function_responses, stream=True)
+        continuation = client.models.generate_content_stream(
+            model=MODEL_NAME,
+            contents=history,
+            config=generation_config,
+        )
 
         for chunk in continuation:
-            for part in chunk.candidates[0].content.parts:
-                if part.text:
-                    print(part.text, end="", flush=True)
-                    collected_text += part.text
+            if chunk.text:
+                print(chunk.text, end="", flush=True)
+                collected_text += chunk.text
 
         print()
 
     return collected_text
 
 # Usage
-chat = model.start_chat()
 result = process_streaming_response(
-    chat,
+    client,
     "What is the current stock price for Google and tell me about the company?"
 )
 ```
@@ -213,11 +230,13 @@ Here is a more robust agent that handles multiple rounds of function calls and m
 class StreamingFunctionAgent:
     """A streaming agent that can call functions during response generation."""
 
-    def __init__(self, model, tool_executor, max_tool_rounds=3):
-        self.model = model
+    def __init__(self, client, model_name, generation_config, tool_executor, max_tool_rounds=3):
+        self.client = client
+        self.model_name = model_name
+        self.generation_config = generation_config
         self.tool_executor = tool_executor
         self.max_tool_rounds = max_tool_rounds
-        self.chat = model.start_chat()
+        self.history = []
 
     def process_message(self, message, on_text=None, on_tool_call=None):
         """Process a user message with streaming and function calls.
@@ -232,30 +251,39 @@ class StreamingFunctionAgent:
         if on_tool_call is None:
             on_tool_call = lambda n, a: print(f"\n[Tool: {n}({a})]")
 
-        current_input = message
+        self.history.append(
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=message)],
+            )
+        )
         full_response = ""
 
         for round_num in range(self.max_tool_rounds + 1):
             # Send message with streaming
-            if isinstance(current_input, str):
-                responses = self.chat.send_message(current_input, stream=True)
-            else:
-                responses = self.chat.send_message(current_input, stream=True)
+            responses = self.client.models.generate_content_stream(
+                model=self.model_name,
+                contents=self.history,
+                config=self.generation_config,
+            )
 
             function_calls = []
+            model_parts = []
 
             for chunk in responses:
-                if not chunk.candidates:
-                    continue
+                if chunk.candidates and chunk.candidates[0].content:
+                    model_parts.extend(chunk.candidates[0].content.parts or [])
 
-                for part in chunk.candidates[0].content.parts:
-                    if part.text:
-                        on_text(part.text)
-                        full_response += part.text
-                    elif part.function_call:
-                        fc = part.function_call
-                        on_tool_call(fc.name, dict(fc.args))
-                        function_calls.append(fc)
+                if chunk.text:
+                    on_text(chunk.text)
+                    full_response += chunk.text
+
+                for fc in chunk.function_calls or []:
+                    on_tool_call(fc.name, dict(fc.args or {}))
+                    function_calls.append(fc)
+
+            if model_parts:
+                self.history.append(types.Content(role="model", parts=model_parts))
 
             # If no function calls, we are done
             if not function_calls:
@@ -266,20 +294,22 @@ class StreamingFunctionAgent:
             for fc in function_calls:
                 result = self.tool_executor(fc.name, fc.args)
                 function_responses.append(
-                    Part.from_function_response(
+                    types.Part.from_function_response(
                         name=fc.name,
                         response={"result": result}
                     )
                 )
 
             # Continue with function results
-            current_input = function_responses
+            self.history.append(types.Content(role="tool", parts=function_responses))
 
         return full_response
 
 # Create the agent
 agent = StreamingFunctionAgent(
-    model=model,
+    client=client,
+    model_name=MODEL_NAME,
+    generation_config=generation_config,
     tool_executor=execute_tool
 )
 
@@ -310,7 +340,9 @@ def safe_tool_executor(function_name, args):
 
 # Use the safe executor with the agent
 agent = StreamingFunctionAgent(
-    model=model,
+    client=client,
+    model_name=MODEL_NAME,
+    generation_config=generation_config,
     tool_executor=safe_tool_executor
 )
 ```
@@ -332,27 +364,56 @@ def chat_endpoint():
 
     def generate():
         agent = StreamingFunctionAgent(
-            model=model,
+            client=client,
+            model_name=MODEL_NAME,
+            generation_config=generation_config,
             tool_executor=safe_tool_executor,
         )
+        agent.history.append(
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=user_message)],
+            )
+        )
 
-        def on_text(text):
-            # Send text chunk as SSE
-            yield f"data: {json.dumps({'type': 'text', 'content': text})}\n\n"
+        for _ in range(agent.max_tool_rounds + 1):
+            responses = agent.client.models.generate_content_stream(
+                model=agent.model_name,
+                contents=agent.history,
+                config=agent.generation_config,
+            )
 
-        def on_tool(name, args):
-            # Notify client about tool call
-            yield f"data: {json.dumps({'type': 'tool_call', 'name': name})}\n\n"
+            function_calls = []
+            model_parts = []
 
-        # Process with callbacks
-        # Note: In practice, you would use a different pattern
-        # for generator-based callbacks
-        responses = agent.chat.send_message(user_message, stream=True)
+            for chunk in responses:
+                if chunk.candidates and chunk.candidates[0].content:
+                    model_parts.extend(chunk.candidates[0].content.parts or [])
 
-        for chunk in responses:
-            for part in chunk.candidates[0].content.parts:
-                if part.text:
-                    yield f"data: {json.dumps({'type': 'text', 'content': part.text})}\n\n"
+                if chunk.text:
+                    yield f"data: {json.dumps({'type': 'text', 'content': chunk.text})}\n\n"
+
+                for fc in chunk.function_calls or []:
+                    function_calls.append(fc)
+                    yield f"data: {json.dumps({'type': 'tool_call', 'name': fc.name})}\n\n"
+
+            if model_parts:
+                agent.history.append(types.Content(role="model", parts=model_parts))
+
+            if not function_calls:
+                break
+
+            function_responses = []
+            for fc in function_calls:
+                result = agent.tool_executor(fc.name, fc.args)
+                function_responses.append(
+                    types.Part.from_function_response(
+                        name=fc.name,
+                        response={"result": result},
+                    )
+                )
+
+            agent.history.append(types.Content(role="tool", parts=function_responses))
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
@@ -363,7 +424,7 @@ def chat_endpoint():
 
 Streaming function call applications have unique performance characteristics:
 
-- First token latency is the same as non-streaming since the model starts generating immediately
+- Streaming improves perceived latency because you can display chunks before the complete response is finished
 - Function call round-trips add latency proportional to your tool execution time
 - Multiple parallel function calls should be executed concurrently when possible
 - Keep tool responses small - large tool responses slow down the continuation generation
@@ -373,6 +434,9 @@ import asyncio
 
 async def execute_tools_parallel(function_calls):
     """Execute multiple tool calls in parallel."""
+    async def async_execute_tool(name, args):
+        return await asyncio.to_thread(execute_tool, name, args)
+
     tasks = []
     for fc in function_calls:
         task = asyncio.create_task(
@@ -384,7 +448,7 @@ async def execute_tools_parallel(function_calls):
     for name, task in tasks:
         result = await task
         results.append(
-            Part.from_function_response(
+            types.Part.from_function_response(
                 name=name,
                 response={"result": result}
             )
