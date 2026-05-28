@@ -10,18 +10,18 @@ Description: Step-by-step guide to implementing the CQRS pattern on Google Cloud
 
 Most applications start with a single database handling both reads and writes. This works fine initially, but as traffic grows, you hit a wall. Your read patterns and write patterns have fundamentally different requirements. Writes need strong consistency, relational integrity, and transactional guarantees. Reads need speed, flexible querying, and the ability to scale horizontally. CQRS - Command Query Responsibility Segregation - solves this by splitting your data layer into two separate models optimized for their specific job.
 
-On Google Cloud, a natural combination is Cloud SQL for the write side (relational, transactional, ACID-compliant) and Firestore for the read side (fast, scalable, document-oriented). In this post, I will show you how to wire these together with a change data capture pipeline that keeps them in sync.
+On Google Cloud, a natural combination is Cloud SQL for the write side (relational, transactional, ACID-compliant) and Firestore for the read side (fast, scalable, document-oriented). In this post, I will show you how to wire these together with an event pipeline that keeps them in sync.
 
 ## The Architecture
 
-The write model receives commands (create, update, delete) through an API that writes to Cloud SQL. A change data capture (CDC) mechanism detects writes and pushes updates through Pub/Sub to a projector service that transforms the data and writes it into Firestore. The read model serves queries directly from Firestore with sub-millisecond latency.
+The write model receives commands (create, update, delete) through an API that writes to Cloud SQL. After a successful transaction, the write API publishes an event through Pub/Sub to a projector service that transforms the data and writes it into Firestore. The read model serves low-latency queries directly from Firestore.
 
 ```mermaid
 graph TD
     A[Client] -->|Commands| B[Write API - Cloud Run]
     A -->|Queries| C[Read API - Cloud Run]
     B --> D[Cloud SQL PostgreSQL]
-    D -->|CDC via Debezium| E[Cloud Pub/Sub]
+    B -->|Domain events| E[Cloud Pub/Sub]
     E --> F[Projector Service - Cloud Run]
     F --> G[Firestore Read Model]
     C --> G
@@ -94,7 +94,7 @@ The write API handles command operations. It validates input, enforces business 
 ```python
 # write-api/main.py
 import os
-import uuid
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify
 from google.cloud import pubsub_v1
 import sqlalchemy
@@ -104,13 +104,14 @@ import json
 app = Flask(__name__)
 
 # Set up Cloud SQL connection pool
+unix_socket_path = os.environ['INSTANCE_UNIX_SOCKET']
 db = sqlalchemy.create_engine(
     sqlalchemy.engine.url.URL.create(
         drivername='postgresql+pg8000',
         username=os.environ['DB_USER'],
         password=os.environ['DB_PASS'],
         database=os.environ['DB_NAME'],
-        host=os.environ.get('DB_HOST', '127.0.0.1'),
+        query={'unix_sock': f'{unix_socket_path}/.s.PGSQL.5432'},
     ),
     pool_size=5,
     max_overflow=2,
@@ -169,13 +170,14 @@ def publish_change_event(event_type, payload):
     message = {
         'event_type': event_type,
         'payload': payload,
-        'timestamp': str(uuid.uuid1()),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
     }
-    publisher.publish(
+    future = publisher.publish(
         topic_path,
         data=json.dumps(message).encode('utf-8'),
         event_type=event_type,
     )
+    future.result(timeout=30)
 ```
 
 ## Building the Projector Service
@@ -184,7 +186,7 @@ The projector listens for change events and transforms the normalized write-side
 
 ```python
 # projector/main.py
-import os
+import base64
 import json
 from flask import Flask, request
 from google.cloud import firestore
@@ -197,7 +199,7 @@ def project_event():
     """Transform write-model events into read-model documents."""
     envelope = request.get_json()
     message_data = json.loads(
-        __import__('base64').b64decode(envelope['message']['data']).decode('utf-8')
+        base64.b64decode(envelope['message']['data']).decode('utf-8')
     )
 
     event_type = message_data['event_type']
@@ -269,6 +271,7 @@ The read API serves queries directly from Firestore. Because the data is already
 import os
 from flask import Flask, request, jsonify
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 app = Flask(__name__)
 db = firestore.Client()
@@ -288,14 +291,15 @@ def get_customer_orders(customer_id):
     last_order_id = request.args.get('after')
 
     query = (db.collection('orders_read')
-             .where('customer_id', '==', customer_id)
+             .where(filter=FieldFilter('customer_id', '==', customer_id))
              .order_by('created_at', direction=firestore.Query.DESCENDING)
              .limit(page_size))
 
     # Support cursor-based pagination
     if last_order_id:
         last_doc = db.collection('orders_read').document(last_order_id).get()
-        query = query.start_after(last_doc)
+        if last_doc.exists:
+            query = query.start_after(last_doc)
 
     results = [doc.to_dict() for doc in query.stream()]
     return jsonify({'orders': results, 'count': len(results)}), 200
