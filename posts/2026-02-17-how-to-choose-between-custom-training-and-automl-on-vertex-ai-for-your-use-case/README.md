@@ -15,7 +15,7 @@ Vertex AI gives you two paths to a trained model: AutoML, where the platform han
 Before diving into details, here is the short version:
 
 **Use AutoML when:**
-- Your data fits a standard ML task (classification, regression, object detection, NER, forecasting)
+- Your data fits a currently supported AutoML task (image classification, image object detection, tabular classification, tabular regression, or forecasting)
 - You want a model in production within days, not months
 - Your team has limited ML engineering expertise
 - You need a strong baseline quickly
@@ -43,7 +43,7 @@ graph TD
 
 ## AutoML: What It Actually Does
 
-AutoML is not a single model. Behind the scenes, it runs a neural architecture search (NAS) that evaluates hundreds of model configurations on your data and picks the best one. For tabular data, it tries gradient boosted trees, neural networks, and ensembles. For images, it searches through variations of EfficientNet and similar architectures.
+AutoML is not a single model. Behind the scenes, Vertex AI automates tasks such as data preparation, model selection, and hyperparameter tuning for supported objectives. For tabular data, that means you can train classification, regression, and forecasting models without writing the training loop yourself. For images, Vertex AI AutoML supports image classification and object detection.
 
 Here is what a typical AutoML workflow looks like:
 
@@ -81,7 +81,7 @@ endpoint = model.deploy(
 )
 ```
 
-That is it. No feature engineering decisions, no hyperparameter grids, no training loops. AutoML handles all of it.
+That is it for a basic tabular workflow. You still need to prepare valid input data and choose the target, objective, and budget, but you do not write feature engineering code, hyperparameter grids, or training loops for the AutoML job.
 
 ## Custom Training: Full Control
 
@@ -97,7 +97,7 @@ aiplatform.init(project="your-project-id", location="us-central1")
 job = aiplatform.CustomContainerTrainingJob(
     display_name="churn-prediction-custom",
     container_uri="gcr.io/your-project-id/churn-model-trainer:latest",
-    model_serving_container_image_uri="gcr.io/cloud-aiplatform/prediction/tf2-cpu.2-12:latest",
+    model_serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-12:latest",
 )
 
 # You control GPU type, machine specs, everything
@@ -154,7 +154,7 @@ def train(args):
 
 ### Data Requirements
 
-**AutoML**: Works well with as few as 1,000 rows for tabular data and 100 images per class for vision tasks. It applies its own data augmentation and handles class imbalance automatically.
+**AutoML**: Tabular classification and regression datasets must have at least 1,000 rows, though more data is often needed for strong performance. Image classification requires at least 100 examples per category, while object detection has different label and bounding-box requirements. Vertex AI handles many transformations for AutoML models, but you still need to pay attention to data quality, label balance, and data splits.
 
 **Custom training**: You decide the minimum viable dataset size. You implement your own data augmentation, sampling strategies, and preprocessing pipelines.
 
@@ -172,13 +172,13 @@ def train(args):
 
 ### Cost
 
-**AutoML**: Training costs are fixed by the node-hour budget you set. Prediction costs depend on the deployed machine type. You pay more per prediction than a highly optimized custom model.
+**AutoML**: Training costs are capped by the node-hour budget you set, and the final cost can be lower if training stops early. Prediction costs depend on the deployed machine type. You can pay more per prediction than you would with a highly optimized custom model.
 
 **Custom training**: Lower per-prediction costs with optimized models (smaller architectures, quantization, distillation). But engineering time is the hidden cost that usually dominates.
 
 ### Explainability
 
-**AutoML**: Provides feature importance scores automatically. Vertex AI Explainable AI works out of the box with AutoML models.
+**AutoML**: Vertex Explainable AI integrates feature attribution with AutoML tabular classification and regression models and AutoML image classification models. For other model types, check the current Explainable AI support and configuration requirements.
 
 **Custom training**: You can implement any explainability method you want (SHAP, LIME, attention visualization), but you have to build it yourself.
 
@@ -209,17 +209,17 @@ This gives you a production model fast with AutoML while you develop and validat
 
 ## Real-World Decision Examples
 
-**Fraud detection on structured transaction data**: Start with AutoML Tables. It handles tabular data exceptionally well, including class imbalance. Only move to custom training if you need real-time feature computation or custom loss functions for your specific false-positive cost structure.
+**Fraud detection on structured transaction data**: Start with Vertex AI AutoML tabular classification. It handles tabular data well, but you should still design your splits and evaluation carefully for rare positive classes. Only move to custom training if you need real-time feature computation or custom loss functions for your specific false-positive cost structure.
 
-**Medical image classification**: AutoML Vision for initial prototype and clinical validation. Move to custom training (e.g., fine-tuned DenseNet with domain-specific augmentation) when you need to optimize for specific imaging modalities or regulatory requirements.
+**Medical image classification**: Vertex AI AutoML image classification for initial prototypes and validation. Move to custom training (e.g., fine-tuned DenseNet with domain-specific augmentation) when you need to optimize for specific imaging modalities or regulatory requirements.
 
 **Recommendation systems**: Custom training from the start. Recommendation architectures (two-tower models, sequential models) do not fit AutoML's standard task categories.
 
-**Document classification**: AutoML Text for most cases. Custom training only if you need multi-label classification with hierarchical categories or domain-specific tokenization.
+**Document classification**: Do not start new projects on AutoML Text; Vertex AI AutoML Text was deprecated in 2024 and shut down in 2025. Use Vertex AI Gemini prompting or tuning for many text classification and extraction use cases, and use custom training when you need a task-specific architecture, hierarchical labels, or domain-specific tokenization.
 
 ## Monitoring Both Approaches
 
-Regardless of which approach you choose, monitor model performance in production. Use Vertex AI Model Monitoring for data drift and prediction drift detection, and use OneUptime to monitor the serving infrastructure - endpoint availability, prediction latency, and error rates.
+Regardless of which approach you choose, monitor model performance in production. Use Vertex AI Model Monitoring where it supports your model type, such as tabular drift, skew, and output inference drift monitoring, and use OneUptime to monitor the serving infrastructure - endpoint availability, prediction latency, and error rates.
 
 ## Summary
 
