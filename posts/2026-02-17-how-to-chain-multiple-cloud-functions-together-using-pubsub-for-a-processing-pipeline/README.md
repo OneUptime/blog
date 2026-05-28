@@ -25,7 +25,7 @@ Each step is a separate Cloud Function, and they communicate through Pub/Sub top
 
 ```mermaid
 graph LR
-    A[Upload Trigger] -->|Pub/Sub: validate-image| B[Validate Function]
+    A[Cloud Storage Upload] --> B[Validate Function]
     B -->|Pub/Sub: process-image| C[Thumbnail Function]
     B -->|Pub/Sub: process-image| D[OCR Function]
     C -->|Pub/Sub: notify-user| E[Notification Function]
@@ -39,12 +39,10 @@ First, create the topics that will connect your functions. Think of each topic a
 ```bash
 # Create topics for each pipeline stage
 
-gcloud pubsub topics create validate-image
 gcloud pubsub topics create process-image
 gcloud pubsub topics create notify-user
 
 # Optionally create dead-letter topics for failed messages
-gcloud pubsub topics create validate-image-deadletter
 gcloud pubsub topics create process-image-deadletter
 ```
 
@@ -113,7 +111,7 @@ Deploy it with a Cloud Storage trigger.
 ```bash
 # Deploy the validation function triggered by file uploads
 gcloud functions deploy validateImage \
-  --runtime nodejs18 \
+  --runtime nodejs22 \
   --trigger-resource my-upload-bucket \
   --trigger-event google.storage.object.finalize \
   --region us-central1 \
@@ -177,7 +175,7 @@ exports.generateThumbnail = async (message, context) => {
 ```bash
 # Deploy the thumbnail function triggered by Pub/Sub
 gcloud functions deploy generateThumbnail \
-  --runtime nodejs18 \
+  --runtime nodejs22 \
   --trigger-topic process-image \
   --region us-central1 \
   --memory 512MB \
@@ -208,7 +206,7 @@ exports.extractText = async (message, context) => {
     `gs://${bucket}/${fileName}`
   );
 
-  const detections = result.textAnnotations;
+  const detections = result.textAnnotations || [];
   const extractedText = detections.length > 0
     ? detections[0].description
     : "";
@@ -232,7 +230,7 @@ exports.extractText = async (message, context) => {
 ```bash
 # Deploy the OCR function - also triggered by the same Pub/Sub topic
 gcloud functions deploy extractText \
-  --runtime nodejs18 \
+  --runtime nodejs22 \
   --trigger-topic process-image \
   --region us-central1 \
   --memory 1024MB \
@@ -277,15 +275,27 @@ exports.notifyUser = async (message, context) => {
 };
 ```
 
+```bash
+# Deploy the notification function triggered by Pub/Sub
+gcloud functions deploy notifyUser \
+  --runtime nodejs22 \
+  --trigger-topic notify-user \
+  --region us-central1 \
+  --source ./notify
+```
+
 ## Error Handling with Dead-Letter Topics
 
 Pub/Sub supports dead-letter topics, which catch messages that fail processing after a configured number of retries.
 
 ```bash
 # Create a subscription with dead-letter handling
-# (Cloud Functions auto-creates subscriptions, but you can configure them)
+# Cloud Functions auto-creates subscriptions; replace SUBSCRIPTION_ID
+# with the subscription created for the function trigger. The Pub/Sub
+# service account also needs permission to publish to the dead-letter
+# topic and acknowledge messages on the source subscription.
 gcloud pubsub subscriptions update \
-  gcf-process-image-us-central1-generateThumbnail \
+  SUBSCRIPTION_ID \
   --dead-letter-topic process-image-deadletter \
   --max-delivery-attempts 5
 ```
@@ -294,7 +304,7 @@ gcloud pubsub subscriptions update \
 
 Two critical things to keep in mind when chaining functions through Pub/Sub:
 
-1. **Messages can be delivered more than once.** Pub/Sub guarantees at-least-once delivery, not exactly-once. Always design your functions to be idempotent - processing the same message twice should produce the same result.
+1. **Messages can be delivered more than once.** Pub/Sub uses at-least-once delivery by default, and Cloud Functions triggers can retry messages. Always design your functions to be idempotent - processing the same message twice should produce the same result.
 
 2. **Message ordering is not guaranteed by default.** If ordering matters, use Pub/Sub ordering keys. But for most pipeline patterns where each stage is independent, ordering does not matter.
 
