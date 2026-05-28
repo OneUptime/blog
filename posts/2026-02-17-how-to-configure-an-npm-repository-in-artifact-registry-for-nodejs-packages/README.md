@@ -33,7 +33,7 @@ gcloud artifacts repositories create my-npm-repo \
 
 npm needs to authenticate with Artifact Registry to publish and install private packages. There are a couple of ways to do this.
 
-### Method 1: Using gcloud as a Credential Helper
+### Method 1: Using gcloud-Generated Settings with the Credential Helper
 
 The simplest approach for local development:
 
@@ -63,7 +63,7 @@ Now set up the authentication token:
 npx google-artifactregistry-auth
 ```
 
-This command reads your Application Default Credentials and writes an auth token to your .npmrc file.
+This command reads the repository settings from your project .npmrc file, uses Application Default Credentials or your active gcloud credentials, and writes the auth token to your user-level ~/.npmrc file by default.
 
 ### Method 2: Using the google-artifactregistry-auth Helper
 
@@ -73,7 +73,7 @@ Install the auth helper globally and use it to keep tokens fresh:
 # Install the auth helper
 npm install -g google-artifactregistry-auth
 
-# Run it to refresh credentials in your .npmrc
+# Run it to refresh credentials using your project .npmrc settings
 npx google-artifactregistry-auth --repo-config=.npmrc
 ```
 
