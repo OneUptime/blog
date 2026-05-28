@@ -29,7 +29,10 @@ Before diving into configuration, here are the key concepts:
 
 gcloud services enable \
   clouddeploy.googleapis.com \
+  cloudbuild.googleapis.com \
   container.googleapis.com \
+  storage.googleapis.com \
+  artifactregistry.googleapis.com \
   --project=my-project
 ```
 
@@ -129,26 +132,34 @@ profiles:
   # Dev profile - fewer replicas, debug settings
   - name: dev
     manifests:
-      rawYaml:
-        - k8s/base/*.yaml
-        - k8s/overlays/dev/*.yaml
+      kustomize:
+        paths:
+          - k8s/overlays/dev
 
   # Staging profile - production-like but with staging config
   - name: staging
     manifests:
-      rawYaml:
-        - k8s/base/*.yaml
-        - k8s/overlays/staging/*.yaml
+      kustomize:
+        paths:
+          - k8s/overlays/staging
 
   # Production profile - full production settings
   - name: production
     manifests:
-      rawYaml:
-        - k8s/base/*.yaml
-        - k8s/overlays/production/*.yaml
+      kustomize:
+        paths:
+          - k8s/overlays/production
 
 deploy:
   kubectl: {}
+
+verify:
+  - name: smoke-test
+    container:
+      name: curl
+      image: curlimages/curl
+      command: ["/bin/sh"]
+      args: ["-c", "echo 'Run smoke tests here'"]
 ```
 
 ## Step 4: Create Kubernetes Manifests
@@ -174,7 +185,7 @@ spec:
     spec:
       containers:
       - name: my-app
-        image: us-central1-docker.pkg.dev/my-project/app-images/my-app
+        image: my-app
         ports:
         - containerPort: 8080
         resources:
@@ -199,7 +210,22 @@ spec:
 ```
 
 ```yaml
-# k8s/overlays/dev/deployment-patch.yaml - Dev overrides
+# k8s/base/kustomization.yaml - Base Kustomize config
+resources:
+  - deployment.yaml
+  - service.yaml
+```
+
+```yaml
+# k8s/overlays/dev/kustomization.yaml - Dev overlay
+resources:
+  - ../../base
+patches:
+  - path: deployment-patch.yaml
+```
+
+```yaml
+# k8s/overlays/dev/deployment-patch.yaml - Dev patch
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -220,7 +246,44 @@ spec:
 ```
 
 ```yaml
-# k8s/overlays/production/deployment-patch.yaml - Production overrides
+# k8s/overlays/staging/kustomization.yaml - Staging overlay
+resources:
+  - ../../base
+patches:
+  - path: deployment-patch.yaml
+```
+
+```yaml
+# k8s/overlays/staging/deployment-patch.yaml - Staging patch
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+      - name: my-app
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+```
+
+```yaml
+# k8s/overlays/production/kustomization.yaml - Production overlay
+resources:
+  - ../../base
+patches:
+  - path: deployment-patch.yaml
+```
+
+```yaml
+# k8s/overlays/production/deployment-patch.yaml - Production patch
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -357,10 +420,30 @@ gcloud projects add-iam-policy-binding my-project \
   --member="group:release-managers@example.com" \
   --role="roles/clouddeploy.approver"
 
-# Grant deploy operator role to the CI/CD service account
+# Grant release creation permission to the CI/CD service account
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:ci-sa@my-project.iam.gserviceaccount.com" \
-  --role="roles/clouddeploy.operator"
+  --role="roles/clouddeploy.releaser"
+
+# Grant the Cloud Deploy execution service account permission to deploy to GKE
+PROJECT_NUMBER=$(gcloud projects describe my-project --format="value(projectNumber)")
+CLOUD_DEPLOY_EXECUTION_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:${CLOUD_DEPLOY_EXECUTION_SA}" \
+  --role="roles/container.developer"
+
+gcloud iam service-accounts add-iam-policy-binding "${CLOUD_DEPLOY_EXECUTION_SA}" \
+  --member="serviceAccount:${CLOUD_DEPLOY_EXECUTION_SA}" \
+  --role="roles/iam.serviceAccountUser"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:${CLOUD_DEPLOY_EXECUTION_SA}" \
+  --role="roles/clouddeploy.jobRunner"
+
+gcloud iam service-accounts add-iam-policy-binding "${CLOUD_DEPLOY_EXECUTION_SA}" \
+  --member="serviceAccount:ci-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
 ```
 
 ## Canary Deployments
