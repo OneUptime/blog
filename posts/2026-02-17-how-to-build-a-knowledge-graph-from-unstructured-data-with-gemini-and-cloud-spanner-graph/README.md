@@ -34,7 +34,7 @@ gcloud services enable \
     --project=your-project-id
 
 # Install Python packages
-pip install google-cloud-spanner google-cloud-aiplatform
+pip install google-cloud-spanner google-genai google-cloud-storage functions-framework
 ```
 
 ## Step 1: Set Up Cloud Spanner with Graph Support
@@ -46,6 +46,7 @@ Create a Spanner instance and database with the graph schema:
 gcloud spanner instances create knowledge-graph-instance \
     --config=regional-us-central1 \
     --description="Knowledge Graph Instance" \
+    --edition=ENTERPRISE \
     --processing-units=100
 
 # Create the database
@@ -105,13 +106,13 @@ Build the extraction module that identifies entities in text:
 
 ```python
 # entity_extractor.py - Extract entities from unstructured text
-import vertexai
-from vertexai.generative_models import GenerativeModel
+from google import genai
+from google.genai import types
 import json
 import uuid
 
-vertexai.init(project="your-project-id", location="us-central1")
-model = GenerativeModel("gemini-2.0-flash")
+client = genai.Client(vertexai=True, project="your-project-id", location="us-central1")
+MODEL_ID = "gemini-2.5-flash"
 
 ENTITY_PROMPT = """Extract all named entities from the following text. For each entity, identify:
 - name: the entity's name as mentioned in the text
@@ -146,9 +147,14 @@ def extract_entities(text):
     """Extract entities from text using Gemini.
     Returns a list of entity dictionaries with generated IDs."""
 
-    response = model.generate_content(
-        ENTITY_PROMPT.format(text=text),
-        generation_config={"temperature": 0.1, "max_output_tokens": 2048}
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=ENTITY_PROMPT.format(text=text),
+        config=types.GenerateContentConfig(
+            temperature=0.1,
+            max_output_tokens=2048,
+            response_mime_type="application/json",
+        ),
     )
 
     entities = json.loads(response.text)
@@ -169,9 +175,14 @@ def extract_relationships(text, entities):
         indent=2
     )
 
-    response = model.generate_content(
-        RELATIONSHIP_PROMPT.format(entities=entities_text, text=text),
-        generation_config={"temperature": 0.1, "max_output_tokens": 2048}
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=RELATIONSHIP_PROMPT.format(entities=entities_text, text=text),
+        config=types.GenerateContentConfig(
+            temperature=0.1,
+            max_output_tokens=2048,
+            response_mime_type="application/json",
+        ),
     )
 
     relationships = json.loads(response.text)
@@ -257,14 +268,16 @@ Now you can run graph queries using GQL (Graph Query Language) in Spanner:
 ```sql
 -- Find all entities connected to a specific entity within 2 hops
 GRAPH KnowledgeGraph
-MATCH (source:Entity {name: 'Kubernetes'})-[r:Relates]->{1,2}(target:Entity)
-RETURN source.name, r.relationship_type, target.name, target.entity_type
-ORDER BY r.confidence DESC;
+MATCH path = (source:Entity {name: 'Kubernetes'})-[r:Relates]->{1,2}(target:Entity)
+LET path_confidence = AVG(r.confidence)
+RETURN source.name, ARRAY_TRANSFORM(r, edge -> edge.relationship_type) AS relationship_types,
+       target.name, target.entity_type, ARRAY_LENGTH(r) AS hops, path_confidence
+ORDER BY path_confidence DESC;
 
 -- Find the shortest path between two entities
 GRAPH KnowledgeGraph
-MATCH path = SHORTEST (a:Entity {name: 'Google Cloud'})-[r:Relates]->{1,5}(b:Entity {name: 'TensorFlow'})
-RETURN path;
+MATCH path = ANY SHORTEST (a:Entity {name: 'Google Cloud'})-[r:Relates]->{1,5}(b:Entity {name: 'TensorFlow'})
+RETURN TO_JSON(path) AS path;
 
 -- Find all entities of a specific type and their direct connections
 GRAPH KnowledgeGraph
@@ -302,8 +315,7 @@ def process_document_for_graph(cloud_event):
     blob = bucket.blob(file_name)
     text = blob.download_as_text()
 
-    # Split long documents into chunks for better extraction
-    # Gemini handles up to about 30K tokens well
+    # Split long documents into chunks for focused extraction
     chunks = split_text(text, max_chars=10000)
 
     all_entities = []
@@ -319,7 +331,12 @@ def process_document_for_graph(cloud_event):
         all_relationships.extend(relationships)
 
     # Deduplicate entities by name (same entity mentioned in multiple chunks)
-    unique_entities = deduplicate_entities(all_entities)
+    unique_entities, entity_id_map = deduplicate_entities(all_entities)
+
+    # Remap relationships to the entity IDs that will be inserted
+    for rel in all_relationships:
+        rel["source_id"] = entity_id_map.get(rel["source_id"], rel["source_id"])
+        rel["target_id"] = entity_id_map.get(rel["target_id"], rel["target_id"])
 
     # Store in Spanner Graph
     store_entities(unique_entities, source_document=file_name)
@@ -355,7 +372,12 @@ def deduplicate_entities(entities):
         key = entity["name"].lower()
         if key not in seen or len(entity.get("description", "")) > len(seen[key].get("description", "")):
             seen[key] = entity
-    return list(seen.values())
+
+    id_map = {}
+    for entity in entities:
+        id_map[entity["id"]] = seen[entity["name"].lower()]["id"]
+
+    return list(seen.values()), id_map
 ```
 
 ## Monitoring and Maintenance
