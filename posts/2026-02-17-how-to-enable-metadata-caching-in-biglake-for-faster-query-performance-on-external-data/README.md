@@ -14,9 +14,9 @@ Metadata caching in BigLake solves this by storing file-level metadata - things 
 
 ## How Metadata Caching Works
 
-When you enable metadata caching on a BigLake table, BigQuery periodically scans your Cloud Storage location and caches metadata about the files it finds. This includes file paths, sizes, row group statistics (min/max values per column), and partition information.
+When you enable metadata caching on a BigLake table, BigQuery periodically scans your Cloud Storage location and caches metadata about the files it finds. This includes file paths, sizes, row counts, table statistics for supported formats, and partition information.
 
-The cache has a staleness interval that you configure. If you set it to 30 minutes, BigQuery uses the cached metadata as long as it was refreshed within the last 30 minutes. If the cache is older than that, BigQuery refreshes it before running your query.
+The cache has a staleness interval that you configure. If you set it to 30 minutes, BigQuery uses the cached metadata as long as it was refreshed within the last 30 minutes. If the cache is older than that, BigQuery falls back to retrieving metadata from Cloud Storage for that operation.
 
 There are two cache modes available:
 - AUTOMATIC: BigQuery refreshes the cache in the background at a system-determined interval
@@ -40,17 +40,20 @@ OPTIONS (
 );
 ```
 
-The `max_staleness` parameter tells BigQuery how old the cached metadata can be before it needs a refresh. A 30-minute staleness means that if new files land in your Cloud Storage location, queries might not see them for up to 30 minutes. Choose a value that balances freshness with performance for your use case.
+The `max_staleness` parameter tells BigQuery how old the cached metadata can be before queries stop using it. BigQuery supports staleness intervals from 30 minutes to 7 days. A 30-minute staleness means that if new files land in your Cloud Storage location, queries might not see them for up to 30 minutes. Choose a value that balances freshness with performance for your use case.
 
 ## Enabling Metadata Caching on Existing Tables
 
-If you already have BigLake tables without caching, you can add it by altering the table options.
+If you already have BigLake tables without caching, you can add it by updating the external table definition with the same connection, format, and URI settings plus the caching options.
 
 ```sql
 -- Add metadata caching to an existing BigLake table
 -- This does not change the data, just enables caching behavior
-ALTER TABLE `my-project.analytics.existing_external_table`
-SET OPTIONS (
+CREATE OR REPLACE EXTERNAL TABLE `my-project.analytics.existing_external_table`
+WITH CONNECTION `my-project.US.my-biglake-connection`
+OPTIONS (
+  format = 'PARQUET',
+  uris = ['gs://my-data-lake/existing_external_table/*.parquet'],
   max_staleness = INTERVAL 1 HOUR,
   metadata_cache_mode = 'AUTOMATIC'
 );
@@ -60,8 +63,11 @@ You can also switch from automatic to manual mode or adjust the staleness interv
 
 ```sql
 -- Switch to manual cache mode for more control
-ALTER TABLE `my-project.analytics.web_logs`
-SET OPTIONS (
+CREATE OR REPLACE EXTERNAL TABLE `my-project.analytics.web_logs`
+WITH CONNECTION `my-project.US.my-biglake-connection`
+OPTIONS (
+  format = 'PARQUET',
+  uris = ['gs://my-data-lake/web_logs/*.parquet'],
   max_staleness = INTERVAL 4 HOUR,
   metadata_cache_mode = 'MANUAL'
 );
@@ -118,14 +124,18 @@ Metadata caching is especially effective with Hive-partitioned data because it c
 -- Create a Hive-partitioned BigLake table with caching
 -- The partition metadata is cached too, speeding up partition pruning
 CREATE OR REPLACE EXTERNAL TABLE `my-project.analytics.partitioned_events`
+WITH PARTITION COLUMNS (
+  dt DATE,
+  region STRING
+)
 WITH CONNECTION `my-project.US.my-biglake-connection`
 OPTIONS (
   format = 'PARQUET',
   uris = ['gs://my-data-lake/events/*'],
   hive_partition_uri_prefix = 'gs://my-data-lake/events/',
   require_hive_partition_filter = true,
-  -- Cache for 15 minutes since this data updates frequently
-  max_staleness = INTERVAL 15 MINUTE,
+  -- Cache for 30 minutes since this data updates frequently
+  max_staleness = INTERVAL 30 MINUTE,
   metadata_cache_mode = 'AUTOMATIC'
 );
 ```
@@ -140,7 +150,7 @@ SELECT
   COUNT(*) AS event_count,
   AVG(latency_ms) AS avg_latency
 FROM `my-project.analytics.partitioned_events`
-WHERE dt = '2026-02-17'
+WHERE dt = DATE '2026-02-17'
   AND region = 'us-east1'
 GROUP BY event_type
 ORDER BY event_count DESC;
@@ -177,13 +187,16 @@ You should see a significant reduction in planning time (the time before the que
 
 The staleness interval is a trade-off between query performance and data freshness. Here are some guidelines based on common scenarios.
 
-For real-time dashboards where data freshness matters:
+For frequently updated dashboards where data freshness matters:
 
 ```sql
 -- Low staleness for frequently updated data
-ALTER TABLE `my-project.analytics.streaming_events`
-SET OPTIONS (
-  max_staleness = INTERVAL 5 MINUTE,
+CREATE OR REPLACE EXTERNAL TABLE `my-project.analytics.streaming_events`
+WITH CONNECTION `my-project.US.my-biglake-connection`
+OPTIONS (
+  format = 'PARQUET',
+  uris = ['gs://my-data-lake/streaming_events/*.parquet'],
+  max_staleness = INTERVAL 30 MINUTE,
   metadata_cache_mode = 'AUTOMATIC'
 );
 ```
@@ -192,8 +205,11 @@ For daily batch reports where data changes once a day:
 
 ```sql
 -- Higher staleness for batch data - cache stays valid longer
-ALTER TABLE `my-project.analytics.daily_reports`
-SET OPTIONS (
+CREATE OR REPLACE EXTERNAL TABLE `my-project.analytics.daily_reports`
+WITH CONNECTION `my-project.US.my-biglake-connection`
+OPTIONS (
+  format = 'PARQUET',
+  uris = ['gs://my-data-lake/daily_reports/*.parquet'],
   max_staleness = INTERVAL 6 HOUR,
   metadata_cache_mode = 'MANUAL'
 );
@@ -203,8 +219,11 @@ For historical data that rarely changes:
 
 ```sql
 -- Very high staleness for stable historical data
-ALTER TABLE `my-project.analytics.historical_archive`
-SET OPTIONS (
+CREATE OR REPLACE EXTERNAL TABLE `my-project.analytics.historical_archive`
+WITH CONNECTION `my-project.US.my-biglake-connection`
+OPTIONS (
+  format = 'PARQUET',
+  uris = ['gs://my-data-lake/historical_archive/*.parquet'],
   max_staleness = INTERVAL 24 HOUR,
   metadata_cache_mode = 'MANUAL'
 );
@@ -223,12 +242,12 @@ SELECT
   error_result
 FROM `my-project.region-us.INFORMATION_SCHEMA.JOBS`
 WHERE job_type = 'QUERY'
-  AND query LIKE '%REFRESH_EXTERNAL_METADATA_CACHE%'
+  AND job_id LIKE '%metadata_cache_refresh%'
 ORDER BY creation_time DESC
 LIMIT 10;
 ```
 
-If you need to force a cache refresh right now regardless of the staleness interval:
+If you need to force a cache refresh right now for a table in MANUAL mode:
 
 ```sql
 -- Force an immediate cache refresh
