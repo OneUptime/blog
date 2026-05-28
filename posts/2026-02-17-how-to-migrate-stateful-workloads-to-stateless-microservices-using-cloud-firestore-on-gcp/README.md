@@ -21,7 +21,7 @@ A stateless service treats every request independently. It does not store anythi
 - Rolling deployments are seamless because new instances start fresh
 - Instance failures do not cause data loss
 
-The trade-off is latency - reading from an external store is slower than reading from local memory. Firestore typically responds in single-digit milliseconds, which is acceptable for most applications.
+The trade-off is latency - reading from an external store is slower than reading from local memory. Firestore is designed for low-latency reads and writes, but actual latency depends on database location, indexes, contention, and network path.
 
 ## Identifying Stateful Patterns
 
@@ -33,7 +33,7 @@ Before you start migrating, audit your code for these common stateful patterns:
 product_cache = {}  # Cached across requests
 
 # Pattern 2: Session data stored in the process
-from flask import session  # File or memory-based sessions
+session_store = {}  # Per-instance session data
 
 # Pattern 3: Workflow state kept in variables
 class OrderWorkflow:
@@ -42,9 +42,11 @@ class OrderWorkflow:
         self.collected_data = {}
 
 # Pattern 4: Rate limiting with local counters
+from collections import defaultdict
 request_counts = defaultdict(int)  # Per-instance, not global
 
 # Pattern 5: Background task queues in memory
+from queue import Queue
 task_queue = Queue()  # Lost on restart
 ```
 
@@ -60,10 +62,10 @@ gcloud firestore databases create \
   --location=us-central1 \
   --type=firestore-native
 
-# The database is ready immediately - no provisioning wait time
+# The command returns when the create operation completes
 ```
 
-Firestore in native mode gives you real-time listeners, offline support, and automatic scaling. For microservice state management, the document-based model maps naturally to most state objects.
+Firestore in native mode gives you real-time listeners, offline support for supported client SDKs, and automatic scaling. For microservice state management, the document-based model maps naturally to most state objects.
 
 ## Migrating In-Memory Caches
 
@@ -74,6 +76,7 @@ Replace in-memory dictionaries with Firestore-backed storage. Wrap it in a class
 from google.cloud import firestore
 import time
 import threading
+from datetime import datetime, timedelta, timezone
 
 class StateStore:
     """Replaces in-memory dictionaries with Firestore-backed storage."""
@@ -112,8 +115,7 @@ class StateStore:
 
         if ttl_seconds:
             # Set an expiry timestamp for cleanup
-            from datetime import datetime, timedelta
-            data['expires_at'] = datetime.utcnow() + timedelta(seconds=ttl_seconds)
+            data['expires_at'] = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
 
         self.db.collection(self.collection).document(key).set(data)
 
@@ -149,6 +151,7 @@ Workflow state is trickier because it involves transitions and needs consistency
 # workflow_manager.py - Firestore-backed workflow state machine
 from google.cloud import firestore
 from enum import Enum
+from datetime import datetime, timezone
 
 class OrderStatus(Enum):
     PENDING = 'pending'
@@ -179,6 +182,7 @@ def transition_order(order_id, new_status):
             raise ValueError(f'Order {order_id} not found')
 
         current_status = OrderStatus(snapshot.to_dict()['status'])
+        now = datetime.now(timezone.utc)
 
         # Validate the transition
         allowed = VALID_TRANSITIONS.get(current_status, [])
@@ -194,7 +198,7 @@ def transition_order(order_id, new_status):
             'status_history': firestore.ArrayUnion([{
                 'from': current_status.value,
                 'to': new_status.value,
-                'timestamp': firestore.SERVER_TIMESTAMP,
+                'timestamp': now,
             }]),
         })
 
@@ -210,15 +214,16 @@ In-memory rate limiting only works per instance. With Firestore, you can impleme
 ```python
 # rate_limiter.py - Distributed rate limiting with Firestore
 from google.cloud import firestore
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 db = firestore.Client()
 
 def check_rate_limit(user_id, max_requests=100, window_seconds=60):
     """Check if a user has exceeded the rate limit using Firestore."""
-    now = datetime.utcnow()
-    window_start = now - timedelta(seconds=window_seconds)
-    bucket_key = f'{user_id}:{now.strftime("%Y%m%d%H%M")}'
+    now = datetime.now(timezone.utc)
+    window_start_epoch = int(now.timestamp()) // window_seconds * window_seconds
+    window_start = datetime.fromtimestamp(window_start_epoch, tz=timezone.utc)
+    bucket_key = f'{user_id}:{window_start_epoch}'
 
     counter_ref = db.collection('rate_limits').document(bucket_key)
 
@@ -238,8 +243,8 @@ def check_rate_limit(user_id, max_requests=100, window_seconds=60):
             transaction.set(counter_ref, {
                 'user_id': user_id,
                 'count': 1,
-                'window_start': now,
-                'expires_at': now + timedelta(seconds=window_seconds * 2),
+                'window_start': window_start,
+                'expires_at': window_start + timedelta(seconds=window_seconds * 2),
             })
 
         return True
@@ -250,25 +255,42 @@ def check_rate_limit(user_id, max_requests=100, window_seconds=60):
 
 ## Cleaning Up Expired Data
 
-Since Firestore does not have built-in TTL (unlike Redis), set up a scheduled cleanup job:
+Firestore has built-in TTL policies that can automatically remove documents based on a timestamp field. Configure TTL on the `expires_at` field for each collection group that stores expiring data:
+
+```bash
+gcloud firestore fields ttls update expires_at \
+  --collection-group=product_cache \
+  --enable-ttl
+
+gcloud firestore fields ttls update expires_at \
+  --collection-group=rate_limits \
+  --enable-ttl
+
+gcloud firestore fields ttls update expires_at \
+  --collection-group=session_data \
+  --enable-ttl
+```
+
+TTL deletes are not immediate; expired documents are typically removed within 24 hours. If you need tighter control over cleanup timing, set up a scheduled cleanup job:
 
 ```python
 # cleanup.py - Cloud Function triggered by Cloud Scheduler
 from google.cloud import firestore
-from datetime import datetime
+from google.cloud.firestore_v1.base_query import FieldFilter
+from datetime import datetime, timezone
 
 db = firestore.Client()
 
-def cleanup_expired(event, context):
+def cleanup_expired(request):
     """Remove documents that have passed their expiry time."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     collections_to_clean = ['product_cache', 'rate_limits', 'session_data']
 
     for collection_name in collections_to_clean:
         # Query for expired documents
         expired = db.collection(collection_name) \
-            .where('expires_at', '<', now) \
+            .where(filter=FieldFilter('expires_at', '<', now)) \
             .limit(500) \
             .stream()
 
@@ -286,6 +308,8 @@ def cleanup_expired(event, context):
             batch.commit()
 
         print(f'Cleaned {count} expired documents from {collection_name}')
+
+    return ('OK', 200)
 ```
 
 Schedule the cleanup to run every 15 minutes:
@@ -313,7 +337,7 @@ gcloud run deploy order-service \
   --cpu=1 \
   --memory=512Mi \
   --set-env-vars="GOOGLE_CLOUD_PROJECT=my-project" \
-  --allow-unauthenticated=false
+  --no-allow-unauthenticated
 ```
 
 The service can scale to zero when idle because there is no state to lose, and scale to 100 instances during traffic spikes because any instance can serve any request.
