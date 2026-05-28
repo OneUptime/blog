@@ -10,7 +10,7 @@ Description: Learn how to use Google Cloud Monitoring forecasting features and m
 
 Running out of capacity in production is one of those problems that feels avoidable in hindsight. Your database fills up, your instance group hits its maximum, or your Cloud Run service reaches its concurrency limit during peak traffic. The signs were there in your metrics - you just did not look far enough ahead.
 
-Capacity planning is the practice of using historical data to predict when you will need more resources. Google Cloud Monitoring has forecasting capabilities built into its alerting and dashboarding tools that make this practical even for small teams. In this post, I will show you how to use these features to stay ahead of capacity issues.
+Capacity planning is the practice of using historical data to predict when you will need more resources. Google Cloud Monitoring has forecasting capabilities built into alerting policies, and its dashboards make it practical to visualize the metrics that drive planning even for small teams. In this post, I will show you how to use these features to stay ahead of capacity issues.
 
 ## Why Capacity Planning Matters
 
@@ -27,31 +27,61 @@ Here is how to create a forecast-based alert for disk usage:
 ```bash
 # Alert when disk usage is predicted to exceed 90% within the next 24 hours
 
-gcloud alpha monitoring policies create \
-  --display-name="Capacity Warning: Disk Space Running Low" \
-  --condition-display-name="Disk predicted to be >90% within 24h" \
-  --condition-filter='resource.type="gce_instance" AND metric.type="agent.googleapis.com/disk/percent_used"' \
-  --condition-threshold-value=90 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-forecast-horizon=86400s \
-  --condition-threshold-aggregation-alignment-period=300s \
-  --condition-threshold-aggregation-per-series-aligner=ALIGN_MEAN \
-  --notification-channels=projects/my-project/notificationChannels/12345 \
-  --documentation-content="Disk is predicted to fill up within 24 hours. Review and expand disk or clean up data." \
+cat > forecast-disk-policy.json <<'EOF'
+{
+  "displayName": "Capacity Warning: Disk Space Running Low",
+  "combiner": "OR",
+  "notificationChannels": [
+    "projects/my-project/notificationChannels/12345"
+  ],
+  "documentation": {
+    "content": "Disk is predicted to fill up within 24 hours. Review and expand disk or clean up data.",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "Disk predicted to be >90% within 24h",
+      "conditionThreshold": {
+        "filter": "resource.type = \"gce_instance\" AND metric.type = \"agent.googleapis.com/disk/percent_used\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_MEAN"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 90,
+        "duration": "600s",
+        "forecastOptions": {
+          "forecastHorizon": "86400s"
+        },
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ]
+}
+EOF
+
+gcloud monitoring policies create \
+  --policy-from-file=forecast-disk-policy.json \
   --project=my-project
 ```
 
-The key parameter is `forecast-horizon`. This tells Cloud Monitoring to project the metric forward by that many seconds and alert if the projected value crosses the threshold.
+The key field is `forecastOptions.forecastHorizon`. This tells Cloud Monitoring to project the metric forward by that duration and alert if the projected value crosses the threshold during the retest window.
 
 Common forecast horizons for capacity planning:
 
 - 24 hours: for rapidly growing metrics like disk usage
-- 7 days: for steady-growth metrics like database size
-- 30 days: for long-term planning of compute capacity
+- 48 hours: for steady-growth metrics like database size
+- Up to 60 hours: for the longest Cloud Monitoring forecast-based alert window
+
+For 7-day, 30-day, or longer planning, export or query historical metrics and run your own forecasting logic, as shown later in this post.
 
 ## Building Capacity Planning Dashboards
 
-Dashboards that show both current usage and projected trends are the foundation of capacity planning. Create a Cloud Monitoring dashboard that shows key capacity metrics with trendlines.
+Dashboards that show both current usage and historical trends are the foundation of capacity planning. Create a Cloud Monitoring dashboard that shows key capacity metrics over time.
 
 ```json
 {
@@ -174,7 +204,7 @@ For more sophisticated capacity planning, pull historical metrics from Cloud Mon
 
 ```python
 from google.cloud import monitoring_v3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import numpy as np
 
 def forecast_metric(project_id, metric_filter, days_history=30, days_forecast=14):
@@ -183,7 +213,7 @@ def forecast_metric(project_id, metric_filter, days_history=30, days_forecast=14
     project_name = f"projects/{project_id}"
 
     # Define the time range for historical data
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     start_time = now - timedelta(days=days_history)
 
     # Build the time series request
@@ -197,6 +227,7 @@ def forecast_metric(project_id, metric_filter, days_history=30, days_forecast=14
             "name": project_name,
             "filter": metric_filter,
             "interval": interval,
+            "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
             "aggregation": {
                 "alignment_period": {"seconds": 3600},
                 "per_series_aligner": monitoring_v3.Aggregation.Aligner.ALIGN_MEAN,
@@ -219,6 +250,10 @@ def forecast_metric(project_id, metric_filter, days_history=30, days_forecast=14
         print("No data found for the given metric filter")
         return None
 
+    # Cloud Monitoring returns points in reverse chronological order within a time series.
+    samples = sorted(zip(timestamps, values), key=lambda sample: sample[0])
+    timestamps, values = zip(*samples)
+
     # Convert to numpy arrays for linear regression
     x = np.array(timestamps)
     y = np.array(values)
@@ -238,7 +273,7 @@ def forecast_metric(project_id, metric_filter, days_history=30, days_forecast=14
     print(f"Growth rate: {m * 86400:.4f} per day")
     print(f"\nForecast:")
     for i, (ts, val) in enumerate(zip(future_timestamps, future_values)):
-        date = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+        date = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
         print(f"  {date}: {val:.2f}")
 
     # Calculate when a threshold will be reached
@@ -272,7 +307,7 @@ Different resources need different planning approaches:
 
 **Cloud SQL databases**: Monitor disk usage growth rate and connection count. Disk can be expanded online, but plan ahead because resizing takes time.
 
-**Cloud Run services**: Track concurrent request count relative to your max instances setting. If you regularly hit 80% of max concurrency, increase the limit.
+**Cloud Run services**: Track maximum concurrent requests and container instance count relative to your configured concurrency and maximum instances settings. If active instances regularly approach the max instances limit or per-instance concurrency saturates, increase max instances or tune concurrency.
 
 **Pub/Sub topics**: Monitor the oldest unacknowledged message age. If this is growing over time, your subscribers need to scale up.
 
