@@ -16,7 +16,7 @@ Private Google Access solves this problem. It lets VMs with only internal IPs re
 
 When a VM without an external IP tries to reach a Google API (like `storage.googleapis.com`), the request needs to go somewhere. Without Private Google Access, it would need to route through a NAT gateway or proxy to reach the API's public endpoint.
 
-With Private Google Access enabled on the subnet, traffic destined for Google APIs is automatically routed through Google's internal network. The VM sends traffic to the standard API endpoints, and GCP's networking layer intercepts it and routes it internally.
+With Private Google Access enabled on the subnet, VMs can send traffic to the external IP addresses used by Google APIs and services, and that traffic stays on Google's network. The VM sends traffic to the standard API endpoints, and GCP routes it internally when the VPC has the required routes and DNS configuration.
 
 ```mermaid
 graph LR
@@ -176,14 +176,14 @@ gcloud dns record-sets create restricted.googleapis.com. \
   --ttl=300
 ```
 
-The restricted VIP (`199.36.153.4/30`) only allows access to APIs that are allowed by your VPC Service Controls perimeter, adding another layer of security.
+The restricted VIP (`199.36.153.4/30`) only allows access to Google APIs and services that support VPC Service Controls. Your VPC Service Controls perimeter then determines which protected resources those clients can access, adding another layer of security.
 
 ## Enabling for GKE Clusters
 
-GKE nodes heavily rely on Google APIs for pulling images, logging, and monitoring. When creating private GKE clusters, PGA is essential:
+GKE nodes heavily rely on Google APIs for pulling images, logging, and monitoring. When creating private GKE clusters, PGA is essential. GKE automatically enables Private Google Access on the subnet when you create or update a cluster or node pool with private nodes, except when you use Shared VPC, where you must enable it manually:
 
 ```bash
-# Create a private GKE cluster - PGA must be enabled on the subnet
+# Create a private GKE cluster with private nodes
 gcloud container clusters create private-cluster \
   --region=us-central1 \
   --network=production-vpc \
@@ -194,7 +194,7 @@ gcloud container clusters create private-cluster \
   --no-enable-master-authorized-networks
 ```
 
-GKE nodes in a private cluster have no external IPs. Without PGA on the subnet, nodes cannot pull images from `gcr.io` or `pkg.dev`, and the cluster will not function properly.
+GKE nodes in a private cluster have no external IPs. Without PGA on the subnet, nodes cannot pull images from Google-hosted registries such as `gcr.io` or `pkg.dev`, and the cluster will not function properly.
 
 ## Monitoring PGA Traffic
 
