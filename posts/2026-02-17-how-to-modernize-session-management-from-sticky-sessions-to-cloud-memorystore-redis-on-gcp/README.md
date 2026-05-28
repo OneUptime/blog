@@ -40,13 +40,14 @@ gcloud redis instances create session-store \
   --size=1 \
   --region=us-central1 \
   --zone=us-central1-a \
+  --alternative-zone=us-central1-b \
   --tier=standard \
-  --redis-version=redis_7_0 \
+  --redis-version=redis_7_2 \
   --network=default \
   --connect-mode=private-service-access
 ```
 
-Standard tier gives you a replica in a different zone, so if the primary goes down, failover is automatic. For session data, this is exactly what you want.
+Standard tier gives you a replica and automatic failover. Specifying an alternative zone places the replica in a different zone, so if the primary goes down, failover is automatic. The private service access connect mode also requires Private Service Access to be configured for the VPC first. For session data, this is exactly what you want.
 
 After the instance is created, grab the host and port:
 
@@ -61,23 +62,26 @@ gcloud redis instances describe session-store --region=us-central1 \
 The application changes depend on your framework, but the pattern is the same everywhere - swap the in-memory session store for a Redis-backed one. Here is an example with a Node.js Express application.
 
 ```javascript
-// Install dependencies: npm install express-session connect-redis ioredis
+// Install dependencies: npm install express-session connect-redis redis
 
 const express = require('express');
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;
-const Redis = require('ioredis');
+const { RedisStore } = require('connect-redis');
+const { createClient } = require('redis');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Create Redis client pointing to your Memorystore instance
-const redisClient = new Redis({
-  host: process.env.REDIS_HOST, // Memorystore private IP
-  port: parseInt(process.env.REDIS_PORT) || 6379,
+const redisClient = createClient({
+  socket: {
+    host: process.env.REDIS_HOST, // Memorystore private IP
+    port: parseInt(process.env.REDIS_PORT, 10) || 6379,
+  },
   // Memorystore uses VPC-level auth, no password needed by default
-  retryDelayOnFailover: 100,
-  maxRetriesPerRequest: 3,
 });
+redisClient.on('error', (err) => console.error('Redis Client Error', err));
+redisClient.connect().catch(console.error);
 
 // Configure session middleware with Redis store
 app.use(session({
@@ -148,19 +152,20 @@ gcloud compute backend-services update my-backend-service \
   --session-affinity=NONE
 ```
 
-This tells the load balancer to distribute requests round-robin (or based on locality) without pinning users to specific instances.
+This tells the load balancer to use its normal backend selection policy without pinning users to specific instances.
 
 ## Network Configuration
 
-Cloud Memorystore instances are only accessible from within the same VPC. This means your Compute Engine VMs, GKE pods, or Cloud Run services need to be on the same network.
+Cloud Memorystore instances are accessible through VPC networking. This means your Compute Engine VMs, GKE pods, or Cloud Run services need network access to the Redis instance's authorized VPC network.
 
-For GKE, no extra configuration is needed if your cluster is in the same VPC. For Cloud Run, you need to set up a Serverless VPC Access connector:
+For GKE, no extra configuration is needed if your cluster is in the same VPC, although private service access requires a VPC-native cluster with IP aliasing enabled. For Cloud Run, one option is to set up a Serverless VPC Access connector:
 
 ```bash
 # Create a VPC connector for Cloud Run to access Memorystore
 gcloud compute networks vpc-access connectors create redis-connector \
   --region=us-central1 \
-  --subnet=default \
+  --network=default \
+  --range=10.8.0.0/28 \
   --min-instances=2 \
   --max-instances=10
 
@@ -176,19 +181,19 @@ gcloud run deploy my-service \
 Doing this migration without downtime takes a bit of planning. Here is the approach I recommend:
 
 1. **Deploy Memorystore** and verify connectivity from your application instances.
-2. **Update your application** to use Redis for sessions but keep sticky sessions enabled on the load balancer. This way, existing sessions still work while new sessions go to Redis.
+2. **Update your application** to use Redis for sessions but keep sticky sessions enabled on the load balancer. If you need existing in-memory sessions to survive the cutover, add a temporary fallback that reads the old local session store and writes the session into Redis on the next request. Otherwise, plan for existing users to sign in again as their old in-memory sessions are no longer readable by the Redis-backed session middleware.
 3. **Monitor for a session TTL period** (for example, 30 minutes). Watch Redis for session creation and verify everything is working.
 4. **Remove sticky session configuration** from the load balancer once you are confident.
 5. **Clean up** any in-memory session code paths.
 
-The key insight is that you can run both configurations simultaneously during the transition. Old sessions on specific instances will expire naturally, and new sessions will be in Redis from the start.
+The key insight is that you can keep load balancer affinity in place while the Redis-backed version rolls out, then remove affinity after you have either migrated or allowed the old in-memory sessions to expire.
 
 ## Monitoring Your Redis Instance
 
 Keep an eye on your Memorystore instance after the migration. Cloud Monitoring gives you metrics out of the box.
 
 ```bash
-# Check memory usage and connection count
+# Check provisioned size and current location
 gcloud redis instances describe session-store \
   --region=us-central1 \
   --format="table(memorySizeGb, host, port, currentLocationId)"
@@ -203,9 +208,9 @@ Watch these metrics in Cloud Monitoring:
 
 ## Sizing Considerations
 
-For session storage, a little goes a long way. A typical session object is 1-5 KB. With a 1 GB Memorystore instance, you can store roughly 200,000 to 1,000,000 concurrent sessions. Most applications will not need more than the smallest instance size.
+For session storage, a little goes a long way. A typical session object is 1-5 KB. With a 1 GB Memorystore instance, the raw payload math works out to roughly 200,000 to 1,000,000 concurrent sessions before accounting for Redis key, value, expiration, and allocator overhead. Most applications will not need more than the smallest instance size.
 
-Start small and scale up based on actual usage. Memorystore lets you resize instances without downtime on the standard tier.
+Start small and scale up based on actual usage. Memorystore lets you resize instances, but scaling causes a short connection reset, so your application should have Redis retry and reconnect logic.
 
 ## Wrapping Up
 
