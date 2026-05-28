@@ -276,13 +276,13 @@ resource "google_cloud_run_v2_service" "api" {
   # Traffic configuration
   traffic {
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
-    percent = 90
+    percent = 10
   }
 
   traffic {
     type     = "TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION"
     revision = "api-service-v1"
-    percent  = 10
+    percent  = 90
   }
 }
 ```
@@ -290,6 +290,8 @@ resource "google_cloud_run_v2_service" "api" {
 ## Custom Domain Mapping
 
 Map a custom domain to your Cloud Run service:
+
+Cloud Run domain mappings are in Preview and are not recommended for production services. For production services, Google recommends using a global external Application Load Balancer or Firebase Hosting for custom domains.
 
 ```hcl
 # Custom domain mapping for the Cloud Run service
@@ -390,7 +392,7 @@ output "latest_revision" {
 ## Best Practices
 
 1. **Set min_instance_count to at least 1** for latency-sensitive services. Cold starts add noticeable delay.
-2. **Use Secret Manager** for all sensitive configuration. Never put secrets in environment variables or Terraform variables.
+2. **Use Secret Manager** for all sensitive configuration. Never put secrets directly in plaintext environment variables or Terraform variables.
 3. **Create dedicated service accounts** for each Cloud Run service. Do not use the default compute service account.
 4. **Use VPC connectors** when accessing private resources. Do not expose databases to the public internet.
 5. **Configure health check probes** so Cloud Run can detect and restart unhealthy containers.
