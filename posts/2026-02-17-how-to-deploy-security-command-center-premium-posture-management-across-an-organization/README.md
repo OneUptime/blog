@@ -42,20 +42,16 @@ graph TB
 SCC Premium is enabled at the organization level and covers all projects within the organization:
 
 ```bash
-# Enable the Security Command Center API at the organization level
+# Enable the Security Command Center API in the project where you run SCC automation
 
 gcloud services enable securitycenter.googleapis.com \
     --project=security-project
 
 # Activate SCC Premium for the organization
-# This is typically done through the Cloud Console under Security > Security Command Center
-# Or through the API:
-gcloud scc settings update \
-    --organization=ORG_ID \
-    --tier=PREMIUM
+# This is done through the Google Cloud console under Security > Security Command Center
 ```
 
-The activation process takes a few minutes. Once complete, SCC begins scanning all resources across your organization.
+Once complete, SCC begins scanning resources across your organization. Security Command Center completes its first full scan within 24 hours.
 
 ## Step 2: Configure Organization-Level Settings
 
@@ -63,17 +59,21 @@ Set up the basic configuration for SCC across your organization:
 
 ```bash
 # Enable all built-in security services
-gcloud scc settings services enable security-health-analytics \
-    --organization=ORG_ID
+gcloud scc manage services update security-health-analytics \
+    --organization=organizations/ORG_ID \
+    --enablement-state=ENABLED
 
-gcloud scc settings services enable event-threat-detection \
-    --organization=ORG_ID
+gcloud scc manage services update event-threat-detection \
+    --organization=organizations/ORG_ID \
+    --enablement-state=ENABLED
 
-gcloud scc settings services enable container-threat-detection \
-    --organization=ORG_ID
+gcloud scc manage services update container-threat-detection \
+    --organization=organizations/ORG_ID \
+    --enablement-state=ENABLED
 
-gcloud scc settings services enable web-security-scanner \
-    --organization=ORG_ID
+gcloud scc manage services update web-security-scanner \
+    --organization=organizations/ORG_ID \
+    --enablement-state=ENABLED
 ```
 
 Configure notification settings so the security team gets alerted on critical findings:
@@ -118,7 +118,7 @@ Security postures define the security policies that your organization should com
 
 ```bash
 # List available predefined posture templates
-gcloud scc postures list-revisions \
+gcloud scc posture-templates list \
     --organization=ORG_ID \
     --location=global
 ```
@@ -140,7 +140,7 @@ policySets:
           orgPolicyConstraint:
             cannedConstraintId: "compute.vmExternalIpAccess"
             policyRules:
-              - enforce: true
+              - denyAll: true
       - policyId: "require-os-login"
         constraint:
           orgPolicyConstraint:
@@ -177,7 +177,7 @@ policySets:
       - policyId: "detect-public-buckets"
         constraint:
           securityHealthAnalyticsCustomModule:
-            displayName: "Detect Public GCS Buckets"
+            displayName: "detect_public_gcs_buckets"
             config:
               predicate:
                 expression: "resource.iamPolicy.bindings.exists(binding, binding.members.exists(member, member == 'allUsers' || member == 'allAuthenticatedUsers'))"
@@ -187,15 +187,14 @@ policySets:
               description: "Detects GCS buckets with public access"
               recommendation: "Remove allUsers and allAuthenticatedUsers from the bucket IAM policy"
               severity: CRITICAL
+            moduleEnablementState: ENABLED
 ```
 
 Deploy the posture:
 
 ```bash
 # Create the security posture
-gcloud scc postures create prod-security-posture \
-    --organization=ORG_ID \
-    --location=global \
+gcloud scc postures create organizations/ORG_ID/locations/global/postures/prod-security-posture \
     --posture-from-file=security-posture.yaml
 ```
 
@@ -205,12 +204,10 @@ Apply the posture to folders or projects:
 
 ```bash
 # Deploy the posture to the production folder
-gcloud scc posture-deployments create prod-deployment \
-    --organization=ORG_ID \
-    --location=global \
+gcloud scc posture-deployments create organizations/ORG_ID/locations/global/postureDeployments/prod-deployment \
     --posture-name="organizations/ORG_ID/locations/global/postures/prod-security-posture" \
-    --posture-revision-id="revision-1" \
-    --target-resource="organizations/ORG_ID/folders/PROD_FOLDER_ID"
+    --posture-revision-id="POSTURE_REVISION_ID" \
+    --target-resource="folders/PROD_FOLDER_ID"
 ```
 
 Once deployed, SCC continuously monitors all resources within the scope for compliance with the posture policies.
@@ -220,25 +217,26 @@ Once deployed, SCC continuously monitors all resources within the scope for comp
 Security Health Analytics (SHA) scans for common misconfigurations. Enable the detectors that matter to your organization:
 
 ```bash
-# List all available SHA detectors
-gcloud scc custom-modules sha list \
+# View available SHA modules and their current states
+gcloud scc manage services describe security-health-analytics \
     --organization=ORG_ID
 
 # Enable specific detectors
-gcloud scc settings services modules enable \
-    FIREWALL_SCANNER \
-    --organization=ORG_ID \
-    --service=security-health-analytics
+gcloud scc manage services update security-health-analytics \
+    --organization=organizations/ORG_ID \
+    --module-config-file=sha-modules.yaml
+```
 
-gcloud scc settings services modules enable \
-    PUBLIC_BUCKET_ACL \
-    --organization=ORG_ID \
-    --service=security-health-analytics
+The module configuration file:
 
-gcloud scc settings services modules enable \
-    SQL_PUBLIC_IP \
-    --organization=ORG_ID \
-    --service=security-health-analytics
+```yaml
+# sha-modules.yaml
+OPEN_FIREWALL:
+  intended_enablement_state: ENABLED
+PUBLIC_BUCKET_ACL:
+  intended_enablement_state: ENABLED
+SQL_PUBLIC_IP:
+  intended_enablement_state: ENABLED
 ```
 
 Create custom SHA modules for organization-specific checks:
@@ -247,8 +245,8 @@ Create custom SHA modules for organization-specific checks:
 # Create a custom detector for resources missing required labels
 gcloud scc custom-modules sha create \
     --organization=ORG_ID \
-    --display-name="Missing Required Labels" \
-    --enablement-state=ENABLED \
+    --display-name="missing_required_labels" \
+    --enablement-state="enabled" \
     --custom-config-from-file=custom-detector.yaml
 ```
 
@@ -275,15 +273,14 @@ Event Threat Detection monitors audit logs for suspicious activity patterns:
 ```bash
 # Event Threat Detection is enabled by default with SCC Premium
 # Verify it is running
-gcloud scc settings services describe event-threat-detection \
+gcloud scc manage services describe event-threat-detection \
     --organization=ORG_ID
 
 # List recent threat findings
-gcloud scc findings list \
-    --organization=ORG_ID \
-    --source="organizations/ORG_ID/sources/EVENT_THREAT_DETECTION_SOURCE_ID" \
+gcloud scc findings list ORG_ID \
+    --source="EVENT_THREAT_DETECTION_SOURCE_ID" \
     --filter="state=ACTIVE AND severity=CRITICAL" \
-    --format="table(finding.name,finding.category,finding.severity,finding.eventTime)"
+    --format="table(finding.name,finding.category,finding.severity,finding.event_time)"
 ```
 
 Event Threat Detection catches threats like:
