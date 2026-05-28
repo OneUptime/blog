@@ -102,36 +102,44 @@ func (rl *RateLimiter) SlidingWindowLimit(ctx context.Context, key string, limit
     redisKey := fmt.Sprintf("ratelimit:sw:%s", key)
 
     // Use a Lua script for atomicity
-    // This removes old entries, adds the new one, and counts the total
+    // This removes old entries, counts the total, and adds the new one if allowed
     script := redis.NewScript(`
         -- Remove entries outside the window
         redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
-        -- Add the current request with the current timestamp as score
-        redis.call('ZADD', KEYS[1], ARGV[2], ARGV[2])
         -- Count entries in the window
         local count = redis.call('ZCARD', KEYS[1])
+        local limit = tonumber(ARGV[3])
+        local allowed = 0
+        if count < limit then
+            -- Use a sequence number so requests in the same microsecond are counted separately
+            local sequence = redis.call('INCR', KEYS[2])
+            redis.call('ZADD', KEYS[1], ARGV[2], ARGV[2] .. '-' .. sequence)
+            redis.call('PEXPIRE', KEYS[2], ARGV[4])
+            count = count + 1
+            allowed = 1
+        end
         -- Set expiry on the key to clean up automatically
-        redis.call('PEXPIRE', KEYS[1], ARGV[3])
-        return count
+        redis.call('PEXPIRE', KEYS[1], ARGV[4])
+        return {allowed, count}
     `)
 
-    result, err := script.Run(ctx, rl.client, []string{redisKey},
+    result, err := script.Run(ctx, rl.client, []string{redisKey, redisKey + ":seq"},
         windowStart,                   // ARGV[1]: window start timestamp
         now,                           // ARGV[2]: current timestamp
-        window.Milliseconds(),         // ARGV[3]: TTL in milliseconds
-    ).Int()
+        limit,                         // ARGV[3]: maximum requests allowed
+        window.Milliseconds(),         // ARGV[4]: TTL in milliseconds
+    ).Int64Slice()
 
     if err != nil {
         return false, 0, fmt.Errorf("rate limit check failed: %w", err)
     }
 
-    remaining := limit - result
+    allowed := result[0] == 1
+    remaining := limit - int(result[1])
     if remaining < 0 {
         remaining = 0
     }
 
-    // Allow the request if we are within the limit
-    allowed := result <= limit
     return allowed, remaining, nil
 }
 ```
@@ -182,7 +190,7 @@ func (rl *RateLimiter) TokenBucketLimit(ctx context.Context, key string, capacit
         end
 
         -- Save the updated state
-        redis.call('HMSET', key, 'tokens', tokens, 'last_refill', now)
+        redis.call('HSET', key, 'tokens', tokens, 'last_refill', now)
         -- Expire the key after the bucket would be full
         local ttl = math.ceil(capacity / refill_rate) + 1
         redis.call('EXPIRE', key, ttl)
@@ -230,7 +238,7 @@ func RateLimitMiddleware(rl *RateLimiter, limit int, window time.Duration) func(
                 return
             }
 
-            // Set standard rate limit headers
+            // Set common rate limit headers
             w.Header().Set("X-RateLimit-Limit", strconv.Itoa(limit))
             w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
             w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(
