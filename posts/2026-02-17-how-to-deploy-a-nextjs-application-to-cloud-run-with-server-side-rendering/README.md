@@ -20,7 +20,7 @@ Cloud Run benefits for Next.js:
 
 - Scales to zero when there is no traffic (pay nothing when idle)
 - Scales up automatically during traffic spikes
-- Handles HTTPS and custom domains out of the box
+- Handles HTTPS on the default `run.app` URL and supports custom domains
 - Supports WebSockets and streaming SSR
 - No infrastructure to manage
 
@@ -212,7 +212,7 @@ Next.js cold starts on Cloud Run can be slow if the app is large. Here are ways 
 gcloud run services update nextjs-app \
   --region=us-central1 \
   --min-instances=1 \
-  --cpu-always-allocated
+  --no-cpu-throttling
 ```
 
 ### Caching Headers
@@ -249,13 +249,13 @@ Map a custom domain to your Cloud Run service:
 
 ```bash
 # Map a custom domain
-gcloud run domain-mappings create \
+gcloud beta run domain-mappings create \
   --service=nextjs-app \
   --domain=app.yourdomain.com \
   --region=us-central1
 ```
 
-Follow the DNS verification instructions that the command outputs. You will need to add a CNAME record pointing to `ghs.googlehosted.com`.
+Cloud Run domain mappings are currently a preview feature and are not recommended for production services. For production, Google recommends using a global external Application Load Balancer or Firebase Hosting in front of Cloud Run. If you use domain mappings, follow the DNS verification instructions that the command outputs and add the DNS records Cloud Run returns.
 
 ## Continuous Deployment
 
