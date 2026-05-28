@@ -8,7 +8,7 @@ Description: Learn practical techniques for deduplicating streaming data in BigQ
 
 ---
 
-Streaming data into BigQuery is a common pattern for real-time analytics, but it comes with a well-known problem: duplicates. At-least-once delivery guarantees in systems like Pub/Sub and Dataflow mean that the same event can arrive multiple times. Network retries, consumer restarts, and reprocessed messages all contribute to duplicate data landing in your BigQuery tables.
+Streaming data into BigQuery is a common pattern for real-time analytics, but it comes with a well-known problem: duplicates. Pub/Sub uses at-least-once delivery by default, and Dataflow can also produce duplicates when running in at-least-once streaming mode or when the source publishes the same business event more than once. Network retries, consumer restarts, and reprocessed messages all contribute to duplicate data landing in your BigQuery tables.
 
 You need a reliable way to deduplicate this data, either at query time, on a schedule, or as part of your ingestion pipeline. This post covers the most practical approaches using SQL that works directly in BigQuery.
 
@@ -99,11 +99,11 @@ QUALIFY ROW_NUMBER() OVER (
 ) = 1
 ```
 
-QUALIFY is syntactic sugar - it produces the same execution plan as the CTE approach but is easier to read.
+QUALIFY is syntactic sugar - it produces the same logical result as the CTE approach but is easier to read.
 
 ## Scheduled Deduplication with MERGE
 
-For production pipelines, you often want to physically remove duplicates rather than filtering them at query time. The MERGE statement is the tool for this. It can insert new rows and skip (or update) existing ones atomically.
+For production pipelines, you often want to keep a clean table that excludes duplicates rather than filtering them at query time. The MERGE statement is the tool for this. It can insert new rows and skip (or update) existing ones atomically.
 
 ### Pattern 1: Staging Table Merge
 
@@ -149,7 +149,7 @@ WHEN NOT MATCHED THEN
             source.event_properties, source.event_date);
 ```
 
-The partition filter on the target table is important. Without it, BigQuery scans the entire target table to check for matches, which is expensive for large tables.
+The partition filter on the target table is useful when your deduplication key is scoped to the same recent time window. For update-heavy merges, limiting the target partitions keeps the statement cheaper on large tables.
 
 ### Pattern 2: Merge with Updates
 
@@ -159,7 +159,7 @@ Sometimes duplicates carry updated information. You want to keep the latest vers
 -- Merge with update logic: insert new records, update existing ones with newer data
 MERGE `my-project.orders_dataset.orders` AS target
 USING (
-    SELECT * FROM (
+    SELECT * EXCEPT(rn) FROM (
         SELECT
             *,
             ROW_NUMBER() OVER (
@@ -212,7 +212,7 @@ Automate deduplication by running it on a schedule. You can use BigQuery schedul
 
 -- First, deduplicate within the recent window
 CREATE TEMP TABLE recent_deduped AS
-SELECT * FROM (
+SELECT * EXCEPT(rn) FROM (
     SELECT
         *,
         ROW_NUMBER() OVER (
@@ -240,28 +240,31 @@ Set up the schedule:
 
 bq query \
   --use_legacy_sql=false \
+  --target_dataset='events_dataset' \
   --schedule='every 15 minutes' \
   --display_name='Deduplicate Events' \
-  --destination_table='' \
+  --location='US' \
   'MERGE `my-project.events_dataset.events_clean` AS target ...'
 ```
 
 ## Using BigQuery's Streaming Buffer Considerations
 
-Data in BigQuery's streaming buffer (recently streamed data) cannot be modified by DML statements. MERGE operations against the streaming buffer will fail. Your deduplication schedule needs to account for the buffer flush time (which is typically a few minutes but can be longer):
+Rows recently written with the legacy `tabledata.insertAll` streaming method cannot be modified by DML statements for 30 minutes. In the staging-table pattern above, the raw table is only read and the clean table is modified, so this limitation matters if the clean target table is also receiving legacy streaming inserts. You may still want to delay source processing so your scheduled job does not miss very recent buffered rows:
 
 ```sql
--- Only deduplicate data that has left the streaming buffer
--- Data older than 30 minutes is safely past the buffer
+-- Only deduplicate data that has left the streaming buffer.
+-- For ingestion-time partitioned raw tables, recently streamed rows
+-- can have a NULL _PARTITIONTIME until BigQuery assigns the partition.
 MERGE `my-project.events_dataset.events_clean` AS target
 USING (
-    SELECT * FROM (
+    SELECT * EXCEPT(rn) FROM (
         SELECT
             *,
             ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY event_timestamp ASC) AS rn
         FROM `my-project.events_dataset.raw_events`
         WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY)
           -- Skip data still in the streaming buffer
+          AND _PARTITIONTIME IS NOT NULL
           AND _PARTITIONTIME <= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE)
     )
     WHERE rn = 1
@@ -274,8 +277,8 @@ WHEN NOT MATCHED THEN
 
 ## Performance Tips
 
-Always include a partition filter in both the source and target of your MERGE to minimize data scanned. Deduplicate within the source batch before merging to reduce the number of rows the MERGE needs to process. Cluster your target table on the columns used in the MERGE ON clause for faster matching. Run deduplication frequently with small batches rather than infrequently with large batches.
+Include a partition filter in the source, and add a target partition filter when it is consistent with your deduplication key and late-arrival policy. Deduplicate within the source batch before merging to reduce the number of rows the MERGE needs to process. Cluster your target table on the columns used in the MERGE ON clause for faster matching. Run deduplication frequently with small batches rather than infrequently with large batches.
 
 ## Wrapping Up
 
-Duplicates in streaming data are not a bug - they are a natural consequence of at-least-once delivery guarantees. The right deduplication strategy depends on your requirements. Query-time deduplication with window functions and QUALIFY is simple and works well for analytical queries. Scheduled MERGE operations physically remove duplicates and keep your tables clean for downstream consumers. Whichever approach you choose, make sure your deduplication key (usually an event ID or message ID) is reliable and present on every record, and always scope your deduplication operations to recent partitions to keep costs under control.
+Duplicates in streaming data are not a bug - they are a natural consequence of retries, reprocessing, and at-least-once delivery paths. The right deduplication strategy depends on your requirements. Query-time deduplication with window functions and QUALIFY is simple and works well for analytical queries. Scheduled MERGE operations keep clean tables deduplicated for downstream consumers. Whichever approach you choose, make sure your deduplication key (usually an event ID or message ID) is reliable and present on every record, and scope your deduplication operations to recent partitions when that is correct for your data.
