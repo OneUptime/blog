@@ -234,11 +234,9 @@ USING (
 ON T.customer_id = S.customer_id
 WHEN MATCHED AND (
   -- Only update if data actually changed
-  T.name != S.name OR
-  T.email != S.email OR
-  T.phone != S.phone OR
-  T.name IS NULL != S.name IS NULL OR
-  T.email IS NULL != S.email IS NULL
+  T.name IS DISTINCT FROM S.name OR
+  T.email IS DISTINCT FROM S.email OR
+  T.phone IS DISTINCT FROM S.phone
 ) THEN
   UPDATE SET
     T.name = S.name,
