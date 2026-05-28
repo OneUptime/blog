@@ -41,7 +41,7 @@ class Config:
     """Application configuration loaded from environment variables."""
     PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "your-project-id")
     LOCATION = os.environ.get("GCP_LOCATION", "us-central1")
-    MODEL_NAME = os.environ.get("MODEL_NAME", "gemini-1.5-pro")
+    MODEL_NAME = os.environ.get("MODEL_NAME", "gemini-2.5-flash")
     TEMPERATURE = float(os.environ.get("TEMPERATURE", "0.2"))
     MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "2048"))
     PORT = int(os.environ.get("PORT", "8080"))
@@ -51,7 +51,7 @@ class Config:
 
 ```python
 # app/agent.py
-from langchain_google_vertexai import ChatVertexAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from app.config import Config
@@ -59,10 +59,11 @@ from app.config import Config
 def create_chain():
     """Create and return the LangChain chain."""
     # Initialize the Vertex AI model
-    llm = ChatVertexAI(
-        model_name=Config.MODEL_NAME,
+    llm = ChatGoogleGenerativeAI(
+        model=Config.MODEL_NAME,
         project=Config.PROJECT_ID,
         location=Config.LOCATION,
+        vertexai=True,
         temperature=Config.TEMPERATURE,
         max_output_tokens=Config.MAX_TOKENS,
     )
@@ -83,28 +84,25 @@ def create_chain():
 
 ```python
 # app/main.py
-from fastapi import FastAPI, HTTPException
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Optional
 from app.agent import create_chain
-from app.config import Config
 import logging
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="LangChain Service", version="1.0.0")
-
-# Initialize the chain once at startup
-chain = None
-
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Initialize the LangChain chain when the service starts."""
-    global chain
-    chain = create_chain()
+    app.state.chain = create_chain()
     logger.info("LangChain chain initialized successfully")
+    yield
+
+app = FastAPI(title="LangChain Service", version="1.0.0", lifespan=lifespan)
 
 class QueryRequest(BaseModel):
     input: str
@@ -114,12 +112,12 @@ class QueryResponse(BaseModel):
     output: str
 
 @app.post("/query", response_model=QueryResponse)
-async def query(request: QueryRequest):
+async def query(payload: QueryRequest, request: Request):
     """Handle incoming queries through the LangChain chain."""
     try:
-        result = chain.invoke({
-            "input": request.input,
-            "history": request.history or [],
+        result = await request.app.state.chain.ainvoke({
+            "input": payload.input,
+            "history": payload.history or [],
         })
         return QueryResponse(output=result)
     except Exception as e:
@@ -138,13 +136,11 @@ async def health():
 
 ```text
 # requirements.txt
-fastapi==0.109.0
-uvicorn==0.27.0
-langchain==0.1.6
-langchain-google-vertexai==0.0.6
-langchain-core==0.1.22
-google-cloud-aiplatform==1.40.0
-pydantic==2.6.0
+fastapi==0.136.3
+uvicorn==0.48.0
+langchain==1.3.2
+langchain-google-genai==4.2.3
+pydantic==2.13.4
 ```
 
 ### Dockerfile
@@ -169,7 +165,7 @@ COPY app/ ./app/
 ENV PORT=8080
 
 # Run the application with uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1
 ```
 
 ### Docker Ignore File
@@ -255,6 +251,8 @@ curl -X POST "$SERVICE_URL/query" \
     -d '{"input": "What is Google Cloud Run?"}'
 ```
 
+The identity you use for the request must have the Cloud Run Invoker role on the service.
+
 ## Streaming Responses
 
 For a better user experience, implement streaming so the response appears incrementally.
@@ -262,16 +260,14 @@ For a better user experience, implement streaming so the response appears increm
 ```python
 # Add to app/main.py
 from fastapi.responses import StreamingResponse
-from langchain_google_vertexai import ChatVertexAI
-from langchain_core.prompts import ChatPromptTemplate
 
 @app.post("/stream")
-async def stream_query(request: QueryRequest):
+async def stream_query(payload: QueryRequest, request: Request):
     """Stream the response token by token."""
     async def generate():
-        async for chunk in chain.astream({
-            "input": request.input,
-            "history": request.history or [],
+        async for chunk in request.app.state.chain.astream({
+            "input": payload.input,
+            "history": payload.history or [],
         }):
             yield chunk
 
