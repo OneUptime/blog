@@ -8,7 +8,7 @@ Description: Implement graceful shutdown in a Go Cloud Run service using context
 
 ---
 
-Cloud Run can terminate your container at any time - during scale-down, deployment updates, or when your service has been idle. When that happens, Cloud Run sends a SIGTERM signal and gives your container a grace period (10 seconds by default, configurable up to 60 minutes) to finish what it is doing. If your service does not handle this signal, in-flight requests get dropped, database connections get cut, and you end up with corrupted state.
+Cloud Run can terminate your container at any time - during scale-down, deployment updates, or when your service has been idle. When that happens, Cloud Run sends a SIGTERM signal and gives your container 10 seconds before it sends SIGKILL. If your service does not handle this signal, in-flight requests can get dropped, database connections can get cut, and you can end up with corrupted state.
 
 Graceful shutdown is not optional for production services. Here is how to do it properly in Go.
 
@@ -70,7 +70,7 @@ func main() {
 
     // Set up the HTTP server
     mux := http.NewServeMux()
-    mux.HandleFunc("/", handleRequest)
+    mux.HandleFunc("/", handleRequest(ctx))
     mux.HandleFunc("/health", handleHealth)
 
     server := &http.Server{
@@ -120,27 +120,39 @@ If your service handles requests that take a while - say, processing a file uplo
 
 ```go
 // handleRequest demonstrates a handler that respects context cancellation
-func handleRequest(w http.ResponseWriter, r *http.Request) {
-    // The request context will be cancelled when the server shuts down
-    ctx := r.Context()
+func handleRequest(shutdownCtx context.Context) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        // r.Context() is cancelled when the client disconnects. Tie it to
+        // the shutdown context so long-running work also stops on SIGTERM.
+        ctx, cancel := context.WithCancel(r.Context())
+        defer cancel()
 
-    log.Printf("Processing request %s", r.URL.Path)
+        go func() {
+            select {
+            case <-shutdownCtx.Done():
+                cancel()
+            case <-ctx.Done():
+            }
+        }()
 
-    // Simulate a long-running operation that checks for cancellation
-    result, err := longRunningTask(ctx)
-    if err != nil {
-        if ctx.Err() == context.Canceled {
-            // The request was cancelled due to shutdown
-            log.Println("Request cancelled during shutdown")
-            http.Error(w, "Service shutting down", http.StatusServiceUnavailable)
+        log.Printf("Processing request %s", r.URL.Path)
+
+        // Simulate a long-running operation that checks for cancellation
+        result, err := longRunningTask(ctx)
+        if err != nil {
+            if ctx.Err() == context.Canceled {
+                // The request was cancelled due to shutdown or client disconnect
+                log.Println("Request cancelled")
+                http.Error(w, "Service shutting down", http.StatusServiceUnavailable)
+                return
+            }
+            http.Error(w, "Processing failed", http.StatusInternalServerError)
             return
         }
-        http.Error(w, "Processing failed", http.StatusInternalServerError)
-        return
-    }
 
-    w.Header().Set("Content-Type", "application/json")
-    w.Write([]byte(result))
+        w.Header().Set("Content-Type", "application/json")
+        w.Write([]byte(result))
+    }
 }
 
 // longRunningTask simulates work that periodically checks for cancellation
@@ -281,15 +293,15 @@ curl http://localhost:8080/slow &
 # Send SIGTERM while the request is in flight
 kill -SIGTERM $(pgrep -f "go run main.go")
 
-# The request should complete before the server exits
+# The request should complete or return a shutdown response before the server exits
 ```
 
 ## Cloud Run Configuration
 
-Increase the termination grace period if your requests take longer than 10 seconds.
+Cloud Run's shutdown window for services is 10 seconds. The `--timeout` setting is the request timeout, not the shutdown grace period. Set it high enough for normal request processing, but keep shutdown cleanup within the 10-second window.
 
 ```bash
-# Set termination grace period to 60 seconds
+# Set request timeout to 60 seconds
 gcloud run deploy my-service \
   --image gcr.io/YOUR_PROJECT/my-service \
   --timeout=60 \
@@ -307,8 +319,8 @@ metadata:
 spec:
   template:
     spec:
-      # Allow 60 seconds for graceful shutdown
-      terminationGracePeriodSeconds: 60
+      # Allow 60 seconds for normal request processing
+      timeoutSeconds: 60
       containers:
         - image: gcr.io/YOUR_PROJECT/my-service
 ```
@@ -317,7 +329,7 @@ spec:
 
 1. **Not handling SIGTERM at all** - Your container gets killed immediately after the grace period, dropping all in-flight requests.
 
-2. **Using the wrong timeout** - If your shutdown timeout exceeds Cloud Run's grace period, Cloud Run will force-kill your container before your cleanup finishes.
+2. **Confusing request timeout with shutdown time** - `--timeout` and `timeoutSeconds` control how long a request can run. Cloud Run services still get 10 seconds after SIGTERM before SIGKILL.
 
 3. **Cleaning up resources in the wrong order** - Close the HTTP server first, then close clients that in-flight handlers might still be using.
 
