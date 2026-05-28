@@ -8,17 +8,17 @@ Description: Learn how to create and configure an Assured Workloads folder for F
 
 ---
 
-If you are building applications for the US federal government or handling Controlled Unclassified Information (CUI), FedRAMP Moderate compliance is not optional. Google Cloud's Assured Workloads makes this achievable without building the entire compliance framework from scratch. It creates a controlled environment within your GCP organization that enforces the guardrails required by FedRAMP Moderate.
+If you are building applications for the US federal government or handling Controlled Unclassified Information (CUI), FedRAMP Moderate compliance is not optional. Google Cloud's Assured Workloads makes this achievable without building the entire compliance framework from scratch. It creates a controlled environment within your GCP organization that enforces the guardrails required by the Data Boundary for FedRAMP Moderate control package.
 
-In this post, I will walk through creating an Assured Workloads folder for FedRAMP Moderate, what it configures behind the scenes, and how to manage it after creation.
+In this post, I will walk through creating an Assured Workloads folder for Data Boundary for FedRAMP Moderate, what it configures behind the scenes, and how to manage it after creation.
 
 ## What Assured Workloads Does for FedRAMP
 
-When you create an Assured Workloads folder with the FedRAMP Moderate compliance regime, GCP automatically configures:
+When you create an Assured Workloads folder with the Data Boundary for FedRAMP Moderate control package, GCP automatically configures:
 
-- **Data residency restrictions** - Resources can only be created in US regions
+- **Data residency restrictions** - Supported resources can be restricted to US locations
 - **Organization policies** - Enforces constraints like allowed resource locations
-- **Key management** - CMEK (Customer-Managed Encryption Keys) requirements
+- **Key management** - Optional CMEK (Customer-Managed Encryption Keys) project and key ring setup
 - **Personnel controls** - Ensures Google support personnel who access your data meet FedRAMP requirements
 - **Audit logging** - Enhanced logging for compliance evidence
 
@@ -56,25 +56,21 @@ gcloud services enable assuredworkloads.googleapis.com --project=my-admin-projec
 You can create the folder using gcloud. Here is the command for FedRAMP Moderate:
 
 ```bash
-# Create an Assured Workloads folder for FedRAMP Moderate
+# Create an Assured Workloads folder for Data Boundary for FedRAMP Moderate
 gcloud assured workloads create \
   --organization=ORG_ID \
   --location=us \
   --display-name="FedRAMP Moderate Workloads" \
-  --compliance-regime=FEDRAMP_MODERATE \
-  --billing-account=BILLING_ACCOUNT_ID \
-  --provisioned-resources-parent=organizations/ORG_ID \
-  --resource-settings='[{
-    "resourceType": "CONSUMER_FOLDER",
-    "displayName": "fedramp-moderate-folder"
-  }]'
+  --compliance-regime=data-boundary-for-fedramp-moderate \
+  --billing-account=billingAccounts/BILLING_ACCOUNT_ID \
+  --provisioned-resources-parent=organizations/ORG_ID
 ```
 
 This command does several things:
 - Creates a new folder in your organization hierarchy
 - Applies FedRAMP Moderate organizational policies to that folder
 - Restricts resource locations to US regions
-- Enables required audit logging
+- Enables Access Transparency if it is not already enabled on the organization
 
 The creation takes a few minutes. You can check the status:
 
@@ -101,11 +97,11 @@ gcloud resource-manager org-policies describe \
   --effective
 ```
 
-The policy will show that only US regions and multi-regions are allowed. You cannot create a VM in europe-west1 under this folder.
+The policy will show the allowed locations selected for the folder, such as US regions and multi-regions. You cannot create a VM in europe-west1 under this folder when the policy allows only US locations.
 
 ### Service Usage Restriction
 
-Only FedRAMP-authorized GCP services can be used:
+Only services supported by the Data Boundary for FedRAMP Moderate control package should be used:
 
 ```bash
 # View which services are restricted
@@ -115,11 +111,11 @@ gcloud resource-manager org-policies describe \
   --effective
 ```
 
-Not all GCP services have FedRAMP Moderate authorization. If you try to use a non-authorized service, the API call will be rejected.
+Not all GCP services are supported by the Data Boundary for FedRAMP Moderate control package. A resource usage restriction organization policy can prevent non-compliant service usage for services and resource types covered by that constraint.
 
-### CMEK Requirements
+### CMEK Policies
 
-Certain services require Customer-Managed Encryption Keys:
+Data Boundary for FedRAMP Moderate does not require CMEK by default, but you can still configure CMEK policies for services that must use Customer-Managed Encryption Keys:
 
 ```bash
 # Check CMEK policy
@@ -136,8 +132,7 @@ Projects created under the Assured Workloads folder automatically inherit all co
 ```bash
 # Create a new project under the Assured Workloads folder
 gcloud projects create fedramp-app-prod \
-  --folder=FOLDER_ID \
-  --organization=ORG_ID
+  --folder=FOLDER_ID
 
 # Link a billing account to the project
 gcloud billing projects link fedramp-app-prod \
@@ -154,9 +149,9 @@ gcloud resource-manager org-policies describe \
   --effective
 ```
 
-## Setting Up CMEK for Required Services
+## Setting Up CMEK for Services That Need It
 
-Some services under FedRAMP Moderate require CMEK. Here is how to set up a key ring and key in an allowed location:
+If your workload requires CMEK, here is how to set up a key ring and key in an allowed location:
 
 ```bash
 # Create a key ring in a US region
@@ -196,11 +191,11 @@ gcloud storage buckets create gs://fedramp-data-bucket \
 FedRAMP requires comprehensive audit logging. Enable data access logs for all services:
 
 ```bash
-# Enable data access audit logging for all services in the project
+# Get the current IAM policy before adding auditConfigs
 gcloud projects get-iam-policy fedramp-app-prod --format=json > /tmp/policy.json
 ```
 
-You need to add audit log configuration to the IAM policy. The Assured Workloads folder typically enables admin activity logs by default, but data access logs need explicit configuration for each service you use.
+You need to add audit log configuration to the IAM policy and write it back with `gcloud projects set-iam-policy fedramp-app-prod /tmp/policy.json`. Cloud Audit Logs include Admin Activity logs by default, but Data Access logs need explicit configuration for each service you use or for `allServices`.
 
 ## Monitoring Compliance Status
 
@@ -257,4 +252,4 @@ Document everything. FedRAMP auditors will want to see not just that controls ar
 
 ## Summary
 
-Creating an Assured Workloads folder for FedRAMP Moderate in GCP gives you an automated compliance framework that enforces data residency, encryption, service restrictions, and personnel controls. The setup is straightforward - create the folder, let the policies propagate, create projects under it, and set up CMEK for required services. The ongoing work is monitoring for violations and maintaining documentation for auditors.
+Creating an Assured Workloads folder for Data Boundary for FedRAMP Moderate in GCP gives you an automated compliance framework that enforces data residency, service restrictions, and personnel controls. The setup is straightforward - create the folder, let the policies propagate, create projects under it, and set up CMEK if your workload requires it. The ongoing work is monitoring for violations and maintaining documentation for auditors.
