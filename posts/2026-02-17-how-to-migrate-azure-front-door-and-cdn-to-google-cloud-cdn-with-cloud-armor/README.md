@@ -34,7 +34,7 @@ You will need a few things in place before starting:
 
 ## Step 1: Set Up Your Backend Services
 
-In Azure Front Door, you define backend pools. In GCP, the equivalent is backend services attached to the load balancer. Here is how to create a backend service that points to an instance group or a Cloud Run service.
+In Azure Front Door, you define backend pools. In GCP, the equivalent is backend services attached to the load balancer. Here is how to create a backend service that points to an instance group.
 
 The following commands create a health check and a backend service for a typical web application origin:
 
@@ -78,9 +78,6 @@ Here is how to update your backend service with specific cache settings:
 # Set the cache mode to respect origin headers, similar to Azure CDN behavior
 gcloud compute backend-services update my-backend-service \
     --cache-mode=USE_ORIGIN_HEADERS \
-    --default-ttl=3600 \
-    --max-ttl=86400 \
-    --client-ttl=3600 \
     --global
 ```
 
@@ -135,13 +132,13 @@ gcloud compute security-policies create my-security-policy \
 # Add OWASP ModSecurity Core Rule Set rules for common attack protection
 gcloud compute security-policies rules create 1000 \
     --security-policy=my-security-policy \
-    --expression="evaluatePreconfiguredExpr('sqli-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('sqli-v33-stable')" \
     --action=deny-403 \
     --description="Block SQL injection attacks"
 
 gcloud compute security-policies rules create 1001 \
     --security-policy=my-security-policy \
-    --expression="evaluatePreconfiguredExpr('xss-v33-stable')" \
+    --expression="evaluatePreconfiguredWaf('xss-v33-stable')" \
     --action=deny-403 \
     --description="Block cross-site scripting attacks"
 
@@ -210,17 +207,17 @@ A few things catch people during migration:
 
 3. **Geo-filtering** - Azure CDN has built-in geo-filtering. Cloud Armor provides geo-based rules using the `origin.region_code` attribute in security policy expressions.
 
-4. **Compression** - Azure CDN compresses content automatically. Cloud CDN serves compressed content if your origin provides it with proper Content-Encoding headers, but does not compress on the fly at the edge.
+4. **Compression** - Azure CDN can compress supported content. Cloud CDN serves compressed content if your origin provides it with proper Content-Encoding headers, and can also compress eligible responses at the edge when dynamic compression is enabled with `--compression-mode=AUTOMATIC`.
 
 ## Monitoring the Migration
 
-After cutover, keep an eye on Cloud CDN cache hit ratios and Cloud Armor logs:
+After cutover, keep an eye on Cloud CDN cache hit status and Cloud Armor logs:
 
 ```bash
-# Check CDN cache hit ratio in Cloud Monitoring
+# Check recent CDN cache hits in Cloud Logging
 gcloud logging read 'resource.type="http_load_balancer"' \
     --limit=100 \
-    --format="table(httpRequest.status, jsonPayload.cacheHit)"
+    --format="table(httpRequest.status, httpRequest.cacheHit)"
 ```
 
 Make sure your cache hit rates match or exceed what you had on Azure CDN. If they are lower, review your cache headers and cache mode settings.
