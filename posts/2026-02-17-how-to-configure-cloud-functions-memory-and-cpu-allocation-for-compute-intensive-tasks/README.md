@@ -16,20 +16,21 @@ The fix is straightforward: allocate more memory and CPU. But getting the alloca
 
 In Gen 2 Cloud Functions (which run on Cloud Run), memory and CPU can be configured independently. Here are the available options:
 
-**Memory options**: 128Mi, 256Mi, 512Mi, 1Gi, 2Gi, 4Gi, 8Gi, 16Gi, 32Gi
+**Memory options**: any size using supported units like M, G, Mi, or Gi, up to 32Gi. Cloud Run functions default to 256Mi.
 
-**CPU options**: 0.083 (1/12), 0.167 (1/6), 0.25, 0.333, 0.5, 1, 2, 4, 6, 8
+**CPU options**: 1, 2, 4, 6, or 8 vCPUs. For less than 1 vCPU, you can specify values from 0.08 to less than 1.00, but fractional CPU requires request-based billing, concurrency set to 1, and the first-generation Cloud Run execution environment.
 
-There are constraints though. Higher CPU values require minimum memory amounts:
+There are constraints though. CPU and memory combinations must fit Cloud Run's resource limits:
 
 ```mermaid
 graph TD
     A[CPU Allocation] --> B{How many vCPUs?}
-    B -->|"<= 1 vCPU"| C["Min 128Mi memory"]
-    B -->|"2 vCPUs"| D["Min 1Gi memory"]
-    B -->|"4 vCPUs"| E["Min 2Gi memory"]
-    B -->|"6 vCPUs"| F["Min 4Gi memory"]
-    B -->|"8 vCPUs"| G["Min 4Gi memory"]
+    B -->|"< 1 vCPU"| C["Concurrency must be 1"]
+    B -->|"1 vCPU"| D["Up to 4Gi memory"]
+    B -->|"2 vCPUs"| E["Up to 8Gi memory"]
+    B -->|"4 vCPUs"| F["2Gi to 16Gi memory"]
+    B -->|"6 vCPUs"| G["4Gi to 24Gi memory"]
+    B -->|"8 vCPUs"| H["4Gi to 32Gi memory"]
 ```
 
 ## Configuring Memory and CPU
@@ -188,7 +189,7 @@ gcloud functions deploy api \
   --gen2 \
   --memory=256Mi \
   --cpu=0.25 \
-  --concurrency=80
+  --concurrency=1
 ```
 
 ### Image Processing
@@ -204,7 +205,7 @@ gcloud functions deploy resize-images \
   --timeout=120s
 ```
 
-Sharp loads images entirely into memory. A 10-megapixel JPEG decompresses to about 30MB in RAM, and during resize you need both the original and the resized version in memory simultaneously. Add overhead for the Node.js runtime itself, and 1-2Gi is usually the sweet spot.
+Image processing often needs decompressed pixel buffers. A 10-megapixel JPEG decompresses to about 30MB in RAM, and during resize you can need both source and output buffers in memory simultaneously. Add overhead for the Node.js runtime itself, and 1-2Gi is usually the sweet spot.
 
 ### PDF Generation
 
@@ -246,29 +247,23 @@ gcloud functions deploy ml-inference \
 
 ## CPU Throttling vs Always-On CPU
 
-Gen 2 has two CPU allocation modes that significantly affect compute performance:
+Gen 2 runs on Cloud Run, which has two billing settings that affect whether CPU is available outside request processing:
 
-**CPU throttled (default)**: CPU is only allocated during request processing. Between requests, the CPU is throttled to near zero. This is cheaper but means background tasks will not run between requests.
+**Request-based billing (default, also called CPU throttled)**: CPU is allocated during request processing, instance startup, and shutdown. Between requests, the CPU is throttled to near zero. This is cheaper but means background tasks will not reliably run between requests.
 
-**CPU always allocated**: CPU is available even when the instance is idle. More expensive but necessary for functions that maintain state, keep connections warm, or do background processing.
+**Instance-based billing (also called CPU always allocated)**: CPU is available for the full instance lifecycle. This can cost more for spiky workloads but is useful for functions that maintain state, keep connections warm, or do background processing.
 
 ```bash
-# CPU throttled (cheaper, good for request-response patterns)
-gcloud functions deploy my-function \
-  --gen2 \
-  --cpu-throttling \
-  --memory=1Gi \
-  --cpu=1
+# CPU throttled / request-based billing (good for request-response patterns)
+gcloud run services update my-function \
+  --cpu-throttling
 
-# CPU always on (for background work and maintaining connections)
-gcloud functions deploy my-function \
-  --gen2 \
-  --no-cpu-throttling \
-  --memory=1Gi \
-  --cpu=1
+# CPU always allocated / instance-based billing (for background work)
+gcloud run services update my-function \
+  --no-cpu-throttling
 ```
 
-For compute-intensive functions, always use `--no-cpu-throttling` to ensure you get the full CPU allocation during processing.
+For compute-intensive request-response functions, request-based billing still provides the configured CPU while a request is being processed. Use `--no-cpu-throttling` when the function needs CPU outside request handling.
 
 ## Memory Optimization Techniques
 
@@ -325,15 +320,15 @@ async function processData(req, res) {
 
 ## Cost Implications
 
-Higher memory and CPU cost more. Here is a rough comparison:
+Higher memory and CPU cost more. Here is a rough comparison for us-central1 request-based billing, excluding the free tier and assuming one million 100ms requests:
 
 | Configuration | Cost per million invocations (100ms each) |
 |---|---|
-| 256Mi / 0.167 CPU | ~$0.40 |
-| 512Mi / 0.333 CPU | ~$0.80 |
-| 1Gi / 1 CPU | ~$2.40 |
-| 2Gi / 2 CPU | ~$6.40 |
-| 4Gi / 4 CPU | ~$16.00 |
+| 256Mi / 0.167 CPU | ~$0.86 |
+| 512Mi / 0.333 CPU | ~$1.32 |
+| 1Gi / 1 CPU | ~$3.05 |
+| 2Gi / 2 CPU | ~$5.70 |
+| 4Gi / 4 CPU | ~$11.00 |
 
 The key is to allocate just enough resources for reliable execution. Over-provisioning wastes money, while under-provisioning causes failures and retries (which also cost money).
 
