@@ -20,7 +20,7 @@ Pod Security Standards define three security levels:
 
 **Baseline**: Prevents known privilege escalations. Blocks things like host networking, host PID, privileged containers, and certain dangerous volume types. This is a good default for most workloads.
 
-**Restricted**: Heavily locked down. Requires pods to run as non-root, drop all capabilities, use a read-only root filesystem, and set a seccomp profile. This is the target for security-sensitive applications.
+**Restricted**: Heavily locked down. Requires pods to run as non-root, drop all capabilities, use allowed volume types, and set a seccomp profile. This is the target for security-sensitive applications.
 
 Each level can operate in three modes:
 
@@ -81,7 +81,8 @@ Notice the pattern: enforce baseline, but audit and warn on restricted. This way
 Leave system namespaces as privileged:
 
 ```bash
-# Keep kube-system privileged since it runs system components
+# Keep kube-system privileged since it runs system components.
+# GKE ignores PodSecurity labels on kube-system in supported GKE versions.
 kubectl label ns kube-system \
   pod-security.kubernetes.io/enforce=privileged \
   pod-security.kubernetes.io/enforce-version=latest
@@ -129,7 +130,8 @@ spec:
                 - ALL
             # Read-only root filesystem
             readOnlyRootFilesystem: true
-          # Writable directories via emptyDir volumes
+          # Optional: make the root filesystem read-only and use emptyDir
+          # volumes for paths that must be writable
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -150,14 +152,14 @@ spec:
           emptyDir: {}
 ```
 
-The key requirements for restricted are:
+The key Linux requirements for restricted include:
 
 - `runAsNonRoot: true`
 - `allowPrivilegeEscalation: false`
 - `capabilities.drop: ALL`
 - `seccompProfile.type: RuntimeDefault`
 
-If your application needs to write to specific directories, mount emptyDir volumes at those paths since the root filesystem should be read-only.
+If your application needs to write to specific directories and you set `readOnlyRootFilesystem: true`, mount emptyDir volumes at those paths.
 
 ## Migration Strategy from PSP to PSA
 
@@ -253,7 +255,7 @@ Set up alerting for pod security violations. In GKE, audit logs capture policy v
 ```bash
 # View pod security audit events
 gcloud logging read \
-  'resource.type="k8s_cluster" AND protoPayload.response.metadata.annotations."pod-security.kubernetes.io/audit-violations" != ""' \
+  'resource.type="k8s_cluster" AND (labels."pod-security.kubernetes.io/audit-violations":"PodSecurity" OR protoPayload.response.reason="Forbidden")' \
   --limit=20 \
   --project=my-project
 ```
