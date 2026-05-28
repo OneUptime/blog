@@ -67,13 +67,13 @@ infrastructure/
     gcp_networking.rego
     gcp_cost.rego
     gcp_naming.rego
-  .conftest.toml
+  conftest.toml
 ```
 
 The Conftest configuration file tells it where to find policies:
 
 ```toml
-# .conftest.toml - Conftest configuration
+# conftest.toml - Conftest configuration
 policy = "policy"
 namespace = "main"
 ```
@@ -104,10 +104,10 @@ This first policy ensures that Cloud SQL instances do not get public IPs:
 
 package main
 
-import future.keywords.in
+import rego.v1
 
 # Deny Cloud SQL instances with public IP addresses
-deny[msg] {
+deny contains msg if {
     # Find Cloud SQL instance resources in the plan
     resource := input.resource_changes[_]
     resource.type == "google_sql_database_instance"
@@ -120,7 +120,7 @@ deny[msg] {
 }
 
 # Deny GCS buckets without uniform bucket-level access
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "google_storage_bucket"
 
@@ -134,7 +134,7 @@ deny[msg] {
 }
 
 # Deny compute instances with external IP addresses
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "google_compute_instance"
 
@@ -149,17 +149,21 @@ deny[msg] {
 }
 
 # Deny GKE clusters without private nodes
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "google_container_cluster"
 
     private_config := resource.change.after.private_cluster_config
-    count(private_config) == 0
+    not private_nodes_enabled(private_config)
 
     msg := sprintf(
         "GKE cluster '%s' is not configured as a private cluster.",
         [resource.name]
     )
+}
+
+private_nodes_enabled(private_config) if {
+    private_config[_].enable_private_nodes == true
 }
 ```
 
@@ -173,10 +177,10 @@ Policies to enforce networking standards:
 
 package main
 
-import future.keywords.in
+import rego.v1
 
 # Deny firewall rules that allow traffic from 0.0.0.0/0
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "google_compute_firewall"
 
@@ -186,7 +190,7 @@ deny[msg] {
 
     # Allow this for specific ports like 80 and 443
     allow_block := resource.change.after.allow[_]
-    ports := allow_block.ports
+    ports := networking_list_or_empty(object.get(allow_block, "ports", []))
 
     # Block if it is not an HTTP/HTTPS rule
     not is_http_rule(ports)
@@ -198,11 +202,11 @@ deny[msg] {
 }
 
 # Helper function to check if ports are HTTP/HTTPS only
-is_http_rule(ports) {
+is_http_rule(ports) if {
     every_port_is_web(ports)
 }
 
-every_port_is_web(ports) {
+every_port_is_web(ports) if {
     count(ports) > 0
     web_ports := {"80", "443", "8080", "8443"}
     every port in ports {
@@ -210,8 +214,12 @@ every_port_is_web(ports) {
     }
 }
 
+networking_list_or_empty(value) := value if is_array(value)
+
+networking_list_or_empty(value) := [] if not is_array(value)
+
 # Deny VPCs with auto-created subnetworks
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "google_compute_network"
     resource.change.after.auto_create_subnetworks == true
@@ -233,8 +241,10 @@ Prevent accidentally expensive resources:
 
 package main
 
+import rego.v1
+
 # Deny oversized compute instances in non-production environments
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "google_compute_instance"
 
@@ -242,8 +252,8 @@ deny[msg] {
     is_expensive_machine(machine_type)
 
     # Check if this is a non-prod environment by looking at labels
-    labels := resource.change.after.labels
-    env := labels.environment
+    labels := cost_object_or_empty(object.get(resource.change.after, "labels", {}))
+    env := object.get(labels, "environment", "")
     env != "production"
     env != "prod"
 
@@ -254,7 +264,7 @@ deny[msg] {
 }
 
 # List of machine types that are considered expensive
-is_expensive_machine(machine_type) {
+is_expensive_machine(machine_type) if {
     expensive_prefixes := ["n2-highmem-32", "n2-highmem-64", "n2-highmem-96", "n2-highmem-128",
                            "n2-standard-64", "n2-standard-96", "n2-standard-128",
                            "c2-standard-60", "m1-megamem", "m1-ultramem", "m2-megamem", "m2-ultramem"]
@@ -263,15 +273,16 @@ is_expensive_machine(machine_type) {
 }
 
 # Deny Cloud SQL instances above db-custom-4-16384 in dev
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "google_sql_database_instance"
 
-    tier := resource.change.after.settings[_].tier
+    settings := resource.change.after.settings[_]
+    tier := settings.tier
     is_expensive_sql_tier(tier)
 
-    labels := resource.change.after.settings[_].user_labels
-    env := labels.environment
+    labels := cost_object_or_empty(object.get(settings, "user_labels", {}))
+    env := object.get(labels, "environment", "")
     env == "dev"
 
     msg := sprintf(
@@ -280,11 +291,15 @@ deny[msg] {
     )
 }
 
-is_expensive_sql_tier(tier) {
+is_expensive_sql_tier(tier) if {
     expensive_tiers := ["db-custom-8", "db-custom-16", "db-custom-32", "db-custom-64"]
     prefix := expensive_tiers[_]
     startswith(tier, prefix)
 }
+
+cost_object_or_empty(value) := value if is_object(value)
+
+cost_object_or_empty(value) := {} if not is_object(value)
 ```
 
 ## Naming Convention Policies
@@ -297,8 +312,10 @@ Enforce consistent resource naming:
 
 package main
 
+import rego.v1
+
 # Require environment label on all resources that support labels
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
 
     # Resources that should have labels
@@ -313,14 +330,29 @@ deny[msg] {
     resource.change.actions[_] == "create"
 
     # Check if environment label exists
-    labels := resource.change.after.labels
-    not labels.environment
+    labels := labels_for_resource(resource)
+    not "environment" in object.keys(labels)
 
     msg := sprintf(
         "Resource '%s' (type: %s) is missing the required 'environment' label.",
         [resource.name, resource.type]
     )
 }
+
+labels_for_resource(resource) := labels if {
+    resource.type == "google_sql_database_instance"
+    settings := resource.change.after.settings[_]
+    labels := naming_object_or_empty(object.get(settings, "user_labels", {}))
+}
+
+labels_for_resource(resource) := labels if {
+    resource.type != "google_sql_database_instance"
+    labels := naming_object_or_empty(object.get(resource.change.after, "labels", {}))
+}
+
+naming_object_or_empty(value) := value if is_object(value)
+
+naming_object_or_empty(value) := {} if not is_object(value)
 ```
 
 ## Running Conftest
@@ -337,10 +369,10 @@ FAIL - plan.json - main - Cloud SQL instance 'primary' has public IP enabled.
 FAIL - plan.json - main - GCS bucket 'data' does not have uniform bucket-level
                           access enabled.
 
-2 tests, 0 passed, 0 warnings, 2 failures
+9 tests, 7 passed, 0 warnings, 2 failures, 0 exceptions
 
-# Run with verbose output to see passing tests too
-conftest test plan.json --all-namespaces
+# Run with table output to see passing tests too
+conftest test plan.json --output table
 ```
 
 ## Integrating with CI/CD
@@ -368,8 +400,8 @@ jobs:
 
       - name: Install Conftest
         run: |
-          wget -q https://github.com/open-policy-agent/conftest/releases/download/v0.50.0/conftest_0.50.0_Linux_x86_64.tar.gz
-          tar xzf conftest_0.50.0_Linux_x86_64.tar.gz
+          wget -q https://github.com/open-policy-agent/conftest/releases/download/v0.68.2/conftest_0.68.2_Linux_x86_64.tar.gz
+          tar xzf conftest_0.68.2_Linux_x86_64.tar.gz
           sudo mv conftest /usr/local/bin/
 
       - name: Terraform Init
@@ -383,7 +415,7 @@ jobs:
         working-directory: infrastructure/terraform
 
       - name: Policy Check
-        run: conftest test infrastructure/terraform/plan.json
+        run: conftest test -p infrastructure/policy infrastructure/terraform/plan.json
 ```
 
 ## Summary
