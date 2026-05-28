@@ -55,10 +55,10 @@ graph TD
 
 ## Dataset-Level Access Controls
 
-When you create a dataset, you can set access controls directly.
+Create the dataset first, then grant access to it.
 
 ```bash
-# Create a dataset with specific access controls
+# Create the dataset
 bq mk --dataset \
     --location=US \
     --description="Sensitive customer data" \
@@ -68,24 +68,37 @@ bq mk --dataset \
 Add access entries after creation:
 
 ```bash
-# Grant a group read access to the dataset
-bq update --dataset \
-    --access_entry='{"role":"READER","groupByEmail":"data-analysts@company.com"}' \
-    my-project-id:customer_data
+# Export the current dataset definition, including existing access controls
+bq show --format=prettyjson my-project-id:customer_data > /tmp/customer_data.json
+```
 
-# Grant a service account write access
-bq update --dataset \
-    --access_entry='{"role":"WRITER","userByEmail":"etl-pipeline@my-project-id.iam.gserviceaccount.com"}' \
-    my-project-id:customer_data
+Add entries like these to the `access` array in `/tmp/customer_data.json`:
 
-# Grant a user owner access
-bq update --dataset \
-    --access_entry='{"role":"OWNER","userByEmail":"data-admin@company.com"}' \
-    my-project-id:customer_data
+```json
+[
+  {
+    "role": "READER",
+    "groupByEmail": "data-analysts@company.com"
+  },
+  {
+    "role": "WRITER",
+    "userByEmail": "etl-pipeline@my-project-id.iam.gserviceaccount.com"
+  },
+  {
+    "role": "OWNER",
+    "userByEmail": "data-admin@company.com"
+  }
+]
+```
+
+Then apply the updated dataset definition:
+
+```bash
+bq update --source=/tmp/customer_data.json my-project-id:customer_data
 ```
 
 The three dataset-level roles:
-- **READER**: Can run queries against tables in the dataset
+- **READER**: Can read, query, copy, or export tables in the dataset. To run query jobs, the user also needs a role with `bigquery.jobs.create`, such as `roles/bigquery.jobUser`
 - **WRITER**: Can create, update, and delete tables in the dataset
 - **OWNER**: Full control including ability to modify access controls
 
@@ -113,11 +126,11 @@ bq show --format=prettyjson my-project-id:customer_data
 For more consistent access management, use IAM roles at the project or dataset level.
 
 ```bash
-# Grant BigQuery Data Viewer at the dataset level using IAM
-gcloud projects add-iam-policy-binding my-project-id \
-    --member="group:data-analysts@company.com" \
-    --role="roles/bigquery.dataViewer" \
-    --condition="expression=resource.name.startsWith('projects/my-project-id/datasets/customer_data'),title=customer-data-read"
+# Grant BigQuery Data Viewer at the dataset level using SQL DCL
+bq query --use_legacy_sql=false \
+    'GRANT `roles/bigquery.dataViewer`
+     ON SCHEMA `my-project-id`.customer_data
+     TO "group:data-analysts@company.com"'
 ```
 
 Common BigQuery IAM roles:
@@ -182,20 +195,24 @@ Important: When using Terraform's `access` blocks, you must include ALL access e
 For tables containing sensitive columns (like PII), you can restrict access to specific columns using policy tags.
 
 ```bash
-# Create a taxonomy for data classification
-gcloud data-catalog taxonomies create \
-    --display-name="PII Classification" \
-    --description="Policy tags for PII data" \
-    --location=us \
-    --project=my-project-id
-```
+# Import a taxonomy with one policy tag
+cat > /tmp/pii-taxonomy.json <<'EOF'
+[
+  {
+    "displayName": "PII Classification",
+    "description": "Policy tags for PII data",
+    "activatedPolicyTypes": ["FINE_GRAINED_ACCESS_CONTROL"],
+    "policyTags": [
+      {
+        "displayName": "Sensitive PII",
+        "description": "Columns containing PII"
+      }
+    ]
+  }
+]
+EOF
 
-```bash
-# Create a policy tag for sensitive data
-gcloud data-catalog taxonomies policy-tags create \
-    --taxonomy=TAXONOMY_ID \
-    --display-name="Sensitive PII" \
-    --description="Columns containing PII" \
+gcloud data-catalog taxonomies import /tmp/pii-taxonomy.json \
     --location=us \
     --project=my-project-id
 ```
@@ -204,12 +221,16 @@ Apply the policy tag to a column in your table schema:
 
 ```bash
 # Update a table schema to add a policy tag to a column
-bq update --schema='[
+cat > /tmp/users_schema <<'EOF'
+[
     {"name": "user_id", "type": "STRING"},
     {"name": "email", "type": "STRING", "policyTags": {"names": ["projects/my-project-id/locations/us/taxonomies/TAXONOMY_ID/policyTags/TAG_ID"]}},
     {"name": "name", "type": "STRING", "policyTags": {"names": ["projects/my-project-id/locations/us/taxonomies/TAXONOMY_ID/policyTags/TAG_ID"]}},
     {"name": "order_count", "type": "INTEGER"}
-]' my-project-id:customer_data.users
+]
+EOF
+
+bq update --schema=/tmp/users_schema my-project-id:customer_data.users
 ```
 
 Users without the `datacatalog.categoryFineGrainedReader` role on the policy tag will get an error when querying the tagged columns.
@@ -242,11 +263,9 @@ When a user queries the table, BigQuery automatically applies their row access p
 
 To list existing row access policies:
 
-```sql
--- List all row access policies on a table
-SELECT *
-FROM `my-project-id.customer_data.INFORMATION_SCHEMA.ROW_ACCESS_POLICIES`
-WHERE table_name = 'orders';
+```bash
+# List all row access policies on a table
+bq ls --row_access_policies my-project-id:customer_data.orders
 ```
 
 ## Dataset Labels for Organization
@@ -265,7 +284,7 @@ Labels help with cost attribution, access review, and organizational clarity.
 
 ## Copying Datasets Across Projects
 
-When you need to share data across projects while maintaining access controls.
+When you need to share data across projects, copy the data and then manage access controls on the target dataset.
 
 ```bash
 # Copy a dataset to another project
