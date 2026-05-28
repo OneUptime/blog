@@ -18,15 +18,15 @@ You will need the following before getting started:
 
 - A Google Cloud project with billing enabled
 - Cloud Storage and BigQuery APIs enabled
-- Python 3.9+
-- Proper IAM permissions (Storage Object Viewer for GCS, BigQuery Data Viewer for BQ)
+- Python 3.10+
+- Proper IAM permissions (Storage Object Viewer for GCS, BigQuery Data Viewer and BigQuery Job User for BQ)
 
 Install the necessary packages:
 
 ```bash
 # Install LangChain with Google Cloud integrations
 
-pip install langchain langchain-google-community langchain-community google-cloud-storage google-cloud-bigquery
+pip install langchain "langchain-google-community[gcs,bigquery]" langchain-community langchain-text-splitters pypdf unstructured
 ```
 
 ## Loading Documents from Google Cloud Storage
@@ -37,12 +37,14 @@ The simplest case is loading a single file from a GCS bucket. LangChain provides
 
 ```python
 from langchain_google_community import GCSFileLoader
+from langchain_community.document_loaders import PyPDFLoader
 
 # Load a single PDF file from a GCS bucket
 loader = GCSFileLoader(
     project_name="your-gcp-project-id",
     bucket="your-bucket-name",
     blob="documents/quarterly-report.pdf",  # Path within the bucket
+    loader_func=PyPDFLoader,
 )
 
 # Load the document - returns a list of Document objects
@@ -91,10 +93,9 @@ from langchain_community.document_loaders import (
     CSVLoader,
     UnstructuredMarkdownLoader,
 )
-import tempfile
 import os
 
-def custom_loader_func(file_path: str, content_type: str = None):
+def custom_loader_func(file_path: str):
     """Route files to the appropriate loader based on extension."""
     extension = os.path.splitext(file_path)[1].lower()
 
@@ -107,8 +108,7 @@ def custom_loader_func(file_path: str, content_type: str = None):
     }
 
     loader_class = loader_map.get(extension, TextLoader)
-    loader = loader_class(file_path)
-    return loader.load()
+    return loader_class(file_path)
 
 # Use the custom loader function with GCSFileLoader
 loader = GCSFileLoader(
@@ -180,23 +180,27 @@ loader = BigQueryLoader(
 docs = loader.load()
 ```
 
-### Lazy Loading for Large Datasets
+### Loading Bounded Result Sets
 
-When dealing with large result sets, you do not want to load everything into memory at once. Use `lazy_load()` to process documents one at a time.
+When dealing with large result sets, you do not want to load everything into memory at once. Keep the BigQuery result set bounded with filters, partitions, and limits, then process the returned documents.
 
 ```python
 from langchain_google_community import BigQueryLoader
 
 loader = BigQueryLoader(
-    query="SELECT content, source_url FROM `your-project.dataset.web_pages`",
+    query="""
+        SELECT content, source_url
+        FROM `your-project.dataset.web_pages`
+        WHERE DATE(updated_at) >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+        LIMIT 10000
+    """,
     project="your-gcp-project-id",
     page_content_columns=["content"],
     metadata_columns=["source_url"],
 )
 
-# Process documents one at a time to avoid memory issues
 processed_count = 0
-for doc in loader.lazy_load():
+for doc in loader.load():
     # Process each document individually
     # For example, split it and add to a vector store
     processed_count += 1
@@ -212,7 +216,7 @@ After loading, documents usually need to be split into smaller chunks for embedd
 
 ```python
 from langchain_google_community import GCSDirectoryLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Load documents from GCS
 loader = GCSDirectoryLoader(
@@ -240,7 +244,7 @@ Here is a complete pipeline that loads from both GCS and BigQuery, splits the co
 
 ```python
 from langchain_google_community import GCSDirectoryLoader, BigQueryLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 def build_document_pipeline(project_id: str):
     """Build a complete document ingestion pipeline from GCS and BigQuery."""
@@ -296,7 +300,7 @@ graph TD
 
 ## Tips for Production
 
-When running document loading pipelines in production, keep these things in mind. Always use `lazy_load()` for large datasets to control memory usage. Set appropriate BigQuery query limits and consider using table partitions to reduce scan costs. For GCS, filter by prefix to avoid loading unnecessary files.
+When running document loading pipelines in production, keep these things in mind. Set appropriate BigQuery query limits and consider using table partitions to reduce scan costs and memory usage. For GCS, filter by prefix to avoid loading unnecessary files.
 
 Monitor your pipeline with Cloud Logging and set up alerts if ingestion jobs fail. You can also schedule these pipelines using Cloud Scheduler triggering Cloud Functions or Cloud Run jobs.
 
