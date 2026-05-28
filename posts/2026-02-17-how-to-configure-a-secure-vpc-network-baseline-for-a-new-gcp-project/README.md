@@ -8,7 +8,7 @@ Description: Set up a secure VPC network baseline for a new GCP project includin
 
 ---
 
-The default VPC that comes with every GCP project is designed for convenience, not security. It has auto-created subnets in every region, overly permissive firewall rules, and no network segmentation. For any project that will host production workloads, the first thing you should do is delete the default VPC and build a secure network from scratch.
+Unless your organization disables default network creation, new GCP projects start with a default VPC that is designed for convenience, not security. It has auto-created subnets in every region, overly permissive firewall rules, and no network segmentation. For any project that will host production workloads, the first thing you should do is delete the default VPC and build a secure network from scratch.
 
 Here is how to set up a VPC baseline that gives you a solid security posture while still being practical to work with.
 
@@ -148,7 +148,7 @@ gcloud compute firewall-rules create allow-health-checks \
   --priority=1000 \
   --description="Allow Google health check probes"
 
-# Rule 6: Allow load balancer traffic
+# Rule 6: Allow public HTTP/HTTPS traffic to tagged web servers
 gcloud compute firewall-rules create allow-lb-traffic \
   --network=prod-vpc \
   --direction=INGRESS \
@@ -157,7 +157,7 @@ gcloud compute firewall-rules create allow-lb-traffic \
   --source-ranges=0.0.0.0/0 \
   --target-tags=web-server \
   --priority=1000 \
-  --description="Allow HTTP/HTTPS from load balancer"
+  --description="Allow public HTTP/HTTPS traffic to tagged web servers"
 ```
 
 ### Firewall Rule Design Principles
@@ -254,8 +254,8 @@ gcloud monitoring policies create \
   --display-name="High Denied Traffic Alert" \
   --condition-display-name="Denied traffic spike" \
   --condition-filter='metric.type="logging.googleapis.com/user/denied-traffic-count"' \
-  --condition-threshold-value=100 \
-  --condition-comparison=COMPARISON_GT \
+  --if="> 100" \
+  --duration=300s \
   --combiner=OR \
   --notification-channels=CHANNEL_ID
 ```
@@ -284,7 +284,7 @@ Firewall Rules:
   allow-internal:     10.0.0.0/8 -> all, all protocols (priority 1000)
   allow-iap-ssh:      35.235.240.0/20 -> tagged, TCP:22 (priority 900)
   allow-health-checks: 35.191.0.0/16 -> tagged, TCP:80,443,8080 (priority 1000)
-  allow-lb-traffic:    0.0.0.0/0 -> tagged, TCP:80,443 (priority 1000)
+  allow-lb-traffic:    0.0.0.0/0 -> tagged web servers, TCP:80,443 (priority 1000)
   deny-all-ingress:    0.0.0.0/0 -> all, all protocols (priority 65000)
 ```
 
