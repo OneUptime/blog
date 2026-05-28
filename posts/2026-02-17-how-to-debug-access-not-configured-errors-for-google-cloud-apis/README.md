@@ -133,7 +133,7 @@ If your service account is in one project but you are trying to access APIs in a
 gcloud services enable compute.googleapis.com --project=project-b
 
 # And the service account needs IAM permissions in project-b
-gcloud projects add-iam-binding project-b \
+gcloud projects add-iam-policy-binding project-b \
     --member="serviceAccount:my-sa@project-a.iam.gserviceaccount.com" \
     --role="roles/compute.viewer"
 ```
@@ -164,12 +164,12 @@ Your organization might restrict which APIs can be enabled:
 ```bash
 # Check for service restriction policies
 gcloud resource-manager org-policies describe \
-    constraints/serviceuser.services \
+    serviceuser.services \
     --project=my-project 2>/dev/null
 
 # Check for API restrictions
 gcloud resource-manager org-policies describe \
-    constraints/gcp.restrictServiceUsage \
+    gcp.restrictServiceUsage \
     --project=my-project 2>/dev/null
 ```
 
@@ -182,7 +182,7 @@ If you are using an API key (for public APIs like Maps), the key might have API 
 ```bash
 # List API keys and their restrictions
 gcloud services api-keys list --project=my-project
-gcloud services api-keys get-key-string KEY_ID --project=my-project
+gcloud services api-keys describe KEY_ID --project=my-project
 ```
 
 Update API key restrictions in the Console under APIs and Services, then Credentials.
@@ -300,7 +300,7 @@ gcloud config get-value project 2>&1
 echo ""
 echo "=== Org Policy Check ==="
 gcloud resource-manager org-policies describe \
-    constraints/gcp.restrictServiceUsage \
+    gcp.restrictServiceUsage \
     --project=$PROJECT 2>&1 || echo "No org policy restriction found"
 ```
 
