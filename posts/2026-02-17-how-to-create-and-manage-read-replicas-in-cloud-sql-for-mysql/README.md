@@ -12,7 +12,7 @@ If your application is read-heavy - and most web applications are - read replica
 
 ## How Read Replicas Work in Cloud SQL
 
-Cloud SQL read replicas use MySQL's native binary log (binlog) replication. The primary instance writes changes to its binary log, and each replica reads those changes and applies them locally. This is asynchronous, meaning:
+Cloud SQL read replicas use MySQL row-based replication with global transaction identifiers (GTIDs) and binary logs. The primary instance writes changes to its binary log, and each replica reads those changes and applies them locally. This is asynchronous, meaning:
 
 - Writes go to the primary and are replicated to replicas with a slight delay
 - Replicas might be a few seconds behind the primary (replication lag)
@@ -35,7 +35,7 @@ Before creating read replicas, your primary instance needs:
 
 - Binary logging enabled (required for replication)
 - Automated backups enabled (required for binary logging)
-- A machine type of `db-g1-small` or larger (shared-core instances do not support replicas)
+- At least one backup created after binary logging was enabled
 
 Check your current configuration:
 
@@ -54,6 +54,8 @@ gcloud sql instances patch my-primary-instance \
     --backup-start-time=02:00 \
     --enable-bin-log
 ```
+
+Enabling binary logging restarts the primary instance. Wait for at least one backup to complete after binary logging is enabled before creating the first replica.
 
 ## Creating a Read Replica
 
@@ -102,7 +104,7 @@ resource "google_sql_database_instance" "read_replica" {
 
 ## Creating Multiple Replicas
 
-You can create up to 10 read replicas per primary instance. Create them in parallel for faster setup:
+Google recommends limiting each primary instance to 10 or fewer direct read replicas. Create them in parallel for faster setup:
 
 ```bash
 # Create three read replicas in parallel using background processes
@@ -147,7 +149,7 @@ Cross-region replicas have higher replication lag due to network latency between
 Replication lag is the most important metric for read replicas. Monitor it closely:
 
 ```bash
-# Check replication lag for a specific replica
+# Check the replica state and replication configuration
 gcloud sql instances describe my-read-replica-1 \
     --format="json(replicaConfiguration, state)"
 ```
@@ -156,13 +158,15 @@ You can also check lag from within MySQL on the replica:
 
 ```sql
 -- Check replication status from within the replica
-SHOW SLAVE STATUS\G
+SHOW REPLICA STATUS\G
 
 -- Key fields to look at:
--- Seconds_Behind_Master: Current replication lag in seconds
--- Slave_IO_Running: Should be "Yes"
--- Slave_SQL_Running: Should be "Yes"
+-- Seconds_Behind_Source: Current replication lag in seconds
+-- Replica_IO_Running: Should be "Yes"
+-- Replica_SQL_Running: Should be "Yes"
 ```
+
+For MySQL versions before 8.0.22, use `SHOW SLAVE STATUS\G` and the older `Seconds_Behind_Master`, `Slave_IO_Running`, and `Slave_SQL_Running` field names.
 
 Set up a Cloud Monitoring alert for replication lag:
 
@@ -172,8 +176,8 @@ gcloud monitoring policies create \
     --display-name="MySQL Replica Lag Alert" \
     --condition-display-name="Replication lag > 30s" \
     --condition-filter='resource.type = "cloudsql_database" AND metric.type = "cloudsql.googleapis.com/database/replication/replica_lag"' \
-    --condition-threshold-value=30 \
-    --condition-threshold-duration=300s \
+    --if='> 30' \
+    --duration=300s \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -183,7 +187,7 @@ Your application needs to know when to send queries to the primary versus replic
 
 ```python
 # Configure separate database engines for writes and reads
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 # Primary instance handles all writes
 write_engine = create_engine(
@@ -222,6 +226,7 @@ Since replication is asynchronous, a user might write data and then immediately 
 # After a write, temporarily read from the primary to avoid stale data
 
 import time
+from sqlalchemy import text
 
 WRITE_TIMESTAMP = {}  # Track recent write times per user
 
@@ -231,17 +236,19 @@ def read_query(user_id, query):
     seconds_since_write = time.time() - last_write
 
     # If the user wrote within the last 5 seconds, read from primary
-    if seconds_since_write < 5:
-        return write_engine.execute(query)
-    else:
-        return get_read_engine().execute(query)
+    engine = write_engine if seconds_since_write < 5 else get_read_engine()
+    with engine.connect() as connection:
+        return connection.execute(text(query))
 
 def write_query(user_id, query):
     """Execute a write and track the timestamp."""
-    result = write_engine.execute(query)
+    with write_engine.begin() as connection:
+        result = connection.execute(text(query))
     WRITE_TIMESTAMP[user_id] = time.time()
     return result
 ```
+
+For SQLAlchemy 1.x code, you might see older examples that call `engine.execute()` directly. In SQLAlchemy 2.x, execute statements through a `Connection` or `Session`.
 
 ## Scaling Replicas Up and Down
 
@@ -284,7 +291,7 @@ After promotion:
 
 2. **Use at least two replicas** for redundancy. If one replica goes down for maintenance, you still have read capacity.
 
-3. **Place a load balancer in front of replicas** if your application connects to them directly. An internal TCP load balancer works well for this.
+3. **Use application-side read distribution, a database-aware proxy, or Cloud SQL read pools when you need a single load-balanced read endpoint**. Standalone Cloud SQL replicas are connected to directly by connection name or IP address.
 
 4. **Do not use replicas for backups**. Replicas are for scaling reads, not for backup. Use Cloud SQL's built-in backup functionality.
 
