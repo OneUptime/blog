@@ -79,7 +79,8 @@ Now run rsync to copy the data:
 # -v: verbose output
 # -P: show progress and allow resuming
 # --delete: remove files from destination that do not exist in source
-sudo rsync -avP --delete /mnt/source/ /mnt/destination/
+# --numeric-ids: preserve numeric UID/GID values instead of mapping by names
+sudo rsync -avP --numeric-ids --delete /mnt/source/ /mnt/destination/
 ```
 
 For large transfers, I recommend running rsync in a screen or tmux session so it survives SSH disconnections:
@@ -87,7 +88,7 @@ For large transfers, I recommend running rsync in a screen or tmux session so it
 ```bash
 # Start rsync in a tmux session
 tmux new -s migration
-sudo rsync -avP /mnt/source/ /mnt/destination/
+sudo rsync -avP --numeric-ids /mnt/source/ /mnt/destination/
 # Press Ctrl+B then D to detach
 # Reconnect later with: tmux attach -t migration
 ```
@@ -99,8 +100,8 @@ If you have millions of files, a single rsync process can be painfully slow. You
 ```bash
 # List top-level directories and run parallel rsync for each
 # This script starts up to 8 parallel rsync processes
-ls /mnt/source/ | xargs -P 8 -I {} \
-  rsync -avP /mnt/source/{} /mnt/destination/
+find /mnt/source -mindepth 1 -maxdepth 1 -print0 | xargs -0 -P 8 -I {} \
+  rsync -avP --numeric-ids "{}" /mnt/destination/
 ```
 
 For a more controlled approach, create a script that distributes the work:
@@ -114,12 +115,9 @@ SOURCE=$1
 DEST=$2
 PARALLEL=$3
 
-# Get list of top-level directories
-dirs=$(ls -1 "$SOURCE")
-
 # Run rsync for each directory in parallel
-echo "$dirs" | xargs -P "$PARALLEL" -I {} bash -c \
-  "echo 'Starting: {}' && rsync -avP '$SOURCE/{}' '$DEST/' && echo 'Done: {}'"
+find "$SOURCE" -mindepth 1 -maxdepth 1 -print0 | xargs -0 -P "$PARALLEL" -I {} bash -c \
+  'echo "Starting: $1" && rsync -avP --numeric-ids "$1" "$2/" && echo "Done: $1"' _ {} "$DEST"
 ```
 
 ## Approach 3 - Google Transfer Service for On-Premises Data
@@ -129,36 +127,40 @@ For very large migrations (tens of terabytes or more), Google provides the Trans
 Install the transfer agent on a machine that can access the source NFS:
 
 ```bash
+# Create a Docker volume with Application Default Credentials
+sudo docker run -ti --name gcloud-config google/cloud-sdk gcloud auth application-default login
+
 # Pull the transfer agent container image
-docker pull gcr.io/cloud-ingest/tsop-agent:latest
+sudo docker pull gcr.io/cloud-ingest/tsop-agent:latest
 
 # Run the transfer agent
-docker run --rm -d \
+sudo docker run --rm -d \
+  --ulimit memlock=64000000 \
   --name=transfer-agent \
-  -v /exports/data:/transfer/source:ro \
-  -v /tmp/agent-logs:/tmp/agent-logs \
+  --volumes-from gcloud-config \
+  -v /exports/data:/exports/data:ro \
   gcr.io/cloud-ingest/tsop-agent:latest \
   --project-id=my-project \
-  --agent-pool=my-pool \
-  --mount-directories=/transfer/source
+  --hostname=$(hostname) \
+  --agent-pool=my-pool
 ```
 
-Then create a transfer job through the console or API that moves data from the on-premises source to a Cloud Storage bucket. From there, you can copy the data to Filestore.
+Then create a transfer job through the console or API that moves data from the on-premises source, such as `posix:///exports/data`, to a Cloud Storage bucket. From there, you can copy the data to Filestore.
 
-## Approach 4 - gcloud Storage Transfer to GCS then to Filestore
+## Approach 4 - gcloud Storage to GCS then to Filestore
 
-Another approach is to use gsutil or gcloud to transfer data to Cloud Storage first, then use a VM to copy from GCS to Filestore:
+Another approach is to use gcloud to transfer data to Cloud Storage first, then use a VM to copy from GCS to Filestore:
 
 ```bash
 # Step 1: Upload from on-premises to Cloud Storage
-gsutil -m rsync -r /exports/data gs://migration-bucket/data/
+gcloud storage rsync /exports/data gs://migration-bucket/data/ --recursive
 
 # Step 2: On a GCP VM, mount Filestore and download from GCS
 sudo mount -t nfs 10.0.0.2:/vol1 /mnt/destination
-gsutil -m rsync -r gs://migration-bucket/data/ /mnt/destination/
+gcloud storage rsync gs://migration-bucket/data/ /mnt/destination/ --recursive
 ```
 
-The `-m` flag enables parallel transfers, which significantly speeds up the process for many files.
+For datasets larger than 1 TB, use Storage Transfer Service instead of a direct `gcloud storage rsync`.
 
 ## Handling Permissions and Ownership
 
@@ -212,7 +214,7 @@ The final incremental sync is usually fast because only the changed files need t
 
 ```bash
 # Final incremental sync (run after stopping writes to source)
-sudo rsync -avP --delete /mnt/source/ /mnt/destination/
+sudo rsync -avP --numeric-ids --delete /mnt/source/ /mnt/destination/
 ```
 
 ## Cleanup
