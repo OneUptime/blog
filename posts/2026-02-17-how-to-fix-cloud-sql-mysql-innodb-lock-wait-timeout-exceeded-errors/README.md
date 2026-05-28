@@ -8,7 +8,7 @@ Description: How to diagnose and resolve InnoDB lock wait timeout exceeded error
 
 ---
 
-If you have seen "Lock wait timeout exceeded; try restarting transaction" in your MySQL logs, you know it is a frustrating error. It means a transaction has been waiting too long to acquire a lock on a row that another transaction is holding. The default timeout is 50 seconds, and once it is reached, your transaction is rolled back. Let me show you how to track down the blocking transaction and fix the root cause.
+If you have seen "Lock wait timeout exceeded; try restarting transaction" in your MySQL logs, you know it is a frustrating error. It means a transaction has been waiting too long to acquire a lock on a row that another transaction is holding. The default timeout is 50 seconds, and once it is reached, InnoDB rolls back the waiting statement by default. Let me show you how to track down the blocking transaction and fix the root cause.
 
 ## Understanding InnoDB Locks
 
@@ -90,7 +90,7 @@ If you need immediate relief, kill the blocking thread:
 KILL <blocking_thread_id>;
 ```
 
-This rolls back the blocking transaction and releases all its locks, allowing the waiting transactions to proceed.
+For an active InnoDB transaction, this terminates the connection, rolls back the blocking transaction, and releases its locks, allowing the waiting transactions to proceed.
 
 ## Step 4: Fix the Root Cause
 
@@ -175,7 +175,7 @@ CREATE INDEX idx_orders_date_archived ON orders(order_date, archived);
 
 ### Fix 4: Use READ COMMITTED Isolation Level
 
-The default REPEATABLE READ isolation level holds locks longer. If your application does not require repeatable reads, switch to READ COMMITTED:
+The default REPEATABLE READ isolation level can take gap or next-key locks for locking reads, UPDATE, and DELETE statements that scan ranges. If your application does not require repeatable reads, READ COMMITTED can reduce this type of lock contention:
 
 ```sql
 -- Set the session isolation level
@@ -191,6 +191,8 @@ gcloud sql instances patch my-instance \
     --project=my-project
 ```
 
+When you use `--database-flags`, include any existing database flags you want to keep, because the command replaces the instance's database flag list.
+
 ### Fix 5: Increase the Lock Wait Timeout
 
 As a temporary measure, you can increase the timeout to give transactions more time:
@@ -201,6 +203,8 @@ gcloud sql instances patch my-instance \
     --database-flags=innodb_lock_wait_timeout=120 \
     --project=my-project
 ```
+
+When you use `--database-flags`, include any existing database flags you want to keep, because the command replaces the instance's database flag list.
 
 This does not fix the underlying problem but gives more breathing room while you address the root cause.
 
@@ -216,14 +220,10 @@ SHOW ENGINE INNODB STATUS\G
 Look for the "LATEST DETECTED DEADLOCK" section and the "TRANSACTIONS" section for lock wait details.
 
 ```sql
--- Monitor lock wait metrics
+-- Monitor current row lock waits
 SELECT
-  COUNT_STAR AS total_lock_waits,
-  SUM_TIMER_WAIT / 1000000000000 AS total_wait_time_sec,
-  AVG_TIMER_WAIT / 1000000000000 AS avg_wait_time_sec,
-  MAX_TIMER_WAIT / 1000000000000 AS max_wait_time_sec
-FROM performance_schema.events_waits_summary_global_by_event_name
-WHERE event_name = 'wait/synch/mutex/innodb/lock_mutex';
+  COUNT(*) AS current_lock_waits
+FROM performance_schema.data_lock_waits;
 ```
 
 ## Decision Guide
