@@ -14,7 +14,7 @@ On GKE, you have two main options for collecting these metrics. You can run your
 
 ## Enabling Managed Prometheus
 
-GKE clusters running version 1.25 and later have managed collection enabled by default. If you are on an older cluster or it was disabled, enable it:
+GKE Autopilot clusters running version 1.25 and later, and GKE Standard clusters running version 1.27 and later, have managed collection enabled by default. If you are on an older cluster or it was disabled, enable it:
 
 ```bash
 # Enable managed Prometheus collection on the cluster
@@ -31,7 +31,7 @@ Verify it is running:
 kubectl get pods -n gmp-system
 ```
 
-You should see pods for the `gmp-operator` and `collector` components.
+On GKE Autopilot, use the `gke-gmp-system` namespace instead. You should see pods for the `gmp-operator`, `rule-evaluator`, `collector`, and `alertmanager` components.
 
 ## Configuring Metric Scraping with PodMonitoring
 
@@ -126,6 +126,15 @@ func init() {
     prometheus.MustRegister(requestDuration)
 }
 
+func handler(w http.ResponseWriter, r *http.Request) {
+    timer := prometheus.NewTimer(requestDuration.WithLabelValues(r.Method))
+    defer timer.ObserveDuration()
+
+    requestsTotal.WithLabelValues(r.Method, "200").Inc()
+    w.WriteHeader(http.StatusOK)
+    _, _ = w.Write([]byte("ok\n"))
+}
+
 func main() {
     // Expose metrics endpoint
     http.Handle("/metrics", promhttp.Handler())
@@ -171,17 +180,17 @@ Once metrics are flowing, you can query them in the Cloud Console under Monitori
 
 For example, `http_requests_total` becomes `prometheus.googleapis.com/http_requests_total/counter`.
 
-You can also use PromQL directly. In the Cloud Console, go to Monitoring > PromQL and write queries just like you would with a standard Prometheus server:
+You can also use PromQL directly. In the Cloud Console, open Metrics Explorer and switch the query editor to PromQL, then write queries just like you would with a standard Prometheus server:
 
 ```promql
 # Query the rate of HTTP requests over 5 minutes
-rate(http_requests_total[5m])
+sum(rate(http_requests_total[5m]))
 
 # Query 95th percentile request duration
-histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
 
 # Filter by specific labels
-rate(http_requests_total{status="500"}[5m])
+sum(rate(http_requests_total{status="500"}[5m]))
 ```
 
 ## Creating Alerting Policies
@@ -189,12 +198,14 @@ rate(http_requests_total{status="500"}[5m])
 You can create alerts on your Prometheus metrics using either MQL or PromQL:
 
 ```bash
-# Create an alert policy for high error rate using gcloud
-gcloud alpha monitoring policies create \
-  --display-name="High Error Rate" \
-  --condition-filter='resource.type="prometheus_target" AND metric.type="prometheus.googleapis.com/http_requests_total/counter"' \
-  --condition-threshold-value=10 \
-  --condition-threshold-comparison=COMPARISON_GT \
+# Create an alert policy for a high 5xx request rate using gcloud
+gcloud monitoring policies create \
+  --display-name="High 5xx Request Rate" \
+  --condition-display-name="5xx request rate is high" \
+  --condition-filter='resource.type="prometheus_target" AND metric.type="prometheus.googleapis.com/http_requests_total/counter" AND metric.labels.status = monitoring.regex.full_match("5..")' \
+  --aggregation='{"alignmentPeriod":"300s","perSeriesAligner":"ALIGN_RATE"}' \
+  --if='> 10' \
+  --duration=300s \
   --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -215,8 +226,8 @@ spec:
         # Alert when error rate exceeds 5%
         - alert: HighErrorRate
           expr: |
-            rate(http_requests_total{status=~"5.."}[5m])
-            / rate(http_requests_total[5m]) > 0.05
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(http_requests_total[5m])) > 0.05
           for: 5m
           labels:
             severity: critical
@@ -257,26 +268,17 @@ spec:
 
 ## Grafana Integration
 
-If your team prefers Grafana for dashboarding, you can connect it to Cloud Monitoring as a data source. Install Grafana on your cluster or use Grafana Cloud:
+If your team prefers Grafana for dashboarding, you can use Grafana's Prometheus data source with Managed Service for Prometheus. Google Cloud APIs require OAuth2, so configure Grafana with the Managed Service for Prometheus data source syncer instead of pointing Grafana directly at the API:
 
-```yaml
-# grafana-datasource.yaml - Grafana data source configuration for GMP
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: grafana-datasources
-  namespace: monitoring
-data:
-  prometheus.yaml: |
-    apiVersion: 1
-    datasources:
-      - name: Google Managed Prometheus
-        type: prometheus
-        url: https://monitoring.googleapis.com/v1/projects/my-project/location/global/prometheus
-        access: proxy
-        jsonData:
-          authenticationType: gce
+```bash
+# Configure a Grafana Prometheus data source for GMP using the data source syncer.
+# Set PROJECT_ID, GRAFANA_API_ENDPOINT, DATASOURCE_UIDS, and GRAFANA_API_TOKEN first.
+curl https://raw.githubusercontent.com/GoogleCloudPlatform/prometheus-engine/v0.17.2/cmd/datasource-syncer/datasource-syncer.yaml \
+  | sed "s|\$DATASOURCE_UIDS|${DATASOURCE_UIDS}|; s|\$GRAFANA_API_ENDPOINT|${GRAFANA_API_ENDPOINT}|; s|\$GRAFANA_API_TOKEN|${GRAFANA_API_TOKEN}|; s|\$PROJECT_ID|${PROJECT_ID}|;" \
+  | kubectl -n monitoring apply -f -
 ```
+
+After the syncer runs, the Grafana data source URL should start with `https://monitoring.googleapis.com`.
 
 ## Monitoring the Monitoring
 
@@ -284,9 +286,9 @@ Keep an eye on the GMP collectors to make sure they are scraping successfully:
 
 ```bash
 # Check collector logs for scrape errors
-kubectl logs -n gmp-system -l app.kubernetes.io/name=collector --tail=50
+kubectl logs -n gmp-system -l app.kubernetes.io/name=collector -c prometheus --tail=50
 
-# Check scrape targets and their status
+# List PodMonitoring resources. Target status appears if you enabled the targetStatus feature.
 kubectl get podmonitorings --all-namespaces
 ```
 
