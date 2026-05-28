@@ -12,11 +12,11 @@ In any message-driven system, failures are inevitable. A database might be tempo
 
 ## Understanding Pub/Sub Retry Behavior
 
-When a subscriber nacks a message or fails to acknowledge it before the ack deadline, Pub/Sub redelivers the message. Without configuration, it will keep retrying indefinitely. This is usually not what you want - some messages are fundamentally unprocessable and will fail forever.
+When a subscriber nacks a message or fails to acknowledge it before the ack deadline, Pub/Sub redelivers the message. Without a dead letter policy, Pub/Sub continues redelivering unacknowledged messages until the message retention duration expires. This is usually not what you want - some messages are fundamentally unprocessable and will fail until they expire.
 
 ## Setting Up Dead Letter Topics
 
-A dead letter topic captures messages that fail after a specified number of delivery attempts. This prevents poison messages from blocking your queue.
+A dead letter topic captures messages that fail after an approximately specified number of delivery attempts. This prevents poison messages from blocking your queue.
 
 ```bash
 # Create the main topic
@@ -40,7 +40,7 @@ gcloud pubsub subscriptions create order-processing-sub \
     --max-retry-delay=600s
 ```
 
-The `max-delivery-attempts` setting controls how many times Pub/Sub will try to deliver a message before sending it to the dead letter topic. Five attempts is a reasonable default for most workloads.
+The `max-delivery-attempts` setting controls the approximate number of times Pub/Sub will try to deliver a message before sending it to the dead letter topic. Five attempts is a reasonable default for most workloads.
 
 ## IAM Permissions for Dead Letter Topics
 
@@ -271,7 +271,7 @@ def process_dead_letter(message):
         extra={
             "dead_letter_data": data[:500],
             "attributes": attributes,
-            "original_message_id": attributes.get("CloudPubSubDeadLetterSourceDeliveryCount"),
+            "source_delivery_count": attributes.get("CloudPubSubDeadLetterSourceDeliveryCount"),
         },
     )
 
@@ -296,6 +296,12 @@ streaming_pull_future = subscriber.subscribe(
     subscription_path,
     callback=process_dead_letter,
 )
+
+try:
+    streaming_pull_future.result()
+except KeyboardInterrupt:
+    streaming_pull_future.cancel()
+    streaming_pull_future.result()
 ```
 
 ## Replaying Dead Letter Messages
@@ -304,6 +310,7 @@ After fixing the underlying issue, replay failed messages.
 
 ```python
 from google.cloud import pubsub_v1, firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 import json
 
 def replay_dead_letters(project_id, original_topic_id):
@@ -315,8 +322,8 @@ def replay_dead_letters(project_id, original_topic_id):
     # Find pending dead letter messages
     docs = (
         db.collection("dead_letters")
-        .where("status", "==", "pending_review")
-        .where("topic", "==", original_topic_id)
+        .where(filter=FieldFilter("status", "==", "pending_review"))
+        .where(filter=FieldFilter("topic", "==", original_topic_id))
         .stream()
     )
 
