@@ -125,7 +125,7 @@ The DestinationRule defines the subsets that Istio can route to. Each subset map
 ```yaml
 # destination-rule.yaml
 # Defines v1 and v2 subsets for traffic routing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -160,7 +160,7 @@ Before introducing canary traffic, make sure all traffic goes to v1.
 ```yaml
 # virtual-service-100-v1.yaml
 # Routes all traffic to v1 (starting point)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -191,7 +191,7 @@ Now shift a small percentage of traffic to v2. Start with 5-10%.
 ```yaml
 # virtual-service-canary-10.yaml
 # Routes 10% of traffic to the canary (v2)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -234,10 +234,10 @@ Use Cloud Monitoring or Prometheus to compare error rates between v1 and v2.
 ### Check Latency
 
 ```bash
-# Compare p99 latency between versions
-# istio_request_duration_milliseconds_bucket{destination_version="v2"}
+# Compare p99 latency between versions in Prometheus
+# histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_version="v2"}[5m])) by (le))
 # vs
-# istio_request_duration_milliseconds_bucket{destination_version="v1"}
+# histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_version="v1"}[5m])) by (le))
 ```
 
 ### Check Application-Specific Metrics
@@ -251,7 +251,7 @@ If the canary looks healthy, gradually increase traffic. A typical progression i
 ```yaml
 # virtual-service-canary-25.yaml
 # Routes 25% of traffic to the canary
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -301,7 +301,7 @@ Instead of percentage-based splitting, you can route specific users to the canar
 ```yaml
 # virtual-service-header-canary.yaml
 # Routes requests with a specific header to v2, all others to v1
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -350,7 +350,7 @@ spec:
   analysis:
     # Run analysis every 60 seconds
     interval: 60s
-    # Number of successful checks before promotion
+    # Maximum number of failed metric checks before rollback
     threshold: 10
     # Maximum traffic weight for canary
     maxWeight: 50
@@ -363,17 +363,17 @@ spec:
         min: 99
       interval: 60s
     - name: request-duration
-      # Maximum p99 latency allowed
+      # Maximum average request duration allowed
       thresholdRange:
         max: 500
       interval: 60s
 ```
 
-With Flagger, you just update the deployment image and Flagger handles the progressive rollout automatically.
+With Flagger, the `targetRef` should point to a single Deployment named `my-service`. Do not use the separate `my-service-v1` and `my-service-v2` Deployments from the manual example for this automated workflow. You update the target Deployment image and Flagger handles the progressive rollout automatically.
 
 ```bash
 # Install Flagger
-kubectl apply -k github.com/fluxcd/flagger/kustomize/istio
+kubectl apply -k github.com/fluxcd/flagger//kustomize/istio
 
 # Deploy the canary configuration
 kubectl apply -f flagger-canary.yaml
@@ -382,7 +382,7 @@ kubectl apply -f flagger-canary.yaml
 kubectl set image deployment/my-service my-service=gcr.io/my-project/my-service:2.0.0
 ```
 
-Flagger will automatically create the v2 deployment, shift traffic progressively, monitor metrics, and either complete the rollout or roll back.
+Flagger will automatically create the primary deployment, Kubernetes services, Istio DestinationRules, and Istio VirtualServices, then shift traffic progressively, monitor metrics, and either complete the rollout or roll back.
 
 ## Cleaning Up After a Successful Canary
 
