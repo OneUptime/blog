@@ -8,7 +8,7 @@ Description: A step-by-step guide to setting up dead letter topics in Google Clo
 
 ---
 
-Messages fail. Network calls time out, data is malformed, dependencies go down. In a messaging system like Pub/Sub, a failed message gets retried automatically. That is usually a good thing. But what happens when a message keeps failing no matter how many times it is retried? Without a dead letter topic, that message sits in your subscription forever, getting redelivered endlessly, wasting resources, and potentially blocking other messages.
+Messages fail. Network calls time out, data is malformed, dependencies go down. In a messaging system like Pub/Sub, a failed message gets retried automatically. That is usually a good thing. But what happens when a message keeps failing no matter how many times it is retried? Without a dead letter topic, that message sits in your subscription until its message retention period expires, getting redelivered repeatedly, wasting resources, and potentially disrupting ordered processing.
 
 Dead letter topics (also called dead letter queues or DLQs) solve this by catching messages that exceed a maximum number of delivery attempts and routing them to a separate topic. From there, you can inspect them, fix the underlying issue, and reprocess them if needed.
 
@@ -19,7 +19,7 @@ The concept is simple:
 1. A message is delivered to a subscription
 2. The subscriber fails to acknowledge it within the deadline
 3. Pub/Sub redelivers the message
-4. After a configured number of delivery attempts, Pub/Sub moves the message to the dead letter topic
+4. After an approximately configured number of delivery attempts, Pub/Sub forwards the message to the dead letter topic
 5. A separate subscription on the dead letter topic holds these failed messages for review
 
 Here is the flow visualized:
@@ -83,7 +83,7 @@ gcloud pubsub subscriptions add-iam-policy-binding order-processor-sub \
   --role="roles/pubsub.subscriber"
 ```
 
-Without these permissions, the dead letter forwarding silently fails and messages continue being redelivered to the original subscription indefinitely.
+Without these permissions, Pub/Sub does not count delivery attempts for dead lettering correctly, and messages continue being redelivered to the original subscription until their retention period expires.
 
 ## Terraform Configuration
 
@@ -163,7 +163,7 @@ data "google_project" "current" {}
 
 ## Understanding Delivery Attempts
 
-When Pub/Sub forwards a message to the dead letter topic, it adds a `CloudPubSubDeadLetterSourceDeliveryCount` attribute to the message. This tells you how many times the message was delivered before being dead-lettered:
+When Pub/Sub forwards a message to the dead letter topic, it adds a `CloudPubSubDeadLetterSourceDeliveryCount` attribute to the wrapped message. This tells you how many delivery attempts Pub/Sub counted on the source subscription before forwarding it:
 
 ```python
 # Reading messages from the DLQ with delivery count information
@@ -233,6 +233,11 @@ def process_dead_letter(message):
         message.ack()
         return
 
+    if not isinstance(data, dict):
+        logger.error(f"JSON message is not an object in DLQ: {message.message_id}")
+        message.ack()
+        return
+
     # Log the failure for analysis
     logger.warning(
         f"Dead letter: message_id={message.message_id}, "
@@ -246,11 +251,12 @@ def process_dead_letter(message):
         data['_dlq_republished'] = True
         data['_dlq_original_message_id'] = message.message_id
 
-        publisher.publish(
+        future = publisher.publish(
             main_topic_path,
             data=json.dumps(data).encode('utf-8'),
             republished_from_dlq='true'
         )
+        future.result()
         logger.info(f"Republished message {message.message_id}")
     else:
         # Too many attempts, write to permanent error log
@@ -270,7 +276,7 @@ streaming_pull.result()
 
 ## Monitoring Dead Letter Topics
 
-Set up alerts on your DLQ so you know when messages are failing. The key metric to watch is the number of undelivered messages in the DLQ subscription:
+Set up alerts on your DLQ so you know when messages are failing. For backlog-based alerts, watch the number of undelivered messages in the DLQ subscription:
 
 ```hcl
 # Alert when messages appear in the dead letter queue
