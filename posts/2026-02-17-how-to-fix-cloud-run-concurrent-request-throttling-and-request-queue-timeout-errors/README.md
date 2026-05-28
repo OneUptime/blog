@@ -14,7 +14,7 @@ Understanding how Cloud Run handles concurrent requests is essential to running 
 
 ## How Cloud Run Concurrency Works
 
-Each Cloud Run container instance has a configurable maximum concurrency - the number of requests it will handle simultaneously. The default is 80. When all instances are at their concurrency limit and a new request comes in, Cloud Run does two things: it starts spinning up a new instance and it queues the request. If the queue timeout is exceeded before the new instance is ready, the request fails.
+Each Cloud Run container instance has a configurable maximum concurrency - the number of requests it will handle simultaneously. The default concurrency setting is 80; for new services created with Google Cloud CLI or Terraform, Cloud Run can default to 80 times the number of vCPUs. When all instances are at their concurrency limit and a new request comes in, Cloud Run does two things: it starts spinning up a new instance and it queues the request. Requests waiting for an instance can pend for up to 3.5 times the average startup time for your service, or 10 seconds, whichever is greater. If that pending time is exceeded before an instance is ready, the request fails.
 
 ```mermaid
 flowchart LR
@@ -91,7 +91,7 @@ Minimum instances cost money even when idle, but they eliminate cold start laten
 
 ## Fix 3 - Increase Maximum Instances
 
-By default, Cloud Run can scale up to 100 instances. If you are hitting this limit during traffic spikes, increase it.
+By default, Cloud Run revision-level maximum instances are set to 100. Service-level maximum instances are controlled separately and are also limited by your regional quota and CPU and memory configuration. If you are hitting your configured maximum instance limit during traffic spikes, increase it.
 
 ```bash
 # Allow scaling up to 500 instances
@@ -100,10 +100,10 @@ gcloud run services update my-service \
     --region=us-central1
 ```
 
-Check your current scaling behavior.
+Check your current revision-level maximum instance setting.
 
 ```bash
-# See instance count over time in Cloud Monitoring
+# See the configured revision-level max instances
 gcloud run services describe my-service \
     --region=us-central1 \
     --format="value(spec.template.metadata.annotations['autoscaling.knative.dev/maxScale'])"
@@ -192,7 +192,7 @@ gcloud run services update my-service \
     --region=us-central1
 ```
 
-This reduces the overhead of recreating state for each request, which can improve throughput and reduce per-request latency.
+This can reduce the overhead of recreating state for sequential requests from the same client, which can improve throughput and reduce per-request latency. Cloud Run uses a session affinity cookie, so treat this as a best-effort routing hint rather than a guarantee that state will always remain available on one instance.
 
 ## Fix 7 - Allocate More CPU
 
@@ -213,7 +213,7 @@ Note that Cloud Run ties memory and CPU together - larger CPU allocations requir
 Set up dashboards to monitor your concurrency patterns.
 
 ```bash
-# Check current instance count
+# Check current traffic split
 gcloud run services describe my-service \
     --region=us-central1 \
     --format="value(status.traffic)"
@@ -233,7 +233,9 @@ Create alerts for when queue timeout errors start appearing.
 gcloud alpha monitoring policies create \
     --display-name="Cloud Run Queue Timeouts" \
     --condition-display-name="Request queue timeout rate" \
-    --condition-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="5xx"' \
+    --condition-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count" AND metric.label."response_code_class"="5xx"' \
+    --if='> 0' \
+    --duration=60s \
     --notification-channels=<channel-id>
 ```
 
