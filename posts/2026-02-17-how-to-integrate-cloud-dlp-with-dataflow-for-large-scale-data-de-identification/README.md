@@ -28,12 +28,13 @@ flowchart LR
     style B fill:#34a853,stroke:#333,color:#fff
 ```
 
-Dataflow handles parallelism and scaling. You do not need to manage threads or worry about API rate limits - the pipeline batches records appropriately and Dataflow autoscales workers based on throughput.
+Dataflow handles parallelism and scaling. You do not need to manage threads directly, but you still need to batch records and cap worker parallelism so the pipeline stays within DLP API request and rate limits.
 
 ## Prerequisites
 
 - Cloud DLP API and Dataflow API enabled
 - A DLP de-identification template (or inline config)
+- A DLP inspection template (or inline config)
 - Source data in BigQuery or Cloud Storage
 - A GCS bucket for Dataflow staging
 - Apache Beam Python SDK installed
@@ -61,7 +62,7 @@ import json
 class BatchAndDeidentify(beam.DoFn):
     """DoFn that batches records and sends them to Cloud DLP for de-identification."""
 
-    def __init__(self, project_id, deidentify_template, inspect_template=None):
+    def __init__(self, project_id, deidentify_template, inspect_template):
         self.project_id = project_id
         self.deidentify_template = deidentify_template
         self.inspect_template = inspect_template
@@ -99,11 +100,9 @@ class BatchAndDeidentify(beam.DoFn):
         request = {
             "parent": parent,
             "deidentify_template_name": self.deidentify_template,
+            "inspect_template_name": self.inspect_template,
             "item": item,
         }
-
-        if self.inspect_template:
-            request["inspect_template_name"] = self.inspect_template
 
         # Call DLP to de-identify the batch
         response = self.dlp_client.deidentify_content(request=request)
@@ -121,8 +120,9 @@ def run_deidentification_pipeline(
     project_id,
     source_query,
     dest_table,
+    dest_schema,
     deidentify_template,
-    inspect_template=None,
+    inspect_template,
     batch_size=500,
     temp_location="gs://my-project-dataflow-temp/staging",
 ):
@@ -163,6 +163,7 @@ def run_deidentification_pipeline(
             # Write de-identified records to BigQuery
             | "WriteToBQ" >> beam.io.WriteToBigQuery(
                 dest_table,
+                schema=dest_schema,
                 write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
                 create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
             )
@@ -173,6 +174,7 @@ run_deidentification_pipeline(
     project_id="my-project",
     source_query="SELECT * FROM `my-project.raw_data.customers`",
     dest_table="my-project:clean_data.customers_deidentified",
+    dest_schema="customer_id:STRING,name:STRING,email:STRING,phone:STRING",
     deidentify_template="projects/my-project/locations/global/deidentifyTemplates/standard-deid-v1",
     inspect_template="projects/my-project/locations/global/inspectTemplates/standard-pii-v1",
 )
@@ -183,6 +185,14 @@ run_deidentification_pipeline(
 For de-identifying files in Cloud Storage, read the files, send their content to DLP, and write the de-identified output:
 
 ```python
+from apache_beam.io.filesystems import FileSystems
+
+def write_to_gcs(output_path, content):
+    """Write de-identified content to a Cloud Storage path."""
+    with FileSystems.create(output_path) as f:
+        f.write(content.encode("utf-8"))
+
+
 class DeidentifyFileContent(beam.DoFn):
     """De-identify text content from Cloud Storage files."""
 
@@ -199,9 +209,9 @@ class DeidentifyFileContent(beam.DoFn):
         """Process a single file's content through DLP."""
         file_path, content = element
 
-        # DLP has a content size limit per request (0.5 MB for text)
+        # DLP has a whole-request size limit of 0.5 MB for content requests
         # Split large files into chunks
-        chunk_size = 500000  # 500 KB
+        chunk_size = 450000  # Leave room for request metadata
         chunks = [content[i:i+chunk_size]
                   for i in range(0, len(content), chunk_size)]
 
@@ -266,7 +276,7 @@ def run_gcs_deidentification_pipeline(project_id, source_pattern, dest_bucket):
 
 ## Step 4: Optimize Batching for Throughput
 
-The most important optimization is getting the batch size right. Too small and you waste API overhead. Too large and you hit the DLP request size limit (0.5 MB for content items).
+The most important optimization is getting the batch size right. Too small and you waste API overhead. Too large and you hit the DLP request size limit (0.5 MB for each content request).
 
 ```python
 # Smart batching that respects DLP API limits
@@ -317,9 +327,10 @@ class DeidentifyWithDeadLetter(beam.DoFn):
 
     DEAD_LETTER = "dead_letter"
 
-    def __init__(self, project_id, template):
+    def __init__(self, project_id, deidentify_template, inspect_template):
         self.project_id = project_id
-        self.template = template
+        self.deidentify_template = deidentify_template
+        self.inspect_template = inspect_template
         self.dlp_client = None
 
     def setup(self):
@@ -344,7 +355,8 @@ class DeidentifyWithDeadLetter(beam.DoFn):
             response = self.dlp_client.deidentify_content(
                 request={
                     "parent": parent,
-                    "deidentify_template_name": self.template,
+                    "deidentify_template_name": self.deidentify_template,
+                    "inspect_template_name": self.inspect_template,
                     "item": {"table": table},
                 }
             )
