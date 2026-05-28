@@ -10,7 +10,7 @@ Description: Learn how to migrate your audit logging strategy from AWS CloudTrai
 
 Audit logging is critical for security, compliance, and troubleshooting. When migrating from AWS to GCP, you need to understand how Google Cloud Audit Logs work compared to CloudTrail, migrate your existing log analysis and alerting workflows, and potentially keep historical CloudTrail logs accessible.
 
-The good news is that Google Cloud Audit Logs are enabled by default for most services - there is less setup involved compared to CloudTrail.
+The good news is that Admin Activity audit logs are enabled by default for Google Cloud services - there is less setup involved for baseline administrative audit logging compared to CloudTrail.
 
 ## How the Concepts Map
 
@@ -27,7 +27,7 @@ The good news is that Google Cloud Audit Logs are enabled by default for most se
 
 Key differences worth noting:
 
-- Admin Activity audit logs are always enabled and cannot be disabled. CloudTrail management events can be turned off.
+- Admin Activity audit logs are always enabled and cannot be disabled. CloudTrail trails can be configured not to log management events.
 - Data Access audit logs need to be explicitly enabled for most services. This is similar to CloudTrail data events.
 - Cloud Audit Logs are automatically part of Cloud Logging. There is no separate service to configure for basic access.
 
@@ -39,13 +39,13 @@ Before configuring anything, check what Google Cloud already logs automatically.
 # View recent Admin Activity audit logs
 
 gcloud logging read \
-  'logName:"cloudaudit.googleapis.com/activity"' \
+  'log_id("cloudaudit.googleapis.com/activity")' \
   --limit=10 \
   --format='table(timestamp, protoPayload.methodName, protoPayload.authenticationInfo.principalEmail, resource.type)'
 
 # View recent Data Access audit logs (if enabled)
 gcloud logging read \
-  'logName:"cloudaudit.googleapis.com/data_access"' \
+  'log_id("cloudaudit.googleapis.com/data_access")' \
   --limit=10 \
   --format='table(timestamp, protoPayload.methodName, protoPayload.authenticationInfo.principalEmail)'
 ```
@@ -62,7 +62,7 @@ gcloud projects get-iam-policy my-project \
   --format=json > iam-policy.json
 ```
 
-Edit the IAM policy to include audit log configuration:
+Edit the IAM policy to include audit log configuration, preserving the existing `bindings`, `etag`, and other policy fields:
 
 ```json
 {
@@ -113,12 +113,20 @@ For long-term analysis, load the CloudTrail logs into BigQuery:
 # Create a BigQuery dataset for historical audit logs
 bq mk --dataset audit_logs
 
-# Load CloudTrail JSON files into BigQuery
+# Convert CloudTrail JSON gzip files into newline-delimited JSON
+find ./cloudtrail-logs -name '*.json.gz' -print0 | \
+  xargs -0 -I{} sh -c 'gzip -cd "$1" | jq -c ".Records[]"' sh {} \
+  > cloudtrail.ndjson
+
+# Upload the newline-delimited JSON file
+gsutil cp cloudtrail.ndjson gs://my-gcp-audit-archive/cloudtrail-ndjson/
+
+# Load CloudTrail records into BigQuery
 bq load \
   --source_format=NEWLINE_DELIMITED_JSON \
   --autodetect \
   audit_logs.cloudtrail_history \
-  gs://my-gcp-audit-archive/cloudtrail/**/*.json
+  gs://my-gcp-audit-archive/cloudtrail-ndjson/cloudtrail.ndjson
 ```
 
 ## Step 4: Set Up Log Sinks
@@ -139,7 +147,7 @@ gcloud logging sinks create audit-to-gcs \
 # Export to Pub/Sub for real-time processing
 gcloud logging sinks create audit-to-pubsub \
   pubsub.googleapis.com/projects/my-project/topics/audit-log-events \
-  --log-filter='logName:"cloudaudit.googleapis.com/activity"'
+  --log-filter='log_id("cloudaudit.googleapis.com/activity")'
 ```
 
 For organization-level sinks (equivalent to an organization trail):
@@ -163,25 +171,25 @@ Common CloudTrail alerts and their GCP equivalents:
 # Alert on IAM policy changes (equivalent to CloudTrail "IAM policy changed" alarm)
 gcloud logging metrics create iam-policy-changes \
   --description="IAM policy changes detected" \
-  --log-filter='protoPayload.methodName="SetIamPolicy" AND logName:"cloudaudit.googleapis.com/activity"'
+  --log-filter='protoPayload.methodName="SetIamPolicy" AND log_id("cloudaudit.googleapis.com/activity")'
 
-# Alert on console sign-ins without MFA
-gcloud logging metrics create console-login-no-mfa \
-  --description="Console login without MFA" \
-  --log-filter='protoPayload.methodName="google.login.LoginService.loginSuccess" AND NOT protoPayload.metadata.is_second_factor'
+# Alert on Google Workspace failed login events that report no second factor
+gcloud logging metrics create login-no-second-factor \
+  --description="Failed login event without second factor" \
+  --log-filter='protoPayload.methodName="google.login.LoginService.loginFailure" AND protoPayload.metadata.event.parameter.name="is_second_factor" AND protoPayload.metadata.event.parameter.boolValue=false'
 
 # Alert on root/super admin usage
 gcloud logging metrics create super-admin-activity \
   --description="Super admin account activity" \
-  --log-filter='protoPayload.authenticationInfo.principalEmail="admin@example.com" AND logName:"cloudaudit.googleapis.com/activity"'
+  --log-filter='protoPayload.authenticationInfo.principalEmail="admin@example.com" AND log_id("cloudaudit.googleapis.com/activity")'
 
 # Create an alerting policy based on the log metric
 gcloud monitoring policies create \
   --display-name="IAM Policy Change Alert" \
   --condition-display-name="IAM policy was modified" \
   --condition-filter='resource.type="global" AND metric.type="logging.googleapis.com/user/iam-policy-changes"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --if='> 0' \
+  --duration=60s \
   --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -201,7 +209,7 @@ SELECT
 FROM `my-project.audit_logs.cloudaudit_googleapis_com_activity_*`
 WHERE
   _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
-  AND protopayload_auditlog.methodName LIKE '%delete%'
+  AND LOWER(protopayload_auditlog.methodName) LIKE '%delete%'
 ORDER BY timestamp DESC
 LIMIT 100;
 
@@ -210,7 +218,7 @@ SELECT
   timestamp,
   protopayload_auditlog.methodName,
   resource.type,
-  protopayload_auditlog.status.code AS status_code
+  protopayload_auditlog.statuscode AS status_code
 FROM `my-project.audit_logs.cloudaudit_googleapis_com_activity_*`
 WHERE
   protopayload_auditlog.authenticationInfo.principalEmail = 'user@example.com'
