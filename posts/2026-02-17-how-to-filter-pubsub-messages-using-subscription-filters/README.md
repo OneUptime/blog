@@ -54,17 +54,17 @@ Now create subscriptions with filters:
 # Subscription that only receives "order.paid" events
 gcloud pubsub subscriptions create billing-sub \
   --topic=order-events \
-  --filter='attributes.event_type = "order.paid"'
+  --message-filter='attributes.event_type = "order.paid"'
 
 # Subscription that only receives events from the US East region
 gcloud pubsub subscriptions create us-east-processor \
   --topic=order-events \
-  --filter='attributes.region = "us-east"'
+  --message-filter='attributes.region = "us-east"'
 
 # Subscription that only receives high priority events
 gcloud pubsub subscriptions create priority-handler \
   --topic=order-events \
-  --filter='attributes.priority = "high"'
+  --message-filter='attributes.priority = "high"'
 ```
 
 In Terraform:
@@ -119,7 +119,7 @@ attributes.event_type != "order.cancelled"
 
 ```bash
 # Messages that have a specific attribute, regardless of value
-hasPrefix(attributes.trace_id, "")
+attributes:trace_id
 ```
 
 ### Prefix Matching
@@ -280,9 +280,9 @@ Subscription filters have some constraints you should know about:
 
 1. **Filters cannot inspect message data.** They only work on attributes. If the information you need to filter on is in the message body, you need to extract it to an attribute at publish time.
 
-2. **Filters are immutable.** You cannot change the filter on an existing subscription. You need to delete and recreate the subscription, which means you lose unprocessed messages.
+2. **Filters are immutable.** You cannot change the filter on an existing subscription. To change it, create a new subscription with the new filter. If you need to preserve messages during the transition, take a snapshot of the old subscription and seek the new subscription to that snapshot.
 
-3. **Filtered-out messages count as acknowledged.** This means they count toward your message delivery metrics and billing. You are not saving on Pub/Sub costs by filtering - you are saving on subscriber compute costs.
+3. **Filtered-out messages count as acknowledged.** Pub/Sub automatically acknowledges messages that do not match the filter. You do not incur outbound message fees for those automatically acknowledged messages, but Pub/Sub still charges message delivery fees and any seek-related storage fees for them. Filtering mainly saves subscriber-side bandwidth and compute.
 
 4. **No regex support.** The filter syntax supports equality, prefix matching, and boolean operators, but not regular expressions.
 
@@ -293,10 +293,16 @@ Subscription filters have some constraints you should know about:
 Keep an eye on filtered subscriptions to make sure they are receiving the expected messages:
 
 ```bash
-# Check how many messages are being delivered vs filtered
-gcloud monitoring read \
-  "pubsub.googleapis.com/subscription/num_undelivered_messages" \
-  --filter="resource.labels.subscription_id=billing-sub"
+# PromQL query in Cloud Monitoring Metrics Explorer:
+# count messages Pub/Sub auto-acknowledged because they did not match the filter
+sum(
+  rate({
+    "__name__"="pubsub.googleapis.com/subscription/ack_message_count",
+    "monitored_resource"="pubsub_subscription",
+    "subscription_id"="billing-sub",
+    "delivery_type"="filter"
+  }[10m])
+)
 ```
 
 If a filtered subscription has zero messages for an extended period, it could mean either no matching messages are being published or the filter expression has a typo.
