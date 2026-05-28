@@ -20,7 +20,7 @@ The advantages are straightforward:
 
 - One agent to install and maintain per host
 - Centralized policy management through Fleet
-- Automatic updates and integration management
+- Centralized upgrades and integration management
 - Consistent configuration across your fleet
 
 For GCP workloads specifically, this means you can deploy a single agent across all your Compute Engine instances and manage everything from one dashboard.
@@ -30,14 +30,14 @@ For GCP workloads specifically, this means you can deploy a single agent across 
 Before starting, make sure you have the following:
 
 - A GCP project with Compute Engine instances running (Ubuntu 20.04+ or similar)
-- An Elasticsearch deployment (Elastic Cloud or self-managed, version 8.x+)
+- An Elasticsearch deployment (Elastic Cloud or self-managed) running a version compatible with the Elastic Agent version you install
 - Kibana access with Fleet enabled
 - SSH access to your GCP instances
 - A service account with appropriate IAM roles if you plan to collect GCP-specific metrics
 
 ## Step 1: Set Up Fleet in Kibana
 
-First, log into Kibana and navigate to Fleet under the Management section. If this is your first time, Fleet will prompt you to set up the Fleet Server. For a quick start, you can use the Elastic Cloud hosted Fleet Server.
+First, log into Kibana and navigate to Fleet under the Management section. If this is your first time, Fleet will prompt you to set up the Fleet Server. For a quick start, Elastic Cloud deployments include Fleet Server as part of the Integrations Server.
 
 Once Fleet is ready, you need to create an agent policy. This policy defines what data the agent collects.
 
@@ -61,11 +61,11 @@ SSH into your GCP Compute Engine instance and run the installation. Here is the 
 ```bash
 # Download the Elastic Agent package
 
-curl -L -O https://artifacts.elastic.co/downloads/beats/elastic-agent/elastic-agent-8.12.0-linux-x86_64.tar.gz
+curl -L -O https://artifacts.elastic.co/downloads/beats/elastic-agent/elastic-agent-9.4.0-linux-x86_64.tar.gz
 
 # Extract the archive
-tar xzvf elastic-agent-8.12.0-linux-x86_64.tar.gz
-cd elastic-agent-8.12.0-linux-x86_64
+tar xzvf elastic-agent-9.4.0-linux-x86_64.tar.gz
+cd elastic-agent-9.4.0-linux-x86_64
 
 # Install and enroll the agent with your Fleet Server
 # Replace the URL and token with your actual values from Kibana
@@ -100,7 +100,7 @@ Here is a startup script you can attach to your instance template or use with `g
 #!/bin/bash
 # Startup script for automatic Elastic Agent deployment on GCP instances
 
-ELASTIC_AGENT_VERSION="8.12.0"
+ELASTIC_AGENT_VERSION="9.4.0"
 FLEET_URL="https://your-fleet-server-url:8220"
 ENROLLMENT_TOKEN="YOUR_ENROLLMENT_TOKEN"
 
@@ -135,7 +135,7 @@ gcloud compute instances create my-instance \
 
 Beyond system metrics, you might want to collect GCP service metrics like Cloud SQL stats, GKE cluster metrics, or Pub/Sub throughput. Elastic has a dedicated GCP integration for this.
 
-In Fleet, add the "Google Cloud Platform" integration to your policy. You will need to provide a service account key or configure Workload Identity.
+In Fleet, add the "Google Cloud Platform" integration to your policy. You will need to provide the project ID and either a service account credentials file path or the service account key JSON.
 
 Create a service account with the required permissions:
 
@@ -149,17 +149,22 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:elastic-agent-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/monitoring.viewer"
 
-# Grant the logging viewer role for reading Cloud Logging
+# Grant the compute viewer role if you enable Compute metadata or metrics
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:elastic-agent-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/logging.viewer"
+  --role="roles/compute.viewer"
+
+# Grant Pub/Sub subscriber if you collect GCP logs exported from Cloud Logging
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:elastic-agent-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/pubsub.subscriber"
 
 # Generate a key file
 gcloud iam service-accounts keys create elastic-agent-key.json \
   --iam-account=elastic-agent-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
 ```
 
-Upload this key to the GCP integration configuration in Fleet, and the agent will start pulling GCP platform metrics into Elasticsearch.
+Add the key file path or JSON content to the GCP integration configuration in Fleet. For metrics, the agent will read data from Google Cloud Monitoring. For Cloud Logging data, first create a Log Router sink that exports the logs to a Pub/Sub topic and subscription, then configure that topic and subscription in the GCP integration.
 
 ## Monitoring Your Fleet
 
@@ -179,7 +184,7 @@ If the agent does not appear in Fleet after installation, check these things:
 1. Verify network connectivity from the instance to your Fleet Server URL on port 8220
 2. Check that GCP firewall rules allow outbound HTTPS traffic
 3. Look at the agent logs in `/opt/Elastic/Agent/data/elastic-agent-*/logs/`
-4. Make sure the enrollment token has not expired
+4. Make sure the enrollment token has not been revoked
 
 If metrics appear but logs do not, verify that the agent has read permissions on the log files it is trying to collect. Running as root (which is the default when installed via `sudo`) usually handles this.
 
