@@ -131,16 +131,16 @@ resource "google_compute_instance" "this" {
     subnetwork = var.subnetwork
   }
 
-  # Enable deletion protection by default for safety
+  # Deletion protection is disabled by default; enable it for instances that should not be deleted accidentally
   deletion_protection = false
 
-  # Use the default service account with minimal scopes
+  # Use the default service account with the cloud-platform scope
   service_account {
     scopes = ["cloud-platform"]
   }
 
   lifecycle {
-    # Prevent accidental destruction of instances
+    # Destruction is allowed by default; set this to true if the instance should be protected from destroy
     prevent_destroy = false
   }
 }
@@ -450,8 +450,8 @@ variable "machine_type" {
   default     = "e2-medium"
 
   validation {
-    condition     = can(regex("^(e2|n2|n2d|c2|c2d|m2|a2)-", var.machine_type))
-    error_message = "Machine type must be a valid GCP machine type family."
+    condition     = can(regex("^[a-z][a-z0-9]*(-[a-z0-9]+)+$", var.machine_type))
+    error_message = "Machine type must use a valid Compute Engine machine type format, such as e2-medium or n2-standard-4."
   }
 }
 
@@ -471,8 +471,8 @@ variable "name" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{0,62}$", var.name))
-    error_message = "Instance name must start with a lowercase letter, contain only lowercase letters, numbers, and hyphens, and be at most 63 characters."
+    condition     = can(regex("^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$", var.name))
+    error_message = "Instance name must be 1-63 characters, start with a lowercase letter, contain only lowercase letters, numbers, and hyphens, and not end with a hyphen."
   }
 }
 ```
@@ -492,7 +492,7 @@ module "web_server" {
 }
 ```
 
-Alternatively, use a GCS bucket as a module registry:
+Alternatively, use a GCS bucket as a module source:
 
 ```hcl
 # Reference a module from a GCS bucket
