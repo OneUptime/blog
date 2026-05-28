@@ -14,7 +14,7 @@ In this guide, I will cover how to make HTTP calls to external APIs, handle auth
 
 ## Making Basic HTTP Calls
 
-The `http.get` and `http.post` built-in functions handle HTTP requests.
+The `http.get`, `http.post`, `http.put`, and `http.delete` built-in functions handle common HTTP requests.
 
 ```yaml
 # basic-http-calls.yaml
@@ -81,7 +81,7 @@ main:
     - call_with_api_key:
         call: http.get
         args:
-          url: https://api.weatherapi.com/v1/current.json
+          url: https://api.example.com/weather/current
           query:
             q: "London"
           headers:
@@ -318,9 +318,17 @@ main:
 
             - collect_items:
                 assign:
-                  - all_items: ${list.concat(all_items, page_response.body.items)}
                   - has_more: ${page_response.body.has_next_page}
                   - current_page: ${current_page + 1}
+
+            - collect_page_items:
+                for:
+                  value: page_item
+                  in: ${page_response.body.items}
+                  steps:
+                    - append_item:
+                        assign:
+                          - all_items: ${list.concat(all_items, page_item)}
 
             - log_progress:
                 call: sys.log
@@ -367,7 +375,7 @@ main:
                     - check_rate_limit:
                         switch:
                           # 429 means we hit the rate limit
-                          - condition: ${e.code == 429}
+                          - condition: ${"HttpError" in e.tags and e.code == 429}
                             steps:
                               - wait_for_reset:
                                   call: sys.sleep
@@ -393,7 +401,7 @@ main:
             - throttle:
                 call: sys.sleep
                 args:
-                  seconds: 0.5
+                  seconds: 1
 
     - done:
         return:
@@ -417,8 +425,6 @@ main:
           url: https://hooks.slack.com/services/T00/B00/xxx
           body:
             text: ${args.message}
-            channel: "#alerts"
-            username: "Workflow Bot"
         result: slack_result
 
     # Send to a custom webhook
