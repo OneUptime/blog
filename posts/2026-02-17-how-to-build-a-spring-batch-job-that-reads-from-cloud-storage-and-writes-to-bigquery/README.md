@@ -17,6 +17,18 @@ In this post, I will build a Spring Batch job that reads CSV files from a Cloud 
 Add the required dependencies:
 
 ```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>libraries-bom</artifactId>
+            <version>26.72.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <!-- Spring Batch for job processing -->
 <dependency>
     <groupId>org.springframework.boot</groupId>
@@ -58,7 +70,11 @@ spring.batch.jdbc.initialize-schema=always
 spring.batch.job.enabled=false
 
 # GCP project
-spring.cloud.gcp.project-id=my-project-id
+gcp.project-id=my-project-id
+
+# BigQuery target
+bigquery.dataset=sales_dataset
+bigquery.table=sales_records
 ```
 
 ## The Data Model
@@ -110,8 +126,11 @@ public class ReaderConfig {
 
     private final Storage storage;
 
-    public ReaderConfig() {
-        this.storage = StorageOptions.getDefaultInstance().getService();
+    public ReaderConfig(@Value("${gcp.project-id}") String projectId) {
+        this.storage = StorageOptions.newBuilder()
+                .setProjectId(projectId)
+                .build()
+                .getService();
     }
 
     // ItemReader that reads a CSV file from Cloud Storage
@@ -123,6 +142,11 @@ public class ReaderConfig {
 
         // Download the file from Cloud Storage to a temp file
         Blob blob = storage.get(BlobId.of(bucketName, fileName));
+        if (blob == null) {
+            throw new FileNotFoundException("Cloud Storage object not found: gs://"
+                    + bucketName + "/" + fileName);
+        }
+
         Path tempFile = Files.createTempFile("batch-input-", ".csv");
         blob.downloadTo(tempFile);
 
@@ -139,6 +163,7 @@ public class ReaderConfig {
 
         BeanWrapperFieldSetMapper<SalesRecord> fieldMapper = new BeanWrapperFieldSetMapper<>();
         fieldMapper.setTargetType(SalesRecord.class);
+        fieldMapper.setConversionService(new DefaultFormattingConversionService());
 
         lineMapper.setLineTokenizer(tokenizer);
         lineMapper.setFieldSetMapper(fieldMapper);
@@ -160,9 +185,15 @@ public class SalesRecordProcessor implements ItemProcessor<SalesRecord, SalesRec
 
     @Override
     public SalesRecord process(SalesRecord record) throws Exception {
-        // Skip records with invalid data by returning null
+        // Filter records with invalid data by returning null
+        if (record.getTransactionId() == null || record.getTransactionId().isEmpty()
+                || record.getUnitPrice() == null
+                || record.getRegion() == null) {
+            return null;
+        }
+
         if (record.getQuantity() <= 0) {
-            return null; // Returning null tells Spring Batch to skip this item
+            return null; // Returning null tells Spring Batch to filter this item
         }
 
         // Recalculate total amount to ensure consistency
@@ -172,11 +203,6 @@ public class SalesRecordProcessor implements ItemProcessor<SalesRecord, SalesRec
 
         // Normalize region names
         record.setRegion(record.getRegion().toUpperCase().trim());
-
-        // Validate required fields
-        if (record.getTransactionId() == null || record.getTransactionId().isEmpty()) {
-            return null;
-        }
 
         return record;
     }
@@ -196,9 +222,13 @@ public class BigQueryWriter implements ItemWriter<SalesRecord> {
     private final String datasetName;
     private final String tableName;
 
-    public BigQueryWriter(@Value("${bigquery.dataset}") String datasetName,
+    public BigQueryWriter(@Value("${gcp.project-id}") String projectId,
+                          @Value("${bigquery.dataset}") String datasetName,
                           @Value("${bigquery.table}") String tableName) {
-        this.bigquery = BigQueryOptions.getDefaultInstance().getService();
+        this.bigquery = BigQueryOptions.newBuilder()
+                .setProjectId(projectId)
+                .build()
+                .getService();
         this.datasetName = datasetName;
         this.tableName = tableName;
     }
@@ -270,7 +300,7 @@ public class BatchJobConfig {
                 .reader(reader)
                 .processor(processor)
                 .writer(writer)
-                // Skip up to 100 bad records before failing
+                // Skip up to 100 parse or conversion errors before failing
                 .faultTolerant()
                 .skipLimit(100)
                 .skip(FlatFileParseException.class)
@@ -303,11 +333,15 @@ public class JobCompletionListener implements JobExecutionListener {
             long skipCount = jobExecution.getStepExecutions().stream()
                     .mapToLong(StepExecution::getSkipCount)
                     .sum();
+            long filterCount = jobExecution.getStepExecutions().stream()
+                    .mapToLong(StepExecution::getFilterCount)
+                    .sum();
 
             System.out.println("Job completed successfully!");
             System.out.println("Records read: " + readCount);
             System.out.println("Records written: " + writeCount);
             System.out.println("Records skipped: " + skipCount);
+            System.out.println("Records filtered: " + filterCount);
         } else {
             System.err.println("Job failed with status: " + jobExecution.getStatus());
         }
@@ -355,4 +389,4 @@ public class JobController {
 
 ## Wrapping Up
 
-Spring Batch gives you a production-ready framework for ETL jobs between Cloud Storage and BigQuery. The chunk-based processing model means you never load the entire file into memory. The skip and retry policies handle bad records and transient BigQuery errors gracefully. Combine this with Cloud Scheduler to trigger jobs on a schedule, or use Cloud Storage event notifications to trigger the job whenever a new file lands in the bucket. The framework handles the hard parts - you just define how to read, transform, and write your data.
+Spring Batch gives you a production-ready framework for ETL jobs between Cloud Storage and BigQuery. The chunk-based processing model means you never load the entire file into memory. The processor filters invalid records, while the skip and retry policies handle parse errors and transient BigQuery errors gracefully. Combine this with Cloud Scheduler to trigger jobs on a schedule, or use Cloud Storage event notifications to trigger the job whenever a new file lands in the bucket. The framework handles the hard parts - you just define how to read, transform, and write your data.
