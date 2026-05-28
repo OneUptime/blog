@@ -150,7 +150,7 @@ def serve():
         ProductCatalogServicer(), server
     )
 
-    # Register the health checking service (required for Cloud Run)
+    # Register the health checking service (required for gRPC health probes)
     health_servicer = health.HealthServicer()
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
 
@@ -254,10 +254,8 @@ gcloud run deploy catalog-grpc \
   --image=us-central1-docker.pkg.dev/my-project/my-repo/catalog-grpc:v1 \
   --region=us-central1 \
   --use-http2 \
-  --startup-probe-type=grpc \
-  --startup-probe-port=8080 \
-  --liveness-probe-type=grpc \
-  --liveness-probe-port=8080
+  --startup-probe=grpc.port=8080,grpc.service=catalog.ProductCatalog \
+  --liveness-probe=grpc.port=8080,grpc.service=catalog.ProductCatalog
 ```
 
 This uses the gRPC health checking protocol that we registered in the server code.
@@ -347,15 +345,18 @@ You can test your gRPC service using grpcurl:
 ```bash
 # Test the deployed service using grpcurl
 # List available services
-grpcurl catalog-grpc-abc123-uc.a.run.app:443 list
+grpcurl -import-path proto -proto catalog.proto \
+  catalog-grpc-abc123-uc.a.run.app:443 list
 
 # Call GetProduct
-grpcurl -d '{"id": "1"}' \
+grpcurl -import-path proto -proto catalog.proto \
+  -d '{"id": "1"}' \
   catalog-grpc-abc123-uc.a.run.app:443 \
   catalog.ProductCatalog/GetProduct
 
 # Call ListProducts
-grpcurl -d '{"category": "electronics", "page_size": 5}' \
+grpcurl -import-path proto -proto catalog.proto \
+  -d '{"category": "electronics", "page_size": 5}' \
   catalog-grpc-abc123-uc.a.run.app:443 \
   catalog.ProductCatalog/ListProducts
 ```
