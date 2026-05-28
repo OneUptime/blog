@@ -80,10 +80,7 @@ def submit_spot_training_job(
     # Submit with spot VM scheduling
     custom_job.run(
         service_account=f"ml-training@{project_id}.iam.gserviceaccount.com",
-        restart_job_on_worker_restart=True,  # Auto-restart on preemption
-        scheduling={
-            "strategy": "SPOT",  # Use spot VMs
-        },
+        scheduling_strategy=aiplatform.compat.types.custom_job.Scheduling.Strategy.SPOT,
         timeout=86400,  # 24 hour timeout
     )
 
@@ -275,7 +272,7 @@ class SpotTrainer:
 
 ## Step 3: Implement Retry Logic for Spot Preemptions
 
-For Vertex AI Custom Jobs, you can configure automatic restarts. But for additional resilience, wrap your training submission in retry logic.
+For Vertex AI Custom Jobs that use Spot VMs, preemptions surface as `STOCKOUT` errors and Vertex AI retries the job up to six times. For additional resilience beyond that built-in retry behavior, wrap your training submission in retry logic.
 
 ```python
 # training/resilient_training.py
@@ -316,8 +313,7 @@ def submit_resilient_spot_training(
             )
 
             job.run(
-                restart_job_on_worker_restart=True,
-                scheduling={"strategy": "SPOT"},
+                scheduling_strategy=aiplatform.compat.types.custom_job.Scheduling.Strategy.SPOT,
                 timeout=86400,
             )
 
@@ -326,7 +322,7 @@ def submit_resilient_spot_training(
             return job
 
         except Exception as e:
-            if "preempted" in str(e).lower() or "spot" in str(e).lower():
+            if "stockout" in str(e).lower() or "preempted" in str(e).lower() or "spot" in str(e).lower():
                 wait_time = min(300 * (2 ** attempt), 3600)  # Exponential backoff
                 print(f"Preemption detected. Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
@@ -440,8 +436,7 @@ def hybrid_training_job(
         )
 
         spot_job.run(
-            restart_job_on_worker_restart=True,
-            scheduling={"strategy": "SPOT"},
+            scheduling_strategy=aiplatform.compat.types.custom_job.Scheduling.Strategy.SPOT,
             timeout=int(spot_time_budget_hours * 3600),
         )
 
@@ -490,4 +485,4 @@ def hybrid_training_job(
 
 ## Wrapping Up
 
-Using spot instances for ML training can reduce your compute costs by 60-80%, which is significant when you are training models regularly. The key requirement is robust checkpointing - your training code must save state frequently so it can resume after preemption without losing significant progress. Implement SIGTERM handling for graceful shutdown, use Cloud Storage for durable checkpoints, and configure Vertex AI for automatic restart on preemption. For time-sensitive jobs, use a hybrid strategy that starts with spot and falls back to on-demand. The upfront investment in checkpointing infrastructure pays for itself many times over in reduced training costs.
+Using spot instances for ML training can reduce your compute costs by 60-80%, which is significant when you are training models regularly. The key requirement is robust checkpointing - your training code must save state frequently so it can resume after preemption without losing significant progress. Implement SIGTERM handling for graceful shutdown, use Cloud Storage for durable checkpoints, and rely on Vertex AI's built-in retries for Spot VM `STOCKOUT` preemptions. For time-sensitive jobs, use a hybrid strategy that starts with spot and falls back to on-demand. The upfront investment in checkpointing infrastructure pays for itself many times over in reduced training costs.
