@@ -14,7 +14,7 @@ These false positives waste time during review, inflate your findings, and can t
 
 ## Types of Exclusion Rules
 
-Cloud DLP supports several types of exclusion rules:
+Cloud DLP supports several types of exclusion rules. This post covers three common ones:
 
 1. **Dictionary exclusion**: Exclude specific words or phrases from matches
 2. **Regex exclusion**: Exclude matches that match a regex pattern
@@ -131,9 +131,11 @@ def inspect_with_dictionary_exclusion(project_id, content):
     parent = f"projects/{project_id}/locations/global"
 
     response = dlp_client.inspect_content(
-        parent=parent,
-        inspect_config=inspect_config,
-        item=item,
+        request={
+            "parent": parent,
+            "inspect_config": inspect_config,
+            "item": item,
+        }
     )
 
     print(f"Findings (after exclusions):")
@@ -171,15 +173,15 @@ def inspect_with_regex_exclusion(project_id, content):
         ],
         "rule_set": [
             {
-                # Exclude SSN-like patterns that are actually product SKUs
+                # Exclude SSN-like patterns that use reserved internal SKU ranges
                 "info_types": [{"name": "US_SOCIAL_SECURITY_NUMBER"}],
                 "rules": [
                     {
                         "exclusion_rule": {
                             "regex": {
-                                # SKU format: 3 digits, dash, 2 digits, dash, 4 digits
-                                # Same format as SSN but starts with specific prefixes
-                                "pattern": r"(SKU|PRD|INV)-?\d{3}-?\d{2}-?\d{4}"
+                                # Internal SKU number format: 3 digits, dash, 2 digits, dash, 4 digits
+                                # Same format as SSN but starts with internal numeric prefixes
+                                "pattern": r"(700|701|702)-\d{2}-\d{4}"
                             },
                             "matching_type": "MATCHING_TYPE_FULL_MATCH",
                         }
@@ -235,9 +237,11 @@ def inspect_with_regex_exclusion(project_id, content):
     parent = f"projects/{project_id}/locations/global"
 
     response = dlp_client.inspect_content(
-        parent=parent,
-        inspect_config=inspect_config,
-        item=item,
+        request={
+            "parent": parent,
+            "inspect_config": inspect_config,
+            "item": item,
+        }
     )
 
     for finding in response.result.findings:
@@ -248,7 +252,7 @@ def inspect_with_regex_exclusion(project_id, content):
 
 ## Step 3: Exclude by Overlapping InfoType
 
-Sometimes a value matches one InfoType but also matches another that you know is not sensitive. For example, a US phone number might also match a PERSON_NAME if DLP interprets part of the number as a name-like string.
+Sometimes a value matches one InfoType but also matches another that you know is not sensitive. For example, part of an email address might also match `PERSON_NAME` or `DOMAIN_NAME`, even though you only want to keep the email finding.
 
 ```python
 def inspect_with_infotype_exclusion(project_id, content):
@@ -302,9 +306,11 @@ def inspect_with_infotype_exclusion(project_id, content):
     parent = f"projects/{project_id}/locations/global"
 
     response = dlp_client.inspect_content(
-        parent=parent,
-        inspect_config=inspect_config,
-        item=item,
+        request={
+            "parent": parent,
+            "inspect_config": inspect_config,
+            "item": item,
+        }
     )
 
     for finding in response.result.findings:
@@ -429,7 +435,6 @@ def create_template_with_exclusions(project_id):
     response = dlp_client.create_inspect_template(
         parent=parent,
         inspect_template=template,
-        template_id="pii-with-exclusions-v1",
     )
 
     print(f"Template created: {response.name}")
@@ -441,7 +446,7 @@ def create_template_with_exclusions(project_id):
 The `matching_type` parameter controls how the exclusion matches against findings:
 
 - **`MATCHING_TYPE_FULL_MATCH`**: The entire finding must match the exclusion pattern. Use this for exact values like specific test SSNs or known non-sensitive words.
-- **`MATCHING_TYPE_PARTIAL_MATCH`**: The finding is excluded if it contains the exclusion pattern. Use this for broader patterns or when the finding includes surrounding context.
+- **`MATCHING_TYPE_PARTIAL_MATCH`**: The finding is excluded if a regex matches a substring of the finding, a dictionary token matches part of the finding, or an excluded InfoType overlaps the finding. Use this for broader patterns.
 - **`MATCHING_TYPE_INVERSE_MATCH`**: Excludes findings that do NOT match the pattern. Use this to create allow-lists - only keep findings that match a specific pattern.
 
 ## Iterative Approach to Exclusion Rules
