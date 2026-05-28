@@ -145,8 +145,9 @@ Inside your monolith, add routing logic at the points where you are extracting f
 
 ```python
 # routes/users.py - User profile endpoint with feature flag routing
+import logging
 import requests
-from flask import request, jsonify, g
+from flask import request, jsonify
 from feature_flags import is_enabled, get_flag
 
 @app.route('/api/users/<user_id>/profile')
@@ -214,22 +215,29 @@ Here is a practical rollout sequence that has worked well:
 
 Update the rollout percentage through Firestore:
 
-```bash
-# Increase the user service rollout to 50% using the Firebase CLI
+```python
+# Increase the user service rollout to 50%
 # Or you can update directly via the Firestore console
-gcloud firestore documents update \
-  --collection=feature_flags \
-  --document=use_user_service \
-  --field-updates="percentage=50"
+from google.cloud import firestore
+
+db = firestore.Client()
+db.collection('feature_flags').document('use_user_service').update({
+    'percentage': 50,
+})
 ```
 
-## Shadow Testing with Dual Writes
+## Shadow Testing with Dual Reads
 
-For critical data operations, you might want to call both the monolith and the microservice, compare the results, but only return the monolith response. This catches bugs before they affect users.
+For critical read operations, you might want to call both the monolith and the microservice, compare the results, but only return the monolith response. This catches bugs before they affect users.
 
 ```python
-import asyncio
+import logging
 import aiohttp
+
+def response_payload(response):
+    """Extract JSON payload from a Flask response or (response, status) tuple."""
+    flask_response = response[0] if isinstance(response, tuple) else response
+    return flask_response.get_json()
 
 async def shadow_test(flag_name, user_id):
     """Call both monolith and microservice, compare results."""
@@ -237,7 +245,8 @@ async def shadow_test(flag_name, user_id):
     service_url = flag.get('service_url')
 
     # Get monolith result (this is the real response)
-    monolith_result = monolith_get_profile(user_id)
+    monolith_response = monolith_get_profile(user_id)
+    monolith_payload = response_payload(monolith_response)
 
     # Call microservice in the background, do not block the response
     try:
@@ -249,15 +258,15 @@ async def shadow_test(flag_name, user_id):
                 micro_result = await resp.json()
 
         # Compare and log differences
-        if monolith_result != micro_result:
+        if monolith_payload != micro_result:
             logging.warning(f'Shadow test mismatch for user {user_id}')
-            log_mismatch(user_id, monolith_result, micro_result)
+            log_mismatch(user_id, monolith_payload, micro_result)
 
     except Exception as e:
         logging.error(f'Shadow test failed: {e}')
 
     # Always return the monolith result
-    return monolith_result
+    return monolith_response
 ```
 
 ## Monitoring During Migration
