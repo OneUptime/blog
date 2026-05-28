@@ -38,7 +38,7 @@ gcloud services list --enabled --filter="name:workflows"
 
 ## Your First Workflow
 
-Let's start with a simple workflow that makes an HTTP request and logs the result.
+Let's start with a simple workflow that makes an HTTP request and returns the result.
 
 ```yaml
 # hello-workflow.yaml
@@ -227,8 +227,10 @@ main:
     - check_customer_type:
         switch:
           - condition: ${customer_type == "premium"}
-            assign:
-              - discount_rate: ${discount_rate + 0.05}
+            steps:
+              - apply_premium_discount:
+                  assign:
+                    - discount_rate: ${discount_rate + 0.05}
 
     - return_result:
         return:
@@ -291,7 +293,9 @@ main:
     - validate_input:
         switch:
           - condition: ${not("bucket" in args) or not("filename" in args)}
-            raise: "Missing required parameters: bucket and filename"
+            steps:
+              - raise_missing_parameters:
+                  raise: "Missing required parameters: bucket and filename"
 
     - extract_text:
         call: http.post
@@ -300,8 +304,6 @@ main:
           auth:
             type: OAuth2
           body:
-            rawDocument:
-              mimeType: "application/pdf"
             gcsDocument:
               gcsUri: ${"gs://" + args.bucket + "/" + args.filename}
               mimeType: "application/pdf"
