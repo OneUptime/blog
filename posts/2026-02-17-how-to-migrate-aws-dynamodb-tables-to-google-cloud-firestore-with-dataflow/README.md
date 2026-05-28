@@ -22,10 +22,10 @@ Before writing any code, you need to understand how your DynamoDB data maps to F
 | Item | Document |
 | Partition Key | Document ID or collection path |
 | Sort Key | Subcollection or document field |
-| Global Secondary Index | Composite index |
+| Global Secondary Index | Composite index or denormalized query pattern |
 | Attribute | Field |
 
-The biggest design decision is how to handle DynamoDB's composite keys. If your DynamoDB table uses a partition key plus sort key, you typically model this as a collection (partition key) with documents (sort key) or a flat collection with composite document IDs.
+The biggest design decision is how to handle DynamoDB's composite keys. If your DynamoDB table uses a partition key plus sort key, you typically model this as a document for the partition key with subcollection documents for sort-key items, or a flat collection with composite document IDs.
 
 ## Step 1: Export DynamoDB Data
 
@@ -61,7 +61,7 @@ Here is a Dataflow pipeline that reads the DynamoDB export, transforms the data,
 # Dataflow pipeline for migrating DynamoDB data to Firestore
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
-from apache_beam.io.gcp.firestore import WriteToFirestore
+import base64
 import json
 import logging
 
@@ -119,9 +119,11 @@ class ParseDynamoDBExport(beam.DoFn):
             elif 'NS' in attr:
                 return [float(n) for n in attr['NS']]  # Number Set
             elif 'BS' in attr:
-                return list(attr['BS'])  # Binary Set
+                return [
+                    base64.b64decode(item) for item in attr['BS']
+                ]  # Binary Set
             elif 'B' in attr:
-                return attr['B']  # Binary
+                return base64.b64decode(attr['B'])  # Binary
             else:
                 return attr
         return attr
@@ -171,7 +173,7 @@ class WriteToFirestoreDoFn(beam.DoFn):
         self.project_id = project_id
         self.batch = None
         self.batch_count = 0
-        self.max_batch_size = 400  # Firestore limit is 500
+        self.max_batch_size = 400  # Keep commit requests reasonably small
 
     def setup(self):
         from google.cloud import firestore
@@ -190,7 +192,7 @@ class WriteToFirestoreDoFn(beam.DoFn):
         self.batch.set(doc_ref, doc_data)
         self.batch_count += 1
 
-        # Commit batch when it reaches the limit
+        # Commit batch when it reaches the configured size
         if self.batch_count >= self.max_batch_size:
             self.batch.commit()
             self.batch = self.db.batch()
@@ -220,7 +222,7 @@ def run_migration(argv=None):
             pipeline
             # Read the DynamoDB export files from GCS
             | 'ReadExport' >> beam.io.ReadFromText(
-                'gs://my-project-dynamo-exports/my-table/data/*.json.gz'
+                'gs://my-project-dynamo-exports/my-table/AWSDynamoDB/*/data/*.json.gz'
             )
             # Parse DynamoDB JSON format
             | 'ParseDynamo' >> beam.ParDo(ParseDynamoDBExport())
@@ -279,10 +281,12 @@ After migration, verify the data counts and spot-check records:
 # Compares record counts between DynamoDB and Firestore
 import boto3
 from google.cloud import firestore
+from google.cloud.firestore_v1 import aggregation
 
 def verify_counts(dynamodb_table, firestore_collection, project_id):
     """Compare record counts between source and destination."""
-    # Count DynamoDB records
+    # Count DynamoDB records. This is an approximate table metadata count,
+    # updated by DynamoDB approximately every six hours.
     dynamodb = boto3.resource('dynamodb')
     table = dynamodb.Table(dynamodb_table)
     dynamo_count = table.item_count
@@ -292,7 +296,8 @@ def verify_counts(dynamodb_table, firestore_collection, project_id):
     collection_ref = db.collection(firestore_collection)
 
     # Use an aggregation query for efficiency
-    query = collection_ref.count()
+    query = aggregation.AggregationQuery(collection_ref)
+    query.count(alias="all")
     results = query.get()
     firestore_count = results[0][0].value
 
@@ -343,4 +348,4 @@ gcloud firestore indexes composite create \
 
 ## Wrapping Up
 
-Migrating DynamoDB to Firestore requires more thought than a simple data copy. The data model transformation is the hardest part - getting the collection hierarchy, document IDs, and indexes right determines whether your Firestore queries will be efficient. Use Dataflow for the heavy lifting, test with a subset of data first, and verify counts and spot-check records before switching your application over. The Dataflow pipeline can also be rerun for incremental syncs during a transition period where both databases need to stay in sync.
+Migrating DynamoDB to Firestore requires more thought than a simple data copy. The data model transformation is the hardest part - getting the collection hierarchy, document IDs, and indexes right determines whether your Firestore queries will be efficient. Use Dataflow for the heavy lifting, test with a subset of data first, and verify counts and spot-check records before switching your application over. The Dataflow pipeline can also be rerun against newer full exports during a transition period where both databases need to stay in sync; DynamoDB incremental exports use a different record shape and need additional handling for inserts, updates, and deletes.
