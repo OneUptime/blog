@@ -58,7 +58,7 @@ Common mistakes include using `gcr.io` format when the image is in Artifact Regi
 
 ## Cause 2: IAM Permissions
 
-GKE nodes need the `roles/artifactregistry.reader` role to pull images from Artifact Registry. The way this works depends on whether you are using Workload Identity or the default node service account.
+GKE nodes need the `roles/artifactregistry.reader` role to pull images from Artifact Registry. Image pulls use the node pool's service account, even if your workloads use Workload Identity for calls from inside the container.
 
 Check what service account your nodes are using:
 
@@ -79,7 +79,7 @@ gcloud projects add-iam-policy-binding my-project \
   --role="roles/artifactregistry.reader"
 ```
 
-If you are using Workload Identity, you need to grant the role to the Google service account that your Kubernetes service account is bound to.
+If your node pool uses a custom service account, grant the role to that service account instead of the Compute Engine default service account.
 
 ## Cause 3: Missing OAuth Scopes
 
@@ -134,7 +134,7 @@ gcloud compute networks subnets update my-subnet \
   --enable-private-google-access
 ```
 
-Second, you can set up a Cloud NAT if you need broader internet access from your nodes.
+Second, you can set up a Cloud NAT if you need broader internet access from your nodes. If your private cluster is inside a VPC Service Controls perimeter, configure DNS so `pkg.dev` resolves to `restricted.googleapis.com` instead.
 
 ## Cause 6: Image Does Not Exist
 
@@ -173,7 +173,9 @@ gcloud projects get-iam-policy my-project \
   --filter="bindings.members:compute@developer.gserviceaccount.com"
 
 # Step 4: Test pulling the image from a node directly (if SSH is available)
-gcloud compute ssh my-node -- "docker pull us-docker.pkg.dev/my-project/my-repo/my-image:v1.0"
+gcloud compute ssh my-node
+curl -s "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" -H "Metadata-Flavor: Google"
+crictl pull --creds "oauth2accesstoken:ACCESS_TOKEN" us-docker.pkg.dev/my-project/my-repo/my-image:v1.0
 ```
 
 ## Preventing Future Issues
