@@ -39,7 +39,7 @@ gcloud billing budgets create \
   --threshold-rule=percent=0.9,basis=current-spend \
   --threshold-rule=percent=1.0,basis=current-spend \
   --threshold-rule=percent=1.2,basis=current-spend \
-  --all-updates-rule-monitoring-notification-channels=CHANNEL_ID
+  --notifications-rule-monitoring-notification-channels=projects/my-project/notificationChannels/CHANNEL_ID
 ```
 
 This creates alerts at 50%, 75%, 90%, 100%, and 120% of the $1,000 budget. The 120% threshold catches cases where spending continues after hitting the budget.
@@ -55,7 +55,7 @@ gcloud billing budgets create \
   --filter-projects="projects/my-project" \
   --threshold-rule=percent=1.1,basis=current-spend \
   --threshold-rule=percent=1.25,basis=current-spend \
-  --all-updates-rule-monitoring-notification-channels=CHANNEL_ID
+  --notifications-rule-monitoring-notification-channels=projects/my-project/notificationChannels/CHANNEL_ID
 ```
 
 This alerts when spending exceeds last month by 10% or 25%.
@@ -105,7 +105,7 @@ SELECT
   sku.description AS sku,
   resource.name AS resource_name,
   ROUND(SUM(cost), 2) AS cost
-FROM `billing_data.gcp_billing_export_v1_*`
+FROM `billing_data.gcp_billing_export_resource_v1_*`
 WHERE invoice.month = FORMAT_DATE('%Y%m', CURRENT_DATE())
   AND cost > 0
 GROUP BY service, sku, resource_name
@@ -127,7 +127,6 @@ import base64
 import json
 import logging
 from google.cloud import compute_v1
-from google.cloud import billing_v1
 
 def handle_budget_alert(event, context):
     """Respond to budget alert notifications."""
@@ -147,7 +146,7 @@ def handle_budget_alert(event, context):
         stop_tagged_instances('environment', 'development')
         logging.warning(f'Stopped development instances at {percentage:.1f}% budget consumption')
 
-    # At 100%: Disable billing on the project (nuclear option)
+    # At 120%: Disable billing on the project (nuclear option)
     if percentage >= 120:
         logging.critical(f'Budget exceeded by 20% - consider disabling billing')
         # Uncomment the line below to actually disable billing
@@ -193,7 +192,7 @@ gcloud functions deploy handle-budget-alert \
 # Update the budget to publish to the Pub/Sub topic
 gcloud billing budgets update BUDGET_ID \
   --billing-account=BILLING_ACCOUNT_ID \
-  --all-updates-rule-pubsub-topic=projects/my-project/topics/budget-alerts
+  --notifications-rule-pubsub-topic=projects/my-project/topics/budget-alerts
 ```
 
 ## Step 4: Set Up Cost-Saving Practices
@@ -208,7 +207,7 @@ gcloud compute instances update my-vm \
   --zone=us-central1-a \
   --update-labels="environment=production,team=platform,cost-center=eng-001"
 
-gcloud sql instances patch my-database \
+gcloud beta sql instances patch my-database \
   --update-labels="environment=production,team=platform"
 
 gcloud storage buckets update gs://my-bucket \
@@ -252,16 +251,16 @@ gcloud scheduler jobs create http start-dev-instances \
 
 ### Use Committed Use Discounts
 
-For predictable workloads, committed use discounts save 37-57% compared to on-demand pricing:
+For predictable workloads, resource-based committed use discounts save up to 55% for most Compute Engine resources compared to on-demand pricing:
 
 ```bash
 # Purchase a committed use discount for Compute Engine
 # This commits to a specific machine type for 1 or 3 years
 gcloud compute commitments create my-commitment \
-  --plan=twelve-month \
+  --plan=12-month \
   --resources=vcpu=8,memory=32GB \
   --region=us-central1 \
-  --type=GENERAL_PURPOSE
+  --type=general-purpose
 ```
 
 ### Recommendations API
@@ -285,54 +284,18 @@ gcloud recommender recommendations list \
 
 ## Step 5: Create a Cost Dashboard
 
-Build a monitoring dashboard for cost visibility:
+Build a dashboard from the BigQuery billing export for cost visibility:
 
-```bash
-# Create a billing metrics dashboard
-gcloud monitoring dashboards create --config-from-file=/dev/stdin << 'DASHBOARD'
-{
-  "displayName": "Cost and Billing Overview",
-  "gridLayout": {
-    "columns": "2",
-    "widgets": [
-      {
-        "title": "Daily Estimated Charges",
-        "xyChart": {
-          "dataSets": [{
-            "timeSeriesQuery": {
-              "timeSeriesFilter": {
-                "filter": "metric.type=\"billing.googleapis.com/billing/gcp/charges\" resource.type=\"global\"",
-                "aggregation": {
-                  "alignmentPeriod": "86400s",
-                  "perSeriesAligner": "ALIGN_SUM",
-                  "crossSeriesReducer": "REDUCE_SUM",
-                  "groupByFields": ["metric.label.service"]
-                }
-              }
-            },
-            "plotType": "STACKED_BAR"
-          }]
-        }
-      },
-      {
-        "title": "Budget Utilization",
-        "scorecard": {
-          "timeSeriesQuery": {
-            "timeSeriesFilter": {
-              "filter": "metric.type=\"billing.googleapis.com/billing/gcp/charges\" resource.type=\"global\"",
-              "aggregation": {
-                "alignmentPeriod": "2592000s",
-                "perSeriesAligner": "ALIGN_SUM",
-                "crossSeriesReducer": "REDUCE_SUM"
-              }
-            }
-          }
-        }
-      }
-    ]
-  }
-}
-DASHBOARD
+```sql
+-- Create a view that can be used by Looker Studio or another dashboard tool
+CREATE OR REPLACE VIEW `my-project.billing_data.daily_cost_by_service` AS
+SELECT
+  DATE(usage_start_time) AS usage_date,
+  service.description AS service,
+  ROUND(SUM(cost), 2) AS daily_cost
+FROM `my-project.billing_data.gcp_billing_export_v1_*`
+WHERE usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
+GROUP BY usage_date, service;
 ```
 
 ## Cost Control Checklist
