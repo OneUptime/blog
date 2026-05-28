@@ -24,7 +24,7 @@ Setting up CI/CD for GCP workloads is a decision that sticks with you for a whil
 |---------|------------|----------------|----------------|
 | Infrastructure | Serverless | Self-managed (GKE) | GitHub-hosted or self-hosted |
 | Configuration | YAML (cloudbuild.yaml) | Groovy (Jenkinsfile) | YAML (.github/workflows/) |
-| Trigger sources | Cloud Source Repos, GitHub, Bitbucket | Any (plugins) | GitHub events |
+| Trigger sources | GitHub, GitLab, Bitbucket, Cloud Source Repositories (existing customers) | Any (plugins) | GitHub events |
 | Build environment | Docker containers | Docker, VMs, pods | Docker containers |
 | Parallel builds | Yes | Yes (with agents) | Yes (matrix builds) |
 | Artifact storage | Artifact Registry, GCS | Any (plugins) | GitHub Artifacts, GCS |
@@ -173,21 +173,18 @@ apiVersion: v1
 kind: Pod
 spec:
   containers:
-  - name: docker
-    image: docker:latest
+  - name: python
+    image: python:3.11
     command: ['cat']
     tty: true
-    volumeMounts:
-    - name: docker-sock
-      mountPath: /var/run/docker.sock
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:debug
+    command: ['/busybox/cat']
+    tty: true
   - name: gcloud
     image: google/cloud-sdk:latest
     command: ['cat']
     tty: true
-  volumes:
-  - name: docker-sock
-    hostPath:
-      path: /var/run/docker.sock
 """
         }
     }
@@ -195,15 +192,21 @@ spec:
     stages {
         stage('Test') {
             steps {
-                sh 'pip install -r requirements.txt && pytest tests/'
+                container('python') {
+                    sh 'pip install -r requirements.txt && pytest tests/'
+                }
             }
         }
 
         stage('Build') {
             steps {
-                container('docker') {
-                    sh "docker build -t gcr.io/${PROJECT_ID}/my-app:${BUILD_NUMBER} ."
-                    sh "docker push gcr.io/${PROJECT_ID}/my-app:${BUILD_NUMBER}"
+                container('kaniko') {
+                    sh """
+                        /kaniko/executor \
+                            --context ${WORKSPACE} \
+                            --dockerfile ${WORKSPACE}/Dockerfile \
+                            --destination us-central1-docker.pkg.dev/${PROJECT_ID}/my-repo/my-app:${BUILD_NUMBER}
+                    """
                 }
             }
         }
@@ -215,7 +218,7 @@ spec:
                         gcloud container clusters get-credentials my-cluster \
                             --zone us-central1-a
                         kubectl set image deployment/my-app \
-                            my-app=gcr.io/${PROJECT_ID}/my-app:${BUILD_NUMBER}
+                            my-app=us-central1-docker.pkg.dev/${PROJECT_ID}/my-repo/my-app:${BUILD_NUMBER}
                     """
                 }
             }
@@ -331,11 +334,11 @@ For a team running 100 builds per day, each taking 10 minutes:
 
 | Platform | Estimated Monthly Cost |
 |----------|----------------------|
-| Cloud Build | ~$50-100 (pay per build-minute) |
+| Cloud Build | ~$165 on default Linux workers after the free tier |
 | Jenkins on GKE | ~$200-400 (cluster always running) |
-| GitHub Actions | ~$0-80 (2,000 free minutes, then $0.008/min) |
+| GitHub Actions | ~$0 for public repos, or ~$168 for private repos on standard Linux runners after 2,000 free minutes |
 
-GitHub Actions has a generous free tier. Cloud Build is pay-as-you-go with no idle costs. Jenkins costs the most due to the always-on GKE cluster, though you can use autoscaling to reduce costs during quiet periods.
+GitHub Actions has a generous free tier. Cloud Build is pay-as-you-go with no idle costs, and the estimate above uses the current default `e2-standard-2` rate. Jenkins costs the most due to the always-on GKE cluster, though you can use autoscaling to reduce costs during quiet periods.
 
 ## My Recommendation
 
