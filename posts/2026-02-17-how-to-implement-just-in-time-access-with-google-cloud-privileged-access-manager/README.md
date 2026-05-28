@@ -8,7 +8,7 @@ Description: Learn how to implement just-in-time privileged access in Google Clo
 
 ---
 
-Standing privileges are a security problem. When an engineer has permanent admin access to production, that access exists 24/7 whether they need it or not. If their account gets compromised, the attacker inherits all those permissions. Just-in-time (JIT) access flips this model - nobody has elevated privileges by default. When someone needs admin access, they request it, get approved, and receive time-limited credentials that automatically expire.
+Standing privileges are a security problem. When an engineer has permanent admin access to production, that access exists 24/7 whether they need it or not. If their account gets compromised, the attacker inherits all those permissions. Just-in-time (JIT) access flips this model - nobody has elevated privileges by default. When someone needs admin access, they request it, get approved, and receive time-limited IAM access that automatically expires.
 
 Google Cloud Privileged Access Manager (PAM) is the managed service for implementing JIT access in GCP. It lets you create entitlements that define who can request what access, with approval workflows and automatic expiration built in.
 
@@ -28,8 +28,7 @@ sequenceDiagram
     Approver->>PAM: Approve request
     PAM->>IAM: Grant temporary role binding
     Note over IAM: Access active for N hours
-    IAM-->>PAM: Access expires automatically
-    PAM->>IAM: Remove role binding
+    PAM->>IAM: Remove role binding when grant expires
 ```
 
 No permanent elevated roles. No manual cleanup. The access grant has a built-in expiration, and PAM removes the role binding automatically when time is up.
@@ -38,7 +37,7 @@ No permanent elevated roles. No manual cleanup. The access grant has a built-in 
 
 - A Google Cloud organization
 - The Privileged Access Manager API enabled
-- Organization Admin or PAM Admin role
+- Privileged Access Manager Admin plus an IAM administrator role for the scope where you create entitlements
 - An understanding of which roles need JIT access in your environment
 
 ## Step 1: Enable the Privileged Access Manager API
@@ -61,27 +60,44 @@ An entitlement is the central concept in PAM. It defines:
 
 ```bash
 # Create an entitlement for production database admin access
+cat > prod-db-admin.yaml <<'EOF'
+privilegedAccess:
+  gcpIamAccess:
+    resourceType: cloudresourcemanager.googleapis.com/Project
+    resource: //cloudresourcemanager.googleapis.com/projects/my-project
+    roleBindings:
+    - role: roles/cloudsql.admin
+maxRequestDuration: 14400s
+eligibleUsers:
+- principals:
+  - group:backend-engineers@example.com
+approvalWorkflow:
+  manualApprovals:
+    requireApproverJustification: true
+    steps:
+    - approvalsNeeded: 1
+      approvers:
+      - principals:
+        - group:team-leads@example.com
+requesterJustificationConfig:
+  unstructured: {}
+EOF
+
 gcloud pam entitlements create prod-db-admin \
     --project=my-project \
     --location=global \
-    --entitlement-id=prod-db-admin \
-    --eligible-users="group:backend-engineers@example.com" \
-    --privileged-access-roles="roles/cloudsql.admin" \
-    --max-request-duration="4h" \
-    --approval-workflow-approvers="group:team-leads@example.com" \
-    --require-approver-justification=true \
-    --requester-justification-required=true
+    --entitlement-file=prod-db-admin.yaml
 ```
 
 Let me explain each part of this entitlement:
 
-**eligible-users**: The group of people who can request this access. They do not have the access by default - they can only request it.
+**eligibleUsers**: The group of people who can request this access. They do not have the access by default - they can only request it.
 
-**privileged-access-roles**: The IAM role(s) that get granted when the request is approved. You can specify multiple roles for a single entitlement.
+**privilegedAccess.gcpIamAccess.roleBindings**: The IAM role(s) that get granted when the request is approved. You can specify multiple roles for a single entitlement.
 
-**max-request-duration**: The maximum time the access can last. Individual requests can ask for less time, but not more.
+**maxRequestDuration**: The maximum time the access can last. Individual requests can ask for less time, but not more.
 
-**approval-workflow-approvers**: Who needs to approve the request before access is granted.
+**approvalWorkflow.manualApprovals.steps.approvers**: Who needs to approve the request before access is granted.
 
 ## Step 3: Create Multiple Entitlements for Different Access Levels
 
@@ -89,37 +105,83 @@ Most organizations need several entitlements for different scenarios:
 
 ```bash
 # Entitlement for compute admin access (requires approval)
+cat > compute-admin-jit.yaml <<'EOF'
+privilegedAccess:
+  gcpIamAccess:
+    resourceType: cloudresourcemanager.googleapis.com/Project
+    resource: //cloudresourcemanager.googleapis.com/projects/my-project
+    roleBindings:
+    - role: roles/compute.admin
+maxRequestDuration: 7200s
+eligibleUsers:
+- principals:
+  - group:infrastructure-team@example.com
+approvalWorkflow:
+  manualApprovals:
+    steps:
+    - approvalsNeeded: 1
+      approvers:
+      - principals:
+        - group:infra-leads@example.com
+requesterJustificationConfig:
+  unstructured: {}
+EOF
+
 gcloud pam entitlements create compute-admin-jit \
     --project=my-project \
     --location=global \
-    --entitlement-id=compute-admin-jit \
-    --eligible-users="group:infrastructure-team@example.com" \
-    --privileged-access-roles="roles/compute.admin" \
-    --max-request-duration="2h" \
-    --approval-workflow-approvers="group:infra-leads@example.com" \
-    --requester-justification-required=true
+    --entitlement-file=compute-admin-jit.yaml
 
-# Entitlement for billing viewer (auto-approved, lower risk)
-gcloud pam entitlements create billing-viewer-jit \
+# Entitlement for project viewer access (auto-approved, lower risk)
+cat > project-viewer-jit.yaml <<'EOF'
+privilegedAccess:
+  gcpIamAccess:
+    resourceType: cloudresourcemanager.googleapis.com/Project
+    resource: //cloudresourcemanager.googleapis.com/projects/my-project
+    roleBindings:
+    - role: roles/viewer
+maxRequestDuration: 28800s
+eligibleUsers:
+- principals:
+  - group:finance-team@example.com
+requesterJustificationConfig:
+  notMandatory: {}
+EOF
+
+gcloud pam entitlements create project-viewer-jit \
     --project=my-project \
     --location=global \
-    --entitlement-id=billing-viewer-jit \
-    --eligible-users="group:finance-team@example.com" \
-    --privileged-access-roles="roles/billing.viewer" \
-    --max-request-duration="8h" \
-    --no-require-approval
+    --entitlement-file=project-viewer-jit.yaml
 
-# Entitlement for emergency access (requires two approvers)
+# Entitlement for emergency access (requires two approvals)
+cat > emergency-admin.yaml <<'EOF'
+privilegedAccess:
+  gcpIamAccess:
+    resourceType: cloudresourcemanager.googleapis.com/Project
+    resource: //cloudresourcemanager.googleapis.com/projects/my-project
+    roleBindings:
+    - role: roles/owner
+maxRequestDuration: 3600s
+eligibleUsers:
+- principals:
+  - group:on-call-engineers@example.com
+approvalWorkflow:
+  manualApprovals:
+    requireApproverJustification: true
+    steps:
+    - approvalsNeeded: 2
+      approvers:
+      - principals:
+        - group:security-team@example.com
+        - group:engineering-directors@example.com
+requesterJustificationConfig:
+  unstructured: {}
+EOF
+
 gcloud pam entitlements create emergency-admin \
     --project=my-project \
     --location=global \
-    --entitlement-id=emergency-admin \
-    --eligible-users="group:on-call-engineers@example.com" \
-    --privileged-access-roles="roles/owner" \
-    --max-request-duration="1h" \
-    --approval-workflow-approvers="group:security-team@example.com,group:engineering-directors@example.com" \
-    --requester-justification-required=true \
-    --require-approver-justification=true
+    --entitlement-file=emergency-admin.yaml
 ```
 
 ## Step 4: Request Access
@@ -132,7 +194,7 @@ gcloud pam grants create \
     --project=my-project \
     --location=global \
     --entitlement=prod-db-admin \
-    --requested-duration="2h" \
+    --requested-duration="7200s" \
     --justification="Need to investigate slow query on orders table - JIRA-1234"
 ```
 
@@ -144,10 +206,11 @@ Approvers review pending requests and act on them:
 
 ```bash
 # List pending approval requests
-gcloud pam grants list \
+gcloud pam grants search \
     --project=my-project \
     --location=global \
     --entitlement=prod-db-admin \
+    --caller-relationship=can-approve \
     --filter="state=APPROVAL_AWAITED"
 
 # Approve a request
@@ -191,12 +254,24 @@ Set up alerts for sensitive entitlements:
 
 ```bash
 # Create an alert when emergency admin access is granted
+cat > emergency-admin-alert.yaml <<'EOF'
+displayName: Emergency Admin Access Granted
+combiner: OR
+conditions:
+- displayName: PAM emergency admin grant approved
+  conditionMatchedLog:
+    filter: |
+      resource.type="audited_resource"
+      protoPayload.serviceName="privilegedaccessmanager.googleapis.com"
+      protoPayload.methodName="google.cloud.privilegedaccessmanager.v1.PrivilegedAccessManager.ApproveGrant"
+      protoPayload.resourceName:"/entitlements/emergency-admin/"
+notificationChannels:
+- projects/my-project/notificationChannels/CHANNEL_ID
+EOF
+
 gcloud monitoring policies create \
     --project=my-project \
-    --display-name="Emergency Admin Access Granted" \
-    --condition-display-name="PAM emergency admin grant approved" \
-    --condition-filter='resource.type="audited_resource" AND protoPayload.serviceName="privilegedaccessmanager.googleapis.com" AND protoPayload.methodName="ApproveGrant" AND protoPayload.request.entitlement="emergency-admin"' \
-    --notification-channels=CHANNEL_ID
+    --policy-from-file=emergency-admin-alert.yaml
 ```
 
 ## Step 7: Integrate with Incident Management
@@ -207,7 +282,7 @@ JIT access works best when it is integrated with your incident management workfl
 # Example: Script that validates the justification contains a ticket reference
 #!/bin/bash
 # validate-jit-request.sh
-# Called as part of an automated approval workflow
+# Called by an internal wrapper before submitting the PAM grant request
 
 JUSTIFICATION="$1"
 
