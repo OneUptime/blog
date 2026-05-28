@@ -8,7 +8,7 @@ Description: How to diagnose and fix SSL/TLS handshake failures on the Google Cl
 
 ---
 
-SSL handshake failures on your Google Cloud Load Balancer result in clients seeing errors like "ERR_SSL_PROTOCOL_ERROR", "SSL_ERROR_HANDSHAKE_FAILURE_ALERT", or just a connection refused. The request never reaches your backend because the TLS negotiation between the client and the load balancer fails. Here is how to track down and fix these issues.
+SSL handshake failures on your Google Cloud Load Balancer result in clients seeing errors like "ERR_SSL_PROTOCOL_ERROR", "SSL_ERROR_HANDSHAKE_FAILURE_ALERT", or a connection that is reset or closed. The request never reaches your backend because the TLS negotiation between the client and the load balancer fails. Here is how to track down and fix these issues.
 
 ## How SSL Works on the Load Balancer
 
@@ -40,7 +40,7 @@ Common error messages and what they mean:
 - `no peer certificate available` - no certificate is configured for this domain
 - `certificate verify failed` - certificate chain is incomplete or untrusted
 - `sslv3 alert handshake failure` - no common cipher suites or TLS versions
-- `tlsv1 alert internal error` - certificate provisioning issue on GCP side
+- `tlsv1 alert internal error` - can indicate a certificate provisioning or load balancer configuration issue
 
 ## Step 2: Check Certificate Status
 
@@ -57,12 +57,20 @@ For Google-managed certificates, check the provisioning status:
 # Get detailed certificate status
 gcloud compute ssl-certificates describe my-cert \
     --project=my-project \
+    --global \
     --format=json
 ```
 
-The `managed.status` field tells you:
+The `managed.status` field tells you the overall certificate status:
 - `ACTIVE` - certificate is working
-- `PROVISIONING` - certificate is being issued (this can take up to 24 hours for new domains)
+- `PROVISIONING` - certificate is being issued
+- `PROVISIONING_FAILED` - provisioning failed, but Google Cloud might retry
+- `PROVISIONING_FAILED_PERMANENTLY` - provisioning failed permanently and you need to create a replacement certificate
+- `RENEWAL_FAILED` - automatic renewal failed because of DNS or load balancer configuration
+
+The `managed.domainStatus` field shows the per-domain status:
+- `ACTIVE` - the domain has been validated
+- `PROVISIONING` - the domain is still being validated
 - `FAILED_NOT_VISIBLE` - domain DNS is not pointing to the load balancer
 - `FAILED_CAA_CHECKING` - CAA records prevent certificate issuance
 - `FAILED_CAA_FORBIDDEN` - CAA records explicitly forbid issuance
@@ -72,7 +80,7 @@ The `managed.status` field tells you:
 
 ### Domain Not Pointing to Load Balancer
 
-Google-managed certificates require the domain to point to the load balancer's IP address.
+Google-managed certificates require the domain's A and AAAA records to point only to the load balancer's IP address.
 
 ```bash
 # Get the load balancer's IP address
@@ -103,29 +111,29 @@ dig your-domain.com CAA
 dig example.com CAA
 ```
 
-If CAA records exist, they must include `pki.goog` to allow Google-managed certificates:
+If CAA records exist, they must include a CA that Google Cloud uses. For best reliability, allow both `pki.goog` and `letsencrypt.org`:
 
 ```text
-; Add this CAA record to your DNS
+; Add these CAA records to your DNS
 your-domain.com. IN CAA 0 issue "pki.goog"
+your-domain.com. IN CAA 0 issue "letsencrypt.org"
 ```
 
 ### Certificate Stuck in PROVISIONING
 
-If a certificate has been provisioning for more than a few hours:
+If a certificate has been provisioning for more than a few hours and DNS, CAA, and target proxy attachment are correct, create a replacement certificate and attach it alongside the existing certificates:
 
 ```bash
-# Delete and recreate the certificate
-gcloud compute ssl-certificates delete my-cert --project=my-project
-
-gcloud compute ssl-certificates create my-cert \
+# Create a replacement certificate with a new name
+gcloud compute ssl-certificates create my-cert-v2 \
     --domains=your-domain.com,www.your-domain.com \
     --global \
     --project=my-project
 
-# Attach it to the target HTTPS proxy
+# Attach it to the target HTTPS proxy and keep any existing valid certificates
 gcloud compute target-https-proxies update my-https-proxy \
-    --ssl-certificates=my-cert \
+    --ssl-certificates=my-cert-v2,my-cert \
+    --global-ssl-certificates \
     --global \
     --project=my-project
 ```
@@ -147,7 +155,7 @@ gcloud compute ssl-policies describe my-ssl-policy \
     --project=my-project
 ```
 
-If your SSL policy requires TLS 1.3 and some clients only support TLS 1.2, those clients will fail to connect.
+If your SSL policy requires TLS 1.3 and some clients only support TLS 1.2, those clients will fail to connect. TLS 1.3 minimum versions are available only with the `RESTRICTED` profile; custom SSL policies can use TLS 1.0 through TLS 1.2 as their minimum version.
 
 ```bash
 # List available SSL policy profiles
@@ -181,7 +189,7 @@ For self-managed (uploaded) certificates, an incomplete certificate chain causes
 openssl s_client -connect your-domain.com:443 -servername your-domain.com -showcerts 2>/dev/null
 
 # Verify the chain is complete
-openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt <(openssl s_client -connect your-domain.com:443 -servername your-domain.com 2>/dev/null | openssl x509)
+echo | openssl s_client -connect your-domain.com:443 -servername your-domain.com -showcerts -verify 99 -verify_return_error
 ```
 
 If the chain is incomplete, upload a new certificate with the full chain:
@@ -238,13 +246,15 @@ The first certificate in the list is the default (served when SNI does not match
 ## Step 8: Check Load Balancer Logs
 
 ```bash
-# Search for SSL handshake errors in logs
+# Search for TLS-related log details that reached HTTP(S) logging
 gcloud logging read \
-    'resource.type="http_load_balancer" AND jsonPayload.statusDetails:"ssl"' \
+    'resource.type="http_load_balancer" AND (jsonPayload.tls:* OR jsonPayload.statusDetails:"ssl" OR jsonPayload.statusDetails:"client_cert")' \
     --project=my-project \
     --limit=20 \
-    --format="json(httpRequest, jsonPayload.statusDetails)"
+    --format="json(httpRequest, jsonPayload.statusDetails, jsonPayload.tls)"
 ```
+
+Some frontend TLS handshake failures happen before an HTTP request is logged, so use logs together with the certificate, DNS, SNI, and SSL policy checks above.
 
 ## Debugging Flowchart
 
@@ -256,7 +266,7 @@ flowchart TD
     D -->|PROVISIONING| E{DNS points to LB?}
     E -->|No| F[Update DNS records]
     E -->|Yes| G{CAA records OK?}
-    G -->|No| H[Add pki.goog to CAA]
+    G -->|No| H[Allow pki.goog and letsencrypt.org in CAA]
     G -->|Yes| I[Wait or recreate certificate]
     D -->|ACTIVE| J{Certificate expired?}
     J -->|Yes| K[Renew or replace certificate]
