@@ -29,7 +29,7 @@ Before diving in, make sure you have:
 - A Google Cloud project with billing enabled
 - The Workflows API enabled
 - The `gcloud` CLI installed and configured
-- A service account with the `workflows.invoker` role
+- A caller identity with the `workflows.callbacks.send` permission, which is included in the `workflows.invoker` role
 
 You can enable the Workflows API with this command.
 
@@ -157,7 +157,7 @@ curl -X POST "CALLBACK_URL" \
 
 ## Handling Timeouts
 
-The `timeout` parameter in `events.await_callback` is specified in seconds. If the callback is not received within that window, the workflow will fail with a timeout error. You should handle this gracefully.
+The `timeout` parameter in `events.await_callback` is specified in seconds. If the callback is not received within that window, the function raises a `TimeoutError`. You should handle this gracefully.
 
 ```yaml
 # Adding error handling around the callback wait
@@ -173,7 +173,7 @@ The `timeout` parameter in `events.await_callback` is specified in seconds. If t
       steps:
         - handle_timeout:
             switch:
-              - condition: ${e.code == 408}
+              - condition: ${"TimeoutError" in e.tags}
                 steps:
                   - timeout_log:
                       call: sys.log
@@ -191,7 +191,7 @@ The `timeout` parameter in `events.await_callback` is specified in seconds. If t
 
 ## Authentication for Callback Endpoints
 
-By default, callback endpoints require authentication. The caller must include a valid OAuth 2.0 access token or an identity token with the appropriate permissions. The service account that the workflow runs as must have the `workflows.invoker` role.
+By default, callback endpoints require authentication. The caller must include a valid OAuth 2.0 access token for an identity with the `workflows.callbacks.send` permission. The `workflows.invoker` role includes this permission.
 
 If you need an external system without Google credentials to trigger the callback, you can place an intermediary service (like a Cloud Function or Cloud Run service) in front of it that handles authentication translation.
 
