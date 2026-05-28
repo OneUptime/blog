@@ -108,7 +108,7 @@ The billing works like this:
 - **Active instances** (processing requests): Full CPU and memory billing
 - **Idle minimum instances** (warm but not processing): CPU billing at a lower rate, full memory billing
 
-With the default "CPU is only allocated during request processing" setting, idle instances are billed for memory only. If you set "CPU is always allocated," idle instances are billed for both CPU and memory.
+With the default request-based billing model, idle minimum instances are billed for CPU at the lower idle rate and for memory. If you use instance-based billing, instances are billed at the default rate for their entire lifecycle, including idle time.
 
 Let me break down the cost for a single minimum instance:
 
@@ -121,12 +121,12 @@ Active cost:
   Total active: $0.0909/hour
 
 Idle cost (minimum instance):
-  CPU: $0 (not allocated when idle, in request-based billing)
+  CPU: $0.00000250/vCPU-second * 3600 = $0.0090/hour
   Memory: $0.00000250/GiB-second * 0.5 * 3600 = $0.0045/hour
-  Total idle: $0.0045/hour
+  Total idle: $0.0135/hour
 ```
 
-So keeping one minimum instance warm costs about $3.24/month in memory charges with the default billing model. That is a small price for eliminating cold starts.
+So keeping one minimum instance warm costs about $10/month before free tier, request charges, regional variations, and discounts with the default billing model. That is a small price for eliminating cold starts.
 
 ## Choosing the Right Number of Minimum Instances
 
@@ -192,7 +192,7 @@ gcloud run services update my-service \
   --cpu-boost
 ```
 
-This doubles the CPU allocation during startup (up to a limit), which can significantly reduce cold start time for CPU-bound initialization.
+This increases the CPU allocation during startup based on your configured CPU limit, which can significantly reduce cold start time for CPU-bound initialization.
 
 ## Monitoring Cold Starts
 
