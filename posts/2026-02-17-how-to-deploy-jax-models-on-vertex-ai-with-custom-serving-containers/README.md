@@ -24,9 +24,10 @@ This code shows different approaches to saving JAX model artifacts:
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
-from flax.training import checkpoints
+import orbax.checkpoint as ocp
 import pickle
 import json
+import os
 
 # Define a simple Flax model
 
@@ -52,14 +53,11 @@ model = TextClassifier()
 key = jax.random.PRNGKey(42)
 dummy_input = jnp.ones((1, 128), dtype=jnp.int32)
 params = model.init(key, dummy_input)
+os.makedirs("model_artifacts", exist_ok=True)
 
-# Option 1: Save with Flax checkpoints
-checkpoints.save_checkpoint(
-    ckpt_dir="model_artifacts/",
-    target=params,
-    step=0,
-    overwrite=True
-)
+# Option 1: Save with Orbax checkpoints
+with ocp.StandardCheckpointer() as checkpointer:
+    checkpointer.save("model_artifacts/params_orbax", params, force=True)
 
 # Option 2: Save as a pickle file (simpler but less portable)
 with open("model_artifacts/params.pkl", "wb") as f:
@@ -95,10 +93,8 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
-from flax.training import checkpoints
 from flask import Flask, request, jsonify
 from google.cloud import storage
-import functools
 
 app = Flask(__name__)
 
@@ -223,8 +219,9 @@ def predict():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+load_model()
+
 if __name__ == "__main__":
-    load_model()
     port = int(os.environ.get("AIP_HTTP_PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 ```
@@ -234,28 +231,22 @@ if __name__ == "__main__":
 This Dockerfile builds a container with JAX and GPU support:
 
 ```dockerfile
-# Use a CUDA base for GPU support
-FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
-
-# Install Python
-RUN apt-get update && apt-get install -y \
-    python3.10 python3-pip \
-    && rm -rf /var/lib/apt/lists/*
+FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install JAX with GPU support
-RUN pip3 install --no-cache-dir \
-    "jax[cuda12_pip]==0.4.20" \
-    -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+# Install JAX with CUDA 12 support. Vertex AI provides the NVIDIA driver;
+# the JAX CUDA wheel installs the CUDA and cuDNN runtime libraries.
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir "jax[cuda12]"
 
 # Install other dependencies
-RUN pip3 install --no-cache-dir \
-    flax==0.7.5 \
-    flask==3.0.0 \
-    gunicorn==21.2.0 \
-    google-cloud-storage==2.13.0 \
-    numpy==1.26.0
+RUN pip install --no-cache-dir \
+    flax \
+    flask \
+    gunicorn \
+    google-cloud-storage \
+    numpy
 
 # Copy application code
 COPY server.py .
@@ -328,6 +319,7 @@ This code shows optimized inference with batch padding:
 
 import jax
 import jax.numpy as jnp
+import functools
 
 # Pre-compile for common batch sizes to avoid recompilation
 BATCH_SIZES = [1, 4, 8, 16, 32]
@@ -384,13 +376,13 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # Install JAX CPU-only version
-RUN pip install --no-cache-dir \
-    jax==0.4.20 \
-    jaxlib==0.4.20 \
-    flax==0.7.5 \
-    flask==3.0.0 \
-    gunicorn==21.2.0 \
-    google-cloud-storage==2.13.0
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+    jax \
+    flax \
+    flask \
+    gunicorn \
+    google-cloud-storage
 
 COPY server.py .
 
