@@ -8,7 +8,7 @@ Description: Learn how to enable and configure audit logging for Identity-Aware 
 
 ---
 
-When you put IAP in front of your applications, you want to know who accessed what and when. Audit logs answer those questions. They record every authentication attempt, every authorization decision, and every configuration change related to your IAP-protected resources.
+When you put IAP in front of your applications, you want to know who accessed what and when. Audit logs answer those questions. They record access attempts and authorization decisions for non-public IAP-protected resources, along with configuration changes related to your IAP-protected resources.
 
 For compliance teams, audit logs are not optional - they are a requirement. For security teams, they are essential for incident response. And for operations teams, they help debug access issues. Let me show you how to set up and use IAP audit logging effectively.
 
@@ -18,9 +18,9 @@ IAP generates several types of audit log entries:
 
 1. **Admin Activity logs**: Configuration changes to IAP (enabling/disabling, changing settings, modifying IAM policies). These are always enabled and cannot be turned off.
 
-2. **Data Access logs**: User access attempts to IAP-protected resources. These need to be explicitly enabled.
+2. **Data Access logs**: User access attempts to non-public IAP-protected resources. These need to be explicitly enabled.
 
-3. **Policy Denied logs**: Requests denied by organization policies. Always enabled.
+3. **Policy Denied logs**: Requests denied because of security policy violations. Always enabled.
 
 The data access logs are the most valuable for tracking user activity, and they are the ones you need to enable manually.
 
@@ -65,17 +65,9 @@ Apply the updated policy:
 gcloud projects set-iam-policy my-project-id /tmp/policy.json
 ```
 
-Alternatively, use the `gcloud` command directly:
+Make sure you preserve the existing `bindings` and `etag` fields in the policy file. Accidentally replacing the policy with only the `auditConfigs` section can remove existing IAM access.
 
-```bash
-# Enable all data access log types for IAP
-gcloud projects add-iam-policy-binding my-project-id \
-    --member="allAuthenticatedUsers" \
-    --role="roles/viewer" \
-    --condition="None"
-```
-
-Actually, the cleanest way is through the Cloud Console. Go to IAM & Admin, then Audit Logs, find "Identity-Aware Proxy" in the list, and check all three log types.
+The cleanest way is through the Cloud Console. Go to IAM & Admin, then Audit Logs, find "Identity-Aware Proxy" in the list, and check the Data Read, Data Write, and Admin Read log types.
 
 ## Step 2: Viewing IAP Audit Logs
 
@@ -86,7 +78,7 @@ Once enabled, you can query IAP audit logs using Cloud Logging.
 ```bash
 # View all IAP access authorization events
 gcloud logging read \
-    'resource.type="iap_web" AND protoPayload.methodName="AuthorizeUser"' \
+    'logName:"cloudaudit.googleapis.com%2Fdata_access" AND protoPayload.serviceName="iap.googleapis.com" AND protoPayload.methodName="AuthorizeUser"' \
     --limit=20 \
     --project=my-project-id \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.status.code, protoPayload.resourceName)"
@@ -97,7 +89,7 @@ gcloud logging read \
 ```bash
 # View only denied access attempts
 gcloud logging read \
-    'resource.type="iap_web" AND protoPayload.methodName="AuthorizeUser" AND protoPayload.status.code!=0' \
+    'logName:"cloudaudit.googleapis.com%2Fdata_access" AND protoPayload.serviceName="iap.googleapis.com" AND protoPayload.methodName="AuthorizeUser" AND protoPayload.status.code!=0' \
     --limit=20 \
     --project=my-project-id \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.status.message)"
@@ -108,7 +100,7 @@ gcloud logging read \
 ```bash
 # View changes to IAP settings and IAM policies
 gcloud logging read \
-    'resource.type="iap_web" AND protoPayload.methodName="SetIamPolicy"' \
+    'protoPayload.serviceName="iap.googleapis.com" AND protoPayload.methodName="google.cloud.iap.v1.IdentityAwareProxyAdminService.SetIamPolicy"' \
     --limit=10 \
     --project=my-project-id \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.methodName)"
@@ -119,7 +111,7 @@ gcloud logging read \
 ```bash
 # View IAP TCP tunnel events (SSH tunneling)
 gcloud logging read \
-    'resource.type="gce_instance" AND protoPayload.methodName:"tunnelInstances"' \
+    'resource.type="gce_instance" AND protoPayload.serviceName="iap.googleapis.com" AND protoPayload.authorizationInfo.permission="iap.tunnelInstances.accessViaIAP"' \
     --limit=20 \
     --project=my-project-id \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.resourceName)"
@@ -154,10 +146,11 @@ Here is what an IAP access audit log entry looks like:
     ]
   },
   "resource": {
-    "type": "iap_web",
+    "type": "gce_backend_service",
     "labels": {
       "project_id": "my-project-id",
-      "service": "my-backend-service"
+      "backend_service_id": "1234567890",
+      "location": "global"
     }
   },
   "timestamp": "2026-02-17T10:30:00.000Z"
@@ -180,7 +173,7 @@ Create alerts for security-relevant events.
 # Create a log-based metric for IAP access denials
 gcloud logging metrics create iap-access-denied \
     --description="Count of IAP access denied events" \
-    --log-filter='resource.type="iap_web" AND protoPayload.methodName="AuthorizeUser" AND protoPayload.status.code!=0' \
+    --log-filter='logName:"cloudaudit.googleapis.com%2Fdata_access" AND protoPayload.serviceName="iap.googleapis.com" AND protoPayload.methodName="AuthorizeUser" AND protoPayload.status.code!=0' \
     --project=my-project-id
 ```
 
@@ -192,7 +185,7 @@ Then create an alerting policy in Cloud Monitoring that triggers when this metri
 # Create a log-based metric for IAP configuration changes
 gcloud logging metrics create iap-config-changes \
     --description="Count of IAP configuration changes" \
-    --log-filter='resource.type="iap_web" AND (protoPayload.methodName="SetIamPolicy" OR protoPayload.methodName="UpdateIapSettings")' \
+    --log-filter='protoPayload.serviceName="iap.googleapis.com" AND (protoPayload.methodName="google.cloud.iap.v1.IdentityAwareProxyAdminService.SetIamPolicy" OR protoPayload.methodName="google.cloud.iap.v1.IdentityAwareProxyAdminService.UpdateIapSettings")' \
     --project=my-project-id
 ```
 
@@ -206,8 +199,22 @@ Cloud Logging retains logs for a limited time (30 days for data access logs by d
 # Create a log sink to export IAP logs to Cloud Storage
 gcloud logging sinks create iap-audit-archive \
     'storage.googleapis.com/my-audit-log-bucket' \
-    --log-filter='resource.type="iap_web"' \
+    --log-filter='protoPayload.serviceName="iap.googleapis.com"' \
     --project=my-project-id
+```
+
+Grant the sink's service account write access to the bucket.
+
+```bash
+# Get the sink writer identity
+WRITER=$(gcloud logging sinks describe iap-audit-archive \
+    --format="value(writerIdentity)" \
+    --project=my-project-id)
+
+# Grant write access to Cloud Storage
+gcloud storage buckets add-iam-policy-binding gs://my-audit-log-bucket \
+    --member="$WRITER" \
+    --role="roles/storage.objectCreator"
 ```
 
 ### Export to BigQuery
@@ -218,7 +225,7 @@ For analysis, export to BigQuery.
 # Create a log sink to export IAP logs to BigQuery
 gcloud logging sinks create iap-audit-bigquery \
     'bigquery.googleapis.com/projects/my-project-id/datasets/audit_logs' \
-    --log-filter='resource.type="iap_web"' \
+    --log-filter='protoPayload.serviceName="iap.googleapis.com"' \
     --project=my-project-id
 ```
 
@@ -230,11 +237,10 @@ WRITER=$(gcloud logging sinks describe iap-audit-bigquery \
     --format="value(writerIdentity)" \
     --project=my-project-id)
 
-# Grant write access to BigQuery
-bq add-iam-policy-binding \
+# Grant write access to BigQuery at the project level
+gcloud projects add-iam-policy-binding my-project-id \
     --member="$WRITER" \
-    --role="roles/bigquery.dataEditor" \
-    my-project-id:audit_logs
+    --role="roles/bigquery.dataEditor"
 ```
 
 ## Step 6: Query Logs in BigQuery
@@ -249,7 +255,7 @@ SELECT
 FROM
     `my-project-id.audit_logs.cloudaudit_googleapis_com_data_access_*`
 WHERE
-    resource.type = 'iap_web'
+    protopayload_auditlog.serviceName = 'iap.googleapis.com'
     AND protopayload_auditlog.methodName = 'AuthorizeUser'
     AND _TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', CURRENT_DATE())
 GROUP BY user_email
@@ -267,7 +273,7 @@ SELECT
 FROM
     `my-project-id.audit_logs.cloudaudit_googleapis_com_data_access_*`
 WHERE
-    resource.type = 'iap_web'
+    protopayload_auditlog.serviceName = 'iap.googleapis.com'
     AND protopayload_auditlog.methodName = 'AuthorizeUser'
     AND protopayload_auditlog.status.code != 0
     AND _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))
@@ -299,7 +305,7 @@ resource "google_project_iam_audit_config" "iap_audit" {
 resource "google_logging_project_sink" "iap_bigquery" {
   name        = "iap-audit-bigquery"
   destination = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${google_bigquery_dataset.audit_logs.dataset_id}"
-  filter      = "resource.type=\"iap_web\""
+  filter      = "protoPayload.serviceName=\"iap.googleapis.com\""
 
   unique_writer_identity = true
 }
@@ -326,16 +332,16 @@ Data access logs can generate significant volume, especially for high-traffic ap
 
 - **Exclusion filters**: If you do not need logs for specific backend services, exclude them.
 - **Log retention**: Reduce the default retention period if you are exporting to cheaper storage.
-- **Sampling**: For very high-traffic applications, consider whether you need every single log entry.
+- **Sampling exclusions**: For very high-traffic applications, consider whether a sampled exclusion filter is appropriate for non-critical logs.
 
 ```bash
 # Create an exclusion filter for non-critical backend services
-gcloud logging sinks create iap-exclude-staging \
-    --log-filter='resource.type="iap_web" AND resource.labels.service="staging-backend"' \
-    --exclusion \
+gcloud logging exclusions create iap-exclude-staging \
+    --description="Exclude IAP logs for staging backend" \
+    --log-filter='protoPayload.serviceName="iap.googleapis.com" AND protoPayload.resourceName:"/services/staging-backend"' \
     --project=my-project-id
 ```
 
 ## Summary
 
-IAP audit logging gives you full visibility into who accesses your applications and when. Enable data access logs for IAP, set up log-based alerts for security events, and export logs to BigQuery or Cloud Storage for long-term retention and analysis. The admin activity logs (configuration changes) are always on, but data access logs need to be explicitly enabled. For compliance, make sure you export logs before they age out of Cloud Logging's default retention period.
+IAP audit logging gives you visibility into who accesses non-public IAP-protected applications and when. Enable data access logs for IAP, set up log-based alerts for security events, and export logs to BigQuery or Cloud Storage for long-term retention and analysis. The admin activity logs (configuration changes) are always on, but data access logs need to be explicitly enabled. For compliance, make sure you export logs before they age out of Cloud Logging's default retention period.
