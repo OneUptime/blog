@@ -8,13 +8,13 @@ Description: Learn how to deploy Traffic Director on GCP as a managed control pl
 
 ---
 
-Running a service mesh at scale means you need a control plane that configures your data plane proxies - telling them where to route traffic, how to balance load, and when to retry failed requests. Traffic Director is Google Cloud's managed control plane that works with Envoy proxies. Instead of running and maintaining your own control plane (like Istio's istiod), you let Google manage it, and your Envoy sidecars connect to Traffic Director to get their configuration.
+Running a service mesh at scale means you need a control plane that configures your data plane proxies - telling them where to route traffic, how to balance load, and when to retry failed requests. Traffic Director is now part of Cloud Service Mesh, Google Cloud's managed control plane that works with Envoy proxies. Instead of running and maintaining your own control plane (like Istio's istiod), you let Google manage it, and your Envoy sidecars connect to Traffic Director to get their configuration.
 
-This guide walks through deploying Traffic Director with Envoy proxies on Compute Engine VMs. The same concepts apply to GKE, but the VM-based approach makes it easier to see exactly what is happening.
+This guide walks through deploying Traffic Director with Envoy proxies on Compute Engine VMs by using the legacy load balancing APIs. The same concepts apply to GKE, but the VM-based approach makes it easier to see exactly what is happening.
 
 ## Architecture Overview
 
-Traffic Director acts as an xDS server. Envoy proxies connect to it and receive configuration about services, routes, and health check policies. When you create GCP resources like backend services, URL maps, and health checks, Traffic Director translates them into xDS configuration and pushes it to connected Envoy instances.
+Cloud Service Mesh acts as an xDS server. Envoy proxies connect to it and receive configuration about services, routes, and health check policies. When you create GCP resources like backend services, URL maps, and health checks, Cloud Service Mesh translates them into xDS configuration and sends it to connected Envoy instances.
 
 ```mermaid
 flowchart TD
@@ -39,9 +39,15 @@ Before you start, enable the necessary APIs.
 gcloud services enable trafficdirector.googleapis.com
 gcloud services enable compute.googleapis.com
 gcloud services enable networkservices.googleapis.com
+gcloud services enable dns.googleapis.com
 
-# Verify your project has the right permissions
+# Get your project number for later commands
 gcloud projects describe my-project --format="value(projectNumber)"
+
+# Grant the Cloud Service Mesh Client role to the service account used by the Envoy VMs
+gcloud projects add-iam-policy-binding my-project \
+    --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+    --role=roles/trafficdirector.client
 ```
 
 You also need a VPC network and firewall rules that allow health check traffic from Google's health check IP ranges.
@@ -77,8 +83,9 @@ gcloud compute health-checks create http td-health-check \
 # Create the backend service
 gcloud compute backend-services create my-app-service \
     --global \
-    --protocol=HTTP2 \
+    --protocol=HTTP \
     --health-checks=td-health-check \
+    --connection-draining-timeout=30s \
     --load-balancing-scheme=INTERNAL_SELF_MANAGED
 ```
 
@@ -98,7 +105,7 @@ gcloud compute target-http-proxies create td-http-proxy \
     --url-map=td-url-map
 
 # Create a global forwarding rule that ties everything together
-# The IP 0.0.0.0 means this applies to all traffic matching the port
+# The IP 0.0.0.0 routes based on the HTTP host and path, regardless of the resolved destination IP
 gcloud compute forwarding-rules create td-forwarding-rule \
     --global \
     --load-balancing-scheme=INTERNAL_SELF_MANAGED \
@@ -110,62 +117,44 @@ gcloud compute forwarding-rules create td-forwarding-rule \
 
 ## Step 3 - Set Up VMs with Envoy Sidecar
 
-Now you need VMs that run both your application and an Envoy sidecar. Google provides a managed Envoy setup through VM metadata.
+Now you need VMs that run both your application and an Envoy sidecar. Google provides a managed Envoy setup through the instance template's service proxy configuration.
 
 ```bash
-# Create an instance template with Envoy sidecar auto-injection
+# Create an instance template with automatic Envoy deployment
 gcloud compute instance-templates create td-vm-template \
     --machine-type=e2-medium \
     --network=my-vpc \
     --subnet=my-subnet \
-    --scopes=cloud-platform \
+    --scopes=https://www.googleapis.com/auth/cloud-platform \
     --image-family=debian-11 \
     --image-project=debian-cloud \
     --metadata=enable-osconfig=TRUE \
-    --service-proxy=enabled,serving-ports="8080"
+    --service-proxy=enabled,serving-ports=8080
 ```
 
 The `--service-proxy=enabled` flag tells GCP to automatically install and configure Envoy on the VM. The `serving-ports` parameter tells Envoy which ports your application listens on.
 
-If you prefer to install Envoy manually, you can use the Traffic Director bootstrap configuration.
+If you prefer to install Envoy manually, use the Envoy bootstrap template that Google provides for Cloud Service Mesh.
 
 ```bash
-# Download the Traffic Director bootstrap generator
-wget https://storage.googleapis.com/traffic-director/td-grpc-bootstrap-0.16.0.tar.gz
-tar xzf td-grpc-bootstrap-0.16.0.tar.gz
+# Download the Traffic Director xDS v3 Envoy bootstrap template
+curl -L -o traffic-director-xdsv3.tar.gz \
+    https://storage.googleapis.com/traffic-director/traffic-director-xdsv3.tar.gz
+tar xzf traffic-director-xdsv3.tar.gz traffic-director-xdsv3/bootstrap_template.yaml
 
-# Generate the bootstrap configuration
-./td-grpc-bootstrap \
-    --config-mesh-experimental \
-    --output bootstrap.json
+# Copy the template and replace placeholders such as PROJECT_NUMBER,
+# NETWORK_NAME, ENVOY_NODE_ID, and ENVOY_ZONE for your VM.
+cp traffic-director-xdsv3/bootstrap_template.yaml bootstrap.yaml
 ```
 
-Then configure Envoy to use this bootstrap:
+In the generated Envoy bootstrap, the node metadata must include the Cloud Service Mesh network and project attributes:
 
 ```yaml
-# envoy-config.yaml - Basic Envoy configuration pointing to Traffic Director
 node:
-  id: "envoy-node-1"
-  cluster: "my-app-cluster"
   metadata:
-    # These labels help Traffic Director match this proxy to backend services
-    app: "my-app"
-
-dynamic_resources:
-  # ADS (Aggregated Discovery Service) configuration
-  ads_config:
-    api_type: GRPC
-    transport_api_version: V3
-    grpc_services:
-      - google_grpc:
-          target_uri: "trafficdirector.googleapis.com:443"
-          stat_prefix: "trafficdirector"
-          channel_credentials:
-            ssl_credentials:
-              root_certs:
-                filename: /etc/ssl/certs/ca-certificates.crt
-          call_credentials:
-            google_compute_engine: {}
+    TRAFFICDIRECTOR_INTERCEPTION_PORT: "15001"
+    TRAFFICDIRECTOR_NETWORK_NAME: "my-vpc"
+    TRAFFICDIRECTOR_GCP_PROJECT_NUMBER: "123456789012"
 ```
 
 ## Step 4 - Create the Managed Instance Group
@@ -195,13 +184,14 @@ gcloud compute backend-services add-backend my-app-service \
 
 ## Step 5 - Verify Traffic Director Configuration
 
-Check that Traffic Director is properly configured and Envoy proxies are connected.
+Check that Traffic Director is properly configured and the backends are healthy.
 
 ```bash
-# Check the status of Traffic Director
-gcloud network-services endpoint-policies list
+# Check the Traffic Director forwarding rule and URL map
+gcloud compute forwarding-rules describe td-forwarding-rule --global
+gcloud compute url-maps describe td-url-map
 
-# Check if Envoy proxies are connected and receiving configuration
+# Check backend health
 gcloud compute backend-services get-health my-app-service \
     --global
 ```
