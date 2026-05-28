@@ -8,7 +8,7 @@ Description: A practical guide to implementing cross-region Firestore replicatio
 
 ---
 
-If you are building an application that serves users across multiple continents, latency becomes your enemy. A user in Tokyo should not have to wait 200ms for every database read because your Firestore instance sits in us-central1. Cross-region replication is how you solve this, and Firestore actually makes it easier than most databases.
+If you are building an application that serves users across multiple continents, latency becomes your enemy. A user in Tokyo should not have to wait 200ms for every database read because your Firestore instance sits in us-central1. For users outside Firestore's built-in multi-region locations, custom regional databases can help, and Firestore makes the built-in US and Europe multi-region case easier than most databases.
 
 In this post, I will cover how Firestore handles multi-region replication natively, how to configure it properly, and what patterns to use when you need even more control over data distribution.
 
@@ -18,31 +18,40 @@ Firestore offers two location types when you create a database: regional and mul
 
 **Regional locations** replicate data across multiple zones within a single region. This gives you zone-level fault tolerance at lower cost.
 
-**Multi-region locations** replicate data across multiple regions, giving you region-level fault tolerance and lower read latency for geographically distributed users.
+**Multi-region locations** replicate data across multiple regions, giving you region-level fault tolerance and potentially lower latency when your users and compute are close to the selected multi-region.
 
-The two multi-region options available are:
+The multi-region options available are:
 
-- **nam5** (United States) - replicates across multiple regions in North America
-- **eur3** (Europe) - replicates across multiple regions in Europe
+- **nam5** (United States Central) - read-write replicas in `us-central1` and `us-central2`, with a witness in `us-east1`
+- **nam7** (United States Central and East) - read-write replicas in `us-central1` and `us-east4`, with a witness in `us-central2`
+- **eur3** (Europe) - read-write replicas in `europe-west1` and `europe-west4`, with a witness in `europe-north1`
 
 ```mermaid
 graph LR
     subgraph "nam5 Multi-Region"
-        R1[us-central]
-        R2[us-east1]
-        R3[us-west1]
+        R1[us-central1 read-write]
+        R2[us-central2 read-write]
+        R3[us-east1 witness]
+    end
+
+    subgraph "nam7 Multi-Region"
+        R4[us-central1 read-write]
+        R5[us-east4 read-write]
+        R6[us-central2 witness]
     end
 
     subgraph "eur3 Multi-Region"
-        R4[europe-west1]
-        R5[europe-west4]
-        R6[europe-central2]
+        R7[europe-west1 read-write]
+        R8[europe-west4 read-write]
+        R9[europe-north1 witness]
     end
 
     R1 <-->|Sync Replication| R2
-    R2 <-->|Sync Replication| R3
+    R2 <-->|Replication quorum| R3
     R4 <-->|Sync Replication| R5
-    R5 <-->|Sync Replication| R6
+    R5 <-->|Replication quorum| R6
+    R7 <-->|Sync Replication| R8
+    R8 <-->|Replication quorum| R9
 ```
 
 ## Creating a Multi-Region Firestore Database
@@ -65,7 +74,8 @@ If you already have a regional Firestore database and want multi-region coverage
 gcloud firestore export gs://my-backup-bucket/firestore-export \
   --project=my-global-app
 
-# Create the new multi-region database (in a new project or after deleting the old one)
+# Create the new multi-region database in a new project. You can also
+# create a separate database ID in the same project and cut over to it.
 gcloud firestore databases create \
   --location=nam5 \
   --type=firestore-native \
@@ -82,11 +92,11 @@ Multi-region replication handles the infrastructure side, but your data model ma
 
 ### Pattern 1: Region-Aware Collections
 
-Structure your data so that region-specific information is grouped together. This reduces cross-region write contention:
+Structure your data so that region-specific information is grouped together. This reduces write contention on shared documents:
 
 ```javascript
 // Each user's data is primarily written from their home region
-// This structure minimizes cross-region write conflicts
+// This structure minimizes write contention on shared documents
 
 const userRef = db.collection('users').doc(userId);
 
@@ -103,7 +113,7 @@ await userRef.set({
 });
 
 // Region-specific activity logs go in subcollections
-// These are mostly written from one region, reducing conflicts
+// These are mostly written from one region, reducing contention
 await userRef.collection('activity').add({
   action: 'login',
   region: 'us-east1',
@@ -111,9 +121,9 @@ await userRef.collection('activity').add({
 });
 ```
 
-### Pattern 2: Read-Heavy Global Data with Local Writes
+### Pattern 2: Read-Heavy Global Data with Central Writes
 
-For data that is read globally but written from a single region, use a publish/subscribe pattern:
+For data that is read globally but written from a single region, use a central-write/read-many pattern:
 
 ```javascript
 // Global configuration - written by admins, read everywhere
@@ -131,8 +141,7 @@ async function updateGlobalConfig(configUpdate) {
   });
 }
 
-// Clients worldwide read this with low latency
-// because Firestore serves reads from the nearest replica
+// Clients read the same strongly consistent multi-region database
 async function getGlobalConfig() {
   const configRef = db.collection('global_config').doc('app_settings');
   const snapshot = await configRef.get();
@@ -153,11 +162,9 @@ Set up Firestore triggers that replicate writes across independent Firestore dat
 // Triggers on writes to the US database and syncs to the APAC database
 
 const { Firestore } = require('@google-cloud/firestore');
+const functions = require('firebase-functions');
 
-// Primary database (nam5)
-const primaryDb = new Firestore({ projectId: 'my-app-us' });
-
-// Secondary database (asia-southeast1)
+// Secondary project whose Firestore database is in asia-southeast1
 const secondaryDb = new Firestore({ projectId: 'my-app-asia' });
 
 exports.replicateToAsia = functions
@@ -207,7 +214,10 @@ async function replicateWithConflictResolution(sourceData, targetDb, collectionP
       const targetData = targetDoc.data();
 
       // Compare timestamps - only overwrite if source is newer
-      if (sourceData.updatedAt > targetData.updatedAt) {
+      const sourceUpdatedAt = sourceData.updatedAt?.toMillis?.() || 0;
+      const targetUpdatedAt = targetData.updatedAt?.toMillis?.() || 0;
+
+      if (sourceUpdatedAt > targetUpdatedAt) {
         transaction.set(targetRef, sourceData, { merge: true });
       }
       // If target is newer, skip this replication
@@ -233,7 +243,7 @@ const projectPath = client.projectPath('my-global-app');
 async function reportReplicationLag(sourceRegion, targetRegion, lagMs) {
   const dataPoint = {
     interval: {
-      endTime: { seconds: Date.now() / 1000 }
+      endTime: { seconds: Math.floor(Date.now() / 1000) }
     },
     value: { doubleValue: lagMs }
   };
@@ -268,9 +278,8 @@ gcloud alpha monitoring policies create \
   --display-name="Firestore Replication Lag Alert" \
   --condition-display-name="Replication lag exceeds 5 seconds" \
   --condition-filter='metric.type="custom.googleapis.com/firestore/replication_lag_ms"' \
-  --condition-threshold-value=5000 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --if='> 5000' \
+  --duration=300s \
   --notification-channels=projects/my-global-app/notificationChannels/123
 ```
 
@@ -280,9 +289,9 @@ There are real trade-offs to understand with multi-region Firestore:
 
 **Write latency increases** with multi-region configurations. A write to a nam5 database takes longer than a write to a single us-central1 instance because it needs to be committed across regions before the write is acknowledged.
 
-**Read latency decreases** for users near any of the replicated regions, since Firestore serves reads from the closest replica.
+**Read latency can improve** when your users and compute are close to the selected multi-region's read-write regions. Choose the database location closest to the users and services that need it.
 
-**Cost increases** with multi-region storage. You are paying for data stored in multiple locations. Expect roughly 2-3x the storage cost compared to a single region.
+**Cost increases** with multi-region locations. Firestore pricing varies by location and operation type, so check the current pricing table for your selected regional or multi-region location.
 
 **Consistency guarantees remain strong.** Even with multi-region replication, Firestore provides strong consistency for reads. You always get the most recent committed write.
 
@@ -291,7 +300,7 @@ There are real trade-offs to understand with multi-region Firestore:
 If you are using custom cross-database replication, route clients to the nearest database for reads:
 
 ```javascript
-// Client-side region routing
+// Server-side region routing
 function getFirestoreClient(userRegion) {
   // Map user regions to the nearest Firestore database
   const regionMapping = {
