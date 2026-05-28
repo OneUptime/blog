@@ -78,12 +78,12 @@ ON target.customer_id = source.customer_id
 
 -- When the customer exists and something has changed, update it
 WHEN MATCHED AND (
-  target.customer_name != source.customer_name
-  OR target.email != source.email
-  OR target.city != source.city
-  OR target.state != source.state
-  OR target.country != source.country
-  OR target.customer_segment != source.customer_segment
+  target.customer_name IS DISTINCT FROM source.customer_name
+  OR target.email IS DISTINCT FROM source.email
+  OR target.city IS DISTINCT FROM source.city
+  OR target.state IS DISTINCT FROM source.state
+  OR target.country IS DISTINCT FROM source.country
+  OR target.customer_segment IS DISTINCT FROM source.customer_segment
 ) THEN
   UPDATE SET
     customer_name = source.customer_name,
@@ -151,14 +151,14 @@ WITH source_data AS (
     country,
     customer_segment,
     -- Create a hash of all tracked columns for change detection
-    TO_HEX(MD5(CONCAT(
-      COALESCE(customer_name, ''),
-      COALESCE(email, ''),
-      COALESCE(city, ''),
-      COALESCE(state, ''),
-      COALESCE(country, ''),
-      COALESCE(customer_segment, '')
-    ))) AS row_hash
+    TO_HEX(MD5(TO_JSON_STRING(STRUCT(
+      customer_name,
+      email,
+      city,
+      state,
+      country,
+      customer_segment
+    )))) AS row_hash
   FROM `my-project.staging.stg_customers`
 ),
 current_dimension AS (
@@ -170,12 +170,12 @@ SELECT
   s.*,
   CASE
     WHEN d.customer_id IS NULL THEN 'INSERT'
-    WHEN d.row_hash != s.row_hash THEN 'UPDATE'
+    WHEN d.row_hash IS DISTINCT FROM s.row_hash THEN 'UPDATE'
     ELSE 'NO_CHANGE'
   END AS change_type
 FROM source_data s
 LEFT JOIN current_dimension d ON s.customer_id = d.customer_id
-WHERE d.customer_id IS NULL OR d.row_hash != s.row_hash;
+WHERE d.customer_id IS NULL OR d.row_hash IS DISTINCT FROM s.row_hash;
 
 -- Step 2: Expire the current rows that have changes
 MERGE INTO `my-project.warehouse.dim_customer_type2` AS target
@@ -279,9 +279,9 @@ USING `my-project.staging.stg_customers` AS source
 ON target.customer_id = source.customer_id
 
 WHEN MATCHED AND (
-  target.current_city != source.city
-  OR target.current_state != source.state
-  OR target.current_segment != source.customer_segment
+  target.current_city IS DISTINCT FROM source.city
+  OR target.current_state IS DISTINCT FROM source.state
+  OR target.current_segment IS DISTINCT FROM source.customer_segment
 ) THEN
   UPDATE SET
     -- Shift current values to previous
@@ -315,23 +315,37 @@ For large Type 2 SCD tables, partitioning by `effective_from` keeps queries fast
 -- Cluster by the natural key and is_current for common query patterns
 CREATE TABLE `my-project.warehouse.dim_customer_type2`
 (
-  ...
+  customer_sk INT64 NOT NULL,
+  customer_id STRING NOT NULL,
+  customer_name STRING,
+  email STRING,
+  city STRING,
+  state STRING,
+  country STRING,
+  customer_segment STRING,
+  effective_from DATE NOT NULL,
+  effective_to DATE,
+  is_current BOOL NOT NULL,
+  row_hash STRING,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
 )
 PARTITION BY effective_from
 CLUSTER BY customer_id, is_current;
 ```
 
-This partitioning scheme means that querying the current state (`WHERE is_current = TRUE`) only scans the partitions where rows were last modified, not the entire history.
+This partitioning scheme helps time-travel queries that filter on `effective_from` prune irrelevant partitions. Queries for the current state (`WHERE is_current = TRUE`) benefit from clustering on `is_current`, but partition pruning only happens when the query includes a filter on the partitioning column.
 
 ## Scheduling the SCD Updates
 
 Run SCD updates as part of your daily pipeline:
 
 ```bash
-# Schedule the Type 2 SCD update as a BigQuery scheduled query
+# Schedule the Type 2 SCD update as a BigQuery scheduled query at 04:00 UTC
 
 bq query --use_legacy_sql=false \
-  --schedule="0 4 * * *" \
+  --target_dataset=warehouse \
+  --schedule="every day 04:00" \
   --display_name="SCD Type 2 Customer Update" \
   "$(cat scd_type2_update.sql)"
 ```
