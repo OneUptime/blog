@@ -22,21 +22,28 @@ Before jumping into the configuration, let me clarify the terminology. A Service
 
 ## Step 1: Create a Monitoring Service
 
-Cloud Monitoring organizes SLOs under services. If your service is running on App Engine, Cloud Run, GKE, or Istio, Cloud Monitoring automatically discovers it. For custom services, you create them explicitly.
+Cloud Monitoring organizes SLOs under services. Cloud Monitoring can automatically discover App Engine, Cloud Service Mesh, and Istio on GKE services. It can also identify GKE and Cloud Run services as candidates that you can define as Monitoring services. For custom services, you create them explicitly.
 
 ```bash
 # Create a custom service for SLO monitoring
 
-gcloud monitoring services create my-api-service \
-    --display-name="My API Service" \
-    --project=my-gcp-project
+curl -X POST \
+  "https://monitoring.googleapis.com/v3/projects/my-gcp-project/services?serviceId=my-api-service" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "displayName": "My API Service",
+    "custom": {}
+  }'
 ```
 
-For auto-discovered services, list what is already available.
+List what is already available.
 
 ```bash
-# List automatically discovered services
-gcloud monitoring services list --project=my-gcp-project
+# List services
+curl -X GET \
+  "https://monitoring.googleapis.com/v3/projects/my-gcp-project/services" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)"
 ```
 
 ## Step 2: Define an Availability SLI and SLO
@@ -45,16 +52,23 @@ The most common SLI is request-based availability - the percentage of requests t
 
 ```bash
 # Create an availability SLO: 99.9% of requests should succeed over a rolling 28-day window
-gcloud monitoring slos create \
-    --service=my-api-service \
-    --display-name="Availability SLO - 99.9%" \
-    --request-based-sli \
-    --good-total-ratio-threshold \
-    --good-service-filter='metric.type="loadbalancing.googleapis.com/https/request_count" AND metric.labels.response_code_class="200"' \
-    --total-service-filter='metric.type="loadbalancing.googleapis.com/https/request_count"' \
-    --goal=0.999 \
-    --rolling-period=28d \
-    --project=my-gcp-project
+curl -X POST \
+  "https://monitoring.googleapis.com/v3/projects/my-gcp-project/services/my-api-service/serviceLevelObjectives?serviceLevelObjectiveId=availability-slo" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "displayName": "Availability SLO - 99.9%",
+    "goal": 0.999,
+    "rollingPeriod": "2419200s",
+    "serviceLevelIndicator": {
+      "requestBased": {
+        "goodTotalRatio": {
+          "goodServiceFilter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" resource.type=\"https_lb_rule\" metric.label.\"response_code_class\"=\"200\"",
+          "totalServiceFilter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" resource.type=\"https_lb_rule\""
+        }
+      }
+    }
+  }'
 ```
 
 Let me break down what this creates. The good service filter counts successful requests (2xx responses). The total service filter counts all requests. The goal is 99.9%. And the rolling period is 28 days, meaning the SLO compliance is calculated over a sliding 28-day window.
@@ -65,17 +79,26 @@ For latency SLOs, you define what "good" means in terms of response time. A requ
 
 ```bash
 # Create a latency SLO: 95% of requests should complete within 300ms
-gcloud monitoring slos create \
-    --service=my-api-service \
-    --display-name="Latency SLO - 95% under 300ms" \
-    --request-based-sli \
-    --distribution-cut \
-    --distribution-filter='metric.type="loadbalancing.googleapis.com/https/total_latencies"' \
-    --range-min=0 \
-    --range-max=300 \
-    --goal=0.95 \
-    --rolling-period=28d \
-    --project=my-gcp-project
+curl -X POST \
+  "https://monitoring.googleapis.com/v3/projects/my-gcp-project/services/my-api-service/serviceLevelObjectives?serviceLevelObjectiveId=latency-slo" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "displayName": "Latency SLO - 95% under 300ms",
+    "goal": 0.95,
+    "rollingPeriod": "2419200s",
+    "serviceLevelIndicator": {
+      "requestBased": {
+        "distributionCut": {
+          "distributionFilter": "metric.type=\"loadbalancing.googleapis.com/https/total_latencies\" resource.type=\"https_lb_rule\"",
+          "range": {
+            "min": 0,
+            "max": 300
+          }
+        }
+      }
+    }
+  }'
 ```
 
 The distribution cut approach works on distribution metrics (like latency histograms). It counts how many data points fall within the specified range and divides by the total.
@@ -97,8 +120,8 @@ curl -X POST \
     "serviceLevelIndicator": {
       "requestBased": {
         "goodTotalRatio": {
-          "goodServiceFilter": "metric.type=\"appengine.googleapis.com/http/server/response_count\" AND metric.labels.response_code<400",
-          "totalServiceFilter": "metric.type=\"appengine.googleapis.com/http/server/response_count\""
+          "goodServiceFilter": "metric.type=\"appengine.googleapis.com/http/server/response_count\" resource.type=\"gae_app\" metric.label.\"response_code\"<\"400\"",
+          "totalServiceFilter": "metric.type=\"appengine.googleapis.com/http/server/response_count\" resource.type=\"gae_app\""
         }
       }
     }
@@ -133,7 +156,7 @@ resource "google_monitoring_slo" "availability_slo" {
   request_based_sli {
     good_total_ratio {
       # Count successful responses as good
-      good_service_filter = "metric.type=\"loadbalancing.googleapis.com/https/request_count\" resource.type=\"https_lb_rule\" metric.labels.response_code_class=\"200\""
+      good_service_filter = "metric.type=\"loadbalancing.googleapis.com/https/request_count\" resource.type=\"https_lb_rule\" metric.label.\"response_code_class\"=\"200\""
       # Count all responses as total
       total_service_filter = "metric.type=\"loadbalancing.googleapis.com/https/request_count\" resource.type=\"https_lb_rule\""
     }
@@ -187,21 +210,21 @@ Check your SLO compliance from the command line.
 
 ```bash
 # List all SLOs for a service
-gcloud monitoring slos list \
-    --service=my-api-service \
-    --project=my-gcp-project
+curl -X GET \
+  "https://monitoring.googleapis.com/v3/projects/my-gcp-project/services/my-api-service/serviceLevelObjectives" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)"
 
 # Get detailed status of a specific SLO
-gcloud monitoring slos describe AVAILABILITY_SLO_ID \
-    --service=my-api-service \
-    --project=my-gcp-project
+curl -X GET \
+  "https://monitoring.googleapis.com/v3/projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/availability-slo" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)"
 ```
 
 ## Choosing the Right SLO Parameters
 
 **Rolling period vs calendar period.** A rolling period (like 28 days) is continuously calculated and provides a steady view. A calendar period (like a calendar month) resets at the start of each period. Rolling periods are generally preferred because they avoid the "fresh budget" problem at the start of each month.
 
-**Setting the goal.** Do not set your SLO higher than what you actually need. A 99.99% SLO gives you only 4.3 minutes of downtime per month. If your users would tolerate 5 minutes, then 99.9% (8.6 minutes) is more appropriate and gives your team more room to deploy changes and take risks.
+**Setting the goal.** Do not set your SLO higher than what you actually need. A 99.99% SLO gives you only about 4.3 minutes of downtime per month. If your users would tolerate about 43 minutes, then 99.9% is more appropriate and gives your team more room to deploy changes and take risks.
 
 **Availability vs latency.** Most services should have both. Availability catches outright failures. Latency catches degradation where the service technically works but is too slow to be useful.
 
@@ -214,8 +237,8 @@ For **Cloud Run** services.
 ```text
 # Good: responses with status < 500
 # Total: all responses
-good_filter: metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class!="5xx"
-total_filter: metric.type="run.googleapis.com/request_count"
+good_filter: metric.type="run.googleapis.com/request_count" resource.type="cloud_run_revision" metric.label."response_code_class"!="5xx"
+total_filter: metric.type="run.googleapis.com/request_count" resource.type="cloud_run_revision"
 ```
 
 For **GKE** services with Istio.
@@ -223,8 +246,8 @@ For **GKE** services with Istio.
 ```text
 # Good: requests that succeeded
 # Total: all requests
-good_filter: metric.type="istio.io/service/server/request_count" AND metric.labels.response_code<500
-total_filter: metric.type="istio.io/service/server/request_count"
+good_filter: metric.type="istio.io/service/server/request_count" resource.type="k8s_container" metric.label."response_code"<"500"
+total_filter: metric.type="istio.io/service/server/request_count" resource.type="k8s_container"
 ```
 
 For **custom metrics** from your application.
