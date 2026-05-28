@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Data Classification, Cloud DLP, Data Governance, Automation
 
-Description: A hands-on guide to automating data classification and labeling across Google Cloud resources using Cloud DLP, Data Catalog, and Cloud Functions.
+Description: A hands-on guide to automating data classification and labeling across Google Cloud resources using Cloud DLP, Knowledge Catalog, and Cloud Functions.
 
 ---
 
 Knowing what data you have and how sensitive it is might sound basic, but most organizations struggle with it at scale. When you have thousands of BigQuery tables, Cloud Storage buckets, and databases scattered across dozens of projects, manually classifying everything is not realistic. You need automation.
 
-This guide covers how to build an automated data classification and labeling pipeline on Google Cloud using Cloud Data Loss Prevention (DLP), Data Catalog, and a few Cloud Functions to tie everything together.
+This guide covers how to build an automated data classification and labeling pipeline on Google Cloud using Cloud Data Loss Prevention (DLP), Knowledge Catalog, and a few Cloud Functions to tie everything together.
 
 ## The Classification Strategy
 
@@ -25,7 +25,7 @@ Each tier maps to specific security controls. Restricted data might require encr
 
 ## Architecture Overview
 
-The automated classification pipeline has three main components. Cloud DLP scans your data and identifies sensitive content. Cloud Functions process the DLP findings and apply labels. Data Catalog stores the classification metadata so it is searchable and auditable.
+The automated classification pipeline has three main components. Cloud DLP scans your data and identifies sensitive content. Cloud Functions process the DLP findings and apply labels. Knowledge Catalog stores the classification metadata so it is searchable and auditable.
 
 ```mermaid
 graph LR
@@ -33,9 +33,8 @@ graph LR
     B --> C[Cloud DLP]
     C --> D[Pub/Sub: DLP Results]
     D --> E[Cloud Function: Apply Labels]
-    E --> F[Data Catalog]
+    E --> F[Knowledge Catalog]
     E --> G[BigQuery Labels]
-    E --> H[GCS Labels]
 ```
 
 ## Step 1: Set Up Cloud DLP Inspection Templates
@@ -97,7 +96,6 @@ This Cloud Function triggers DLP scans on a schedule. It discovers new or modifi
 import json
 from google.cloud import dlp_v2
 from google.cloud import bigquery
-from google.cloud import storage
 
 def trigger_classification_scan(event, context):
     """Triggered by Cloud Scheduler to scan resources for sensitive data."""
@@ -164,9 +162,11 @@ When DLP findings arrive via Pub/Sub, this function determines the classificatio
 ```python
 import base64
 import json
+from datetime import datetime, timezone
 from google.cloud import bigquery
-from google.cloud import datacatalog_v1
+from google.cloud import dataplex_v1
 from google.cloud import dlp_v2
+from google.protobuf import struct_pb2
 
 # Classification rules based on info types found
 
@@ -204,10 +204,10 @@ def apply_classification_labels(event, context):
 
     dlp_client = dlp_v2.DlpServiceClient()
     bq_client = bigquery.Client()
-    dc_client = datacatalog_v1.DataCatalogClient()
+    catalog_client = dataplex_v1.CatalogServiceClient()
 
     # Get the full DLP job results
-    job_name = message.get("dlpJob", {}).get("name")
+    job_name = message["DlpJobName"]
     job = dlp_client.get_dlp_job(request={"name": job_name})
 
     # Extract the info types that were found
@@ -229,9 +229,9 @@ def apply_classification_labels(event, context):
             bq_client, table_ref, classification, info_types_found
         )
 
-        # Create or update Data Catalog entry
-        update_data_catalog_tag(
-            dc_client, table_ref, classification, info_types_found
+        # Create or update the Knowledge Catalog aspect
+        update_knowledge_catalog_aspect(
+            catalog_client, table_ref, classification, info_types_found
         )
 
 def apply_bigquery_labels(client, table_ref, classification, info_types):
@@ -248,51 +248,108 @@ def apply_bigquery_labels(client, table_ref, classification, info_types):
     table.labels = labels
     client.update_table(table, ["labels"])
     print(f"Applied {classification} label to {table_id}")
+
+def update_knowledge_catalog_aspect(client, table_ref, classification, info_types):
+    """Attach classification metadata to the BigQuery table's catalog entry."""
+    project_id = table_ref.project_id
+    linked_resource = (
+        f"//bigquery.googleapis.com/projects/{table_ref.project_id}"
+        f"/datasets/{table_ref.dataset_id}/tables/{table_ref.table_id}"
+    )
+
+    search_request = dataplex_v1.SearchEntriesRequest(
+        name=f"projects/{project_id}/locations/global",
+        scope=f"projects/{project_id}",
+        query=f"{table_ref.table_id} system=bigquery type=table",
+        page_size=25,
+    )
+
+    entry = None
+    for result in client.search_entries(search_request):
+        if result.linked_resource == linked_resource:
+            entry = result.dataplex_entry
+            break
+
+    if entry is None:
+        raise ValueError(f"No Knowledge Catalog entry found for {linked_resource}")
+
+    aspect_type = (
+        f"projects/{project_id}/locations/global/aspectTypes/data_classification"
+    )
+    aspect_key = f"{project_id}.global.data_classification"
+    entry.aspects[aspect_key] = dataplex_v1.Aspect(
+        aspect_type=aspect_type,
+        data=struct_pb2.Struct(
+            fields={
+                "classification_level": struct_pb2.Value(string_value=classification),
+                "sensitive_types": struct_pb2.Value(
+                    string_value=",".join(sorted(info_types))
+                ),
+                "last_scan_date": struct_pb2.Value(
+                    string_value=datetime.now(timezone.utc)
+                    .isoformat()
+                    .replace("+00:00", "Z")
+                ),
+            }
+        ),
+    )
+
+    client.update_entry(entry=entry, update_mask={"paths": ["aspects"]})
+    print(f"Updated Knowledge Catalog metadata for {linked_resource}")
 ```
 
-## Step 4: Create a Data Catalog Tag Template
+## Step 4: Create a Knowledge Catalog Aspect Type
 
-Data Catalog provides richer metadata than simple labels. Create a tag template for classification information.
+Knowledge Catalog provides richer metadata than simple labels. Create an aspect type for classification information.
 
 ```python
-def create_classification_tag_template(project_id, location="us-central1"):
-    """Create a Data Catalog tag template for classification metadata."""
-    client = datacatalog_v1.DataCatalogClient()
+from google.cloud import dataplex_v1
+
+def create_classification_aspect_type(project_id, location="global"):
+    """Create a Knowledge Catalog aspect type for classification metadata."""
+    client = dataplex_v1.CatalogServiceClient()
     parent = f"projects/{project_id}/locations/{location}"
 
-    tag_template = datacatalog_v1.TagTemplate()
-    tag_template.display_name = "Data Classification"
-
-    # Classification level field
-    level_field = datacatalog_v1.TagTemplateField()
-    level_field.display_name = "Classification Level"
-    level_field.type_.enum_type.allowed_values = [
-        datacatalog_v1.FieldType.EnumType.EnumValue(display_name="PUBLIC"),
-        datacatalog_v1.FieldType.EnumType.EnumValue(display_name="INTERNAL"),
-        datacatalog_v1.FieldType.EnumType.EnumValue(display_name="CONFIDENTIAL"),
-        datacatalog_v1.FieldType.EnumType.EnumValue(display_name="RESTRICTED"),
-    ]
-    level_field.is_required = True
-    tag_template.fields["classification_level"] = level_field
-
-    # Sensitive data types found
-    types_field = datacatalog_v1.TagTemplateField()
-    types_field.display_name = "Sensitive Data Types Found"
-    types_field.type_.primitive_type = datacatalog_v1.FieldType.PrimitiveType.STRING
-    tag_template.fields["sensitive_types"] = types_field
-
-    # Last scan date
-    scan_field = datacatalog_v1.TagTemplateField()
-    scan_field.display_name = "Last Classification Scan"
-    scan_field.type_.primitive_type = datacatalog_v1.FieldType.PrimitiveType.TIMESTAMP
-    tag_template.fields["last_scan_date"] = scan_field
-
-    response = client.create_tag_template(
-        parent=parent,
-        tag_template_id="data_classification",
-        tag_template=tag_template,
+    metadata_template = dataplex_v1.AspectType.MetadataTemplate(
+        name="data_classification",
+        type="record",
+        record_fields=[
+            dataplex_v1.AspectType.MetadataTemplate(
+                name="classification_level",
+                type="string",
+                index=1,
+                constraints=dataplex_v1.AspectType.MetadataTemplate.Constraints(
+                    required=True
+                ),
+                annotations=dataplex_v1.AspectType.MetadataTemplate.Annotations(
+                    description="PUBLIC, INTERNAL, CONFIDENTIAL, or RESTRICTED"
+                ),
+            ),
+            dataplex_v1.AspectType.MetadataTemplate(
+                name="sensitive_types",
+                type="string",
+                index=2,
+            ),
+            dataplex_v1.AspectType.MetadataTemplate(
+                name="last_scan_date",
+                type="datetime",
+                index=3,
+            ),
+        ],
     )
-    print(f"Created tag template: {response.name}")
+
+    aspect_type = dataplex_v1.AspectType(
+        description="Data classification metadata",
+        metadata_template=metadata_template,
+    )
+
+    operation = client.create_aspect_type(
+        parent=parent,
+        aspect_type_id="data_classification",
+        aspect_type=aspect_type,
+    )
+    response = operation.result(60)
+    print(f"Created aspect type: {response.name}")
 ```
 
 ## Step 5: Schedule Regular Scans
@@ -311,7 +368,7 @@ gcloud scheduler jobs create pubsub classification-scan \
 
 ## Querying Classification Results
 
-Once classification labels are in place, you can query across your entire data landscape to find all restricted data or generate compliance reports.
+Once classification labels are in place, you can query BigQuery metadata in a region to find restricted tables or generate compliance reports.
 
 ```sql
 -- Find all tables classified as RESTRICTED
@@ -325,4 +382,4 @@ WHERE option_name = 'labels'
 AND option_value LIKE '%restricted%';
 ```
 
-Automating data classification removes the human bottleneck from data governance. Once the pipeline is running, every new table and bucket gets classified automatically, and you always have an up-to-date inventory of where your sensitive data lives. This makes compliance audits far less painful and helps you enforce the right security controls on the right data.
+Automating data classification removes the human bottleneck from data governance. Once the pipeline is running, every scanned table gets classified automatically, and you always have an up-to-date inventory of where your sensitive data lives. This makes compliance audits far less painful and helps you enforce the right security controls on the right data.
