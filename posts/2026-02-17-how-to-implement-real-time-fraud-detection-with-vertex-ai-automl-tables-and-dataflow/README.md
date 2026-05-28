@@ -61,10 +61,9 @@ Feature engineering matters a lot for fraud detection. The most predictive featu
 Create and train an AutoML Tables model using the Vertex AI SDK:
 
 ```python
-import vertexai
 from google.cloud import aiplatform
 
-vertexai.init(project="your-project-id", location="us-central1")
+aiplatform.init(project="your-project-id", location="us-central1")
 
 # Create a tabular dataset from the BigQuery table
 
@@ -80,15 +79,24 @@ job = aiplatform.AutoMLTabularTrainingJob(
     display_name="fraud-detection-model-v1",
     optimization_prediction_type="classification",
     optimization_objective="maximize-au-prc",  # Better than AUC-ROC for imbalanced datasets
+    # Include only the feature columns used for training. Columns not listed are ignored.
+    column_specs={
+        "amount": "auto",
+        "currency": "auto",
+        "merchant_category": "auto",
+        "hour_of_day": "auto",
+        "day_of_week": "auto",
+        "country_code": "auto",
+        "transactions_last_hour": "auto",
+        "avg_amount_last_30_days": "auto",
+        "distinct_merchants_last_24h": "auto",
+        "time_since_last_transaction_seconds": "auto",
+    },
 )
 
 model = job.run(
     dataset=dataset,
     target_column="is_fraud",
-    # Tell AutoML which columns to exclude from training
-    column_specs={
-        "transaction_id": "categorical",  # Will be auto-excluded as ID
-    },
     training_fraction_split=0.8,
     validation_fraction_split=0.1,
     test_fraction_split=0.1,
@@ -166,7 +174,9 @@ class ScoreTransaction(beam.DoFn):
 
         # Get the prediction from Vertex AI
         prediction = self.endpoint.predict(instances=[features])
-        fraud_probability = prediction.predictions[0]["scores"][1]  # Probability of fraud class
+        result = prediction.predictions[0]
+        fraud_class_index = [str(label) for label in result["classes"]].index("1")
+        fraud_probability = result["scores"][fraud_class_index]  # Probability of fraud class
 
         # Add the score to the transaction record
         transaction["fraud_probability"] = fraud_probability
@@ -223,12 +233,28 @@ def run_pipeline():
             )
         )
 
+        # Write approved transactions to the approved topic
+        (
+            routed[RouteTransaction.APPROVED]
+            | "Serialize Approved" >> beam.Map(lambda t: json.dumps(t).encode("utf-8"))
+            | "Publish Approved" >> beam.io.WriteToPubSub(
+                topic="projects/your-project-id/topics/approved-transactions"
+            )
+        )
+
         # Write all transactions to BigQuery for analysis
         (
             scored
             | "Write to BigQuery" >> beam.io.WriteToBigQuery(
                 table="your-project:fraud_detection.scored_transactions",
-                schema="SCHEMA_AUTODETECT",
+                schema=(
+                    "transaction_id:STRING,amount:FLOAT,currency:STRING,"
+                    "merchant_category:STRING,hour_of_day:INTEGER,day_of_week:INTEGER,"
+                    "country_code:STRING,transactions_last_hour:INTEGER,"
+                    "avg_amount_last_30_days:FLOAT,distinct_merchants_last_24h:INTEGER,"
+                    "time_since_last_transaction_seconds:INTEGER,"
+                    "fraud_probability:FLOAT,fraud_flag:BOOLEAN"
+                ),
                 write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
                 create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
             )
@@ -271,6 +297,8 @@ Plot a precision-recall curve from your test data to find the sweet spot. Most p
 Fraud patterns evolve constantly. Set up a retraining pipeline that runs monthly:
 
 ```python
+from datetime import datetime
+
 # Schedule monthly retraining with the latest transaction data
 # This ensures the model adapts to new fraud patterns
 def retrain_model():
