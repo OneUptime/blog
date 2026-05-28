@@ -10,18 +10,21 @@ Description: Set up Cloud Composer environments with Customer-Managed Encryption
 
 By default, Google Cloud encrypts all data at rest using Google-managed keys. For most workloads, that is sufficient. But some organizations need tighter control over their encryption keys - for compliance reasons, for the ability to revoke access by disabling a key, or simply for defense-in-depth. Customer-Managed Encryption Keys (CMEK) give you that control.
 
-When you configure Cloud Composer with CMEK, all the data your Airflow environment stores - the metadata database, DAG files, logs, and underlying storage - is encrypted with a key that you own and manage in Cloud KMS. This article covers the complete setup process.
+When you configure Cloud Composer with CMEK, the data your Airflow environment stores - the metadata database, DAG files, logs, secrets, and underlying storage - is encrypted with a key that you own and manage in Cloud KMS. This article covers the complete setup process.
 
 ## What Gets Encrypted with CMEK
 
-A Cloud Composer environment has several data stores, and CMEK protects all of them:
+A Cloud Composer environment has several data stores, and CMEK protects the most important customer data:
 
 - **Cloud SQL metadata database** - Airflow's metadata (DAG runs, task instances, connections, variables)
 - **Cloud Storage bucket** - DAG files, plugins, data, and logs
-- **Persistent disks** - Storage used by the underlying compute infrastructure
-- **Pub/Sub topics** - Used internally for task scheduling and communication
+- **Cloud Logging** - Environment and Airflow task logs
+- **Secrets and persistent disks** - Secrets stored in the environment's cluster and persistent disks used by the task queue
+- **Artifact Registry** - Container images for environment components
 
-With CMEK, a single KMS key encrypts all these components. If you disable or destroy the key, the entire environment becomes inaccessible.
+Cloud Monitoring data is not protected with CMEK. Environment names, DAG names, Airflow configuration overrides, environment variables, labels, and some parameter names are protected with Google-owned and Google-managed encryption keys instead.
+
+With CMEK, a single KMS key encrypts the supported environment components. If you disable or destroy the key, the entire environment becomes inaccessible.
 
 ## Step 1: Create a Cloud KMS Keyring and Key
 
@@ -63,18 +66,15 @@ First, identify the service accounts that need access:
 # Get your project number
 PROJECT_NUMBER=$(gcloud projects describe my-project --format="value(projectNumber)")
 
-# The service accounts that need encrypter/decrypter access:
+# The Composer 3 service agents that need encrypter/decrypter access:
 # 1. Cloud Composer Service Agent
-# 2. Compute Engine Service Agent
-# 3. Cloud Storage Service Agent
-# 4. Artifact Registry Service Agent (for container images)
+# 2. Cloud Storage Service Agent
 ```
 
 Grant the `cloudkms.cryptoKeyEncrypterDecrypter` role to each service account:
 
 ```bash
 PROJECT_NUMBER=$(gcloud projects describe my-project --format="value(projectNumber)")
-KEY_PATH="projects/my-project/locations/us-central1/keyRings/composer-keyring/cryptoKeys/composer-cmek-key"
 
 # Grant access to the Composer Service Agent
 gcloud kms keys add-iam-policy-binding composer-cmek-key \
@@ -83,36 +83,10 @@ gcloud kms keys add-iam-policy-binding composer-cmek-key \
   --member="serviceAccount:service-${PROJECT_NUMBER}@cloudcomposer-accounts.iam.gserviceaccount.com" \
   --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
 
-# Grant access to the Compute Engine Service Agent
-gcloud kms keys add-iam-policy-binding composer-cmek-key \
-  --keyring=composer-keyring \
-  --location=us-central1 \
-  --member="serviceAccount:service-${PROJECT_NUMBER}@compute-system.iam.gserviceaccount.com" \
-  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
-
 # Grant access to the Cloud Storage Service Agent
-# First, get the GCS service agent email
-GCS_SA=$(gsutil kms serviceaccount -p my-project)
-
-gcloud kms keys add-iam-policy-binding composer-cmek-key \
-  --keyring=composer-keyring \
-  --location=us-central1 \
-  --member="serviceAccount:${GCS_SA}" \
-  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
-
-# Grant access to the Artifact Registry Service Agent
-gcloud kms keys add-iam-policy-binding composer-cmek-key \
-  --keyring=composer-keyring \
-  --location=us-central1 \
-  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-artifactregistry.iam.gserviceaccount.com" \
-  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
-
-# Grant access to the Pub/Sub Service Agent
-gcloud kms keys add-iam-policy-binding composer-cmek-key \
-  --keyring=composer-keyring \
-  --location=us-central1 \
-  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
-  --role="roles/cloudkms.cryptoKeyEncrypterDecrypter"
+gcloud storage service-agent \
+  --project=my-project \
+  --authorize-cmek=projects/my-project/locations/us-central1/keyRings/composer-keyring/cryptoKeys/composer-cmek-key
 ```
 
 This is the step where most CMEK setups fail. If any service account is missing the permission, environment creation will fail with a cryptic error. Double-check every grant.
@@ -198,7 +172,8 @@ Automatic key rotation is already configured from Step 1, but you can also manua
 gcloud kms keys versions create \
   --key=composer-cmek-key \
   --keyring=composer-keyring \
-  --location=us-central1
+  --location=us-central1 \
+  --primary
 
 # Check all key versions
 gcloud kms keys versions list \
@@ -219,7 +194,7 @@ Be aware of what happens when you change the key state:
 - If the primary version is disabled, the Composer environment will stop working
 
 **Destroying a key version:**
-- There is a 24-hour (default) destruction schedule before the version is actually destroyed
+- There is a 30-day default scheduled destruction period before the version is actually destroyed
 - Once destroyed, data encrypted with that version is permanently lost
 - This is irreversible
 
