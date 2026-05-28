@@ -14,7 +14,7 @@ This guide covers both basic cache invalidation and tag-based invalidation in Cl
 
 ## Understanding Cache Invalidation
 
-When you invalidate content in Cloud CDN, you are telling the CDN to treat the specified cached objects as stale. The next request for those objects will go to the origin to fetch a fresh copy. It is important to understand that invalidation does not immediately delete content from all edge caches - it marks it as invalid so that the next request triggers a refetch.
+When you invalidate content in Cloud CDN, you are telling the CDN to stop using the specified cached objects. The cached entry is removed from the cache and the next request for those objects will go to the origin to fetch a fresh copy.
 
 There are two approaches to invalidation:
 
@@ -186,9 +186,10 @@ steps:
 
 Cloud CDN has limits on cache invalidation that you should be aware of:
 
-- You can submit one invalidation request per minute per URL map
-- Each invalidation can target a path pattern or tags
-- Invalidation propagation takes a few minutes to reach all edge locations
+- You can submit up to 500 invalidation requests per minute
+- Each invalidation can target a path pattern or up to 10 cache tags
+- Each cache tag must not exceed 120 bytes, and each cached object can have up to 50 tags and up to 4 KiB of total tag names
+- Each invalidation request takes effect in about 10 seconds
 
 ### Best Practices
 
@@ -210,7 +211,7 @@ Cloud CDN has limits on cache invalidation that you should be aware of:
 # Check cache hit ratios in Cloud Monitoring after invalidation
 gcloud logging read \
     'resource.type="http_load_balancer" AND timestamp>="2026-02-17T00:00:00Z"' \
-    --format="json(jsonPayload.cacheHit)" \
+    --format="json(httpRequest.cacheHit)" \
     --limit=100 \
     --project=my-project
 ```
@@ -258,7 +259,7 @@ curl -I https://origin.example.com/products/123
 # Cache-Control: public, max-age=3600
 ```
 
-Note that Cloud CDN strips the `Cache-Tag` header from responses sent to clients. The tags are only used internally for invalidation purposes.
+Note that Cloud CDN sends the `Cache-Tag` header from the backend response to clients. If you do not want clients to see your tag values, avoid putting sensitive data in cache tags.
 
 ## Wrapping Up
 
