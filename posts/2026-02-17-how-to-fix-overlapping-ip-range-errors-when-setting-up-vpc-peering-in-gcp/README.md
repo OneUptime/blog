@@ -16,7 +16,7 @@ In this post, I will explain why overlapping IP ranges block peering, how to ide
 
 VPC peering creates a direct routing path between two networks. When networks are peered, routes from one network are imported into the other. If both networks have a subnet using 10.0.0.0/24, the router cannot determine which network should receive traffic destined for 10.0.0.5 - it could be either one.
 
-GCP prevents this ambiguity by checking all IP ranges (primary subnets, secondary ranges, and any allocated ranges) before establishing the peering. If any range in network A overlaps with any range in network B, the peering request fails.
+GCP prevents this ambiguity by checking subnet IP ranges, including primary and secondary subnet ranges, before establishing the peering. Allocated ranges used by peering-based services, such as Private Service Access, also need to be planned so they do not conflict with current or future subnet ranges. If any subnet range in network A overlaps with any subnet range in network B, the peering request fails.
 
 ## Identifying the Overlapping Ranges
 
@@ -61,7 +61,7 @@ Compare the outputs and look for any CIDR blocks that overlap. Remember that 10.
 
 ### Auto Mode VPCs
 
-Both networks are auto mode VPCs. Since auto mode always creates subnets using the same predefined ranges (10.128.0.0/20 in us-central1, 10.138.0.0/20 in us-east1, etc.), they will always overlap:
+Both networks are auto mode VPCs. Since auto mode always creates subnets using the same predefined ranges (10.128.0.0/20 in us-central1, 10.142.0.0/20 in us-east1, etc.), they will always overlap:
 
 ```bash
 # Check if either VPC is in auto mode
@@ -69,7 +69,7 @@ gcloud compute networks describe vpc-a --format="value(autoCreateSubnetworks)"
 gcloud compute networks describe vpc-b --format="value(autoCreateSubnetworks)"
 ```
 
-If either returns `True`, that is likely your problem.
+If both return `True`, the automatically created subnets overlap. If only one returns `True`, check whether the other VPC uses any ranges inside the auto mode `10.128.0.0/9` block.
 
 ### Overlapping Private Service Access Ranges
 
@@ -138,9 +138,9 @@ gcloud compute networks subnets delete vpc-a-subnet-europe-west1 \
 
 For subnets you do use, re-address them with non-overlapping ranges as described above.
 
-## Fix 3: Use Partial Subnet Peering with Custom Route Exchange
+## Fix 3: Use Custom Route Exchange for Custom Routes
 
-If you cannot re-address subnets, you can selectively export and import routes. This does not fix the fundamental overlap, but it lets you control which routes are shared:
+If the conflict is caused by custom static or dynamic routes, you can selectively export and import custom routes. This does not fix overlapping subnet ranges, but it lets you control whether custom routes are shared:
 
 ```bash
 # Create peering from VPC A to VPC B with custom route exchange
@@ -152,15 +152,15 @@ gcloud compute networks peerings create vpc-a-to-vpc-b \
   --no-export-subnet-routes-with-public-ip
 ```
 
-However, this still will not work if the subnet ranges themselves overlap. Custom route exchange only helps with custom static routes, not subnet routes.
+However, this still will not work if the private subnet ranges themselves overlap. Private IPv4 subnet routes are always exchanged between peered VPC networks, so custom route exchange only helps with custom routes, not overlapping private subnet routes.
 
 ## Fix 4: Use a Proxy or VPN Instead of Peering
 
 If re-addressing is not feasible, consider alternatives to VPC peering:
 
-### Internal Load Balancer as a Proxy
+### Multi-NIC Proxy VM
 
-Set up an internal load balancer in one VPC that forwards traffic to the other VPC through a proxy VM:
+Set up a proxy VM with one network interface in each VPC. This only works if the subnets attached to the proxy VM do not overlap; Compute Engine also requires each regular VPC interface on a multi-NIC VM to use a different VPC network:
 
 ```bash
 # Create a proxy VM with two network interfaces
@@ -175,9 +175,9 @@ gcloud compute instances create proxy-vm \
     iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE'
 ```
 
-### HA VPN Between VPCs
+### HA VPN with NAT
 
-Another option is connecting the VPCs with HA VPN instead of peering. VPN supports overlapping ranges because you can use NAT:
+Another option is connecting the VPCs with HA VPN instead of peering. Cloud VPN does not translate overlapping ranges by itself, but it can be combined with NAT, such as Private NAT or NAT on a peer device, when overlapping ranges make direct routing impractical:
 
 ```bash
 # Create HA VPN gateways in both VPCs
@@ -207,10 +207,11 @@ gcloud compute addresses create psa-range-v2 \
 gcloud services vpc-peerings update \
   --service=servicenetworking.googleapis.com \
   --ranges=psa-range-v2 \
-  --network=vpc-a
+  --network=vpc-a \
+  --force
 ```
 
-Note that this may require recreating managed service instances (Cloud SQL, AlloyDB, etc.) that are using the old range.
+Note that this replaces the list of ranges assigned to the private services connection. Existing service producer resources might continue to use the removed range, so some managed service instances (Cloud SQL, AlloyDB, etc.) might need to be recreated or migrated before you can fully retire the old range.
 
 ## Prevention: IP Planning Best Practices
 
