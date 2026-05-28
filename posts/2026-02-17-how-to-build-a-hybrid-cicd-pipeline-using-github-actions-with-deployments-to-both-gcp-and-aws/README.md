@@ -23,15 +23,15 @@ graph LR
     BUILD --> AWS[Deploy to AWS ECS]
     GCP --> VERIFY1[Smoke Test GCP]
     AWS --> VERIFY2[Smoke Test AWS]
-    VERIFY1 --> DNS[Update Traffic Split]
-    VERIFY2 --> DNS
+    VERIFY1 --> NOTIFY[Post-Deploy Notification]
+    VERIFY2 --> NOTIFY
 ```
 
-The workflow builds the container image once, pushes it to registries in both clouds, and deploys simultaneously. Smoke tests verify both deployments before updating the traffic split.
+The workflow builds the container image once, pushes it to registries in both clouds, and deploys simultaneously. Smoke tests verify both deployments before the post-deploy notification runs.
 
 ## Step 1: Configure Cloud Authentication
 
-Both GCP and AWS support workload identity federation with GitHub Actions, so you do not need to store long-lived credentials as secrets.
+Both GCP and AWS support OIDC-based federation with GitHub Actions, so you do not need to store long-lived credentials as secrets.
 
 ### GCP Workload Identity Federation
 
@@ -49,7 +49,8 @@ gcloud iam workload-identity-pools providers create-oidc github-provider \
   --location=global \
   --workload-identity-pool=github-pool \
   --display-name="GitHub Provider" \
-  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner" \
+  --attribute-condition="assertion.repository_owner == 'my-org'" \
   --issuer-uri="https://token.actions.githubusercontent.com"
 
 # Create a service account for deployments
@@ -64,6 +65,16 @@ gcloud projects add-iam-policy-binding my-gcp-project \
 gcloud projects add-iam-policy-binding my-gcp-project \
   --member="serviceAccount:github-deploy@my-gcp-project.iam.gserviceaccount.com" \
   --role="roles/artifactregistry.writer"
+
+gcloud iam service-accounts add-iam-policy-binding \
+  PROJECT_NUMBER-compute@developer.gserviceaccount.com \
+  --member="serviceAccount:github-deploy@my-gcp-project.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+
+gcloud artifacts repositories create app-images \
+  --repository-format=docker \
+  --location=us-central1 \
+  --description="Application container images"
 
 # Allow GitHub to impersonate the service account
 gcloud iam service-accounts add-iam-policy-binding \
@@ -80,8 +91,7 @@ Set up the GitHub OIDC provider in AWS:
 # Create the OIDC provider in AWS
 aws iam create-open-id-connect-provider \
   --url https://token.actions.githubusercontent.com \
-  --client-id-list sts.amazonaws.com \
-  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+  --client-id-list sts.amazonaws.com
 
 # Create the IAM role for GitHub Actions
 aws iam create-role \
@@ -113,6 +123,11 @@ aws iam attach-role-policy \
 aws iam attach-role-policy \
   --role-name github-actions-deploy \
   --policy-arn arn:aws:iam::aws:policy/AmazonECS_FullAccess
+
+# Create the ECR repository used by the workflow
+aws ecr create-repository \
+  --repository-name my-app \
+  --region us-east-1
 ```
 
 ## Step 2: Create the GitHub Actions Workflow
@@ -177,13 +192,14 @@ jobs:
 
       # Authenticate to GCP using workload identity
       - id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
+          project_id: my-gcp-project
           workload_identity_provider: projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service_account: github-deploy@my-gcp-project.iam.gserviceaccount.com
 
       - name: Set up gcloud CLI
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker $GCP_REGION-docker.pkg.dev --quiet
@@ -224,7 +240,7 @@ jobs:
         run: docker load < /tmp/image.tar
 
       # Authenticate to AWS using OIDC
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::123456789012:role/github-actions-deploy
           aws-region: us-east-1
@@ -249,15 +265,26 @@ jobs:
 
           # Update the image in the task definition
           jq --arg IMAGE "${{ steps.ecr-login.outputs.registry }}/$IMAGE_NAME:${{ github.sha }}" \
-            '.containerDefinitions[0].image = $IMAGE' task-def.json > new-task-def.json
+            '.containerDefinitions[0].image = $IMAGE
+             | del(
+                .taskDefinitionArn,
+                .revision,
+                .status,
+                .requiresAttributes,
+                .compatibilities,
+                .registeredAt,
+                .registeredBy
+              )' task-def.json > new-task-def.json
 
-          aws ecs register-task-definition \
-            --cli-input-json file://new-task-def.json
+          NEW_TASK_DEF=$(aws ecs register-task-definition \
+            --cli-input-json file://new-task-def.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
 
           aws ecs update-service \
             --cluster my-cluster \
             --service $IMAGE_NAME \
-            --task-definition $IMAGE_NAME \
+            --task-definition "$NEW_TASK_DEF" \
             --force-new-deployment
 
       - name: Wait for deployment
@@ -287,14 +314,15 @@ When one cloud deployment succeeds but the other fails, you need a rollback stra
     runs-on: ubuntu-latest
     steps:
       - id: gcp-auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
+          project_id: my-gcp-project
           workload_identity_provider: projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service_account: github-deploy@my-gcp-project.iam.gserviceaccount.com
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@v3
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::123456789012:role/github-actions-deploy
           aws-region: us-east-1
@@ -316,11 +344,14 @@ When one cloud deployment succeeds but the other fails, you need a rollback stra
         run: |
           PREV_TASK=$(aws ecs describe-services \
             --cluster my-cluster --services my-app \
-            --query 'services[0].taskDefinition' --output text)
-          aws ecs update-service \
-            --cluster my-cluster \
-            --service my-app \
-            --task-definition $PREV_TASK
+            --query "services[0].deployments[?status=='ACTIVE'] | [0].taskDefinition" \
+            --output text)
+          if [ -n "$PREV_TASK" ] && [ "$PREV_TASK" != "None" ]; then
+            aws ecs update-service \
+              --cluster my-cluster \
+              --service my-app \
+              --task-definition "$PREV_TASK"
+          fi
 ```
 
 ## Environment-Specific Configuration
@@ -345,6 +376,6 @@ Use GitHub environments to manage different configurations for staging and produ
 
 ## Wrapping Up
 
-Building a multi-cloud CI/CD pipeline with GitHub Actions is straightforward once you have the authentication configured. Workload identity federation on both GCP and AWS eliminates the need for long-lived secrets. Building the container image once and pushing it to both cloud registries ensures consistency.
+Building a multi-cloud CI/CD pipeline with GitHub Actions is straightforward once you have the authentication configured. OIDC-based federation for GCP and AWS eliminates the need for long-lived secrets. Building the container image once and pushing it to both cloud registries ensures consistency.
 
 The key decisions are around failure handling - what happens when one cloud deploys successfully but the other fails? Having automated rollback logic in your workflow means you do not have to make those decisions under pressure during an incident.
