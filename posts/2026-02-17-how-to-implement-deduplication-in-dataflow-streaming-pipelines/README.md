@@ -26,7 +26,7 @@ Understanding the sources of duplicates helps you choose the right strategy.
 
 ## Approach 1: Beam's Built-in Deduplicate Transform
 
-Apache Beam includes a `Deduplicate` transform that removes duplicates within a configurable time window. This is the simplest approach.
+Apache Beam includes a `Deduplicate` transform that removes duplicates on a best-effort basis within a configurable time window. This is the simplest approach.
 
 ```java
 // Built-in deduplication based on the full element value
@@ -40,7 +40,7 @@ PCollection<String> deduplicated = messages
         .withDuration(Duration.standardMinutes(10)));
 ```
 
-This works by maintaining state for each unique element value. Elements that appear more than once within the duration are dropped. The limitation is that it compares the entire element value. If two messages have the same payload but different metadata, they are considered duplicates. If two messages have different payloads but represent the same logical event, they are not detected as duplicates.
+This works by maintaining state for each unique encoded element value. Elements that appear more than once within the duration and window are dropped. The limitation is that it compares the entire element value. If two messages have the same payload but different metadata outside the element value, they are considered duplicates. If two messages have different payloads but represent the same logical event, they are not detected as duplicates.
 
 ## Approach 2: Deduplication by ID
 
@@ -58,7 +58,7 @@ PCollection<String> deduplicated = messages
                 return json.get("event_id").getAsString();
             }
         }))
-    .apply("DeduplicateById", Deduplicate.<KV<String, String>>keyedValues()
+    .apply("DeduplicateById", Deduplicate.<String, String>keyedValues()
         .withDuration(Duration.standardHours(1)))
     .apply("DropKeys", Values.create());
 ```
@@ -123,19 +123,19 @@ PCollection<Event> deduplicated = events
 
 The timer is important. Without it, state grows unbounded as you accumulate IDs forever. The timer clears state after the dedup window, keeping memory usage stable.
 
-## Approach 4: Pub/Sub Native Deduplication
+## Approach 4: Dataflow Pub/SubIO Deduplication
 
-If your messages have a unique ID, you can use Pub/Sub's built-in deduplication before data even reaches Dataflow.
+If your messages have a unique ID in a Pub/Sub message attribute, you can configure Dataflow's Pub/SubIO connector to use that attribute for source-level deduplication.
 
 ```java
-// Read with Pub/Sub ID attribute for native deduplication
+// Read with a Pub/Sub message attribute used as the record ID
 PCollection<PubsubMessage> messages = pipeline
     .apply("ReadPubSub", PubsubIO.readMessages()
         .fromSubscription("projects/my-project/subscriptions/events")
-        .withIdAttribute("event_id"));  // Pub/Sub deduplicates on this attribute
+        .withIdAttribute("event_id"));  // Dataflow deduplicates on this attribute
 ```
 
-When you set `withIdAttribute`, Pub/Sub tracks message IDs and suppresses redelivery of messages with the same ID within a 10-minute window. This handles Pub/Sub-level duplicates but does not help with producer-side duplicates or replays.
+When you set `withIdAttribute`, Dataflow uses the attribute value as the record ID instead of the Pub/Sub-assigned message ID. This can catch producer-side duplicate publishes when the publisher sets the same attribute value on each retry, but messages must be published to Pub/Sub within 10 minutes of each other for this source-level deduplication to apply. It does not help with replays outside that window or messages whose dedup attribute is missing or inconsistent.
 
 ## Approach 5: External Store Deduplication
 
@@ -159,16 +159,18 @@ public class BigtableDeduplicateFn extends DoFn<Event, Event> {
         Event event = c.element();
         String eventId = event.getEventId();
 
-        // Check if we have seen this event ID before
-        Row row = client.readRow(TABLE_ID, eventId);
+        // Atomically write only if this event ID has not been seen before
+        ConditionalRowMutation mutation = ConditionalRowMutation
+            .create(TableId.of(TABLE_ID), eventId)
+            .otherwise(
+                Mutation.create()
+                    .setCell(FAMILY, "ts",
+                        String.valueOf(System.currentTimeMillis())));
 
-        if (row == null || row.getCells(FAMILY, "ts").isEmpty()) {
-            // Not seen before - write to Bigtable and output
-            RowMutation mutation = RowMutation.create(TABLE_ID, eventId)
-                .setCell(FAMILY, "ts",
-                    String.valueOf(System.currentTimeMillis()));
-            client.mutateRow(mutation);
+        Boolean alreadySeen = client.checkAndMutateRow(mutation);
 
+        if (!alreadySeen) {
+            // Not seen before - Bigtable wrote the row, so output the event
             c.output(event);
         }
         // Otherwise, drop the duplicate
@@ -183,13 +185,13 @@ public class BigtableDeduplicateFn extends DoFn<Event, Event> {
 }
 ```
 
-This approach handles dedup windows of any duration (limited only by Bigtable storage) and works across pipeline restarts. The tradeoff is the latency of an external lookup per element.
+This approach handles dedup windows of any duration (limited only by Bigtable storage) and works across pipeline restarts. The tradeoff is the latency of an external conditional write per element.
 
 ## Choosing the Right Approach
 
 ```mermaid
 flowchart TD
-    A[What is your dedup window?] -->|Under 10 min| B[Pub/Sub native dedup]
+    A[What is your dedup window?] -->|Under 10 min| B[Dataflow Pub/SubIO attribute dedup]
     A -->|10 min to 2 hours| C[Beam Deduplicate or Stateful]
     A -->|Over 2 hours| D[External store - Bigtable/Redis]
 
@@ -204,7 +206,7 @@ flowchart TD
 
 Deduplication state grows with the number of unique IDs within your dedup window. If you process 1 million unique events per hour with a 2-hour window, you maintain state for 2 million IDs.
 
-Each ID entry in Beam state is relatively small (the ID string plus a boolean). But at millions of entries, it adds up. Monitor the state size metric in Dataflow and adjust your dedup window if state gets too large.
+Each ID entry in Beam state is relatively small (the ID string plus a boolean). But at millions of entries, it adds up. Monitor Dataflow state usage and adjust your dedup window if state gets too large.
 
 For high-throughput pipelines, consider using a Bloom filter for probabilistic deduplication. It uses much less memory but has a small false-positive rate (incorrectly identifying a new message as a duplicate).
 
@@ -214,21 +216,27 @@ For high-throughput pipelines, consider using a Bloom filter for probabilistic d
 private final StateSpec<ValueState<byte[]>> bloomFilterSpec =
     StateSpecs.value(ByteArrayCoder.of());
 
+private static final Funnel<String> EVENT_ID_FUNNEL =
+    Funnels.stringFunnel(StandardCharsets.UTF_8);
+
 @ProcessElement
 public void processElement(ProcessContext c,
-        @StateId("bloomFilter") ValueState<byte[]> filterState) {
+        @StateId("bloomFilter") ValueState<byte[]> filterState) throws IOException {
     // Deserialize or create Bloom filter
     byte[] filterBytes = filterState.read();
     BloomFilter<String> filter = filterBytes != null
-        ? BloomFilter.readFrom(new ByteArrayInputStream(filterBytes))
-        : BloomFilter.create(Funnels.stringFunnel(Charset.defaultCharset()),
-            1000000, 0.001);  // 0.1% false positive rate
+        ? BloomFilter.readFrom(new ByteArrayInputStream(filterBytes), EVENT_ID_FUNNEL)
+        : BloomFilter.create(EVENT_ID_FUNNEL, 1000000, 0.001);  // 0.1% false positive rate
 
     String eventId = c.element().getValue().getEventId();
 
     if (!filter.mightContain(eventId)) {
         filter.put(eventId);
-        filterState.write(serializeFilter(filter));
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        filter.writeTo(out);
+        filterState.write(out.toByteArray());
+
         c.output(c.element().getValue());
     }
 }
