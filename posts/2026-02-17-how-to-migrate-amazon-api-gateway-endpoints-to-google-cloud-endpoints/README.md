@@ -18,9 +18,9 @@ There is also Google API Gateway (a separate product from Cloud Endpoints) that 
 |---------|-----------------|-------------------|
 | Hosting model | ESP sidecar with your backend | Fully managed proxy |
 | Backend support | Cloud Run, GKE, Compute Engine | Cloud Functions, Cloud Run, App Engine |
-| API spec | OpenAPI 2.0 | OpenAPI 2.0 |
+| API spec | OpenAPI 2.0 and 3.x | OpenAPI 2.0 and 3.x |
 | Authentication | API keys, JWT, Google ID tokens | API keys, JWT, Google ID tokens |
-| Rate limiting | Custom via ESP config | Built-in |
+| Rate limiting | Quotas via Service Control | Gateway quotas and service limits |
 | Best for | Microservices on GKE/Cloud Run | Serverless backends |
 
 ## Step 1: Export Your API Gateway Configuration
@@ -145,14 +145,21 @@ gcloud endpoints services deploy openapi-spec.yaml
 # Config ID: 2026-02-17r0
 ```
 
-Deploy the ESP proxy alongside your backend on Cloud Run:
+Build the ESPv2 proxy image with your service configuration, then deploy it alongside your backend on Cloud Run:
 
 ```bash
+# Build an ESPv2 image that includes the deployed Endpoints config
+curl -O https://raw.githubusercontent.com/GoogleCloudPlatform/esp-v2/master/docker/serverless/gcloud_build_image
+chmod +x gcloud_build_image
+./gcloud_build_image -s my-api-abc123.a.run.app \
+  -c 2026-02-17r0 \
+  -p my-project
+
 # Deploy ESP proxy as a Cloud Run service
 gcloud run deploy my-api-gateway \
-  --image="gcr.io/endpoints-release/endpoints-runtime-serverless:2" \
+  --image="gcr.io/my-project/endpoints-runtime-serverless:ESPv2_VERSION-my-api-abc123.a.run.app-2026-02-17r0" \
   --region=us-central1 \
-  --set-env-vars="ENDPOINTS_SERVICE_NAME=my-api-abc123.a.run.app" \
+  --platform managed \
   --allow-unauthenticated
 ```
 
@@ -296,8 +303,8 @@ gcloud monitoring policies create \
   --display-name="API Error Rate" \
   --condition-display-name="High 5xx error rate" \
   --condition-filter='resource.type="api" AND metric.type="serviceruntime.googleapis.com/api/producer/request_count" AND metric.labels.response_code_class="5xx"' \
-  --condition-threshold-value=10 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --if="> 10" \
+  --duration=60s
 ```
 
 ## Summary
