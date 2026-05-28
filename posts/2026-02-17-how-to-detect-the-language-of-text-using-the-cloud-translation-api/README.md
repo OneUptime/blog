@@ -10,15 +10,15 @@ Description: Learn how to automatically detect the language of text using Google
 
 When your application handles user-generated content from around the world, you often need to know what language the text is in before you can do anything useful with it. Maybe you need to route support tickets to language-specific teams, translate content for other users, apply the right spell checker, or filter content by language. Language detection is the first step in all of these workflows.
 
-Google Cloud Translation API includes a language detection feature that identifies the language of any text input and returns a confidence score. It is fast, accurate for most languages, and works with both the Basic (v2) and Advanced (v3) API versions.
+Google Cloud Translation API includes a language detection feature that identifies the language of any text input. The Advanced (v3) API also returns a confidence score. The Basic (v2) API can include a confidence value, but that field is deprecated and should not be used for routing or filtering decisions. It is fast, accurate for most languages, and works with both the Basic (v2) and Advanced (v3) API versions.
 
 ## How Language Detection Works
 
 The API analyzes the characters, word patterns, and statistical features of the input text to determine its language. It returns:
 
-- **Language code**: ISO 639-1 code like "en", "es", "ja", "zh-CN"
-- **Confidence**: A value between 0 and 1 indicating how confident the detection is
-- **Multiple candidates**: Sometimes the API returns several possible languages ranked by confidence
+- **Language code**: ISO 639 code like "en", "es", "ja", "zh-CN"
+- **Confidence**: In v3, a value between 0 and 1 indicating how confident the detection is
+- **Multiple candidates**: In v3, the API can return several possible languages ranked by confidence
 
 The API supports detection of over 100 languages. It works best with at least 20 characters of text - shorter strings may produce less reliable results.
 
@@ -37,7 +37,8 @@ def detect_language(text):
 
     print(f"Text:       {text[:80]}...")
     print(f"Language:   {result['language']}")
-    print(f"Confidence: {result['confidence']:.2f}")
+    if "confidence" in result:
+        print(f"Confidence: {result['confidence']:.2f}")
 
     return result
 
@@ -67,10 +68,14 @@ def detect_languages_batch(texts):
         detection = {
             "text": text[:60],
             "language": result["language"],
-            "confidence": result["confidence"],
         }
+        if "confidence" in result:
+            detection["confidence"] = result["confidence"]
         detections.append(detection)
-        print(f"[{result['language']}] ({result['confidence']:.2f}) {text[:60]}")
+        if "confidence" in result:
+            print(f"[{result['language']}] ({result['confidence']:.2f}) {text[:60]}")
+        else:
+            print(f"[{result['language']}] {text[:60]}")
 
     return detections
 
@@ -91,7 +96,7 @@ results = detect_languages_batch(messages)
 The Advanced API provides slightly different syntax and additional features:
 
 ```python
-from google.cloud import translate_v3 as translate
+from google.cloud import translate
 
 def detect_language_v3(project_id, location, text):
     """Detect language using the Translation v3 API."""
@@ -100,11 +105,9 @@ def detect_language_v3(project_id, location, text):
     parent = f"projects/{project_id}/locations/{location}"
 
     response = client.detect_language(
-        request={
-            "parent": parent,
-            "content": text,
-            "mime_type": "text/plain",
-        }
+        parent=parent,
+        content=text,
+        mime_type="text/plain",
     )
 
     for detection in response.languages:
@@ -113,7 +116,7 @@ def detect_language_v3(project_id, location, text):
 
     return response.languages
 
-detect_language_v3("your-project-id", "us-central1", "This is a test message.")
+detect_language_v3("your-project-id", "global", "This is a test message.")
 ```
 
 ## Building a Language Router
@@ -139,20 +142,17 @@ class LanguageRouter:
         """Set a handler for unmatched languages."""
         self.default_handler = handler_fn
 
-    def route(self, text, min_confidence=0.5):
+    def route(self, text):
         """Detect language and route to the appropriate handler."""
         result = self.client.detect_language(text)
 
         language = result["language"]
-        confidence = result["confidence"]
+        confidence = result.get("confidence")
 
-        print(f"Detected: {language} (confidence: {confidence:.2f})")
-
-        # Use default handler if confidence is too low
-        if confidence < min_confidence:
-            if self.default_handler:
-                return self.default_handler(text, language, confidence)
-            return None
+        if confidence is not None:
+            print(f"Detected: {language} (confidence: {confidence:.2f})")
+        else:
+            print(f"Detected: {language}")
 
         # Route to language-specific handler
         handler = self.handlers.get(language, self.default_handler)
@@ -202,8 +202,6 @@ def analyze_language_distribution(texts):
     client = translate.Client()
 
     language_counts = Counter()
-    low_confidence = []
-
     # Process in batches for efficiency
     batch_size = 100
 
@@ -213,16 +211,8 @@ def analyze_language_distribution(texts):
 
         for text, result in zip(batch, results):
             lang = result["language"]
-            conf = result["confidence"]
 
             language_counts[lang] += 1
-
-            if conf < 0.5:
-                low_confidence.append({
-                    "text": text[:80],
-                    "detected": lang,
-                    "confidence": conf,
-                })
 
     # Print distribution
     total = sum(language_counts.values())
@@ -232,11 +222,6 @@ def analyze_language_distribution(texts):
         pct = (count / total) * 100
         bar = "#" * int(pct / 2)
         print(f"  {lang:5s}: {count:6d} ({pct:5.1f}%) {bar}")
-
-    if low_confidence:
-        print(f"\n{len(low_confidence)} texts with low confidence:")
-        for item in low_confidence[:5]:
-            print(f"  [{item['detected']}] ({item['confidence']:.2f}) {item['text']}")
 
     return language_counts
 
@@ -267,53 +252,50 @@ class LanguageFilter:
         self.allowed = set(allowed_languages) if allowed_languages else None
         self.blocked = set(blocked_languages) if blocked_languages else set()
 
-    def filter_text(self, text, min_confidence=0.7):
+    def filter_text(self, text):
         """Check if text passes the language filter."""
         result = self.client.detect_language(text)
         lang = result["language"]
-        conf = result["confidence"]
-
-        # Low confidence - cannot reliably filter
-        if conf < min_confidence:
-            return {
-                "passed": True,
-                "reason": "low_confidence",
-                "language": lang,
-                "confidence": conf,
-            }
+        conf = result.get("confidence")
 
         # Check against blocked languages
         if lang in self.blocked:
-            return {
+            response = {
                 "passed": False,
                 "reason": "blocked_language",
                 "language": lang,
-                "confidence": conf,
             }
+            if conf is not None:
+                response["confidence"] = conf
+            return response
 
         # Check against allowed languages (if whitelist is set)
         if self.allowed and lang not in self.allowed:
-            return {
+            response = {
                 "passed": False,
                 "reason": "not_in_allowed_list",
                 "language": lang,
-                "confidence": conf,
             }
+            if conf is not None:
+                response["confidence"] = conf
+            return response
 
-        return {
+        response = {
             "passed": True,
             "reason": "ok",
             "language": lang,
-            "confidence": conf,
         }
+        if conf is not None:
+            response["confidence"] = conf
+        return response
 
-    def filter_batch(self, texts, min_confidence=0.7):
+    def filter_batch(self, texts):
         """Filter multiple texts and separate into passed/failed."""
         passed = []
         failed = []
 
         for text in texts:
-            result = self.filter_text(text, min_confidence)
+            result = self.filter_text(text)
             if result["passed"]:
                 passed.append({"text": text, "detection": result})
             else:
