@@ -22,12 +22,11 @@ flowchart TD
     EA -->|order.created| WF[Cloud Workflow: Order Processing]
     WF --> V[Validate Order - Cloud Run]
     WF --> P[Process Payment - Cloud Run]
-    WF --> I[Update Inventory - Cloud Run]
     WF --> N[Send Notification - Cloud Run]
-    V -->|validation.complete| EA
-    P -->|payment.processed| EA
-    EA -->|payment.processed| AN[Analytics Service - Cloud Run]
-    EA -->|payment.failed| AL[Alert Service - Cloud Run]
+    WF -->|payment.processed| EA
+    WF -->|payment.failed| EA
+    EA -->|custom.orderplatform.payment.processed| AN[Analytics Service - Cloud Run]
+    EA -->|custom.orderplatform.payment.failed| AL[Alert Service - Cloud Run]
     GCS[Cloud Storage] -->|File uploaded| EA2[Eventarc Direct]
     EA2 --> IM[Image Processor - Cloud Run]
 ```
@@ -59,6 +58,15 @@ gcloud iam service-accounts create eventarc-trigger-sa \
 
 gcloud iam service-accounts create workflow-sa \
   --display-name="Workflow SA"
+
+# Allow the application and workflow identities to publish custom events
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+  --member="serviceAccount:order-platform-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/eventarc.publisher"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+  --member="serviceAccount:workflow-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/eventarc.publisher"
 ```
 
 ## Building the Microservices
@@ -71,26 +79,30 @@ This is the entry point. It receives orders and emits events.
 // order-api/server.js
 // Order API that accepts orders and publishes events to Eventarc
 const express = require("express");
-const { EventarcPublisherClient } = require("@google-cloud/eventarc-publishing");
+const { PublisherClient } = require("@google-cloud/eventarc-publishing");
 const { v4: uuidv4 } = require("uuid");
 
 const app = express();
 app.use(express.json());
 
-const publisher = new EventarcPublisherClient();
-const PROJECT = process.env.GOOGLE_CLOUD_PROJECT;
+const publisher = new PublisherClient();
+const PROJECT = process.env.PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
 const CHANNEL = `projects/${PROJECT}/locations/us-central1/channels/order-platform-events`;
 
 async function emitEvent(type, data) {
   await publisher.publishEvents({
     channel: CHANNEL,
-    events: [{
-      id: uuidv4(),
-      type,
-      source: "//order-platform/order-api",
-      specVersion: "1.0",
-      textData: JSON.stringify(data),
-    }],
+    textEvents: [
+      JSON.stringify({
+        id: uuidv4(),
+        type,
+        source: "//order-platform/order-api",
+        specversion: "1.0",
+        datacontenttype: "application/json",
+        time: new Date().toISOString(),
+        data,
+      }),
+    ],
   });
 }
 
@@ -213,7 +225,9 @@ Deploy all services.
 # Deploy each microservice
 gcloud run deploy order-api \
   --source=./order-api --region=us-central1 \
-  --allow-unauthenticated --memory=256Mi
+  --allow-unauthenticated --memory=256Mi \
+  --service-account=order-platform-sa@YOUR_PROJECT.iam.gserviceaccount.com \
+  --set-env-vars=PROJECT_ID=YOUR_PROJECT
 
 gcloud run deploy validation-service \
   --source=./validation-service --region=us-central1 \
@@ -226,6 +240,22 @@ gcloud run deploy payment-service \
 gcloud run deploy notification-service \
   --source=./notification-service --region=us-central1 \
   --no-allow-unauthenticated --memory=256Mi
+
+# Allow the workflow service account to call the private services
+gcloud run services add-iam-policy-binding validation-service \
+  --region=us-central1 \
+  --member="serviceAccount:workflow-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+
+gcloud run services add-iam-policy-binding payment-service \
+  --region=us-central1 \
+  --member="serviceAccount:workflow-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+
+gcloud run services add-iam-policy-binding notification-service \
+  --region=us-central1 \
+  --member="serviceAccount:workflow-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
 ```
 
 ## The Orchestration Workflow
@@ -241,7 +271,7 @@ main:
   steps:
     - extract_order:
         assign:
-          - order: ${json.decode(event.data)}
+          - order: ${event.data}
           - project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
 
     - log_start:
@@ -383,12 +413,8 @@ publish_event:
           auth:
             type: OAuth2
           body:
-            events:
-              - id: ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID") + "-" + type}
-                type: ${type}
-                source: "//order-platform/workflow"
-                specversion: "1.0"
-                textData: ${json.encode_to_string(data)}
+            textEvents:
+              - ${json.encode_to_string({"id": sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID") + "-" + type, "type": type, "source": "//order-platform/workflow", "specversion": "1.0", "datacontenttype": "application/json", "data": data})}
 ```
 
 Deploy the workflow.
@@ -411,6 +437,10 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT \
   --member="serviceAccount:eventarc-trigger-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
   --role="roles/workflows.invoker"
 
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+  --member="serviceAccount:eventarc-trigger-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/eventarc.eventReceiver"
+
 # Create the trigger: order.created -> workflow
 gcloud eventarc triggers create order-created-to-workflow \
   --location=us-central1 \
@@ -424,6 +454,17 @@ gcloud eventarc triggers create order-created-to-workflow \
 Create additional triggers for downstream event consumers.
 
 ```bash
+# Grant the trigger SA permission to invoke the private Cloud Run consumers
+gcloud run services add-iam-policy-binding analytics-service \
+  --region=us-central1 \
+  --member="serviceAccount:eventarc-trigger-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+
+gcloud run services add-iam-policy-binding alert-service \
+  --region=us-central1 \
+  --member="serviceAccount:eventarc-trigger-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+
 # Route payment events to analytics service
 gcloud eventarc triggers create payment-to-analytics \
   --location=us-central1 \
@@ -448,6 +489,17 @@ gcloud eventarc triggers create payment-failure-alert \
 Combine custom events with Google Cloud events. Add image processing for product photos.
 
 ```bash
+PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT --format="value(projectNumber)")
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gs-project-accounts.iam.gserviceaccount.com" \
+  --role="roles/pubsub.publisher"
+
+gcloud run services add-iam-policy-binding image-processor \
+  --region=us-central1 \
+  --member="serviceAccount:eventarc-trigger-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+
 # Trigger for product image uploads
 gcloud eventarc triggers create product-image-uploaded \
   --location=us-central1 \
@@ -496,7 +548,7 @@ gcloud run services logs read payment-service --region=us-central1 --limit=5
 
 **Visibility**: Cloud Workflows gives you a clear view of the orchestration flow, and Eventarc shows you how events are routed.
 
-**Resilience**: If one service is down, events queue up and are delivered when it recovers.
+**Resilience**: Eventarc uses at-least-once delivery and retries events that a destination does not acknowledge within its retention window. The workflow also publishes failure events when synchronous service calls fail.
 
 ## Wrapping Up
 
