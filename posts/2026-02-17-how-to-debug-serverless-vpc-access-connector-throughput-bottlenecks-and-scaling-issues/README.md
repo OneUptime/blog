@@ -14,7 +14,7 @@ Serverless VPC Access connectors let your Cloud Functions, Cloud Run services, a
 
 Under the hood, a Serverless VPC Access connector is a group of Compute Engine instances (e2-micro by default) that sit in your VPC and proxy traffic between your serverless workloads and VPC resources. When your Cloud Function needs to talk to a database on a private IP, the traffic goes through these connector instances.
 
-The important thing to understand is that these instances have finite bandwidth. An e2-micro instance tops out at around 200 Mbps. If you have a connector with the default configuration, you are limited by the number and type of these proxy instances.
+The important thing to understand is that these instances have finite bandwidth. A connector that uses the default e2-micro machine type has an estimated throughput range of 200-1,000 Mbps depending on the number of instances. If you have a connector with the default configuration, you are limited by the number and type of these proxy instances.
 
 ## Step 1: Check Current Connector Metrics
 
@@ -42,37 +42,33 @@ Look at the sent and received bytes count. If the numbers are consistently near 
 
 ## Step 2: Understand the Throughput Limits
 
-Connectors have throughput ranges specified in Mbps. The default range is 200-300 Mbps. When you create a connector, you can set a minimum and maximum throughput, and the connector autoscales within that range by adding or removing instances.
+Connectors have throughput ranges specified in Mbps. With the default e2-micro machine type and default instance range, the estimated connector throughput range is 200-1,000 Mbps. When you create a connector, you can set the minimum and maximum number of instances, and the connector autoscales up within that range by adding instances. Connectors do not scale back down automatically.
 
-Here are the machine types and their approximate throughput per instance:
+Here are the machine types and their approximate connector throughput ranges:
 
-| Machine Type | Throughput per Instance | Use Case |
+| Machine Type | Connector Throughput Range | Use Case |
 |---|---|---|
-| e2-micro | ~200 Mbps | Low traffic workloads |
-| e2-standard-4 | ~4 Gbps | High traffic workloads |
+| e2-micro | 200-1,000 Mbps | Low traffic workloads |
+| e2-standard-4 | 3,200-16,000 Mbps | High traffic workloads |
 
 If you created your connector with the default e2-micro machine type and your workload needs more throughput, this is your problem.
 
 ## Step 3: Upgrade the Connector Machine Type
 
-Unfortunately, you cannot change the machine type of an existing connector. You need to create a new one and update your serverless services to use it.
+You can update the machine type of an existing connector. You can also create a new connector and update your serverless services to use it if you want to migrate gradually.
 
-Create a new connector with a larger machine type:
+Update the connector with a larger machine type:
 
 ```bash
-# Create a new connector with e2-standard-4 instances for higher throughput
-gcloud compute networks vpc-access connectors create your-connector-v2 \
+# Update an existing connector to use e2-standard-4 instances for higher throughput
+gcloud beta compute networks vpc-access connectors update your-connector \
     --region=us-central1 \
-    --network=your-vpc-network \
-    --range=10.8.0.0/28 \
-    --machine-type=e2-standard-4 \
-    --min-instances=2 \
-    --max-instances=10
+    --machine-type=e2-standard-4
 ```
 
-Note that the IP range must not overlap with any existing subnets or connectors in your VPC.
+If you decide to create a replacement connector instead, note that the IP range must be a `/28` and must not overlap with any existing subnets or connectors in your VPC.
 
-Then update your Cloud Function or Cloud Run service to use the new connector:
+If you created a replacement connector, update your Cloud Function or Cloud Run service to use the new connector:
 
 ```bash
 # Update a Cloud Run service to use the new connector
@@ -100,19 +96,19 @@ Setting a higher minimum means you always have enough capacity for your baseline
 
 ## Step 5: Check the Subnet IP Exhaustion
 
-Each connector instance needs an IP address from the connector's subnet or IP range. If you specified a /28 range (the default minimum), you only have 16 IP addresses, and some are reserved. This can limit how many instances the connector can scale to.
+Each connector instance needs an IP address from the connector's subnet or IP range. Serverless VPC Access connectors use a `/28` range, and connectors support a maximum of 10 instances, so you cannot increase connector scale by creating a connector with a larger range.
 
-If you need more instances, create a new connector with a larger range:
+If you are running into IP range conflicts, create a new connector with a different non-overlapping `/28` range or subnet:
 
 ```bash
-# Create a connector with a /24 range for more scaling headroom
+# Create a connector with a different /28 range
 gcloud compute networks vpc-access connectors create your-connector-large \
     --region=us-central1 \
-    --subnet=your-connector-subnet \
-    --subnet-project=your-project \
+    --network=your-vpc-network \
+    --range=10.9.0.0/28 \
     --machine-type=e2-standard-4 \
     --min-instances=2 \
-    --max-instances=20
+    --max-instances=10
 ```
 
 ## Step 6: Check VPC Egress Configuration
@@ -136,7 +132,7 @@ gcloud functions deploy your-function \
 
 High connection counts can also bottleneck a connector, even if raw throughput is not maxed out. If your application opens many short-lived connections (for example, creating a new database connection for every request), you might be exhausting the connector's connection tracking capacity.
 
-Consider implementing connection pooling in your application. For Cloud SQL, use the Cloud SQL connector library which manages connection pooling efficiently:
+Consider implementing connection pooling in your application. For Cloud SQL, use the Cloud SQL connector library with a pooling library such as SQLAlchemy:
 
 ```python
 # Example: Using Cloud SQL connector with connection pooling in Python
@@ -146,7 +142,7 @@ import sqlalchemy
 connector = Connector()
 
 def get_connection():
-    # This returns a pooled connection instead of creating a new one each time
+    # SQLAlchemy calls this when it needs to open a new pooled connection.
     return connector.connect(
         "project:region:instance",
         "pg8000",
@@ -174,6 +170,7 @@ If you are using Cloud Run, you can bypass Serverless VPC Access connectors enti
 # Deploy a Cloud Run service with Direct VPC egress
 gcloud run services update your-service \
     --region=us-central1 \
+    --clear-vpc-connector \
     --network=your-vpc-network \
     --subnet=your-subnet \
     --vpc-egress=private-ranges-only
