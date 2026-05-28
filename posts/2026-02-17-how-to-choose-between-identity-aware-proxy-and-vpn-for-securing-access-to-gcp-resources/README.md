@@ -8,11 +8,11 @@ Description: A practical comparison of Identity-Aware Proxy and VPN for securing
 
 ---
 
-Securing access to internal applications and GCP resources typically comes down to two approaches: VPN (create a secure network tunnel) or Identity-Aware Proxy (verify identity per request). These represent two different security philosophies - network-perimeter security versus zero-trust access. Understanding when each makes sense helps you build a security model that actually works for your team.
+Securing access to internal applications and GCP resources typically comes down to two approaches: network connectivity such as VPN (create a secure network tunnel) or Identity-Aware Proxy (verify identity per request). These represent two different security philosophies - network-perimeter security versus zero-trust access. Understanding when each makes sense helps you build a security model that actually works for your team.
 
 ## The Two Approaches
 
-**VPN (Cloud VPN or Cloud Interconnect)** creates an encrypted tunnel between the user's network and your GCP VPC. Once connected, the user can access resources on the network as if they were locally connected. This is the traditional approach.
+**VPN (Cloud VPN for site-to-site connectivity, or a client VPN you operate yourself)** creates an encrypted tunnel between a peer network or user device and your GCP VPC. Once connected, the user can access resources on the network as if they were locally connected. This is the traditional approach. Cloud Interconnect is related private connectivity for on-premises networks, but it is not itself a VPN.
 
 **Identity-Aware Proxy (IAP)** verifies a user's identity and authorization on every request to an application. Users access applications through a browser or IAP tunnel without needing to connect to the VPC. This is the zero-trust approach.
 
@@ -24,7 +24,7 @@ Securing access to internal applications and GCP resources typically comes down 
 | Authentication | VPN credentials + network access | Google identity + IAM |
 | Granularity | Network-level (IP ranges) | Application-level (per app, per user) |
 | Access logging | VPN connection logs | Per-request audit logs |
-| Client software | VPN client required | Browser (web apps) or gcloud (SSH/TCP) |
+| Client software | VPN client required for remote-user VPN; not for site-to-site Cloud VPN | Browser (web apps) or gcloud (SSH/TCP) |
 | Non-HTTP protocols | All protocols | HTTP, SSH, TCP (via tunnel) |
 | Split tunneling | Configurable | Not applicable (no tunnel) |
 | Lateral movement risk | Higher (network access) | Lower (application-specific) |
@@ -63,10 +63,22 @@ gcloud compute backend-services add-backend dashboard-backend \
     --network-endpoint-group=dashboard-neg \
     --network-endpoint-group-region=us-central1
 
-# Enable IAP on the backend service
+# Grant the IAP service agent permission to invoke the Cloud Run service
+gcloud beta services identity create \
+    --service=iap.googleapis.com \
+    --project=PROJECT_ID
+
+gcloud run services add-iam-policy-binding internal-dashboard \
+    --region=us-central1 \
+    --member="serviceAccount:service-PROJECT_NUMBER@gcp-sa-iap.iam.gserviceaccount.com" \
+    --role="roles/run.invoker"
+
+# Enable IAP on the backend service. This example assumes the rest of the
+# external Application Load Balancer (URL map, HTTPS proxy, forwarding rule,
+# certificate, and DNS) is already configured.
 gcloud compute backend-services update dashboard-backend \
     --global \
-    --iap=enabled,oauth2-client-id=CLIENT_ID,oauth2-client-secret=CLIENT_SECRET
+    --iap=enabled
 
 # Step 3: Grant access to specific users
 gcloud iap web add-iam-policy-binding \
@@ -96,11 +108,24 @@ gcloud compute instances create internal-server \
     --no-address \
     --network=default
 
+# Allow IAP TCP forwarding to reach SSH on the VM
+gcloud compute firewall-rules create allow-ssh-ingress-from-iap \
+    --direction=INGRESS \
+    --action=allow \
+    --rules=tcp:22 \
+    --source-ranges=35.235.240.0/20 \
+    --network=default
+
 # Grant IAP tunnel access to specific users
 gcloud compute instances add-iam-policy-binding internal-server \
     --zone=us-central1-a \
     --member="user:admin@example.com" \
     --role="roles/iap.tunnelResourceAccessor"
+
+# Grant the Compute Engine permissions that gcloud SSH also needs
+gcloud projects add-iam-policy-binding PROJECT_ID \
+    --member="user:admin@example.com" \
+    --role="roles/compute.instanceAdmin.v1"
 
 # SSH through IAP tunnel - no VPN needed
 gcloud compute ssh internal-server \
@@ -115,6 +140,14 @@ The IAP tunnel encrypts the SSH connection and verifies the user's identity. The
 Access databases and other TCP services through IAP tunnels:
 
 ```bash
+# The VM firewall must allow IAP's TCP forwarding range to reach this port.
+gcloud compute firewall-rules create allow-postgres-ingress-from-iap \
+    --direction=INGRESS \
+    --action=allow \
+    --rules=tcp:5432 \
+    --source-ranges=35.235.240.0/20 \
+    --network=default
+
 # Forward local port 5432 to an internal database server through IAP
 gcloud compute start-iap-tunnel db-server 5432 \
     --local-host-port=localhost:5432 \
@@ -140,7 +173,7 @@ gcloud iap web add-iam-policy-binding \
     --service=dashboard-backend \
     --member="group:engineering@example.com" \
     --role="roles/iap.httpsResourceAccessor" \
-    --condition='expression=accessPolicies/POLICY_ID/accessLevels/corporate-device,title=Require corporate device'
+    --condition='expression="accessPolicies/POLICY_ID/accessLevels/corporate-device" in request.auth.access_levels,title=Require corporate device'
 ```
 
 ### Use IAP When
