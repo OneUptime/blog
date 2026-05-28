@@ -8,7 +8,7 @@ Description: Build a scalable product recommendation engine using Vertex AI Matc
 
 ---
 
-Recommendation engines power a huge portion of what people interact with online - product suggestions, content feeds, "customers also bought" sections. At their core, most modern recommendation systems work by converting items and users into numerical vectors (embeddings) and then finding the most similar vectors quickly. The "quickly" part is where Vertex AI Matching Engine comes in. It's a managed service for approximate nearest neighbor (ANN) search that can handle billions of vectors with millisecond query latency.
+Recommendation engines power a huge portion of what people interact with online - product suggestions, content feeds, "customers also bought" sections. At their core, most modern recommendation systems work by converting items and users into numerical vectors (embeddings) and then finding the most similar vectors quickly. The "quickly" part is where Vertex AI Vector Search, formerly called Matching Engine, comes in. It's a managed service for approximate nearest neighbor (ANN) search that can handle massive datasets with low-latency queries.
 
 In this post, I'll walk through building a product recommendation engine from scratch using Matching Engine, covering everything from generating embeddings to serving real-time recommendations.
 
@@ -34,7 +34,7 @@ You can generate embeddings using a pre-trained model or a custom one. For produ
 
 ```python
 import vertexai
-from vertexai.language_models import TextEmbeddingModel
+from vertexai.language_models import TextEmbeddingInput, TextEmbeddingModel
 from google.cloud import bigquery
 import json
 import numpy as np
@@ -42,7 +42,7 @@ import numpy as np
 def generate_product_embeddings(project_id, location="us-central1"):
     """Generate embeddings for all products in the catalog"""
     vertexai.init(project=project_id, location=location)
-    model = TextEmbeddingModel.from_pretrained("text-embedding-004")
+    model = TextEmbeddingModel.from_pretrained("text-embedding-005")
 
     # Fetch product data from BigQuery
     bq_client = bigquery.Client()
@@ -78,11 +78,16 @@ def generate_product_embeddings(project_id, location="us-central1"):
             texts.append(text)
 
         # Generate embeddings for the batch
-        batch_embeddings = model.get_embeddings(texts)
+        inputs = [
+            TextEmbeddingInput(text, task_type="RETRIEVAL_DOCUMENT")
+            for text in texts
+        ]
+
+        batch_embeddings = model.get_embeddings(inputs)
 
         for product, embedding in zip(batch, batch_embeddings):
             embeddings.append({
-                "id": product.product_id,
+                "id": str(product.product_id),
                 "embedding": embedding.values,
             })
 
@@ -138,7 +143,7 @@ def create_matching_engine_index(
         display_name=display_name,
         # URI of the embeddings in GCS
         contents_delta_uri=embeddings_gcs_uri,
-        # Embedding dimension (768 for text-embedding-004)
+        # Embedding dimension (768 for text-embedding-005)
         dimensions=dimensions,
         # ANN algorithm parameters
         approximate_neighbors_count=150,
@@ -185,11 +190,9 @@ def get_recommendations(
     endpoint,
     user_embedding,
     num_recommendations=20,
-    category_filter=None,
 ):
     """Query Matching Engine for product recommendations"""
 
-    # Build the query with optional filtering
     queries = [user_embedding]
 
     # Find the nearest neighbors
@@ -212,7 +215,7 @@ def get_recommendations(
 def get_user_embedding(user_id, recent_interactions):
     """Generate a query embedding based on user behavior"""
     vertexai.init(project="your-project-id", location="us-central1")
-    model = TextEmbeddingModel.from_pretrained("text-embedding-004")
+    model = TextEmbeddingModel.from_pretrained("text-embedding-005")
 
     # Build a representation of the user's interests
     # from their recent product interactions
@@ -230,7 +233,11 @@ def get_user_embedding(user_id, recent_interactions):
     )
 
     # Generate the embedding
-    embedding = model.get_embeddings([user_interest_text])[0]
+    text_input = TextEmbeddingInput(
+        user_interest_text,
+        task_type="RETRIEVAL_QUERY",
+    )
+    embedding = model.get_embeddings([text_input])[0]
     return embedding.values
 ```
 
