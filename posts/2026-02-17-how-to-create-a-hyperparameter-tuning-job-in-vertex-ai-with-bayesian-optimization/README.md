@@ -235,11 +235,11 @@ aiplatform.init(
 )
 
 # Get the tuning job
-hp_job = aiplatform.HyperparameterTuningJob(
-    'projects/your-project-id/locations/us-central1/hyperparameterTuningJobs/JOB_ID'
+hp_job = aiplatform.HyperparameterTuningJob.get(
+    resource_name='projects/your-project-id/locations/us-central1/hyperparameterTuningJobs/JOB_ID'
 )
 
-# Get all trials sorted by metric
+# Get all trials
 trials = hp_job.trials
 
 # Find the best trial
@@ -283,13 +283,13 @@ hp_job = aiplatform.HyperparameterTuningJob(
 )
 ```
 
-## Early Stopping
+## Reporting Metrics During Training
 
-You can enable early stopping to terminate trials that are not performing well, saving compute time and money:
+Report metrics at regular intervals so Vertex AI has more signal for choosing later trials:
 
 ```python
 # In your training script, report metrics at regular intervals
-# Vertex AI can stop trials that are performing poorly
+# Vertex AI uses these measurements to evaluate trials
 
 hpt = hypertune.HyperTune()
 
@@ -299,7 +299,7 @@ for epoch in range(args.epochs):
 
     val_acc = history.history['val_accuracy'][0]
 
-    # Report metric after each epoch so Vertex AI can evaluate early stopping
+    # Report metric after each epoch so Vertex AI can evaluate trial progress
     hpt.report_hyperparameter_tuning_metric(
         hyperparameter_metric_tag='accuracy',
         metric_value=val_acc,
@@ -313,7 +313,7 @@ Hyperparameter tuning can get expensive quickly. Each trial is a separate traini
 
 - Start with a smaller max_trial_count (15-20) to get a sense of the search space
 - Use smaller datasets or fewer epochs for the tuning phase, then train the final model with full data
-- Use preemptible machines for tuning trials when possible
+- Use Spot VMs for tuning trials when possible
 - Set reasonable ranges for your parameters to avoid wasting trials on obviously bad values
 
 ## Wrapping Up
