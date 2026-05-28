@@ -8,24 +8,24 @@ Description: Learn how to use exclusion filters in Cloud Logging to reduce log i
 
 ---
 
-Cloud Logging charges based on the volume of logs ingested. If you have ever looked at your GCP bill and seen a surprisingly large Cloud Logging line item, you are not alone. The reality is that many of the logs ingested by default are noise - health check pings, verbose debug output, repetitive status messages - and you are paying for all of it.
+Cloud Logging charges based on the volume of logs streamed into log buckets for storage. If you have ever looked at your GCP bill and seen a surprisingly large Cloud Logging line item, you are not alone. The reality is that many of the logs stored by default are noise - health check pings, verbose debug output, repetitive status messages - and you are paying for all of it.
 
-Exclusion filters let you drop specific logs before they are stored in Cloud Logging, reducing your ingestion costs without losing the logs that actually matter. In this post, I will show you how to identify high-volume low-value logs and create exclusion filters to cut your logging bill.
+Exclusion filters let you drop specific logs before they are stored in Cloud Logging log buckets, reducing your storage costs without losing the logs that actually matter. In this post, I will show you how to identify high-volume low-value logs and create exclusion filters to cut your logging bill.
 
 ## Understanding Cloud Logging Costs
 
-Cloud Logging pricing works like this:
+Cloud Logging storage pricing works like this:
 
 - **First 50 GiB per project per month**: Free
-- **Additional ingestion**: Around $0.50 per GiB
+- **Additional storage in log buckets**: Around $0.50 per GiB
 
 That sounds cheap until you realize how much log data GCP services generate. A moderately busy GKE cluster can easily produce 100+ GiB of logs per month. A fleet of Compute Engine VMs running web applications can produce even more.
 
-The `_Required` logs (admin activity audit logs and system event logs) are always free and cannot be excluded. Everything else is fair game.
+The `_Required` logs (including Admin Activity audit logs and System Event audit logs) are always free in the `_Required` bucket and cannot be excluded from that bucket. Everything else should be reviewed before you exclude it.
 
 ## Identifying What to Exclude
 
-Before creating exclusion filters, figure out which logs are eating your budget. The Logs Explorer in Cloud Monitoring can help.
+Before creating exclusion filters, figure out which logs are eating your budget. The Logs Explorer in Cloud Logging can help.
 
 ### Using the Log Volume Dashboard
 
@@ -67,29 +67,24 @@ Using gcloud:
 ```bash
 # Add an exclusion filter to the _Default sink to drop health check logs
 gcloud logging sinks update _Default \
-  --add-exclusion="name=exclude-health-checks,filter=httpRequest.requestUrl=\"/healthz\" OR httpRequest.requestUrl=\"/readyz\"" \
+  --add-exclusion="name=exclude-health-checks,filter=httpRequest.requestUrl=~\"(/healthz|/readyz|/health)(\\\\?|$)\"" \
   --project=my-project
 ```
 
-### Method 2: Create Standalone Exclusion Filters
+### Method 2: Create _Default Sink Exclusions with the API
 
-You can also create project-level exclusion filters that apply before any sink processes the logs:
-
-```bash
-# Create an exclusion filter for load balancer health check logs
-gcloud logging sinks create exclude-lb-health-checks \
-  logging.googleapis.com/projects/my-project/locations/global/buckets/_Default \
-  --exclusion="name=lb-health-checks,filter=resource.type=\"http_load_balancer\" AND httpRequest.requestUrl=\"/healthz\"" \
-  --project=my-project
-```
-
-Wait - actually, the cleaner approach for project-level exclusions is:
+You can also create project-level exclusion filters through the Cloud Logging API. These exclusions are created on the `_Default` sink for the project:
 
 ```bash
-# Create a project-level exclusion that drops health check logs entirely
-gcloud beta logging sinks update _Default \
-  --add-exclusion="name=health-checks,filter=httpRequest.requestUrl=~\"/health\" OR httpRequest.requestUrl=~\"/ready\"" \
-  --project=my-project
+# Create a project-level exclusion on the _Default sink
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://logging.googleapis.com/v2/projects/my-project/exclusions" \
+  -d '{
+    "name": "health-checks",
+    "filter": "httpRequest.requestUrl=~\"/health\" OR httpRequest.requestUrl=~\"/ready\""
+  }'
 ```
 
 ## Common Exclusion Filter Patterns
@@ -102,13 +97,13 @@ These are usually the biggest offenders. Load balancers check backend health eve
 
 ```text
 # Exclude health check HTTP requests
-httpRequest.requestUrl="/healthz" OR httpRequest.requestUrl="/readyz" OR httpRequest.requestUrl="/health" OR httpRequest.requestUrl="/"
+httpRequest.requestUrl=~"(/healthz|/readyz|/health)(\\?|$)"
 ```
 
 ```bash
 # Apply the health check exclusion
 gcloud logging sinks update _Default \
-  --add-exclusion="name=health-checks,filter=httpRequest.requestUrl=\"/healthz\" OR httpRequest.requestUrl=\"/readyz\"" \
+  --add-exclusion="name=health-checks,filter=httpRequest.requestUrl=~\"(/healthz|/readyz|/health)(\\\\?|$)\"" \
   --project=my-project
 ```
 
@@ -167,9 +162,9 @@ gcloud logging sinks update _Default \
 
 ## Using Exclusion Filters with Export Sinks
 
-An important detail: exclusion filters on the `_Default` sink only affect what gets stored in the `_Default` bucket. If you have created custom sinks that export logs to BigQuery, Cloud Storage, or Pub/Sub, those sinks still see the excluded logs.
+An important detail: exclusion filters on the `_Default` sink only affect what gets stored in the `_Default` bucket. If you have created custom sinks that export logs to BigQuery, Cloud Storage, or Pub/Sub, those sinks still see logs excluded only from `_Default`.
 
-This is actually useful. You can exclude noisy logs from Cloud Logging storage (saving ingestion costs) while still routing them to a cheaper destination like Cloud Storage for archival.
+This is actually useful. You can exclude noisy logs from Cloud Logging log bucket storage while still routing them to a cheaper destination like Cloud Storage for archival.
 
 ## Terraform Configuration
 
@@ -178,7 +173,7 @@ This is actually useful. You can exclude noisy logs from Cloud Logging storage (
 resource "google_logging_project_exclusion" "health_checks" {
   name        = "exclude-health-checks"
   description = "Exclude health check request logs to reduce ingestion costs"
-  filter      = "httpRequest.requestUrl=\"/healthz\" OR httpRequest.requestUrl=\"/readyz\""
+  filter      = "httpRequest.requestUrl=~\"(/healthz|/readyz|/health)(\\\\?|$)\""
 }
 
 # Exclusion filter for GKE system logs
@@ -216,7 +211,7 @@ fetch global
 
 A few things to keep in mind before you start excluding logs:
 
-1. **Start with a percentage**: Exclusion filters support a `disabled` flag and a percentage-based exclusion. Start by excluding 50 percent of a log type to test the impact before going to 100 percent.
+1. **Start with a percentage**: Exclusion filters support a `disabled` flag, and percentage-based exclusion is done with the `sample()` function in the filter. Start with something like `AND sample(insertId, 0.5)` to exclude about 50 percent of a log type before going to 100 percent.
 
 2. **Do not exclude audit logs you need**: Admin Activity audit logs are free and always collected. Data Access audit logs are not free but may be required for compliance.
 
