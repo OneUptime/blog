@@ -39,11 +39,11 @@ Think of it like this: the template is a function definition, and the constraint
 
 ## Writing Your First Constraint Template
 
-Let us start with a common requirement - blocking containers from running as root. Here is the constraint template:
+Let us start with a common requirement - blocking workloads that are explicitly configured to run containers as root. Here is the constraint template:
 
 ```yaml
 # template-disallow-root.yaml
-# Constraint template that blocks containers running as root
+# Constraint template that blocks workloads explicitly configured to run as root
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
@@ -67,9 +67,37 @@ spec:
       rego: |
         package k8sdisallowroot
 
+        pod_spec[pod] {
+          input.review.kind.kind == "Pod"
+          pod := input.review.object.spec
+        }
+
+        pod_spec[pod] {
+          input.review.object.kind == "Pod"
+          pod := input.review.object.spec
+        }
+
+        pod_spec[pod] {
+          pod := input.review.object.spec.template.spec
+        }
+
         # Check pod-level security context
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          pod := pod_spec[_]
+          pod.securityContext.runAsUser == 0
+          msg := "Pod securityContext is configured to run as root (UID 0)"
+        }
+
+        violation[{"msg": msg}] {
+          pod := pod_spec[_]
+          pod.securityContext.runAsNonRoot == false
+          msg := "Pod securityContext has runAsNonRoot set to false"
+        }
+
+        # Check app containers
+        violation[{"msg": msg}] {
+          pod := pod_spec[_]
+          container := pod.containers[_]
           not is_exempt(container.name)
           container.securityContext.runAsUser == 0
           msg := sprintf("Container %v is running as root (UID 0)", [container.name])
@@ -77,7 +105,8 @@ spec:
 
         # Check if runAsNonRoot is explicitly set to false
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          pod := pod_spec[_]
+          container := pod.containers[_]
           not is_exempt(container.name)
           container.securityContext.runAsNonRoot == false
           msg := sprintf("Container %v has runAsNonRoot set to false", [container.name])
@@ -85,10 +114,19 @@ spec:
 
         # Check init containers as well
         violation[{"msg": msg}] {
-          container := input.review.object.spec.initContainers[_]
+          pod := pod_spec[_]
+          container := pod.initContainers[_]
           not is_exempt(container.name)
           container.securityContext.runAsUser == 0
           msg := sprintf("Init container %v is running as root", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          pod := pod_spec[_]
+          container := pod.initContainers[_]
+          not is_exempt(container.name)
+          container.securityContext.runAsNonRoot == false
+          msg := sprintf("Init container %v has runAsNonRoot set to false", [container.name])
         }
 
         is_exempt(name) {
@@ -101,7 +139,7 @@ Now apply a constraint that uses this template:
 
 ```yaml
 # constraint-disallow-root.yaml
-# Applies the no-root policy to all namespaces except kube-system
+# Applies the no-root policy to Pods and common workload controllers except system namespaces
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sDisallowRoot
 metadata:
@@ -145,14 +183,30 @@ spec:
       rego: |
         package k8srequireresourcelimits
 
+        pod_spec[pod] {
+          input.review.kind.kind == "Pod"
+          pod := input.review.object.spec
+        }
+
+        pod_spec[pod] {
+          input.review.object.kind == "Pod"
+          pod := input.review.object.spec
+        }
+
+        pod_spec[pod] {
+          pod := input.review.object.spec.template.spec
+        }
+
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          pod := pod_spec[_]
+          container := pod.containers[_]
           not container.resources.limits.cpu
           msg := sprintf("Container %v must specify cpu limits", [container.name])
         }
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          pod := pod_spec[_]
+          container := pod.containers[_]
           not container.resources.limits.memory
           msg := sprintf("Container %v must specify memory limits", [container.name])
         }
@@ -185,11 +239,36 @@ spec:
       rego: |
         package k8sallowedregistries
 
+        pod_spec[pod] {
+          input.review.kind.kind == "Pod"
+          pod := input.review.object.spec
+        }
+
+        pod_spec[pod] {
+          input.review.object.kind == "Pod"
+          pod := input.review.object.spec
+        }
+
+        pod_spec[pod] {
+          pod := input.review.object.spec.template.spec
+        }
+
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          pod := pod_spec[_]
+          container := pod.containers[_]
           not registry_allowed(container.image)
           msg := sprintf(
             "Container %v uses image %v from unauthorized registry. Allowed: %v",
+            [container.name, container.image, input.parameters.registries]
+          )
+        }
+
+        violation[{"msg": msg}] {
+          pod := pod_spec[_]
+          container := pod.initContainers[_]
+          not registry_allowed(container.image)
+          msg := sprintf(
+            "Init container %v uses image %v from unauthorized registry. Allowed: %v",
             [container.name, container.image, input.parameters.registries]
           )
         }
@@ -248,10 +327,10 @@ Catch policy violations before they even reach the cluster by running Gatekeeper
 # Install gator CLI
 go install github.com/open-policy-agent/gatekeeper/v3/cmd/gator@latest
 
-# Test your Kubernetes manifests against your policies
+# Run suite-based tests for your constraint templates and constraints
 gator verify ./policies/...
 
-# Test a specific manifest against all constraint templates
+# Test a specific manifest against templates and constraints in a policy directory
 gator test --filename=deployment.yaml --filename=policies/
 ```
 
