@@ -163,7 +163,7 @@ Configure the pod's termination grace period to match:
                 command: ["/bin/sh", "-c", "sleep 5"]
 ```
 
-The `preStop` sleep is a crucial detail. When Kubernetes starts terminating a pod, it simultaneously sends SIGTERM and updates the Endpoints object. But the load balancer might not immediately pick up the Endpoints change, so requests could still arrive at the terminating pod for a few seconds. The sleep gives the load balancer time to catch up.
+The `preStop` sleep is a crucial detail. When Kubernetes starts terminating a pod, it marks the pod as terminating, updates EndpointSlices so the endpoint is no longer ready for regular traffic, runs any `preStop` hook, and then sends the stop signal to the container process. But the load balancer might not immediately pick up the endpoint change, so requests could still arrive at the terminating pod for a few seconds. The sleep gives the load balancer time to catch up before your application receives SIGTERM.
 
 ## PodDisruptionBudgets
 
@@ -183,7 +183,7 @@ spec:
       app: myapp
 ```
 
-Without a PDB, a GKE node upgrade could drain all your pods simultaneously. With `minAvailable: 2` and 3 replicas, Kubernetes will only drain one pod at a time during node maintenance.
+Without a PDB, a GKE node upgrade or cluster autoscaler scale-down has no application-specific disruption limit when evicting your pods from nodes. With `minAvailable: 2` and 3 replicas, Kubernetes allows only one healthy pod selected by the PDB to be voluntarily disrupted at a time during node maintenance.
 
 ## Pod Anti-Affinity
 
@@ -242,6 +242,7 @@ metadata:
   namespace: production
   annotations:
     cloud.google.com/backend-config: '{"default": "myapp-backend-config"}'
+    cloud.google.com/neg: '{"ingress": true}'
 spec:
   type: ClusterIP
   selector:
