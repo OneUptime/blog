@@ -10,19 +10,19 @@ Description: Learn how to implement service discovery for microservices on GKE u
 
 In a microservices architecture, services need to find each other. Hardcoding IP addresses is fragile because pods come and go as Kubernetes scales deployments up and down. Service discovery solves this by providing a stable way for services to locate each other by name.
 
-GKE provides several layers of service discovery. Kubernetes built-in DNS handles service-to-service communication within the cluster. Headless services give you direct pod-to-pod access when you need it. And Cloud DNS extends service discovery beyond the cluster to other GCP resources.
+GKE provides several layers of service discovery. Kubernetes built-in DNS handles service-to-service communication within the cluster. Headless services give you direct pod-to-pod access when you need it. And private Cloud DNS zones can extend service discovery to other GCP resources.
 
 ## Kubernetes DNS Basics
 
-Every GKE cluster runs a DNS server (usually CoreDNS). When you create a Kubernetes Service, the DNS server automatically creates a DNS record for it. Other pods can reach the service using its DNS name.
+Every GKE cluster has a cluster DNS provider. GKE Standard clusters commonly use `kube-dns`, while Cloud DNS is the default DNS provider for GKE Autopilot clusters and can also be enabled for GKE Standard. When you create a Kubernetes Service, the DNS provider automatically creates a DNS record for it. Other pods can reach the service using its DNS name.
 
-The DNS naming convention is:
+The DNS naming convention with the default cluster domain is:
 
 ```text
 <service-name>.<namespace>.svc.cluster.local
 ```
 
-For example, a service called `user-service` in the `default` namespace is reachable at `user-service.default.svc.cluster.local`. Within the same namespace, you can simply use `user-service`.
+For example, a service called `user-service` in the `default` namespace is reachable at `user-service.default.svc.cluster.local`. The default cluster domain is `cluster.local`, but you can customize it when you create the cluster. Within the same namespace, you can simply use `user-service`.
 
 ## Setting Up a Microservices Example
 
@@ -310,10 +310,10 @@ response = requests.get("http://payment-service.team-b.svc.cluster.local/api/cha
 
 ## Cloud DNS Integration for External Services
 
-Sometimes your microservices need to discover services outside the cluster, like a Cloud SQL database or a third-party API. Cloud DNS for GKE allows you to create custom DNS entries that resolve within the cluster.
+Sometimes your microservices need to discover services outside the cluster, like a Cloud SQL database or a third-party API. A private Cloud DNS managed zone lets you create custom DNS entries that resolve for resources in the attached VPC network, including GKE Pods whose DNS configuration forwards non-cluster queries to the VPC resolver.
 
 ```bash
-# Create a Cloud DNS managed zone for internal service discovery
+# Create a private Cloud DNS managed zone for internal service discovery
 gcloud dns managed-zones create internal-services \
     --dns-name="internal.example.com." \
     --description="Internal service discovery" \
@@ -335,7 +335,7 @@ Now pods in the cluster can reach the database using `db.internal.example.com`.
 Another approach for external service discovery is ExternalName services. These create a CNAME record in the cluster DNS.
 
 ```yaml
-# k8s/external-db.yaml - ExternalName service for Cloud SQL
+# k8s/external-db.yaml - ExternalName service for a Cloud SQL PSC DNS name
 apiVersion: v1
 kind: Service
 metadata:
@@ -343,7 +343,7 @@ metadata:
   namespace: default
 spec:
   type: ExternalName
-  externalName: my-db-instance.us-central1.cloudsql.example.com
+  externalName: 1a23b4cd5e67.1a2b345c6d27.us-central1.sql.goog
 ```
 
 Now any pod can connect to `database` and it resolves to the external hostname.
@@ -376,4 +376,4 @@ kubectl logs -n kube-system -l k8s-app=kube-dns
 
 ## Wrapping Up
 
-Service discovery on GKE operates at multiple levels. Kubernetes DNS handles the common case of service-to-service communication with automatic DNS registration. Headless services provide direct pod access when you need to talk to specific instances. Cloud DNS extends discovery to resources outside the cluster. Together, these mechanisms let your microservices find each other reliably without hardcoding addresses, which is essential for a scalable, resilient architecture.
+Service discovery on GKE operates at multiple levels. Kubernetes DNS handles the common case of service-to-service communication with automatic DNS registration. Headless services provide direct pod access when you need to talk to specific instances. Private Cloud DNS zones extend discovery to resources outside the cluster. Together, these mechanisms let your microservices find each other reliably without hardcoding addresses, which is essential for a scalable, resilient architecture.
