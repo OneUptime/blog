@@ -8,20 +8,20 @@ Description: Step-by-step guide on configuring Google Cloud Functions to run wit
 
 ---
 
-Every Cloud Function in Google Cloud runs as some service account. If you have not explicitly configured one, your functions are running as the default compute service account, which typically has the Editor role on your entire project. That is way too much access for a function that just needs to read from one Cloud Storage bucket or write to one Firestore collection.
+Every Cloud Function in Google Cloud runs as some service account. If you have not explicitly configured one, your functions are running as the default compute service account, which might have the Editor role on your entire project depending on your organization policy and when your organization was created. That is way too much access for a function that just needs to read from one Cloud Storage bucket or write to one Firestore collection.
 
 Switching to a custom service account is one of the easiest security improvements you can make. It takes about five minutes, and the payoff - proper least-privilege access - is substantial. Let me show you exactly how to do it.
 
 ## Why the Default Service Account Is a Problem
 
-The default compute service account (`PROJECT_NUMBER-compute@developer.gserviceaccount.com`) is automatically created when you enable certain APIs. By default, it has the Editor role, which grants read/write access to most resources in your project.
+The default compute service account (`PROJECT_NUMBER-compute@developer.gserviceaccount.com`) is automatically created when you enable certain APIs. In older projects, or projects without the automatic default service account role grant disabled, it can have the Editor role, which grants read/write access to most resources in your project. For organizations created on or after May 3, 2024, Google Cloud enforces the constraint that prevents automatic Editor grants to default service accounts by default.
 
 This means any Cloud Function running as this account can:
 
 - Read and write any Cloud Storage bucket in the project
 - Access any Firestore database
 - Publish to any Pub/Sub topic
-- Read secrets from Secret Manager
+- Manage many project resources beyond what the function actually needs
 - And much more
 
 If one function gets compromised (say, through a dependency vulnerability), the attacker has broad access to your entire project. Custom service accounts let you limit the blast radius.
@@ -52,11 +52,11 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --condition "expression=resource.name.startsWith('projects/_/buckets/source-images'),title=source-bucket-only"
 
 # Grant write access to the destination bucket
-gsutil iam ch \
-  serviceAccount:image-processor-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com:objectCreator \
-  gs://processed-images
+gcloud storage buckets add-iam-policy-binding gs://processed-images \
+  --member "serviceAccount:image-processor-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role "roles/storage.objectCreator"
 
-# Grant permission to write logs (Cloud Functions need this)
+# Optional: grant this if your code writes logs through the Cloud Logging API or client libraries
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member "serviceAccount:image-processor-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
   --role "roles/logging.logWriter"
@@ -83,7 +83,7 @@ When deploying, use the `--service-account` flag to specify your custom service 
 ```bash
 # Deploy with the custom service account (Gen 1)
 gcloud functions deploy processImage \
-  --runtime nodejs18 \
+  --runtime nodejs22 \
   --trigger-bucket source-images \
   --service-account image-processor-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com \
   --region us-central1 \
@@ -92,7 +92,7 @@ gcloud functions deploy processImage \
 # Deploy with the custom service account (Gen 2)
 gcloud functions deploy processImage \
   --gen2 \
-  --runtime nodejs18 \
+  --runtime nodejs22 \
   --trigger-http \
   --service-account image-processor-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com \
   --region us-central1 \
@@ -140,7 +140,7 @@ resource "google_project_iam_member" "log_writer" {
 # Deploy the function with the custom service account
 resource "google_cloudfunctions_function" "image_processor" {
   name        = "processImage"
-  runtime     = "nodejs18"
+  runtime     = "nodejs22"
   region      = "us-central1"
 
   available_memory_mb   = 256
@@ -164,9 +164,13 @@ resource "google_cloudfunctions_function" "image_processor" {
 After deployment, verify your function is using the right service account.
 
 ```bash
-# Check which service account a function is using
+# Check which service account a Gen 1 function is using
 gcloud functions describe processImage --region us-central1 \
   --format "value(serviceAccountEmail)"
+
+# Check which service account a Gen 2 function is using
+gcloud functions describe processImage --gen2 --region us-central1 \
+  --format "value(serviceConfig.serviceAccountEmail)"
 
 # You should see your custom service account, not the default one
 # Expected: image-processor-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
@@ -202,7 +206,7 @@ A few things that catch people off guard:
 
 1. **The deployer needs permissions too**: The account deploying the function needs `iam.serviceAccounts.actAs` permission on the target service account. Without it, the deploy fails.
 
-2. **Cloud Functions service agent**: The Cloud Functions service agent (`service-PROJECT_NUMBER@gcf-admin-robot.iam.gserviceaccount.com`) also needs `iam.serviceAccounts.actAs` on your custom service account.
+2. **Cloud Functions service agent**: The Cloud Functions service agent (`service-PROJECT_NUMBER@gcf-admin-robot.iam.gserviceaccount.com`) also needs `iam.serviceAccounts.actAs` on your custom service account. This is normally covered by the `roles/cloudfunctions.serviceAgent` role on the project, but if that role binding was changed or the service account is in another project, you may need to grant access explicitly.
 
 3. **Secret Manager access**: If your function reads secrets, do not forget to grant `roles/secretmanager.secretAccessor` to the custom service account.
 
