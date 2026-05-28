@@ -10,7 +10,7 @@ Description: Learn how to use directed reads in Cloud Spanner to route read-only
 
 Cloud Spanner distributes data across multiple replicas in different regions for durability and availability. By default, Spanner's routing layer decides which replica serves each read request. This works well in most cases, but sometimes you want more control. Maybe you want to ensure that analytics queries hit a read-only replica instead of the leader. Maybe you want reads from your European users to be served from European replicas. Maybe you want to isolate heavy reporting workloads from your OLTP traffic.
 
-Directed reads give you that control. You can specify which replicas a read should be routed to based on replica type (leader or follower) and location.
+Directed reads give you that control. You can specify which replicas a read should be routed to based on replica type (`READ_WRITE` or `READ_ONLY`) and location.
 
 ## How Spanner Replication Works
 
@@ -20,15 +20,15 @@ First, some background on Spanner's replica types:
 graph TB
     subgraph "Multi-Region Instance"
         subgraph "us-central1 (Leader Region)"
-            L1[Leader Replica<br>Read + Write]
+            L1[Read-Write Leader Replica<br>Read + Write]
         end
         subgraph "us-east1"
-            F1[Follower Replica<br>Read Only]
+            F1[Read-Only Replica<br>Read Only]
         end
         subgraph "europe-west1"
-            F2[Follower Replica<br>Read Only]
+            F2[Read-Only Replica<br>Read Only]
         end
-        subgraph "us-central1 (Witness)"
+        subgraph "us-west1 (Witness)"
             W1[Witness<br>No Data]
         end
     end
@@ -37,18 +37,18 @@ graph TB
     L1 -->|Vote Only| W1
 ```
 
-- **Leader replicas** handle all writes and can serve reads. They are in the leader region.
-- **Follower replicas** hold a full copy of the data and can serve reads. They are in non-leader regions.
+- **Read-write leader replicas** handle writes and can serve reads. They are in the leader region.
+- **Read-only replicas** hold a full copy of the data and can serve reads, but cannot serve writes or become leader.
 - **Witness replicas** participate in consensus but do not hold data.
 
-Without directed reads, Spanner might route a read from a European client to the leader replica in the US, adding cross-region latency unnecessarily.
+Without directed reads, Spanner's default routing might not match your workload isolation or locality goals. Strong reads served from a non-leader replica can also require communication with the leader to choose a read timestamp.
 
 ## When to Use Directed Reads
 
 Directed reads are useful in several scenarios:
 
 1. **Latency optimization**: Route reads to the nearest replica to reduce round-trip time
-2. **Workload isolation**: Send analytics/reporting queries to follower replicas to avoid impacting OLTP on the leader
+2. **Workload isolation**: Send analytics/reporting queries to read-only replicas to reduce impact on read-write replicas
 3. **Cost optimization**: Prefer in-region reads to avoid cross-region network charges
 4. **Compliance**: Ensure certain reads are served from replicas in specific geographic locations
 
@@ -70,14 +70,14 @@ client = spanner.Client(project="MY_PROJECT")
 instance = client.instance("my-instance")
 database = instance.database("my-database")
 
-def read_from_nearest_follower():
-    """Route reads to the nearest follower replica."""
-    # Configure directed reads to prefer follower replicas
+def read_from_nearest_read_only_replica():
+    """Route reads to the nearest read-only replica."""
+    # Configure directed reads to prefer read-only replicas
     directed_read_options = DirectedReadOptions(
         include_replicas=DROTypes.IncludeReplicas(
             replica_selections=[
                 DROTypes.ReplicaSelection(
-                    # Prefer follower replicas
+                    # Prefer read-only replicas
                     type_=DROTypes.ReplicaSelection.Type.READ_ONLY,
                 ),
             ],
@@ -132,14 +132,14 @@ import com.google.spanner.v1.DirectedReadOptions.ReplicaSelection;
 
 public class DirectedReadsExample {
 
-    public static void readFromFollower(DatabaseClient dbClient) {
+    public static void readFromReadOnlyReplica(DatabaseClient dbClient) {
         // Configure directed reads to target read-only replicas
         DirectedReadOptions directedReadOptions = DirectedReadOptions.newBuilder()
             .setIncludeReplicas(
                 IncludeReplicas.newBuilder()
                     .addReplicaSelections(
                         ReplicaSelection.newBuilder()
-                            // Route to read-only (follower) replicas
+                            // Route to read-only replicas
                             .setType(ReplicaSelection.Type.READ_ONLY)
                             .build()
                     )
@@ -208,8 +208,8 @@ import (
     "google.golang.org/api/iterator"
 )
 
-func readFromFollower(ctx context.Context, client *spanner.Client) error {
-    // Configure directed reads to prefer follower replicas
+func readFromReadOnlyReplica(ctx context.Context, client *spanner.Client) error {
+    // Configure directed reads to prefer read-only replicas
     directedReadOptions := &sppb.DirectedReadOptions{
         Replicas: &sppb.DirectedReadOptions_IncludeReplicas_{
             IncludeReplicas: &sppb.DirectedReadOptions_IncludeReplicas{
@@ -225,10 +225,13 @@ func readFromFollower(ctx context.Context, client *spanner.Client) error {
     }
 
     // Execute the read with directed read options
-    txn := client.Single().WithDirectedReadOptions(directedReadOptions)
     stmt := spanner.Statement{SQL: "SELECT user_id, name FROM users LIMIT 100"}
 
-    iter := txn.Query(ctx, stmt)
+    iter := client.Single().QueryWithOptions(
+        ctx,
+        stmt,
+        spanner.QueryOptions{DirectedReadOptions: directedReadOptions},
+    )
     defer iter.Stop()
 
     for {
@@ -256,7 +259,7 @@ func readFromFollower(ctx context.Context, client *spanner.Client) error {
 Instead of specifying which replicas to include, you can exclude specific ones. This is useful when you want to keep a specific replica free for a particular workload.
 
 ```python
-# Exclude the leader replica - force reads to followers
+# Exclude read-write replicas - force reads to read-only replicas
 from google.cloud.spanner_v1 import DirectedReadOptions
 from google.cloud.spanner_v1.types import DirectedReadOptions as DROTypes
 
@@ -264,7 +267,7 @@ directed_read_options = DirectedReadOptions(
     exclude_replicas=DROTypes.ExcludeReplicas(
         replica_selections=[
             DROTypes.ReplicaSelection(
-                # Exclude the leader - reads go to followers only
+                # Exclude read-write replicas - reads go to read-only replicas only
                 type_=DROTypes.ReplicaSelection.Type.READ_WRITE,
             ),
         ],
@@ -276,14 +279,14 @@ directed_read_options = DirectedReadOptions(
 
 ### Pattern 1: OLTP vs Analytics Isolation
 
-Route transactional reads to the leader and analytics queries to followers.
+Route transactional reads to read-write replicas and analytics queries to read-only replicas.
 
 ```python
 # Helper function for workload routing
 def get_directed_read_options(workload_type):
     """Return directed read options based on workload type."""
     if workload_type == "analytics":
-        # Analytics reads go to followers to avoid impacting OLTP
+        # Analytics reads go to read-only replicas to avoid impacting OLTP
         return DirectedReadOptions(
             include_replicas=DROTypes.IncludeReplicas(
                 replica_selections=[
@@ -295,7 +298,7 @@ def get_directed_read_options(workload_type):
             ),
         )
     elif workload_type == "oltp":
-        # OLTP reads go to the leader for strong consistency
+        # OLTP reads go to read-write replicas
         return DirectedReadOptions(
             include_replicas=DROTypes.IncludeReplicas(
                 replica_selections=[
@@ -345,9 +348,9 @@ def get_regional_read_options(client_region):
 
 - Directed reads only work with read-only transactions and single reads. You cannot use them with read-write transactions.
 - If the specified replicas are unavailable and `auto_failover_disabled` is True, the read fails. Keep auto-failover enabled in production.
-- Directed reads do not change consistency guarantees. Stale reads on followers return data that may be a few seconds old (within the staleness bound you specify).
+- Directed reads do not change consistency guarantees. Strong reads remain strongly consistent, and stale reads return data at the timestamp bound you specify.
 - Not all regions in your instance configuration will have data replicas. Witness regions do not hold data.
 
 ## Wrapping Up
 
-Directed reads give you fine-grained control over where Spanner serves your read queries. For multi-region deployments, this translates to lower latency, better workload isolation, and more predictable performance. The implementation is straightforward - it is a per-request configuration in the client library, no infrastructure changes needed. The main thing to get right is deciding your routing strategy: by workload type, by geography, or a combination. Start with the simple case of routing analytics to followers, measure the latency improvement, and expand from there.
+Directed reads give you fine-grained control over where Spanner serves your read queries. For multi-region deployments, this translates to lower latency, better workload isolation, and more predictable performance. The implementation is straightforward - it is a per-request configuration in the client library, no infrastructure changes needed. The main thing to get right is deciding your routing strategy: by workload type, by geography, or a combination. Start with the simple case of routing analytics to read-only replicas, measure the latency improvement, and expand from there.
