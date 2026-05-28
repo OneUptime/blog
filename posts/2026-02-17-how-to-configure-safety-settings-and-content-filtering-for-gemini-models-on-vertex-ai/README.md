@@ -40,39 +40,46 @@ graph TD
 Configure safety settings when making API calls:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel, SafetySetting, HarmCategory, HarmBlockThreshold
+from google import genai
+from google.genai import types
 
-vertexai.init(project="your-project-id", location="us-central1")
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+)
 
 # Define safety settings for each harm category
 
 # These control how aggressively content is filtered
 safety_settings = [
-    SafetySetting(
-        category=HarmCategory.HARM_CATEGORY_HARASSMENT,
-        threshold=HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+    types.SafetySetting(
+        category="HARM_CATEGORY_HARASSMENT",
+        threshold="BLOCK_MEDIUM_AND_ABOVE",
+        method="SEVERITY",
     ),
-    SafetySetting(
-        category=HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold=HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+    types.SafetySetting(
+        category="HARM_CATEGORY_HATE_SPEECH",
+        threshold="BLOCK_MEDIUM_AND_ABOVE",
+        method="SEVERITY",
     ),
-    SafetySetting(
-        category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        threshold=HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,  # Strictest for this category
+    types.SafetySetting(
+        category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        threshold="BLOCK_LOW_AND_ABOVE",  # Strictest for this category
+        method="SEVERITY",
     ),
-    SafetySetting(
-        category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold=HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+    types.SafetySetting(
+        category="HARM_CATEGORY_DANGEROUS_CONTENT",
+        threshold="BLOCK_MEDIUM_AND_ABOVE",
+        method="SEVERITY",
     ),
 ]
 
-model = GenerativeModel(
-    model_name="gemini-2.0-flash",
-    safety_settings=safety_settings,
+response = client.models.generate_content(
+    model="gemini-2.0-flash",
+    contents="Write a product description for running shoes",
+    config=types.GenerateContentConfig(safety_settings=safety_settings),
 )
-
-response = model.generate_content("Write a product description for running shoes")
 print(response.text)
 ```
 
@@ -83,11 +90,15 @@ The available thresholds from least to most restrictive:
 ```python
 # Threshold options and what they mean
 thresholds = {
-    "BLOCK_NONE": "No content is blocked (maximum permissiveness)",
-    "BLOCK_ONLY_HIGH": "Only blocks content with high probability of harm",
-    "BLOCK_MEDIUM_AND_ABOVE": "Blocks medium and high probability (recommended default)",
-    "BLOCK_LOW_AND_ABOVE": "Blocks low, medium, and high (most restrictive)",
+    "OFF": "No automated blocking and no safety metadata is returned",
+    "BLOCK_NONE": "No automated blocking; safety scores are returned when available",
+    "BLOCK_ONLY_HIGH": "Only blocks content with a high safety score",
+    "BLOCK_MEDIUM_AND_ABOVE": "Blocks medium and high safety scores",
+    "BLOCK_LOW_AND_ABOVE": "Blocks low, medium, and high safety scores (most restrictive)",
 }
+
+# With method="SEVERITY", Vertex AI evaluates both probability and severity scores.
+# BLOCK_NONE is restricted and is not available to every project.
 
 # Example: Different configurations for different use cases
 def get_safety_config(use_case):
@@ -96,35 +107,35 @@ def get_safety_config(use_case):
 
     configs = {
         "customer_chatbot": [
-            SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT,
-                         threshold=HarmBlockThreshold.BLOCK_LOW_AND_ABOVE),
-            SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                         threshold=HarmBlockThreshold.BLOCK_LOW_AND_ABOVE),
-            SafetySetting(category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                         threshold=HarmBlockThreshold.BLOCK_LOW_AND_ABOVE),
-            SafetySetting(category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                         threshold=HarmBlockThreshold.BLOCK_LOW_AND_ABOVE),
+            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT",
+                                threshold="BLOCK_LOW_AND_ABOVE", method="SEVERITY"),
+            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH",
+                                threshold="BLOCK_LOW_AND_ABOVE", method="SEVERITY"),
+            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                                threshold="BLOCK_LOW_AND_ABOVE", method="SEVERITY"),
+            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT",
+                                threshold="BLOCK_LOW_AND_ABOVE", method="SEVERITY"),
         ],
         "internal_code_assistant": [
-            SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT,
-                         threshold=HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE),
-            SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                         threshold=HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE),
-            SafetySetting(category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                         threshold=HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE),
-            SafetySetting(category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                         threshold=HarmBlockThreshold.BLOCK_ONLY_HIGH),  # Less strict for technical content
+            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT",
+                                threshold="BLOCK_MEDIUM_AND_ABOVE", method="SEVERITY"),
+            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH",
+                                threshold="BLOCK_MEDIUM_AND_ABOVE", method="SEVERITY"),
+            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                                threshold="BLOCK_MEDIUM_AND_ABOVE", method="SEVERITY"),
+            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT",
+                                threshold="BLOCK_ONLY_HIGH", method="SEVERITY"),  # Less strict for technical content
         ],
         "content_moderation_tool": [
             # Moderation tools need to see the content they are moderating
-            SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT,
-                         threshold=HarmBlockThreshold.BLOCK_ONLY_HIGH),
-            SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                         threshold=HarmBlockThreshold.BLOCK_ONLY_HIGH),
-            SafetySetting(category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                         threshold=HarmBlockThreshold.BLOCK_ONLY_HIGH),
-            SafetySetting(category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                         threshold=HarmBlockThreshold.BLOCK_ONLY_HIGH),
+            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT",
+                                threshold="BLOCK_ONLY_HIGH", method="SEVERITY"),
+            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH",
+                                threshold="BLOCK_ONLY_HIGH", method="SEVERITY"),
+            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                                threshold="BLOCK_ONLY_HIGH", method="SEVERITY"),
+            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT",
+                                threshold="BLOCK_ONLY_HIGH", method="SEVERITY"),
         ],
     }
 
@@ -136,30 +147,41 @@ def get_safety_config(use_case):
 When content is blocked, your application should handle it properly rather than crashing:
 
 ```python
-def safe_generate(model, prompt, fallback_message="I cannot help with that request."):
+def enum_name(value):
+    """Return a readable enum value from google-genai response fields."""
+    return getattr(value, "name", str(value))
+
+
+def safe_generate(client, prompt, safety_settings, fallback_message="I cannot help with that request."):
     """Generate content with proper handling for safety-blocked responses.
     Returns the generated text or a safe fallback message."""
 
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(safety_settings=safety_settings),
+        )
 
         # Check if the response was blocked by safety filters
         if not response.candidates:
+            prompt_feedback = getattr(response, "prompt_feedback", None)
+            block_reason = getattr(prompt_feedback, "block_reason", "unknown")
             return {
                 "text": fallback_message,
                 "blocked": True,
-                "reason": "No candidates returned - content may have been filtered",
+                "reason": f"Prompt blocked: {enum_name(block_reason)}",
             }
 
         candidate = response.candidates[0]
 
         # Check the finish reason
-        if candidate.finish_reason.name == "SAFETY":
+        if enum_name(candidate.finish_reason) == "SAFETY":
             # Content was blocked by safety filters
             safety_ratings = {}
             for rating in candidate.safety_ratings:
-                safety_ratings[rating.category.name] = {
-                    "probability": rating.probability.name,
+                safety_ratings[enum_name(rating.category)] = {
+                    "probability": enum_name(rating.probability),
                     "blocked": rating.blocked,
                 }
 
@@ -174,7 +196,7 @@ def safe_generate(model, prompt, fallback_message="I cannot help with that reque
             "text": response.text,
             "blocked": False,
             "safety_ratings": {
-                rating.category.name: rating.probability.name
+                enum_name(rating.category): enum_name(rating.probability)
                 for rating in candidate.safety_ratings
             },
         }
@@ -187,7 +209,8 @@ def safe_generate(model, prompt, fallback_message="I cannot help with that reque
         }
 
 # Usage
-result = safe_generate(model, "Explain how to secure a web application against SQL injection")
+safety_settings = get_safety_config("customer_chatbot")
+result = safe_generate(client, "Explain how to secure a web application against SQL injection", safety_settings)
 if result["blocked"]:
     print(f"Content blocked: {result['reason']}")
 else:
@@ -263,26 +286,20 @@ Build a complete content generation service with all safety layers:
 ```python
 # safe_generation_service.py - Production content generation with full safety stack
 from flask import Flask, request, jsonify
-import vertexai
-from vertexai.generative_models import GenerativeModel, SafetySetting, HarmCategory, HarmBlockThreshold
+from google import genai
+
+from custom_filter import ContentFilter
+from safety_config import get_safety_config
+from safe_generation import safe_generate
 
 app = Flask(__name__)
 
-vertexai.init(project="your-project-id", location="us-central1")
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+)
 content_filter = ContentFilter()
-
-# Initialize models with different safety configs per endpoint
-models = {}
-
-def get_model(use_case):
-    """Get or create a model instance with appropriate safety settings."""
-    if use_case not in models:
-        safety_config = get_safety_config(use_case)
-        models[use_case] = GenerativeModel(
-            model_name="gemini-2.0-flash",
-            safety_settings=safety_config,
-        )
-    return models[use_case]
 
 
 @app.route("/generate", methods=["POST"])
@@ -302,8 +319,8 @@ def generate():
         }), 200
 
     # Layer 2: Gemini with safety settings
-    model = get_model(use_case)
-    result = safe_generate(model, prompt)
+    safety_settings = get_safety_config(use_case)
+    result = safe_generate(client, prompt, safety_settings)
 
     if result["blocked"]:
         return jsonify(result), 200
@@ -326,14 +343,15 @@ Track when content is blocked to identify patterns and tune your filters:
 ```python
 # Log safety events for analysis
 from google.cloud import bigquery
-from datetime import datetime
+from datetime import datetime, timezone
+import json
 
 bq_client = bigquery.Client()
 
 def log_safety_event(prompt_hash, use_case, blocked, blocked_by, safety_ratings):
     """Log blocked content events for monitoring and filter tuning."""
     record = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "prompt_hash": prompt_hash,  # Hash, not the actual prompt, for privacy
         "use_case": use_case,
         "blocked": blocked,
