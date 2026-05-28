@@ -142,22 +142,28 @@ For truly long-running jobs, submit them to a separate service. Use Cloud Build 
 
 Setting timeouts is step one. Monitoring whether they are effective is step two.
 
-### Track Running Hours with Cloud Monitoring
+### Track Start and Stop Events with Cloud Logging
 
-Create a dashboard to track how long workstations are running across your organization.
+Create a dashboard from Cloud Logging events to track when workstations start and stop across your organization.
 
 ```bash
-# Query workstation uptime from Cloud Logging
+# Query workstation start events from Cloud Audit Logs
 gcloud logging read \
-  'resource.type="workstations.googleapis.com/Workstation" AND
+  'protoPayload.serviceName="workstations.googleapis.com" AND
    protoPayload.methodName="google.cloud.workstations.v1.Workstations.StartWorkstation"' \
   --limit=100 \
   --format="table(timestamp, protoPayload.resourceName)"
+
+# Query automatic workstation shutdowns from Cloud Workstations platform logs
+gcloud logging read \
+  'logName="projects/MY_PROJECT/logs/workstations.googleapis.com%2Fworkstation_shutdowns"' \
+  --limit=100 \
+  --format="table(timestamp, jsonPayload.workstation)"
 ```
 
 ### Set Up Billing Alerts
 
-Create a budget alert specifically for Cloud Workstations.
+Create a budget alert for the billing account that contains your Cloud Workstations spend.
 
 ```bash
 # Create a budget for workstation spending
@@ -178,10 +184,11 @@ Use BigQuery billing export to analyze workstation costs over time:
 ```sql
 -- Query to analyze Cloud Workstations spending by user
 SELECT
-  labels.value AS workstation_name,
-  SUM(cost) AS total_cost,
-  SUM(usage.amount) AS total_hours
-FROM `billing_dataset.gcp_billing_export_v1`
+  label.value AS workstation_name,
+  SUM(cost) AS total_cost
+FROM `billing_dataset.gcp_billing_export_resource_v1`
+LEFT JOIN UNNEST(labels) AS label
+  ON label.key = 'workstation_name'
 WHERE service.description = 'Cloud Workstations'
   AND invoice.month = '202602'
 GROUP BY workstation_name
@@ -190,14 +197,28 @@ ORDER BY total_cost DESC
 
 ## Enforcing Timeouts with Organization Policies
 
-If you want to make sure all teams follow timeout policies, enforce them at the organization level.
+If you want to make sure all teams follow timeout policies, enforce them with a custom organization policy.
 
-```bash
-# Set a maximum idle timeout of 1 hour across the organization
-gcloud org-policies set-policy --project=MY_PROJECT policy.yaml
+```yaml
+# custom-constraint.yaml
+name: organizations/ORGANIZATION_ID/customConstraints/custom.workstationConfigApprovedIdleTimeout
+resourceTypes:
+- workstations.googleapis.com/WorkstationConfig
+methodTypes:
+- CREATE
+- UPDATE
+condition: "resource.idleTimeout in ['1200s', '1800s', '3600s']"
+actionType: ALLOW
+displayName: Require workstation configs to use an approved idle timeout
+description: Workstation configurations must set idleTimeout to an approved value of one hour or less.
 ```
 
-Where `policy.yaml` contains constraints for workstation configurations.
+```bash
+gcloud org-policies set-custom-constraint custom-constraint.yaml
+gcloud org-policies set-policy policy.yaml --project=MY_PROJECT
+```
+
+Where `policy.yaml` references `custom.workstationConfigApprovedIdleTimeout` and enables enforcement for the project, folder, or organization where you want the rule to apply.
 
 You can also use Terraform to manage workstation configurations as code, which makes it easier to enforce standards across teams.
 
@@ -226,14 +247,14 @@ resource "google_workstations_workstation_config" "default" {
 
 ## A Practical Cost Savings Example
 
-Consider a team of 20 developers, each using an `e2-standard-8` workstation ($0.268/hour). Without timeouts, if half of them forget to stop their workstation each night and on weekends:
+Consider a team of 20 developers, each using an `e2-standard-8` workstation in `us-central1` ($0.67/hour for compute and management, before Persistent Disk and control plane costs). Without timeouts, if half of them forget to stop their workstation each night and on weekends:
 
 - 10 workstations running 128 extra hours/month (nights + weekends)
-- Extra cost: 10 x 128 x $0.268 = $343/month = $4,116/year
+- Extra cost: 10 x 128 x $0.67 = $858/month = $10,291/year
 
 With a 30-minute idle timeout, those same workstations auto-stop within 30 minutes of the developer disconnecting. The wasted hours drop from 128 to maybe 5 per workstation:
 
-- Extra cost: 10 x 5 x $0.268 = $13.40/month = $161/year
+- Extra cost: 10 x 5 x $0.67 = $33.50/month = $402/year
 
 That is a 96% reduction in waste, and it is just from setting one configuration parameter.
 
