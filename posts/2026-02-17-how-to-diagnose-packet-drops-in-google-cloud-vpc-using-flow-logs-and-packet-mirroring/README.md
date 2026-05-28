@@ -14,7 +14,7 @@ Packet drops in your VPC can cause all kinds of mysterious application behavior 
 
 These tools serve different purposes:
 
-**VPC Flow Logs** capture metadata about network flows (source, destination, ports, bytes, packets). They tell you what traffic is flowing and whether it was allowed or denied. Think of them as a summary.
+**VPC Flow Logs** capture metadata about network flows (source, destination, ports, bytes, packets). They tell you what traffic is flowing, but they do not include firewall allow/deny decisions. Use Firewall Rules Logging for that. Think of flow logs as a summary.
 
 **Packet Mirroring** captures full packets and sends them to a collector for deep inspection. This is like a network tap - you get the complete packet including headers and payload. Use this when flow logs are not enough.
 
@@ -50,12 +50,23 @@ Configuration options:
 
 ## Step 2: Query Flow Logs to Find Drops
 
-Flow logs go to Cloud Logging. Query them to find dropped traffic:
+Flow logs go to Cloud Logging. Query them to confirm whether the traffic is present:
 
 ```bash
-# Search for denied (dropped) flows in the last hour
+# Search for flows to a specific destination in the last hour
 gcloud logging read \
-    'resource.type="gce_subnetwork" AND jsonPayload.disposition="DENIED"' \
+    'resource.type="gce_subnetwork" AND logName:"compute.googleapis.com%2Fvpc_flows" AND jsonPayload.connection.dest_ip="10.0.1.50"' \
+    --project=my-project \
+    --limit=20 \
+    --format=json
+```
+
+If you need to find firewall-denied traffic, enable Firewall Rules Logging on the relevant firewall rules and query the firewall logs:
+
+```bash
+# Search for denied firewall connections
+gcloud logging read \
+    'resource.type="gce_subnetwork" AND logName:"compute.googleapis.com%2Ffirewall" AND jsonPayload.disposition="DENIED"' \
     --project=my-project \
     --limit=20 \
     --format=json
@@ -71,42 +82,41 @@ gcloud logging sinks create vpc-flow-logs-sink \
     --project=my-project
 ```
 
-Then query the data in BigQuery:
+Then query the flow log data in BigQuery:
 
 ```sql
--- Find the most common dropped flows
+-- Find the busiest flows to a specific destination
 SELECT
   jsonPayload.connection.src_ip AS source_ip,
   jsonPayload.connection.dest_ip AS dest_ip,
   jsonPayload.connection.src_port AS source_port,
   jsonPayload.connection.dest_port AS dest_port,
   jsonPayload.connection.protocol AS protocol,
-  jsonPayload.disposition AS disposition,
   jsonPayload.reporter AS reporter,
+  SUM(CAST(jsonPayload.packets_sent AS INT64)) AS total_packets,
   COUNT(*) AS flow_count
 FROM `my-project.vpc_flow_logs.compute_googleapis_com_vpc_flows_*`
 WHERE
   _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
-  AND jsonPayload.disposition = 'DENIED'
-GROUP BY 1, 2, 3, 4, 5, 6, 7
-ORDER BY flow_count DESC
+  AND jsonPayload.connection.dest_ip = '10.0.1.50'
+GROUP BY 1, 2, 3, 4, 5, 6
+ORDER BY total_packets DESC
 LIMIT 50;
 ```
 
 ```sql
--- Analyze packet drops between specific source and destination
+-- Analyze packet volume between specific source and destination
 SELECT
   TIMESTAMP_TRUNC(timestamp, MINUTE) AS minute,
   jsonPayload.connection.src_ip AS source_ip,
   jsonPayload.connection.dest_ip AS dest_ip,
   jsonPayload.connection.dest_port AS dest_port,
-  SUM(CAST(jsonPayload.packets_sent AS INT64)) AS total_packets,
-  jsonPayload.disposition AS disposition
+  SUM(CAST(jsonPayload.packets_sent AS INT64)) AS total_packets
 FROM `my-project.vpc_flow_logs.compute_googleapis_com_vpc_flows_*`
 WHERE
   _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
   AND jsonPayload.connection.dest_ip = '10.0.1.50'
-GROUP BY 1, 2, 3, 4, 6
+GROUP BY 1, 2, 3, 4
 ORDER BY minute DESC
 LIMIT 100;
 ```
@@ -145,7 +155,7 @@ gcloud compute routes list \
     --project=my-project
 ```
 
-### Security Groups and Network Policies
+### Kubernetes Network Policies
 
 If you are using GKE, Kubernetes NetworkPolicies might be dropping traffic:
 
@@ -168,18 +178,32 @@ gcloud compute instances create packet-collector \
     --can-ip-forward \
     --project=my-project
 
+gcloud compute instance-groups unmanaged create packet-collector-group \
+    --zone=us-central1-a \
+    --project=my-project
+
+gcloud compute instance-groups unmanaged add-instances packet-collector-group \
+    --zone=us-central1-a \
+    --instances=packet-collector \
+    --project=my-project
+
 # Create an internal load balancer to receive mirrored traffic
-gcloud compute health-checks create tcp mirror-health-check --port=80 --project=my-project
+gcloud compute health-checks create http mirror-health-check \
+    --region=us-central1 \
+    --port=80 \
+    --project=my-project
 
 gcloud compute backend-services create mirror-backend \
     --protocol=TCP \
     --health-checks=mirror-health-check \
+    --health-checks-region=us-central1 \
     --load-balancing-scheme=INTERNAL \
     --region=us-central1 \
     --project=my-project
 
 gcloud compute backend-services add-backend mirror-backend \
     --instance-group=packet-collector-group \
+    --instance-group-zone=us-central1-a \
     --region=us-central1 \
     --project=my-project
 
@@ -189,6 +213,8 @@ gcloud compute forwarding-rules create mirror-rule \
     --is-mirroring-collector \
     --network=my-vpc \
     --subnet=my-subnet \
+    --ip-protocol=TCP \
+    --ports=ALL \
     --region=us-central1 \
     --project=my-project
 ```
@@ -230,7 +256,7 @@ This means the destination is rejecting the connection. Check if the service is 
 
 ### Pattern: No Response to SYN (Timeout)
 
-Indicates a firewall is silently dropping the packets. Check both GCP firewall rules and any host-based firewall on the destination instance.
+Often indicates a firewall, route, or host-level policy is silently dropping the packets. Check both GCP firewall rules and any host-based firewall on the destination instance.
 
 ### Pattern: Intermittent Drops Under Load
 
@@ -251,8 +277,8 @@ Packets larger than the MTU get dropped if fragmentation is not allowed:
 ```bash
 # Test MTU between two instances
 # From source instance:
-ping -M do -s 1460 10.0.1.50  # Test with 1460 byte payload (1500 MTU)
-ping -M do -s 8900 10.0.1.50  # Test with jumbo frames
+ping -M do -s 1432 10.0.1.50  # Test Google Cloud's default 1460 byte MTU
+ping -M do -s 8868 10.0.1.50  # Test an 8896 byte jumbo-frame MTU
 ```
 
 ## Monitoring and Alerting
@@ -260,8 +286,8 @@ ping -M do -s 8900 10.0.1.50  # Test with jumbo frames
 ```bash
 # Create a log-based metric for denied flows
 gcloud logging metrics create vpc-denied-flows \
-    --description="Count of denied VPC flows" \
-    --log-filter='resource.type="gce_subnetwork" AND jsonPayload.disposition="DENIED"' \
+    --description="Count of denied firewall connections" \
+    --log-filter='resource.type="gce_subnetwork" AND logName:"compute.googleapis.com%2Ffirewall" AND jsonPayload.disposition="DENIED"' \
     --project=my-project
 ```
 
