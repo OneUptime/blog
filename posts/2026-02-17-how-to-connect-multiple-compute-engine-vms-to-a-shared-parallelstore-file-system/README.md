@@ -30,7 +30,7 @@ Before you begin, make sure you have:
 - A GCP project with billing enabled
 - The `gcloud` CLI installed and configured
 - A VPC network with Private Services Access configured (Parallelstore requires this)
-- Compute Engine VMs running a supported OS (Debian 12, Ubuntu 22.04, or Rocky Linux 9)
+- Compute Engine VMs running a supported OS (Debian 12, Ubuntu 22.04, Rocky Linux 9 Optimized, RHEL 9, or HPC Rocky Linux 8)
 
 ## Step 1: Enable the Parallelstore API
 
@@ -47,13 +47,27 @@ gcloud services enable parallelstore.googleapis.com
 Parallelstore instances are deployed within your VPC using Private Services Access. If you have not already configured this, you need to allocate an IP range and create a private connection.
 
 ```bash
+# Enable Service Networking
+gcloud services enable servicenetworking.googleapis.com
+
 # Allocate an IP address range for private services
 gcloud compute addresses create parallelstore-range \
   --global \
   --purpose=VPC_PEERING \
-  --addresses=10.0.0.0 \
   --prefix-length=24 \
   --network=default
+
+# Get the CIDR range and allow TCP traffic from Parallelstore
+CIDR_RANGE=$(
+  gcloud compute addresses describe parallelstore-range \
+    --global \
+    --format="value[separator=/](address, prefixLength)"
+)
+
+gcloud compute firewall-rules create allow-parallelstore \
+  --allow=tcp \
+  --network=default \
+  --source-ranges=$CIDR_RANGE
 
 # Create the private connection to Google services
 gcloud services vpc-peerings connect \
@@ -66,14 +80,16 @@ Wait for the peering connection to complete before proceeding. This can take a f
 
 ## Step 3: Create the Parallelstore Instance
 
-Now create the Parallelstore instance. You need to pick a capacity that matches your workload needs. Parallelstore capacity starts at 12 TiB and scales in increments of 4 TiB.
+Now create the Parallelstore instance. You need to pick a capacity that matches your workload needs. Parallelstore capacity starts at about 12 TiB and accepts capacity values from 12,000 GiB to 100,000 GiB in increments of 4,000 GiB.
 
 ```bash
-# Create a Parallelstore instance with 12 TiB capacity
-gcloud parallelstore instances create my-pfs-instance \
+# Create a Parallelstore instance with 12,000 GiB capacity
+gcloud beta parallelstore instances create my-pfs-instance \
   --location=us-central1-a \
-  --capacity-gib=12288 \
+  --capacity-gib=12000 \
   --network=default \
+  --directory-stripe-level=directory-stripe-level-max \
+  --file-stripe-level=file-stripe-level-balanced \
   --description="Shared file system for training cluster"
 ```
 
@@ -81,7 +97,7 @@ This command kicks off the provisioning process. You can check the status with:
 
 ```bash
 # Check the status of the Parallelstore instance
-gcloud parallelstore instances describe my-pfs-instance \
+gcloud beta parallelstore instances describe my-pfs-instance \
   --location=us-central1-a
 ```
 
@@ -89,7 +105,7 @@ Look for the `state` field to change to `ACTIVE` and note the `daosVersion` and 
 
 ## Step 4: Create Compute Engine VMs in the Same Zone
 
-Your VMs must be in the same zone as the Parallelstore instance to mount it. Here is how to create a couple of test VMs.
+For best performance, create your VMs in the same zone as the Parallelstore instance. Here is how to create a couple of test VMs.
 
 ```bash
 # Create the first VM
@@ -119,20 +135,13 @@ SSH into each VM and install the DAOS client libraries. Parallelstore uses DAOS 
 # SSH into the first VM
 gcloud compute ssh vm-worker-1 --zone=us-central1-a
 
-# Add the DAOS package repository
-sudo curl -o /etc/apt/sources.list.d/daos.list \
-  https://packages.daos.io/v2.4/Debian12/packages/x86_64/daos_packages.list
+# Add the Parallelstore package repository
+curl https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg | sudo apt-key add -
+echo "deb https://us-central1-apt.pkg.dev/projects/parallelstore-packages v2-6-deb main" | sudo tee -a /etc/apt/sources.list.d/artifact-registry.list
 
-# Import the GPG key
-curl https://packages.daos.io/RPM-GPG-KEY-2024 | sudo apt-key add -
-
-# Update and install the DAOS client and agent
-sudo apt-get update
-sudo apt-get install -y daos-client daos-agent
-
-# Enable and start the DAOS agent service
-sudo systemctl enable daos_agent
-sudo systemctl start daos_agent
+# Update and install the DAOS client
+sudo apt update
+sudo apt install -y daos-client
 ```
 
 Repeat these steps on `vm-worker-2`.
@@ -143,20 +152,21 @@ The DAOS agent on each VM needs to know where to find the Parallelstore access p
 
 ```bash
 # Get the access points from the Parallelstore instance
-ACCESS_POINTS=$(gcloud parallelstore instances describe my-pfs-instance \
+ACCESS_POINTS=$(gcloud beta parallelstore instances describe my-pfs-instance \
   --location=us-central1-a \
-  --format="value(accessPoints)")
+  --format "value[delimiter=', '](format('{0}', accessPoints))")
 
 # Write the DAOS agent configuration
 sudo tee /etc/daos/daos_agent.yml > /dev/null <<EOF
-access_points: [$ACCESS_POINTS]
-port: 10001
+access_points: ${ACCESS_POINTS}
 transport_config:
   allow_insecure: true
+include_fabric_ifaces: ["eth0"]
 EOF
 
-# Restart the agent to pick up the new configuration
-sudo systemctl restart daos_agent
+# Start the agent with the updated configuration
+sudo mkdir -p /var/run/daos_agent
+sudo daos_agent -o /etc/daos/daos_agent.yml &
 ```
 
 ## Step 7: Mount the Parallelstore File System
@@ -166,9 +176,15 @@ With the agent configured, you can now mount the file system using `dfuse`, the 
 ```bash
 # Create the mount point directory
 sudo mkdir -p /mnt/parallelstore
+sudo chown "$USER:$USER" /mnt/parallelstore
+sudo sh -c 'grep -qxF user_allow_other /etc/fuse.conf || echo user_allow_other >> /etc/fuse.conf'
 
 # Mount the file system using dfuse
-dfuse -m /mnt/parallelstore --pool default-pool --container default-container
+dfuse /mnt/parallelstore default-pool default-container \
+  --disable-wb-cache \
+  --thread-count=20 \
+  --eq-count=10 \
+  --multi-user
 
 # Verify the mount
 df -h /mnt/parallelstore
@@ -203,7 +219,7 @@ A few things to keep in mind for production deployments:
 
 **Match your instance size to your I/O needs.** Parallelstore throughput scales with capacity. A 12 TiB instance delivers a baseline throughput, while a 100 TiB instance delivers significantly more. Check the documentation for exact numbers at each capacity tier.
 
-**Keep VMs in the same zone.** Cross-zone access is not supported. All VMs must be in the same zone as the Parallelstore instance.
+**Keep VMs in the same zone.** You get the best performance when VMs are in the same zone as the Parallelstore instance.
 
 **Use the interception library for maximum performance.** Instead of going through FUSE, you can use the DAOS interception library (libioil) to bypass the kernel and achieve lower latency. This requires LD_PRELOAD and works with most POSIX applications:
 
@@ -219,23 +235,32 @@ python train.py --data-dir /mnt/parallelstore/dataset
 If you are deploying many VMs, consider using a startup script or a custom image with the DAOS client pre-installed. Here is a snippet you can add to your instance template:
 
 ```bash
-# Startup script for auto-mounting Parallelstore
 #!/bin/bash
-apt-get update && apt-get install -y daos-client daos-agent
+# Startup script for auto-mounting Parallelstore
+
+curl https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg | apt-key add -
+echo "deb https://us-central1-apt.pkg.dev/projects/parallelstore-packages v2-6-deb main" > /etc/apt/sources.list.d/artifact-registry.list
+apt-get update && apt-get install -y daos-client
 
 # Configure and start the agent
 cat > /etc/daos/daos_agent.yml <<EOF
 access_points: [10.0.0.2, 10.0.0.3, 10.0.0.4]
-port: 10001
 transport_config:
   allow_insecure: true
+include_fabric_ifaces: ["eth0"]
 EOF
 
-systemctl enable daos_agent && systemctl start daos_agent
+mkdir -p /var/run/daos_agent
+daos_agent -o /etc/daos/daos_agent.yml &
 
 # Mount the file system
 mkdir -p /mnt/parallelstore
-dfuse -m /mnt/parallelstore --pool default-pool --container default-container
+grep -qxF user_allow_other /etc/fuse.conf || echo user_allow_other >> /etc/fuse.conf
+dfuse /mnt/parallelstore default-pool default-container \
+  --disable-wb-cache \
+  --thread-count=20 \
+  --eq-count=10 \
+  --multi-user
 ```
 
 ## Cleanup
@@ -244,10 +269,10 @@ When you are done, unmount the file system and delete the resources:
 
 ```bash
 # Unmount on each VM
-fusermount -u /mnt/parallelstore
+sudo umount /mnt/parallelstore
 
 # Delete the Parallelstore instance
-gcloud parallelstore instances delete my-pfs-instance \
+gcloud beta parallelstore instances delete my-pfs-instance \
   --location=us-central1-a
 
 # Delete the VMs
