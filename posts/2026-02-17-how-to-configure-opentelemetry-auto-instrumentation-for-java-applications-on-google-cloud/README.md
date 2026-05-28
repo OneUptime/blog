@@ -16,14 +16,14 @@ The OpenTelemetry Java agent uses bytecode manipulation to automatically instrum
 
 ## Prerequisites
 
-- Java 11 or later
+- Java 8 or later
 - A GCP project with Cloud Trace API enabled
 - A running Java application (Spring Boot, Quarkus, or any framework)
 - Application Default Credentials or a service account key
 
 ## Step 1: Download the Java Agent
 
-Grab the latest OpenTelemetry Java agent JAR and the Google Cloud auto-configuration module.
+Grab the latest OpenTelemetry Java agent JAR and the Google Cloud auto-configuration extension. The Google Cloud auto-exporter is currently published as an alpha artifact, so pin the version you have tested.
 
 ```bash
 # Download the OpenTelemetry Java agent
@@ -33,7 +33,7 @@ curl -L -o opentelemetry-javaagent.jar \
 
 # Download the Google Cloud trace exporter extension
 curl -L -o gcp-exporter.jar \
-  https://github.com/GoogleCloudPlatform/opentelemetry-operations-java/releases/latest/download/exporter-auto-0.31.0.jar
+  https://repo1.maven.org/maven2/com/google/cloud/opentelemetry/exporter-auto/0.36.0-alpha/exporter-auto-0.36.0-alpha-shaded.jar
 ```
 
 ## Step 2: Configure the Agent
@@ -87,7 +87,7 @@ FROM eclipse-temurin:21-jre
 ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar /opt/otel/opentelemetry-javaagent.jar
 
 # Copy the GCP exporter extension
-ADD https://github.com/GoogleCloudPlatform/opentelemetry-operations-java/releases/latest/download/exporter-auto-0.31.0.jar /opt/otel/gcp-exporter.jar
+ADD https://repo1.maven.org/maven2/com/google/cloud/opentelemetry/exporter-auto/0.36.0-alpha/exporter-auto-0.36.0-alpha-shaded.jar /opt/otel/gcp-exporter.jar
 
 # Copy your application JAR
 COPY target/my-application.jar /app/my-application.jar
@@ -171,8 +171,8 @@ Sometimes the auto-instrumentation is too noisy, or you want to exclude certain 
 # Disable instrumentation for specific libraries
 export OTEL_INSTRUMENTATION_JDBC_ENABLED=false
 
-# Suppress specific spans by name pattern
-export OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_SUPPRESS_MESSAGING_RECEIVE_SPANS=true
+# Disable consumer receive telemetry for messaging instrumentations
+export OTEL_INSTRUMENTATION_MESSAGING_EXPERIMENTAL_RECEIVE_TELEMETRY_ENABLED=false
 
 # Add custom span attributes to HTTP server spans
 export OTEL_INSTRUMENTATION_HTTP_SERVER_CAPTURE_REQUEST_HEADERS=X-Request-ID,X-Tenant-ID
@@ -186,6 +186,7 @@ Auto-instrumentation handles the framework-level stuff, but you will often want 
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 
 public class OrderService {
     // Get a tracer instance from the global provider set by the agent
@@ -199,7 +200,7 @@ public class OrderService {
             .setAttribute("order.item_count", request.getItems().size())
             .startSpan();
 
-        try {
+        try (Scope scope = span.makeCurrent()) {
             // Your business logic here
             Order order = validateAndCreate(request);
             span.setAttribute("order.id", order.getId());
