@@ -4,30 +4,30 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud EKM, External Key Manager, Cloud KMS, Encryption
 
-Description: A practical guide to configuring Google Cloud External Key Manager (Cloud EKM) to use encryption keys stored in a third-party key management system like Thales, Fortanix, or Equinix.
+Description: A practical guide to configuring Google Cloud External Key Manager (Cloud EKM) to use encryption keys stored in a third-party key management system like Thales, Fortanix, or Futurex.
 
 ---
 
 Some organizations have a strict requirement that encryption keys must never reside on the cloud provider's infrastructure. Maybe it is a regulatory mandate. Maybe the security team insists on maintaining full custody of all key material. Maybe there is an existing investment in an on-premises or third-party key management system that cannot be abandoned.
 
-Cloud External Key Manager (Cloud EKM) addresses this by letting you use encryption keys that are stored and managed outside of Google Cloud. The key material stays in your third-party KMS - Thales CipherTrust, Fortanix SDKMS, or another supported provider. When GCP needs to perform a cryptographic operation, it sends a request to your external KMS through a secure channel. Google never sees or stores the actual key material.
+Cloud External Key Manager (Cloud EKM) addresses this by letting you use encryption keys that are stored and managed outside of Google Cloud. The external key material stays in your third-party KMS - Thales CipherTrust, Fortanix SDKMS, Futurex, or another supported provider. When GCP needs to perform a cryptographic operation, it sends a request to your external KMS through a secure channel. Google never sees or stores the external key material.
 
 ## How Cloud EKM Works
 
-Cloud EKM creates a reference in Cloud KMS that points to a key in your external system. When a GCP service needs to encrypt or decrypt data, the request goes through Cloud KMS, which forwards it to your external KMS via an API call. The external KMS performs the cryptographic operation and returns the result.
+Cloud EKM creates a reference in Cloud KMS that points to a key in your external system. When a GCP service needs to encrypt or decrypt data, the request goes through Cloud KMS, which sends a request to your external KMS via an API call. For symmetric encryption, Cloud KMS also uses internal key material that never leaves Google Cloud, and the external KMS wraps or unwraps data with the external key material before returning the result.
 
 ```mermaid
 sequenceDiagram
     participant App as GCP Application
     participant KMS as Cloud KMS
     participant EKM as Cloud EKM
-    participant ExtKMS as External KMS (Thales/Fortanix)
+    participant ExtKMS as External KMS (Thales/Fortanix/Futurex)
 
     App->>KMS: Encrypt request
     KMS->>EKM: Forward to external key
     EKM->>ExtKMS: API call to external KMS
-    ExtKMS->>ExtKMS: Perform encryption with local key
-    ExtKMS-->>EKM: Return ciphertext
+    ExtKMS->>ExtKMS: Wrap data with external key material
+    ExtKMS-->>EKM: Return wrapped result
     EKM-->>KMS: Return result
     KMS-->>App: Return encrypted data
 ```
@@ -42,10 +42,8 @@ There are two connectivity options:
 Google has partnered with several third-party KMS providers:
 
 - **Thales CipherTrust Manager** - on-premises or cloud-hosted
-- **Fortanix SDKMS** - SaaS or on-premises
-- **Equinix SmartKey** - SaaS-based
-- **Ionic Security** - cloud-based
-- **Unbound CORE** - on-premises or cloud
+- **Fortanix** - SaaS or on-premises
+- **Futurex** - hardware-backed or cloud-hosted
 
 Each provider has its own setup guide for the EKM integration. The provider generates a key and exposes it through an API that conforms to the Cloud EKM protocol.
 
@@ -54,8 +52,8 @@ Each provider has its own setup guide for the EKM integration. The provider gene
 - A GCP project with Cloud KMS API enabled
 - An external KMS account with a supported provider
 - A key created in the external KMS that is configured for EKM access
-- The external KMS URI (provided by your KMS vendor)
-- For VPC-based EKM: a VPC network with Private Service Connect configured
+- The external KMS URI or key path (provided by your KMS vendor)
+- For VPC-based EKM: a Service Directory service endpoint that points to your external KMS, with the required Cloud EKM service account IAM permissions
 
 ```bash
 # Enable the Cloud KMS API
@@ -70,7 +68,7 @@ The exact steps depend on your provider. Here is the general process:
 1. Log into your external KMS management console
 2. Create a key designated for Google Cloud EKM use
 3. Configure the key with the correct algorithm (typically AES-256 for symmetric encryption)
-4. Note the key URI - this is the endpoint Google will call for cryptographic operations
+4. Note the key URI for internet-based EKM, or the key path for VPC-based EKM
 5. Configure authentication credentials or mutual TLS certificates
 
 The key URI typically looks something like:
@@ -88,7 +86,8 @@ gcloud kms ekm-connections create my-ekm-connection \
   --location=us-central1 \
   --service-directory-service="projects/my-project-id/locations/us-central1/namespaces/my-namespace/services/my-ekm-service" \
   --hostname="ekm.internal.example.com" \
-  --server-certificates-pem-file=./ekm-server-cert.pem \
+  --server-certificates-files=./ekm-server-cert.pem \
+  --key-management-mode=manual \
   --project=my-project-id
 ```
 
@@ -153,7 +152,7 @@ gcloud kms keys versions create \
   --key=my-vpc-external-key \
   --keyring=ekm-keyring \
   --location=us-central1 \
-  --external-key-uri="https://ekm.internal.example.com/api/v1/keys/my-key" \
+  --ekm-connection-key-path="v0/keys/my-key" \
   --primary \
   --project=my-project-id
 ```
@@ -163,13 +162,14 @@ gcloud kms keys versions create \
 ```hcl
 # EKM connection for VPC-based access
 resource "google_kms_ekm_connection" "ekm_conn" {
-  name     = "my-ekm-connection"
-  location = "us-central1"
-  project  = var.project_id
+  name                = "my-ekm-connection"
+  location            = "us-central1"
+  project             = var.project_id
+  key_management_mode = "MANUAL"
 
   service_resolvers {
     service_directory_service = "projects/${var.project_id}/locations/us-central1/namespaces/my-namespace/services/my-ekm-service"
-    hostname                 = "ekm.internal.example.com"
+    hostname                  = "ekm.internal.example.com"
 
     server_certificates {
       raw_der = filebase64("./ekm-server-cert.der")
@@ -201,6 +201,14 @@ resource "google_kms_crypto_key" "external_key" {
 
   lifecycle {
     prevent_destroy = true
+  }
+}
+
+resource "google_kms_crypto_key_version" "external_key_version" {
+  crypto_key = google_kms_crypto_key.external_key.id
+
+  external_protection_level_options {
+    ekm_connection_key_path = "v0/keys/my-key"
   }
 }
 ```
@@ -247,9 +255,9 @@ bq mk --dataset \
 
 ## The "Kill Switch" Advantage
 
-The most significant benefit of Cloud EKM is the ability to cut off access to your GCP data instantly by disabling the key in your external KMS. If you detect a security incident or need to comply with an emergency data access revocation order, you disable the key in your third-party KMS. Google can no longer decrypt any data protected by that key, and all access stops immediately.
+The most significant benefit of Cloud EKM is the ability to cut off future cryptographic operations for your GCP data by disabling the key in your external KMS. If you detect a security incident or need to comply with an emergency data access revocation order, you disable the key in your third-party KMS. Google can no longer decrypt data protected by that key unless it can use both the Cloud EKM key version and the external key material.
 
-This is a stronger guarantee than disabling a Cloud KMS key because Google never had the key material in the first place. Even in a hypothetical scenario where Google's infrastructure is compromised, the attacker cannot access the key material because it was never there.
+This is a stronger guarantee than disabling a Cloud KMS key because Google never had the external key material in the first place. Even in a hypothetical scenario where Google's infrastructure is compromised, the attacker cannot access the external key material because it was never there.
 
 ## Availability Considerations
 
