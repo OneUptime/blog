@@ -24,7 +24,7 @@ graph TD
     C -->|Send Push| E[Firebase Cloud Messaging]
     E -->|Deliver| F[Mobile Devices]
     E -->|Deliver| G[Web Browsers]
-    C -->|Failed Delivery| H[Dead Letter Topic]
+    C -->|Failed Delivery| H[Retry Topic]
     H -->|Trigger| I[Cloud Function: Retry Handler]
 ```
 
@@ -37,21 +37,20 @@ Start by enabling the required APIs and creating the Pub/Sub topics.
 
 gcloud services enable pubsub.googleapis.com
 gcloud services enable cloudfunctions.googleapis.com
+gcloud services enable artifactregistry.googleapis.com
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable run.googleapis.com
+gcloud services enable eventarc.googleapis.com
+gcloud services enable logging.googleapis.com
 gcloud services enable firestore.googleapis.com
 gcloud services enable fcm.googleapis.com
+gcloud services enable bigquery.googleapis.com
 
 # Create the main notification topic
 gcloud pubsub topics create notifications
 
-# Create a dead letter topic for failed deliveries
-gcloud pubsub topics create notification-dead-letters
-
-# Create the subscription with dead letter policy
-gcloud pubsub subscriptions create notifications-sub \
-  --topic=notifications \
-  --dead-letter-topic=notification-dead-letters \
-  --max-delivery-attempts=5 \
-  --ack-deadline=60
+# Create a retry topic for failed delivery records
+gcloud pubsub topics create notification-retries
 ```
 
 ## Managing Device Tokens
@@ -102,6 +101,7 @@ Your application publishes events to Pub/Sub whenever something notification-wor
 ```python
 # publisher.py - Publish notification events from your application
 from google.cloud import pubsub_v1
+from datetime import datetime
 import json
 
 publisher = pubsub_v1.PublisherClient()
@@ -117,7 +117,7 @@ def send_notification_event(event_type, recipient_ids, data):
         "timestamp": datetime.utcnow().isoformat(),
     }
 
-    # Publish with ordering key to maintain per-user ordering
+    # Publish with an attribute for filtering
     future = publisher.publish(
         TOPIC_PATH,
         json.dumps(message).encode("utf-8"),
@@ -152,8 +152,10 @@ import functions_framework
 import base64
 import json
 import logging
-from google.cloud import firestore
-from firebase_admin import initialize_app, messaging
+import os
+from datetime import datetime
+from google.cloud import firestore, pubsub_v1
+from firebase_admin import initialize_app, messaging, exceptions
 import firebase_admin
 
 logger = logging.getLogger(__name__)
@@ -163,6 +165,13 @@ if not firebase_admin._apps:
     initialize_app()
 
 db = firestore.Client()
+publisher = pubsub_v1.PublisherClient()
+PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT")
+RETRY_TOPIC_PATH = (
+    publisher.topic_path(PROJECT_ID, "notification-retries")
+    if PROJECT_ID
+    else None
+)
 
 # Notification templates for different event types
 TEMPLATES = {
@@ -204,7 +213,28 @@ def route_notification(cloud_event):
         try:
             send_to_user(user_id, template, data, event_type)
         except Exception as e:
-            logger.error(f"Failed to notify user {user_id}: {e}")
+            logger.exception(f"Failed to notify user {user_id}: {e}")
+            publish_delivery_failure(user_id, event_type, data, str(e))
+
+
+def publish_delivery_failure(user_id, event_type, data, error):
+    """Publish a failed delivery record for a retry handler."""
+    if not RETRY_TOPIC_PATH:
+        logger.error("GOOGLE_CLOUD_PROJECT is not set; cannot publish retry event")
+        return
+
+    retry_event = {
+        "user_id": user_id,
+        "event_type": event_type,
+        "data": data,
+        "error": error,
+        "failed_at": datetime.utcnow().isoformat(),
+    }
+    publisher.publish(
+        RETRY_TOPIC_PATH,
+        json.dumps(retry_event).encode("utf-8"),
+        event_type=event_type,
+    )
 
 
 def send_to_user(user_id, template, data, event_type):
@@ -271,7 +301,7 @@ def send_to_user(user_id, template, data, event_type):
                 # Deactivate invalid tokens
                 if isinstance(error, (
                     messaging.UnregisteredError,
-                    messaging.InvalidArgumentError,
+                    exceptions.InvalidArgumentError,
                 )):
                     logger.info(f"Deactivating invalid token for user {user_id}")
                     deactivate_token(user_id, tokens[idx])
@@ -315,8 +345,10 @@ Store notification delivery results for analytics and debugging.
 # analytics.py - Track notification delivery metrics
 from google.cloud import bigquery
 from datetime import datetime
+import logging
 
 bq_client = bigquery.Client()
+logger = logging.getLogger(__name__)
 
 def log_delivery(user_id, event_type, success_count, failure_count, tokens_deactivated):
     """Log notification delivery results to BigQuery for analytics."""
@@ -376,4 +408,4 @@ def send_batch_notifications(notification, data, tokens):
 
 ## Wrapping Up
 
-This serverless notification system handles the full lifecycle from event publishing through push delivery and token management. Pub/Sub decouples your application from the notification logic, Cloud Functions process events at scale, and FCM handles the last-mile delivery to devices. The dead letter queue catches persistent failures, and the token deactivation logic keeps your device registry clean. For most applications on GCP, this pattern gives you a production-ready notification system without any always-on infrastructure.
+This serverless notification system handles the full lifecycle from event publishing through push delivery and token management. Pub/Sub decouples your application from the notification logic, Cloud Functions process events at scale, and FCM handles the last-mile delivery to devices. The retry topic records failed delivery events for follow-up processing, and the token deactivation logic keeps your device registry clean. For most applications on GCP, this pattern gives you a production-ready notification system without any always-on infrastructure.
