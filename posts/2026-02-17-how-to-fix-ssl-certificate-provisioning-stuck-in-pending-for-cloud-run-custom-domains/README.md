@@ -12,7 +12,7 @@ You have mapped a custom domain to your Cloud Run service, but the SSL certifica
 
 ## Understanding the Problem
 
-When you add a custom domain to Cloud Run, Google automatically provisions a managed SSL certificate using Let's Encrypt (or Google Trust Services). This process requires Google to verify that you own the domain by checking DNS records. If the DNS is not configured correctly or has not propagated, the certificate stays stuck.
+When you add a custom domain to Cloud Run, Google automatically provisions and renews a Google-managed SSL certificate. This process requires Google to verify that you own the domain by checking DNS records. If the DNS is not configured correctly or has not propagated, the certificate stays stuck.
 
 The typical timeline for SSL provisioning:
 - DNS records correct: 15-30 minutes
@@ -56,7 +56,7 @@ Use gcloud to see the current state of your domain mapping:
 
 ```bash
 # Check the domain mapping status
-gcloud run domain-mappings describe \
+gcloud beta run domain-mappings describe \
     --domain=api.example.com \
     --region=us-central1 \
     --format="yaml(status)"
@@ -176,7 +176,8 @@ If you see CAA records that do not include Google's certificate authorities, add
 
 ```bash
 # Add CAA records to allow Google to issue certificates
-# You need to allow both letsencrypt.org and pki.goog
+# Allow Google Trust Services; include letsencrypt.org too if your
+# existing setup or Cloud Run status output indicates Let's Encrypt
 gcloud dns record-sets create example.com. \
     --zone=my-dns-zone \
     --type=CAA \
@@ -186,9 +187,9 @@ gcloud dns record-sets create example.com. \
 
 ### Cloudflare Proxy Interference
 
-If your DNS is managed by Cloudflare and the proxy (orange cloud) is enabled, it intercepts traffic and prevents Google from verifying domain ownership:
+If your DNS is managed by Cloudflare or another third-party CDN, proxying or forced HTTPS settings can intercept validation requests before they reach Cloud Run:
 
-The fix: Set the DNS record to "DNS only" (grey cloud) in Cloudflare. Once the certificate is provisioned, you can decide whether to use Cloudflare's proxy or Cloud Run's built-in SSL.
+The fix: Set the DNS record to "DNS only" (grey cloud) in Cloudflare and turn off "Always use HTTPS" while the Cloud Run certificate is being provisioned. Once the certificate is provisioned, you can decide whether to use Cloudflare's proxy or Cloud Run's built-in SSL.
 
 ### Domain Verification Not Complete
 
@@ -208,12 +209,12 @@ If the certificate has been stuck for more than 24 hours and DNS is correct, som
 
 ```bash
 # Delete the domain mapping
-gcloud run domain-mappings delete \
+gcloud beta run domain-mappings delete \
     --domain=api.example.com \
     --region=us-central1
 
 # Wait a minute, then recreate it
-gcloud run domain-mappings create \
+gcloud beta run domain-mappings create \
     --service=my-service \
     --domain=api.example.com \
     --region=us-central1
@@ -221,7 +222,7 @@ gcloud run domain-mappings create \
 
 ## Alternative: Use a Load Balancer
 
-If you consistently have trouble with Cloud Run's built-in domain mapping, consider using a global HTTP(S) Load Balancer with Cloud Run as a backend. This gives you more control over SSL certificates:
+If you consistently have trouble with Cloud Run's built-in domain mapping, consider using a global external Application Load Balancer with Cloud Run as a backend. This is Google's recommended approach for production custom domains and gives you more control over SSL certificates:
 
 ```bash
 # Create a managed SSL certificate through the load balancer
