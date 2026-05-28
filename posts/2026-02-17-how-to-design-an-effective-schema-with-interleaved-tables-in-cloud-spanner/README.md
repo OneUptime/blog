@@ -8,7 +8,7 @@ Description: Learn how to use interleaved tables in Cloud Spanner to co-locate p
 
 ---
 
-If you have worked with Cloud Spanner for any length of time, you have probably come across the concept of interleaved tables. This is one of Spanner's most distinctive features, and understanding it well can make a huge difference in your application's performance. Interleaving lets you physically co-locate related rows so that parent and child data lives on the same split, which drastically reduces the need for distributed joins. Let me walk through how this works and when to use it.
+If you have worked with Cloud Spanner for any length of time, you have probably come across the concept of interleaved tables. This is one of Spanner's most distinctive features, and understanding it well can make a huge difference in your application's performance. Interleaving lets you physically co-locate related rows so that parent and child data are usually stored in the same split, which can drastically reduce the need for distributed joins. Let me walk through how this works and when to use it.
 
 ## What Problem Does Interleaving Solve?
 
@@ -16,7 +16,7 @@ In a traditional relational database, when you join two tables, the database eng
 
 Spanner is different. It is a distributed database, which means data is split across many machines. When you join two tables whose rows live on different machines, Spanner has to make network calls between those machines. This adds latency.
 
-Interleaving tells Spanner to store child rows physically next to their parent rows. When you query a parent and its children, the data is already on the same machine. No network hops needed.
+Interleaving tells Spanner to store child rows physically next to their parent rows. When you query a parent and its children by primary key, the data is usually local to the same split, which minimizes storage access and network traffic.
 
 ## A Practical Example
 
@@ -76,7 +76,7 @@ Artists(ArtistId="artist-2")          -- Next parent row
   Albums(ArtistId="artist-2", AlbumId="album-4")  -- Child row
 ```
 
-The child rows are literally nested between their parent and the next parent. This is why queries that fetch an artist and all their albums are so fast - the data is already contiguous.
+The child rows are ordered between their parent and the next parent. This is why queries that fetch an artist and all their albums can be so fast - the data is stored contiguously unless Spanner has to split the data further because of size or load.
 
 ## Multi-Level Interleaving
 
@@ -110,7 +110,7 @@ CREATE TABLE Tracks (
   INTERLEAVE IN PARENT Albums ON DELETE CASCADE;
 ```
 
-Now an artist, their albums, and all tracks within those albums are stored together. A query that fetches an artist's complete discography with track listings will be very efficient.
+Now an artist, their albums, and all tracks within those albums are stored together when the related rows fit within Spanner's split and load constraints. A query that fetches an artist's complete discography with track listings can be very efficient.
 
 The storage layout looks like this:
 
@@ -125,12 +125,12 @@ Artists("artist-1")
 
 ## The ON DELETE Clause
 
-When defining interleaved tables, you must specify what happens when a parent row is deleted:
+When defining interleaved tables with `INTERLEAVE IN PARENT`, you can specify what happens when a parent row is deleted:
 
 - `ON DELETE CASCADE` - Deleting the parent automatically deletes all child rows
 - `ON DELETE NO ACTION` - Deleting the parent fails if child rows exist
 
-Choose CASCADE when the child data has no meaning without the parent. Choose NO ACTION when you want to enforce that someone explicitly cleans up children first.
+Choose CASCADE when the child data has no meaning without the parent. Choose NO ACTION when you want to enforce that someone explicitly cleans up children first. If you omit the `ON DELETE` clause, Spanner uses `ON DELETE NO ACTION` by default.
 
 ## When to Use Interleaving
 
@@ -163,13 +163,13 @@ flowchart TD
 
 ## Performance Impact
 
-I have seen real workloads where switching from separate tables to interleaved tables reduced p99 query latency from 15ms to under 3ms. The improvement is especially dramatic when your data spans multiple splits, because interleaving guarantees co-location.
+I have seen real workloads where switching from separate tables to interleaved tables reduced p99 query latency from 15ms to under 3ms. The improvement is especially dramatic when your data spans multiple splits, because interleaving preserves locality for related rows when the parent row and its descendants fit within Spanner's split and load constraints.
 
 However, there is a tradeoff. If you frequently need to scan all rows of a child table across all parents (for example, running analytics across all albums regardless of artist), interleaving can actually make that slower because the child rows are spread across all the parent splits instead of being contiguous.
 
 ## Schema Migration Considerations
 
-You cannot add interleaving to an existing table. If you decide later that two tables should be interleaved, you will need to create a new interleaved table, migrate the data, and drop the old table. This is one reason it pays to think about your access patterns carefully upfront.
+You can change an existing table to use `INTERLEAVE IN` or `INTERLEAVE IN PARENT` with `ALTER TABLE ... SET INTERLEAVE IN [PARENT]` if its primary key already has the parent table's primary key as a matching prefix. If the existing table's key does not match the required shape, you will need to create a new interleaved table, migrate the data, and drop the old table. This is one reason it pays to think about your access patterns carefully upfront.
 
 ## Wrapping Up
 
