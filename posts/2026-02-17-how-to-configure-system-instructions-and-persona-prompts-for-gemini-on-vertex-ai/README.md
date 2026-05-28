@@ -14,35 +14,41 @@ I have spent a lot of time refining system instructions for different applicatio
 
 ## How System Instructions Work
 
-System instructions are sent with every API call but are separate from the user message. They are processed before the user's input and establish the context for the entire conversation. Unlike regular prompts, system instructions do not count as a conversational turn - they are metadata that shapes model behavior.
+System instructions are sent with every API call but are separate from the user message. They are processed before the user's input and establish the context for the entire conversation. Unlike regular prompts, system instructions do not count as a conversational turn - they are request-level instructions that shape model behavior.
 
-The key difference from prepending instructions to the user prompt is that system instructions receive special treatment in the model's attention mechanism. They are more reliably followed, especially in long conversations where older context might get less attention.
+The key difference from prepending instructions to the user prompt is that system instructions are passed in a dedicated configuration field and apply across the whole request, including multi-turn chat when included in the chat configuration. They can improve consistency, but they are still part of the overall prompt and should not contain secrets or sensitive information.
 
 ## Basic System Instruction Setup
 
-Setting a system instruction is straightforward. You pass it when creating the model instance.
+Setting a system instruction is straightforward. With the current Google Gen AI SDK, you pass it in the request or chat configuration.
 
-This code creates a model with a basic system instruction:
+This code sends a request with a basic system instruction:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel
+from google import genai
+from google.genai import types
 
 # Initialize Vertex AI
-
-vertexai.init(project="your-project-id", location="us-central1")
-
-# Create a model with system instructions
-model = GenerativeModel(
-    "gemini-2.0-flash",
-    system_instruction="You are a helpful cloud engineering assistant. "
-    "Answer questions about Google Cloud Platform services, architecture, "
-    "and best practices. Be concise and practical."
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+    http_options=types.HttpOptions(api_version="v1"),
 )
 
-# The model now follows these instructions for every request
-response = model.generate_content(
-    "How should I design a high-availability setup for Cloud SQL?"
+config = types.GenerateContentConfig(
+    system_instruction=(
+        "You are a helpful cloud engineering assistant. "
+        "Answer questions about Google Cloud Platform services, architecture, "
+        "and best practices. Be concise and practical."
+    )
+)
+
+# The model follows these instructions for this request
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="How should I design a high-availability setup for Cloud SQL?",
+    config=config,
 )
 print(response.text)
 ```
@@ -80,8 +86,7 @@ Output Format:
 Tone: Professional but approachable. Avoid jargon unless the user clearly has technical background.
 """
 
-model = GenerativeModel(
-    "gemini-2.0-flash",
+support_config = types.GenerateContentConfig(
     system_instruction=system_instruction
 )
 ```
@@ -116,13 +121,15 @@ Things You Never Do:
 - Assume the user's experience level without asking
 """
 
-devbot = GenerativeModel(
-    "gemini-2.0-flash",
+devbot_config = types.GenerateContentConfig(
     system_instruction=developer_persona
 )
 
-# The model now responds with this persona consistently
-chat = devbot.start_chat()
+# The chat now uses this persona consistently
+chat = client.chats.create(
+    model="gemini-2.5-flash",
+    config=devbot_config,
+)
 response = chat.send_message("How do I set up authentication?")
 print(response.text)
 ```
@@ -138,8 +145,8 @@ class DynamicAssistant:
     def __init__(self):
         self.base_instruction = "You are a helpful assistant."
 
-    def create_model(self, user_role=None, language=None, expertise_level=None):
-        """Create a model with context-appropriate system instructions."""
+    def create_config(self, user_role=None, language=None, expertise_level=None):
+        """Create a config with context-appropriate system instructions."""
         parts = [self.base_instruction]
 
         # Adjust for user role
@@ -177,22 +184,21 @@ class DynamicAssistant:
 
         instruction = "\n\n".join(parts)
 
-        return GenerativeModel(
-            "gemini-2.0-flash",
+        return types.GenerateContentConfig(
             system_instruction=instruction
         )
 
 # Usage
 assistant = DynamicAssistant()
 
-# Create a model for a beginner developer
-beginner_model = assistant.create_model(
+# Create a config for a beginner developer
+beginner_config = assistant.create_config(
     user_role="developer",
     expertise_level="beginner"
 )
 
-# Create a model for an advanced admin
-admin_model = assistant.create_model(
+# Create a config for an advanced admin
+admin_config = assistant.create_config(
     user_role="admin",
     expertise_level="advanced"
 )
@@ -204,8 +210,8 @@ System instructions are effective for enforcing specific output formats. This is
 
 ```python
 # System instruction that enforces JSON output format
-json_enforced = GenerativeModel(
-    "gemini-2.0-flash",
+json_config = types.GenerateContentConfig(
+    response_mime_type="application/json",
     system_instruction="""You are a log analysis engine.
 
 For every log entry the user provides, respond with a JSON object containing:
@@ -220,9 +226,13 @@ Do not use markdown code blocks. Output only the raw JSON.
 """
 )
 
-response = json_enforced.generate_content(
-    "ERROR 2026-02-17 14:23:01 - Connection pool exhausted for database "
-    "primary-db. 47 active connections, max is 50. 12 requests queued."
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=(
+        "ERROR 2026-02-17 14:23:01 - Connection pool exhausted for database "
+        "primary-db. 47 active connections, max is 50. 12 requests queued."
+    ),
+    config=json_config,
 )
 
 import json
@@ -236,12 +246,16 @@ print(f"Action required: {result['action_required']}")
 System instructions should be tested systematically. Here is a testing framework:
 
 ```python
-def test_system_instruction(model, test_cases):
+def test_system_instruction(client, model, config, test_cases):
     """Test a model's system instruction against expected behaviors."""
     results = []
 
     for case in test_cases:
-        response = model.generate_content(case["input"])
+        response = client.models.generate_content(
+            model=model,
+            contents=case["input"],
+            config=config,
+        )
         text = response.text
 
         # Check each assertion
@@ -297,7 +311,7 @@ test_cases = [
     },
 ]
 
-test_system_instruction(model, test_cases)
+test_system_instruction(client, "gemini-2.5-flash", support_config, test_cases)
 ```
 
 ## Common Patterns for System Instructions
