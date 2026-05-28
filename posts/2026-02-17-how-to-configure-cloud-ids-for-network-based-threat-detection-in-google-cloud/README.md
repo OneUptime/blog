@@ -33,19 +33,35 @@ The original traffic flow is not affected. Packet Mirroring sends a copy, so the
 
 Before setting up Cloud IDS:
 
-1. Enable the IDS API in your project
+1. Enable the IDS API and Service Networking API in your project
 2. Have a VPC network where you want traffic monitored
-3. Ensure you have the `ids.endpoints.create` permission
-4. Decide which subnets and traffic directions to monitor
+3. Set up private services access for the VPC network
+4. Ensure you have permissions to create IDS endpoints and Packet Mirroring policies
+5. Decide which subnets and traffic directions to monitor
 
 ## Creating a Cloud IDS Endpoint
 
 An IDS endpoint is the resource that receives mirrored traffic and performs analysis. Each endpoint is associated with a specific VPC network and zone.
 
 ```bash
-# Enable the Cloud IDS API
+# Enable the Cloud IDS and Service Networking APIs
 
-gcloud services enable ids.googleapis.com --project=my-network-project
+gcloud services enable ids.googleapis.com servicenetworking.googleapis.com \
+  --project=my-network-project
+
+# Set up private services access for the VPC network
+gcloud compute addresses create google-managed-services-prod-vpc \
+  --global \
+  --purpose=VPC_PEERING \
+  --prefix-length=16 \
+  --network=prod-vpc \
+  --project=my-network-project
+
+gcloud services vpc-peerings connect \
+  --service=servicenetworking.googleapis.com \
+  --ranges=google-managed-services-prod-vpc \
+  --network=prod-vpc \
+  --project=my-network-project
 
 # Create a Cloud IDS endpoint
 gcloud ids endpoints create prod-ids-endpoint \
@@ -115,18 +131,18 @@ gcloud compute packet-mirrorings create tagged-mirror \
 
 ### Filter Mirrored Traffic
 
-You can filter what traffic gets mirrored to reduce costs and noise.
+You can filter what traffic gets mirrored by protocol, CIDR range, and direction to reduce costs and noise.
 
 ```bash
-# Mirror only inbound HTTP and HTTPS traffic
+# Mirror only inbound TCP traffic
 gcloud compute packet-mirrorings create filtered-mirror \
   --region=us-central1 \
   --network=prod-vpc \
   --collector-ilb=${ENDPOINT_FR} \
   --mirrored-subnets=prod-subnet \
   --filter-cidr-ranges=0.0.0.0/0 \
-  --filter-protocols=tcp:80,tcp:443 \
-  --filter-direction=INGRESS \
+  --filter-protocols=tcp \
+  --filter-direction=ingress \
   --project=my-network-project
 ```
 
@@ -135,6 +151,22 @@ gcloud compute packet-mirrorings create filtered-mirror \
 Here is a complete Terraform setup for Cloud IDS with Packet Mirroring.
 
 ```hcl
+# Private services access for the VPC network
+resource "google_compute_global_address" "private_services" {
+  name          = "google-managed-services-prod-vpc"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.prod.id
+  project       = "my-network-project"
+}
+
+resource "google_service_networking_connection" "private_services" {
+  network                 = google_compute_network.prod.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_services.name]
+}
+
 # Cloud IDS endpoint
 resource "google_cloud_ids_endpoint" "prod" {
   name     = "prod-ids-endpoint"
@@ -142,6 +174,8 @@ resource "google_cloud_ids_endpoint" "prod" {
   network  = google_compute_network.prod.id
   severity = "MEDIUM"
   project  = "my-network-project"
+
+  depends_on = [google_service_networking_connection.private_services]
 }
 
 # Packet mirroring policy to send traffic to the IDS endpoint
@@ -226,10 +260,9 @@ gcloud logging metrics create ids-high-severity-threats \
 gcloud monitoring policies create \
   --display-name="Cloud IDS High Severity Threat" \
   --condition-display-name="High severity threat detected" \
-  --condition-filter='metric.type="logging.googleapis.com/user/ids-high-severity-threats"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=0s \
+  --condition-filter='metric.type="logging.googleapis.com/user/ids-high-severity-threats" AND resource.type="ids.googleapis.com/Endpoint"' \
+  --duration=0s \
+  --if='> 0' \
   --notification-channels=projects/my-network-project/notificationChannels/CHANNEL_ID \
   --project=my-network-project
 ```
@@ -253,11 +286,11 @@ From Pub/Sub, you can push to Splunk, Chronicle, or any SIEM that supports Pub/S
 
 ## Cost Optimization
 
-Cloud IDS pricing is based on the endpoint (hourly) and the volume of traffic inspected (per GB). Here are ways to control costs:
+Cloud IDS pricing is based on the endpoint (hourly) and the volume of traffic inspected (per GB). Here are ways to control traffic inspection costs and alert noise:
 
-1. **Filter mirrored traffic** - only mirror protocols and ports you care about
+1. **Filter mirrored traffic** - only mirror protocols, CIDR ranges, and directions you care about
 2. **Use targeted mirroring** - mirror critical workloads rather than entire subnets
-3. **Adjust severity threshold** - set the minimum severity higher to reduce processing
+3. **Adjust severity threshold** - set the minimum severity higher to reduce alert volume
 4. **Schedule monitoring** - for non-production environments, consider enabling mirroring only during business hours
 
 ```bash
