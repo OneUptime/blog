@@ -21,7 +21,9 @@ Artifact Registry supports remote repositories for these formats:
 - **Maven**: Maven Central, custom Maven repositories
 - **Python**: PyPI, custom PyPI repositories
 - **Apt**: Debian and Ubuntu package repositories
-- **Yum**: Red Hat and CentOS package repositories
+- **Yum**: CentOS, Rocky Linux, and EPEL package repositories
+- **Go**: the public Go module proxy
+- **Ruby**: RubyGems.org (Preview)
 
 ## Creating a Remote npm Repository
 
@@ -182,7 +184,8 @@ gcloud artifacts repositories create ubuntu-proxy \
   --location=us-central1 \
   --mode=remote-repository \
   --remote-repo-config-desc="Ubuntu package proxy" \
-  --remote-apt-repo="https://archive.ubuntu.com/ubuntu" \
+  --remote-apt-repo=UBUNTU \
+  --remote-apt-repo-path="ubuntu/dists/jammy" \
   --project=my-project
 ```
 
@@ -211,12 +214,12 @@ gcloud artifacts repositories create npmjs-proxy \
   --project=my-project
 ```
 
-## Monitoring Upstream Connectivity
+## Listing Remote Repositories
 
-Check if your remote repositories can reach their upstream sources:
+List your remote repositories so you can verify which upstream sources they are configured to use:
 
 ```bash
-# List remote repositories and their upstream status
+# List remote repositories
 gcloud artifacts repositories list \
   --location=us-central1 \
   --project=my-project \
@@ -298,7 +301,7 @@ Remote repository caches grow over time. Use cleanup policies to manage them jus
 cat > remote-cleanup.json << 'EOF'
 [
   {
-    "id": "delete-old-cached-packages",
+    "name": "delete-old-cached-packages",
     "action": { "type": "Delete" },
     "condition": { "olderThan": "7776000s" }
   }
