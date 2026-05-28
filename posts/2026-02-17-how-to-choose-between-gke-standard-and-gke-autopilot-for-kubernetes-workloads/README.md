@@ -8,7 +8,7 @@ Description: A detailed comparison of GKE Standard and GKE Autopilot modes to he
 
 ---
 
-When you create a GKE cluster, the first decision is choosing between Standard and Autopilot mode. This is not just a configuration toggle - it fundamentally changes how you interact with Kubernetes on GCP. Standard gives you full control over nodes. Autopilot takes node management away from you entirely and charges per pod resource usage. Let me break down when each mode makes sense.
+When you create a GKE cluster, the first decision is choosing between Standard and Autopilot mode. This is not just a configuration toggle - it fundamentally changes how you interact with Kubernetes on GCP. Standard gives you full control over nodes. Autopilot takes node management away from you entirely and charges for workload resources, with pod-based billing for general-purpose workloads and node-based billing for workloads that select specific hardware. Let me break down when each mode makes sense.
 
 ## What is GKE Standard?
 
@@ -18,19 +18,19 @@ You can SSH into nodes, run DaemonSets, configure custom kubelet settings, and u
 
 ## What is GKE Autopilot?
 
-GKE Autopilot is a fully managed Kubernetes mode where Google manages both the control plane and worker nodes. You only define pods (workloads), and GKE provisions the right amount of compute for them. You never see or manage nodes.
+GKE Autopilot is a fully managed Kubernetes mode where Google manages both the control plane and worker nodes. You define Kubernetes workload manifests, and GKE provisions the right amount of compute for them. You never manage nodes directly.
 
-Autopilot enforces a set of best practices and restrictions. You cannot SSH into nodes, run privileged containers, or use host networking. These restrictions exist because Google manages the underlying infrastructure and needs to ensure security and stability.
+Autopilot enforces a set of best practices and restrictions. You cannot SSH into nodes, privileged containers are blocked by default except for verified partner or allowlisted workloads, and host networking is not available. These restrictions exist because Google manages the underlying infrastructure and needs to ensure security and stability.
 
 ## Feature Comparison
 
 | Feature | GKE Standard | GKE Autopilot |
 |---------|-------------|---------------|
 | Node management | You manage nodes | Google manages nodes |
-| Pricing | Per node (VM pricing) | Per pod (CPU + memory + ephemeral storage) |
+| Pricing | Cluster management fee + node VM pricing | Cluster management fee + pod-based pricing for general-purpose workloads; node-based pricing for specific hardware |
 | GPU support | Yes | Yes (with some restrictions) |
-| DaemonSets | Yes | Google-approved only |
-| Privileged containers | Yes | No |
+| DaemonSets | Yes | Yes, subject to Autopilot security restrictions |
+| Privileged containers | Yes | Blocked by default, except verified partner or allowlisted workloads |
 | Host access (SSH) | Yes | No |
 | Custom machine types | Yes | No (Autopilot selects) |
 | Node autoscaling | You configure | Automatic |
@@ -38,8 +38,8 @@ Autopilot enforces a set of best practices and restrictions. You cannot SSH into
 | Max pods per node | Configurable | Managed by Google |
 | Windows containers | Yes | No |
 | Spot/preemptible VMs | Yes | Yes (Spot pods) |
-| Minimum cost | ~$75/month (1 node) | ~$70/month (management fee + pod costs) |
-| SLA | 99.95% (regional) | 99.9% (regional) |
+| Minimum cost | Cluster management fee after free tier + node VM costs | Cluster management fee after free tier + workload costs |
+| SLA | 99.95% regional control plane | 99.95% control plane; 99.9% for Autopilot Pods in multiple zones |
 
 ## When to Choose GKE Standard
 
@@ -88,7 +88,7 @@ gcloud container node-pools create spot-pool \
 Many monitoring and security tools run as DaemonSets or require privileged access:
 
 ```yaml
-# Custom DaemonSet for log forwarding - only works on Standard
+# Privileged host-level DaemonSet for log forwarding - use Standard
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -127,6 +127,7 @@ Standard mode lets you pack pods tightly on nodes, use preemptible VMs aggressiv
 # High-memory pool for databases
 gcloud container node-pools create high-mem-pool \
     --cluster=my-standard-cluster \
+    --region=us-central1 \
     --machine-type=n2-highmem-4 \
     --num-nodes=2 \
     --node-labels=workload-type=database
@@ -134,6 +135,7 @@ gcloud container node-pools create high-mem-pool \
 # Compute-optimized pool for API servers
 gcloud container node-pools create compute-pool \
     --cluster=my-standard-cluster \
+    --region=us-central1 \
     --machine-type=c2-standard-4 \
     --num-nodes=3 \
     --node-labels=workload-type=api
@@ -178,8 +180,8 @@ spec:
           image: us-central1-docker.pkg.dev/my-project/my-repo/my-api:latest
           ports:
             - containerPort: 8080
-          # Resource requests are required on Autopilot
-          # Autopilot uses these to provision the right nodes
+          # Explicit requests are recommended on Autopilot
+          # Autopilot uses requests to provision the right nodes
           resources:
             requests:
               cpu: "500m"
@@ -213,21 +215,20 @@ spec:
 
 ### You Want Predictable Per-Pod Pricing
 
-Autopilot charges based on pod resource requests. This makes cost allocation straightforward:
+For general-purpose workloads, Autopilot charges based on pod resource requests. This makes cost allocation straightforward:
 
 ```yaml
 # Each pod has explicit resource requests
-# Autopilot bills exactly for these resources
+# Autopilot bills based on these requests for general-purpose workloads
 # 500m CPU + 512Mi memory per pod
-# Cost: (0.5 vCPU x $0.0445/hr) + (0.5 GiB x $0.0049/hr) = ~$0.0247/hr per pod
-# 3 replicas = ~$0.074/hr = ~$53/month
+# Check the current GKE pricing page for regional rates
 spec:
   containers:
     - name: my-api
       resources:
         requests:
-          cpu: "500m"      # Billed for this
-          memory: "512Mi"   # Billed for this
+          cpu: "500m"      # Used for general-purpose Autopilot billing
+          memory: "512Mi"   # Used for general-purpose Autopilot billing
 ```
 
 Compare this to Standard mode where you pay for full nodes even if they are partially utilized.
@@ -253,7 +254,7 @@ The cost comparison is nuanced. Autopilot can be cheaper or more expensive depen
 - Cost: ~$290/month for nodes
 - Effective cost per usable vCPU-hour: ~$0.034
 
-**Scenario 1: Same workload on Autopilot**
+**Scenario 1: Same general-purpose workload on Autopilot**
 - Pods requesting 9.6 vCPU and 38.4 GB total
 - Cost: ~$345/month (Autopilot vCPU rate is higher)
 - But no wasted capacity
@@ -264,7 +265,7 @@ The cost comparison is nuanced. Autopilot can be cheaper or more expensive depen
 - Cost: ~$290/month for nodes
 - Effective cost per usable vCPU-hour: ~$0.090
 
-**Scenario 2: Same workload on Autopilot**
+**Scenario 2: Same general-purpose workload on Autopilot**
 - Pods requesting 3.6 vCPU and 14.4 GB total
 - Cost: ~$130/month
 - Autopilot wins because you only pay for what pods request
@@ -284,16 +285,16 @@ kubectl --context=autopilot-cluster apply -f workloads.yaml
 ```
 
 Before migrating to Autopilot, check for:
-- Pods without resource requests (Autopilot requires them)
-- Privileged containers (not allowed)
-- Custom DaemonSets (only Google-approved ones work)
-- Host path volumes (not allowed)
+- Pods without explicit resource requests (Autopilot applies defaults, but explicit requests are better for sizing and cost)
+- Privileged containers (blocked by default except verified partner or allowlisted workloads)
+- DaemonSets that need privileged node access (standard DaemonSets must still satisfy Autopilot security restrictions)
+- Host path volumes (write access is not allowed; read-only `/var/log` access is supported for debugging)
 - Node affinity rules (may need updating)
 
 ## My Recommendation
 
 For new projects where you do not have specific infrastructure requirements, **start with Autopilot**. It reduces operational overhead dramatically, and most standard containerized applications work fine on it.
 
-Switch to **Standard** if you hit Autopilot's limitations: you need GPUs with custom scheduling, privileged containers, specific machine types, or you have high enough utilization that node-level pricing is significantly cheaper.
+Switch to **Standard** if you hit Autopilot's limitations: you need direct node control, privileged containers that are not supported by Autopilot allowlists, specific node configuration, or you have high enough utilization that node-level pricing is significantly cheaper.
 
 The good news is that your application code and Kubernetes manifests are mostly the same between modes. The migration path is straightforward if you need to switch later.
