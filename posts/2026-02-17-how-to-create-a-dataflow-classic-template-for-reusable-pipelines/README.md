@@ -44,22 +44,18 @@ class MyTemplateOptions(PipelineOptions):
             '--output_table',
             help='BigQuery output table in format project:dataset.table'
         )
-        parser.add_value_provider_argument(
-            '--error_output_path',
-            help='GCS path for dead letter output',
-            default='gs://my-bucket/errors/'
-        )
 
 def parse_csv_line(line):
     """Parse a CSV line into a dictionary."""
     parts = line.split(',')
-    if len(parts) >= 3:
+    try:
         return {
             'user_id': parts[0].strip(),
             'event_type': parts[1].strip(),
             'amount': float(parts[2].strip())
         }
-    return None
+    except (IndexError, ValueError):
+        return None
 
 def run():
     """Build and run (or stage) the pipeline."""
@@ -195,12 +191,6 @@ Template metadata describes the template parameters and makes the template usabl
       "label": "BigQuery Output Table",
       "helpText": "Output table in format project:dataset.table",
       "isOptional": false
-    },
-    {
-      "name": "error_output_path",
-      "label": "Error Output Path",
-      "helpText": "GCS path for records that fail processing",
-      "isOptional": true
     }
   ]
 }
@@ -251,10 +241,12 @@ curl -X POST \
 Using the Python API:
 
 ```python
+import google.auth
 from googleapiclient.discovery import build
-from oauth2client.client import GoogleCredentials
 
-credentials = GoogleCredentials.get_application_default()
+credentials, _ = google.auth.default(
+    scopes=['https://www.googleapis.com/auth/cloud-platform']
+)
 service = build('dataflow', 'v1b3', credentials=credentials)
 
 # Launch the template
@@ -286,6 +278,7 @@ Use Cloud Scheduler to run templates on a schedule.
 ```bash
 # Schedule the template to run daily at 2 AM
 gcloud scheduler jobs create http daily-csv-to-bq \
+  --location=us-central1 \
   --schedule="0 2 * * *" \
   --time-zone="America/New_York" \
   --uri="https://dataflow.googleapis.com/v1b3/projects/my-project/locations/us-central1/templates:launch?gcsPath=gs://my-bucket/templates/csv-to-bq" \
