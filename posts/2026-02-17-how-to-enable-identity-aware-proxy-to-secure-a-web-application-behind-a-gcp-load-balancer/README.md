@@ -46,11 +46,11 @@ IAP sits between the load balancer and your backend service. When an unauthentic
 gcloud services enable iap.googleapis.com --project=my-project-id
 ```
 
-## Step 2: Configure the OAuth Consent Screen
+## Step 2: Configure OAuth Branding If Needed
 
-IAP uses OAuth 2.0 for authentication, so you need a consent screen configured. Go to the Google Cloud Console, navigate to APIs & Services, then OAuth consent screen. You can also do this via the command line, but the console is easier for this part.
+By default, IAP uses a Google-managed OAuth client for browser access by users inside your Google Cloud organization. If you need external users, a project that is not in an organization, or custom branding on the consent screen, configure custom OAuth branding. Go to the Google Cloud Console, navigate to Google Auth Platform, then Branding. You can also do this via the command line, but the console is easier for this part.
 
-For internal applications, set the user type to "Internal" - this limits sign-in to users in your Google Workspace organization. For external applications, set it to "External" and configure the appropriate settings.
+For internal applications that use a custom OAuth client, set the audience to "Internal" - this limits sign-in to users in your Google Workspace organization. For external applications, set it to "External" and configure the appropriate settings.
 
 At minimum, you need:
 - Application name
@@ -76,10 +76,10 @@ gcloud compute backend-services update my-backend-service \
     --project=my-project-id
 ```
 
-When you run this for the first time, GCP creates an OAuth client automatically. You can also provide your own OAuth credentials if you prefer.
+When you run this without OAuth credentials, IAP uses a Google-managed OAuth client. You can also provide existing custom OAuth credentials if you need custom branding or external user access.
 
 ```bash
-# Enable IAP with custom OAuth credentials
+# Enable IAP with existing custom OAuth credentials
 gcloud compute backend-services update my-backend-service \
     --iap=enabled,oauth2-client-id=CLIENT_ID,oauth2-client-secret=CLIENT_SECRET \
     --global \
@@ -197,24 +197,10 @@ resource "google_compute_backend_service" "app" {
 
   health_checks = [google_compute_health_check.app.id]
 
-  # Enable IAP
+  # Enable IAP with the Google-managed OAuth client
   iap {
-    oauth2_client_id     = google_iap_client.app.client_id
-    oauth2_client_secret = google_iap_client.app.secret
+    enabled = true
   }
-}
-
-# Create an IAP brand (OAuth consent screen)
-resource "google_iap_brand" "app" {
-  support_email     = "support@company.com"
-  application_title = "My Application"
-  project           = var.project_id
-}
-
-# Create an IAP OAuth client
-resource "google_iap_client" "app" {
-  display_name = "My App IAP Client"
-  brand        = google_iap_brand.app.name
 }
 
 # Grant access to the engineering team
@@ -228,7 +214,7 @@ resource "google_iap_web_backend_service_iam_member" "access" {
 
 ## Handling Common Issues
 
-**Redirect loop after enabling IAP**: This usually means the health check path is also being intercepted by IAP. Make sure your health check uses a path that the load balancer can reach directly, or configure health checks to use a different port.
+**Redirect loop after enabling IAP**: Health checks are not processed by IAP and do not include IAP JWT headers. If your application validates IAP headers or has its own authentication layer, make sure the health check path is exempt from that application-level authentication.
 
 **403 after successful login**: The user authenticated but is not in the IAP access list. Add them with the `iap.httpsResourceAccessor` role.
 
@@ -248,10 +234,10 @@ While IAP handles authentication at the infrastructure level, your application s
 
 1. Verify the JWT in the `X-Goog-Iap-Jwt-Assertion` header for defense in depth
 2. Not expose the application directly on a public IP - only through the load balancer
-3. Configure firewall rules to allow traffic only from the load balancer's IP ranges
+3. Configure firewall rules to allow traffic only from the load balancer and health check source ranges
 
 ```bash
-# Create a firewall rule that only allows traffic from the GCP load balancer
+# Create a firewall rule for a global external Application Load Balancer with VM backends
 gcloud compute firewall-rules create allow-lb-only \
     --allow=tcp:8080 \
     --source-ranges=130.211.0.0/22,35.191.0.0/16 \
@@ -259,8 +245,8 @@ gcloud compute firewall-rules create allow-lb-only \
     --project=my-project-id
 ```
 
-These IP ranges are Google's health check and load balancer source ranges. Traffic from any other source will be blocked.
+These IP ranges are Google's health check and Google Front End source ranges for global external Application Load Balancers with instance group or zonal NEG backends. Regional external Application Load Balancers use the proxy-only subnet as the source for backend requests, and internet NEG backends use different source ranges.
 
 ## Summary
 
-IAP gives you Google-grade authentication for any web application behind a GCP load balancer without changing your application code. Enable it on the backend service, configure the OAuth consent screen, grant access to the right users or groups, and you are done. For production use, verify the JWT headers in your application and lock down network access so that traffic can only reach your backend through the load balancer.
+IAP gives you Google-grade authentication for any web application behind a GCP load balancer without changing your application code. Enable it on the backend service, configure OAuth branding only if you need a custom OAuth client, grant access to the right users or groups, and you are done. For production use, verify the JWT headers in your application and lock down network access so that traffic can only reach your backend through the load balancer.
