@@ -66,7 +66,7 @@ Create a mesh-wide PeerAuthentication policy in the `istio-system` namespace.
 ```yaml
 # mesh-wide-strict-mtls.yaml
 # Enforces strict mTLS across the entire service mesh
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -94,7 +94,7 @@ Start with namespaces where you know all services have sidecars.
 ```yaml
 # namespace-strict-mtls.yaml
 # Enforces strict mTLS for a specific namespace
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -116,7 +116,7 @@ Some services receive traffic from outside the mesh (like ingress gateways, heal
 ```yaml
 # service-with-exceptions.yaml
 # Strict mTLS with a plaintext exception for the health check port
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: api-gateway-auth
@@ -129,10 +129,10 @@ spec:
     mode: STRICT
   portLevelMtls:
     8081:
-      mode: PERMISSIVE
+      mode: DISABLE
 ```
 
-This enforces strict mTLS on all ports except port 8081, which accepts plaintext (for health checks from the load balancer).
+This enforces strict mTLS on all ports except workload port 8081, where mesh mTLS is disabled so plaintext health checks from the load balancer can reach the workload. The port value is the workload port, not the Kubernetes Service port.
 
 ### Phase 3: Roll Out Mesh-Wide
 
@@ -146,30 +146,30 @@ kubectl apply -f mesh-wide-strict-mtls.yaml
 kubectl get peerauthentication -n istio-system
 ```
 
-## Step 4: Configure Destination Rules
+## Step 4: Check Destination Rules
 
-PeerAuthentication controls the server side (what incoming traffic to accept). You also need DestinationRules to configure the client side (what traffic to send).
+PeerAuthentication controls the server side (what incoming traffic to accept). In current Cloud Service Mesh and Istio installations, auto mTLS is enabled by default, so sidecar clients automatically send mTLS to workloads with sidecars and plaintext to workloads without sidecars.
 
-Create a mesh-wide DestinationRule that tells all clients to use mTLS.
+You normally do not need a mesh-wide DestinationRule just to enable mTLS. If auto mTLS has been disabled, or if you are configuring an explicit client-side policy for a specific service, create a DestinationRule for that service.
 
 ```yaml
-# mesh-wide-destination-rule.yaml
-# Configures all mesh clients to use mTLS for outbound connections
-apiVersion: networking.istio.io/v1beta1
+# productpage-destination-rule.yaml
+# Configures mesh clients to use mTLS for one service
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: default
-  namespace: istio-system
+  name: productpage-istio-mtls
+  namespace: my-app
 spec:
-  host: "*.local"
+  host: productpage.my-app.svc.cluster.local
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
 ```
 
 ```bash
-# Apply the destination rule
-kubectl apply -f mesh-wide-destination-rule.yaml
+# Apply the destination rule if you need an explicit client-side policy
+kubectl apply -f productpage-destination-rule.yaml
 ```
 
 ## Step 5: Verify mTLS Is Working
@@ -208,7 +208,7 @@ Verify the certificates being used by the sidecar.
 ```bash
 # Check the certificate chain
 kubectl exec -it deploy/my-app -c istio-proxy -- \
-    openssl s_client -connect localhost:15012 -showcerts 2>/dev/null | \
+    openssl s_client -connect my-service.my-app.svc.cluster.local:8080 -showcerts 2>/dev/null | \
     openssl x509 -noout -text | grep -A1 "Subject:"
 ```
 
@@ -218,12 +218,12 @@ The certificate should be issued by the mesh CA and include the service identity
 
 ### External Services
 
-Services that call external APIs (outside the mesh) need to be configured to not use mTLS for those connections.
+Services that call external APIs (outside the mesh) normally use plaintext or the application's own TLS because auto mTLS only upgrades traffic to workloads with sidecars. If you have created an explicit wildcard DestinationRule that enables mTLS broadly, add a more specific DestinationRule for the external host, and define the external host with a ServiceEntry if your mesh requires explicit external services.
 
 ```yaml
 # external-service.yaml
 # Allows plaintext for external service connections
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api
@@ -237,12 +237,12 @@ spec:
 
 ### Database Connections
 
-Databases typically handle their own TLS and should be excluded from mesh mTLS.
+Databases outside the mesh, or in-cluster databases without sidecars, typically handle their own TLS and should not be forced to use mesh mTLS. Do not disable mTLS for a meshed database workload that is protected by a STRICT PeerAuthentication policy, because plaintext clients will be rejected.
 
 ```yaml
 # database-destination.yaml
-# Disables mesh mTLS for database connections
-apiVersion: networking.istio.io/v1beta1
+# Disables mesh mTLS for a database service without a sidecar
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: database
@@ -259,8 +259,8 @@ spec:
 Kubernetes liveness and readiness probes come from the kubelet, which does not participate in the mesh. Istio handles this automatically by rewriting probe paths to go through the sidecar. If you are having issues with probes after enabling strict mTLS, verify that probe rewriting is enabled.
 
 ```bash
-# Check if probe rewriting is enabled in the mesh config
-kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep -i "rewriteAppHTTPProbers"
+# Check if probe rewriting is enabled in the sidecar injector config
+kubectl get configmap istio-sidecar-injector -n istio-system -o yaml | grep -i "rewriteAppHTTPProbe"
 ```
 
 ## Monitoring mTLS in Production
@@ -294,6 +294,6 @@ In strict mode, plaintext connections should not exist. Create an alert that fir
 
 **High latency after enabling mTLS**: The TLS handshake adds latency to new connections. If you see persistent high latency, check if connection pooling is configured correctly. Envoy reuses TLS connections, so the handshake cost should only apply to new connections.
 
-**External services failing**: Make sure you have DestinationRules that disable mTLS for external hosts. Without them, the sidecar will try to establish mTLS with services that do not support it.
+**External services failing**: Check for broad DestinationRules that force `ISTIO_MUTUAL` on hosts outside the mesh. If you have one, add a more specific DestinationRule that disables mesh mTLS for that external host.
 
 Strict mTLS is a foundational building block of zero-trust architecture. Once it is in place, every service-to-service call is authenticated and encrypted, regardless of the network it traverses. Combined with authorization policies, it gives you fine-grained control over which services can talk to each other.
