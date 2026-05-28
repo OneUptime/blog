@@ -24,7 +24,7 @@ graph LR
     B -->|Pub/Sub Client| C[Cloud Pub/Sub]
     C -->|Streaming| D[Dataflow]
     D -->|Write| E[BigQuery]
-    D -->|Write| F[Cloud Storage]
+    D -->|Optional archive| F[Cloud Storage]
     C -->|Trigger| G[Cloud Functions]
     G -->|Alerts| H[Cloud Monitoring]
 ```
@@ -37,6 +37,8 @@ You need a GCP project with billing enabled and the following APIs turned on:
 
 - Cloud Pub/Sub API
 - Dataflow API
+- Compute Engine API
+- Cloud Logging API
 - BigQuery API
 - Cloud Storage API
 
@@ -60,6 +62,19 @@ gcloud pubsub subscriptions create iot-telemetry-sub \
   --ack-deadline=60 \
   --dead-letter-topic=iot-telemetry-dead-letter \
   --max-delivery-attempts=5
+
+# Grant the Pub/Sub service account permission to forward dead-letter messages.
+# Replace your-project with your actual project ID.
+PROJECT_NUMBER=$(gcloud projects describe your-project --format='value(projectNumber)')
+PUBSUB_SERVICE_ACCOUNT="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+
+gcloud pubsub topics add-iam-policy-binding iot-telemetry-dead-letter \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role="roles/pubsub.publisher"
+
+gcloud pubsub subscriptions add-iam-policy-binding iot-telemetry-sub \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role="roles/pubsub.subscriber"
 ```
 
 ## Step 2: Define Your Telemetry Message Schema
@@ -114,7 +129,6 @@ gcloud pubsub topics update iot-telemetry \
 You need a process that subscribes to topics on your MQTT broker and publishes messages to Pub/Sub. Here is a Python script that does this:
 
 ```python
-import json
 import paho.mqtt.client as mqtt
 from google.cloud import pubsub_v1
 
@@ -129,9 +143,9 @@ PUBSUB_TOPIC = "iot-telemetry"
 publisher = pubsub_v1.PublisherClient()
 topic_path = publisher.topic_path(GCP_PROJECT, PUBSUB_TOPIC)
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, reason_code, properties):
     """Called when the MQTT client connects to the broker."""
-    print(f"Connected to MQTT broker with result code {rc}")
+    print(f"Connected to MQTT broker with result code {reason_code}")
     # Subscribe to all device telemetry topics
     client.subscribe(MQTT_TOPIC)
 
@@ -157,7 +171,7 @@ def on_message(client, userdata, msg):
         print(f"Error publishing to Pub/Sub: {e}")
 
 # Set up the MQTT client with TLS for secure communication
-client = mqtt.Client()
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 client.tls_set()
 client.on_connect = on_connect
 client.on_message = on_message
@@ -191,7 +205,7 @@ import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 from apache_beam.io.gcp.bigquery import WriteToBigQuery
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ParseTelemetry(beam.DoFn):
     """Parses raw JSON telemetry messages into BigQuery-compatible rows.
@@ -205,17 +219,17 @@ class ParseTelemetry(beam.DoFn):
             # Build the output row matching our BigQuery schema
             yield {
                 "device_id": data["device_id"],
-                "timestamp": datetime.utcfromtimestamp(
-                    data["timestamp"] / 1000
+                "timestamp": datetime.fromtimestamp(
+                    data["timestamp"] / 1000, tz=timezone.utc
                 ).isoformat(),
                 "temperature": float(data["temperature"]),
                 "humidity": float(data["humidity"]),
                 "battery_level": float(data["battery_level"]),
                 "latitude": float(data["location"]["lat"]),
                 "longitude": float(data["location"]["lng"]),
-                "ingestion_time": datetime.utcnow().isoformat(),
+                "ingestion_time": datetime.now(timezone.utc).isoformat(),
             }
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
             # Log the error and skip malformed messages
             print(f"Failed to parse message: {e}")
 
@@ -279,11 +293,11 @@ bq query --use_legacy_sql=false \
 
 ## Scaling Considerations
 
-This pipeline scales horizontally. Pub/Sub handles millions of messages per second without any configuration changes. Dataflow autoscales workers based on backlog. BigQuery handles the write throughput.
+This pipeline scales horizontally. Pub/Sub can handle very high throughput, subject to regional quotas that you can monitor and request increases for. Dataflow autoscales workers based on backlog. BigQuery handles the write throughput.
 
 For very high-throughput scenarios (millions of devices), consider:
 
-- Using Pub/Sub Lite for cost savings on predictable workloads
+- Avoiding Pub/Sub Lite for new designs because it was turned down on March 18, 2026; use Pub/Sub or Google Cloud Managed Service for Apache Kafka for predictable high-throughput workloads
 - Adding windowing in Dataflow to batch writes to BigQuery
 - Partitioning your BigQuery table by date for better query performance
 
