@@ -8,13 +8,13 @@ Description: Secure data in transit between your applications and Memorystore Re
 
 ---
 
-Data flowing between your application and Redis is not encrypted by default in Memorystore. If someone gains access to your VPC network - through a compromised VM, a misconfigured firewall rule, or an insider threat - they could sniff the traffic and see your cached data in plain text. In-transit encryption with TLS prevents this by encrypting every byte that travels between your client and the Redis server.
+Data flowing between your application and Redis is not protected with Redis TLS by default in Memorystore. If someone can intercept traffic inside your trusted environment - through a compromised VM, a misconfigured firewall rule, or an insider threat - they could see your cached data in plain text at the Redis protocol layer. In-transit encryption with TLS prevents this by encrypting every byte that travels between your client and the Redis server.
 
 For most internal caching workloads, the VPC itself provides sufficient isolation. But if you are caching sensitive data like authentication tokens, personal information, or financial records, or if your compliance framework requires encryption in transit, you need TLS. In this post, I will show you how to enable it and update your applications to use encrypted connections.
 
 ## How In-Transit Encryption Works
 
-When you enable in-transit encryption on a Memorystore Redis instance, the server starts accepting TLS connections on the same port. Memorystore manages the server certificate automatically - you do not need to provision or renew certificates yourself.
+When you enable in-transit encryption on a Memorystore Redis instance, clients communicate exclusively over the secure Redis port `6378`. Memorystore manages the server certificate automatically - you do not need to provision or renew certificates yourself.
 
 The architecture looks like this:
 
@@ -25,7 +25,7 @@ graph LR
     A -->|Validates server cert| C
 ```
 
-Google manages the Certificate Authority (CA) that signs the server certificate. Your application needs to trust this CA and connect using TLS.
+Memorystore provides one or more instance-specific Certificate Authorities (CAs) that are used to verify the server certificate. Your application needs to trust these CAs and connect using TLS.
 
 ## Enabling In-Transit Encryption
 
@@ -49,17 +49,7 @@ The `--transit-encryption-mode=SERVER_AUTHENTICATION` flag enables TLS. The serv
 
 ### On an Existing Instance
 
-You can enable TLS on an already running instance, but be aware this requires a restart:
-
-```bash
-# Enable in-transit encryption on an existing instance
-# WARNING: This causes a brief period of downtime
-gcloud redis instances update my-redis \
-  --region=us-central1 \
-  --transit-encryption-mode=SERVER_AUTHENTICATION
-```
-
-For Standard Tier instances, the update uses the replication mechanism to minimize downtime. The replica is updated first, then a failover occurs. For Basic Tier, there will be a brief outage.
+For Memorystore for Redis instances, in-transit encryption can only be enabled when you create the instance. If you already have a Redis instance without TLS, create a replacement instance with `--transit-encryption-mode=SERVER_AUTHENTICATION`, migrate your clients to the new instance, and then remove the old instance.
 
 ## Downloading the CA Certificate
 
@@ -90,7 +80,6 @@ Update your Python Redis client to use TLS:
 ```python
 # tls_redis_client.py - Connect to Memorystore Redis with TLS encryption
 import os
-import ssl
 import redis
 
 def create_tls_redis_client():
@@ -99,21 +88,15 @@ def create_tls_redis_client():
     # Path to the CA certificate file
     ca_cert_path = os.environ.get("REDIS_CA_CERT", "/etc/redis-tls/ca.pem")
 
-    # Create an SSL context that verifies the server certificate
-    ssl_context = ssl.create_default_context(cafile=ca_cert_path)
-
-    # For Memorystore, we verify the server cert but do not need client certs
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_REQUIRED
-
     client = redis.Redis(
         host=os.environ.get("REDIS_HOST", "10.0.0.3"),
-        port=int(os.environ.get("REDIS_PORT", "6378")),  # TLS port may differ
+        port=int(os.environ.get("REDIS_PORT", "6378")),
         password=os.environ.get("REDIS_AUTH"),
         decode_responses=True,
         ssl=True,
         ssl_ca_certs=ca_cert_path,
         ssl_cert_reqs="required",
+        ssl_check_hostname=False,
         socket_timeout=5,
         retry_on_timeout=True
     )
@@ -136,7 +119,6 @@ print(r.get("encrypted-key"))
 // tls_redis_client.js - Node.js Redis client with TLS
 const redis = require("redis");
 const fs = require("fs");
-const tls = require("tls");
 
 async function createTlsRedisClient() {
     // Read the CA certificate
@@ -152,6 +134,7 @@ async function createTlsRedisClient() {
             // Configure TLS options
             ca: [caCert],
             rejectUnauthorized: true,
+            checkServerIdentity: () => undefined,
             connectTimeout: 5000,
         },
         password: process.env.REDIS_AUTH,
@@ -209,10 +192,35 @@ func main() {
         panic("Failed to parse CA certificate")
     }
 
-    // Configure TLS
+    // Configure TLS. Memorystore connections use the instance IP, so this
+    // verifies the certificate chain with the downloaded CA without requiring
+    // the certificate hostname to match the IP address.
     tlsConfig := &tls.Config{
         RootCAs:            caCertPool,
-        InsecureSkipVerify: false,
+        InsecureSkipVerify: true,
+        VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+            if len(rawCerts) == 0 {
+                return fmt.Errorf("server did not present a certificate")
+            }
+            cert, err := x509.ParseCertificate(rawCerts[0])
+            if err != nil {
+                return err
+            }
+            intermediates := x509.NewCertPool()
+            for _, rawCert := range rawCerts[1:] {
+                intermediate, err := x509.ParseCertificate(rawCert)
+                if err != nil {
+                    return err
+                }
+                intermediates.AddCert(intermediate)
+            }
+            _, err = cert.Verify(x509.VerifyOptions{
+                Roots:         caCertPool,
+                Intermediates: intermediates,
+                KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+            })
+            return err
+        },
     }
 
     // Create the Redis client with TLS
@@ -285,7 +293,7 @@ spec:
 
 ## Certificate Rotation
 
-Memorystore handles certificate rotation automatically, but you need to be aware of the process. When a certificate is about to expire, Memorystore generates a new one. During the rotation window, both the old and new certificates are valid.
+Memorystore handles server certificate rotation automatically, but you need to be aware of the CA rotation process. A CA is valid for 10 years, and a new CA becomes available five years after instance creation. During the rotation window, both the old and new CAs are valid.
 
 To check certificate status:
 
@@ -296,7 +304,7 @@ gcloud redis instances describe secure-redis \
   --format="json(serverCaCerts)"
 ```
 
-When you see multiple certificates listed, both are valid. Update your clients with the new certificate before the old one expires:
+When you see multiple CAs listed, install all of them on your clients before the old CA expires:
 
 ```bash
 # Download the latest CA certificates
@@ -317,8 +325,8 @@ kubectl rollout restart deployment/secure-app
 
 TLS encryption adds some overhead:
 
-- **Connection establishment:** TLS handshake adds ~1-2ms to the initial connection setup
-- **Per-operation latency:** ~0.1-0.5ms additional latency per operation
+- **Connection establishment:** TLS handshakes add work to initial connection setup
+- **Per-operation latency:** encryption and decryption can reduce throughput and increase latency
 - **CPU usage:** Both client and server use CPU for encryption/decryption
 
 For most applications, this overhead is negligible. If you are doing millions of operations per second, run benchmarks to verify the impact:
@@ -346,16 +354,7 @@ def benchmark_redis(client, operations=10000):
 
 ## Disabling In-Transit Encryption
 
-If you need to disable TLS (for example, if performance impact is unacceptable):
-
-```bash
-# Disable in-transit encryption
-gcloud redis instances update secure-redis \
-  --region=us-central1 \
-  --transit-encryption-mode=DISABLED
-```
-
-Update your client connections to remove TLS configuration at the same time.
+For Memorystore for Redis instances created with in-transit encryption, TLS cannot be disabled in place. If you need an instance without TLS, create a replacement instance without `--transit-encryption-mode=SERVER_AUTHENTICATION` and update your client connections to remove TLS configuration at the same time.
 
 ## Wrapping Up
 
