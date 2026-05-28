@@ -14,7 +14,7 @@ In this post, I will walk through the practical steps to set up retry logic and 
 
 ## Why Retry Policies and Timeouts Matter
 
-Without proper retry configuration, a single failed request from a healthy backend during a rolling deployment means your user sees an error page. With retry policies, the load balancer can automatically resend that request to a different backend, and the user never notices a thing.
+Without proper retry configuration, a single failed request from a healthy backend during a rolling deployment means your user sees an error page. With retry policies, the load balancer can automatically resend that request to an eligible backend, and the user never notices a thing.
 
 Timeouts are the other side of this coin. Set them too low and you cut off legitimate slow responses. Set them too high and a hung backend ties up connections and eventually brings everything down. Finding the right balance takes some thought about your application's behavior.
 
@@ -35,7 +35,7 @@ sequenceDiagram
     LB->>B1: Forward Request
     B1-->>LB: 503 Service Unavailable
     Note over LB: Retry policy triggers
-    LB->>B2: Retry to different backend
+    LB->>B2: Retry to eligible backend
     B2-->>LB: 200 OK
     LB-->>Client: 200 OK
 ```
@@ -69,8 +69,7 @@ pathMatchers:
               - "5xx"           # Retry on server errors
               - "gateway-error" # Retry on 502, 503, 504
               - "connect-failure" # Retry on connection failures
-              - "reset"         # Retry on connection resets
-            numRetries: 3       # Maximum number of retry attempts
+            numRetries: 3       # Maximum number of retries after the first attempt
             perTryTimeout:
               seconds: 5        # Timeout for each individual attempt
           timeout:
@@ -96,9 +95,10 @@ Google Cloud supports several retry conditions, and picking the right ones is cr
 - **5xx** - Retries when the backend returns any 5xx status code. Use this broadly for read-only endpoints.
 - **gateway-error** - Retries specifically on 502, 503, and 504. This is more targeted than 5xx and is often the safest default.
 - **connect-failure** - Retries when the load balancer cannot establish a connection to the backend. Almost always safe to enable.
-- **reset** - Retries when the connection is reset before any response headers are received. Safe for idempotent requests.
 - **refused-stream** - Retries when the backend refuses the HTTP/2 stream. Useful for gRPC services.
 - **retriable-4xx** - Retries on HTTP 409 Conflict responses. Enable this only if your application logic supports it.
+
+The broader **5xx** condition also covers cases where the backend does not respond, including disconnects, resets, read timeouts, connection failures, and refused streams.
 
 For most web applications, I recommend starting with this combination:
 
@@ -107,7 +107,6 @@ For most web applications, I recommend starting with this combination:
 retryConditions:
   - "gateway-error"
   - "connect-failure"
-  - "reset"
 ```
 
 ## Configuring Backend Service Timeouts
@@ -122,7 +121,7 @@ gcloud compute backend-services update my-backend-service \
     --timeout=30s
 ```
 
-The backend service timeout sets the upper bound for how long the load balancer waits for a complete response. This is different from the per-try timeout in the retry policy. The per-try timeout controls each individual attempt, while the backend service timeout is the overall limit.
+The backend service timeout sets the default upper bound for how long the load balancer waits for a complete response. This is different from the per-try timeout in the retry policy. The per-try timeout controls each individual attempt, while a route-level timeout in the URL map overrides the backend service timeout for that route and includes all retries.
 
 ## Setting Up Connection Draining Timeouts
 
@@ -154,7 +153,7 @@ graph TD
     C -->|Route Timeout Exceeded| H
 ```
 
-The key insight here is that the route-level timeout encompasses all retry attempts. If your route timeout is 30 seconds and your per-try timeout is 5 seconds with 3 retries, the worst case is about 15 seconds of actual waiting (3 tries at 5 seconds each) plus backoff time. But if the route timeout fires first, all retries stop immediately.
+The key insight here is that the route-level timeout encompasses all retry attempts. If your route timeout is 30 seconds and your per-try timeout is 5 seconds with 3 retries, the worst case is about 20 seconds of actual waiting (the first attempt plus 3 retries at 5 seconds each) plus backoff time. But if the route timeout fires first, all retries stop immediately.
 
 ## Configuring via Terraform
 
@@ -186,7 +185,6 @@ resource "google_compute_url_map" "app_lb" {
           retry_conditions = [
             "gateway-error",
             "connect-failure",
-            "reset",
           ]
           num_retries = 3
           per_try_timeout {
@@ -231,22 +229,22 @@ After running load balancers with retry policies across several projects, here a
 
 **Use different policies for different endpoints.** Read endpoints can safely retry on most errors. Write endpoints should only retry on connection failures where you know the request never reached the backend.
 
-**Monitor retry rates.** Google Cloud Monitoring exposes retry metrics. If your retry rate is consistently above 5%, that signals a backend health problem you should fix rather than mask with retries.
+**Monitor final error rates.** Google Cloud Monitoring exposes load balancing request and response metrics, and Cloud Logging can help you investigate backend failures that retries might be masking. If final 5xx rates stay high, that signals a backend health problem you should fix rather than mask with retries.
 
 **Account for retry amplification.** If you have 3 retries configured and 100 requests per second hit a failing backend, your backends suddenly see up to 400 requests per second. Make sure your backends can handle the extra load.
 
 ## Monitoring Retry Behavior
 
-Set up a monitoring dashboard to track retry effectiveness:
+Set up monitoring to track whether final backend errors remain high after retries:
 
 ```bash
-# Create an alerting policy for high retry rates
-# This fires when more than 10% of requests require retries
+# Create an alerting policy for high final 5xx responses
 gcloud monitoring policies create \
-    --display-name="High LB Retry Rate" \
-    --condition-display-name="Retry rate above 10%" \
-    --condition-filter='resource.type="https_lb_rule" AND metric.type="loadbalancing.googleapis.com/https/request_count"' \
-    --condition-threshold-value=0.1 \
+    --display-name="High LB 5xx Responses" \
+    --condition-display-name="5xx responses above threshold" \
+    --condition-filter='resource.type="https_lb_rule" AND metric.type="loadbalancing.googleapis.com/https/request_count" AND metric.labels.response_code_class="500"' \
+    --if="> 100" \
+    --duration="300s" \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
