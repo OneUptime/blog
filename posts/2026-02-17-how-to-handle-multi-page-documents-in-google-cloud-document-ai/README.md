@@ -16,9 +16,9 @@ In this guide, I will cover the practical aspects of processing multi-page docum
 
 Document AI has different page limits depending on how you process documents:
 
-- **Synchronous (online) processing**: Up to 15 pages per request
-- **Batch (offline) processing**: Up to 2,000 pages per document (depending on the processor)
-- **File size**: Up to 20MB for synchronous, up to 1GB for batch
+- **Synchronous (online) processing**: Up to 15 pages per request for many processors, or up to 30 pages with `imageless_mode` where supported
+- **Batch (offline) processing**: Processor-specific limits, such as 100 pages for Form Parser, 500 pages for Layout Parser or Enterprise Document OCR, and 1,000 pages for Custom Splitter
+- **File size**: Up to 40MB for synchronous, up to 1GB for batch
 
 If your document exceeds these limits, you will need to split it before processing.
 
@@ -27,11 +27,13 @@ If your document exceeds these limits, you will need to split it before processi
 Here is how to process a multi-page PDF and access results for each page.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1
 
 def process_multipage_document(project_id, location, processor_id, file_path):
     """Process a multi-page document and access per-page results."""
-    client = documentai_v1.DocumentProcessorServiceClient()
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
     name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
 
     with open(file_path, "rb") as f:
@@ -118,7 +120,8 @@ For documents that exceed the synchronous page limit, split them into smaller ch
 
 ```python
 import io
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
+from google.api_core.client_options import ClientOptions
 from google.cloud import documentai_v1
 
 def split_pdf(file_path, max_pages=15):
@@ -152,7 +155,8 @@ def split_pdf(file_path, max_pages=15):
 
 def process_large_document(project_id, location, processor_id, file_path):
     """Process a large document by splitting and processing chunks."""
-    client = documentai_v1.DocumentProcessorServiceClient()
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
     name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
 
     # Split the PDF into processable chunks
@@ -197,14 +201,14 @@ results = process_large_document(
 For very large documents, batch processing is more efficient and handles bigger files.
 
 ```python
-from google.cloud import documentai_v1, storage
-import json
-import time
+from google.api_core.client_options import ClientOptions
+from google.cloud import documentai_v1
 
 def batch_process_large_document(project_id, location, processor_id,
                                   gcs_input_uri, gcs_output_uri):
     """Use batch processing for documents that exceed sync limits."""
-    client = documentai_v1.DocumentProcessorServiceClient()
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
     name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
 
     # Configure input - a single large document
@@ -223,7 +227,7 @@ def batch_process_large_document(project_id, location, processor_id,
     output_config = documentai_v1.DocumentOutputConfig(
         gcs_output_config=documentai_v1.DocumentOutputConfig.GcsOutputConfig(
             gcs_uri=gcs_output_uri,
-            # Shard the output into manageable pieces
+            # Limit the output to the fields you need
             field_mask="text,entities,pages.pageNumber"
         )
     )
@@ -337,4 +341,4 @@ A few practical tips from working with multi-page documents in production:
 
 ## Wrapping Up
 
-Handling multi-page documents in Document AI is mostly about understanding the limits and choosing the right processing approach. For documents under 15 pages, synchronous processing works fine and gives you immediate results. For anything larger, batch processing is the way to go. When you need to split documents, do it cleanly at page boundaries and keep track of the original page numbers so you can reassemble results correctly. The Document AI response structure makes it straightforward to access per-page information, so once you understand the text anchor and page anchor patterns, working with multi-page documents becomes routine.
+Handling multi-page documents in Document AI is mostly about understanding the limits and choosing the right processing approach. For documents under your processor's synchronous page limit, synchronous processing works fine and gives you immediate results. For anything larger, batch processing is the way to go. When you need to split documents, do it cleanly at page boundaries and keep track of the original page numbers so you can reassemble results correctly. The Document AI response structure makes it straightforward to access per-page information, so once you understand the text anchor and page anchor patterns, working with multi-page documents becomes routine.
