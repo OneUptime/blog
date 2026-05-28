@@ -12,11 +12,11 @@ When you run workloads on Google Cloud Platform, logs are everywhere - applicati
 
 ## What Cloud Logging Gives You Out of the Box
 
-Cloud Logging is deeply integrated into the GCP ecosystem. If you deploy a GKE cluster, Cloud Function, or Cloud Run service, logs flow into Cloud Logging automatically. There is no agent to install, no pipeline to configure, and no separate billing account to set up.
+Cloud Logging is deeply integrated into the GCP ecosystem. If you deploy a GKE cluster, Cloud Run function, or Cloud Run service, logs flow into Cloud Logging automatically. There is no agent for you to install for those managed services, no pipeline to configure, and no separate billing account to set up.
 
 The key features include:
 
-- Automatic log collection from all GCP services
+- Automatic log collection from many GCP services
 - Log-based metrics that feed directly into Cloud Monitoring
 - Log Router for filtering and routing logs to different sinks (BigQuery, Cloud Storage, Pub/Sub)
 - Logs Explorer with a query language for searching and filtering
@@ -28,12 +28,18 @@ Here is an example of setting up a log sink to route specific logs to BigQuery f
 ```bash
 # Create a BigQuery dataset for log storage
 
-bq mk --dataset --location=US my_project:application_logs
+bq mk --dataset --location=US my-project:application_logs
 
 # Create a log sink that routes application error logs to BigQuery
 gcloud logging sinks create error-log-sink \
-  bigquery.googleapis.com/projects/my_project/datasets/application_logs \
+  bigquery.googleapis.com/projects/my-project/datasets/application_logs \
   --log-filter='severity>=ERROR AND resource.type="k8s_container"'
+
+# Grant the sink writer identity permission to write to the dataset project
+SINK_WRITER=$(gcloud logging sinks describe error-log-sink --format='value(writerIdentity)')
+gcloud projects add-iam-policy-binding my-project \
+  --member="${SINK_WRITER}" \
+  --role='roles/bigquery.dataEditor'
 ```
 
 You can also query logs programmatically using the Cloud Logging API:
@@ -62,7 +68,7 @@ Cloud Logging works well for basic use cases, but there are real limitations tha
 
 **Alerting flexibility.** Cloud Logging supports log-based alerts, but the alerting capabilities are more limited compared to dedicated platforms. If you need complex correlation rules, anomaly detection on log patterns, or sophisticated alert routing, third-party tools usually offer more.
 
-**Cross-cloud and hybrid visibility.** If your infrastructure spans multiple clouds or includes significant on-premises components, Cloud Logging only covers the GCP side. Tools like Datadog, Splunk, or Elastic can ingest logs from AWS, Azure, on-premises servers, and GCP in a single unified view.
+**Cross-cloud and hybrid visibility.** If your infrastructure spans multiple clouds or includes significant on-premises components, Cloud Logging needs additional ingestion setup for the non-GCP side. Tools like Datadog, Splunk, or Elastic can ingest logs from AWS, Azure, on-premises servers, and GCP in a single unified view.
 
 **Dashboard and visualization.** While Cloud Logging integrates with Cloud Monitoring dashboards, the visualization options are not as rich as what you get with Grafana, Kibana, or Splunk dashboards.
 
@@ -99,7 +105,7 @@ Consider a third-party log management solution when:
 In practice, many teams end up with a hybrid setup. They keep Cloud Logging enabled for the native GCP integration and audit trail, but also route logs to a third-party tool for deeper analysis.
 
 ```yaml
-# Example: Fluentd config to send GKE logs to both Cloud Logging and Elasticsearch
+# Example: custom Fluentd config to send container logs to both Cloud Logging and Elasticsearch
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -113,19 +119,21 @@ data:
       tag kubernetes.*
     </source>
 
-    # Send to Cloud Logging (default behavior on GKE)
     <match **>
-      @type google_cloud
-      # Cloud Logging receives all logs automatically
-    </match>
+      @type copy
 
-    # Also send to external Elasticsearch
-    <match **>
-      @type elasticsearch
-      host elasticsearch.monitoring.svc.cluster.local
-      port 9200
-      index_name gke-logs
-      type_name _doc
+      # Send to Cloud Logging
+      <store>
+        @type google_cloud
+      </store>
+
+      # Also send to external Elasticsearch
+      <store>
+        @type elasticsearch
+        host elasticsearch.monitoring.svc.cluster.local
+        port 9200
+        index_name gke-logs
+      </store>
     </match>
 ```
 
