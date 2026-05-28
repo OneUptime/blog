@@ -30,19 +30,21 @@ VPN tunnels add headers to every packet for encryption and encapsulation. These 
 - **UDP encapsulation (NAT-T)**: 8 bytes (if NAT-T is active)
 - **New outer IP header**: 20 bytes
 
-The total overhead ranges from about 50 to 73 bytes, depending on the cipher suite and whether NAT-T is used.
+The total overhead varies by cipher suite and gateway IP stack. Current Google Cloud payload MTU values imply about 54 to 86 bytes of overhead for Cloud VPN tunnels on IPv4 gateway interfaces, and 20 bytes more overhead for tunnels on IPv6 gateway interfaces.
 
 ## GCP Cloud VPN MTU Values
 
-GCP recommends these MTU values for Cloud VPN:
+GCP documents two different MTU values for Cloud VPN: the gateway MTU for encapsulated packets, and the payload MTU for the packet before it is encrypted and encapsulated.
 
 | Scenario | Recommended MTU |
 |----------|----------------|
-| HA VPN (no NAT-T) | 1440 bytes |
-| HA VPN (with NAT-T) | 1420 bytes |
-| Classic VPN | 1460 bytes |
+| Classic VPN and HA VPN gateway MTU | 1460 bytes |
+| HA VPN over Cloud Interconnect gateway MTU | 1440 bytes |
+| Cloud VPN payload MTU with AEAD ciphers on IPv4 gateway interfaces | 1406 bytes |
+| Cloud VPN payload MTU with non-AEAD ciphers on IPv4 gateway interfaces | 1374 or 1390 bytes, depending on the cipher suite |
+| IPv6 gateway interfaces | 20 bytes less payload MTU than IPv4 gateway interfaces |
 
-These values account for the IPsec overhead while leaving enough room for the original packet payload.
+Configure your peer VPN gateway to match the Cloud VPN gateway MTU. For packets sent inside the tunnel, use the payload MTU that matches your cipher suite and gateway IP stack.
 
 ## Configuring MTU on GCP VMs
 
@@ -51,19 +53,19 @@ The most reliable approach is to set the MTU on the VM network interfaces that w
 Setting MTU at the VPC level (applies to all VMs in the network):
 
 ```bash
-# Set the VPC network MTU to 1460 (matches Cloud VPN)
+# Set the VPC network MTU to 1460 (the default Cloud VPN gateway MTU)
 
 gcloud compute networks update my-vpc \
     --mtu=1460
 ```
 
-Note that changing VPC MTU requires all VMs to be restarted for the change to take effect on their interfaces.
+Note that changing VPC MTU requires affected VMs to be stopped and started for the change to take effect on their interfaces. A guest OS reboot by itself does not update the MTU advertised by Google Cloud.
 
 For individual VMs running Linux, you can set the MTU directly:
 
 ```bash
-# Set MTU on the VM's network interface to match VPN tunnel MTU
-sudo ip link set dev ens4 mtu 1440
+# Set MTU on the VM's network interface to a Cloud VPN payload MTU
+sudo ip link set dev ens4 mtu 1406
 
 # Make it persistent across reboots - add to network config
 # For Debian/Ubuntu, edit /etc/network/interfaces or netplan config
@@ -72,7 +74,7 @@ network:
   version: 2
   ethernets:
     ens4:
-      mtu: 1440
+      mtu: 1406
 ENDCONF
 
 # Apply the netplan configuration
@@ -87,7 +89,7 @@ For Linux hosts:
 
 ```bash
 # Set MTU on the interface facing the VPN
-sudo ip link set dev eth0 mtu 1440
+sudo ip link set dev eth0 mtu 1406
 ```
 
 For Cisco routers, you can set the MTU on the tunnel interface:
@@ -95,8 +97,8 @@ For Cisco routers, you can set the MTU on the tunnel interface:
 ```text
 ! Set the tunnel interface MTU on Cisco IOS
 interface Tunnel0
-  ip mtu 1440
-  ip tcp adjust-mss 1400
+  ip mtu 1406
+  ip tcp adjust-mss 1366
 ```
 
 The `ip tcp adjust-mss` command is particularly useful. It rewrites the TCP MSS (Maximum Segment Size) value in SYN packets so that TCP sessions automatically use appropriately sized segments. This prevents fragmentation for TCP traffic without needing to change MTU on every host.
@@ -108,15 +110,15 @@ Rather than changing MTU on every single host, you can use MSS clamping on your 
 On a Linux router:
 
 ```bash
-# Clamp TCP MSS to 1400 on the VPN interface
+# Clamp TCP MSS to 1366 on the VPN interface
 # This handles TCP traffic without changing MTU on hosts
 sudo iptables -t mangle -A FORWARD \
     -p tcp --tcp-flags SYN,RST SYN \
     -o tun0 \
-    -j TCPMSS --set-mss 1400
+    -j TCPMSS --set-mss 1366
 ```
 
-The MSS should be set to the tunnel MTU minus 40 bytes (20 for IP header + 20 for TCP header). So for a 1440-byte tunnel MTU, the MSS should be 1400.
+For IPv4 TCP without TCP options, the MSS should be set to the payload MTU minus 40 bytes (20 for IP header + 20 for TCP header). So for a 1406-byte payload MTU, the MSS should be 1366.
 
 ## Detecting Fragmentation Issues
 
@@ -132,12 +134,12 @@ You can test with ping using the "do not fragment" flag:
 ```bash
 # Test Path MTU from a GCP VM through the tunnel
 # -M do = set DF (Don't Fragment) bit
-# -s 1412 = payload size (total packet = 1412 + 28 = 1440)
-ping -M do -s 1412 -c 5 192.168.1.10
+# -s 1378 = ICMP payload size (total IPv4 packet = 1378 + 28 = 1406)
+ping -M do -s 1378 -c 5 192.168.1.10
 
 # If this works, try larger sizes until it fails
-ping -M do -s 1450 -c 5 192.168.1.10
-# This should fail with "Message too long" if MTU is 1440
+ping -M do -s 1400 -c 5 192.168.1.10
+# This should fail if the path MTU is 1406
 ```
 
 On Windows:
@@ -145,8 +147,8 @@ On Windows:
 ```powershell
 # Test Path MTU on Windows
 # -f = Don't Fragment flag
-# -l 1412 = payload size
-ping -f -l 1412 192.168.1.10
+# -l 1378 = ICMP payload size
+ping -f -l 1378 192.168.1.10
 ```
 
 ## PMTUD and ICMP
@@ -185,7 +187,7 @@ This captures only fragmented IP packets, helping you see if fragments are makin
 
 ## GCP VPC Network MTU Options
 
-GCP VPC networks support MTU values of 1460 (default) and 1500. If your VPC is set to 1500 and you are using Cloud VPN, the VPN overhead will cause packets at the maximum size to be fragmented.
+GCP VPC networks use 1460 as the default MTU and support custom MTU values from 1300 through 8896. Common custom values include 1500 for standard Ethernet and 8896 for jumbo frames. If your VPC is set above the Cloud VPN gateway MTU, packets at the maximum VPC size cannot be carried through Cloud VPN without being reduced before encapsulation.
 
 You can check your current VPC MTU:
 
@@ -195,7 +197,7 @@ gcloud compute networks describe my-vpc \
     --format="value(mtu)"
 ```
 
-If it returns 1500 and you are using VPN, consider whether it makes sense to lower it to 1460, or rely on MSS clamping and PMTUD instead.
+If it returns a value above the applicable Cloud VPN gateway MTU, consider whether it makes sense to lower it, or rely on MSS clamping and PMTUD instead.
 
 ## Summary of Recommended Settings
 
@@ -203,21 +205,21 @@ Here is a quick reference for the settings that work best:
 
 ```mermaid
 graph TD
-    A[GCP VM] -->|MTU: 1440| B[VPN Tunnel]
-    B -->|IPsec Overhead: ~60 bytes| C[Internet]
+    A[GCP VM] -->|Payload MTU: 1406| B[VPN Tunnel]
+    B -->|IPsec Overhead: varies by cipher| C[Internet]
     C -->|MTU: 1500| D[On-Prem Router]
-    D -->|MTU: 1440 on tunnel interface| E[On-Prem Hosts]
+    D -->|Payload MTU: 1406 on tunnel interface| E[On-Prem Hosts]
     style B fill:#f0f0f0
 ```
 
 | Setting | Value |
 |---------|-------|
 | VPC MTU | 1460 |
-| VM interface MTU | 1440 (for HA VPN) |
-| On-prem tunnel interface MTU | 1440 |
-| TCP MSS clamp | 1400 |
+| VM interface MTU | 1406 for Cloud VPN with AEAD ciphers on IPv4 gateway interfaces, or the documented payload MTU for your cipher and gateway IP stack |
+| On-prem tunnel interface MTU | Match the applicable Cloud VPN payload MTU |
+| TCP MSS clamp | Payload MTU minus 40 bytes for IPv4 TCP |
 | ICMP | Allow Type 3 through all firewalls |
 
 ## Wrapping Up
 
-MTU configuration might not be the most exciting part of setting up a VPN, but getting it wrong leads to difficult-to-diagnose performance problems. The safe approach is to set the MTU to 1440 on interfaces that send traffic through Cloud VPN, enable MSS clamping on your router for TCP traffic, and make sure ICMP is not blocked so PMTUD can work. Do this upfront and you will save yourself hours of debugging later.
+MTU configuration might not be the most exciting part of setting up a VPN, but getting it wrong leads to difficult-to-diagnose performance problems. The safe approach is to use the Cloud VPN gateway MTU on your peer VPN gateway, use the documented Cloud VPN payload MTU for traffic inside the tunnel, enable MSS clamping on your router for TCP traffic, and make sure ICMP is not blocked so PMTUD can work. Do this upfront and you will save yourself hours of debugging later.
