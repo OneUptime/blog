@@ -10,11 +10,11 @@ Description: A step-by-step guide to using Google Cloud DLP to scan BigQuery tab
 
 BigQuery tables have a way of accumulating sensitive data that nobody expected. A developer dumps a CSV of customer records for analysis, a data pipeline ingests raw API responses with email addresses, or someone loads test data with real social security numbers. Before you know it, your analytics warehouse has PII scattered across dozens of tables.
 
-Cloud DLP (Data Loss Prevention) can scan your BigQuery tables and tell you exactly what sensitive data lives where. In this post, I will walk through setting up inspection jobs that scan BigQuery for sensitive data and report back findings.
+Cloud DLP (Data Loss Prevention), now part of Sensitive Data Protection, can scan your BigQuery tables and tell you exactly what sensitive data lives where. In this post, I will walk through setting up inspection jobs that scan BigQuery for sensitive data and report back findings.
 
 ## What Cloud DLP Finds
 
-Cloud DLP has over 150 built-in detectors (called InfoTypes) that recognize patterns like:
+Cloud DLP has over 200 built-in detectors (called InfoTypes) that recognize patterns like:
 
 - Social security numbers, passport numbers, driver's license numbers
 - Credit card numbers and bank account numbers
@@ -38,7 +38,7 @@ Make sure you have:
 
 For a proper scan, you want to create a DLP inspection job. This gives you more control over what to scan, how deeply to scan, and where to send results.
 
-Here is a JSON configuration for an inspection job:
+Here is a JSON configuration for an inspection job. Replace `customer_id` with a field that uniquely identifies rows in your table, or remove `identifyingFields` if you do not need row identifiers in the exported findings:
 
 ```json
 {
@@ -50,8 +50,11 @@ Here is a JSON configuration for an inspection job:
           "datasetId": "my_dataset",
           "tableId": "customer_records"
         },
+        "identifyingFields": [
+          {"name": "customer_id"}
+        ],
         "sampleMethod": "RANDOM_START",
-        "rowsLimit": 10000
+        "rowsLimit": "10000"
       }
     },
     "inspectConfig": {
@@ -109,7 +112,7 @@ This script creates an inspection job and polls for results:
 from google.cloud import dlp_v2
 import time
 
-def inspect_bigquery_table(project_id, dataset_id, table_id, output_dataset):
+def inspect_bigquery_table(project_id, dataset_id, table_id, output_dataset, identifying_fields=None):
     """Create a DLP inspection job for a BigQuery table."""
 
     # Initialize the DLP client
@@ -138,16 +141,23 @@ def inspect_bigquery_table(project_id, dataset_id, table_id, output_dataset):
     }
 
     # Point to the BigQuery table to scan
+    big_query_options = {
+        "table_reference": {
+            "project_id": project_id,
+            "dataset_id": dataset_id,
+            "table_id": table_id,
+        },
+        "rows_limit": 50000,
+        "sample_method": "RANDOM_START",
+    }
+
+    if identifying_fields:
+        big_query_options["identifying_fields"] = [
+            {"name": field_name} for field_name in identifying_fields
+        ]
+
     storage_config = {
-        "big_query_options": {
-            "table_reference": {
-                "project_id": project_id,
-                "dataset_id": dataset_id,
-                "table_id": table_id,
-            },
-            "rows_limit": 50000,
-            "sample_method": "RANDOM_START",
-        }
+        "big_query_options": big_query_options
     }
 
     # Save findings to a BigQuery table for analysis
@@ -193,7 +203,7 @@ def inspect_bigquery_table(project_id, dataset_id, table_id, output_dataset):
 
     # Print the summary of findings
     result = job.inspect_details.result
-    print(f"\nScan complete. Total findings: {result.processed_bytes} bytes processed")
+    print(f"\nScan complete. Bytes processed: {result.processed_bytes}")
 
     if result.info_type_stats:
         print("\nFindings by type:")
@@ -207,7 +217,8 @@ inspect_bigquery_table(
     project_id="my-project",
     dataset_id="my_dataset",
     table_id="customer_records",
-    output_dataset="dlp_results"
+    output_dataset="dlp_results",
+    identifying_fields=["customer_id"]
 )
 ```
 
@@ -237,7 +248,7 @@ def scan_all_tables_in_dataset(project_id, dataset_id, output_dataset):
         if job:
             jobs.append(job)
 
-    print(f"\nSubmitted {len(jobs)} inspection jobs")
+    print(f"\nCompleted {len(jobs)} inspection jobs")
     return jobs
 ```
 
@@ -250,9 +261,10 @@ Once the inspection jobs complete, findings are saved to the BigQuery output tab
 SELECT
   info_type.name AS info_type,
   COUNT(*) AS finding_count,
-  COUNT(DISTINCT location.content_locations.record_location.table_location.row_id) AS affected_rows
+  COUNT(DISTINCT TO_JSON_STRING(locations.record_location.record_key.id_values)) AS affected_rows
 FROM
-  `my-project.dlp_results.customer_records_findings`
+  `my-project.dlp_results.customer_records_findings`,
+  UNNEST(location.content_locations) AS locations
 GROUP BY info_type.name
 ORDER BY finding_count DESC;
 ```
@@ -260,12 +272,13 @@ ORDER BY finding_count DESC;
 ```sql
 -- Find which columns contain the most sensitive data
 SELECT
-  location.content_locations.record_location.field_id.name AS column_name,
+  locations.record_location.field_id.name AS column_name,
   info_type.name AS info_type,
   COUNT(*) AS finding_count,
   likelihood AS confidence_level
 FROM
-  `my-project.dlp_results.customer_records_findings`
+  `my-project.dlp_results.customer_records_findings`,
+  UNNEST(location.content_locations) AS locations
 GROUP BY column_name, info_type, confidence_level
 ORDER BY finding_count DESC;
 ```
@@ -304,8 +317,8 @@ Then set up a Cloud Function to process the notification and send alerts to Slac
 For large tables, scanning every row is expensive and slow. Cloud DLP supports sampling:
 
 - `rowsLimit`: Scan only this many rows
-- `sampleMethod`: `RANDOM_START` picks rows randomly, `TOP` starts from the beginning
-- `rowsLimitPercent`: Scan a percentage of the table
+- `sampleMethod`: `RANDOM_START` starts from randomly selected groups of rows, `TOP` scans groups of rows in the order BigQuery provides
+- `rowsLimitPercent`: Scan a percentage of the table (Google currently recommends `rowsLimit` instead because of a known issue with `rowsLimitPercent`)
 
 For initial discovery, scanning 1-5% of a large table is usually enough to find out what types of sensitive data are present. Once you know which tables have issues, you can do targeted full scans on those.
 
@@ -316,8 +329,8 @@ Cloud DLP charges per byte inspected. For BigQuery inspection specifically:
 - The first 1 GB per month is free
 - After that, pricing is per GB inspected
 - Using sampling reduces costs significantly
-- Restricting to specific columns (via `identifyingFields`) also reduces the data scanned
+- Restricting to specific columns with `includedFields` or skipping known-safe columns with `excludedFields` can reduce the data scanned
 
 ## Summary
 
-Scanning BigQuery tables with Cloud DLP is straightforward once you understand the job configuration. Start with quick spot checks using `gcloud`, then build out automated scanning with the Python API. Save findings to a separate BigQuery dataset for analysis, set up notifications for new discoveries, and use sampling to keep costs manageable. The goal is to know exactly where sensitive data lives in your warehouse so you can take action to protect it.
+Scanning BigQuery tables with Cloud DLP is straightforward once you understand the job configuration. Start with quick spot checks using small sampled API jobs, then build out automated scanning with the Python API. Save findings to a separate BigQuery dataset for analysis, set up notifications for new discoveries, and use sampling to keep costs manageable. The goal is to know exactly where sensitive data lives in your warehouse so you can take action to protect it.
