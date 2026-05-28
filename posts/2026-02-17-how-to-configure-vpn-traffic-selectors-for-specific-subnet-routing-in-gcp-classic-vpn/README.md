@@ -8,7 +8,7 @@ Description: Learn how to configure traffic selectors in GCP Classic VPN to rout
 
 ---
 
-When setting up a Classic VPN in GCP, one of the decisions you need to make is which traffic should flow through the tunnel. By default, if you are using route-based VPN, the traffic selectors are set to `0.0.0.0/0`, meaning all traffic. But there are plenty of situations where you only want specific subnets to traverse the encrypted tunnel.
+When setting up a Classic VPN in GCP, one of the decisions you need to make is which traffic should flow through the tunnel. If you are using route-based VPN, the traffic selectors are set to `0.0.0.0/0`, meaning all traffic. But there are plenty of situations where you only want specific subnets to traverse the encrypted tunnel. In those cases, use a policy-based Classic VPN tunnel with custom traffic selectors.
 
 This post covers how to properly configure traffic selectors in GCP Classic VPN for targeted subnet routing, common pitfalls, and how to get them working with various peer devices.
 
@@ -133,21 +133,22 @@ access-list vpn-to-gcp extended permit ip 192.168.1.0 255.255.255.0 10.1.0.0 255
 access-list vpn-to-gcp extended permit ip 192.168.1.0 255.255.255.0 10.1.1.0 255.255.255.0
 ```
 
-## The Multiple SA Problem
+## The Single Child SA Requirement
 
-Here is an important detail that catches people off guard: when you specify multiple CIDR ranges in traffic selectors, GCP can negotiate multiple Child SAs (one for each combination of local and remote CIDR). Some peer devices do not handle this well.
+Here is an important detail that catches people off guard: when you specify multiple CIDR ranges in traffic selectors with IKEv2, Cloud VPN still uses a single Child SA for the tunnel. All local CIDRs and all remote CIDRs must be accepted by the peer device in that single Child SA. Some peer devices do not handle this well.
 
-With the example above (2 local ranges and 2 remote ranges), GCP might create up to 4 Child SAs:
+With the example above (2 local ranges and 2 remote ranges), the peer device must accept all four subnet pairs in one Child SA:
 
 ```mermaid
 graph TD
-    A[GCP VPN Tunnel] --> B["SA 1: 10.1.0.0/24 - 192.168.0.0/24"]
-    A --> C["SA 2: 10.1.0.0/24 - 192.168.1.0/24"]
-    A --> D["SA 3: 10.1.1.0/24 - 192.168.0.0/24"]
-    A --> E["SA 4: 10.1.1.0/24 - 192.168.1.0/24"]
+    A[GCP VPN Tunnel] --> B["Single Child SA"]
+    B --> C["10.1.0.0/24 - 192.168.0.0/24"]
+    B --> D["10.1.0.0/24 - 192.168.1.0/24"]
+    B --> E["10.1.1.0/24 - 192.168.0.0/24"]
+    B --> F["10.1.1.0/24 - 192.168.1.0/24"]
 ```
 
-If your peer device only supports a single SA per tunnel, you have two options:
+If your peer device creates a separate Child SA per CIDR or per subnet pair, you have two options:
 
 1. **Use summarized CIDR ranges**: Instead of `10.1.0.0/24` and `10.1.1.0/24`, use `10.1.0.0/23` if your addressing allows it.
 2. **Create multiple tunnels**: One tunnel per subnet pair, each with a single local and single remote traffic selector.
@@ -207,10 +208,10 @@ If your tunnel establishes but traffic does not flow:
 
 ## Consider HA VPN Instead
 
-Classic VPN is still supported, but Google recommends HA VPN for new deployments. HA VPN uses dynamic routing with BGP, which eliminates most traffic selector headaches. The traffic selectors are always `0.0.0.0/0`, and BGP handles which routes go through the tunnel.
+Classic VPN is still supported, but Google recommends HA VPN for new deployments. HA VPN uses dynamic routing with BGP, which eliminates most traffic selector headaches. For IPv4 traffic, the traffic selectors are always `0.0.0.0/0`, and BGP handles which routes go through the tunnel.
 
 If you are starting fresh and your peer device supports BGP, save yourself the trouble and go with HA VPN.
 
 ## Wrapping Up
 
-Traffic selectors in Classic VPN are straightforward in concept but tricky in practice. The key rule is that both sides must agree exactly on what traffic the tunnel carries. When connecting to policy-based devices, pay close attention to how they handle multiple SAs and consider using summarized CIDR ranges to keep things simple. And whenever possible, use HA VPN with BGP to avoid the traffic selector dance entirely.
+Traffic selectors in Classic VPN are straightforward in concept but tricky in practice. The key rule is that both sides must agree exactly on what traffic the tunnel carries. When connecting to policy-based devices, pay close attention to whether they can accept multiple CIDRs in a single Child SA and consider using summarized CIDR ranges to keep things simple. And whenever possible, use HA VPN with BGP to avoid the traffic selector dance entirely.
