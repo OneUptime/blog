@@ -70,7 +70,7 @@ Let me break down each setting.
 - `check_interval_sec`: Usually shorter than liveness because you want to route traffic quickly once an instance is ready. Default is 5 seconds.
 - `failure_threshold`: Consecutive failures before removing the instance from the traffic pool. Default is 2 - more aggressive than liveness because you want to stop routing to a struggling instance quickly.
 - `success_threshold`: Successes needed before adding the instance back to the traffic pool.
-- `app_start_timeout_sec`: Maximum time to wait for the first successful readiness check after boot. If the instance does not become ready within this time, it gets terminated.
+- `app_start_timeout_sec`: Maximum time to wait during a new deployment for enough instances to pass health checks. If this time is exceeded, the deployment fails and rolls back.
 
 ## Implementing Health Check Endpoints
 
@@ -240,7 +240,7 @@ For faster deployments:
 readiness_check:
   path: "/_ah/ready"
   check_interval_sec: 2      # Check every 2 seconds during startup
-  timeout_sec: 3
+  timeout_sec: 1
   failure_threshold: 2
   success_threshold: 1        # Accept after 1 success
   app_start_timeout_sec: 180  # Shorter startup deadline
@@ -252,7 +252,7 @@ For more cautious deployments (complex applications):
 readiness_check:
   path: "/_ah/ready"
   check_interval_sec: 5
-  timeout_sec: 5
+  timeout_sec: 4
   failure_threshold: 3
   success_threshold: 3        # Require 3 consecutive successes
   app_start_timeout_sec: 600  # Allow 10 minutes for startup
