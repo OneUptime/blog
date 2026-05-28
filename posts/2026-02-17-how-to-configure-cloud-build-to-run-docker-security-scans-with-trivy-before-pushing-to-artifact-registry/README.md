@@ -14,7 +14,7 @@ Trivy is an open-source vulnerability scanner from Aqua Security that scans cont
 
 ## The Basic Approach
 
-The idea is straightforward: build the image, scan it with Trivy, and only push it if the scan passes. If Trivy finds critical vulnerabilities, the build fails and nothing gets pushed.
+The idea is straightforward: build the image, scan it with Trivy, and only push it if the scan passes. If Trivy finds critical or high vulnerabilities, the build fails and nothing gets pushed.
 
 Here is the Cloud Build configuration.
 
@@ -32,7 +32,7 @@ steps:
       - '.'
 
   # Step 2: Scan the image with Trivy
-  - name: 'aquasec/trivy:latest'
+  - name: 'aquasec/trivy:0.69.3'
     id: 'scan'
     args:
       - 'image'
@@ -89,8 +89,8 @@ steps:
     id: 'build'
     args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA', '.']
 
-  # Generate a detailed vulnerability report (always succeeds)
-  - name: 'aquasec/trivy:latest'
+  # Generate a detailed vulnerability report without failing on vulnerabilities
+  - name: 'aquasec/trivy:0.69.3'
     id: 'report'
     entrypoint: 'sh'
     args:
@@ -108,7 +108,7 @@ steps:
           us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA
 
   # Gate check - fail if critical or high vulnerabilities exist
-  - name: 'aquasec/trivy:latest'
+  - name: 'aquasec/trivy:0.69.3'
     id: 'gate'
     args:
       - 'image'
@@ -144,7 +144,7 @@ Trivy can also scan your Dockerfile and IaC files for misconfigurations.
 # cloudbuild.yaml - Scan both Dockerfile config and built image
 steps:
   # Scan Dockerfile for misconfigurations
-  - name: 'aquasec/trivy:latest'
+  - name: 'aquasec/trivy:0.69.3'
     id: 'config-scan'
     args:
       - 'config'
@@ -160,7 +160,7 @@ steps:
     args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA', '.']
 
   # Scan the built image
-  - name: 'aquasec/trivy:latest'
+  - name: 'aquasec/trivy:0.69.3'
     id: 'image-scan'
     args:
       - 'image'
@@ -192,12 +192,14 @@ severity:
 exit-code: 1
 
 # Ignore vulnerabilities with no fix
-ignore-unfixed: true
+vulnerability:
+  ignore-unfixed: true
 
 # Skip specific file patterns
-skip-files:
-  - "**/*_test.go"
-  - "**/testdata/**"
+scan:
+  skip-files:
+    - "**/*_test.go"
+    - "**/testdata/**"
 
 # Custom vulnerability ignore list
 ignorefile: ".trivyignore"
@@ -224,7 +226,7 @@ steps:
     id: 'build'
     args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA', '.']
 
-  - name: 'aquasec/trivy:latest'
+  - name: 'aquasec/trivy:0.69.3'
     id: 'scan'
     args:
       - 'image'
@@ -258,7 +260,7 @@ steps:
     id: 'build'
     args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA', '.']
 
-  - name: 'aquasec/trivy:latest'
+  - name: 'aquasec/trivy:0.69.3'
     id: 'scan'
     env:
       - 'TRIVY_CACHE_DIR=/workspace/trivy-cache'
