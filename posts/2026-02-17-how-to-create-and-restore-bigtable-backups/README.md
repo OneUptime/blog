@@ -8,7 +8,7 @@ Description: A practical guide to creating, managing, and restoring Cloud Bigtab
 
 ---
 
-Even with Bigtable's built-in replication, you still need backups. Replication protects you from infrastructure failures, but it does not protect you from application bugs, accidental deletes, or corrupted data that gets replicated to all clusters. A backup gives you a point-in-time snapshot you can restore to if something goes wrong.
+Even with Bigtable's built-in replication, you still need backups. Replication protects you from infrastructure failures, but it does not protect you from application bugs, accidental deletes, or corrupted data that gets replicated to all clusters. A backup gives you a recoverable copy you can restore to if something goes wrong.
 
 Bigtable supports native backups that are fast to create and restore. Let me show you how to set them up, automate them, and use them when you need to recover data.
 
@@ -36,7 +36,7 @@ gcloud bigtable backups create daily-backup \
   --project=your-project-id
 ```
 
-The backup is created asynchronously. For large tables, it may take some time, but the table remains fully available during the backup process.
+Backup creation is a long-running operation. The `gcloud` command waits for it to complete by default; add `--async` if you want the command to return immediately. For large tables, it may take some time, but the table remains fully available during the backup process.
 
 ## Listing and Describing Backups
 
@@ -64,21 +64,21 @@ Restoring a backup creates a new table from the backup data. You cannot restore 
 
 ```bash
 # Restore a backup into a new table
-gcloud bigtable backups restore my-backup-20260217 \
-  --instance=my-instance \
-  --cluster=my-cluster \
+gcloud bigtable tables restore \
+  --source=my-backup-20260217 \
+  --source-instance=my-instance \
+  --source-cluster=my-cluster \
   --destination=my-table-restored \
   --destination-instance=my-instance \
   --project=your-project-id
 ```
 
-You can also restore to a different instance (as long as it is in the same project):
+You can also restore to a different instance, including an instance in a different project if you use fully qualified resource names:
 
 ```bash
 # Restore to a different instance for testing
-gcloud bigtable backups restore my-backup-20260217 \
-  --instance=my-instance \
-  --cluster=my-cluster \
+gcloud bigtable tables restore \
+  --source=projects/your-project-id/instances/my-instance/clusters/my-cluster/backups/my-backup-20260217 \
   --destination=test-table \
   --destination-instance=my-test-instance \
   --project=your-project-id
@@ -162,7 +162,6 @@ def create_backup(table_id, retention_days=30):
     """Create a backup of the specified table."""
     instance = get_instance()
     table = instance.table(table_id)
-    cluster = instance.cluster(CLUSTER_ID)
 
     # Generate backup ID with timestamp
     timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -172,7 +171,8 @@ def create_backup(table_id, retention_days=30):
     expire_time = datetime.now(timezone.utc) + timedelta(days=retention_days)
 
     print(f"Creating backup {backup_id}...")
-    backup = cluster.backup(backup_id, table=table, expire_time=expire_time)
+    backup = table.backup(backup_id, cluster_id=CLUSTER_ID,
+                          expire_time=expire_time)
     operation = backup.create()
 
     # Wait for completion
@@ -187,9 +187,9 @@ def create_backup(table_id, retention_days=30):
 def list_backups():
     """List all backups in the cluster."""
     instance = get_instance()
-    cluster = instance.cluster(CLUSTER_ID)
+    table = instance.table('_')
 
-    backups = cluster.list_backups()
+    backups = table.list_backups(cluster_id=CLUSTER_ID)
     for backup in backups:
         backup.reload()
         print(f"  {backup.backup_id}")
@@ -202,21 +202,22 @@ def list_backups():
 def restore_backup(backup_id, new_table_id):
     """Restore a backup to a new table."""
     instance = get_instance()
-    cluster = instance.cluster(CLUSTER_ID)
-    backup = cluster.backup(backup_id)
+    backup = backup_module.Backup(backup_id, instance, cluster_id=CLUSTER_ID)
 
     print(f"Restoring {backup_id} to table {new_table_id}...")
-    restored_table = backup.restore(new_table_id)
+    operation = backup.restore(new_table_id)
+    restored_table = operation.result(timeout=600)
     print(f"Table {new_table_id} restored successfully")
     return restored_table
 
 def cleanup_old_backups(table_id, keep_count=7):
     """Delete old backups, keeping the most recent ones."""
     instance = get_instance()
-    cluster = instance.cluster(CLUSTER_ID)
+    table = instance.table(table_id)
 
     # Get all backups for this table, sorted by creation time
-    all_backups = list(cluster.list_backups())
+    all_backups = list(table.list_backups(cluster_id=CLUSTER_ID,
+                                          filter_=f"source_table:{table_id}"))
     table_backups = [b for b in all_backups
                      if table_id in b.backup_id]
 
@@ -284,11 +285,11 @@ For transient tables (caches, temp data):
 
 There are several things to keep in mind about Bigtable backups.
 
-Backups are tied to a specific cluster. If you have a multi-cluster instance, the backup only captures data from one cluster. For a completely consistent backup, consider briefly pausing writes or accepting that the backup captures a point-in-time snapshot from one cluster's perspective.
+Backups are tied to a specific cluster. If you have a multi-cluster instance, the backup only captures data from one cluster. Backups do not represent a fully consistent state, so for a more consistent recovery point, consider briefly pausing writes or accepting that the backup captures a copy from one cluster's perspective.
 
 You cannot update the data in a backup. It is a read-only snapshot. To modify backed-up data, restore it to a new table, make your changes, and create a new backup.
 
-Backup expiration is required. You must set an expiration date, and the maximum retention is 30 days for regular backups. For longer retention, you can copy the backup or use Bigtable exports to Cloud Storage.
+Backup expiration is required. You must set an expiration date, and the maximum retention is 90 days for regular backups. Backup copies can be retained for up to 30 days from the time the copy is created. For longer archival retention, use Bigtable exports to Cloud Storage.
 
 Restoring creates a new table. You cannot overwrite an existing table from a backup. If you need to restore into the original table name, delete the original table first, then restore.
 
