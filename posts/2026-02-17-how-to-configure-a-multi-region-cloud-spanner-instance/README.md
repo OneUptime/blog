@@ -14,13 +14,13 @@ One of Cloud Spanner's most compelling features is its ability to run across mul
 
 Before diving into configuration, let's understand what you get with each option:
 
-A **single-region instance** stores your data in one geographic region. It provides 99.999% availability (five nines) within that region. If the region goes down, your database goes down.
+A **single-region instance** stores your data in one geographic region. Regional Spanner configurations provide 99.99% availability within that region. If the region goes down, your database goes down.
 
-A **multi-region instance** replicates data across multiple regions automatically. It provides 99.999% availability even if an entire region becomes unavailable. Reads from any region are fast because replicas are local. Writes go through the leader region, so they have slightly higher latency if the writer is far from the leader.
+A **multi-region instance** replicates data across multiple regions automatically. It provides 99.999% availability even if an entire region becomes unavailable. Reads can be fast from locations near configured read-write or read-only replicas. Writes go through the leader region, so they have slightly higher latency if the writer is far from the leader.
 
 ## Available Multi-Region Configurations
 
-Spanner offers several predefined multi-region configurations. You can see them all with:
+Spanner offers several predefined multi-region configurations in the Enterprise Plus edition. You can see them all with:
 
 ```bash
 # List all available instance configurations, including multi-region options
@@ -53,20 +53,20 @@ displayName: United States (NAM6)
 replicas:
 - location: us-central1
   type: READ_WRITE
-- location: us-central2
-  type: READ_WRITE
 - location: us-east1
-  type: READ_ONLY
-- location: us-east4
-  type: READ_ONLY
+  type: READ_WRITE
 - location: us-west1
+  type: READ_ONLY
+- location: us-west2
+  type: READ_ONLY
+- location: us-central2
   type: WITNESS
 ```
 
 The replica types matter:
 
 - **READ_WRITE replicas** participate in write quorums and can serve reads. The leader is always in one of these regions.
-- **READ_ONLY replicas** serve reads only. They receive data asynchronously but are guaranteed to be consistent.
+- **READ_ONLY replicas** serve reads only. They maintain a full copy of the data but do not vote on writes or become leaders.
 - **WITNESS replicas** participate in write quorums to maintain consensus but do not store a full copy of the data and cannot serve reads.
 
 ## Creating a Multi-Region Instance
@@ -77,7 +77,8 @@ Creating a multi-region instance is nearly identical to creating a single-region
 # Create a multi-region instance spanning US regions
 gcloud spanner instances create my-global-instance \
     --config=nam6 \
-    --display-name="My Global Spanner Instance" \
+    --description="My Global Spanner Instance" \
+    --edition=ENTERPRISE_PLUS \
     --processing-units=1000
 ```
 
@@ -89,7 +90,8 @@ For a truly global deployment:
 # Create a globally distributed instance
 gcloud spanner instances create my-worldwide-instance \
     --config=nam-eur-asia1 \
-    --display-name="Global Spanner Instance" \
+    --description="Global Spanner Instance" \
+    --edition=ENTERPRISE_PLUS \
     --processing-units=3000
 ```
 
@@ -115,7 +117,7 @@ The database automatically inherits the multi-region configuration of the instan
 
 The most important tradeoff with multi-region instances is write latency. Every write must be committed by a quorum of replicas before it is acknowledged to the client. Since these replicas are in different regions, the write latency includes the network round-trip time between regions.
 
-For a nam6 configuration, writes typically take 10-20ms because the replicas are within the US. For nam-eur-asia1, writes can take 200-400ms because the replicas span continents.
+For a nam6 configuration, Spanner places the voting regions within the US to form a low-latency write quorum. For nam-eur-asia1, the write quorum is still formed by the voting replicas in North America; the Europe and Asia replicas are read-only, so they do not directly add to write quorum latency.
 
 Here is how write flow works:
 
@@ -123,8 +125,8 @@ Here is how write flow works:
 sequenceDiagram
     participant App as Application (us-east1)
     participant Leader as Leader (us-central1)
-    participant RW2 as Read-Write Replica (us-central2)
-    participant Witness as Witness (us-west1)
+    participant RW2 as Read-Write Replica (us-east1)
+    participant Witness as Witness (us-central2)
 
     App->>Leader: Write request
     Leader->>RW2: Prepare write
@@ -132,16 +134,16 @@ sequenceDiagram
     RW2-->>Leader: Prepared
     Witness-->>Leader: Prepared
     Leader-->>App: Write committed
-    Leader->>Leader: Async replicate to read-only replicas
+    Leader->>Leader: Replicate to remaining non-witness replicas
 ```
 
 ## Optimizing Read Performance
 
-While writes go through the leader, reads can be served by any replica. This is where multi-region really shines for read-heavy workloads.
+While writes go through the leader, reads can be served by read-write or read-only replicas. This is where multi-region really shines for read-heavy workloads.
 
-**Strong reads** are served by the nearest replica that has caught up to the latest committed timestamp. For read-write replicas, this is always up to date. For read-only replicas, there might be a few milliseconds of delay.
+**Strong reads** can go to any read-write or read-only replica. If the request goes to a non-leader replica, Spanner might need to communicate with the leader to make sure the read sees all data committed before the read starts.
 
-**Stale reads** can be served immediately by any replica, making them even faster. If your application can tolerate data that is a few seconds old, stale reads eliminate the consistency wait entirely.
+**Stale reads** can be served by the closest available read-only or read-write replica that has caught up to the requested timestamp. If your application can tolerate data that is several seconds old, stale reads can avoid the leader round trip and reduce latency.
 
 ```python
 from google.cloud import spanner
@@ -151,13 +153,13 @@ client = spanner.Client()
 instance = client.instance("my-global-instance")
 database = instance.database("my-global-db")
 
-# Strong read - served by nearest up-to-date replica
+# Strong read - might need to communicate with the leader
 with database.snapshot() as snapshot:
     results = snapshot.execute_sql("SELECT * FROM Users WHERE UserId = @id",
         params={"id": "user-123"},
         param_types={"id": spanner.param_types.STRING})
 
-# Stale read - can be served by any replica immediately
+# Stale read - can be served by a nearby replica that has caught up
 # Accepts data up to 15 seconds old
 staleness = datetime.timedelta(seconds=15)
 with database.snapshot(exact_staleness=staleness) as snapshot:
@@ -170,10 +172,10 @@ with database.snapshot(exact_staleness=staleness) as snapshot:
 
 Multi-region instances cost more than single-region instances. The cost multiplier depends on the configuration:
 
-- A nam6 instance costs roughly 3x a comparable single-region instance
-- A nam-eur-asia1 instance costs roughly 9x
+- Compute capacity is billed at the rate for the selected edition and instance configuration
+- Dual-region and multi-region configurations also incur cross-region data replication charges for writes
 
-This is because you are paying for replicas in each region. The pricing scales with processing units, so a multi-region instance with 1000 processing units costs more than a single-region instance with 1000 processing units.
+This is because multi-region configurations use five or more replicas, depending on the configuration, and Spanner also charges for cross-region replication in dual-region and multi-region configurations. The pricing scales with processing units, so a multi-region instance with 1000 processing units costs more than a single-region instance with 1000 processing units.
 
 For many applications, the right strategy is to use single-region instances for development and staging, and multi-region for production where availability is critical.
 
@@ -183,7 +185,7 @@ Here is a framework for choosing between single and multi-region:
 
 ```mermaid
 flowchart TD
-    A[What are your availability requirements?] -->|99.999% regional| B[Single-region instance]
+    A[What are your availability requirements?] -->|99.99% regional| B[Single-region instance]
     A -->|99.999% even during regional outages| C[Multi-region instance]
     C --> D{Where are your users?}
     D -->|Single country| E[Same-continent multi-region - nam6 or eur6]
