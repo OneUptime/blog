@@ -45,12 +45,14 @@ You need two separate backend services - one for production and one for the mirr
 # Create a health check
 
 gcloud compute health-checks create http app-hc \
+    --global \
     --port=8080 \
     --request-path=/healthz
 
 # Primary backend service (production)
 gcloud compute backend-services create primary-backend \
     --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
     --protocol=HTTP \
     --health-checks=app-hc \
     --port-name=http
@@ -58,6 +60,7 @@ gcloud compute backend-services create primary-backend \
 # Mirror backend service (test/shadow)
 gcloud compute backend-services create mirror-backend \
     --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
     --protocol=HTTP \
     --health-checks=app-hc \
     --port-name=http
@@ -83,7 +86,7 @@ gcloud compute backend-services add-backend mirror-backend \
 The mirroring configuration goes in the route action of your URL map.
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/primary-backend
 hostRules:
@@ -113,7 +116,7 @@ That is it for the basic setup. Every request that matches the route rule now ge
 You probably do not want to mirror everything. You can scope the mirroring to specific paths, headers, or both.
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/primary-backend
 hostRules:
@@ -148,10 +151,10 @@ EOF
 
 ## Step 4 - Build a Comparison Framework
 
-The mirror backend's responses are not visible to users, so you need a way to capture and compare them. Here is an approach using a comparison proxy.
+The mirror backend's responses are not visible to users, so you need a way to capture them for comparison. Here is an approach using a comparison proxy.
 
 ```python
-# comparison_proxy.py - Captures both primary and mirror responses for comparison
+# comparison_proxy.py - Captures mirrored responses for comparison
 from flask import Flask, request, jsonify
 import hashlib
 import json
@@ -282,9 +285,11 @@ def create_user(user_data):
         return db.users.insert(user_data)
 ```
 
-**Mirror traffic increases load on your network**. Every mirrored request doubles the inbound traffic from the load balancer's perspective. Size your mirror backend appropriately.
+**Mirror traffic increases load on your backends and network**. Every mirrored request creates an additional request from the load balancer to the mirror backend. Size your mirror backend appropriately.
 
-**Headers are modified**. The load balancer adds headers to mirrored requests to identify them. The `X-Mirrored-From` header contains the original backend service name. Your mirror backend can use this for logging.
+**The host header is modified**. Before sending traffic to the mirror backend, the load balancer suffixes the `Host` or `:authority` header with `-shadow`. If you need to record which weighted backend served the original request, add a custom request header in the URL map.
+
+**Mirrored requests do not generate load balancer logs or metrics for the mirror backend**. If you need observability for shadow traffic, log from the mirror application itself, as shown in the BigQuery example above.
 
 **Authentication tokens travel to the mirror**. If your requests contain auth tokens in headers, they will be sent to the mirror backend. Make sure the mirror environment is secure and that you are comfortable with tokens being present there.
 
@@ -293,7 +298,7 @@ def create_user(user_data):
 When your shadow testing is complete, remove the mirror policy from the URL map.
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/primary-backend
 hostRules:
