@@ -19,9 +19,9 @@ Understanding the differences upfront saves a lot of time:
 | Feature | AWS Lambda | Cloud Functions Gen2 |
 |---------|-----------|---------------------|
 | Runtime | Managed by Lambda | Built on Cloud Run |
-| Max timeout | 15 minutes | 60 minutes (HTTP), 9 minutes (event) |
+| Max timeout | 15 minutes | 60 minutes (HTTP), 9 minutes (event-driven) |
 | Max memory | 10 GB | 32 GB |
-| Concurrency | 1 per instance (unless provisioned) | Multiple per instance |
+| Concurrency | One invocation per execution environment | Multiple requests per instance |
 | Triggers | API Gateway, SQS, S3, etc. | HTTP, Pub/Sub, Eventarc |
 | Packaging | Zip or container | Source code or container |
 | Cold start | Variable | Typically lower for Gen2 |
@@ -135,7 +135,7 @@ def process_pubsub(cloud_event):
     ).decode('utf-8')
 
     body = json.loads(message_data)
-    message_id = cloud_event.data["message"]["message_id"]
+    message_id = cloud_event.data["message"]["messageId"]
 
     logger.info(f"Processing message {message_id}")
 
@@ -227,13 +227,13 @@ DB_PASSWORD = os.environ['DB_PASSWORD']  # Not great for secrets
 
 ```python
 # Cloud Functions approach - use Secret Manager for sensitive values
-import os
+import google.auth
 from google.cloud import secretmanager
 
 def get_secret(secret_id):
     """Retrieve a secret from Secret Manager."""
     client = secretmanager.SecretManagerServiceClient()
-    project = os.environ.get('GCP_PROJECT')
+    _, project = google.auth.default()
     name = f"projects/{project}/secrets/{secret_id}/versions/latest"
     response = client.access_secret_version(request={"name": name})
     return response.payload.data.decode("UTF-8")
@@ -327,7 +327,7 @@ resource "google_cloudfunctions2_function" "process_orders" {
     timeout_seconds    = 300
 
     environment_variables = {
-      GCP_PROJECT = var.project_id
+      LOG_LEVEL = "INFO"
     }
 
     # Mount secrets from Secret Manager
