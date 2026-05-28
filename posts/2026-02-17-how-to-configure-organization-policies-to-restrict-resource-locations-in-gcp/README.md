@@ -231,22 +231,35 @@ gcloud resource-manager org-policies set-policy no-external-ip-policy.yaml \
 
 ### Restrict Which Machine Types Can Be Used
 
-Prevent teams from provisioning expensive machine types:
+Google Cloud does not provide a predefined `compute.restrictMachineTypes` constraint. For this use case, create a custom organization policy constraint against the Compute Engine instance `machineType` field:
 
 ```yaml
-# allowed-machine-types.yaml
-constraint: constraints/compute.restrictMachineTypes
-listPolicy:
-  allowedValues:
-    - e2-micro
-    - e2-small
-    - e2-medium
-    - e2-standard-2
-    - e2-standard-4
-    - e2-standard-8
-    - n2-standard-2
-    - n2-standard-4
-    - n2-standard-8
+# allow-e2-vms.yaml
+name: organizations/ORGANIZATION_ID/customConstraints/custom.allowE2VMs
+resource_types: compute.googleapis.com/Instance
+method_types: CREATE
+condition: "resource.machineType.contains('/machineTypes/e2-')"
+action_type: ALLOW
+display_name: Allow E2 VMs only
+description: Only E2 machine types are allowed.
+```
+
+```bash
+gcloud org-policies set-custom-constraint allow-e2-vms.yaml
+```
+
+Then enforce the custom constraint with an organization policy:
+
+```yaml
+# allow-e2-vms-policy.yaml
+name: folders/PRODUCTION_FOLDER_ID/policies/custom.allowE2VMs
+spec:
+  rules:
+    - enforce: true
+```
+
+```bash
+gcloud org-policies set-policy allow-e2-vms-policy.yaml
 ```
 
 ### Disable Service Account Key Creation
@@ -263,9 +276,16 @@ gcloud resource-manager org-policies enable-enforce \
 
 Control which networks can be peered:
 
+```yaml
+# restrict-vpc-peering.yaml
+constraint: constraints/compute.restrictVpcPeering
+listPolicy:
+  allowedValues:
+    - under:projects/NETWORK-HOST-PROJECT_ID
+```
+
 ```bash
-gcloud resource-manager org-policies enable-enforce \
-  compute.restrictVpcPeering \
+gcloud resource-manager org-policies set-policy restrict-vpc-peering.yaml \
   --organization=ORGANIZATION_ID
 ```
 
@@ -300,17 +320,7 @@ Some GCP resources are global and do not belong to a specific region:
 - IAM roles and policies
 - Organization-level resources
 
-The `in:us-locations` value group includes the `global` location, so global resources are allowed when US locations are permitted. If you need to explicitly allow global resources alongside specific regions:
-
-```yaml
-# Allow specific regions plus global resources
-constraint: constraints/gcp.resourceLocations
-listPolicy:
-  allowedValues:
-    - us-central1
-    - us-east1
-    - global
-```
+The resource locations constraint controls resources for which a location can be selected. It does not affect where global resources, such as Compute Engine global addresses, or resources that do not support selecting a location are created. Test location policies carefully so you do not assume they provide a data residency guarantee for every global or locationless service.
 
 ## Monitoring Policy Violations
 
