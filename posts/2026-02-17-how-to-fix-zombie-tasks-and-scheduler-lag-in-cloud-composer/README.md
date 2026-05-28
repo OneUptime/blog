@@ -21,7 +21,7 @@ A zombie task occurs when:
 3. The task stays in the "running" state in the metadata database
 4. The scheduler does not immediately detect that the task has died
 
-Airflow has a built-in zombie detection mechanism. The scheduler periodically checks for tasks that have not sent a heartbeat within the expected interval and marks them as "zombie" before cleaning them up.
+Airflow has a built-in zombie detection mechanism. The scheduler periodically checks for tasks that have not sent a heartbeat within the expected interval and marks them as failed or retries them, depending on the task's retry settings.
 
 ## Diagnosing Zombie Tasks
 
@@ -34,7 +34,7 @@ Look for tasks that have been running much longer than expected:
 
 gcloud composer environments run my-composer-env \
   --location=us-central1 \
-  tasks states-for-dag-run -- my_dag_id 2025-01-15
+  tasks states-for-dag-run -- my_dag_id scheduled__2025-01-15T00:00:00+00:00
 ```
 
 In the Airflow UI, go to **Browse** > **Task Instances** and filter by state = "running". Sort by start date. Tasks that started hours or days ago and are still "running" are likely zombies.
@@ -52,18 +52,18 @@ gcloud logging read \
 
 ### Check Worker Heartbeats
 
-If workers are not sending heartbeats, the scheduler will eventually detect their tasks as zombies:
+If workers are not sending heartbeats, the scheduler will eventually detect their tasks as zombies. In Airflow 2.x CeleryExecutor environments, you can inspect Celery workers:
 
 ```bash
 # Check worker health
 gcloud composer environments run my-composer-env \
   --location=us-central1 \
-  celery inspect ping
+  celery inspect -- ping
 
 # Check active tasks on each worker
 gcloud composer environments run my-composer-env \
   --location=us-central1 \
-  celery inspect active
+  celery inspect -- active
 ```
 
 ## Fixing Existing Zombie Tasks
@@ -78,20 +78,20 @@ gcloud composer environments run my-composer-env \
 ### Clear Zombie Tasks via the CLI
 
 ```bash
-# Mark specific zombie tasks as failed
+# Clear a specific zombie task so the scheduler can rerun it
 gcloud composer environments run my-composer-env \
   --location=us-central1 \
-  tasks clear -- my_dag_id -t my_task_id -s 2025-01-15 -e 2025-01-15 -d
+  tasks clear -- my_dag_id -t '^my_task_id$' -s 2025-01-15 -e 2025-01-15 -y
 
 # Clear all task instances for a specific DAG run
 gcloud composer environments run my-composer-env \
   --location=us-central1 \
-  tasks clear -- my_dag_id -s 2025-01-15 -e 2025-01-15
+  tasks clear -- my_dag_id -s 2025-01-15 -e 2025-01-15 -y
 ```
 
 ### Programmatic Zombie Cleanup
 
-For recurring zombie issues, create a maintenance DAG that cleans them up:
+For recurring zombie issues in Airflow 2.x environments, create a maintenance DAG that cleans them up:
 
 ```python
 # zombie_cleanup_dag.py - Automatically detect and clean up zombie tasks
@@ -101,6 +101,7 @@ from airflow.operators.python import PythonOperator
 from airflow.models import TaskInstance
 from airflow.utils.state import TaskInstanceState
 from airflow.utils.session import create_session
+from airflow.utils import timezone
 
 default_args = {
     "owner": "platform",
@@ -110,7 +111,7 @@ default_args = {
 dag = DAG(
     dag_id="zombie_cleanup",
     default_args=default_args,
-    schedule_interval="*/30 * * * *",  # Run every 30 minutes
+    schedule="*/30 * * * *",  # Run every 30 minutes
     start_date=datetime(2025, 1, 1),
     catchup=False,
     tags=["maintenance"],
@@ -120,7 +121,7 @@ dag = DAG(
 def detect_and_clean_zombies(**context):
     """Find and clean up tasks that have been running too long."""
     max_running_hours = 4  # Tasks running longer than this are likely zombies
-    cutoff = datetime.utcnow() - timedelta(hours=max_running_hours)
+    cutoff = timezone.utcnow() - timedelta(hours=max_running_hours)
 
     with create_session() as session:
         # Find tasks in running state that started before the cutoff
@@ -135,7 +136,7 @@ def detect_and_clean_zombies(**context):
 
         print(f"Found {len(zombie_candidates)} potential zombie tasks:")
         for ti in zombie_candidates:
-            running_hours = (datetime.utcnow() - ti.start_date).total_seconds() / 3600
+            running_hours = (timezone.utcnow() - ti.start_date).total_seconds() / 3600
             print(f"  {ti.dag_id}.{ti.task_id} - running for {running_hours:.1f} hours")
 
             # Mark as failed so they can be retried
@@ -157,7 +158,7 @@ cleanup = PythonOperator(
 
 ### Tune Heartbeat Settings
 
-The scheduler uses heartbeats to detect dead tasks. Tune these settings for faster detection:
+The scheduler uses heartbeats to detect dead tasks. In Airflow 2.x environments, tune these settings for faster detection:
 
 ```bash
 # Configure faster zombie detection
@@ -172,6 +173,8 @@ celery-worker_concurrency=12"
 Settings explained:
 - `scheduler_zombie_task_threshold` - Seconds since last heartbeat before a task is considered a zombie (default 300)
 - `zombie_detection_interval` - How often the scheduler checks for zombies (default 10 seconds)
+
+For Airflow 3.x environments, use `scheduler-task_instance_heartbeat_timeout` and `scheduler-task_instance_heartbeat_timeout_detection_interval` instead.
 
 ### Set Task Timeouts
 
@@ -235,9 +238,9 @@ This shows how long each DAG file takes to parse. Files taking more than a few s
 
 Look at these metrics in Cloud Monitoring:
 
-- `composer.googleapis.com/environment/scheduler/running` - Is the scheduler running?
+- `composer.googleapis.com/environment/active_schedulers` - Number of active scheduler instances
 - `composer.googleapis.com/environment/dag_processing/total_parse_time` - Total time to parse all DAGs
-- `composer.googleapis.com/environment/scheduler_heartbeat` - Scheduler heartbeat interval
+- `composer.googleapis.com/environment/scheduler_heartbeat_count` - Scheduler heartbeats
 
 ### Check Scheduler Logs
 
@@ -352,16 +355,21 @@ gcloud composer environments run my-composer-env \
 Proactive monitoring catches zombies and lag before they impact your pipelines:
 
 ```bash
-# Alert on scheduler heartbeat lag
+# Alert when scheduler heartbeats stop
 gcloud monitoring policies create --policy-from-file=- << 'EOF'
 {
   "displayName": "Composer Scheduler Heartbeat Alert",
+  "combiner": "OR",
   "conditions": [{
-    "displayName": "Scheduler heartbeat > 60s",
+    "displayName": "Scheduler heartbeat count is low",
     "conditionThreshold": {
-      "filter": "resource.type=\"cloud_composer_environment\" AND metric.type=\"composer.googleapis.com/environment/scheduler_heartbeat\"",
-      "comparison": "COMPARISON_GT",
-      "thresholdValue": 60,
+      "filter": "resource.type=\"cloud_composer_environment\" AND metric.type=\"composer.googleapis.com/environment/scheduler_heartbeat_count\"",
+      "aggregations": [{
+        "alignmentPeriod": "60s",
+        "perSeriesAligner": "ALIGN_SUM"
+      }],
+      "comparison": "COMPARISON_LT",
+      "thresholdValue": 1,
       "duration": "300s"
     }
   }]
