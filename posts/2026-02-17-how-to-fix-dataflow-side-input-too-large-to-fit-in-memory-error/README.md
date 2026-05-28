@@ -8,11 +8,11 @@ Description: Resolve the side input too large to fit in memory error in Google C
 
 ---
 
-Side inputs in Apache Beam let you pass additional data to a ParDo that the main processing function can reference. They are commonly used for lookup tables, configuration data, and enrichment. But side inputs are loaded entirely into memory on each worker, and when the side input grows too large, workers crash with OutOfMemoryError. This post covers why this happens, how to work around it, and alternative patterns for large reference datasets.
+Side inputs in Apache Beam let you pass additional data to a ParDo that the main processing function can reference. They are commonly used for lookup tables, configuration data, and enrichment. But large side inputs can put heavy pressure on worker memory, and when the side input grows too large, workers can crash with OutOfMemoryError. This post covers why this happens, how to work around it, and alternative patterns for large reference datasets.
 
 ## How Side Inputs Work in Dataflow
 
-When you use a PCollectionView as a side input, Dataflow materializes the entire contents and makes it available to every worker. For a singleton or small list side input, this is fine. But if the side input is a large map or list with millions of entries, every worker loads it into memory.
+When you use a PCollectionView as a side input, Dataflow persists the contents and makes the complete side input available to every worker. For a singleton or small list side input, this is fine. But if the side input is a large map or list with millions of entries, workers might need to cache or read a very large amount of data. Streaming jobs that do not use Streaming Engine store side inputs in memory, with one copy per worker for Java and Go and one copy per Apache Beam SDK process for Python. Streaming jobs that use Streaming Engine store side inputs outside worker memory, but side inputs have an 80 MB size limit.
 
 The memory required is not just the raw data size. Java object overhead, hash map structure, and serialization buffers can multiply the actual memory usage by 3-5x compared to the on-disk size.
 
@@ -107,7 +107,7 @@ minimal_side_data = (
 
 ## Step 4: Use a Map Side Input Instead of a List
 
-If you are using `AsList()` and then searching through it, switch to `AsDict()` which is more memory-efficient for lookups:
+If you are using `AsList()` and then searching through it, switch to `AsDict()` for key-based lookups. This avoids scanning the entire list for every element, although it still materializes the side input:
 
 ```python
 # Bad: Loading as a list and searching linearly
@@ -142,26 +142,6 @@ For large datasets, replace the side input pattern with a join using CoGroupByKe
 # Instead of using a large side input for enrichment,
 # join the main data with the lookup data using CoGroupByKey
 
-# Tag the main data
-main_tagged = (
-    main_data
-    | 'TagMain' >> beam.Map(lambda x: (x['lookup_key'], ('main', x)))
-)
-
-# Tag the lookup data
-lookup_tagged = (
-    lookup_data
-    | 'TagLookup' >> beam.Map(lambda x: (x['key'], ('lookup', x)))
-)
-
-# CoGroupByKey distributes the join across workers
-joined = (
-    {'main': main_data | beam.Map(lambda x: (x['lookup_key'], x)),
-     'lookup': lookup_data | beam.Map(lambda x: (x['key'], x))}
-    | 'Join' >> beam.CoGroupByKey()
-    | 'Enrich' >> beam.FlatMap(enrich_records)
-)
-
 def enrich_records(element):
     key, groups = element
     main_records = groups['main']
@@ -173,6 +153,14 @@ def enrich_records(element):
         if lookup_value:
             record['enriched'] = lookup_value['value']
         yield record
+
+# CoGroupByKey distributes the join across workers
+joined = (
+    {'main': main_data | beam.Map(lambda x: (x['lookup_key'], x)),
+     'lookup': lookup_data | beam.Map(lambda x: (x['key'], x))}
+    | 'Join' >> beam.CoGroupByKey()
+    | 'Enrich' >> beam.FlatMap(enrich_records)
+)
 ```
 
 CoGroupByKey distributes the join across all workers, so no single worker needs to hold the entire lookup dataset. The tradeoff is that it requires a shuffle, which adds latency.
@@ -197,14 +185,14 @@ class ExternalLookupDoFn(beam.DoFn):
         row = self.table.read_row(row_key)
 
         if row:
-            cell = row.cells['cf']['value'][0]
-            element['enriched'] = cell.value.decode('utf-8')
+            element['enriched'] = row.cell_value('cf', b'value').decode('utf-8')
 
         yield element
 
     def teardown(self):
         """Clean up the connection."""
-        self.client.close()
+        if hasattr(self.client, 'close'):
+            self.client.close()
 ```
 
 This approach uses virtually no memory per worker because data is fetched on demand. The tradeoff is network latency for each lookup. Batch your lookups to reduce the overhead:
@@ -214,8 +202,13 @@ This approach uses virtually no memory per worker because data is fetched on dem
 class BatchedLookupDoFn(beam.DoFn):
     def setup(self):
         from google.cloud import bigtable
+        from google.cloud.bigtable.row_set import RowSet
+        import time
+
         self.client = bigtable.Client(project='your-project', admin=False)
         self.table = self.client.instance('your-instance').table('lookup-table')
+        self.RowSet = RowSet
+        self.time = time
         self.batch = []
         self.batch_size = 100
 
@@ -230,18 +223,20 @@ class BatchedLookupDoFn(beam.DoFn):
 
     def flush_batch(self):
         # Read all keys in one batch request
-        keys = [e['lookup_key'].encode('utf-8') for e in self.batch]
-        rows = self.table.read_rows(row_set=RowSet(row_keys=keys))
+        row_set = self.RowSet()
+        for element in self.batch:
+            row_set.add_row_key(element['lookup_key'].encode('utf-8'))
+        rows = self.table.read_rows(row_set=row_set)
 
         lookup_map = {}
         for row in rows:
-            lookup_map[row.row_key.decode('utf-8')] = row.cells['cf']['value'][0].value.decode('utf-8')
+            lookup_map[row.row_key.decode('utf-8')] = row.cell_value('cf', b'value').decode('utf-8')
 
         for element in self.batch:
             if element['lookup_key'] in lookup_map:
                 element['enriched'] = lookup_map[element['lookup_key']]
             yield beam.utils.windowed_value.WindowedValue(
-                element, beam.utils.timestamp.Timestamp.of(time.time()),
+                element, beam.utils.timestamp.Timestamp.of(self.time.time()),
                 [beam.transforms.window.GlobalWindow()])
 
         self.batch = []
@@ -252,8 +247,8 @@ class BatchedLookupDoFn(beam.DoFn):
 ```mermaid
 flowchart TD
     A[Need to enrich data with lookup] --> B{Lookup data size?}
-    B -->|Under 100 MB| C[Use side input AsDict]
-    B -->|100 MB - 1 GB| D[Increase worker memory + side input]
+    B -->|Under 80 MB| C[Use side input AsDict]
+    B -->|80 MB - 1 GB batch/non-Streaming Engine| D[Increase worker memory + side input]
     B -->|1 GB - 10 GB| E[Use CoGroupByKey join]
     B -->|Over 10 GB| F[Use external lookup service]
 ```
