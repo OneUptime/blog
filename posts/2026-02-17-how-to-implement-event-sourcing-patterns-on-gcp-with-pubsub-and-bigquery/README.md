@@ -71,7 +71,7 @@ gcloud pubsub subscriptions create domain-events-processor-sub \
   --message-filter='attributes.aggregate_type="Order"'
 ```
 
-Message ordering is important here. When you enable it and use the `aggregate_id` as the ordering key, Pub/Sub guarantees events for the same aggregate arrive in order.
+Message ordering is important here. When you enable it and use the `aggregate_id` as the ordering key, Pub/Sub delivers events for the same aggregate in the order the service receives them, as long as messages with the same ordering key are published in the same region.
 
 ## Publishing Events with Ordering Keys
 
@@ -81,7 +81,7 @@ Here is how to publish events from your application with proper ordering:
 from google.cloud import pubsub_v1
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Initialize publisher with batching settings tuned for event sourcing
 publisher = pubsub_v1.PublisherClient(
@@ -99,7 +99,7 @@ def publish_event(aggregate_type, aggregate_id, event_type, data, version):
         "aggregate_type": aggregate_type,
         "aggregate_id": aggregate_id,
         "version": version,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "data": data,
     }
 
@@ -111,6 +111,7 @@ def publish_event(aggregate_type, aggregate_id, event_type, data, version):
         ordering_key=aggregate_id,
         aggregate_type=aggregate_type,
         event_type=event_type,
+        event_id=event["event_id"],
     )
     return future.result()
 
@@ -155,15 +156,15 @@ OPTIONS (
 
 ## Streaming Events from Pub/Sub to BigQuery
 
-Use a Dataflow pipeline or a Pub/Sub BigQuery subscription to stream events into BigQuery. The simplest approach is using a Pub/Sub BigQuery subscription directly.
+Use a Dataflow pipeline or a Pub/Sub BigQuery subscription to stream events into BigQuery. The simplest approach is using a Pub/Sub BigQuery subscription directly if your topic has a Pub/Sub schema that matches the BigQuery table.
 
 ```bash
 # Create a BigQuery subscription that writes directly to the event store
+# using the schema attached to the Pub/Sub topic
 gcloud pubsub subscriptions create domain-events-bq-direct \
   --topic=domain-events \
-  --bigquery-table=my-project:event_store.events \
-  --use-topic-schema \
-  --write-metadata
+  --bigquery-table=my-project.event_store.events \
+  --use-topic-schema
 ```
 
 For more control over the data transformation, use a Dataflow streaming pipeline:
@@ -173,9 +174,9 @@ import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 import json
 
-def parse_event(message):
+def parse_event(message_data):
     """Parse the Pub/Sub message into a BigQuery row."""
-    event = json.loads(message.data.decode("utf-8"))
+    event = json.loads(message_data.decode("utf-8"))
     return {
         "event_id": event["event_id"],
         "event_type": event["event_type"],
@@ -199,7 +200,8 @@ with beam.Pipeline(options=options) as pipeline:
     (
         pipeline
         | "ReadFromPubSub" >> beam.io.ReadFromPubSub(
-            topic="projects/my-project/topics/domain-events"
+            topic="projects/my-project/topics/domain-events",
+            id_label="event_id",
         )
         | "ParseEvents" >> beam.Map(parse_event)
         | "WriteToBigQuery" >> beam.io.WriteToBigQuery(
@@ -274,6 +276,7 @@ USING (
   HAVING COUNT(*) > 1
 ) AS dupes
 ON target.event_id = dupes.event_id
+  AND target.timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
   AND target.ingestion_time > dupes.first_ingestion
 WHEN MATCHED THEN DELETE;
 ```
@@ -288,8 +291,8 @@ gcloud monitoring policies create \
   --display-name="Event backlog alert" \
   --condition-display-name="High unacked messages" \
   --condition-filter='resource.type="pubsub_subscription" AND metric.type="pubsub.googleapis.com/subscription/num_undelivered_messages"' \
-  --condition-threshold-value=10000 \
-  --condition-threshold-duration=300s
+  --if='> 10000' \
+  --duration=300s
 ```
 
 ## Wrapping Up
