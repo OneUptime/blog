@@ -18,7 +18,7 @@ The Log Router processes every log entry using sinks. Each sink has:
 
 1. **A filter**: Determines which log entries the sink captures
 2. **A destination**: Where matching log entries are sent
-3. **An inclusion or exclusion type**: Whether the sink routes matching logs or excludes them
+3. **Optional exclusions**: Additional filters that prevent matching log entries from being routed by that sink
 
 Every project comes with two default sinks:
 
@@ -74,11 +74,11 @@ After creating the sink, grant the sink's service account write access to the Bi
 # Get the sink's writer identity
 gcloud logging sinks describe bigquery-app-logs --project=my-project --format='value(writerIdentity)'
 
-# Grant the BigQuery Data Editor role to the sink's service account
-bq add-iam-policy-binding \
-  --member="serviceAccount:p123456-123456@gcp-sa-logging.iam.gserviceaccount.com" \
-  --role="roles/bigquery.dataEditor" \
-  my-project:application_logs
+# Grant the BigQuery Data Editor role to the sink's service account on the dataset
+bq query --use_legacy_sql=false \
+  "GRANT \`roles/bigquery.dataEditor\`
+   ON SCHEMA \`my-project\`.application_logs
+   TO \"$(gcloud logging sinks describe bigquery-app-logs --project=my-project --format='value(writerIdentity)')\""
 ```
 
 ### Sink to Cloud Storage
@@ -103,7 +103,7 @@ Grant write access:
 ```bash
 # Grant the sink's service account access to the storage bucket
 gcloud storage buckets add-iam-policy-binding gs://my-project-log-archive \
-  --member="serviceAccount:p123456-123456@gcp-sa-logging.iam.gserviceaccount.com" \
+  --member="$(gcloud logging sinks describe storage-all-logs --project=my-project --format='value(writerIdentity)')" \
   --role="roles/storage.objectCreator"
 ```
 
@@ -127,7 +127,7 @@ Grant publish access:
 ```bash
 # Grant the sink's service account Pub/Sub publisher role
 gcloud pubsub topics add-iam-policy-binding log-stream \
-  --member="serviceAccount:p123456-123456@gcp-sa-logging.iam.gserviceaccount.com" \
+  --member="$(gcloud logging sinks describe pubsub-error-logs --project=my-project --format='value(writerIdentity)')" \
   --role="roles/pubsub.publisher" \
   --project=my-project
 ```
@@ -235,6 +235,8 @@ resource "google_logging_project_sink" "bigquery_sink" {
   destination = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${google_bigquery_dataset.logs.dataset_id}"
   filter      = "resource.type=\"cloud_run_revision\" OR resource.type=\"gce_instance\""
 
+  unique_writer_identity = true
+
   bigquery_options {
     use_partitioned_tables = true
   }
@@ -245,6 +247,8 @@ resource "google_logging_project_sink" "storage_sink" {
   name        = "storage-all-logs"
   destination = "storage.googleapis.com/${google_storage_bucket.log_archive.name}"
   filter      = ""
+
+  unique_writer_identity = true
 }
 
 # Grant BigQuery access to the sink's service account
@@ -264,9 +268,9 @@ resource "google_storage_bucket_iam_member" "log_writer" {
 
 ## Cost Considerations
 
-Log routing impacts your Cloud Logging costs. Here are the key points:
+Log routing impacts your Cloud Logging and destination costs. Here are the key points:
 
-- **Ingestion charges still apply**: Even if you route logs to an external destination, you are still charged for log ingestion unless you also create an exclusion filter.
+- **Cloud Logging storage charges depend on log buckets**: Cloud Logging does not charge for routing logs, but it charges for logs stored in the `_Default` bucket or user-defined log buckets after the free allotment.
 - **Destination storage costs**: BigQuery, Cloud Storage, and Pub/Sub have their own pricing. BigQuery is the most expensive for storage, Cloud Storage is the cheapest.
 - **Use exclusions with routing**: If you are routing logs to BigQuery and do not need them in Cloud Logging, add an exclusion filter for those logs on the `_Default` sink to avoid double storage charges.
 
