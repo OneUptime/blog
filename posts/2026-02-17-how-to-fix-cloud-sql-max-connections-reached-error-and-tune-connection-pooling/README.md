@@ -14,9 +14,9 @@ You have probably seen this error in your application logs: "too many connection
 
 Cloud SQL sets a default maximum number of connections based on the instance tier. The formula varies by engine:
 
-For MySQL: `max_connections` defaults vary by memory (typically 4000 for most tiers).
+For MySQL: `max_connections` defaults vary by the amount of available memory on the instance.
 
-For PostgreSQL: `max_connections` defaults to 100 for small instances and scales up with memory.
+For PostgreSQL: `max_connections` defaults are automatically set from the instance's machine type and available memory.
 
 Check your current limit and usage:
 
@@ -176,9 +176,9 @@ pool.query('SELECT NOW()', (err, res) => {
 });
 ```
 
-## Step 3: Use Cloud SQL Proxy for Connection Management
+## Step 3: Use Cloud SQL Proxy for Secure Connectivity
 
-The Cloud SQL Auth Proxy manages connections to your Cloud SQL instance efficiently and handles IAM authentication.
+The Cloud SQL Auth Proxy provides secure, IAM-authorized connectivity to your Cloud SQL instance. It does not provide connection pooling, but you can set a connection cap to prevent one proxy process from opening too many database connections.
 
 ```bash
 # Run Cloud SQL Auth Proxy with connection limits
@@ -223,9 +223,11 @@ def get_user(user_id):
     return cursor.fetchone()
     # Connection is never closed!
 
-# Good: Use a context manager to ensure the connection is always closed
+from contextlib import closing
+
+# Good: Close the connection in a finally block or with contextlib.closing
 def get_user(user_id):
-    with psycopg2.connect(dsn) as conn:
+    with closing(psycopg2.connect(dsn)) as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
             return cursor.fetchone()
