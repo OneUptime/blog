@@ -67,11 +67,9 @@ exporters:
   googlecloud:
     # project is auto-detected on GCP, set explicitly for non-GCP environments
     # project: your-project-id
-    retry_on_failure:
+    timeout: 12s
+    sending_queue:
       enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
 
   # Debug exporter for troubleshooting (writes to collector logs)
   debug:
@@ -117,7 +115,8 @@ data:
         timeout: 5s
     exporters:
       googlecloud:
-        retry_on_failure:
+        timeout: 12s
+        sending_queue:
           enabled: true
     service:
       pipelines:
@@ -226,13 +225,13 @@ For Node.js applications:
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 // Point the exporter at the collector service
 const collectorEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector:4317';
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': process.env.SERVICE_NAME || 'my-service',
   }),
   traceExporter: new OTLPTraceExporter({
@@ -293,6 +292,8 @@ service:
 
 With this configuration, your applications send all spans to the collector (100% sampling), and the collector keeps only errors, slow requests, and 5% of normal requests. This gives you full visibility into problems while keeping costs manageable.
 
+If you run multiple collector replicas with tail-based sampling, make sure all spans for a given trace are routed to the same collector instance. The tail sampling processor makes decisions after grouping spans by trace ID, so splitting one trace across replicas can produce incomplete sampling decisions.
+
 ## Step 5: Add Filtering and Attribute Processing
 
 You can also use the collector to filter out unwanted spans or modify attributes before export.
@@ -301,10 +302,10 @@ You can also use the collector to filter out unwanted spans or modify attributes
 processors:
   # Filter out health check spans to reduce noise
   filter:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/health"'
-        - 'attributes["http.target"] == "/readiness"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["url.path"] == "/health"'
+      - 'span.attributes["url.path"] == "/readiness"'
 
   # Add or modify attributes on all spans
   attributes:
@@ -361,7 +362,12 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888  # Prometheus metrics endpoint
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888  # Prometheus metrics endpoint
 ```
 
 Then scrape the metrics endpoint to monitor the collector's health and watch for dropped spans or export failures.
