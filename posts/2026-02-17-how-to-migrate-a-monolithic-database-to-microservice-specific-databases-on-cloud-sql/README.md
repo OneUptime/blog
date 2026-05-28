@@ -38,13 +38,16 @@ Start by categorizing every table in your monolithic database by which service s
 ```sql
 -- List all tables and their approximate sizes
 SELECT
-    table_name,
-    pg_size_pretty(pg_total_relation_size(table_name::regclass)) AS total_size,
-    (SELECT count(*) FROM information_schema.columns WHERE columns.table_name = tables.table_name) AS column_count
-FROM information_schema.tables
-WHERE table_schema = 'public'
-    AND table_type = 'BASE TABLE'
-ORDER BY pg_total_relation_size(table_name::regclass) DESC;
+    t.table_name,
+    pg_size_pretty(pg_total_relation_size(format('%I.%I', t.table_schema, t.table_name)::regclass)) AS total_size,
+    (SELECT count(*)
+     FROM information_schema.columns c
+     WHERE c.table_schema = t.table_schema
+       AND c.table_name = t.table_name) AS column_count
+FROM information_schema.tables t
+WHERE t.table_schema = 'public'
+    AND t.table_type = 'BASE TABLE'
+ORDER BY pg_total_relation_size(format('%I.%I', t.table_schema, t.table_name)::regclass) DESC;
 
 -- Check foreign key dependencies between tables
 SELECT
@@ -55,9 +58,12 @@ SELECT
 FROM information_schema.table_constraints tc
 JOIN information_schema.key_column_usage kcu
     ON tc.constraint_name = kcu.constraint_name
+    AND tc.constraint_schema = kcu.constraint_schema
 JOIN information_schema.constraint_column_usage ccu
     ON tc.constraint_name = ccu.constraint_name
+    AND tc.constraint_schema = ccu.constraint_schema
 WHERE tc.constraint_type = 'FOREIGN KEY'
+    AND tc.table_schema = 'public'
 ORDER BY tc.table_name;
 ```
 
@@ -105,7 +111,7 @@ services:
 Cross-service foreign keys are the main challenge. You need to replace them with application-level references:
 
 ```sql
--- Before: The orders table has a foreign key to users
+-- Before: The orders table has foreign keys to users and products
 CREATE TABLE orders (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id),  -- Cross-service FK
@@ -139,11 +145,12 @@ Create separate Cloud SQL instances for each microservice:
 # User Service database
 gcloud sql instances create user-db \
   --database-version POSTGRES_15 \
-  --tier db-custom-2-8192 \
+  --cpu 2 \
+  --memory 8192MB \
   --region us-central1 \
   --availability-type REGIONAL \
   --storage-type SSD \
-  --storage-size 20GB \
+  --storage-size 20 \
   --storage-auto-increase
 
 gcloud sql databases create users --instance user-db
@@ -151,11 +158,12 @@ gcloud sql databases create users --instance user-db
 # Order Service database
 gcloud sql instances create order-db \
   --database-version POSTGRES_15 \
-  --tier db-custom-4-16384 \
+  --cpu 4 \
+  --memory 16384MB \
   --region us-central1 \
   --availability-type REGIONAL \
   --storage-type SSD \
-  --storage-size 50GB \
+  --storage-size 50 \
   --storage-auto-increase
 
 gcloud sql databases create orders --instance order-db
@@ -163,11 +171,12 @@ gcloud sql databases create orders --instance order-db
 # Product Service database
 gcloud sql instances create product-db \
   --database-version POSTGRES_15 \
-  --tier db-custom-2-8192 \
+  --cpu 2 \
+  --memory 8192MB \
   --region us-central1 \
   --availability-type REGIONAL \
   --storage-type SSD \
-  --storage-size 30GB \
+  --storage-size 30 \
   --storage-auto-increase
 
 gcloud sql databases create products --instance product-db
@@ -179,7 +188,7 @@ Queries that join across service boundaries need to be replaced with API calls:
 
 ```python
 # Before: A single SQL query that joins orders with users and products
-# SELECT o.id, o.total, u.name, u.email, p.name as product_name
+# SELECT o.id, o.total, u.name, u.email, p.name as product_name, oi.quantity, oi.price
 # FROM orders o
 # JOIN users u ON o.user_id = u.id
 # JOIN order_items oi ON oi.order_id = o.id
@@ -268,8 +277,9 @@ Keep denormalized data in sync using events:
 
 ```python
 # User Service publishes events when user data changes
+topic_path = publisher.topic_path(project_id, "user-events")
 publisher.publish(
-    'user-events',
+    topic_path,
     json.dumps({
         "event_type": "user.updated",
         "user_id": user_id,
