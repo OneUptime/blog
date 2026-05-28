@@ -61,6 +61,8 @@ gcloud container clusters create my-cluster \
   --region=us-central1 \
   --workload-pool=my-project-id.svc.id.goog \
   --addons=ConfigConnector \
+  --logging=SYSTEM \
+  --monitoring=SYSTEM \
   --project=my-project-id
 ```
 
@@ -120,34 +122,52 @@ The member format breaks down like this: `PROJECT_ID.svc.id.goog[K8S_NAMESPACE/K
 
 ## Step 5: Configure Config Connector to Use the Service Account
 
-Now apply a ConfigConnectorContext resource that references the GCP service account.
+Now apply a ConfigConnector resource that references the GCP service account.
 
 For cluster-mode (one service account for all namespaces):
 
 ```yaml
-# cluster-mode-context.yaml
+# configconnector.yaml
 # Configures Config Connector in cluster mode with a single service account
 apiVersion: core.cnrm.cloud.google.com/v1beta1
-kind: ConfigConnectorContext
+kind: ConfigConnector
 metadata:
-  name: configconnectorcontext.core.cnrm.cloud.google.com
-  namespace: default
+  name: configconnector.core.cnrm.cloud.google.com
 spec:
+  mode: cluster
   googleServiceAccount: "cnrm-system-sa@my-project-id.iam.gserviceaccount.com"
+  stateIntoSpec: Absent
 ```
 
 Apply it.
 
 ```bash
-# Apply the Config Connector context configuration
-kubectl apply -f cluster-mode-context.yaml
+# Apply the Config Connector configuration
+kubectl apply -f configconnector.yaml
 ```
 
 ## Namespaced Mode Configuration
 
 In namespaced mode, each namespace gets its own GCP service account. This is useful for multi-tenant clusters where different teams manage different GCP projects.
 
-First, create separate GCP service accounts for each namespace.
+First, configure Config Connector to run in namespaced mode.
+
+```yaml
+# configconnector.yaml
+apiVersion: core.cnrm.cloud.google.com/v1beta1
+kind: ConfigConnector
+metadata:
+  name: configconnector.core.cnrm.cloud.google.com
+spec:
+  mode: namespaced
+  stateIntoSpec: Absent
+```
+
+```bash
+kubectl apply -f configconnector.yaml
+```
+
+Then create separate GCP service accounts for each namespace.
 
 ```bash
 # Create service accounts for each team namespace
