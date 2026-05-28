@@ -64,11 +64,11 @@ OPTIONS(location="US");
 -- Create a table for ground truth labels
 -- You will populate this as outcomes become known
 CREATE TABLE IF NOT EXISTS ml_monitoring.ground_truth (
-    request_id STRING NOT NULL,
+    request_id NUMERIC NOT NULL,
     model_id STRING,
     actual_label STRING,
     actual_value FLOAT64,
-    outcome_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
+    outcome_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
 );
 
 -- Create a table for custom performance metrics
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS ml_monitoring.performance_metrics (
     metric_value FLOAT64 NOT NULL,
     evaluation_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
     dataset_size INT64,
-    notes STRING,
+    notes STRING
 );
 
 -- Create a table for drift scores from model monitoring
@@ -90,35 +90,55 @@ CREATE TABLE IF NOT EXISTS ml_monitoring.drift_scores (
     drift_type STRING,  -- 'prediction_drift' or 'training_serving_skew'
     threshold FLOAT64,
     is_anomaly BOOL,
-    measured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
+    measured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
+);
+
+-- Create a table for exported Cloud Monitoring metrics
+CREATE TABLE IF NOT EXISTS ml_monitoring.infrastructure_metrics (
+    metric_type STRING NOT NULL,
+    endpoint_id STRING,
+    deployed_model_id STRING,
+    response_code STRING,
+    latency_type STRING,
+    value FLOAT64,
+    timestamp TIMESTAMP
 );
 ```
 
 ## Step 3: Build Dashboard Views
 
-Create materialized views that aggregate the data for efficient dashboard querying.
+Create views that aggregate the data for dashboard querying.
 
 ```sql
 -- Hourly prediction volume and error rate
 CREATE OR REPLACE VIEW ml_monitoring.hourly_prediction_stats AS
+WITH hourly_metrics AS (
+    SELECT
+        TIMESTAMP_TRUNC(timestamp, HOUR) AS hour,
+        deployed_model_id,
+        SUM(IF(metric_type = 'prediction_count', value, 0)) AS prediction_count,
+        SUM(IF(metric_type = 'error_count', value, 0)) AS error_count,
+        AVG(IF(metric_type = 'prediction_latencies_p50', value, NULL)) AS p50_latency_ms,
+        AVG(IF(metric_type = 'prediction_latencies_p95', value, NULL)) AS p95_latency_ms,
+        AVG(IF(metric_type = 'prediction_latencies_p99', value, NULL)) AS p99_latency_ms
+    FROM
+        ml_monitoring.infrastructure_metrics
+    WHERE
+        timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+    GROUP BY
+        hour, deployed_model_id
+)
 SELECT
-    TIMESTAMP_TRUNC(logging_time, HOUR) AS hour,
+    hour,
     deployed_model_id,
-    COUNT(*) AS prediction_count,
-    -- Calculate error rate from HTTP status codes
-    COUNTIF(status_code != 200) AS error_count,
-    ROUND(COUNTIF(status_code != 200) / COUNT(*) * 100, 2) AS error_rate_pct,
-    -- Calculate latency percentiles
-    ROUND(AVG(latency_ms), 2) AS avg_latency_ms,
-    ROUND(APPROX_QUANTILES(latency_ms, 100)[OFFSET(50)], 2) AS p50_latency_ms,
-    ROUND(APPROX_QUANTILES(latency_ms, 100)[OFFSET(95)], 2) AS p95_latency_ms,
-    ROUND(APPROX_QUANTILES(latency_ms, 100)[OFFSET(99)], 2) AS p99_latency_ms,
+    prediction_count,
+    error_count,
+    ROUND(SAFE_DIVIDE(error_count, prediction_count) * 100, 2) AS error_rate_pct,
+    ROUND(p50_latency_ms, 2) AS p50_latency_ms,
+    ROUND(p95_latency_ms, 2) AS p95_latency_ms,
+    ROUND(p99_latency_ms, 2) AS p99_latency_ms
 FROM
-    ml_monitoring.prediction_logs
-WHERE
-    logging_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-GROUP BY
-    hour, deployed_model_id
+    hourly_metrics
 ORDER BY
     hour DESC;
 
@@ -130,13 +150,13 @@ SELECT
     p.deployed_model_id,
     COUNT(*) AS total_predictions,
     COUNTIF(
-        JSON_EXTRACT_SCALAR(p.response, '$.predictions[0].class') = g.actual_label
+        JSON_VALUE(p.response_payload[SAFE_OFFSET(0)], '$.predictions[0].class') = g.actual_label
     ) AS correct_predictions,
     ROUND(
         COUNTIF(
-            JSON_EXTRACT_SCALAR(p.response, '$.predictions[0].class') = g.actual_label
+            JSON_VALUE(p.response_payload[SAFE_OFFSET(0)], '$.predictions[0].class') = g.actual_label
         ) / COUNT(*) * 100, 2
-    ) AS accuracy_pct,
+    ) AS accuracy_pct
 FROM
     ml_monitoring.prediction_logs p
 JOIN
@@ -159,7 +179,7 @@ SELECT
     ROUND(AVG(drift_score), 4) AS avg_drift_score,
     MAX(drift_score) AS max_drift_score,
     threshold,
-    COUNTIF(is_anomaly) AS anomaly_count,
+    COUNTIF(is_anomaly) AS anomaly_count
 FROM
     ml_monitoring.drift_scores
 WHERE
@@ -177,14 +197,14 @@ Create a scheduled pipeline that joins predictions with ground truth to compute 
 ```python
 # metrics_pipeline.py
 from google.cloud import bigquery
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def compute_daily_metrics():
     """Compute daily model performance metrics and store them."""
     client = bigquery.Client()
 
     # Calculate metrics for yesterday's predictions
-    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
 
     # Compute accuracy by model version
     accuracy_query = f"""
@@ -195,7 +215,7 @@ def compute_daily_metrics():
         'daily_accuracy' AS metric_name,
         ROUND(
             COUNTIF(
-                JSON_EXTRACT_SCALAR(p.response, '$.predictions[0].class') = g.actual_label
+                JSON_VALUE(p.response_payload[SAFE_OFFSET(0)], '$.predictions[0].class') = g.actual_label
             ) / COUNT(*), 4
         ) AS metric_value,
         CURRENT_TIMESTAMP() AS evaluation_timestamp,
@@ -216,30 +236,62 @@ def compute_daily_metrics():
     WITH predictions AS (
         SELECT
             p.deployed_model_id,
-            JSON_EXTRACT_SCALAR(p.response, '$.predictions[0].class') AS predicted_class,
-            g.actual_label AS actual_class,
+            JSON_VALUE(p.response_payload[SAFE_OFFSET(0)], '$.predictions[0].class') AS predicted_class,
+            g.actual_label AS actual_class
         FROM
             ml_monitoring.prediction_logs p
         JOIN
             ml_monitoring.ground_truth g ON p.request_id = g.request_id
         WHERE
             DATE(p.logging_time) = '{yesterday}'
+    ),
+    classes AS (
+        SELECT predicted_class AS class_name FROM predictions
+        UNION DISTINCT
+        SELECT actual_class AS class_name FROM predictions
+    ),
+    model_classes AS (
+        SELECT DISTINCT
+            deployed_model_id,
+            class_name
+        FROM predictions
+        CROSS JOIN classes
+    ),
+    class_counts AS (
+        SELECT
+            mc.deployed_model_id,
+            mc.class_name,
+            COUNTIF(
+                p.predicted_class = mc.class_name
+                AND p.actual_class = mc.class_name
+            ) AS true_positives,
+            COUNTIF(p.predicted_class = mc.class_name) AS predicted_count,
+            COUNTIF(p.actual_class = mc.class_name) AS actual_count
+        FROM model_classes mc
+        LEFT JOIN predictions p
+            ON p.deployed_model_id = mc.deployed_model_id
+        GROUP BY
+            mc.deployed_model_id, mc.class_name
     )
     INSERT INTO ml_monitoring.performance_metrics
         (model_id, metric_name, metric_value, evaluation_timestamp, dataset_size, notes)
     SELECT
         deployed_model_id,
-        CONCAT('precision_class_', actual_class),
-        ROUND(
-            COUNTIF(predicted_class = actual_class)
-            / NULLIF(COUNTIF(predicted_class = actual_class OR predicted_class != actual_class), 0),
-            4
-        ),
+        CONCAT('precision_class_', class_name),
+        ROUND(SAFE_DIVIDE(true_positives, predicted_count), 4),
         CURRENT_TIMESTAMP(),
-        COUNT(*),
-        actual_class
-    FROM predictions
-    GROUP BY deployed_model_id, actual_class
+        predicted_count,
+        class_name
+    FROM class_counts
+    UNION ALL
+    SELECT
+        deployed_model_id,
+        CONCAT('recall_class_', class_name),
+        ROUND(SAFE_DIVIDE(true_positives, actual_count), 4),
+        CURRENT_TIMESTAMP(),
+        actual_count,
+        class_name
+    FROM class_counts
     """
     client.query(class_metrics_query).result()
 
@@ -258,7 +310,7 @@ def compute_segment_metrics():
         CONCAT('accuracy_segment_', segment) AS metric_name,
         ROUND(
             COUNTIF(
-                JSON_EXTRACT_SCALAR(p.response, '$.predictions[0].class') = g.actual_label
+                JSON_VALUE(p.response_payload[SAFE_OFFSET(0)], '$.predictions[0].class') = g.actual_label
             ) / COUNT(*), 4
         ) AS metric_value,
         CURRENT_TIMESTAMP(),
@@ -270,7 +322,7 @@ def compute_segment_metrics():
     CROSS JOIN
         UNNEST(['mobile', 'desktop', 'tablet']) AS segment
     WHERE
-        JSON_EXTRACT_SCALAR(p.request, '$.instances[0].device_type') = segment
+        JSON_VALUE(p.request_payload[SAFE_OFFSET(0)], '$.instances[0].device_type') = segment
         AND p.logging_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
     GROUP BY
         p.deployed_model_id, segment
@@ -303,30 +355,74 @@ def export_endpoint_metrics():
         "start_time": {"seconds": int(now - 3600)},  # Last hour
     })
 
-    metrics_to_export = [
-        "aiplatform.googleapis.com/prediction/online/prediction_count",
-        "aiplatform.googleapis.com/prediction/online/error_count",
-        "aiplatform.googleapis.com/prediction/online/response_latencies",
+    count_metrics = [
+        ("aiplatform.googleapis.com/prediction/online/prediction_count", None),
+        ("aiplatform.googleapis.com/prediction/online/error_count", None),
     ]
+    latency_metric = "aiplatform.googleapis.com/prediction/online/prediction_latencies"
+    latency_aligners = {
+        "prediction_latencies_p50": monitoring_v3.Aggregation.Aligner.ALIGN_PERCENTILE_50,
+        "prediction_latencies_p95": monitoring_v3.Aggregation.Aligner.ALIGN_PERCENTILE_95,
+        "prediction_latencies_p99": monitoring_v3.Aggregation.Aligner.ALIGN_PERCENTILE_99,
+    }
 
     rows = []
-    for metric_type in metrics_to_export:
+    for metric_type, aligner in count_metrics:
         results = monitoring_client.list_time_series(
             request={
                 "name": project_name,
                 "filter": f'metric.type="{metric_type}"',
                 "interval": interval,
+                "aggregation": {
+                    "alignment_period": {"seconds": 3600},
+                    "per_series_aligner": aligner
+                    or monitoring_v3.Aggregation.Aligner.ALIGN_DELTA,
+                },
                 "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
             }
         )
 
         for series in results:
             endpoint_id = series.resource.labels.get("endpoint_id", "unknown")
+            deployed_model_id = series.metric.labels.get("deployed_model_id", "unknown")
+            response_code = series.metric.labels.get("response_code")
             for point in series.points:
                 rows.append({
                     "metric_type": metric_type.split("/")[-1],
                     "endpoint_id": endpoint_id,
+                    "deployed_model_id": deployed_model_id,
+                    "response_code": response_code,
                     "value": point.value.int64_value or point.value.double_value,
+                    "timestamp": point.interval.end_time.isoformat(),
+                })
+
+    for metric_name, aligner in latency_aligners.items():
+        results = monitoring_client.list_time_series(
+            request={
+                "name": project_name,
+                "filter": (
+                    f'metric.type="{latency_metric}" '
+                    'AND metric.labels.latency_type="total"'
+                ),
+                "interval": interval,
+                "aggregation": {
+                    "alignment_period": {"seconds": 3600},
+                    "per_series_aligner": aligner,
+                },
+                "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
+            }
+        )
+
+        for series in results:
+            endpoint_id = series.resource.labels.get("endpoint_id", "unknown")
+            deployed_model_id = series.metric.labels.get("deployed_model_id", "unknown")
+            for point in series.points:
+                rows.append({
+                    "metric_type": metric_name,
+                    "endpoint_id": endpoint_id,
+                    "deployed_model_id": deployed_model_id,
+                    "latency_type": series.metric.labels.get("latency_type"),
+                    "value": point.value.double_value,
                     "timestamp": point.interval.end_time.isoformat(),
                 })
 
