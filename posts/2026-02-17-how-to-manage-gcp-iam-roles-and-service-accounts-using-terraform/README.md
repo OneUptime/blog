@@ -8,7 +8,7 @@ Description: Learn how to manage Google Cloud IAM roles, service accounts, and a
 
 ---
 
-IAM is the security foundation of every GCP project. Who can access what, and what they can do with that access, determines your entire security posture. Managing IAM through the Cloud Console might seem easier, but it leads to permission sprawl, undocumented access, and zero audit trail for changes.
+IAM is the security foundation of every GCP project. Who can access what, and what they can do with that access, determines your entire security posture. Managing IAM through the Cloud Console might seem easier, but it leads to permission sprawl, undocumented access, and no version-controlled audit trail for changes.
 
 Terraform brings IAM under version control. Every permission grant is reviewed in a pull request, tracked in Git history, and reproducible across environments. Let me walk through how to manage IAM properly with Terraform on GCP.
 
@@ -225,6 +225,18 @@ resource "google_service_account_iam_member" "workload_identity_binding" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[default/web-app]"
 }
+
+# Annotate the Kubernetes service account with the GCP service account email
+resource "kubernetes_service_account_v1" "web_app" {
+  metadata {
+    name      = "web-app"
+    namespace = "default"
+
+    annotations = {
+      "iam.gke.io/gcp-service-account" = google_service_account.web_app.email
+    }
+  }
+}
 ```
 
 Resource-Level IAM
@@ -268,7 +280,7 @@ resource "google_project_iam_member" "conditional_access" {
   condition {
     title       = "business_hours_only"
     description = "Access limited to business hours"
-    expression  = "request.time.getHours('America/New_York') >= 9 && request.time.getHours('America/New_York') <= 17"
+    expression  = "request.time.getHours('America/New_York') >= 9 && request.time.getHours('America/New_York') < 17"
   }
 }
 
