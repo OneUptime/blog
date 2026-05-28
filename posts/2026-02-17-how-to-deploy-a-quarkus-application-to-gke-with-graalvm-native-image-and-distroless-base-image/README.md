@@ -19,10 +19,10 @@ Start with a Quarkus project that has the dependencies you need:
 ```bash
 # Generate a Quarkus project with REST and health extensions
 
-mvn io.quarkus.platform:quarkus-maven-plugin:3.6.0:create \
+mvn io.quarkus.platform:quarkus-maven-plugin:3.35.4:create \
     -DprojectGroupId=com.example \
     -DprojectArtifactId=quarkus-gke-app \
-    -Dextensions="resteasy-reactive-jackson,smallrye-health,micrometer-registry-prometheus"
+    -Dextensions="rest-jackson,smallrye-health,micrometer-registry-prometheus"
 ```
 
 ## The Application Code
@@ -91,14 +91,19 @@ Quarkus makes native compilation straightforward. You have two options: compile 
 For the Docker-based approach, create a multistage Dockerfile:
 
 ```dockerfile
-# Stage 1: Build the native binary using a GraalVM builder image
-FROM quay.io/quarkus/ubi-quarkus-mandrel-builder-image:jdk-21 AS build
+# Stage 1: Build the native binary using a Mandrel builder image
+FROM quay.io/quarkus/ubi9-quarkus-mandrel-builder-image:jdk-21 AS build
 USER root
-WORKDIR /app
+WORKDIR /code
 
 # Copy project files
-COPY pom.xml .
-COPY src ./src
+COPY --chown=quarkus:quarkus --chmod=0755 mvnw /code/mvnw
+COPY --chown=quarkus:quarkus .mvn /code/.mvn
+COPY --chown=quarkus:quarkus pom.xml /code/
+
+USER quarkus
+RUN ./mvnw -B org.apache.maven.plugins:maven-dependency-plugin:3.8.1:go-offline
+COPY --chown=quarkus:quarkus src /code/src
 
 # Build the native binary
 # -Pnative activates the native profile in the Quarkus Maven plugin
@@ -111,7 +116,7 @@ FROM gcr.io/distroless/base-debian12
 WORKDIR /app
 
 # Copy the native binary from the build stage
-COPY --from=build /app/target/*-runner /app/application
+COPY --from=build /code/target/*-runner /app/application
 
 # Expose the application port
 EXPOSE 8080
