@@ -1,16 +1,16 @@
-# How to Configure Minimum Instances for Cloud Functions to Eliminate Cold Starts
+# How to Configure Minimum Instances for Cloud Functions to Reduce Cold Starts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Function, Cold Start, Performance, Serverless
 
-Description: Learn how to configure minimum instances in Google Cloud Functions to keep warm instances ready and eliminate cold start latency for latency-sensitive workloads.
+Description: Learn how to configure minimum instances in Google Cloud Functions to keep warm instances ready and reduce cold start latency for latency-sensitive workloads.
 
 ---
 
 Cold starts are the biggest complaint people have about serverless functions. When no instances are running and a request arrives, Google Cloud needs to spin up a new container, load your code, initialize dependencies, and then handle the request. This can add anywhere from 500 milliseconds to several seconds of latency depending on your runtime and dependencies. For user-facing APIs or real-time processing, that is not acceptable.
 
-The minimum instances feature solves this by keeping a configurable number of function instances warm and ready to serve requests at all times. Let me walk you through how to set it up, what it costs, and when it makes sense.
+The minimum instances feature helps with this by keeping a configurable number of function instances warm and ready to serve requests. Let me walk you through how to set it up, what it costs, and when it makes sense.
 
 ## How Minimum Instances Work
 
@@ -18,7 +18,7 @@ When you configure minimum instances, Google Cloud keeps that many function inst
 
 - Have already loaded your runtime and dependencies
 - Have executed your global/module-level initialization code
-- Are ready to handle requests immediately with no cold start
+- Are ready to handle requests without the usual cold start path
 - Continue to scale beyond the minimum when traffic increases
 
 Think of it like keeping a restaurant kitchen staffed even during slow hours. You pay for the staff whether they are cooking or not, but when an order comes in, it goes out fast.
@@ -30,7 +30,7 @@ Think of it like keeping a restaurant kitchen staffed even during slow hours. Yo
 For Gen 2 functions, set the `--min-instances` flag during deployment:
 
 ```bash
-# Deploy with 2 minimum instances always warm
+# Deploy with 2 minimum instances configured
 
 gcloud functions deploy my-api \
   --gen2 \
@@ -52,8 +52,7 @@ You can also update an existing function without redeploying the code:
 gcloud functions deploy my-api \
   --gen2 \
   --region=us-central1 \
-  --min-instances=3 \
-  --update-no-code
+  --min-instances=3
 ```
 
 Since Gen 2 functions run on Cloud Run under the hood, you can also configure this through the Cloud Run service directly:
@@ -72,6 +71,7 @@ Gen 1 also supports minimum instances, though the syntax is slightly different:
 ```bash
 # Deploy Gen 1 function with minimum instances
 gcloud functions deploy my-api \
+  --no-gen2 \
   --runtime=nodejs20 \
   --region=us-central1 \
   --source=. \
@@ -86,15 +86,15 @@ This depends on your traffic pattern and latency requirements. Here is a practic
 
 ### Analyze Your Traffic Pattern
 
-Look at your function's concurrent execution over time:
+Look at your function's instance count over time:
 
 ```bash
-# Check the maximum concurrent executions over the past week
+# Confirm the instance count metric you can chart in Cloud Monitoring
 gcloud monitoring metrics list \
-  --filter="metric.type=cloudfunctions.googleapis.com/function/active_instances"
+  --filter='metric.type="cloudfunctions.googleapis.com/function/instance_count"'
 ```
 
-What you are looking for is your baseline traffic - the minimum number of concurrent requests at any given time. If your function always has at least 5 concurrent requests during business hours but drops to 0 at night, you might set minimum instances to 3-5.
+What you are looking for is your baseline traffic - the minimum number of instances needed at any given time. If your function typically has 5 active or idle instances during business hours but drops to 0 at night, you might set minimum instances to 3-5.
 
 ### Consider Gen 2 Concurrency
 
@@ -123,25 +123,19 @@ This configuration keeps 2 instances warm, each capable of handling 80 concurren
 Minimum instances are not free. You pay for idle instance time at a reduced rate. Let me break down the costs.
 
 For Gen 2 functions, idle instances are billed at the Cloud Run idle pricing:
-- CPU: Billed only when processing requests (not when idle) if you use CPU allocation = "request"
-- Memory: Billed at the idle rate even when not processing requests
+- CPU: Billed at the idle CPU rate for minimum instances when they are not processing requests
+- Memory: Billed at the idle memory rate even when not processing requests
 
-Here is the key insight: set CPU allocation to "request only" for minimum instances to minimize costs:
+Cloud Run request-based billing is the default for services. If you have changed the underlying Cloud Run service to instance-based billing, switch it back to request-based billing to use the lower idle rates:
 
 ```bash
-# Use "request" CPU allocation to avoid paying for idle CPU
-gcloud functions deploy my-api \
-  --gen2 \
-  --runtime=nodejs20 \
+# Use request-based billing on the underlying Cloud Run service
+gcloud run services update my-api \
   --region=us-central1 \
-  --source=. \
-  --entry-point=handleRequest \
-  --trigger-http \
-  --min-instances=2 \
   --cpu-throttling
 ```
 
-With this setting, idle instances only cost you for memory (roughly $0.00000250 per GB-second). A 512MB instance idle for 24 hours costs about $0.11 per day. That is roughly $3.30 per month per idle instance.
+With request-based billing, idle minimum instances are billed at lower idle CPU and memory rates. Memory is roughly $0.00000250 per GB-second in tier 1 regions, so 512MB of idle memory for 24 hours costs about $0.11 per day before CPU idle charges, requests, free tier, and regional pricing differences.
 
 ## Combining with Other Optimization Strategies
 
@@ -153,7 +147,7 @@ graph TD
     A --> C[Dependency Optimization]
     A --> D[Gen 2 Concurrency]
     A --> E[Connection Pooling]
-    B --> F[Eliminates cold starts<br>for baseline traffic]
+    B --> F[Reduces cold starts<br>for baseline traffic]
     C --> G[Reduces cold start duration<br>for scaling events]
     D --> H[Fewer instances needed<br>reducing cost]
     E --> I[Avoids connection setup<br>latency per request]
@@ -183,7 +177,7 @@ resource "google_cloudfunctions2_function" "api" {
   }
 
   service_config {
-    # Keep 2 instances warm at all times
+    # Keep 2 minimum instances configured
     min_instance_count = 2
     max_instance_count = 100
 
@@ -247,7 +241,7 @@ They probably are not worth it when:
 
 ## Monitoring Minimum Instance Effectiveness
 
-Set up monitoring to track whether your minimum instances configuration is actually eliminating cold starts. With OneUptime, you can create dashboards that show cold start frequency and p99 latency before and after enabling minimum instances. This data helps you justify the cost and tune the instance count over time.
+Set up monitoring to track whether your minimum instances configuration is actually reducing cold starts. With OneUptime, you can create dashboards that show cold start frequency and p99 latency before and after enabling minimum instances. This data helps you justify the cost and tune the instance count over time.
 
 ```bash
 # Check instance count metrics to verify warm instances are running
