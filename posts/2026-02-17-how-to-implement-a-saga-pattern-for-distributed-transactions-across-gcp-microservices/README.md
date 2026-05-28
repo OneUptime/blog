@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Microservice, Saga Pattern, Pub/Sub, Distributed Transaction, Cloud Run, Workflow
+Tags: GCP, Microservice, Saga Pattern, Distributed Transaction, Cloud Run, Workflow
 
-Description: Implement the saga pattern using Google Cloud Pub/Sub and Cloud Workflows to manage distributed transactions across microservices without two-phase commit on GCP.
+Description: Implement the saga pattern using Cloud Workflows to manage distributed transactions across microservices without two-phase commit on GCP.
 
 ---
 
@@ -56,7 +56,6 @@ Here is the Payment Service:
 
 from flask import Flask, request, jsonify
 from google.cloud import firestore
-import uuid
 
 app = Flask(__name__)
 db = firestore.Client()
@@ -69,16 +68,23 @@ def charge_payment():
     amount = data['amount']
     customer_id = data['customer_id']
 
-    # Generate a unique transaction ID for idempotency
-    transaction_id = str(uuid.uuid4())
+    # Use a deterministic transaction ID so retries do not create duplicate charges
+    transaction_id = f'txn-{order_id}'
+    transaction_ref = db.collection('transactions').document(transaction_id)
+    existing = transaction_ref.get()
+    if existing.exists:
+        return jsonify({
+            'status': existing.to_dict()['status'],
+            'transaction_id': transaction_id,
+        })
 
     try:
         # Simulate calling a payment processor
-        # In production, this would call Stripe, Braintree, etc.
+        # In production, pass transaction_id as the provider idempotency key.
         result = process_charge(customer_id, amount, transaction_id)
 
         # Record the transaction so we can refund it later if needed
-        db.collection('transactions').document(transaction_id).set({
+        transaction_ref.set({
             'order_id': order_id,
             'customer_id': customer_id,
             'amount': amount,
@@ -111,7 +117,7 @@ def refund_payment():
         # Already refunded - idempotent handling
         return jsonify({'status': 'already_refunded'})
 
-    # Process the refund
+    # Process the refund. Use transaction_id as the provider idempotency key.
     process_refund(txn['customer_id'], txn['amount'], transaction_id)
 
     # Update the transaction status
@@ -146,29 +152,48 @@ def reserve_inventory():
         # Use a Firestore transaction to atomically check and reserve
         @firestore.transactional
         def reserve_in_transaction(transaction):
+            res_ref = db.collection('reservations').document(reservation_id)
+            existing_res = res_ref.get(transaction=transaction)
+            if existing_res.exists:
+                reservation = existing_res.to_dict()
+                if reservation['status'] == 'reserved':
+                    return reservation_id
+                raise ValueError(f'Reservation {reservation_id} is already {reservation["status"]}')
+
+            sku_refs = []
+            sku_docs = []
             for item in items:
                 sku_ref = db.collection('inventory').document(item['sku'])
                 sku_doc = sku_ref.get(transaction=transaction)
+                if not sku_doc.exists:
+                    raise ValueError(f'Unknown SKU {item["sku"]}')
+                sku_refs.append(sku_ref)
+                sku_docs.append(sku_doc)
+
+            for item, sku_doc in zip(items, sku_docs):
                 available = sku_doc.to_dict().get('available', 0)
 
                 if available < item['quantity']:
                     raise ValueError(f'Insufficient stock for {item["sku"]}')
 
+            for item, sku_ref, sku_doc in zip(items, sku_refs, sku_docs):
+                available = sku_doc.to_dict().get('available', 0)
                 transaction.update(sku_ref, {
                     'available': available - item['quantity'],
                     'reserved': firestore.Increment(item['quantity']),
                 })
 
             # Record the reservation
-            res_ref = db.collection('reservations').document(reservation_id)
             transaction.set(res_ref, {
                 'order_id': order_id,
                 'items': items,
                 'status': 'reserved',
             })
 
+            return reservation_id
+
         transaction = db.transaction()
-        reserve_in_transaction(transaction)
+        reservation_id = reserve_in_transaction(transaction)
 
         return jsonify({'status': 'reserved', 'reservation_id': reservation_id})
 
@@ -190,18 +215,33 @@ def release_inventory():
     if reservation['status'] == 'released':
         return jsonify({'status': 'already_released'})
 
-    # Return items to available inventory
-    for item in reservation['items']:
-        db.collection('inventory').document(item['sku']).update({
-            'available': firestore.Increment(item['quantity']),
-            'reserved': firestore.Increment(-item['quantity']),
+    @firestore.transactional
+    def release_in_transaction(transaction):
+        reservation_ref = db.collection('reservations').document(reservation_id)
+        reservation_doc = reservation_ref.get(transaction=transaction)
+        reservation = reservation_doc.to_dict()
+
+        if reservation['status'] == 'released':
+            return 'already_released'
+
+        # Return items to available inventory
+        for item in reservation['items']:
+            sku_ref = db.collection('inventory').document(item['sku'])
+            transaction.update(sku_ref, {
+                'available': firestore.Increment(item['quantity']),
+                'reserved': firestore.Increment(-item['quantity']),
+            })
+
+        transaction.update(reservation_ref, {
+            'status': 'released',
         })
 
-    db.collection('reservations').document(reservation_id).update({
-        'status': 'released',
-    })
+        return 'released'
 
-    return jsonify({'status': 'released'})
+    transaction = db.transaction()
+    status = release_in_transaction(transaction)
+
+    return jsonify({'status': status})
 ```
 
 ## The Saga Orchestrator with Cloud Workflows
@@ -265,13 +305,15 @@ main:
           steps:
             # Compensate: refund the payment
             - compensate_payment_after_inventory:
-                call: http.post
-                args:
-                  url: https://payment-service-xxxxx.run.app/refund
-                  body:
-                    transaction_id: ${transaction_id}
-                  auth:
-                    type: OIDC
+                try:
+                  call: http.post
+                  args:
+                    url: https://payment-service-xxxxx.run.app/refund
+                    body:
+                      transaction_id: ${transaction_id}
+                    auth:
+                      type: OIDC
+                retry: ${http.default_retry}
             - inventory_failed:
                 return:
                   status: "failed"
@@ -300,21 +342,25 @@ main:
           steps:
             # Compensate: release inventory, then refund payment
             - compensate_inventory:
-                call: http.post
-                args:
-                  url: https://inventory-service-xxxxx.run.app/release
-                  body:
-                    reservation_id: ${reservation_id}
-                  auth:
-                    type: OIDC
+                try:
+                  call: http.post
+                  args:
+                    url: https://inventory-service-xxxxx.run.app/release
+                    body:
+                      reservation_id: ${reservation_id}
+                    auth:
+                      type: OIDC
+                retry: ${http.default_retry}
             - compensate_payment_after_shipping:
-                call: http.post
-                args:
-                  url: https://payment-service-xxxxx.run.app/refund
-                  body:
-                    transaction_id: ${transaction_id}
-                  auth:
-                    type: OIDC
+                try:
+                  call: http.post
+                  args:
+                    url: https://payment-service-xxxxx.run.app/refund
+                    body:
+                      transaction_id: ${transaction_id}
+                    auth:
+                      type: OIDC
+                retry: ${http.default_retry}
             - shipping_failed:
                 return:
                   status: "failed"
