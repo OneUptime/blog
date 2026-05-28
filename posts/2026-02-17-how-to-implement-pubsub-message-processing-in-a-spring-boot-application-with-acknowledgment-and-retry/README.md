@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Pub/Sub, Spring Boot, Message Processing, Retry, Java
 
-Description: Implement reliable Pub/Sub message processing in Spring Boot with manual acknowledgment, retry policies, dead letter queues, and exactly-once processing patterns.
+Description: Implement reliable Pub/Sub message processing in Spring Boot with manual acknowledgment, retry policies, dead letter queues, and idempotent processing patterns.
 
 ---
 
-Processing messages from Pub/Sub reliably is harder than it looks. You need to handle acknowledgment correctly, deal with messages that fail processing, implement retries with backoff, and make sure you do not lose messages or process them twice. The Spring Cloud GCP Pub/Sub module gives you the building blocks, but assembling them into a production-ready consumer requires understanding the details.
+Processing messages from Pub/Sub reliably is harder than it looks. You need to handle acknowledgment correctly, deal with messages that fail processing, implement retries with backoff, and make sure you do not lose messages or process duplicates incorrectly. The Spring Cloud GCP Pub/Sub module gives you the building blocks, but assembling them into a production-ready consumer requires understanding the details.
 
 This post covers building a robust Pub/Sub message consumer in Spring Boot with proper acknowledgment handling and retry logic.
 
@@ -123,7 +123,7 @@ public class OrderMessageConsumer {
 
 ## Implementing Application-Level Retry
 
-Nacking a message causes immediate redelivery, which can overwhelm your service if the failure persists. Add application-level retry with backoff:
+Nacking a message causes immediate redelivery, which can overwhelm your service if the failure persists. Add application-level retry with backoff. This example uses `AcknowledgeablePubsubMessage`, which exposes `modifyAckDeadline` in addition to ack and nack:
 
 ```java
 @Service
@@ -142,7 +142,7 @@ public class RetryableMessageProcessor {
     }
 
     // Process a message with retry logic
-    public void processWithRetry(BasicAcknowledgeablePubsubMessage message) {
+    public void processWithRetry(AcknowledgeablePubsubMessage message) {
         String payload = message.getPubsubMessage().getData().toStringUtf8();
         String messageId = message.getPubsubMessage().getMessageId();
 
@@ -174,7 +174,7 @@ public class RetryableMessageProcessor {
         }
     }
 
-    private int getDeliveryAttempt(BasicAcknowledgeablePubsubMessage message) {
+    private int getDeliveryAttempt(AcknowledgeablePubsubMessage message) {
         // Pub/Sub includes delivery attempt count when dead lettering is enabled
         Map<String, String> attributes = message.getPubsubMessage().getAttributesMap();
         String attempt = attributes.get("googclient_deliveryattempt");
@@ -286,6 +286,11 @@ gcloud pubsub subscriptions update order-subscription \
 gcloud pubsub topics add-iam-policy-binding order-dead-letter \
     --member="serviceAccount:service-PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com" \
     --role="roles/pubsub.publisher"
+
+# Grant Pub/Sub permission to acknowledge messages on the source subscription
+gcloud pubsub subscriptions add-iam-policy-binding order-subscription \
+    --member="serviceAccount:service-PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com" \
+    --role="roles/pubsub.subscriber"
 ```
 
 ## Idempotent Processing
