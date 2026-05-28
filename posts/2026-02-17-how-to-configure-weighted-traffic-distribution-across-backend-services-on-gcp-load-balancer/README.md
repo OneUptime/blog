@@ -33,21 +33,30 @@ You need two separate backend services - one for each version of your applicatio
 # Create health checks
 
 gcloud compute health-checks create http app-health-check \
+    --global \
     --port=8080 \
     --request-path=/healthz
 
 # Create the stable backend service (v1)
 gcloud compute backend-services create app-v1-backend \
     --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
     --protocol=HTTP \
+    --global-health-checks \
     --health-checks=app-health-check \
+    --enable-logging \
+    --logging-sample-rate=1.0 \
     --port-name=http
 
 # Create the canary backend service (v2)
 gcloud compute backend-services create app-v2-backend \
     --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
     --protocol=HTTP \
+    --global-health-checks \
     --health-checks=app-health-check \
+    --enable-logging \
+    --logging-sample-rate=1.0 \
     --port-name=http
 ```
 
@@ -67,9 +76,7 @@ gcloud compute instance-groups managed set-named-ports app-v1-mig \
 gcloud compute backend-services add-backend app-v1-backend \
     --global \
     --instance-group=app-v1-mig \
-    --instance-group-zone=us-central1-a \
-    --balancing-mode=RATE \
-    --max-rate-per-instance=100
+    --instance-group-zone=us-central1-a
 
 # Instance group for v2
 gcloud compute instance-groups managed create app-v2-mig \
@@ -84,9 +91,7 @@ gcloud compute instance-groups managed set-named-ports app-v2-mig \
 gcloud compute backend-services add-backend app-v2-backend \
     --global \
     --instance-group=app-v2-mig \
-    --instance-group-zone=us-central1-a \
-    --balancing-mode=RATE \
-    --max-rate-per-instance=100
+    --instance-group-zone=us-central1-a
 ```
 
 ## Step 1 - Create the URL Map with Weighted Routing
@@ -96,10 +101,11 @@ The URL map defines how traffic is split between backend services.
 ```bash
 # Create the URL map with weighted traffic split
 gcloud compute url-maps create app-url-map \
+    --global \
     --default-service=app-v1-backend
 
 # Now import a more detailed configuration with weighted routing
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/app-v1-backend
 hostRules:
@@ -132,15 +138,20 @@ gcloud compute ssl-certificates create app-cert \
 
 # Create the target HTTPS proxy
 gcloud compute target-https-proxies create app-https-proxy \
+    --global \
     --url-map=app-url-map \
     --ssl-certificates=app-cert
 
 # Reserve a global IP
-gcloud compute addresses create app-global-ip --global
+gcloud compute addresses create app-global-ip \
+    --global \
+    --network-tier=PREMIUM
 
 # Create the forwarding rule
 gcloud compute forwarding-rules create app-https-rule \
     --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
+    --network-tier=PREMIUM \
     --address=app-global-ip \
     --target-https-proxy=app-https-proxy \
     --ports=443
@@ -156,7 +167,7 @@ update_weights() {
     local v1_weight=$1
     local v2_weight=$2
 
-    gcloud compute url-maps import app-url-map --source=- <<EOF
+    gcloud compute url-maps import app-url-map --global <<EOF
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/app-v1-backend
 hostRules:
@@ -192,7 +203,7 @@ Sometimes you want internal testers to always hit the canary, regardless of the 
 
 ```bash
 # URL map with both weighted routing and header-based override
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/app-v1-backend
 hostRules:
@@ -225,7 +236,7 @@ Now requests with the header `x-force-canary: true` always go to v2, while every
 
 ## Step 5 - Monitor the Traffic Split
 
-Use Cloud Monitoring to verify the traffic distribution and compare error rates between versions.
+Use Cloud Monitoring to verify the traffic distribution and compare request counts between versions.
 
 ```bash
 # Check request counts per backend service
@@ -237,25 +248,32 @@ gcloud logging read 'resource.type="http_load_balancer"' \
 For a more detailed view, create a monitoring dashboard:
 
 ```python
-# Python script to compare error rates between v1 and v2
+# Python script to compare request counts between v1 and v2
 from google.cloud import monitoring_v3
+from google.protobuf import timestamp_pb2
 import time
 
 client = monitoring_v3.MetricServiceClient()
 project_name = f"projects/my-project"
 
-# Query error rate for each backend
+end_time = timestamp_pb2.Timestamp()
+end_time.FromSeconds(int(time.time()))
+start_time = timestamp_pb2.Timestamp()
+start_time.FromSeconds(int(time.time()) - 3600)
+
+# Query request count for each backend
 for backend in ["app-v1-backend", "app-v2-backend"]:
     interval = monitoring_v3.TimeInterval(
-        end_time={"seconds": int(time.time())},
-        start_time={"seconds": int(time.time()) - 3600}  # Last hour
+        end_time=end_time,
+        start_time=start_time  # Last hour
     )
 
     results = client.list_time_series(
         request={
             "name": project_name,
-            "filter": f'metric.type="loadbalancing.googleapis.com/https/request_count" '
-                      f'AND resource.labels.backend_service_name="{backend}"',
+            "filter": f'metric.type="loadbalancing.googleapis.com/https/backend_request_count" '
+                      f'AND resource.type="https_lb_rule" '
+                      f'AND resource.labels.backend_target_name="{backend}"',
             "interval": interval,
             "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
         }
@@ -272,7 +290,7 @@ for backend in ["app-v1-backend", "app-v2-backend"]:
 You can also apply different weights to different URL paths. For example, you might want to canary your API endpoints separately from your frontend.
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/app-v1-backend
 hostRules:
