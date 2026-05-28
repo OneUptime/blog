@@ -8,7 +8,7 @@ Description: Compare Cloud DNS, Traffic Director, and ExternalDNS for service di
 
 ---
 
-Service discovery - the mechanism by which services find and communicate with each other - is a fundamental piece of any distributed system. On Google Cloud Platform, you have several options: Cloud DNS for traditional DNS-based discovery, Traffic Director for advanced service mesh-based routing, and ExternalDNS for automatically synchronizing Kubernetes service endpoints with DNS providers. Each solves a different slice of the service discovery problem.
+Service discovery - the mechanism by which services find and communicate with each other - is a fundamental piece of any distributed system. On Google Cloud Platform, you have several options: Cloud DNS for traditional DNS-based discovery, Traffic Director (now part of Cloud Service Mesh) for advanced service mesh-based routing, and ExternalDNS for automatically synchronizing Kubernetes service endpoints with DNS providers. Each solves a different slice of the service discovery problem.
 
 ## Cloud DNS for Service Discovery
 
@@ -44,30 +44,36 @@ Cloud DNS also supports DNS peering, which lets you forward DNS queries from one
 
 - Universal protocol - every application and language supports DNS
 - Low overhead - no sidecar proxies or agents needed
-- Works for VMs, GKE, Cloud Run, and any other GCP compute
+- Works for VMs, GKE, Cloud Run, and other workloads that can query the VPC DNS resolver
 - Private zones keep internal services invisible from the public internet
 - Response policies can override DNS responses for testing or failover
 
 **Cloud DNS limitations:**
 
 - DNS caching makes updates slow to propagate (even with low TTL)
-- No health checking built into DNS - a record can point to a dead service
-- No load balancing intelligence - round-robin at best
-- No traffic management features like canary deployments or circuit breaking
+- Static DNS records do not health-check targets, so a basic A record can point to a dead service
+- DNS routing policies support weighted round robin, geolocation, and failover for supported targets, but they are still subject to DNS caching and resolver behavior
+- No application-aware traffic management features like header-based canary deployments or circuit breaking
 
 ## Traffic Director for Service Mesh Discovery
 
-Traffic Director is Google's managed control plane for service mesh. It configures Envoy sidecar proxies (or proxyless gRPC clients) to handle service discovery, load balancing, traffic management, and observability. Think of it as a centralized brain that tells every service how to route traffic to every other service.
+Traffic Director is Google's managed control plane implementation for Cloud Service Mesh. It configures Envoy sidecar proxies (or proxyless gRPC clients) to handle service discovery, load balancing, traffic management, and observability. Think of it as a centralized brain that tells every service how to route traffic to every other service.
 
 ```yaml
-# GKE service with Traffic Director sidecar injection
+# GKE service and route with Cloud Service Mesh sidecar injection
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mesh-example
+  labels:
+    # Enable Cloud Service Mesh sidecar injection for this namespace
+    mesh.cloud.google.com/csm-injection: sidecar
+---
 apiVersion: v1
 kind: Service
 metadata:
   name: payment-service
-  annotations:
-    # Traffic Director discovers this service automatically
-    cloud.google.com/neg: '{"ingress": true}'
+  namespace: mesh-example
 spec:
   selector:
     app: payment
@@ -75,28 +81,41 @@ spec:
     - port: 8080
       targetPort: 8080
 ---
-apiVersion: networking.gke.io/v1
-kind: ServiceExport
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
 metadata:
-  name: payment-service
-  namespace: default
+  name: payment-route
+  namespace: mesh-example
+spec:
+  parentRefs:
+    - name: payment-service
+      kind: Service
+      group: ""
+  rules:
+    - backendRefs:
+        - name: payment-service
+          port: 8080
 ```
 
 Traffic Director provides advanced traffic management through traffic policies:
 
 ```yaml
 # Traffic routing rule for canary deployments
-apiVersion: networking.gke.io/v1alpha1
+apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
 metadata:
   name: payment-route
+  namespace: mesh-example
 spec:
   parentRefs:
     - name: payment-service
+      kind: Service
+      group: ""
   rules:
     - matches:
         - headers:
             - name: x-canary
+              type: Exact
               value: "true"
       backendRefs:
         - name: payment-service-canary
@@ -124,9 +143,9 @@ spec:
 **Traffic Director limitations:**
 
 - Requires Envoy sidecar proxies or proxyless gRPC, adding complexity
-- Higher resource overhead due to sidecar containers
+- Higher resource overhead when you use sidecar containers
 - Steeper learning curve for the team
-- Primarily designed for GKE workloads
+- Setup and feature availability depend on whether you use GKE, Compute Engine, Envoy, or proxyless gRPC
 
 ## ExternalDNS for Kubernetes Service Discovery
 
@@ -152,7 +171,7 @@ spec:
       serviceAccountName: external-dns
       containers:
         - name: external-dns
-          image: registry.k8s.io/external-dns/external-dns:v0.14.0
+          image: registry.k8s.io/external-dns/external-dns:v0.20.0
           args:
             # Use Google Cloud DNS as the provider
             - --provider=google
@@ -204,14 +223,14 @@ spec:
 
 | Need | Cloud DNS | Traffic Director | ExternalDNS |
 |------|-----------|-----------------|-------------|
-| VM-to-VM discovery | Good | Limited | No |
+| VM-to-VM discovery | Good | Good | No |
 | GKE-to-GKE discovery | Good | Excellent | Good |
 | Cross-cluster discovery | Manual | Built-in | Possible |
-| Health-aware routing | No | Yes | No |
-| Traffic splitting | No | Yes | No |
+| Health-aware routing | Limited | Yes | No |
+| Traffic splitting | Limited (DNS WRR) | Yes | No |
 | Operational complexity | Low | High | Medium |
-| Protocol support | Any (DNS) | HTTP/gRPC | Any (DNS) |
-| Non-GKE workloads | Yes | Limited | No |
+| Protocol support | Any (DNS) | HTTP/gRPC/TCP | Any (DNS) |
+| Non-GKE workloads | Yes | Supported with constraints | No |
 
 ## Combining Approaches
 
