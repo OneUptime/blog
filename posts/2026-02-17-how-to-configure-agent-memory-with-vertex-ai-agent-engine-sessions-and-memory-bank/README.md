@@ -8,7 +8,7 @@ Description: Configure persistent memory for AI agents using Vertex AI Agent Eng
 
 ---
 
-An AI agent that forgets everything between messages is frustrating to use. Users expect agents to remember what was discussed, retain preferences, and build on previous interactions. Vertex AI Agent Engine provides two memory mechanisms for this: sessions for short-term conversation context and memory bank for long-term persistent storage. Understanding how to configure both gives your agent the ability to maintain context within a conversation and recall important information across conversations.
+An AI agent that forgets everything between messages is frustrating to use. Users expect agents to remember what was discussed, retain preferences, and build on previous interactions. Vertex AI Agent Engine provides two memory mechanisms through Agent Platform: sessions for short-term conversation context and Memory Bank for long-term persistent storage. Understanding how to configure both gives your agent the ability to maintain context within a conversation and recall important information across conversations.
 
 This guide covers setting up and using both memory systems effectively.
 
@@ -18,7 +18,7 @@ These two memory types serve different purposes:
 
 **Sessions** handle short-term, within-conversation memory. When a user starts a chat, a session is created. The session stores the conversation history - every message exchanged between the user and the agent during that interaction. When the conversation ends, the session can be retained for reference or discarded.
 
-**Memory Bank** handles long-term, cross-conversation memory. It stores persistent facts about users, preferences, and important details that should carry over between separate conversations. If a user tells the agent "I prefer responses in Spanish" in one session, the memory bank ensures that preference is available in future sessions.
+**Memory Bank** handles long-term, cross-conversation memory. It stores persistent facts about users, preferences, and important details that should carry over between separate conversations. If a user tells the agent "I prefer responses in Spanish" in one session, Memory Bank can make that preference available in future sessions after you generate memories from the session or store the fact directly.
 
 ```mermaid
 graph TD
@@ -35,11 +35,11 @@ graph TD
 
 ## Prerequisites
 
-- Google Cloud project with Vertex AI API enabled
-- Python 3.9+
+- Google Cloud project with the Agent Platform API enabled
+- Python 3.10+
 
 ```bash
-pip install google-cloud-aiplatform langchain-google-vertexai
+pip install "google-cloud-aiplatform>=1.111.0" langchain-google-vertexai
 ```
 
 ## Working with Sessions
@@ -47,75 +47,74 @@ pip install google-cloud-aiplatform langchain-google-vertexai
 ### Creating and Managing Sessions
 
 ```python
-from google.cloud import aiplatform
+from datetime import datetime, timezone
 import uuid
-
-# Initialize the AI Platform SDK
-
-aiplatform.init(project="your-project-id", location="us-central1")
+import vertexai
 
 class SessionManager:
-    """Manage conversation sessions for the AI agent."""
+    """Manage Agent Platform sessions for the AI agent."""
 
-    def __init__(self, project_id: str, location: str):
-        self.project_id = project_id
-        self.location = location
-        self.active_sessions = {}
+    def __init__(self, project_id: str, location: str, agent_engine_name: str = None):
+        self.client = vertexai.Client(project=project_id, location=location)
+        if agent_engine_name:
+            self.agent_engine_name = agent_engine_name
+        else:
+            agent_engine = self.client.agent_engines.create()
+            self.agent_engine_name = agent_engine.api_resource.name
 
-    def create_session(self, user_id: str, metadata: dict = None) -> str:
+    def create_session(self, user_id: str, ttl_days: int = 30) -> str:
         """Create a new conversation session for a user."""
-        session_id = str(uuid.uuid4())
-
-        session_data = {
-            "session_id": session_id,
-            "user_id": user_id,
-            "messages": [],
-            "metadata": metadata or {},
-            "created_at": self._get_timestamp(),
-        }
-
-        self.active_sessions[session_id] = session_data
-        print(f"Created session {session_id} for user {user_id}")
-        return session_id
+        session = self.client.agent_engines.sessions.create(
+            name=self.agent_engine_name,
+            user_id=user_id,
+            config={"ttl": f"{ttl_days * 24 * 60 * 60}s"},
+        )
+        print(f"Created session {session.response.name} for user {user_id}")
+        return session.response.name
 
     def add_message(self, session_id: str, role: str, content: str):
         """Add a message to the session history."""
-        if session_id not in self.active_sessions:
-            raise ValueError(f"Session {session_id} not found")
-
-        message = {
-            "role": role,  # "user" or "agent"
-            "content": content,
-            "timestamp": self._get_timestamp(),
-        }
-
-        self.active_sessions[session_id]["messages"].append(message)
+        content_role = "user" if role == "user" else "model"
+        self.client.agent_engines.sessions.events.append(
+            name=session_id,
+            author=role,
+            invocation_id=self._get_invocation_id(),
+            timestamp=datetime.now(tz=timezone.utc),
+            config={
+                "content": {
+                    "role": content_role,
+                    "parts": [{"text": content}],
+                }
+            },
+        )
 
     def get_history(self, session_id: str, max_messages: int = 20) -> list:
         """Get the conversation history for a session, limited to recent messages."""
-        if session_id not in self.active_sessions:
-            return []
-
-        messages = self.active_sessions[session_id]["messages"]
+        events = list(self.client.agent_engines.list_session_events(name=session_id))
+        messages = []
+        for event in events:
+            content = getattr(event, "content", None)
+            if not content or not getattr(content, "parts", None):
+                continue
+            text = "".join(getattr(part, "text", "") for part in content.parts)
+            messages.append({
+                "role": "user" if content.role == "user" else "agent",
+                "content": text,
+            })
         # Return the most recent messages to stay within context limits
         return messages[-max_messages:]
 
     def close_session(self, session_id: str):
-        """Close a session and optionally persist it for later reference."""
-        if session_id in self.active_sessions:
-            session = self.active_sessions[session_id]
-            session["closed_at"] = self._get_timestamp()
-            # In production, persist to Firestore or another store
-            print(f"Session {session_id} closed with {len(session['messages'])} messages")
-            del self.active_sessions[session_id]
+        """Delete a session and its child events."""
+        self.client.agent_engines.sessions.delete(name=session_id)
+        print(f"Deleted session {session_id}")
 
-    def _get_timestamp(self):
-        from datetime import datetime
-        return datetime.utcnow().isoformat()
+    def _get_invocation_id(self):
+        return str(uuid.uuid4())
 
 # Usage
 session_mgr = SessionManager("your-project-id", "us-central1")
-session_id = session_mgr.create_session("user-123", metadata={"channel": "web"})
+session_id = session_mgr.create_session("user-123")
 session_mgr.add_message(session_id, "user", "What is my account balance?")
 session_mgr.add_message(session_id, "agent", "Your current balance is $1,234.56.")
 ```
@@ -132,7 +131,7 @@ class ConversationalAgent:
 
     def __init__(self, project_id: str, location: str):
         self.llm = ChatVertexAI(
-            model_name="gemini-1.5-pro",
+            model_name="gemini-2.5-pro",
             project=project_id,
             location=location,
             temperature=0.3,
@@ -195,77 +194,53 @@ print(agent.chat("user-456", session_id, "Has it shipped yet?"))
 The memory bank stores long-term facts about users that persist across conversations.
 
 ```python
-from google.cloud import firestore
-from datetime import datetime
+import vertexai
 
 class MemoryBank:
-    """Long-term memory storage for AI agent using Firestore."""
+    """Long-term memory storage for AI agent using Agent Platform Memory Bank."""
 
-    def __init__(self, project_id: str):
-        self.db = firestore.Client(project=project_id)
-        self.collection = "agent_memory_bank"
-
-    def store_memory(self, user_id: str, key: str, value: str, category: str = "general"):
-        """Store a persistent memory about a user."""
-        doc_ref = self.db.collection(self.collection).document(user_id)
-
-        # Use a subcollection for individual memories
-        memory_ref = doc_ref.collection("memories").document(key)
-        memory_ref.set({
-            "key": key,
-            "value": value,
-            "category": category,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-        })
-
-        print(f"Stored memory for {user_id}: {key} = {value}")
-
-    def get_memories(self, user_id: str, category: str = None) -> list:
-        """Retrieve all memories for a user, optionally filtered by category."""
-        doc_ref = self.db.collection(self.collection).document(user_id)
-        memories_ref = doc_ref.collection("memories")
-
-        if category:
-            query = memories_ref.where("category", "==", category)
+    def __init__(self, project_id: str, location: str, agent_engine_name: str = None):
+        self.client = vertexai.Client(project=project_id, location=location)
+        if agent_engine_name:
+            self.agent_engine_name = agent_engine_name
         else:
-            query = memories_ref
+            agent_engine = self.client.agent_engines.create()
+            self.agent_engine_name = agent_engine.api_resource.name
 
-        memories = []
-        for doc in query.stream():
-            data = doc.to_dict()
-            memories.append({
-                "key": data["key"],
-                "value": data["value"],
-                "category": data["category"],
-            })
-
-        return memories
-
-    def get_memory(self, user_id: str, key: str) -> str:
-        """Get a specific memory by key."""
-        doc_ref = (
-            self.db.collection(self.collection)
-            .document(user_id)
-            .collection("memories")
-            .document(key)
+    def store_memory(self, user_id: str, fact: str):
+        """Store a persistent memory about a user."""
+        memory = self.client.agent_engines.memories.create(
+            name=self.agent_engine_name,
+            fact=fact,
+            scope={"user_id": user_id},
         )
 
-        doc = doc_ref.get()
-        if doc.exists:
-            return doc.to_dict().get("value")
-        return None
+        print(f"Stored memory for {user_id}: {fact}")
+        return memory.response.name
 
-    def delete_memory(self, user_id: str, key: str):
-        """Delete a specific memory."""
-        doc_ref = (
-            self.db.collection(self.collection)
-            .document(user_id)
-            .collection("memories")
-            .document(key)
+    def generate_memories_from_session(self, user_id: str, session_id: str):
+        """Extract and consolidate memories from an Agent Platform session."""
+        self.client.agent_engines.memories.generate(
+            name=self.agent_engine_name,
+            vertex_session_source={"session": session_id},
+            scope={"user_id": user_id},
         )
-        doc_ref.delete()
-        print(f"Deleted memory {key} for {user_id}")
+
+    def get_memories(self, user_id: str) -> list:
+        """Retrieve all memories for a user."""
+        memories = self.client.agent_engines.memories.retrieve(
+            name=self.agent_engine_name,
+            scope={"user_id": user_id},
+        )
+        return [retrieved.memory for retrieved in memories]
+
+    def delete_memory(self, memory_name: str):
+        """Delete a specific memory by resource name."""
+        self.client.agent_engines.memories.delete(
+            name=memory_name,
+            config={"wait_for_completion": True},
+        )
+        print(f"Deleted memory {memory_name}")
 
     def format_memories_for_prompt(self, user_id: str) -> str:
         """Format all memories into a string for inclusion in the agent prompt."""
@@ -274,8 +249,8 @@ class MemoryBank:
             return "No prior information about this user."
 
         formatted = []
-        for mem in memories:
-            formatted.append(f"- {mem['key']}: {mem['value']}")
+        for memory in memories:
+            formatted.append(f"- {memory.fact}")
 
         return "Known information about this user:\n" + "\n".join(formatted)
 ```
@@ -288,14 +263,18 @@ class MemoryAwareAgent:
 
     def __init__(self, project_id: str, location: str):
         self.llm = ChatVertexAI(
-            model_name="gemini-1.5-pro",
+            model_name="gemini-2.5-pro",
             project=project_id,
             location=location,
             temperature=0.3,
         )
 
-        self.memory_bank = MemoryBank(project_id)
         self.session_mgr = SessionManager(project_id, location)
+        self.memory_bank = MemoryBank(
+            project_id,
+            location,
+            agent_engine_name=self.session_mgr.agent_engine_name,
+        )
 
     def chat(self, user_id: str, session_id: str, message: str) -> str:
         """Chat with full memory context - both session and long-term."""
@@ -337,17 +316,17 @@ preferences or important information, mention that you will remember it."""),
 
         return agent_response
 
-    def remember(self, user_id: str, key: str, value: str, category: str = "preference"):
+    def remember(self, user_id: str, fact: str):
         """Explicitly store a long-term memory about the user."""
-        self.memory_bank.store_memory(user_id, key, value, category)
+        self.memory_bank.store_memory(user_id, fact)
 
 # Usage
 agent = MemoryAwareAgent("your-project-id", "us-central1")
 
 # Store some long-term memories
-agent.remember("user-789", "preferred_language", "English", "preference")
-agent.remember("user-789", "plan_type", "Professional", "account")
-agent.remember("user-789", "company", "Acme Corp", "account")
+agent.remember("user-789", "The user prefers responses in English.")
+agent.remember("user-789", "The user is on the Professional plan.")
+agent.remember("user-789", "The user works for Acme Corp.")
 
 # Start a new conversation - the agent already knows about the user
 session_id = agent.session_mgr.create_session("user-789")
@@ -376,4 +355,4 @@ graph TD
 
 ## Summary
 
-Configuring memory properly is what separates a basic chatbot from a useful AI agent. Sessions give you within-conversation context so the agent tracks what is being discussed. The memory bank gives you cross-conversation persistence so the agent remembers important facts about each user. Combine both in your agent prompt, and you get an experience that feels personal and context-aware. Use Firestore for the memory bank storage, keep session histories trimmed to manage token costs, and be intentional about what gets stored in long-term memory versus what is transient.
+Configuring memory properly is what separates a basic chatbot from a useful AI agent. Sessions give you within-conversation context so the agent tracks what is being discussed. The Memory Bank gives you cross-conversation persistence so the agent remembers important facts about each user. Combine both in your agent prompt, and you get an experience that feels personal and context-aware. Use Agent Platform Memory Bank for persistent facts, keep session histories trimmed to manage token costs, and be intentional about what gets stored in long-term memory versus what is transient.
