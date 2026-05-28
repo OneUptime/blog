@@ -23,7 +23,7 @@ A function is idempotent when calling it multiple times with the same input prod
 
 ## Strategy 1: Event ID Deduplication
 
-Every CloudEvent has a unique ID. Track which event IDs you have already processed:
+Every CloudEvent has an ID that is unique within its event source. Track which event IDs you have already processed:
 
 ```javascript
 // index.js - Idempotent function using event ID tracking with Firestore
@@ -82,12 +82,12 @@ async function processOnce(eventId, processingFn) {
   const docRef = processedCollection.doc(eventId);
 
   try {
-    await firestore.runTransaction(async (transaction) => {
+    const shouldProcess = await firestore.runTransaction(async (transaction) => {
       const doc = await transaction.get(docRef);
 
       if (doc.exists) {
         console.log(`Event ${eventId} already processed (in transaction)`);
-        return; // Exit the transaction without doing anything
+        return false; // Exit the transaction without doing anything
       }
 
       // Mark as "in progress" within the transaction
@@ -95,7 +95,13 @@ async function processOnce(eventId, processingFn) {
         status: 'processing',
         startedAt: new Date()
       });
+
+      return true;
     });
+
+    if (!shouldProcess) {
+      return;
+    }
 
     // If we get here, we won the race and should process the event
     await processingFn();
@@ -103,6 +109,7 @@ async function processOnce(eventId, processingFn) {
     // Update status to completed
     await docRef.update({
       status: 'completed',
+      processedAt: new Date(),
       completedAt: new Date()
     });
   } catch (error) {
@@ -127,25 +134,47 @@ functions.cloudEvent('processPayment', async (cloudEvent) => {
 
   const orderId = paymentData.orderId;
 
-  // Check if this order was already paid
   const orderRef = firestore.collection('orders').doc(orderId);
-  const order = await orderRef.get();
 
-  if (order.exists && order.data().paymentStatus === 'completed') {
-    console.log(`Order ${orderId} already paid, skipping`);
+  const shouldProcess = await firestore.runTransaction(async (transaction) => {
+    const order = await transaction.get(orderRef);
+
+    if (order.exists && ['processing', 'completed'].includes(order.data().paymentStatus)) {
+      console.log(`Order ${orderId} is already ${order.data().paymentStatus}, skipping`);
+      return false;
+    }
+
+    transaction.set(orderRef, {
+      paymentStatus: 'processing',
+      startedAt: new Date()
+    }, { merge: true });
+
+    return true;
+  });
+
+  if (!shouldProcess) {
     return;
   }
 
-  // Process the payment
-  const paymentResult = await processPayment(paymentData);
+  try {
+    // Process the payment using the natural key as the payment idempotency key
+    const paymentResult = await processPayment(paymentData, {
+      idempotencyKey: orderId
+    });
 
-  // Update the order with payment info using a conditional update
-  await orderRef.set({
-    paymentStatus: 'completed',
-    paymentId: paymentResult.id,
-    paidAt: new Date(),
-    amount: paymentData.amount
-  }, { merge: true });
+    await orderRef.set({
+      paymentStatus: 'completed',
+      paymentId: paymentResult.id,
+      paidAt: new Date(),
+      amount: paymentData.amount
+    }, { merge: true });
+  } catch (error) {
+    await orderRef.set({
+      paymentStatus: 'failed',
+      failedAt: new Date()
+    }, { merge: true });
+    throw error;
+  }
 });
 ```
 
@@ -165,12 +194,11 @@ functions.cloudEvent('syncUser', async (cloudEvent) => {
   // This is naturally idempotent because running it twice
   // with the same data produces the same result
   await pool.query(`
-    INSERT INTO users (id, email, name, updated_at)
-    VALUES ($1, $2, $3, NOW())
+    INSERT INTO users (id, email, name)
+    VALUES ($1, $2, $3)
     ON CONFLICT (id) DO UPDATE SET
       email = EXCLUDED.email,
-      name = EXCLUDED.name,
-      updated_at = NOW()
+      name = EXCLUDED.name
   `, [userData.userId, userData.email, userData.name]);
 
   console.log(`User ${userData.userId} synced`);
@@ -248,26 +276,40 @@ async function sendEmailOnce(recipientEmail, templateId, eventId) {
     `${recipientEmail}-${templateId}-${eventId}`
   );
 
-  const sentEmail = await sentEmailRef.get();
-  if (sentEmail.exists) {
-    console.log(`Email already sent for event ${eventId}`);
-    return;
+  try {
+    await sentEmailRef.create({
+      status: 'sending',
+      recipientEmail,
+      templateId,
+      eventId,
+      startedAt: new Date()
+    });
+  } catch (error) {
+    if (error.code === 6) {
+      console.log(`Email already sent for event ${eventId}`);
+      return;
+    }
+
+    throw error;
   }
 
-  // Send the email
-  await emailService.send({
-    to: recipientEmail,
-    template: templateId,
-    data: { /* template data */ }
-  });
+  try {
+    // Send the email
+    await emailService.send({
+      to: recipientEmail,
+      template: templateId,
+      data: { /* template data */ }
+    });
 
-  // Record that the email was sent
-  await sentEmailRef.set({
-    sentAt: new Date(),
-    recipientEmail,
-    templateId,
-    eventId
-  });
+    // Record that the email was sent
+    await sentEmailRef.update({
+      status: 'sent',
+      sentAt: new Date()
+    });
+  } catch (error) {
+    await sentEmailRef.delete().catch(() => {});
+    throw error;
+  }
 }
 ```
 
@@ -296,7 +338,7 @@ functions.http('cleanupProcessedEvents', async (req, res) => {
 });
 ```
 
-If you use Firestore, you can also configure TTL policies directly on the collection to automatically delete documents after a certain age.
+If you use Firestore, you can also configure TTL policies directly on a timestamp field, such as an `expireAt` field, to automatically delete documents after that time.
 
 ## Testing Idempotency
 
