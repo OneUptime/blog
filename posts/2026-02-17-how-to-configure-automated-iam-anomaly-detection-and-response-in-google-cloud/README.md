@@ -10,7 +10,7 @@ Description: Set up automated IAM anomaly detection in Google Cloud to identify 
 
 IAM is the front door to every resource in your Google Cloud organization. If someone gets hold of a service account key or compromises a user identity, they can do a lot of damage before anyone notices. The challenge is that IAM activity generates a massive volume of logs, and manually reviewing them is not practical.
 
-In this post, I will walk through building an automated system that detects anomalous IAM behavior - things like unusual login locations, privilege escalation attempts, and service account key abuse - and takes action automatically.
+In this post, I will walk through building an automated system that detects anomalous IAM behavior - things like unusual API source locations, privilege escalation attempts, and service account key abuse - and takes action automatically.
 
 ## What IAM Anomalies Look Like
 
@@ -19,9 +19,9 @@ Before diving into the implementation, let us define what we are looking for:
 - A user granting themselves elevated permissions
 - Service account keys being used from unexpected IP addresses
 - Bulk role assignments or permission changes
-- Access from geographic locations that do not match your team
+- API calls from geographic locations that do not match your team
 - API calls at unusual hours for a given identity
-- Failed authentication attempts followed by successful ones
+- Failed authorization attempts followed by successful ones
 
 ## Setting Up Audit Log Collection
 
@@ -102,10 +102,10 @@ This query detects self-privilege escalation, which is when a user grants themse
 SELECT
   protopayload_auditlog.authenticationInfo.principalEmail AS actor,
   protopayload_auditlog.methodName AS method,
-  JSON_EXTRACT_SCALAR(
+  JSON_VALUE(
     protopayload_auditlog.requestJson, '$.policy.bindings[0].role'
   ) AS granted_role,
-  JSON_EXTRACT_SCALAR(
+  JSON_VALUE(
     protopayload_auditlog.requestJson, '$.policy.bindings[0].members[0]'
   ) AS granted_to,
   timestamp,
@@ -115,7 +115,7 @@ WHERE
   protopayload_auditlog.methodName LIKE '%SetIamPolicy%'
   AND protopayload_auditlog.authenticationInfo.principalEmail =
     REGEXP_EXTRACT(
-      JSON_EXTRACT_SCALAR(
+      JSON_VALUE(
         protopayload_auditlog.requestJson,
         '$.policy.bindings[0].members[0]'
       ),
@@ -184,14 +184,14 @@ WHERE
   AND _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
 GROUP BY
   actor,
-  TIMESTAMP_TRUNC(timestamp, INTERVAL 10 MINUTE)
+  TIMESTAMP_SECONDS(DIV(UNIX_SECONDS(timestamp), 600) * 600)
 HAVING change_count > 5
 ORDER BY change_count DESC;
 ```
 
 ## Automating Detection with Scheduled Queries
 
-Run these detection queries on a schedule using BigQuery scheduled queries and Cloud Functions:
+Run these detection queries on a schedule using Cloud Scheduler and Cloud Functions:
 
 ```python
 # anomaly_detector.py
@@ -218,7 +218,7 @@ DETECTION_QUERIES = {
         "query": """
             SELECT
               protopayload_auditlog.authenticationInfo.principalEmail AS actor,
-              JSON_EXTRACT_SCALAR(
+              JSON_VALUE(
                 protopayload_auditlog.requestJson,
                 '$.policy.bindings[0].role'
               ) AS granted_role,
@@ -230,7 +230,7 @@ DETECTION_QUERIES = {
                 DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
               AND protopayload_auditlog.authenticationInfo.principalEmail =
                 REGEXP_EXTRACT(
-                  JSON_EXTRACT_SCALAR(
+                  JSON_VALUE(
                     protopayload_auditlog.requestJson,
                     '$.policy.bindings[0].members[0]'
                   ), r'(?:user:|serviceAccount:)(.*)'
@@ -248,7 +248,7 @@ DETECTION_QUERIES = {
               protopayload_auditlog.methodName LIKE '%SetIamPolicy%'
               AND _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d',
                 DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
-            GROUP BY actor, TIMESTAMP_TRUNC(timestamp, INTERVAL 10 MINUTE)
+            GROUP BY actor, TIMESTAMP_SECONDS(DIV(UNIX_SECONDS(timestamp), 600) * 600)
             HAVING change_count > 5
         """
     }
@@ -325,6 +325,12 @@ def disable_service_account(email):
         name=f"projects/-/serviceAccounts/{email}"
     )
     client.disable_service_account(request=request)
+
+
+def revert_iam_change(actor, details):
+    """Restore the last known-good IAM policy for the affected resource."""
+    # Fetch and apply an approved policy snapshot for the affected resource.
+    pass
 
 
 def apply_temporary_restriction(actor):
