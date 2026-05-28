@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, SQL, Approximate Aggregation, Data Analytics
 
-Description: Learn how to use BigQuery approximate aggregation functions like APPROX_COUNT_DISTINCT and APPROX_QUANTILES to analyze large datasets faster and cheaper.
+Description: Learn how to use BigQuery approximate aggregation functions like APPROX_COUNT_DISTINCT and APPROX_QUANTILES to analyze large datasets faster with lower slot usage.
 
 ---
 
-When you are working with datasets that have billions of rows, exact aggregations can be expensive and slow. BigQuery offers approximate aggregation functions that trade a small amount of accuracy for significant improvements in speed and cost. If you need an exact count of unique users down to the last digit, these are not for you. But if knowing "approximately 14.2 million unique users, give or take 1 percent" is good enough, approximate functions can cut your query costs dramatically.
+When you are working with datasets that have billions of rows, exact aggregations can be expensive and slow. BigQuery offers approximate aggregation functions that trade a small amount of accuracy for significant improvements in speed and slot usage. If you need an exact count of unique users down to the last digit, these are not for you. But if knowing "approximately 14.2 million unique users" is good enough, approximate functions can make large analytical queries much faster.
 
 ## Why Approximate Aggregation
 
 Exact COUNT DISTINCT on a billion-row table requires BigQuery to track every unique value. That means shuffling massive amounts of data across slots and holding it all in memory. Approximate functions use probabilistic data structures (like HyperLogLog++) that require far less memory and computation.
 
-The trade-off is straightforward: approximate functions are faster, consume fewer slot-hours (which means lower cost for on-demand pricing), and produce results that are within a small error margin of the exact answer.
+The trade-off is straightforward: approximate functions are faster, consume fewer slot-hours, and produce results that have statistical uncertainty instead of exact answers.
 
 ## APPROX_COUNT_DISTINCT
 
-This is the most commonly used approximate function. It estimates the number of distinct values in a column using HyperLogLog++.
+This is the most commonly used approximate function. It estimates the number of distinct values in a column without requiring BigQuery to return an exact `COUNT(DISTINCT ...)` result.
 
 ```sql
 -- Exact count distinct - expensive on large tables
@@ -26,14 +26,13 @@ SELECT COUNT(DISTINCT user_id) AS exact_unique_users
 FROM `my_project.analytics.events`
 WHERE event_date BETWEEN '2025-01-01' AND '2025-12-31';
 
--- Approximate count distinct - much faster and cheaper
--- Typically within 1% of the exact answer
+-- Approximate count distinct - usually faster on huge inputs
 SELECT APPROX_COUNT_DISTINCT(user_id) AS approx_unique_users
 FROM `my_project.analytics.events`
 WHERE event_date BETWEEN '2025-01-01' AND '2025-12-31';
 ```
 
-On a table with a billion rows, the approximate version can run 5-10x faster and process significantly less data. The error rate is typically less than 1 percent.
+On a table with a billion rows, the approximate version can run faster and use less memory than the exact version. The result is a statistical estimate, so measure the error on your own data before using it in production reporting.
 
 Here is a practical comparison to show the accuracy:
 
@@ -105,7 +104,7 @@ FROM
 ORDER BY approx.count DESC;
 ```
 
-This is particularly useful for exploratory analysis. When you have a column with millions of distinct values and want to quickly find the most common ones, APPROX_TOP_COUNT gives you the answer in seconds.
+This is particularly useful for exploratory analysis. When you have a column with millions of distinct values and want to quickly find the most common ones, APPROX_TOP_COUNT can be much faster than an exact aggregation.
 
 ## APPROX_TOP_SUM
 
@@ -177,10 +176,10 @@ ORDER BY weekly_unique_users DESC;
 The key insight is that HLL sketches are mergeable. You can compute daily sketches, store them, and merge them for any date range. This avoids rescanning the raw data entirely.
 
 ```sql
--- Extract the approximate count from a merged sketch
+-- Merge sketches to extract the approximate count
 SELECT
   country,
-  HLL_COUNT.EXTRACT(HLL_COUNT.MERGE(user_sketch)) AS unique_users
+  HLL_COUNT.MERGE(user_sketch) AS unique_users
 FROM `my_project.analytics.daily_user_sketches`
 WHERE event_date BETWEEN '2025-01-01' AND '2025-01-31'
 GROUP BY country
@@ -193,10 +192,10 @@ Use exact aggregations when you need precise numbers for financial reporting, bi
 
 Use approximate aggregations for exploratory analysis, dashboards, monitoring, and any situation where a small error margin is acceptable. The bigger your dataset, the more beneficial approximate functions become.
 
-A good rule of thumb: if the query processes less than 100 million rows, exact aggregations are usually fast enough. Above that, especially in the billions, approximate functions provide meaningful cost and performance benefits.
+A good rule of thumb: if the query processes less than 100 million rows, exact aggregations are usually fast enough. Above that, especially in the billions, approximate functions can provide meaningful latency and slot-usage benefits.
 
 ## Cost Impact
 
-On BigQuery's on-demand pricing model, you pay per byte processed. Approximate functions often scan the same amount of data but process it faster using less computation. Where you see the biggest cost savings is with slot-based pricing (flat-rate or editions), because approximate functions consume fewer slot-hours, freeing up slots for other queries.
+On BigQuery's on-demand pricing model, you pay per byte read. Approximate functions often scan the same amount of data but process it faster using less computation, so they do not necessarily lower the billed bytes for a query. Where you see the biggest cost savings is with capacity-based pricing, including BigQuery editions, because approximate functions can consume fewer slot-hours and free up slots for other queries.
 
-For large organizations running thousands of dashboard queries daily on multi-terabyte datasets, switching to approximate aggregations where acceptable can reduce BigQuery costs by 20-40 percent. That is real money at scale, and the accuracy trade-off is almost always worth it for analytical workloads.
+For large organizations running thousands of dashboard queries daily on multi-terabyte datasets, switching to approximate aggregations where acceptable can reduce slot consumption and improve dashboard latency. That is real value at scale, and the accuracy trade-off is often worth it for analytical workloads.
