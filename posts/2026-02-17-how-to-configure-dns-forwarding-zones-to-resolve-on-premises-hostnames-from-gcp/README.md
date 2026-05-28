@@ -105,9 +105,9 @@ gcloud dns managed-zones create reverse-forward \
 
 Cloud DNS supports two forwarding modes:
 
-**Standard forwarding** (default): Uses the VPC's default routing to reach the target DNS server. The source IP of the DNS query comes from a Cloud DNS IP range.
+**Standard forwarding** (default): Routes RFC 1918 targets through the authorized VPC network and non-RFC 1918 targets over the internet. For on-premises RFC 1918 targets reached through VPN or Interconnect, the source IP comes from `35.199.192.0/19`.
 
-**Private forwarding**: Routes the DNS query through the VPC using the same path as other traffic. The source IP comes from a GCP-managed IP range (35.199.192.0/19).
+**Private forwarding**: Always routes the DNS query through the authorized VPC network, including for non-RFC 1918 privately used addresses. The source IP comes from a GCP-managed IP range (`35.199.192.0/19`).
 
 For on-premises DNS servers reached through VPN/Interconnect, private forwarding is usually what you need:
 
@@ -117,46 +117,51 @@ gcloud dns managed-zones create on-prem-private-forward \
     --dns-name="corp.internal." \
     --visibility=private \
     --networks=my-vpc \
-    --forwarding-targets="192.168.1.10[private],192.168.1.11[private]"
+    --private-forwarding-targets="192.168.1.10,192.168.1.11"
 ```
 
-The `[private]` suffix after the IP address enables private forwarding for that target.
+The `--private-forwarding-targets` flag enables private forwarding for those targets.
 
 ## Step 5: Configure Firewall Rules
 
 ### GCP Side
 
-Allow outbound DNS traffic from Cloud DNS to your on-premises servers:
+If your forwarding targets are DNS servers running on Compute Engine VMs or internal passthrough Network Load Balancers, allow DNS traffic from the Cloud DNS forwarding range:
 
 ```bash
-# Allow DNS traffic from the 35.199.192.0/19 range (Cloud DNS forwarding IPs)
-gcloud compute firewall-rules create allow-dns-forwarding \
+# Allow DNS traffic from the 35.199.192.0/19 range to DNS servers in the VPC
+gcloud compute firewall-rules create allow-cloud-dns-forwarding \
     --network=my-vpc \
     --action=allow \
-    --direction=egress \
-    --destination-ranges=192.168.1.10/32,192.168.1.11/32 \
+    --direction=ingress \
+    --source-ranges=35.199.192.0/19 \
     --rules=tcp:53,udp:53
 ```
+
+For DNS servers that are only on-premises, the required packet filtering is usually on the on-premises side rather than in a VPC firewall rule.
 
 ### On-Premises Side
 
 Configure your on-premises firewall to allow DNS queries from GCP. The source IP range depends on the forwarding mode:
 
-- **Standard forwarding**: Source IPs are from Google's public ranges
+- **Standard forwarding to RFC 1918 on-premises targets**: Source IPs are from `35.199.192.0/19`
+- **Standard forwarding to internet-routable targets**: Source IPs are from Google Public DNS source ranges
 - **Private forwarding**: Source IPs are from `35.199.192.0/19`
 
 Add a firewall rule on your on-premises network allowing DNS traffic from `35.199.192.0/19` to your DNS servers.
 
 ## Step 6: Configure Routes
 
-For private forwarding, ensure you have a route for `35.199.192.0/19` through the VPN/Interconnect:
+For Type 2 on-premises targets, your on-premises network must have a return route for `35.199.192.0/19` back through the same VPC network over VPN or Interconnect. With Cloud Router and BGP using custom advertisements, add the range to the advertisements sent to your on-premises router:
 
 ```bash
-# Check if the route exists
-gcloud compute routes list --filter="destRange=35.199.192.0/19"
+# Advertise the Cloud DNS forwarding range to on-premises over BGP
+gcloud compute routers update my-router \
+    --region=us-central1 \
+    --add-advertisement-ranges=35.199.192.0/19
 ```
 
-If it does not exist and you are using a Cloud Router with custom route advertisements, you need to add it. For most VPN setups with dynamic routing, this route is handled automatically.
+If the router is not already using custom advertisement mode, switch to custom mode and include `35.199.192.0/19` along with any existing advertised ranges. If you set custom advertisements at the BGP peer instead of the router, add the range to that BGP peer's advertisements. For static or policy-based VPNs, configure the equivalent route or traffic selector on the on-premises side.
 
 ## Step 7: Test DNS Resolution
 
@@ -166,8 +171,8 @@ From a GCP VM in the authorized VPC:
 # Test resolution of on-premises hostnames
 dig server.corp.internal +short
 
-# Test resolution with verbose output to see the query path
-dig server.corp.internal +trace
+# Explicitly query the Compute Engine metadata server used by Cloud DNS
+dig @169.254.169.254 server.corp.internal
 
 # Test reverse resolution
 dig -x 192.168.1.100
@@ -186,7 +191,7 @@ gcloud dns managed-zones create db-forward \
     --dns-name="db.corp.internal." \
     --visibility=private \
     --networks=my-vpc \
-    --forwarding-targets="192.168.1.10[private]"
+    --private-forwarding-targets="192.168.1.10"
 
 # Create a private zone for the rest of corp.internal
 gcloud dns managed-zones create corp-private \
@@ -207,10 +212,10 @@ gcloud dns managed-zones create multi-site-forward \
     --dns-name="global.internal." \
     --visibility=private \
     --networks=my-vpc \
-    --forwarding-targets="192.168.1.10[private],10.0.1.10[private],172.16.1.10[private]"
+    --private-forwarding-targets="192.168.1.10,10.0.1.10,172.16.1.10"
 ```
 
-Cloud DNS tries all forwarding targets and uses the first successful response. This provides redundancy across sites.
+Cloud DNS ranks forwarding targets based on successful responses and latency. It queries the highest-ranked target first, then tries the next targets if that server does not respond.
 
 ## Forwarding to Cloud-Based DNS Services
 
@@ -222,7 +227,7 @@ gcloud dns managed-zones create aws-forward \
     --dns-name="aws.company.com." \
     --visibility=private \
     --networks=my-vpc \
-    --forwarding-targets="10.200.0.2[private]"
+    --private-forwarding-targets="10.200.0.2"
 ```
 
 ## Monitoring and Logging
@@ -242,7 +247,7 @@ View the logs:
 # View DNS query logs
 gcloud logging read 'resource.type="dns_query"' \
     --limit=20 \
-    --format="table(timestamp,jsonPayload.queryName,jsonPayload.responseCode,jsonPayload.serverLatency)"
+    --format="table(timestamp,jsonPayload.queryName,jsonPayload.responseCode,jsonPayload.destinationIP,jsonPayload.egressError)"
 ```
 
 ## Troubleshooting
