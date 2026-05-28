@@ -16,7 +16,7 @@ Google Cloud's global load balancer uses anycast natively, and in this post I wi
 
 In traditional unicast routing, one IP address maps to one server location. With anycast, the same IP address is announced from multiple locations. When a user sends a request to that IP, BGP routing delivers it to the nearest announcement point.
 
-Google operates one of the largest anycast networks in the world. When you create a global external IP address on GCP, that IP is advertised from every Google edge point of presence - over 200 locations worldwide. Your users' requests enter Google's network at the nearest edge, then travel over Google's private backbone to your backend, bypassing the public internet for most of the journey.
+Google operates one of the largest anycast networks in the world. When you create a global external IP address for a global external load balancer on GCP, that IP is served by Google Front Ends distributed across more than 80 distinct locations worldwide. Your users' requests enter Google's network at the nearest available edge, then travel over Google's private backbone to your backend, bypassing the public internet for most of the journey.
 
 ```mermaid
 graph TB
@@ -67,7 +67,7 @@ gcloud compute instance-templates create my-app-template \
   --image-family=debian-11 \
   --image-project=debian-cloud \
   --metadata-from-file=startup-script=startup.sh \
-  --tags=http-server
+  --tags=allow-health-check
 
 # Create managed instance groups in each region
 gcloud compute instance-groups managed create my-app-mig-us \
@@ -84,6 +84,28 @@ gcloud compute instance-groups managed create my-app-mig-asia \
   --template=my-app-template \
   --size=3 \
   --zone=asia-east1-a
+
+# Map the backend service port name to the application port
+gcloud compute instance-groups managed set-named-ports my-app-mig-us \
+  --zone=us-central1-a \
+  --named-ports=http:8080
+
+gcloud compute instance-groups managed set-named-ports my-app-mig-eu \
+  --zone=europe-west1-b \
+  --named-ports=http:8080
+
+gcloud compute instance-groups managed set-named-ports my-app-mig-asia \
+  --zone=asia-east1-a \
+  --named-ports=http:8080
+
+# Allow health checks and Google Front End proxies to reach the backends
+gcloud compute firewall-rules create allow-lb-health-checks \
+  --network=default \
+  --action=ALLOW \
+  --direction=INGRESS \
+  --source-ranges=130.211.0.0/22,35.191.0.0/16 \
+  --target-tags=allow-health-check \
+  --rules=tcp:8080
 
 # Set up autoscaling for each MIG
 gcloud compute instance-groups managed set-autoscaling my-app-mig-us \
@@ -107,7 +129,7 @@ gcloud compute instance-groups managed set-autoscaling my-app-mig-asia \
 
 ## Step 3: Configure the Global Load Balancer
 
-Wire everything together with a global HTTP(S) load balancer. This is where the anycast magic happens - the load balancer uses your global IP and routes to the nearest healthy backend:
+Wire everything together with a global HTTP(S) load balancer. This is where the anycast magic happens - the load balancer uses your global IP and routes to the closest healthy backend that has capacity:
 
 ```bash
 # Create a health check
@@ -197,19 +219,20 @@ gcloud compute security-policies create my-app-security \
 gcloud compute security-policies rules create 1000 \
   --security-policy=my-app-security \
   --action=rate-based-ban \
+  --expression="true" \
   --rate-limit-threshold-count=1000 \
   --rate-limit-threshold-interval-sec=60 \
   --ban-duration-sec=600 \
   --conform-action=allow \
   --exceed-action=deny-429 \
-  --enforce-on-key=IP \
+  --enforce-on-key=ip \
   --description="Rate limit per IP"
 
 # Block known bad IPs or regions if needed
 gcloud compute security-policies rules create 2000 \
   --security-policy=my-app-security \
   --action=deny-403 \
-  --expression="origin.region_code == 'XX'" \
+  --expression="origin.region_code == 'REGION_CODE'" \
   --description="Block traffic from specific region"
 
 # Attach the policy to the backend service
@@ -238,13 +261,15 @@ After deploying your anycast architecture, measure the actual latency improvemen
 
 ```bash
 # Create uptime checks from different global regions
-gcloud monitoring uptime create \
-  --display-name="Global Latency Check" \
-  --uri="https://api.example.com/health" \
-  --http-method=GET \
-  --period=60 \
+gcloud monitoring uptime create "Global Latency Check" \
+  --resource-type=uptime-url \
+  --resource-labels=host=api.example.com,project_id=PROJECT_ID \
+  --protocol=https \
+  --path=/health \
+  --request-method=get \
+  --period=1 \
   --timeout=10 \
-  --regions=USA,EUROPE,SOUTH_AMERICA,ASIA_PACIFIC
+  --regions=usa-iowa,europe,south-america,asia-pacific
 ```
 
 You should also add latency reporting in your application:
@@ -285,4 +310,4 @@ This means failover happens in seconds, not minutes. The user might notice a sli
 
 GCP's global anycast architecture gives you three major wins: low latency through nearest-edge routing, high availability through automatic failover, and DDoS protection through Cloud Armor at the edge. The key components are a global anycast IP, regional backends distributed near your users, and a global HTTP(S) load balancer tying it all together.
 
-The setup is more involved than a single-region deployment, but for any service that needs global reach with low latency, it is the right approach. Once in place, your users get routed to the nearest healthy backend automatically, and you get a single IP address that works everywhere.
+The setup is more involved than a single-region deployment, but for any service that needs global reach with low latency, it is the right approach. Once in place, your users get routed to the closest healthy backend with capacity automatically, and you get a single IP address that works everywhere.
