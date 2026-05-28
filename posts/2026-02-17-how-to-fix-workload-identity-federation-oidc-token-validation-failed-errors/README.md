@@ -18,8 +18,8 @@ The flow goes like this:
 2. The workload sends this token to Google's Security Token Service (STS)
 3. STS validates the token against the workload identity pool provider configuration
 4. If validation passes, STS returns a federated token
-5. The workload uses the federated token to impersonate a service account
-6. The service account's permissions determine what the workload can do
+5. The workload uses the federated token to access Google Cloud directly or to impersonate a service account
+6. The direct resource permissions or service account's permissions determine what the workload can do
 
 The "OIDC token validation failed" error happens at step 3. Something about the token does not match what the pool provider expects.
 
@@ -41,8 +41,8 @@ The `oidc.issuerUri` field must exactly match the `iss` claim in the token. Even
 To check what is in your token, decode it (OIDC tokens are JWTs):
 
 ```bash
-# Decode a JWT token to inspect its claims (base64 decode the payload)
-echo "YOUR_TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+# Decode a JWT token to inspect its claims (base64url decode the payload)
+python3 -c "import base64, json; token='YOUR_TOKEN'; payload=token.split('.')[1]; payload += '=' * (-len(payload) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(payload)), indent=2))"
 ```
 
 Compare the `iss` field in the decoded token with the `issuerUri` in your provider configuration. They must match exactly.
@@ -55,6 +55,12 @@ For common providers, the issuer URIs are:
 ## Step 2: Check the Audience
 
 The `aud` (audience) claim in the token must match what the provider expects. By default, the workload identity pool provider expects the audience to be:
+
+```text
+//iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID
+```
+
+or the same canonical provider resource name with the HTTPS prefix:
 
 ```text
 https://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID
@@ -80,7 +86,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@v3
         with:
           # This sets the correct audience automatically
           workload_identity_provider: projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider
@@ -134,7 +140,7 @@ assertion.repository_owner == 'your-github-org'
 
 If your workflow runs from a fork or a different org, this condition fails. Make sure the claims in your token match what the condition expects.
 
-You can test CEL expressions locally before applying them:
+Update the attribute condition when you need to make the provider more restrictive:
 
 ```bash
 # Update the attribute condition
@@ -156,9 +162,12 @@ Check the `exp` and `iat` claims in your token:
 
 ```bash
 # Decode and check token timestamps
-echo "YOUR_TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | python3 -c "
-import sys, json, datetime
-data = json.load(sys.stdin)
+python3 -c "
+import base64, json, datetime
+token='YOUR_TOKEN'
+payload = token.split('.')[1]
+payload += '=' * (-len(payload) % 4)
+data = json.loads(base64.urlsafe_b64decode(payload))
 iat = datetime.datetime.fromtimestamp(data.get('iat', 0))
 exp = datetime.datetime.fromtimestamp(data.get('exp', 0))
 print(f'Issued at: {iat}')
@@ -187,7 +196,7 @@ If you are using a self-hosted identity provider, make sure the JWKS endpoint is
 
 ## Step 7: Check Service Account Impersonation
 
-Even after the STS token exchange succeeds, you still need to impersonate a service account. The workload identity pool must be granted the `roles/iam.workloadIdentityUser` role on the target service account:
+If you are using service account impersonation, the workload identity pool must be granted the `roles/iam.workloadIdentityUser` role on the target service account:
 
 ```bash
 # Grant the workload identity pool principal the ability to impersonate the SA
