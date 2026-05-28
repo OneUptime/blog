@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Shared VPC, IAM, Subnet Access, Networking
 
-Description: Learn how to grant fine-grained subnet-level access to service project administrators in GCP Shared VPC using IAM conditions and best practices for least privilege.
+Description: Learn how to grant fine-grained subnet-level access to service project administrators in GCP Shared VPC using subnet-level IAM bindings and best practices for least privilege.
 
 ---
 
 When you set up Shared VPC in GCP, one of the critical decisions is how to grant service project admins access to specific subnets in the host project. The naive approach - granting `roles/compute.networkUser` at the project level - gives them access to every subnet. That works for small organizations, but as you scale, you want each team to only see and use the subnets allocated to them.
 
-In this post, I will show you how to implement subnet-level access control for service project admins, including IAM conditions, service account permissions for GKE, and common patterns for managing this at scale.
+In this post, I will show you how to implement subnet-level access control for service project admins, including service account permissions for GKE, policy guardrails, and common patterns for managing this at scale.
 
 ## The Access Control Problem
 
@@ -52,35 +52,19 @@ gcloud projects add-iam-policy-binding host-project \
   --role="roles/compute.networkUser"
 ```
 
-When you bind the role at the subnet level, the team can only create resources in that specific subnet. They cannot even see other subnets in the list when deploying VMs through the Console.
+When you bind the role at the subnet level, the team can only use that specific subnet for resources in their service project. They cannot use other host project subnets unless they have also been granted access to those subnets.
 
-## Using IAM Conditions for Flexible Access
+## Why Not IAM Conditions for Subnet Patterns
 
-IAM conditions let you add more sophisticated access rules. For example, granting access to multiple subnets with a naming pattern:
+IAM Conditions are useful for many Google Cloud access patterns, but they are not the right tool for granting `roles/compute.networkUser` to Shared VPC subnets by name or region. Compute Engine subnetworks support their own IAM policies, and Shared VPC subnet access should be granted directly on each subnet or managed with infrastructure as code.
 
-```bash
-# Grant access to all subnets starting with "web-" using IAM conditions
-gcloud projects add-iam-policy-binding host-project \
-  --member="group:web-team@mycompany.com" \
-  --role="roles/compute.networkUser" \
-  --condition='expression=resource.name.contains("/subnetworks/web-"),title=web-subnets-only,description=Access to web team subnets only'
-```
-
-You can also restrict access by region:
-
-```bash
-# Grant access to all subnets in us-central1 only
-gcloud projects add-iam-policy-binding host-project \
-  --member="group:web-team@mycompany.com" \
-  --role="roles/compute.networkUser" \
-  --condition='expression=resource.name.contains("/regions/us-central1/"),title=us-central1-subnets-only'
-```
+If you need a policy-level guardrail in addition to IAM, use the `constraints/compute.restrictSharedVpcSubnetworks` organization policy constraint to limit which Shared VPC subnets a service project can use. Keep the IAM grant itself at the subnet level.
 
 ## Service Account Permissions for GKE
 
-GKE clusters require special attention in Shared VPC. Beyond granting `roles/compute.networkUser` to the users who create clusters, you also need to grant roles to GKE's service accounts.
+GKE clusters require special attention in Shared VPC. Beyond granting `roles/compute.networkUser` to the users who create clusters, you also need to grant roles to the service accounts in the service project.
 
-Each GKE cluster uses two service accounts that need host project permissions:
+For GKE, the service project commonly needs these service accounts to have host project permissions:
 
 1. **Google Kubernetes Engine Service Agent**: `service-PROJECT_NUMBER@container-engine-robot.iam.gserviceaccount.com`
 2. **Google APIs Service Agent**: `PROJECT_NUMBER@cloudservices.gserviceaccount.com`
@@ -93,6 +77,13 @@ PROJECT_NUMBER=$(gcloud projects describe service-project-a --format='value(proj
 gcloud projects add-iam-policy-binding host-project \
   --member="serviceAccount:service-${PROJECT_NUMBER}@container-engine-robot.iam.gserviceaccount.com" \
   --role="roles/container.hostServiceAgentUser"
+
+# Grant the GKE service agent networkUser at the subnet level
+gcloud compute networks subnets add-iam-policy-binding web-subnet \
+  --project=host-project \
+  --region=us-central1 \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@container-engine-robot.iam.gserviceaccount.com" \
+  --role="roles/compute.networkUser"
 
 # Grant the Google APIs service agent networkUser at the subnet level
 gcloud compute networks subnets add-iam-policy-binding web-subnet \
@@ -163,6 +154,7 @@ resource "google_compute_subnetwork_iam_binding" "web_team_access" {
   members = [
     "group:web-team@mycompany.com",
     "serviceAccount:12345@cloudservices.gserviceaccount.com",
+    "serviceAccount:service-12345@container-engine-robot.iam.gserviceaccount.com",
   ]
 }
 
@@ -175,6 +167,7 @@ resource "google_compute_subnetwork_iam_binding" "data_team_access" {
   members = [
     "group:data-team@mycompany.com",
     "serviceAccount:67890@cloudservices.gserviceaccount.com",
+    "serviceAccount:service-67890@container-engine-robot.iam.gserviceaccount.com",
   ]
 }
 ```
@@ -185,7 +178,7 @@ Here are pitfalls I have seen teams run into:
 
 1. **Forgetting GKE service account bindings**: Granting `networkUser` to the human users but forgetting the GKE robot service account. The cluster creation fails with a cryptic permissions error.
 
-2. **Using `iam-policy-binding set` instead of `add`**: The `set-iam-policy` command replaces the entire policy. One team can accidentally remove another team's access. Always use `add-iam-policy-binding`.
+2. **Using `set-iam-policy` instead of `add-iam-policy-binding`**: The `set-iam-policy` command replaces the entire policy. One team can accidentally remove another team's access. Always use `add-iam-policy-binding` for manual changes unless you are intentionally managing the full IAM policy.
 
 3. **Not granting access to secondary ranges**: For GKE, the service accounts need access to the subnet that contains the secondary ranges (pod and service ranges). Since secondary ranges are part of the subnet, granting access to the subnet automatically includes the secondary ranges.
 
