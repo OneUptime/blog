@@ -22,20 +22,40 @@ The key insight is that error budgets give engineering teams a shared framework 
 
 Before you can track error budget burn, you need to define SLOs. Google Cloud Monitoring lets you create SLOs on any service it can discover, including GKE services, Cloud Run services, App Engine, and Istio services.
 
-Here is how to create an SLO using the gcloud CLI. This example sets up an availability SLO on a Cloud Run service:
+Here is how to create an SLO using the Cloud Monitoring API. This example sets up an availability SLO on a Cloud Run service:
 
 ```bash
-# Create an availability SLO with a 99.9% target over a rolling 30-day window
+# Create an availability SLO with a 99.9% target over a rolling 30-day window.
+# ACCESS_TOKEN can be generated with: gcloud auth print-access-token
 
-gcloud slo service-level-objectives create my-availability-slo \
-  --service=my-cloud-run-service \
-  --project=my-project-id \
-  --display-name="Availability SLO" \
-  --goal=0.999 \
-  --rolling-period=30d \
-  --sli-request-based-good-total-ratio \
-  --good-service-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="2xx"' \
-  --total-service-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count"'
+PROJECT_ID="my-project-id"
+SERVICE_ID="my-cloud-run-service"
+SLO_ID="my-availability-slo"
+ACCESS_TOKEN="$(gcloud auth print-access-token)"
+
+CREATE_SLO_POST_BODY=$(cat <<'EOF'
+{
+  "displayName": "Availability SLO",
+  "goal": 0.999,
+  "rollingPeriod": "2592000s",
+  "serviceLevelIndicator": {
+    "requestBased": {
+      "goodTotalRatio": {
+        "goodServiceFilter": "metric.type=\"run.googleapis.com/request_count\" resource.type=\"cloud_run_revision\" (metric.label.\"response_code_class\"=\"1xx\" OR metric.label.\"response_code_class\"=\"2xx\")",
+        "totalServiceFilter": "metric.type=\"run.googleapis.com/request_count\" resource.type=\"cloud_run_revision\" metric.label.\"response_code_class\"!=\"4xx\""
+      }
+    }
+  }
+}
+EOF
+)
+
+curl --http1.1 \
+  --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+  --header "Content-Type: application/json" \
+  -X POST \
+  -d "${CREATE_SLO_POST_BODY}" \
+  "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/services/${SERVICE_ID}/serviceLevelObjectives?service_level_objective_id=${SLO_ID}"
 ```
 
 You can also create SLOs through the Cloud Console by navigating to Monitoring, then Services, selecting your service, and clicking "Create SLO."
@@ -64,12 +84,12 @@ Here is a Python script that fetches error budget remaining for a given SLO:
 
 ```python
 from google.cloud import monitoring_v3
-from google.protobuf import timestamp_pb2
 import time
 
 def get_error_budget_remaining(project_id, service_id, slo_id):
     """Fetch the remaining error budget for a specific SLO."""
-    client = monitoring_v3.ServiceMonitoringServiceClient()
+    slo_client = monitoring_v3.ServiceMonitoringServiceClient()
+    metric_client = monitoring_v3.MetricServiceClient()
 
     # Build the SLO name path
     slo_name = (
@@ -77,59 +97,80 @@ def get_error_budget_remaining(project_id, service_id, slo_id):
         f"/serviceLevelObjectives/{slo_id}"
     )
 
-    # Query the time series for error budget remaining
-    query_client = monitoring_v3.QueryServiceClient()
-
-    # Use MQL to get error budget data
-    query = f"""
-    fetch consumer_quota
-    | filter resource.service == '{service_id}'
-    | { slo_id }
-    """
-
-    # Alternative: use the SLO API directly
-    slo = client.get_service_level_objective(name=slo_name)
+    # Use the SLO API to read the objective definition.
+    slo = slo_client.get_service_level_objective(name=slo_name)
     print(f"SLO Goal: {slo.goal}")
     print(f"Rolling Period: {slo.rolling_period.seconds / 86400} days")
 
-    return slo
+    now = int(time.time())
+    interval = monitoring_v3.TimeInterval(
+        {
+            "end_time": {"seconds": now},
+            "start_time": {"seconds": now - 3600},
+        }
+    )
+
+    # SLO time series are retrieved with selectors, not metric type filters.
+    request = monitoring_v3.ListTimeSeriesRequest(
+        name=f"projects/{project_id}",
+        filter=f'select_slo_budget_fraction("{slo_name}")',
+        interval=interval,
+        view=monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
+    )
+
+    points = []
+    for series in metric_client.list_time_series(request=request):
+        for point in series.points:
+            points.append(
+                {
+                    "timestamp": point.interval.end_time,
+                    "budget_fraction_remaining": point.value.double_value,
+                }
+            )
+
+    return points
 
 # Example usage
 get_error_budget_remaining("my-project", "my-service", "my-availability-slo")
 ```
 
-For more detailed time series data, you can use the Monitoring Query Language (MQL) to pull error budget burn metrics:
+For more detailed time series data, use the Monitoring API with the SLO time-series selectors to pull error budget burn metrics:
 
 ```python
 from google.cloud import monitoring_v3
-import datetime
+import time
 
 def query_error_budget_burn(project_id, service_id, slo_id):
     """Query error budget burn rate over the last 24 hours."""
-    client = monitoring_v3.QueryServiceClient()
+    client = monitoring_v3.MetricServiceClient()
 
-    # MQL query for SLO compliance
-    query = f"""
-    fetch consumed_api
-    | metric 'monitoring.googleapis.com/services/{service_id}/serviceLevelObjectives/{slo_id}/error_budget_remaining'
-    | within 24h
-    | every 5m
-    """
-
-    request = monitoring_v3.QueryTimeSeriesRequest(
-        name=f"projects/{project_id}",
-        query=query,
+    slo_name = (
+        f"projects/{project_id}/services/{service_id}"
+        f"/serviceLevelObjectives/{slo_id}"
     )
 
-    results = client.query_time_series(request=request)
+    now = int(time.time())
+    interval = monitoring_v3.TimeInterval(
+        {
+            "end_time": {"seconds": now},
+            "start_time": {"seconds": now - 24 * 60 * 60},
+        }
+    )
+
+    request = monitoring_v3.ListTimeSeriesRequest(
+        name=f"projects/{project_id}",
+        filter=f'select_slo_burn_rate("{slo_name}", "3600s")',
+        interval=interval,
+        view=monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
+    )
 
     # Collect data points for visualization
     data_points = []
-    for time_series in results:
-        for point in time_series.point_data:
+    for time_series in client.list_time_series(request=request):
+        for point in time_series.points:
             data_points.append({
-                "timestamp": point.time_interval.end_time,
-                "budget_remaining": point.values[0].double_value,
+                "timestamp": point.interval.end_time,
+                "burn_rate": point.value.double_value,
             })
 
     return data_points
@@ -217,12 +258,12 @@ Google Cloud supports multi-window, multi-burn-rate alerts as recommended by the
 
 ```bash
 # Create an alert for fast burn - 14.4x over 1 hour (consumes 2% of budget)
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="SLO Fast Burn Alert" \
   --condition-display-name="High burn rate" \
   --condition-filter='select_slo_burn_rate("projects/my-project/services/my-service/serviceLevelObjectives/my-slo", "1h")' \
-  --condition-threshold-value=14.4 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --if='> 14.4' \
+  --duration=0s \
   --notification-channels=projects/my-project/notificationChannels/my-channel \
   --combiner=OR
 ```
@@ -254,7 +295,7 @@ graph LR
 
 The real power of error budget tracking comes when you connect it to your development process. Here are some practical patterns:
 
-First, export your error budget data to BigQuery for long-term analysis. Cloud Monitoring lets you set up log sinks that capture SLO metrics. Second, build a weekly error budget review into your team rituals - pull the data from Cloud Monitoring and discuss whether the team should be shipping features or hardening the system. Third, integrate burn rate alerts with your deployment pipeline. If your error budget is below a certain threshold, block non-critical deployments automatically.
+First, export your error budget data to BigQuery for long-term analysis by periodically querying the SLO time-series selectors and writing the returned points to a table. Second, build a weekly error budget review into your team rituals - pull the data from Cloud Monitoring and discuss whether the team should be shipping features or hardening the system. Third, integrate burn rate alerts with your deployment pipeline. If your error budget is below a certain threshold, block non-critical deployments automatically.
 
 The goal is not to never spend error budget. It is to spend it deliberately on things that matter, and to know exactly where you stand at any point in time.
 
