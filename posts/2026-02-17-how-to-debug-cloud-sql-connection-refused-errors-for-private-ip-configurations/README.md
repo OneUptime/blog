@@ -26,8 +26,8 @@ graph LR
 For this to work, several things must be in place:
 - Private services access must be configured on your VPC
 - VPC peering must be active
-- The VM and Cloud SQL must be in the same region (or peering must export/import routes)
-- Firewall rules must allow egress on port 3306/5432
+- The VM, GKE cluster, or other client must have access to the VPC network where private services access is configured
+- Firewall rules must allow egress to the Cloud SQL private IP on the database port
 
 ## Step 1: Verify Private IP Is Configured
 
@@ -51,6 +51,8 @@ gcloud sql instances patch my-db \
     --network=projects/my-project/global/networks/my-vpc \
     --no-assign-ip  # Optionally disable public IP
 ```
+
+If you are using Shared VPC, you can create new Cloud SQL instances with private IP in a Shared VPC network, but you cannot assign a Shared VPC private IP to an existing Cloud SQL instance.
 
 ## Step 2: Check Private Services Access
 
@@ -102,7 +104,7 @@ Check that routes are being exchanged:
 ```bash
 # List routes to see if private services routes are present
 gcloud compute routes list \
-    --filter="network:my-vpc AND destRange~10.0" \
+    --filter="network:my-vpc AND nextHopPeering:*" \
     --format="table(name, destRange, nextHopPeering)"
 ```
 
@@ -115,7 +117,9 @@ Check that your VM can reach the Cloud SQL private IP:
 ```bash
 # Get the Cloud SQL private IP
 gcloud sql instances describe my-db \
-    --format="value(ipAddresses[0].ipAddress)"
+    --flatten="ipAddresses[]" \
+    --filter="ipAddresses.type=PRIVATE" \
+    --format="value(ipAddresses.ipAddress)"
 
 # From the VM, test connectivity
 # For PostgreSQL (port 5432)
@@ -125,11 +129,11 @@ nc -zv PRIVATE_IP 5432
 nc -zv PRIVATE_IP 3306
 ```
 
-If `nc` times out, the issue is network-level (routing or firewall). If it returns "connection refused," the port is reachable but nothing is listening - which usually means a Cloud SQL configuration issue.
+If `nc` times out, the issue is network-level (routing or firewall). If it returns "connection refused," the private IP is reachable but the database listener did not accept the TCP connection, so check the Cloud SQL instance status, database engine, port, and any proxy or connector configuration.
 
 ## Step 5: Check Firewall Rules
 
-Your VPC firewall rules must allow egress to the Cloud SQL private IP on the database port:
+Your VPC firewall rules must allow egress to the Cloud SQL private IP on the database port when connecting directly. If you are using the Cloud SQL Auth Proxy, also allow outbound TCP 443 and 3307 from the proxy host.
 
 ```bash
 # Check for egress deny rules that might block traffic
@@ -147,7 +151,7 @@ gcloud compute firewall-rules create allow-cloudsql-egress \
     --direction=EGRESS \
     --action=ALLOW \
     --rules=tcp:5432,tcp:3306 \
-    --destination-ranges=10.0.0.0/8 \
+    --destination-ranges=PRIVATE_IP/32 \
     --priority=100
 ```
 
@@ -164,9 +168,9 @@ If you are using the Cloud SQL Auth Proxy with private IP, you need to tell it t
 
 Without the `--private-ip` flag, the proxy tries to connect via the public path, which will fail if you disabled public IP on the instance.
 
-## Step 7: Cross-Region Connectivity
+## Step 7: External or Multi-VPC Connectivity
 
-If your VM and Cloud SQL instance are in different regions, the peering routes might not be exported:
+Cloud SQL private IP can be reached across regions when the client is in the same VPC network. If the client is in another VPC or an on-premises network connected by Cloud VPN or Cloud Interconnect, the peering routes might not be exported:
 
 ```bash
 # Enable custom route export/import on the peering
@@ -211,9 +215,9 @@ gcloud services vpc-peerings connect \
 
 For GKE pods connecting to Cloud SQL via private IP, make sure:
 
-1. The GKE cluster is in the same VPC (or a peered VPC) as the Cloud SQL instance
-2. The pod can resolve the Cloud SQL private IP
-3. If using Workload Identity, the service account has `cloudsql.client` role
+1. The GKE cluster is VPC-native and in the same VPC where private services access is configured, or you have configured one of Cloud SQL's supported multi-VPC connectivity patterns
+2. The pod can route to the Cloud SQL private IP
+3. If using the Cloud SQL Auth Proxy or a Cloud SQL connector with Workload Identity, the Google service account has the Cloud SQL Client role
 
 ```yaml
 # GKE deployment connecting to Cloud SQL via private IP
@@ -252,7 +256,7 @@ graph TD
     H -->|Yes| J{Using Auth Proxy?}
     J -->|Yes| K[Add --private-ip flag]
     J -->|No| L[Check Cloud SQL instance status]
-    I --> M{Cross-region?}
+    I --> M{External or multi-VPC client?}
     M -->|Yes| N[Enable custom route exchange]
     M -->|No| O[Check for egress deny rules]
 ```
