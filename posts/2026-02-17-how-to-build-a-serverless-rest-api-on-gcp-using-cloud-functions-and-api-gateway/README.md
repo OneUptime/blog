@@ -41,6 +41,7 @@ Each Cloud Function handles a specific API endpoint. Here are the functions for 
 import json
 from flask import jsonify, request
 from google.cloud import firestore
+from datetime import datetime, timezone
 
 db = firestore.Client()
 
@@ -60,6 +61,8 @@ def get_products(request):
     for doc in query.stream():
         product = doc.to_dict()
         product["id"] = doc.id
+        if product.get("created_at"):
+            product["created_at"] = product["created_at"].isoformat()
         products.append(product)
 
     return jsonify({"products": products, "count": len(products)}), 200
@@ -81,18 +84,20 @@ def create_product(request):
         return jsonify({"error": "Price must be a positive number"}), 400
 
     # Create the product in Firestore
+    created_at = datetime.now(timezone.utc)
     product_data = {
         "name": data["name"],
         "price": float(data["price"]),
         "category": data["category"],
         "description": data.get("description", ""),
-        "created_at": firestore.SERVER_TIMESTAMP,
+        "created_at": created_at,
     }
 
     doc_ref = db.collection("products").add(product_data)
-    product_data["id"] = doc_ref[1].id
+    response_data = {**product_data, "id": doc_ref[1].id}
+    response_data["created_at"] = created_at.isoformat()
 
-    return jsonify(product_data), 201
+    return jsonify(response_data), 201
 
 
 def get_product_by_id(request):
@@ -111,6 +116,8 @@ def get_product_by_id(request):
 
     product = doc.to_dict()
     product["id"] = doc.id
+    if product.get("created_at"):
+        product["created_at"] = product["created_at"].isoformat()
 
     return jsonify(product), 200
 ```
@@ -122,7 +129,7 @@ def get_product_by_id(request):
 import json
 from flask import jsonify, request
 from google.cloud import firestore
-from datetime import datetime
+from datetime import datetime, timezone
 
 db = firestore.Client()
 
@@ -167,6 +174,7 @@ def create_order(request):
     product = product_doc.to_dict()
 
     # Create the order
+    created_at = datetime.now(timezone.utc)
     order_data = {
         "customer_id": data["customer_id"],
         "product_id": data["product_id"],
@@ -174,13 +182,21 @@ def create_order(request):
         "unit_price": product["price"],
         "total": product["price"] * int(data["quantity"]),
         "status": "pending",
-        "created_at": firestore.SERVER_TIMESTAMP,
+        "created_at": created_at,
     }
 
     doc_ref = db.collection("orders").add(order_data)
-    order_data["id"] = doc_ref[1].id
+    response_data = {**order_data, "id": doc_ref[1].id}
+    response_data["created_at"] = created_at.isoformat()
 
-    return jsonify(order_data), 201
+    return jsonify(response_data), 201
+```
+
+Add a `requirements.txt` file in both the `products` and `orders` directories:
+
+```text
+functions-framework
+google-cloud-firestore
 ```
 
 ## Step 2: Deploy the Cloud Functions
@@ -297,7 +313,7 @@ paths:
           required: true
       x-google-backend:
         address: "https://us-central1-my-project.cloudfunctions.net/get-product-by-id"
-        path_translation: APPEND_PATH_TO_ADDRESS
+        path_translation: CONSTANT_ADDRESS
       responses:
         200:
           description: "Product details"
@@ -377,13 +393,41 @@ curl "https://${GATEWAY_URL}/orders"
 
 Update the OpenAPI spec to require API keys, then create and distribute API keys to your clients. This gives you usage tracking and the ability to revoke access.
 
+Add the security definition to the OpenAPI spec and require it on each operation:
+
+```yaml
+securityDefinitions:
+  api_key:
+    type: "apiKey"
+    name: "key"
+    in: "query"
+```
+
+```yaml
+security:
+  - api_key: []
+```
+
 ```bash
 # Enable the API for API key usage
 gcloud services enable product-order-api-HASH.apigateway.my-project.cloud.goog
 
 # Create an API key
-gcloud alpha services api-keys create \
+gcloud services api-keys create \
   --display-name="Client App Key" \
+  --project=my-project
+
+# Create a new API config with the updated OpenAPI spec
+gcloud api-gateway api-configs create v1-key \
+  --api=product-order-api \
+  --openapi-spec=api-spec.yaml \
+  --project=my-project
+
+# Update the gateway to use the new config
+gcloud api-gateway gateways update product-order-gateway \
+  --api=product-order-api \
+  --api-config=v1-key \
+  --location=us-central1 \
   --project=my-project
 ```
 
