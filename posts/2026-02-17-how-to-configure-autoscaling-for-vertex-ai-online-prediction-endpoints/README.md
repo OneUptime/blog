@@ -113,7 +113,7 @@ gcloud ai endpoints deploy-model ENDPOINT_ID \
   --machine-type=n1-standard-4 \
   --min-replica-count=1 \
   --max-replica-count=10 \
-  --autoscaling-metric-specs=metric-name=aiplatform.googleapis.com/prediction/online/cpu/utilization,target=60
+  --autoscaling-metric-specs=cpu-usage=60
 ```
 
 ## Choosing the Right Scaling Parameters
@@ -222,39 +222,36 @@ Key metrics to watch include:
 
 ## Updating Autoscaling Configuration
 
-To change autoscaling parameters on an already-deployed model, you need to undeploy and redeploy:
+To change autoscaling parameters on an already-deployed model, use the `mutateDeployedModel` API:
 
-```python
-# update_autoscaling.py
-# Update the autoscaling configuration for a deployed model
-
-from google.cloud import aiplatform
-
-aiplatform.init(
-    project='your-project-id',
-    location='us-central1',
-)
-
-endpoint = aiplatform.Endpoint(
-    'projects/your-project-id/locations/us-central1/endpoints/ENDPOINT_ID'
-)
-
-# Undeploy the current model
-endpoint.undeploy(deployed_model_id='DEPLOYED_MODEL_ID')
-
-# Redeploy with new autoscaling settings
-model = aiplatform.Model(
-    'projects/your-project-id/locations/us-central1/models/MODEL_ID'
-)
-
-model.deploy(
-    endpoint=endpoint,
-    machine_type='n1-standard-8',
-    min_replica_count=2,
-    max_replica_count=15,
-    autoscaling_target_cpu_utilization=50,
-    traffic_percentage=100,
-)
+```bash
+# Update autoscaling settings for an existing deployed model
+curl -X PATCH \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://us-central1-aiplatform.googleapis.com/v1/projects/your-project-id/locations/us-central1/endpoints/ENDPOINT_ID:mutateDeployedModel" \
+  -d '{
+    "deployedModel": {
+      "id": "DEPLOYED_MODEL_ID",
+      "dedicatedResources": {
+        "minReplicaCount": 2,
+        "maxReplicaCount": 15,
+        "autoscalingMetricSpecs": [
+          {
+            "metricName": "aiplatform.googleapis.com/prediction/online/cpu/utilization",
+            "target": 50
+          }
+        ]
+      }
+    },
+    "updateMask": {
+      "paths": [
+        "dedicated_resources.min_replica_count",
+        "dedicated_resources.max_replica_count",
+        "dedicated_resources.autoscaling_metric_specs"
+      ]
+    }
+  }'
 ```
 
 ## Cost Implications
