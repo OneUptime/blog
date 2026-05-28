@@ -31,17 +31,16 @@ gcloud container clusters create kafka-cluster \
   --max-nodes=5
 ```
 
-Create a dedicated node pool for Kafka brokers with local SSDs for better I/O performance.
+Create a dedicated node pool for Kafka brokers with SSD-backed persistent disks for better I/O performance.
 
 ```bash
-# Kafka benefits from fast local storage for its log segments
+# Kafka benefits from fast persistent storage for its log segments
 gcloud container node-pools create kafka-nodes \
   --cluster=kafka-cluster \
   --region=us-central1 \
   --machine-type=n2-standard-8 \
   --num-nodes=1 \
   --node-locations=us-central1-a,us-central1-b,us-central1-c \
-  --local-ssd-count=1 \
   --node-taints=dedicated=kafka:NoSchedule \
   --node-labels=dedicated=kafka
 ```
@@ -63,19 +62,107 @@ helm install strimzi-operator strimzi/strimzi-kafka-operator \
 
 ## Kafka Cluster Configuration
 
-Create a Kafka custom resource that deploys brokers across zones.
+Create Kafka and KafkaNodePool custom resources that deploy controllers and brokers across zones.
 
 ```yaml
 # kafka-cluster.yaml - Multi-zone Kafka deployment
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: controller
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: production-kafka
+spec:
+  replicas: 3
+  roles:
+    - controller
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 50Gi
+        class: premium-rwo
+        deleteClaim: false
+        kraftMetadata: shared
+  template:
+    pod:
+      tolerations:
+        - key: dedicated
+          value: kafka
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: dedicated
+                    operator: In
+                    values:
+                      - kafka
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              strimzi.io/cluster: production-kafka
+              strimzi.io/controller-role: "true"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: broker
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: production-kafka
+spec:
+  replicas: 3  # One broker per zone
+  roles:
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 500Gi
+        class: premium-rwo  # SSD-backed persistent volumes
+        deleteClaim: false
+        kraftMetadata: shared
+  template:
+    pod:
+      tolerations:
+        - key: dedicated
+          value: kafka
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: dedicated
+                    operator: In
+                    values:
+                      - kafka
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              strimzi.io/cluster: production-kafka
+              strimzi.io/broker-role: "true"
+---
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: production-kafka
   namespace: kafka
 spec:
   kafka:
-    version: 3.6.0
-    replicas: 3  # One broker per zone
+    version: 4.2.0
+    metadataVersion: 4.2-IV1
     listeners:
       - name: plain
         port: 9092
@@ -112,39 +199,8 @@ spec:
 
     # Zone-aware pod scheduling
     rack:
+      type: topology-label
       topologyKey: topology.kubernetes.io/zone
-
-    template:
-      pod:
-        tolerations:
-          - key: dedicated
-            value: kafka
-            effect: NoSchedule
-        affinity:
-          nodeAffinity:
-            requiredDuringSchedulingIgnoredDuringExecution:
-              nodeSelectorTerms:
-                - matchExpressions:
-                    - key: dedicated
-                      operator: In
-                      values:
-                        - kafka
-          podAntiAffinity:
-            # Ensure brokers run in different zones
-            requiredDuringSchedulingIgnoredDuringExecution:
-              - labelSelector:
-                  matchExpressions:
-                    - key: strimzi.io/name
-                      operator: In
-                      values:
-                        - production-kafka-kafka
-                topologyKey: topology.kubernetes.io/zone
-
-    storage:
-      type: persistent-claim
-      size: 500Gi
-      class: premium-rwo  # SSD-backed persistent volumes
-      deleteClaim: false
 
     metricsConfig:
       type: jmxPrometheusExporter
@@ -152,27 +208,6 @@ spec:
         configMapKeyRef:
           name: kafka-metrics
           key: kafka-metrics-config.yml
-
-  # ZooKeeper configuration (or use KRaft for newer versions)
-  zookeeper:
-    replicas: 3
-    storage:
-      type: persistent-claim
-      size: 50Gi
-      class: premium-rwo
-      deleteClaim: false
-    template:
-      pod:
-        affinity:
-          podAntiAffinity:
-            requiredDuringSchedulingIgnoredDuringExecution:
-              - labelSelector:
-                  matchExpressions:
-                    - key: strimzi.io/name
-                      operator: In
-                      values:
-                        - production-kafka-zookeeper
-                topologyKey: topology.kubernetes.io/zone
 
   entityOperator:
     topicOperator: {}
@@ -191,7 +226,7 @@ kubectl -n kafka get kafka production-kafka -w
 
 ## Understanding Multi-Zone Replication
 
-With `rack.topologyKey: topology.kubernetes.io/zone`, Strimzi is aware of which zone each broker runs in. When combined with `default.replication.factor: 3` and `min.insync.replicas: 2`, every partition has copies across all three zones.
+With `rack.topologyKey: topology.kubernetes.io/zone`, Strimzi is aware of which zone each broker runs in. When combined with `default.replication.factor: 3`, `min.insync.replicas: 2`, and broker topology spread constraints, new partitions are assigned copies across the three zones.
 
 Here is how the replication looks across zones:
 
@@ -211,7 +246,7 @@ graph TD
     B1 <-->|Replication| B3
 ```
 
-If Zone A goes down completely, Broker 0 is lost. Partitions 1 and 2 still have their leaders in other zones. Partition 0 needs a new leader elected from Zone B or Zone C. With `min.insync.replicas: 2`, writes continue as long as two of three replicas are available.
+If Zone A goes down completely, Broker 0 is lost. Partitions 1 and 2 still have their leaders in other zones. Partition 0 needs a new leader elected from Zone B or Zone C. With `min.insync.replicas: 2` and producers using `acks=all`, writes continue as long as two of three replicas are in sync and available.
 
 ## Creating Topics with Zone Awareness
 
@@ -219,7 +254,7 @@ When creating topics, configure them for multi-zone durability.
 
 ```yaml
 # topic-orders.yaml - Topic with proper replication
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: orders
@@ -317,6 +352,9 @@ Set up alerting for critical Kafka metrics.
 gcloud monitoring policies create \
   --display-name="Kafka Under-Replicated Partitions" \
   --condition-display-name="Under-replicated partitions > 0" \
+  --condition-filter='metric.type="prometheus.googleapis.com/kafka_server_replicamanager_underreplicatedpartitions/gauge"' \
+  --if='> 0' \
+  --duration=60s \
   --notification-channels=YOUR_CHANNEL
 ```
 
@@ -325,13 +363,19 @@ gcloud monitoring policies create \
 Regularly test your cluster's zone failure resilience.
 
 ```bash
-# Simulate a zone failure by cordoning all nodes in one zone
+# Simulate a zone failure by cordoning and draining all nodes in one zone
 kubectl get nodes -l topology.kubernetes.io/zone=us-central1-a -o name | \
   xargs -I {} kubectl cordon {}
 
+kubectl get nodes -l topology.kubernetes.io/zone=us-central1-a -o name | \
+  xargs -I {} kubectl drain {} --ignore-daemonsets --delete-emptydir-data
+
 # Verify Kafka continues to serve traffic
-kubectl -n kafka exec -it production-kafka-kafka-0 -- \
-  bin/kafka-topics.sh --describe --bootstrap-server localhost:9092
+kubectl -n kafka run kafka-tools --rm -it \
+  --image=quay.io/strimzi/kafka:1.0.0-kafka-4.2.0 \
+  --restart=Never -- \
+  bin/kafka-topics.sh --describe \
+  --bootstrap-server production-kafka-kafka-bootstrap:9092
 
 # Uncordon the nodes after testing
 kubectl get nodes -l topology.kubernetes.io/zone=us-central1-a -o name | \
