@@ -20,7 +20,7 @@ Before you start, make sure you have the following ready:
 - The Cloud Healthcare API enabled on your project
 - A FHIR store with some sample data loaded
 - The `gcloud` CLI installed and authenticated
-- IAM permissions for `healthcare.fhirStores.deidentify`
+- IAM permissions for `healthcare.fhirStores.deidentify` on the source store and `healthcare.fhirResources.update` on the destination store
 
 ## Understanding FHIR De-Identification
 
@@ -45,14 +45,15 @@ The following command creates a new FHIR store in the same dataset to hold the d
 gcloud healthcare fhir-stores create deidentified-fhir-store \
   --dataset=my-dataset \
   --location=us-central1 \
-  --version=R4
+  --version=r4 \
+  --enable-update-create
 ```
 
 ## Step 2: Define the De-Identification Configuration
 
 The configuration is where you specify exactly how PHI should be handled. Here is a JSON configuration that combines several strategies for thorough de-identification.
 
-This configuration file tells the API to shift dates, hash identifiers, and redact text fields that might contain PHI:
+This configuration file tells the API to use the default FHIR de-identification profile and redact detected PHI in text fields:
 
 ```json
 {
@@ -76,45 +77,144 @@ For more granular control, you can create a detailed configuration that specifie
 ```json
 {
   "fhir": {
-    "defaultKeepExtensions": true,
+    "defaultKeepExtensions": false,
     "fieldMetadataList": [
       {
         "paths": [
-          "Patient.name",
-          "Patient.address",
-          "Patient.telecom",
-          "Patient.birthDate"
+          "Patient.HumanName"
+        ],
+        "action": "INSPECT_AND_TRANSFORM"
+      },
+      {
+        "paths": [
+          "Patient.Address",
+          "Patient.ContactPoint",
+          "Patient.Identifier"
         ],
         "action": "TRANSFORM"
       },
       {
         "paths": [
-          "Patient.identifier"
+          "Patient.birthDate",
+          "Patient.text.div"
         ],
         "action": "INSPECT_AND_TRANSFORM"
       }
     ]
   },
-  "dateShiftConfig": {
-    "cryptoHashConfig": {
-      "cryptoKey": "YOUR_BASE64_ENCODED_KEY"
-    }
+  "text": {
+    "transformations": [
+      {
+        "infoTypes": [
+          "DATE"
+        ],
+        "dateShiftConfig": {
+          "cryptoKey": "YOUR_BASE64_ENCODED_KEY"
+        }
+      },
+      {
+        "infoTypes": [
+          "PERSON_NAME",
+          "MEDICAL_RECORD_NUMBER"
+        ],
+        "cryptoHashConfig": {
+          "cryptoKey": "YOUR_BASE64_ENCODED_KEY"
+        }
+      },
+      {
+        "infoTypes": [
+          "EMAIL_ADDRESS",
+          "PHONE_NUMBER",
+          "STREET_ADDRESS"
+        ],
+        "redactConfig": {}
+      }
+    ]
+  },
+  "useRegionalDataProcessing": true
+}
+```
+
+Then wrap that configuration in the FHIR store de-identification request body. Save this as `deidentify-request.json`:
+
+```json
+{
+  "destinationStore": "projects/MY_PROJECT/locations/us-central1/datasets/my-dataset/fhirStores/deidentified-fhir-store",
+  "config": {
+    "fhir": {
+      "defaultKeepExtensions": false,
+      "fieldMetadataList": [
+        {
+          "paths": [
+            "Patient.HumanName"
+          ],
+          "action": "INSPECT_AND_TRANSFORM"
+        },
+        {
+          "paths": [
+            "Patient.Address",
+            "Patient.ContactPoint",
+            "Patient.Identifier"
+          ],
+          "action": "TRANSFORM"
+        },
+        {
+          "paths": [
+            "Patient.birthDate",
+            "Patient.text.div"
+          ],
+          "action": "INSPECT_AND_TRANSFORM"
+        }
+      ]
+    },
+    "text": {
+      "transformations": [
+        {
+          "infoTypes": [
+            "DATE"
+          ],
+          "dateShiftConfig": {
+            "cryptoKey": "YOUR_BASE64_ENCODED_KEY"
+          }
+        },
+        {
+          "infoTypes": [
+            "PERSON_NAME",
+            "MEDICAL_RECORD_NUMBER"
+          ],
+          "cryptoHashConfig": {
+            "cryptoKey": "YOUR_BASE64_ENCODED_KEY"
+          }
+        },
+        {
+          "infoTypes": [
+            "EMAIL_ADDRESS",
+            "PHONE_NUMBER",
+            "STREET_ADDRESS"
+          ],
+          "redactConfig": {}
+        }
+      ]
+    },
+    "useRegionalDataProcessing": true
   }
 }
 ```
 
-## Step 3: Generate a Crypto Key for Consistent Hashing
+The request body has a `destinationStore` field and a `config` field. The `config` field contains the `DeidentifyConfig`; transformation settings such as `dateShiftConfig` and `cryptoHashConfig` belong inside `text.transformations`.
 
-If you want date shifting to be consistent for the same patient across runs, you need to provide a crypto key. This ensures the same patient always gets the same date shift amount.
+## Step 3: Generate a Crypto Key for Consistent Transformations
 
-This command generates a base64-encoded key suitable for the crypto hash config:
+If you want date shifting and crypto hashing to be consistent across runs, provide a crypto key. For date shifting, the same patient and key combination gets the same date shift amount. Google recommends Cloud KMS wrapped keys for production use, but a raw base64-encoded AES key is also supported.
+
+This command generates a base64-encoded 256-bit key:
 
 ```bash
 # Generate a random 256-bit key and base64 encode it
 openssl rand -base64 32
 ```
 
-Take the output and plug it into the `cryptoKey` field in your configuration.
+Take the output and plug it into the `cryptoKey` fields in your configuration.
 
 ## Step 4: Run the De-Identification Operation
 
@@ -126,13 +226,9 @@ The following curl command triggers the de-identification, pointing to your sour
 # Run the de-identification operation via the REST API
 curl -X POST \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/json" \
-  -d @deidentify-config.json \
-  "https://healthcare.googleapis.com/v1/projects/MY_PROJECT/locations/us-central1/datasets/my-dataset/fhirStores/my-fhir-store:deidentify" \
-  --data '{
-    "destinationStore": "projects/MY_PROJECT/locations/us-central1/datasets/my-dataset/fhirStores/deidentified-fhir-store",
-    "config": '"$(cat deidentify-config.json)"'
-  }'
+  -H "Content-Type: application/json; charset=utf-8" \
+  --data @deidentify-request.json \
+  "https://healthcare.googleapis.com/v1/projects/MY_PROJECT/locations/us-central1/datasets/my-dataset/fhirStores/my-fhir-store:deidentify"
 ```
 
 Alternatively, you can use the Python client library for a cleaner approach.
@@ -140,7 +236,11 @@ Alternatively, you can use the Python client library for a cleaner approach.
 This Python script runs the de-identification and waits for the operation to finish:
 
 ```python
+import json
+
 from google.cloud import healthcare_v1
+from google.protobuf import json_format
+
 
 def deidentify_fhir_store(
     project_id, location, dataset_id, source_store, dest_store, config_file
@@ -160,18 +260,26 @@ def deidentify_fhir_store(
         f"/datasets/{dataset_id}/fhirStores/{dest_store}"
     )
 
+    with open(config_file, "r", encoding="utf-8") as f:
+        config = json_format.ParseDict(
+            json.load(f),
+            healthcare_v1.DeidentifyConfig()
+        )
+
     # Create the de-identification request
     request = healthcare_v1.DeidentifyFhirStoreRequest(
         source_store=source_name,
         destination_store=dest_name,
+        config=config,
     )
 
     # Execute and wait for the operation to complete
     operation = client.deidentify_fhir_store(request=request)
     result = operation.result(timeout=600)
 
-    print(f"De-identification complete. Resources processed: {result}")
+    print(f"De-identification complete: {result}")
     return result
+
 
 # Run the de-identification
 deidentify_fhir_store(
