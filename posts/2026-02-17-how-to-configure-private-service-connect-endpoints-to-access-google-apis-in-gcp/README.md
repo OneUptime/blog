@@ -22,7 +22,7 @@ Before diving into the setup, let me clarify how PSC differs from Private Google
 | DNS | Standard API domains | Custom or standard domains |
 | IP control | No control | You choose the IP |
 | Firewall rules | Hard to target (public ranges) | Easy to target (your VPC IP) |
-| Per-service endpoints | No | Yes |
+| API bundle endpoints | No | Yes |
 | Routing control | Limited | Full VPC routing |
 
 PSC is the more advanced option. Use PGA for simple setups and PSC when you need fine-grained control.
@@ -31,45 +31,43 @@ PSC is the more advanced option. Use PGA for simple setups and PSC when you need
 
 ```mermaid
 graph LR
-    A[VM in VPC<br/>10.10.0.5] -->|Connects to<br/>10.10.0.100| B[PSC Endpoint<br/>10.10.0.100]
+    A[VM in VPC<br/>10.10.0.5] -->|Connects to<br/>10.20.0.100| B[PSC Endpoint<br/>10.20.0.100]
     B -->|Private tunnel| C[Google API Service<br/>Cloud Storage, BigQuery, etc.]
 ```
 
-When your VM sends traffic to the PSC endpoint IP (10.10.0.100 in this example), GCP routes it through a private tunnel to the Google API service. The traffic never touches the public internet and never uses Google's public IP addresses.
+When your VM sends traffic to the PSC endpoint IP (10.20.0.100 in this example), Google Cloud routes it privately to the Google API service. The traffic never touches the public internet and never uses Google's public IP addresses.
 
 ## Step 1: Reserve an Internal IP Address
 
-Choose an IP address from your VPC subnet for the PSC endpoint:
+Choose an IP address for the PSC endpoint. The address is a global internal address associated with your VPC network, and it must not be inside any subnet range in the VPC:
 
 ```bash
 # Reserve a static internal IP for the PSC endpoint
 
 gcloud compute addresses create psc-google-apis-ip \
-  --region=us-central1 \
-  --subnet=production-subnet \
-  --addresses=10.10.0.100 \
-  --purpose=GCE_ENDPOINT
+  --global \
+  --purpose=PRIVATE_SERVICE_CONNECT \
+  --addresses=10.20.0.100 \
+  --network=production-vpc
 ```
 
 ## Step 2: Create the PSC Endpoint
 
-Create a forwarding rule that connects the reserved IP to the Google APIs service attachment:
+Create a global forwarding rule that connects the reserved IP to the Google APIs bundle:
 
 ```bash
 # Create a PSC endpoint for all Google APIs
-gcloud compute forwarding-rules create psc-google-apis \
-  --region=us-central1 \
+gcloud compute forwarding-rules create pscgoogleapis \
+  --global \
   --network=production-vpc \
-  --subnet=production-subnet \
   --address=psc-google-apis-ip \
   --target-google-apis-bundle=all-apis \
-  --load-balancing-scheme="" \
   --service-directory-registration=projects/my-project/locations/us-central1
 ```
 
 The `--target-google-apis-bundle` flag accepts two values:
-- `all-apis`: Access to all Google APIs (equivalent to `*.googleapis.com`)
-- `vpc-sc`: Access only to APIs supported by VPC Service Controls (equivalent to the restricted VIP)
+- `all-apis`: Access to supported Google APIs, including `*.googleapis.com` service endpoints (equivalent to `private.googleapis.com`)
+- `vpc-sc`: Access only to APIs supported by VPC Service Controls (equivalent to `restricted.googleapis.com`)
 
 For most use cases, `all-apis` is what you want. Use `vpc-sc` if you have VPC Service Controls configured and want to enforce the service perimeter.
 
@@ -77,8 +75,8 @@ For most use cases, `all-apis` is what you want. Use `vpc-sc` if you have VPC Se
 
 ```bash
 # Verify the PSC endpoint was created
-gcloud compute forwarding-rules describe psc-google-apis \
-  --region=us-central1 \
+gcloud compute forwarding-rules describe pscgoogleapis \
+  --global \
   --format="yaml(name, IPAddress, target, network)"
 ```
 
@@ -104,14 +102,14 @@ Add DNS records that point API domains to the PSC endpoint IP:
 gcloud dns record-sets create "*.googleapis.com." \
   --zone=psc-googleapis \
   --type=CNAME \
-  --rrdatas="psc-endpoint.p.googleapis.com." \
+  --rrdatas="googleapis.com." \
   --ttl=300
 
-# Create an A record for the PSC endpoint name
-gcloud dns record-sets create "psc-endpoint.p.googleapis.com." \
+# Create an A record for the zone apex
+gcloud dns record-sets create "googleapis.com." \
   --zone=psc-googleapis \
   --type=A \
-  --rrdatas="10.10.0.100" \
+  --rrdatas="10.20.0.100" \
   --ttl=300
 ```
 
@@ -122,19 +120,19 @@ Alternatively, you can create A records for specific APIs:
 gcloud dns record-sets create "storage.googleapis.com." \
   --zone=psc-googleapis \
   --type=A \
-  --rrdatas="10.10.0.100" \
+  --rrdatas="10.20.0.100" \
   --ttl=300
 
 gcloud dns record-sets create "bigquery.googleapis.com." \
   --zone=psc-googleapis \
   --type=A \
-  --rrdatas="10.10.0.100" \
+  --rrdatas="10.20.0.100" \
   --ttl=300
 
 gcloud dns record-sets create "compute.googleapis.com." \
   --zone=psc-googleapis \
   --type=A \
-  --rrdatas="10.10.0.100" \
+  --rrdatas="10.20.0.100" \
   --ttl=300
 ```
 
@@ -142,13 +140,15 @@ gcloud dns record-sets create "compute.googleapis.com." \
 
 SSH into a VM and verify that DNS resolves to the PSC IP and API calls work:
 
+If the VM does not have an external IP address, make sure Private Google Access is enabled on its subnet before testing the endpoint.
+
 ```bash
 # SSH into a test VM
 gcloud compute ssh test-vm --zone=us-central1-a --tunnel-through-iap
 
 # Verify DNS resolution points to the PSC endpoint
 dig storage.googleapis.com
-# Should return 10.10.0.100
+# Should return 10.20.0.100
 
 # Test an API call through the PSC endpoint
 curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
@@ -170,10 +170,11 @@ If you have on-premises networks connected via VPN or Interconnect, they can als
 gcloud compute routers update my-router \
   --region=us-central1 \
   --advertisement-mode=CUSTOM \
-  --set-advertisement-ranges=10.10.0.100/32
+  --set-advertisement-groups=ALL_SUBNETS \
+  --set-advertisement-ranges=10.20.0.100/32
 ```
 
-On your on-premises DNS server, create conditional forwarders or override records for `*.googleapis.com` pointing to 10.10.0.100.
+On your on-premises DNS server, create conditional forwarders or override records for `*.googleapis.com` pointing to 10.20.0.100.
 
 ## Firewall Rules for PSC Traffic
 
@@ -186,7 +187,7 @@ gcloud compute firewall-rules create allow-egress-to-psc \
   --direction=EGRESS \
   --action=ALLOW \
   --rules=tcp:443 \
-  --destination-ranges=10.10.0.100/32 \
+  --destination-ranges=10.20.0.100/32 \
   --priority=1000 \
   --description="Allow HTTPS to Google APIs via PSC endpoint"
 ```
@@ -195,35 +196,35 @@ This is much cleaner than trying to allow traffic to Google's public IP ranges, 
 
 ## Multiple PSC Endpoints
 
-You can create separate endpoints for different API bundles or regions:
+You can create separate endpoints for different API bundles or network paths:
 
 ```bash
 # Create a PSC endpoint for VPC-SC restricted APIs
 gcloud compute addresses create psc-restricted-apis-ip \
-  --region=us-central1 \
-  --subnet=production-subnet \
-  --addresses=10.10.0.101
+  --global \
+  --purpose=PRIVATE_SERVICE_CONNECT \
+  --addresses=10.20.0.101 \
+  --network=production-vpc
 
-gcloud compute forwarding-rules create psc-restricted-apis \
-  --region=us-central1 \
+gcloud compute forwarding-rules create pscrestrictedapis \
+  --global \
   --network=production-vpc \
-  --subnet=production-subnet \
   --address=psc-restricted-apis-ip \
-  --target-google-apis-bundle=vpc-sc \
-  --load-balancing-scheme=""
+  --target-google-apis-bundle=vpc-sc
 ```
 
 ## Monitoring PSC Endpoints
 
-Monitor PSC endpoint usage with Cloud Monitoring:
+Private Service Connect metrics are not generated for endpoints that connect to Google APIs. For these endpoints, use VPC Flow Logs to monitor API traffic:
 
 ```bash
-# View PSC metrics
-gcloud monitoring metrics list \
-  --filter='metric.type = starts_with("compute.googleapis.com/psc")'
+# Example Logs Explorer filter for VM traffic to the PSC endpoint
+resource.type="gce_subnetwork"
+logName="projects/my-project/logs/compute.googleapis.com%2Fvpc_flows"
+jsonPayload.connection.dest_ip="10.20.0.100"
 ```
 
-You can also see PSC traffic in VPC Flow Logs. Since the traffic goes to a known internal IP, filtering flow logs for the PSC endpoint IP gives you a clear picture of Google API usage.
+Since the traffic goes to a known internal IP, filtering flow logs for the PSC endpoint IP gives you a clear picture of Google API usage.
 
 ## Cleaning Up
 
@@ -231,16 +232,18 @@ To remove a PSC endpoint:
 
 ```bash
 # Delete the forwarding rule
-gcloud compute forwarding-rules delete psc-google-apis \
-  --region=us-central1 --quiet
+gcloud compute forwarding-rules delete pscgoogleapis \
+  --global --quiet
 
 # Delete the reserved IP address
 gcloud compute addresses delete psc-google-apis-ip \
-  --region=us-central1 --quiet
+  --global --quiet
 
-# Delete the DNS zone (removes all records first)
+# Delete the DNS records, then delete the DNS zone
 gcloud dns record-sets delete "*.googleapis.com." \
   --zone=psc-googleapis --type=CNAME --quiet
+gcloud dns record-sets delete "googleapis.com." \
+  --zone=psc-googleapis --type=A --quiet
 gcloud dns managed-zones delete psc-googleapis --quiet
 ```
 
