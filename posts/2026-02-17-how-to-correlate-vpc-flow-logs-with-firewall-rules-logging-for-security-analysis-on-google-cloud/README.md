@@ -22,13 +22,13 @@ VPC Flow Logs capture a sample of network flows to and from VM instances. Enable
 gcloud compute networks subnets update my-subnet \
   --region=us-central1 \
   --enable-flow-logs \
-  --logging-aggregation-interval=INTERVAL_5_SEC \
+  --logging-aggregation-interval=interval-5-sec \
   --logging-flow-sampling=1.0 \
   --logging-metadata=include-all \
   --project=my-project
 ```
 
-The `--logging-flow-sampling=1.0` captures every flow, which is ideal for security analysis but generates more data. For cost-sensitive environments, reduce this to 0.5 or lower.
+The `--logging-flow-sampling=1.0` reports all flows that VPC Flow Logs collects after its primary packet sampling step, which is useful for security analysis but generates more data. For cost-sensitive environments, reduce this to 0.5 or lower.
 
 The `--logging-metadata=include-all` includes VM metadata like instance names, zones, and project IDs in the log entries. This makes correlation much easier.
 
@@ -54,11 +54,13 @@ gcloud compute firewall-rules create allow-internal \
   --network=my-vpc \
   --direction=INGRESS \
   --source-ranges=10.0.0.0/8 \
-  --allow=tcp,udp,icmp \
+  --allow=tcp,udp \
   --enable-logging \
   --logging-metadata=include-all \
   --project=my-project
 ```
+
+Firewall Rules Logging records TCP and UDP connections. Rules can still match other protocols, but their connections are not included in firewall rule logs.
 
 ## Understanding the Log Formats
 
@@ -127,12 +129,12 @@ Each firewall log entry tells you which rule matched and the action taken.
 
 ## Correlating Logs in Cloud Logging
 
-Use Cloud Logging queries to join flow logs and firewall logs based on their connection tuples.
+Use Cloud Logging queries to filter each log source by connection tuple fields. Cloud Logging does not perform SQL-style joins; export the logs to BigQuery for joined analysis.
 
-### Find All Denied Traffic with Flow Context
+### Find All Denied Traffic
 
 ```text
-# Query to find denied connections and their corresponding flow details
+# Query to find denied firewall connections
 resource.type="gce_subnetwork"
 logName="projects/my-project/logs/compute.googleapis.com%2Ffirewall"
 jsonPayload.disposition="DENIED"
@@ -151,10 +153,10 @@ jsonPayload.connection.dest_port=22
 NOT jsonPayload.connection.src_ip="10.0.0.5"
 ```
 
-### Correlate High-Volume Flows with Firewall Decisions
+### Find High-Volume Flows for Correlation
 
 ```text
-# Find high-bandwidth flows and cross-reference with firewall rules
+# Find high-bandwidth flows to cross-reference with firewall logs
 resource.type="gce_subnetwork"
 logName="projects/my-project/logs/compute.googleapis.com%2Fvpc_flows"
 jsonPayload.bytes_sent > 1000000
@@ -186,8 +188,13 @@ gcloud logging sinks create firewall-logs-to-bq \
 FLOW_WRITER=$(gcloud logging sinks describe flow-logs-to-bq --project=my-project --format='value(writerIdentity)')
 FIREWALL_WRITER=$(gcloud logging sinks describe firewall-logs-to-bq --project=my-project --format='value(writerIdentity)')
 
-bq add-iam-policy-binding --member="${FLOW_WRITER}" --role=roles/bigquery.dataEditor my-project:network_security_logs
-bq add-iam-policy-binding --member="${FIREWALL_WRITER}" --role=roles/bigquery.dataEditor my-project:network_security_logs
+gcloud projects add-iam-policy-binding my-project \
+  --member="${FLOW_WRITER}" \
+  --role=roles/bigquery.dataEditor
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="${FIREWALL_WRITER}" \
+  --role=roles/bigquery.dataEditor
 ```
 
 ### SQL Queries for Security Analysis
@@ -226,6 +233,7 @@ SELECT
   fl.jsonPayload.connection.dest_ip AS dest_ip,
   fl.jsonPayload.dest_instance.vm_name AS dest_vm,
   fl.jsonPayload.connection.dest_port AS dest_port,
+  fl.jsonPayload.connection.protocol AS protocol,
   SUM(CAST(fl.jsonPayload.bytes_sent AS INT64)) AS total_bytes,
   fw.jsonPayload.rule_details.reference AS matched_rule
 FROM
@@ -234,13 +242,16 @@ LEFT JOIN
   `my-project.network_security_logs.compute_googleapis_com_firewall_*` AS fw
 ON
   fl.jsonPayload.connection.src_ip = fw.jsonPayload.connection.src_ip
+  AND fl.jsonPayload.connection.src_port = fw.jsonPayload.connection.src_port
   AND fl.jsonPayload.connection.dest_ip = fw.jsonPayload.connection.dest_ip
   AND fl.jsonPayload.connection.dest_port = fw.jsonPayload.connection.dest_port
+  AND fl.jsonPayload.connection.protocol = fw.jsonPayload.connection.protocol
+  AND ABS(TIMESTAMP_DIFF(fl.timestamp, fw.timestamp, SECOND)) <= 300
 WHERE
   fl._TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
   AND fw.jsonPayload.disposition = 'ALLOWED'
 GROUP BY
-  source_ip, source_vm, dest_ip, dest_vm, dest_port, matched_rule
+  source_ip, source_vm, dest_ip, dest_vm, dest_port, protocol, matched_rule
 HAVING
   total_bytes > 100000000  -- More than 100MB
 ORDER BY
@@ -280,13 +291,12 @@ gcloud logging metrics create denied-connections-spike \
   --project=my-project
 
 # Create an alert policy on this metric
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="High Rate of Denied Connections" \
   --condition-display-name="Denied connections spike" \
   --condition-filter='metric.type="logging.googleapis.com/user/denied-connections-spike"' \
-  --condition-threshold-value=100 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --if='> 100' \
+  --duration=300s \
   --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
   --project=my-project
 ```
