@@ -67,7 +67,8 @@ The application routes reads to the nearest replica and writes to the primary.
 ```python
 # read_replica_routing.py
 import os
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
 
 class ReplicaRouter:
     """Routes queries to the appropriate database instance."""
@@ -99,7 +100,13 @@ class ReplicaRouter:
         user = os.environ['DB_USER']
         password = os.environ['DB_PASS']
         database = os.environ['DB_NAME']
-        return f'postgresql+pg8000://{user}:{password}@/{database}?unix_sock=/cloudsql/{instance_connection_name}/.s.PGSQL.5432'
+        return URL.create(
+            drivername='postgresql+pg8000',
+            username=user,
+            password=password,
+            database=database,
+            query={'unix_sock': f'/cloudsql/{instance_connection_name}/.s.PGSQL.5432'},
+        )
 
     def get_read_connection(self):
         """Get a connection to the nearest read replica."""
@@ -174,7 +181,7 @@ def check_failover_events(project_id, instance_id, hours_back=24):
 
     for series in results:
         for point in series.points:
-            if not point.value.bool_value:
+            if point.value.int64_value <= 0:
                 print(f'WARNING: Instance not available for failover at {point.interval.end_time}')
 ```
 
@@ -190,17 +197,13 @@ gcloud sql instances create tier1-replica \
   --tier=db-custom-4-16384
 
 # Create second-tier replicas that replicate from the first-tier
-# Note: Cloud SQL supports cascading replicas for MySQL
-# For PostgreSQL, each replica must connect to the primary directly
-# Use external replication for cascading PostgreSQL replicas
-
 gcloud sql instances create tier2-replica-a \
-  --master-instance-name=primary-db \
+  --master-instance-name=tier1-replica \
   --region=europe-west1 \
   --tier=db-custom-2-8192
 
 gcloud sql instances create tier2-replica-b \
-  --master-instance-name=primary-db \
+  --master-instance-name=tier1-replica \
   --region=asia-east1 \
   --tier=db-custom-2-8192
 ```
@@ -210,16 +213,46 @@ gcloud sql instances create tier2-replica-b \
 When migrating from an external database to Cloud SQL, set up external replication to keep both systems in sync during the transition.
 
 ```bash
-# Create a Cloud SQL instance configured as an external replica
-gcloud sql instances create migration-target \
-  --database-version=POSTGRES_15 \
-  --tier=db-custom-4-16384 \
-  --region=us-central1
+# Create a source representation instance for the external primary
+cat > source.json <<'JSON'
+{
+  "name": "external-source",
+  "region": "us-central1",
+  "databaseVersion": "POSTGRES_15",
+  "onPremisesConfiguration": {
+    "hostPort": "203.0.113.10:5432",
+    "username": "replication_user",
+    "password": "secure-password"
+  }
+}
+JSON
 
-# Configure the external primary connection
-gcloud sql instances patch migration-target \
-  --source-ip-address=203.0.113.10 \
-  --source-port=5432
+ACCESS_TOKEN="$(gcloud auth print-access-token)"
+curl --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+     --header 'Content-Type: application/json' \
+     --data @./source.json \
+     -X POST \
+     https://sqladmin.googleapis.com/sql/v1beta4/projects/PROJECT_ID/instances
+
+# Create the Cloud SQL replica that uses the source representation instance
+cat > replica.json <<'JSON'
+{
+  "settings": {
+    "tier": "db-custom-4-16384",
+    "dataDiskSizeGb": "100"
+  },
+  "masterInstanceName": "external-source",
+  "region": "us-central1",
+  "databaseVersion": "POSTGRES_15",
+  "name": "migration-target"
+}
+JSON
+
+curl --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+     --header 'Content-Type: application/json' \
+     --data @./replica.json \
+     -X POST \
+     https://sqladmin.googleapis.com/sql/v1beta4/projects/PROJECT_ID/instances
 ```
 
 Set up the replication from your external PostgreSQL to Cloud SQL.
@@ -231,7 +264,10 @@ CREATE USER replication_user WITH REPLICATION LOGIN PASSWORD 'secure-password';
 -- Grant necessary permissions
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO replication_user;
 
--- Configure pg_hba.conf to allow the Cloud SQL IP
+-- Install pglogical in each database you want to migrate
+CREATE EXTENSION IF NOT EXISTS pglogical;
+
+-- Configure pg_hba.conf to allow the Cloud SQL replica's outgoing IP
 -- host replication replication_user CLOUD_SQL_IP/32 md5
 ```
 
@@ -242,36 +278,37 @@ Track replication lag across all patterns to ensure data freshness.
 ```python
 # replication_monitor.py
 from google.cloud import monitoring_v3
-from google.cloud import sqladmin_v1beta4
+from googleapiclient.discovery import build
 import time
 
 def get_all_replica_lag(project_id):
     """Get replication lag for all replicas in the project."""
-    sql_client = sqladmin_v1beta4.SqlAdminServiceClient()
+    sql_client = build('sqladmin', 'v1beta4')
     monitoring_client = monitoring_v3.MetricServiceClient()
 
     # List all instances
-    instances = sql_client.list(project=project_id)
+    instances = sql_client.instances().list(project=project_id).execute()
 
     replicas = []
-    for instance in instances.items:
-        if instance.instance_type == 'READ_REPLICA_INSTANCE':
+    for instance in instances.get('items', []):
+        if instance.get('instanceType') == 'READ_REPLICA_INSTANCE':
             lag = get_replica_lag(
                 monitoring_client,
                 project_id,
-                instance.name,
+                instance['masterInstanceName'],
+                instance['name'],
             )
             replicas.append({
-                'name': instance.name,
-                'region': instance.region,
-                'master': instance.master_instance_name,
+                'name': instance['name'],
+                'region': instance['region'],
+                'master': instance['masterInstanceName'],
                 'lag_bytes': lag,
-                'status': 'healthy' if lag < 10 * 1024 * 1024 else 'lagging',
+                'status': 'unknown' if lag < 0 else 'healthy' if lag < 10 * 1024 * 1024 else 'lagging',
             })
 
     return replicas
 
-def get_replica_lag(client, project_id, instance_name):
+def get_replica_lag(client, project_id, primary_name, replica_name):
     """Get the replication lag in bytes for a specific replica."""
     project_name = f'projects/{project_id}'
     now = time.time()
@@ -286,7 +323,9 @@ def get_replica_lag(client, project_id, instance_name):
             'name': project_name,
             'filter': (
                 f'metric.type="cloudsql.googleapis.com/database/postgresql/replication/replica_byte_lag" '
-                f'AND resource.labels.database_id="{project_id}:{instance_name}"'
+                f'AND resource.labels.database_id="{project_id}:{primary_name}" '
+                f'AND metric.labels.replica_name="{replica_name}" '
+                f'AND metric.labels.replica_lag_type="replay_location"'
             ),
             'interval': interval,
         }
@@ -306,6 +345,7 @@ With asynchronous replication, there is always a window where the replica is beh
 ```python
 # consistency_helper.py
 import time
+from sqlalchemy import text
 
 class ConsistencyHelper:
     """Helpers for dealing with replication lag in read-after-write scenarios."""
@@ -344,7 +384,7 @@ class ConsistencyHelper:
         """Query the replica for its current replication lag."""
         with self.router.get_read_connection() as conn:
             result = conn.execute(
-                "SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::INT"
+                text("SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::INT")
             )
             row = result.fetchone()
             return row[0] if row and row[0] else 0
