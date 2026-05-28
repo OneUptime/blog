@@ -16,10 +16,9 @@ Glossaries in Cloud Translation Advanced (v3) solve this by letting you define e
 
 A glossary is a lookup table that maps terms from one language to another. When you make a translation request with a glossary attached, the API:
 
-1. Translates the full text normally
-2. Scans the result for any terms that appear in your glossary
-3. Replaces those translations with your glossary definitions
-4. Returns the modified translation
+1. Looks for terms in the input that match your glossary
+2. Applies your specified terminology while translating
+3. Returns both the standard translation and the glossary-applied translation
 
 You can create two types of glossaries:
 
@@ -45,12 +44,11 @@ gsutil mb -l us-central1 gs://your-glossary-bucket
 
 ## Creating a Glossary File
 
-Glossaries are defined in CSV or TSV files stored in Cloud Storage. Here is the format for a unidirectional glossary (English to Spanish):
+Glossaries are defined in files stored in Cloud Storage. Unidirectional glossaries can use CSV, TSV, or TMX files, while equivalent term sets use CSV files. Here is the format for a unidirectional glossary (English to Spanish):
 
 ```python
 # First, create the glossary CSV file
-glossary_content = """en,es
-OneUptime,OneUptime
+glossary_content = """OneUptime,OneUptime
 endpoint,punto de enlace
 dashboard,panel de control
 uptime,tiempo de actividad
@@ -281,27 +279,36 @@ list_glossaries("your-project-id", "us-central1")
 
 ## Updating a Glossary
 
-The API does not support in-place updates. To update a glossary, you need to delete it and recreate it:
+You can update a glossary to change its display name or replace all of its entries with a new glossary input file:
 
 ```python
+from google.cloud import translate_v3 as translate
+from google.protobuf import field_mask_pb2
+
 def update_glossary(project_id, location, glossary_id, new_gcs_uri, source_lang, target_lang):
-    """Update a glossary by deleting and recreating it."""
+    """Update a glossary by replacing its input file."""
     client = translate.TranslationServiceClient()
     glossary_path = f"projects/{project_id}/locations/{location}/glossaries/{glossary_id}"
 
-    # Delete the existing glossary
-    print(f"Deleting old glossary: {glossary_id}")
-    try:
-        operation = client.delete_glossary(name=glossary_path)
-        operation.result(timeout=300)
-        print("Old glossary deleted")
-    except Exception as e:
-        print(f"Delete failed (may not exist): {e}")
+    glossary = translate.Glossary(
+        name=glossary_path,
+        language_pair=translate.Glossary.LanguageCodePair(
+            source_language_code=source_lang,
+            target_language_code=target_lang,
+        ),
+        input_config=translate.GlossaryInputConfig(
+            gcs_source=translate.GcsSource(input_uri=new_gcs_uri)
+        ),
+    )
 
-    # Create the new glossary
-    print(f"Creating new glossary: {glossary_id}")
-    create_glossary(project_id, location, glossary_id, new_gcs_uri, source_lang, target_lang)
+    operation = client.update_glossary(
+        glossary=glossary,
+        update_mask=field_mask_pb2.FieldMask(paths=["input_config"]),
+    )
+    result = operation.result(timeout=300)
     print("Glossary updated")
+    print(f"Entry count: {result.entry_count}")
+    return result
 ```
 
 ## Best Practices for Glossary Management
