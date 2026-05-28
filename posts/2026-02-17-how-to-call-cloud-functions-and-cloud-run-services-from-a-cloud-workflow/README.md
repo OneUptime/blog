@@ -14,7 +14,7 @@ In this guide, I will show you how to call both Cloud Functions and Cloud Run se
 
 ## Calling a Cloud Function (HTTP)
 
-Cloud Functions Gen2 are HTTP-triggered by default. Here is how to call one from a workflow.
+HTTP-triggered Cloud Functions Gen2 functions expose an HTTPS endpoint. Here is how to call one from a workflow.
 
 ```yaml
 # call-cloud-function.yaml
@@ -25,23 +25,35 @@ main:
   params: [args]
   steps:
     - call_function:
-        call: http.post
-        args:
-          url: https://us-central1-my-project.cloudfunctions.net/process-data
-          auth:
-            type: OIDC
-          body:
-            input_data: ${args.data}
-            processing_mode: "full"
-          headers:
-            Content-Type: "application/json"
-        result: function_response
+        try:
+          call: http.post
+          args:
+            url: https://us-central1-my-project.cloudfunctions.net/process-data
+            auth:
+              type: OIDC
+            body:
+              input_data: ${args.data}
+              processing_mode: "full"
+            headers:
+              Content-Type: "application/json"
+          result: function_response
+        except:
+          as: e
+          steps:
+            - handle_http_error:
+                switch:
+                  - condition: ${"HttpError" in e.tags}
+                    raise:
+                      code: ${e.code}
+                      message: '${"Function returned error: " + json.encode_to_string(e.body)}'
+            - raise_unhandled:
+                raise: ${e}
 
     - check_response:
         switch:
-          - condition: ${function_response.code == 200}
+          - condition: ${function_response.code >= 200 and function_response.code < 300}
             next: handle_success
-          - condition: ${function_response.code >= 400}
+          - condition: true
             next: handle_error
 
     - handle_success:
@@ -52,7 +64,7 @@ main:
     - handle_error:
         raise:
           code: ${function_response.code}
-          message: ${"Function returned error: " + json.encode_to_string(function_response.body)}
+          message: '${"Function returned unexpected status: " + json.encode_to_string(function_response.body)}'
 ```
 
 The `auth.type: OIDC` is critical. Without it, your workflow cannot authenticate with the Cloud Function.
@@ -161,7 +173,7 @@ main:
           - condition: ${not(validation_result.body.is_valid)}
             raise:
               code: 400
-              message: ${"Validation failed: " + validation_result.body.error}
+              message: '${"Validation failed: " + validation_result.body.error}'
 
     # Step 2: Process the data with a Cloud Run service
     - process_data:
@@ -256,7 +268,7 @@ main:
             - log_progress:
                 call: sys.log
                 args:
-                  text: ${"Processed item " + item.id + " - status: " + process_result.body.status}
+                  text: '${"Processed item " + item.id + " - status: " + process_result.body.status}'
                   severity: "INFO"
 
     - done:
@@ -298,12 +310,12 @@ main:
         return: ${processing_result.body}
 ```
 
-## Using Connectors Instead of Direct HTTP
+## Using Connectors and Direct HTTP
 
-Workflows provides built-in connectors for Cloud Functions and Cloud Run that simplify the syntax.
+Workflows provides built-in connectors for Cloud Functions and Cloud Run API operations, such as managing functions or services. To invoke a Cloud Function or Cloud Run service endpoint, use a direct HTTP call.
 
 ```yaml
-# Using a direct HTTP call (Cloud Functions v2 are HTTP-triggered)
+# Using a direct HTTP call to an HTTP-triggered Cloud Function
 main:
   steps:
     - call_function:
@@ -320,9 +332,9 @@ main:
         return: ${function_result.body}
 ```
 
-## Testing Your Workflow Locally
+## Validating Your Workflow During Deployment
 
-Before deploying, validate your workflow syntax.
+The API validates workflow syntax during deployment.
 
 ```bash
 # Deploy the workflow (the API validates syntax during deployment)
