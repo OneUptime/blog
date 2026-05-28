@@ -46,7 +46,7 @@ In PagerDuty, create a service that will receive the Google Cloud alerts.
 2. Click "New Service"
 3. Name it something like "Google Cloud Production"
 4. Assign it to the appropriate escalation policy
-5. Under Integrations, select "Google Cloud Monitoring" as the integration type
+5. Under Integrations, select "Events API v1" as the integration type
 6. Save the service
 
 PagerDuty will generate an integration key (also called a routing key). Copy this key - you will need it in the next step.
@@ -61,7 +61,7 @@ Using gcloud.
 # Create a PagerDuty notification channel
 
 # The service_key is the integration key from PagerDuty
-gcloud monitoring channels create \
+gcloud beta monitoring channels create \
     --type=pagerduty \
     --display-name="PagerDuty - Production" \
     --channel-labels=service_key=YOUR_PAGERDUTY_INTEGRATION_KEY \
@@ -93,17 +93,17 @@ Note the channel ID returned - you will reference it in alert policies.
 Send a test notification to confirm the integration works.
 
 ```bash
-# List notification channels to get the channel ID
-gcloud monitoring channels list \
+# List notification channels to get the full channel name
+gcloud beta monitoring channels list \
     --project=my-gcp-project \
     --filter='displayName="PagerDuty - Production"'
 
-# Send a verification notification
-gcloud monitoring channels verify CHANNEL_ID \
+# Describe the channel to confirm that it is enabled
+gcloud beta monitoring channels describe CHANNEL_NAME \
     --project=my-gcp-project
 ```
 
-Check PagerDuty to confirm the test incident was created.
+To send a test notification, open the Cloud Monitoring notification channels page, edit the PagerDuty channel, and use the Send test notification option. Check PagerDuty to confirm the test incident was created.
 
 ## Step 4: Create Alert Policies with PagerDuty Notification
 
@@ -111,7 +111,7 @@ Now create alert policies that send notifications to PagerDuty.
 
 ```bash
 # Get the full channel name
-CHANNEL_NAME=$(gcloud monitoring channels list \
+CHANNEL_NAME=$(gcloud beta monitoring channels list \
     --project=my-gcp-project \
     --filter='displayName="PagerDuty - Production"' \
     --format="value(name)")
@@ -119,9 +119,9 @@ CHANNEL_NAME=$(gcloud monitoring channels list \
 # Create an alert policy with PagerDuty notification
 gcloud monitoring policies create --policy-from-file=- << EOF
 {
-  "displayName": "High Error Rate - Production API",
+  "displayName": "High 5xx Request Rate - Production API",
   "conditions": [{
-    "displayName": "Error rate above 1%",
+    "displayName": "5xx request rate above 10 requests per second",
     "conditionThreshold": {
       "filter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" AND metric.labels.response_code_class=\"500\" AND resource.type=\"https_lb_rule\"",
       "comparison": "COMPARISON_GT",
@@ -136,14 +136,11 @@ gcloud monitoring policies create --policy-from-file=- << EOF
   "combiner": "OR",
   "notificationChannels": ["$CHANNEL_NAME"],
   "documentation": {
-    "content": "## High Error Rate Alert\n\n### What happened?\nThe production API error rate has exceeded 1% for more than 5 minutes.\n\n### What to do\n1. Check the [error dashboard](https://console.cloud.google.com/monitoring/dashboards)\n2. Look at recent deployments\n3. Check dependency health\n\n### Runbook\nhttps://runbooks.example.com/high-error-rate",
+    "content": "## High 5xx Request Rate Alert\n\n### What happened?\nThe production API is returning more than 10 5xx responses per second for more than 5 minutes.\n\n### What to do\n1. Check the [error dashboard](https://console.cloud.google.com/monitoring/dashboards)\n2. Look at recent deployments\n3. Check dependency health\n\n### Runbook\nhttps://runbooks.example.com/high-error-rate",
     "mimeType": "text/markdown"
   },
   "alertStrategy": {
-    "autoClose": "1800s",
-    "notificationRateLimit": {
-      "period": "300s"
-    }
+    "autoClose": "1800s"
   }
 }
 EOF
@@ -155,14 +152,14 @@ In practice, you want different alert severities to go to different PagerDuty se
 
 ```bash
 # Create a PagerDuty channel for critical alerts (pages immediately)
-gcloud monitoring channels create \
+gcloud beta monitoring channels create \
     --type=pagerduty \
     --display-name="PagerDuty - Critical" \
     --channel-labels=service_key=CRITICAL_SERVICE_INTEGRATION_KEY \
     --project=my-gcp-project
 
 # Create a PagerDuty channel for warning alerts (lower urgency)
-gcloud monitoring channels create \
+gcloud beta monitoring channels create \
     --type=pagerduty \
     --display-name="PagerDuty - Warnings" \
     --channel-labels=service_key=WARNING_SERVICE_INTEGRATION_KEY \
@@ -173,13 +170,13 @@ Then reference the appropriate channel in each alert policy.
 
 ```bash
 # Critical alert - pages immediately via PagerDuty
-CRITICAL_CHANNEL=$(gcloud monitoring channels list \
+CRITICAL_CHANNEL=$(gcloud beta monitoring channels list \
     --project=my-gcp-project \
     --filter='displayName="PagerDuty - Critical"' \
     --format="value(name)")
 
 # Warning alert - lower urgency via PagerDuty
-WARNING_CHANNEL=$(gcloud monitoring channels list \
+WARNING_CHANNEL=$(gcloud beta monitoring channels list \
     --project=my-gcp-project \
     --filter='displayName="PagerDuty - Warnings"' \
     --format="value(name)")
@@ -196,10 +193,6 @@ resource "google_monitoring_notification_channel" "pagerduty_critical" {
   type         = "pagerduty"
   project      = var.project_id
 
-  labels = {
-    service_key = var.pagerduty_critical_key
-  }
-
   sensitive_labels {
     service_key = var.pagerduty_critical_key
   }
@@ -210,10 +203,6 @@ resource "google_monitoring_notification_channel" "pagerduty_warning" {
   display_name = "PagerDuty - Warnings"
   type         = "pagerduty"
   project      = var.project_id
-
-  labels = {
-    service_key = var.pagerduty_warning_key
-  }
 
   sensitive_labels {
     service_key = var.pagerduty_warning_key
@@ -230,8 +219,8 @@ resource "google_monitoring_alert_policy" "service_down" {
     display_name = "Uptime check failing"
     condition_threshold {
       filter          = "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\""
-      comparison      = "COMPARISON_LT"
-      threshold_value = 1
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
       duration        = "300s"
 
       aggregations {
@@ -317,13 +306,11 @@ graph TD
 
 ## Auto-Resolution
 
-Cloud Monitoring automatically sends resolution notifications when the alert condition clears. PagerDuty receives these and resolves the incident. Make sure the `autoClose` setting in your alert strategy matches your expected recovery time.
+Cloud Monitoring closes incidents when the alert condition stops being met. PagerDuty receives these updates and resolves the incident. The `autoClose` setting controls how long Cloud Monitoring waits before closing an open incident after metric data stops arriving.
 
-```bash
-# The autoClose setting determines when Cloud Monitoring auto-resolves
-# Set it based on expected recovery patterns
+```json
 "alertStrategy": {
-    "autoClose": "1800s"  # Auto-close after 30 minutes of recovery
+    "autoClose": "1800s"
 }
 ```
 
@@ -360,4 +347,4 @@ gcloud monitoring policies delete POLICY_ID --project=my-gcp-project
 
 ## Wrapping Up
 
-Integrating PagerDuty with Google Cloud Monitoring is straightforward - create a PagerDuty service with the Google Cloud integration, create a notification channel in Cloud Monitoring with the integration key, and reference that channel in your alert policies. The real work is in designing the right alert routing - which alerts page immediately, which create low-urgency notifications, and which just go to Slack. Use the documentation field generously to give on-call engineers the context they need to respond quickly. And always test the integration before relying on it for production incident response.
+Integrating PagerDuty with Google Cloud Monitoring is straightforward - create a PagerDuty service with the Events API v1 integration, create a notification channel in Cloud Monitoring with the integration key, and reference that channel in your alert policies. The real work is in designing the right alert routing - which alerts page immediately, which create low-urgency notifications, and which just go to Slack. Use the documentation field generously to give on-call engineers the context they need to respond quickly. And always test the integration before relying on it for production incident response.
