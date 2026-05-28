@@ -8,7 +8,7 @@ Description: Fix Cloud Build step timeout errors when Docker builds take longer 
 
 ---
 
-You push your code, Cloud Build kicks off, and partway through a Docker build step it fails with "Step exceeded timeout." The default step timeout in Cloud Build is 10 minutes, and the default build timeout is 60 minutes. For large Docker images with complex dependency installations, model training, or compilation steps, these defaults are not enough. This post covers how to increase timeouts and, more importantly, how to speed up your builds so you do not need long timeouts.
+You push your code, Cloud Build kicks off, and partway through a Docker build step it fails with "Step exceeded timeout." Cloud Build steps do not have a default per-step timeout unless you set one; they run until they complete or until the overall build times out. The default build timeout is 60 minutes. For large Docker images with complex dependency installations, model training, or compilation steps, this default is not enough. This post covers how to increase timeouts and, more importantly, how to speed up your builds so you do not need long timeouts.
 
 ## Understanding Cloud Build Timeouts
 
@@ -43,11 +43,11 @@ gcloud builds submit . \
     --timeout=3600s
 ```
 
-The timeout value is in seconds (with an `s` suffix) or in duration format like `1h30m`.
+In `cloudbuild.yaml`, timeout values use protobuf duration format, such as `3600s` or `5400s`. With `gcloud builds submit --timeout`, you can also use duration formats like `1h30m`.
 
 ## Step 2: Use a Larger Build Machine
 
-The default Cloud Build machine (`e2-medium`, 1 vCPU, 4 GB RAM) is often the bottleneck. Upgrading to a larger machine speeds up builds significantly, especially for compilation-heavy projects:
+The default Cloud Build machine is `e2-standard-2` with 2 vCPUs. For smaller builds you can request `E2_MEDIUM` with 1 vCPU, but for CPU-heavy Docker builds the machine size is often the bottleneck. Upgrading to a larger machine can speed up builds significantly, especially for compilation-heavy projects:
 
 ```yaml
 # Use a high-CPU build machine
@@ -63,10 +63,11 @@ steps:
 ```
 
 Available machine types:
-- `E2_MEDIUM` (default): 1 vCPU, 4 GB RAM
+- `E2_MEDIUM`: 1 vCPU
 - `E2_HIGHCPU_8`: 8 vCPUs, 8 GB RAM
 - `E2_HIGHCPU_32`: 32 vCPUs, 32 GB RAM
-- `N1_HIGHCPU_32`: 32 vCPUs (for private pools)
+- `N1_HIGHCPU_8`: 8 vCPUs (deprecated)
+- `N1_HIGHCPU_32`: 32 vCPUs (deprecated)
 
 The cost is higher, but the build time reduction usually makes it worthwhile.
 
