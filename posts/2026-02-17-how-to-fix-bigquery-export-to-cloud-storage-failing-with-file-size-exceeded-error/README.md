@@ -8,7 +8,7 @@ Description: How to resolve BigQuery export failures caused by file size exceede
 
 ---
 
-Exporting data from BigQuery to Cloud Storage sounds straightforward, but when your tables get large enough, you will eventually hit the dreaded "file size exceeded" error. BigQuery imposes a 1 GB limit on individual exported files (for CSV and JSON formats), and if your table exceeds that, the export just fails. Let me show you how to work around this.
+Exporting data from BigQuery to Cloud Storage sounds straightforward, but when your tables get large enough, you will eventually hit the dreaded "file size exceeded" error. BigQuery can export up to 1 GB of logical table data to a single file, and if your table exceeds that, a single-file export fails. Let me show you how to work around this.
 
 ## The Error
 
@@ -19,7 +19,7 @@ Error: Table too large to be exported to a single file.
 Specify a uri including a * to shard export across multiple files.
 ```
 
-Or for compressed exports that still exceed limits:
+Or for single-file exports that still exceed limits:
 
 ```text
 Error: The exported file size (2.3 GB) exceeds the maximum allowed size (1 GB).
@@ -27,7 +27,7 @@ Error: The exported file size (2.3 GB) exceeds the maximum allowed size (1 GB).
 
 ## Why This Limit Exists
 
-BigQuery export jobs run as distributed operations, and the file size limit ensures that individual export shards can be written efficiently. For uncompressed CSV or JSON, the limit is 1 GB per file. For Avro and Parquet formats, the limit is also 1 GB but these formats compress the data, so you can effectively export more data per file.
+BigQuery export jobs run as distributed operations, and the file size limit ensures that individual export shards can be written efficiently. For any export format, BigQuery can export up to 1 GB of logical table data to a single file. Avro and Parquet can still be good choices because they use efficient binary formats and support compression, so the physical files in Cloud Storage are often smaller.
 
 ## Fix 1: Use Wildcard URIs for Automatic Sharding
 
@@ -51,7 +51,7 @@ gs://my-bucket/exports/my_table_000000000001.csv.gz
 gs://my-bucket/exports/my_table_000000000002.csv.gz
 ```
 
-You can also place the wildcard at different positions:
+You can also place a single wildcard at different positions in the filename:
 
 ```bash
 # Wildcard at end with a prefix
@@ -61,6 +61,7 @@ bq extract \
 
 # Multiple path segments with wildcard
 bq extract \
+    --destination_format=NEWLINE_DELIMITED_JSON \
     my-project:my_dataset.my_table \
     gs://my-bucket/exports/my_table/shard-*.json
 ```
@@ -98,7 +99,7 @@ bq query \
     --use_legacy_sql=false \
     --destination_table=my-project:my_dataset.temp_export \
     'SELECT * FROM `my-project.my_dataset.my_table`
-     WHERE _PARTITIONDATE = "2026-02-17"'
+     WHERE _PARTITIONDATE = DATE "2026-02-17"'
 
 # Then export the smaller temp table
 bq extract \
@@ -119,7 +120,7 @@ For automating this across many partitions, use a script:
 PARTITIONS=$(bq query --use_legacy_sql=false --format=csv --quiet \
     'SELECT DISTINCT _PARTITIONDATE as dt
      FROM `my-project.my_dataset.my_table`
-     WHERE _PARTITIONDATE >= "2026-01-01"
+     WHERE _PARTITIONDATE >= DATE "2026-01-01"
      ORDER BY dt')
 
 for PARTITION_DATE in $PARTITIONS; do
@@ -138,10 +139,10 @@ done
 
 ## Fix 4: Use the EXPORT DATA SQL Statement
 
-The `EXPORT DATA` statement gives you more control over the export process, including the ability to set a maximum file size per shard.
+The `EXPORT DATA` statement gives you more control over the query being exported while still writing to sharded files with a wildcard URI. The exact generated file sizes are not guaranteed, so combine this with filters or partitioning when you need smaller outputs.
 
 ```sql
--- Export with explicit shard size control
+-- Export query results to sharded files
 EXPORT DATA OPTIONS(
   uri='gs://my-bucket/exports/my_table_*.csv',
   format='CSV',
