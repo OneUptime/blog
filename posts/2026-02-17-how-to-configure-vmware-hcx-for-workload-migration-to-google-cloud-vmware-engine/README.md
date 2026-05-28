@@ -8,7 +8,7 @@ Description: Step-by-step guide to configuring VMware HCX for seamless live migr
 
 ---
 
-Migrating VMs from an on-premises vSphere environment to Google Cloud VMware Engine is one of the most common use cases for GCVE, and VMware HCX is the tool that makes it practical. HCX provides live migration capabilities, meaning you can move running VMs from on-premises to the cloud without downtime. No re-IP, no reconfiguration, no application changes - the VM just keeps running as it moves from one infrastructure to another.
+Migrating VMs from an on-premises vSphere environment to Google Cloud VMware Engine is one of the most common use cases for GCVE, and VMware HCX is the tool that makes it practical. HCX provides live migration capabilities, meaning you can move supported running VMs from on-premises to the cloud without downtime. With network extension, you can usually keep the VM's IP address and avoid application changes as the workload moves from one infrastructure to another.
 
 HCX works by creating a network fabric between your source (on-premises) and destination (GCVE) environments. It handles the network extension, WAN optimization, and data replication behind the scenes. Let me walk through the full setup.
 
@@ -40,35 +40,24 @@ The two components establish encrypted tunnels between the environments for migr
 You will need:
 
 - A GCVE private cloud already created and running
-- An on-premises vSphere environment (6.5 or later)
+- An on-premises vSphere environment that is compatible with HCX and the migration type you plan to use
 - Network connectivity between on-premises and GCP (Cloud Interconnect or Cloud VPN)
 - An HCX license key (included with GCVE)
-- A range of IP addresses for HCX appliances on both sides
+- A range of IP addresses for HCX appliances in the on-premises environment. VMware Engine automatically allocates the required HCX management, vMotion, and uplink networks for the private cloud.
 
-## Step 1: Activate HCX in GCVE
+## Step 1: Verify HCX in GCVE
 
-HCX Cloud Manager is automatically available in your GCVE private cloud, but you need to activate it:
-
-```bash
-# Activate HCX on your GCVE private cloud
-
-gcloud vmware private-clouds hcx activate \
-    --project=my-project \
-    --private-cloud=my-private-cloud \
-    --location=us-central1-a
-```
-
-Once activated, get the HCX Cloud Manager URL and credentials:
+HCX Cloud Manager is automatically deployed and registered when you create a GCVE private cloud. You can verify the HCX Cloud Manager details with:
 
 ```bash
-# Get HCX Cloud Manager details
-gcloud vmware private-clouds hcx describe \
+# Get private cloud details, including the HCX Cloud Manager FQDN and state
+gcloud vmware private-clouds describe my-private-cloud \
     --project=my-project \
-    --private-cloud=my-private-cloud \
-    --location=us-central1-a
+    --location=us-central1-a \
+    --format="yaml(hcx)"
 ```
 
-Note the HCX Cloud Manager URL and retrieve the admin credentials from the GCVE portal.
+Note the HCX Cloud Manager FQDN and retrieve the generated credentials from the Google Cloud console.
 
 ## Step 2: Download and Deploy HCX Connector On-Premises
 
@@ -77,7 +66,23 @@ From the HCX Cloud Manager web interface:
 1. Log into the HCX Cloud Manager URL using the admin credentials
 2. Navigate to Administration and then System Updates
 3. Download the HCX Connector OVA file
-4. Also generate an activation key - you will need this to link the connector to your cloud instance
+4. Copy an HCX Connector activation key - you will need this to link the connector to your cloud instance
+
+If you need to generate or retrieve an activation key from the CLI, use the `hcx activationkeys` commands:
+
+```bash
+# Create a new HCX activation key
+gcloud vmware private-clouds hcx activationkeys create key1 \
+    --project=my-project \
+    --private-cloud=my-private-cloud \
+    --location=us-central1-a
+
+# Show the activation key value and state
+gcloud vmware private-clouds hcx activationkeys describe key1 \
+    --project=my-project \
+    --private-cloud=my-private-cloud \
+    --location=us-central1-a
+```
 
 Deploy the OVA in your on-premises vSphere environment:
 
@@ -169,13 +174,12 @@ The service mesh deploys the HCX service appliances that handle migration traffi
 The service mesh deployment takes 15-20 minutes. It creates tunnel appliances on both sides that form the migration fabric.
 
 ```bash
-# Verify the service mesh status from the CLI
-# The tunnel status should show UP
-gcloud vmware private-clouds hcx describe \
+# Verify from the CLI that the HCX Cloud Manager appliance is active.
+# Check tunnel and service mesh status in the HCX UI.
+gcloud vmware private-clouds describe my-private-cloud \
     --project=my-project \
-    --private-cloud=my-private-cloud \
     --location=us-central1-a \
-    --format="yaml(hcxActivationKeys,state)"
+    --format="yaml(hcx,state)"
 ```
 
 ## Step 7: Extend Networks (Optional)
