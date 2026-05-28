@@ -16,8 +16,8 @@ Before migrating, you need to pick the right Filestore tier. Google offers sever
 
 - **Basic HDD** - lowest cost, suitable for file sharing and backups (throughput: up to 180 MB/s)
 - **Basic SSD** - better performance for general workloads (throughput: up to 1.2 GB/s)
-- **Zonal** - high performance with zonal availability (throughput: up to 4.8 GB/s)
-- **Enterprise** - regional availability with snapshots and backups (throughput: up to 1.2 GB/s)
+- **Zonal** - high performance with zonal availability (throughput scales with capacity)
+- **Regional** - regional availability with snapshots, backups, and replication (throughput scales with capacity)
 
 ```bash
 # Create a Filestore instance - Basic SSD tier
@@ -25,7 +25,7 @@ Before migrating, you need to pick the right Filestore tier. Google offers sever
 gcloud filestore instances create my-filestore \
   --zone us-central1-a \
   --tier BASIC_SSD \
-  --file-share name=shared_data,capacity=2TB \
+  --file-share name=shared_data,capacity=3TB \
   --network name=my-vpc
 
 # Create a high-performance Filestore instance for demanding workloads
@@ -136,8 +136,8 @@ For larger datasets or when direct connectivity is limited, you can stage data i
 
 ```bash
 # Upload data to Cloud Storage using parallel transfers
-gcloud storage cp -r /exports/shared_data/ gs://my-migration-bucket/shared_data/ \
-  --parallel-composite-upload-threshold=150M
+gcloud config set storage/parallel_composite_upload_threshold 150MiB
+gcloud storage cp -r /exports/shared_data/ gs://my-migration-bucket/shared_data/
 
 # Then on the transfer VM, copy from GCS to Filestore
 # Using gcsfuse to mount the GCS bucket
@@ -241,7 +241,7 @@ gcloud filestore instances describe my-filestore \
 Once migrated, configure Filestore backups:
 
 ```bash
-# Create a backup schedule
+# Create an on-demand backup
 gcloud filestore backups create daily-backup \
   --instance my-filestore \
   --file-share shared_data \
@@ -253,6 +253,6 @@ gcloud filestore backups create daily-backup \
 
 - **Performance differences.** On-premises NFS servers with local SSDs may have lower latency than Filestore over the network. If latency-sensitive applications notice a difference, consider using the Zonal tier.
 - **Capacity planning.** Filestore requires you to provision capacity upfront. Basic tier cannot shrink, only grow. Plan for growth to avoid hitting the capacity limit.
-- **IP address management.** Filestore instances get an IP from your VPC. Make sure your subnet has enough IP space and that firewall rules allow NFS traffic (port 2049).
+- **IP address management.** Filestore instances get an IP from your VPC. Make sure your subnet has enough IP space and that firewall rules allow the required NFS traffic, including TCP port 2049.
 
 The NFS-to-Filestore migration is one of the more straightforward migrations in a cloud move because the protocol stays the same. The application does not know the difference - it just mounts an NFS share. Get the data there, update the mount points, and you are done.
