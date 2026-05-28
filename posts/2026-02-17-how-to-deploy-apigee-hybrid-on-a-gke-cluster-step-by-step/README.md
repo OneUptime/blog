@@ -8,7 +8,7 @@ Description: A complete step-by-step guide to deploying Apigee Hybrid on a GKE c
 
 ---
 
-Apigee Hybrid gives you the management plane in Google Cloud while running the runtime plane on your own Kubernetes cluster. This is ideal when you need API management capabilities but have requirements around data residency, compliance, or network isolation that prevent a fully cloud-hosted solution. The runtime components run on GKE (or any conformant Kubernetes cluster), processing API traffic locally, while the management plane in Google Cloud handles configuration, analytics, and portal features.
+Apigee Hybrid gives you the management plane in Google Cloud while running the runtime plane on your own Kubernetes cluster. This is ideal when you need API management capabilities but have requirements around data residency, compliance, or network isolation that prevent a fully cloud-hosted solution. The runtime components run on GKE or another supported Kubernetes platform, processing API traffic locally, while the management plane in Google Cloud handles configuration, analytics, and portal features.
 
 ## Architecture Overview
 
@@ -42,7 +42,7 @@ graph TB
 - **Cassandra** - stores runtime data (KVMs, OAuth tokens, quotas)
 - **Synchronizer** - pulls proxy configurations from the management plane
 - **MART** - Management API for Runtime (handles admin operations)
-- **Ingress Gateway** - Istio-based gateway that receives API traffic
+- **Ingress Gateway** - Cloud Service Mesh-based gateway that receives API traffic
 
 ## Prerequisites
 
@@ -51,40 +51,62 @@ Before starting, make sure you have:
 - A GCP project with Apigee organization provisioned
 - gcloud CLI installed and authenticated
 - kubectl configured
-- Helm v3 installed
+- Helm v3.17.0 or later installed
 - A GKE cluster (or the ability to create one)
 - A domain name for your API endpoints
 - TLS certificates for the domain
 
 ## Step 1 - Create the GKE Cluster
 
-The GKE cluster needs enough resources to run Apigee components. The minimum recommended configuration:
+The GKE cluster needs enough resources to run Apigee components. Apigee Hybrid should be installed on a standard GKE cluster, not an Autopilot cluster. For a production installation, create separate node pools for stateful Cassandra pods and stateless runtime pods:
 
 ```bash
-# Create a GKE cluster for Apigee Hybrid
+# Create a standard regional GKE cluster for Apigee Hybrid
+PROJECT_ID="YOUR_PROJECT_ID"
+REGION="us-central1"
 
 gcloud container clusters create apigee-hybrid \
-  --project YOUR_PROJECT_ID \
-  --region us-central1 \
-  --machine-type e2-standard-4 \
+  --project $PROJECT_ID \
+  --region $REGION \
+  --num-nodes 1 \
+  --enable-ip-alias \
+  --workload-pool=$PROJECT_ID.svc.id.goog \
+  --logging=SYSTEM,WORKLOAD \
+  --monitoring=SYSTEM
+
+# Create the stateful node pool for Cassandra
+gcloud container node-pools create apigee-data \
+  --cluster apigee-hybrid \
+  --project $PROJECT_ID \
+  --region $REGION \
+  --machine-type e2-standard-8 \
   --num-nodes 3 \
   --enable-autoscaling \
   --min-nodes 3 \
-  --max-nodes 6 \
-  --enable-ip-alias \
-  --workload-pool=YOUR_PROJECT_ID.svc.id.goog \
-  --enable-stackdriver-kubernetes
+  --max-nodes 6
+
+# Create the stateless node pool for runtime components
+gcloud container node-pools create apigee-runtime \
+  --cluster apigee-hybrid \
+  --project $PROJECT_ID \
+  --region $REGION \
+  --machine-type e2-standard-8 \
+  --num-nodes 3 \
+  --enable-autoscaling \
+  --min-nodes 3 \
+  --max-nodes 6
 
 # Get credentials for kubectl
 gcloud container clusters get-credentials apigee-hybrid \
-  --region us-central1 \
-  --project YOUR_PROJECT_ID
+  --region $REGION \
+  --project $PROJECT_ID
 ```
 
 Key requirements:
-- At least 3 nodes with 4 CPUs and 16GB RAM each
+- For production, at least 3 nodes in each node pool with 8 CPUs and 32GB RAM each
 - Workload Identity enabled (for secure GCP service access)
 - IP aliases enabled (for pod networking)
+- GKE Autopilot disabled, because Apigee Hybrid requires custom node pools
 
 ## Step 2 - Enable Required APIs
 
@@ -96,53 +118,53 @@ gcloud services enable \
   cloudresourcemanager.googleapis.com \
   compute.googleapis.com \
   container.googleapis.com \
+  pubsub.googleapis.com \
   --project YOUR_PROJECT_ID
 ```
 
 ## Step 3 - Create Service Accounts
 
-Apigee Hybrid components need GCP service accounts for authentication.
+Apigee Hybrid components need GCP service accounts for authentication. The commands below assume you have downloaded the Apigee Helm charts as shown in Step 5. Use the included `create-service-account` tool so that the service accounts, IAM roles, and key filenames match the version you are installing:
 
 ```bash
 PROJECT_ID="YOUR_PROJECT_ID"
+export APIGEE_HELM_CHARTS_HOME="$PWD/apigee-hybrid-helm-charts"
 
-# Create service accounts for each Apigee component
-declare -A SA_ROLES=(
-  ["apigee-synchronizer"]="roles/apigee.synchronizerManager"
-  ["apigee-mart"]="roles/apigee.martAdmin"
-  ["apigee-udca"]="roles/apigee.analyticsAgent"
-  ["apigee-cassandra"]="roles/storage.objectAdmin"
-  ["apigee-connect"]="roles/apigeeconnect.Agent"
-  ["apigee-logger"]="roles/logging.logWriter"
-  ["apigee-metrics"]="roles/monitoring.metricWriter"
-)
+# Create production service accounts with JSON files in the chart directories
+$APIGEE_HELM_CHARTS_HOME/apigee-operator/etc/tools/create-service-account \
+  --profile apigee-cassandra --env prod --dir $APIGEE_HELM_CHARTS_HOME/apigee-datastore
 
-for SA_NAME in "${!SA_ROLES[@]}"; do
-  # Create the service account
-  gcloud iam service-accounts create $SA_NAME \
-    --display-name="$SA_NAME" \
-    --project $PROJECT_ID
+$APIGEE_HELM_CHARTS_HOME/apigee-operator/etc/tools/create-service-account \
+  --profile apigee-guardrails --env prod --dir $APIGEE_HELM_CHARTS_HOME/apigee-operator
 
-  # Grant the required role
-  gcloud projects add-iam-binding $PROJECT_ID \
-    --member="serviceAccount:${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
-    --role="${SA_ROLES[$SA_NAME]}"
+$APIGEE_HELM_CHARTS_HOME/apigee-operator/etc/tools/create-service-account \
+  --profile apigee-logger --env prod --dir $APIGEE_HELM_CHARTS_HOME/apigee-telemetry
 
-  # Download the key (store securely)
-  gcloud iam service-accounts keys create "${SA_NAME}-key.json" \
-    --iam-account="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+$APIGEE_HELM_CHARTS_HOME/apigee-operator/etc/tools/create-service-account \
+  --profile apigee-mart --env prod --dir $APIGEE_HELM_CHARTS_HOME/apigee-org
 
-  echo "Created $SA_NAME with role ${SA_ROLES[$SA_NAME]}"
-done
+$APIGEE_HELM_CHARTS_HOME/apigee-operator/etc/tools/create-service-account \
+  --profile apigee-metrics --env prod --dir $APIGEE_HELM_CHARTS_HOME/apigee-telemetry
+
+$APIGEE_HELM_CHARTS_HOME/apigee-operator/etc/tools/create-service-account \
+  --profile apigee-runtime --env prod --dir $APIGEE_HELM_CHARTS_HOME/apigee-env
+
+$APIGEE_HELM_CHARTS_HOME/apigee-operator/etc/tools/create-service-account \
+  --profile apigee-synchronizer --env prod --dir $APIGEE_HELM_CHARTS_HOME/apigee-env
+
+$APIGEE_HELM_CHARTS_HOME/apigee-operator/etc/tools/create-service-account \
+  --profile apigee-watcher --env prod --dir $APIGEE_HELM_CHARTS_HOME/apigee-org
 ```
+
+For production installations, this creates separate service accounts such as `apigee-cassandra`, `apigee-guardrails`, `apigee-mart`, `apigee-runtime`, `apigee-synchronizer`, `apigee-watcher`, `apigee-logger`, and `apigee-metrics`. For non-production environments, you can use `./tools/create-service-account --env non-prod` to create a single service account with the required roles.
 
 ## Step 4 - Install cert-manager
 
-Apigee Hybrid uses cert-manager for TLS certificate management within the cluster:
+Apigee Hybrid uses cert-manager for TLS certificate management within the cluster. For Apigee Hybrid 1.16, use a supported cert-manager release such as v1.17.2:
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.2/cert-manager.yaml
 
 # Wait for cert-manager to be ready
 kubectl wait --for=condition=available --timeout=300s deployment/cert-manager -n cert-manager
@@ -151,18 +173,24 @@ kubectl wait --for=condition=available --timeout=300s deployment/cert-manager-we
 
 ## Step 5 - Download and Configure Apigee Hybrid
 
-Download the Apigee Hybrid setup tools:
+Download the Apigee Hybrid Helm charts. The older `apigeectl` tool is not supported for Apigee Hybrid 1.12 and later, so new installations should use Helm:
 
 ```bash
-# Download the apigeectl tool
-export VERSION=1.12.0
-curl -LO "https://storage.googleapis.com/apigee-release/hybrid/apigee-hybrid-setup/${VERSION}/apigeectl_linux_64.tar.gz"
+export CHART_REPO=oci://us-docker.pkg.dev/apigee-release/apigee-hybrid-helm-charts
+export CHART_VERSION=1.16.4
+export APIGEE_HELM_CHARTS_HOME="$PWD/apigee-hybrid-helm-charts"
 
-tar -xzf apigeectl_linux_64.tar.gz
-mv apigeectl /usr/local/bin/
+mkdir -p "$APIGEE_HELM_CHARTS_HOME"
+cd "$APIGEE_HELM_CHARTS_HOME"
 
-# Verify installation
-apigeectl version
+helm pull $CHART_REPO/apigee-operator --version $CHART_VERSION --untar
+helm pull $CHART_REPO/apigee-datastore --version $CHART_VERSION --untar
+helm pull $CHART_REPO/apigee-env --version $CHART_VERSION --untar
+helm pull $CHART_REPO/apigee-ingress-manager --version $CHART_VERSION --untar
+helm pull $CHART_REPO/apigee-org --version $CHART_VERSION --untar
+helm pull $CHART_REPO/apigee-redis --version $CHART_VERSION --untar
+helm pull $CHART_REPO/apigee-telemetry --version $CHART_VERSION --untar
+helm pull $CHART_REPO/apigee-virtualhost --version $CHART_VERSION --untar
 ```
 
 ## Step 6 - Create the Overrides Configuration
@@ -178,35 +206,33 @@ gcp:
   region: us-central1
 
 org: YOUR_ORG_NAME
+namespace: apigee
 
 k8sCluster:
   name: apigee-hybrid
   region: us-central1
 
 instanceID: "hybrid-instance-1"
+enhanceProxyLimits: true
 
 # Cassandra configuration
 cassandra:
   hostNetwork: false
   replicaCount: 3
   storage:
-    capacity: 100Gi
-    storageClass: standard-rwo
-  auth:
-    default:
-      password: "CHANGE_ME_CASSANDRA_PASSWORD"
-    admin:
-      password: "CHANGE_ME_ADMIN_PASSWORD"
-  backup:
-    enabled: true
-    serviceAccountPath: ./apigee-cassandra-key.json
-    dbStorageBucket: gs://YOUR_PROJECT_ID-apigee-backup
+    storageSize: 500Gi
+  resources:
+    requests:
+      cpu: 7
+      memory: 15Gi
+  maxHeapSize: 8192M
+  heapNewSize: 1200M
 
 # Ingress gateway configuration
 ingressGateways:
   - name: apigee-ingress
     replicaCountMin: 2
-    replicaCountMax: 4
+    replicaCountMax: 10
     svcAnnotations:
       cloud.google.com/load-balancer-type: "External"
 
@@ -214,61 +240,89 @@ ingressGateways:
 envs:
   - name: prod
     serviceAccountPaths:
-      synchronizer: ./apigee-synchronizer-key.json
-      udca: ./apigee-udca-key.json
-      runtime: ./apigee-synchronizer-key.json
+      synchronizer: YOUR_PROJECT_ID-apigee-synchronizer.json
+      runtime: YOUR_PROJECT_ID-apigee-runtime.json
 
 # Virtual hosts - map domains to environments
 virtualhosts:
-  - name: prod-vhost
-    hostAliases:
-      - "api.yourdomain.com"
-    sslCertPath: ./certs/tls.crt
-    sslKeyPath: ./certs/tls.key
-    envs:
-      - prod
+  - name: prod-env-group
+    selector:
+      app: apigee-ingressgateway
+      ingress_name: apigee-ingress
+    sslCertPath: certs/tls.crt
+    sslKeyPath: certs/tls.key
 
-# Synchronizer configuration
-synchronizer:
-  serviceAccountPath: ./apigee-synchronizer-key.json
+# Guardrails configuration
+guardrails:
+  serviceAccountPath: YOUR_PROJECT_ID-apigee-guardrails.json
 
 # MART configuration
 mart:
-  serviceAccountPath: ./apigee-mart-key.json
+  serviceAccountPath: YOUR_PROJECT_ID-apigee-mart.json
 
 # Connect Agent (management plane communication)
 connectAgent:
-  serviceAccountPath: ./apigee-connect-key.json
+  serviceAccountPath: YOUR_PROJECT_ID-apigee-mart.json
 
 # Telemetry configuration
 logger:
-  serviceAccountPath: ./apigee-logger-key.json
+  serviceAccountPath: YOUR_PROJECT_ID-apigee-logger.json
   enabled: true
 
 metrics:
-  serviceAccountPath: ./apigee-metrics-key.json
+  serviceAccountPath: YOUR_PROJECT_ID-apigee-metrics.json
   enabled: true
+
+watcher:
+  serviceAccountPath: YOUR_PROJECT_ID-apigee-watcher.json
 ```
 
 ## Step 7 - Initialize and Deploy
 
-Run the initialization and deployment:
+Install the Apigee CRDs and Helm charts:
 
 ```bash
-# Create Kubernetes namespaces and RBAC
-apigeectl init -f overrides.yaml
+APIGEE_NAMESPACE="apigee"
+ORG_NAME="YOUR_ORG_NAME"
+ENV_NAME="prod"
+ENV_GROUP="prod-env-group"
 
-# Wait for init to complete
-apigeectl check-ready -f overrides.yaml --wait=300
+# Create Kubernetes namespaces
+kubectl create namespace apigee
 
-# Deploy the runtime components
-apigeectl apply -f overrides.yaml
+# Install Apigee CRDs
+kubectl apply -k apigee-operator/etc/crds/default/ \
+  --server-side \
+  --force-conflicts \
+  --validate=false
 
-# Check deployment status
-apigeectl check-ready -f overrides.yaml --wait=600
+# Install runtime components in the supported order
+helm upgrade operator apigee-operator/ --install \
+  --namespace $APIGEE_NAMESPACE --atomic -f overrides.yaml
+
+helm upgrade datastore apigee-datastore/ --install \
+  --namespace $APIGEE_NAMESPACE --atomic -f overrides.yaml
+
+helm upgrade telemetry apigee-telemetry/ --install \
+  --namespace $APIGEE_NAMESPACE --atomic -f overrides.yaml
+
+helm upgrade redis apigee-redis/ --install \
+  --namespace $APIGEE_NAMESPACE --atomic -f overrides.yaml
+
+helm upgrade ingress-manager apigee-ingress-manager/ --install \
+  --namespace $APIGEE_NAMESPACE --atomic -f overrides.yaml
+
+helm upgrade $ORG_NAME apigee-org/ --install \
+  --namespace $APIGEE_NAMESPACE --atomic -f overrides.yaml
+
+helm upgrade $ENV_NAME apigee-env/ --install \
+  --namespace $APIGEE_NAMESPACE --atomic --set env=$ENV_NAME -f overrides.yaml
+
+helm upgrade $ENV_GROUP apigee-virtualhost/ --install \
+  --namespace $APIGEE_NAMESPACE --atomic --set envgroup=$ENV_GROUP -f overrides.yaml
 ```
 
-This process takes 10 to 20 minutes. It deploys Cassandra, the message processors, synchronizer, MART, and the ingress gateway.
+This process takes 10 to 20 minutes. It deploys Cassandra, Redis, telemetry, the message processors, synchronizer, MART, the Apigee Connect agent, watcher, and the ingress gateway.
 
 ## Step 8 - Verify the Deployment
 
@@ -277,10 +331,9 @@ Check that all components are running:
 ```bash
 # Check pod status in the Apigee namespaces
 kubectl get pods -n apigee
-kubectl get pods -n apigee-system
 
 # Check the ingress gateway service
-kubectl get svc -n apigee -l app=apigee-ingressgateway
+kubectl get svc -n apigee -l app=apigee-ingressgateway,ingress_name=apigee-ingress
 
 # Verify synchronizer is connected to the management plane
 kubectl logs -n apigee -l app=apigee-synchronizer --tail=20
@@ -292,7 +345,7 @@ Get the external IP of the ingress gateway and point your domain to it:
 
 ```bash
 # Get the external IP
-EXTERNAL_IP=$(kubectl get svc apigee-ingress -n apigee -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+EXTERNAL_IP=$(kubectl get svc -n apigee -l app=apigee-ingressgateway,ingress_name=apigee-ingress -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
 echo "Configure DNS: api.yourdomain.com -> $EXTERNAL_IP"
 ```
 
@@ -328,18 +381,22 @@ kubectl logs -n apigee -l app=apigee-synchronizer --tail=20 | grep "sync"
 
 ## Upgrading Apigee Hybrid
 
-When a new version is available, upgrade by updating the apigeectl tool and reapplying:
+When a new version is available, upgrade by pulling the new Helm charts and applying the chart upgrades:
 
 ```bash
-# Download new version
-curl -LO "https://storage.googleapis.com/apigee-release/hybrid/apigee-hybrid-setup/NEW_VERSION/apigeectl_linux_64.tar.gz"
+# Pull the new chart version
+export CHART_VERSION=NEW_VERSION
+helm pull $CHART_REPO/apigee-operator --version $CHART_VERSION --untar
 
-# Apply the upgrade
-apigeectl apply -f overrides.yaml
+# Upgrade each installed chart
+helm upgrade operator apigee-operator/ \
+  --namespace apigee \
+  --atomic \
+  -f overrides.yaml
 ```
 
 Always test upgrades in a non-production environment first.
 
 ## Summary
 
-Deploying Apigee Hybrid on GKE gives you enterprise API management with the flexibility of running the runtime on your own infrastructure. The setup involves creating a GKE cluster, configuring service accounts, installing cert-manager, and deploying the Apigee components through apigeectl. Once running, you manage APIs through the Apigee Console just like the fully hosted version, but traffic processing happens on your cluster. The trade-off is operational complexity - you are responsible for the Kubernetes cluster, Cassandra backups, scaling, and upgrades - but for organizations with data residency or network isolation requirements, it is the right approach.
+Deploying Apigee Hybrid on GKE gives you enterprise API management with the flexibility of running the runtime on your own infrastructure. The setup involves creating a GKE cluster, configuring service accounts, installing cert-manager, and deploying the Apigee components through Helm charts. Once running, you manage APIs through the Apigee Console just like the fully hosted version, but traffic processing happens on your cluster. The trade-off is operational complexity - you are responsible for the Kubernetes cluster, Cassandra backups, scaling, and upgrades - but for organizations with data residency or network isolation requirements, it is the right approach.
