@@ -10,11 +10,11 @@ Description: Implement a global anycast architecture on Google Cloud Platform to
 
 When your users are spread across the globe, every millisecond of network latency matters. A user in Tokyo hitting a server in Virginia adds 150-200ms of round-trip time before your application even starts processing. Anycast routing solves this by giving you a single IP address that routes users to the nearest point of presence automatically.
 
-Google Cloud's global load balancing is built on anycast. When you create an external HTTP(S) load balancer, you get a single anycast IP that is advertised from every Google edge location worldwide. Traffic enters Google's network at the closest edge and travels over Google's private backbone to reach your backend - which could be in any region you choose.
+Google Cloud's global load balancing is built on anycast. When you create a global external Application Load Balancer, you get a single anycast IP served by Google's globally distributed front ends. Traffic enters Google's network close to the user and travels over Google's private backbone to reach a healthy backend - which could be in any region you choose.
 
 ## How Anycast Works on GCP
 
-Traditional unicast routing sends traffic to a single destination. Anycast advertises the same IP address from multiple locations and lets the network routing layer decide the shortest path. On GCP, this happens at Google's edge, which spans over 140 network edge locations globally.
+Traditional unicast routing sends traffic to a single destination. Anycast advertises the same IP address from multiple locations and lets the network routing layer decide the shortest path to the frontend. On GCP, this happens at Google's globally distributed edge, with Google Front Ends in over 80 distinct locations worldwide.
 
 ```mermaid
 graph TD
@@ -26,7 +26,7 @@ graph TD
     F -->|Google Backbone| I[Backend - us-east1]
 ```
 
-The key advantage is that users always connect to the same IP address, but their traffic automatically takes the shortest path to your backends.
+The key advantage is that users always connect to the same IP address, but their traffic enters Google's network near the user and is then sent to a healthy backend based on load balancing, health, capacity, and proximity.
 
 ## Setting Up the Global Architecture
 
@@ -47,6 +47,7 @@ gcloud compute instance-templates create app-template-us \
   --metadata=startup-script='#!/bin/bash
     apt-get update && apt-get install -y nginx
     echo "Region: us-central1" > /var/www/html/index.html
+    echo "ok" > /var/www/html/health
     systemctl start nginx'
 
 # Create managed instance groups in multiple regions
@@ -64,6 +65,28 @@ gcloud compute instance-groups managed create app-mig-asia \
   --template=app-template-us \
   --size=3 \
   --region=asia-northeast1
+
+# Set named ports so the backend service can send HTTP traffic to the MIGs
+gcloud compute instance-groups managed set-named-ports app-mig-us \
+  --region=us-central1 \
+  --named-ports=http:80
+
+gcloud compute instance-groups managed set-named-ports app-mig-eu \
+  --region=europe-west1 \
+  --named-ports=http:80
+
+gcloud compute instance-groups managed set-named-ports app-mig-asia \
+  --region=asia-northeast1 \
+  --named-ports=http:80
+
+# Allow Google Cloud load balancer health checks to reach the instances
+gcloud compute firewall-rules create fw-allow-health-check \
+  --network=default \
+  --action=allow \
+  --direction=ingress \
+  --source-ranges=130.211.0.0/22,35.191.0.0/16 \
+  --target-tags=http-server \
+  --rules=tcp:80
 ```
 
 Configure autoscaling for each instance group.
@@ -166,6 +189,8 @@ gcloud compute addresses create app-anycast-ip \
 
 # Create the forwarding rule that ties it all together
 gcloud compute forwarding-rules create app-forwarding-rule \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
+  --network-tier=PREMIUM \
   --address=app-anycast-ip \
   --target-https-proxy=app-https-proxy \
   --ports=443 \
@@ -203,11 +228,13 @@ gcloud compute security-policies create app-security-policy
 # Add rate limiting rule
 gcloud compute security-policies rules create 1000 \
   --security-policy=app-security-policy \
+  --src-ip-ranges="*" \
   --action=throttle \
   --rate-limit-threshold-count=100 \
   --rate-limit-threshold-interval-sec=60 \
   --conform-action=allow \
-  --exceed-action=deny-429
+  --exceed-action=deny-429 \
+  --enforce-on-key=IP
 
 # Apply the policy to the backend service
 gcloud compute backend-services update app-backend-service \
@@ -229,9 +256,11 @@ You can also use uptime checks from multiple global locations to measure real-wo
 ```bash
 # Create uptime checks from multiple regions
 gcloud monitoring uptime create app-global-uptime \
-  --display-name="Global App Uptime" \
-  --uri="https://app.example.com/health" \
-  --period=60 \
+  --resource-type=uptime-url \
+  --resource-labels=host=app.example.com,project_id=PROJECT_ID \
+  --protocol=https \
+  --path=/health \
+  --period=1 \
   --timeout=10
 ```
 
@@ -243,7 +272,7 @@ The failover happens at two levels. First, within a region, unhealthy instances 
 
 ## Cost Considerations
 
-Global load balancing on GCP uses Premium Tier networking, which routes traffic over Google's private backbone. This provides better latency and reliability compared to Standard Tier, which uses the public internet. The cost difference is meaningful, so consider which regions truly need Premium Tier routing and which can use Standard.
+Global external Application Load Balancers require Premium Tier networking, which routes traffic over Google's private backbone. This provides better latency and reliability compared to Standard Tier, which uses the public internet for some regional load balancing options. The cost difference is meaningful, so compare the global architecture against regional alternatives if you do not need worldwide anycast delivery.
 
 Running backends in multiple regions multiplies your compute costs. Start with your highest-traffic regions and expand based on user demand and latency requirements.
 
