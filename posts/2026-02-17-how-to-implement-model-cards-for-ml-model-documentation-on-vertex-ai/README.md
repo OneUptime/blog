@@ -8,7 +8,7 @@ Description: Learn how to create and maintain model cards on Vertex AI to docume
 
 ---
 
-Every production ML model should have documentation that answers basic questions: What does this model do? What data was it trained on? How well does it perform, and for whom? What are its limitations? Model cards, originally proposed by Google researchers in 2019, are a standardized way to document these answers. Vertex AI has built-in support for model cards, making it straightforward to create and maintain this documentation alongside your models. Here is how to implement them.
+Every production ML model should have documentation that answers basic questions: What does this model do? What data was it trained on? How well does it perform, and for whom? What are its limitations? Model cards, originally proposed by Google researchers in 2019, are a standardized way to document these answers. Vertex AI Model Registry gives you model labels, descriptions, versions, evaluations, and artifact storage patterns that make it straightforward to keep this documentation alongside your models. Here is how to implement them.
 
 ## What Goes in a Model Card
 
@@ -45,8 +45,7 @@ Create a Python module that builds model cards programmatically:
 ```python
 # model_card_builder.py - Build model cards for Vertex AI models
 
-from google.cloud import aiplatform
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 class ModelCardBuilder:
@@ -58,7 +57,8 @@ class ModelCardBuilder:
             "model_details": {
                 "name": model_name,
                 "version": model_version,
-                "created_date": datetime.utcnow().isoformat(),
+                "created_date": datetime.now(timezone.utc).isoformat(),
+                "updated_date": datetime.now(timezone.utc).isoformat(),
                 "owners": [],
                 "description": "",
                 "references": [],
@@ -225,29 +225,30 @@ card = (
 )
 ```
 
-## Step 3: Attach the Model Card to a Vertex AI Model
+## Step 3: Reference the Model Card from a Vertex AI Model
 
-Store the model card as metadata on the Vertex AI model resource:
+Store the full model card in Cloud Storage, then add searchable metadata and a pointer on the Vertex AI model resource:
 
 ```python
 from google.cloud import aiplatform
 import json
 
 aiplatform.init(project="your-project-id", location="us-central1")
+model_card_uri = "gs://your-model-artifacts-bucket/models/loan-approval-v2.1/model_card.json"
 
 # Get the model
 model = aiplatform.Model(
     model_name="projects/your-project-id/locations/us-central1/models/YOUR_MODEL_ID"
 )
 
-# Update the model with the model card as a label and description
+# Update the model with labels and a description that points to the full card
 model.update(
     labels={
         "model_card_version": "v2_1",
         "has_model_card": "true",
         "last_card_update": "2026-02-17",
     },
-    description=json.dumps(card)[:5000],  # Vertex AI has a description length limit
+    description=f"Model card: {model_card_uri}",
 )
 
 # For the full model card, store it in Cloud Storage alongside the model artifacts
@@ -255,7 +256,7 @@ from google.cloud import storage
 
 storage_client = storage.Client()
 bucket = storage_client.bucket("your-model-artifacts-bucket")
-blob = bucket.blob(f"models/loan-approval-v2.1/model_card.json")
+blob = bucket.blob("models/loan-approval-v2.1/model_card.json")
 blob.upload_from_string(json.dumps(card, indent=2), content_type="application/json")
 
 print("Model card stored in Cloud Storage and linked to model")
@@ -275,6 +276,7 @@ def render_model_card_markdown(card):
 
     md.append(f"# Model Card: {details['name']} ({details['version']})")
     md.append(f"\nCreated: {details['created_date']}")
+    md.append(f"Updated: {details.get('updated_date', details['created_date'])}")
     md.append(f"Owners: {', '.join(details['owners'])}")
     md.append(f"\n## Model Description\n{details['description']}")
 
@@ -339,6 +341,12 @@ Model cards should be updated whenever the model is retrained or when new evalua
 
 ```python
 # auto_update_card.py - Update model card metrics automatically after retraining
+from datetime import datetime, timezone
+import json
+from google.cloud import storage
+
+storage_client = storage.Client()
+
 def update_card_after_retraining(model_id, new_metrics, new_sliced_metrics):
     """Update the model card with fresh evaluation metrics after retraining.
     Preserves existing documentation while updating quantitative sections."""
@@ -351,7 +359,7 @@ def update_card_after_retraining(model_id, new_metrics, new_sliced_metrics):
     # Update the evaluation metrics
     existing_card["evaluation"]["metrics"] = new_metrics
     existing_card["evaluation"]["sliced_metrics"] = new_sliced_metrics
-    existing_card["model_details"]["created_date"] = datetime.utcnow().isoformat()
+    existing_card["model_details"]["updated_date"] = datetime.now(timezone.utc).isoformat()
 
     # Increment the version
     current_version = existing_card["model_details"]["version"]
@@ -407,4 +415,4 @@ Use OneUptime to track model deployments and correlate them with model card vers
 
 ## Summary
 
-Model cards transform ML model documentation from an afterthought into a living artifact that travels with the model through its lifecycle. The key is automation - generate as much of the card as possible from your training pipeline metadata, and reserve manual effort for the sections that require human judgment like intended use limitations and ethical considerations. On Vertex AI, model cards integrate naturally with the Model Registry, making them accessible to anyone who interacts with the model.
+Model cards transform ML model documentation from an afterthought into a living artifact that travels with the model through its lifecycle. The key is automation - generate as much of the card as possible from your training pipeline metadata, and reserve manual effort for the sections that require human judgment like intended use limitations and ethical considerations. On Vertex AI, model cards can be referenced from Model Registry labels and descriptions, making them accessible to anyone who interacts with the model.
