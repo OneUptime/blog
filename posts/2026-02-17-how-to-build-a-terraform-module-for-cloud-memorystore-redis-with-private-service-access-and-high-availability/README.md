@@ -115,15 +115,27 @@ variable "read_replicas_mode" {
 }
 
 variable "replica_count" {
-  description = "Number of read replicas (1-5, only for STANDARD_HA)"
+  description = "Number of replica nodes (1-5 when read replicas are enabled; 1 for STANDARD_HA without read replicas; 0 for BASIC)"
   type        = number
-  default     = 0
+  default     = 1
+}
+
+variable "notification_channels" {
+  description = "Cloud Monitoring notification channel resource names"
+  type        = list(string)
+  default     = []
+}
+
+variable "max_client_alert_threshold" {
+  description = "Connected client count threshold for alerting"
+  type        = number
+  default     = 1000
 }
 ```
 
 ## Private Service Access Setup
 
-Memorystore Redis requires private service access to your VPC. This creates a peering connection between your network and Google's managed services network:
+This module uses private service access to connect Redis to your VPC. This creates a peering connection between your network and Google's managed services network:
 
 ```hcl
 # private-access.tf - Private service access for Memorystore
@@ -154,6 +166,10 @@ The main Redis instance with HA and private networking:
 
 ```hcl
 # main.tf - Memorystore Redis instance
+
+locals {
+  effective_replica_count = var.read_replicas_mode == "READ_REPLICAS_ENABLED" ? var.replica_count : (var.tier == "STANDARD_HA" ? 1 : 0)
+}
 
 resource "google_redis_instance" "cache" {
   project        = var.project_id
@@ -193,7 +209,7 @@ resource "google_redis_instance" "cache" {
 
   # Read replicas for scaling reads
   read_replicas_mode = var.read_replicas_mode
-  replica_count      = var.replica_count
+  replica_count      = local.effective_replica_count
 
   labels = var.labels
 
@@ -251,7 +267,17 @@ output "server_ca_certs" {
 
 output "connection_string" {
   description = "Redis connection string (without auth)"
-  value       = "redis://${google_redis_instance.cache.host}:${google_redis_instance.cache.port}"
+  value       = format("%s://%s:%s", var.transit_encryption_mode == "SERVER_AUTHENTICATION" ? "rediss" : "redis", google_redis_instance.cache.host, google_redis_instance.cache.port)
+}
+
+output "auth_secret_id" {
+  description = "Secret Manager secret ID containing the Redis AUTH string"
+  value       = google_secret_manager_secret.redis_auth.secret_id
+}
+
+output "redis_url_secret_id" {
+  description = "Secret Manager secret ID containing the Redis connection URL"
+  value       = google_secret_manager_secret.redis_url.secret_id
 }
 ```
 
@@ -290,7 +316,7 @@ resource "google_secret_manager_secret" "redis_url" {
 
 resource "google_secret_manager_secret_version" "redis_url" {
   secret      = google_secret_manager_secret.redis_url.id
-  secret_data = "rediss://:${google_redis_instance.cache.auth_string}@${google_redis_instance.cache.host}:${google_redis_instance.cache.port}"
+  secret_data = format("%s://:%s@%s:%s", var.transit_encryption_mode == "SERVER_AUTHENTICATION" ? "rediss" : "redis", google_redis_instance.cache.auth_string, google_redis_instance.cache.host, google_redis_instance.cache.port)
 }
 ```
 
@@ -305,6 +331,7 @@ Set up alerts for the metrics that matter:
 resource "google_monitoring_alert_policy" "redis_memory" {
   project      = var.project_id
   display_name = "${var.name} - Redis Memory Usage High"
+  combiner     = "OR"
 
   conditions {
     display_name = "Memory usage above 80%"
@@ -334,6 +361,7 @@ resource "google_monitoring_alert_policy" "redis_memory" {
 resource "google_monitoring_alert_policy" "redis_evictions" {
   project      = var.project_id
   display_name = "${var.name} - Redis Evictions Occurring"
+  combiner     = "OR"
 
   conditions {
     display_name = "Evictions rate above zero"
@@ -363,6 +391,7 @@ resource "google_monitoring_alert_policy" "redis_evictions" {
 resource "google_monitoring_alert_policy" "redis_connections" {
   project      = var.project_id
   display_name = "${var.name} - Redis Connected Clients High"
+  combiner     = "OR"
 
   conditions {
     display_name = "Connected clients above threshold"
@@ -446,7 +475,7 @@ resource "google_cloud_run_v2_service" "app" {
         name = "REDIS_AUTH"
         value_source {
           secret_key_ref {
-            secret  = google_secret_manager_secret.redis_auth.secret_id
+            secret  = module.redis.auth_secret_id
             version = "latest"
           }
         }
@@ -458,4 +487,4 @@ resource "google_cloud_run_v2_service" "app" {
 
 ## Summary
 
-This Terraform module gives you a production-ready Memorystore Redis setup with private networking, high availability, authentication, encryption in transit, and monitoring. The private service access configuration ensures your Redis instance is not reachable from the internet, STANDARD_HA tier provides automatic failover, and the monitoring alerts catch memory pressure and eviction issues before they affect your application. Use the module with different variable values for staging (BASIC tier, smaller memory) and production (STANDARD_HA, larger memory) to keep costs in check while maintaining quality where it counts.
+This Terraform module gives you a production-ready Memorystore Redis setup with private networking, high availability, authentication, encryption in transit, and monitoring. The private networking configuration ensures your Redis instance is not reachable from the internet, STANDARD_HA tier provides automatic failover, and the monitoring alerts catch memory pressure and eviction issues before they affect your application. Use the module with different variable values for staging (BASIC tier, smaller memory) and production (STANDARD_HA, larger memory) to keep costs in check while maintaining quality where it counts.
