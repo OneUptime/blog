@@ -8,11 +8,11 @@ Description: Learn how to configure egress rules for VPC Service Controls perime
 
 ---
 
-Ingress rules control what comes into your perimeter. Egress rules control what goes out. In many ways, egress rules are the more important of the two because they are what actually prevent data exfiltration - the primary use case for VPC Service Controls.
+Ingress rules control what can access resources inside your perimeter. Egress rules control which requests from inside the perimeter can access specified resources outside it. In many ways, egress rules are the more important of the two because they are what actually prevent data exfiltration through supported Google Cloud APIs - the primary use case for VPC Service Controls.
 
-By default, a VPC Service Controls perimeter blocks all API calls that would send data from inside the perimeter to outside. This means a compromised service account cannot copy your BigQuery tables to an external project, cannot download Cloud Storage objects to a machine outside your network, and cannot replicate your Spanner database to another organization.
+By default, a VPC Service Controls perimeter blocks API calls from inside the perimeter to protected services and resources outside the perimeter. This means a compromised service account cannot copy your BigQuery tables to an external project, cannot read protected Cloud Storage objects through the Storage API from an unauthorized context, and cannot replicate your Spanner database to another organization through supported Google Cloud APIs.
 
-But sometimes you genuinely need data to flow outward. Maybe you share datasets with a partner, publish reports to an external bucket, or use a third-party analytics service. Egress rules let you allow these specific flows without opening the floodgates.
+But sometimes you genuinely need data to flow outward. Maybe you share datasets with a partner, publish reports to an external bucket, or access approved resources in another Google Cloud project. Egress rules let you allow these specific flows without opening the floodgates.
 
 ## Egress Rule Structure
 
@@ -51,7 +51,7 @@ Before writing any rules, catalog the outbound data flows from projects inside y
 # Check audit logs for outbound API calls that were blocked
 
 gcloud logging read \
-  'protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.violationReason="RESOURCES_NOT_IN_SAME_SERVICE_PERIMETER"' \
+  'protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.violationReason="RESOURCE_NOT_IN_SAME_SERVICE_PERIMETER"' \
   --limit=50 \
   --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.methodName, protoPayload.resourceName)" \
   --project=my-project-id
@@ -196,7 +196,7 @@ Monitor the logs to see if the rules correctly allow the desired flows and still
 
 ## Step 7: Audit Egress Rule Usage
 
-Regularly review what data is actually flowing out through your egress rules.
+Regularly review what data is actually flowing out through your egress rules. For successful data-access operations, make sure the relevant Data Access audit logs are enabled.
 
 ```bash
 # Look at successful API calls that match egress rules
