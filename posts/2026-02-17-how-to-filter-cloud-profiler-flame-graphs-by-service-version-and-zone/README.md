@@ -72,9 +72,9 @@ For Java:
 # Pass version through environment variable
 ENV APP_VERSION=1.0.0
 
-ENTRYPOINT ["java", \
-  "-agentpath:/opt/cprof/profiler_java_agent=-cprof_service=my-service,-cprof_service_version=${APP_VERSION}", \
-  "-jar", "/app/app.jar"]
+ENTRYPOINT java \
+  -agentpath:/opt/cprof/profiler_java_agent.so=-cprof_service=my-service,-cprof_service_version=${APP_VERSION} \
+  -jar /app/app.jar
 ```
 
 For Node.js:
@@ -95,11 +95,11 @@ start({
 
 Zone information is typically detected automatically when running on GCP. Cloud Profiler reads the GCE metadata server to determine the zone. However, you can verify this is working by checking the profiler labels in the Cloud Console.
 
-If you are running outside GCP or need custom zone labels, you can set them through environment variables:
+If you are running outside GCP, configure the project ID through the language-specific profiler option. For the Java agent, you can also set a descriptive zone name with `-cprof_zone_name` when the metadata server is not available:
 
 ```bash
-# Set zone manually if not detected automatically
-export GOOGLE_CLOUD_ZONE=us-central1-a
+# Set zone manually for the Java profiler agent if not detected automatically
+java -agentpath:/opt/cprof/profiler_java_agent.so=-cprof_service=my-service,-cprof_project_id=my-project,-cprof_zone_name=us-central1-a -jar /app/app.jar
 ```
 
 ## Filtering in the Cloud Console
@@ -131,9 +131,9 @@ Choose between:
 - **CPU time**: Where CPU cycles are spent
 - **Wall time**: Elapsed time including waits
 - **Heap**: Currently live heap memory
-- **Heap allocation**: Total bytes allocated
-- **Goroutines**: (Go only) Active goroutine count
-- **Contention**: (Go/Java) Mutex contention time
+- **Allocated heap**: Total bytes allocated
+- **Threads**: (Go only) Thread or goroutine stacks
+- **Contention**: (Go only) Mutex contention time
 
 ## Practical Filtering Scenarios
 
@@ -186,27 +186,42 @@ For automated analysis, you can query profiles programmatically with filters.
 
 ```python
 # query_profiles.py - Fetch filtered profiles via API
-from google.cloud import profiler_v2
+import google.auth
+from google.auth.transport.requests import AuthorizedSession
+
+
+SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 
 
 def list_profiles_for_version(project_id, service, version):
     """List profiles filtered by service version."""
-    client = profiler_v2.ExportServiceClient()
+    credentials, _ = google.auth.default(scopes=SCOPES)
+    session = AuthorizedSession(credentials)
 
-    # List profiles with a filter
-    request = profiler_v2.ListProfilesRequest(
-        parent=f"projects/{project_id}",
-    )
-
-    profiles = client.list_profiles(request=request)
-
-    # Filter by service and version (client-side for now)
     matching = []
-    for profile in profiles:
-        labels = profile.labels
-        if (labels.get("service") == service and
-            labels.get("version") == version):
-            matching.append(profile)
+    page_token = None
+
+    while True:
+        params = {}
+        if page_token:
+            params["pageToken"] = page_token
+
+        response = session.get(
+            f"https://cloudprofiler.googleapis.com/v2/projects/{project_id}/profiles",
+            params=params,
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+        for profile in payload.get("profiles", []):
+            deployment = profile.get("deployment", {})
+            labels = deployment.get("labels", {})
+            if deployment.get("target") == service and labels.get("version") == version:
+                matching.append(profile)
+
+        page_token = payload.get("nextPageToken")
+        if not page_token:
+            break
 
     return matching
 
