@@ -4,44 +4,45 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Compute Engine, Migration, Zone Migration, Cloud Infrastructure
 
-Description: A practical guide to migrating Compute Engine instances between zones with minimal downtime using move operations, snapshots, and managed instance groups.
+Description: A practical guide to migrating Compute Engine instances between zones with minimal downtime using machine images, snapshots, and managed instance groups.
 
 ---
 
 There are several reasons you might need to move a Compute Engine instance to a different zone. Maybe you are consolidating resources, responding to a zone-level issue, or deploying closer to your users. Whatever the reason, you want to do it with as little downtime as possible.
 
-GCP offers a built-in move operation for this, but it has limitations. In this post, I will cover the official move method, the manual snapshot-and-recreate approach, and some strategies for achieving near-zero downtime.
+GCP used to offer a built-in move operation for this, but that command has been removed from the current Google Cloud CLI. In this post, I will cover the current machine-image method, the manual snapshot-and-recreate approach, and some strategies for achieving near-zero downtime.
 
-## Method 1: Using gcloud compute instances move
+## Method 1: Using a Machine Image
 
-The simplest approach is the built-in move command. It handles stopping the VM, snapshotting the disks, recreating the VM in the target zone, and cleaning up the old resources.
+The simplest current approach is to create a machine image of the source VM, then create a replacement VM in the target zone from that machine image. This preserves most instance configuration and disk data, but you still need to plan a cutover and clean up the old resources after you verify the new VM.
 
 ```bash
-# Move an instance from one zone to another
+# Create a machine image from the source VM
+gcloud compute machine-images create my-vm-machine-image \
+    --source-instance=my-vm \
+    --source-instance-zone=us-central1-a
 
-# This will cause downtime while the VM is stopped, moved, and restarted
-gcloud compute instances move my-vm \
-    --zone=us-central1-a \
-    --destination-zone=us-central1-b
+# Create a replacement VM in the target zone
+gcloud compute instances create my-vm-new \
+    --zone=us-central1-b \
+    --source-machine-image=my-vm-machine-image
 ```
 
-What happens behind the scenes:
+What happens during this process:
 
-1. The VM is stopped
-2. Snapshots are taken of all attached disks
-3. New disks are created from those snapshots in the destination zone
-4. A new VM is created in the destination zone with the same configuration
-5. The old VM and disks are deleted
-6. The new VM is started
+1. A machine image is created from the source VM
+2. A new VM is created in the destination zone from the machine image
+3. You verify the new VM and update any references to the old VM
+4. You delete the old VM and the temporary machine image when they are no longer needed
 
-The total downtime depends on your disk sizes. For a VM with a 10 GB boot disk, expect about 5-10 minutes. For larger disks, it could be 20-30 minutes or more.
+The total downtime depends on your cutover process and disk sizes. For small VMs, expect a few minutes. For larger disks, it could be 20-30 minutes or more.
 
 **Important limitations:**
 
-- The VM must be stopped or running (not in a suspended or terminated state)
-- It does not work with local SSDs (data on local SSDs is lost)
-- The destination zone must be in the same region
-- Static external IPs are preserved, but ephemeral IPs will change
+- Machine images cannot be created from VMs with some disk or machine types, including Hyperdisk volumes and most Z3, C3D, H3, and A3 machine types
+- Some instance and disk properties are not preserved by machine images
+- If you move between regions, you must choose a new subnet and cannot preserve ephemeral internal or external IP addresses
+- Static external IPs can be reassigned within the same region, but ephemeral IPs should be promoted to static IPs before cutover if you need to keep them
 
 ## Method 2: Manual Snapshot and Recreate
 
@@ -141,19 +142,40 @@ gcloud compute instances create my-vm-zone-b \
     --image-family=my-app \
     --tags=http-server
 
-# Step 2: Wait for the new VM to pass health checks
+# Step 2: Create an unmanaged instance group for the new VM
+gcloud compute instance-groups unmanaged create my-ig-zone-b \
+    --zone=us-central1-b
+
+gcloud compute instance-groups unmanaged add-instances my-ig-zone-b \
+    --instances=my-vm-zone-b \
+    --zone=us-central1-b
+
+# Step 3: Add the new instance group to the load balancer backend
+gcloud compute backend-services add-backend my-backend-service \
+    --instance-group=my-ig-zone-b \
+    --instance-group-zone=us-central1-b \
+    --global
+
+# Step 4: Wait for the new VM to pass health checks
 # (Your load balancer will do this automatically)
 
-# Step 3: Remove the old VM from the load balancer backend
+# Step 5: Drain the old backend by setting its capacity scaler to zero
+gcloud compute backend-services update-backend my-backend-service \
+    --instance-group=my-ig-zone-a \
+    --instance-group-zone=us-central1-a \
+    --capacity-scaler=0 \
+    --global
+
+# Step 6: Wait for connections to drain (give it a few minutes)
+sleep 180
+
+# Step 7: Remove the old VM from the load balancer backend
 gcloud compute backend-services remove-backend my-backend-service \
     --instance-group=my-ig-zone-a \
     --instance-group-zone=us-central1-a \
     --global
 
-# Step 4: Wait for connections to drain (give it a few minutes)
-sleep 180
-
-# Step 5: Delete the old VM
+# Step 8: Delete the old VM
 gcloud compute instances delete my-vm-zone-a \
     --zone=us-central1-a --quiet
 ```
@@ -167,17 +189,17 @@ If you are already using managed instance groups (and you should be for stateles
 gcloud compute instance-groups managed create my-regional-mig \
     --template=my-app-template \
     --size=3 \
-    --region=us-central1
+    --region=us-central1 \
+    --zones=us-central1-b,us-central1-c,us-central1-f
 ```
 
-With a regional MIG, your instances are automatically distributed across zones. If you want to move away from a specific zone, you can configure zone selection:
+With a regional MIG, your instances are automatically distributed across the selected zones. Choose the zones when you create the regional MIG; you cannot update an existing regional MIG to use different zones later. You can still change the target distribution shape:
 
 ```bash
-# Update the MIG to only use specific zones
+# Update how the MIG distributes instances across its existing zones
 gcloud compute instance-groups managed update my-regional-mig \
     --region=us-central1 \
-    --target-distribution-shape=ANY \
-    --zones=us-central1-b,us-central1-c,us-central1-f
+    --target-distribution-shape=any
 ```
 
 ## Preserving the External IP Address
@@ -247,4 +269,4 @@ resource "google_compute_instance" "app" {
 
 ## Wrapping Up
 
-The right migration strategy depends on your downtime tolerance and workload type. For simple VMs where a few minutes of downtime is acceptable, the built-in `gcloud compute instances move` command works well. For production workloads that need minimal disruption, use the load balancer approach or regional managed instance groups. For stateful workloads, plan carefully and use replication where possible. The key takeaway is that zone migrations should be planned for from the start - if you design your architecture with regional resources and load balancers, moving between zones becomes a non-event.
+The right migration strategy depends on your downtime tolerance and workload type. For simple VMs where a few minutes of downtime is acceptable, the machine-image or snapshot-and-recreate approach works well. For production workloads that need minimal disruption, use the load balancer approach or regional managed instance groups. For stateful workloads, plan carefully and use replication where possible. The key takeaway is that zone migrations should be planned for from the start - if you design your architecture with regional resources and load balancers, moving between zones becomes a non-event.
