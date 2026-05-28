@@ -27,7 +27,7 @@ graph LR
     REG --> STAGE[Deploy to Staging]
     STAGE --> ITEST[Integration Tests]
     ITEST -->|Pass| PROD[Deploy to Production]
-    ITEST -->|Fail| ROLLBACK[Rollback]
+    ITEST -->|Fail| STOP2[Fail Build]
 ```
 
 A code push triggers the pipeline. It runs tests, trains the model, evaluates it against quality thresholds, registers it in the Vertex AI Model Registry, deploys to staging for integration testing, and finally promotes to production.
@@ -57,6 +57,11 @@ ml-project/
   configs/
     staging.yaml
     production.yaml
+  scripts/
+    submit_training_job.py
+    evaluate_model.py
+    register_model.py
+    deploy_model.py
   Dockerfile
   cloudbuild.yaml
   requirements.txt
@@ -117,41 +122,57 @@ steps:
   # Step 5: Train the model using Vertex AI Custom Training
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'train-model'
-    entrypoint: 'python'
+    entrypoint: 'bash'
     args:
-      - 'scripts/submit_training_job.py'
-      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/ml-images/trainer:$COMMIT_SHA'
-      - '--commit-sha=$COMMIT_SHA'
+      - '-c'
+      - |
+        pip install -r requirements.txt
+        pip install google-cloud-aiplatform
+        python scripts/submit_training_job.py \
+          --image=us-central1-docker.pkg.dev/$PROJECT_ID/ml-images/trainer:$COMMIT_SHA \
+          --commit-sha=$COMMIT_SHA
     waitFor: ['push-training-image']
 
   # Step 6: Evaluate the trained model
   - name: 'python:3.10'
     id: 'evaluate-model'
-    entrypoint: 'python'
+    entrypoint: 'bash'
     args:
-      - 'scripts/evaluate_model.py'
-      - '--model-dir=gs://$PROJECT_ID-ml-artifacts/models/$COMMIT_SHA'
-      - '--threshold=0.85'
+      - '-c'
+      - |
+        pip install -r requirements.txt
+        pip install google-cloud-storage
+        python scripts/evaluate_model.py \
+          --model-dir=gs://$PROJECT_ID-ml-artifacts/models/$COMMIT_SHA \
+          --threshold=0.85
     waitFor: ['train-model']
 
   # Step 7: Register the model in Vertex AI Model Registry
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'register-model'
-    entrypoint: 'python'
+    entrypoint: 'bash'
     args:
-      - 'scripts/register_model.py'
-      - '--model-dir=gs://$PROJECT_ID-ml-artifacts/models/$COMMIT_SHA'
-      - '--version=$COMMIT_SHA'
+      - '-c'
+      - |
+        pip install -r requirements.txt
+        pip install google-cloud-aiplatform
+        python scripts/register_model.py \
+          --model-dir=gs://$PROJECT_ID-ml-artifacts/models/$COMMIT_SHA/model \
+          --version=$COMMIT_SHA
     waitFor: ['evaluate-model']
 
   # Step 8: Deploy to staging endpoint
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-staging'
-    entrypoint: 'python'
+    entrypoint: 'bash'
     args:
-      - 'scripts/deploy_model.py'
-      - '--environment=staging'
-      - '--version=$COMMIT_SHA'
+      - '-c'
+      - |
+        pip install -r requirements.txt
+        pip install google-cloud-aiplatform
+        python scripts/deploy_model.py \
+          --environment=staging \
+          --version=$COMMIT_SHA
     waitFor: ['register-model']
 
   # Step 9: Run integration tests against staging
@@ -173,7 +194,9 @@ steps:
     args:
       - '-c'
       - |
-        if [ "$BRANCH_NAME" = "main" ]; then
+        if [ "$BRANCH_NAME" = "main" ] && [ -z "$_PR_NUMBER" ]; then
+          pip install -r requirements.txt
+          pip install google-cloud-aiplatform
           python scripts/deploy_model.py \
             --environment=production \
             --version=$COMMIT_SHA \
@@ -192,7 +215,7 @@ timeout: '7200s'  # 2 hour timeout for the full pipeline
 
 ## Step 3: Write the Training Job Submission Script
 
-This script submits a Vertex AI Custom Training job and waits for it to complete.
+This script submits a Vertex AI Custom Training job and waits for it to complete. The training container should write model artifacts to the `--model-dir` path and evaluation metrics to `metrics.json` in the `--metrics-dir` path.
 
 ```python
 # scripts/submit_training_job.py
@@ -211,27 +234,24 @@ def submit_training_job(image_uri, commit_sha):
     job = aiplatform.CustomContainerTrainingJob(
         display_name=f"training-{commit_sha[:8]}",
         container_uri=image_uri,
-        model_serving_container_image_uri=(
-            "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-2:latest"
-        ),
     )
 
     # Run the training job
-    model = job.run(
-        model_display_name=f"model-{commit_sha[:8]}",
+    job.run(
         replica_count=1,
         machine_type="n1-standard-8",
         accelerator_type="NVIDIA_TESLA_T4",
         accelerator_count=1,
+        base_output_dir=f"gs://my-project-ml-artifacts/training/{commit_sha}",
         args=[
-            "--output-dir", f"gs://my-project-ml-artifacts/models/{commit_sha}",
+            "--model-dir", f"gs://my-project-ml-artifacts/models/{commit_sha}/model",
+            "--metrics-dir", f"gs://my-project-ml-artifacts/models/{commit_sha}",
             "--epochs", "50",
             "--batch-size", "64",
         ],
     )
 
-    print(f"Training completed. Model: {model.resource_name}")
-    return model.resource_name
+    print("Training completed.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -294,6 +314,38 @@ if __name__ == "__main__":
 ```
 
 ## Step 5: Write the Deployment Script
+
+Before deploying, register the model artifacts in Vertex AI Model Registry.
+
+```python
+# scripts/register_model.py
+import argparse
+from google.cloud import aiplatform
+
+def register_model(model_dir, version):
+    """Upload model artifacts to Vertex AI Model Registry."""
+    aiplatform.init(project="my-project", location="us-central1")
+
+    model = aiplatform.Model.upload(
+        display_name=f"model-{version[:8]}",
+        artifact_uri=model_dir,
+        serving_container_image_uri=(
+            "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-6:latest"
+        ),
+        sync=True,
+    )
+
+    print(f"Registered model: {model.resource_name}")
+    return model.resource_name
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-dir", required=True)
+    parser.add_argument("--version", required=True)
+    args = parser.parse_args()
+
+    register_model(args.model_dir, args.version)
+```
 
 The deployment script handles both staging and production deployments with proper traffic management.
 
@@ -367,6 +419,7 @@ gcloud builds triggers create github \
   --repo-owner="my-org" \
   --repo-name="ml-project" \
   --pull-request-pattern="^main$" \
+  --comment-control=COMMENTS_DISABLED \
   --build-config="cloudbuild.yaml" \
   --region=us-central1
 ```
