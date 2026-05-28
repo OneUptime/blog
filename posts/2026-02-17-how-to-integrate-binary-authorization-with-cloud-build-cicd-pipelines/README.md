@@ -29,8 +29,9 @@ graph LR
 
 ## Prerequisites
 
-- Cloud Build API, Binary Authorization API, Container Analysis API, and Cloud KMS API enabled
+- Cloud Build API, Binary Authorization API, Artifact Registry API, Container Analysis API, and Cloud KMS API enabled
 - An attestor already created with a KMS key (see my earlier post on creating attestors)
+- An Artifact Registry Docker repository for your images, with automatic vulnerability scanning enabled if you use the scanning gate below
 - A GKE cluster with Binary Authorization enforcement enabled
 
 ```bash
@@ -39,6 +40,7 @@ graph LR
 gcloud services enable \
   cloudbuild.googleapis.com \
   binaryauthorization.googleapis.com \
+  artifactregistry.googleapis.com \
   containeranalysis.googleapis.com \
   cloudkms.googleapis.com \
   --project=my-project-id
@@ -46,23 +48,45 @@ gcloud services enable \
 
 ## Step 1: Grant Cloud Build the Required Permissions
 
-Cloud Build's service account needs permissions to create attestations and use the KMS signing key.
+Cloud Build's service account needs permissions to push images, create attestations, and use the KMS signing key. This example uses a dedicated build service account, which is the recommended approach for new Cloud Build triggers.
 
 ```bash
-# Get the Cloud Build service account
-PROJECT_NUMBER=$(gcloud projects describe my-project-id --format='value(projectNumber)')
-CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+# Create a dedicated Cloud Build service account
+CB_SA_NAME="cloud-build-binauthz"
+CB_SA="${CB_SA_NAME}@my-project-id.iam.gserviceaccount.com"
 
-# Grant permission to create attestations
-gcloud container binauthz attestors add-iam-policy-binding build-attestor \
-  --member="serviceAccount:${CB_SA}" \
-  --role="roles/binaryauthorization.attestorsVerifier" \
+gcloud iam service-accounts create "${CB_SA_NAME}" \
+  --display-name="Cloud Build Binary Authorization signer" \
   --project=my-project-id
 
-# Grant permission to create Container Analysis notes/occurrences
+# Grant permission to run Cloud Build steps and push images
+gcloud projects add-iam-policy-binding my-project-id \
+  --member="serviceAccount:${CB_SA}" \
+  --role="roles/cloudbuild.builds.builder"
+
+gcloud projects add-iam-policy-binding my-project-id \
+  --member="serviceAccount:${CB_SA}" \
+  --role="roles/artifactregistry.writer"
+
+gcloud projects add-iam-policy-binding my-project-id \
+  --member="serviceAccount:${CB_SA}" \
+  --role="roles/logging.logWriter"
+
+# Grant permission to read attestor metadata
+gcloud container binauthz attestors add-iam-policy-binding build-attestor \
+  --member="serviceAccount:${CB_SA}" \
+  --role="roles/binaryauthorization.attestorsViewer" \
+  --project=my-project-id
+
+# Grant permission to attach occurrences to the attestor's Artifact Analysis note
 gcloud projects add-iam-policy-binding my-project-id \
   --member="serviceAccount:${CB_SA}" \
   --role="roles/containeranalysis.notes.attacher"
+
+# Grant permission to create Artifact Analysis occurrences for attestations
+gcloud projects add-iam-policy-binding my-project-id \
+  --member="serviceAccount:${CB_SA}" \
+  --role="roles/containeranalysis.occurrences.editor"
 
 # Grant permission to use the KMS signing key
 gcloud kms keys add-iam-policy-binding build-signer \
@@ -71,6 +95,11 @@ gcloud kms keys add-iam-policy-binding build-signer \
   --member="serviceAccount:${CB_SA}" \
   --role="roles/cloudkms.signerVerifier" \
   --project=my-project-id
+
+# Needed only if this pipeline also deploys to GKE
+gcloud projects add-iam-policy-binding my-project-id \
+  --member="serviceAccount:${CB_SA}" \
+  --role="roles/container.developer"
 ```
 
 ## Step 2: Create the Cloud Build Configuration
@@ -85,17 +114,17 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/my-app:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
       - '.'
     id: 'build-image'
 
-  # Step 2: Push the image to Container Registry
+  # Step 2: Push the image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
     id: 'push-image'
     waitFor: ['build-image']
 
@@ -106,8 +135,8 @@ steps:
       - '-c'
       - |
         # Retrieve the exact image digest after push
-        gcloud container images describe \
-          gcr.io/$PROJECT_ID/my-app:$SHORT_SHA \
+        gcloud artifacts docker images describe \
+          us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA \
           --format='value(image_summary.digest)' > /workspace/image_digest.txt
         echo "Image digest: $(cat /workspace/image_digest.txt)"
     id: 'get-digest'
@@ -121,15 +150,16 @@ steps:
       - |
         # Sign the image with the build attestor
         DIGEST=$(cat /workspace/image_digest.txt)
-        gcloud container binauthz attestations sign-and-create \
-          --artifact-url="gcr.io/$PROJECT_ID/my-app@$${DIGEST}" \
+        gcloud beta container binauthz attestations sign-and-create \
+          --artifact-url="us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app@$${DIGEST}" \
           --attestor=build-attestor \
           --attestor-project=$PROJECT_ID \
           --keyversion-project=$PROJECT_ID \
           --keyversion-location=global \
           --keyversion-keyring=binauthz-keys \
           --keyversion-key=build-signer \
-          --keyversion=1
+          --keyversion=1 \
+          --validate
     id: 'create-attestation'
     waitFor: ['get-digest']
 
@@ -142,7 +172,7 @@ steps:
         # Deploy using the image digest for immutability
         DIGEST=$(cat /workspace/image_digest.txt)
         kubectl set image deployment/my-app \
-          my-app=gcr.io/$PROJECT_ID/my-app@$${DIGEST}
+          my-app=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app@$${DIGEST}
     env:
       - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
       - 'CLOUDSDK_CONTAINER_CLUSTER=secure-cluster'
@@ -150,8 +180,11 @@ steps:
     waitFor: ['create-attestation']
 
 images:
-  - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/my-app:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
 ```
 
 ## Step 3: Add Vulnerability Scanning Gate
@@ -163,11 +196,11 @@ A more robust pipeline scans the image for vulnerabilities before attesting.
 steps:
   # Build and push steps same as above...
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA', '.']
     id: 'build-image'
 
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA']
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA']
     id: 'push-image'
     waitFor: ['build-image']
 
@@ -181,7 +214,7 @@ steps:
         echo "Waiting for vulnerability scan..."
         for i in $(seq 1 30); do
           SCAN_STATUS=$(gcloud artifacts docker images describe \
-            gcr.io/$PROJECT_ID/my-app:$SHORT_SHA \
+            us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA \
             --show-all-metadata \
             --format='value(discovery[0].discovery.analysisStatus)' 2>/dev/null)
           if [ "$SCAN_STATUS" = "FINISHED_SUCCESS" ]; then
@@ -191,6 +224,10 @@ steps:
           echo "Scan status: $SCAN_STATUS - waiting..."
           sleep 10
         done
+        if [ "$SCAN_STATUS" != "FINISHED_SUCCESS" ]; then
+          echo "FAILED: Vulnerability scan did not finish"
+          exit 1
+        fi
     id: 'wait-for-scan'
     waitFor: ['push-image']
 
@@ -201,10 +238,10 @@ steps:
       - '-c'
       - |
         # Check for critical vulnerabilities
-        CRITICAL_COUNT=$(gcloud artifacts docker images describe \
-          gcr.io/$PROJECT_ID/my-app:$SHORT_SHA \
-          --show-all-metadata \
-          --format='value(vulnz_summary.CRITICAL)' 2>/dev/null || echo "0")
+        CRITICAL_COUNT=$(gcloud artifacts vulnerabilities list \
+          us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA \
+          --filter='vulnerability.effectiveSeverity="CRITICAL"' \
+          --format='value(name)' 2>/dev/null | wc -l | tr -d ' ')
 
         if [ "$CRITICAL_COUNT" != "0" ] && [ "$CRITICAL_COUNT" != "" ]; then
           echo "FAILED: Found $CRITICAL_COUNT critical vulnerabilities"
@@ -220,20 +257,24 @@ steps:
     args:
       - '-c'
       - |
-        DIGEST=$(gcloud container images describe \
-          gcr.io/$PROJECT_ID/my-app:$SHORT_SHA \
+        DIGEST=$(gcloud artifacts docker images describe \
+          us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA \
           --format='value(image_summary.digest)')
-        gcloud container binauthz attestations sign-and-create \
-          --artifact-url="gcr.io/$PROJECT_ID/my-app@$${DIGEST}" \
+        gcloud beta container binauthz attestations sign-and-create \
+          --artifact-url="us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app@$${DIGEST}" \
           --attestor=build-attestor \
           --attestor-project=$PROJECT_ID \
           --keyversion-project=$PROJECT_ID \
           --keyversion-location=global \
           --keyversion-keyring=binauthz-keys \
           --keyversion-key=build-signer \
-          --keyversion=1
+          --keyversion=1 \
+          --validate
     id: 'create-attestation'
     waitFor: ['check-vulns']
+
+options:
+  logging: CLOUD_LOGGING_ONLY
 ```
 
 ## Step 4: Set Up the Cloud Build Trigger
@@ -247,46 +288,51 @@ gcloud builds triggers create github \
   --repo-owner=my-github-org \
   --branch-pattern="^main$" \
   --build-config=cloudbuild.yaml \
+  --service-account="projects/my-project-id/serviceAccounts/cloud-build-binauthz@my-project-id.iam.gserviceaccount.com" \
   --project=my-project-id
 ```
 
-## Step 5: Using Artifact Registry Instead of Container Registry
+## Step 5: Using `gcr.io` Artifact Registry Repositories
 
-If you are using Artifact Registry (the newer, recommended option):
+If your project has migrated `gcr.io` traffic to Artifact Registry, you can still use `gcr.io` image URLs. Do not use legacy Container Registry for new pipelines because Container Registry is shut down for writes.
 
 ```yaml
-# Updated build step for Artifact Registry
+# Updated build step for gcr.io repositories hosted on Artifact Registry
 steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
+      - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
       - '.'
 
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
+      - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
 
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        # Get digest from Artifact Registry
-        DIGEST=$(gcloud artifacts docker images describe \
-          us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA \
+        # Get digest from the gcr.io Artifact Registry repository
+        DIGEST=$(gcloud container images describe \
+          gcr.io/$PROJECT_ID/my-app:$SHORT_SHA \
           --format='value(image_summary.digest)')
-        gcloud container binauthz attestations sign-and-create \
-          --artifact-url="us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app@$${DIGEST}" \
+        gcloud beta container binauthz attestations sign-and-create \
+          --artifact-url="gcr.io/$PROJECT_ID/my-app@$${DIGEST}" \
           --attestor=build-attestor \
           --attestor-project=$PROJECT_ID \
           --keyversion-project=$PROJECT_ID \
           --keyversion-location=global \
           --keyversion-keyring=binauthz-keys \
           --keyversion-key=build-signer \
-          --keyversion=1
+          --keyversion=1 \
+          --validate
+
+options:
+  logging: CLOUD_LOGGING_ONLY
 ```
 
 ## Step 6: Verify the Pipeline
@@ -297,6 +343,7 @@ Run a test build and verify the attestation was created.
 # Trigger a manual build
 gcloud builds submit . \
   --config=cloudbuild.yaml \
+  --service-account="projects/my-project-id/serviceAccounts/cloud-build-binauthz@my-project-id.iam.gserviceaccount.com" \
   --project=my-project-id
 
 # Check the build logs
@@ -319,7 +366,7 @@ Common issues and fixes:
 
 3. **Image not found**: Make sure the push step completes before the attestation step. Use `waitFor` to enforce ordering.
 
-4. **Digest format mismatch**: Always use `sha256:` prefixed digests. The `gcloud container images describe` command returns them in the correct format.
+4. **Digest format mismatch**: Always use `sha256:` prefixed digests. The `gcloud artifacts docker images describe` command returns them in the correct format.
 
 ## Conclusion
 
