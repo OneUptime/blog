@@ -14,7 +14,7 @@ Backups are your last line of defense when things go wrong. Accidental data dele
 
 Cloud SQL offers two complementary backup mechanisms:
 
-**Automated Backups** are full snapshots of your database taken daily during a window you specify. They are stored independently of your instance and survive instance deletion (for a retention period).
+**Automated Backups** are scheduled backups of your database taken during a window you specify. For standard backups, automated backups are taken daily; the first backup is similar in size to your database and later backups are incremental. They are stored separately from your instance and can be retained after instance deletion if you enable backup retention after deletion.
 
 **Point-in-Time Recovery (PITR)** uses transaction logs (binary logs for MySQL, WAL for PostgreSQL) to let you restore to any specific second within the retention window. PITR builds on automated backups - it replays transactions from the most recent backup to the exact point in time you specify.
 
@@ -54,21 +54,21 @@ gcloud sql instances create my-instance \
 
 ## Configuring Backup Retention
 
-By default, Cloud SQL retains 7 automated backups. You can adjust this:
+By default, Cloud SQL retains 7 automated backups for Cloud SQL Enterprise edition instances and 15 automated backups for Enterprise Plus edition instances. You can adjust this:
 
 ```bash
-# Set backup retention to 30 days
+# Retain 30 automated backups
 gcloud sql instances patch my-instance \
     --retained-backups-count=30
 ```
 
 Consider your requirements:
 
-- **7 days**: Fine for development and staging
-- **14-30 days**: Good for most production workloads
-- **30+ days**: Required for some compliance standards
+- **7 backups**: Fine for development and staging
+- **14-30 backups**: Good for most production workloads
+- **30+ backups**: Required for some compliance standards
 
-Each backup consumes storage. The first backup is roughly the size of your database, and subsequent backups are incremental. Cloud SQL provides backup storage equal to your instance's disk size for free. Beyond that, you pay per GB per month.
+Each backup consumes storage. The first backup is roughly the size of your database, and subsequent backups are incremental. Backup costs are based on the total size of the backups, their storage location, and your retention settings.
 
 ## Enabling Point-in-Time Recovery
 
@@ -120,9 +120,6 @@ resource "google_sql_database_instance" "main" {
       start_time                     = "03:00"
       point_in_time_recovery_enabled = true
 
-      # Number of backups to retain
-      retained_backups = 30
-
       # Transaction log retention in days
       transaction_log_retention_days = 7
 
@@ -161,7 +158,7 @@ gcloud sql backups create \
     --description="Pre-deployment backup 2026-02-17"
 ```
 
-On-demand backups count toward your retention limit unless you mark them differently. They are useful as safety nets before risky operations.
+For standard backups, on-demand backups are retained until you delete them or until the instance that contains the backup is deleted, unless you have enabled backup retention after deletion. They are useful as safety nets before risky operations.
 
 ## Restoring from an Automated Backup
 
@@ -214,11 +211,11 @@ gcloud sql connect my-instance-recovered --user=postgres
 
 Understanding backup storage costs:
 
-- **Free tier**: Backup storage up to the size of your instance disk is free
-- **Beyond free tier**: Charged per GB per month at standard storage rates
+- **Backup size**: Backup costs are based on the total billable size of your backups
+- **Storage location**: Costs depend on where the backups are stored
 - **Transaction logs**: Count toward your backup storage
 
-Example: If your instance has 100 GB of disk, you get 100 GB of backup storage free. With 30 daily backups (incremental) and 7 days of transaction logs, you might use 150-200 GB of backup storage total.
+Example: If your database is about 100 GB, the first backup is usually similar in size to the database. With 30 daily backups (incremental) and 7 days of transaction logs, your total billable backup storage depends on the rate of change in your data.
 
 ## Backup Best Practices
 
@@ -246,7 +243,7 @@ Some industries require specific backup retention periods. Check your compliance
 
 ### 4. Export for Long-Term Storage
 
-Cloud SQL backups are tied to the instance lifecycle. For truly long-term archival, export your data:
+Cloud SQL backups are managed by Cloud SQL retention policies. For truly long-term archival, export your data:
 
 ```bash
 # Export the database to a Cloud Storage bucket for long-term archival
@@ -266,17 +263,17 @@ gcloud sql backups list --instance=my-instance --limit=5
 
 Look for any backups with `FAILED` status. Failed backups should be investigated immediately.
 
-## Cross-Region Backup Storage
+## Backup Storage Location
 
-By default, backups are stored in the same region as your instance. For disaster recovery, consider enabling cross-region backup storage:
+By default, Cloud SQL stores backups in the multi-region that is geographically closest to the location of your instance. For disaster recovery, you can choose a custom backup location:
 
 ```bash
-# Enable cross-region backup storage
+# Set a custom backup storage location
 gcloud sql instances patch my-instance \
     --backup-location=us
 ```
 
-Using a multi-region location like `us` stores backups across multiple regions within that geography, protecting against a regional outage.
+Using a multi-region location like `us` stores backups across multiple regions within that geography. If your instance is outside that geography, choosing an appropriate custom location can help protect against a regional outage.
 
 ## Summary
 
