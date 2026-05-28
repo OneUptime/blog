@@ -39,7 +39,7 @@ The cleanest approach uses the keyrings.google-artifactregistry-auth package, wh
 
 ```bash
 # Install the Artifact Registry keyring backend
-pip install keyrings.google-artifactregistry-auth
+pip install keyring keyrings.google-artifactregistry-auth
 
 # Verify it is installed
 keyring --list-backends
@@ -115,7 +115,7 @@ Or using the modern pyproject.toml approach:
 # pyproject.toml - Modern Python package configuration
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "my-internal-package"
