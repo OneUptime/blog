@@ -15,10 +15,10 @@ When you are running services in production, errors pile up fast. If every singl
 Cloud Error Reporting uses a combination of signals to decide whether two errors belong to the same group. The primary signals are:
 
 - The exception type or error class
-- The error message (with variable parts stripped out)
-- The stack trace structure
+- The top frames in the stack trace
+- For errors without a stack trace, the message and function name
 
-When an error comes in, Error Reporting normalizes the stack trace by removing line numbers and memory addresses, then compares the overall structure against existing error groups. If it finds a match, the new error event gets added to that group. If not, it creates a new group.
+When an error comes in, Error Reporting normalizes stack traces by removing repeated frame sequences and compiler-introduced methods and symbols. For errors with a stack trace, it groups by exception type and the five top-most frames. For errors without a stack trace, it groups by the message and, when present, the function name. If it finds a match, the new error event gets added to that group. If not, it creates a new group.
 
 This means two NullPointerExceptions thrown from the same code path but with different variable values will be grouped together, while a NullPointerException from a different code path will create a separate group.
 
@@ -32,23 +32,13 @@ Navigate to Error Reporting in the Cloud Console. You will see a list of error g
 - The first and last seen timestamps
 - The current resolution status
 
-Click on any error group to see the individual error events, the full stack trace, and a histogram showing error frequency over time.
+Click on any error group to see sampled error events, links to related logs, the stack trace when available, and a histogram showing error frequency over time.
 
 ## Managing Error Groups with the API
 
 While the Cloud Console is fine for browsing, the Error Reporting API gives you more control when managing error groups at scale.
 
-Here is how to list error groups using the gcloud CLI:
-
-```bash
-# List all open error groups for your project
-
-gcloud beta error-reporting events list \
-  --project=my-gcp-project \
-  --service=my-api-service \
-  --sort-by=COUNT \
-  --limit=20
-```
+The Google Cloud CLI can report and delete Error Reporting events, but it does not provide a command to list error groups. Use the REST API or a client library to list error group stats.
 
 To work with error groups programmatically, use the Error Reporting API. Here is a Python example that lists error groups and their occurrence counts:
 
@@ -56,7 +46,7 @@ To work with error groups programmatically, use the Error Reporting API. Here is
 # List error groups and print their details
 from google.cloud import errorreporting_v1beta1
 
-def list_error_groups(project_id):
+def list_error_groups(project_id, service_name):
     # Initialize the Error Stats API client
     client = errorreporting_v1beta1.ErrorStatsServiceClient()
 
@@ -64,26 +54,34 @@ def list_error_groups(project_id):
     project_name = f"projects/{project_id}"
 
     # Set the time range to the last 24 hours
-    from google.cloud.errorreporting_v1beta1.types import QueryTimeRange
-    time_range = QueryTimeRange(period=QueryTimeRange.Period.PERIOD_1_DAY)
+    time_range = errorreporting_v1beta1.QueryTimeRange(
+        period=errorreporting_v1beta1.QueryTimeRange.Period.PERIOD_1_DAY
+    )
+
+    request = errorreporting_v1beta1.ListGroupStatsRequest(
+        project_name=project_name,
+        service_filter=errorreporting_v1beta1.ServiceContextFilter(
+            service=service_name
+        ),
+        time_range=time_range,
+        order=errorreporting_v1beta1.ErrorGroupOrder.COUNT_DESC,
+        page_size=20,
+    )
 
     # List error group stats
-    response = client.list_group_stats(
-        project_name=project_name,
-        time_range=time_range
-    )
+    response = client.list_group_stats(request=request)
 
     for group_stats in response:
         group = group_stats.group
         print(f"Error: {group_stats.representative.message[:80]}")
         print(f"  Count: {group_stats.count}")
-        print(f"  Affected services: {group_stats.affected_services_count}")
+        print(f"  Affected services: {group_stats.num_affected_services}")
         print(f"  First seen: {group_stats.first_seen_time}")
         print(f"  Last seen: {group_stats.last_seen_time}")
         print(f"  Group ID: {group.group_id}")
         print("---")
 
-list_error_groups("my-gcp-project")
+list_error_groups("my-gcp-project", "my-api-service")
 ```
 
 ## Understanding Error Group States
@@ -117,7 +115,7 @@ def update_error_group(project_id, group_id, new_status):
 
     # Update the resolution status
     # Valid values: OPEN, ACKNOWLEDGED, RESOLVED, MUTED
-    group.resolution_status = new_status
+    group.resolution_status = getattr(errorreporting_v1beta1.ResolutionStatus, new_status)
 
     # Save the updated group
     updated_group = client.update_group(group=group)
@@ -155,6 +153,8 @@ Error Reporting lets you associate a tracking URL with an error group. Use this 
 
 ```python
 # Associate a tracking issue URL with an error group
+from google.cloud import errorreporting_v1beta1
+
 def link_error_to_issue(project_id, group_id, issue_url):
     client = errorreporting_v1beta1.ErrorGroupServiceClient()
     group_name = f"projects/{project_id}/groups/{group_id}"
@@ -176,32 +176,21 @@ link_error_to_issue("my-gcp-project", "CK3ax92Fq", "https://github.com/myorg/myr
 
 ### Clean Up Resolved Errors
 
-Periodically review resolved error groups. If an error was resolved weeks ago and has not recurred, it is probably safe to mute it to reduce clutter. If it has recurred, it might need a more thorough fix.
+Periodically review resolved error groups. If an error was resolved weeks ago and has not recurred, leave it resolved so a recurrence can reopen the group and notify you. Mute an error group only when you intentionally want future occurrences in that group to be ignored. If it has recurred, it might need a more thorough fix.
 
 ## Handling Misclassified Error Groups
 
 Sometimes Error Reporting groups errors that should be separate, or splits errors that should be together. This usually happens because of dynamic stack traces or inconsistent error messages.
 
-If your error messages include variable data like user IDs or timestamps, those variations can cause Error Reporting to create too many groups. The fix is to normalize your error messages before they reach Error Reporting. Strip out variable parts and use a consistent format.
+If your error messages do not include a stack trace and include variable data like user IDs or timestamps near the beginning of the message, those variations can cause Error Reporting to create too many groups. The fix is to normalize your error messages before they reach Error Reporting. Strip out variable parts and use a consistent format.
 
 For example, instead of logging "User 12345 failed to authenticate," log "User authentication failed" and include the user ID as a structured log field.
 
-## Monitoring Error Group Counts
+## Monitoring Error Groups
 
-You can set up alerts based on the number of open error groups or the count of errors within a group. This is useful for catching situations where a deployment introduces a burst of new errors.
+You can configure Error Reporting notifications to selected Cloud Monitoring notification channels. Error Reporting sends notifications when an error event cannot be grouped with previous errors, and when an event occurs in an error group that was marked as resolved. This is useful for catching situations where a deployment introduces a new error or causes a fixed error to recur.
 
-```bash
-# Create an alerting policy that fires when error count exceeds a threshold
-gcloud beta monitoring policies create \
-  --display-name="High Error Rate Alert" \
-  --notification-channels="projects/my-gcp-project/notificationChannels/12345" \
-  --condition-display-name="Error count spike" \
-  --condition-filter='metric.type="clouderrorreporting.googleapis.com/error_count"' \
-  --condition-threshold-value=100 \
-  --condition-threshold-duration=300s \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --project=my-gcp-project
-```
+For threshold-based alerting on error rates, create a Cloud Logging log-based metric for the log entries you care about, and then create a Cloud Monitoring alerting policy on that metric.
 
 ## Wrapping Up
 
