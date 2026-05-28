@@ -23,6 +23,7 @@ sequenceDiagram
     participant Client
     participant API as API Gateway (GKE)
     participant Orders as Order Service (Cloud Run)
+    participant PubSub as Pub/Sub
     participant Notify as Notification Function (Cloud Functions)
     participant DB as Cloud SQL
 
@@ -32,9 +33,10 @@ sequenceDiagram
     Note over Orders: Span: order-service
     Orders->>DB: INSERT order
     Note over DB: Span: database-query
-    Orders->>Notify: Publish to Pub/Sub
+    Orders->>PubSub: Publish notification event
+    PubSub-->>Orders: Message ID
+    PubSub->>Notify: Deliver event
     Note over Notify: Span: notification-handler
-    Notify-->>Orders: Ack
     Orders-->>API: 201 Created
     API-->>Client: Response
 ```
@@ -163,14 +165,15 @@ def create_order():
         # Publish to Pub/Sub with trace context in message attributes
         # This is how we propagate the trace to Cloud Functions
         headers = {}
-        inject(headers)  # Injects traceparent header into the dict
+        inject(headers)  # Injects traceparent/tracestate into the dict
 
-        publisher.publish(
+        future = publisher.publish(
             topic_path,
             json.dumps({"order_id": order_id, "type": order_data["type"]}).encode(),
             # Pass trace context as Pub/Sub message attributes
-            traceparent=headers.get("traceparent", ""),
+            **headers,
         )
+        future.result(timeout=30)
 
         return jsonify({"order_id": order_id, "status": "created"}), 201
 
@@ -288,18 +291,18 @@ Here is how the trace context flows between services.
 ```mermaid
 graph TD
     A[Client Request] -->|No trace headers| B[GKE: Generate new trace ID]
-    B -->|traceparent header in HTTP| C[Cloud Run: Continue trace]
-    C -->|traceparent in Pub/Sub attributes| D[Cloud Functions: Continue trace]
+    B -->|traceparent/tracestate headers in HTTP| C[Cloud Run: Continue trace]
+    C -->|traceparent/tracestate in Pub/Sub attributes| D[Cloud Functions: Continue trace]
 
     B --> B1["traceparent: 00-{trace_id}-{span_id}-01"]
     C --> C1["Extract traceparent from HTTP header"]
-    C --> C2["Inject traceparent into Pub/Sub attributes"]
+    C --> C2["Inject trace context into Pub/Sub attributes"]
     D --> D1["Extract traceparent from message attributes"]
 ```
 
 ## Common Pitfalls
 
-**Pub/Sub context propagation requires manual work.** Unlike HTTP where instrumentation libraries automatically propagate trace headers, Pub/Sub messages need manual injection and extraction of trace context via message attributes. This is the step most people miss.
+**Pub/Sub context propagation requires manual work.** Unlike HTTP where instrumentation libraries automatically propagate trace headers, Pub/Sub messages need manual injection and extraction of trace context via message attributes. Forward the injected carrier so `traceparent` and, when present, `tracestate` both make it to the subscriber. This is the step most people miss.
 
 **Cloud Functions cold starts can cause gaps.** If a Cloud Function has a cold start, there might be a timing gap in the trace. The span will still be linked correctly via the trace ID, but the waterfall view might show a gap between the Pub/Sub publish and the function execution.
 
