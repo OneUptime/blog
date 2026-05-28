@@ -8,13 +8,13 @@ Description: Control exactly which routes your Cloud Router advertises to VPN pe
 
 ---
 
-By default, Cloud Router advertises all subnet routes in your VPC to BGP peers. This is convenient but not always what you want. Maybe you have subnets that should not be reachable from on-premises. Maybe you need to advertise a summary route instead of individual subnets. Or maybe you need to advertise routes for IP ranges that are not even in your VPC, like addresses from another VPC peered to yours. Custom route advertisements give you precise control over what your Cloud Router tells the other side of the VPN.
+By default, Cloud Router advertises the subnet routes available to the router based on your VPC network's dynamic routing mode. This is convenient but not always what you want. Maybe you have subnets that should not be reachable from on-premises. Maybe you need to advertise a summary route instead of individual subnets. Or maybe you need to advertise routes for IP ranges that are not even in your VPC, like addresses from another VPC peered to yours. Custom route advertisements give you precise control over what your Cloud Router tells the other side of the VPN.
 
 ## How Cloud Router Route Advertisement Works
 
 Cloud Router has two advertisement modes:
 
-**Default mode:** Automatically advertises all subnets in the VPC where the Cloud Router lives. Simple but coarse-grained.
+**Default mode:** Automatically advertises available subnets in the VPC where the Cloud Router lives. In regional dynamic routing mode, this means subnets in the same region as the Cloud Router. In global dynamic routing mode, this includes subnets in other regions too. Simple but coarse-grained.
 
 **Custom mode:** You explicitly define which routes to advertise. Can include a mix of subnet routes and custom IP ranges.
 
@@ -137,7 +137,7 @@ This advertises a single /16 route that covers all your /24 subnets. The on-prem
 
 ## Step 5: Advertise the Default Route
 
-To send all on-premises internet traffic through GCP (useful for centralized internet egress with Cloud NAT or a proxy):
+To send all on-premises internet traffic through GCP (useful for centralized internet egress through a proxy or firewall/NAT appliance):
 
 ```bash
 # Advertise the default route (0.0.0.0/0) to on-premises
@@ -165,14 +165,20 @@ gcloud compute routers update your-router \
   --project=your-project-id
 ```
 
-Note: For traffic to actually flow, the VPC peering must also be configured to export and import custom routes.
+Note: For return traffic to actually flow from the peered VPC back to on-premises, the local VPC must export custom routes and the peered VPC must import them. Cloud Router default advertisement mode does not advertise peering subnet routes to on-premises, so the custom advertised ranges must include the peered VPC subnet ranges.
 
 ```bash
-# Enable custom route export on the peering
+# Enable custom route export on the local VPC side of the peering
 gcloud compute networks peerings update your-peering \
   --network=your-vpc \
   --export-custom-routes \
   --project=your-project-id
+
+# Enable custom route import on the peered VPC side of the peering
+gcloud compute networks peerings update peer-to-your-vpc \
+  --network=peered-vpc \
+  --import-custom-routes \
+  --project=peered-project-id
 ```
 
 ## Different Advertisements for Different Peers
