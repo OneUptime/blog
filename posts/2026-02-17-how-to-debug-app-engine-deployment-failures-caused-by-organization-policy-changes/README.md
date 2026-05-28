@@ -146,7 +146,7 @@ This can break deployments when App Engine tries to set up IAM bindings for its 
 
 ### Restrict Cloud NAT Usage
 
-Some organizations restrict Cloud NAT configuration. Since App Engine Flex uses NAT for outbound traffic, this can cause deployment issues.
+Some organizations restrict Cloud NAT configuration. App Engine Flexible Environment services use ephemeral external IP addresses by default; if you configure internal-only services without external IP addresses, outbound internet access requires Cloud NAT. Restrictions on Cloud NAT can cause deployment or connectivity issues for that setup.
 
 ### Disable Service Account Creation
 
@@ -178,14 +178,24 @@ gcloud logging read \
 
 ## Step 4: Test with Policy Simulation
 
-Before asking for policy changes, you can test whether a policy is causing the issue using the Policy Troubleshooter:
+Before asking for policy changes, you can test the impact of a proposed organization policy exception using Policy Simulator:
+
+```yaml
+# /tmp/app-engine-location-exception.yaml
+name: projects/your-project-id/policies/gcp.resourceLocations
+spec:
+  rules:
+  - values:
+      allowedValues:
+      - in:us-central1-locations
+      - in:us-east1-locations
+```
 
 ```bash
-# Simulate whether the deployment would be allowed
-gcloud policy-intelligence troubleshoot-policy iam \
-  --resource="//appengine.googleapis.com/apps/your-project-id" \
-  --principal-email="your-project-id@appspot.gserviceaccount.com" \
-  --permission="appengine.applications.update"
+# Simulate the proposed organization policy change
+gcloud policy-intelligence simulate orgpolicy \
+  --organization=YOUR_ORG_ID \
+  --policies=/tmp/app-engine-location-exception.yaml
 ```
 
 ## Step 5: Request Policy Exceptions
@@ -215,12 +225,17 @@ For location constraints, you might be able to create a new project in the allow
 
 For VM external IP constraints affecting Flex, consider switching to Standard environment if your application does not require Flex-specific features.
 
-For service account restrictions, you can pre-create the necessary service accounts before deploying:
+For service account restrictions, ask an admin to pre-create a user-managed service account before enforcing the restriction, then deploy with that service account:
 
 ```bash
-# Pre-create the App Engine service account if needed
-gcloud iam service-accounts create your-project-id-appspot \
-  --display-name="App Engine default service account" \
+# Pre-create a user-managed service account
+gcloud iam service-accounts create app-engine-runtime \
+  --display-name="App Engine runtime service account" \
+  --project=your-project-id
+
+# Deploy using the pre-created service account
+gcloud app deploy \
+  --service-account=app-engine-runtime@your-project-id.iam.gserviceaccount.com \
   --project=your-project-id
 ```
 
@@ -228,13 +243,35 @@ gcloud iam service-accounts create your-project-id-appspot \
 
 Set up alerts for organization policy changes that affect your project:
 
+```json
+{
+  "displayName": "Org Policy Changes",
+  "conditions": [
+    {
+      "displayName": "Policy Change Detected",
+      "conditionMatchedLog": {
+        "filter": "protoPayload.methodName=\"SetOrgPolicy\" OR protoPayload.methodName=\"google.cloud.orgpolicy.v2.OrgPolicy.UpdatePolicy\""
+      }
+    }
+  ],
+  "combiner": "OR",
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    },
+    "autoClose": "604800s"
+  },
+  "notificationChannels": [
+    "projects/your-project-id/notificationChannels/CHANNEL_ID"
+  ]
+}
+```
+
 ```bash
 # Create a log-based alert for org policy changes
 gcloud alpha monitoring policies create \
-  --notification-channels=CHANNEL_ID \
-  --display-name="Org Policy Changes" \
-  --condition-display-name="Policy Change Detected" \
-  --condition-filter='protoPayload.methodName="SetOrgPolicy"'
+  --policy-from-file=org-policy-alert.json \
+  --project=your-project-id
 ```
 
 Also, communicate with your platform or security team. Let them know which constraints are in use by your App Engine deployments so they can notify you before making changes. A simple shared document listing deployed services and their requirements can prevent most of these surprise failures.
