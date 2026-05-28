@@ -61,11 +61,11 @@ Add metrics collection to your application so you can compare the two variants:
 
 ```python
 # ab_metrics.py - A/B testing metrics collection
+import json
 import os
 import time
-import uuid
 from google.cloud import monitoring_v3
-from flask import Flask, request, g
+from flask import Flask, request, g, has_request_context
 
 app = Flask(__name__)
 
@@ -79,9 +79,9 @@ def create_metric_descriptor():
     """Create custom metric descriptors for A/B testing (run once)."""
     project_name = f'projects/{PROJECT_ID}'
 
-    # Conversion rate metric
+    # Conversion event metric
     descriptor = monitoring_v3.MetricDescriptor()
-    descriptor.type = 'custom.googleapis.com/ab_test/conversion'
+    descriptor.type = 'custom.googleapis.com/ab_test/checkout_completed'
     descriptor.metric_kind = monitoring_v3.MetricDescriptor.MetricKind.GAUGE
     descriptor.value_type = monitoring_v3.MetricDescriptor.ValueType.INT64
     descriptor.description = 'A/B test conversion events'
@@ -105,7 +105,7 @@ def create_metric_descriptor():
         metric_descriptor=descriptor
     )
 
-def track_event(event_name, value=1):
+def track_event(event_name, value=1, user_id=None):
     """
     Track an A/B testing event.
     Sends a custom metric to Cloud Monitoring with the variant label.
@@ -116,7 +116,7 @@ def track_event(event_name, value=1):
     series.metric.type = f'custom.googleapis.com/ab_test/{event_name}'
     series.metric.labels['variant'] = VARIANT
     series.metric.labels['experiment_id'] = EXPERIMENT_ID
-    series.resource.type = 'cloud_run_revision'
+    series.resource.type = 'global'
     series.resource.labels['project_id'] = PROJECT_ID
 
     now = time.time()
@@ -132,6 +132,17 @@ def track_event(event_name, value=1):
     except Exception as e:
         # Do not let metric failures affect the user experience
         print(f"Metrics error: {e}")
+
+    if user_id is None and has_request_context():
+        user_id = request.headers.get('X-User-ID', 'anonymous')
+
+    print(json.dumps({
+        'event': event_name,
+        'value': value,
+        'variant': VARIANT,
+        'experiment_id': EXPERIMENT_ID,
+        'user_id': user_id or 'anonymous'
+    }), flush=True)
 
 @app.before_request
 def assign_variant():
@@ -171,7 +182,7 @@ def checkout():
     order_data = request.json
 
     # Track that a user started the checkout
-    track_event('checkout_started')
+    track_event('checkout_started', user_id=user_id)
 
     if VARIANT == 'experiment':
         # New checkout flow - single page, streamlined
@@ -182,8 +193,8 @@ def checkout():
 
     if result['success']:
         # Track successful conversion
-        track_event('checkout_completed')
-        track_event('revenue', value=int(result['total'] * 100))
+        track_event('checkout_completed', user_id=user_id)
+        track_event('revenue', value=int(result['total'] * 100), user_id=user_id)
 
     return jsonify(result)
 
@@ -237,7 +248,7 @@ gcloud monitoring dashboards create --config-from-file=- << 'EOF'
         "width": 6,
         "height": 4,
         "widget": {
-          "title": "Conversion Rate by Variant",
+          "title": "Checkout Completions by Variant",
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
@@ -246,6 +257,7 @@ gcloud monitoring dashboards create --config-from-file=- << 'EOF'
                   "aggregation": {
                     "alignmentPeriod": "3600s",
                     "perSeriesAligner": "ALIGN_SUM",
+                    "crossSeriesReducer": "REDUCE_SUM",
                     "groupByFields": ["metric.labels.variant"]
                   }
                 }
@@ -267,6 +279,7 @@ gcloud monitoring dashboards create --config-from-file=- << 'EOF'
                   "aggregation": {
                     "alignmentPeriod": "300s",
                     "perSeriesAligner": "ALIGN_PERCENTILE_50",
+                    "crossSeriesReducer": "REDUCE_PERCENTILE_50",
                     "groupByFields": ["resource.labels.revision_name"]
                   }
                 }
@@ -279,7 +292,7 @@ gcloud monitoring dashboards create --config-from-file=- << 'EOF'
         "width": 12,
         "height": 4,
         "widget": {
-          "title": "Error Rate by Variant",
+          "title": "5xx Request Rate by Revision",
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
@@ -288,6 +301,7 @@ gcloud monitoring dashboards create --config-from-file=- << 'EOF'
                   "aggregation": {
                     "alignmentPeriod": "300s",
                     "perSeriesAligner": "ALIGN_RATE",
+                    "crossSeriesReducer": "REDUCE_SUM",
                     "groupByFields": ["resource.labels.revision_name"]
                   }
                 }
@@ -304,12 +318,13 @@ EOF
 
 ## Step 7: Export Data to BigQuery for Statistical Analysis
 
-Export metrics to BigQuery for deeper analysis:
+Export structured experiment logs to BigQuery for deeper analysis:
 
 ```bash
 # Create a log sink that exports A/B test events to BigQuery
 gcloud logging sinks create ab-test-export \
   bigquery.googleapis.com/projects/my-project/datasets/ab_testing \
+  --use-partitioned-tables \
   --log-filter='resource.type="cloud_run_revision" AND jsonPayload.experiment_id="checkout-flow-v2"'
 ```
 
@@ -325,7 +340,7 @@ WITH experiment_data AS (
     SUM(CASE WHEN jsonPayload.event = 'revenue'
         THEN CAST(jsonPayload.value AS INT64) / 100.0
         ELSE 0 END) AS total_revenue
-  FROM `my-project.ab_testing.run_googleapis_com_requests`
+  FROM `my-project.ab_testing.run_googleapis_com_stdout`
   WHERE jsonPayload.experiment_id = 'checkout-flow-v2'
     AND timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   GROUP BY variant
