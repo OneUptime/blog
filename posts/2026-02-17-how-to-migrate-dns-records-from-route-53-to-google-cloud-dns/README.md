@@ -21,7 +21,7 @@ Before touching anything, take stock of what you are working with. Run through t
 - Is DNSSEC enabled?
 - What are the current TTLs on your records?
 
-Route 53 alias records do not have a direct equivalent in Cloud DNS. You will need to convert them to standard A or CNAME records. Similarly, Route 53 routing policies need to be reimplemented using Cloud DNS routing policies or external load balancing.
+Route 53 alias records do not map one-to-one to Cloud DNS records. Cloud DNS supports an ALIAS record type only at the zone apex for A and AAAA responses, so most Route 53 aliases still need to be converted to standard A, AAAA, CNAME, or Cloud DNS ALIAS records depending on the target and record name. Similarly, Route 53 routing policies need to be reimplemented using Cloud DNS routing policies or external load balancing.
 
 ## Step 1: Export Records from Route 53
 
@@ -92,7 +92,7 @@ Now you need to convert the Route 53 records into Cloud DNS format. Here is a Py
 ```python
 # convert_records.py - Converts Route 53 JSON export to gcloud commands
 import json
-import sys
+import shlex
 
 # Record types to skip (NS and SOA are auto-created by Cloud DNS)
 SKIP_TYPES = {"NS", "SOA"}
@@ -102,6 +102,15 @@ with open("route53-records.json") as f:
 
 zone_name = "example-zone"
 project = "my-project"
+
+def quote(value):
+    return shlex.quote(str(value))
+
+def format_rrdatas(values):
+    for delimiter in ("|", "~", ";"):
+        if all(delimiter not in value for value in values):
+            return quote(f"^{delimiter}^" + delimiter.join(values))
+    raise ValueError("Could not find a safe delimiter for --rrdatas")
 
 for rrset in data["ResourceRecordSets"]:
     record_type = rrset["Type"]
@@ -113,7 +122,7 @@ for rrset in data["ResourceRecordSets"]:
     name = rrset["Name"]
     ttl = rrset.get("TTL", 300)
 
-    # Handle alias records - convert to standard A/AAAA records
+    # Handle alias records manually
     if "AliasTarget" in rrset:
         print(f"# WARNING: Alias record for {name} - resolve manually")
         print(f"# Alias target: {rrset['AliasTarget']['DNSName']}")
@@ -121,15 +130,15 @@ for rrset in data["ResourceRecordSets"]:
 
     # Build the rrdatas value
     values = [r["Value"] for r in rrset.get("ResourceRecords", [])]
-    rrdatas = ",".join(values)
+    rrdatas = format_rrdatas(values)
 
     # Generate the gcloud command
-    print(f"gcloud dns record-sets create {name} \\")
-    print(f"    --zone={zone_name} \\")
-    print(f"    --type={record_type} \\")
-    print(f"    --ttl={ttl} \\")
-    print(f"    --rrdatas=\"{rrdatas}\" \\")
-    print(f"    --project={project}")
+    print(f"gcloud dns record-sets create {quote(name)} \\")
+    print(f"    --zone={quote(zone_name)} \\")
+    print(f"    --type={quote(record_type)} \\")
+    print(f"    --ttl={quote(ttl)} \\")
+    print(f"    --rrdatas={rrdatas} \\")
+    print(f"    --project={quote(project)}")
     print()
 ```
 
@@ -151,13 +160,10 @@ bash import_commands.sh
 Route 53 alias records need special attention. For alias records pointing to AWS resources like ELBs or CloudFront distributions, you have a few options:
 
 1. If you are also migrating the service to GCP, point the record at the new GCP resource
-2. If the AWS resource stays, resolve the alias target to its actual IP or CNAME and create a standard record
+2. If the AWS resource stays, use a CNAME for non-apex names when that is valid, or use a Cloud DNS ALIAS record at the zone apex when it fits the Cloud DNS ALIAS limitations
 
 ```bash
-# Resolve the alias target to get the actual values
-dig +short my-elb-123456.us-east-1.elb.amazonaws.com
-
-# Then create a standard A or CNAME record in Cloud DNS
+# For a non-apex name, create a CNAME to the AWS DNS name
 gcloud dns record-sets create api.example.com. \
     --zone=example-zone \
     --type=CNAME \
@@ -168,23 +174,21 @@ gcloud dns record-sets create api.example.com. \
 
 ## Step 4: Lower TTLs Before Cutover
 
-Before switching nameservers, lower the TTLs on your records at Route 53. This ensures that when you do cut over, clients will pick up the new nameservers quickly.
+Before switching nameservers, lower the TTLs on your application records in Route 53. This reduces the time clients cache old A, AAAA, CNAME, MX, TXT, and similar answers during the migration. The nameserver cutover itself depends on the delegation TTL in the parent zone, which is controlled by your registrar or registry and might not be configurable.
 
 ```bash
-# Lower the NS record TTL at your registrar or in Route 53
-# Set TTL to 60 seconds, wait for old TTL to expire before proceeding
+# Lower the TTL on application records, then wait for the old TTL to expire
 aws route53 change-resource-record-sets \
     --hosted-zone-id Z1234567890ABC \
     --change-batch '{
         "Changes": [{
             "Action": "UPSERT",
             "ResourceRecordSet": {
-                "Name": "example.com.",
-                "Type": "NS",
+                "Name": "www.example.com.",
+                "Type": "CNAME",
                 "TTL": 60,
                 "ResourceRecords": [
-                    {"Value": "ns-123.awsdns-45.com."},
-                    {"Value": "ns-678.awsdns-90.net."}
+                    {"Value": "example.com."}
                 ]
             }
         }]
@@ -199,6 +203,7 @@ Before cutting over, verify that Cloud DNS returns the correct answers for all y
 
 ```bash
 # Query the Cloud DNS nameservers directly to verify records
+# Replace ns-cloud-a1.googledomains.com with one of your assigned nameservers
 dig @ns-cloud-a1.googledomains.com example.com A
 dig @ns-cloud-a1.googledomains.com www.example.com CNAME
 dig @ns-cloud-a1.googledomains.com example.com MX
@@ -226,10 +231,12 @@ ns-234.awsdns-56.co.uk
 With the new Google Cloud DNS nameservers:
 ```text
 ns-cloud-a1.googledomains.com
-ns-cloud-a2.googledomains.com
-ns-cloud-a3.googledomains.com
-ns-cloud-a4.googledomains.com
+ns-cloud-b1.googledomains.com
+ns-cloud-c1.googledomains.com
+ns-cloud-d1.googledomains.com
 ```
+
+Use the exact nameservers returned by `gcloud dns managed-zones describe`; the values above are examples.
 
 ## Step 7: Monitor the Cutover
 
@@ -267,7 +274,7 @@ Here is a quick checklist to keep handy during the migration:
 - Create Cloud DNS managed zone
 - Convert and import all records
 - Handle alias records manually
-- Lower TTLs at least 24 hours before cutover
+- Lower application record TTLs at least one old TTL period before cutover
 - Validate all records against Cloud DNS nameservers
 - Update nameservers at the registrar
 - Monitor resolution for 48 hours
