@@ -21,7 +21,7 @@ The key characteristics are:
 - **Low ongoing cost** - you only run the bare essentials in the DR region
 - **Faster recovery than backup-restore** - your data is already replicated
 - **Recovery Time Objective (RTO)** - typically minutes to hours, depending on how much you need to spin up
-- **Recovery Point Objective (RPO)** - near zero, since data replication is continuous
+- **Recovery Point Objective (RPO)** - low, but dependent on replication lag because replication is typically asynchronous
 
 ## Architecture Overview
 
@@ -86,20 +86,19 @@ Notice that the replica uses a smaller machine type. Since it is only serving as
 For object storage, use dual-region or multi-region buckets, or set up cross-region replication with Cloud Storage:
 
 ```bash
-# Create a dual-region bucket spanning both regions
-gsutil mb -l US -c STANDARD \
-  --placement us-central1,us-east1 \
-  gs://my-app-data-dr
+# Create a predefined dual-region bucket spanning both regions
+gcloud storage buckets create gs://my-app-data-dr \
+  --location=NAM4 \
+  --default-storage-class=STANDARD
 
 # Alternatively, set up a transfer job for existing buckets
 gcloud transfer jobs create \
   gs://my-app-data-primary \
   gs://my-app-data-dr-replica \
-  --schedule-repeats-every=1h \
-  --source-agent-pool=default
+  --schedule-repeats-every=1h
 ```
 
-Dual-region buckets give you automatic replication with turbo replication available for sub-15-second RPO. For existing single-region buckets, scheduled transfer jobs work well.
+Dual-region buckets give you automatic replication with turbo replication available for a 15-minute RPO. For existing single-region buckets, scheduled transfer jobs work well.
 
 ## Step 3: Store Compute Artifacts in the DR Region
 
@@ -209,21 +208,24 @@ You need to know when the primary region is failing before you can trigger a fai
 
 ```bash
 # Create an uptime check for the primary region
-gcloud monitoring uptime create \
-  --display-name="Primary Region Health" \
-  --uri="https://app.example.com/health" \
-  --http-method=GET \
-  --period=60 \
+gcloud monitoring uptime create "Primary Region Health" \
+  --resource-type=uptime-url \
+  --resource-labels=host=app.example.com,project_id=my-project \
+  --protocol=https \
+  --path=/health \
+  --request-method=get \
+  --period=1 \
   --timeout=10 \
-  --regions=USA,EUROPE,ASIA_PACIFIC
+  --regions=usa-iowa,usa-virginia,europe
 
 # Create an alerting policy that triggers on consecutive failures
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Primary Region Down" \
   --condition-display-name="Uptime check failing" \
   --condition-filter='resource.type="uptime_url" AND metric.type="monitoring.googleapis.com/uptime_check/check_passed"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-comparison=COMPARISON_LT \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_FRACTION_TRUE","crossSeriesReducer":"REDUCE_MEAN"}' \
+  --if="< 1" \
+  --duration=120s \
   --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
