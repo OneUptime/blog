@@ -16,7 +16,7 @@ In this post, I will show you how to use dry runs through the console, CLI, and 
 
 A dry run validates your SQL query and returns metadata about what would happen if the query ran, but it does not actually execute it. The most important piece of metadata is the total bytes that would be processed, which directly determines the cost under on-demand pricing.
 
-Dry runs are free. They do not scan any data and do not count against any quotas. You can run as many dry runs as you want.
+Dry runs are free. They do not scan any data and do not use query slots, though BigQuery job and API quotas can still apply.
 
 ## Using Dry Run in the BigQuery Console
 
@@ -82,7 +82,7 @@ job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
 query_job = client.query(query, job_config=job_config)
 
 # Calculate the estimated cost
-# On-demand pricing: $6.25 per TB (as of 2026)
+# Example on-demand pricing: $6.25 per TiB in many US regions (as of 2026)
 bytes_processed = query_job.total_bytes_processed
 gb_processed = bytes_processed / (1024 ** 3)
 tb_processed = bytes_processed / (1024 ** 4)
@@ -114,7 +114,7 @@ curl -X POST \
   }'
 ```
 
-The response includes `totalBytesProcessed` in the statistics field.
+The response includes `totalBytesProcessed` in `statistics.query`.
 
 ## Building a Cost Estimation Wrapper
 
@@ -178,11 +178,11 @@ The dry run estimate is based on the metadata of the tables involved. There are 
 
 Partition pruning works in dry runs. If your table is partitioned by date and your query filters on a specific date, the dry run estimate reflects only the partition that will be scanned, not the whole table. This is one of the biggest reasons partitioned tables save money.
 
-Clustering effects are partially reflected. BigQuery may read less data than estimated when clustering allows it to skip irrelevant blocks, but the dry run estimate is typically conservative.
+Clustering effects are not known precisely before execution. BigQuery may read less data than estimated when clustering allows it to skip irrelevant blocks, so dry run estimates for clustered tables are typically conservative.
 
 Query cache is not considered. If the query cache has results from an identical previous query, the actual execution might process zero bytes. But the dry run always estimates as if the cache does not exist.
 
-Wildcard tables show estimates based on all matched tables, which is accurate.
+Wildcard tables show estimates based on the tables that BigQuery will scan. A constant `_TABLE_SUFFIX` filter can reduce the matched tables, but dynamic `_TABLE_SUFFIX` filters do not limit the tables scanned.
 
 ## Integrating Dry Runs into CI/CD
 
@@ -240,7 +240,7 @@ else:
 
 ## Dry Run Limitations
 
-There are a few things dry runs cannot tell you. They do not predict how long a query will take to run, only how much data will be scanned. They do not account for the query cache. They do not reflect slot-based pricing - if you are using reservations, you pay for slots, not bytes scanned, so the cost estimate is less relevant (though bytes processed still correlates with resource consumption). And they cannot estimate the cost of DML statements (INSERT, UPDATE, DELETE) accurately because those costs depend on the amount of data modified, not just read.
+There are a few things dry runs cannot tell you. They do not predict how long a query will take to run, only how much data will be scanned. They do not account for the query cache. They do not reflect slot-based pricing - if you are using reservations, you pay for slots, not bytes scanned, so the cost estimate is less relevant (though bytes processed still correlates with resource consumption). And DML statements (INSERT, UPDATE, DELETE, MERGE) need careful interpretation: BigQuery charges DML based on bytes processed, and UPDATE, DELETE, and some MERGE statements can include the size of the affected target table or partitions in addition to bytes scanned by the statement.
 
 ## Wrapping Up
 
