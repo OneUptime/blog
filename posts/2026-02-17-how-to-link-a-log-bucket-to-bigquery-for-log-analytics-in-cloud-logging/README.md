@@ -10,7 +10,7 @@ Description: A practical guide to linking Cloud Logging buckets to BigQuery so y
 
 Cloud Logging is great for searching through recent logs and setting up alerts, but when you need to do real analysis - things like aggregating error rates over months, joining log data with other datasets, or building custom dashboards - the built-in Logs Explorer starts to feel limited. That is where the BigQuery link comes in.
 
-By linking a Cloud Logging bucket to BigQuery, you get a BigQuery dataset that mirrors your log data. You can then query it using standard SQL, which opens up a completely different level of analysis. The best part is that there is no ETL pipeline to maintain. Logs flow into BigQuery automatically as they arrive in the bucket.
+By linking a Cloud Logging bucket to BigQuery, you get a BigQuery dataset that gives BigQuery read access to your log data. You can then query it using standard SQL, which opens up a completely different level of analysis. The best part is that there is no ETL pipeline to maintain. Logs become queryable through BigQuery automatically as they arrive in the bucket.
 
 ## How the Log Analytics Link Works
 
@@ -58,7 +58,7 @@ gcloud logging links create my-bq-link \
   --location=global
 ```
 
-After running this, a new dataset will appear in BigQuery. The dataset name follows the pattern `project_id.linked_dataset_name`. It usually takes a few minutes for the link to become active.
+After running this, a new dataset will appear in BigQuery. The link ID you provide is used as the BigQuery dataset name, so you will query views with a path like `project_id.linked_dataset_name._AllLogs`. It usually takes a few minutes for the link to become active.
 
 You can verify the link was created successfully with this command.
 
@@ -100,10 +100,10 @@ This query calculates error rates by service over the last 24 hours, grouped int
 -- Error rate by service over the last 24 hours, bucketed by hour
 SELECT
   TIMESTAMP_TRUNC(timestamp, HOUR) AS hour,
-  resource.labels.service_name AS service,
+  JSON_VALUE(resource.labels.service_name) AS service,
   COUNTIF(severity = 'ERROR') AS error_count,
   COUNT(*) AS total_count,
-  ROUND(COUNTIF(severity = 'ERROR') / COUNT(*) * 100, 2) AS error_rate_pct
+  ROUND(SAFE_DIVIDE(COUNTIF(severity = 'ERROR'), COUNT(*)) * 100, 2) AS error_rate_pct
 FROM
   `your-project.your_linked_dataset._AllLogs`
 WHERE
@@ -211,13 +211,13 @@ There are a few cost factors to keep in mind:
 2. **BigQuery queries**: You pay for the data scanned by each query. Use partitioned queries with timestamp filters to keep costs down.
 3. **No duplicate storage costs**: Since the BigQuery dataset is a view over the log bucket, you do not pay BigQuery storage fees.
 
-A good practice is to use BigQuery's on-demand pricing for exploratory queries and switch to flat-rate pricing if you run scheduled queries regularly.
+A good practice is to use BigQuery's on-demand pricing for exploratory queries and consider capacity pricing with reservations if you run scheduled queries regularly.
 
 ## Things to Watch Out For
 
 A few gotchas from my experience setting this up:
 
-- The `_Required` bucket cannot be linked to BigQuery. Only `_Default` and custom buckets support this.
+- A log bucket can be linked to at most one BigQuery dataset, and the bucket must be analytics-enabled before you create the link.
 - There is a slight delay (usually 1-3 minutes) between log ingestion and BigQuery availability. Do not expect real-time query results.
 - Column names in the BigQuery view follow a specific schema. Fields from `jsonPayload` are nested under `json_payload` in BigQuery.
 - If your bucket retention is short, your BigQuery data window is equally short. Plan your retention period based on how far back you need to query.
