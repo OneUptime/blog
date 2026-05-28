@@ -17,7 +17,7 @@ Documents come in through Cloud Storage, get classified by type, then routed to 
 ```mermaid
 graph TD
     A[Upload to Cloud Storage] --> B[Cloud Function - Trigger]
-    B --> C[Document AI - Classification]
+    B --> C[Vertex AI - Classification]
     C --> D{Document Type}
     D -->|Invoice| E[Invoice Parser]
     D -->|Receipt| F[Receipt Parser]
@@ -43,6 +43,11 @@ gcloud services enable \
     aiplatform.googleapis.com \
     storage.googleapis.com \
     cloudfunctions.googleapis.com \
+    cloudbuild.googleapis.com \
+    artifactregistry.googleapis.com \
+    run.googleapis.com \
+    eventarc.googleapis.com \
+    logging.googleapis.com \
     bigquery.googleapis.com \
     --project=your-project-id
 ```
@@ -50,7 +55,7 @@ gcloud services enable \
 Install the Python packages:
 
 ```bash
-pip install google-cloud-documentai google-cloud-aiplatform google-cloud-storage google-cloud-bigquery
+pip install functions-framework google-cloud-documentai google-cloud-aiplatform google-cloud-storage google-cloud-bigquery
 ```
 
 ## Step 1: Create Document AI Processors
@@ -133,7 +138,11 @@ def classify_document(document_bytes, mime_type="application/pdf"):
 
     response = model.generate_content(
         [prompt, document_part],
-        generation_config={"temperature": 0.1, "max_output_tokens": 256}
+        generation_config={
+            "temperature": 0.1,
+            "max_output_tokens": 256,
+            "response_mime_type": "application/json",
+        },
     )
 
     return json.loads(response.text)
@@ -233,7 +242,11 @@ Return ONLY the JSON object."""
 
     response = model.generate_content(
         prompt,
-        generation_config={"temperature": 0.1, "max_output_tokens": 1024}
+        generation_config={
+            "temperature": 0.1,
+            "max_output_tokens": 1024,
+            "response_mime_type": "application/json",
+        },
     )
 
     return json.loads(response.text)
@@ -324,7 +337,7 @@ gcloud functions deploy process-document \
 
 ## Handling Large Documents
 
-For documents with many pages, use Document AI's batch processing mode instead of the synchronous API. Batch processing handles documents up to 5,000 pages and runs asynchronously:
+For documents with many pages, use Document AI's batch processing mode instead of the synchronous API. Batch processing handles larger files asynchronously, but page limits are processor-specific. For example, Enterprise Document OCR supports up to 500 pages per batch request, while Invoice Parser supports up to 200 pages:
 
 ```python
 # Use batch processing for large documents
