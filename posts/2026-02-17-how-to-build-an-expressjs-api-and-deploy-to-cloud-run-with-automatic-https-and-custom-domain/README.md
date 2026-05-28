@@ -8,7 +8,7 @@ Description: Build a production Express.js API and deploy it to Cloud Run with a
 
 ---
 
-Cloud Run is one of the easiest ways to deploy a Node.js API to production. You give it a container, and it handles scaling, HTTPS certificates, and load balancing. Adding a custom domain takes a few extra steps but gives your API a professional endpoint instead of the auto-generated Cloud Run URL. In this post, I will walk through building an Express.js API, containerizing it, deploying to Cloud Run, and setting up a custom domain with automatic HTTPS.
+Cloud Run is one of the easiest ways to deploy a Node.js API to production. You give it a container, and it handles scaling, HTTPS for the default service URL, and load balancing. Adding a custom domain takes a few extra steps but gives your API a professional endpoint instead of the auto-generated Cloud Run URL. In this post, I will walk through building an Express.js API, containerizing it, deploying to Cloud Run, and setting up a custom domain with automatic HTTPS.
 
 ## Building the Express.js API
 
@@ -39,7 +39,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Logging - use JSON format in production for Cloud Logging
+// Logging - use a standard HTTP log format in production for Cloud Logging
 if (process.env.NODE_ENV === 'production') {
   app.use(morgan('combined'));
 } else {
@@ -231,22 +231,25 @@ Configure your project with the necessary scripts and dependencies.
   "private": true,
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "test": "node --check src/server.js && node --check src/app.js && node --check src/routes/health.js && node --check src/routes/api.js"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "helmet": "^7.1.0",
-    "morgan": "^1.10.0"
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "helmet": "^8.2.0",
+    "morgan": "^1.10.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.1.14"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   }
 }
 ```
+
+Run `npm install` once before building the image so `package-lock.json` exists for `npm ci`.
 
 ## The Dockerfile
 
@@ -255,13 +258,13 @@ Create a production-optimized Dockerfile.
 ```dockerfile
 # Build stage
 
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Production stage
-FROM node:20-slim
+FROM node:22-slim
 WORKDIR /app
 
 # Copy only production dependencies and source code
@@ -287,12 +290,18 @@ CMD ["node", "src/server.js"]
 Build and deploy the container.
 
 ```bash
+# Create an Artifact Registry Docker repository if you do not already have one
+gcloud artifacts repositories create my-repo \
+    --repository-format=docker \
+    --location=us-central1
+
 # Build the container image
-gcloud builds submit --tag gcr.io/my-project/my-express-api
+gcloud builds submit \
+    --tag us-central1-docker.pkg.dev/my-project/my-repo/my-express-api
 
 # Deploy to Cloud Run
 gcloud run deploy my-express-api \
-    --image gcr.io/my-project/my-express-api \
+    --image us-central1-docker.pkg.dev/my-project/my-repo/my-express-api \
     --region us-central1 \
     --platform managed \
     --set-env-vars "NODE_ENV=production,APP_VERSION=1.0.0" \
@@ -308,25 +317,25 @@ Cloud Run automatically provisions an HTTPS certificate for the default URL (som
 
 ## Setting Up a Custom Domain
 
-To use your own domain like `api.mycompany.com`, you need to map it in Cloud Run.
+To use your own domain like `api.mycompany.com` directly in Cloud Run, you can use Cloud Run domain mapping. This feature is in Preview and is not recommended for production services; for production custom domains, use the load balancer option in the next section.
 
 ```bash
 # Step 1: Verify domain ownership (if not already done)
 gcloud domains verify mycompany.com
 
 # Step 2: Map the custom domain to your Cloud Run service
-gcloud run domain-mappings create \
+gcloud beta run domain-mappings create \
     --service my-express-api \
     --domain api.mycompany.com \
     --region us-central1
 
 # Step 3: Get the DNS records you need to configure
-gcloud run domain-mappings describe \
+gcloud beta run domain-mappings describe \
     --domain api.mycompany.com \
     --region us-central1
 ```
 
-The output will tell you which DNS records to add. Typically, you need to add a CNAME record.
+The output will tell you which DNS records to add under `resourceRecords`. Add all of the returned records. For a subdomain you might receive a CNAME record; for a root domain you typically receive A and AAAA records.
 
 ```text
 # DNS Configuration (add these to your DNS provider)
@@ -348,9 +357,15 @@ After configuring DNS, Cloud Run automatically provisions and manages an HTTPS c
 
 ## Using Cloud Load Balancing for More Control
 
-For advanced scenarios, use a Cloud Load Balancer instead of Cloud Run's built-in domain mapping. This gives you CDN caching, WAF rules, and multi-region routing.
+For production or advanced scenarios, use a Cloud Load Balancer instead of Cloud Run's built-in domain mapping. This gives you CDN caching, WAF rules, and multi-region routing.
 
 ```bash
+# Reserve a global static external IP address
+gcloud compute addresses create my-api-ip \
+    --network-tier=PREMIUM \
+    --ip-version=IPV4 \
+    --global
+
 # Create a serverless NEG (Network Endpoint Group) for Cloud Run
 gcloud compute network-endpoint-groups create my-api-neg \
     --region=us-central1 \
@@ -384,6 +399,9 @@ gcloud compute target-https-proxies create my-api-https-proxy \
 # Create the forwarding rule (assigns an IP address)
 gcloud compute forwarding-rules create my-api-forwarding \
     --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
+    --network-tier=PREMIUM \
+    --address=my-api-ip \
     --target-https-proxy=my-api-https-proxy \
     --ports=443
 ```
@@ -396,7 +414,7 @@ Automate deployments with a Cloud Build trigger.
 # cloudbuild.yaml - CI/CD pipeline
 steps:
   # Run tests
-  - name: 'node:20-slim'
+  - name: 'node:22-slim'
     entrypoint: 'bash'
     args:
       - '-c'
@@ -404,11 +422,11 @@ steps:
 
   # Build the container
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/my-express-api:$COMMIT_SHA', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-express-api:$COMMIT_SHA', '.']
 
-  # Push to Container Registry
+  # Push to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/my-express-api:$COMMIT_SHA']
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-express-api:$COMMIT_SHA']
 
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -417,13 +435,13 @@ steps:
       - 'run'
       - 'deploy'
       - 'my-express-api'
-      - '--image=gcr.io/$PROJECT_ID/my-express-api:$COMMIT_SHA'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-express-api:$COMMIT_SHA'
       - '--region=us-central1'
       - '--set-env-vars=APP_VERSION=$COMMIT_SHA'
       - '--allow-unauthenticated'
 
 images:
-  - 'gcr.io/$PROJECT_ID/my-express-api:$COMMIT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-express-api:$COMMIT_SHA'
 ```
 
 ## Testing the Deployment
@@ -454,4 +472,4 @@ Once your API is live with a custom domain, you need to monitor its availability
 
 ## Summary
 
-Deploying an Express.js API to Cloud Run gives you a production-ready setup with minimal operational work. Cloud Run handles HTTPS certificates automatically for both its default URLs and custom domains. For basic setups, use Cloud Run domain mapping directly. For more advanced needs like CDN caching or WAF protection, put a Cloud Load Balancer in front of Cloud Run. The key things to remember are: set `trust proxy` in Express since you are behind a load balancer, use the PORT environment variable that Cloud Run sets, keep your containers stateless, and set appropriate concurrency limits based on your application's resource usage.
+Deploying an Express.js API to Cloud Run gives you a production-ready setup with minimal operational work. Cloud Run handles HTTPS certificates automatically for its default URLs, and custom domains can use either Cloud Run domain mapping or a Google-managed certificate on a Cloud Load Balancer. For production custom domains, Google recommends a global external Application Load Balancer; Cloud Run domain mapping is in Preview and is better suited to simpler non-production setups. For more advanced needs like CDN caching or WAF protection, put a Cloud Load Balancer in front of Cloud Run. The key things to remember are: set `trust proxy` in Express since you are behind a load balancer, use the PORT environment variable that Cloud Run sets, keep your containers stateless, and set appropriate concurrency limits based on your application's resource usage.
