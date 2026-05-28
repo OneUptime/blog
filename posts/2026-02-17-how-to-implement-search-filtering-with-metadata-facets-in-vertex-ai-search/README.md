@@ -43,6 +43,7 @@ pip install google-cloud-discoveryengine
 Before importing documents, define what metadata fields your documents will have. This schema tells Vertex AI Search which fields are filterable and facetable.
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import discoveryengine_v1 as discoveryengine
 
 def update_schema(
@@ -51,7 +52,12 @@ def update_schema(
     data_store_id: str,
 ):
     """Define the metadata schema for the data store."""
-    client = discoveryengine.SchemaServiceClient()
+    client_options = (
+        ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
+        if location != "global"
+        else None
+    )
+    client = discoveryengine.SchemaServiceClient(client_options=client_options)
 
     schema_name = (
         f"projects/{project_id}/locations/{location}"
@@ -93,7 +99,7 @@ def update_schema(
                     "dynamicFacetable": True,
                 },
                 "publish_date": {
-                    "type": "string",
+                    "type": "datetime",
                     "retrievable": True,
                     "indexable": True,
                 },
@@ -113,7 +119,8 @@ def update_schema(
         },
     )
 
-    operation = client.update_schema(schema=schema)
+    request = discoveryengine.UpdateSchemaRequest(schema=schema)
+    operation = client.update_schema(request=request)
     result = operation.result(timeout=300)
     print(f"Schema updated: {result.name}")
     return result
@@ -134,7 +141,7 @@ def prepare_structured_documents():
         {
             "id": "doc-001",
             "content": {
-                "mimeType": "text/plain",
+                "mimeType": "application/pdf",
                 "uri": "gs://your-bucket/docs/k8s-deploy-guide.pdf",
             },
             "structData": {
@@ -151,7 +158,7 @@ def prepare_structured_documents():
         {
             "id": "doc-002",
             "content": {
-                "mimeType": "text/plain",
+                "mimeType": "application/pdf",
                 "uri": "gs://your-bucket/docs/security-policy.pdf",
             },
             "structData": {
@@ -168,7 +175,7 @@ def prepare_structured_documents():
         {
             "id": "doc-003",
             "content": {
-                "mimeType": "text/plain",
+                "mimeType": "application/pdf",
                 "uri": "gs://your-bucket/docs/cloud-run-faq.pdf",
             },
             "structData": {
@@ -204,7 +211,12 @@ def import_structured_documents(
     gcs_jsonl_uri: str,
 ):
     """Import documents with metadata from a JSONL file."""
-    client = discoveryengine.DocumentServiceClient()
+    client_options = (
+        ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
+        if location != "global"
+        else None
+    )
+    client = discoveryengine.DocumentServiceClient(client_options=client_options)
 
     parent = (
         f"projects/{project_id}/locations/{location}"
@@ -241,7 +253,12 @@ def search_with_facets(
     query: str,
 ):
     """Search and get facet counts for building filter navigation."""
-    client = discoveryengine.SearchServiceClient()
+    client_options = (
+        ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
+        if location != "global"
+        else None
+    )
+    client = discoveryengine.SearchServiceClient(client_options=client_options)
 
     serving_config = (
         f"projects/{project_id}/locations/{location}"
@@ -303,7 +320,7 @@ def search_with_facets(
     # Display results
     print(f"\nResults:")
     for result in response.results:
-        doc_data = result.document.derived_struct_data
+        doc_data = result.document.struct_data
         print(f"  {doc_data.get('title', 'N/A')} [{doc_data.get('category', 'N/A')}]")
 
     return response
@@ -327,9 +344,16 @@ def search_with_filter(
     engine_id: str,
     query: str,
     filters: dict,
+    page_size: int = 10,
+    offset: int = 0,
 ):
     """Search with metadata filters applied."""
-    client = discoveryengine.SearchServiceClient()
+    client_options = (
+        ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
+        if location != "global"
+        else None
+    )
+    client = discoveryengine.SearchServiceClient(client_options=client_options)
 
     serving_config = (
         f"projects/{project_id}/locations/{location}"
@@ -338,14 +362,18 @@ def search_with_filter(
     )
 
     # Build the filter expression from the active filters
+    def quote_filter_value(raw_value) -> str:
+        escaped = str(raw_value).replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+
     filter_parts = []
     for key, value in filters.items():
         if isinstance(value, list):
             # Multiple values for the same field (OR logic)
-            values_str = ", ".join(f'"{v}"' for v in value)
+            values_str = ", ".join(quote_filter_value(v) for v in value)
             filter_parts.append(f'{key}: ANY({values_str})')
         else:
-            filter_parts.append(f'{key}: ANY("{value}")')
+            filter_parts.append(f'{key}: ANY({quote_filter_value(value)})')
 
     filter_expression = " AND ".join(filter_parts) if filter_parts else None
 
@@ -364,8 +392,9 @@ def search_with_filter(
     request = discoveryengine.SearchRequest(
         serving_config=serving_config,
         query=query,
-        page_size=10,
-        filter=filter_expression,
+        page_size=page_size,
+        offset=offset,
+        filter=filter_expression or "",
         facet_specs=facet_specs,
         content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
             snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
@@ -381,7 +410,7 @@ def search_with_filter(
     print(f"  Total: {response.total_size} results\n")
 
     for result in response.results:
-        doc_data = result.document.derived_struct_data
+        doc_data = result.document.struct_data
         title = doc_data.get("title", "N/A")
         category = doc_data.get("category", "N/A")
         level = doc_data.get("difficulty_level", "N/A")
@@ -458,6 +487,8 @@ async def faceted_search(
         engine_id="your-engine-id",
         query=q,
         filters=filters,
+        page_size=page_size,
+        offset=(page - 1) * page_size,
     )
 
     # Format for the frontend
@@ -471,8 +502,8 @@ async def faceted_search(
         },
         "results": [
             {
-                "title": r.document.derived_struct_data.get("title", ""),
-                "category": r.document.derived_struct_data.get("category", ""),
+                "title": r.document.struct_data.get("title", ""),
+                "category": r.document.struct_data.get("category", ""),
                 "snippets": [s.get("snippet", "") for s in r.document.derived_struct_data.get("snippets", [])],
             }
             for r in response.results
