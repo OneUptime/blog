@@ -8,7 +8,7 @@ Description: Step-by-step guide to migrating your IoT workloads from the retired
 
 ---
 
-Google Cloud IoT Core was retired on August 16, 2023. If you are still running on it or planning a migration, you need to move to an alternative architecture. The good news is that the downstream components of most IoT Core setups (Pub/Sub, Dataflow, BigQuery) remain unchanged. The migration primarily involves replacing IoT Core's device connectivity and authentication layer.
+Google Cloud IoT Core was retired on August 16, 2023. If you still have devices that were designed for it or are planning a migration from an exported registry, you need to move to an alternative architecture. The good news is that the downstream components of most IoT Core setups (Pub/Sub, Dataflow, BigQuery) can remain unchanged. The migration primarily involves replacing IoT Core's device connectivity and authentication layer.
 
 This guide covers the full migration path, including device re-registration, protocol changes, authentication updates, and testing strategies.
 
@@ -49,14 +49,13 @@ graph TB
 
 ## Step 1: Export Your Device Registry
 
-Before IoT Core goes away completely, export your device registry:
+If you exported your IoT Core registry before retirement or still have access to a legacy project export, move that registry data into your replacement store:
 
 ```python
 # export_registry.py - Exports all devices from IoT Core to Firestore
 
 from google.cloud import iot_v1
 from google.cloud import firestore
-import json
 
 # Initialize clients
 
@@ -66,6 +65,11 @@ db = firestore.Client()
 PROJECT_ID = "your-project"
 REGION = "us-central1"
 REGISTRY_ID = "your-registry"
+
+def timestamp_to_iso(timestamp):
+    """Converts a protobuf Timestamp to an ISO-8601 string."""
+
+    return timestamp.ToDatetime().isoformat() if timestamp else None
 
 def export_devices():
     """Exports all devices from IoT Core registry to Firestore.
@@ -88,8 +92,7 @@ def export_devices():
             credentials.append({
                 "public_key": cred.public_key.key,
                 "format": cred.public_key.format.name,
-                "expiration": cred.expiration_time.isoformat()
-                if cred.expiration_time else None,
+                "expiration": timestamp_to_iso(cred.expiration_time),
             })
 
         # Store in Firestore
@@ -99,10 +102,8 @@ def export_devices():
             "credentials": credentials,
             "metadata": dict(full_device.metadata) if full_device.metadata else {},
             "blocked": full_device.blocked,
-            "last_event_time": full_device.last_event_time.isoformat()
-                if full_device.last_event_time else None,
-            "last_state_time": full_device.last_state_time.isoformat()
-                if full_device.last_state_time else None,
+            "last_event_time": timestamp_to_iso(full_device.last_event_time),
+            "last_state_time": timestamp_to_iso(full_device.last_state_time),
             "migrated": False,
             "migration_date": None,
         }
@@ -136,7 +137,7 @@ gcloud compute instances create mqtt-broker \
   --tags=mqtt-broker
 ```
 
-Install and configure EMQX with Pub/Sub integration:
+Install and configure EMQX:
 
 ```bash
 # SSH into the instance and install EMQX
@@ -144,7 +145,7 @@ sudo apt-get update
 curl -s https://assets.emqx.com/scripts/install-emqx-deb.sh | sudo bash
 sudo apt-get install -y emqx
 
-# Configure TLS (reuse IoT Core root CA if your devices trust it)
+# Configure TLS with a server certificate chain trusted by your devices
 sudo mkdir -p /etc/emqx/certs
 # Copy your TLS certificates to /etc/emqx/certs/
 
@@ -165,29 +166,35 @@ from google.cloud import firestore
 import functions_framework
 
 db = firestore.Client()
+JWT_AUDIENCE = "mqtt-broker.your-domain.com"
+
+def auth_response(payload):
+    """Returns the JSON response format expected by EMQX HTTP auth."""
+
+    return json.dumps(payload), 200, {"Content-Type": "application/json"}
 
 @functions_framework.http
 def authenticate(request):
     """HTTP endpoint called by the MQTT broker's auth webhook.
     Validates device JWTs against the migrated device registry."""
 
-    body = request.get_json()
+    body = request.get_json(silent=True) or {}
     username = body.get("username", "")  # Device ID
     password = body.get("password", "")  # JWT token
 
     if not username or not password:
-        return json.dumps({"result": "deny"}), 200
+        return auth_response({"result": "deny"})
 
     # Look up the device in our Firestore registry
     doc = db.collection("device_registry").document(username).get()
     if not doc.exists:
-        return json.dumps({"result": "deny", "reason": "unknown device"}), 200
+        return auth_response({"result": "deny", "reason": "unknown device"})
 
     device = doc.to_dict()
 
     # Check if the device is blocked
     if device.get("blocked", False):
-        return json.dumps({"result": "deny", "reason": "device blocked"}), 200
+        return auth_response({"result": "deny", "reason": "device blocked"})
 
     # Verify the JWT against the device's registered public key
     for cred in device.get("credentials", []):
@@ -201,7 +208,8 @@ def authenticate(request):
                 password,
                 public_key,
                 algorithms=algorithms,
-                options={"verify_aud": False},
+                audience=JWT_AUDIENCE,
+                leeway=300,
             )
 
             # JWT is valid - update last seen timestamp
@@ -210,17 +218,17 @@ def authenticate(request):
                 "migrated": True,
             })
 
-            return json.dumps({"result": "allow"}), 200
+            return auth_response({"result": "allow"})
 
         except jwt.InvalidTokenError:
             continue
 
-    return json.dumps({"result": "deny", "reason": "invalid credentials"}), 200
+    return auth_response({"result": "deny", "reason": "invalid credentials"})
 ```
 
 Configure EMQX to use this authentication webhook:
 
-```yaml
+```hocon
 # EMQX auth webhook configuration
 # Add to /etc/emqx/emqx.conf
 authentication = [
@@ -230,7 +238,7 @@ authentication = [
     method = post
     url = "https://us-central1-YOUR_PROJECT.cloudfunctions.net/authenticate"
     headers {
-      content-type = "application/json"
+      "Content-Type" = "application/json"
     }
     body {
       username = "${username}"
@@ -264,6 +272,8 @@ FROM
   "devices/+/telemetry"
 ```
 
+Then attach a GCP Pub/Sub action to this rule and select the Pub/Sub topic that replaces your old IoT Core telemetry topic.
+
 ## Step 5: Update Device Firmware
 
 The device-side changes are minimal. The main differences are:
@@ -289,7 +299,7 @@ client.publish(f"/devices/{device_id}/events", payload)
 client.connect("mqtt-broker.your-domain.com", 8883)
 client.username_pw_set(
     username=device_id,  # Used for looking up the device in the registry
-    password=create_jwt(project_id, private_key)
+    password=create_jwt("mqtt-broker.your-domain.com", private_key)
 )
 client.publish(f"devices/{device_id}/telemetry", payload)
 ```
@@ -325,7 +335,8 @@ def get_migration_status():
     print(f"Migrated: {migrated}")
     print(f"Remaining: {total - migrated - blocked}")
     print(f"Blocked: {blocked}")
-    print(f"Progress: {migrated / total * 100:.1f}%")
+    progress = migrated / total * 100 if total else 0
+    print(f"Progress: {progress:.1f}%")
 
 get_migration_status()
 ```
