@@ -8,9 +8,9 @@ Description: Learn how to deploy multiple models on a single Vertex AI endpoint 
 
 ---
 
-Running a separate endpoint for every model gets expensive fast. If you have ten models, each on its own n1-standard-4 machine, you are paying for ten machines running around the clock - even if most of them are barely used. Multi-model endpoints solve this problem by letting you deploy several models on the same infrastructure, sharing the compute resources.
+Running a separate serving deployment for every model gets expensive fast. If you have ten models, each on its own n1-standard-4 machine, you are paying for ten machines running around the clock - even if most of them are barely used. Vertex AI can deploy several models to one endpoint, and cost sharing is available when those deployments use the same DeploymentResourcePool.
 
-Vertex AI supports deploying multiple models to a single endpoint with traffic splitting, which lets you run A/B tests, canary deployments, and cost-efficient multi-model serving all from the same endpoint.
+Vertex AI supports deploying multiple models to a single endpoint with traffic splitting, which lets you run A/B tests and canary deployments from the same endpoint. When supported models are cohosted in a DeploymentResourcePool, those deployed models can share the same VM resources.
 
 ## When Multi-Model Endpoints Make Sense
 
@@ -18,9 +18,9 @@ There are three common scenarios where putting multiple models on one endpoint i
 
 First, A/B testing. You want to send a percentage of traffic to a new model version while the rest continues going to the current production model. If the new model performs well, you gradually shift more traffic to it.
 
-Second, model ensembles. You have several models that each handle a different segment of your data, and a routing layer decides which model to call based on the input.
+Second, model ensembles. You have several models that each handle a different segment of your data, and a routing layer decides which deployed model to call based on the input.
 
-Third, cost optimization. You have low-traffic models that do not justify their own dedicated endpoints. Sharing infrastructure keeps costs manageable.
+Third, cost optimization. You have low-traffic TensorFlow or PyTorch models that do not justify their own dedicated serving VMs. Cohosting them in a DeploymentResourcePool keeps costs manageable.
 
 ```mermaid
 graph TD
@@ -32,28 +32,36 @@ graph TD
 
 ## Deploying Multiple Models to One Endpoint
 
-Start by uploading your models to the Vertex AI Model Registry, then deploy them to the same endpoint with different traffic splits.
+Start by uploading your models to the Vertex AI Model Registry. If you want the models to share VM resources, create a DeploymentResourcePool and deploy compatible models to the same endpoint and resource pool.
 
-This code uploads two model versions and deploys them to a shared endpoint:
+This code creates shared serving resources, uploads two model versions, and creates an endpoint:
 
 ```python
 from google.cloud import aiplatform
 
 aiplatform.init(project="your-project-id", location="us-central1")
 
+# Create shared serving resources for compatible TensorFlow models
+deployment_resource_pool = aiplatform.DeploymentResourcePool.create(
+    deployment_resource_pool_id="fraud-detection-pool",
+    machine_type="n1-standard-4",
+    min_replica_count=1,
+    max_replica_count=3
+)
+
 # Upload model version 1
 
 model_v1 = aiplatform.Model.upload(
     display_name="fraud-detector-v1",
     artifact_uri="gs://your-bucket/models/fraud-v1/",
-    serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-3:latest"
+    serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-15:latest"
 )
 
 # Upload model version 2
 model_v2 = aiplatform.Model.upload(
     display_name="fraud-detector-v2",
     artifact_uri="gs://your-bucket/models/fraud-v2/",
-    serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-3:latest"
+    serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-15:latest"
 )
 
 # Create a single endpoint
@@ -64,26 +72,23 @@ endpoint = aiplatform.Endpoint.create(
 print(f"Endpoint created: {endpoint.resource_name}")
 ```
 
-Now deploy both models to the same endpoint with traffic allocation:
+Now deploy both models to the same endpoint and DeploymentResourcePool with traffic allocation:
 
 ```python
-# Deploy model v1 with 80% of traffic
+# Deploy model v1 first with 100% of traffic
 model_v1.deploy(
     endpoint=endpoint,
     deployed_model_display_name="fraud-v1-production",
-    machine_type="n1-standard-4",
-    min_replica_count=1,
-    max_replica_count=3,
-    traffic_percentage=80
+    deployment_resource_pool=deployment_resource_pool,
+    traffic_percentage=100
 )
 
-# Deploy model v2 with 20% of traffic (canary)
+# Deploy model v2 with 20% of traffic (canary).
+# Vertex AI scales down the existing model's traffic to accommodate it.
 model_v2.deploy(
     endpoint=endpoint,
     deployed_model_display_name="fraud-v2-canary",
-    machine_type="n1-standard-4",
-    min_replica_count=1,
-    max_replica_count=2,
+    deployment_resource_pool=deployment_resource_pool,
     traffic_percentage=20
 )
 
@@ -117,41 +122,43 @@ print(f"Updated traffic split: {traffic_split}")
 
 ## Deploying Models with Different Resource Requirements
 
-Not all models need the same resources. You can configure different machine types for each deployed model on the same endpoint.
+Not all models need the same resources. You can configure different machine types for each deployed model on the same endpoint, but those deployments do not share the same VM pool.
 
-This code shows deploying a lightweight model alongside a GPU-powered model:
+This code shows deploying a lightweight model alongside a GPU-powered model as separate deployments on the same endpoint:
 
 ```python
 # A lightweight model for simple cases - small machine, no GPU
 lightweight_model = aiplatform.Model.upload(
     display_name="simple-classifier",
     artifact_uri="gs://your-bucket/models/simple/",
-    serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-3:latest"
+    serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-15:latest"
 )
 
 # A heavy model for complex cases - bigger machine with GPU
 heavy_model = aiplatform.Model.upload(
     display_name="deep-classifier",
     artifact_uri="gs://your-bucket/models/deep/",
-    serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-13:latest"
+    serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/tf2-gpu.2-15:latest"
 )
 
-# Create the shared endpoint
+# Create the endpoint
 endpoint = aiplatform.Endpoint.create(
     display_name="classification-endpoint"
 )
 
-# Deploy lightweight model on cheaper hardware
+# Deploy lightweight model on cheaper hardware.
+# This deployment uses its own resources, separate from the GPU deployment.
 lightweight_model.deploy(
     endpoint=endpoint,
     deployed_model_display_name="simple-cpu",
     machine_type="n1-standard-2",  # Smaller machine
     min_replica_count=1,
     max_replica_count=5,
-    traffic_percentage=70  # Most traffic goes here
+    traffic_percentage=100
 )
 
-# Deploy heavy model on GPU hardware
+# Deploy heavy model on GPU hardware.
+# Different machine types cannot be part of the same DeploymentResourcePool.
 heavy_model.deploy(
     endpoint=endpoint,
     deployed_model_display_name="deep-gpu",
@@ -177,7 +184,7 @@ import datetime
 client = monitoring_v3.MetricServiceClient()
 project_name = f"projects/your-project-id"
 
-# Query prediction latency by deployed model
+# Query prediction count by deployed model
 now = datetime.datetime.now(datetime.timezone.utc)
 interval = monitoring_v3.TimeInterval({
     "start_time": {"seconds": int((now - datetime.timedelta(hours=24)).timestamp())},
@@ -273,7 +280,7 @@ gradual_rollout(
 
 After a successful rollout, clean up old deployed models to free resources.
 
-This code undeploies and removes the old model:
+This code undeploys and removes the old model:
 
 ```python
 # Get the endpoint
@@ -295,6 +302,6 @@ print("Old model undeployed successfully")
 
 ## Cost Comparison
 
-The cost difference between single-model and multi-model endpoints adds up quickly. If you have five low-traffic models, each on an n1-standard-4 ($0.19/hr), that is $0.95/hr or about $685/month. With a multi-model endpoint, you might serve all five on two n1-standard-8 machines ($0.38/hr each), costing $0.76/hr or about $547/month - a 20% savings. The savings grow as you add more models.
+The cost difference from cohosting models in a DeploymentResourcePool adds up quickly. If you have five low-traffic models, each on its own n1-standard-4, you pay for five separate minimum replica sets. With a DeploymentResourcePool, you might serve compatible low-traffic models from a smaller shared pool instead. The exact savings depend on the machine type, replica counts, model memory footprint, and traffic pattern.
 
-Multi-model endpoints are one of the simplest ways to reduce your Vertex AI serving costs. They also make A/B testing and gradual rollouts straightforward, which means you can ship model updates with more confidence and less risk.
+Multi-model endpoints make A/B testing and gradual rollouts straightforward. When you also use DeploymentResourcePools for supported models, they can reduce Vertex AI serving costs by improving utilization of the underlying VMs.
