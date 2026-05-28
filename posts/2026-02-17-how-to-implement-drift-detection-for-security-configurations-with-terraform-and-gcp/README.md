@@ -87,6 +87,9 @@ steps:
 
 substitutions:
   _STATE_BUCKET: 'my-terraform-state-bucket'
+
+options:
+  automapSubstitutions: true
 ```
 
 ## The Drift Analyzer
@@ -111,15 +114,15 @@ SECURITY_CRITICAL_RESOURCES = {
         "severity": "HIGH"
     },
     "google_project_iam_binding": {
-        "attributes": ["role", "members"],
+        "attributes": ["role", "members", "condition"],
         "severity": "CRITICAL"
     },
     "google_project_iam_member": {
-        "attributes": ["role", "member"],
+        "attributes": ["role", "member", "condition"],
         "severity": "CRITICAL"
     },
     "google_organization_iam_binding": {
-        "attributes": ["role", "members"],
+        "attributes": ["role", "members", "condition"],
         "severity": "CRITICAL"
     },
     "google_kms_crypto_key": {
@@ -149,6 +152,13 @@ SECURITY_CRITICAL_RESOURCES = {
         "attributes": ["status", "spec"],
         "severity": "CRITICAL"
     },
+    "google_compute_security_policy": {
+        "attributes": [
+            "rule", "advanced_options_config",
+            "adaptive_protection_config"
+        ],
+        "severity": "HIGH"
+    },
 }
 
 
@@ -157,7 +167,10 @@ def analyze_plan(plan_file):
     with open(plan_file, 'r') as f:
         plan = json.load(f)
 
-    resource_changes = plan.get("resource_changes", [])
+    resource_changes = plan.get(
+        "resource_drift",
+        plan.get("resource_changes", [])
+    )
     security_drifts = []
 
     for change in resource_changes:
@@ -208,9 +221,15 @@ def get_nested_value(data, key_path):
     """Get a value from a nested dictionary using dot notation."""
     keys = key_path.split(".")
     current = data
-    for key in keys:
+    for index, key in enumerate(keys):
         if isinstance(current, dict):
             current = current.get(key)
+        elif isinstance(current, list):
+            remaining_path = ".".join(keys[index:])
+            return [
+                get_nested_value(item, remaining_path)
+                for item in current
+            ]
         else:
             return None
     return current
@@ -224,11 +243,12 @@ def publish_alert(drifts):
 
     for drift in drifts:
         message = json.dumps(drift, default=str)
-        publisher.publish(
+        future = publisher.publish(
             topic_path,
             data=message.encode("utf-8"),
             severity=drift["severity"]
         )
+        future.result(timeout=60)
         print(f"Alert published: {drift['resource']} ({drift['severity']})")
 
 
