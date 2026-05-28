@@ -14,7 +14,7 @@ I have found that triggers are one of the most misunderstood parts of Apache Bea
 
 ## The Default Trigger
 
-Every windowed PCollection has a trigger, even if you do not set one explicitly. The default trigger fires once when the watermark passes the end of the window. For a 5-minute fixed window ending at 2:05, the default trigger fires when Dataflow believes all data with timestamps before 2:05 has arrived.
+Every windowed PCollection has a trigger, even if you do not set one explicitly. With the default allowed lateness of zero, the default trigger fires once when the watermark passes the end of the window and late data for that window is discarded. If you configure non-zero allowed lateness, the default trigger can also fire again immediately when late data arrives. For a 5-minute fixed window ending at 2:05, the on-time firing happens when Dataflow believes all data with timestamps before 2:05 has arrived.
 
 ```java
 // This is what the default trigger looks like explicitly
@@ -55,9 +55,9 @@ PCollection<KV<String, Long>> counts = events
 
 This configuration produces three types of output panes:
 
-- Early panes: speculative results emitted every 30 seconds before the window closes
+- Early panes: speculative results emitted 30 seconds after the first element in each early pane
 - On-time pane: the main result when the watermark passes
-- Late panes: updated results incorporating late data, checked every minute
+- Late panes: updated results incorporating late data, emitted 1 minute after the first late element in each late pane
 
 ## Processing Time Triggers
 
@@ -77,7 +77,7 @@ PCollection<KV<String, Long>> periodicCounts = events
     .apply("Count", Count.perKey());
 ```
 
-This fires every 60 seconds regardless of where the watermark is. You get regular output updates, which is great for dashboards that need consistent refresh rates.
+This is independent of where the watermark is, but each firing is scheduled 60 seconds after the first element in the current pane. With steady input, you get regular output updates, which is useful for dashboards that need consistent refresh rates.
 
 ## Element Count Triggers
 
@@ -118,7 +118,7 @@ PCollection<String> compositeTriggered = events
         .discardingFiredPanes());
 ```
 
-This ensures you get output within 30 seconds even if traffic is low, but during high traffic you get output more frequently based on element count.
+This ensures you get output within 30 seconds of the first element in a pane even if traffic is low, but during high traffic you get output more frequently based on element count.
 
 ## Accumulation Modes: Discarding vs. Accumulating
 
