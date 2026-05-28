@@ -8,7 +8,7 @@ Description: A practical guide to deploying the OpenTelemetry Operator on Google
 
 ---
 
-Manually adding OpenTelemetry instrumentation to every service in your Kubernetes cluster gets old fast. The OpenTelemetry Operator for Kubernetes changes the game by automatically injecting instrumentation into your pods. You annotate a deployment, and the operator handles the rest - downloading the agent, configuring the exporter, and injecting it as an init container. On GKE, this means you can get tracing and metrics across your entire cluster with almost zero per-service effort. Let me show you how to set it up.
+Manually adding OpenTelemetry instrumentation to every service in your Kubernetes cluster gets old fast. The OpenTelemetry Operator for Kubernetes changes the game by automatically injecting instrumentation into your pods. You annotate a deployment, and the operator handles the rest - downloading the agent, configuring the exporter, and injecting it as an init container or sidecar, depending on the language. On GKE, this means you can get tracing and metrics across your entire cluster with almost zero per-service effort. Let me show you how to set it up.
 
 ## What the OpenTelemetry Operator Does
 
@@ -16,7 +16,7 @@ The operator manages two key custom resources. First, the OpenTelemetryCollector
 
 ## Prerequisites
 
-- A GKE cluster running Kubernetes 1.24 or later
+- A GKE cluster running a Kubernetes version supported by the OpenTelemetry Operator and cert-manager releases you install
 - kubectl configured to talk to your cluster
 - Helm 3 installed
 - cert-manager installed (the operator needs it for webhook certificates)
@@ -28,10 +28,12 @@ The operator relies on cert-manager for TLS certificates on its admission webhoo
 ```bash
 # Install cert-manager if not already present
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
-# Wait for cert-manager pods to be ready
-kubectl wait --for=condition=ready pod -l app=cert-manager -n cert-manager --timeout=120s
+# Wait for cert-manager deployments to be ready
+kubectl rollout status deployment/cert-manager -n cert-manager --timeout=120s
+kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout=120s
+kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout=120s
 ```
 
 ## Step 2: Install the OpenTelemetry Operator
@@ -47,7 +49,8 @@ helm repo update
 helm install opentelemetry-operator open-telemetry/opentelemetry-operator \
     --namespace opentelemetry-operator-system \
     --create-namespace \
-    --set "manager.collectorImage.repository=otel/opentelemetry-collector-contrib" \
+    --set "manager.collectorImage.repository=ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib" \
+    --set manager.autoInstrumentation.go.enabled=true \
     --set admissionWebhooks.certManager.enabled=true
 ```
 
@@ -72,6 +75,7 @@ metadata:
 spec:
   mode: deployment
   replicas: 2
+  serviceAccount: otel-collector
   config:
     receivers:
       otlp:
@@ -112,8 +116,9 @@ spec:
 Apply it.
 
 ```bash
-# Create the observability namespace and deploy the collector
+# Create the observability namespace and service account, then deploy the collector
 kubectl create namespace observability
+kubectl create serviceaccount otel-collector -n observability
 kubectl apply -f collector.yaml
 ```
 
@@ -138,7 +143,7 @@ spec:
     - tracecontext
     - baggage
 
-  # Sample 100% during development, reduce in production
+  # Sample 10% during development, tune for production
   sampler:
     type: parentbased_traceidratio
     argument: "0.1"
@@ -225,6 +230,7 @@ annotations:
 # Go service
 annotations:
   instrumentation.opentelemetry.io/inject-go: "observability/gcp-instrumentation"
+  instrumentation.opentelemetry.io/otel-go-auto-target-exe: "/path/to/container/executable"
 ```
 
 ## Step 6: Verify the Injection
@@ -239,7 +245,7 @@ kubectl describe pod -l app=order-service
 kubectl get pod -l app=order-service -o jsonpath='{.items[0].spec.initContainers[*].name}'
 ```
 
-You should see an init container that downloads the agent and environment variables like `JAVA_TOOL_OPTIONS` (for Java) that attach the agent to the JVM.
+You should see an init container that downloads the agent and environment variables like `JAVA_TOOL_OPTIONS` (for Java) that attach the agent to the JVM. For Go workloads, the operator injects a sidecar instead of the init-container based injection used by the other language agents.
 
 ## How the Injection Works
 
@@ -256,10 +262,10 @@ sequenceDiagram
     User->>API: Create Pod with annotation
     API->>Webhook: Admission webhook triggered
     Webhook->>Webhook: Check annotation, find Instrumentation CR
-    Webhook->>API: Mutate pod spec (add init container + env vars)
+    Webhook->>API: Mutate pod spec (add init container or sidecar + env vars)
     API->>Scheduler: Schedule mutated pod
     Scheduler->>Node: Assign pod to node
-    Node->>Node: Run init container (download agent)
+    Node->>Node: Run injected init container or sidecar
     Node->>Node: Start main container with agent attached
 ```
 
@@ -285,7 +291,15 @@ gcloud projects add-iam-policy-binding my-gcp-project \
 gcloud iam service-accounts add-iam-policy-binding \
     otel-collector-sa@my-gcp-project.iam.gserviceaccount.com \
     --role="roles/iam.workloadIdentityUser" \
-    --member="serviceAccount:my-gcp-project.svc.id.goog[observability/otel-gateway-collector]"
+    --member="serviceAccount:my-gcp-project.svc.id.goog[observability/otel-collector]"
+
+# Link the Kubernetes service account to the GCP service account
+kubectl annotate serviceaccount otel-collector -n observability \
+    iam.gke.io/gcp-service-account=otel-collector-sa@my-gcp-project.iam.gserviceaccount.com \
+    --overwrite
+
+# Restart collector pods if they were already running before the annotation
+kubectl rollout restart deployment/otel-gateway-collector -n observability
 ```
 
 ## Namespace-Wide Instrumentation
