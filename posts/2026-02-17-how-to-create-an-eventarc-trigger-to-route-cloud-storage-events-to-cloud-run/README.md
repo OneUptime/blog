@@ -10,7 +10,7 @@ Description: Step-by-step guide to creating Eventarc triggers that route Google 
 
 When a file is uploaded to a Cloud Storage bucket, you often want something to happen automatically - process an image, parse a CSV, scan for malware, or trigger a data pipeline. Eventarc makes this easy by routing Cloud Storage events directly to your Cloud Run services. No Pub/Sub topic configuration needed, no glue code - Eventarc handles the event delivery for you.
 
-In this post, I will show you how to set up Eventarc triggers to route Cloud Storage events to a Cloud Run service, covering both direct events and audit-log-based events.
+In this post, I will show you how to set up Eventarc triggers to route Cloud Storage events to a Cloud Run service, and when audit-log-based events might be useful.
 
 ## Two Types of Cloud Storage Events
 
@@ -18,7 +18,7 @@ Eventarc supports two ways to capture Cloud Storage events:
 
 1. **Direct events**: Use Cloud Storage notifications. These are faster (lower latency) and support events like `google.cloud.storage.object.v1.finalized` (file created/overwritten) and `google.cloud.storage.object.v1.deleted`.
 
-2. **Audit log events**: Use Cloud Audit Logs. These capture any GCS API call and give you more event types, but have slightly higher latency.
+2. **Audit log events**: Use Cloud Audit Logs. These capture Cloud Storage operations that generate matching audit log entries and let you filter by `serviceName`, `methodName`, and `resourceName`, but have slightly higher latency.
 
 For most use cases like processing uploaded files, direct events are the better choice.
 
@@ -30,12 +30,28 @@ Enable the required APIs.
 # Enable required APIs
 
 gcloud services enable \
+  artifactregistry.googleapis.com \
+  cloudbuild.googleapis.com \
+  eventarcpublishing.googleapis.com \
+  logging.googleapis.com \
   run.googleapis.com \
   eventarc.googleapis.com \
   storage.googleapis.com
 
-# Grant the Eventarc service account the necessary roles
+# Create the service account that Eventarc will use to invoke Cloud Run
+gcloud iam service-accounts create eventarc-sa \
+  --display-name="Eventarc Trigger SA"
+
+# Grant Eventarc event receiver role
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+  --member="serviceAccount:eventarc-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/eventarc.eventReceiver"
+
+# Grant the Cloud Run runtime service account access to read and write objects
 PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT --format="value(projectNumber)")
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/storage.objectUser"
 
 # Grant Pub/Sub publisher role to the Cloud Storage service account
 gcloud projects add-iam-policy-binding YOUR_PROJECT \
@@ -173,6 +189,23 @@ app.listen(PORT, () => {
 });
 ```
 
+Add a `package.json` so Cloud Run's Node.js buildpack can install dependencies and start the service.
+
+```json
+{
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^7.16.0",
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": "20.x"
+  }
+}
+```
+
 Deploy to Cloud Run.
 
 ```bash
@@ -189,6 +222,17 @@ gcloud run deploy storage-event-handler \
 ## Step 2: Create the Eventarc Trigger
 
 Create a trigger that routes Cloud Storage events to your Cloud Run service.
+
+Make sure the bucket is in the same Google Cloud project and region or multi-region as the Eventarc trigger. For this example, use a bucket in `us-central1`.
+
+Before creating the trigger, grant the Eventarc service account permission to invoke the authenticated Cloud Run service.
+
+```bash
+gcloud run services add-iam-policy-binding storage-event-handler \
+  --region=us-central1 \
+  --member="serviceAccount:eventarc-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+```
 
 ```bash
 # Create an Eventarc trigger for file creation events
@@ -225,27 +269,6 @@ gcloud eventarc triggers create storage-metadata-trigger \
   --event-filters="type=google.cloud.storage.object.v1.metadataUpdated" \
   --event-filters="bucket=my-upload-bucket" \
   --service-account=eventarc-sa@YOUR_PROJECT.iam.gserviceaccount.com
-```
-
-## Setting Up IAM
-
-The service account used by Eventarc needs the right permissions.
-
-```bash
-# Create the service account
-gcloud iam service-accounts create eventarc-sa \
-  --display-name="Eventarc Trigger SA"
-
-# Grant it permission to invoke Cloud Run
-gcloud run services add-iam-policy-binding storage-event-handler \
-  --region=us-central1 \
-  --member="serviceAccount:eventarc-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
-  --role="roles/run.invoker"
-
-# Grant Eventarc event receiver role
-gcloud projects add-iam-policy-binding YOUR_PROJECT \
-  --member="serviceAccount:eventarc-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
-  --role="roles/eventarc.eventReceiver"
 ```
 
 ## Testing the Trigger
