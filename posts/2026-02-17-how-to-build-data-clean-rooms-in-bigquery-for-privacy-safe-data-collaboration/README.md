@@ -19,7 +19,7 @@ A data clean room is a secure environment where multiple data contributors can p
 - Results must meet minimum aggregation thresholds (no singling out individuals)
 - All access is audited
 
-In BigQuery, you build clean rooms using a combination of Analytics Hub for data sharing, authorized routines for access control, and analysis rules to restrict what queries are allowed.
+In BigQuery, you build clean rooms using a combination of BigQuery sharing (Analytics Hub) for data sharing, query templates or table functions for approved analysis, and analysis rules to restrict what queries are allowed.
 
 ## Setting Up the Clean Room Architecture
 
@@ -47,9 +47,13 @@ Set up a dedicated project for the clean room:
 gcloud projects create clean-room-project \
   --name="Data Clean Room"
 
+# Enable the Analytics Hub API for BigQuery sharing
+gcloud services enable analyticshub.googleapis.com \
+  --project=clean-room-project
+
 # Create datasets for linked data and analysis results
-bq mk --location=US clean-room-project:analysis_routines
-bq mk --location=US clean-room-project:results
+bq --location=US mk --dataset clean-room-project:analysis_routines
+bq --location=US mk --dataset clean-room-project:results
 ```
 
 ## Step 2: Party A Publishes Data
@@ -93,7 +97,7 @@ FROM `party_b_project.internal.campaign_data`;
 
 ## Step 4: Create Analysis Routines
 
-The clean room project contains authorized routines that enforce privacy rules. These routines can access both linked datasets but only return aggregated results:
+The clean room project contains table functions that enforce privacy rules. These routines can access both linked datasets but only return aggregated results:
 
 ```sql
 -- Clean room analysis routine: campaign overlap analysis
@@ -107,6 +111,7 @@ AS (
   WITH matched_users AS (
     -- Join on hashed email to find overlap
     SELECT
+      a.hashed_email,
       a.age_bucket,
       a.income_bucket,
       a.loyalty_tier,
@@ -123,29 +128,29 @@ AS (
     income_bucket,
     loyalty_tier,
     channel,
-    COUNT(*) AS user_count
+    COUNT(DISTINCT hashed_email) AS user_count
   FROM matched_users
   GROUP BY age_bucket, income_bucket, loyalty_tier, channel
   -- Enforce minimum group size to prevent individual identification
-  HAVING COUNT(*) >= min_group_size
+  HAVING COUNT(DISTINCT hashed_email) >= min_group_size
 );
 ```
 
 ## Step 5: Enforce Analysis Rules
 
-BigQuery clean rooms support analysis rules that restrict what queries subscribers can run on shared data. These rules are defined at the listing level:
+BigQuery clean rooms support analysis rules that restrict what queries subscribers can run on shared data. These rules are configured on the shared views before or while publishing them to the clean room:
 
 ```sql
 -- Analysis rule: only allow aggregation queries with minimum thresholds
 -- This prevents any query that could identify individuals
-ALTER TABLE `clean-room-project.linked_party_a.customer_segments`
+ALTER VIEW `party_a_project.clean_room_share.customer_segments`
 SET OPTIONS (
   -- Restrict to aggregation queries only
   -- No SELECT * or row-level access
-  privacy_policy = JSON '''{
+  privacy_policy = '''{
     "aggregation_threshold_policy": {
       "threshold": 50,
-      "privacy_unit_columns": ["hashed_email"]
+      "privacy_unit_column": "hashed_email"
     }
   }'''
 );
@@ -155,17 +160,27 @@ The aggregation threshold policy ensures that any query result must contain data
 
 ## Step 6: Run Clean Room Analysis
 
-Both parties can now run approved analyses:
+Both parties can now run approved analyses through the table function:
 
 ```sql
 -- Run the campaign overlap analysis
--- Results are automatically aggregated with privacy thresholds enforced
+-- Results are aggregated by the table function with the minimum group size enforced
 SELECT *
 FROM `clean-room-project.analysis_routines.campaign_audience_overlap`(
   'Summer Sale 2025',  -- Campaign to analyze
   50                    -- Minimum group size
 )
 ORDER BY user_count DESC;
+```
+
+If a subscriber queries an analysis-rule-enforced view directly, the query must use the aggregation threshold clause:
+
+```sql
+SELECT WITH AGGREGATION_THRESHOLD
+  channel,
+  COUNT(DISTINCT hashed_email) AS user_count
+FROM `clean-room-project.linked_party_b.campaign_exposures`
+GROUP BY channel;
 ```
 
 ## Measurement Use Case: Ad Attribution
@@ -202,8 +217,8 @@ AS (
     SELECT
       cr.campaign_name,
       cr.channel,
-      COUNTIF(c.hashed_email IS NOT NULL) AS converted_users,
-      COUNT(*) AS reached_users
+      COUNT(DISTINCT IF(c.hashed_email IS NOT NULL, cr.hashed_email, NULL)) AS converted_users,
+      COUNT(DISTINCT cr.hashed_email) AS reached_users
     FROM campaign_reach cr
     LEFT JOIN conversions c ON cr.hashed_email = c.hashed_email
     GROUP BY cr.campaign_name, cr.channel
@@ -235,28 +250,30 @@ SELECT WITH DIFFERENTIAL_PRIVACY
   )
   campaign_name,
   channel,
-  COUNT(*) AS approx_reach,
-  AVG(CAST(converted AS FLOAT64)) AS approx_conversion_rate
+  COUNT(*, contribution_bounds_per_group => (0, 1)) AS approx_reach,
+  AVG(CAST(converted AS INT64), contribution_bounds_per_group => (0, 1)) AS approx_conversion_rate
 FROM clean_room_combined_view
 GROUP BY campaign_name, channel;
 ```
 
-Differential privacy adds mathematical noise to the results, making it impossible to determine whether any individual was in the dataset. The `epsilon` parameter controls the privacy-utility trade-off: lower epsilon means more privacy but noisier results.
+Differential privacy adds mathematical noise to the results, limiting what the output can reveal about whether any individual was in the dataset. The `epsilon` parameter controls the privacy-utility trade-off: lower epsilon means more privacy but noisier results.
 
 ## Auditing Clean Room Activity
 
-Every query in the clean room is logged for audit purposes:
+Every query in the clean room is logged for audit purposes. You can review recent BigQuery query jobs with the `INFORMATION_SCHEMA.JOBS_BY_PROJECT` view:
 
 ```sql
--- Audit trail: all queries run in the clean room
+-- Query history: recent queries run in the clean room project
 SELECT
-  protopayload_auditlog.authenticationInfo.principalEmail AS user,
-  protopayload_auditlog.serviceData.jobCompletedEvent.job.jobConfiguration.query.query AS query_text,
-  timestamp,
-  protopayload_auditlog.serviceData.jobCompletedEvent.job.jobStatistics.totalBilledBytes AS bytes_billed
-FROM `clean-room-project.audit_logs.cloudaudit_googleapis_com_data_access`
-WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-ORDER BY timestamp DESC;
+  user_email AS user,
+  query AS query_text,
+  creation_time,
+  total_bytes_billed AS bytes_billed
+FROM `clean-room-project`.`region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
+WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+  AND job_type = 'QUERY'
+  AND statement_type != 'SCRIPT'
+ORDER BY creation_time DESC;
 ```
 
 ## Best Practices
