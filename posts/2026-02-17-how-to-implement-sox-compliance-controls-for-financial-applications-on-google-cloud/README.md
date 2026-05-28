@@ -81,7 +81,7 @@ gcloud projects add-iam-policy-binding financial-app-project \
 gcloud projects add-iam-policy-binding financial-app-project \
     --role=roles/bigquery.admin \
     --member="group:financial-db-admins@mycompany.com" \
-    --condition='expression=resource.type == "bigquery.googleapis.com/Dataset" && resource.name.startsWith("projects/financial-app-project/datasets/"),title=Project datasets only'
+    --condition='expression=resource.service == "bigquery.googleapis.com" && resource.name.startsWith("projects/financial-app-project/datasets/"),title=Project datasets only'
 ```
 
 ### Automated Access Reviews
@@ -137,8 +137,9 @@ def generate_access_review(request):
                 })
 
     # Generate CSV for the compliance team to review
+    fieldnames = ['resource', 'role', 'member', 'condition', 'reviewed', 'reviewer', 'review_date']
     csv_buffer = io.StringIO()
-    writer = csv.DictWriter(csv_buffer, fieldnames=report_data[0].keys())
+    writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
     writer.writeheader()
     writer.writerows(report_data)
 
@@ -172,7 +173,7 @@ steps:
 
   # Step 2: Run security scanning
   - name: 'gcr.io/cloud-builders/gcloud'
-    args: ['artifacts', 'docker', 'images', 'scan', '$_IMAGE_NAME']
+    args: ['artifacts', 'docker', 'images', 'scan', '$_IMAGE_NAME', '--remote']
     id: 'security-scan'
     waitFor: ['run-tests']
 
@@ -213,7 +214,7 @@ gcloud builds triggers create github \
 gcloud logging metrics create deployment-events \
     --project=financial-app-project \
     --description="Tracks all deployment events to financial systems" \
-    --log-filter='resource.type="cloud_run_revision" OR resource.type="gke_cluster" AND protoPayload.methodName:("deploy" OR "update" OR "create")'
+    --log-filter='(resource.type="cloud_run_revision" OR resource.type="gke_cluster") AND protoPayload.methodName:("deploy" OR "update" OR "create")'
 ```
 
 ## Computer Operations Controls
@@ -221,16 +222,12 @@ gcloud logging metrics create deployment-events \
 ### Backup and Recovery
 
 ```bash
-# Enable automated backups for Cloud SQL financial databases
+# Enable automated backups and point-in-time recovery for Cloud SQL PostgreSQL financial databases
 gcloud sql instances patch financial-db \
     --backup-start-time=02:00 \
-    --enable-bin-log \
     --retained-backups-count=365 \
-    --project=financial-app-project
-
-# Enable point-in-time recovery
-gcloud sql instances patch financial-db \
     --enable-point-in-time-recovery \
+    --retained-transaction-log-days=7 \
     --project=financial-app-project
 
 # Create a snapshot schedule for Compute Engine disks
@@ -246,20 +243,25 @@ gcloud compute resource-policies create snapshot-schedule financial-disk-schedul
 
 ```bash
 # Create uptime checks for financial application endpoints
-gcloud monitoring uptime create financial-app-uptime \
-    --display-name="Financial App Availability" \
+gcloud monitoring uptime create "Financial App Availability" \
     --resource-type=uptime-url \
-    --monitored-resource='{"host": "financial-app.mycompany.com", "project_id": "financial-app-project"}' \
-    --check-interval=60 \
+    --resource-labels=host=financial-app.mycompany.com,project_id=financial-app-project \
+    --period=1 \
     --timeout=10
 
-# Alert on any database errors
+# Create a log-based metric for Cloud SQL database errors
+gcloud logging metrics create cloudsql-database-errors \
+    --project=financial-app-project \
+    --description="Tracks Cloud SQL database error logs" \
+    --log-filter='resource.type="cloudsql_database" AND severity>=ERROR'
+
+# Alert on database errors
 gcloud monitoring policies create \
     --display-name="Financial DB Error Alert" \
     --condition-display-name="Database errors detected" \
-    --condition-filter='resource.type="cloudsql_database" AND metric.type="cloudsql.googleapis.com/database/error_count"' \
-    --condition-threshold-value=0 \
-    --condition-threshold-comparison=COMPARISON_GT \
+    --condition-filter='resource.type="cloudsql_database" AND metric.type="logging.googleapis.com/user/cloudsql-database-errors"' \
+    --if='> 0' \
+    --duration=60s \
     --notification-channels=projects/financial-app-project/notificationChannels/CHANNEL_ID
 ```
 
@@ -274,8 +276,7 @@ gcloud monitoring policies create \
 
 import functions_framework
 from google.cloud import bigquery
-from google.cloud import monitoring_v3
-from datetime import datetime
+import json
 
 bq_client = bigquery.Client()
 
@@ -288,6 +289,16 @@ def check_data_integrity(request):
     # Check 1: Row count validation
     # Compare current row counts against expected ranges
     row_count_query = """
+    WITH row_counts AS (
+        SELECT 'transactions' AS table_id, COUNT(*) AS row_count
+        FROM `financial-app-project.financial_data.transactions`
+        UNION ALL
+        SELECT 'journal_entries' AS table_id, COUNT(*) AS row_count
+        FROM `financial-app-project.financial_data.journal_entries`
+        UNION ALL
+        SELECT 'general_ledger' AS table_id, COUNT(*) AS row_count
+        FROM `financial-app-project.financial_data.general_ledger`
+    )
     SELECT
         table_id,
         row_count,
@@ -296,8 +307,7 @@ def check_data_integrity(request):
             WHEN row_count > 10000000 THEN 'WARNING: Unusually high row count'
             ELSE 'OK'
         END as status
-    FROM `financial-app-project.financial_data.__TABLES__`
-    WHERE table_id IN ('transactions', 'journal_entries', 'general_ledger')
+    FROM row_counts
     """
     results = bq_client.query(row_count_query).result()
     for row in results:
@@ -311,7 +321,7 @@ def check_data_integrity(request):
     # Debits should equal credits in the journal
     balance_query = """
     SELECT
-        ABS(SUM(debit_amount) - SUM(credit_amount)) as imbalance
+        ABS(COALESCE(SUM(debit_amount), 0) - COALESCE(SUM(credit_amount), 0)) as imbalance
     FROM `financial-app-project.financial_data.journal_entries`
     WHERE posting_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
     """
@@ -326,7 +336,7 @@ def check_data_integrity(request):
     # Report results
     failures = [c for c in checks if c['status'] != 'OK']
     if failures:
-        send_alert(failures)
+        print(json.dumps({'severity': 'ERROR', 'failures': failures}))
 
     return {'checks': checks, 'failures': len(failures)}
 ```
