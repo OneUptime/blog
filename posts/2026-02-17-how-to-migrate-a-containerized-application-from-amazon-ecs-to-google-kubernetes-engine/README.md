@@ -25,7 +25,7 @@ Before diving into the migration, here is how the concepts map:
 | ECS Cluster | GKE Cluster |
 | ALB/NLB | Ingress / Service (LoadBalancer) |
 | ECS Service Discovery | Kubernetes DNS (CoreDNS) |
-| Task IAM Role | Workload Identity |
+| Task IAM Role | Workload Identity Federation for GKE |
 | ECS Exec | kubectl exec |
 | CloudWatch Logs | Cloud Logging |
 | Parameter Store / Secrets Manager | Kubernetes Secrets / Secret Manager |
@@ -77,6 +77,9 @@ gcloud artifacts repositories create app-images \
   --location=us-central1 \
   --project=PROJECT_ID
 
+# Configure Docker authentication for Artifact Registry
+gcloud auth configure-docker us-central1-docker.pkg.dev
+
 # Pull from ECR, tag for Artifact Registry, and push
 docker pull 123456789.dkr.ecr.us-east-1.amazonaws.com/my-api:latest
 docker tag 123456789.dkr.ecr.us-east-1.amazonaws.com/my-api:latest \
@@ -84,7 +87,7 @@ docker tag 123456789.dkr.ecr.us-east-1.amazonaws.com/my-api:latest \
 docker push us-central1-docker.pkg.dev/PROJECT_ID/app-images/my-api:latest
 ```
 
-**Option B: Pull directly from ECR** by configuring an image pull secret:
+**Option B: Pull directly from ECR** by configuring an image pull secret. ECR authorization tokens are valid for 12 hours, so use this for testing or automate refreshing the secret:
 
 ```bash
 # Create a pull secret for ECR access
@@ -170,7 +173,7 @@ spec:
       labels:
         app: my-api
     spec:
-      # Workload Identity (replaces ECS task role)
+      # Workload Identity Federation for GKE (replaces ECS task role)
       serviceAccountName: my-api-sa
       containers:
         # Main application container
@@ -272,13 +275,20 @@ kubectl create secret generic db-credentials \
   --from-literal=password='your_db_password' \
   --from-literal=username='your_db_user'
 
-# Or use GCP Secret Manager with Workload Identity
+# Or use GCP Secret Manager with Workload Identity Federation for GKE
 gcloud secrets create db-password \
   --data-file=- <<< "your_db_password" \
   --project=PROJECT_ID
 ```
 
-For Secret Manager integration with GKE, use the Secret Manager CSI driver:
+For Secret Manager integration with GKE, enable the Secret Manager add-on and use the CSI driver:
+
+```bash
+gcloud container clusters update ecs-migration-cluster \
+  --region=us-central1 \
+  --enable-secret-manager \
+  --project=PROJECT_ID
+```
 
 ```yaml
 # secret-provider.yaml
@@ -287,11 +297,31 @@ kind: SecretProviderClass
 metadata:
   name: gcp-secrets
 spec:
-  provider: gcp
+  provider: gke
   parameters:
     secrets: |
       - resourceName: "projects/PROJECT_ID/secrets/db-password/versions/latest"
         path: "db-password"
+```
+
+Mount the secret in the pod that needs it:
+
+```yaml
+spec:
+  serviceAccountName: my-api-sa
+  containers:
+    - name: api
+      volumeMounts:
+        - name: gcp-secrets
+          mountPath: "/var/secrets"
+          readOnly: true
+  volumes:
+    - name: gcp-secrets
+      csi:
+        driver: secrets-store-gke.csi.k8s.io
+        readOnly: true
+        volumeAttributes:
+          secretProviderClass: gcp-secrets
 ```
 
 ## Step 5: Set Up Networking and Ingress
@@ -336,7 +366,7 @@ gcloud compute addresses create my-api-ip \
 
 ## Step 6: Configure Workload Identity
 
-Replace ECS task IAM roles with GKE Workload Identity:
+Replace ECS task IAM roles with Workload Identity Federation for GKE:
 
 ```bash
 # Create a GCP service account
