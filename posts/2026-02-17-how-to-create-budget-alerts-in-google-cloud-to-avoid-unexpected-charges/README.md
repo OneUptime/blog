@@ -92,7 +92,7 @@ By default, budget alerts go to Billing Account Administrators and Billing Accou
 
 ### Connect to Pub/Sub for Automation
 
-The real power of budget alerts comes from connecting them to Cloud Pub/Sub. This lets you trigger automated responses when thresholds are hit.
+The real power of budget alerts comes from connecting them to Cloud Pub/Sub. This lets you trigger automated responses from budget updates, including when threshold data is included in the notification.
 
 ```bash
 # Create a Pub/Sub topic for budget alerts
@@ -110,13 +110,13 @@ gcloud billing budgets create \
 
 ### Connect to Monitoring Notification Channels
 
-You can also link budget alerts to Cloud Monitoring notification channels. This means you can send alerts to Slack, PagerDuty, SMS, or any webhook.
+You can also link budget alerts to Cloud Monitoring email notification channels. For budget alerts, Google Cloud supports Monitoring email channels here; if you want to route budget notifications to Slack, PagerDuty, SMS, or a webhook, use Pub/Sub and forward the messages from there.
 
 ```bash
 # Link a monitoring notification channel to your budget
 gcloud billing budgets create \
   --billing-account=01ABCD-EFGH23-456789 \
-  --display-name="Slack Alerts Budget" \
+  --display-name="Email Alerts Budget" \
   --budget-amount=500 \
   --threshold-rule=percent=0.5 \
   --threshold-rule=percent=0.9 \
@@ -125,18 +125,19 @@ gcloud billing budgets create \
 
 ## Step 4: Automate Responses with Cloud Functions
 
-Here is where it gets interesting. You can write a Cloud Function that listens to the Pub/Sub topic and takes action when a budget threshold is hit.
+Here is where it gets interesting. You can write a Cloud Function that listens to the Pub/Sub topic and takes action when the reported spend exceeds your budget amount.
 
-This Cloud Function disables billing on a project when the budget is exceeded:
+This Cloud Function disables billing on a single project when the budget is exceeded. Set the `PROJECT_ID` environment variable to the project you want to disable:
 
 ```python
 # Cloud Function to cap billing when budget is exceeded
 import base64
 import json
+import os
 from googleapiclient import discovery
 
 def stop_billing(data, context):
-    """Triggered by a Pub/Sub message when budget threshold is hit."""
+    """Triggered by a Pub/Sub budget notification."""
     pubsub_data = base64.b64decode(data['data']).decode('utf-8')
     pubsub_json = json.loads(pubsub_data)
 
@@ -149,7 +150,7 @@ def stop_billing(data, context):
         print(f"Current cost {cost_amount} is within budget {budget_amount}")
         return
 
-    project_id = pubsub_json['budgetDisplayName']  # or extract from attributes
+    project_id = os.environ['PROJECT_ID']
     billing_client = discovery.build('cloudbilling', 'v1')
 
     # Disable billing on the project
