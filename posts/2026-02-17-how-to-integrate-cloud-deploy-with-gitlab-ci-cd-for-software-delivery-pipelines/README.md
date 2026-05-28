@@ -55,7 +55,7 @@ gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:gitlab-ci@my-project.iam.gserviceaccount.com" \
   --role="roles/clouddeploy.releaser"
 
-# Grant act-as permission for the deploy execution service account
+# Grant act-as permission for the Cloud Deploy render/deploy execution service account
 gcloud iam service-accounts add-iam-policy-binding \
   deploy-sa@my-project.iam.gserviceaccount.com \
   --member="serviceAccount:gitlab-ci@my-project.iam.gserviceaccount.com" \
@@ -89,7 +89,7 @@ stages:
 # Run unit tests
 unit-tests:
   stage: test
-  image: node:18
+  image: node:24
   script:
     - npm ci
     - npm test
@@ -100,13 +100,15 @@ unit-tests:
 # Build and push the container image
 build-image:
   stage: build
-  image: docker:24.0
+  image: google/cloud-sdk:alpine
   services:
-    - docker:24.0-dind
+    - docker:24.0.5-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
     # Authenticate with GCP using the service account key
-    - apk add --no-cache python3 py3-pip
-    - pip3 install google-cloud-sdk --break-system-packages
+    - apk add --no-cache docker-cli
     - gcloud auth activate-service-account --key-file=$GCP_SERVICE_ACCOUNT_KEY
     - gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
   script:
@@ -154,7 +156,7 @@ gcloud iam workload-identity-pools create gitlab-pool \
 gcloud iam workload-identity-pools providers create-oidc gitlab-provider \
   --location="global" \
   --workload-identity-pool=gitlab-pool \
-  --issuer-uri="https://gitlab.com" \
+  --issuer-uri="https://gitlab.com/" \
   --allowed-audiences="https://gitlab.com" \
   --attribute-mapping="google.subject=assertion.sub,attribute.project_path=assertion.project_path"
 
@@ -176,13 +178,13 @@ create-release:
     GITLAB_OIDC_TOKEN:
       aud: https://gitlab.com
   before_script:
+    - echo "$GITLAB_OIDC_TOKEN" > /tmp/oidc-token
     - |
       gcloud iam workload-identity-pools create-cred-config \
         projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/gitlab-pool/providers/gitlab-provider \
         --service-account=gitlab-ci@my-project.iam.gserviceaccount.com \
         --output-file=/tmp/credentials.json \
         --credential-source-file=/tmp/oidc-token
-    - echo "$GITLAB_OIDC_TOKEN" > /tmp/oidc-token
     - gcloud auth login --cred-file=/tmp/credentials.json
     - gcloud config set project my-project
   script:
@@ -200,7 +202,7 @@ Make sure your repository includes the Skaffold configuration and Kubernetes man
 
 ```yaml
 # skaffold.yaml in your GitLab repository root
-apiVersion: skaffold/v4beta7
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: my-app
@@ -215,7 +217,7 @@ The `--source=.` flag in the release creation command tells Cloud Deploy to look
 
 ## Adding Deployment Status Back to GitLab
 
-To close the feedback loop, you can query the Cloud Deploy rollout status and report it back to GitLab using the deployment API.
+To close the feedback loop, you can query the Cloud Deploy rollout status from GitLab.
 
 ```yaml
 # Additional job that checks deployment status
