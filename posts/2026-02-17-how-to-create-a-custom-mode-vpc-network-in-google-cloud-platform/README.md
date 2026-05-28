@@ -98,7 +98,7 @@ gcloud compute networks subnets create prod-europe-west1 \
 I always enable two features on every subnet:
 
 - **Private Google Access** (`--enable-private-ip-google-access`): Lets VMs without external IPs access Google APIs and services. Essential for security-conscious deployments.
-- **Flow Logs** (`--enable-flow-logs`): Records network flows for monitoring and troubleshooting. The sampling rate of 0.5 captures half the flows, which is a good balance between visibility and cost.
+- **Flow Logs** (`--enable-flow-logs`): Records network flows for monitoring and troubleshooting. The sampling rate of 0.5 keeps about half of the generated flow log entries after primary sampling, which is a good balance between visibility and cost.
 
 ## Adding Secondary IP Ranges for GKE
 
@@ -115,7 +115,7 @@ These secondary ranges are used exclusively by GKE and do not interfere with VM 
 
 ## Setting Up Basic Firewall Rules
 
-A new custom mode VPC has no firewall rules (unlike the default network which has some permissive rules). You need to create your own:
+A new custom mode VPC has no pre-populated firewall rules beyond Google Cloud's implied firewall behavior (unlike the default network, which has some permissive rules). You need to create your own:
 
 ```bash
 # Allow internal communication within the VPC
@@ -190,7 +190,7 @@ gcloud compute firewall-rules list \
 
 ## Common Mistakes to Avoid
 
-1. **Using /24 subnets everywhere**: A /24 only gives you 251 usable IPs. That fills up fast, especially with GKE. Start with /20 at minimum for production subnets.
+1. **Using /24 subnets everywhere**: A /24 only gives you 252 usable IPs because Google Cloud reserves four addresses in each primary subnet range. That fills up fast, especially with GKE. Start with /20 at minimum for production subnets.
 2. **Forgetting Private Google Access**: Without it, VMs without external IPs cannot reach Google APIs. Always enable it.
 3. **Overlapping with on-prem ranges**: Before choosing CIDR blocks, inventory all your existing networks. Overlapping ranges will block VPC peering and VPN connectivity.
 4. **Not enabling flow logs**: Flow logs are your debugging lifeline. The cost is minimal compared to the hours you save when troubleshooting connectivity issues.
