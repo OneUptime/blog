@@ -8,7 +8,7 @@ Description: Practical strategies for handling duplicate message delivery in Goo
 
 ---
 
-Pub/Sub delivers messages at least once. That means your subscriber might receive the same message more than once. This is not a bug - it is a fundamental design property of distributed messaging systems. The tradeoff between at-least-once and exactly-once delivery is well-understood, and Pub/Sub chooses reliability over uniqueness. If a network hiccup prevents an acknowledgement from reaching the server, Pub/Sub redelivers the message to be safe.
+By default, Pub/Sub delivers messages at least once. That means your subscriber might receive the same message more than once. This is not a bug - it is a fundamental design property of distributed messaging systems. The tradeoff between at-least-once and exactly-once delivery is well-understood, and Pub/Sub chooses reliability over uniqueness unless you enable exactly-once delivery on a pull subscription. If a network hiccup prevents an acknowledgement from reaching the server, Pub/Sub redelivers the message to be safe.
 
 For some applications, processing a message twice is harmless. For others, it can cause duplicate charges, duplicate notifications, or corrupted data. If your application falls into the second category, you need a deduplication strategy.
 
@@ -24,7 +24,7 @@ Understanding the causes helps you design better solutions:
 
 4. **Message replay**: If someone seeks a subscription to an earlier timestamp, previously processed messages are redelivered intentionally.
 
-5. **Multiple subscriptions**: If a publisher accidentally publishes the same message twice (perhaps due to its own retry logic), each publish creates a distinct message with a different message ID. This is not a Pub/Sub duplicate per se, but the effect is the same.
+5. **Duplicate publishes**: If a publisher accidentally publishes the same message twice (perhaps due to its own retry logic), each publish usually creates a distinct message with a different message ID. This is not a Pub/Sub duplicate per se, but the effect is the same.
 
 ## Strategy 1: Idempotent Processing
 
@@ -89,7 +89,7 @@ def process_payment(message):
 
 ## Strategy 2: Message ID Tracking
 
-Pub/Sub assigns a unique message ID to every message. You can track these IDs to detect redeliveries:
+Pub/Sub assigns each published message a message ID that is unique within the topic. You can track these IDs to detect redeliveries:
 
 ```python
 # Deduplication using Pub/Sub message IDs with Redis
@@ -100,8 +100,9 @@ import json
 redis_client = redis.Redis(host='redis-host', port=6379, db=0)
 subscriber = pubsub_v1.SubscriberClient()
 
-# Time-to-live for dedup keys (should be longer than max redelivery window)
-DEDUP_TTL_SECONDS = 86400  # 24 hours
+# Time-to-live for dedup keys. Size this for your subscription's message
+# retention duration and any replay window you need to tolerate.
+DEDUP_TTL_SECONDS = 604800  # 7 days
 
 def deduplicated_handler(message):
     """Process messages with Redis-based deduplication."""
@@ -213,8 +214,8 @@ resource "google_pubsub_subscription" "order_processor_eo" {
 
 However, exactly-once delivery has important caveats:
 
-- It only prevents redeliveries caused by acknowledgement issues. It does not prevent duplicate publishes.
-- It requires the subscriber to use the acknowledgement IDs properly.
+- It applies to messages with the same Pub/Sub-assigned message ID. It does not prevent duplicate publishes.
+- For the strongest guarantee in client code, use supported client libraries and acknowledgement methods that report ack success, such as `ack_with_response()` in the Python client.
 - It adds latency to acknowledgements because Pub/Sub needs to confirm the ack.
 - It is not available for push subscriptions.
 
@@ -284,7 +285,7 @@ The subscriber then checks the `dedup_id` attribute instead of (or in addition t
 Deduplication adds overhead. Here are some tips to minimize the impact:
 
 - **Use in-memory caches for hot paths.** Redis or Memcached lookups are much faster than database queries.
-- **Set appropriate TTLs.** You do not need to track message IDs forever. The Pub/Sub acknowledgement deadline plus some buffer is usually enough.
+- **Set appropriate TTLs.** You do not need to track message IDs forever, but the TTL should cover your subscription's message retention duration, replay window, publisher retry window, or business idempotency window. Pub/Sub's default message retention duration is 7 days and can be configured up to 31 days.
 - **Batch dedup checks.** If you process messages in batches, check all message IDs at once rather than one at a time.
 - **Shard your dedup store.** If you have very high message volume, shard your Redis instance or dedup table by message ID hash.
 
