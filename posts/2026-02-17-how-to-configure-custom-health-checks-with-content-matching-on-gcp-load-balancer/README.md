@@ -37,6 +37,7 @@ Here is how to create an HTTP health check that validates both the status code a
 
 # The backend is only considered healthy if both the status code and content match
 gcloud compute health-checks create http my-content-health-check \
+    --global \
     --port=8080 \
     --request-path="/healthz" \
     --response="\"status\":\"ok\"" \
@@ -46,7 +47,7 @@ gcloud compute health-checks create http my-content-health-check \
     --unhealthy-threshold=3
 ```
 
-The `--response` flag is the content matching string. The health check will look for this exact string anywhere in the response body. If the response is `{"status":"ok","uptime":12345}`, the check passes because `"status":"ok"` appears in the body.
+The `--response` flag is the content matching string. The health check will look for this exact string anywhere in the first 1024 bytes of the response body. If the response is `{"status":"ok","uptime":12345}`, the check passes because `"status":"ok"` appears in the inspected part of the body.
 
 ## Health Check Parameters Explained
 
@@ -54,7 +55,7 @@ Let me break down each parameter and why it matters:
 
 - **port** - The port to check. Make sure this matches where your application actually listens.
 - **request-path** - The URL path for the health check request. Use a dedicated health endpoint, not your homepage.
-- **response** - The string to match in the response body. Must be 1024 bytes or less.
+- **response** - The ASCII string to match in the first 1024 bytes of the response body. Must be 1024 bytes or less.
 - **check-interval** - How often to probe. 10 seconds is a good default for most applications.
 - **timeout** - How long to wait for a response. Keep this well below the check interval.
 - **healthy-threshold** - Number of consecutive successes before marking a backend healthy. 2 means a backend must pass twice before receiving traffic.
@@ -117,6 +118,7 @@ For backends that only accept HTTPS connections:
 # Create an HTTPS health check with content matching
 # Useful when your backends terminate TLS directly
 gcloud compute health-checks create https my-https-content-check \
+    --global \
     --port=443 \
     --request-path="/healthz" \
     --response="HEALTHY" \
@@ -134,6 +136,7 @@ If you are running gRPC services, GCP supports gRPC health checks that follow th
 # Create a gRPC health check for gRPC backend services
 # Uses the standard gRPC health checking protocol
 gcloud compute health-checks create grpc my-grpc-health-check \
+    --global \
     --port=50051 \
     --grpc-service-name="my.service.v1" \
     --check-interval=10s \
@@ -178,11 +181,12 @@ resource "google_compute_backend_service" "app" {
 
 ## Using Different Health Checks for Different Purposes
 
-GCP allows you to attach multiple health checks to a backend service. Consider using separate health checks for liveness and readiness:
+Each backend service references a single health check. If you need separate liveness and readiness checks, use the readiness check for the load-balanced backend service and keep liveness checks for instance or application supervision outside that backend service. You can still use different health checks for different backend services:
 
 ```bash
 # Liveness check - basic TCP connectivity, checks if the process is alive
 gcloud compute health-checks create tcp liveness-check \
+    --global \
     --port=8080 \
     --check-interval=5s \
     --timeout=3s \
@@ -191,6 +195,7 @@ gcloud compute health-checks create tcp liveness-check \
 
 # Readiness check - content matching to verify the app is ready to serve
 gcloud compute health-checks create http readiness-check \
+    --global \
     --port=8080 \
     --request-path="/readyz" \
     --response="ready" \
@@ -236,6 +241,6 @@ gcloud compute firewall-rules create allow-health-checks \
 
 **Use appropriate thresholds.** Setting unhealthy-threshold to 1 means a single failed probe removes the backend from the pool. This is too aggressive for most applications. Start with 3 and adjust based on your tolerance for false positives.
 
-**Monitor health check status.** Set up alerts on the `compute.googleapis.com/instance/uptime_total` metric filtered by health check status to know when backends are flapping between healthy and unhealthy states.
+**Monitor health check status.** Enable health check logging and set up alerts or logs-based metrics from the `healthState` and `detailedHealthState` fields to know when backends are flapping between healthy and unhealthy states.
 
 Content matching health checks are a straightforward way to add application-level awareness to your load balancer. They catch a class of failures that simple status code checks miss, and they take just a few minutes to configure.
