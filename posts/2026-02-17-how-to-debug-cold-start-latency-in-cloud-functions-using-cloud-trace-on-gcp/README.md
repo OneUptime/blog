@@ -47,7 +47,7 @@ _init_start_time = time.time()
 # Initialize tracing at module level (runs during cold start)
 resource = Resource.create({
     SERVICE_NAME: 'my-cloud-function',
-    'faas.name': os.environ.get('FUNCTION_NAME', 'unknown'),
+    'faas.name': os.environ.get('K_SERVICE', 'unknown'),
     'faas.version': os.environ.get('K_REVISION', 'unknown'),
 })
 
@@ -171,20 +171,11 @@ print(f"  Cold Start Overhead: {cold_latency - statistics.median(warm_latencies)
 
 ## Analyzing Cold Starts in Cloud Trace
 
-Once your function is instrumented, use Cloud Trace to analyze cold starts:
-
-```bash
-# Find cold start traces in Cloud Trace
-# Look for traces where faas.cold_start is true
-gcloud trace traces list \
-  --project=my-project \
-  --filter="span.attributes.faas.cold_start=true" \
-  --limit=10
-```
+Once your function is instrumented, use Trace Explorer to analyze cold starts. Cloud Trace doesn't provide a supported `gcloud trace traces list` command; use the Cloud Trace UI or the Cloud Trace API to retrieve trace data.
 
 In the Cloud Trace UI:
-1. Go to Trace List
-2. Filter by span attribute: `faas.cold_start = true`
+1. Go to Trace Explorer
+2. Add an attribute filter for `faas.cold_start` with the value `true`
 3. Compare the waterfall of a cold start trace vs a warm start trace
 4. Look at the `cold_start.init_duration_ms` attribute to see how long initialization took
 
@@ -267,7 +258,7 @@ gcloud functions deploy my-function \
   --project=my-project
 ```
 
-The relationship is roughly linear - doubling memory approximately halves the initialization time because GCP allocates CPU proportionally to memory.
+Increasing memory can improve CPU-bound initialization because the default CPU allocation is tied to the memory tier, but the impact is workload-dependent. Measure before and after instead of assuming a fixed speedup.
 
 ### Minimum Instances
 
@@ -320,26 +311,30 @@ resource "google_cloudfunctions2_function" "my_function" {
 
 Build a dashboard that tracks cold start frequency and duration:
 
-```text
-# MQL: Cold start percentage over time
-fetch cloud_function
-| metric 'cloudfunctions.googleapis.com/function/execution_count'
-| align rate(5m)
-| group_by [resource.function_name, metric.status],
-    [executions: aggregate(val())]
-```
+In Metrics Explorer, add the built-in Cloud Functions execution count metric as baseline traffic context. MQL is no longer the recommended query language for new Cloud Monitoring dashboards, so prefer the query builder or PromQL for new charts.
 
 For custom cold start metrics from your instrumentation, use a custom metric:
 
 ```python
 # Report cold start as a custom metric
+import os
 from opentelemetry import metrics
-from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.exporter.cloud_monitoring import CloudMonitoringMetricsExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
 # Set up metrics exporter
-meter_provider = MeterProvider()
-meter = meter_provider.get_meter(__name__)
+metrics.set_meter_provider(
+    MeterProvider(
+        metric_readers=[
+            PeriodicExportingMetricReader(
+                CloudMonitoringMetricsExporter(),
+                export_interval_millis=5000,
+            )
+        ]
+    )
+)
+meter = metrics.get_meter(__name__)
 
 # Create a counter for cold starts
 cold_start_counter = meter.create_counter(
@@ -358,10 +353,10 @@ cold_start_duration = meter.create_histogram(
 def on_cold_start(duration_ms):
     """Record a cold start event."""
     cold_start_counter.add(1, {
-        'function_name': os.environ.get('FUNCTION_NAME', 'unknown'),
+        'function_name': os.environ.get('K_SERVICE', 'unknown'),
     })
     cold_start_duration.record(duration_ms, {
-        'function_name': os.environ.get('FUNCTION_NAME', 'unknown'),
+        'function_name': os.environ.get('K_SERVICE', 'unknown'),
     })
 ```
 
@@ -371,9 +366,9 @@ Here is a quick checklist for reducing cold start latency:
 
 1. **Minimize dependencies.** Remove unused packages from requirements.txt/package.json.
 2. **Use lazy imports.** Only import heavy libraries when you actually need them.
-3. **Increase memory.** 256MB to 512MB often cuts cold start time in half.
+3. **Increase memory.** Moving from 256MB to 512MB can improve CPU-bound initialization, but measure the actual impact.
 4. **Set minimum instances.** For latency-sensitive functions, keep instances warm.
-5. **Choose a lighter runtime.** Go and Java (with GraalVM) generally have faster cold starts than Python or Node.js with heavy dependencies.
+5. **Choose a lighter runtime.** Compiled runtimes such as Go can start faster for simple functions, while heavy dependencies can dominate any runtime.
 6. **Pre-initialize connections.** Create database clients at module level so they persist across invocations.
 7. **Keep your deployment package small.** Smaller packages download and extract faster.
 
