@@ -16,7 +16,7 @@ The Cloud Logging client library for Go gives you direct integration with Google
 
 Cloud Run automatically captures anything written to stdout and stderr and sends it to Cloud Logging. So technically, you could use `fmt.Println` for everything. The problem is that Cloud Logging treats each line as an unstructured text entry. You lose the ability to:
 
-- Filter by severity level
+- Set application-specific severity levels
 - Correlate logs with specific HTTP requests
 - Query by custom fields
 - Group related log entries
@@ -44,6 +44,7 @@ import (
     "fmt"
     "net/http"
     "os"
+    "strings"
     "time"
 )
 
@@ -83,7 +84,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
     traceHeader := r.Header.Get("X-Cloud-Trace-Context")
     projectID := os.Getenv("GOOGLE_CLOUD_PROJECT")
     trace := ""
-    if traceHeader != "" {
+    if traceHeader != "" && projectID != "" {
         // Parse the trace ID from the header format: TRACE_ID/SPAN_ID;o=TRACE_TRUE
         parts := strings.SplitN(traceHeader, "/", 2)
         if len(parts) > 0 {
@@ -118,6 +119,8 @@ import (
     "log"
     "net/http"
     "os"
+    "strings"
+    "time"
 
     "cloud.google.com/go/logging"
 )
@@ -159,7 +162,25 @@ func (a *App) Close() {
     if err := a.logger.Flush(); err != nil {
         log.Printf("Failed to flush logs: %v", err)
     }
-    a.client.Close()
+    if err := a.client.Close(); err != nil {
+        log.Printf("Failed to close logging client: %v", err)
+    }
+}
+
+// extractTrace builds the trace resource name from the incoming Cloud Run request.
+func extractTrace(r *http.Request) string {
+    projectID := os.Getenv("GOOGLE_CLOUD_PROJECT")
+    traceHeader := r.Header.Get("X-Cloud-Trace-Context")
+    if projectID == "" || traceHeader == "" {
+        return ""
+    }
+
+    parts := strings.SplitN(traceHeader, "/", 2)
+    if len(parts) == 0 || parts[0] == "" {
+        return ""
+    }
+
+    return fmt.Sprintf("projects/%s/traces/%s", projectID, parts[0])
 }
 ```
 
