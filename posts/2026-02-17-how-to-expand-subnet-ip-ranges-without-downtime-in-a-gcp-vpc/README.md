@@ -8,9 +8,9 @@ Description: Learn how to expand subnet IP ranges in GCP without downtime, inclu
 
 ---
 
-You planned your subnet with a /24 giving you 251 usable IPs. Six months later, your team has deployed enough VMs, GKE nodes, and internal load balancers to use up most of those addresses. New deployments are failing because there are no available IPs left.
+You planned your subnet with a /24 giving you 252 usable IPs. Six months later, your team has deployed enough VMs, GKE nodes, and internal load balancers to use up most of those addresses. New deployments are failing because there are no available IPs left.
 
-The good news is that GCP allows you to expand subnet IP ranges in place, without downtime. Existing VMs keep their IP addresses, traffic continues flowing, and the new addresses become available immediately. In this post, I will walk through the process, the constraints, and what to verify before and after.
+The good news is that GCP allows you to expand subnet IP ranges in place, without downtime. Existing VMs keep their IP addresses, traffic continues flowing, and the new addresses become available after the operation completes. In this post, I will walk through the process, the constraints, and what to verify before and after.
 
 ## How Subnet Expansion Works
 
@@ -20,7 +20,7 @@ The key constraints:
 - You can only make the range larger, never smaller
 - The new range must be a superset of the current range (same base address)
 - The expanded range must not overlap with other subnets in the same VPC or peered VPCs
-- The operation is immediate and causes no downtime
+- The operation can take several minutes, but traffic within the subnet is not interrupted
 
 ```mermaid
 graph TD
@@ -106,7 +106,7 @@ gcloud compute networks subnets expand-ip-range my-subnet \
   --prefix-length=20
 ```
 
-That is it. The command completes in seconds. No downtime, no VM restarts, no reconfiguration needed.
+That is it. The command can take several minutes to complete. No downtime, no VM restarts, no reconfiguration needed.
 
 ## Verifying the Expansion
 
@@ -187,7 +187,7 @@ gcloud compute routes list \
   --format="table(name, destRange)"
 ```
 
-However, if the expanded range now overlaps with the peer network's subnets, this will cause problems. This is why the pre-flight overlap check is critical.
+However, if the expanded range would overlap with the peer network's subnets, Google Cloud returns an error and the expansion does not complete. This is why the pre-flight overlap check is critical.
 
 ## What You Cannot Do
 
@@ -209,7 +209,7 @@ A well-planned IP scheme:
 
 ```text
 10.10.0.0/20   - Production workloads (expandable to /18)
-10.10.64.0/20  - GKE pods (expandable to /16)
+10.10.64.0/20  - GKE pods (expandable to /18)
 10.10.128.0/20 - GKE services (expandable to /18)
 10.20.0.0/20   - Staging workloads (expandable to /18)
 ```
