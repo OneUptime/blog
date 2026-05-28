@@ -16,7 +16,7 @@ Google Cloud Organization Policies let you enforce this at the organizational le
 
 Before diving into the how, let me lay out why this matters:
 
-- Keys do not expire by default (they have a 10-year validity)
+- Keys do not expire by default
 - Keys cannot be protected by MFA
 - Keys can be copied to any machine without detection
 - Key theft is the most common GCP credential compromise vector
@@ -49,10 +49,11 @@ OUTPUT_FILE="sa_keys_audit.csv"
 
 echo "Project,ServiceAccount,KeyID,CreatedAt,ExpiresAt" > ${OUTPUT_FILE}
 
-# Get all projects
-PROJECTS=$(gcloud projects list \
-    --filter="parent.id=${ORG_ID}" \
-    --format="value(projectId)")
+# Get all projects in the organization, including projects under folders
+PROJECTS=$(gcloud asset search-all-resources \
+    --scope="organizations/${ORG_ID}" \
+    --asset-types="cloudresourcemanager.googleapis.com/Project" \
+    --format="value(additionalAttributes.projectId)")
 
 for PROJECT in ${PROJECTS}; do
     # List service accounts in this project
@@ -163,11 +164,23 @@ gcloud resource-manager org-policies disable-enforce \
 Keep track of exceptions and review them regularly:
 
 ```bash
-# List all projects that have exceptions to the key creation policy
-gcloud resource-manager org-policies list \
-    --organization=ORG_ID \
-    --filter="constraint:iam.disableServiceAccountKeyCreation" \
-    --format="table(constraint,listPolicy,booleanPolicy)"
+# List projects with a project-level override that disables enforcement
+ORG_ID="123456789"
+PROJECTS=$(gcloud asset search-all-resources \
+    --scope="organizations/${ORG_ID}" \
+    --asset-types="cloudresourcemanager.googleapis.com/Project" \
+    --format="value(additionalAttributes.projectId)")
+
+for PROJECT in ${PROJECTS}; do
+    ENFORCED=$(gcloud resource-manager org-policies describe \
+        iam.disableServiceAccountKeyCreation \
+        --project="${PROJECT}" \
+        --format="value(booleanPolicy.enforced)" 2>/dev/null)
+
+    if [ "${ENFORCED}" = "False" ]; then
+        echo "${PROJECT}"
+    fi
+done
 ```
 
 ## Step 6: Also Restrict Key Upload
@@ -205,9 +218,10 @@ Create a recurring job to find projects that still have existing keys to clean u
 ORG_ID="123456789"
 TOTAL_KEYS=0
 
-PROJECTS=$(gcloud projects list \
-    --filter="parent.id=${ORG_ID}" \
-    --format="value(projectId)")
+PROJECTS=$(gcloud asset search-all-resources \
+    --scope="organizations/${ORG_ID}" \
+    --asset-types="cloudresourcemanager.googleapis.com/Project" \
+    --format="value(additionalAttributes.projectId)")
 
 for PROJECT in ${PROJECTS}; do
     SA_LIST=$(gcloud iam service-accounts list \
@@ -240,7 +254,7 @@ For the few projects that legitimately need keys, enforce a maximum key lifetime
 
 ```bash
 # Set maximum key lifetime to 24 hours for projects that need keys
-# This ensures keys rotate frequently
+# This ensures newly created keys expire after 24 hours
 gcloud resource-manager org-policies set-policy policy.yaml \
     --project=legacy-integration-project
 ```
@@ -252,8 +266,9 @@ The policy file:
 # Enforce 24-hour maximum key lifetime
 constraint: constraints/iam.serviceAccountKeyExpiryHours
 listPolicy:
+  inheritFromParent: false
   allowedValues:
-    - "24"
+    - "24h"
 ```
 
 ## Summary
