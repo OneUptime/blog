@@ -12,7 +12,7 @@ Not every task needs to happen in the request-response cycle. Sending emails, pr
 
 ## The Architecture
 
-The pattern is straightforward. Your main application publishes a message to a Pub/Sub topic. Cloud Functions automatically subscribes to the topic and invokes your function for each message. The function does the work, and if it fails, Pub/Sub retries delivery.
+The pattern is straightforward. Your main application publishes a message to a Pub/Sub topic. Cloud Functions automatically subscribes to the topic and invokes your function for each message. The function does the work, and if retries are enabled, Pub/Sub retries delivery when the function fails.
 
 ```mermaid
 graph LR
@@ -45,7 +45,12 @@ import functions_framework
 import base64
 import json
 import logging
-from google.cloud import storage, firestore
+from handlers import (
+    handle_generate_report,
+    handle_process_image,
+    handle_send_email,
+    handle_sync_data,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -90,7 +95,7 @@ def process_task(cloud_event):
         logger.info(f"Task completed: {task_type}")
     except Exception as e:
         logger.error(f"Task failed: {task_type} - {str(e)}")
-        # Raising an exception causes Pub/Sub to retry the message
+        # Raising an exception causes Pub/Sub to retry the message when retries are enabled
         raise
 ```
 
@@ -269,6 +274,7 @@ gcloud functions deploy process-background-task \
     --timeout=540s \
     --max-instances=10 \
     --min-instances=0 \
+    --retry \
     --set-env-vars="GCP_PROJECT=my-gcp-project"
 ```
 
@@ -280,8 +286,11 @@ Since Pub/Sub can deliver messages more than once, your task handlers must be id
 
 ```python
 from google.cloud import firestore
+from handlers import handle_send_email
+import logging
 
 db = firestore.Client()
+logger = logging.getLogger(__name__)
 
 def handle_send_email_idempotent(payload, message_id):
     """Idempotent email handler that tracks processed messages."""
@@ -294,7 +303,7 @@ def handle_send_email_idempotent(payload, message_id):
         return
 
     # Send the email
-    send_email(payload["recipient"], payload["subject"], payload["body"])
+    handle_send_email(payload)
 
     # Record that we processed this message
     processed_ref.set({
@@ -308,10 +317,18 @@ def handle_send_email_idempotent(payload, message_id):
 Set up retry policies to handle transient failures and dead letter topics for messages that repeatedly fail.
 
 ```bash
-# Create a subscription with retry and dead letter configuration
-gcloud pubsub subscriptions create background-tasks-sub \
-    --topic=background-tasks \
-    --ack-deadline=600 \
+# Find the Eventarc-created Pub/Sub subscription for the function trigger
+TRIGGER_NAME=$(gcloud functions describe process-background-task \
+    --v2 \
+    --region=us-central1 \
+    --format="value(eventTrigger.trigger)")
+
+SUBSCRIPTION_ID=$(gcloud eventarc triggers describe "$TRIGGER_NAME" \
+    --location=us-central1 \
+    --format="value(transport.pubsub.subscription)")
+
+# Update that subscription with retry and dead letter configuration
+gcloud pubsub subscriptions update "$SUBSCRIPTION_ID" \
     --max-delivery-attempts=5 \
     --dead-letter-topic=background-tasks-dead-letter \
     --min-retry-delay=10s \
