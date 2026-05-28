@@ -54,7 +54,7 @@ CREATE TABLE orders (
     customer_name TEXT NOT NULL,
     total_amount DECIMAL(10, 2) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    -- Create a composite index for efficient tenant-scoped queries
+    -- Link each row to its tenant
     CONSTRAINT fk_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
 
@@ -63,13 +63,16 @@ CREATE INDEX idx_orders_tenant ON orders (tenant_id, created_at DESC);
 
 -- Use Row-Level Security in PostgreSQL for an extra layer of protection
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders FORCE ROW LEVEL SECURITY;
 
--- This policy ensures queries only return rows for the current tenant
+-- This policy ensures reads and writes only use rows for the current tenant
 CREATE POLICY tenant_isolation ON orders
-    USING (tenant_id = current_setting('app.current_tenant_id')::UUID);
+    FOR ALL
+    USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
+    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::UUID);
 ```
 
-Row-Level Security (RLS) in PostgreSQL is your safety net. Even if your application code has a bug that forgets to filter by tenant_id, RLS will prevent cross-tenant data leaks.
+Row-Level Security (RLS) in PostgreSQL is your safety net when the application connects with a role that is subject to RLS. Even if your application code has a bug that forgets to filter by tenant_id, RLS will prevent cross-tenant data leaks.
 
 ## Implementing Tenant Context in Your Application
 
@@ -80,8 +83,8 @@ Every request to your application needs to carry tenant context. Here is how to 
 
 import contextvars
 from functools import wraps
-from flask import request, g
 import jwt
+from sqlalchemy import text
 
 # Thread-safe storage for tenant context
 current_tenant = contextvars.ContextVar('current_tenant', default=None)
@@ -89,10 +92,13 @@ current_tenant = contextvars.ContextVar('current_tenant', default=None)
 class TenantMiddleware:
     """Extract tenant ID from JWT and set it in the request context."""
 
-    def __init__(self, app):
+    def __init__(self, app, public_key):
         self.app = app
+        self.public_key = public_key
 
     def __call__(self, environ, start_response):
+        current_tenant.set(None)
+
         # Extract the JWT from the Authorization header
         auth_header = environ.get('HTTP_AUTHORIZATION', '')
         if auth_header.startswith('Bearer '):
@@ -110,7 +116,10 @@ class TenantMiddleware:
             except jwt.InvalidTokenError:
                 pass
 
-        return self.app(environ, start_response)
+        try:
+            return self.app(environ, start_response)
+        finally:
+            current_tenant.set(None)
 
 
 def tenant_scoped(func):
@@ -125,7 +134,7 @@ def tenant_scoped(func):
         # Set the PostgreSQL session variable for RLS
         from app.database import db
         db.session.execute(
-            "SET app.current_tenant_id = :tid",
+            text("SELECT set_config('app.current_tenant_id', :tid, true)"),
             {"tid": str(tenant_id)}
         )
 
