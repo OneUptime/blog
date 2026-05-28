@@ -14,7 +14,7 @@ The App Engine cron service is reliable, free (you only pay for the request exec
 
 ## Basic cron.yaml Structure
 
-Create a `cron.yaml` file in the root of your App Engine project:
+Create a `cron.yaml` file in the root of your App Engine project. For Java runtimes, place it in the `WEB-INF` directory alongside `appengine-web.xml`:
 
 ```yaml
 # cron.yaml - Schedule background tasks for App Engine
@@ -253,10 +253,23 @@ cron:
 
 ## Retry Configuration
 
-If a cron job fails (returns a non-2xx response), App Engine does not retry by default. For jobs that need reliability, implement retry logic in your handler, or use Cloud Tasks for more sophisticated retry behavior.
+If a cron job fails (returns a non-2xx response), App Engine does not retry by default. For jobs that need reliability, configure `retry_parameters` in `cron.yaml`, implement retry logic in your handler, or use Cloud Tasks for more sophisticated retry behavior.
+
+```yaml
+cron:
+  - description: "Important Job"
+    url: /tasks/important-job
+    schedule: every 10 minutes
+    retry_parameters:
+      job_retry_limit: 3
+      min_backoff_seconds: 2
+      max_doublings: 3
+```
 
 ```python
 # Cron handler with built-in retry logic
+import time
+
 @app.route('/tasks/important-job')
 def important_job():
     if not request.headers.get('X-Appengine-Cron'):
@@ -289,7 +302,7 @@ View cron execution logs in the Cloud Console under App Engine > Cron jobs, or q
 ```bash
 # View cron job execution logs
 gcloud logging read \
-  'resource.type="gae_app" AND protoPayload.resource="/tasks/"' \
+  'resource.type="gae_app" AND protoPayload.resource:"/tasks/"' \
   --limit=20
 ```
 
@@ -315,7 +328,7 @@ App Engine cron has some limitations:
 - Minimum interval is 1 minute
 - Maximum of 250 cron jobs per application
 - No built-in support for job dependencies or complex workflows
-- The cron request has the same timeout as regular requests (60 seconds for Standard automatic scaling)
+- The cron request has the same timeout as regular requests: 10 minutes for Standard automatic scaling, and 24 hours for basic or manual scaling
 
 For long-running tasks, use the cron job as a trigger that enqueues work to Cloud Tasks:
 
