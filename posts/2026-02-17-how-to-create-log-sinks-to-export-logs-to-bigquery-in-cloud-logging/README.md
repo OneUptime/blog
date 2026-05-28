@@ -17,10 +17,10 @@ In this post, I will walk through the complete process of setting up a BigQuery 
 A few common reasons teams export logs to BigQuery:
 
 - **Advanced analytics**: Cloud Logging's query language is limited compared to SQL. BigQuery lets you do aggregations, joins, window functions, and more.
-- **Long-term retention**: Cloud Logging retains logs for 30 days by default (or 400 days for the `_Default` bucket with custom retention). BigQuery can retain data indefinitely.
+- **Long-term retention**: Cloud Logging retains logs in the `_Default` bucket for 30 days by default, while the `_Required` bucket retains required audit logs for 400 days. BigQuery can retain data indefinitely.
 - **Cross-dataset joins**: Combine log data with other business data in BigQuery for richer analysis.
 - **Cost optimization**: For logs you need to retain but query infrequently, BigQuery's long-term storage pricing is competitive.
-- **Custom dashboards**: Build Looker Studio or Data Studio dashboards on top of your log data.
+- **Custom dashboards**: Build Looker Studio dashboards on top of your log data.
 
 ## Step 1: Create a BigQuery Dataset
 
@@ -85,7 +85,7 @@ gcloud logging sinks create bigquery-audit-logs \
 
 ## Step 3: Grant Permissions
 
-The sink creates a unique service account that needs write access to the BigQuery dataset. First, get the service account:
+The sink uses a writer identity that needs write access to the BigQuery dataset. First, get the writer identity:
 
 ```bash
 # Retrieve the sink's writer identity
@@ -105,19 +105,19 @@ gcloud projects add-iam-policy-binding my-project \
   --role="roles/bigquery.dataEditor"
 ```
 
-Alternatively, grant access at the dataset level for more granular control:
+Alternatively, grant access at the dataset level for more granular control. BigQuery's `bq add-iam-policy-binding` command doesn't support datasets, so use a BigQuery DCL statement:
 
 ```bash
 # Grant access at the dataset level
-bq add-iam-policy-binding \
-  --member="$WRITER_IDENTITY" \
-  --role="roles/bigquery.dataEditor" \
-  my-project:cloud_logs
+bq query --use_legacy_sql=false \
+  "GRANT \`roles/bigquery.dataEditor\`
+   ON SCHEMA \`my-project\`.cloud_logs
+   TO \"$WRITER_IDENTITY\""
 ```
 
 ## Step 4: Enable Partitioned Tables
 
-By default, Cloud Logging creates one table per log type per day. This works but is not ideal for query performance. Enable partitioned tables instead:
+By default, Cloud Logging creates date-sharded tables based on each log name. This works but is not ideal for query performance. Enable partitioned tables instead:
 
 ```bash
 # Update the sink to use partitioned tables
@@ -126,11 +126,11 @@ gcloud logging sinks update bigquery-all-logs \
   --project=my-project
 ```
 
-With partitioned tables, you get a single table per log type, partitioned by timestamp. This significantly improves query performance and reduces costs because BigQuery can skip irrelevant partitions.
+With partitioned tables, you get a single table per log name, partitioned by timestamp. This significantly improves query performance and reduces costs because BigQuery can skip irrelevant partitions.
 
 ## Understanding the BigQuery Schema
 
-Cloud Logging creates tables in BigQuery with a specific schema. The table names follow the pattern `resource_type_logname`. For example, logs from Cloud Run would go into a table like `cloud_run_revision_run_googleapis_com_requests`.
+Cloud Logging creates tables in BigQuery with a specific schema. The table names are based on the log name, with unsupported characters converted to underscores. For example, a log named `run.googleapis.com/requests` goes into a date-sharded table like `run_googleapis_com_requests_20260217` by default, or a partitioned table named `run_googleapis_com_requests` when partitioned tables are enabled.
 
 Key columns in the exported tables:
 
@@ -139,7 +139,7 @@ Key columns in the exported tables:
 | `timestamp` | TIMESTAMP | When the log entry was created |
 | `severity` | STRING | Log level (INFO, WARNING, ERROR, etc.) |
 | `resource` | RECORD | Resource that generated the log |
-| `jsonPayload` | JSON | Structured log data (if JSON) |
+| `jsonPayload` | RECORD | Structured log data (if present) |
 | `textPayload` | STRING | Unstructured log text |
 | `httpRequest` | RECORD | HTTP request details (if applicable) |
 | `labels` | RECORD | Key-value pairs of labels |
@@ -160,7 +160,7 @@ SELECT
   resource.labels.service_name AS service,
   COUNT(*) AS error_count
 FROM
-  `my-project.cloud_logs.cloud_run_revision_*`
+  `my-project.cloud_logs.run_googleapis_com_*`
 WHERE
   severity = 'ERROR'
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
@@ -178,9 +178,9 @@ SELECT
   SUBSTR(textPayload, 0, 200) AS error_message,
   COUNT(*) AS occurrences
 FROM
-  `my-project.cloud_logs.cloud_run_revision_*`
+  `my-project.cloud_logs.run_googleapis_com_*`
 WHERE
-  severity >= 'ERROR'
+  severity IN ('ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY')
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
 GROUP BY
   error_message
@@ -199,7 +199,7 @@ SELECT
   AVG(httpRequest.latency.seconds) AS avg_latency_seconds,
   APPROX_QUANTILES(httpRequest.latency.seconds, 100)[OFFSET(95)] AS p95_latency
 FROM
-  `my-project.cloud_logs.requests`
+  `my-project.cloud_logs.run_googleapis_com_requests`
 WHERE
   timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
 GROUP BY
@@ -242,9 +242,10 @@ resource "google_bigquery_dataset" "logs" {
 
 # Log sink to BigQuery with partitioned tables
 resource "google_logging_project_sink" "bigquery" {
-  name        = "bigquery-all-logs"
-  destination = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${google_bigquery_dataset.logs.dataset_id}"
-  filter      = "resource.type=\"cloud_run_revision\" OR resource.type=\"k8s_container\""
+  name                   = "bigquery-all-logs"
+  destination            = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${google_bigquery_dataset.logs.dataset_id}"
+  filter                 = "resource.type=\"cloud_run_revision\" OR resource.type=\"k8s_container\""
+  unique_writer_identity = true
 
   # Use partitioned tables for better performance
   bigquery_options {
