@@ -17,7 +17,7 @@ This guide walks through setting up an Assured Workloads environment for FedRAMP
 Assured Workloads is not just a configuration label. When you create an Assured Workloads folder with FedRAMP High compliance, Google Cloud automatically enforces:
 
 - **Data residency** - Data stays within US regions only
-- **Personnel controls** - Only US-based, background-checked Google employees can access the infrastructure
+- **Personnel controls** - Support access is restricted to US-based, background-checked Google support personnel and subprocessors
 - **Key management** - Encryption keys are managed according to FIPS 140-2 requirements
 - **Organization policy restrictions** - Automatically applies organization policies that prevent non-compliant configurations
 
@@ -53,12 +53,12 @@ gcloud assured workloads create \
     --organization=123456789 \
     --location=us \
     --display-name="FedRAMP High Environment" \
-    --compliance-regime=FEDRAMP_HIGH \
-    --billing-account=BILLING_ACCOUNT_ID \
+    --compliance-regime=fedramp-high \
+    --billing-account=billingAccounts/BILLING_ACCOUNT_ID \
     --next-rotation-time="2026-03-01T00:00:00Z" \
     --rotation-period=7776000s \
     --labels="compliance=fedramp-high,environment=production" \
-    --provisioned-resources-parent=organizations/123456789
+    --provisioned-resources-parent=folders/PARENT_FOLDER_ID
 ```
 
 This creates a new folder in your organization hierarchy with all the FedRAMP High guardrails pre-configured. Every project you create under this folder inherits the compliance controls.
@@ -91,7 +91,7 @@ gcloud services enable \
 
 ## Step 4: Configure Encryption with CMEK
 
-FedRAMP High requires customer-managed encryption keys (CMEK) with FIPS 140-2 validated key management:
+If your workload requires customer-managed encryption keys, use CMEK with FIPS 140-2 validated key management:
 
 ```bash
 # Create a Cloud KMS keyring in a US region
@@ -192,9 +192,16 @@ gcloud resource-manager org-policies enable-enforce \
     --folder=ASSURED_WORKLOAD_FOLDER_ID
 
 # Restrict public IP on VMs
-gcloud resource-manager org-policies enable-enforce \
-    compute.vmExternalIpAccess \
+gcloud resource-manager org-policies set-policy external-ip-policy.yaml \
     --folder=ASSURED_WORKLOAD_FOLDER_ID
+```
+
+```yaml
+# external-ip-policy.yaml
+# Deny external IPv4 addresses for all VM instances
+constraint: constraints/compute.vmExternalIpAccess
+listPolicy:
+  allValues: DENY
 ```
 
 ## Step 6: Configure Logging and Monitoring
@@ -202,14 +209,18 @@ gcloud resource-manager org-policies enable-enforce \
 FedRAMP High requires comprehensive audit logging:
 
 ```bash
-# Enable data access audit logging for all services
+# Export the existing IAM policy before editing audit logging settings
+gcloud projects get-iam-policy fedramp-app-prod > audit-policy.yaml
+
+# After adding the auditConfigs section below and preserving existing
+# bindings, etag, and version fields, write the policy back.
 gcloud projects set-iam-policy fedramp-app-prod audit-policy.yaml
 ```
 
 Create an audit logging configuration:
 
 ```yaml
-# audit-policy.yaml - adds to existing IAM policy
+# audit-policy.yaml - add this section to the existing IAM policy
 auditConfigs:
   - service: allServices
     auditLogConfigs:
@@ -219,19 +230,28 @@ auditConfigs:
 ```
 
 ```bash
-# Create a log sink to export audit logs to a separate storage bucket
 # FedRAMP requires log retention for at least 1 year
-gcloud logging sinks create fedramp-audit-sink \
-    storage.googleapis.com/fedramp-audit-logs \
-    --project=fedramp-app-prod \
-    --log-filter='logName:"cloudaudit.googleapis.com"'
-
 # Create the audit log storage bucket with retention policy
 gcloud storage buckets create gs://fedramp-audit-logs \
     --project=fedramp-app-prod \
     --location=us \
     --retention-period=365d \
     --default-encryption-key=projects/fedramp-app-prod/locations/us/keyRings/fedramp-keyring/cryptoKeys/fedramp-data-key
+
+# Create a log sink to export audit logs to the storage bucket
+gcloud logging sinks create fedramp-audit-sink \
+    storage.googleapis.com/fedramp-audit-logs \
+    --project=fedramp-app-prod \
+    --log-filter='logName:"cloudaudit.googleapis.com"'
+
+# Grant the sink writer identity permission to write objects to the bucket
+gcloud logging sinks describe fedramp-audit-sink \
+    --project=fedramp-app-prod \
+    --format="value(writerIdentity)"
+
+gcloud storage buckets add-iam-policy-binding gs://fedramp-audit-logs \
+    --member=SINK_WRITER_IDENTITY \
+    --role=roles/storage.objectCreator
 ```
 
 ## Step 7: Network Security Configuration
@@ -278,16 +298,18 @@ resource "google_assured_workloads_workload" "fedramp_high" {
   billing_account   = "billingAccounts/BILLING_ACCOUNT_ID"
   organization      = "123456789"
   location          = "us"
-
-  kms_settings {
-    next_rotation_time = "2026-03-01T00:00:00Z"
-    rotation_period    = "7776000s"
-  }
+  provisioned_resources_parent = "folders/PARENT_FOLDER_ID"
 
   labels = {
     compliance  = "fedramp-high"
     environment = "production"
   }
+}
+
+resource "google_kms_key_ring" "fedramp" {
+  name     = "fedramp-keyring"
+  location = "us"
+  project  = "fedramp-app-prod"
 }
 
 # Cloud HSM key for FIPS 140-2 compliance
@@ -309,12 +331,25 @@ resource "google_kms_crypto_key" "fedramp_key" {
 Set up alerts for compliance violations:
 
 ```bash
-# Create a monitoring alert for organization policy violations
+# Create a log-based alerting policy for organization policy violations
 gcloud monitoring policies create \
-    --display-name="FedRAMP Compliance Drift Alert" \
-    --condition-display-name="Org policy violation detected" \
-    --condition-filter='resource.type="audited_resource" AND protoPayload.status.code!=0 AND protoPayload.methodName:"orgpolicy"' \
-    --notification-channels=projects/fedramp-app-prod/notificationChannels/CHANNEL_ID
+    --policy-from-file=org-policy-alert.yaml \
+    --project=fedramp-app-prod
+```
+
+```yaml
+# org-policy-alert.yaml
+displayName: FedRAMP Compliance Drift Alert
+combiner: OR
+conditions:
+  - displayName: Org policy violation detected
+    conditionMatchedLog:
+      filter: 'protoPayload.status.code!=0 AND protoPayload.methodName:"orgpolicy"'
+notificationChannels:
+  - projects/fedramp-app-prod/notificationChannels/CHANNEL_ID
+alertStrategy:
+  notificationRateLimit:
+    period: 300s
 ```
 
 Check the Assured Workloads compliance status:
@@ -338,4 +373,4 @@ Maintaining FedRAMP High compliance is ongoing. Here are the key areas to monito
 5. **Vulnerability management** - Run Security Command Center scans regularly
 6. **Incident response** - Test your incident response plan quarterly
 
-Assured Workloads takes care of the infrastructure-level controls, but your application and operational processes need to satisfy the remaining FedRAMP High controls. Work with your compliance team to map all 421 controls in the NIST SP 800-53 High baseline to your specific implementation.
+Assured Workloads takes care of the infrastructure-level controls, but your application and operational processes need to satisfy the remaining FedRAMP High controls. Work with your compliance team to map the current FedRAMP High baseline controls to your specific implementation.
