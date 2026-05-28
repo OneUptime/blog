@@ -37,7 +37,7 @@ sudo journalctl -u google-cloud-ops-agent -n 50
 
 ## Step 2: Understand the Configuration Structure
 
-The Ops Agent configuration lives at `/etc/google-cloud-ops-agent/config.yaml`. It has three main sections: logging, metrics, and a combined service section.
+The Ops Agent configuration lives at `/etc/google-cloud-ops-agent/config.yaml`. It has two top-level sections, logging and metrics, and each section can include receivers, processors, and service pipelines.
 
 ```yaml
 # /etc/google-cloud-ops-agent/config.yaml
@@ -83,22 +83,22 @@ logging:
       type: files
       include_paths:
         - /var/log/myapp/*.log
-      # Optionally specify the record log name in Cloud Logging
-      record_log_name: myapp
+      # Optionally record the source file path as a label
+      record_log_file_path: true
 
   processors:
     # Parse JSON-formatted application logs
     myapp_json_parser:
       type: parse_json
       time_key: timestamp
-      time_format: "%Y-%m-%dT%H:%M:%S.%LZ"
+      time_format: "%Y-%m-%dT%H:%M:%S.%L%Z"
 
     # For non-JSON logs, use regex parsing
     myapp_regex_parser:
       type: parse_regex
       regex: "^(?<timestamp>[\\d-]+T[\\d:.]+Z) \\[(?<severity>\\w+)\\] (?<module>\\w+): (?<message>.*)$"
       time_key: timestamp
-      time_format: "%Y-%m-%dT%H:%M:%S.%LZ"
+      time_format: "%Y-%m-%dT%H:%M:%S.%L%Z"
 
   service:
     pipelines:
@@ -137,7 +137,7 @@ logging:
     parse_app_json:
       type: parse_json
       time_key: timestamp
-      time_format: "%Y-%m-%dT%H:%M:%S.%LZ"
+      time_format: "%Y-%m-%dT%H:%M:%S.%L%Z"
 
     # Map the severity field from the JSON to the log entry severity
     set_severity:
@@ -179,7 +179,7 @@ metrics:
   service:
     pipelines:
       # Default system metrics
-      default:
+      default_pipeline:
         receivers: [hostmetrics]
 
       # Application metrics
@@ -189,7 +189,7 @@ metrics:
 
 ## Step 6: Collect Metrics from StatsD
 
-If your application emits StatsD metrics, the Ops Agent can receive those too.
+The Ops Agent does not have a native StatsD receiver. If your application emits StatsD metrics, run a StatsD-to-Prometheus exporter and have the Ops Agent scrape that Prometheus endpoint.
 
 ```yaml
 metrics:
@@ -198,18 +198,22 @@ metrics:
       type: hostmetrics
       collection_interval: 60s
 
-    # Receive StatsD metrics on port 8125
-    statsd_metrics:
-      type: statsd
-      listen_address: 0.0.0.0
-      listen_port: 8125
+    # Scrape a local StatsD exporter that exposes Prometheus metrics
+    statsd_exporter:
+      type: prometheus
+      config:
+        scrape_configs:
+          - job_name: statsd_exporter
+            scrape_interval: 30s
+            static_configs:
+              - targets: ['localhost:9102']
 
   service:
     pipelines:
-      default:
+      default_pipeline:
         receivers: [hostmetrics]
       statsd:
-        receivers: [statsd_metrics]
+        receivers: [statsd_exporter]
 ```
 
 ## Step 7: Collect Third-Party Application Logs
@@ -263,9 +267,14 @@ logging:
       include_paths:
         - /var/log/mysql/error.log
     mysql_slow_query:
-      type: mysql_slow_query
+      type: mysql_slow
       include_paths:
         - /var/log/mysql/slow-query.log
+
+  service:
+    pipelines:
+      mysql:
+        receivers: [mysql_error, mysql_slow_query]
 
 metrics:
   receivers:
@@ -275,6 +284,11 @@ metrics:
       username: monitoring
       password: secret
       collection_interval: 60s
+
+  service:
+    pipelines:
+      mysql:
+        receivers: [mysql_metrics]
 ```
 
 ## Step 8: Validate and Apply the Configuration
@@ -307,7 +321,7 @@ graph TD
         subgraph "Metrics (OTel Collector)"
             D[Host Metrics Receiver] --> F[Cloud Monitoring Exporter]
             E[Prometheus Receiver] --> F
-            G[StatsD Receiver] --> F
+            G[Prometheus Receiver for StatsD Exporter] --> F
         end
     end
 
@@ -365,4 +379,4 @@ A common issue is file permissions. The Ops Agent runs as the `google-cloud-ops-
 
 ## Wrapping Up
 
-The Ops Agent is the bridge between your Compute Engine workloads and Google Cloud's observability tools. Out of the box you get system metrics and syslog, but with custom configuration you can collect any log file, parse structured JSON logs, scrape Prometheus metrics, and receive StatsD metrics. The configuration is straightforward YAML, and the agent handles batching, retrying, and buffering automatically. For fleet deployments, store your configuration in Cloud Storage and apply it via startup scripts to keep all your instances consistent.
+The Ops Agent is the bridge between your Compute Engine workloads and Google Cloud's observability tools. Out of the box you get system metrics and syslog, but with custom configuration you can collect any log file, parse structured JSON logs, and scrape Prometheus metrics, including metrics exposed by a StatsD exporter. The configuration is straightforward YAML, and the agent handles batching, retrying, and buffering automatically. For fleet deployments, store your configuration in Cloud Storage and apply it via startup scripts to keep all your instances consistent.

@@ -69,7 +69,8 @@ gcloud privateca roots create tls-inspection-root-ca \
     --subject="CN=TLS Inspection Root CA, O=My Organization" \
     --key-algorithm=ec-p256-sha256 \
     --max-chain-length=1 \
-    --validity=P10Y
+    --validity=P10Y \
+    --auto-enable
 ```
 
 Now create a subordinate CA that the proxy will use to sign certificates:
@@ -88,7 +89,8 @@ gcloud privateca subordinates create tls-inspection-sub-ca \
     --issuer-location=us-central1 \
     --subject="CN=TLS Inspection Subordinate CA, O=My Organization" \
     --key-algorithm=ec-p256-sha256 \
-    --validity=P3Y
+    --validity=P3Y \
+    --auto-enable
 ```
 
 Using a subordinate CA is a best practice. If the sub CA is compromised, you can revoke it and create a new one without changing the root CA trust on all your workloads.
@@ -103,76 +105,91 @@ The Secure Web Proxy needs permission to request certificates from the CA pool.
 PROJECT_NUMBER=$(gcloud projects describe my-project --format="value(projectNumber)")
 SWP_SA="service-${PROJECT_NUMBER}@gcp-sa-networksecurity.iam.gserviceaccount.com"
 
-# Grant certificate requester role on the subordinate CA pool
-gcloud privateca pools add-iam-policy-binding tls-inspection-sub-pool \
-    --location=us-central1 \
-    --member="serviceAccount:${SWP_SA}" \
-    --role="roles/privateca.certificateRequester"
+# Create the Network Security service identity if it does not already exist
+gcloud beta services identity create \
+    --service=networksecurity.googleapis.com \
+    --project=my-project
 
-# Grant the ability to use the CA pool for TLS inspection
+# Grant the service account permission to generate certificates with the CA pool
 gcloud privateca pools add-iam-policy-binding tls-inspection-sub-pool \
     --location=us-central1 \
     --member="serviceAccount:${SWP_SA}" \
-    --role="roles/privateca.workloadCertificateRequester"
+    --role="roles/privateca.certificateManager"
 ```
 
 ## Step 3 - Create a TLS Inspection Policy
 
-The TLS inspection policy tells the proxy which CA pool to use and which traffic to inspect.
+The TLS inspection policy tells Secure Web Proxy which CA pool to use. The gateway security policy rules decide which traffic to inspect.
+
+```yaml
+# tls-policy.yaml
+name: projects/my-project/locations/us-central1/tlsInspectionPolicies/tls-policy
+caPool: projects/my-project/locations/us-central1/caPools/tls-inspection-sub-pool
+```
 
 ```bash
-# Create a TLS inspection policy
-gcloud network-security tls-inspection-policies create tls-policy \
-    --location=us-central1 \
-    --ca-pool=projects/my-project/locations/us-central1/caPools/tls-inspection-sub-pool \
-    --description="TLS inspection policy for egress traffic"
+gcloud network-security tls-inspection-policies import tls-policy \
+    --source=tls-policy.yaml \
+    --location=us-central1
 ```
 
 ## Step 4 - Update the Secure Web Proxy with TLS Inspection
 
-Update your existing Secure Web Proxy to use the TLS inspection policy.
+Attach the TLS inspection policy to the gateway security policy used by your Secure Web Proxy.
 
-```bash
-# Update the firewall endpoint association to include TLS inspection
-gcloud network-security firewall-endpoint-associations update ngfw-assoc-us \
-    --zone=us-central1-a \
-    --tls-inspection-policy=projects/my-project/locations/us-central1/tlsInspectionPolicies/tls-policy \
-    --project=my-project
+```yaml
+# egress-policy.yaml
+description: Secure Web Proxy policy with TLS inspection
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy
+tlsInspectionPolicy: projects/my-project/locations/us-central1/tlsInspectionPolicies/tls-policy
 ```
 
-Or if you are using Secure Web Proxy directly:
-
 ```bash
-# Update the gateway to enable TLS inspection
-gcloud network-security gateways update egress-proxy \
-    --location=us-central1 \
-    --tls-inspection-policy=projects/my-project/locations/us-central1/tlsInspectionPolicies/tls-policy
+gcloud network-security gateway-security-policies import egress-policy \
+    --source=egress-policy.yaml \
+    --location=us-central1
 ```
 
 ## Step 5 - Create Policy Rules with TLS Inspection
 
 Update your gateway security policy rules to enable TLS inspection on specific traffic.
 
-```bash
-# Create a rule that inspects HTTPS traffic to external destinations
-gcloud network-security gateway-security-policies rules create inspect-https-traffic \
-    --gateway-security-policy=egress-policy \
-    --location=us-central1 \
-    --priority=50 \
-    --basic-profile=ALLOW \
-    --session-matcher='true' \
-    --tls-inspection-enabled \
-    --description="Inspect all HTTPS egress traffic"
+```yaml
+# inspect-https-traffic.yaml
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy/rules/inspect-https-traffic
+description: Inspect all HTTPS egress traffic
+enabled: true
+priority: 50
+basicProfile: ALLOW
+sessionMatcher: "true"
+tlsInspectionEnabled: true
+```
 
-# You can also selectively inspect only certain domains
-gcloud network-security gateway-security-policies rules create inspect-sensitive-destinations \
+```bash
+gcloud network-security gateway-security-policies rules import inspect-https-traffic \
+    --source=inspect-https-traffic.yaml \
     --gateway-security-policy=egress-policy \
-    --location=us-central1 \
-    --priority=60 \
-    --basic-profile=ALLOW \
-    --session-matcher='host().endsWith("pastebin.com") || host().endsWith("file-sharing.example.com")' \
-    --tls-inspection-enabled \
-    --description="Inspect traffic to known data sharing sites"
+    --location=us-central1
+```
+
+You can also selectively inspect only certain domains:
+
+```yaml
+# inspect-sensitive-destinations.yaml
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy/rules/inspect-sensitive-destinations
+description: Inspect traffic to known data sharing sites
+enabled: true
+priority: 60
+basicProfile: ALLOW
+sessionMatcher: 'host().endsWith("pastebin.com") || host().endsWith("file-sharing.example.com")'
+tlsInspectionEnabled: true
+```
+
+```bash
+gcloud network-security gateway-security-policies rules import inspect-sensitive-destinations \
+    --source=inspect-sensitive-destinations.yaml \
+    --gateway-security-policy=egress-policy \
+    --location=us-central1
 ```
 
 ## Step 6 - Distribute the CA Certificate to Workloads
@@ -243,25 +260,42 @@ spec:
 
 Some traffic should not be TLS inspected. Certificate pinning, mutual TLS, and privacy-sensitive traffic like banking sites should bypass inspection.
 
-```bash
-# Create rules that bypass TLS inspection for specific destinations
-gcloud network-security gateway-security-policies rules create bypass-banking \
-    --gateway-security-policy=egress-policy \
-    --location=us-central1 \
-    --priority=30 \
-    --basic-profile=ALLOW \
-    --session-matcher='host().endsWith("bank.com") || host().endsWith("paypal.com")' \
-    --description="Bypass TLS inspection for financial services"
-    # Note: no --tls-inspection-enabled flag means no inspection
+```yaml
+# bypass-banking.yaml
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy/rules/bypass-banking
+description: Bypass TLS inspection for financial services
+enabled: true
+priority: 30
+basicProfile: ALLOW
+sessionMatcher: 'host().endsWith("bank.com") || host().endsWith("paypal.com")'
+tlsInspectionEnabled: false
+```
 
-# Bypass for services that use certificate pinning
-gcloud network-security gateway-security-policies rules create bypass-cert-pinning \
+```bash
+gcloud network-security gateway-security-policies rules import bypass-banking \
+    --source=bypass-banking.yaml \
     --gateway-security-policy=egress-policy \
-    --location=us-central1 \
-    --priority=31 \
-    --basic-profile=ALLOW \
-    --session-matcher='host().endsWith("apple.com") || host().endsWith("microsoft.com")' \
-    --description="Bypass for services with certificate pinning"
+    --location=us-central1
+```
+
+Bypass for services that use certificate pinning:
+
+```yaml
+# bypass-cert-pinning.yaml
+name: projects/my-project/locations/us-central1/gatewaySecurityPolicies/egress-policy/rules/bypass-cert-pinning
+description: Bypass for services with certificate pinning
+enabled: true
+priority: 31
+basicProfile: ALLOW
+sessionMatcher: 'host().endsWith("apple.com") || host().endsWith("microsoft.com")'
+tlsInspectionEnabled: false
+```
+
+```bash
+gcloud network-security gateway-security-policies rules import bypass-cert-pinning \
+    --source=bypass-cert-pinning.yaml \
+    --gateway-security-policy=egress-policy \
+    --location=us-central1
 ```
 
 ## Step 8 - Monitor TLS Inspection
@@ -271,13 +305,13 @@ Monitor the TLS inspection to verify it is working and catch any issues.
 ```bash
 # Check for TLS inspection errors
 gcloud logging read \
-    'resource.type="networksecurity.googleapis.com/Gateway" AND jsonPayload.tlsInspection:*' \
-    --format="table(timestamp, jsonPayload.httpRequest.requestUrl, jsonPayload.tlsInspection.status)" \
+    'resource.type="networkservices.googleapis.com/Gateway" AND logName:"networkservices.googleapis.com%2Fgateway_requests"' \
+    --format="table(timestamp, httpRequest.requestUrl, httpRequest.status, jsonPayload.enforcedGatewaySecurityPolicy.matchedRules[0].name)" \
     --limit=20
 
 # Find failed inspections (cert pinning issues, etc.)
 gcloud logging read \
-    'resource.type="networksecurity.googleapis.com/Gateway" AND jsonPayload.tlsInspection.status!="SUCCESS"' \
+    'resource.type="networkservices.googleapis.com/Gateway" AND logName:"networkservices.googleapis.com%2Fgateway_requests" AND httpRequest.status>=400' \
     --format=json \
     --limit=10
 ```
@@ -286,8 +320,8 @@ gcloud logging read \
 
 TLS inspection raises important security and privacy concerns:
 
-- **Certificate security**: The subordinate CA's private key is managed by CAS and never leaves Google's infrastructure. Treat the root CA certificate as highly sensitive.
-- **Data visibility**: Once traffic is decrypted, the proxy and anyone with access to the logs can see the plaintext content. Ensure log access is tightly controlled with IAM.
+- **Certificate security**: The subordinate CA's private key is managed by CAS and never leaves Google's infrastructure. Treat CA administration and trust distribution as highly sensitive.
+- **Data visibility**: Once traffic is decrypted, the proxy can inspect plaintext HTTP data, and transaction logs can include request metadata such as full URLs. Ensure log access is tightly controlled with IAM.
 - **Compliance**: Some regulations require that certain types of traffic (healthcare, financial) are not intercepted. Configure exemptions for these categories.
 - **CA rotation**: Plan for CA certificate rotation. The subordinate CA has a limited validity period, and you need to deploy the new certificate to all workloads before the old one expires.
 
