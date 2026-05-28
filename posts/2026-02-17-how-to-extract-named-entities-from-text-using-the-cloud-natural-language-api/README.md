@@ -51,7 +51,12 @@ def extract_entities(text):
         type_=language_v1.Document.Type.PLAIN_TEXT,
     )
 
-    response = client.analyze_entities(request={"document": document})
+    response = client.analyze_entities(
+        request={
+            "document": document,
+            "encoding_type": language_v1.EncodingType.UTF32,
+        }
+    )
 
     print(f"Found {len(response.entities)} entities:\n")
 
@@ -102,7 +107,12 @@ def extract_entities_by_type(text, entity_types):
         type_=language_v1.Document.Type.PLAIN_TEXT,
     )
 
-    response = client.analyze_entities(request={"document": document})
+    response = client.analyze_entities(
+        request={
+            "document": document,
+            "encoding_type": language_v1.EncodingType.UTF32,
+        }
+    )
 
     # Convert type names to enum values for comparison
     target_types = set()
@@ -151,7 +161,12 @@ def parse_support_ticket(ticket_text):
         type_=language_v1.Document.Type.PLAIN_TEXT,
     )
 
-    response = client.analyze_entities(request={"document": document})
+    response = client.analyze_entities(
+        request={
+            "document": document,
+            "encoding_type": language_v1.EncodingType.UTF32,
+        }
+    )
 
     # Organize entities by type
     extracted = {
@@ -219,7 +234,12 @@ def batch_extract_entities(texts, max_workers=10):
         )
 
         try:
-            response = client.analyze_entities(request={"document": document})
+            response = client.analyze_entities(
+                request={
+                    "document": document,
+                    "encoding_type": language_v1.EncodingType.UTF32,
+                }
+            )
 
             entities = []
             for entity in response.entities:
@@ -285,7 +305,12 @@ def extract_entity_sentiment(text):
     )
 
     # Use analyze_entity_sentiment to get both
-    response = client.analyze_entity_sentiment(request={"document": document})
+    response = client.analyze_entity_sentiment(
+        request={
+            "document": document,
+            "encoding_type": language_v1.EncodingType.UTF32,
+        }
+    )
 
     print("Entity Sentiment Analysis:\n")
 
@@ -347,7 +372,12 @@ class KnowledgeExtractor:
             type_=language_v1.Document.Type.PLAIN_TEXT,
         )
 
-        response = self.client.analyze_entities(request={"document": document})
+        response = self.client.analyze_entities(
+            request={
+                "document": document,
+                "encoding_type": language_v1.EncodingType.UTF32,
+            }
+        )
 
         for entity in response.entities:
             entity_type = language_v1.Entity.Type(entity.type_).name
