@@ -18,7 +18,7 @@ BigQuery supports several types of schema changes natively, depending on how you
 
 ### Adding New Columns
 
-BigQuery can automatically add new columns when they appear in your data. This works with load jobs and streaming inserts:
+BigQuery can automatically add new nullable or repeated columns when they appear in your data during append load jobs:
 
 ```bash
 # Load data with automatic schema update
@@ -27,23 +27,21 @@ BigQuery can automatically add new columns when they appear in your data. This w
 # --schema_update_option=ALLOW_FIELD_ADDITION adds new columns automatically
 bq load \
   --source_format=NEWLINE_DELIMITED_JSON \
+  --noreplace \
   --autodetect \
   --schema_update_option=ALLOW_FIELD_ADDITION \
   my_dataset.my_table \
   gs://my-bucket/data/*.json
 ```
 
-You can also set this in SQL using LOAD DATA:
+The `LOAD DATA` statement can autodetect schema when creating or overwriting a table, but the schema update options for appending to an existing table are configured on load jobs:
 
 ```sql
--- Load data with schema auto-update using LOAD DATA statement
-LOAD DATA INTO `my-project.my_dataset.events`
+-- Load data with schema autodetection using LOAD DATA
+LOAD DATA OVERWRITE `my-project.my_dataset.events`
 FROM FILES (
   format = 'JSON',
   uris = ['gs://my-bucket/events/*.json']
-)
-WITH SCHEMA MODIFICATIONS (
-  ALLOW_FIELD_ADDITION
 );
 ```
 
@@ -55,21 +53,23 @@ BigQuery allows you to change a column from REQUIRED to NULLABLE:
 # Relax a column from REQUIRED to NULLABLE during a load
 bq load \
   --source_format=NEWLINE_DELIMITED_JSON \
+  --noreplace \
   --schema_update_option=ALLOW_FIELD_RELAXATION \
   my_dataset.my_table \
-  gs://my-bucket/data/*.json
+  gs://my-bucket/data/*.json \
+  ./relaxed_schema.json
 ```
 
 ## Defensive SQL Patterns
 
 Even with automatic schema updates, your downstream queries can break when columns change. Defensive SQL patterns protect against this.
 
-### Using IFNULL and COALESCE for Missing Columns
+### Using IFNULL and COALESCE for Newly Added Columns
 
-When a column might not exist in older data:
+When a column was added after older rows were written:
 
 ```sql
--- Handle columns that may not exist in historical data
+-- Handle columns that may be NULL in historical rows
 -- COALESCE provides a default when the value is NULL
 SELECT
     event_id,
@@ -83,16 +83,16 @@ SELECT
 FROM `my-project.my_dataset.events`
 ```
 
-### Safe Column Access with IF and STRUCT
+### Safe Column Access with IF and JSON
 
-For JSON or STRUCT columns where nested fields may or may not exist:
+For JSON columns where nested fields may or may not exist:
 
 ```sql
 -- Safely access nested fields that might not be present
 SELECT
     event_id,
     -- Safely extract from a JSON string column
-    SAFE.STRING(JSON_QUERY(properties, '$.new_field')) AS new_field,
+    JSON_VALUE(properties, '$.new_field') AS new_field,
     -- Use IF to handle structural changes
     IF(
         JSON_QUERY(properties, '$.address.zip_code') IS NOT NULL,
@@ -134,11 +134,11 @@ SELECT
 FROM `my-project.my_dataset.raw_events`
 ```
 
-This pattern means that source schema changes never break your ingestion pipeline. The raw data always lands successfully, and you update the extraction view when new fields become available.
+This pattern means that source schema changes are much less likely to break your ingestion pipeline. The raw data can land without requiring a table column for every source field, and you update the extraction view when new fields become available.
 
 ## Handling Column Renames
 
-Column renames are one of the trickier schema changes because BigQuery does not support renaming columns directly. Here are strategies for handling them.
+Column renames are one of the trickier schema changes because downstream queries and ingestion code still need a transition plan. BigQuery supports renaming columns directly with DDL, and these patterns help you roll out the change safely.
 
 ### The COALESCE Pattern
 
@@ -158,7 +158,15 @@ FROM `my-project.my_dataset.orders`
 ### Adding and Backfilling
 
 ```sql
--- Step 1: Add the new column
+-- Step 1: Rename the column in BigQuery when you are ready
+ALTER TABLE `my-project.my_dataset.orders`
+RENAME COLUMN region TO geo_region;
+```
+
+If you need both names available during a transition, add and backfill a new column instead:
+
+```sql
+-- Step 1: Add the new column while keeping the old one
 ALTER TABLE `my-project.my_dataset.orders` ADD COLUMN geo_region STRING;
 
 -- Step 2: Backfill from the old column
@@ -172,7 +180,7 @@ WHERE geo_region IS NULL AND region IS NOT NULL;
 
 ## Handling Column Type Changes
 
-Type changes require careful handling. You cannot change a column's type in place in BigQuery.
+Type changes require careful handling. BigQuery supports some in-place type changes with `ALTER COLUMN SET DATA TYPE`, but incompatible changes such as STRING to INT64 require a new column or a table rewrite.
 
 ### Create a New Column with the Correct Type
 
