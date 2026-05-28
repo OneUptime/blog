@@ -39,24 +39,26 @@ Install the required packages and configure your project.
 ```python
 # Install dependencies
 
-# pip install langchain langchain-google-vertexai langchain-google-community
+# pip install langchain langchain-google-genai langchain-text-splitters
 # pip install google-cloud-bigquery
 
-import vertexai
-from langchain_google_vertexai import VertexAI, VertexAIEmbeddings
+import os
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from google.cloud import bigquery
 
-# Initialize Vertex AI
-vertexai.init(project="your-project-id", location="us-central1")
+# Use Vertex AI as the backend for Gemini models
+os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
+os.environ["GOOGLE_CLOUD_PROJECT"] = "your-project-id"
+os.environ["GOOGLE_CLOUD_LOCATION"] = "us-central1"
 
 # Initialize the BigQuery client
 bq_client = bigquery.Client(project="your-project-id")
 
 # Initialize the embedding model
-embeddings = VertexAIEmbeddings(model_name="text-embedding-005")
+embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
 
 # Initialize the LLM
-llm = VertexAI(model_name="gemini-2.0-flash", temperature=0.2)
+llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.2)
 ```
 
 ## Creating the BigQuery Vector Table
@@ -96,7 +98,7 @@ print("Vector table created")
 Split your documents into chunks that are small enough for effective retrieval but large enough to contain meaningful context.
 
 ```python
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 import uuid
 
 def chunk_documents(documents):
@@ -173,7 +175,7 @@ def embed_and_store(chunks, batch_size=100):
                 "document_id": chunk["document_id"],
                 "chunk_text": chunk["chunk_text"],
                 "embedding": embedding,
-                "metadata": json.dumps(chunk["metadata"])
+                "metadata": chunk["metadata"]
             })
 
         print(f"Embedded batch {i // batch_size + 1}")
@@ -217,32 +219,37 @@ print("Vector index created")
 Search for relevant chunks using cosine similarity.
 
 ```python
-def vector_search(query, top_k=5):
+def vector_search(query, top_k=5, embeddings_model=embeddings):
     """Search for relevant document chunks using vector similarity."""
     # Generate embedding for the query
-    query_embedding = embeddings.embed_query(query)
-
-    # Format the embedding as a BigQuery array literal
-    embedding_str = ", ".join([str(v) for v in query_embedding])
+    query_embedding = embeddings_model.embed_query(query)
 
     # Run the vector search query
     search_sql = f"""
     SELECT
-        chunk_id,
-        document_id,
-        chunk_text,
-        metadata,
-        ML.DISTANCE(
-            embedding,
-            [{embedding_str}],
-            'COSINE'
-        ) AS distance
-    FROM `your-project-id.rag_data.document_chunks`
+        base.chunk_id,
+        base.document_id,
+        base.chunk_text,
+        TO_JSON_STRING(base.metadata) AS metadata_json,
+        distance
+    FROM VECTOR_SEARCH(
+        TABLE `your-project-id.rag_data.document_chunks`,
+        'embedding',
+        query_value => @query_embedding,
+        top_k => @top_k,
+        distance_type => 'COSINE'
+    )
     ORDER BY distance ASC
-    LIMIT {top_k}
     """
 
-    results = bq_client.query(search_sql).result()
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ArrayQueryParameter("query_embedding", "FLOAT64", query_embedding),
+            bigquery.ScalarQueryParameter("top_k", "INT64", top_k),
+        ]
+    )
+
+    results = bq_client.query(search_sql, job_config=job_config).result()
 
     chunks = []
     for row in results:
@@ -250,7 +257,7 @@ def vector_search(query, top_k=5):
             "chunk_id": row.chunk_id,
             "document_id": row.document_id,
             "text": row.chunk_text,
-            "metadata": json.loads(row.metadata) if row.metadata else {},
+            "metadata": json.loads(row.metadata_json) if row.metadata_json else {},
             "distance": row.distance
         })
 
@@ -267,20 +274,21 @@ for r in results:
 Now connect everything together using LangChain to create a complete RAG pipeline.
 
 ```python
-from langchain.chains import RetrievalQA
-from langchain.schema import Document
-from langchain.vectorstores.base import VectorStoreRetriever
+from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
+from pydantic import ConfigDict, Field
 
-class BigQueryVectorRetriever:
+class BigQueryVectorRetriever(BaseRetriever):
     """Custom retriever that uses BigQuery vector search."""
 
-    def __init__(self, embeddings_model, top_k=5):
-        self.embeddings = embeddings_model
-        self.top_k = top_k
+    embeddings_model: object = Field(exclude=True)
+    top_k: int = 5
 
-    def get_relevant_documents(self, query):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def _get_relevant_documents(self, query):
         """Retrieve relevant documents for a query."""
-        results = vector_search(query, top_k=self.top_k)
+        results = vector_search(query, top_k=self.top_k, embeddings_model=self.embeddings_model)
 
         documents = []
         for r in results:
@@ -298,10 +306,10 @@ class BigQueryVectorRetriever:
         return documents
 
 # Create the retriever
-retriever = BigQueryVectorRetriever(embeddings, top_k=5)
+retriever = BigQueryVectorRetriever(embeddings_model=embeddings, top_k=5)
 
 # Build the RAG prompt
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 
 rag_prompt = PromptTemplate(
     template="""Answer the question based on the provided context.
@@ -327,13 +335,13 @@ class RAGPipeline:
     """Complete RAG pipeline with BigQuery vector search."""
 
     def __init__(self):
-        self.retriever = BigQueryVectorRetriever(embeddings, top_k=5)
-        self.llm = VertexAI(model_name="gemini-2.0-flash", temperature=0.2)
+        self.retriever = BigQueryVectorRetriever(embeddings_model=embeddings, top_k=5)
+        self.llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.2)
 
     def query(self, question):
         """Answer a question using RAG."""
         # Step 1: Retrieve relevant documents
-        docs = self.retriever.get_relevant_documents(question)
+        docs = self.retriever.invoke(question)
 
         # Step 2: Build the context
         context_parts = []
@@ -354,7 +362,7 @@ class RAGPipeline:
             f"Answer:"
         )
 
-        answer = self.llm.invoke(prompt)
+        answer = self.llm.invoke(prompt).content
 
         return {
             "answer": answer,
@@ -398,9 +406,14 @@ def delete_document(document_id):
     """Remove a document and its chunks from the index."""
     delete_sql = f"""
     DELETE FROM `your-project-id.rag_data.document_chunks`
-    WHERE document_id = '{document_id}'
+    WHERE document_id = @document_id
     """
-    bq_client.query(delete_sql).result()
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("document_id", "STRING", document_id),
+        ]
+    )
+    bq_client.query(delete_sql, job_config=job_config).result()
     print(f"Deleted chunks for document: {document_id}")
 ```
 
