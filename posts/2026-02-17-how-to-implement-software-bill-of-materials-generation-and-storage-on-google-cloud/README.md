@@ -83,21 +83,16 @@ steps:
     id: 'generate-sbom'
     waitFor: ['push']
 
-  # Step 4: Attach SBOM to the image using Cosign
-  - name: 'gcr.io/projectsigstore/cosign'
-    entrypoint: 'sh'
+  # Step 4: Attach the SBOM to the image as a signed Cosign attestation
+  - name: 'ghcr.io/sigstore/cosign/cosign:v3.0.2'
     args:
-      - '-c'
-      - |
-        # Get the image digest
-        IMAGE_DIGEST=$(crane digest \
-          us-docker.pkg.dev/${PROJECT_ID}/my-repo/my-app:${SHORT_SHA})
-
-        # Attach the SBOM as an attestation
-        cosign attach sbom \
-          --sbom /workspace/sbom.cyclonedx.json \
-          --type cyclonedx \
-          us-docker.pkg.dev/${PROJECT_ID}/my-repo/my-app@${IMAGE_DIGEST}
+      - 'attest'
+      - '--yes'
+      - '--predicate'
+      - '/workspace/sbom.cyclonedx.json'
+      - '--type'
+      - 'cyclonedx'
+      - 'us-docker.pkg.dev/${PROJECT_ID}/my-repo/my-app:${SHORT_SHA}'
     id: 'attach-sbom'
     waitFor: ['generate-sbom']
 
@@ -143,6 +138,7 @@ resource "google_storage_bucket" "sboms" {
   name          = "${var.project_id}-sboms"
   project       = var.project_id
   location      = var.region
+  storage_class = "NEARLINE"
   force_destroy = false
 
   # Keep SBOMs for 7 years for compliance
@@ -155,17 +151,7 @@ resource "google_storage_bucket" "sboms" {
     }
   }
 
-  # Prevent accidental deletion
-  lifecycle_rule {
-    condition {
-      age = 0
-    }
-    action {
-      type = "SetStorageClass"
-      storage_class = "NEARLINE"
-    }
-  }
-
+  # Enable versioning to help recover accidental overwrites or deletions
   versioning {
     enabled = true
   }
@@ -238,7 +224,7 @@ To make SBOMs queryable, parse them and load the data into BigQuery:
 import json
 from google.cloud import bigquery
 from google.cloud import storage
-from datetime import datetime
+from datetime import datetime, timezone
 
 def parse_cyclonedx_sbom(sbom_data):
     """Extract component information from a CycloneDX SBOM."""
@@ -290,7 +276,7 @@ def index_sbom_to_bigquery(
 
     # Prepare rows for BigQuery
     rows = []
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     for comp in components:
         rows.append({
             "image_name": image_name,
@@ -330,8 +316,12 @@ SELECT DISTINCT
 FROM `project.sbom_inventory.components`
 WHERE
   component_name = 'log4j-core'
-  AND component_version LIKE '2.%'
-  AND component_version < '2.17.1'
+  AND REGEXP_CONTAINS(component_version, r'^2\.[0-9]+\.[0-9]+$')
+  AND (
+    CAST(SPLIT(component_version, '.')[OFFSET(0)] AS INT64) * 1000000 +
+    CAST(SPLIT(component_version, '.')[OFFSET(1)] AS INT64) * 1000 +
+    CAST(SPLIT(component_version, '.')[OFFSET(2)] AS INT64)
+  ) < 2017001
 ORDER BY scanned_at DESC;
 ```
 
@@ -378,11 +368,6 @@ def check_vulnerability(project_id, component_name, affected_versions):
     """Check if any deployed images contain a vulnerable component."""
     client = bigquery.Client(project=project_id)
 
-    # Build version filter
-    version_conditions = " OR ".join(
-        [f'component_version = "{v}"' for v in affected_versions]
-    )
-
     query = f"""
     SELECT DISTINCT
       image_name,
@@ -392,7 +377,7 @@ def check_vulnerability(project_id, component_name, affected_versions):
     FROM `{project_id}.sbom_inventory.components`
     WHERE
       component_name = @component_name
-      AND ({version_conditions})
+      AND component_version IN UNNEST(@affected_versions)
     ORDER BY scanned_at DESC
     """
 
@@ -400,6 +385,9 @@ def check_vulnerability(project_id, component_name, affected_versions):
         query_parameters=[
             bigquery.ScalarQueryParameter(
                 "component_name", "STRING", component_name
+            ),
+            bigquery.ArrayQueryParameter(
+                "affected_versions", "STRING", affected_versions
             ),
         ]
     )
