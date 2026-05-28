@@ -158,6 +158,11 @@ gcloud functions deploy scheduled-cleanup \
   --no-allow-unauthenticated \
   --service-account=scheduler-sa@my-project.iam.gserviceaccount.com
 
+# Grant the Scheduler OIDC service account permission to invoke the function
+gcloud functions add-invoker-policy-binding scheduled-cleanup \
+  --region=us-central1 \
+  --member="serviceAccount:scheduler-sa@my-project.iam.gserviceaccount.com"
+
 # Create Cloud Scheduler job (equivalent to Azure timer trigger with cron)
 gcloud scheduler jobs create http cleanup-job \
   --schedule="0 */6 * * *" \
