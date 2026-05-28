@@ -8,11 +8,11 @@ Description: Build a demand forecasting system for supply chain planning using V
 
 ---
 
-Getting demand forecasting wrong is expensive either way. Overestimate and you sit on excess inventory eating into margins. Underestimate and you lose sales and frustrate customers. Traditional forecasting methods like ARIMA or exponential smoothing work for simple patterns, but they struggle with multiple seasonality effects, promotions, and the dozens of external factors that influence real-world demand. Vertex AI AutoML Forecasting handles this complexity automatically, finding the best model architecture for your specific data. Here is how to set it up.
+Getting demand forecasting wrong is expensive either way. Overestimate and you sit on excess inventory eating into margins. Underestimate and you lose sales and frustrate customers. Traditional forecasting methods like ARIMA or exponential smoothing work for simple patterns, but they struggle with multiple seasonality effects, promotions, and the dozens of external factors that influence real-world demand. Vertex AI AutoML Forecasting handles this complexity automatically, finding a strong model configuration for your specific data. Here is how to set it up.
 
 ## What AutoML Forecasting Does
 
-AutoML Forecasting trains time series models that predict future values based on historical patterns. You provide your historical demand data along with any relevant features (promotions, holidays, weather, pricing), and AutoML tries multiple model architectures - including temporal fusion transformers, DeepAR, and ensemble methods - to find what works best for your data.
+AutoML Forecasting trains time series models that predict future values based on historical patterns. You provide your historical demand data along with any relevant features (promotions, holidays, weather, pricing), and AutoML searches Google-managed forecasting configurations to find what works best for your data. If you want to choose a specific forecasting architecture such as Temporal Fusion Transformer or Seq2Seq+, Vertex AI provides separate training job classes for those methods.
 
 ## Prerequisites
 
@@ -21,8 +21,8 @@ AutoML Forecasting trains time series models that predict future values based on
 
 gcloud services enable aiplatform.googleapis.com --project=your-project-id
 
-# Install the SDK
-pip install google-cloud-aiplatform pandas
+# Install the SDKs and dataframe helpers used below
+pip install google-cloud-aiplatform google-cloud-bigquery pandas pandas-gbq
 ```
 
 ## Step 1: Prepare Your Training Data
@@ -64,6 +64,10 @@ def fill_missing_dates(group):
     group.columns = ['date'] + list(group.columns[1:])
     group['demand'] = group['demand'].fillna(0)
     group['product_id'] = group['product_id'].ffill().bfill()
+    group['category'] = group['category'].ffill().bfill()
+    group['avg_price'] = group['avg_price'].ffill().bfill()
+    group['has_promotion'] = group['has_promotion'].fillna(0)
+    group['is_holiday'] = group['is_holiday'].fillna(0)
     return group
 
 df['date'] = pd.to_datetime(df['date'])
@@ -103,7 +107,7 @@ Configure and launch the AutoML training job:
 
 ```python
 # Train the forecasting model
-# AutoML will try multiple architectures and pick the best one
+# AutoML searches forecasting configurations for your dataset
 job = aiplatform.AutoMLForecastingTrainingJob(
     display_name="demand-forecast-model-v1",
     optimization_objective="minimize-rmse",  # Root mean squared error
@@ -125,12 +129,18 @@ model = job.run(
     time_series_identifier_column="product_id",
     # Forecast 30 days ahead
     forecast_horizon=30,
+    data_granularity_unit="day",
+    data_granularity_count=1,
     # Use 90 days of history as context for each prediction
     context_window=90,
+    time_series_attribute_columns=["category"],
     # Available at prediction time (known future values)
     available_at_forecast_columns=["has_promotion", "is_holiday"],
     # Not available at prediction time (must be forecasted or excluded)
     unavailable_at_forecast_columns=["avg_price"],
+    # Return 10th, 50th, and 90th percentile forecasts
+    quantiles=[0.1, 0.5, 0.9],
+    enable_probabilistic_inference=True,
     # Training budget
     budget_milli_node_hours=2000,
     model_display_name="demand-forecast-model-v1",
@@ -147,7 +157,7 @@ Key parameter decisions:
 
 ## Step 4: Evaluate the Model
 
-Check how well the model performs before deploying it:
+Check how well the model performs before using it for forecasts:
 
 ```python
 # Get model evaluation metrics
@@ -165,10 +175,10 @@ A MAPE (Mean Absolute Percentage Error) under 20% is generally good for demand f
 
 ## Step 5: Generate Forecasts
 
-Deploy the model and generate predictions:
+Run a batch prediction job to generate forecasts:
 
 ```python
-# Deploy for batch predictions (more cost-effective for supply chain planning)
+# Batch predictions are more cost-effective for supply chain planning
 batch_prediction_job = model.batch_predict(
     job_display_name="monthly-demand-forecast",
     bigquery_source="bq://your-project.forecasting.prediction_input",
@@ -181,21 +191,44 @@ batch_prediction_job.wait()
 print(f"Predictions saved to BigQuery")
 ```
 
-For the prediction input, prepare a table with the future dates and known covariates:
+For the prediction input, prepare a table with the recent context window plus future dates. Forecasting starts at the first row where the target column is `NULL` for each product:
 
 ```sql
--- Create prediction input with future dates and known promotions/holidays
-CREATE TABLE `your-project.forecasting.prediction_input` AS
-SELECT
-    product_id,
-    date,
-    -- These are known in advance from the promotion calendar
-    CASE WHEN date IN ('2026-03-15', '2026-03-16') THEN 1 ELSE 0 END AS has_promotion,
-    CASE WHEN EXTRACT(DAYOFWEEK FROM date) IN (1, 7) THEN 0
-         WHEN date IN ('2026-04-01') THEN 1 ELSE 0 END AS is_holiday,
-    category
-FROM UNNEST(GENERATE_DATE_ARRAY('2026-02-01', '2026-03-02')) AS date
-CROSS JOIN (SELECT DISTINCT product_id, category FROM `your-project.forecasting.training_data`)
+-- Create prediction input with 90 days of history and 30 future dates
+CREATE OR REPLACE TABLE `your-project.forecasting.prediction_input` AS
+WITH products AS (
+    SELECT DISTINCT product_id, category
+    FROM `your-project.forecasting.training_data`
+),
+history AS (
+    SELECT
+        product_id,
+        date,
+        demand,
+        avg_price,
+        has_promotion,
+        is_holiday,
+        category
+    FROM `your-project.forecasting.training_data`
+    WHERE date BETWEEN '2025-11-03' AND '2026-01-31'
+),
+future AS (
+    SELECT
+        product_id,
+        date,
+        CAST(NULL AS FLOAT64) AS demand,
+        CAST(NULL AS FLOAT64) AS avg_price,
+        -- These are known in advance from the promotion calendar
+        CASE WHEN date IN (DATE '2026-02-14', DATE '2026-02-15') THEN 1 ELSE 0 END AS has_promotion,
+        CASE WHEN EXTRACT(DAYOFWEEK FROM date) IN (1, 7) THEN 0
+             WHEN date IN (DATE '2026-02-16') THEN 1 ELSE 0 END AS is_holiday,
+        category
+    FROM UNNEST(GENERATE_DATE_ARRAY('2026-02-01', '2026-03-02')) AS date
+    CROSS JOIN products
+)
+SELECT * FROM history
+UNION ALL
+SELECT * FROM future
 ```
 
 ## Step 6: Build a Forecast Dashboard
@@ -203,25 +236,56 @@ CROSS JOIN (SELECT DISTINCT product_id, category FROM `your-project.forecasting.
 Query the predictions for visualization:
 
 ```sql
--- Query forecast results with confidence intervals
+-- Query forecast results with an 80% quantile range
 SELECT
     product_id,
-    predicted_date,
-    predicted_demand,
-    predicted_demand_lower_bound,
-    predicted_demand_upper_bound
-FROM `your-project.forecasting.predictions`
-ORDER BY product_id, predicted_date;
+    date AS predicted_date,
+    predicted_demand.value AS predicted_demand,
+    (
+        SELECT quantile_prediction
+        FROM UNNEST(predicted_demand.quantile_predictions) AS quantile_prediction WITH OFFSET AS pos
+        WHERE predicted_demand.quantile_values[OFFSET(pos)] = 0.1
+    ) AS predicted_demand_lower_bound,
+    (
+        SELECT quantile_prediction
+        FROM UNNEST(predicted_demand.quantile_predictions) AS quantile_prediction WITH OFFSET AS pos
+        WHERE predicted_demand.quantile_values[OFFSET(pos)] = 0.9
+    ) AS predicted_demand_upper_bound
+FROM `your-project.forecasting.predictions_*`
+WHERE demand IS NULL
+ORDER BY product_id, date;
 
 -- Aggregate forecasts by category for planning
+WITH forecasts AS (
+    SELECT
+        product_id,
+        date AS predicted_date,
+        predicted_demand.value AS predicted_demand,
+        (
+            SELECT quantile_prediction
+            FROM UNNEST(predicted_demand.quantile_predictions) AS quantile_prediction WITH OFFSET AS pos
+            WHERE predicted_demand.quantile_values[OFFSET(pos)] = 0.1
+        ) AS predicted_demand_lower_bound,
+        (
+            SELECT quantile_prediction
+            FROM UNNEST(predicted_demand.quantile_predictions) AS quantile_prediction WITH OFFSET AS pos
+            WHERE predicted_demand.quantile_values[OFFSET(pos)] = 0.9
+        ) AS predicted_demand_upper_bound
+    FROM `your-project.forecasting.predictions_*`
+    WHERE demand IS NULL
+),
+product_categories AS (
+    SELECT DISTINCT product_id, category
+    FROM `your-project.forecasting.training_data`
+)
 SELECT
     category,
     predicted_date,
     SUM(predicted_demand) AS total_predicted_demand,
     SUM(predicted_demand_lower_bound) AS lower_bound,
     SUM(predicted_demand_upper_bound) AS upper_bound
-FROM `your-project.forecasting.predictions` p
-JOIN `your-project.forecasting.training_data` t USING (product_id)
+FROM forecasts p
+JOIN product_categories t USING (product_id)
 GROUP BY 1, 2
 ORDER BY 1, 2;
 ```
@@ -261,4 +325,4 @@ Use OneUptime to monitor the forecasting pipeline - training jobs, prediction ru
 
 ## Summary
 
-Vertex AI AutoML Forecasting takes the guesswork out of model selection for demand prediction. You provide the historical data and covariates, and AutoML finds the best model architecture for your specific patterns. The critical success factors are data preparation (filling gaps, encoding promotions), choosing the right forecast horizon for your planning cycle, and setting up regular retraining to adapt to changing demand patterns.
+Vertex AI AutoML Forecasting takes the guesswork out of model selection for demand prediction. You provide the historical data and covariates, and AutoML finds a strong forecasting configuration for your specific patterns. The critical success factors are data preparation (filling gaps, encoding promotions), choosing the right forecast horizon for your planning cycle, and setting up regular retraining to adapt to changing demand patterns.
