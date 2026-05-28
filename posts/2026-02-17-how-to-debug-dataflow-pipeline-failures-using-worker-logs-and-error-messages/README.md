@@ -21,12 +21,17 @@ Start with the Dataflow console or CLI. The job-level error message often points
 
 gcloud dataflow jobs describe JOB_ID \
   --region=us-central1 \
+  --full \
   --format="yaml(currentState, currentStateTime, type, stageStates)"
 
-# Get the job's error messages specifically
-gcloud dataflow jobs describe JOB_ID \
-  --region=us-central1 \
-  --format="value(currentState)"
+# Get the job's error messages from job-message logs
+gcloud logging read 'resource.type="dataflow_step" AND
+  resource.labels.job_id="JOB_ID" AND
+  labels."dataflow.googleapis.com/log_type"="job-message" AND
+  severity>=ERROR' \
+  --project=my-project \
+  --limit=20 \
+  --format="table(timestamp, jsonPayload.message)"
 ```
 
 Common job-level states and what they mean:
@@ -43,7 +48,8 @@ Dataflow writes logs to Cloud Logging. The most useful logs come from the worker
 ```bash
 # Get error-level logs from Dataflow workers
 gcloud logging read 'resource.type="dataflow_step" AND severity>=ERROR AND
-  resource.labels.job_id="JOB_ID"' \
+  resource.labels.job_id="JOB_ID" AND
+  labels."dataflow.googleapis.com/log_type"="worker"' \
   --project=my-project \
   --limit=50 \
   --format="table(timestamp, jsonPayload.message)"
@@ -54,7 +60,8 @@ For more context, include warning-level logs too.
 ```bash
 # Get warnings and errors with step information
 gcloud logging read 'resource.type="dataflow_step" AND severity>=WARNING AND
-  resource.labels.job_id="JOB_ID"' \
+  resource.labels.job_id="JOB_ID" AND
+  labels."dataflow.googleapis.com/log_type"="worker"' \
   --project=my-project \
   --limit=100 \
   --format="table(timestamp, severity, resource.labels.step_id, jsonPayload.message)"
@@ -70,6 +77,7 @@ Worker logs contain the actual Java or Python stack traces from your code. These
 # Get worker logs with stack traces
 gcloud logging read 'resource.type="dataflow_step" AND
   resource.labels.job_id="JOB_ID" AND
+  labels."dataflow.googleapis.com/log_type"="worker" AND
   jsonPayload.message:"Exception"' \
   --project=my-project \
   --limit=20 \
@@ -102,6 +110,7 @@ Permission issue. The Dataflow service account does not have access to a resourc
 # Check what service account the job is using
 gcloud dataflow jobs describe JOB_ID \
   --region=us-central1 \
+  --full \
   --format="value(environment.serviceAccountEmail)"
 
 # Grant the necessary role
@@ -130,12 +139,13 @@ The pipeline is not making progress. Workers might be in a deadlock, waiting on 
 
 ## Step 4: Check for Hot Keys
 
-Hot keys cause performance problems because one worker gets a disproportionate amount of data. Dataflow logs a warning when it detects this.
+Hot keys cause performance problems because one worker gets a disproportionate amount of data. For batch pipelines, Dataflow logs a warning when it detects this. Hot key logging is disabled for streaming pipelines.
 
 ```bash
 # Search for hot key warnings
 gcloud logging read 'resource.type="dataflow_step" AND
   resource.labels.job_id="JOB_ID" AND
+  labels."dataflow.googleapis.com/log_type"="worker" AND
   jsonPayload.message:"hot key"' \
   --project=my-project \
   --limit=20
@@ -143,7 +153,7 @@ gcloud logging read 'resource.type="dataflow_step" AND
 
 If you have hot keys, consider:
 - Adding a random prefix to the key and aggregating in two stages
-- Using Combiner functions which can be parallelized
+- Using hot key fanout with `Combine.PerKey.withHotKeyFanout`
 - Filtering out the hot key for separate processing
 
 ```java
@@ -165,7 +175,8 @@ PCollection<KV<String, Long>> counts = events
     .apply("RemoveShard", ParDo.of(new DoFn<KV<String, Long>, KV<String, Long>>() {
         @ProcessElement
         public void processElement(ProcessContext c) {
-            String originalKey = c.element().getKey().split("#")[0];
+            String shardedKey = c.element().getKey();
+            String originalKey = shardedKey.substring(0, shardedKey.lastIndexOf("#"));
             c.output(KV.of(originalKey, c.element().getValue()));
         }
     }))
@@ -205,9 +216,11 @@ Set the log level when launching the job.
 
 ```bash
 # Set worker log level to DEBUG for your package
---defaultWorkerLogLevel=WARN \
---workerLogLevelOverrides='{"com.example.pipeline":"DEBUG"}'
+--defaultSdkHarnessLogLevel=WARN \
+--sdkHarnessLogLevelOverrides='{"com.example.pipeline":"DEBUG"}'
 ```
+
+For older Apache Beam SDK versions without Runner v2 support, use `--defaultWorkerLogLevel` and `--workerLogLevelOverrides` instead.
 
 Be careful with debug logging in production. The volume can be enormous and expensive.
 
