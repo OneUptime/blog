@@ -35,19 +35,19 @@ The key advantages:
 
 | Feature | AlloyDB | Self-Managed PostgreSQL |
 |---------|---------|----------------------|
-| PostgreSQL compatibility | High (PG 14/15 compatible) | 100% (it is PostgreSQL) |
+| PostgreSQL compatibility | High (PG 14 through PG 18 compatible) | 100% (it is PostgreSQL) |
 | Storage scaling | Automatic, independent of compute | Manual (resize disks) |
 | High availability | Built-in (cross-zone replication) | Manual (streaming replication + failover) |
 | Backup | Continuous, automatic | Manual (pg_dump, pgBackRest, WAL-G) |
 | Point-in-time recovery | Built-in | Manual setup with WAL archiving |
 | Read replicas | Read pools (managed) | Manual (streaming replication) |
 | Columnar analytics | Built-in columnar engine | Requires citus, timescaledb, or separate system |
-| Connection pooling | Built-in | Requires PgBouncer or PgPool |
+| Connection pooling | Managed, configurable | Requires PgBouncer or PgPool |
 | Extensions | Most common extensions supported | Any extension |
-| PostgreSQL version | Google's releases (PG 14, 15) | Any version (including 16, 17) |
+| PostgreSQL version | Google's supported releases (PG 14, 15, 16, 17, 18) | Any version (including beta releases and custom builds) |
 | Performance tuning | Limited parameters exposed | Full access to all parameters |
 | Maintenance windows | Managed by Google | Managed by you |
-| Cost (comparable setup) | ~$800-1500/month | ~$400-800/month |
+| Cost (comparable setup) | Higher managed-service infrastructure cost; varies by configuration | Often lower infrastructure cost; varies by configuration |
 | Operational effort | Low | High |
 
 ## Performance Comparison
@@ -81,9 +81,14 @@ AlloyDB handles most of these tuning decisions internally. Its intelligent cachi
 AlloyDB's columnar engine gives it a significant edge for analytical queries:
 
 ```sql
--- Enable columnar engine on AlloyDB (automatic for frequently queried columns)
--- You can also explicitly enable it
-ALTER TABLE transactions SET (google_columnar_engine.enabled = true);
+-- After enabling the columnar engine on the AlloyDB instance with the
+-- google_columnar_engine.enabled database flag, frequently used columns
+-- can be added automatically by auto-columnarization.
+-- You can also explicitly add columns to the connected node's column store:
+SELECT google_columnar_engine_add(
+    relation => 'transactions',
+    columns => 'created_at,category,amount'
+);
 
 -- Analytical query that benefits from columnar storage
 -- AlloyDB can run this 10-100x faster than standard PostgreSQL
@@ -126,9 +131,10 @@ gcloud alloydb instances create primary \
     --region=us-central1 \
     --instance-type=PRIMARY \
     --cpu-count=16 \
+    --enable-connection-pooling \
     --database-flags=max_connections=500
 
-# Failover is automatic and typically completes in under 60 seconds
+# Failover is automatic for HA primary instances
 # No manual intervention needed
 ```
 
@@ -168,7 +174,7 @@ And set up the standby:
 # On the standby server, configure recovery
 # Create standby.signal file
 # Configure primary_conninfo in postgresql.conf
-# primary_conninfo = 'host=pg-primary port=5432 user=replicator password=xxx'
+# primary_conninfo = 'host=pg-primary port=5432 user=replicator password=xxx application_name=standby1'
 # restore_command = 'gsutil cp gs://my-wal-archive/%f %p'
 ```
 
@@ -203,7 +209,7 @@ gcloud alloydb backups create weekly-backup \
 # Restore to a point in time
 gcloud alloydb clusters restore enterprise-db-restored \
     --source-cluster=enterprise-db \
-    --restore-point-in-time=2026-02-16T10:00:00Z \
+    --point-in-time=2026-02-16T10:00:00Z \
     --region=us-central1 \
     --network=default
 ```
