@@ -90,6 +90,8 @@ Here is the equivalent cloudbuild.yaml:
 
 substitutions:
   _DEPLOY_ENV: 'production'
+  _LOCATION: 'us-central1'
+  _REPOSITORY: 'my-repo'
 
 steps:
   # Install dependencies
@@ -112,14 +114,14 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/my-app:$BUILD_ID'
+      - '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/my-app:$BUILD_ID'
       - '.'
 
   # Push Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/my-app:$BUILD_ID'
+      - '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/my-app:$BUILD_ID'
 
   # Deploy to Kubernetes
   - name: 'gcr.io/cloud-builders/kubectl'
@@ -129,7 +131,7 @@ steps:
       - 'CLOUDSDK_CONTAINER_CLUSTER=my-cluster'
 
 images:
-  - 'gcr.io/$PROJECT_ID/my-app:$BUILD_ID'
+  - '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/my-app:$BUILD_ID'
 ```
 
 The conditional deployment (only on main branch) is handled by the trigger configuration rather than in the build config itself.
@@ -146,13 +148,19 @@ echo -n "my-api-key-value" | gcloud secrets create api-key --data-file=-
 echo -n "my-db-password" | gcloud secrets create db-password --data-file=-
 ```
 
+Make sure the service account running the build has the Secret Manager Secret Accessor role for those secrets.
+
 Then reference them in your cloudbuild.yaml:
 
 ```yaml
 # cloudbuild.yaml - Using Secret Manager for credentials
+substitutions:
+  _LOCATION: 'us-central1'
+  _REPOSITORY: 'my-repo'
+
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/my-app:latest', '.']
+    args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/my-app:latest', '.']
     secretEnv: ['API_KEY', 'DB_PASSWORD']
 
 availableSecrets:
@@ -256,10 +264,12 @@ substitutions:
   _DEPLOY_ENV: 'staging'   # Default value
   _IMAGE_TAG: 'latest'     # Default value
   _REPLICAS: '3'           # Default value
+  _LOCATION: 'us-central1'  # Artifact Registry location
+  _REPOSITORY: 'my-repo'   # Artifact Registry repository
 
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/my-app:${_IMAGE_TAG}', '.']
+    args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/my-app:${_IMAGE_TAG}', '.']
 
   - name: 'gcr.io/cloud-builders/kubectl'
     args: ['scale', 'deployment/my-app', '--replicas=${_REPLICAS}']
@@ -274,7 +284,7 @@ Override substitutions when triggering manually:
 # Trigger a build with custom substitution values
 gcloud builds submit \
   --config=cloudbuild.yaml \
-  --substitutions=_DEPLOY_ENV=production,_IMAGE_TAG=v1.2.3,_REPLICAS=5
+  --substitutions=_DEPLOY_ENV=production,_IMAGE_TAG=v1.2.3,_REPLICAS=5,_LOCATION=us-central1,_REPOSITORY=my-repo
 ```
 
 ## Migration Strategy
@@ -295,9 +305,9 @@ A few things Jenkins does that Cloud Build handles differently:
 
 1. **Build dashboard**: Cloud Build has a console UI, but it is not as feature-rich as Jenkins Blue Ocean. Cloud Monitoring dashboards can fill some of this gap.
 
-2. **Manual approval gates**: Cloud Build does not have built-in approval steps. Use Cloud Deploy for this, or trigger production builds manually.
+2. **Manual approval gates**: Cloud Build does not have approval steps inside `cloudbuild.yaml`. Use trigger-level approvals, Cloud Deploy approvals, or trigger production builds manually.
 
-3. **Cron-based builds**: Use Cloud Scheduler to trigger builds on a schedule.
+3. **Cron-based builds**: Use Cloud Scheduler to invoke a manual trigger on a schedule.
 
 4. **Build queue visualization**: Cloud Build does not show a queue. Builds just run when workers are available.
 
