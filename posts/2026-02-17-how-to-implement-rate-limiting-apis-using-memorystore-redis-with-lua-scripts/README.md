@@ -25,8 +25,8 @@ Create a Memorystore instance for your rate limiter:
 ```bash
 # Create a Memorystore Redis instance
 
-# The BASIC tier is fine for rate limiting since losing the count
-# during a failover is acceptable
+# The BASIC tier is fine for simple rate limiting if losing the count
+# during an outage or restart is acceptable
 gcloud redis instances create rate-limiter \
   --size=1 \
   --region=us-central1 \
@@ -55,11 +55,11 @@ r = redis.Redis(host='10.0.0.3', port=6379, decode_responses=True)
 # Lua script for fixed window rate limiting
 # KEYS[1] = rate limit key
 # ARGV[1] = max requests allowed
-# ARGV[2] = window size in seconds
+# ARGV[2] = seconds until the current window resets
 FIXED_WINDOW_SCRIPT = """
 local key = KEYS[1]
 local limit = tonumber(ARGV[1])
-local window = tonumber(ARGV[2])
+local reset_after = tonumber(ARGV[2])
 
 -- Get current count
 local current = tonumber(redis.call('GET', key) or '0')
@@ -75,7 +75,7 @@ current = redis.call('INCR', key)
 
 -- Set expiration only on the first request in the window
 if current == 1 then
-    redis.call('EXPIRE', key, window)
+    redis.call('EXPIRE', key, reset_after)
 end
 
 local ttl = redis.call('TTL', key)
@@ -87,8 +87,11 @@ fixed_window = r.register_script(FIXED_WINDOW_SCRIPT)
 
 def check_rate_limit(client_id, max_requests=100, window_seconds=60):
     """Check if a client has exceeded their rate limit."""
-    key = f"ratelimit:fixed:{client_id}:{int(time.time() / window_seconds)}"
-    result = fixed_window(keys=[key], args=[max_requests, window_seconds])
+    now = int(time.time())
+    window_id = now // window_seconds
+    reset_after = window_seconds - (now % window_seconds)
+    key = f"ratelimit:fixed:{client_id}:{window_id}"
+    result = fixed_window(keys=[key], args=[max_requests, reset_after])
 
     allowed = bool(result[0])
     current_count = result[1]
@@ -117,6 +120,7 @@ The fixed window has a problem: a burst of requests at the end of one window and
 # Sliding window rate limiter - more accurate than fixed window
 import redis
 import time
+import uuid
 
 r = redis.Redis(host='10.0.0.3', port=6379, decode_responses=True)
 
@@ -159,8 +163,8 @@ sliding_window = r.register_script(SLIDING_WINDOW_SCRIPT)
 def check_sliding_rate_limit(client_id, max_requests=100, window_seconds=60):
     """Check rate limit using a sliding window approach."""
     now = time.time()
-    # Use timestamp + random suffix as unique request ID
-    request_id = f"{now}:{id(object())}"
+    # Use timestamp + UUID as a unique request ID
+    request_id = f"{now}:{uuid.uuid4()}"
     key = f"ratelimit:sliding:{client_id}"
 
     result = sliding_window(
@@ -225,20 +229,20 @@ if tokens < requested then
     local wait_time = deficit / refill_rate
 
     -- Update the bucket state even when denied (to track refill time)
-    redis.call('HMSET', key, 'tokens', tokens, 'last_refill', now)
+    redis.call('HSET', key, 'tokens', tokens, 'last_refill', now)
     redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) + 1)
 
-    return {0, math.floor(tokens * 100) / 100, math.ceil(wait_time)}
+    return {0, tostring(math.floor(tokens * 100) / 100), math.ceil(wait_time)}
 end
 
 -- Consume tokens
 tokens = tokens - requested
 
 -- Update the bucket
-redis.call('HMSET', key, 'tokens', tokens, 'last_refill', now)
+redis.call('HSET', key, 'tokens', tokens, 'last_refill', now)
 redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) + 1)
 
-return {1, math.floor(tokens * 100) / 100, 0}
+return {1, tostring(math.floor(tokens * 100) / 100), 0}
 """
 
 token_bucket = r.register_script(TOKEN_BUCKET_SCRIPT)
@@ -258,7 +262,7 @@ def check_token_bucket(client_id, capacity=100, refill_rate=10, tokens_needed=1)
     )
 
     allowed = bool(result[0])
-    remaining_tokens = result[1]
+    remaining_tokens = float(result[1])
     retry_after = result[2]
 
     return {
@@ -269,8 +273,9 @@ def check_token_bucket(client_id, capacity=100, refill_rate=10, tokens_needed=1)
     }
 
 # Example: 100 request burst capacity, refills at 10 requests/second
-result = check_token_bucket("api_key_456", capacity=100, refill_rate=10)
-print(f"Allowed: {result['allowed']}, Tokens left: {result['remaining_tokens']}")
+if __name__ == "__main__":
+    result = check_token_bucket("api_key_456", capacity=100, refill_rate=10)
+    print(f"Allowed: {result['allowed']}, Tokens left: {result['remaining_tokens']}")
 ```
 
 ## Integrating with a FastAPI Application
@@ -280,15 +285,11 @@ Here is how to integrate the rate limiter into a web application:
 ```python
 # app.py
 # FastAPI application with Redis rate limiting middleware
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-import redis
+from token_bucket import check_token_bucket
 
 app = FastAPI()
-r = redis.Redis(host='10.0.0.3', port=6379, decode_responses=True)
-
-# Register the token bucket script
-token_bucket = r.register_script(TOKEN_BUCKET_SCRIPT)
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
