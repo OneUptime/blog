@@ -48,6 +48,9 @@ flowchart LR
 gcloud services enable vmmigration.googleapis.com \
   compute.googleapis.com \
   servicemanagement.googleapis.com \
+  servicecontrol.googleapis.com \
+  iam.googleapis.com \
+  cloudresourcemanager.googleapis.com \
   --project=PROJECT_ID
 ```
 
@@ -55,23 +58,26 @@ gcloud services enable vmmigration.googleapis.com \
 
 Configure M2VM to connect to your AWS account. You need AWS credentials with permissions to describe and snapshot EC2 instances.
 
-Create the source via the Cloud Console or gcloud:
+Create the source via the Cloud Console or the VM Migration API:
 
 ```bash
 # Create an AWS migration source
-gcloud migration vms sources create aws-source \
-  --location=us-central1 \
-  --project=PROJECT_ID \
-  --aws-source-details='{
-    "accessKeyCreds": {
-      "accessKeyId": "AKIAIOSFODNN7EXAMPLE",
-      "secretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-    },
-    "awsRegion": "us-east-1"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://vmmigration.googleapis.com/v1/projects/PROJECT_ID/locations/us-central1/sources?sourceId=aws-source" \
+  -d '{
+    "aws": {
+      "awsRegion": "us-east-1",
+      "accessKeyCreds": {
+        "accessKeyId": "AKIAIOSFODNN7EXAMPLE",
+        "secretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+      }
+    }
   }'
 ```
 
-For production use, I strongly recommend using a dedicated IAM role with minimal permissions rather than access keys. The M2VM documentation lists the exact permissions needed.
+For production use, create a dedicated IAM user with minimal permissions rather than reusing broad access keys. The M2VM documentation lists the exact permissions needed.
 
 ## Step 3: Discover EC2 Instances
 
@@ -79,58 +85,69 @@ Once the source is connected, M2VM discovers your EC2 instances:
 
 ```bash
 # List discovered EC2 instances available for migration
-gcloud migration vms sources migrating-vms list \
-  --source=aws-source \
-  --location=us-central1 \
-  --project=PROJECT_ID
+curl -X GET \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://vmmigration.googleapis.com/v1/projects/PROJECT_ID/locations/us-central1/sources/aws-source:fetchInventory"
 ```
 
-This shows you all EC2 instances in the connected region with details like instance type, disk sizes, and OS.
+This shows you the EC2 instances in the connected region with details like instance type, disk sizes, and OS.
 
 ## Step 4: Create a Target Configuration
 
-Before starting the migration, define where and how the VMs should run on GCP:
+Before starting the migration, define the target project where the VMs should run on GCP:
 
 ```bash
-# Create a target project and network configuration
-gcloud migration vms target-projects create my-target \
-  --location=us-central1 \
-  --target-project=TARGET_PROJECT_ID \
-  --project=PROJECT_ID
+# Add a target project
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://vmmigration.googleapis.com/v1/projects/PROJECT_ID/locations/global/targetProjects?targetProjectId=my-target" \
+  -d '{
+    "project": "TARGET_PROJECT_ID"
+  }'
 ```
 
 ## Step 5: Start a Migration
 
-Create the migration for a specific EC2 instance. This begins the continuous replication:
+Create the migration for a specific EC2 instance, then start continuous replication:
 
 ```bash
 # Create a migration for an EC2 instance
-gcloud migration vms migrating-vms create my-ec2-migration \
-  --source=aws-source \
-  --location=us-central1 \
-  --source-vm-id=i-0123456789abcdef0 \
-  --project=PROJECT_ID \
-  --compute-engine-target-defaults='{
-    "vmName": "migrated-web-server",
-    "zone": "us-central1-a",
-    "machineType": "e2-standard-4",
-    "networkInterfaces": [{
-      "network": "projects/PROJECT_ID/global/networks/default",
-      "subnetwork": "projects/PROJECT_ID/regions/us-central1/subnetworks/default"
-    }],
-    "serviceAccount": "default",
-    "diskType": "pd-ssd",
-    "labels": {
-      "migration-source": "aws",
-      "environment": "production"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://vmmigration.googleapis.com/v1/projects/PROJECT_ID/locations/us-central1/sources/aws-source/migratingVms?migratingVmId=my-ec2-migration" \
+  -d '{
+    "sourceVmId": "i-0123456789abcdef0",
+    "displayName": "migrated-web-server",
+    "computeEngineTargetDefaults": {
+      "vmName": "migrated-web-server",
+      "targetProject": "projects/PROJECT_ID/locations/global/targetProjects/my-target",
+      "zone": "us-central1-a",
+      "machineType": "e2-standard-4",
+      "networkInterfaces": [{
+        "network": "projects/TARGET_PROJECT_ID/global/networks/default",
+        "subnetwork": "projects/TARGET_PROJECT_ID/regions/us-central1/subnetworks/default"
+      }],
+      "serviceAccount": "PROJECT_NUMBER-compute@developer.gserviceaccount.com",
+      "diskType": "COMPUTE_ENGINE_DISK_TYPE_SSD",
+      "labels": {
+        "migration-source": "aws",
+        "environment": "production"
+      }
     }
   }'
+
+# Start replication
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://vmmigration.googleapis.com/v1/projects/PROJECT_ID/locations/us-central1/sources/aws-source/migratingVms/my-ec2-migration:startMigration"
 ```
 
 Key configuration decisions:
 
 - **Machine type mapping**: An m5.xlarge on AWS maps roughly to e2-standard-4 on GCP (4 vCPUs, 16 GB RAM). Check the GCP machine type comparison for your specific instance types.
-- **Disk type**: Use `pd-ssd` for production workloads, `pd-standard` for cost optimization.
+- **Disk type**: Use `COMPUTE_ENGINE_DISK_TYPE_SSD` for production workloads, `COMPUTE_ENGINE_DISK_TYPE_STANDARD` for cost optimization.
 - **Network**: Make sure the target network has the right firewall rules for your workload.
 
 ## Step 6: Monitor Replication Progress
@@ -139,28 +156,27 @@ Check the replication status:
 
 ```bash
 # Check migration status and replication progress
-gcloud migration vms migrating-vms describe my-ec2-migration \
-  --source=aws-source \
-  --location=us-central1 \
-  --project=PROJECT_ID
+curl -X GET \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://vmmigration.googleapis.com/v1/projects/PROJECT_ID/locations/us-central1/sources/aws-source/migratingVms/my-ec2-migration"
 ```
 
 The replication goes through these stages:
 
-- `PENDING_REPLICATION`: Migration created, replication not started
-- `ACTIVE`: Replication in progress
-- `REPLICATING`: Data is being copied
-- `REPLICATED`: Initial replication complete, continuous sync active
+- `PENDING`: The source VM is being verified
+- `READY`: The source VM was verified and is ready to start replication
+- `FIRST_SYNC`: The first sync cycle is running
+- `ACTIVE`: Replication is active and running or scheduled to run
+- `CUTTING_OVER`: The source VM is being turned off and final replication is running
+- `CUTOVER`: The source VM was stopped and replicated
 
 Monitor the data transfer to estimate when replication will complete:
 
 ```bash
 # List all active migrations with their replication status
-gcloud migration vms migrating-vms list \
-  --source=aws-source \
-  --location=us-central1 \
-  --project=PROJECT_ID \
-  --format="table(name, currentSyncInfo.progress, state)"
+curl -X GET \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://vmmigration.googleapis.com/v1/projects/PROJECT_ID/locations/us-central1/sources/aws-source/migratingVms"
 ```
 
 ## Step 7: Create a Test Clone
@@ -169,11 +185,11 @@ Before cutting over, create a test clone to validate the migration:
 
 ```bash
 # Create a test clone of the migrated VM
-gcloud migration vms migrating-vms clone-jobs create test-clone-1 \
-  --migrating-vm=my-ec2-migration \
-  --source=aws-source \
-  --location=us-central1 \
-  --project=PROJECT_ID
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://vmmigration.googleapis.com/v1/projects/PROJECT_ID/locations/us-central1/sources/aws-source/migratingVms/my-ec2-migration/cloneJobs?cloneJobId=test-clone-1" \
+  -d '{}'
 ```
 
 The test clone creates a Compute Engine VM from the latest replicated data. You can:
@@ -192,11 +208,11 @@ When you are satisfied with the test clone, perform the final cutover:
 
 ```bash
 # Initiate the cutover - this is the point of no return
-gcloud migration vms migrating-vms cutover-jobs create final-cutover \
-  --migrating-vm=my-ec2-migration \
-  --source=aws-source \
-  --location=us-central1 \
-  --project=PROJECT_ID
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://vmmigration.googleapis.com/v1/projects/PROJECT_ID/locations/us-central1/sources/aws-source/migratingVms/my-ec2-migration/cutoverJobs?cutoverJobId=final-cutover" \
+  -d '{}'
 ```
 
 During cutover:
