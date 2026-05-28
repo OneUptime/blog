@@ -58,9 +58,14 @@ def create_pdp_models(project_id):
     fbt_model = retail_v2.Model(
         display_name="PDP - Frequently Bought Together",
         type_="frequently-bought-together",
-        optimization_objective="cvr",  # Optimize for conversion
+        optimization_objective="revenue-per-order",  # Optimize for revenue per session
         filtering_option=retail_v2.RecommendationsFilteringOption.RECOMMENDATIONS_FILTERING_ENABLED,
         periodic_tuning_state=retail_v2.Model.PeriodicTuningState.PERIODIC_TUNING_ENABLED,
+        model_features_config=retail_v2.Model.ModelFeaturesConfig(
+            frequently_bought_together_config=retail_v2.Model.FrequentlyBoughtTogetherFeaturesConfig(
+                context_products_type=retail_v2.Model.ContextProductsType.SINGLE_CONTEXT_PRODUCT
+            )
+        ),
     )
 
     fbt_op = client.create_model(
@@ -184,6 +189,7 @@ def pdp_recommendations():
                 user_event=user_event,
                 page_size=8,
                 filter='availability: ANY("IN_STOCK")',
+                params={"filterSyntaxV2": True},
             )
         )
         results["similar_items"] = [
@@ -205,6 +211,7 @@ def pdp_recommendations():
                 user_event=user_event,
                 page_size=4,
                 filter='availability: ANY("IN_STOCK")',
+                params={"filterSyntaxV2": True},
             )
         )
         results["frequently_bought_together"] = [
@@ -234,9 +241,9 @@ async function loadPDPRecommendations(productId) {
     const userId = getCurrentUserId(); // null if not logged in
 
     // Build the API URL with query parameters
-    let url = `/api/pdp/recommendations?product_id=${productId}&visitor_id=${visitorId}`;
+    let url = `/api/pdp/recommendations?product_id=${encodeURIComponent(productId)}&visitor_id=${encodeURIComponent(visitorId)}`;
     if (userId) {
-        url += `&user_id=${userId}`;
+        url += `&user_id=${encodeURIComponent(userId)}`;
     }
 
     try {
@@ -291,7 +298,7 @@ def get_similar_excluding_current(product_id, visitor_id, user_id=None):
         user_event.user_info = retail_v2.UserInfo(user_id=user_id)
 
     # Filter out the current product and only show in-stock items
-    filter_expr = f'availability: ANY("IN_STOCK") AND NOT id: ANY("{product_id}")'
+    filter_expr = f'(availability: ANY("IN_STOCK")) AND NOT (productId: ANY("{product_id}"))'
 
     response = predict_client.predict(
         request=retail_v2.PredictRequest(
@@ -302,6 +309,7 @@ def get_similar_excluding_current(product_id, visitor_id, user_id=None):
             user_event=user_event,
             page_size=8,
             filter=filter_expr,
+            params={"filterSyntaxV2": True},
         )
     )
 
