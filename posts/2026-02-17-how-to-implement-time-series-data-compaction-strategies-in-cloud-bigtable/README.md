@@ -31,16 +31,13 @@ Here is a row key structure that supports multiple granularities:
 
 # Using reverse timestamps ensures recent data sorts first within each metric
 
-import struct
-import time
-
 def create_row_key(metric_id, granularity, timestamp):
     # Reverse the timestamp so newer entries come first in range scans
-    max_ts = 9999999999999  # far future timestamp in milliseconds
+    max_ts = 9999999999999999  # far future timestamp in microseconds
     reverse_ts = max_ts - timestamp
 
     # Granularity codes: 'r' = raw, 'm' = minute, 'h' = hour, 'd' = day
-    return f"{metric_id}#{granularity}#{reverse_ts}".encode()
+    return f"{metric_id}#{granularity}#{reverse_ts:016d}".encode()
 ```
 
 This structure lets you read any granularity for a given metric with a simple prefix scan. It also keeps data for the same metric physically co-located on disk, which improves read performance.
@@ -60,24 +57,21 @@ def configure_gc_policies(instance_id, table_id):
     table = instance.table(table_id)
 
     # Raw data column family - keep only 7 days
-    raw_cf = table.column_family("raw")
-    raw_cf.gc_rule = column_family.MaxAgeGCRule(
+    raw_cf = table.column_family("raw", gc_rule=column_family.MaxAgeGCRule(
         datetime.timedelta(days=7)
-    )
+    ))
     raw_cf.update()
 
     # Minute-aggregated data - keep 30 days
-    minute_cf = table.column_family("minute")
-    minute_cf.gc_rule = column_family.MaxAgeGCRule(
+    minute_cf = table.column_family("minute", gc_rule=column_family.MaxAgeGCRule(
         datetime.timedelta(days=30)
-    )
+    ))
     minute_cf.update()
 
     # Hour-aggregated data - keep 1 year
-    hour_cf = table.column_family("hour")
-    hour_cf.gc_rule = column_family.MaxAgeGCRule(
+    hour_cf = table.column_family("hour", gc_rule=column_family.MaxAgeGCRule(
         datetime.timedelta(days=365)
-    )
+    ))
     hour_cf.update()
 
     # Daily aggregated data - keep forever (no GC rule)
@@ -93,7 +87,8 @@ The compaction pipeline reads raw data, aggregates it, writes the results at a c
 ```python
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
-from google.cloud.bigtable import row_filters
+from apache_beam.io.gcp.bigtableio import ReadFromBigtable, WriteToBigTable
+from google.cloud.bigtable.row import DirectRow
 
 def run_compaction_pipeline(project_id, instance_id, table_id):
     """Compact raw data into minute-level aggregates."""
@@ -109,13 +104,12 @@ def run_compaction_pipeline(project_id, instance_id, table_id):
         # Read raw data from the last processing window
         raw_data = (
             pipeline
-            | 'ReadFromBigtable' >> beam.io.ReadFromBigtable(
+            | 'ReadFromBigtable' >> ReadFromBigtable(
                 project_id=project_id,
                 instance_id=instance_id,
-                table_id=table_id,
-                row_set=create_row_set_for_window(),
-                filter_=row_filters.ColumnQualifierRegexFilter(b'raw')
+                table_id=table_id
             )
+            | 'FilterRawRowsForWindow' >> beam.Filter(is_raw_row_in_window)
         )
 
         # Group by metric and minute window
@@ -135,7 +129,7 @@ def run_compaction_pipeline(project_id, instance_id, table_id):
         )
 
         # Write aggregated results back to Bigtable
-        aggregated | 'WriteToBigtable' >> beam.io.WriteToBigtable(
+        aggregated | 'WriteToBigtable' >> WriteToBigTable(
             project_id=project_id,
             instance_id=instance_id,
             table_id=table_id,
@@ -143,15 +137,17 @@ def run_compaction_pipeline(project_id, instance_id, table_id):
 
 def compute_aggregates(element):
     """Compute min, max, avg, count, sum for a metric window."""
-    metric_id, values = element
-    return {
-        'metric_id': metric_id,
-        'min': min(values),
-        'max': max(values),
-        'avg': sum(values) / len(values),
-        'count': len(values),
-        'sum': sum(values),
-    }
+    (metric_id, window_start), values = element
+    values = list(values)
+    total = sum(values)
+
+    row = DirectRow(row_key=create_row_key(metric_id, 'm', window_start))
+    row.set_cell('minute', b'min', str(min(values)).encode())
+    row.set_cell('minute', b'max', str(max(values)).encode())
+    row.set_cell('minute', b'avg', str(total / len(values)).encode())
+    row.set_cell('minute', b'count', str(len(values)).encode())
+    row.set_cell('minute', b'sum', str(total).encode())
+    return row
 ```
 
 ## Scheduling Compaction Jobs
@@ -165,10 +161,17 @@ You need to run compaction at regular intervals. Cloud Scheduler paired with Clo
 # Runs once daily for hour-to-day compaction
 
 from google.cloud import dataflow_v1beta3
+import base64
+import json
 
 def trigger_compaction(event, context):
     """Trigger the appropriate compaction Dataflow job."""
-    compaction_type = event.get('compaction_type', 'raw_to_minute')
+    payload = (
+        json.loads(base64.b64decode(event['data']).decode())
+        if event.get('data')
+        else {}
+    )
+    compaction_type = payload.get('compaction_type', 'raw_to_minute')
 
     # Template parameters vary by compaction level
     templates = {
@@ -198,6 +201,8 @@ In real systems, data does not always arrive in order. Sensors go offline and ba
 Your compaction pipeline needs to handle this gracefully:
 
 ```python
+from google.cloud.bigtable import row_filters
+
 def should_recompact(metric_id, window_start, window_end, table):
     """Check if new raw data has arrived for an already-compacted window."""
     # Read raw data count for this window
@@ -229,6 +234,8 @@ def should_recompact(metric_id, window_start, window_end, table):
 You should track several metrics to make sure compaction is working correctly. Set up monitoring for storage usage trends per column family, compaction job success and failure rates, the lag between raw data arrival and compaction completion, and any data discrepancies between granularity levels.
 
 ```python
+import time
+
 from google.cloud import monitoring_v3
 
 def report_compaction_metrics(project_id, metrics_processed, compaction_type):
@@ -240,6 +247,7 @@ def report_compaction_metrics(project_id, metrics_processed, compaction_type):
     series.metric.type = "custom.googleapis.com/bigtable/compaction_records"
     series.metric.labels["compaction_type"] = compaction_type
     series.resource.type = "global"
+    series.resource.labels["project_id"] = project_id
 
     # Record the number of metrics processed in this compaction run
     point = monitoring_v3.Point()
