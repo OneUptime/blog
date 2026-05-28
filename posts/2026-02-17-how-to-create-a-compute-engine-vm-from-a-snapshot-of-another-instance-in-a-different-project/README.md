@@ -10,25 +10,25 @@ Description: Step-by-step guide to creating a Compute Engine VM from a snapshot 
 
 Working with multiple GCP projects is common in organizations that separate environments (dev, staging, production) or teams into different projects. Sooner or later, you will need to clone a VM from one project to another - maybe to replicate a production issue in a dev environment, migrate workloads between projects, or set up a new project based on an existing configuration.
 
-The process involves creating a snapshot in the source project, sharing it with the destination project, creating a disk from that snapshot, and launching a VM from that disk. Let me walk through each step.
+The process involves creating a snapshot of the source VM's boot disk, sharing it with the destination project, creating a disk from that snapshot, and launching a VM from that disk. Let me walk through each step.
 
 ## Understanding Cross-Project Snapshot Access
 
 By default, snapshots are only accessible within the project where they were created. To use a snapshot in a different project, you need to either:
 
-1. Grant the destination project's service account access to the snapshot in the source project
+1. Grant the user or service account that creates the destination disk access to the snapshot in the source project
 2. Copy the snapshot to the destination project (GCP does not have a direct copy command, so this is done by creating a disk then re-snapshotting)
 
 Option 1 is simpler and avoids duplicating data.
 
 ## Step 1: Create a Snapshot in the Source Project
 
-In the source project, create a snapshot of the VM you want to clone:
+In the source project, create a snapshot of the boot disk for the VM you want to clone:
 
 ```bash
 # Create a snapshot of the source VM's boot disk
 
-gcloud compute disks snapshot source-vm \
+gcloud compute disks snapshot source-boot-disk \
     --zone=us-central1-a \
     --snapshot-names=source-vm-snapshot \
     --project=source-project-id
@@ -46,10 +46,10 @@ gcloud compute disks snapshot source-data-disk \
 
 ## Step 2: Grant Cross-Project Access to the Snapshot
 
-The destination project needs permission to read the snapshot. Grant the `roles/compute.storageAdmin` role on the source project to the destination project's default compute service account:
+The principal that creates the disk or VM in the destination project needs permission to read the snapshot. Grant the `roles/compute.storageAdmin` role on the snapshot to that user or service account. For example, if you run automation as the destination project's default Compute Engine service account:
 
 ```bash
-# Get the destination project's compute service account
+# Example destination project compute service account
 # Format: PROJECT_NUMBER-compute@developer.gserviceaccount.com
 DEST_SA="123456789-compute@developer.gserviceaccount.com"
 
@@ -60,7 +60,7 @@ gcloud compute snapshots add-iam-policy-binding source-vm-snapshot \
     --role="roles/compute.storageAdmin"
 ```
 
-Alternatively, if you need broader access, grant the role at the project level:
+Alternatively, if you need broader access, grant the role at the source project level:
 
 ```bash
 # Grant compute storage access at the project level (broader, less secure)
@@ -69,7 +69,7 @@ gcloud projects add-iam-policy-binding source-project-id \
     --role="roles/compute.storageAdmin"
 ```
 
-For human users who need to access the snapshot:
+For human users who create the disk or VM:
 
 ```bash
 # Grant a user in the destination project access to read snapshots from the source
@@ -123,40 +123,42 @@ Here is a script that does the entire cross-project clone in one go:
 ```bash
 #!/bin/bash
 # cross-project-clone.sh - Clone a VM from one project to another
-# Usage: ./cross-project-clone.sh SOURCE_PROJECT SOURCE_VM SOURCE_ZONE DEST_PROJECT DEST_ZONE
+# Usage: ./cross-project-clone.sh SOURCE_PROJECT SOURCE_BOOT_DISK SOURCE_ZONE DEST_PROJECT DEST_ZONE
+# The caller must already have permission to create snapshots in the source project,
+# read the snapshot, and create disks and instances in the destination project.
 
 SOURCE_PROJECT=$1
-SOURCE_VM=$2
+SOURCE_BOOT_DISK=$2
 SOURCE_ZONE=$3
 DEST_PROJECT=$4
 DEST_ZONE=$5
 TIMESTAMP=$(date +%Y%m%d%H%M%S)
 
-echo "Step 1: Creating snapshot of ${SOURCE_VM} in ${SOURCE_PROJECT}..."
-gcloud compute disks snapshot "${SOURCE_VM}" \
+echo "Step 1: Creating snapshot of ${SOURCE_BOOT_DISK} in ${SOURCE_PROJECT}..."
+gcloud compute disks snapshot "${SOURCE_BOOT_DISK}" \
     --zone="${SOURCE_ZONE}" \
-    --snapshot-names="${SOURCE_VM}-clone-${TIMESTAMP}" \
+    --snapshot-names="${SOURCE_BOOT_DISK}-clone-${TIMESTAMP}" \
     --project="${SOURCE_PROJECT}"
 
 echo "Step 2: Creating disk from snapshot in ${DEST_PROJECT}..."
-gcloud compute disks create "${SOURCE_VM}-cloned" \
+gcloud compute disks create "${SOURCE_BOOT_DISK}-cloned" \
     --zone="${DEST_ZONE}" \
-    --source-snapshot="projects/${SOURCE_PROJECT}/global/snapshots/${SOURCE_VM}-clone-${TIMESTAMP}" \
+    --source-snapshot="projects/${SOURCE_PROJECT}/global/snapshots/${SOURCE_BOOT_DISK}-clone-${TIMESTAMP}" \
     --project="${DEST_PROJECT}"
 
 echo "Step 3: Creating VM from disk in ${DEST_PROJECT}..."
-gcloud compute instances create "${SOURCE_VM}-cloned" \
+gcloud compute instances create "${SOURCE_BOOT_DISK}-cloned" \
     --zone="${DEST_ZONE}" \
     --machine-type=e2-medium \
-    --disk=name="${SOURCE_VM}-cloned",boot=yes,auto-delete=yes \
+    --disk=name="${SOURCE_BOOT_DISK}-cloned",boot=yes,auto-delete=yes \
     --project="${DEST_PROJECT}"
 
 echo "Step 4: Cleaning up snapshot..."
-gcloud compute snapshots delete "${SOURCE_VM}-clone-${TIMESTAMP}" \
+gcloud compute snapshots delete "${SOURCE_BOOT_DISK}-clone-${TIMESTAMP}" \
     --project="${SOURCE_PROJECT}" \
     --quiet
 
-echo "Done. VM ${SOURCE_VM}-cloned created in ${DEST_PROJECT}."
+echo "Done. VM ${SOURCE_BOOT_DISK}-cloned created in ${DEST_PROJECT}."
 ```
 
 ## Terraform Configuration
@@ -202,7 +204,7 @@ An alternative to snapshots is creating a custom image in the source project and
 ```bash
 # In the source project, create an image from the VM's disk
 gcloud compute images create source-vm-image \
-    --source-disk=source-vm \
+    --source-disk=source-boot-disk \
     --source-disk-zone=us-central1-a \
     --project=source-project-id
 
@@ -226,7 +228,7 @@ The advantage of images over snapshots for cross-project use:
 
 ## Cross-Region Cloning
 
-Snapshots are global resources, so you can create a disk from a snapshot in any zone, regardless of where the original disk was:
+Globally scoped snapshots can be used to create a disk in any zone, regardless of where the original disk was:
 
 ```bash
 # Create a disk in Asia from a snapshot originally taken in US
@@ -240,13 +242,13 @@ This is useful for multi-region deployments or disaster recovery setups.
 
 ## Things to Watch Out For
 
-1. **Network configuration**: The cloned VM will try to use the same network settings as the original. Make sure the destination project has compatible VPC networks and subnets.
+1. **Network configuration**: A VM created from a boot disk snapshot does not automatically recreate the original VM's network settings. Specify the correct VPC network and subnet when creating the VM.
 
-2. **Service account**: The cloned VM may reference a service account that does not exist in the destination project. Update the service account when creating the VM.
+2. **Service account**: A VM created from the disk uses the destination project's default service account unless you specify another one. Set the service account explicitly if the workload expects a particular identity.
 
 3. **Disk size**: You can increase the disk size when creating from a snapshot, but you cannot decrease it.
 
-4. **Encryption keys**: If the source disk uses a customer-managed encryption key (CMEK), you need the same key (or a re-encrypted copy) available in the destination project.
+4. **Encryption keys**: If the source snapshot uses a customer-managed encryption key (CMEK), the identity creating the destination disk needs permission to use that key, or you need to create a re-encrypted copy.
 
 5. **Software licenses**: Some software licenses may not be valid across projects. Check your license terms.
 
@@ -254,4 +256,4 @@ This is useful for multi-region deployments or disaster recovery setups.
 
 ## Wrapping Up
 
-Cloning VMs across GCP projects is a multi-step process, but each step is straightforward. The main thing to get right is the IAM permissions - the destination project needs access to read the snapshot (or image) from the source project. For one-off migrations, the manual approach works fine. For regular cross-project cloning (like syncing production data to staging), automate the process with a script or Terraform configuration. And always consider whether an image might be a better choice than a snapshot, especially if you are creating multiple VMs from the same source.
+Cloning VMs across GCP projects is a multi-step process, but each step is straightforward. The main thing to get right is the IAM permissions - the user or service account creating the destination resources needs access to read the snapshot (or image) from the source project. For one-off migrations, the manual approach works fine. For regular cross-project cloning (like syncing production data to staging), automate the process with a script or Terraform configuration. And always consider whether an image might be a better choice than a snapshot, especially if you are creating multiple VMs from the same source.
