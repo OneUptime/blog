@@ -78,20 +78,20 @@ This is the recommended default for most services. It ensures that if a trace is
 
 ### Rule-Based Sampler
 
-For more control, you can combine samplers based on span attributes. Here is how to always sample error traces while sampling only 5% of normal traffic:
+For more control, you can combine samplers based on span attributes. Here is how to always sample critical endpoints while sampling only 5% of normal traffic:
 
 ```python
 # Python: Custom rule-based sampler
 from opentelemetry.sdk.trace.sampling import (
     Sampler,
     Decision,
+    SamplingResult,
     ParentBased,
     TraceIdRatioBased,
-    ALWAYS_ON,
 )
 from opentelemetry.context import Context
-from opentelemetry.trace import SpanKind
-from typing import Optional, Sequence
+from opentelemetry.trace import SpanKind, TraceState
+from typing import Optional
 
 class RuleBasedSampler(Sampler):
     """Custom sampler that applies different rates based on attributes."""
@@ -110,17 +110,22 @@ class RuleBasedSampler(Sampler):
         kind: SpanKind = None,
         attributes=None,
         links=None,
+        trace_state: Optional[TraceState] = None,
     ):
         # Always sample critical endpoints
         if attributes:
             http_target = attributes.get('http.target', '')
             for path in self._always_sample_paths:
                 if path in str(http_target):
-                    return Decision.RECORD_AND_SAMPLE, attributes, []
+                    return SamplingResult(
+                        Decision.RECORD_AND_SAMPLE,
+                        attributes,
+                        trace_state,
+                    )
 
         # Use default rate for everything else
         return self._default_sampler.should_sample(
-            parent_context, trace_id, name, kind, attributes, links
+            parent_context, trace_id, name, kind, attributes, links, trace_state
         )
 
     def get_description(self):
@@ -175,42 +180,61 @@ service:
 Different services need different sampling rates. Here is a practical approach:
 
 ```yaml
-# Different collector pipelines for different service tiers
-service:
-  pipelines:
-    # Critical path services: higher sampling rate
-    traces/critical:
-      receivers: [otlp]
-      processors: [filter/critical, probabilistic_sampler/high, batch]
-      exporters: [googlecloud]
-
-    # Internal services: lower sampling rate
-    traces/internal:
-      receivers: [otlp]
-      processors: [filter/internal, probabilistic_sampler/low, batch]
-      exporters: [googlecloud]
+# Tail sampling policies for different service tiers
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
 
 processors:
-  # High rate for payment and auth services
-  probabilistic_sampler/high:
-    sampling_percentage: 50
+  tail_sampling:
+    decision_wait: 10s
+    policies:
+      # High rate for payment and auth services
+      - name: critical-services
+        type: and
+        and:
+          and_sub_policy:
+            - name: critical-service-name
+              type: string_attribute
+              string_attribute:
+                key: service.name
+                values: ["payment-.*", "auth-.*", "checkout-.*"]
+                enabled_regex_matching: true
+            - name: critical-service-rate
+              type: probabilistic
+              probabilistic:
+                sampling_percentage: 50
 
-  # Low rate for background workers
-  probabilistic_sampler/low:
-    sampling_percentage: 5
+      # Low rate for background workers
+      - name: internal-services
+        type: and
+        and:
+          and_sub_policy:
+            - name: internal-service-name
+              type: string_attribute
+              string_attribute:
+                key: service.name
+                values: ["worker-.*", "cron-.*", "internal-.*"]
+                enabled_regex_matching: true
+            - name: internal-service-rate
+              type: probabilistic
+              probabilistic:
+                sampling_percentage: 5
 
-  # Route traces based on service name
-  filter/critical:
+  batch: {}
+
+exporters:
+  googlecloud:
+    project: my-project
+
+service:
+  pipelines:
     traces:
-      include:
-        match_type: regexp
-        services: ["payment-.*", "auth-.*", "checkout-.*"]
-
-  filter/internal:
-    traces:
-      include:
-        match_type: regexp
-        services: ["worker-.*", "cron-.*", "internal-.*"]
+      receivers: [otlp]
+      processors: [tail_sampling, batch]
+      exporters: [googlecloud]
 ```
 
 ## Estimating Cost Savings
@@ -223,17 +247,20 @@ def estimate_trace_cost(
     requests_per_day: int,
     avg_spans_per_trace: int,
     sampling_rate: float,
-    cost_per_million_spans: float = 0.20
+    cost_per_million_spans: float = 0.20,
+    free_monthly_spans: int = 2_500_000,
 ):
     """Estimate monthly Cloud Trace cost with a given sampling rate."""
     daily_spans = requests_per_day * avg_spans_per_trace * sampling_rate
     monthly_spans = daily_spans * 30
-    monthly_cost = (monthly_spans / 1_000_000) * cost_per_million_spans
+    billable_spans = max(monthly_spans - free_monthly_spans, 0)
+    monthly_cost = (billable_spans / 1_000_000) * cost_per_million_spans
 
     return {
         'sampling_rate': f'{sampling_rate * 100}%',
         'daily_spans': int(daily_spans),
         'monthly_spans': int(monthly_spans),
+        'billable_spans': int(billable_spans),
         'monthly_cost_usd': round(monthly_cost, 2),
     }
 
@@ -251,12 +278,12 @@ for rate in [1.0, 0.5, 0.25, 0.10, 0.05, 0.01]:
 Running this shows the dramatic difference:
 
 ```text
-  100% -> 2,400,000,000 spans/month ->   $480.00/month
-   50% -> 1,200,000,000 spans/month ->   $240.00/month
-   25% ->   600,000,000 spans/month ->   $120.00/month
-   10% ->   240,000,000 spans/month ->    $48.00/month
-    5% ->   120,000,000 spans/month ->    $24.00/month
-    1% ->    24,000,000 spans/month ->     $4.80/month
+  100% -> 2,400,000,000 spans/month ->   $479.50/month
+   50% -> 1,200,000,000 spans/month ->   $239.50/month
+   25% ->   600,000,000 spans/month ->   $119.50/month
+   10% ->   240,000,000 spans/month ->    $47.50/month
+    5% ->   120,000,000 spans/month ->    $23.50/month
+    1% ->    24,000,000 spans/month ->     $4.30/month
 ```
 
 ## Always-Sample Error Traces
@@ -266,18 +293,6 @@ Regardless of your base sampling rate, you should always capture error traces. H
 ```yaml
 # Collector config that preserves all error traces
 processors:
-  # Filter processor that keeps all error spans
-  filter/errors:
-    error_mode: propagate
-    traces:
-      span:
-        - 'status.code == STATUS_CODE_ERROR'
-
-  # Group traces by trace ID for tail-based sampling
-  groupbytrace:
-    wait_duration: 10s
-    num_traces: 10000
-
   # Tail sampling that always keeps errors
   tail_sampling:
     decision_wait: 10s
@@ -286,7 +301,7 @@ processors:
       - name: errors-policy
         type: status_code
         status_code: {status_codes: [ERROR]}
-      # Sample 10% of successful traces
+      # Sample 10% of the remaining traces
       - name: probabilistic-policy
         type: probabilistic
         probabilistic: {sampling_percentage: 10}
