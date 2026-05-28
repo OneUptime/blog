@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Artifact Registry, Container Registry, Docker, Migration
 
-Description: A practical guide to migrating your Docker images from Google Container Registry to Artifact Registry before the deprecation deadline, with step-by-step instructions.
+Description: A practical guide to migrating your Docker images from Google Container Registry to Artifact Registry after the Container Registry shutdown, with step-by-step instructions.
 
 ---
 
-Google Container Registry (gcr.io) is being deprecated in favor of Artifact Registry. If you have been using GCR, you need to migrate your images to Artifact Registry. The good news is that Artifact Registry is a superset of GCR - it does everything GCR does and more. The migration itself is straightforward, but there are details you need to get right to avoid breaking your CI/CD pipelines and running deployments.
+Google Container Registry (gcr.io) is deprecated in favor of Artifact Registry. Effective March 18, 2025, Container Registry was shut down and writing images to Container Registry is unavailable. If you have been using GCR, you need to migrate your images to Artifact Registry. The good news is that Artifact Registry is a superset of GCR - it does everything GCR does and more. The migration itself is straightforward, but there are details you need to get right to avoid breaking your CI/CD pipelines and running deployments.
 
 This guide covers the full migration process, from creating Artifact Registry repositories to copying images and updating references.
 
@@ -87,12 +87,12 @@ The recommended tool for bulk image copying is `gcrane`, which is part of the go
 # Install gcrane
 go install github.com/google/go-containerregistry/cmd/gcrane@latest
 
-# Copy a single image with all its tags
-gcrane cp gcr.io/my-project-id/my-app \
+# Copy a single image path with all its tags
+gcrane cp -r gcr.io/my-project-id/my-app \
   us-central1-docker.pkg.dev/my-project-id/my-docker-repo/my-app
 ```
 
-For bulk copying all images from GCR to Artifact Registry, use gcrane's copy-repo command.
+For bulk copying all images from GCR to Artifact Registry, use gcrane's recursive copy mode.
 
 ```bash
 # Copy all images from gcr.io to Artifact Registry
@@ -201,7 +201,8 @@ One advantage of Artifact Registry is built-in cleanup policies. Set one up to a
 gcloud artifacts repositories set-cleanup-policies my-docker-repo \
   --location=us-central1 \
   --project=my-project-id \
-  --policy=policy.json
+  --policy=policy.json \
+  --no-dry-run
 ```
 
 The policy file looks like this.
@@ -213,7 +214,7 @@ The policy file looks like this.
     "action": {"type": "Delete"},
     "condition": {
       "tagState": "untagged",
-      "olderThan": "2592000s"
+      "olderThan": "30d"
     }
   },
   {
@@ -242,4 +243,4 @@ Before decommissioning your GCR setup, make sure you have covered all these item
 
 ## Summary
 
-Migrating from GCR to Artifact Registry is mostly about copying images and updating references. The gcrane tool makes the image copy fast and reliable. Once migrated, you get better IAM controls, cleanup policies, and a future-proof registry that supports multiple artifact formats. Start the migration early so you have time to update all your pipelines and deployments before the GCR deprecation deadline.
+Migrating from GCR to Artifact Registry is mostly about copying images and updating references. The gcrane tool makes the image copy fast and reliable. Once migrated, you get better IAM controls, cleanup policies, and a future-proof registry that supports multiple artifact formats. Update all your pipelines and deployments so they no longer write to Container Registry.
