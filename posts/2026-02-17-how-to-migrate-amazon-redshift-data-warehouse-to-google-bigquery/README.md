@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, Amazon Redshift, Data Warehouse, Migration
 
-Description: Migrate your Amazon Redshift data warehouse to Google BigQuery using the BigQuery Data Transfer Service and SQL translation tools.
+Description: Migrate your Amazon Redshift data warehouse to Google BigQuery using Storage Transfer Service and SQL translation tools.
 
 ---
 
@@ -32,7 +32,7 @@ BigQuery handles some of these differently than Redshift:
 | View | View |
 | Stored Procedure | Scripting / Routines |
 | WLM Queues | Reservations / Slots |
-| Distribution Key | Clustering |
+| Distribution Key | Clustering / query design |
 | Sort Key | Partitioning + Clustering |
 | Spectrum | External Tables |
 | COPY command | Load job / bq load |
@@ -49,6 +49,7 @@ TO 's3://my-redshift-export/users/'
 IAM_ROLE 'arn:aws:iam::123456789:role/redshift-export-role'
 FORMAT AS PARQUET
 MAXFILESIZE 1 GB
+EXTENSION 'parquet'
 ALLOWOVERWRITE;
 
 UNLOAD ('SELECT * FROM schema_name.orders')
@@ -56,6 +57,7 @@ TO 's3://my-redshift-export/orders/'
 IAM_ROLE 'arn:aws:iam::123456789:role/redshift-export-role'
 FORMAT AS PARQUET
 MAXFILESIZE 1 GB
+EXTENSION 'parquet'
 ALLOWOVERWRITE;
 
 UNLOAD ('SELECT * FROM schema_name.products')
@@ -63,6 +65,7 @@ TO 's3://my-redshift-export/products/'
 IAM_ROLE 'arn:aws:iam::123456789:role/redshift-export-role'
 FORMAT AS PARQUET
 MAXFILESIZE 1 GB
+EXTENSION 'parquet'
 ALLOWOVERWRITE;
 ```
 
@@ -100,7 +103,8 @@ def generate_unload_commands(conn, schema, s3_bucket, iam_role):
         TO 's3://{s3_bucket}/{table_name}/'
         IAM_ROLE '{iam_role}'
         FORMAT AS PARQUET
-        MAXFILESIZE 1073741824
+        MAXFILESIZE 1 GB
+        EXTENSION 'parquet'
         ALLOWOVERWRITE;
         """
         commands.append({
@@ -194,22 +198,19 @@ Load data using bq:
 
 ```bash
 # Load Parquet files from GCS into BigQuery
-# Parquet schema is auto-detected
+# BigQuery reads the schema from the Parquet files
 bq load \
   --source_format=PARQUET \
-  --autodetect \
   warehouse.users \
   'gs://my-project-redshift-import/users/*.parquet'
 
 bq load \
   --source_format=PARQUET \
-  --autodetect \
   warehouse.orders \
   'gs://my-project-redshift-import/orders/*.parquet'
 
 bq load \
   --source_format=PARQUET \
-  --autodetect \
   warehouse.products \
   'gs://my-project-redshift-import/products/*.parquet'
 ```
@@ -249,7 +250,6 @@ def load_table(project_id, dataset_id, table_name, gcs_uri):
     job_config = bigquery.LoadJobConfig(
         source_format=bigquery.SourceFormat.PARQUET,
         write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
-        autodetect=True,
     )
 
     load_job = client.load_table_from_uri(
@@ -308,7 +308,7 @@ Redshift SQL and BigQuery SQL have differences. Here are the most common transla
 -- Redshift: Date functions
 SELECT DATEADD(day, 7, created_at) FROM orders;
 -- BigQuery equivalent:
-SELECT DATE_ADD(created_at, INTERVAL 7 DAY) FROM orders;
+SELECT TIMESTAMP_ADD(created_at, INTERVAL 7 DAY) FROM orders;
 
 -- Redshift: String concatenation
 SELECT first_name || ' ' || last_name FROM users;
@@ -346,13 +346,29 @@ SELECT APPROX_COUNT_DISTINCT(user_id) FROM events;
 Use Google's batch SQL translator for large-scale conversion:
 
 ```bash
-# Use the BigQuery Migration Service SQL translator
-# Upload your SQL files and get translated versions
-gcloud migration sql-translation translate \
-  --source-dialect=redshift \
-  --target-dialect=bigquery \
-  --source-file=queries/redshift/ \
-  --output-file=queries/bigquery/
+# Use the BigQuery Migration API after uploading SQL files to Cloud Storage
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://bigquerymigration.googleapis.com/v2/projects/my-gcp-project/locations/us/workflows" \
+  -d '{
+    "tasks": {
+      "redshift_translation": {
+        "type": "Redshift2BigQuery_Translation",
+        "translationDetails": {
+          "targetBaseUri": "gs://my-sql-translations/output/",
+          "sourceTargetMapping": [
+            {
+              "sourceSpec": {
+                "baseUri": "gs://my-sql-translations/input/"
+              }
+            }
+          ],
+          "targetTypes": ["sql"]
+        }
+      }
+    }
+  }'
 ```
 
 ## Step 5: Optimize for BigQuery
@@ -360,14 +376,14 @@ gcloud migration sql-translation translate \
 After loading data, apply BigQuery-specific optimizations:
 
 ```sql
--- Add partitioning (equivalent to Redshift sort key)
-CREATE OR REPLACE TABLE warehouse.orders
+-- Create a partitioned and clustered copy for common order queries
+CREATE OR REPLACE TABLE warehouse.orders_optimized
 PARTITION BY DATE(created_at)
 CLUSTER BY customer_id, status
 AS SELECT * FROM warehouse.orders;
 
--- Add clustering (equivalent to Redshift distribution key)
-CREATE OR REPLACE TABLE warehouse.events
+-- Create a partitioned and clustered copy for common event queries
+CREATE OR REPLACE TABLE warehouse.events_optimized
 PARTITION BY DATE(event_timestamp)
 CLUSTER BY user_id, event_type
 AS SELECT * FROM warehouse.events;
@@ -375,7 +391,7 @@ AS SELECT * FROM warehouse.events;
 
 ## Step 6: Validate Data
 
-Compare row counts and checksums between Redshift and BigQuery:
+Compare row counts between Redshift and BigQuery:
 
 ```python
 # validate_migration.py
