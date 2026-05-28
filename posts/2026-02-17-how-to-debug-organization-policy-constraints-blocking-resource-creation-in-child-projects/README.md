@@ -14,7 +14,7 @@ You have the right IAM permissions. You have checked your quotas. But when you t
 
 Organization policies follow the Google Cloud resource hierarchy: Organization > Folders > Projects > Resources. A constraint set at the organization level applies to every folder and project underneath it. Folders can override or further restrict the organization-level policy, and projects can do the same relative to their parent folder.
 
-The key thing to understand is that policies are inherited by default. A project inherits constraints from its parent folder and ultimately from the organization. You cannot override a constraint from a parent unless the parent explicitly allows overrides.
+The key thing to understand is that policies are inherited by default. A project inherits constraints from its parent folder and ultimately from the organization. A policy set on a child resource can override or merge with the inherited policy depending on the constraint type and the `inheritFromParent` setting. For list constraints, denied values take precedence when policies are merged.
 
 ## Step 1: Identify the Constraint Causing the Block
 
@@ -73,7 +73,7 @@ gcloud resource-manager org-policies describe \
     --organization=your-org-id
 ```
 
-If a level does not have the policy set, it inherits from the parent. The first level that explicitly sets the policy is where you need to make changes (or request changes).
+If a level does not have the policy set, it inherits from the parent. The levels that explicitly set the policy are where you need to make changes (or request changes).
 
 To find your project's folder and organization:
 
@@ -147,24 +147,25 @@ gcloud resource-manager tags keys create org-policy-exception \
     --description="Tag for org policy exceptions"
 
 gcloud resource-manager tags values create allowed \
-    --parent=organizations/your-org-id/org-policy-exception
+    --parent=your-org-id/org-policy-exception
 
 # Create a conditional org policy that relaxes the constraint for tagged resources
 gcloud org-policies set-policy policy.yaml
 ```
 
-## Step 6: List All Constraints on Your Project
+## Step 6: List Policies and Available Constraints on Your Project
 
-If you are not sure which constraint is blocking you, list all effective constraints:
+If you are not sure which constraint is blocking you, list policies set directly on the project and the available constraints:
 
 ```bash
-# List all organization policy constraints and their effective settings
+# List organization policies set on the project and available constraints
 gcloud resource-manager org-policies list \
     --project=your-project-id \
+    --show-unset \
     --format="table(constraint, listPolicy, booleanPolicy)"
 ```
 
-This gives you a comprehensive view of every constraint affecting your project. Look for constraints related to the resource type you are trying to create.
+This does not show the effective inherited policy for every constraint. Look for constraints related to the resource type you are trying to create, then use `describe --effective` on those constraints.
 
 ## Step 7: Check the Audit Log
 
@@ -186,17 +187,16 @@ Before making changes to organization policies, you can use the Policy Simulator
 
 ```bash
 # Simulate the effect of changing an org policy
-gcloud resource-manager org-policies simulate \
-    constraints/gcp.resourceLocations \
-    --project=your-project-id \
-    --values="in:us-east1-locations"
+gcloud policy-intelligence simulate orgpolicy \
+    --organization=your-org-id \
+    --policies=policy.yaml
 ```
 
 This shows you how the change would affect existing resources and future resource creation.
 
 ## Common Gotchas
 
-1. Even project owners cannot override organization policies unless the parent allows it
+1. Project owners cannot change organization policies unless they also have organization policy permissions
 2. Some constraints take a few minutes to propagate after changes
 3. The `restoreDefault` policy resets to the Google-defined default, not to "no policy"
 4. Conditional organization policies based on tags require the resource to be tagged before creation, which creates a chicken-and-egg problem for some resource types
