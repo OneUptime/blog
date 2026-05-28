@@ -16,7 +16,7 @@ When you issue a drain command, Dataflow does the following:
 
 1. Stops reading from input sources (Pub/Sub, Kafka, etc.)
 2. Processes all elements currently in the pipeline
-3. Fires all pending timers and windows
+3. Advances the data watermark to infinity, which closes in-process windows and fires triggers
 4. Writes results to sinks
 5. Shuts down workers
 
@@ -31,6 +31,7 @@ Start by looking at the job details:
 
 gcloud dataflow jobs describe JOB_ID \
     --region=us-central1 \
+    --full \
     --format="json(currentState, currentStateTime, stageStates)"
 ```
 
@@ -38,9 +39,9 @@ Check the Dataflow monitoring UI for stuck stages. Look at the "Wall Time" colum
 
 ## Step 2: Look for Stuck Timers
 
-In streaming pipelines, timers fire when windows close. If you have sessions or custom windows with very long timeouts, draining triggers all pending timers at once. This can overwhelm the workers.
+In streaming pipelines, event-time triggers fire when windows close. Dataflow advances the data watermark to infinity during drain, so open windows close immediately. Processing-time timers are different: Dataflow waits until all processing-time timers complete instead of firing them immediately. Looping timers can make a drain slow or prevent it from finishing.
 
-For example, if you have session windows with a 24-hour gap duration, draining fires every active session timer immediately. With millions of active sessions, this creates a massive burst of work.
+For example, if you have session windows with a 24-hour gap duration, draining can close many active sessions and fire their triggers at once. With millions of active sessions, this creates a massive burst of work.
 
 Check your pipeline code for timer usage:
 
@@ -88,7 +89,7 @@ gcloud logging read 'resource.type="dataflow_step" AND resource.labels.job_id="J
 
 If workers are running out of memory during drain, the increased load from processing pending timers and windows can push them over the limit. The workers crash, Dataflow restarts them, they crash again, and the drain never completes.
 
-## Step 5: Force Cancel if Drain is Truly Stuck
+## Step 5: Cancel if Drain is Truly Stuck
 
 If the drain has been stuck for an unreasonable amount of time and you have verified it is not making progress, you can cancel the job instead:
 
@@ -100,7 +101,16 @@ gcloud dataflow jobs cancel JOB_ID \
 
 Canceling is a hard stop. Unlike drain, it does not wait for in-flight elements to complete. You may lose some data, so use this as a last resort.
 
-If even cancel does not work (which is rare), you might need to contact Google Cloud support.
+If even a regular cancel does not work, Dataflow also supports force cancel:
+
+```bash
+# Force cancel a job that is stuck canceling
+gcloud dataflow jobs cancel JOB_ID \
+    --region=us-central1 \
+    --force
+```
+
+Force cancel is intended only for jobs that are stuck in the regular canceling process. Google Cloud recommends attempting a regular cancel at least 30 minutes before force canceling because force cancel can leave worker resources behind. If force cancel does not resolve the job, contact Google Cloud support.
 
 ## Step 6: Prevent Drain Issues in Future Pipelines
 
@@ -134,14 +144,9 @@ class MyDoFn(beam.DoFn):
         return response.json()
 ```
 
-Set reasonable watermark idle timeouts. If your sources can be idle, configure the watermark to advance even without input:
+Review idle sources that can hold back watermarks. Dataflow advances the watermark to infinity during drain, but a pipeline that is already stuck before the drain request can remain stuck if data movement is blocked. Look for idle or blocked sources, slow transforms, looping timers, or unbounded external calls and fix those conditions in the pipeline code.
 
-```java
-// Set watermark idle to prevent watermark from getting stuck
-PipelineOptions options = PipelineOptionsFactory.create();
-options.as(DataflowPipelineOptions.class)
-    .setWatermarkIdleTimeout(Duration.standardMinutes(2));
-```
+There is no general `DataflowPipelineOptions.setWatermarkIdleTimeout(...)` option in the Beam Dataflow runner. Watermark behavior is controlled by the source, event timestamps, windows, triggers, timers, and whether downstream processing can make progress.
 
 ## Step 7: Monitor Drain Progress
 
@@ -151,8 +156,8 @@ During a drain, watch these metrics to gauge progress:
 # Monitor the job's element count during drain
 gcloud dataflow metrics list JOB_ID \
     --region=us-central1 \
-    --source=user \
-    --format="table(name.name, scalar.integerValue)"
+    --source=service \
+    --format="table(name.name, scalar)"
 ```
 
 Key indicators:
@@ -172,10 +177,10 @@ gcloud dataflow jobs run updated-pipeline \
     --gcs-location=gs://your-bucket/templates/your-template \
     --region=us-central1 \
     --update \
-    --transform-name-mapping='{"OldTransform":"NewTransform"}'
+    --transform-name-mappings='{"OldTransform":"NewTransform"}'
 ```
 
-This skips the drain phase entirely by migrating state from the old pipeline to the new one.
+This replaces the running job with a new job and preserves compatible state and buffered in-flight records from the prior job.
 
 ## Debugging Flowchart
 
