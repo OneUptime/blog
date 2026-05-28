@@ -19,8 +19,8 @@ reCAPTCHA Enterprise on its own gives you a risk score for each request. But act
 The integration works like this:
 
 1. reCAPTCHA Enterprise generates tokens on the client side
-2. The token is sent with the request to your backend
-3. Cloud Armor evaluates the token and extracts the score
+2. The token is attached to requests as a cookie or header
+3. Cloud Armor evaluates the token before forwarding the request and extracts the score
 4. Based on the score, Cloud Armor applies your security policy (allow, deny, throttle, or redirect)
 
 This is particularly useful for protecting login pages, checkout flows, and API endpoints that are common targets for automated abuse.
@@ -49,6 +49,8 @@ gcloud recaptcha keys create \
   --web \
   --integration-type=score \
   --domains="yourdomain.com" \
+  --waf-feature=session-token \
+  --waf-service=ca \
   --project=your-project-id
 ```
 
@@ -62,22 +64,14 @@ Add this script tag to your HTML pages:
 
 ```html
 <!-- Load the reCAPTCHA Enterprise script with your site key -->
-<script src="https://www.google.com/recaptcha/enterprise.js?render=YOUR_SITE_KEY"></script>
-
-<script>
-  // Execute reCAPTCHA and attach the token to requests
-  grecaptcha.enterprise.ready(async () => {
-    const token = await grecaptcha.enterprise.execute('YOUR_SITE_KEY', {
-      action: 'LOGIN'  // Use a descriptive action name
-    });
-
-    // Attach the token as a header or cookie for Cloud Armor to read
-    document.cookie = `recaptcha-ca-t=${token}; path=/`;
-  });
+<script
+  src="https://www.google.com/recaptcha/enterprise.js?render=YOUR_SITE_KEY&waf=session"
+  async
+  defer>
 </script>
 ```
 
-The token gets sent along with subsequent requests, and Cloud Armor can inspect it at the edge.
+The reCAPTCHA JavaScript sets and refreshes the `recaptcha-ca-t` session-token cookie. The token gets sent along with subsequent requests, and Cloud Armor can inspect it at the edge.
 
 ## Step 3: Create a Cloud Armor Security Policy
 
@@ -90,14 +84,28 @@ gcloud compute security-policies create recaptcha-bot-policy \
   --project=your-project-id
 ```
 
-## Step 4: Associate reCAPTCHA with the Security Policy
+## Step 4: Associate a Challenge Key with the Security Policy
 
-Link your reCAPTCHA Enterprise key to the Cloud Armor security policy:
+If you want Cloud Armor to redirect missing or invalid tokens to a reCAPTCHA challenge page, create a separate challenge-page key:
+
+```bash
+# Create a reCAPTCHA Enterprise challenge-page key for redirects
+gcloud recaptcha keys create \
+  --display-name="cloud-armor-challenge" \
+  --web \
+  --integration-type=invisible \
+  --allow-all-domains \
+  --waf-feature=challenge-page \
+  --waf-service=ca \
+  --project=your-project-id
+```
+
+Then associate the challenge-page key with the Cloud Armor security policy:
 
 ```bash
 # Update the security policy to use the reCAPTCHA options
 gcloud compute security-policies update recaptcha-bot-policy \
-  --recaptcha-redirect-site-key=YOUR_SITE_KEY \
+  --recaptcha-redirect-site-key=YOUR_CHALLENGE_PAGE_SITE_KEY \
   --project=your-project-id
 ```
 
@@ -109,14 +117,16 @@ This is where the real power comes in. You can create rules that take different 
 # Block traffic with very low reCAPTCHA scores (likely bots)
 gcloud compute security-policies rules create 1000 \
   --security-policy=recaptcha-bot-policy \
-  --expression="token.recaptcha_enterprise.score < 0.2" \
+  --expression="token.recaptcha_session.score < 0.2" \
+  --recaptcha-session-site-keys=YOUR_SESSION_TOKEN_SITE_KEY \
   --action=deny-403 \
   --description="Block requests with very low reCAPTCHA scores"
 
 # Throttle traffic with medium-low scores (suspicious)
 gcloud compute security-policies rules create 2000 \
   --security-policy=recaptcha-bot-policy \
-  --expression="token.recaptcha_enterprise.score < 0.5" \
+  --expression="token.recaptcha_session.score < 0.5" \
+  --recaptcha-session-site-keys=YOUR_SESSION_TOKEN_SITE_KEY \
   --action=throttle \
   --rate-limit-threshold-count=10 \
   --rate-limit-threshold-interval-sec=60 \
@@ -127,7 +137,8 @@ gcloud compute security-policies rules create 2000 \
 # Allow traffic with high scores (likely human)
 gcloud compute security-policies rules create 3000 \
   --security-policy=recaptcha-bot-policy \
-  --expression="token.recaptcha_enterprise.score >= 0.5" \
+  --expression="token.recaptcha_session.score >= 0.5" \
+  --recaptcha-session-site-keys=YOUR_SESSION_TOKEN_SITE_KEY \
   --action=allow \
   --description="Allow traffic with acceptable reCAPTCHA scores"
 ```
@@ -152,7 +163,8 @@ reCAPTCHA tokens expire after a short period. For cases where a token is missing
 # Redirect requests without valid tokens to a challenge page
 gcloud compute security-policies rules create 500 \
   --security-policy=recaptcha-bot-policy \
-  --expression="!has(token.recaptcha_enterprise.score)" \
+  --expression="!token.recaptcha_session.valid" \
+  --recaptcha-session-site-keys=YOUR_SESSION_TOKEN_SITE_KEY \
   --action=redirect \
   --redirect-type=google-recaptcha \
   --description="Redirect requests without reCAPTCHA tokens to challenge"
@@ -193,7 +205,7 @@ For example, you might allow traffic from your office IP without a reCAPTCHA che
 A few things to watch out for during integration:
 
 - Make sure the reCAPTCHA script loads before the user submits the form, otherwise the token will be missing
-- Token expiry is typically a few minutes, so for long-lived sessions, refresh the token periodically
+- Session tokens are valid for 30 minutes by default, and reCAPTCHA refreshes them periodically while the JavaScript remains active on the page
 - If you use a CDN in front of your load balancer, verify that the token header or cookie is being forwarded properly
 - Test with both Chrome and non-Chrome browsers, as reCAPTCHA behavior can vary slightly
 
