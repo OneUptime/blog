@@ -54,16 +54,11 @@ PROJECT_NUMBER=$(gcloud projects describe my-project --format="value(projectNumb
 # The Backup and DR service agent
 SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-backupdr.iam.gserviceaccount.com"
 
-# Grant the service agent the required roles
-# It needs access to compute resources and storage
+# Grant the service agent role, which includes the permissions Backup and DR
+# needs for Compute Engine protection and snapshot operations
 gcloud projects add-iam-policy-binding my-project \
     --member="serviceAccount:${SERVICE_AGENT}" \
     --role="roles/backupdr.serviceAgent"
-
-# Grant compute admin for snapshot operations
-gcloud projects add-iam-policy-binding my-project \
-    --member="serviceAccount:${SERVICE_AGENT}" \
-    --role="roles/compute.storageAdmin"
 ```
 
 For the human administrators who will manage the backup service:
@@ -89,12 +84,10 @@ The management console is deployed as a managed service. You provision it throug
 # This is the centralized management console
 gcloud backup-dr management-servers create my-backup-console \
     --project=my-project \
-    --location=us-central1 \
-    --network=projects/my-project/global/networks/default \
-    --type=BACKUP_RESTORE
+    --location=us-central1
 ```
 
-This operation takes several minutes to complete. The management console gets deployed as a managed instance within Google's infrastructure and connects to your VPC through Private Service Connect.
+This operation takes several minutes to complete. The management console gets deployed as a managed instance within Google's infrastructure and connects to your VPC through Private Service Access when you configure a VPC network for the management server.
 
 ```bash
 # Check the deployment status
@@ -114,7 +107,7 @@ The management console is accessible through a web URL. Open it in your browser 
 gcloud backup-dr management-servers describe my-backup-console \
     --project=my-project \
     --location=us-central1 \
-    --format="value(managementUri.web)"
+    --format="value(managementUri.webUi)"
 ```
 
 The first time you access the console, it walks you through initial setup including accepting the terms of service and configuring basic settings.
@@ -129,47 +122,27 @@ From the management console web interface:
 2. Click "Add Appliance"
 3. Select the project and region
 4. Choose the network and subnet
-5. Select the machine type (e2-standard-4 is recommended for small environments, n2-standard-8 for larger ones)
+5. Select the machine type (e2-standard-4 is recommended for small environments, e2-standard-16 or n2-standard-16 for larger ones)
 6. Configure the disk size for the staging area
 
-Alternatively, you can deploy appliances through the API:
-
-```bash
-# Deploy a backup appliance in us-central1
-gcloud backup-dr backup-appliances create appliance-central \
-    --project=my-project \
-    --location=us-central1 \
-    --network=projects/my-project/global/networks/default \
-    --subnetwork=projects/my-project/regions/us-central1/subnetworks/default \
-    --machine-type=n2-standard-8
-```
-
-The appliance takes 10-15 minutes to deploy and register with the management console.
+The Google Cloud CLI can create the appliance management console, but it does not support creating backup/recovery appliances. Use the Google Cloud console to create appliances. The deployment can take about an hour to complete and register with the management console.
 
 ## Step 6: Configure Network Connectivity
 
-The backup appliance needs network access to the resources it protects and to the backup storage backend. Make sure your firewall rules allow the necessary traffic:
+The backup appliance needs network access to the resources it protects and to the backup storage backend. Google automatically creates the required ingress rules for the appliance during deployment, but any host that runs the Backup and DR agent needs an ingress rule that allows appliance-to-host traffic on TCP port 5106:
 
 ```bash
-# Allow the backup appliance to communicate with Compute Engine instances
-# The appliance needs access on specific ports for agent-based backups
+# Allow the backup appliance to communicate with hosts running the Backup and DR agent
 gcloud compute firewall-rules create allow-backup-appliance \
     --project=my-project \
     --network=default \
-    --allow=tcp:5106,tcp:5107,tcp:443 \
-    --source-tags=backup-appliance \
+    --allow=tcp:5106 \
+    --source-ranges=APPLIANCE_IP_OR_CIDR \
     --target-tags=backup-target \
     --description="Allow backup appliance to communicate with backup targets"
-
-# Allow the management console to communicate with the appliance
-gcloud compute firewall-rules create allow-mgmt-to-appliance \
-    --project=my-project \
-    --network=default \
-    --allow=tcp:443 \
-    --source-ranges="10.0.0.0/8" \
-    --target-tags=backup-appliance \
-    --description="Allow management console to reach backup appliance"
 ```
+
+The appliance also needs outbound connectivity to the management console on TCP port 443. For Google Cloud deployments, configure Private Google Access as part of the appliance deployment prerequisites.
 
 ## Step 7: Create a Backup Vault
 
@@ -180,11 +153,11 @@ Backup vaults are where your backup data is stored. They are separate from the a
 gcloud backup-dr backup-vaults create vault-central \
     --project=my-project \
     --location=us-central1 \
-    --backup-minimum-enforce-retention-duration="604800s" \
+    --backup-min-enforced-retention="7d" \
     --description="Primary backup vault for production workloads"
 ```
 
-The minimum enforce retention duration (7 days in this example) prevents anyone from deleting backups before that period expires, even with admin access. This is critical for ransomware protection.
+The minimum enforced retention period (7 days in this example) prevents anyone from deleting backups before that period expires, even with admin access. This is critical for ransomware protection.
 
 ## Step 8: Verify the Deployment
 
@@ -196,18 +169,13 @@ gcloud backup-dr management-servers list \
     --project=my-project \
     --location=us-central1
 
-# Verify backup appliances are connected
-gcloud backup-dr backup-appliances list \
-    --project=my-project \
-    --location=us-central1
-
 # Verify backup vaults
 gcloud backup-dr backup-vaults list \
     --project=my-project \
     --location=us-central1
 ```
 
-All components should show as ACTIVE or READY.
+The management console should show as READY, and the backup vault should be listed. To verify backup appliances, open the management console and check the appliance connectivity status under Manage > Appliances.
 
 ## Ongoing Operations
 
