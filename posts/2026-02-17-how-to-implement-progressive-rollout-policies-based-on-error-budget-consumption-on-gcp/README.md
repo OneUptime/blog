@@ -136,9 +136,9 @@ Create the controller that manages the progressive rollout:
 ```python
 # rollout_controller.py - Manages progressive rollout with error budget awareness
 from google.cloud import run_v2, monitoring_v3
-from datetime import datetime, timedelta
+from google.protobuf import field_mask_pb2
+from datetime import datetime
 import time
-import json
 
 class ProgressiveRolloutController:
     """Controls a progressive rollout, adjusting speed based on error budget."""
@@ -148,7 +148,9 @@ class ProgressiveRolloutController:
         self.region = region
         self.service_name = service_name
         self.slo_config = slo_config
-        self.run_client = run_v2.ServicesClient()
+        self.run_client = run_v2.ServicesClient(
+            client_options={"api_endpoint": f"{region}-run.googleapis.com"}
+        )
         self.monitoring_client = monitoring_v3.ServiceMonitoringServiceClient()
 
     def execute_rollout(self, new_revision, profile, release_metadata):
@@ -161,10 +163,14 @@ class ProgressiveRolloutController:
 
         rollout_log = {
             "release": release_metadata,
-            "profile": profile.name,
+            "profile_name": profile.name,
             "started_at": datetime.utcnow().isoformat(),
             "stages_completed": [],
         }
+
+        stable_revision = self.get_current_serving_revision()
+        if not stable_revision:
+            raise RuntimeError("No current Cloud Run revision is serving traffic")
 
         for i, stage in enumerate(profile.stages):
             print(f"\n--- Stage {i+1}/{len(profile.stages)}: {stage.traffic_percentage}% traffic ---")
@@ -173,11 +179,11 @@ class ProgressiveRolloutController:
             if stage.requires_manual_approval:
                 print("Manual approval required. Waiting...")
                 if not self.wait_for_approval(release_metadata):
-                    self.rollback(new_revision, rollout_log, "Manual approval denied")
+                    self.rollback(stable_revision, rollout_log, "Manual approval denied")
                     return rollout_log
 
             # Set the traffic split
-            self.set_traffic_split(new_revision, stage.traffic_percentage)
+            self.set_traffic_split(stable_revision, new_revision, stage.traffic_percentage)
             print(f"Traffic split updated: {stage.traffic_percentage}%")
 
             # Soak: monitor metrics during the soak period
@@ -189,7 +195,7 @@ class ProgressiveRolloutController:
                 )
 
                 if not is_healthy:
-                    self.rollback(new_revision, rollout_log, "Metrics degradation detected")
+                    self.rollback(stable_revision, rollout_log, "Metrics degradation detected")
                     return rollout_log
 
             rollout_log["stages_completed"].append({
@@ -204,14 +210,28 @@ class ProgressiveRolloutController:
         print(f"\nRollout completed successfully!")
         return rollout_log
 
-    def set_traffic_split(self, new_revision, percentage):
+    def get_current_serving_revision(self):
+        """Return the current revision receiving the most traffic."""
+        service_name = (
+            f"projects/{self.project_id}/locations/{self.region}"
+            f"/services/{self.service_name}"
+        )
+        service = self.run_client.get_service(name=service_name)
+        serving_targets = [
+            target for target in service.traffic_statuses
+            if target.revision and target.percent > 0
+        ]
+        if not serving_targets:
+            return None
+        return max(serving_targets, key=lambda target: target.percent).revision
+
+    def set_traffic_split(self, stable_revision, new_revision, percentage):
         """Update Cloud Run traffic split between old and new revisions."""
         service_name = (
             f"projects/{self.project_id}/locations/{self.region}"
             f"/services/{self.service_name}"
         )
 
-        # Get current service to find the existing revision
         service = self.run_client.get_service(name=service_name)
 
         # Update traffic routing
@@ -226,13 +246,18 @@ class ProgressiveRolloutController:
         if percentage < 100:
             traffic.append(
                 run_v2.TrafficTarget(
+                    revision=stable_revision,
                     percent=100 - percentage,
-                    type_=run_v2.TrafficTargetAllocationType.TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST,
+                    type_=run_v2.TrafficTargetAllocationType.TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION,
                 )
             )
 
         service.traffic = traffic
-        self.run_client.update_service(service=service)
+        operation = self.run_client.update_service(
+            service=service,
+            update_mask=field_mask_pb2.FieldMask(paths=["traffic"]),
+        )
+        operation.result()
 
     def monitor_during_soak(self, soak_minutes, error_threshold):
         """Monitor error rates during the soak period.
@@ -259,10 +284,10 @@ class ProgressiveRolloutController:
 
         return True
 
-    def rollback(self, revision, rollout_log, reason):
-        """Roll back to the previous version by sending 0% traffic to the new revision."""
+    def rollback(self, stable_revision, rollout_log, reason):
+        """Roll back by sending 100% traffic to the previous stable revision."""
         print(f"\nROLLBACK: {reason}")
-        self.set_traffic_split(revision, 0)
+        self.set_traffic_split(stable_revision, stable_revision, 100)
 
         rollout_log["status"] = "rolled_back"
         rollout_log["rollback_reason"] = reason
