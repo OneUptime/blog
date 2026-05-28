@@ -61,18 +61,20 @@ You can run PGAdapter using Docker, which is the simplest option:
 
 ```bash
 # Run PGAdapter in Docker, exposing port 5432
-# It will use your application default credentials for authentication
+# It will use your local gcloud application default credentials for authentication
 docker run -d \
   --name pgadapter \
   -p 5432:5432 \
+  -v "$HOME/.config/gcloud":/gcloud:ro \
+  --env CLOUDSDK_CONFIG=/gcloud \
   gcr.io/cloud-spanner-pg-adapter/pgadapter:latest \
   -p my-gcp-project \
   -i my-pg-instance \
   -d my-pg-database \
-  -x 0.0.0.0
+  -x
 ```
 
-The flags are straightforward: `-p` for project, `-i` for instance, `-d` for database, and `-x` for the address to listen on. Setting `-x` to `0.0.0.0` allows connections from outside the container.
+The flags are straightforward: `-p` for project, `-i` for instance, `-d` for database, and `-x` to allow connections from outside the container.
 
 If you prefer running it directly with Java:
 
@@ -124,9 +126,7 @@ import psycopg2
 conn = psycopg2.connect(
     host="localhost",
     port=5432,
-    database="my-pg-database",
-    user="",        # Leave empty - PGAdapter handles auth
-    password=""     # Leave empty
+    database="my-pg-database"
 )
 
 cursor = conn.cursor()
@@ -202,7 +202,8 @@ func main() {
     ctx := context.Background()
 
     // Connect using standard pgx PostgreSQL driver
-    conn, err := pgx.Connect(ctx, "postgres://localhost:5432/my-pg-database")
+    // pgx requires a username and password in the URL; PGAdapter ignores them.
+    conn, err := pgx.Connect(ctx, "postgres://user:password@localhost:5432/my-pg-database?sslmode=disable")
     if err != nil {
         log.Fatal(err)
     }
@@ -238,8 +239,8 @@ from sqlalchemy import create_engine, Column, String, DateTime
 from sqlalchemy.orm import declarative_base, Session
 from datetime import datetime
 
-# Standard PostgreSQL connection string - PGAdapter makes this work
-engine = create_engine('postgresql://localhost:5432/my-pg-database')
+# Standard PostgreSQL connection string - PGAdapter ignores the username and password
+engine = create_engine('postgresql+psycopg://user:password@localhost:5432/my-pg-database')
 Base = declarative_base()
 
 class User(Base):
@@ -262,9 +263,9 @@ The PostgreSQL interface supports a large subset of PostgreSQL syntax, but not e
 
 Things that work well: basic CRUD operations, parameterized queries, transactions, most standard SQL functions, JOINs, subqueries, CTEs, and batch operations.
 
-Things that are different or unsupported: stored procedures and functions (Spanner does not support PL/pgSQL), LISTEN/NOTIFY, sequences (use UUID generation instead), temporary tables, advisory locks, and some PostgreSQL-specific system views.
+Things that are different or unsupported: user-defined stored procedures and functions (Spanner does not support PL/pgSQL), LISTEN/NOTIFY, SERIAL columns, temporary tables, advisory locks, and some PostgreSQL-specific system views. Spanner does support its own bit-reversed sequences and identity columns for generated keys.
 
-Spanner also has some behaviors that differ from PostgreSQL. For example, Spanner does not guarantee read-your-writes in different transactions unless you use strong reads, and its transaction model uses pessimistic concurrency with different isolation semantics.
+Spanner also has some behaviors that differ from PostgreSQL. For example, strong reads are the default and see all transactions committed before the read starts, while stale reads can intentionally return older data. Spanner read-write transactions use serializable isolation by default, acquire locks, and can abort under contention, so applications should be prepared to retry transactions.
 
 ## Running PGAdapter in Production
 
