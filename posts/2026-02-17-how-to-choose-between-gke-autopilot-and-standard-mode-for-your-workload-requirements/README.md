@@ -16,7 +16,7 @@ I have run workloads on both modes, and the right choice depends on your specifi
 
 In Standard mode, you manage the node pools. You choose the machine types, configure autoscaling ranges, handle node upgrades, and pay for the nodes whether they are fully utilized or mostly idle.
 
-In Autopilot mode, Google manages the nodes entirely. You just deploy pods, and GKE provisions exactly the right amount of compute. You pay per pod based on the resources each pod requests - no idle node costs.
+In Autopilot mode, Google manages the nodes entirely. You just deploy pods, and GKE provisions compute based on your Kubernetes manifests. For general-purpose Autopilot workloads, you pay based on the CPU, memory, and ephemeral storage that running pods request, with no charge for idle node capacity.
 
 ```mermaid
 graph TB
@@ -42,7 +42,7 @@ This is often the deciding factor for smaller teams.
 
 **Standard mode**: You pay for the nodes (VMs) regardless of utilization. If you have three n2-standard-4 nodes running but your pods only use 30% of the capacity, you are paying for 70% of wasted compute. You can mitigate this with cluster autoscaler, but there is always some waste.
 
-**Autopilot mode**: You pay for the CPU, memory, and ephemeral storage that your pods request. If a pod requests 500m CPU and 512Mi memory, that is what you pay for - Google handles fitting pods onto nodes efficiently.
+**Autopilot mode**: For general-purpose workloads, you pay for the CPU, memory, and ephemeral storage that your running pods request. If a pod requests 500m CPU and 512Mi memory, that is what you pay for - Google handles fitting pods onto nodes efficiently. Workloads that request specific hardware, such as some accelerator or machine-series configurations, can use node-based billing instead.
 
 For workloads with variable load, Autopilot often costs less because you are not paying for idle capacity during off-peak hours. For stable, high-utilization workloads, Standard can be cheaper because you can pack nodes more efficiently.
 
@@ -50,18 +50,18 @@ For workloads with variable load, Autopilot often costs less because you are not
 
 Autopilot enforces best practices by restricting certain Kubernetes features. This is where many teams hit friction.
 
-Things you cannot do in Autopilot:
+Things you generally cannot do in Autopilot, or can only do under specific Google-supported constraints:
 
-- Run privileged containers
-- Use hostNetwork or hostPID
-- Mount hostPath volumes
-- Run DaemonSets (Google manages node-level agents)
+- Run arbitrary privileged containers
+- Use hostNetwork or hostPID for your own workloads
+- Mount arbitrary hostPath volumes
+- Run unrestricted DaemonSets (DaemonSets are supported, but they must follow Autopilot resource and security constraints)
 - SSH into nodes
 - Use custom node images
 - Choose specific machine types per pod (though you can request GPU or specific compute classes)
-- Run pods without resource requests and limits
+- Rely on missing resource requests (Autopilot applies defaults and enforces minimums and maximums)
 
-If your workload requires any of these, Standard mode is your only option.
+If your workload requires unrestricted access to any of these features, Standard mode is your only option.
 
 ```yaml
 # This pod spec works in Standard but NOT in Autopilot
@@ -93,7 +93,7 @@ Autopilot takes over a significant amount of operational work:
 - **Node upgrades**: Nodes are kept up to date with the latest patches
 - **Security hardening**: Nodes run a hardened OS with minimal attack surface
 - **Resource optimization**: Pods are bin-packed efficiently across nodes
-- **Scaling to zero**: If you have no pods, you have no nodes (and no cost)
+- **Scaling to zero**: If you have no application pods, Autopilot can scale down the underlying nodes, so you are not paying for idle workload capacity
 
 This is genuinely valuable for teams that do not have dedicated platform engineering resources.
 
@@ -113,7 +113,7 @@ Here is how I think about the choice:
 ### Choose Standard When
 
 - You need privileged containers (e.g., for security scanning, monitoring agents)
-- You run DaemonSets for logging, monitoring, or networking
+- You run DaemonSets for logging, monitoring, or networking that need host-level privileges outside Autopilot's supported constraints
 - You need specific machine types (e.g., high-memory instances for databases)
 - You need GPUs with specific configurations
 - You have workloads that require host-level access
@@ -134,7 +134,7 @@ A team running a Next.js frontend and a Node.js API backend with moderate traffi
 
 A team running Apache Spark on Kubernetes with custom node configurations for high-memory processing.
 
-**Recommendation: Standard.** Spark workers often need specific machine types (high-memory), and the operator patterns commonly used with Spark require DaemonSets or privileged access.
+**Recommendation: Standard.** Spark workers often need specific machine types (high-memory), and some operator or node-local patterns used with Spark require DaemonSets or privileged access.
 
 ### Scenario 3: Multi-Tenant SaaS Platform
 
@@ -150,7 +150,7 @@ A team running 15 microservices with traffic that spikes 10x during business hou
 
 Resource Requirements in Autopilot
 
-One important Autopilot behavior: every pod must have resource requests and limits. If you deploy a pod without them, Autopilot applies defaults.
+One important Autopilot behavior: pods should have explicit resource requests. If you deploy a pod without them, Autopilot applies defaults and enforces minimums and maximums.
 
 ```yaml
 # In Autopilot, always specify resource requests
@@ -192,7 +192,7 @@ You cannot convert an existing cluster from Standard to Autopilot or vice versa.
 ```bash
 # Create a new Autopilot cluster
 gcloud container clusters create-auto my-autopilot-cluster \
-  --region us-central1
+  --location us-central1
 
 # Export your workloads from the old cluster
 kubectl get deployments -o yaml > deployments.yaml
@@ -200,7 +200,7 @@ kubectl get services -o yaml > services.yaml
 kubectl get configmaps -o yaml > configmaps.yaml
 
 # Switch context to the new cluster and apply
-gcloud container clusters get-credentials my-autopilot-cluster --region us-central1
+gcloud container clusters get-credentials my-autopilot-cluster --location us-central1
 kubectl apply -f deployments.yaml
 kubectl apply -f services.yaml
 kubectl apply -f configmaps.yaml
@@ -210,9 +210,9 @@ kubectl apply -f configmaps.yaml
 
 Let us do a rough cost comparison for a workload running 10 pods, each requesting 500m CPU and 1Gi memory.
 
-**Standard mode**: You need enough nodes to fit 10 pods. With n2-standard-4 (4 vCPU, 16GB RAM), you need about 2 nodes. Cost: approximately $200/month for the two nodes (running 24/7), regardless of whether all 10 pods are running.
+**Standard mode**: You need enough nodes to fit 10 pods, plus room for system overhead and scheduling headroom. With n2-standard-4 (4 vCPU, 16GB RAM), you might choose 2 nodes. Cost is based on the two nodes running 24/7, regardless of whether all 10 pods are running.
 
-**Autopilot mode**: You pay for 10 x 500m CPU and 10 x 1Gi memory = 5 vCPU and 10Gi total. Cost: approximately $150/month if pods run 24/7. But if traffic drops at night and you scale to 3 pods, the cost drops proportionally.
+**Autopilot mode**: For a general-purpose workload, you pay for 10 x 500m CPU and 10 x 1Gi memory = 5 vCPU and 10Gi total, plus any applicable cluster management fee. If the pods run 24/7, multiply those requested resources by the current Autopilot per-second rates for your region. If traffic drops at night and you scale to 3 pods, the workload compute portion drops proportionally.
 
 The math shifts depending on your utilization. If your Standard cluster runs at 90% utilization consistently, it can be cheaper. If it runs at 40% utilization (which is typical for many teams), Autopilot wins.
 
