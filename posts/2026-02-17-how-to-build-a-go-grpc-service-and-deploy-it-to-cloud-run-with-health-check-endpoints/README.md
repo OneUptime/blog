@@ -10,7 +10,7 @@ Description: Build a Go gRPC service with proper health check endpoints and depl
 
 Cloud Run has supported gRPC since its early days, and the experience has gotten smoother over time. If you are building microservices that need low-latency communication with strong typing, gRPC on Cloud Run is a solid choice. You get automatic scaling, TLS termination, and HTTP/2 support out of the box.
 
-The one thing that trips people up is health checks. Cloud Run uses HTTP health probes, and your gRPC service needs to handle those correctly. This guide covers building a gRPC service in Go, adding health checks, and deploying it to Cloud Run.
+The one thing that trips people up is health checks. Cloud Run supports startup and liveness probes over HTTP, TCP, or gRPC, and your gRPC service can use the standard gRPC health checking protocol. This guide covers building a gRPC service in Go, adding health checks, and deploying it to Cloud Run.
 
 ## Defining the Protocol Buffers
 
@@ -21,7 +21,7 @@ Let us build a simple task management service. Start with the proto definition.
 syntax = "proto3";
 
 package task;
-option go_package = "taskpb";
+option go_package = "example.com/task-grpc/taskpb;taskpb";
 
 service TaskService {
   rpc CreateTask(CreateTaskRequest) returns (Task);
@@ -83,7 +83,9 @@ go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 # Generate Go code from the proto file
-protoc --go_out=. --go-grpc_out=. task.proto
+protoc --go_out=. --go_opt=module=example.com/task-grpc \
+  --go-grpc_out=. --go-grpc_opt=module=example.com/task-grpc \
+  task.proto
 ```
 
 ## Implementing the Service
@@ -93,13 +95,12 @@ package main
 
 import (
     "context"
-    "fmt"
     "log"
     "sync"
     "time"
 
     "github.com/google/uuid"
-    pb "your-module/taskpb"
+    pb "example.com/task-grpc/taskpb"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 )
@@ -152,7 +153,7 @@ func (s *taskServer) GetTask(ctx context.Context, req *pb.GetTaskRequest) (*pb.T
     return task, nil
 }
 
-// ListTasks returns all tasks with pagination
+// ListTasks returns all tasks
 func (s *taskServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) (*pb.ListTasksResponse, error) {
     s.mu.RLock()
     defer s.mu.RUnlock()
@@ -165,6 +166,25 @@ func (s *taskServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) (*
     return &pb.ListTasksResponse{
         Tasks: tasks,
     }, nil
+}
+
+// UpdateTask updates a task by ID
+func (s *taskServer) UpdateTask(ctx context.Context, req *pb.UpdateTaskRequest) (*pb.Task, error) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+
+    task, exists := s.tasks[req.Id]
+    if !exists {
+        return nil, status.Errorf(codes.NotFound, "task %s not found", req.Id)
+    }
+
+    if req.Title != "" {
+        task.Title = req.Title
+    }
+    task.Description = req.Description
+    task.Completed = req.Completed
+
+    return task, nil
 }
 
 // DeleteTask removes a task by ID
@@ -186,7 +206,7 @@ func (s *taskServer) DeleteTask(ctx context.Context, req *pb.DeleteTaskRequest) 
 
 ## Adding Health Checks
 
-Cloud Run supports three types of health probes: startup, liveness, and gRPC health checks. The gRPC health checking protocol is the cleanest option for gRPC services.
+Cloud Run supports startup and liveness probes. Each probe can use HTTP, TCP, or gRPC, and the gRPC health checking protocol is the cleanest option for gRPC services.
 
 ```go
 package main
@@ -219,22 +239,22 @@ func setupHealthCheck(server *grpc.Server) *health.Server {
 
 ## The Main Function
 
-Tie everything together with the server setup, including an HTTP health check endpoint for Cloud Run's startup probe.
+Tie everything together with the server setup, including the gRPC health service for Cloud Run's startup and liveness probes.
 
 ```go
 package main
 
 import (
     "context"
-    "fmt"
     "log"
     "net"
-    "net/http"
     "os"
     "os/signal"
     "syscall"
 
+    pb "example.com/task-grpc/taskpb"
     "google.golang.org/grpc"
+    "google.golang.org/grpc/health/grpc_health_v1"
     "google.golang.org/grpc/reflection"
 )
 
@@ -326,11 +346,11 @@ gcloud run deploy task-grpc \
   --region us-central1 \
   --use-http2 \
   --port 8080 \
-  --liveness-probe grpc-liveness \
-  --startup-probe grpc-startup
+  --startup-probe grpc.port=8080,grpc.service=task.TaskService \
+  --liveness-probe grpc.port=8080,grpc.service=task.TaskService
 ```
 
-The `--use-http2` flag is critical. Without it, Cloud Run terminates HTTP/2 at the load balancer, and your gRPC service will not work.
+The `--use-http2` flag enables end-to-end HTTP/2 to the container. Google recommends it for gRPC on Cloud Run because streaming and metadata require HTTP/2 to work correctly.
 
 ## Architecture
 
