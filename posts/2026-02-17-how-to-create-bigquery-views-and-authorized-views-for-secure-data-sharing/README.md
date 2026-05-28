@@ -16,7 +16,7 @@ An authorized view is a view that can access data in a source dataset even thoug
 
 A regular view is just a saved SQL query. When someone queries it, BigQuery runs the underlying SQL. The user needs access to both the view and the underlying tables.
 
-An authorized view is different. You grant the view itself access to the source dataset. Users only need access to the dataset containing the view, not the source dataset. The view acts as a controlled window into data they could not otherwise see.
+An authorized view is different. You grant the view itself access to the source dataset. Users need access to the dataset containing the view and permission to run query jobs, but not access to the source dataset. The view acts as a controlled window into data they could not otherwise see.
 
 ```mermaid
 flowchart LR
@@ -60,6 +60,7 @@ Or using the `bq` command line:
 # Create a view using bq
 
 bq mk --view \
+    --use_legacy_sql=false \
     "SELECT order_id, customer_id, order_date, total_amount, status FROM \`my-project-id.raw_data.orders\` WHERE order_date >= '2025-01-01'" \
     my-project-id:analytics.order_summary
 ```
@@ -97,20 +98,56 @@ Now tell the source dataset that this view is authorized to read its data.
 
 ```bash
 # Authorize the view to access the source dataset
-bq update --dataset \
-    --access_entry='{"view":{"projectId":"my-project-id","datasetId":"shared_analytics","tableId":"customer_metrics"}}' \
-    my-project-id:restricted_data
+bq show --format=prettyjson my-project-id:restricted_data > /tmp/restricted_data.json
+python3 - <<'PY'
+import json
+
+path = "/tmp/restricted_data.json"
+with open(path) as f:
+    dataset = json.load(f)
+
+dataset.setdefault("access", []).append({
+    "view": {
+        "projectId": "my-project-id",
+        "datasetId": "shared_analytics",
+        "tableId": "customer_metrics"
+    }
+})
+
+with open(path, "w") as f:
+    json.dump(dataset, f, indent=2)
+PY
+bq update --source /tmp/restricted_data.json my-project-id:restricted_data
 ```
 
 ### Step 3: Grant Users Access to the Shared Dataset
 
-Users need access to the dataset containing the view, but not the source dataset.
+Users need access to the dataset containing the view and permission to run query jobs, but not the source dataset.
 
 ```bash
 # Grant analysts read access to the shared dataset
-bq update --dataset \
-    --access_entry='{"role":"READER","groupByEmail":"analysts@company.com"}' \
-    my-project-id:shared_analytics
+bq show --format=prettyjson my-project-id:shared_analytics > /tmp/shared_analytics.json
+python3 - <<'PY'
+import json
+
+path = "/tmp/shared_analytics.json"
+with open(path) as f:
+    dataset = json.load(f)
+
+dataset.setdefault("access", []).append({
+    "role": "READER",
+    "groupByEmail": "analysts@company.com"
+})
+
+with open(path, "w") as f:
+    json.dump(dataset, f, indent=2)
+PY
+bq update --source /tmp/shared_analytics.json my-project-id:shared_analytics
+
+# Grant permission to run query jobs in the project where queries will run
+gcloud projects add-iam-policy-binding my-project-id \
+    --member="group:analysts@company.com" \
+    --role="roles/bigquery.jobUser"
 ```
 
 Now analysts can query `shared_analytics.customer_metrics` and get results, even though they have no access to `restricted_data.customers` or `restricted_data.orders`.
@@ -141,14 +178,45 @@ Then authorize and share:
 
 ```bash
 # Authorize the view
-bq update --dataset \
-    --access_entry='{"view":{"projectId":"my-project-id","datasetId":"shared_data","tableId":"masked_customers"}}' \
-    my-project-id:sensitive_data
+bq show --format=prettyjson my-project-id:sensitive_data > /tmp/sensitive_data.json
+python3 - <<'PY'
+import json
+
+path = "/tmp/sensitive_data.json"
+with open(path) as f:
+    dataset = json.load(f)
+
+dataset.setdefault("access", []).append({
+    "view": {
+        "projectId": "my-project-id",
+        "datasetId": "shared_data",
+        "tableId": "masked_customers"
+    }
+})
+
+with open(path, "w") as f:
+    json.dump(dataset, f, indent=2)
+PY
+bq update --source /tmp/sensitive_data.json my-project-id:sensitive_data
 
 # Grant access to the shared dataset
-bq update --dataset \
-    --access_entry='{"role":"READER","groupByEmail":"support-team@company.com"}' \
-    my-project-id:shared_data
+bq show --format=prettyjson my-project-id:shared_data > /tmp/shared_data.json
+python3 - <<'PY'
+import json
+
+path = "/tmp/shared_data.json"
+with open(path) as f:
+    dataset = json.load(f)
+
+dataset.setdefault("access", []).append({
+    "role": "READER",
+    "groupByEmail": "support-team@company.com"
+})
+
+with open(path, "w") as f:
+    json.dump(dataset, f, indent=2)
+PY
+bq update --source /tmp/shared_data.json my-project-id:shared_data
 ```
 
 The support team can look up customers but never sees full email addresses or phone numbers.
@@ -173,9 +241,26 @@ Authorize the view in project A:
 
 ```bash
 # In project-a, authorize the view from project-b
-bq update --dataset \
-    --access_entry='{"view":{"projectId":"project-b","datasetId":"shared","tableId":"cross_project_metrics"}}' \
-    project-a:production_data
+bq show --format=prettyjson project-a:production_data > /tmp/production_data.json
+python3 - <<'PY'
+import json
+
+path = "/tmp/production_data.json"
+with open(path) as f:
+    dataset = json.load(f)
+
+dataset.setdefault("access", []).append({
+    "view": {
+        "projectId": "project-b",
+        "datasetId": "shared",
+        "tableId": "cross_project_metrics"
+    }
+})
+
+with open(path, "w") as f:
+    json.dump(dataset, f, indent=2)
+PY
+bq update --source /tmp/production_data.json project-a:production_data
 ```
 
 ## Terraform Configuration
@@ -268,7 +353,7 @@ To revoke a view's authorization:
 # First, get the current access list, edit it, and reapply
 bq show --format=prettyjson my-project-id:restricted_data > /tmp/dataset.json
 # Edit /tmp/dataset.json to remove the view entry
-# Then reapply with bq update
+bq update --source /tmp/dataset.json my-project-id:restricted_data
 ```
 
 Unfortunately, `bq` does not have a direct "remove access entry" command. You need to get the full access list, remove the entry, and reapply. Terraform handles this much more cleanly.
@@ -280,7 +365,7 @@ For reusable filtered views, combine views with table functions.
 ```sql
 -- Create a table function that acts as a parameterized view
 CREATE TABLE FUNCTION `my-project-id.shared_analytics.orders_by_region`(region_filter STRING)
-AS
+AS (
 SELECT
     order_id,
     customer_id,
@@ -289,7 +374,8 @@ SELECT
 FROM
     `my-project-id.restricted_data.orders`
 WHERE
-    region = region_filter;
+    region = region_filter
+);
 ```
 
 Users can call it with a parameter:
@@ -299,9 +385,13 @@ Users can call it with a parameter:
 SELECT * FROM `my-project-id.shared_analytics.orders_by_region`('US');
 ```
 
+If users do not have direct access to the source tables, authorize the table function as an authorized routine in the source dataset before sharing it.
+
 ## Common Pitfalls
 
 **View and source in the same dataset**: An authorized view must be in a different dataset than the tables it queries. If they are in the same dataset, the view does not need authorization - regular access suffices.
+
+**Different locations**: The source dataset and the dataset containing the authorized view must be in the same BigQuery location, even when they are in different projects.
 
 **Forgetting to authorize after creating the view**: Creating the view is not enough. You must explicitly add it as an authorized view in the source dataset.
 
@@ -311,4 +401,4 @@ SELECT * FROM `my-project-id.shared_analytics.orders_by_region`('US');
 
 ## Summary
 
-Authorized views are the standard way to share BigQuery data securely across teams and projects. Create the view in a shared dataset, authorize it in the source dataset, and grant users access to the shared dataset only. This gives you complete control over what data is exposed - you can filter rows, mask columns, aggregate data, and join tables, all while keeping the underlying data inaccessible to end users. For teams dealing with sensitive data, authorized views are essential.
+Authorized views are the standard way to share BigQuery data securely across teams and projects. Create the view in a shared dataset, authorize it in the source dataset, and grant users access to the shared dataset plus permission to run query jobs. This gives you complete control over what data is exposed - you can filter rows, mask columns, aggregate data, and join tables, all while keeping the underlying data inaccessible to end users. For teams dealing with sensitive data, authorized views are essential.
