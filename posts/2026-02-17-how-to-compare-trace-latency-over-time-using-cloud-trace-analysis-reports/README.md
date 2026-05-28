@@ -1,39 +1,40 @@
-# How to Compare Trace Latency Over Time Using Cloud Trace Analysis Reports
+# How to Compare Trace Latency Over Time Using Cloud Trace Explorer and the Cloud Trace API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Trace, Latency Analysis, Performance Monitoring, Observability
 
-Description: Learn how to use Cloud Trace analysis reports to compare latency over different time periods, detect performance regressions, and track the impact of optimizations.
+Description: Learn how to use Cloud Trace Explorer and the Cloud Trace API to compare latency over different time periods, detect performance regressions, and track the impact of optimizations.
 
 ---
 
-Knowing your current latency is useful. Knowing how it compares to last week, last month, or the period before your last deployment is far more valuable. Cloud Trace provides analysis reports that let you do exactly this - compare latency distributions across different time periods for any endpoint in your system.
+Knowing your current latency is useful. Knowing how it compares to last week, last month, or the period before your last deployment is far more valuable. Cloud Trace provides Trace Explorer and API access that let you do exactly this - compare latency across different time periods for any endpoint in your system.
 
 This capability is what turns Cloud Trace from a debugging tool into a performance management tool. Let me walk you through how to use it effectively.
 
-## Accessing Analysis Reports
+## Accessing Trace Explorer
 
-Open the Cloud Console and navigate to **Trace > Analysis Reports**. The reports page has two main sections:
+Open the Cloud Console and navigate to **Trace > Trace Explorer**. The Trace Explorer page shows aggregated trace data, including:
 
-1. **Latency overview**: A scatter plot showing request latency for a selected endpoint over time.
-2. **Latency distribution comparison**: Side-by-side histograms comparing two time periods.
+1. **Latency overview**: A heatmap and charts showing span duration and span rate over time.
+2. **Latency percentiles**: A span-duration chart showing p50, p90, p95, and p99 latency trends.
 
-Start by selecting the root span you want to analyze. This is usually your HTTP endpoint, like `/api/orders` or `GET /users/:id`. You can also filter by service name if you have multiple services with the same endpoint paths.
+Start by filtering for the span you want to analyze. This is usually your HTTP endpoint, like `/api/orders` or `GET /users/:id`. You can also filter by service name if you have multiple services with the same endpoint paths.
 
 ## Creating a Comparison Report
 
 To compare latency between two time periods, use the following approach in the Cloud Console:
 
-1. Select your endpoint from the root span dropdown
+1. Add filters for your endpoint or service
 2. Choose the first time period (the "baseline" period)
-3. Choose the second time period (the "comparison" period)
-4. Click "Compare"
+3. Record the p50, p90, p95, and p99 values from the span-duration chart
+4. Choose the second time period (the "comparison" period)
+5. Compare the percentile values and shape of the latency heatmap
 
 Cloud Trace will show you:
-- The latency distribution for each period
-- Percentile changes (p50, p95, p99)
-- A visual overlay so you can see how the distribution shifted
+- Latency trends for the selected period
+- Percentiles (p50, p90, p95, p99)
+- A heatmap so you can see how latency changes over time
 
 ### Common Comparison Scenarios
 
@@ -45,19 +46,19 @@ Cloud Trace will show you:
 
 ## Programmatic Analysis with the Cloud Trace API
 
-The Cloud Console is great for interactive analysis, but for automated comparisons, use the API. Here is a Python script that compares latency between two time periods.
+The Cloud Console is great for interactive analysis, but for automated comparisons, use the Cloud Trace API v1 list method. Here is a Python script that compares latency between two time periods.
 
 ```python
 # compare_latency.py - Compare trace latency across two time periods
 
-from google.cloud import trace_v2
-from datetime import datetime, timedelta
+from google.cloud import trace_v1
+from datetime import datetime, timedelta, timezone
 import statistics
 
 
 def get_latencies(project_id, span_name, start_time, end_time):
     """Fetch root span latencies for a given time period."""
-    client = trace_v2.TraceServiceClient()
+    client = trace_v1.TraceServiceClient()
 
     traces = client.list_traces(
         request={
@@ -65,7 +66,7 @@ def get_latencies(project_id, span_name, start_time, end_time):
             "start_time": start_time,
             "end_time": end_time,
             "filter": f"+root:{span_name}",
-            "view": trace_v2.ListTracesRequest.ViewType.ROOTSPAN,
+            "view": trace_v1.ListTracesRequest.ViewType.ROOTSPAN,
         }
     )
 
@@ -100,7 +101,7 @@ def calculate_percentiles(latencies):
 
 def compare_periods(project_id, span_name, baseline_hours_ago, comparison_hours_ago):
     """Compare latency between two time periods."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Define the baseline period (e.g., 48-24 hours ago)
     baseline_end = now - timedelta(hours=comparison_hours_ago)
@@ -173,7 +174,7 @@ You can schedule the comparison script to run after every deployment and alert i
 # regression_check.py - Check for latency regressions after deployment
 import sys
 from compare_latency import get_latencies, calculate_percentiles
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 def check_regression(project_id, span_name, threshold_pct=20):
@@ -181,7 +182,7 @@ def check_regression(project_id, span_name, threshold_pct=20):
     Compare last hour against the previous 24 hours.
     Returns True if regression is detected.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Baseline: 25 hours ago to 1 hour ago
     baseline = get_latencies(
@@ -295,4 +296,4 @@ A few things to keep in mind when comparing latency across time periods:
 
 ## Wrapping Up
 
-Comparing latency over time is essential for understanding whether your system is getting faster or slower. Use Cloud Trace analysis reports for quick visual comparisons, the Cloud Trace API for automated regression detection, and BigQuery for long-term trend analysis. The combination gives you confidence that every change you deploy either improves performance or at least does not make it worse.
+Comparing latency over time is essential for understanding whether your system is getting faster or slower. Use Cloud Trace Explorer for quick visual analysis, the Cloud Trace API for automated regression detection, and BigQuery for long-term trend analysis. The combination gives you confidence that every change you deploy either improves performance or at least does not make it worse.
