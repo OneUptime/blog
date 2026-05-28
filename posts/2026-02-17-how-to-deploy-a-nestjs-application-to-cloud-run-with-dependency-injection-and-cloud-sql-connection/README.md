@@ -26,6 +26,9 @@ npm install @nestjs/typeorm typeorm pg
 
 # Install config module for environment-based configuration
 npm install @nestjs/config
+
+# Install validation dependencies
+npm install class-validator class-transformer
 ```
 
 ## Database Configuration Module
@@ -58,10 +61,6 @@ export class DatabaseConfig implements TypeOrmOptionsFactory {
         entities: [__dirname + '/../**/*.entity{.ts,.js}'],
         synchronize: false, // Never use synchronize in production
         logging: this.configService.get<string>('NODE_ENV') !== 'production',
-        extra: {
-          // Unix socket connection settings
-          socketPath: dbHost,
-        },
       };
     }
 
@@ -390,14 +389,14 @@ Add a health check that verifies database connectivity.
 ```typescript
 // src/health/health.controller.ts - Health checks
 import { Controller, Get } from '@nestjs/common';
-import { InjectConnection } from '@nestjs/typeorm';
-import { Connection } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 
 @Controller()
 export class HealthController {
   constructor(
-    @InjectConnection()
-    private readonly connection: Connection,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   @Get('health')
@@ -405,10 +404,11 @@ export class HealthController {
     // Test the database connection
     let dbStatus = 'disconnected';
     try {
-      await this.connection.query('SELECT 1');
+      await this.dataSource.query('SELECT 1');
       dbStatus = 'connected';
     } catch (error) {
-      dbStatus = `error: ${error.message}`;
+      const message = error instanceof Error ? error.message : 'unknown error';
+      dbStatus = `error: ${message}`;
     }
 
     return {
@@ -419,6 +419,17 @@ export class HealthController {
     };
   }
 }
+```
+
+```typescript
+// src/health/health.module.ts - Health feature module
+import { Module } from '@nestjs/common';
+import { HealthController } from './health.controller';
+
+@Module({
+  controllers: [HealthController],
+})
+export class HealthModule {}
 ```
 
 ## Main Entry Point
@@ -499,19 +510,23 @@ gcloud run deploy nestjs-api \
 
 ## Running Migrations
 
-Use TypeORM's migration CLI during deployment.
+Use TypeORM's migration CLI during deployment. This requires a standalone TypeORM datasource file at `src/config/datasource.ts` that compiles to `dist/config/datasource.js`.
 
 ```bash
 # Generate a migration from entity changes
-npx typeorm migration:generate -d src/config/datasource.ts src/migrations/AddItems
+npx typeorm-ts-node-commonjs migration:generate src/migrations/AddItems -d src/config/datasource.ts
 
-# Run migrations in Cloud Build before deployment
+# Create and execute a Cloud Run job for migrations
 gcloud run jobs create run-migrations \
     --image gcr.io/my-project/nestjs-api \
+    --region us-central1 \
     --set-cloudsql-instances=my-project:us-central1:my-instance \
     --set-env-vars="DB_HOST=/cloudsql/my-project:us-central1:my-instance" \
     --set-secrets="DB_PASSWORD=db-password:latest,DB_USER=db-user:latest" \
-    --command="npx,typeorm,migration:run,-d,dist/config/datasource.js"
+    --command="npx" \
+    --args="typeorm,migration:run,-d,dist/config/datasource.js" \
+    --execute-now \
+    --wait
 ```
 
 ## Monitoring Your NestJS API
