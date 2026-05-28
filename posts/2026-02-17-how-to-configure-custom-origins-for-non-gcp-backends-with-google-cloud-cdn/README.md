@@ -10,7 +10,7 @@ Description: Learn how to configure Google Cloud CDN with custom origins pointin
 
 Cloud CDN is not limited to serving content from GCP resources. You can point it at any HTTP or HTTPS backend on the internet - an AWS EC2 instance, an Azure App Service, your own on-premises server, or any other HTTP endpoint. This is called a custom origin, and it lets you use Cloud CDN's global edge network in front of backends that live outside GCP.
 
-In this guide, I will show you how to set up Cloud CDN with a custom origin, configure health checks, and handle the quirks that come with non-GCP backends.
+In this guide, I will show you how to set up Cloud CDN with a custom origin, allowlist Google Cloud's egress IP ranges, and handle the quirks that come with non-GCP backends.
 
 ## Why Use Custom Origins
 
@@ -70,7 +70,7 @@ gcloud compute network-endpoint-groups create custom-origin-neg-ip \
 
 # Add the IP-based endpoint
 gcloud compute network-endpoint-groups update custom-origin-neg-ip \
-    --add-endpoint="ipAddress=203.0.113.50,port=443" \
+    --add-endpoint="ip=203.0.113.50,port=443" \
     --global \
     --project=my-project
 ```
@@ -151,12 +151,12 @@ gcloud compute forwarding-rules create cdn-forwarding-rule \
 
 ## Step 5: Configure Host Header and Origin Protocol
 
-When Cloud CDN fetches from your custom origin, it needs to send the correct Host header. By default, it uses the FQDN from the Internet NEG, but you might need to customize this.
+When Cloud CDN fetches from your custom origin, it needs to send the correct Host header. By default, the backend service preserves the Host header from the client request to the load balancer. If your origin expects a different Host header, configure it explicitly.
 
 ```bash
 # Set custom request headers for the backend service
 gcloud compute backend-services update custom-origin-backend \
-    --custom-request-headers="Host: origin.example.com" \
+    --custom-request-header="Host: origin.example.com" \
     --global \
     --project=my-project
 ```
@@ -166,35 +166,20 @@ If your origin requires specific headers for authentication or routing, add them
 ```bash
 # Add multiple custom headers
 gcloud compute backend-services update custom-origin-backend \
-    --custom-request-headers="Host: origin.example.com" \
-    --custom-request-headers="X-CDN-Origin: gcp" \
-    --custom-request-headers="X-Forwarded-Proto: https" \
+    --custom-request-header="Host: origin.example.com" \
+    --custom-request-header="X-CDN-Origin: gcp" \
+    --custom-request-header="X-Forwarded-Proto: https" \
     --global \
     --project=my-project
 ```
 
-## Step 6: Configure Health Checks
+## Step 6: Allowlist Google Cloud Egress IP Ranges
 
-Health checks ensure Cloud CDN does not send traffic to an unhealthy origin.
+Global Internet NEGs do not support backend service health checks. If your origin restricts inbound traffic, allowlist the egress IP ranges that Google Cloud uses to reach external backends.
 
 ```bash
-# Create a health check for the custom origin
-gcloud compute health-checks create https custom-origin-health \
-    --host=origin.example.com \
-    --port=443 \
-    --request-path=/health \
-    --check-interval=30 \
-    --timeout=10 \
-    --healthy-threshold=2 \
-    --unhealthy-threshold=3 \
-    --global \
-    --project=my-project
-
-# Attach the health check to the backend service
-gcloud compute backend-services update custom-origin-backend \
-    --health-checks=custom-origin-health \
-    --global \
-    --project=my-project
+# Look up the current egress IP ranges for global Internet NEG backends
+dig TXT _cloud-eoips.googleusercontent.com | grep -Eo 'ip4:[^ ]+' | cut -d':' -f2
 ```
 
 ## Terraform Configuration
@@ -211,9 +196,9 @@ resource "google_compute_global_network_endpoint_group" "custom_origin" {
 
 # Add the endpoint to the NEG
 resource "google_compute_global_network_endpoint" "origin_endpoint" {
-  global_network_endpoint_group = google_compute_global_network_endpoint_group.custom_origin.id
-  fqdn                         = "origin.example.com"
-  port                         = 443
+  global_network_endpoint_group = google_compute_global_network_endpoint_group.custom_origin.name
+  fqdn                          = "origin.example.com"
+  port                          = 443
 }
 
 # Backend service with Cloud CDN enabled
@@ -236,21 +221,6 @@ resource "google_compute_backend_service" "custom_backend" {
 
   backend {
     group = google_compute_global_network_endpoint_group.custom_origin.id
-  }
-
-  health_checks = [google_compute_health_check.origin.id]
-}
-
-# Health check
-resource "google_compute_health_check" "origin" {
-  name               = "custom-origin-health"
-  check_interval_sec = 30
-  timeout_sec        = 10
-
-  https_health_check {
-    host         = "origin.example.com"
-    port         = 443
-    request_path = "/health"
   }
 }
 
@@ -296,8 +266,8 @@ If your custom origin serves API responses or assets that are loaded cross-origi
 ```bash
 # Add CORS headers as custom response headers
 gcloud compute backend-services update custom-origin-backend \
-    --custom-response-headers="Access-Control-Allow-Origin: *" \
-    --custom-response-headers="Access-Control-Allow-Methods: GET, HEAD, OPTIONS" \
+    --custom-response-header="Access-Control-Allow-Origin: *" \
+    --custom-response-header="Access-Control-Allow-Methods: GET, HEAD, OPTIONS" \
     --global \
     --project=my-project
 ```
@@ -310,7 +280,7 @@ gcloud compute backend-services update custom-origin-backend \
 
 **Wrong content served**: Check the Host header. If the origin serves different content based on the Host header, you need to set the correct custom request header.
 
-**Health check failures**: Make sure the health check path exists on the origin and returns a 200 status. Check that the Host header in the health check matches what the origin expects.
+**No health status for the origin**: Global Internet NEGs do not support backend service health checks. If the origin becomes unreachable or the FQDN cannot be resolved, the load balancer returns 502 responses.
 
 ## Wrapping Up
 
