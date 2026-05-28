@@ -10,7 +10,7 @@ Description: Learn how to configure fault injection on Google Cloud Load Balance
 
 Your application works great when everything is running smoothly. But what happens when a backend starts responding slowly? Or when 10% of requests fail with server errors? If you have not tested these scenarios, you are going to find out the hard way during a real incident. Fault injection lets you simulate these failures deliberately so you can verify that your retry logic, circuit breakers, timeouts, and error handling work as expected.
 
-Google Cloud's Application Load Balancer has built-in fault injection capabilities through URL map route rules. You can inject delays, abort requests with specific error codes, or do both simultaneously - all without deploying any special infrastructure.
+Google Cloud's Application Load Balancer has built-in fault injection capabilities through URL map route rules, except for classic Application Load Balancers. You can inject delays, abort requests with specific error codes, or do both simultaneously - all without deploying any special infrastructure.
 
 ## Types of Fault Injection
 
@@ -36,7 +36,7 @@ flowchart TD
 Delay injection simulates slow backend responses. This is useful for testing timeout configurations and degraded performance scenarios.
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/app-backend
 hostRules:
@@ -70,7 +70,7 @@ This configuration adds a 3-second delay to 10% of all requests. The other 90% f
 Abort injection returns error codes without even reaching the backend. This simulates backend failures.
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/app-backend
 hostRules:
@@ -95,14 +95,14 @@ pathMatchers:
 EOF
 ```
 
-This returns a 503 Service Unavailable response for 5% of requests. You can test specific error codes by changing `httpStatus` to 500 (Internal Server Error), 429 (Too Many Requests), 504 (Gateway Timeout), or any other HTTP status code.
+This returns a 503 Service Unavailable response for 5% of requests. You can test specific status codes by changing `httpStatus` to 500 (Internal Server Error), 429 (Too Many Requests), 504 (Gateway Timeout), or another HTTP status code from 200 through 599.
 
 ## Step 3 - Combine Delays and Aborts
 
 For more realistic chaos testing, inject both delays and errors simultaneously.
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/app-backend
 hostRules:
@@ -131,14 +131,14 @@ pathMatchers:
 EOF
 ```
 
-With this setup, roughly 15% of requests get a 2-second delay, and about 5% get a 503 error. Some requests might be selected for both - they would get the delay but then be aborted before reaching the backend.
+With this setup, roughly 15% of requests get a 2-second delay, and about 5% get a 503 error. Some requests might be selected for both - they can be delayed and then aborted before reaching the backend.
 
 ## Step 4 - Scope Faults to Specific Paths
 
 In practice, you want to inject faults selectively rather than across your entire application.
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/app-backend
 hostRules:
@@ -196,7 +196,7 @@ EOF
 Limit fault injection to only requests from your test clients by combining it with header matching. This way, normal users are unaffected.
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/app-backend
 hostRules:
@@ -252,8 +252,29 @@ PROJECT = "my-project"
 URL_MAP = "app-url-map"
 BASE_URL = "https://app.example.com"
 
-def update_fault_config(delay_pct, delay_sec, abort_pct, abort_code):
+def update_fault_config(delay_pct=0, delay_sec=0, abort_pct=0, abort_code=503):
     """Update the URL map with new fault injection settings."""
+    route_action = {
+        "weightedBackendServices": [{
+            "backendService": f"projects/{PROJECT}/global/backendServices/app-backend",
+            "weight": 100
+        }]
+    }
+
+    fault_policy = {}
+    if delay_pct > 0:
+        fault_policy["delay"] = {
+            "fixedDelay": {"seconds": delay_sec},
+            "percentage": delay_pct
+        }
+    if abort_pct > 0:
+        fault_policy["abort"] = {
+            "httpStatus": abort_code,
+            "percentage": abort_pct
+        }
+    if fault_policy:
+        route_action["faultInjectionPolicy"] = fault_policy
+
     config = {
         "name": URL_MAP,
         "defaultService": f"projects/{PROJECT}/global/backendServices/app-backend",
@@ -266,16 +287,7 @@ def update_fault_config(delay_pct, delay_sec, abort_pct, abort_code):
                 "matchRules": [{"prefixMatch": "/", "headerMatches": [
                     {"headerName": "x-chaos-test", "exactMatch": "enabled"}
                 ]}],
-                "routeAction": {
-                    "weightedBackendServices": [{
-                        "backendService": f"projects/{PROJECT}/global/backendServices/app-backend",
-                        "weight": 100
-                    }],
-                    "faultInjectionPolicy": {
-                        "delay": {"fixedDelay": {"seconds": delay_sec}, "percentage": delay_pct},
-                        "abort": {"httpStatus": abort_code, "percentage": abort_pct}
-                    }
-                }
+                "routeAction": route_action
             }]
         }]
     }
@@ -286,7 +298,7 @@ def update_fault_config(delay_pct, delay_sec, abort_pct, abort_code):
 
     subprocess.run([
         "gcloud", "compute", "url-maps", "import", URL_MAP,
-        "--source=/tmp/chaos_config.json", "--quiet"
+        "--source=/tmp/chaos_config.json", "--global", "--quiet"
     ], check=True)
 
     # Wait for config to propagate
@@ -320,7 +332,8 @@ def run_tests(test_name, num_requests=100):
             latencies.append(10.0)
 
     results["avg_latency"] = sum(latencies) / len(latencies)
-    results["p99_latency"] = sorted(latencies)[int(len(latencies) * 0.99)]
+    p99_index = max(0, min(len(latencies) - 1, int(len(latencies) * 0.99) - 1))
+    results["p99_latency"] = sorted(latencies)[p99_index]
 
     print(f"\n--- {test_name} ---")
     print(f"Success: {results['success']}/{results['total']}")
@@ -333,8 +346,8 @@ def run_tests(test_name, num_requests=100):
 
 # Run chaos test scenarios
 scenarios = [
-    ("Baseline", 0, 0, 0, 200),
-    ("10% Delay (3s)", 10, 3, 0, 200),
+    ("Baseline", 0, 0, 0, 503),
+    ("10% Delay (3s)", 10, 3, 0, 503),
     ("5% Abort (503)", 0, 0, 5, 503),
     ("Combined Chaos", 15, 2, 10, 503),
 ]
@@ -345,7 +358,7 @@ for name, delay_pct, delay_sec, abort_pct, abort_code in scenarios:
     run_tests(name)
 
 # Clean up - remove fault injection
-update_fault_config(0, 0, 0, 200)
+update_fault_config()
 print("\nChaos testing complete. Fault injection removed.")
 ```
 
@@ -365,7 +378,7 @@ When running chaos tests, check for these behaviors:
 When you are done testing, remove all fault injection policies.
 
 ```bash
-gcloud compute url-maps import app-url-map --source=- <<'EOF'
+gcloud compute url-maps import app-url-map --global <<'EOF'
 name: app-url-map
 defaultService: projects/my-project/global/backendServices/app-backend
 hostRules:
@@ -380,4 +393,4 @@ EOF
 
 ## Wrapping Up
 
-Fault injection on GCP's Application Load Balancer is one of the simplest ways to do chaos testing. You do not need to deploy any additional infrastructure - just update your URL map with the fault policy, run your tests, and observe how your system handles the failures. The header-gated approach lets you run chaos tests against production traffic patterns without affecting real users. Make fault injection a regular part of your release process, and you will catch resilience issues before they become real incidents.
+Fault injection on GCP's Application Load Balancer is one of the simplest ways to do chaos testing, as long as you are not using a classic Application Load Balancer. You do not need to deploy any additional infrastructure - just update your URL map with the fault policy, run your tests, and observe how your system handles the failures. The header-gated approach lets you run chaos tests against production traffic patterns without affecting real users. Make fault injection a regular part of your release process, and you will catch resilience issues before they become real incidents.
