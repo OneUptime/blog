@@ -93,7 +93,7 @@ contract:
       tolerance: 0  # No duplicates allowed
     validity:
       - column: event_type
-        rule: IN ('page_view', 'click', 'purchase', 'sign_up', 'sign_out')
+        rule: "event_type IN ('page_view', 'click', 'purchase', 'sign_up', 'sign_out')"
       - column: event_timestamp
         rule: "event_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)"
 
@@ -156,10 +156,12 @@ def create_scan_from_contract(contract_path, project_id, location):
     freshness = contract["quality_rules"].get("freshness", {})
     if freshness:
         rules.append(dataplex_v1.DataQualityRule(
-            freshness_expectation=dataplex_v1.DataQualityRule.FreshnessExpectation(
-                # Not directly supported, use custom SQL
+            table_condition_expectation=dataplex_v1.DataQualityRule.TableConditionExpectation(
+                sql_expression=(
+                    f"MAX({freshness['check_column']}) >= "
+                    f"TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {freshness['max_age_minutes']} MINUTE)"
+                ),
             ),
-            column=freshness["check_column"],
             dimension="FRESHNESS",
         ))
 
@@ -225,7 +227,7 @@ Run contract validation checks on a schedule that matches the SLA.
 gcloud dataplex datascans create data-quality contract-customer-events \
   --location=us-central1 \
   --data-source-resource="//bigquery.googleapis.com/projects/production-data/datasets/events/tables/customer_events" \
-  --schedule-cron="*/15 * * * *" \
+  --schedule="*/15 * * * *" \
   --data-quality-spec-file=quality-rules.json
 ```
 
@@ -263,11 +265,23 @@ def check_contract_violations(request):
             continue
 
         # Get the latest job result
-        jobs = client.list_data_scan_jobs(parent=scan.name)
-        latest_job = None
-        for job in jobs:
-            latest_job = job
-            break  # First result is the latest
+        jobs = list(client.list_data_scan_jobs(parent=scan.name))
+        if not jobs:
+            continue
+
+        latest_summary = max(
+            jobs,
+            key=lambda job: (
+                job.end_time.seconds,
+                job.end_time.nanos,
+                job.start_time.seconds,
+                job.start_time.nanos,
+            ),
+        )
+        latest_job = client.get_data_scan_job(
+            name=latest_summary.name,
+            view=dataplex_v1.GetDataScanJobRequest.DataScanJobView.FULL,
+        )
 
         if latest_job and latest_job.data_quality_result:
             result = latest_job.data_quality_result
