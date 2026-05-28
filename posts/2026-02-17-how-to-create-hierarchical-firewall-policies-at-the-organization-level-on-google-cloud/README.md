@@ -14,29 +14,31 @@ This post covers how to create, manage, and structure hierarchical firewall poli
 
 ## How Hierarchical Firewall Policies Work
 
-Hierarchical firewall policies are evaluated before VPC-level firewall rules. The evaluation order is:
+Hierarchical firewall policies are evaluated before VPC-level firewall rules. In a VPC network using the default `AFTER_CLASSIC_FIREWALL` enforcement order, the simplified evaluation order is:
 
 1. Organization-level firewall policy
 2. Folder-level firewall policy
-3. VPC firewall rules (standard rules you create per-project)
-4. Implied rules (default allow egress, default deny ingress)
+3. Regional system firewall policies
+4. VPC firewall rules (standard rules you create per-project)
+5. Global and regional network firewall policies
+6. Implied actions (default allow egress, default deny ingress for VM network interfaces)
 
 ```mermaid
 flowchart TD
     A[Incoming Packet] --> B{Org Firewall Policy}
-    B -->|ALLOW| C{Folder Firewall Policy}
+    B -->|ALLOW| E[Delivered]
     B -->|DENY| Z[Dropped]
     B -->|GOTO_NEXT| C
-    C -->|ALLOW| D{VPC Firewall Rules}
+    C{Folder Firewall Policy} -->|ALLOW| E
     C -->|DENY| Z
     C -->|GOTO_NEXT| D
-    D -->|ALLOW| E[Delivered]
+    D{VPC Firewall Rules} -->|ALLOW| E
     D -->|DENY| Z
     D -->|No Match| F{Implied Rules}
     F --> Z
 ```
 
-The key concept is the `GOTO_NEXT` action. When a hierarchical rule matches but uses `GOTO_NEXT`, evaluation continues to the next level (folder, then VPC). This lets you create policies that say "defer to the project-level rules for this traffic" while still enforcing organization-wide blocks.
+The key concept is the `GOTO_NEXT` action. When a hierarchical rule matches but uses `GOTO_NEXT`, evaluation continues to the next level (folder, then the next firewall policy type in the evaluation order). By contrast, a matching `allow` or `deny` rule stops evaluation. This lets you create policies that say "defer to the project-level rules for this traffic" while still enforcing organization-wide blocks.
 
 ## Prerequisites
 
@@ -45,8 +47,10 @@ You need organization-level permissions to create hierarchical policies.
 ```bash
 # Required roles
 
-# - roles/compute.orgSecurityPolicyAdmin (at org level)
-# - roles/compute.orgSecurityResourceAdmin (at org or folder level)
+# - roles/compute.orgFirewallPolicyAdmin or roles/compute.securityAdmin
+#   to create and update firewall policies
+# - roles/compute.orgSecurityResourceAdmin on the organization or folder
+#   where the policy should be associated
 
 # Verify your organization ID
 gcloud organizations list
@@ -125,7 +129,7 @@ gcloud compute firewall-policies rules create 65534 \
     --description="Delegate remaining decisions to project-level rules"
 
 # Same for egress - delegate to projects by default
-gcloud compute firewall-policies rules create 65534 \
+gcloud compute firewall-policies rules create 65533 \
     --firewall-policy=org-security-policy \
     --organization=123456789 \
     --direction=EGRESS \
@@ -170,7 +174,7 @@ gcloud compute firewall-policies rules create 100 \
     --layer4-configs=all \
     --description="Block egress to suspicious destinations"
 
-# Restrict SSH access in production - only from bastion hosts
+# Restrict SSH access in production - only from the bastion subnet
 gcloud compute firewall-policies rules create 200 \
     --firewall-policy=prod-security-policy \
     --folder=987654321 \
@@ -178,8 +182,8 @@ gcloud compute firewall-policies rules create 200 \
     --action=allow \
     --src-ip-ranges=10.0.100.0/28 \
     --layer4-configs=tcp:22 \
-    --target-service-accounts=bastion-sa@my-project.iam.gserviceaccount.com \
-    --description="Allow SSH only from bastion subnet"
+    --target-service-accounts=prod-vm-sa@my-project.iam.gserviceaccount.com \
+    --description="Allow SSH from bastion subnet to production VMs"
 
 # Block SSH from all other sources in production
 gcloud compute firewall-policies rules create 201 \
@@ -204,6 +208,7 @@ gcloud compute firewall-policies rules create 65534 \
 # Associate with the folder
 gcloud compute firewall-policies associations create \
     --firewall-policy=prod-security-policy \
+    --organization=123456789 \
     --folder=987654321 \
     --name=prod-association
 ```
@@ -229,7 +234,7 @@ gcloud compute firewall-policies rules create 200 \
     --layer4-configs=tcp:22 \
     --description="Allow SSH from corporate network"
 
-# Allow dev tools traffic (debug ports, etc.)
+# Delegate dev tools traffic (debug ports, etc.) to project-level rules
 gcloud compute firewall-policies rules create 300 \
     --firewall-policy=dev-security-policy \
     --folder=111222333 \
@@ -237,7 +242,7 @@ gcloud compute firewall-policies rules create 300 \
     --action=goto_next \
     --src-ip-ranges=10.0.0.0/8 \
     --layer4-configs=tcp:8000-9000 \
-    --description="Allow dev port range from internal network"
+    --description="Delegate dev port range from internal network"
 
 # Delegate everything else
 gcloud compute firewall-policies rules create 65534 \
@@ -250,6 +255,7 @@ gcloud compute firewall-policies rules create 65534 \
 
 gcloud compute firewall-policies associations create \
     --firewall-policy=dev-security-policy \
+    --organization=123456789 \
     --folder=111222333 \
     --name=dev-association
 ```
@@ -275,7 +281,6 @@ gcloud compute firewall-policies rules describe 100 \
 
 # List associations
 gcloud compute firewall-policies associations list \
-    --firewall-policy=org-security-policy \
     --organization=123456789
 ```
 
@@ -328,7 +333,7 @@ Here are guidelines from implementing hierarchical policies in large organizatio
 
 - **Test before associating**. Create the policy and add rules, but verify them before associating with the organization. Once associated, they take effect immediately.
 
-- **Use IaC for management**. Manage hierarchical policies through Terraform or Deployment Manager. Manual changes through gcloud are error-prone at scale.
+- **Use IaC for management**. Manage hierarchical policies through Terraform or Infrastructure Manager. Manual changes through gcloud are error-prone at scale.
 
 ## Wrapping Up
 
