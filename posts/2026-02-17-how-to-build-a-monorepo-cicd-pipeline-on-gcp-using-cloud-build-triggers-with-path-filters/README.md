@@ -177,10 +177,10 @@ steps:
 
 ## Step 3: Handle Shared Library Changes
 
-When a shared library changes, all services that depend on it need to rebuild. The path filters handle this, but you can also create a dedicated trigger for shared library changes:
+When a shared library changes, all services that depend on it need to rebuild. The path filters handle this. If you prefer to keep shared-library handling in one place, create a dedicated trigger instead of including `libs/` paths in each per-service trigger:
 
 ```bash
-# When common-utils changes, trigger all dependent services
+# When shared libraries change, trigger all dependent services
 gcloud builds triggers create github \
   --name="rebuild-on-shared-lib-change" \
   --repo-name=my-monorepo \
@@ -245,7 +245,7 @@ steps:
 For pull requests, run tests for all affected services:
 
 ```bash
-# PR validation trigger with broad path filters
+# PR validation trigger
 gcloud builds triggers create github \
   --name="pr-validate-all" \
   --repo-name=my-monorepo \
@@ -289,7 +289,7 @@ steps:
         echo "$SERVICES_TO_TEST" > /workspace/services_to_test.txt
     id: 'detect-changes'
 
-  - name: 'node:20'
+  - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
       - '-c'
@@ -307,19 +307,25 @@ steps:
           echo "Testing: $service"
           echo "========================================="
 
-          cd /workspace/services/$service
-
-          if [ -f "package.json" ]; then
-            npm ci
-            npm test -- --ci --forceExit || FAILED=1
-          elif [ -f "requirements.txt" ]; then
-            pip install -r requirements.txt
-            python -m pytest tests/ || FAILED=1
-          elif [ -f "go.mod" ]; then
-            go test ./... || FAILED=1
+          if [ -f "/workspace/services/$service/package.json" ]; then
+            docker run --rm \
+              -v /workspace:/workspace \
+              -w /workspace/services/$service \
+              node:20 \
+              bash -c "npm ci && npm test -- --ci --forceExit" || FAILED=1
+          elif [ -f "/workspace/services/$service/requirements.txt" ]; then
+            docker run --rm \
+              -v /workspace:/workspace \
+              -w /workspace/services/$service \
+              python:3.12 \
+              bash -c "pip install -r requirements.txt && python -m pytest tests/" || FAILED=1
+          elif [ -f "/workspace/services/$service/go.mod" ]; then
+            docker run --rm \
+              -v /workspace:/workspace \
+              -w /workspace/services/$service \
+              golang:1.22 \
+              go test ./... || FAILED=1
           fi
-
-          cd /workspace
         done
 
         exit $FAILED
@@ -385,6 +391,6 @@ gcloud builds list \
 
 ## Wrapping Up
 
-Monorepo CI/CD on GCP comes down to one key feature: path-filtered triggers. By creating a trigger per service with the right path filters, you get targeted builds that only process what changed. When shared libraries change, the triggers for all dependent services fire automatically.
+Monorepo CI/CD on GCP comes down to one key feature: path-filtered triggers. By creating a trigger per service with the right path filters, you get targeted builds that only process what changed. When shared libraries change, the triggers for all dependent services fire automatically if their included file filters include the relevant shared library paths.
 
 This approach gives you the benefits of a monorepo - shared code, atomic changes, unified tooling - without the cost of rebuilding everything on every commit. Start with one trigger per service, add shared library triggers, and tune the path filters as your codebase evolves.
