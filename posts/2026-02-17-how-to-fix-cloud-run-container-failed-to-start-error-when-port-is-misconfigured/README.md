@@ -8,7 +8,7 @@ Description: Fix the Cloud Run container failed to start error caused by port mi
 
 ---
 
-You deploy to Cloud Run and get hit with the dreaded "Container failed to start" error. The container was supposed to listen on a specific port, Cloud Run tried to send it traffic, and nothing was listening. It is the single most common deployment error on Cloud Run, and it almost always comes down to one of three port-related issues.
+You deploy to Cloud Run and get hit with the dreaded "Container failed to start" error. The container was supposed to listen on a specific port, Cloud Run tried to send it traffic, and nothing was listening. It is one of the most common deployment errors on Cloud Run, and it often comes down to one of a few port-related issues.
 
 ## The Error
 
@@ -32,7 +32,7 @@ If any of these three conditions is not met, the deployment fails.
 
 ## Issue 1: Binding to localhost Instead of 0.0.0.0
 
-This is the most common mistake. Many web frameworks default to binding to `localhost` or `127.0.0.1`, which means they only accept connections from within the container itself. Cloud Run's health check comes from outside the container, so it cannot reach your application.
+This is the most common mistake. Many web frameworks default to binding to `localhost` or `127.0.0.1`, which means they only accept connections from within the container itself. Cloud Run expects the ingress container to listen on all interfaces, so it cannot route requests to an application that only listens on the loopback interface.
 
 ### Node.js / Express
 
@@ -40,8 +40,9 @@ This is the most common mistake. Many web frameworks default to binding to `loca
 const express = require('express');
 const app = express();
 
-// Wrong: binding to localhost
-// app.listen(8080);  // Some frameworks bind to localhost by default
+// Wrong: explicitly binding to localhost
+// app.listen(8080, '127.0.0.1');
+// Note: app.listen(port) without a host listens on all interfaces in Node.js.
 
 // Correct: explicitly bind to 0.0.0.0 and use the PORT env variable
 const port = process.env.PORT || 8080;
@@ -158,7 +159,7 @@ async fn main() -> std::io::Result<()> {
 Some applications hardcode a port number in their configuration. If Cloud Run sets `PORT=8080` but your app listens on port 3000, the health check fails.
 
 ```bash
-# Check what port Cloud Run is configured to probe
+# Check what port Cloud Run is configured to send requests to
 gcloud run services describe my-service \
     --region=us-central1 \
     --format="value(spec.template.spec.containers[0].ports[0].containerPort)"
