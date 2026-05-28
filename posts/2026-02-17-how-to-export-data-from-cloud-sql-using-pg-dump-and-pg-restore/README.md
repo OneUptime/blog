@@ -73,13 +73,9 @@ If your instance has a public IP, connect with SSL certificates:
 ```bash
 # Download the SSL certificates from the Cloud Console first, then:
 pg_dump \
-    --host=35.123.45.67 \
-    --port=5432 \
-    --username=postgres \
-    --dbname=mydb \
     --format=custom \
     --file=mydb.dump \
-    "sslmode=verify-ca sslrootcert=server-ca.pem sslcert=client-cert.pem sslkey=client-key.pem"
+    "sslmode=verify-ca sslrootcert=server-ca.pem sslcert=client-cert.pem sslkey=client-key.pem hostaddr=35.123.45.67 port=5432 user=postgres dbname=mydb"
 ```
 
 ## pg_dump Output Formats
@@ -242,7 +238,7 @@ pg_restore \
     mydb.dump
 ```
 
-The `--jobs=4` flag spawns 4 parallel workers. Each one restores a different table simultaneously. For a 100 GB database, parallel restore can cut the time from hours to minutes.
+The `--jobs=4` flag spawns up to 4 parallel workers for steps such as loading data, creating indexes, and creating constraints. For a 100 GB database, parallel restore can substantially reduce restore time when the target instance has enough CPU, I/O, and connection capacity.
 
 ### Selective Restore
 
@@ -315,10 +311,11 @@ If pg_dump fails with permission errors, make sure your user has the right grant
 
 ```sql
 -- Grant SELECT on all tables to the dump user
+GRANT USAGE ON SCHEMA public TO dump_user;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO dump_user;
 
--- Also grant usage on sequences
-GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO dump_user;
+-- Also grant access to sequence values
+GRANT SELECT, USAGE ON ALL SEQUENCES IN SCHEMA public TO dump_user;
 ```
 
 ### Extension Errors During Restore
@@ -326,9 +323,9 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO dump_user;
 Cloud SQL supports a subset of PostgreSQL extensions. If your dump references an unsupported extension, the restore will fail. Check supported extensions first:
 
 ```bash
-# List supported extensions for your Cloud SQL version
-gcloud sql instances describe my-instance \
-    --format="json(settings.databaseFlags)"
+# List extensions available in the target Cloud SQL database
+psql -h 127.0.0.1 -U postgres -d mydb \
+    -c "SELECT name, default_version, installed_version FROM pg_available_extensions ORDER BY name;"
 ```
 
 You may need to filter out unsupported extensions from your dump:
@@ -370,6 +367,8 @@ Create a script for scheduled exports:
 #!/bin/bash
 # automated-export.sh - Weekly pg_dump to Cloud Storage
 
+set -euo pipefail
+
 # Configuration
 INSTANCE_IP="127.0.0.1"
 DB_NAME="mydb"
@@ -378,23 +377,20 @@ BUCKET="gs://my-db-exports"
 DATE=$(date +%Y%m%d_%H%M%S)
 
 # Run pg_dump and stream to Cloud Storage
-pg_dump \
+if pg_dump \
     --host=${INSTANCE_IP} \
     --username=${DB_USER} \
     --dbname=${DB_NAME} \
     --format=custom \
     --compress=6 \
-    | gsutil cp - ${BUCKET}/${DB_NAME}-${DATE}.dump
-
-# Check exit status
-if [ $? -eq 0 ]; then
+    | gsutil cp - ${BUCKET}/${DB_NAME}-${DATE}.dump; then
     echo "Export completed successfully: ${DB_NAME}-${DATE}.dump"
 else
     echo "Export failed!" >&2
     exit 1
 fi
 
-# Clean up old exports (keep last 30 days)
+# Clean up old exports (keep latest 30 export objects)
 gsutil ls -l ${BUCKET}/ | sort -k2 | head -n -30 | awk '{print $3}' | xargs -r gsutil rm
 ```
 
