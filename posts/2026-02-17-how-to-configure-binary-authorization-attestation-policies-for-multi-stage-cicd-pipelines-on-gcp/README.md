@@ -54,17 +54,19 @@ done
 Now create the attestors and attach the keys:
 
 ```bash
-# Create the Container Analysis notes (required for attestors)
+# Create the Artifact Analysis notes (required for attestors)
 for STAGE in build test security-scan approval; do
-    # Create a note in Container Analysis
+    # Create a note in Artifact Analysis
     curl -X POST \
         "https://containeranalysis.googleapis.com/v1/projects/YOUR_PROJECT/notes?noteId=${STAGE}-attestor-note" \
         -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+        -H "x-goog-user-project: YOUR_PROJECT" \
         -H "Content-Type: application/json" \
         -d "{
+            \"name\": \"projects/YOUR_PROJECT/notes/${STAGE}-attestor-note\",
             \"attestation\": {
                 \"hint\": {
-                    \"humanReadableName\": \"${STAGE} stage attestor\"
+                    \"human_readable_name\": \"${STAGE} stage attestor\"
                 }
             }
         }"
@@ -91,11 +93,10 @@ The policy requires all four attestations for production. Staging only needs bui
 
 ```yaml
 # binauthz-policy.yaml
-admissionWhitelistPatterns:
-  # Allow GKE system images
-  - namePattern: "gcr.io/google_containers/*"
-  - namePattern: "gcr.io/gke-release/*"
-  - namePattern: "gcr.io/stackdriver-agents/*"
+name: projects/YOUR_PROJECT/policy
+
+# Allow Google-managed system images required by GKE
+globalPolicyEvaluationMode: ENABLE
 
 defaultAdmissionRule:
   # Default: deny everything that isn't explicitly allowed
@@ -158,7 +159,7 @@ steps:
           --format='value(image_summary.digest)')
 
         # Create the build attestation
-        gcloud container binauthz attestations sign-and-create \
+        gcloud beta container binauthz attestations sign-and-create \
           --artifact-url="${_IMAGE}@${DIGEST}" \
           --attestor="build-attestor" \
           --attestor-project="YOUR_PROJECT" \
@@ -166,7 +167,8 @@ steps:
           --keyversion-location="global" \
           --keyversion-keyring="binauthz-keys" \
           --keyversion-key="build-attestor-key" \
-          --keyversion="1"
+          --keyversion="1" \
+          --validate
     id: 'attest-build'
     waitFor: ['push']
 
@@ -187,7 +189,7 @@ steps:
           ${_IMAGE}:${SHORT_SHA} \
           --format='value(image_summary.digest)')
 
-        gcloud container binauthz attestations sign-and-create \
+        gcloud beta container binauthz attestations sign-and-create \
           --artifact-url="${_IMAGE}@${DIGEST}" \
           --attestor="test-attestor" \
           --attestor-project="YOUR_PROJECT" \
@@ -195,7 +197,8 @@ steps:
           --keyversion-location="global" \
           --keyversion-keyring="binauthz-keys" \
           --keyversion-key="test-attestor-key" \
-          --keyversion="1"
+          --keyversion="1" \
+          --validate
     id: 'attest-test'
     waitFor: ['test']
 
@@ -211,7 +214,7 @@ steps:
           --format='value(image_summary.digest)')
 
         # Check vulnerability scan results
-        CRITICAL=$(gcloud artifacts docker images list-vulnerabilities \
+        CRITICAL=$(gcloud artifacts vulnerabilities list \
           "${_IMAGE}@${DIGEST}" \
           --format='value(vulnerability.effectiveSeverity)' \
           | grep -c CRITICAL || true)
@@ -222,7 +225,7 @@ steps:
         fi
 
         # No critical vulns found - create security attestation
-        gcloud container binauthz attestations sign-and-create \
+        gcloud beta container binauthz attestations sign-and-create \
           --artifact-url="${_IMAGE}@${DIGEST}" \
           --attestor="security-scan-attestor" \
           --attestor-project="YOUR_PROJECT" \
@@ -230,7 +233,8 @@ steps:
           --keyversion-location="global" \
           --keyversion-keyring="binauthz-keys" \
           --keyversion-key="security-scan-attestor-key" \
-          --keyversion="1"
+          --keyversion="1" \
+          --validate
     id: 'attest-security'
     waitFor: ['push']
 
@@ -243,8 +247,21 @@ substitutions:
 For the final approval gate, use a Cloud Function triggered by a human action (like a Slack button or a custom UI):
 
 ```python
-from google.cloud import binaryauthorization_v1
+import base64
+import hashlib
+import json
+
 from google.cloud import kms_v1
+from google.cloud.devtools import containeranalysis_v1
+
+PROJECT_ID = "YOUR_PROJECT"
+NOTE_ID = "approval-attestor-note"
+PUBLIC_KEY_ID = "PUBLIC_KEY_ID_FROM_APPROVAL_ATTESTOR"
+KMS_KEY_VERSION = (
+    "projects/YOUR_PROJECT/locations/global/keyRings/binauthz-keys/"
+    "cryptoKeys/approval-attestor-key/cryptoKeyVersions/1"
+)
+
 
 def create_approval_attestation(request):
     """Create an approval attestation when a human approves deployment"""
@@ -260,14 +277,43 @@ def create_approval_attestation(request):
     if approver not in authorized_approvers:
         return {"error": "Unauthorized approver"}, 403
 
-    # Create the attestation
-    client = binaryauthorization_v1.BinauthzManagementServiceV1Client()
+    image_path, image_digest = image_url.split("@", 1)
+    payload = json.dumps(
+        {
+            "critical": {
+                "identity": {"docker-reference": image_path},
+                "image": {"docker-manifest-digest": image_digest},
+                "type": "Google cloud binauthz container signature",
+            }
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
 
-    attestation = client.create_attestation(
-        parent="projects/YOUR_PROJECT/attestors/approval-attestor",
-        attestation={
+    kms_client = kms_v1.KeyManagementServiceClient()
+    signature = kms_client.asymmetric_sign(
+        request={
+            "name": KMS_KEY_VERSION,
+            "digest": {"sha256": hashlib.sha256(payload).digest()},
+        }
+    ).signature
+
+    client = containeranalysis_v1.ContainerAnalysisClient()
+    grafeas_client = client.get_grafeas_client()
+    attestation = grafeas_client.create_occurrence(
+        parent=f"projects/{PROJECT_ID}",
+        occurrence={
+            "note_name": f"projects/{PROJECT_ID}/notes/{NOTE_ID}",
             "resource_uri": image_url,
-            "signatures": [_sign_payload(image_url)],
+            "attestation": {
+                "serialized_payload": base64.b64encode(payload).decode("utf-8"),
+                "signatures": [
+                    {
+                        "public_key_id": PUBLIC_KEY_ID,
+                        "signature": base64.b64encode(signature).decode("utf-8"),
+                    }
+                ],
+            },
         },
     )
 
