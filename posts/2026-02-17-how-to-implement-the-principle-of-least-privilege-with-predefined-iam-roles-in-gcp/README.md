@@ -94,10 +94,10 @@ gcloud recommender recommendations list \
 
 The recommender looks at what permissions were actually used over the past 90 days and suggests narrower roles. For example, if someone has `roles/editor` but only ever used `compute.instances.get` and `compute.instances.list`, it will recommend `roles/compute.viewer`.
 
-Apply a recommendation:
+Claim a recommendation before applying the policy change:
 
 ```bash
-# Apply a specific recommendation
+# Mark a specific recommendation as claimed
 gcloud recommender recommendations mark-claimed \
     RECOMMENDATION_ID \
     --project=my-project \
@@ -105,6 +105,8 @@ gcloud recommender recommendations mark-claimed \
     --recommender=google.iam.policy.Recommender \
     --etag=ETAG
 ```
+
+After claiming it, update the IAM allow policy to match the recommendation, then mark the recommendation as succeeded.
 
 ## Step 3: Map Job Functions to Roles
 
@@ -131,6 +133,16 @@ gcloud projects add-iam-policy-binding my-project \
 gcloud projects add-iam-policy-binding my-project \
     --member="group:developers@example.com" \
     --role="roles/errorreporting.viewer"
+
+gcloud artifacts repositories add-iam-policy-binding app-images \
+    --location="us-central1" \
+    --member="group:developers@example.com" \
+    --role="roles/artifactregistry.reader"
+
+gcloud iam service-accounts add-iam-policy-binding \
+    cloud-run-service-sa@my-project.iam.gserviceaccount.com \
+    --member="group:developers@example.com" \
+    --role="roles/iam.serviceAccountUser"
 ```
 
 ### Database Administrator
@@ -220,6 +232,10 @@ gcloud projects add-iam-policy-binding my-project \
     --member="serviceAccount:app-frontend-sa@my-project.iam.gserviceaccount.com" \
     --role="roles/storage.objectViewer"
 
+gcloud projects add-iam-policy-binding my-project \
+    --member="serviceAccount:app-frontend-sa@my-project.iam.gserviceaccount.com" \
+    --role="roles/logging.logWriter"
+
 # Backend needs database and cache access
 gcloud projects add-iam-policy-binding my-project \
     --member="serviceAccount:app-backend-sa@my-project.iam.gserviceaccount.com" \
@@ -245,9 +261,9 @@ Instead of granting roles at the project level, grant them on specific resources
 
 ```bash
 # Grant access to a specific bucket instead of all buckets
-gsutil iam ch \
-    serviceAccount:app-frontend-sa@my-project.iam.gserviceaccount.com:objectViewer \
-    gs://my-specific-bucket
+gcloud storage buckets add-iam-policy-binding gs://my-specific-bucket \
+    --member="serviceAccount:app-frontend-sa@my-project.iam.gserviceaccount.com" \
+    --role="roles/storage.objectViewer"
 
 # Grant access to a specific Pub/Sub topic
 gcloud pubsub topics add-iam-policy-binding my-topic \
@@ -276,7 +292,7 @@ gcloud recommender recommendations list \
 ### Check for Unused Service Accounts
 
 ```bash
-# List service accounts and their last authentication time
+# List service accounts
 gcloud iam service-accounts list \
     --project=my-project \
     --format="table(email, displayName, disabled)"
@@ -288,7 +304,7 @@ Use the Policy Analyzer to find service accounts that have not been used in 90+ 
 # Analyze IAM policy for unused bindings
 gcloud policy-intelligence query-activity \
     --project=my-project \
-    --activity-type=serviceAccountKeyLastAuthentication
+    --activity-type=serviceAccountLastAuthentication
 ```
 
 ## Common Mistakes to Avoid
