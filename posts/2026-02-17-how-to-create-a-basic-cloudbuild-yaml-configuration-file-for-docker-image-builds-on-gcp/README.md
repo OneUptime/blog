@@ -18,7 +18,7 @@ Cloud Build reads this file from your source code repository, executes each step
 
 ## Your First cloudbuild.yaml
 
-Let's start with the simplest possible example - building a Docker image and pushing it to Google Container Registry (now called Artifact Registry):
+Let's start with the simplest possible example - building a Docker image and pushing it to a `gcr.io` repository hosted by Artifact Registry:
 
 ```yaml
 # Basic cloudbuild.yaml that builds a Docker image and pushes it
@@ -37,7 +37,7 @@ Let me break down each part.
 
 ### The steps Field
 
-The `steps` field is an array of build steps. Each step runs in its own container. The two required properties for each step are:
+The `steps` field is an array of build steps. Each step runs in its own container. The two most common properties for a step like this are:
 
 - **name** - The Docker image to use for this step. Cloud Build pulls this image and runs it.
 - **args** - The arguments passed to the container's entrypoint.
@@ -46,7 +46,7 @@ In our example, `gcr.io/cloud-builders/docker` is a pre-built image provided by 
 
 ### The images Field
 
-The `images` field tells Cloud Build which images to push to the container registry after all steps complete. You do not need a separate push step - just list the images here and Cloud Build handles the push automatically.
+The `images` field tells Cloud Build which images to push to Artifact Registry after all steps complete. You do not need a separate push step - just list the images here and Cloud Build handles the push automatically.
 
 ### Built-In Substitutions
 
@@ -84,9 +84,9 @@ images:
 
 This way, each build produces a uniquely tagged image that you can reference later, while also keeping the `latest` tag pointing to the most recent build.
 
-## Using Artifact Registry Instead of Container Registry
+## Using pkg.dev Artifact Registry Repositories
 
-Google recommends using Artifact Registry instead of the older Container Registry. The cloudbuild.yaml looks almost the same, just with a different image path:
+For new repositories, Google recommends using Artifact Registry instead of the older Container Registry. The cloudbuild.yaml looks almost the same, just with a different image path:
 
 ```yaml
 # Build and push to Artifact Registry instead of Container Registry
@@ -153,7 +153,7 @@ Note that the build context (the `.` at the end) is still the repository root. T
 
 ## Setting Build Timeout and Machine Type
 
-By default, Cloud Build gives you a 10-minute timeout and a basic machine. For larger builds, you may need to adjust these:
+By default, Cloud Build gives you a 60-minute timeout and uses the default machine type. For larger builds, you may need to adjust these:
 
 ```yaml
 # Configure timeout and machine type for larger builds
@@ -173,11 +173,12 @@ options:
 ```
 
 Available machine types include:
-- `UNSPECIFIED` - Default (1 vCPU)
-- `N1_HIGHCPU_8` - 8 vCPUs
-- `N1_HIGHCPU_32` - 32 vCPUs
+- `UNSPECIFIED` - Standard machine type
+- `E2_MEDIUM` - 1 vCPU
 - `E2_HIGHCPU_8` - 8 vCPUs (E2 series)
 - `E2_HIGHCPU_32` - 32 vCPUs (E2 series)
+- `N1_HIGHCPU_8` - 8 vCPUs (deprecated)
+- `N1_HIGHCPU_32` - 32 vCPUs (deprecated)
 
 ## Running a Build Manually
 
