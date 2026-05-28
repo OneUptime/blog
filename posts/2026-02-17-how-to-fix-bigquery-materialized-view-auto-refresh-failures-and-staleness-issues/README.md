@@ -14,17 +14,17 @@ Let me walk through the common issues and how to fix them.
 
 ## How Materialized View Auto-Refresh Works
 
-BigQuery automatically refreshes materialized views within a few minutes of changes to the base tables. The refresh is incremental when possible - it only reprocesses the data that changed. However, there are conditions under which auto-refresh fails or is not triggered.
+BigQuery automatically refreshes materialized views on a best-effort basis after changes to the base tables. By default, BigQuery tries to start a refresh within 5 minutes if the previous refresh was more than 30 minutes ago, but the start and completion times are not guaranteed. The refresh is incremental when possible - it only reprocesses the data that changed. However, there are conditions under which auto-refresh fails or is not triggered.
 
 ```sql
 -- Check the last refresh time of a materialized view
 SELECT
   table_name,
-  creation_time,
-  last_modified_time,
-  TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), last_modified_time, MINUTE) as minutes_since_refresh
-FROM `my_dataset.INFORMATION_SCHEMA.TABLES`
-WHERE table_type = 'MATERIALIZED_VIEW';
+  last_refresh_time,
+  refresh_watermark,
+  TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), refresh_watermark, MINUTE) as minutes_since_refresh,
+  last_refresh_status
+FROM `my_dataset.INFORMATION_SCHEMA.MATERIALIZED_VIEWS`;
 ```
 
 ## Problem 1 - Auto-Refresh Disabled
@@ -71,7 +71,7 @@ GROUP BY day, event_type;
 
 ## Problem 2 - Base Table Has Streaming Buffer
 
-When the base table has data in its streaming buffer, incremental refresh may not include the buffered rows. This creates a window where the materialized view appears stale.
+When the base table has data in its streaming buffer, querying the materialized view can still return fresh results by combining cached view data with base table changes, but it might be slower or cost more than expected. The streaming buffer is still useful to check when you are investigating why queries are not using only cached materialized view data.
 
 ```bash
 # Check if the base table has a streaming buffer
@@ -88,11 +88,11 @@ else:
 "
 ```
 
-The materialized view will catch up once the streaming buffer is flushed to permanent storage. If you need real-time accuracy, query the base table directly instead of the materialized view.
+The materialized view cache will catch up once automatic or manual refresh processes the new data. If you need predictable latency during high-volume streaming ingestion, compare direct base table queries with materialized view queries and choose the lower-latency path for that workload.
 
 ## Problem 3 - Query Pattern Not Supported
 
-Materialized views support a limited set of SQL operations. If you try to create a materialized view with unsupported operations, the creation succeeds but refresh might fail.
+Incremental materialized views support a limited set of SQL operations. If you try to create an incremental materialized view with unsupported operations, creation usually fails. If a later base table change makes the definition invalid, automatic refresh can fail and report the error in `INFORMATION_SCHEMA.MATERIALIZED_VIEWS.last_refresh_status`.
 
 Supported operations:
 - SELECT with aggregation functions (COUNT, SUM, AVG, MIN, MAX, etc.)
@@ -101,15 +101,17 @@ Supported operations:
 - INNER JOIN (with restrictions)
 
 Not supported:
-- OUTER JOINs
+- RIGHT and FULL OUTER JOINs
 - Window functions
 - Subqueries in the SELECT
 - HAVING clause
-- UNION
+- UNION and standard UNION DISTINCT
 - Non-deterministic functions (CURRENT_TIMESTAMP, RAND, etc.)
 
+`LEFT OUTER JOIN` and `UNION ALL` are available for incremental materialized views in Preview, but smart tuning is not supported for materialized views that use them.
+
 ```sql
--- This will fail to auto-refresh because of the window function
+-- This will fail to create as an incremental materialized view because of the window function
 -- Don't do this:
 CREATE MATERIALIZED VIEW `my_dataset.bad_mv` AS
 SELECT
@@ -139,11 +141,12 @@ SELECT
   state,
   error_result.reason as error_reason,
   error_result.message as error_message,
-  destination_table.table_id
+  total_slot_ms,
+  total_bytes_processed,
+  materialized_view_statistics.materialized_view[SAFE_OFFSET(0)].rejected_reason as full_refresh_reason
 FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
-  AND job_type = 'QUERY'
-  AND statement_type = 'MATERIALIZED_VIEW_REFRESH'
+  AND job_id LIKE '%materialized_view_refresh_%'
 ORDER BY creation_time DESC
 LIMIT 20;
 ```
@@ -173,7 +176,7 @@ WHERE job_id = 'your-query-job-id';
 The optimizer will use the materialized view when:
 - The query references the same base table
 - The query filters and aggregations are compatible with the view
-- The view is not too stale
+- The materialized view includes all columns and rows needed by the query
 
 ```sql
 -- Materialized view
@@ -204,17 +207,17 @@ GROUP BY product_category;
 If you modify the schema of the base table (adding columns, changing types), the materialized view might become invalid and stop refreshing.
 
 ```sql
--- Check for invalid materialized views
+-- Check for invalid or failed materialized view refreshes
 SELECT
   table_name,
-  table_type,
-  creation_time,
-  last_modified_time
-FROM `my_dataset.INFORMATION_SCHEMA.TABLES`
-WHERE table_type = 'MATERIALIZED_VIEW';
+  last_refresh_time,
+  refresh_watermark,
+  last_refresh_status
+FROM `my_dataset.INFORMATION_SCHEMA.MATERIALIZED_VIEWS`
+WHERE last_refresh_status IS NOT NULL;
 ```
 
-If the view is invalid, you may need to drop and recreate it.
+If the view is invalid, for example because a referenced column was dropped from the base table, you may need to drop and recreate it.
 
 ```sql
 -- Drop the invalid view
@@ -240,20 +243,21 @@ Set up a regular check to monitor your materialized views.
 ```sql
 -- Comprehensive materialized view health check
 SELECT
-  t.table_name,
-  t.creation_time,
-  t.last_modified_time,
-  TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), t.last_modified_time, MINUTE) as minutes_stale,
+  mv.table_name,
+  mv.last_refresh_time,
+  mv.refresh_watermark,
+  mv.last_refresh_status,
+  TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), mv.refresh_watermark, MINUTE) as minutes_stale,
   o.option_value as refresh_enabled,
   CASE
-    WHEN TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), t.last_modified_time, MINUTE) > 120 THEN 'STALE'
-    WHEN TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), t.last_modified_time, MINUTE) > 60 THEN 'WARNING'
+    WHEN mv.last_refresh_status IS NOT NULL THEN 'ERROR'
+    WHEN TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), mv.refresh_watermark, MINUTE) > 120 THEN 'STALE'
+    WHEN TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), mv.refresh_watermark, MINUTE) > 60 THEN 'WARNING'
     ELSE 'OK'
   END as health_status
-FROM `my_dataset.INFORMATION_SCHEMA.TABLES` t
+FROM `my_dataset.INFORMATION_SCHEMA.MATERIALIZED_VIEWS` mv
 LEFT JOIN `my_dataset.INFORMATION_SCHEMA.TABLE_OPTIONS` o
-  ON t.table_name = o.table_name AND o.option_name = 'enable_refresh'
-WHERE t.table_type = 'MATERIALIZED_VIEW'
+  ON mv.table_name = o.table_name AND o.option_name = 'enable_refresh'
 ORDER BY minutes_stale DESC;
 ```
 
