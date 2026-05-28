@@ -48,10 +48,10 @@ gcloud vmware private-clouds nsx credentials describe \
   --private-cloud=my-gcve-cloud \
   --location=us-central1
 
-# The output gives you the NSX-T Manager URL and admin credentials
+# The output gives you the NSX-T Manager admin credentials
 ```
 
-Log into the NSX-T Manager web interface. All DFW configuration is done through this interface or the NSX-T API.
+Log into the NSX-T Manager web interface using the management appliance URL shown in the Google Cloud console. All DFW configuration is done through this interface or the NSX-T API.
 
 ## Step 1: Create Security Groups
 
@@ -72,7 +72,7 @@ curl -k -u admin:PASSWORD -X PUT \
         "member_type": "VirtualMachine",
         "key": "Tag",
         "operator": "EQUALS",
-        "value": "web-tier"
+        "value": "tier|web-tier"
       }
     ]
   }'
@@ -90,7 +90,7 @@ curl -k -u admin:PASSWORD -X PUT \
         "member_type": "VirtualMachine",
         "key": "Tag",
         "operator": "EQUALS",
-        "value": "app-tier"
+        "value": "tier|app-tier"
       }
     ]
   }'
@@ -108,7 +108,7 @@ curl -k -u admin:PASSWORD -X PUT \
         "member_type": "VirtualMachine",
         "key": "Tag",
         "operator": "EQUALS",
-        "value": "db-tier"
+        "value": "tier|db-tier"
       }
     ]
   }'
@@ -153,7 +153,7 @@ curl -k -u admin:PASSWORD -X PUT \
       {
         "resource_type": "L4PortSetServiceEntry",
         "display_name": "TCP-8080",
-        "protocol": "TCP",
+        "l4_protocol": "TCP",
         "destination_ports": ["8080"]
       }
     ]
@@ -265,8 +265,8 @@ DFW rule logging sends events to a syslog server or to the NSX-T Manager where y
 
 ```bash
 # Configure syslog export for firewall logs
-curl -k -u admin:PASSWORD -X PUT \
-  "https://NSX_MANAGER/api/v1/node/services/syslog/exporters/firewall-logs" \
+curl -k -u admin:PASSWORD -X POST \
+  "https://NSX_MANAGER/api/v1/node/services/syslog/exporters" \
   -H "Content-Type: application/json" \
   -d '{
     "exporter_name": "firewall-logs",
