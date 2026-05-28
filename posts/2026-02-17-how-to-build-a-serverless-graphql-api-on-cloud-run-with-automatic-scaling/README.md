@@ -19,8 +19,9 @@ Start with a basic Node.js project and the required dependencies.
 ```bash
 mkdir graphql-api && cd graphql-api
 npm init -y
-npm install @apollo/server graphql express @google-cloud/firestore
+npm install @apollo/server @as-integrations/express5 graphql express @google-cloud/firestore
 npm install dataloader cors helmet
+npm install @apollo/cache-control-types graphql-depth-limit
 npm install -D typescript @types/node @types/express ts-node
 ```
 
@@ -178,6 +179,19 @@ const resolvers = {
       const doc = await orderRef.get();
       return { id: doc.id, ...doc.data() };
     },
+
+    cancelOrder: async (_, { orderId }, { dataSources, currentUser }) => {
+      if (!currentUser) {
+        throw new GraphQLError('Authentication required', {
+          extensions: { code: 'UNAUTHENTICATED' },
+        });
+      }
+
+      const orderRef = dataSources.db.collection('orders').doc(orderId);
+      await orderRef.update({ status: 'CANCELLED' });
+      const doc = await orderRef.get();
+      return { id: doc.id, ...doc.data() };
+    },
   },
 
   // Resolve nested relationships
@@ -203,7 +217,7 @@ module.exports = resolvers;
 
 ## Setting Up DataLoaders
 
-DataLoaders batch and cache database lookups within a single request. Without them, a query for 10 orders with their users would make 10 separate user lookups. With DataLoaders, it makes a single batched query.
+DataLoaders batch and cache database lookups within a single request. Without them, a query for 10 orders with their users would make 10 separate user lookups. With DataLoaders, it makes a single batched read request.
 
 ```javascript
 // dataloaders.js
@@ -212,12 +226,11 @@ const DataLoader = require('dataloader');
 function createLoaders(db) {
   return {
     // Batch user lookups - if 10 orders reference 5 unique users,
-    // this makes a single query for those 5 users
+    // this makes a single batched read request for those 5 users
     userLoader: new DataLoader(async (userIds) => {
       const uniqueIds = [...new Set(userIds)];
-      const docs = await Promise.all(
-        uniqueIds.map(id => db.collection('users').doc(id).get())
-      );
+      const refs = uniqueIds.map(id => db.collection('users').doc(id));
+      const docs = await db.getAll(...refs);
 
       const userMap = {};
       docs.forEach(doc => {
@@ -232,9 +245,8 @@ function createLoaders(db) {
 
     // Batch order lookups
     orderLoader: new DataLoader(async (orderIds) => {
-      const docs = await Promise.all(
-        orderIds.map(id => db.collection('orders').doc(id).get())
-      );
+      const refs = orderIds.map(id => db.collection('orders').doc(id));
+      const docs = await db.getAll(...refs);
 
       return docs.map(doc =>
         doc.exists ? { id: doc.id, ...doc.data() } : null
@@ -253,7 +265,7 @@ Wire everything together with Express and Apollo Server.
 ```javascript
 // server.js
 const { ApolloServer } = require('@apollo/server');
-const { expressMiddleware } = require('@apollo/server/express4');
+const { expressMiddleware } = require('@as-integrations/express5');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -348,17 +360,19 @@ async function authenticateRequest(req) {
 startServer();
 ```
 
-## Adding Response Caching
+## Adding Cache Hints
 
-For queries that do not change frequently, add cache control hints to your schema.
+For queries that do not change frequently, add cache control hints so downstream caches can use the response's `Cache-Control` header.
 
 ```javascript
 // Add cache hints in resolvers
+const { cacheControlFromInfo } = require('@apollo/cache-control-types');
+
 const resolvers = {
   Query: {
     user: async (_, { id }, { dataSources }, info) => {
       // Cache user data for 60 seconds
-      info.cacheControl.setCacheHint({ maxAge: 60 });
+      cacheControlFromInfo(info).setCacheHint({ maxAge: 60 });
       return dataSources.userLoader.load(id);
     },
   },
