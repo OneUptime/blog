@@ -14,7 +14,7 @@ In this post, I will explain how Cloud Tasks rate limiting works under the hood 
 
 ## Understanding the Rate Limiting Parameters
 
-Cloud Tasks queues have three main rate limiting parameters:
+Cloud Tasks queues have two main rate limiting parameters you can configure with the Cloud Tasks API or `gcloud`, plus a system-calculated burst size:
 
 ### max-dispatches-per-second
 
@@ -26,11 +26,11 @@ This controls how many tasks can be in-flight (dispatched but not yet completed)
 
 ### max-burst-size
 
-This allows the queue to temporarily exceed the dispatch rate to process a backlog. After the queue has been idle, it accumulates "burst capacity" that it can use to catch up quickly.
+This allows the queue to temporarily exceed the dispatch rate to process a backlog. After the queue has been idle, it accumulates "burst capacity" that it can use to catch up quickly. When you configure queues with the Cloud Tasks API or `gcloud`, Cloud Tasks calculates this value from `max-dispatches-per-second`; it is not set directly.
 
 ## How These Parameters Interact
 
-These three settings work together. The effective dispatch rate is the minimum of:
+These settings work together. The effective sustained dispatch rate is the minimum of:
 
 1. `max-dispatches-per-second` (the configured rate)
 2. The rate allowed by `max-concurrent-dispatches` (depends on task duration)
@@ -58,8 +58,7 @@ Here is the basic syntax for creating a rate-limited queue.
 gcloud tasks queues create rate-limited-queue \
   --location=us-central1 \
   --max-dispatches-per-second=25 \
-  --max-concurrent-dispatches=10 \
-  --max-burst-size=50
+  --max-concurrent-dispatches=10
 ```
 
 ## Configuration Profiles for Common Scenarios
@@ -69,16 +68,15 @@ gcloud tasks queues create rate-limited-queue \
 When your tasks call an external API that has rate limits, you need to stay under their limits.
 
 ```bash
-# Example: Stripe API allows 100 requests per second
-# Stay well under the limit to account for other traffic
+# Example: Stripe applies account-level and endpoint-level rate limits
+# Stay well under the relevant limits to account for other traffic
 gcloud tasks queues create stripe-tasks \
   --location=us-central1 \
   --max-dispatches-per-second=50 \
-  --max-concurrent-dispatches=10 \
-  --max-burst-size=50
+  --max-concurrent-dispatches=10
 ```
 
-Why 50 instead of 100? Because you might have other parts of your application also calling Stripe. Leave headroom for non-queued requests.
+Why 50? Because you might have other parts of your application also calling Stripe. Leave headroom for non-queued requests.
 
 ### Profile 2: Database-Heavy Operations
 
@@ -89,8 +87,7 @@ When tasks do heavy database work, you want to limit concurrency to avoid connec
 gcloud tasks queues create db-heavy-tasks \
   --location=us-central1 \
   --max-dispatches-per-second=20 \
-  --max-concurrent-dispatches=5 \
-  --max-burst-size=10
+  --max-concurrent-dispatches=5
 ```
 
 With only 5 concurrent tasks, your database will not be hit with more than 5 simultaneous heavy queries.
@@ -104,8 +101,7 @@ For fast, lightweight tasks like sending push notifications, you can be more agg
 gcloud tasks queues create notification-tasks \
   --location=us-central1 \
   --max-dispatches-per-second=500 \
-  --max-concurrent-dispatches=100 \
-  --max-burst-size=500
+  --max-concurrent-dispatches=100
 ```
 
 ### Profile 4: Single-Threaded Processing
@@ -117,22 +113,21 @@ Sometimes tasks must be processed strictly one at a time (sequential processing)
 gcloud tasks queues create sequential-queue \
   --location=us-central1 \
   --max-dispatches-per-second=1 \
-  --max-concurrent-dispatches=1 \
-  --max-burst-size=1
+  --max-concurrent-dispatches=1
 ```
 
 ## Understanding Burst Behavior
 
 The burst mechanism lets Cloud Tasks temporarily exceed the configured rate. Here is how it works:
 
-When the queue is idle, it accumulates "tokens" at the rate of `max-dispatches-per-second`, up to `max-burst-size`. When tasks arrive, the queue can use these accumulated tokens to dispatch faster than the normal rate.
+When the queue is idle, it accumulates "tokens" at the rate of `max-dispatches-per-second`, up to the queue's `max-burst-size`. When tasks arrive, the queue can use these accumulated tokens to dispatch faster than the normal rate, while still respecting `max-concurrent-dispatches`.
 
-For example, with `max-dispatches-per-second=10` and `max-burst-size=100`:
+For example, if a queue has `max-dispatches-per-second=10`, `max-concurrent-dispatches=20`, and Cloud Tasks has calculated enough burst capacity:
 
-- Queue is idle for 10 seconds, accumulating 100 tokens
+- Queue is idle long enough to accumulate burst capacity
 - 50 tasks arrive at once
-- Queue can immediately dispatch all 50 tasks (using 50 tokens)
-- After that, dispatching continues at 10 per second
+- Queue can dispatch a burst of tasks, up to its available tokens and concurrency limit
+- After the burst capacity is consumed, dispatching continues at the configured rate
 
 This is useful for queues that have bursty traffic patterns. If your tasks arrive in batches every few minutes, burst capacity lets the queue drain quickly.
 
@@ -141,8 +136,7 @@ This is useful for queues that have bursty traffic patterns. If your tasks arriv
 gcloud tasks queues create bursty-queue \
   --location=us-central1 \
   --max-dispatches-per-second=10 \
-  --max-concurrent-dispatches=20 \
-  --max-burst-size=200
+  --max-concurrent-dispatches=20
 ```
 
 ## Updating Rate Limits on Existing Queues
@@ -234,7 +228,7 @@ To determine the right rate limit settings, consider these factors:
 
 **3. Downstream limits**: If your tasks call an API with a 1000 RPM limit, that is about 16 per second. Set your dispatch rate to 15 or less.
 
-**4. Resource constraints**: Each concurrent task uses a Cloud Run instance or function instance. Factor in your max-instances setting.
+**4. Resource constraints**: Each concurrent task uses request-handling capacity on your Cloud Run service or function, and may cause more instances to start depending on your concurrency and max-instances settings.
 
 Here is a formula for estimating throughput:
 
@@ -260,12 +254,12 @@ If you need to temporarily stop task processing (maybe your handler is being dep
 # Pause the queue - tasks accumulate but are not dispatched
 gcloud tasks queues pause rate-limited-queue --location=us-central1
 
-# Resume - tasks start dispatching again with burst capacity
+# Resume - tasks start dispatching again according to the queue's rate limits
 gcloud tasks queues resume rate-limited-queue --location=us-central1
 ```
 
-When you resume, the queue may dispatch faster than normal briefly (using burst capacity) to work through the backlog.
+When you resume, the queue may ramp up dispatching gradually. If burst capacity is available, it can briefly exceed the steady dispatch rate while still respecting the concurrency limit.
 
 ## Wrapping Up
 
-Rate limiting in Cloud Tasks is your throttle valve between task producers and handlers. The three knobs - dispatch rate, concurrent dispatches, and burst size - give you precise control over how fast work is done. Start conservative, monitor your handler's performance, and adjust upward as you gain confidence. Remember that the effective throughput is determined by the most restrictive limit, and that concurrency often matters more than raw rate when tasks involve database queries or external API calls.
+Rate limiting in Cloud Tasks is your throttle valve between task producers and handlers. The two configurable knobs - dispatch rate and concurrent dispatches - give you control over how fast work is done, while Cloud Tasks calculates burst size for API-managed queues. Start conservative, monitor your handler's performance, and adjust upward as you gain confidence. Remember that the effective throughput is determined by the most restrictive limit, and that concurrency often matters more than raw rate when tasks involve database queries or external API calls.
