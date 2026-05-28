@@ -136,8 +136,7 @@ def create_memcached_client():
     # Create a HashClient for consistent hashing across nodes
     client = HashClient(
         servers=servers,
-        serializer=serde.python_memcache_serializer,
-        deserializer=serde.python_memcache_deserializer,
+        serde=serde.pickle_serde,
         connect_timeout=3,
         timeout=2,
         retry_attempts=2,
@@ -359,30 +358,36 @@ def discover_memcached_nodes(discovery_host, discovery_port=11211):
     client = BaseClient((discovery_host, discovery_port), connect_timeout=5)
 
     # The config get cluster command returns the node list
-    result = client.get("config cluster")
+    result = client.raw_command("config get cluster", end_tokens="END\r\n")
 
     if result is None:
         raise Exception("Auto-discovery failed - no cluster config")
 
     # Parse the response to extract node IPs and ports
-    # Format varies by implementation
+    # Format: CONFIG cluster 0 <length>, version, then node-ip|node-ip|node-port entries
     nodes = []
     lines = result.decode("utf-8").strip().split("\n")
-    for line in lines:
-        parts = line.split("|")
-        if len(parts) >= 2:
-            ip = parts[0].strip()
-            port = int(parts[1].strip())
-            nodes.append((ip, port))
+    if len(lines) >= 3:
+        node_list = lines[2].strip()
+        for node in node_list.split():
+            parts = node.split("|")
+            if len(parts) >= 3:
+                ip = parts[1].strip()
+                port = int(parts[2].strip())
+                nodes.append((ip, port))
+
+    if not nodes:
+        raise Exception("Auto-discovery failed - no nodes returned")
 
     client.close()
     return nodes
 
 # Use the discovery endpoint from the instance description
-discovery_host = os.environ.get("MEMCACHED_DISCOVERY_HOST")
-if discovery_host:
-    nodes = discover_memcached_nodes(discovery_host)
-    cache = HashClient(nodes, serde=serde.python_memcache_serializer)
+discovery_endpoint = os.environ.get("MEMCACHED_DISCOVERY_ENDPOINT")
+if discovery_endpoint:
+    discovery_host, discovery_port = discovery_endpoint.rsplit(":", 1)
+    nodes = discover_memcached_nodes(discovery_host, int(discovery_port))
+    cache = HashClient(nodes, serde=serde.pickle_serde)
 ```
 
 ## Troubleshooting
