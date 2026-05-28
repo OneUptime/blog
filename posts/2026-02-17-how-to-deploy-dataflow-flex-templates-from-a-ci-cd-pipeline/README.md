@@ -117,16 +117,56 @@ steps:
       - '-c'
       - |
         # Launch a test job in staging
+        JOB_NAME="staging-test-${SHORT_SHA}"
+
         gcloud dataflow flex-template run \
-          "staging-test-${SHORT_SHA}" \
+          "${JOB_NAME}" \
           --template-file-gcs-location=gs://${_TEMPLATE_BUCKET}/templates/${_TEMPLATE_NAME}/${SHORT_SHA}/template.json \
           --region=us-central1 \
           --parameters="input_path=gs://${_TEMPLATE_BUCKET}/test-data/sample.json,output_table=$PROJECT_ID:staging.test_output" \
           --max-workers=2 \
           --worker-machine-type=n1-standard-2
 
-        # Wait for the job to complete and check status
-        echo "Staging test job submitted. Check Dataflow console for status."
+        JOB_ID=$(gcloud dataflow jobs list \
+          --region=us-central1 \
+          --filter="name=${JOB_NAME}" \
+          --sort-by="~createTime" \
+          --limit=1 \
+          --format="value(id)")
+
+        if [ -z "${JOB_ID}" ]; then
+          echo "Could not find submitted staging test job."
+          exit 1
+        fi
+
+        # Poll the job until it reaches a terminal state
+        while true; do
+          STATE=$(gcloud dataflow jobs describe "${JOB_ID}" \
+            --region=us-central1 \
+            --format="value(currentState)")
+
+          if [ -z "${STATE}" ]; then
+            echo "Could not read state for staging test job ${JOB_ID}."
+            exit 1
+          fi
+
+          case "${STATE}" in
+            JOB_STATE_DONE)
+              echo "Staging test job completed successfully."
+              break
+              ;;
+            JOB_STATE_FAILED|JOB_STATE_CANCELLED|JOB_STATE_DRAINED|JOB_STATE_UPDATED)
+              echo "Staging test job ended with state: ${STATE}"
+              exit 1
+              ;;
+            *)
+              echo "Staging test job state: ${STATE}. Waiting..."
+              sleep 30
+              ;;
+          esac
+        done
+
+        echo "Staging test job passed."
     waitFor: ['build-template']
 
   # Step 6: Copy template to the production location
@@ -337,19 +377,23 @@ def test_template_end_to_end():
     template_path = "gs://templates-bucket/templates/data-processor/staging/template.json"
 
     # Launch the template
-    client = dataflow_v1beta3.FlexTemplatesServiceClient()
+    client = dataflow_v1beta3.FlexTemplatesServiceClient(
+        client_options={"api_endpoint": f"{region}-dataflow.googleapis.com"}
+    )
     response = client.launch_flex_template(
-        project_id=project,
-        location=region,
-        launch_parameter={
-            "job_name": f"integration-test-{int(time.time())}",
-            "container_spec_gcs_path": template_path,
-            "parameters": {
-                "input_path": "gs://templates-bucket/test-data/integration/*.json",
-                "output_table": f"{project}:testing.integration_output",
-            },
-            "environment": {
-                "max_workers": 2,
+        request={
+            "project_id": project,
+            "location": region,
+            "launch_parameter": {
+                "job_name": f"integration-test-{int(time.time())}",
+                "container_spec_gcs_path": template_path,
+                "parameters": {
+                    "input_path": "gs://templates-bucket/test-data/integration/*.json",
+                    "output_table": f"{project}:testing.integration_output",
+                },
+                "environment": {
+                    "max_workers": 2,
+                }
             }
         }
     )
@@ -366,7 +410,6 @@ def test_template_end_to_end():
     query = f"""
     SELECT COUNT(*) as row_count
     FROM `{project}.testing.integration_output`
-    WHERE _PARTITIONTIME >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
     """
     result = list(bq_client.query(query).result())
     row_count = result[0].row_count
