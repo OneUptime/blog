@@ -42,7 +42,7 @@ basic_scaling:
   max_instances: 5       # Maximum number of instances
   idle_timeout: 10m      # Shut down instances after 10 minutes of idleness
 
-instance_class: B2       # 256MB memory, 600MHz CPU
+instance_class: B2       # 768MB memory, 1.2GHz CPU
 
 env_variables:
   TASK_TIMEOUT: "3600"
@@ -53,7 +53,7 @@ The two key settings are `max_instances` and `idle_timeout`.
 
 ### max_instances
 
-This caps how many instances App Engine will create for this service. Unlike automatic scaling where instances spin up based on request rate and CPU, basic scaling creates instances on demand - one per incoming request, up to the max. If all instances are busy and a new request comes in, it queues until an instance is available.
+This caps how many instances App Engine will create for this service. Unlike automatic scaling where App Engine creates instances preemptively based on request rate, response latency, and other metrics, basic scaling creates instances on demand when no existing instance is available, up to the max. If no instance can serve a new request immediately, the request may queue while App Engine starts or frees an instance.
 
 For background processing, keep this number low. Each instance costs money, and background tasks usually do not need parallel execution at scale.
 
@@ -72,14 +72,14 @@ Think about your workload pattern:
 Basic scaling uses B-class instances (not F-class like automatic scaling):
 
 ```text
-B1: 256MB memory, 600MHz CPU   - $0.05/hour
-B2: 512MB memory, 1.2GHz CPU   - $0.10/hour
-B4: 1GB memory, 2.4GHz CPU     - $0.20/hour
-B4_1G: 2GB memory, 2.4GHz CPU  - $0.30/hour
-B8: 2GB memory, 4.8GHz CPU     - $0.40/hour
+B1: 384MB memory, 600MHz CPU   - $0.05/hour
+B2: 768MB memory, 1.2GHz CPU   - $0.10/hour
+B4: 1536MB memory, 2.4GHz CPU  - $0.20/hour
+B4_1G: 3072MB memory, 2.4GHz CPU  - $0.30/hour
+B8: 3072MB memory, 4.8GHz CPU  - $0.40/hour
 ```
 
-B-class instances are billed per-instance-hour. You pay for the entire time the instance is running, including idle time. This is different from automatic scaling where you only pay when requests are being processed.
+B-class instances are billed per-instance-hour after the free tier. You pay while the instance is running, including idle time, and App Engine billing can continue for up to 15 minutes after the instance finishes processing its last request. Automatic scaling is also billed by instance time, so `min_idle_instances` and idle instances can add cost there too.
 
 Choose the instance class based on your task requirements:
 
@@ -99,7 +99,7 @@ instance_class: B4_1G
 
 ## Building a Task Processing Service
 
-Here is a complete background processing service that handles Cloud Tasks:
+Here is an example background processing service that handles Cloud Tasks:
 
 ```python
 # main.py - Background task processing service
@@ -139,8 +139,10 @@ def process_report():
 
     logger.info(f"Processing report task: {task_name} (retry: {retry_count})")
 
+    data = {}
+
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         report_id = data["report_id"]
 
         # Update status
@@ -207,10 +209,10 @@ def batch_import():
 
 Basic scaling supports special startup and shutdown handlers:
 
-- `/_ah/start` is called when a new instance starts, before any task requests
-- `/_ah/stop` is called when an instance is about to shut down (idle timeout reached)
+- `/_ah/start` is called with an empty `GET` request when App Engine starts an instance; for basic scaling, App Engine sends it when the instance receives its first user request
+- `/_ah/stop` appears in the logs when an instance is about to shut down; if you define a handler or registered shutdown hook, it has a short window to complete cleanup
 
-These are unique to basic scaling and give you hooks for resource management:
+These are available for manual and basic scaling and give you hooks for resource management:
 
 ```python
 # Startup and shutdown lifecycle management
@@ -251,10 +253,11 @@ gcloud tasks queues create background-processing \
   --max-concurrent-dispatches=5 \
   --max-attempts=3 \
   --min-backoff=60s \
-  --max-backoff=3600s
+  --max-backoff=3600s \
+  --routing-override=service:worker
 ```
 
-The `max-concurrent-dispatches` should not exceed your `max_instances` setting. If you have 5 max instances and 5 max concurrent dispatches, each instance handles one task at a time.
+Set `max-concurrent-dispatches` based on your worker service's total task-processing capacity. If your app is configured to process one task at a time per instance, keeping `max-concurrent-dispatches` at or below `max_instances` prevents Cloud Tasks from dispatching more work than the service can handle concurrently.
 
 ## Combining with App Engine Cron
 
@@ -296,8 +299,8 @@ With automatic scaling (F2 instances):
 ```text
 100 tasks x 5 minutes = 500 instance-minutes = 8.3 hours
 F2 cost: $0.10/hour
-Daily cost: ~$0.83
-Plus min_idle_instances cost if any
+Daily active-processing cost: ~$0.83
+Plus idle instance time, including any min_idle_instances
 ```
 
 With basic scaling (B2 instances):
