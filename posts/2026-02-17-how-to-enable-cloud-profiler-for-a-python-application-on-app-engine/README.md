@@ -8,16 +8,16 @@ Description: Step-by-step instructions for enabling Google Cloud Profiler in a P
 
 ---
 
-App Engine is one of the easiest ways to deploy Python applications on GCP, but understanding where your application spends its CPU cycles requires profiling. Cloud Profiler integrates natively with App Engine, and setting it up takes about five minutes. Once enabled, it continuously collects CPU and wall-clock profiles with negligible overhead, giving you production-grade performance data without affecting your users.
+App Engine is one of the easiest ways to deploy Python applications on GCP, but understanding where your application spends its CPU cycles requires profiling. Cloud Profiler integrates natively with App Engine, and setting it up takes about five minutes. Once enabled, it continuously collects CPU and wall-time profiles with low overhead, giving you production-grade performance data without affecting your users.
 
 ## What Cloud Profiler Does for Python
 
 For Python applications, Cloud Profiler collects two types of profiles:
 
 - **CPU time**: Shows which functions consume the most CPU time. This is what you look at when your instances are maxing out CPU.
-- **Wall time**: Shows elapsed time including I/O waits, network calls, and sleep. This is what you look at when requests are slow but CPU usage is low.
+- **Wall time**: Shows elapsed time on the main thread, including I/O waits, network calls, and sleep. This is what you look at when requests are slow but CPU usage is low.
 
-The profiler samples the call stack approximately 100 times per second during a 10-second profiling window. It does this about once per minute, so the average overhead is well under 1%.
+Cloud Profiler usually collects profiling data for 10 seconds every minute for a configured service. The overhead during CPU profiling collection is less than 5%, and the amortized overhead is commonly less than 0.5%.
 
 ## Step 1: Install the Cloud Profiler Package
 
@@ -33,7 +33,7 @@ If you use a `requirements.txt` file, add it there:
 
 ```text
 # requirements.txt
-google-cloud-profiler>=4.0.0
+google-cloud-profiler>=4.1.0
 flask>=2.0
 gunicorn>=21.0
 ```
@@ -48,12 +48,10 @@ For a Flask application, add it at the top of your main module.
 # main.py - Flask app with Cloud Profiler enabled
 import googlecloudprofiler
 
-# Initialize Cloud Profiler before anything else
-# On App Engine, the project and credentials are automatic
+# Initialize Cloud Profiler before anything else.
+# On App Engine, project, service, and service version are inferred.
 try:
     googlecloudprofiler.start(
-        service='my-python-service',        # Name shown in Cloud Profiler UI
-        service_version='1.0.0',            # Version for comparison
         verbose=0,                          # Set to 3 for debug logging
     )
 except (ValueError, NotImplementedError) as exc:
@@ -70,10 +68,10 @@ def index():
     return jsonify({"status": "running"})
 
 
-@app.route('/api/process')
+@app.post('/api/process')
 def process_data():
     # This endpoint does some CPU-intensive work
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     result = heavy_computation(data)
     return jsonify(result)
 
@@ -95,7 +93,9 @@ Make sure your `app.yaml` is set up correctly. No special configuration is neede
 
 ```yaml
 # app.yaml - Standard App Engine configuration
-runtime: python311
+# Cloud Profiler for Python supports Python 3.6 through 3.11.0.
+# Verify Profiler support before moving this service to newer App Engine runtimes.
+runtime: python310
 
 entrypoint: gunicorn -b :$PORT main:app --workers 2 --threads 4
 
@@ -107,23 +107,23 @@ automatic_scaling:
   target_cpu_utilization: 0.65
 
 env_variables:
-  # Optional: override the profiler service version from the deploy
-  PROFILER_SERVICE_VERSION: "1.0.0"
+  # Optional: expose your application release for logs or your own diagnostics
+  APP_RELEASE: "1.0.0"
 ```
 
 ## Step 4: Dynamic Version from Environment
 
-It is useful to set the service version dynamically based on the deployment. This way, each deployment gets its own version in the profiler, making comparisons easy.
+On App Engine, Cloud Profiler derives the service name and service version from the environment. If you reuse the same initialization code outside App Engine, set the service version dynamically based on the deployment. This way, each deployment gets its own version in the profiler, making comparisons easy.
 
 ```python
 # main.py - Dynamic version based on App Engine environment
 import os
 import googlecloudprofiler
 
-# Use the App Engine version ID if available
+# Use the App Engine version ID if available, or your own release value elsewhere
 service_version = os.environ.get(
     'GAE_VERSION',
-    os.environ.get('PROFILER_SERVICE_VERSION', 'dev')
+    os.environ.get('APP_RELEASE', 'dev')
 )
 
 try:
@@ -141,6 +141,9 @@ except (ValueError, NotImplementedError) as exc:
 Deploy your application and Cloud Profiler starts collecting profiles automatically.
 
 ```bash
+# Enable the Profiler API if it is not already enabled
+gcloud services enable cloudprofiler.googleapis.com --project=YOUR_PROJECT_ID
+
 # Deploy to App Engine
 gcloud app deploy app.yaml --project=YOUR_PROJECT_ID
 
