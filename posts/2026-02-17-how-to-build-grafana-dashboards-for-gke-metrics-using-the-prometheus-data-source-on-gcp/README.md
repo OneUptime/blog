@@ -100,22 +100,22 @@ For Google Managed Prometheus, the data source URL is different:
 https://monitoring.googleapis.com/v1/projects/YOUR_PROJECT_ID/location/global/prometheus
 ```
 
-You will also need to configure authentication. Create a GCP service account with the Monitoring Viewer role and download the JSON key:
+You will also need to configure authentication. Google Cloud APIs use OAuth2, and Grafana's Prometheus data source does not use a downloaded service-account JSON key directly. For Google Managed Prometheus, use the Managed Service for Prometheus data source syncer to configure the data source URL, OAuth2 access token refresh, query method, and timeouts.
 
 ```bash
-# Create a service account for Grafana
-gcloud iam service-accounts create grafana-reader \
-  --display-name="Grafana Prometheus Reader" \
+# Create a service account for the data source syncer
+gcloud iam service-accounts create gmp-ds-syncer-sa \
+  --display-name="Grafana Prometheus Data Source Syncer" \
   --project=my-project
 
-# Grant the monitoring viewer role
+# Grant the roles needed to read metrics and mint access tokens
 gcloud projects add-iam-policy-binding my-project \
-  --member="serviceAccount:grafana-reader@my-project.iam.gserviceaccount.com" \
+  --member="serviceAccount:gmp-ds-syncer-sa@my-project.iam.gserviceaccount.com" \
   --role="roles/monitoring.viewer"
 
-# Create a key file
-gcloud iam service-accounts keys create grafana-key.json \
-  --iam-account=grafana-reader@my-project.iam.gserviceaccount.com
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:gmp-ds-syncer-sa@my-project.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountTokenCreator"
 ```
 
 ## Step 4: Build a GKE Cluster Health Dashboard
@@ -190,37 +190,16 @@ histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job="my-a
 
 The Grafana community has thousands of pre-built dashboards. Here are some essential ones for GKE:
 
-```bash
-# Import dashboards via Grafana API
-# Dashboard ID 315: Kubernetes cluster monitoring
-curl -X POST http://localhost:3000/api/dashboards/import \
-  -H "Content-Type: application/json" \
-  -u admin:your-password \
-  -d '{
-    "dashboard": {
-      "id": null,
-      "uid": null,
-      "title": "Kubernetes Cluster Monitoring"
-    },
-    "pluginId": "prometheus",
-    "overwrite": true,
-    "inputs": [
-      {
-        "name": "DS_PROMETHEUS",
-        "type": "datasource",
-        "pluginId": "prometheus",
-        "value": "Prometheus"
-      }
-    ],
-    "folderId": 0
-  }'
-```
+1. Go to Dashboards, then New, then Import dashboard
+2. Paste a Grafana.com dashboard URL or ID into the import field
+3. Select your Prometheus data source when prompted
+4. Click Import
 
 Popular community dashboards for GKE:
-- **ID 315**: Kubernetes cluster overview
-- **ID 6417**: Kubernetes Pods
-- **ID 11074**: Node Exporter Full
-- **ID 7249**: Kubernetes Cluster (by CoreDNS)
+- **ID 315**: Kubernetes cluster monitoring (via Prometheus)
+- **ID 6417**: Kubernetes Cluster (Prometheus)
+- **ID 11074**: Node Exporter Dashboard
+- **ID 7249**: Kubernetes Cluster
 
 ## Step 7: Set Up Grafana Alerts
 
@@ -228,11 +207,11 @@ Grafana has its own alerting system that can complement Cloud Monitoring alerts:
 
 Create an alert rule in Grafana for high error rate:
 
-1. Open the dashboard panel for error rate
-2. Click the panel title, then Edit
-3. Go to the Alert tab
-4. Set the condition: When `avg()` of query `A` is above `5` for `5m`
-5. Configure notification channels (Slack, PagerDuty, email)
+1. Go to Alerts & IRM, then Alert rules, then New alert rule
+2. Select your Prometheus data source and add the error-rate query
+3. Set the alert condition so the reduced value of query `A` is above `5` for `5m`
+4. Select a folder and add labels if needed
+5. Route notifications to a contact point or through notification policies
 
 ## Step 8: Persistent Storage for Grafana
 
