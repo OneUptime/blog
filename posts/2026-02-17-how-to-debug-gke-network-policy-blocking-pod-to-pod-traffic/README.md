@@ -12,13 +12,13 @@ Everything was working, then someone applied a network policy and now pods canno
 
 ## How Network Policies Work in GKE
 
-Network policies in Kubernetes are allowlist-based. Once any network policy selects a pod, all traffic to that pod is denied by default unless explicitly allowed by a policy rule.
+Network policies in Kubernetes are allowlist-based. Once any ingress network policy selects a pod, ingress traffic to that pod is denied by default unless explicitly allowed by a policy rule.
 
 ```mermaid
 flowchart TD
     A[Pod A wants to reach Pod B] --> B{Any NetworkPolicy selects Pod B?}
     B -->|No| C[All traffic allowed - default open]
-    B -->|Yes| D{Does any policy allow<br/>traffic from Pod A?}
+    B -->|Yes| D{Does any ingress policy allow<br/>traffic from Pod A?}
     D -->|Yes| E[Traffic allowed]
     D -->|No| F[Traffic blocked]
 ```
@@ -27,17 +27,17 @@ The key insight: if you create a network policy that selects a pod but only allo
 
 ## Prerequisites - Ensure Network Policy Is Enabled
 
-GKE does not enforce network policies by default. Verify it is enabled:
+GKE Standard clusters that do not use GKE Dataplane V2 do not enforce network policies unless network policy enforcement is enabled. Verify enforcement based on your cluster's network plugin:
 
 ```bash
-# Check if network policy is enabled on the cluster
+# For GKE Dataplane V2 clusters
+kubectl -n kube-system get pods -l k8s-app=cilium
 
-gcloud container clusters describe your-cluster \
-  --zone us-central1-a \
-  --format="value(networkPolicy.enabled, addonsConfig.networkPolicyConfig.disabled)"
+# For Standard clusters using Calico network policy enforcement
+kubectl get nodes -l projectcalico.org/ds-ready=true
 ```
 
-If not enabled, network policies are created but have no effect:
+If the relevant command returns no resources, enforcement is not enabled. For Standard clusters using Calico, enable it with:
 
 ```bash
 # Enable network policy on an existing cluster
@@ -45,13 +45,13 @@ gcloud container clusters update your-cluster \
   --update-addons=NetworkPolicy=ENABLED \
   --zone us-central1-a
 
-# Also enable on the node pool
+# Also enable enforcement on the nodes
 gcloud container clusters update your-cluster \
   --enable-network-policy \
   --zone us-central1-a
 ```
 
-Note: If you are using GKE Dataplane V2, network policy enforcement is built in and does not need a separate enable step.
+Note: If you are using GKE Dataplane V2, network policy enforcement is built in and does not need a separate enable step. Autopilot clusters use GKE Dataplane V2 by default.
 
 ## Step 1 - Reproduce and Confirm the Block
 
@@ -101,7 +101,7 @@ kubectl get networkpolicy -n target-namespace -o json | \
 import json, sys
 data = json.load(sys.stdin)
 for item in data['items']:
-    selector = item['spec'].get('podSelector', {}).get('matchLabels', {})
+    selector = item['spec'].get('podSelector', {})
     print(f\"{item['metadata']['name']}: selects {selector}\")
 "
 ```
@@ -251,13 +251,15 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: target-namespace
+          kubernetes.io/metadata.name: target-namespace
     ports:
     - protocol: TCP
       port: 8080
   # Also allow DNS resolution
   - to:
-    - namespaceSelector: {}
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
       podSelector:
         matchLabels:
           k8s-app: kube-dns
@@ -278,7 +280,6 @@ Network policies reference namespaces by label, not by name. Make sure your name
 # Label namespaces for use in network policies
 kubectl label namespace production env=production
 kubectl label namespace monitoring name=monitoring
-kubectl label namespace kube-system name=kube-system
 ```
 
 In newer Kubernetes versions (1.22+), the `kubernetes.io/metadata.name` label is automatically applied to all namespaces, which you can use in selectors:
