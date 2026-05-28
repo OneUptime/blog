@@ -40,12 +40,12 @@ That is it. Cloud CDN is now active. But the default settings might not match wh
 GCP offers three cache modes that control what gets cached:
 
 ```bash
-# Option 1: Respect origin Cache-Control headers (default)
+# Option 1: Respect origin Cache-Control headers
 gcloud compute backend-services update my-backend-service \
     --cache-mode=USE_ORIGIN_HEADERS \
     --global
 
-# Option 2: Cache all static content automatically
+# Option 2: Cache all static content automatically (default)
 gcloud compute backend-services update my-backend-service \
     --cache-mode=CACHE_ALL_STATIC \
     --global
@@ -63,7 +63,7 @@ Here is what each mode does:
 
 **CACHE_ALL_STATIC**: Cloud CDN automatically caches common static content types (images, CSS, JavaScript, fonts) even if the origin does not set Cache-Control headers. Dynamic content is not cached unless it has explicit cache headers.
 
-**FORCE_CACHE_ALL**: Every successful response gets cached. This is aggressive and should only be used when you know all content is cacheable. You must set a `--default-ttl` with this mode.
+**FORCE_CACHE_ALL**: Successful responses are cached, ignoring `private` and `no-store` directives in `Cache-Control` response headers. This is aggressive and should only be used when you know the backend is not serving private or dynamic content. The `--default-ttl` value controls the cache TTL in this mode.
 
 ## Step 3: Set TTL Values
 
@@ -142,7 +142,7 @@ def serve_profile():
 ```
 
 Key Cache-Control directives:
-- `public` - Can be cached by CDN (required for Cloud CDN to cache)
+- `public` - Can be cached by shared caches such as Cloud CDN (recommended for content that should be cached by proxies)
 - `private` - Only the browser can cache, not CDN
 - `no-store` - Do not cache at all
 - `max-age=N` - Cache for N seconds
@@ -150,7 +150,7 @@ Key Cache-Control directives:
 
 ## Step 6: Configure Negative Caching
 
-By default, Cloud CDN also caches error responses (like 404s) to prevent your backend from being hammered by requests for non-existent resources:
+Cloud CDN can also cache error responses (like 404s) to prevent your backend from being hammered by requests for non-existent resources:
 
 ```bash
 # Configure negative caching for error responses
@@ -161,7 +161,7 @@ gcloud compute backend-services update my-backend-service \
     --global
 ```
 
-This caches 404 responses for 60 seconds and 405 responses for 60 seconds. Without negative caching, every 404 request hits your backend.
+This caches 404 responses for 60 seconds and 405 responses for 60 seconds when the response does not include explicit caching headers. Without negative caching or cacheable origin headers, repeated 404 requests hit your backend.
 
 ## Invalidating the Cache
 
@@ -191,7 +191,7 @@ Cache invalidation takes a few minutes to propagate to all edge locations. For t
 Check how well your CDN is performing:
 
 ```bash
-# View CDN hit and miss rates in Cloud Monitoring
+# View recent CDN cache hits in Cloud Logging
 gcloud logging read 'resource.type="http_load_balancer" AND
     jsonPayload.statusDetails="response_from_cache"' \
     --limit=10 \
@@ -225,8 +225,7 @@ gcloud compute backend-services update my-backend-service \
 # Add a signing key
 gcloud compute backend-services add-signed-url-key my-backend-service \
     --key-name=my-key \
-    --key-file=signing-key.base64 \
-    --global
+    --key-file=signing-key.base64
 ```
 
 ## Wrapping Up
