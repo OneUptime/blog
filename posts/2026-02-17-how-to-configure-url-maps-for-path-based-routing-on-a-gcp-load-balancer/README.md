@@ -54,6 +54,7 @@ gcloud compute url-maps add-path-matcher my-url-map \
     --path-matcher-name=my-paths \
     --default-service=web-frontend \
     --path-rules="/api/*=api-backend,/static/*=static-backend" \
+    --new-hosts="*" \
     --global
 ```
 
@@ -240,11 +241,13 @@ EOF
 
 ## Viewing and Debugging URL Maps
 
-To see the current configuration of a URL map:
+To export the current configuration of a URL map:
 
 ```bash
 # Export the URL map configuration to YAML
-gcloud compute url-maps describe my-url-map --global
+gcloud compute url-maps export my-url-map \
+    --destination=my-url-map.yaml \
+    --global
 ```
 
 To validate that your URL map routes correctly, you can use the `url-maps validate` command:
@@ -256,7 +259,7 @@ gcloud compute url-maps validate --source=my-url-map.yaml
 
 ## Common Pitfalls
 
-**Path matching is prefix-based by default**: `/api` matches `/api`, `/api/`, `/api/users`, and even `/apiary`. Use `/api/*` or `/api/` to be more specific, or use `fullPathMatch` in route rules for exact matching.
+**Path matching uses exact matches and wildcard rules**: A path rule such as `/api` matches only `/api`. A rule such as `/api/*` matches paths under `/api/`, but does not match `/api` itself. Use both rules if you need both behaviors, or use `fullPathMatch` in route rules for exact matching.
 
 **Priority matters in route rules**: Lower numbers have higher priority. If you have overlapping rules, the one with the lowest priority number wins.
 
